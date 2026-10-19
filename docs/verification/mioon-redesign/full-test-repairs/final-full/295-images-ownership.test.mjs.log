@@ -1,0 +1,136 @@
+TAP version 13
+# Subtest: valid image lineage is typed, immutable and usable as an asset-only clip and subject source
+ok 1 - valid image lineage is typed, immutable and usable as an asset-only clip and subject source
+  ---
+  duration_ms: 18.754708
+  type: 'test'
+  ...
+# Subtest: imported legacy subject provenance serializes byte-for-byte without imageSource
+ok 2 - imported legacy subject provenance serializes byte-for-byte without imageSource
+  ---
+  duration_ms: 5.326375
+  type: 'test'
+  ...
+# Subtest: imageVersion cached path rejects changed asset metadata sha256
+ok 3 - imageVersion cached path rejects changed asset metadata sha256
+  ---
+  duration_ms: 5.463209
+  type: 'test'
+  ...
+# Subtest: imageVersion cached path rejects changed asset metadata sizeBytes
+ok 4 - imageVersion cached path rejects changed asset metadata sizeBytes
+  ---
+  duration_ms: 6.221792
+  type: 'test'
+  ...
+# Subtest: imageVersion cached path rejects changed asset metadata mimeType
+ok 5 - imageVersion cached path rejects changed asset metadata mimeType
+  ---
+  duration_ms: 5.466834
+  type: 'test'
+  ...
+# Subtest: imageVersion cached path rejects changed asset metadata width
+ok 6 - imageVersion cached path rejects changed asset metadata width
+  ---
+  duration_ms: 5.391
+  type: 'test'
+  ...
+# Subtest: imageVersion cached path rejects changed asset metadata height
+ok 7 - imageVersion cached path rejects changed asset metadata height
+  ---
+  duration_ms: 5.409041
+  type: 'test'
+  ...
+# Subtest: imageVersion cached path rejects changed asset metadata provenance
+ok 8 - imageVersion cached path rejects changed asset metadata provenance
+  ---
+  duration_ms: 5.511166
+  type: 'test'
+  ...
+# Subtest: imageVersion cached path rejects changed asset metadata projectId
+ok 9 - imageVersion cached path rejects changed asset metadata projectId
+  ---
+  duration_ms: 5.319083
+  type: 'test'
+  ...
+# Subtest: corrupt image version-json fails closed before disclosure
+ok 10 - corrupt image version-json fails closed before disclosure
+  ---
+  duration_ms: 5.460875
+  type: 'test'
+  ...
+# Subtest: corrupt image version-size fails closed before disclosure
+ok 11 - corrupt image version-size fails closed before disclosure
+  ---
+  duration_ms: 5.05225
+  type: 'test'
+  ...
+# Subtest: corrupt image version-sql-project fails closed before disclosure
+ok 12 - corrupt image version-sql-project fails closed before disclosure
+  ---
+  duration_ms: 5.234125
+  type: 'test'
+  ...
+# Subtest: corrupt image task-snapshot fails closed before disclosure
+ok 13 - corrupt image task-snapshot fails closed before disclosure
+  ---
+  duration_ms: 5.180959
+  type: 'test'
+  ...
+# Subtest: corrupt image task-input fails closed before disclosure
+ok 14 - corrupt image task-input fails closed before disclosure
+  ---
+  duration_ms: 5.429708
+  type: 'test'
+  ...
+# Subtest: corrupt image task-receipt fails closed before disclosure
+ok 15 - corrupt image task-receipt fails closed before disclosure
+  ---
+  duration_ms: 5.655875
+  type: 'test'
+  ...
+# Subtest: corrupt image group-project fails closed before disclosure
+ok 16 - corrupt image group-project fails closed before disclosure
+  ---
+  duration_ms: 4.93575
+  type: 'test'
+  ...
+# Subtest: corrupt image group-size fails closed before disclosure
+ok 17 - corrupt image group-size fails closed before disclosure
+  ---
+  duration_ms: 5.463666
+  type: 'test'
+  ...
+# Subtest: cross-family owner triggers are reciprocal and corrupted mixed owners reject even disguised imports
+ok 18 - cross-family owner triggers are reciprocal and corrupted mixed owners reject even disguised imports
+  ---
+  duration_ms: 10.338708
+  type: 'test'
+  ...
+# Subtest: oversized valid-JSON legacy owner cannot hide beside a typed image owner
+ok 19 - oversized valid-JSON legacy owner cannot hide beside a typed image owner
+  ---
+  duration_ms: 5.148292
+  type: 'test'
+  ...
+# Subtest: damaged duplicate image owners and missing generated owners fail uniformly
+ok 20 - damaged duplicate image owners and missing generated owners fail uniformly
+  ---
+  duration_ms: 5.908667
+  type: 'test'
+  ...
+# Subtest: task scope and exact staged receipt are revalidated independently of success state
+ok 21 - task scope and exact staged receipt are revalidated independently of success state
+  ---
+  duration_ms: 5.182166
+  type: 'test'
+  ...
+1..21
+# tests 21
+# suites 0
+# pass 21
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 388.235459

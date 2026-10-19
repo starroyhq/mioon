@@ -1,0 +1,148 @@
+TAP version 13
+# Subtest: pre-ACK failure rolls back task and request atomically without decoding or staging
+ok 1 - pre-ACK failure rolls back task and request atomically without decoding or staging
+  ---
+  duration_ms: 643.578542
+  type: 'test'
+  ...
+# Subtest: lost ACK lookup and replay never start extraction; restart only marks interrupted
+ok 2 - lost ACK lookup and replay never start extraction; restart only marks interrupted
+  ---
+  duration_ms: 967.023
+  type: 'test'
+  ...
+# Subtest: after_result_manifest retains exact local result; explicit recovery publishes without re-decoding
+ok 3 - after_result_manifest retains exact local result; explicit recovery publishes without re-decoding
+  ---
+  duration_ms: 767.727208
+  type: 'test'
+  ...
+# Subtest: after_result_receipt retains exact local result; explicit recovery publishes without re-decoding
+ok 4 - after_result_receipt retains exact local result; explicit recovery publishes without re-decoding
+  ---
+  duration_ms: 744.059208
+  type: 'test'
+  ...
+# Subtest: after_media_publication retains exact local result; explicit recovery publishes without re-decoding
+ok 5 - after_media_publication retains exact local result; explicit recovery publishes without re-decoding
+  ---
+  duration_ms: 720.127125
+  type: 'test'
+  ...
+# Subtest: before_result_commit retains exact local result; explicit recovery publishes without re-decoding
+ok 6 - before_result_commit retains exact local result; explicit recovery publishes without re-decoding
+  ---
+  duration_ms: 744.375917
+  type: 'test'
+  ...
+# Subtest: recovery refuses missing-manifest without new receipt or decode
+ok 7 - recovery refuses missing-manifest without new receipt or decode
+  ---
+  duration_ms: 906.631833
+  type: 'test'
+  ...
+# Subtest: recovery refuses partial-png without new receipt or decode
+ok 8 - recovery refuses partial-png without new receipt or decode
+  ---
+  duration_ms: 805.473875
+  type: 'test'
+  ...
+# Subtest: recovery refuses wrong-png without new receipt or decode
+ok 9 - recovery refuses wrong-png without new receipt or decode
+  ---
+  duration_ms: 657.59975
+  type: 'test'
+  ...
+# Subtest: recovery refuses wrong-manifest without new receipt or decode
+ok 10 - recovery refuses wrong-manifest without new receipt or decode
+  ---
+  duration_ms: 651.00575
+  type: 'test'
+  ...
+# Subtest: recovery refuses symlink-png without new receipt or decode
+ok 11 - recovery refuses symlink-png without new receipt or decode
+  ---
+  duration_ms: 648.557916
+  type: 'test'
+  ...
+# Subtest: recovery refuses unsafe-directory without new receipt or decode
+ok 12 - recovery refuses unsafe-directory without new receipt or decode
+  ---
+  duration_ms: 671.850375
+  type: 'test'
+  ...
+# Subtest: result receipt budget retains all sixteen ACKs and fails closed on the next recovery
+ok 13 - result receipt budget retains all sixteen ACKs and fails closed on the next recovery
+  ---
+  duration_ms: 1034.364125
+  type: 'test'
+  ...
+# Subtest: stopping aborts and fences a late decoder result; reopening never resumes it
+ok 14 - stopping aborts and fences a late decoder result; reopening never resumes it
+  ---
+  duration_ms: 625.366333
+  type: 'test'
+  ...
+# Subtest: actual process crash at after_acceptance is reconciled without startup decode
+ok 15 - actual process crash at after_acceptance is reconciled without startup decode
+  ---
+  duration_ms: 1188.557667
+  type: 'test'
+  ...
+# Subtest: actual process crash at after_start_fence is reconciled without startup decode
+ok 16 - actual process crash at after_start_fence is reconciled without startup decode
+  ---
+  duration_ms: 1189.105625
+  type: 'test'
+  ...
+# Subtest: actual process crash at after_result_manifest is reconciled without startup decode
+ok 17 - actual process crash at after_result_manifest is reconciled without startup decode
+  ---
+  duration_ms: 1257.783708
+  type: 'test'
+  ...
+# Subtest: actual process crash at after_result_receipt is reconciled without startup decode
+ok 18 - actual process crash at after_result_receipt is reconciled without startup decode
+  ---
+  duration_ms: 1274.752625
+  type: 'test'
+  ...
+# Subtest: actual process crash at after_media_publication is reconciled without startup decode
+ok 19 - actual process crash at after_media_publication is reconciled without startup decode
+  ---
+  duration_ms: 1268.220959
+  type: 'test'
+  ...
+# Subtest: actual process crash at before_result_commit is reconciled without startup decode
+ok 20 - actual process crash at before_result_commit is reconciled without startup decode
+  ---
+  duration_ms: 1270.376042
+  type: 'test'
+  ...
+# Subtest: unconfirmed exact child close retains the active slot and bounded shutdown reports failure
+ok 21 - unconfirmed exact child close retains the active slot and bounded shutdown reports failure
+  ---
+  duration_ms: 3638.207
+  type: 'test'
+  ...
+# Subtest: fresh missing checkpoint rejection carries only exact authoritative not-accepted proof
+ok 22 - fresh missing checkpoint rejection carries only exact authoritative not-accepted proof
+  ---
+  duration_ms: 611.234541
+  type: 'test'
+  ...
+# Subtest: committed lost ACK, foreign/reassigned scope and forged errors never prove not-accepted
+ok 23 - committed lost ACK, foreign/reassigned scope and forged errors never prove not-accepted
+  ---
+  duration_ms: 561.230375
+  type: 'test'
+  ...
+1..23
+# tests 23
+# suites 0
+# pass 23
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 23118.312375

@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: inspection arguments are strict and authority-free; RPC project scope is separate
+ok 1 - inspection arguments are strict and authority-free; RPC project scope is separate
+  ---
+  duration_ms: 3.194708
+  type: 'test'
+  ...
+# Subtest: every shared operation has a complete explicit frozen effect descriptor; unknown operations fail closed
+ok 2 - every shared operation has a complete explicit frozen effect descriptor; unknown operations fail closed
+  ---
+  duration_ms: 6.645
+  type: 'test'
+  ...
+# Subtest: offline CLI schema and official MCP list/schema expose identical inspection contracts and effects
+ok 3 - offline CLI schema and official MCP list/schema expose identical inspection contracts and effects
+  ---
+  duration_ms: 2225.300375
+  type: 'test'
+  ...
+# Subtest: shared subject operations cannot enter either protocol built-in Agent catalog or parser
+ok 4 - shared subject operations cannot enter either protocol built-in Agent catalog or parser
+  ---
+  duration_ms: 0.986375
+  type: 'test'
+  ...
+# Subtest: Comfy remote operations have truthful effects and remain outside built-in Agent tools
+ok 5 - Comfy remote operations have truthful effects and remain outside built-in Agent tools
+  ---
+  duration_ms: 0.241125
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2527.472834

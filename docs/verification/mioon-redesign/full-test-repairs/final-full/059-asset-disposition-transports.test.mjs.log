@@ -1,0 +1,71 @@
+TAP version 13
+# Subtest: asset dispositions share exact HTTP, real CLI and official MCP semantics without media work
+    # Subtest: discovery preserves strict inputs, bounded lists, required set keys and effect annotations
+    ok 1 - discovery preserves strict inputs, bounded lists, required set keys and effect annotations
+      ---
+      duration_ms: 1054.765208
+      type: 'test'
+      ...
+    # Subtest: neutral defaults, requested order, all asset types and 100-item boundary are non-creating reads
+    ok 2 - neutral defaults, requested order, all asset types and 100-item boundary are non-creating reads
+      ---
+      duration_ms: 878.59375
+      type: 'test'
+      ...
+    # Subtest: a lost committed result replays exactly after a newer rejection and actual backend restart
+    ok 3 - a lost committed result replays exactly after a newer rejection and actual backend restart
+      ---
+      duration_ms: 1845.030291
+      type: 'test'
+      ...
+    # Subtest: changed keys, stale revisions, malformed set inputs and unauthorized calls do not write
+    ok 4 - changed keys, stale revisions, malformed set inputs and unauthorized calls do not write
+      ---
+      duration_ms: 5232.689291
+      type: 'test'
+      ...
+    # Subtest: batch validation and all-or-nothing ownership failures agree without partial metadata or writes
+    ok 5 - batch validation and all-or-nothing ownership failures agree without partial metadata or writes
+      ---
+      duration_ms: 6059.657792
+      type: 'test'
+      ...
+    # Subtest: neutral reset retains monotonic revision and supports image, audio and unknown-duration sources
+    ok 6 - neutral reset retains monotonic revision and supports image, audio and unknown-duration sources
+      ---
+      duration_ms: 1925.353042
+      type: 'test'
+      ...
+    # Subtest: all eight local mutations share key collision checks while legacy optional behavior remains
+    ok 7 - all eight local mutations share key collision checks while legacy optional behavior remains
+      ---
+      duration_ms: 8549.585625
+      type: 'test'
+      ...
+    # Subtest: timeline/reference/generation namespaces and explicit clip semantics remain independent
+    ok 8 - timeline/reference/generation namespaces and explicit clip semantics remain independent
+      ---
+      duration_ms: 1139.971333
+      type: 'test'
+      ...
+    # Subtest: exact historical replay checks current ownership before exposing a retained response
+    ok 9 - exact historical replay checks current ownership before exposing a retained response
+      ---
+      duration_ms: 1942.520416
+      type: 'test'
+      ...
+    1..9
+ok 1 - asset dispositions share exact HTTP, real CLI and official MCP semantics without media work
+  ---
+  duration_ms: 31090.646084
+  type: 'test'
+  ...
+1..1
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 31404.378958

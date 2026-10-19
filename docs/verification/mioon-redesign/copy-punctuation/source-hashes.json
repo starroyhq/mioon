@@ -1,0 +1,167 @@
+[
+  {
+    "path": "apps/desktop/src/main.mjs",
+    "sha256": "3599a008ba20d9bed32d7dfaaf755aecdf773278604a43ed7374f4924b2a2b32",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "apps/desktop/src/native-audio-preview-host.ts",
+    "sha256": "14505d6499ae00950b9b0fa2f1554f9dddfa88b1a29d11e5c6d1672dee2d1ac8",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "apps/desktop/src/project-window-recovery.ts",
+    "sha256": "a43c811353b48a91f67a14773513085ee94101a92d8bb22b678cc0453b592ef6",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "apps/desktop/src/supervisor.mjs",
+    "sha256": "8f77f475f60c7e0243adf85ce7876db3365accab0a25ec5a39ea31159e4758da",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/annotations.ts",
+    "sha256": "6455df0810d0573d5ec66a4bbcce668734661d03949464f0159c189eb9c64de1",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/appearance.ts",
+    "sha256": "73e124567ee33d5f941ce589177acab6812666f3e1beb953235d17333f9fb9c1",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/audio-role.ts",
+    "sha256": "135a6ae44a9007b763b5e9906920e511c3f18b45a73cf891c4efe3ebf4b4a603",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/clip-loudness.ts",
+    "sha256": "9dab26ea0aaa8628e3735923619172b14ccc2d2f8b9daa6e9c678c6f1d8b9abb",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/command.ts",
+    "sha256": "b7d4cf4e820b46476e67fc61660819f11166ea0d8dcd47ccebd064a3617be47f",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/comparison.ts",
+    "sha256": "4ca4d6ba876a3285a665103b0b5ad8e9cc3f35ca4ec0b24e50de025febe54799",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/creation-connections.ts",
+    "sha256": "d515caa122c12a19347dfd051fd8888625bb1bb90b85f2ff4cca6b696234dd88",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/creation-extra.ts",
+    "sha256": "92782ab8873b6a21337779b8cb77c08e757c5c910e430c2a2d904187c4b5650d",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/creation-state.ts",
+    "sha256": "a837665cfaf543ca5da821076222c1351a3ec10744a09be24ab5f10cd5f60884",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/creation-ui.ts",
+    "sha256": "ee765450b4fd70bb600a803bc7b1bd48ee6771dde6870f023b4a8def698b8e06",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/export-file.ts",
+    "sha256": "f69d67e7273a2ce70bbbfd6be8ce3c90920c9c53e7116ed5318275c0197cba29",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/export-workflow.ts",
+    "sha256": "da283481aad7710e2ed6d1822082547ab8f252f843b063cb977761d0aa04dc60",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/foundation.ts",
+    "sha256": "14f95866c8ddc8207b6673a606ebc5a722e7907943a8d4a39930227d19fa9be4",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/native.ts",
+    "sha256": "bf59f50d8eae3c3163593de2d97568d44b3689e683cb456a984140a5089c8e5a",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/opacity-envelope.ts",
+    "sha256": "20eca2f822a7390b18a9f5b032bef1bd036de237e45f6f31b6937fc216a984fe",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/opacity-restored-application.ts",
+    "sha256": "9ef00d949c202b242d35090b371046667461ce4807fee6dad82d392b0da88efc",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/operations.ts",
+    "sha256": "844fdedda5e8ed724fd5f7289f80be6534dbb0250e4bf872e6d1c2868790bbbc",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/project-browser.ts",
+    "sha256": "4bc8f53f8e4b29ee7ffe0ca67518d2a86602b00deaeb0ac8d241e0384b96abeb",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/redesign-board.ts",
+    "sha256": "0fbf01d754f0c3e11f68d4cdf1ee892bc7d49a0d93533e8bc21688878ec0bb4d",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/settings-redesign.ts",
+    "sha256": "efe01e59703485b652252b58b5616a1112d595102276e6950eb2d03548a423c1",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/shell.ts",
+    "sha256": "89e19dc60e85dea180f82eb09deff4e67c4f88ce276aed1820ef54f154071365",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/subjects.ts",
+    "sha256": "e54ed932fb32cd582907e45fd8915c6511c604cffc0c96ffffa89cf9fc30ed79",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/timeline-delivery.ts",
+    "sha256": "c80096afdf03b037013b115afd8d6f24b668d61edf3ad554fc69d5c929de52eb",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/timeline-editing.ts",
+    "sha256": "572be8a68568c49bee743deaa963492c52334e4ae4380b814d6b04585f143cdd",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/timeline.ts",
+    "sha256": "1b5804dae77ce3ad7053c4009c4c7c8582461f36c6bc2f2f4c80567d83ea53b2",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/volume-envelope.ts",
+    "sha256": "fc30a9d915242af4f4edc13c40749244dbb1d2566787f8a3e914424d4f5d942a",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/workbench-shell.ts",
+    "sha256": "d51f79b23299a6109fc1193cdcdac76e325355451edf1be80d8853bab9aba5ae",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/catalogs/workspace-tools.ts",
+    "sha256": "516b3db55853bb4736839217c7295ab0c8145166fd70cb44adaf6e2650dafa83",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "packages/i18n/src/index.ts",
+    "sha256": "59e9d07c505e1b016c9233448887b1e1d1950aa907d953c6276d64df25104fdb",
+    "matchesVerifiedSnapshot": true
+  }
+]

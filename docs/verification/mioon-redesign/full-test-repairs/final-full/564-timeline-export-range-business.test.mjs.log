@@ -1,0 +1,121 @@
+TAP version 13
+# Subtest: range freezes complete original composition; exact replay survives shorter current timeline and restart
+    # Subtest: legacy encoding
+    ok 1 - legacy encoding
+      ---
+      duration_ms: 1044.636084
+      type: 'test'
+      ...
+    # Subtest: custom
+    ok 2 - custom
+      ---
+      duration_ms: 690.037125
+      type: 'test'
+      ...
+    1..2
+ok 1 - range freezes complete original composition; exact replay survives shorter current timeline and restart
+  ---
+  duration_ms: 1735.3995
+  type: 'test'
+  ...
+# Subtest: fresh range bounds fail before writes/capability and carry request-bound rollback proof; missing timeline stays absent
+    # Subtest: saved legacy
+    ok 1 - saved legacy
+      ---
+      duration_ms: 618.565083
+      type: 'test'
+      ...
+    # Subtest: saved custom
+    ok 2 - saved custom
+      ---
+      duration_ms: 614.889291
+      type: 'test'
+      ...
+    # Subtest: absent legacy
+    ok 3 - absent legacy
+      ---
+      duration_ms: 613.902125
+      type: 'test'
+      ...
+    # Subtest: absent custom
+    ok 4 - absent custom
+      ---
+      duration_ms: 614.076625
+      type: 'test'
+      ...
+    1..4
+ok 2 - fresh range bounds fail before writes/capability and carry request-bound rollback proof; missing timeline stays absent
+  ---
+  duration_ms: 2462.203167
+  type: 'test'
+  ...
+# Subtest: range preflight is read-only, full-source summary and range-specific digest; stale wins over out-of-current-bounds
+ok 3 - range preflight is read-only, full-source summary and range-specific digest; stale wins over out-of-current-bounds
+  ---
+  duration_ms: 656.713667
+  type: 'test'
+  ...
+# Subtest: range-only identity cannot be removed or changed on receipt/export before startup or dispatch
+    # Subtest: export changed
+    ok 1 - export changed
+      ---
+      duration_ms: 653.626166
+      type: 'test'
+      ...
+    # Subtest: export removed
+    ok 2 - export removed
+      ---
+      duration_ms: 672.604625
+      type: 'test'
+      ...
+    # Subtest: receipt changed
+    ok 3 - receipt changed
+      ---
+      duration_ms: 646.135083
+      type: 'test'
+      ...
+    # Subtest: receipt removed
+    ok 4 - receipt removed
+      ---
+      duration_ms: 618.503583
+      type: 'test'
+      ...
+    # Subtest: preview
+    ok 5 - preview
+      ---
+      duration_ms: 637.621584
+      type: 'test'
+      ...
+    1..5
+ok 4 - range-only identity cannot be removed or changed on receipt/export before startup or dispatch
+  ---
+  duration_ms: 3229.259792
+  type: 'test'
+  ...
+# Subtest: range-only worker uses original receipt through owned staged publication without capability compute
+ok 5 - range-only worker uses original receipt through owned staged publication without capability compute
+  ---
+  duration_ms: 1712.879291
+  type: 'test'
+  ...
+# Subtest: range-only source ownership change after probe prevents first encoder and preserves originals
+ok 6 - range-only source ownership change after probe prevents first encoder and preserves originals
+  ---
+  duration_ms: 905.864792
+  type: 'test'
+  ...
+# Subtest: range-only cancellation/ownership failure cannot delete a replaced staging inode
+ok 7 - range-only cancellation/ownership failure cannot delete a replaced staging inode
+  ---
+  duration_ms: 1022.228375
+  type: 'test'
+  ...
+1..7
+# tests 18
+# suites 0
+# pass 18
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 12103.367667

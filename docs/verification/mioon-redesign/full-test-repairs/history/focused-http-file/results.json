@@ -1,0 +1,21 @@
+[
+  {
+    "file": "tests/http-file-response.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 4.2,
+    "tapSummary": {
+      "tests": 17,
+      "suites": 0,
+      "pass": 17,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-http-file/001-http-file-response.test.mjs.log",
+    "sha256": "68fa0f7f7999cf5aa9bd3e9b416820f218b45ff2711810fae4bdbf49f9ee49b8",
+    "sourceSha256": "f771ff21878da53438badca0968051b980ea0a31f8e05a1f6a71be10219c0ec9",
+    "failedSubtests": []
+  }
+]

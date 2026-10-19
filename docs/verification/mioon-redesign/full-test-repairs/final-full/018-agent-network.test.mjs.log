@@ -1,0 +1,106 @@
+TAP version 13
+# Subtest: public IP gate denies private, metadata, reserved, documentation and IPv6 transition forms
+ok 1 - public IP gate denies private, metadata, reserved, documentation and IPv6 transition forms
+  ---
+  duration_ms: 4.840833
+  type: 'test'
+  ...
+# Subtest: DNS validates every answer, exact family, count and syntax; never picks around a bad answer
+ok 2 - DNS validates every answer, exact family, count and syntax; never picks around a bad answer
+  ---
+  duration_ms: 1.6845
+  type: 'test'
+  ...
+# Subtest: Ollama alone allows fixed loopback route and requires a known different self port
+ok 3 - Ollama alone allows fixed loopback route and requires a known different self port
+  ---
+  duration_ms: 0.338834
+  type: 'test'
+  ...
+# Subtest: transport pins the approved address and authenticates TLS before sending any body/key
+ok 4 - transport pins the approved address and authenticates TLS before sending any body/key
+  ---
+  duration_ms: 1.072458
+  type: 'test'
+  ...
+# Subtest: mismatched peer, port or untrusted TLS fails before request.end; equivalent mapped peer is exact-pinned only
+ok 5 - mismatched peer, port or untrusted TLS fails before request.end; equivalent mapped peer is exact-pinned only
+  ---
+  duration_ms: 0.733792
+  type: 'test'
+  ...
+# Subtest: redirects, non-SSE and compressed responses are closed once without body/header/error leakage
+ok 6 - redirects, non-SSE and compressed responses are closed once without body/header/error leakage
+  ---
+  duration_ms: 0.6755
+  type: 'test'
+  ...
+# Subtest: DNS connection timeout and cancellation prevent a resolver completing late from opening a socket
+ok 7 - DNS connection timeout and cancellation prevent a resolver completing late from opening a socket
+  ---
+  duration_ms: 32.942333
+  type: 'test'
+  ...
+# Subtest: network errors and unknown codes always use fixed safe messages
+ok 8 - network errors and unknown codes always use fixed safe messages
+  ---
+  duration_ms: 0.647
+  type: 'test'
+  ...
+# Subtest: abort before DNS and between socket assignment and TLS handshake sends no bytes
+ok 9 - abort before DNS and between socket assignment and TLS handshake sends no bytes
+  ---
+  duration_ms: 0.374
+  type: 'test'
+  ...
+# Subtest: TLS transport errors before secureConnect never transmit the key or body
+ok 10 - TLS transport errors before secureConnect never transmit the key or body
+  ---
+  duration_ms: 0.303542
+  type: 'test'
+  ...
+# Subtest: abort after response closes both objects and retains the safe terminal reason
+ok 11 - abort after response closes both objects and retains the safe terminal reason
+  ---
+  duration_ms: 0.195
+  type: 'test'
+  ...
+# Subtest: test overrides can only tighten defaults, never disable or raise network bounds
+ok 12 - test overrides can only tighten defaults, never disable or raise network bounds
+  ---
+  duration_ms: 0.112958
+  type: 'test'
+  ...
+# Subtest: Azure platform VIP is denied as a literal, sole DNS answer and mixed public DNS answer
+ok 13 - Azure platform VIP is denied as a literal, sole DNS answer and mixed public DNS answer
+  ---
+  duration_ms: 0.136875
+  type: 'test'
+  ...
+# Subtest: only validated protocol enum derives either fixed transport suffix, including exact Ollama loopback path
+ok 14 - only validated protocol enum derives either fixed transport suffix, including exact Ollama loopback path
+  ---
+  duration_ms: 0.206292
+  type: 'test'
+  ...
+# Subtest: Responses preserves mixed-DNS denial and TLS/peer verification before secret/body transmission
+ok 15 - Responses preserves mixed-DNS denial and TLS/peer verification before secret/body transmission
+  ---
+  duration_ms: 0.233375
+  type: 'test'
+  ...
+# Subtest: Responses cancellation while DNS is pending cannot open a later socket
+ok 16 - Responses cancellation while DNS is pending cannot open a later socket
+  ---
+  duration_ms: 5.938416
+  type: 'test'
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 259.226958

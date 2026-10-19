@@ -1,0 +1,94 @@
+TAP version 13
+# Subtest: envelope capability requires exact profile and verified workspace identity, never generic update access
+ok 1 - envelope capability requires exact profile and verified workspace identity, never generic update access
+  ---
+  duration_ms: 5.883084
+  type: 'test'
+  ...
+# Subtest: optional capability is bounded, failure-isolated and connection-epoch fenced
+ok 2 - optional capability is bounded, failure-isolated and connection-epoch fenced
+  ---
+  duration_ms: 8.012875
+  type: 'test'
+  ...
+# Subtest: actual Inspector Enter/13 ducking IME confirmation survives compositionend and submit until keyup release
+ok 3 - actual Inspector Enter/13 ducking IME confirmation survives compositionend and submit until keyup release
+  ---
+  duration_ms: 29.3095
+  type: 'test'
+  ...
+# Subtest: actual Inspector Process/229 ducking IME confirmation survives compositionend and submit until keyup release
+ok 4 - actual Inspector Process/229 ducking IME confirmation survives compositionend and submit until keyup release
+  ---
+  duration_ms: 5.531792
+  type: 'test'
+  ...
+# Subtest: actual Inspector ducking confirmation is released only by a later independent pointer after composition
+ok 5 - actual Inspector ducking confirmation is released only by a later independent pointer after composition
+  ---
+  duration_ms: 3.5715
+  type: 'test'
+  ...
+# Subtest: an older ducking keyup microtask cannot clear a newer Inspector composition confirmation
+ok 6 - an older ducking keyup microtask cannot clear a newer Inspector composition confirmation
+  ---
+  duration_ms: 4.05
+  type: 'test'
+  ...
+# Subtest: Inspector wires controller-owned envelope token across renders and blocks save/remove during composition
+ok 7 - Inspector wires controller-owned envelope token across renders and blocks save/remove during composition
+  ---
+  duration_ms: 3.94125
+  type: 'test'
+  ...
+# Subtest: unsupported or silent assets retain visible recovered envelope and localized blocked message
+ok 8 - unsupported or silent assets retain visible recovered envelope and localized blocked message
+  ---
+  duration_ms: 30.035958
+  type: 'test'
+  ...
+# Subtest: App navigation refuses composition before confirmation and rechecks after async confirmation
+ok 9 - App navigation refuses composition before confirmation and rechecks after async confirmation
+  ---
+  duration_ms: 0.741042
+  type: 'test'
+  ...
+# Subtest: App optional envelope probe is connection-scoped rather than project boot-scoped
+ok 10 - App optional envelope probe is connection-scoped rather than project boot-scoped
+  ---
+  duration_ms: 0.384625
+  type: 'test'
+  ...
+# Subtest: retained old Inspector callbacks cannot retarget newer same-owner composition session
+ok 11 - retained old Inspector callbacks cannot retarget newer same-owner composition session
+  ---
+  duration_ms: 3.6015
+  type: 'test'
+  ...
+# Subtest: retained Inspector adapter keeps exact composing owner across auth loss, missing/replaced selected clip and settlement
+ok 12 - retained Inspector adapter keeps exact composing owner across auth loss, missing/replaced selected clip and settlement
+  ---
+  duration_ms: 1.081583
+  type: 'test'
+  ...
+# Subtest: late App boot inspect response cannot adopt workspace or project after composition begins
+ok 13 - late App boot inspect response cannot adopt workspace or project after composition begins
+  ---
+  duration_ms: 2.145
+  type: 'test'
+  ...
+# Subtest: retained auth interruption blocks App mutation/recovery entrypoints and keeps login/home from replacing owner
+ok 14 - retained auth interruption blocks App mutation/recovery entrypoints and keeps login/home from replacing owner
+  ---
+  duration_ms: 1.140084
+  type: 'test'
+  ...
+1..14
+# tests 14
+# suites 0
+# pass 14
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 346.378583

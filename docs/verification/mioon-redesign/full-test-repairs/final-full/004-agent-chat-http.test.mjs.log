@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: all chat/SSE/stop routes retain authentication, origin, exact methods, bounded bodies and closed field schemas
+ok 1 - all chat/SSE/stop routes retain authentication, origin, exact methods, bounded bodies and closed field schemas
+  ---
+  duration_ms: 749.1995
+  type: 'test'
+  ...
+# Subtest: public snapshots, cursor SSE replay and repeated POST expose no key, mutate no project rows, and never re-infer
+ok 2 - public snapshots, cursor SSE replay and repeated POST expose no key, mutate no project rows, and never re-infer
+  ---
+  duration_ms: 670.82125
+  type: 'test'
+  ...
+# Subtest: project authorization precedes lookup, run, stop, event and replay; restart reads durable state without recreating
+ok 3 - project authorization precedes lookup, run, stop, event and replay; restart reads durable state without recreating
+  ---
+  duration_ms: 964.518667
+  type: 'test'
+  ...
+# Subtest: bounded older history and request lookup remain available outside the latest page without another inference
+ok 4 - bounded older history and request lookup remain available outside the latest page without another inference
+  ---
+  duration_ms: 1018.192334
+  type: 'test'
+  ...
+# Subtest: real localhost synthetic gateway uses one inference POST and reattachment never sends another request
+ok 5 - real localhost synthetic gateway uses one inference POST and reattachment never sends another request
+  ---
+  duration_ms: 627.630417
+  type: 'test'
+  ...
+# Subtest: detaching SSE leaves single response alive, Stop aborts actual upstream, and shutdown closes live SSE before drain
+ok 6 - detaching SSE leaves single response alive, Stop aborts actual upstream, and shutdown closes live SSE before drain
+  ---
+  duration_ms: 643.895625
+  type: 'test'
+  ...
+# Subtest: saturated SSE response detaches locally without sending Stop or retrying inference
+ok 7 - saturated SSE response detaches locally without sending Stop or retrying inference
+  ---
+  duration_ms: 0.310958
+  type: 'test'
+  ...
+# Subtest: journal fault closes SSE without inventing an uncommitted terminal event
+ok 8 - journal fault closes SSE without inventing an uncommitted terminal event
+  ---
+  duration_ms: 0.154917
+  type: 'test'
+  ...
+# Subtest: shutdown during pending trusted acquisition is bounded and late credential cannot cause an inference
+ok 9 - shutdown during pending trusted acquisition is bounded and late credential cannot cause an inference
+  ---
+  duration_ms: 599.789833
+  type: 'test'
+  ...
+# Subtest: actual Responses HTTP sends one fixed-path request, complete bounded context and no CC/stateful/tool fields
+ok 10 - actual Responses HTTP sends one fixed-path request, complete bounded context and no CC/stateful/tool fields
+  ---
+  duration_ms: 654.05025
+  type: 'test'
+  ...
+# Subtest: actual Responses incomplete, failed, unknown, tools and EOF stay partial/failed with no CC fallback
+ok 11 - actual Responses incomplete, failed, unknown, tools and EOF stay partial/failed with no CC fallback
+  ---
+  duration_ms: 3168.203708
+  type: 'test'
+  ...
+# Subtest: actual Responses Stop and service shutdown abort upstream and close SSE without an additional round
+ok 12 - actual Responses Stop and service shutdown abort upstream and close SSE without an additional round
+  ---
+  duration_ms: 705.881834
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 10196.008

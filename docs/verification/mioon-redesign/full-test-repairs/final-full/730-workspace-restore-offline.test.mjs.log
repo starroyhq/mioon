@@ -1,0 +1,136 @@
+TAP version 13
+# Subtest: offline restore preserves every original SQL value, source/backup byte and mode, stage file and held unknown outcome
+ok 1 - offline restore preserves every original SQL value, source/backup byte and mode, stage file and held unknown outcome
+  ---
+  duration_ms: 621.351583
+  type: 'test'
+  ...
+# Subtest: same original backup produces distinct server-created independent origins and ids
+ok 2 - same original backup produces distinct server-created independent origins and ids
+  ---
+  duration_ms: 510.3075
+  type: 'test'
+  ...
+# Subtest: existing destination, lock, overlap and unsafe links refuse without changing old contents or permissions
+ok 3 - existing destination, lock, overlap and unsafe links refuse without changing old contents or permissions
+  ---
+  duration_ms: 187.237875
+  type: 'test'
+  ...
+# Subtest: restore refuses changed-payload with no final activation and leaves backup unchanged
+ok 4 - restore refuses changed-payload with no final activation and leaves backup unchanged
+  ---
+  duration_ms: 156.493625
+  type: 'test'
+  ...
+# Subtest: restore refuses missing-complete with no final activation and leaves backup unchanged
+ok 5 - restore refuses missing-complete with no final activation and leaves backup unchanged
+  ---
+  duration_ms: 176.093
+  type: 'test'
+  ...
+# Subtest: restore refuses unknown-sql with no final activation and leaves backup unchanged
+ok 6 - restore refuses unknown-sql with no final activation and leaves backup unchanged
+  ---
+  duration_ms: 216.808834
+  type: 'test'
+  ...
+# Subtest: restore refuses malicious-trigger with no final activation and leaves backup unchanged
+ok 7 - restore refuses malicious-trigger with no final activation and leaves backup unchanged
+  ---
+  duration_ms: 203.7235
+  type: 'test'
+  ...
+# Subtest: restore refuses schema25 with no final activation and leaves backup unchanged
+ok 8 - restore refuses schema25 with no final activation and leaves backup unchanged
+  ---
+  duration_ms: 216.890209
+  type: 'test'
+  ...
+# Subtest: restore refuses invalid-identity with no final activation and leaves backup unchanged
+ok 9 - restore refuses invalid-identity with no final activation and leaves backup unchanged
+  ---
+  duration_ms: 263.982042
+  type: 'test'
+  ...
+# Subtest: cancellation before work creates no destination; exact offline status declines wrong binding and live lock without repairs
+ok 10 - cancellation before work creates no destination; exact offline status declines wrong binding and live lock without repairs
+  ---
+  duration_ms: 373.789833
+  type: 'test'
+  ...
+# Subtest: actual frozen baseline openStore refuses a SQLite-only copy of offline restored output
+ok 11 - actual frozen baseline openStore refuses a SQLite-only copy of offline restored output
+  ---
+  duration_ms: 547.426667
+  type: 'test'
+  ...
+# Subtest: backup-bound publication discovery rejects different-backup without target/source changes
+ok 12 - backup-bound publication discovery rejects different-backup without target/source changes
+  ---
+  duration_ms: 440.629833
+  type: 'test'
+  ...
+# Subtest: backup-bound publication discovery rejects corrupt-backup without target/source changes
+ok 13 - backup-bound publication discovery rejects corrupt-backup without target/source changes
+  ---
+  duration_ms: 396.166125
+  type: 'test'
+  ...
+# Subtest: backup-bound publication discovery rejects ordinary-target without target/source changes
+ok 14 - backup-bound publication discovery rejects ordinary-target without target/source changes
+  ---
+  duration_ms: 347.067375
+  type: 'test'
+  ...
+# Subtest: backup-bound publication discovery rejects partial-target without target/source changes
+ok 15 - backup-bound publication discovery rejects partial-target without target/source changes
+  ---
+  duration_ms: 380.46425
+  type: 'test'
+  ...
+# Subtest: backup-bound publication discovery rejects locked-target without target/source changes
+ok 16 - backup-bound publication discovery rejects locked-target without target/source changes
+  ---
+  duration_ms: 358.013417
+  type: 'test'
+  ...
+# Subtest: backup-bound publication discovery rejects sidecar-target without target/source changes
+ok 17 - backup-bound publication discovery rejects sidecar-target without target/source changes
+  ---
+  duration_ms: 331.842833
+  type: 'test'
+  ...
+# Subtest: backup-bound publication discovery rejects absent-target without target/source changes
+ok 18 - backup-bound publication discovery rejects absent-target without target/source changes
+  ---
+  duration_ms: 374.285125
+  type: 'test'
+  ...
+# Subtest: backup-bound publication discovery rejects mixed-mode without target/source changes
+ok 19 - backup-bound publication discovery rejects mixed-mode without target/source changes
+  ---
+  duration_ms: 293.939125
+  type: 'test'
+  ...
+# Subtest: restore rejects a new descendant of the original workspace without changing any original path, bytes or modes
+ok 20 - restore rejects a new descendant of the original workspace without changing any original path, bytes or modes
+  ---
+  duration_ms: 326.797417
+  type: 'test'
+  ...
+# Subtest: destination ancestor lock and symbolic fixed marker are fail-closed without deletion or recursive scanning
+ok 21 - destination ancestor lock and symbolic fixed marker are fail-closed without deletion or recursive scanning
+  ---
+  duration_ms: 150.076042
+  type: 'test'
+  ...
+1..21
+# tests 21
+# suites 0
+# pass 21
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 7149.864666

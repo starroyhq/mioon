@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: candidate-only preflight grammar retains historical public schema and applies preview render restrictions
+ok 1 - candidate-only preflight grammar retains historical public schema and applies preview render restrictions
+  ---
+  duration_ms: 3.141084
+  type: 'test'
+  ...
+# Subtest: actual owned reads produce the same raw opacity snapshot hash as preview/export acceptance and no writes
+ok 2 - actual owned reads produce the same raw opacity snapshot hash as preview/export acceptance and no writes
+  ---
+  duration_ms: 1074.912
+  type: 'test'
+  ...
+# Subtest: raw opacity changes invalidate old digest without any render/receipt write; projection digest never authorizes
+ok 3 - raw opacity changes invalidate old digest without any render/receipt write; projection digest never authorizes
+  ---
+  duration_ms: 428.605042
+  type: 'test'
+  ...
+# Subtest: bounded read rejects cross-project source ownership and exact LUT ownership before source IO
+ok 4 - bounded read rejects cross-project source ownership and exact LUT ownership before source IO
+  ---
+  duration_ms: 211.096375
+  type: 'test'
+  ...
+# Subtest: actual reverse owner graph cannot disguise a generated version as a bare imported asset
+ok 5 - actual reverse owner graph cannot disguise a generated version as a bare imported asset
+  ---
+  duration_ms: 191.248084
+  type: 'test'
+  ...
+# Subtest: 42 preflight invocation expires and never enters task/mutation authority; cancelled observer cannot start a check
+ok 6 - 42 preflight invocation expires and never enters task/mutation authority; cancelled observer cannot start a check
+  ---
+  duration_ms: 182.734667
+  type: 'test'
+  ...
+# Subtest: 43 service preflight requires this origin and preserves captured exports/history/receipts
+ok 7 - 43 service preflight requires this origin and preserves captured exports/history/receipts
+  ---
+  duration_ms: 687.510417
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3112.912

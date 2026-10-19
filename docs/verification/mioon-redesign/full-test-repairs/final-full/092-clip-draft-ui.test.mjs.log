@@ -1,0 +1,340 @@
+TAP version 13
+# Subtest: whole raw form round-trips incomplete numeric strings and fade omission without business execution
+ok 1 - whole raw form round-trips incomplete numeric strings and fade omission without business execution
+  ---
+  duration_ms: 11.641125
+  type: 'test'
+  ...
+# Subtest: invalid raw numbers and missing name never become valid zero-valued business patches
+ok 2 - invalid raw numbers and missing name never become valid zero-valued business patches
+  ---
+  duration_ms: 0.53175
+  type: 'test'
+  ...
+# Subtest: a delayed GET preserves newer typed input and requires explicit old-draft handling
+ok 3 - a delayed GET preserves newer typed input and requires explicit old-draft handling
+  ---
+  duration_ms: 0.516
+  type: 'test'
+  ...
+# Subtest: restoration freezes base revision and complete source, including unrelated timeline updates
+ok 4 - restoration freezes base revision and complete source, including unrelated timeline updates
+  ---
+  duration_ms: 0.647416
+  type: 'test'
+  ...
+# Subtest: only a complete matching fresh applied business ACK clears the exact persisted draft
+ok 5 - only a complete matching fresh applied business ACK clears the exact persisted draft
+  ---
+  duration_ms: 1.9085
+  type: 'test'
+  ...
+# Subtest: newer input typed while business save awaits survives and is never rebased or cleared
+ok 6 - newer input typed while business save awaits survives and is never rebased or cleared
+  ---
+  duration_ms: 0.386792
+  type: 'test'
+  ...
+# Subtest: an older applied ACK never regresses an observed newer timeline or clears its draft
+ok 7 - an older applied ACK never regresses an observed newer timeline or clears its draft
+  ---
+  duration_ms: 0.321167
+  type: 'test'
+  ...
+# Subtest: unknown business outcome and unmounted owner preserve draft without automatic replay
+ok 8 - unknown business outcome and unmounted owner preserve draft without automatic replay
+  ---
+  duration_ms: 0.342875
+  type: 'test'
+  ...
+# Subtest: multiwindow write conflict fails closed and reread never silently overwrites foreign raw
+ok 9 - multiwindow write conflict fails closed and reread never silently overwrites foreign raw
+  ---
+  duration_ms: 0.237708
+  type: 'test'
+  ...
+# Subtest: delayed local PUT coalesces newer input only after the first exact CAS is accepted
+ok 10 - delayed local PUT coalesces newer input only after the first exact CAS is accepted
+  ---
+  duration_ms: 0.274375
+  type: 'test'
+  ...
+# Subtest: explicit discard checks captured serial and never removes another window’s newer draft
+ok 11 - explicit discard checks captured serial and never removes another window’s newer draft
+  ---
+  duration_ms: 0.29075
+  type: 'test'
+  ...
+# Subtest: typing during explicit stored-draft deletion preserves input and does not leave a phantom recovery candidate
+ok 12 - typing during explicit stored-draft deletion preserves input and does not leave a phantom recovery candidate
+  ---
+  duration_ms: 0.213042
+  type: 'test'
+  ...
+# Subtest: backend identity changes require explicit page reload, never silently adopting a new authority
+ok 13 - backend identity changes require explicit page reload, never silently adopting a new authority
+  ---
+  duration_ms: 0.188042
+  type: 'test'
+  ...
+# Subtest: restored branch retains ordinary in-memory editing and discard without local draft I/O
+ok 14 - restored branch retains ordinary in-memory editing and discard without local draft I/O
+  ---
+  duration_ms: 0.205417
+  type: 'test'
+  ...
+# Subtest: lost autosave ACK followed by applied business ACK cannot falsely mark the sidecar cleared
+ok 15 - lost autosave ACK followed by applied business ACK cannot falsely mark the sidecar cleared
+  ---
+  duration_ms: 0.218667
+  type: 'test'
+  ...
+# Subtest: busy lane and hidden view never dispatch a business save and recovery never does so
+ok 16 - busy lane and hidden view never dispatch a business save and recovery never does so
+  ---
+  duration_ms: 0.42875
+  type: 'test'
+  ...
+# Subtest: HTTP adapter uses same-origin sidecar only and rejects malformed/unsupported write acknowledgments
+ok 17 - HTTP adapter uses same-origin sidecar only and rejects malformed/unsupported write acknowledgments
+  ---
+  duration_ms: 17.056042
+  type: 'test'
+  ...
+# Subtest: recovery is embedded in the existing right inspector with explicit restore and local plaintext warning
+ok 18 - recovery is embedded in the existing right inspector with explicit restore and local plaintext warning
+  ---
+  duration_ms: 1.443417
+  type: 'test'
+  ...
+# Subtest: a delayed reread cannot resurrect a candidate after its exact DELETE is confirmed
+ok 19 - a delayed reread cannot resurrect a candidate after its exact DELETE is confirmed
+  ---
+  duration_ms: 0.373667
+  type: 'test'
+  ...
+# Subtest: offline input automatically schedules a local write after a safe reconnect
+ok 20 - offline input automatically schedules a local write after a safe reconnect
+  ---
+  duration_ms: 21.023042
+  type: 'test'
+  ...
+# Subtest: repeated Save while the local flush awaits cannot dispatch duplicate business edits
+ok 21 - repeated Save while the local flush awaits cannot dispatch duplicate business edits
+  ---
+  duration_ms: 0.596084
+  type: 'test'
+  ...
+# Subtest: late durable preparation cannot execute after view, owner, source or base changes; its own busy state is allowed
+ok 22 - late durable preparation cannot execute after view, owner, source or base changes; its own busy state is allowed
+  ---
+  duration_ms: 1.369
+  type: 'test'
+  ...
+# Subtest: actual HTTP client preserves structured LOCAL_DRAFT_CAPACITY/507 without interpreting message text
+ok 23 - actual HTTP client preserves structured LOCAL_DRAFT_CAPACITY/507 without interpreting message text
+  ---
+  duration_ms: 0.388167
+  type: 'test'
+  ...
+# Subtest: actual HTTP client preserves structured LOCAL_DRAFT_LIMIT/413 without interpreting message text
+ok 24 - actual HTTP client preserves structured LOCAL_DRAFT_LIMIT/413 without interpreting message text
+  ---
+  duration_ms: 0.201833
+  type: 'test'
+  ...
+# Subtest: actual HTTP client preserves structured LOCAL_DRAFT_CONFLICT/409 without interpreting message text
+ok 25 - actual HTTP client preserves structured LOCAL_DRAFT_CONFLICT/409 without interpreting message text
+  ---
+  duration_ms: 0.161917
+  type: 'test'
+  ...
+# Subtest: actual HTTP client preserves structured LOCAL_DRAFT_STALE_INSTANCE/409 without interpreting message text
+ok 26 - actual HTTP client preserves structured LOCAL_DRAFT_STALE_INSTANCE/409 without interpreting message text
+  ---
+  duration_ms: 0.174833
+  type: 'test'
+  ...
+# Subtest: actual HTTP client preserves structured LOCAL_DRAFT_SAVE_UNCERTAIN/503 without interpreting message text
+ok 27 - actual HTTP client preserves structured LOCAL_DRAFT_SAVE_UNCERTAIN/503 without interpreting message text
+  ---
+  duration_ms: 0.231792
+  type: 'test'
+  ...
+# Subtest: actual HTTP client preserves structured UNRECOGNIZED_FUTURE_CODE/409 without interpreting message text
+ok 28 - actual HTTP client preserves structured UNRECOGNIZED_FUTURE_CODE/409 without interpreting message text
+  ---
+  duration_ms: 0.146125
+  type: 'test'
+  ...
+# Subtest: actual HTTP client treats code/status mismatches, malformed 2xx and network loss as unknown outcomes
+ok 29 - actual HTTP client treats code/status mismatches, malformed 2xx and network loss as unknown outcomes
+  ---
+  duration_ms: 0.748583
+  type: 'test'
+  ...
+# Subtest: actual HTTP client refuses to treat malformed error envelopes as proof of a known refusal
+ok 30 - actual HTTP client refuses to treat malformed error envelopes as proof of a known refusal
+  ---
+  duration_ms: 0.43575
+  type: 'test'
+  ...
+# Subtest: capacity refusal pauses autosave through debounce, read-only GET null, typing and reconnect, then permits a local-only exit
+ok 31 - capacity refusal pauses autosave through debounce, read-only GET null, typing and reconnect, then permits a local-only exit
+  ---
+  duration_ms: 302.219291
+  type: 'test'
+  ...
+# Subtest: unknown PUT followed by GET null never becomes a known refusal, and late server publication remains recoverable after local exit
+ok 32 - unknown PUT followed by GET null never becomes a known refusal, and late server publication remains recoverable after local exit
+  ---
+  duration_ms: 40.740917
+  type: 'test'
+  ...
+# Subtest: a later verified GET refused cannot erase an earlier unknown write outcome
+ok 33 - a later verified GET refused cannot erase an earlier unknown write outcome
+  ---
+  duration_ms: 20.381625
+  type: 'test'
+  ...
+# Subtest: a later verified GET conflict cannot erase an earlier unknown write outcome
+ok 34 - a later verified GET conflict cannot erase an earlier unknown write outcome
+  ---
+  duration_ms: 20.939375
+  type: 'test'
+  ...
+# Subtest: LOCAL_DRAFT_STALE_INSTANCE pauses new PUTs across reads, changed input and context without replacing either window's record
+ok 35 - LOCAL_DRAFT_STALE_INSTANCE pauses new PUTs across reads, changed input and context without replacing either window's record
+  ---
+  duration_ms: 21.591834
+  type: 'test'
+  ...
+# Subtest: LOCAL_DRAFT_CONFLICT pauses new PUTs across reads, changed input and context without replacing either window's record
+ok 36 - LOCAL_DRAFT_CONFLICT pauses new PUTs across reads, changed input and context without replacing either window's record
+  ---
+  duration_ms: 21.955541
+  type: 'test'
+  ...
+# Subtest: an unresolved autosave may be abandoned locally, and its late PUT cannot resurrect the form or erase newer input
+ok 37 - an unresolved autosave may be abandoned locally, and its late PUT cannot resurrect the form or erase newer input
+  ---
+  duration_ms: 20.75675
+  type: 'test'
+  ...
+# Subtest: abandoning a business Save waiting on an unresolved local PUT prevents every later business handoff
+ok 38 - abandoning a business Save waiting on an unresolved local PUT prevents every later business handoff
+  ---
+  duration_ms: 0.47875
+  type: 'test'
+  ...
+# Subtest: abandonment is fenced after actual business handoff and while the durable lane is pending
+ok 39 - abandonment is fenced after actual business handoff and while the durable lane is pending
+  ---
+  duration_ms: 0.403792
+  type: 'test'
+  ...
+# Subtest: explicit local-only exit preserves an existing stored draft and its original restore base and source
+ok 40 - explicit local-only exit preserves an existing stored draft and its original restore base and source
+  ---
+  duration_ms: 0.216917
+  type: 'test'
+  ...
+# Subtest: a captured local-only exit cannot discard text changed back to the same value or a revisited owner
+ok 41 - a captured local-only exit cannot discard text changed back to the same value or a revisited owner
+  ---
+  duration_ms: 0.130416
+  type: 'test'
+  ...
+# Subtest: actual recovery confirmation preserves exact local-input ownership: cancel
+ok 42 - actual recovery confirmation preserves exact local-input ownership: cancel
+  ---
+  duration_ms: 22.607125
+  type: 'test'
+  ...
+# Subtest: actual recovery confirmation preserves exact local-input ownership: confirm
+ok 43 - actual recovery confirmation preserves exact local-input ownership: confirm
+  ---
+  duration_ms: 2.04225
+  type: 'test'
+  ...
+# Subtest: actual recovery confirmation preserves exact local-input ownership: new input
+ok 44 - actual recovery confirmation preserves exact local-input ownership: new input
+  ---
+  duration_ms: 2.14975
+  type: 'test'
+  ...
+# Subtest: actual recovery confirmation preserves exact local-input ownership: changed back
+ok 45 - actual recovery confirmation preserves exact local-input ownership: changed back
+  ---
+  duration_ms: 2.091917
+  type: 'test'
+  ...
+# Subtest: actual recovery confirmation preserves exact local-input ownership: pending business
+ok 46 - actual recovery confirmation preserves exact local-input ownership: pending business
+  ---
+  duration_ms: 1.524916
+  type: 'test'
+  ...
+# Subtest: actual recovery confirmation preserves exact local-input ownership: pending prop
+ok 47 - actual recovery confirmation preserves exact local-input ownership: pending prop
+  ---
+  duration_ms: 3.251542
+  type: 'test'
+  ...
+# Subtest: local-only exit fences a late GET without silently offering its old recovery candidate
+ok 48 - local-only exit fences a late GET without silently offering its old recovery candidate
+  ---
+  duration_ms: 0.200209
+  type: 'test'
+  ...
+# Subtest: late abandoned PUT completion cannot invalidate a newer explicit GET or attach an old write acknowledgement
+ok 49 - late abandoned PUT completion cannot invalidate a newer explicit GET or attach an old write acknowledgement
+  ---
+  duration_ms: 0.252458
+  type: 'test'
+  ...
+# Subtest: navigation discard held behind autosave preserves input when target invalidates
+ok 50 - navigation discard held behind autosave preserves input when target invalidates
+  ---
+  duration_ms: 0.214625
+  type: 'test'
+  ...
+# Subtest: navigation discard held behind autosave preserves input when new-input invalidates
+ok 51 - navigation discard held behind autosave preserves input when new-input invalidates
+  ---
+  duration_ms: 0.2605
+  type: 'test'
+  ...
+# Subtest: navigation discard held behind autosave preserves input when owner invalidates
+ok 52 - navigation discard held behind autosave preserves input when owner invalidates
+  ---
+  duration_ms: 0.1235
+  type: 'test'
+  ...
+# Subtest: navigation discard held behind autosave preserves input when unknown-write invalidates
+ok 53 - navigation discard held behind autosave preserves input when unknown-write invalidates
+  ---
+  duration_ms: 0.130292
+  type: 'test'
+  ...
+# Subtest: a valid dispatched draft DELETE is acknowledged but cannot clear input after target invalidates
+ok 54 - a valid dispatched draft DELETE is acknowledged but cannot clear input after target invalidates
+  ---
+  duration_ms: 0.24075
+  type: 'test'
+  ...
+# Subtest: false navigation fence cannot clear a restored-workspace local form
+ok 55 - false navigation fence cannot clear a restored-workspace local form
+  ---
+  duration_ms: 0.093875
+  type: 'test'
+  ...
+1..55
+# tests 55
+# suites 0
+# pass 55
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 818.978333

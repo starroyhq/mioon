@@ -1,0 +1,128 @@
+TAP version 13
+# Subtest: 34 to36 preserves every prior schema object/raw row and is idempotent; fresh parity
+ok 1 - 34 to36 preserves every prior schema object/raw row and is idempotent; fresh parity
+  ---
+  duration_ms: 385.543333
+  type: 'test'
+  ...
+# Subtest: migration refuses reserved before any DDL
+ok 2 - migration refuses reserved before any DDL
+  ---
+  duration_ms: 86.870834
+  type: 'test'
+  ...
+# Subtest: migration refuses temp before any DDL
+ok 3 - migration refuses temp before any DDL
+  ---
+  duration_ms: 87.72925
+  type: 'test'
+  ...
+# Subtest: migration refuses marker before any DDL
+ok 4 - migration refuses marker before any DDL
+  ---
+  duration_ms: 84.736208
+  type: 'test'
+  ...
+# Subtest: migration refuses unknown dependency before any DDL
+ok 5 - migration refuses unknown dependency before any DDL
+  ---
+  duration_ms: 87.959
+  type: 'test'
+  ...
+# Subtest: orphan annotation evidence and extra schema markers fail closed
+ok 6 - orphan annotation evidence and extra schema markers fail closed
+  ---
+  duration_ms: 90.377875
+  type: 'test'
+  ...
+# Subtest: current backup38 restore39 retains exact annotation rows and receipts and denies new writes
+not ok 7 - current backup38 restore39 retains exact annotation rows and receipts and denies new writes
+  ---
+  duration_ms: 222.292917
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema36.test.mjs:31:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    40 !== 38
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 38
+  actual: 40
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema36.test.mjs:35:80)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: historical restored25 remains frozen and confirms empty only for owned assets
+ok 8 - historical restored25 remains frozen and confirms empty only for owned assets
+  ---
+  duration_ms: 252.23075
+  type: 'test'
+  ...
+# Subtest: historical restored27 remains frozen and confirms empty only for owned assets
+ok 9 - historical restored27 remains frozen and confirms empty only for owned assets
+  ---
+  duration_ms: 236.471542
+  type: 'test'
+  ...
+# Subtest: historical restored29 remains frozen and confirms empty only for owned assets
+ok 10 - historical restored29 remains frozen and confirms empty only for owned assets
+  ---
+  duration_ms: 238.404958
+  type: 'test'
+  ...
+# Subtest: historical restored31 remains frozen and confirms empty only for owned assets
+ok 11 - historical restored31 remains frozen and confirms empty only for owned assets
+  ---
+  duration_ms: 271.461
+  type: 'test'
+  ...
+# Subtest: historical restored33 remains frozen and confirms empty only for owned assets
+ok 12 - historical restored33 remains frozen and confirms empty only for owned assets
+  ---
+  duration_ms: 270.46425
+  type: 'test'
+  ...
+# Subtest: historical restored35 remains frozen and confirms empty only for owned assets
+ok 13 - historical restored35 remains frozen and confirms empty only for owned assets
+  ---
+  duration_ms: 290.451417
+  type: 'test'
+  ...
+# Subtest: older startup refuses annotation reverse guard without committing intermediate migrations
+ok 14 - older startup refuses annotation reverse guard without committing intermediate migrations
+  ---
+  duration_ms: 114.674958
+  type: 'test'
+  ...
+# Subtest: older startup refuses annotation view dependency without committing intermediate migrations
+ok 15 - older startup refuses annotation view dependency without committing intermediate migrations
+  ---
+  duration_ms: 119.792958
+  type: 'test'
+  ...
+# Subtest: older startup refuses annotation TEMP dependency without committing intermediate migrations
+ok 16 - older startup refuses annotation TEMP dependency without committing intermediate migrations
+  ---
+  duration_ms: 98.660834
+  type: 'test'
+  ...
+# Subtest: migration interruption after annotation DDL rolls back all tables and marker
+ok 17 - migration interruption after annotation DDL rolls back all tables and marker
+  ---
+  duration_ms: 102.397541
+  type: 'test'
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 16
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3360.951959

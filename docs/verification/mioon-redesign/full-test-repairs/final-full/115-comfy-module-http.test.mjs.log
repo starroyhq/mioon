@@ -1,0 +1,53 @@
+TAP version 13
+# Subtest: actual HTTP Comfy availability is fixed, minimal and behind existing bearer/session/Origin/Host gates
+    # Subtest: load
+    ok 1 - load
+      ---
+      duration_ms: 695.610459
+      type: 'test'
+      ...
+    # Subtest: skip
+    ok 2 - skip
+      ---
+      duration_ms: 728.160125
+      type: 'test'
+      ...
+    # Subtest: not-provided
+    ok 3 - not-provided
+      ---
+      duration_ms: 650.941334
+      type: 'test'
+      ...
+    1..3
+ok 1 - actual HTTP Comfy availability is fixed, minimal and behind existing bearer/session/Origin/Host gates
+  ---
+  duration_ms: 2075.567709
+  type: 'test'
+  ...
+# Subtest: default server keeps Comfy available and omitted module keeps exact receipts and managed media readable over HTTP
+ok 2 - default server keeps Comfy available and omitted module keeps exact receipts and managed media readable over HTTP
+  ---
+  duration_ms: 2909.869833
+  type: 'test'
+  ...
+# Subtest: omitting Comfy preserves official MCP discovery and CLI refusal but grants no settings, approval or module-loading capability
+ok 3 - omitting Comfy preserves official MCP discovery and CLI refusal but grants no settings, approval or module-loading capability
+  ---
+  duration_ms: 1218.24125
+  type: 'test'
+  ...
+# Subtest: missing-module check refuses before invalidating any retained advisory readiness
+ok 4 - missing-module check refuses before invalidating any retained advisory readiness
+  ---
+  duration_ms: 0.690959
+  type: 'test'
+  ...
+1..4
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 6705.218625

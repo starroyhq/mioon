@@ -1,0 +1,100 @@
+TAP version 13
+# Subtest: all three durable subtitle operations use the existing lane, immutable identity and complete result
+ok 1 - all three durable subtitle operations use the existing lane, immutable identity and complete result
+  ---
+  duration_ms: 836.183417
+  type: 'test'
+  ...
+# Subtest: durable subtitle restart at afterClaim retains exact input and never auto-dispatches
+ok 2 - durable subtitle restart at afterClaim retains exact input and never auto-dispatches
+  ---
+  duration_ms: 1070.555167
+  type: 'test'
+  ...
+# Subtest: durable subtitle restart at beforeDispatch retains exact input and never auto-dispatches
+ok 3 - durable subtitle restart at beforeDispatch retains exact input and never auto-dispatches
+  ---
+  duration_ms: 827.487166
+  type: 'test'
+  ...
+# Subtest: durable subtitle restart at afterBusinessCommit retains exact input and never auto-dispatches
+ok 4 - durable subtitle restart at afterBusinessCommit retains exact input and never auto-dispatches
+  ---
+  duration_ms: 747.840083
+  type: 'test'
+  ...
+# Subtest: durable subtitle restart at beforeOutcomePersist retains exact input and never auto-dispatches
+ok 5 - durable subtitle restart at beforeOutcomePersist retains exact input and never auto-dispatches
+  ---
+  duration_ms: 798.193542
+  type: 'test'
+  ...
+# Subtest: durable subtitle restart at afterOutcomePersist retains exact input and never auto-dispatches
+ok 6 - durable subtitle restart at afterOutcomePersist retains exact input and never auto-dispatches
+  ---
+  duration_ms: 762.544542
+  type: 'test'
+  ...
+# Subtest: definitive subtitle rejection retains task terminal state and original key until explicit acknowledgement
+ok 7 - definitive subtitle rejection retains task terminal state and original key until explicit acknowledgement
+  ---
+  duration_ms: 951.194583
+  type: 'test'
+  ...
+# Subtest: independent connections race under the one shared timeline revision fence
+ok 8 - independent connections race under the one shared timeline revision fence
+  ---
+  duration_ms: 813.078709
+  type: 'test'
+  ...
+# Subtest: corrupt persisted subtitle unknown profile denies edits and replay without writes
+ok 9 - corrupt persisted subtitle unknown profile denies edits and replay without writes
+  ---
+  duration_ms: 660.474625
+  type: 'test'
+  ...
+# Subtest: corrupt persisted subtitle duplicate cue denies edits and replay without writes
+ok 10 - corrupt persisted subtitle duplicate cue denies edits and replay without writes
+  ---
+  duration_ms: 621.758792
+  type: 'test'
+  ...
+# Subtest: corrupt persisted subtitle unsupported scalar denies edits and replay without writes
+ok 11 - corrupt persisted subtitle unsupported scalar denies edits and replay without writes
+  ---
+  duration_ms: 625.483708
+  type: 'test'
+  ...
+# Subtest: corrupt persisted subtitle out of bounds denies edits and replay without writes
+ok 12 - corrupt persisted subtitle out of bounds denies edits and replay without writes
+  ---
+  duration_ms: 604.405708
+  type: 'test'
+  ...
+# Subtest: corrupt persisted subtitle extra cue field denies edits and replay without writes
+ok 13 - corrupt persisted subtitle extra cue field denies edits and replay without writes
+  ---
+  duration_ms: 613.6295
+  type: 'test'
+  ...
+# Subtest: historical subtitle receipt corruption and historical snapshot corruption fail without repair or media work
+ok 14 - historical subtitle receipt corruption and historical snapshot corruption fail without repair or media work
+  ---
+  duration_ms: 667.807792
+  type: 'test'
+  ...
+# Subtest: invalid frozen subtitle profile and unsupported text fail before source reads, hashing, probing or process spawn
+ok 15 - invalid frozen subtitle profile and unsupported text fail before source reads, hashing, probing or process spawn
+  ---
+  duration_ms: 1.212166
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 11022.15225

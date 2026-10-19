@@ -1,0 +1,118 @@
+TAP version 13
+# Subtest: SSE ordinary cap includes the next UTF-8 frame and never writes the crossing frame
+ok 1 - SSE ordinary cap includes the next UTF-8 frame and never writes the crossing frame
+  ---
+  duration_ms: 0.891
+  type: 'test'
+  ...
+# Subtest: write(false) pauses frames and heartbeat; only a real drain resets the 30 s stall deadline
+ok 2 - write(false) pauses frames and heartbeat; only a real drain resets the 30 s stall deadline
+  ---
+  duration_ms: 0.62825
+  type: 'test'
+  ...
+# Subtest: a running write(true) below the high-water mark still has a 30 s stalled-write deadline
+ok 3 - a running write(true) below the high-water mark still has a 30 s stalled-write deadline
+  ---
+  duration_ms: 0.136541
+  type: 'test'
+  ...
+# Subtest: successful small-write callbacks extend healthy progress but older generations cannot extend a new stall
+ok 4 - successful small-write callbacks extend healthy progress but older generations cannot extend a new stall
+  ---
+  duration_ms: 0.218959
+  type: 'test'
+  ...
+# Subtest: healthy streams have no transport duration cap and heartbeat overflow destroys rather than only end()
+ok 5 - healthy streams have no transport duration cap and heartbeat overflow destroys rather than only end()
+  ---
+  duration_ms: 0.148167
+  type: 'test'
+  ...
+# Subtest: terminal queues after a blocked frame, releases subscriber immediately, and stays owned until finish
+ok 6 - terminal queues after a blocked frame, releases subscriber immediately, and stays owned until finish
+  ---
+  duration_ms: 2.698958
+  type: 'test'
+  ...
+# Subtest: terminal with pending end() is still bounded even if the response never emits drain or finish
+ok 7 - terminal with pending end() is still bounded even if the response never emits drain or finish
+  ---
+  duration_ms: 0.378042
+  type: 'test'
+  ...
+# Subtest: synchronous terminal replay before the detach handle returns releases that handle once
+ok 8 - synchronous terminal replay before the detach handle returns releases that handle once
+  ---
+  duration_ms: 0.439542
+  type: 'test'
+  ...
+# Subtest: write/header/end exceptions, asynchronous response errors and write callback errors stay local
+ok 9 - write/header/end exceptions, asynchronous response errors and write callback errors stay local
+  ---
+  duration_ms: 0.761458
+  type: 'test'
+  ...
+# Subtest: only one oversized frame allowance exists and oversize frames never bypass the maximum
+ok 10 - only one oversized frame allowance exists and oversize frames never bypass the maximum
+  ---
+  duration_ms: 0.252166
+  type: 'test'
+  ...
+# Subtest: default independent client cap counts 32 terminal sockets until actual close
+ok 11 - default independent client cap counts 32 terminal sockets until actual close
+  ---
+  duration_ms: 3.877916
+  type: 'test'
+  ...
+# Subtest: shutdown owns a buffered end() until finish and bounds even a response that never reports backpressure
+ok 12 - shutdown owns a buffered end() until finish and bounds even a response that never reports backpressure
+  ---
+  duration_ms: 2.761
+  type: 'test'
+  ...
+# Subtest: real paused socket crosses the inclusive queue cap locally and cursor reconnect never re-infers
+ok 13 - real paused socket crosses the inclusive queue cap locally and cursor reconnect never re-infers
+  ---
+  duration_ms: 24.629708
+  type: 'test'
+  ...
+# Subtest: real paused terminal keeps a transport slot after runtime detach and shutdown destroys the pending socket
+ok 14 - real paused terminal keeps a transport slot after runtime detach and shutdown destroys the pending socket
+  ---
+  duration_ms: 13.509667
+  type: 'test'
+  ...
+# Subtest: real asynchronous response error and reader disconnect detach without business cancellation
+ok 15 - real asynchronous response error and reader disconnect detach without business cancellation
+  ---
+  duration_ms: 3.713667
+  type: 'test'
+  ...
+# Subtest: real paused socket stall deadline destroys transport even without another model event
+ok 16 - real paused socket stall deadline destroys transport even without another model event
+  ---
+  duration_ms: 11.736875
+  type: 'test'
+  ...
+# Subtest: real HTTP preserves maximal JSON-escaped legal snapshot using one bounded frame allowance
+ok 17 - real HTTP preserves maximal JSON-escaped legal snapshot using one bounded frame allowance
+  ---
+  duration_ms: 32.262833
+  type: 'test'
+  ...
+# Subtest: real pre-header runtime validation and subscriber errors preserve JSON status without leaking a transport slot
+ok 18 - real pre-header runtime validation and subscriber errors preserve JSON status without leaking a transport slot
+  ---
+  duration_ms: 21.446583
+  type: 'test'
+  ...
+1..18
+# tests 18
+# suites 0
+# pass 18
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 438.959708

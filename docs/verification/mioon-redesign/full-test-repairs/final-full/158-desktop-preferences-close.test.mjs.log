@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: native quit keeps window and backend alive through queued preference flush, then stops once
+ok 1 - native quit keeps window and backend alive through queued preference flush, then stops once
+  ---
+  duration_ms: 2.825791
+  type: 'test'
+  ...
+# Subtest: real controller close drain acknowledges an older in-flight CAS then persists the final mode
+ok 2 - real controller close drain acknowledges an older in-flight CAS then persists the final mode
+  ---
+  duration_ms: 2.041125
+  type: 'test'
+  ...
+# Subtest: unavailable preferences have a bounded close wait and an explicit discard decision
+ok 3 - unavailable preferences have a bounded close wait and an explicit discard decision
+  ---
+  duration_ms: 11.993375
+  type: 'test'
+  ...
+# Subtest: cancel after preference failure keeps backend alive; next request can succeed
+ok 4 - cancel after preference failure keeps backend alive; next request can succeed
+  ---
+  duration_ms: 0.283333
+  type: 'test'
+  ...
+# Subtest: preference close drain preserves existing unsaved business-draft cancellation
+ok 5 - preference close drain preserves existing unsaved business-draft cancellation
+  ---
+  duration_ms: 0.307333
+  type: 'test'
+  ...
+# Subtest: a throwing drain or failed failure dialog cannot create an unhandled rejection or destroy drafts
+ok 6 - a throwing drain or failed failure dialog cannot create an unhandled rejection or destroy drafts
+  ---
+  duration_ms: 0.718292
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 255.066208

@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: legacy chunk coercion deterministically corrupts split Chinese and emoji despite valid JSON syntax
+ok 1 - legacy chunk coercion deterministically corrupts split Chinese and emoji despite valid JSON syntax
+  ---
+  duration_ms: 2.597917
+  type: 'test'
+  ...
+# Subtest: continuous UTF-8 preserves exact bytes and JSON at every interior multibyte split and byte-wise delivery
+ok 2 - continuous UTF-8 preserves exact bytes and JSON at every interior multibyte split and byte-wise delivery
+  ---
+  duration_ms: 1.133667
+  type: 'test'
+  ...
+# Subtest: actual full shared catalog survives the reproduced version-list description boundary exactly
+ok 3 - actual full shared catalog survives the reproduced version-list description boundary exactly
+  ---
+  duration_ms: 10.873375
+  type: 'test'
+  ...
+# Subtest: every inventoried test/QA text collector configures continuous decoding at its actual listener, before delivery
+not ok 4 - every inventoried test/QA text collector configures continuous decoding at its actual listener, before delivery
+  ---
+  duration_ms: 146.526875
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/transport-utf8-output.test.mjs:219:1'
+  failureType: 'testCodeFailure'
+  error: 'tests/opacity-candidate-backup-cli.test.mjs: classify each newly introduced stream consumer'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/transport-utf8-output.test.mjs:231:12)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 3
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 374.771958

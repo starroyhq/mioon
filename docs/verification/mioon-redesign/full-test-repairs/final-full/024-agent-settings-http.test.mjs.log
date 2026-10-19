@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: settings HTTP keeps token/cookie auth, rejects hostile host/origin, disallows extra methods and bounds input
+ok 1 - settings HTTP keeps token/cookie auth, rejects hostile host/origin, disallows extra methods and bounds input
+  ---
+  duration_ms: 703.580333
+  type: 'test'
+  ...
+# Subtest: web settings store metadata only, survive restart, expire keys, preserve business content and stay absent from RPC
+ok 2 - web settings store metadata only, survive restart, expire keys, preserve business content and stay absent from RPC
+  ---
+  duration_ms: 944.639875
+  type: 'test'
+  ...
+# Subtest: real concurrent HTTP CAS accepts one save and rejects stale deletion or lost-response retry
+ok 3 - real concurrent HTTP CAS accepts one save and rejects stale deletion or lost-response retry
+  ---
+  duration_ms: 845.465875
+  type: 'test'
+  ...
+# Subtest: setting a local endpoint performs no provider probe and self-service endpoint remains forbidden
+ok 4 - setting a local endpoint performs no provider probe and self-service endpoint remains forbidden
+  ---
+  duration_ms: 636.491958
+  type: 'test'
+  ...
+# Subtest: HTTP projects legacy metadata without rewriting and rejects old clients after an explicit Responses save
+ok 5 - HTTP projects legacy metadata without rewriting and rejects old clients after an explicit Responses save
+  ---
+  duration_ms: 638.60175
+  type: 'test'
+  ...
+# Subtest: corrupt settings are isolated from server startup and unrelated project operations
+ok 6 - corrupt settings are isolated from server startup and unrelated project operations
+  ---
+  duration_ms: 635.214583
+  type: 'test'
+  ...
+# Subtest: HTTP output allowlist and failure serialization never expose trusted-store hidden values
+ok 7 - HTTP output allowlist and failure serialization never expose trusted-store hidden values
+  ---
+  duration_ms: 731.141667
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5497.469291

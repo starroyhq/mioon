@@ -1,0 +1,6 @@
+{
+  "changedOrNewNodeTestFiles": 173,
+  "covered": 173,
+  "missing": [],
+  "scope": "Exact tests/*.test.mjs filenames against unique final candidate records; no inference of full suite coverage."
+}

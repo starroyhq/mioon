@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: replacement CLI and official MCP discover one strict schema with a required key and optional explicit version
+ok 1 - replacement CLI and official MCP discover one strict schema with a required key and optional explicit version
+  ---
+  duration_ms: 7285.085458
+  type: 'test'
+  ...
+# Subtest: replacement HTTP, CLI and official MCP preserve fixed sources, exact replay, history, errors and restart
+ok 2 - replacement HTTP, CLI and official MCP preserve fixed sources, exact replay, history, errors and restart
+  ---
+  duration_ms: 14247.562167
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 21923.69175

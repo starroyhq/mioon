@@ -1,0 +1,22 @@
+{
+  "schemas": 107,
+  "beforeMissing": [
+    "operation.agent.authorization.grant",
+    "operation.agent.authorization.list",
+    "operation.agent.authorization.revoke",
+    "operation.project.delete",
+    "operation.project.rename",
+    "operation.project.summary.list",
+    "operation.timeline.clip.rippleRemove"
+  ],
+  "afterMissing": [
+    "operation.agent.authorization.grant",
+    "operation.agent.authorization.list",
+    "operation.agent.authorization.revoke",
+    "operation.project.delete",
+    "operation.project.rename",
+    "operation.project.summary.list",
+    "operation.timeline.clip.rippleRemove"
+  ],
+  "unchanged": true
+}

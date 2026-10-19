@@ -1,0 +1,106 @@
+TAP version 13
+# Subtest: only three subject writes add a third durable lane; preparation and reads never mutate the domain
+ok 1 - only three subject writes add a third durable lane; preparation and reads never mutate the domain
+  ---
+  duration_ms: 671.548917
+  type: 'test'
+  ...
+# Subtest: all three subject operations use exact retained receipts and remain historical after new head and tombstone
+ok 2 - all three subject operations use exact retained receipts and remain historical after new head and tombstone
+  ---
+  duration_ms: 980.827417
+  type: 'test'
+  ...
+# Subtest: subject restart preserves exact intent after beforePreparePersist, without autoresume
+ok 3 - subject restart preserves exact intent after beforePreparePersist, without autoresume
+  ---
+  duration_ms: 618.377708
+  type: 'test'
+  ...
+# Subtest: subject restart preserves exact intent after afterPreparePersist, without autoresume
+ok 4 - subject restart preserves exact intent after afterPreparePersist, without autoresume
+  ---
+  duration_ms: 859.944541
+  type: 'test'
+  ...
+# Subtest: subject restart preserves exact intent after afterClaim, without autoresume
+ok 5 - subject restart preserves exact intent after afterClaim, without autoresume
+  ---
+  duration_ms: 691.012125
+  type: 'test'
+  ...
+# Subtest: subject restart preserves exact intent after beforeDispatch, without autoresume
+ok 6 - subject restart preserves exact intent after beforeDispatch, without autoresume
+  ---
+  duration_ms: 625.248083
+  type: 'test'
+  ...
+# Subtest: subject restart preserves exact intent after afterBusinessCommit, without autoresume
+ok 7 - subject restart preserves exact intent after afterBusinessCommit, without autoresume
+  ---
+  duration_ms: 640.472375
+  type: 'test'
+  ...
+# Subtest: subject restart preserves exact intent after beforeOutcomePersist, without autoresume
+ok 8 - subject restart preserves exact intent after beforeOutcomePersist, without autoresume
+  ---
+  duration_ms: 618.824
+  type: 'test'
+  ...
+# Subtest: subject restart preserves exact intent after afterOutcomePersist, without autoresume
+ok 9 - subject restart preserves exact intent after afterOutcomePersist, without autoresume
+  ---
+  duration_ms: 639.062042
+  type: 'test'
+  ...
+# Subtest: two durable managers claim one subject write once and acknowledgement never dispatches again
+ok 10 - two durable managers claim one subject write once and acknowledgement never dispatches again
+  ---
+  duration_ms: 611.224083
+  type: 'test'
+  ...
+# Subtest: fresh rollback proof resolves rejection while generic and mismatched success remain unknown
+ok 11 - fresh rollback proof resolves rejection while generic and mismatched success remain unknown
+  ---
+  duration_ms: 646.244208
+  type: 'test'
+  ...
+# Subtest: shared local namespace collisions and duplicate receipts cannot authorize subject execution
+ok 12 - shared local namespace collisions and duplicate receipts cannot authorize subject execution
+  ---
+  duration_ms: 581.745916
+  type: 'test'
+  ...
+# Subtest: current relational ownership is checked before historical receipt and foreign contents never escape
+ok 13 - current relational ownership is checked before historical receipt and foreign contents never escape
+  ---
+  duration_ms: 596.204292
+  type: 'test'
+  ...
+# Subtest: subject task quota remains retained after acknowledgement
+ok 14 - subject task quota remains retained after acknowledgement
+  ---
+  duration_ms: 612.708833
+  type: 'test'
+  ...
+# Subtest: external subject receipt adoption remains metadata-only until explicit reconciliation
+ok 15 - external subject receipt adoption remains metadata-only until explicit reconciliation
+  ---
+  duration_ms: 608.140625
+  type: 'test'
+  ...
+# Subtest: corrupt or oversized retained subject response never settles or leaks a durable request
+ok 16 - corrupt or oversized retained subject response never settles or leaks a durable request
+  ---
+  duration_ms: 1775.935208
+  type: 'test'
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 12124.05775

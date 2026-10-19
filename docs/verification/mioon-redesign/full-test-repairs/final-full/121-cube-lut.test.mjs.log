@@ -1,0 +1,136 @@
+TAP version 13
+# Subtest: minimal 3D parse returns exact immutable semantic metadata, without source locations
+ok 1 - minimal 3D parse returns exact immutable semantic metadata, without source locations
+  ---
+  duration_ms: 1.834458
+  type: 'test'
+  ...
+# Subtest: canonical text collapses header order, numeric spelling, whitespace, comments and CRLF
+ok 2 - canonical text collapses header order, numeric spelling, whitespace, comments and CRLF
+  ---
+  duration_ms: 0.39625
+  type: 'test'
+  ...
+# Subtest: decimal grammar accepts full tokens and canonicalizes signed zero without float32 truncation
+ok 3 - decimal grammar accepts full tokens and canonicalizes signed zero without float32 truncation
+  ---
+  duration_ms: 0.299834
+  type: 'test'
+  ...
+# Subtest: identity and channel-swap oracles catch row order, axes, cell scaling and strength errors
+ok 4 - identity and channel-swap oracles catch row order, axes, cell scaling and strength errors
+  ---
+  duration_ms: 4.86525
+  type: 'test'
+  ...
+# Subtest: six tetrahedra use independently hand-calculated non-affine corner averages
+ok 5 - six tetrahedra use independently hand-calculated non-affine corner averages
+  ---
+  duration_ms: 0.315166
+  type: 'test'
+  ...
+# Subtest: an independent min-channel oracle distinguishes tetrahedral from trilinear interpolation
+ok 6 - an independent min-channel oracle distinguishes tetrahedral from trilinear interpolation
+  ---
+  duration_ms: 1.132208
+  type: 'test'
+  ...
+# Subtest: ties, shared cell boundaries and all lattice vertices remain continuous
+ok 7 - ties, shared cell boundaries and all lattice vertices remain continuous
+  ---
+  duration_ms: 0.3525
+  type: 'test'
+  ...
+# Subtest: strength is componentwise code-value blending, not input-coordinate interpolation
+ok 8 - strength is componentwise code-value blending, not input-coordinate interpolation
+  ---
+  duration_ms: 0.089791
+  type: 'test'
+  ...
+# Subtest: sampling validates normalized finite RGB and strength even when disabled
+ok 9 - sampling validates normalized finite RGB and strength even when disabled
+  ---
+  duration_ms: 0.320459
+  type: 'test'
+  ...
+# Subtest: only parser-owned handles can be sampled or serialized
+ok 10 - only parser-owned handles can be sampled or serialized
+  ---
+  duration_ms: 0.203209
+  type: 'test'
+  ...
+# Subtest: sampling does not invoke coordinate getters, inherited values or caller array methods
+ok 11 - sampling does not invoke coordinate getters, inherited values or caller array methods
+  ---
+  duration_ms: 0.139667
+  type: 'test'
+  ...
+# Subtest: unsupported 1D, shaper, extensions and unknown directives fail closed in every location
+ok 12 - unsupported 1D, shaper, extensions and unknown directives fail closed in every location
+  ---
+  duration_ms: 0.329917
+  type: 'test'
+  ...
+# Subtest: header duplicates, late headers, malformed titles and missing size are rejected
+ok 13 - header duplicates, late headers, malformed titles and missing size are rejected
+  ---
+  duration_ms: 0.144917
+  type: 'test'
+  ...
+# Subtest: size grammar and cap prevent allocation from malformed or oversized headers
+ok 14 - size grammar and cap prevent allocation from malformed or oversized headers
+  ---
+  duration_ms: 0.094208
+  type: 'test'
+  ...
+# Subtest: only omitted or exact normalized per-channel domains are admitted
+ok 15 - only omitted or exact normalized per-channel domains are admitted
+  ---
+  duration_ms: 0.114375
+  type: 'test'
+  ...
+# Subtest: rows require exact three fully parsed finite bounded decimals, without trailing comments
+ok 16 - rows require exact three fully parsed finite bounded decimals, without trailing comments
+  ---
+  duration_ms: 0.189833
+  type: 'test'
+  ...
+# Subtest: missing, truncated and surplus rows are never zero-filled, ignored or inferred
+ok 17 - missing, truncated and surplus rows are never zero-filled, ignored or inferred
+  ---
+  duration_ms: 0.11475
+  type: 'test'
+  ...
+# Subtest: ASCII and explicit line-ending rules reject BOMs, control bytes and Unicode lookalikes
+ok 18 - ASCII and explicit line-ending rules reject BOMs, control bytes and Unicode lookalikes
+  ---
+  duration_ms: 0.174875
+  type: 'test'
+  ...
+# Subtest: byte, line and non-data limits are inclusive and fail without partial handles
+ok 19 - byte, line and non-data limits are inclusive and fail without partial handles
+  ---
+  duration_ms: 6.332333
+  type: 'test'
+  ...
+# Subtest: the maximum admitted size has exact row count and round-trips within the byte cap
+ok 20 - the maximum admitted size has exact row count and round-trips within the byte cap
+  ---
+  duration_ms: 297.088792
+  type: 'test'
+  ...
+# Subtest: the pure leaf has no I/O/dependencies, and path-like input is only rejected text
+ok 21 - the pure leaf has no I/O/dependencies, and path-like input is only rejected text
+  ---
+  duration_ms: 4.969541
+  type: 'test'
+  ...
+1..21
+# tests 21
+# suites 0
+# pass 21
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 494.090083

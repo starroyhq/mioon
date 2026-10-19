@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: real HTTP, CLI and official MCP retain ambiguous lost-commit errors and replay exact bytes after backend recreation
+ok 1 - real HTTP, CLI and official MCP retain ambiguous lost-commit errors and replay exact bytes after backend recreation
+  ---
+  duration_ms: 3277.047708
+  type: 'test'
+  ...
+# Subtest: real malformed-success transport never auto-retries and exact render/travel receipts survive later states
+ok 2 - real malformed-success transport never auto-retries and exact render/travel receipts survive later states
+  ---
+  duration_ms: 2111.637291
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5831.950125

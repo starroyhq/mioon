@@ -1,0 +1,148 @@
+TAP version 13
+# Subtest: independent Pillow baseline 444/422/420 fixtures admit full-byte immutable untagged evidence
+ok 1 - independent Pillow baseline 444/422/420 fixtures admit full-byte immutable untagged evidence
+  ---
+  duration_ms: 4.892833
+  type: 'test'
+  ...
+# Subtest: 1.01/1.02, square density units and legal marker fill remain untagged, never inferred sRGB
+ok 2 - 1.01/1.02, square density units and legal marker fill remain untagged, never inferred sRGB
+  ---
+  duration_ms: 4.183458
+  type: 'test'
+  ...
+# Subtest: independent minimal fixtures consume exact MCU grids including odd edges and maximum source dimensions
+ok 3 - independent minimal fixtures consume exact MCU grids including odd edges and maximum source dimensions
+  ---
+  duration_ms: 30.693917
+  type: 'test'
+  ...
+# Subtest: non-byte inputs, shared/detached storage and proxies reject without executing caller callbacks
+ok 4 - non-byte inputs, shared/detached storage and proxies reject without executing caller callbacks
+  ---
+  duration_ms: 0.6025
+  type: 'test'
+  ...
+# Subtest: owned snapshot ignores input accessors, methods, iteration, species and later caller mutations
+ok 5 - owned snapshot ignores input accessors, methods, iteration, species and later caller mutations
+  ---
+  duration_ms: 2.502167
+  type: 'test'
+  ...
+# Subtest: cancellation before parse and during chunked entropy work preserves exact reasons
+ok 6 - cancellation before parse and during chunked entropy work preserves exact reasons
+  ---
+  duration_ms: 1.565416
+  type: 'test'
+  ...
+# Subtest: trusted lifecycle fences cover headers, entropy and final publication without rewriting thrown values
+ok 7 - trusted lifecycle fences cover headers, entropy and final publication without rewriting thrown values
+  ---
+  duration_ms: 1.808875
+  type: 'test'
+  ...
+# Subtest: every truncation of a valid minimal file, missing/duplicate EOI, concatenation and trailing data reject
+ok 8 - every truncation of a valid minimal file, missing/duplicate EOI, concatenation and trailing data reject
+  ---
+  duration_ms: 2.5845
+  type: 'test'
+  ...
+# Subtest: all external metadata, thumbnails, comments, unknown markers and non-JFIF APP0 fail closed
+ok 9 - all external metadata, thumbnails, comments, unknown markers and non-JFIF APP0 fail closed
+  ---
+  duration_ms: 1.418792
+  type: 'test'
+  ...
+# Subtest: segment lengths, standalone marker misuse and truncated payloads reject
+ok 10 - segment lengths, standalone marker misuse and truncated payloads reject
+  ---
+  duration_ms: 0.80325
+  type: 'test'
+  ...
+# Subtest: only exact baseline 8-bit, three YCbCr components, accepted sampling and selectors are admitted
+ok 11 - only exact baseline 8-bit, three YCbCr components, accepted sampling and selectors are admitted
+  ---
+  duration_ms: 0.551875
+  type: 'test'
+  ...
+# Subtest: dimension and source/header budgets reject before image allocation or entropy processing
+ok 12 - dimension and source/header budgets reject before image allocation or entropy processing
+  ---
+  duration_ms: 9.426083
+  type: 'test'
+  ...
+# Subtest: quantization tables must be nonzero 8-bit, complete, unique and actually referenced
+ok 13 - quantization tables must be nonzero 8-bit, complete, unique and actually referenced
+  ---
+  duration_ms: 2.094667
+  type: 'test'
+  ...
+# Subtest: valid incomplete Huffman tables and maximum 16-bit codes are supported
+ok 14 - valid incomplete Huffman tables and maximum 16-bit codes are supported
+  ---
+  duration_ms: 0.706917
+  type: 'test'
+  ...
+# Subtest: oversubscribed/all-ones/empty/duplicate/invalid-symbol Huffman tables and absent entropy paths reject
+ok 15 - oversubscribed/all-ones/empty/duplicate/invalid-symbol Huffman tables and absent entropy paths reject
+  ---
+  duration_ms: 1.391042
+  type: 'test'
+  ...
+# Subtest: AC ZRL/EOB and exact coefficient endpoints are consumed, never merely scanned for EOI
+ok 16 - AC ZRL/EOB and exact coefficient endpoints are consumed, never merely scanned for EOI
+  ---
+  duration_ms: 0.663208
+  type: 'test'
+  ...
+# Subtest: entropy truncation, extra full bytes and non-one padding reject even with a syntactically present EOI
+ok 17 - entropy truncation, extra full bytes and non-one padding reject even with a syntactically present EOI
+  ---
+  duration_ms: 32.315583
+  type: 'test'
+  ...
+# Subtest: literal FF requires exactly one stuffed zero, and markers cannot appear inside Huffman coefficients
+ok 18 - literal FF requires exactly one stuffed zero, and markers cannot appear inside Huffman coefficients
+  ---
+  duration_ms: 0.588667
+  type: 'test'
+  ...
+# Subtest: restart intervals consume exact MCU boundaries, reset sequence wraps and reject missing/extra/reordered markers
+ok 19 - restart intervals consume exact MCU boundaries, reset sequence wraps and reject missing/extra/reordered markers
+  ---
+  duration_ms: 3.480541
+  type: 'test'
+  ...
+# Subtest: independent optimized Pillow JPEG verifies real restart framing with modulo-eight wrap
+ok 20 - independent optimized Pillow JPEG verifies real restart framing with modulo-eight wrap
+  ---
+  duration_ms: 0.612417
+  type: 'test'
+  ...
+# Subtest: DC predictors stay signed 11-bit per component while valid ±2047 differences remain accepted
+ok 21 - DC predictors stay signed 11-bit per component while valid ±2047 differences remain accepted
+  ---
+  duration_ms: 0.741
+  type: 'test'
+  ...
+# Subtest: all component DC predictors reset at each verified restart interval
+ok 22 - all component DC predictors reset at each verified restart interval
+  ---
+  duration_ms: 0.357208
+  type: 'test'
+  ...
+# Subtest: marker fill shares one cumulative metadata budget across headers and restart/end boundaries
+ok 23 - marker fill shares one cumulative metadata budget across headers and restart/end boundaries
+  ---
+  duration_ms: 17.459084
+  type: 'test'
+  ...
+1..23
+# tests 23
+# suites 0
+# pass 23
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 281.494834

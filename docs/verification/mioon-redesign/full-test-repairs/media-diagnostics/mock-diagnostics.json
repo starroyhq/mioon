@@ -1,0 +1,220 @@
+{
+  "tools": {
+    "ffmpeg": {
+      "path": "/opt/homebrew/bin/ffmpeg",
+      "realpath": "/opt/homebrew/Cellar/ffmpeg/9.0.2_1/bin/ffmpeg",
+      "version": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+      "configuration": "configuration: --prefix=/opt/homebrew/Cellar/ffmpeg/9.0.2_1 --enable-shared --enable-pthreads --enable-version3 --cc=clang --host-cflags= --host-ldflags= --enable-ffplay --enable-gpl --enable-libsvtav1 --enable-libopus --enable-libx264 --enable-libmp3lame --enable-libdav1d --enable-libvmaf --enable-libvpx --enable-libx265 --enable-openssl --enable-videotoolbox --enable-audiotoolbox --enable-neon"
+    },
+    "ffprobe": {
+      "path": "/opt/homebrew/bin/ffprobe",
+      "realpath": "/opt/homebrew/Cellar/ffmpeg/9.0.2_1/bin/ffprobe",
+      "version": "ffprobe version 9.0.2 Copyright (c) 2007-2026 the FFmpeg developers",
+      "configuration": "configuration: --prefix=/opt/homebrew/Cellar/ffmpeg/9.0.2_1 --enable-shared --enable-pthreads --enable-version3 --cc=clang --host-cflags= --host-ldflags= --enable-ffplay --enable-gpl --enable-libsvtav1 --enable-libopus --enable-libx264 --enable-libmp3lame --enable-libdav1d --enable-libvmaf --enable-libvpx --enable-libx265 --enable-openssl --enable-videotoolbox --enable-audiotoolbox --enable-neon"
+    }
+  },
+  "filterCapabilities": {
+    "drawtext": false,
+    "subtitles": false,
+    "hue": true,
+    "drawbox": true,
+    "scale": true,
+    "overlay": true,
+    "concat": true,
+    "testsrc2": true
+  },
+  "parser": {
+    "actual": {
+      "lacksDrawtext": false
+    },
+    "only-separator-removed": {
+      "lacksDrawtext": true
+    }
+  },
+  "commands": [
+    {
+      "label": "mock-production-graph",
+      "file": "/opt/homebrew/bin/ffmpeg",
+      "args": [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-nostdin",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc2=size=360x640:rate=24",
+        "-t",
+        "2",
+        "-vf",
+        "hue=h=48,drawbox=x=0:y=0:w=iw:h=74:color=black@0.85:t=fill,drawtext=text='SIMULATED MOCK':fontcolor=white:fontsize=26:x=(w-tw)/2:y=20",
+        "-an",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-crf",
+        "24",
+        "-pix_fmt",
+        "yuv420p",
+        "-threads",
+        "1",
+        "-f",
+        "null",
+        "-"
+      ],
+      "exitCode": 8,
+      "signal": null,
+      "stdout": "",
+      "stderr": "[AVFilterGraph @ 0x74cd018200] No such filter: 'drawtext'\nError opening output file -.\nError opening output files: Filter not found\n"
+    },
+    {
+      "label": "positive-control-hue-drawbox-h264",
+      "file": "/opt/homebrew/bin/ffmpeg",
+      "args": [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-nostdin",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc2=size=360x640:rate=24",
+        "-t",
+        "2",
+        "-vf",
+        "hue=h=48,drawbox=x=0:y=0:w=iw:h=74:color=black@0.85:t=fill",
+        "-an",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-crf",
+        "24",
+        "-pix_fmt",
+        "yuv420p",
+        "-threads",
+        "1",
+        "-movflags",
+        "+faststart",
+        "/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/control-hue-drawbox-h264.mp4"
+      ],
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "label": "positive-control-ffprobe",
+      "file": "/opt/homebrew/bin/ffprobe",
+      "args": [
+        "-v",
+        "error",
+        "-show_streams",
+        "-show_format",
+        "-of",
+        "json",
+        "/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/control-hue-drawbox-h264.mp4"
+      ],
+      "exitCode": 0,
+      "stdout": "{\n    \"streams\": [\n        {\n            \"index\": 0,\n            \"codec_name\": \"h264\",\n            \"codec_long_name\": \"H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10\",\n            \"profile\": \"Constrained Baseline\",\n            \"codec_type\": \"video\",\n            \"codec_tag_string\": \"avc1\",\n            \"codec_tag\": \"0x31637661\",\n            \"mime_codec_string\": \"avc1.42c01e\",\n            \"width\": 360,\n            \"height\": 640,\n            \"coded_width\": 360,\n            \"coded_height\": 640,\n            \"has_b_frames\": 0,\n            \"sample_aspect_ratio\": \"1:1\",\n            \"display_aspect_ratio\": \"9:16\",\n            \"pix_fmt\": \"yuv420p\",\n            \"level\": 30,\n            \"chroma_location\": \"left\",\n            \"field_order\": \"progressive\",\n            \"is_avc\": \"true\",\n            \"nal_length_size\": \"4\",\n            \"id\": \"0x1\",\n            \"r_frame_rate\": \"24/1\",\n            \"avg_frame_rate\": \"24/1\",\n            \"time_base\": \"1/12288\",\n            \"start_pts\": 0,\n            \"start_time\": \"0.000000\",\n            \"duration_ts\": 24576,\n            \"duration\": \"2.000000\",\n            \"bit_rate\": \"1670580\",\n            \"bits_per_raw_sample\": \"8\",\n            \"nb_frames\": \"48\",\n            \"extradata_size\": 40,\n            \"disposition\": {\n                \"default\": 1,\n                \"dub\": 0,\n                \"original\": 0,\n                \"comment\": 0,\n                \"lyrics\": 0,\n                \"karaoke\": 0,\n                \"forced\": 0,\n                \"hearing_impaired\": 0,\n                \"visual_impaired\": 0,\n                \"clean_effects\": 0,\n                \"attached_pic\": 0,\n                \"timed_thumbnails\": 0,\n                \"non_diegetic\": 0,\n                \"captions\": 0,\n                \"descriptions\": 0,\n                \"metadata\": 0,\n                \"dependent\": 0,\n                \"still_image\": 0,\n                \"multilayer\": 0\n            },\n            \"tags\": {\n                \"language\": \"und\",\n                \"handler_name\": \"VideoHandler\",\n                \"encoder\": \"Lavc63.1.102 libx264\"\n            }\n        }\n    ],\n    \"format\": {\n        \"filename\": \"/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/control-hue-drawbox-h264.mp4\",\n        \"nb_streams\": 1,\n        \"nb_programs\": 0,\n        \"nb_stream_groups\": 0,\n        \"format_name\": \"mov,mp4,m4a,3gp,3g2,mj2\",\n        \"format_long_name\": \"QuickTime / MOV\",\n        \"start_time\": \"0.000000\",\n        \"duration\": \"2.000000\",\n        \"size\": \"418689\",\n        \"bit_rate\": \"1674756\",\n        \"probe_score\": 100,\n        \"tags\": {\n            \"major_brand\": \"isom\",\n            \"minor_version\": \"512\",\n            \"compatible_brands\": \"isomiso2avc1mp41\",\n            \"encoder\": \"Lavf63.1.102\"\n        }\n    }\n}\n",
+      "stderr": ""
+    }
+  ],
+  "production": {
+    "poll": {
+      "status": "succeeded",
+      "progress": 1
+    },
+    "download": {
+      "code": "MOCK_RENDER_FAILED",
+      "message": "Simulated video rendering failed.",
+      "retryable": true
+    }
+  },
+  "controlProbe": {
+    "streams": [
+      {
+        "index": 0,
+        "codec_name": "h264",
+        "codec_long_name": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "profile": "Constrained Baseline",
+        "codec_type": "video",
+        "codec_tag_string": "avc1",
+        "codec_tag": "0x31637661",
+        "mime_codec_string": "avc1.42c01e",
+        "width": 360,
+        "height": 640,
+        "coded_width": 360,
+        "coded_height": 640,
+        "has_b_frames": 0,
+        "sample_aspect_ratio": "1:1",
+        "display_aspect_ratio": "9:16",
+        "pix_fmt": "yuv420p",
+        "level": 30,
+        "chroma_location": "left",
+        "field_order": "progressive",
+        "is_avc": "true",
+        "nal_length_size": "4",
+        "id": "0x1",
+        "r_frame_rate": "24/1",
+        "avg_frame_rate": "24/1",
+        "time_base": "1/12288",
+        "start_pts": 0,
+        "start_time": "0.000000",
+        "duration_ts": 24576,
+        "duration": "2.000000",
+        "bit_rate": "1670580",
+        "bits_per_raw_sample": "8",
+        "nb_frames": "48",
+        "extradata_size": 40,
+        "disposition": {
+          "default": 1,
+          "dub": 0,
+          "original": 0,
+          "comment": 0,
+          "lyrics": 0,
+          "karaoke": 0,
+          "forced": 0,
+          "hearing_impaired": 0,
+          "visual_impaired": 0,
+          "clean_effects": 0,
+          "attached_pic": 0,
+          "timed_thumbnails": 0,
+          "non_diegetic": 0,
+          "captions": 0,
+          "descriptions": 0,
+          "metadata": 0,
+          "dependent": 0,
+          "still_image": 0,
+          "multilayer": 0
+        },
+        "tags": {
+          "language": "und",
+          "handler_name": "VideoHandler",
+          "encoder": "Lavc63.1.102 libx264"
+        }
+      }
+    ],
+    "format": {
+      "filename": "/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/control-hue-drawbox-h264.mp4",
+      "nb_streams": 1,
+      "nb_programs": 0,
+      "nb_stream_groups": 0,
+      "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+      "format_long_name": "QuickTime / MOV",
+      "start_time": "0.000000",
+      "duration": "2.000000",
+      "size": "418689",
+      "bit_rate": "1674756",
+      "probe_score": 100,
+      "tags": {
+        "major_brand": "isom",
+        "minor_version": "512",
+        "compatible_brands": "isomiso2avc1mp41",
+        "encoder": "Lavf63.1.102"
+      }
+    }
+  }
+}

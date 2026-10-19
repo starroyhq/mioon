@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: shared discovery declares a durable local mutation without supplier or file effects
+ok 1 - shared discovery declares a durable local mutation without supplier or file effects
+  ---
+  duration_ms: 5.687625
+  type: 'test'
+  ...
+# Subtest: new RPC retains original request and125s default; overrides and old30s defaults remain
+ok 2 - new RPC retains original request and125s default; overrides and old30s defaults remain
+  ---
+  duration_ms: 18.82025
+  type: 'test'
+  ...
+# Subtest: wrong ACK, protocol loss and bounded overflow preserve unknown identity without second POST
+ok 3 - wrong ACK, protocol loss and bounded overflow preserve unknown identity without second POST
+  ---
+  duration_ms: 4.134375
+  type: 'test'
+  ...
+# Subtest: only exact new operation/project/request proof can release new mutation identity
+ok 4 - only exact new operation/project/request proof can release new mutation identity
+  ---
+  duration_ms: 0.932292
+  type: 'test'
+  ...
+# Subtest: 336KiB reader rejects declared/body/error overflow and invalid UTF8 without response.json
+ok 5 - 336KiB reader rejects declared/body/error overflow and invalid UTF8 without response.json
+  ---
+  duration_ms: 1.499125
+  type: 'test'
+  ...
+# Subtest: renderer new-operation deadline and abort mean unknown, cancel read, never resend
+ok 6 - renderer new-operation deadline and abort mean unknown, cancel read, never resend
+  ---
+  duration_ms: 10.315292
+  type: 'test'
+  ...
+# Subtest: deadline covers noncooperative fetch and cancels its late body
+ok 7 - deadline covers noncooperative fetch and cancels its late body
+  ---
+  duration_ms: 9.577334
+  type: 'test'
+  ...
+# Subtest: new bounded transport refuses arbitrary endpoint and retains fixed authenticated task route
+ok 8 - new bounded transport refuses arbitrary endpoint and retains fixed authenticated task route
+  ---
+  duration_ms: 0.386416
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 266.9045

@@ -1,0 +1,703 @@
+TAP version 13
+# Subtest: storyboard and float timeline request keys remain separate in both orders and across projects
+    # Subtest: crossProject=false, timelineFirst=false
+    ok 1 - crossProject=false, timelineFirst=false
+      ---
+      duration_ms: 375.498208
+      type: 'test'
+      ...
+    # Subtest: crossProject=false, timelineFirst=true
+    ok 2 - crossProject=false, timelineFirst=true
+      ---
+      duration_ms: 275.730833
+      type: 'test'
+      ...
+    # Subtest: crossProject=true, timelineFirst=false
+    ok 3 - crossProject=true, timelineFirst=false
+      ---
+      duration_ms: 266.913167
+      type: 'test'
+      ...
+    # Subtest: crossProject=true, timelineFirst=true
+    ok 4 - crossProject=true, timelineFirst=true
+      ---
+      duration_ms: 272.77675
+      type: 'test'
+      ...
+    1..4
+ok 1 - storyboard and float timeline request keys remain separate in both orders and across projects
+  ---
+  duration_ms: 1192.287583
+  type: 'test'
+  ...
+# Subtest: a stripped float row cannot borrow a real storyboard row and its receipt, even with an exact copied payload
+    # Subtest: restored=false, crossProject=false, exactCopy=false
+    ok 1 - restored=false, crossProject=false, exactCopy=false
+      ---
+      duration_ms: 197.517917
+      type: 'test'
+      ...
+    # Subtest: restored=false, crossProject=false, exactCopy=true
+    ok 2 - restored=false, crossProject=false, exactCopy=true
+      ---
+      duration_ms: 222.395
+      type: 'test'
+      ...
+    # Subtest: restored=false, crossProject=true, exactCopy=false
+    ok 3 - restored=false, crossProject=true, exactCopy=false
+      ---
+      duration_ms: 234.041875
+      type: 'test'
+      ...
+    # Subtest: restored=false, crossProject=true, exactCopy=true
+    ok 4 - restored=false, crossProject=true, exactCopy=true
+      ---
+      duration_ms: 214.142875
+      type: 'test'
+      ...
+    # Subtest: restored=true, crossProject=false, exactCopy=false
+    ok 5 - restored=true, crossProject=false, exactCopy=false
+      ---
+      duration_ms: 517.284542
+      type: 'test'
+      ...
+    # Subtest: restored=true, crossProject=false, exactCopy=true
+    ok 6 - restored=true, crossProject=false, exactCopy=true
+      ---
+      duration_ms: 322.8425
+      type: 'test'
+      ...
+    # Subtest: restored=true, crossProject=true, exactCopy=false
+    ok 7 - restored=true, crossProject=true, exactCopy=false
+      ---
+      duration_ms: 334.413
+      type: 'test'
+      ...
+    # Subtest: restored=true, crossProject=true, exactCopy=true
+    ok 8 - restored=true, crossProject=true, exactCopy=true
+      ---
+      duration_ms: 334.915334
+      type: 'test'
+      ...
+    1..8
+ok 2 - a stripped float row cannot borrow a real storyboard row and its receipt, even with an exact copied payload
+  ---
+  duration_ms: 2379.493917
+  type: 'test'
+  ...
+# Subtest: pristine 140fa882 omitted and v1 golden receipts, snapshots, histories and rows survive open/read/replay byte-exact
+not ok 3 - pristine 140fa882 omitted and v1 golden receipts, snapshots, histories and rows survive open/read/replay byte-exact
+  ---
+  duration_ms: 247.292792
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/float-checked-export-recovery.test.mjs:215:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    ... Skipped lines
+    
+      {
+        agent_chat_events: [],
+        agent_chat_quota: [
+          {
+            __rowid__: 1,
+    ...
+        agent_edit_proposals: [],
+    +   asset_annotation_requests: [],
+    +   asset_annotations: [],
+        asset_disposition_requests: [],
+        asset_dispositions: [],
+        asset_range_requests: [],
+        asset_ranges: [],
+        assets: [
+    ...
+        jobs: [],
+    +   lut_import_requests: [],
+        mutation_requests: [],
+        nodes: [],
+    +   project_lut_resources: [],
+        projects: [
+          {
+            __rowid__: 1,
+            data: '{"id":"350a6580-4611-4108-9b5b-6f40194cd985","name":"Pristine legacy export bytes 🎬","description":"","revision":1,"createdAt":"2026-10-13T07:40:54.199Z","updatedAt":"2026-10-13T07:40:54.200Z"}',
+            id: '350a6580-4611-4108-9b5b-6f40194cd985'
+    ...
+          },
+    +     {
+    +       __rowid__: 28,
+    +       version: 28
+    +     },
+    +     {
+    +       __rowid__: 30,
+    +       version: 30
+    +     },
+    +     {
+    +       __rowid__: 32,
+    +       version: 32
+    +     },
+    +     {
+    +       __rowid__: 34,
+    +       version: 34
+    +     },
+    +     {
+    +       __rowid__: 36,
+    +       version: 36
+    +     },
+    +     {
+    +       __rowid__: 38,
+    +       version: 38
+    +     },
+    +     {
+    +       __rowid__: 40,
+    +       version: 40
+    +     }
+        ],
+        shots: [],
+        sqlite_sequence: [],
+        subject_bindings: [],
+        subject_requests: [],
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    agent_chat_events:
+    agent_chat_quota:
+      0:
+        __rowid__: 1
+        id: 1
+        runs: 0
+        bytes: 0
+        reservedBytes: 0
+    agent_chat_requests:
+    agent_chat_runs:
+    agent_chat_steps:
+    agent_chat_threads:
+    agent_edit_proposals:
+    asset_disposition_requests:
+    asset_dispositions:
+    asset_range_requests:
+    asset_ranges:
+    assets:
+      0:
+        __rowid__: 1
+        id: '80af2372-e535-406f-a954-039029d35a5b'
+        projectId: '350a6580-4611-4108-9b5b-6f40194cd985'
+        data: '{"id":"80af2372-e535-406f-a954-039029d35a5b","projectId":"350a6580-4611-4108-9b5b-6f40194cd985","name":"Golden source","mimeType":"image/png","sha256":"07ccce9f91c7f24a6485c849360fb7fea8c0efe5c5c1c00259f304f2cdc31eca","relativePath":"media/frozen-source.png","width":720,"height":1280,"duration":0,"hasAudio":false,"sizeBytes":68,"createdAt":"2026-10-13T07:40:54.202Z"}'
+    edges:
+    edit_tasks:
+    exports:
+      0:
+        __rowid__: 1
+        id: '545bed59-d700-4558-9191-6bc2762c8018'
+        projectId: '350a6580-4611-4108-9b5b-6f40194cd985'
+        data: '{"id":"545bed59-d700-4558-9191-6bc2762c8018","projectId":"350a6580-4611-4108-9b5b-6f40194cd985","requestId":"82efc918-1c4f-4fcc-8083-348dff34dec6","mode":"timeline","purpose":"export","timelineRevision":2,"snapshot":{"timeline":{"id":"0a959433-bc00-4d78-8fd2-89b8a906cfe0","projectId":"350a6580-4611-4108-9b5b-6f40194cd985","revision":2,"fps":30,"width":720,"height":1280,"tracks":[{"id":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","name":"Video 1","kind":"video","orderIndex":0,"hidden":false,"muted":false},{"id":"e745cc7a-2967-4b09-856e-227562465de0","name":"Video 2","kind":"video","orderIndex":1,"hidden":false,"muted":false},{"id":"42a3928b-b296-4121-8aa0-0f522b81f81e","name":"Audio 1","kind":"audio","orderIndex":2,"hidden":false,"muted":false}],"clips":[{"id":"35d25f58-ef6b-472c-a698-283d9cb575b8","trackId":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","assetId":"80af2372-e535-406f-a954-039029d35a5b","name":"Golden source","startFrame":0,"durationFrames":30,"sourceInFrame":0,"rect":{"x":0,"y":0,"width":720,"height":1280},"gain":1}],"durationFrames":30,"createdAt":"2026-10-13T07:40:54.201Z","updatedAt":"2026-10-13T07:40:54.217Z"},"assets":[{"id":"80af2372-e535-406f-a954-039029d35a5b","sha256":"07ccce9f91c7f24a6485c849360fb7fea8c0efe5c5c1c00259f304f2cdc31eca","mimeType":"image/png","duration":0,"width":720,"height":1280,"hasAudio":false,"relativePath":"media/frozen-source.png"}]},"status":"queued","assetId":null,"url":null,"error":null,"createdAt":"2026-10-13T07:40:54.225Z","updatedAt":"2026-10-13T07:40:54.225Z"}'
+      1:
+        __rowid__: 2
+        id: '663614fa-35ff-4b0e-8817-f8d665ff75a9'
+        projectId: '350a6580-4611-4108-9b5b-6f40194cd985'
+        data: '{"id":"663614fa-35ff-4b0e-8817-f8d665ff75a9","projectId":"350a6580-4611-4108-9b5b-6f40194cd985","requestId":"316564e5-8ff4-4edc-873b-59aa940b5a60","mode":"timeline","purpose":"export","timelineRevision":2,"snapshot":{"timeline":{"id":"0a959433-bc00-4d78-8fd2-89b8a906cfe0","projectId":"350a6580-4611-4108-9b5b-6f40194cd985","revision":2,"fps":30,"width":720,"height":1280,"tracks":[{"id":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","name":"Video 1","kind":"video","orderIndex":0,"hidden":false,"muted":false},{"id":"e745cc7a-2967-4b09-856e-227562465de0","name":"Video 2","kind":"video","orderIndex":1,"hidden":false,"muted":false},{"id":"42a3928b-b296-4121-8aa0-0f522b81f81e","name":"Audio 1","kind":"audio","orderIndex":2,"hidden":false,"muted":false}],"clips":[{"id":"35d25f58-ef6b-472c-a698-283d9cb575b8","trackId":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","assetId":"80af2372-e535-406f-a954-039029d35a5b","name":"Golden source","startFrame":0,"durationFrames":30,"sourceInFrame":0,"rect":{"x":0,"y":0,"width":720,"height":1280},"gain":1}],"durationFrames":30,"createdAt":"2026-10-13T07:40:54.201Z","updatedAt":"2026-10-13T07:40:54.217Z"},"delivery":{"exportSettings":{"profileId":"mp4_h264_v1","resolution":"short_360","rateControl":{"mode":"crf","quality":"standard"}},"effective":{"profileId":"mp4_h264_v1","container":"mp4","width":360,"height":640,"fps":30,"videoCodec":"libx264","pixelFormat":"yuv420p","preset":"veryfast","rateControl":{"mode":"crf","crf":23},"bFrames":0,"gopFrames":60,"videoTrackTimescale":30000,"scaling":"lanczos","audioCodec":"aac","audioKbps":128,"audioSampleRate":48000,"audioChannels":2,"movflags":"faststart"}},"assets":[{"id":"80af2372-e535-406f-a954-039029d35a5b","sha256":"07ccce9f91c7f24a6485c849360fb7fea8c0efe5c5c1c00259f304f2cdc31eca","mimeType":"image/png","duration":0,"width":720,"height":1280,"hasAudio":false,"relativePath":"media/frozen-source.png"}]},"status":"queued","assetId":null,"url":null,"error":null,"createdAt":"2026-10-13T07:40:54.236Z","updatedAt":"2026-10-13T07:40:54.236Z"}'
+    frame_requests:
+    frame_tasks:
+    idempotency:
+    image_groups:
+    image_remote_observations:
+    image_remote_runs:
+    image_requests:
+    image_reviews:
+    image_tasks:
+    image_versions:
+    job_events:
+    jobs:
+    mutation_requests:
+    nodes:
+    projects:
+      0:
+        __rowid__: 1
+        id: '350a6580-4611-4108-9b5b-6f40194cd985'
+        data: '{"id":"350a6580-4611-4108-9b5b-6f40194cd985","name":"Pristine legacy export bytes 🎬","description":"","revision":1,"createdAt":"2026-10-13T07:40:54.199Z","updatedAt":"2026-10-13T07:40:54.200Z"}'
+    reference_requests:
+    schema_version:
+      0:
+        __rowid__: 1
+        version: 1
+      1:
+        __rowid__: 2
+        version: 2
+      2:
+        __rowid__: 3
+        version: 3
+      3:
+        __rowid__: 4
+        version: 4
+      4:
+        __rowid__: 5
+        version: 5
+      5:
+        __rowid__: 6
+        version: 6
+      6:
+        __rowid__: 7
+        version: 7
+      7:
+        __rowid__: 8
+        version: 8
+      8:
+        __rowid__: 9
+        version: 9
+      9:
+        __rowid__: 10
+        version: 10
+      10:
+        __rowid__: 11
+        version: 11
+      11:
+        __rowid__: 12
+        version: 12
+      12:
+        __rowid__: 13
+        version: 13
+      13:
+        __rowid__: 14
+        version: 14
+      14:
+        __rowid__: 15
+        version: 15
+      15:
+        __rowid__: 16
+        version: 16
+      16:
+        __rowid__: 17
+        version: 17
+      17:
+        __rowid__: 18
+        version: 18
+      18:
+        __rowid__: 19
+        version: 19
+      19:
+        __rowid__: 20
+        version: 20
+      20:
+        __rowid__: 21
+        version: 21
+      21:
+        __rowid__: 22
+        version: 22
+      22:
+        __rowid__: 23
+        version: 23
+      23:
+        __rowid__: 24
+        version: 24
+      24:
+        __rowid__: 26
+        version: 26
+    shots:
+    sqlite_sequence:
+    subject_bindings:
+    subject_requests:
+    subject_versions:
+    subjects:
+    timeline_format_requests:
+    timeline_history:
+      0:
+        __rowid__: 1
+        id: '0cdaa2bf-c600-4191-860d-9bd531182e88'
+        projectId: '350a6580-4611-4108-9b5b-6f40194cd985'
+        position: 1
+        operation: 'timeline.clip.add'
+        createdAt: '2026-10-13T07:40:54.217Z'
+        beforeSnapshot: '{"tracks":[{"id":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","name":"Video 1","kind":"video","orderIndex":0,"hidden":false,"muted":false},{"id":"e745cc7a-2967-4b09-856e-227562465de0","name":"Video 2","kind":"video","orderIndex":1,"hidden":false,"muted":false},{"id":"42a3928b-b296-4121-8aa0-0f522b81f81e","name":"Audio 1","kind":"audio","orderIndex":2,"hidden":false,"muted":false}],"clips":[],"durationFrames":0}'
+        afterSnapshot: '{"tracks":[{"id":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","name":"Video 1","kind":"video","orderIndex":0,"hidden":false,"muted":false},{"id":"e745cc7a-2967-4b09-856e-227562465de0","name":"Video 2","kind":"video","orderIndex":1,"hidden":false,"muted":false},{"id":"42a3928b-b296-4121-8aa0-0f522b81f81e","name":"Audio 1","kind":"audio","orderIndex":2,"hidden":false,"muted":false}],"clips":[{"id":"35d25f58-ef6b-472c-a698-283d9cb575b8","trackId":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","assetId":"80af2372-e535-406f-a954-039029d35a5b","name":"Golden source","startFrame":0,"durationFrames":30,"sourceInFrame":0,"rect":{"x":0,"y":0,"width":720,"height":1280},"gain":1}],"durationFrames":30}'
+    timeline_history_cursors:
+      0:
+        __rowid__: 1
+        projectId: '350a6580-4611-4108-9b5b-6f40194cd985'
+        position: 1
+    timeline_requests:
+      0:
+        __rowid__: 1
+        requestId: '0173c441-10c4-4f1a-9f83-1c4848c352b2'
+        requestHash: '1fd39850ca0fc6d74dc6f925d7d57d45906f5cbd76e446a7528732b7ba83059c'
+        response: '{"id":"0a959433-bc00-4d78-8fd2-89b8a906cfe0","projectId":"350a6580-4611-4108-9b5b-6f40194cd985","revision":2,"fps":30,"width":720,"height":1280,"tracks":[{"id":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","name":"Video 1","kind":"video","orderIndex":0,"hidden":false,"muted":false},{"id":"e745cc7a-2967-4b09-856e-227562465de0","name":"Video 2","kind":"video","orderIndex":1,"hidden":false,"muted":false},{"id":"42a3928b-b296-4121-8aa0-0f522b81f81e","name":"Audio 1","kind":"audio","orderIndex":2,"hidden":false,"muted":false}],"clips":[{"id":"35d25f58-ef6b-472c-a698-283d9cb575b8","trackId":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","assetId":"80af2372-e535-406f-a954-039029d35a5b","name":"Golden source","startFrame":0,"durationFrames":30,"sourceInFrame":0,"rect":{"x":0,"y":0,"width":720,"height":1280},"gain":1}],"durationFrames":30,"createdAt":"2026-10-13T07:40:54.201Z","updatedAt":"2026-10-13T07:40:54.217Z"}'
+      1:
+        __rowid__: 2
+        requestId: '82efc918-1c4f-4fcc-8083-348dff34dec6'
+        requestHash: 'd55ecd1d10ca6aeb3ef9eeeab3aa884ec4c334a177fccf3aa36276f800120e5d'
+        response: '{"id":"545bed59-d700-4558-9191-6bc2762c8018","projectId":"350a6580-4611-4108-9b5b-6f40194cd985","requestId":"82efc918-1c4f-4fcc-8083-348dff34dec6","mode":"timeline","purpose":"export","timelineRevision":2,"snapshot":{"timeline":{"id":"0a959433-bc00-4d78-8fd2-89b8a906cfe0","projectId":"350a6580-4611-4108-9b5b-6f40194cd985","revision":2,"fps":30,"width":720,"height":1280,"tracks":[{"id":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","name":"Video 1","kind":"video","orderIndex":0,"hidden":false,"muted":false},{"id":"e745cc7a-2967-4b09-856e-227562465de0","name":"Video 2","kind":"video","orderIndex":1,"hidden":false,"muted":false},{"id":"42a3928b-b296-4121-8aa0-0f522b81f81e","name":"Audio 1","kind":"audio","orderIndex":2,"hidden":false,"muted":false}],"clips":[{"id":"35d25f58-ef6b-472c-a698-283d9cb575b8","trackId":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","assetId":"80af2372-e535-406f-a954-039029d35a5b","name":"Golden source","startFrame":0,"durationFrames":30,"sourceInFrame":0,"rect":{"x":0,"y":0,"width":720,"height":1280},"gain":1}],"durationFrames":30,"createdAt":"2026-10-13T07:40:54.201Z","updatedAt":"2026-10-13T07:40:54.217Z"},"assets":[{"id":"80af2372-e535-406f-a954-039029d35a5b","sha256":"07ccce9f91c7f24a6485c849360fb7fea8c0efe5c5c1c00259f304f2cdc31eca","mimeType":"image/png","duration":0,"width":720,"height":1280,"hasAudio":false,"relativePath":"media/frozen-source.png"}]},"status":"queued","assetId":null,"url":null,"error":null,"createdAt":"2026-10-13T07:40:54.225Z","updatedAt":"2026-10-13T07:40:54.225Z"}'
+      2:
+        __rowid__: 3
+        requestId: '316564e5-8ff4-4edc-873b-59aa940b5a60'
+        requestHash: 'c25d168d078b0de346fcb3999e6a9b91ab97c6949c133c1f6d825b3a07e9eefa'
+        response: '{"id":"663614fa-35ff-4b0e-8817-f8d665ff75a9","projectId":"350a6580-4611-4108-9b5b-6f40194cd985","requestId":"316564e5-8ff4-4edc-873b-59aa940b5a60","mode":"timeline","purpose":"export","timelineRevision":2,"snapshot":{"timeline":{"id":"0a959433-bc00-4d78-8fd2-89b8a906cfe0","projectId":"350a6580-4611-4108-9b5b-6f40194cd985","revision":2,"fps":30,"width":720,"height":1280,"tracks":[{"id":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","name":"Video 1","kind":"video","orderIndex":0,"hidden":false,"muted":false},{"id":"e745cc7a-2967-4b09-856e-227562465de0","name":"Video 2","kind":"video","orderIndex":1,"hidden":false,"muted":false},{"id":"42a3928b-b296-4121-8aa0-0f522b81f81e","name":"Audio 1","kind":"audio","orderIndex":2,"hidden":false,"muted":false}],"clips":[{"id":"35d25f58-ef6b-472c-a698-283d9cb575b8","trackId":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","assetId":"80af2372-e535-406f-a954-039029d35a5b","name":"Golden source","startFrame":0,"durationFrames":30,"sourceInFrame":0,"rect":{"x":0,"y":0,"width":720,"height":1280},"gain":1}],"durationFrames":30,"createdAt":"2026-10-13T07:40:54.201Z","updatedAt":"2026-10-13T07:40:54.217Z"},"delivery":{"exportSettings":{"profileId":"mp4_h264_v1","resolution":"short_360","rateControl":{"mode":"crf","quality":"standard"}},"effective":{"profileId":"mp4_h264_v1","container":"mp4","width":360,"height":640,"fps":30,"videoCodec":"libx264","pixelFormat":"yuv420p","preset":"veryfast","rateControl":{"mode":"crf","crf":23},"bFrames":0,"gopFrames":60,"videoTrackTimescale":30000,"scaling":"lanczos","audioCodec":"aac","audioKbps":128,"audioSampleRate":48000,"audioChannels":2,"movflags":"faststart"}},"assets":[{"id":"80af2372-e535-406f-a954-039029d35a5b","sha256":"07ccce9f91c7f24a6485c849360fb7fea8c0efe5c5c1c00259f304f2cdc31eca","mimeType":"image/png","duration":0,"width":720,"height":1280,"hasAudio":false,"relativePath":"media/frozen-source.png"}]},"status":"queued","assetId":null,"url":null,"error":null,"createdAt":"2026-10-13T07:40:54.236Z","updatedAt":"2026-10-13T07:40:54.236Z"}'
+    timelines:
+      0:
+        __rowid__: 1
+        id: '0a959433-bc00-4d78-8fd2-89b8a906cfe0'
+        projectId: '350a6580-4611-4108-9b5b-6f40194cd985'
+        data: '{"id":"0a959433-bc00-4d78-8fd2-89b8a906cfe0","projectId":"350a6580-4611-4108-9b5b-6f40194cd985","revision":2,"fps":30,"width":720,"height":1280,"tracks":[{"id":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","name":"Video 1","kind":"video","orderIndex":0,"hidden":false,"muted":false},{"id":"e745cc7a-2967-4b09-856e-227562465de0","name":"Video 2","kind":"video","orderIndex":1,"hidden":false,"muted":false},{"id":"42a3928b-b296-4121-8aa0-0f522b81f81e","name":"Audio 1","kind":"audio","orderIndex":2,"hidden":false,"muted":false}],"clips":[{"id":"35d25f58-ef6b-472c-a698-283d9cb575b8","trackId":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","assetId":"80af2372-e535-406f-a954-039029d35a5b","name":"Golden source","startFrame":0,"durationFrames":30,"sourceInFrame":0,"rect":{"x":0,"y":0,"width":720,"height":1280},"gain":1}],"durationFrames":30,"createdAt":"2026-10-13T07:40:54.201Z","updatedAt":"2026-10-13T07:40:54.217Z"}'
+    versions:
+    waveform_cache:
+    workspace_preferences:
+  actual:
+    agent_chat_events:
+    agent_chat_quota:
+      0:
+        __rowid__: 1
+        id: 1
+        runs: 0
+        bytes: 0
+        reservedBytes: 0
+    agent_chat_requests:
+    agent_chat_runs:
+    agent_chat_steps:
+    agent_chat_threads:
+    agent_edit_proposals:
+    asset_annotation_requests:
+    asset_annotations:
+    asset_disposition_requests:
+    asset_dispositions:
+    asset_range_requests:
+    asset_ranges:
+    assets:
+      0:
+        __rowid__: 1
+        id: '80af2372-e535-406f-a954-039029d35a5b'
+        projectId: '350a6580-4611-4108-9b5b-6f40194cd985'
+        data: '{"id":"80af2372-e535-406f-a954-039029d35a5b","projectId":"350a6580-4611-4108-9b5b-6f40194cd985","name":"Golden source","mimeType":"image/png","sha256":"07ccce9f91c7f24a6485c849360fb7fea8c0efe5c5c1c00259f304f2cdc31eca","relativePath":"media/frozen-source.png","width":720,"height":1280,"duration":0,"hasAudio":false,"sizeBytes":68,"createdAt":"2026-10-13T07:40:54.202Z"}'
+    edges:
+    edit_tasks:
+    exports:
+      0:
+        __rowid__: 1
+        id: '545bed59-d700-4558-9191-6bc2762c8018'
+        projectId: '350a6580-4611-4108-9b5b-6f40194cd985'
+        data: '{"id":"545bed59-d700-4558-9191-6bc2762c8018","projectId":"350a6580-4611-4108-9b5b-6f40194cd985","requestId":"82efc918-1c4f-4fcc-8083-348dff34dec6","mode":"timeline","purpose":"export","timelineRevision":2,"snapshot":{"timeline":{"id":"0a959433-bc00-4d78-8fd2-89b8a906cfe0","projectId":"350a6580-4611-4108-9b5b-6f40194cd985","revision":2,"fps":30,"width":720,"height":1280,"tracks":[{"id":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","name":"Video 1","kind":"video","orderIndex":0,"hidden":false,"muted":false},{"id":"e745cc7a-2967-4b09-856e-227562465de0","name":"Video 2","kind":"video","orderIndex":1,"hidden":false,"muted":false},{"id":"42a3928b-b296-4121-8aa0-0f522b81f81e","name":"Audio 1","kind":"audio","orderIndex":2,"hidden":false,"muted":false}],"clips":[{"id":"35d25f58-ef6b-472c-a698-283d9cb575b8","trackId":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","assetId":"80af2372-e535-406f-a954-039029d35a5b","name":"Golden source","startFrame":0,"durationFrames":30,"sourceInFrame":0,"rect":{"x":0,"y":0,"width":720,"height":1280},"gain":1}],"durationFrames":30,"createdAt":"2026-10-13T07:40:54.201Z","updatedAt":"2026-10-13T07:40:54.217Z"},"assets":[{"id":"80af2372-e535-406f-a954-039029d35a5b","sha256":"07ccce9f91c7f24a6485c849360fb7fea8c0efe5c5c1c00259f304f2cdc31eca","mimeType":"image/png","duration":0,"width":720,"height":1280,"hasAudio":false,"relativePath":"media/frozen-source.png"}]},"status":"queued","assetId":null,"url":null,"error":null,"createdAt":"2026-10-13T07:40:54.225Z","updatedAt":"2026-10-13T07:40:54.225Z"}'
+      1:
+        __rowid__: 2
+        id: '663614fa-35ff-4b0e-8817-f8d665ff75a9'
+        projectId: '350a6580-4611-4108-9b5b-6f40194cd985'
+        data: '{"id":"663614fa-35ff-4b0e-8817-f8d665ff75a9","projectId":"350a6580-4611-4108-9b5b-6f40194cd985","requestId":"316564e5-8ff4-4edc-873b-59aa940b5a60","mode":"timeline","purpose":"export","timelineRevision":2,"snapshot":{"timeline":{"id":"0a959433-bc00-4d78-8fd2-89b8a906cfe0","projectId":"350a6580-4611-4108-9b5b-6f40194cd985","revision":2,"fps":30,"width":720,"height":1280,"tracks":[{"id":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","name":"Video 1","kind":"video","orderIndex":0,"hidden":false,"muted":false},{"id":"e745cc7a-2967-4b09-856e-227562465de0","name":"Video 2","kind":"video","orderIndex":1,"hidden":false,"muted":false},{"id":"42a3928b-b296-4121-8aa0-0f522b81f81e","name":"Audio 1","kind":"audio","orderIndex":2,"hidden":false,"muted":false}],"clips":[{"id":"35d25f58-ef6b-472c-a698-283d9cb575b8","trackId":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","assetId":"80af2372-e535-406f-a954-039029d35a5b","name":"Golden source","startFrame":0,"durationFrames":30,"sourceInFrame":0,"rect":{"x":0,"y":0,"width":720,"height":1280},"gain":1}],"durationFrames":30,"createdAt":"2026-10-13T07:40:54.201Z","updatedAt":"2026-10-13T07:40:54.217Z"},"delivery":{"exportSettings":{"profileId":"mp4_h264_v1","resolution":"short_360","rateControl":{"mode":"crf","quality":"standard"}},"effective":{"profileId":"mp4_h264_v1","container":"mp4","width":360,"height":640,"fps":30,"videoCodec":"libx264","pixelFormat":"yuv420p","preset":"veryfast","rateControl":{"mode":"crf","crf":23},"bFrames":0,"gopFrames":60,"videoTrackTimescale":30000,"scaling":"lanczos","audioCodec":"aac","audioKbps":128,"audioSampleRate":48000,"audioChannels":2,"movflags":"faststart"}},"assets":[{"id":"80af2372-e535-406f-a954-039029d35a5b","sha256":"07ccce9f91c7f24a6485c849360fb7fea8c0efe5c5c1c00259f304f2cdc31eca","mimeType":"image/png","duration":0,"width":720,"height":1280,"hasAudio":false,"relativePath":"media/frozen-source.png"}]},"status":"queued","assetId":null,"url":null,"error":null,"createdAt":"2026-10-13T07:40:54.236Z","updatedAt":"2026-10-13T07:40:54.236Z"}'
+    frame_requests:
+    frame_tasks:
+    idempotency:
+    image_groups:
+    image_remote_observations:
+    image_remote_runs:
+    image_requests:
+    image_reviews:
+    image_tasks:
+    image_versions:
+    job_events:
+    jobs:
+    lut_import_requests:
+    mutation_requests:
+    nodes:
+    project_lut_resources:
+    projects:
+      0:
+        __rowid__: 1
+        id: '350a6580-4611-4108-9b5b-6f40194cd985'
+        data: '{"id":"350a6580-4611-4108-9b5b-6f40194cd985","name":"Pristine legacy export bytes 🎬","description":"","revision":1,"createdAt":"2026-10-13T07:40:54.199Z","updatedAt":"2026-10-13T07:40:54.200Z"}'
+    reference_requests:
+    schema_version:
+      0:
+        __rowid__: 1
+        version: 1
+      1:
+        __rowid__: 2
+        version: 2
+      2:
+        __rowid__: 3
+        version: 3
+      3:
+        __rowid__: 4
+        version: 4
+      4:
+        __rowid__: 5
+        version: 5
+      5:
+        __rowid__: 6
+        version: 6
+      6:
+        __rowid__: 7
+        version: 7
+      7:
+        __rowid__: 8
+        version: 8
+      8:
+        __rowid__: 9
+        version: 9
+      9:
+        __rowid__: 10
+        version: 10
+      10:
+        __rowid__: 11
+        version: 11
+      11:
+        __rowid__: 12
+        version: 12
+      12:
+        __rowid__: 13
+        version: 13
+      13:
+        __rowid__: 14
+        version: 14
+      14:
+        __rowid__: 15
+        version: 15
+      15:
+        __rowid__: 16
+        version: 16
+      16:
+        __rowid__: 17
+        version: 17
+      17:
+        __rowid__: 18
+        version: 18
+      18:
+        __rowid__: 19
+        version: 19
+      19:
+        __rowid__: 20
+        version: 20
+      20:
+        __rowid__: 21
+        version: 21
+      21:
+        __rowid__: 22
+        version: 22
+      22:
+        __rowid__: 23
+        version: 23
+      23:
+        __rowid__: 24
+        version: 24
+      24:
+        __rowid__: 26
+        version: 26
+      25:
+        __rowid__: 28
+        version: 28
+      26:
+        __rowid__: 30
+        version: 30
+      27:
+        __rowid__: 32
+        version: 32
+      28:
+        __rowid__: 34
+        version: 34
+      29:
+        __rowid__: 36
+        version: 36
+      30:
+        __rowid__: 38
+        version: 38
+      31:
+        __rowid__: 40
+        version: 40
+    shots:
+    sqlite_sequence:
+    subject_bindings:
+    subject_requests:
+    subject_versions:
+    subjects:
+    timeline_format_requests:
+    timeline_history:
+      0:
+        __rowid__: 1
+        id: '0cdaa2bf-c600-4191-860d-9bd531182e88'
+        projectId: '350a6580-4611-4108-9b5b-6f40194cd985'
+        position: 1
+        operation: 'timeline.clip.add'
+        createdAt: '2026-10-13T07:40:54.217Z'
+        beforeSnapshot: '{"tracks":[{"id":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","name":"Video 1","kind":"video","orderIndex":0,"hidden":false,"muted":false},{"id":"e745cc7a-2967-4b09-856e-227562465de0","name":"Video 2","kind":"video","orderIndex":1,"hidden":false,"muted":false},{"id":"42a3928b-b296-4121-8aa0-0f522b81f81e","name":"Audio 1","kind":"audio","orderIndex":2,"hidden":false,"muted":false}],"clips":[],"durationFrames":0}'
+        afterSnapshot: '{"tracks":[{"id":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","name":"Video 1","kind":"video","orderIndex":0,"hidden":false,"muted":false},{"id":"e745cc7a-2967-4b09-856e-227562465de0","name":"Video 2","kind":"video","orderIndex":1,"hidden":false,"muted":false},{"id":"42a3928b-b296-4121-8aa0-0f522b81f81e","name":"Audio 1","kind":"audio","orderIndex":2,"hidden":false,"muted":false}],"clips":[{"id":"35d25f58-ef6b-472c-a698-283d9cb575b8","trackId":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","assetId":"80af2372-e535-406f-a954-039029d35a5b","name":"Golden source","startFrame":0,"durationFrames":30,"sourceInFrame":0,"rect":{"x":0,"y":0,"width":720,"height":1280},"gain":1}],"durationFrames":30}'
+    timeline_history_cursors:
+      0:
+        __rowid__: 1
+        projectId: '350a6580-4611-4108-9b5b-6f40194cd985'
+        position: 1
+    timeline_requests:
+      0:
+        __rowid__: 1
+        requestId: '0173c441-10c4-4f1a-9f83-1c4848c352b2'
+        requestHash: '1fd39850ca0fc6d74dc6f925d7d57d45906f5cbd76e446a7528732b7ba83059c'
+        response: '{"id":"0a959433-bc00-4d78-8fd2-89b8a906cfe0","projectId":"350a6580-4611-4108-9b5b-6f40194cd985","revision":2,"fps":30,"width":720,"height":1280,"tracks":[{"id":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","name":"Video 1","kind":"video","orderIndex":0,"hidden":false,"muted":false},{"id":"e745cc7a-2967-4b09-856e-227562465de0","name":"Video 2","kind":"video","orderIndex":1,"hidden":false,"muted":false},{"id":"42a3928b-b296-4121-8aa0-0f522b81f81e","name":"Audio 1","kind":"audio","orderIndex":2,"hidden":false,"muted":false}],"clips":[{"id":"35d25f58-ef6b-472c-a698-283d9cb575b8","trackId":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","assetId":"80af2372-e535-406f-a954-039029d35a5b","name":"Golden source","startFrame":0,"durationFrames":30,"sourceInFrame":0,"rect":{"x":0,"y":0,"width":720,"height":1280},"gain":1}],"durationFrames":30,"createdAt":"2026-10-13T07:40:54.201Z","updatedAt":"2026-10-13T07:40:54.217Z"}'
+      1:
+        __rowid__: 2
+        requestId: '82efc918-1c4f-4fcc-8083-348dff34dec6'
+        requestHash: 'd55ecd1d10ca6aeb3ef9eeeab3aa884ec4c334a177fccf3aa36276f800120e5d'
+        response: '{"id":"545bed59-d700-4558-9191-6bc2762c8018","projectId":"350a6580-4611-4108-9b5b-6f40194cd985","requestId":"82efc918-1c4f-4fcc-8083-348dff34dec6","mode":"timeline","purpose":"export","timelineRevision":2,"snapshot":{"timeline":{"id":"0a959433-bc00-4d78-8fd2-89b8a906cfe0","projectId":"350a6580-4611-4108-9b5b-6f40194cd985","revision":2,"fps":30,"width":720,"height":1280,"tracks":[{"id":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","name":"Video 1","kind":"video","orderIndex":0,"hidden":false,"muted":false},{"id":"e745cc7a-2967-4b09-856e-227562465de0","name":"Video 2","kind":"video","orderIndex":1,"hidden":false,"muted":false},{"id":"42a3928b-b296-4121-8aa0-0f522b81f81e","name":"Audio 1","kind":"audio","orderIndex":2,"hidden":false,"muted":false}],"clips":[{"id":"35d25f58-ef6b-472c-a698-283d9cb575b8","trackId":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","assetId":"80af2372-e535-406f-a954-039029d35a5b","name":"Golden source","startFrame":0,"durationFrames":30,"sourceInFrame":0,"rect":{"x":0,"y":0,"width":720,"height":1280},"gain":1}],"durationFrames":30,"createdAt":"2026-10-13T07:40:54.201Z","updatedAt":"2026-10-13T07:40:54.217Z"},"assets":[{"id":"80af2372-e535-406f-a954-039029d35a5b","sha256":"07ccce9f91c7f24a6485c849360fb7fea8c0efe5c5c1c00259f304f2cdc31eca","mimeType":"image/png","duration":0,"width":720,"height":1280,"hasAudio":false,"relativePath":"media/frozen-source.png"}]},"status":"queued","assetId":null,"url":null,"error":null,"createdAt":"2026-10-13T07:40:54.225Z","updatedAt":"2026-10-13T07:40:54.225Z"}'
+      2:
+        __rowid__: 3
+        requestId: '316564e5-8ff4-4edc-873b-59aa940b5a60'
+        requestHash: 'c25d168d078b0de346fcb3999e6a9b91ab97c6949c133c1f6d825b3a07e9eefa'
+        response: '{"id":"663614fa-35ff-4b0e-8817-f8d665ff75a9","projectId":"350a6580-4611-4108-9b5b-6f40194cd985","requestId":"316564e5-8ff4-4edc-873b-59aa940b5a60","mode":"timeline","purpose":"export","timelineRevision":2,"snapshot":{"timeline":{"id":"0a959433-bc00-4d78-8fd2-89b8a906cfe0","projectId":"350a6580-4611-4108-9b5b-6f40194cd985","revision":2,"fps":30,"width":720,"height":1280,"tracks":[{"id":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","name":"Video 1","kind":"video","orderIndex":0,"hidden":false,"muted":false},{"id":"e745cc7a-2967-4b09-856e-227562465de0","name":"Video 2","kind":"video","orderIndex":1,"hidden":false,"muted":false},{"id":"42a3928b-b296-4121-8aa0-0f522b81f81e","name":"Audio 1","kind":"audio","orderIndex":2,"hidden":false,"muted":false}],"clips":[{"id":"35d25f58-ef6b-472c-a698-283d9cb575b8","trackId":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","assetId":"80af2372-e535-406f-a954-039029d35a5b","name":"Golden source","startFrame":0,"durationFrames":30,"sourceInFrame":0,"rect":{"x":0,"y":0,"width":720,"height":1280},"gain":1}],"durationFrames":30,"createdAt":"2026-10-13T07:40:54.201Z","updatedAt":"2026-10-13T07:40:54.217Z"},"delivery":{"exportSettings":{"profileId":"mp4_h264_v1","resolution":"short_360","rateControl":{"mode":"crf","quality":"standard"}},"effective":{"profileId":"mp4_h264_v1","container":"mp4","width":360,"height":640,"fps":30,"videoCodec":"libx264","pixelFormat":"yuv420p","preset":"veryfast","rateControl":{"mode":"crf","crf":23},"bFrames":0,"gopFrames":60,"videoTrackTimescale":30000,"scaling":"lanczos","audioCodec":"aac","audioKbps":128,"audioSampleRate":48000,"audioChannels":2,"movflags":"faststart"}},"assets":[{"id":"80af2372-e535-406f-a954-039029d35a5b","sha256":"07ccce9f91c7f24a6485c849360fb7fea8c0efe5c5c1c00259f304f2cdc31eca","mimeType":"image/png","duration":0,"width":720,"height":1280,"hasAudio":false,"relativePath":"media/frozen-source.png"}]},"status":"queued","assetId":null,"url":null,"error":null,"createdAt":"2026-10-13T07:40:54.236Z","updatedAt":"2026-10-13T07:40:54.236Z"}'
+    timelines:
+      0:
+        __rowid__: 1
+        id: '0a959433-bc00-4d78-8fd2-89b8a906cfe0'
+        projectId: '350a6580-4611-4108-9b5b-6f40194cd985'
+        data: '{"id":"0a959433-bc00-4d78-8fd2-89b8a906cfe0","projectId":"350a6580-4611-4108-9b5b-6f40194cd985","revision":2,"fps":30,"width":720,"height":1280,"tracks":[{"id":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","name":"Video 1","kind":"video","orderIndex":0,"hidden":false,"muted":false},{"id":"e745cc7a-2967-4b09-856e-227562465de0","name":"Video 2","kind":"video","orderIndex":1,"hidden":false,"muted":false},{"id":"42a3928b-b296-4121-8aa0-0f522b81f81e","name":"Audio 1","kind":"audio","orderIndex":2,"hidden":false,"muted":false}],"clips":[{"id":"35d25f58-ef6b-472c-a698-283d9cb575b8","trackId":"7142b606-31e1-4f01-b1d5-8e75ecd0484b","assetId":"80af2372-e535-406f-a954-039029d35a5b","name":"Golden source","startFrame":0,"durationFrames":30,"sourceInFrame":0,"rect":{"x":0,"y":0,"width":720,"height":1280},"gain":1}],"durationFrames":30,"createdAt":"2026-10-13T07:40:54.201Z","updatedAt":"2026-10-13T07:40:54.217Z"}'
+    versions:
+    waveform_cache:
+    workspace_preferences:
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/float-checked-export-recovery.test.mjs:244:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: failed v2 current report never enters immutable ACK; exact replay precedes changed capability/revision after restart
+ok 4 - failed v2 current report never enters immutable ACK; exact replay precedes changed capability/revision after restart
+  ---
+  duration_ms: 280.761875
+  type: 'test'
+  ...
+# Subtest: server-only outcome adapter rejects unowned measured JSON and errors that self-assert audio authority
+ok 5 - server-only outcome adapter rejects unowned measured JSON and errors that self-assert audio authority
+  ---
+  duration_ms: 201.271708
+  type: 'test'
+  ...
+# Subtest: v2 current export and project readers reject foreign attempt, snapshot, report/output hash and stripped profile
+ok 6 - v2 current export and project readers reject foreign attempt, snapshot, report/output hash and stripped profile
+  ---
+  duration_ms: 278.112667
+  type: 'test'
+  ...
+# Subtest: worker restart removes interrupted v2 attempt without rewriting its receipt and the next attempt remeasures
+ok 7 - worker restart removes interrupted v2 attempt without rewriting its receipt and the next attempt remeasures
+  ---
+  duration_ms: 1191.594667
+  type: 'test'
+  ...
+# Subtest: replaced attempt or newer completed outcome cannot receive an old worker report or publication
+    # Subtest: running
+    ok 1 - running
+      ---
+      duration_ms: 250.933583
+      type: 'test'
+      ...
+    # Subtest: failed
+    ok 2 - failed
+      ---
+      duration_ms: 248.528459
+      type: 'test'
+      ...
+# Skipped invalid local export record.
+    # Subtest: succeeded
+    ok 3 - succeeded
+      ---
+      duration_ms: 258.809125
+      type: 'test'
+      ...
+    1..3
+ok 8 - replaced attempt or newer completed outcome cannot receive an old worker report or publication
+  ---
+  duration_ms: 758.805791
+  type: 'test'
+  ...
+# Subtest: real overrange v2 fails with one stored report and no final asset; explicit saved gain edit and new key succeeds
+ok 9 - real overrange v2 fails with one stored report and no final asset; explicit saved gain edit and new key succeeds
+  ---
+  duration_ms: 1999.825834
+  type: 'test'
+  ...
+# Subtest: restored inherited v2 queued/failed/succeeded rows stay held byte-exact while a new origin-bound local v2 succeeds
+ok 10 - restored inherited v2 queued/failed/succeeded rows stay held byte-exact while a new origin-bound local v2 succeeds
+  ---
+  duration_ms: 1989.568625
+  type: 'test'
+  ...
+# Subtest: v2 read guards fail closed for malformed relational identities and corrupted immutable receipt fields
+    # Subtest: row id
+    ok 1 - row id
+      ---
+      duration_ms: 204.246916
+      type: 'test'
+      ...
+    # Subtest: row project
+    ok 2 - row project
+      ---
+      duration_ms: 207.385458
+      type: 'test'
+      ...
+    # Subtest: foreign row project
+    ok 3 - foreign row project
+      ---
+      duration_ms: 205.7955
+      type: 'test'
+      ...
+    # Subtest: row request
+    ok 4 - row request
+      ---
+      duration_ms: 197.848459
+      type: 'test'
+      ...
+    # Subtest: row request malformed
+    ok 5 - row request malformed
+      ---
+      duration_ms: 198.123041
+      type: 'test'
+      ...
+    # Subtest: receipt status
+    ok 6 - receipt status
+      ---
+      duration_ms: 212.616458
+      type: 'test'
+      ...
+    # Subtest: receipt attempt
+    ok 7 - receipt attempt
+      ---
+      duration_ms: 211.575458
+      type: 'test'
+      ...
+    # Subtest: receipt hash
+    ok 8 - receipt hash
+      ---
+      duration_ms: 203.532208
+      type: 'test'
+      ...
+    # Subtest: receipt JSON
+    ok 9 - receipt JSON
+      ---
+      duration_ms: 209.926542
+      type: 'test'
+      ...
+    1..9
+ok 11 - v2 read guards fail closed for malformed relational identities and corrupted immutable receipt fields
+  ---
+  duration_ms: 1852.599667
+  type: 'test'
+  ...
+# Subtest: late replacement after float measurement cannot publish the old attempt report or overwrite a newer failure
+ok 12 - late replacement after float measurement cannot publish the old attempt report or overwrite a newer failure
+  ---
+  duration_ms: 905.095666
+  type: 'test'
+  ...
+# Subtest: cancellation after a complete float check requeues without token/report and cleans the exact owned part
+ok 13 - cancellation after a complete float check requeues without token/report and cleans the exact owned part
+  ---
+  duration_ms: 1875.527792
+  type: 'test'
+  ...
+# Subtest: final AAC spawn failure retains the complete same-attempt within-limit report with no published output
+ok 14 - final AAC spawn failure retains the complete same-attempt within-limit report with no published output
+  ---
+  duration_ms: 1025.248125
+  type: 'test'
+  ...
+1..14
+# tests 38
+# suites 0
+# pass 37
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 16637.63225

@@ -1,0 +1,71 @@
+TAP version 13
+# Subtest: reviewed live-image boundary through actual local HTTP, strict client, CLI and official MCP
+    # Subtest: private routes require local authentication and reject wrong origin, methods, query, media type and body size
+    ok 1 - private routes require local authentication and reject wrong origin, methods, query, media type and body size
+      ---
+      duration_ms: 14.746417
+      type: 'test'
+      ...
+    # Subtest: session configuration is separate, contains no credential response, and direct live RPC stays denied
+    ok 2 - session configuration is separate, contains no credential response, and direct live RPC stays denied
+      ---
+      duration_ms: 26.598625
+      type: 'test'
+      ...
+    # Subtest: external clients prepare/read pending reviews without an approval tool or provider call
+    ok 3 - external clients prepare/read pending reviews without an approval tool or provider call
+      ---
+      duration_ms: 868.080166
+      type: 'test'
+      ...
+    # Subtest: project, revision and rejected-review substitution fail closed before any POST
+    ok 4 - project, revision and rejected-review substitution fail closed before any POST
+      ---
+      duration_ms: 10.788584
+      type: 'test'
+      ...
+    # Subtest: concurrent exact approval and later receipt replay create one task, one POST and one valid managed PNG
+    ok 5 - concurrent exact approval and later receipt replay create one task, one POST and one valid managed PNG
+      ---
+      duration_ms: 205.227125
+      type: 'test'
+      ...
+    # Subtest: a genuinely lost private approval response recovers the original request key without another POST
+    ok 6 - a genuinely lost private approval response recovers the original request key without another POST
+      ---
+      duration_ms: 244.988167
+      type: 'test'
+      ...
+    # Subtest: strict client rejects forged review data without retries or converting it into authorization
+    ok 7 - strict client rejects forged review data without retries or converting it into authorization
+      ---
+      duration_ms: 0.744458
+      type: 'test'
+      ...
+    # Subtest: restart before POST stops queued work, loses backend-session key and never auto-approves pending intent
+    ok 8 - restart before POST stops queued work, loses backend-session key and never auto-approves pending intent
+      ---
+      duration_ms: 418.574334
+      type: 'test'
+      ...
+    # Subtest: restart after POST preserves unknown result and consumed attempt; key replacement cannot refresh stale intent
+    ok 9 - restart after POST preserves unknown result and consumed attempt; key replacement cannot refresh stale intent
+      ---
+      duration_ms: 99.555084
+      type: 'test'
+      ...
+    1..9
+ok 1 - reviewed live-image boundary through actual local HTTP, strict client, CLI and official MCP
+  ---
+  duration_ms: 2594.958541
+  type: 'test'
+  ...
+1..1
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3025.803958

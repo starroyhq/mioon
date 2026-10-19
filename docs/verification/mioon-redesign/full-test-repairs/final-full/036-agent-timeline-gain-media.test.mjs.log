@@ -1,0 +1,16 @@
+TAP version 13
+# Subtest: reviewed Agent gain reaches real queued media and undo restores decoded audio
+ok 1 - reviewed Agent gain reaches real queued media and undo restores decoded audio
+  ---
+  duration_ms: 17041.616208
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 17377.548708

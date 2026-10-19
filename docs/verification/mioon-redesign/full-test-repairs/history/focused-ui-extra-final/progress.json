@@ -1,0 +1,9 @@
+{
+  "completedFiles": 6,
+  "totalFiles": 6,
+  "passedFiles": 5,
+  "failedFiles": 1,
+  "timeoutFiles": 0,
+  "seconds": 12.49,
+  "last": "tests/waveform-ui.test.mjs"
+}

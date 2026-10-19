@@ -1,0 +1,78 @@
+[
+  {
+    "path": "designs/00-design-system.pen",
+    "unchangedCopy": true
+  },
+  {
+    "path": "designs/00-design-system.png",
+    "unchangedCopy": true
+  },
+  {
+    "path": "designs/01-entry.pen",
+    "unchangedCopy": true
+  },
+  {
+    "path": "designs/01-entry.png",
+    "unchangedCopy": true
+  },
+  {
+    "path": "designs/02-canvas.pen",
+    "unchangedCopy": true
+  },
+  {
+    "path": "designs/02-canvas.png",
+    "unchangedCopy": true
+  },
+  {
+    "path": "designs/03-editing.pen",
+    "unchangedCopy": true
+  },
+  {
+    "path": "designs/03-editing.png",
+    "unchangedCopy": true
+  },
+  {
+    "path": "designs/04-export.pen",
+    "unchangedCopy": true
+  },
+  {
+    "path": "designs/04-export.png",
+    "unchangedCopy": true
+  },
+  {
+    "path": "designs/05-panels.pen",
+    "unchangedCopy": true
+  },
+  {
+    "path": "designs/05-panels.png",
+    "unchangedCopy": true
+  },
+  {
+    "path": "designs/06-compact.pen",
+    "unchangedCopy": true
+  },
+  {
+    "path": "designs/06-compact.png",
+    "unchangedCopy": true
+  },
+  {
+    "path": "designs/DESIGN-GUIDE.md",
+    "unchangedCopy": true
+  },
+  {
+    "path": "designs/IMPLEMENTATION-PLAN.md",
+    "unchangedCopy": true
+  },
+  {
+    "path": "designs/IMPLEMENTATION-PROMPT.md",
+    "unchangedCopy": true
+  },
+  {
+    "path": "designs/mioon-design.pen",
+    "unchangedCopy": true
+  },
+  {
+    "path": "designs/mioon-design.png",
+    "unchangedCopy": true
+  }
+]

@@ -1,0 +1,86 @@
+TAP version 13
+# Subtest: subject afterPreparePersist: process death retains intent but startup, observation and acknowledgement cannot dispatch
+ok 1 - subject afterPreparePersist: process death retains intent but startup, observation and acknowledgement cannot dispatch
+  ---
+  duration_ms: 2180.898083
+  type: 'test'
+  ...
+# afterPreparePersist: worker 34755 exited by SIGKILL before IPC reply
+# All 2 workers reaped: 34755, 34766
+# Subtest: subject afterClaim: process death retains intent but startup, observation and acknowledgement cannot dispatch
+ok 2 - subject afterClaim: process death retains intent but startup, observation and acknowledgement cannot dispatch
+  ---
+  duration_ms: 2196.818709
+  type: 'test'
+  ...
+# afterClaim: worker 34779 exited by SIGKILL before IPC reply
+# All 2 workers reaped: 34779, 34784
+# Subtest: subject afterBusinessCommit: lost process reply replays the original result after a newer head without a second create
+ok 3 - subject afterBusinessCommit: lost process reply replays the original result after a newer head without a second create
+  ---
+  duration_ms: 2086.696125
+  type: 'test'
+  ...
+# afterBusinessCommit: worker 34798 exited by SIGKILL before IPC reply
+# All 2 workers reaped: 34798, 34809
+# Subtest: subject beforeOutcomePersist: lost process reply replays the original result after a newer head without a second create
+ok 4 - subject beforeOutcomePersist: lost process reply replays the original result after a newer head without a second create
+  ---
+  duration_ms: 2795.03
+  type: 'test'
+  ...
+# beforeOutcomePersist: worker 34824 exited by SIGKILL before IPC reply
+# All 2 workers reaped: 34824, 34839
+# Subtest: subject afterOutcomePersist: lost process reply replays the original result after a newer head without a second create
+ok 5 - subject afterOutcomePersist: lost process reply replays the original result after a newer head without a second create
+  ---
+  duration_ms: 2677.30025
+  type: 'test'
+  ...
+# afterOutcomePersist: worker 34871 exited by SIGKILL before IPC reply
+# All 2 workers reaped: 34871, 34877
+# Subtest: subject acknowledgement committed before process death stays acknowledged without redispatch
+ok 6 - subject acknowledgement committed before process death stays acknowledged without redispatch
+  ---
+  duration_ms: 2327.903458
+  type: 'test'
+  ...
+# afterAcknowledge: worker 34897 exited by SIGKILL before IPC reply
+# All 2 workers reaped: 34897, 34904
+# Subtest: subject retained keys still conflict with changed input, project and subject operation after process restart
+ok 7 - subject retained keys still conflict with changed input, project and subject operation after process restart
+  ---
+  duration_ms: 2149.593459
+  type: 'test'
+  ...
+# All 2 workers reaped: 34928, 34932
+# Subtest: subject and node.create receipts keep their shared key reservation in both directions after restart
+ok 8 - subject and node.create receipts keep their shared key reservation in both directions after restart
+  ---
+  duration_ms: 3423.265458
+  type: 'test'
+  ...
+# All 3 workers reaped: 34952, 34958, 34982
+# Subtest: subject and asset.range.set receipts keep their shared key reservation in both directions after restart
+ok 9 - subject and asset.range.set receipts keep their shared key reservation in both directions after restart
+  ---
+  duration_ms: 3122.230667
+  type: 'test'
+  ...
+# All 3 workers reaped: 34998, 35006, 35009
+# Subtest: subject and asset.disposition.set receipts keep their shared key reservation in both directions after restart
+ok 10 - subject and asset.disposition.set receipts keep their shared key reservation in both directions after restart
+  ---
+  duration_ms: 3690.216541
+  type: 'test'
+  ...
+# All 3 workers reaped: 35042, 35080, 35136
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 27052.653791

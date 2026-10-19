@@ -1,0 +1,112 @@
+TAP version 13
+# Subtest: the durable allowlist includes the exact existing operations plus atomic loudness apply and ripple remove and preserves exclusions
+ok 1 - the durable allowlist includes the exact existing operations plus atomic loudness apply and ripple remove and preserves exclusions
+  ---
+  duration_ms: 2.142
+  type: 'test'
+  ...
+# Subtest: fresh edits prepare exact immutable input before execute, with no business RPC or renderer receipt
+ok 2 - fresh edits prepare exact immutable input before execute, with no business RPC or renderer receipt
+  ---
+  duration_ms: 8.790917
+  type: 'test'
+  ...
+# Subtest: lost prepare response survives full controller destruction and loads without execution
+ok 3 - lost prepare response survives full controller destruction and loads without execution
+  ---
+  duration_ms: 0.743584
+  type: 'test'
+  ...
+# Subtest: project or draft navigation during prepare leaves a recoverable task without dispatch
+ok 4 - project or draft navigation during prepare leaves a recoverable task without dispatch
+  ---
+  duration_ms: 0.248834
+  type: 'test'
+  ...
+# Subtest: navigation during explicit recovery lookup cannot initiate a delayed execute
+ok 5 - navigation during explicit recovery lookup cannot initiate a delayed execute
+  ---
+  duration_ms: 0.25575
+  type: 'test'
+  ...
+# Subtest: old preparation nonce is never replaced automatically after a backend restart
+ok 6 - old preparation nonce is never replaced automatically after a backend restart
+  ---
+  duration_ms: 0.437541
+  type: 'test'
+  ...
+# Subtest: unknown requests block new edits and recover their persisted parameters, never the current draft
+ok 7 - unknown requests block new edits and recover their persisted parameters, never the current draft
+  ---
+  duration_ms: 0.34125
+  type: 'test'
+  ...
+# Subtest: dispatching recovery is receipt-only and never blindly resubmits an active claim
+ok 8 - dispatching recovery is receipt-only and never blindly resubmits an active claim
+  ---
+  duration_ms: 0.251583
+  type: 'test'
+  ...
+# Subtest: stale list cannot resurrect acknowledged rows or downgrade an applied task
+ok 9 - stale list cannot resurrect acknowledged rows or downgrade an applied task
+  ---
+  duration_ms: 0.336083
+  type: 'test'
+  ...
+# Subtest: a stale GET cannot downgrade terminal outcome or clear a newer task in the same lane
+ok 10 - a stale GET cannot downgrade terminal outcome or clear a newer task in the same lane
+  ---
+  duration_ms: 0.34025
+  type: 'test'
+  ...
+# Subtest: malformed or wrongly bound 200 cannot clear recovery identity or accept an ACK
+ok 11 - malformed or wrongly bound 200 cannot clear recovery identity or accept an ACK
+  ---
+  duration_ms: 1.146834
+  type: 'test'
+  ...
+# Subtest: malformed fresh prepare never executes, and malformed execute never releases its task
+ok 12 - malformed fresh prepare never executes, and malformed execute never releases its task
+  ---
+  duration_ms: 0.246333
+  type: 'test'
+  ...
+# Subtest: loading, failing and truncated pagination cannot falsely declare an empty safe lane
+ok 13 - loading, failing and truncated pagination cannot falsely declare an empty safe lane
+  ---
+  duration_ms: 0.179792
+  type: 'test'
+  ...
+# Subtest: pagination loads all valid pages once and rejects repeated cursors or changed server lifetime
+ok 14 - pagination loads all valid pages once and rejects repeated cursors or changed server lifetime
+  ---
+  duration_ms: 0.172625
+  type: 'test'
+  ...
+# Subtest: obsolete load completion cannot replace a newer project refresh or hide a known unknown
+ok 15 - obsolete load completion cannot replace a newer project refresh or hide a known unknown
+  ---
+  duration_ms: 0.103667
+  type: 'test'
+  ...
+# Subtest: legacy adoption is explicit metadata-only, exact input and original request ID retained
+ok 16 - legacy adoption is explicit metadata-only, exact input and original request ID retained
+  ---
+  duration_ms: 0.155083
+  type: 'test'
+  ...
+# Subtest: task HTTP uses the authenticated UI endpoint, validates every 200 and never retries a POST
+ok 17 - task HTTP uses the authenticated UI endpoint, validates every 200 and never retries a POST
+  ---
+  duration_ms: 0.544208
+  type: 'test'
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 289.303708

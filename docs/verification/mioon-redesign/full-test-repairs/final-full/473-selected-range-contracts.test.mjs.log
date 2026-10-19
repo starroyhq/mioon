@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: range syntax is strict, integer, nonempty, export-only and preserves legacy omission
+ok 1 - range syntax is strict, integer, nonempty, export-only and preserves legacy omission
+  ---
+  duration_ms: 5.500167
+  type: 'test'
+  ...
+# Subtest: frozen range validates its own full composition and binds exact caller presence/value
+ok 2 - frozen range validates its own full composition and binds exact caller presence/value
+  ---
+  duration_ms: 11.110458
+  type: 'test'
+  ...
+# Subtest: syntax projection never checks the current timeline, while output length requires a valid frozen clock
+ok 3 - syntax projection never checks the current timeline, while output length requires a valid frozen clock
+  ---
+  duration_ms: 0.448167
+  type: 'test'
+  ...
+# Subtest: preflight summaries retain full duration while exact range participates in every non-null binding
+ok 4 - preflight summaries retain full duration while exact range participates in every non-null binding
+  ---
+  duration_ms: 4.807584
+  type: 'test'
+  ...
+# Subtest: receipt reconstruction and bounded SQL distinguish range-only records including removed current fields
+ok 5 - receipt reconstruction and bounded SQL distinguish range-only records including removed current fields
+  ---
+  duration_ms: 2.288875
+  type: 'test'
+  ...
+# Subtest: local delivery version1 keeps exact ranged input identity and property order without expanding title drafts
+ok 6 - local delivery version1 keeps exact ranged input identity and property order without expanding title drafts
+  ---
+  duration_ms: 2.964125
+  type: 'test'
+  ...
+# Subtest: only strict fresh range-bounds or capability rejection proofs release the exact export key
+ok 7 - only strict fresh range-bounds or capability rejection proofs release the exact export key
+  ---
+  duration_ms: 0.759792
+  type: 'test'
+  ...
+# Subtest: global discovery stays exhaustive and range belongs only to the two existing operations
+ok 8 - global discovery stays exhaustive and range belongs only to the two existing operations
+  ---
+  duration_ms: 10.947959
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 338.899583

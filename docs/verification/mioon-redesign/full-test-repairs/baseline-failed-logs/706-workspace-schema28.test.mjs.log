@@ -1,0 +1,282 @@
+TAP version 13
+# Subtest: 26 to28 is additive and preserves independent ordinary-24 records and catalog
+ok 1 - 26 to28 is additive and preserves independent ordinary-24 records and catalog
+  ---
+  duration_ms: 66.668333
+  type: 'test'
+  ...
+# Subtest: 26 to28 is additive and preserves independent ordinary-24-seeded records and catalog
+not ok 2 - 26 to28 is additive and preserves independent ordinary-24-seeded records and catalog
+  ---
+  duration_ms: 4.187542
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema28.test.mjs:60:104'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema28.test.mjs:25:13)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema28.test.mjs:61:11)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: 26 to28 is additive and preserves independent ordinary-24-mock records and catalog
+ok 3 - 26 to28 is additive and preserves independent ordinary-24-mock records and catalog
+  ---
+  duration_ms: 56.814459
+  type: 'test'
+  ...
+# Subtest: 26 to28 is additive and preserves independent ordinary-24-mock-seeded records and catalog
+not ok 4 - 26 to28 is additive and preserves independent ordinary-24-mock-seeded records and catalog
+  ---
+  duration_ms: 4.034625
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema28.test.mjs:60:104'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema28.test.mjs:25:13)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema28.test.mjs:61:11)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: 26 to28 preserves unrelated custom SQL and bytes, while fixed restore refuses its unknown catalog
+ok 5 - 26 to28 preserves unrelated custom SQL and bytes, while fixed restore refuses its unknown catalog
+  ---
+  duration_ms: 164.577
+  type: 'test'
+  ...
+# Subtest: 26 to28 rolls back every logical effect on injected failure after tables
+ok 6 - 26 to28 rolls back every logical effect on injected failure after tables
+  ---
+  duration_ms: 72.852208
+  type: 'test'
+  ...
+# Subtest: 26 to28 rolls back every logical effect on injected failure after marker
+ok 7 - 26 to28 rolls back every logical effect on injected failure after marker
+  ---
+  duration_ms: 71.348791
+  type: 'test'
+  ...
+# Subtest: 26 to28 rolls back every logical effect on injected failure before commit
+ok 8 - 26 to28 rolls back every logical effect on injected failure before commit
+  ---
+  duration_ms: 75.610958
+  type: 'test'
+  ...
+# Subtest: schema28 rejects collisions and imported execution before writes: CREATE TABLE project_lut_resources(value)
+ok 9 - schema28 rejects collisions and imported execution before writes: CREATE TABLE project_lut_resources(value)
+  ---
+  duration_ms: 57.35775
+  type: 'test'
+  ...
+# Subtest: schema28 rejects collisions and imported execution before writes: CREATE TABLE immutable_lut_import_requests(value)
+ok 10 - schema28 rejects collisions and imported execution before writes: CREATE TABLE immutable_lut_import_requests(value)
+  ---
+  duration_ms: 57.244417
+  type: 'test'
+  ...
+# Subtest: schema28 rejects collisions and imported execution before writes: CREATE TEMP TABLE project_lut_resources(value)
+ok 11 - schema28 rejects collisions and imported execution before writes: CREATE TEMP TABLE project_lut_resources(value)
+  ---
+  duration_ms: 59.43675
+  type: 'test'
+  ...
+# Subtest: schema28 rejects collisions and imported execution before writes: CREATE TRIGGER imported_marker BEFORE INSERT ON schema_version BEGIN UPDATE projects SET data='changed';END
+ok 12 - schema28 rejects collisions and imported execution before writes: CREATE TRIGGER imported_marker BEFORE INSERT ON schema_version BEGIN UPDATE projects SET data='changed';END
+  ---
+  duration_ms: 57.4205
+  type: 'test'
+  ...
+# Subtest: dispatcher never commits old receipt repair before rejecting an ordinary26 LUT-name collision
+ok 13 - dispatcher never commits old receipt repair before rejecting an ordinary26 LUT-name collision
+  ---
+  duration_ms: 56.348041
+  type: 'test'
+  ...
+# Subtest: LUT evidence cannot enter historical missing-marker repair: DELETE FROM schema_version WHERE version=28
+ok 14 - LUT evidence cannot enter historical missing-marker repair: DELETE FROM schema_version WHERE version=28
+  ---
+  duration_ms: 65.89875
+  type: 'test'
+  ...
+# Subtest: LUT evidence cannot enter historical missing-marker repair: DELETE FROM schema_version WHERE version=26
+ok 15 - LUT evidence cannot enter historical missing-marker repair: DELETE FROM schema_version WHERE version=26
+  ---
+  duration_ms: 64.6005
+  type: 'test'
+  ...
+# Subtest: LUT evidence cannot enter historical missing-marker repair: DELETE FROM schema_version
+ok 16 - LUT evidence cannot enter historical missing-marker repair: DELETE FROM schema_version
+  ---
+  duration_ms: 67.673917
+  type: 'test'
+  ...
+# Subtest: LUT evidence cannot enter historical missing-marker repair: DROP TABLE schema_version
+ok 17 - LUT evidence cannot enter historical missing-marker repair: DROP TABLE schema_version
+  ---
+  duration_ms: 67.542792
+  type: 'test'
+  ...
+# Subtest: ordinary reopen uses metadata and receipts only, while explicit and backup gates remain byte-strict
+ok 18 - ordinary reopen uses metadata and receipts only, while explicit and backup gates remain byte-strict
+  ---
+  duration_ms: 92.26825
+  type: 'test'
+  ...
+# Subtest: metadata-only startup still fails closed on receipt mismatch
+ok 19 - metadata-only startup still fails closed on receipt mismatch
+  ---
+  duration_ms: 74.783
+  type: 'test'
+  ...
+# Subtest: metadata-only startup still fails closed on invalid semantic metadata
+ok 20 - metadata-only startup still fails closed on invalid semantic metadata
+  ---
+  duration_ms: 70.9145
+  type: 'test'
+  ...
+# Subtest: new pair contracts accept exactly24/25,26/27,28/29,30/31 32/33 and34/35, never numerical neighbors or cross-pairs
+not ok 21 - new pair contracts accept exactly24/25,26/27,28/29,30/31 32/33 and34/35, never numerical neighbors or cross-pairs
+  ---
+  duration_ms: 1.087
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema28.test.mjs:127:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    true !== false
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: false
+  actual: true
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema28.test.mjs:129:60)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restore29 holds exact LUT bytes, raw metadata, receipt and rowids; new imports stay unavailable
+ok 22 - restore29 holds exact LUT bytes, raw metadata, receipt and rowids; new imports stay unavailable
+  ---
+  duration_ms: 401.298375
+  type: 'test'
+  ...
+# Subtest: frozen source24/restore25 and source26/restore27 classifiers refuse28 without writes
+ok 23 - frozen source24/restore25 and source26/restore27 classifiers refuse28 without writes
+  ---
+  duration_ms: 76.259875
+  type: 'test'
+  ...
+# Subtest: restore29 revalidation does not trust exact schema alone after captured bytes change
+ok 24 - restore29 revalidation does not trust exact schema alone after captured bytes change
+  ---
+  duration_ms: 96.841208
+  type: 'test'
+  ...
+# Subtest: restore29 preserves all independent inherited raw rows as well as LUTs: ordinary-24-seeded
+not ok 25 - restore29 preserves all independent inherited raw rows as well as LUTs: ordinary-24-seeded
+  ---
+  duration_ms: 3.644292
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema28.test.mjs:167:71'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema28.test.mjs:25:13)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema28.test.mjs:168:11)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restore29 preserves all independent inherited raw rows as well as LUTs: ordinary-24-mock-seeded
+not ok 26 - restore29 preserves all independent inherited raw rows as well as LUTs: ordinary-24-mock-seeded
+  ---
+  duration_ms: 3.612167
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema28.test.mjs:167:71'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema28.test.mjs:25:13)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema28.test.mjs:168:11)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restore29 rolls back source and LUT evidence on interruption after metadata
+ok 27 - restore29 rolls back source and LUT evidence on interruption after metadata
+  ---
+  duration_ms: 106.025083
+  type: 'test'
+  ...
+# Subtest: restore29 rolls back source and LUT evidence on interruption before commit
+ok 28 - restore29 rolls back source and LUT evidence on interruption before commit
+  ---
+  duration_ms: 120.897875
+  type: 'test'
+  ...
+# Subtest: new29 profile cannot reinterpret historical source24
+ok 29 - new29 profile cannot reinterpret historical source24
+  ---
+  duration_ms: 46.870875
+  type: 'test'
+  ...
+# Subtest: new29 profile cannot reinterpret historical source26
+ok 30 - new29 profile cannot reinterpret historical source26
+  ---
+  duration_ms: 58.010458
+  type: 'test'
+  ...
+# Subtest: current dispatcher preserves historical restored25 without adding LUT schema
+ok 31 - current dispatcher preserves historical restored25 without adding LUT schema
+  ---
+  duration_ms: 83.72025
+  type: 'test'
+  ...
+# Subtest: current dispatcher preserves historical restored27 without adding LUT schema
+ok 32 - current dispatcher preserves historical restored27 without adding LUT schema
+  ---
+  duration_ms: 166.280542
+  type: 'test'
+  ...
+1..32
+# tests 32
+# suites 0
+# pass 27
+# fail 5
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2723.582042

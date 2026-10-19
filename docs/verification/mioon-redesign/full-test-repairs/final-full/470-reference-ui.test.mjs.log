@@ -1,0 +1,76 @@
+TAP version 13
+# Subtest: only project-owned image nodes with a matching image asset offer first-frame binding
+ok 1 - only project-owned image nodes with a matching image asset offer first-frame binding
+  ---
+  duration_ms: 0.945125
+  type: 'test'
+  ...
+# Subtest: manual references, including the same image, must be explicitly cleared and saved
+ok 2 - manual references, including the same image, must be explicitly cleared and saved
+  ---
+  duration_ms: 0.539125
+  type: 'test'
+  ...
+# Subtest: typed connection lookup ignores decorative edges and explains duplicate or occupied targets
+ok 3 - typed connection lookup ignores decorative edges and explains duplicate or occupied targets
+  ---
+  duration_ms: 0.127208
+  type: 'test'
+  ...
+# Subtest: semantic and visual edges use separate labelled handles even with identical endpoints
+ok 4 - semantic and visual edges use separate labelled handles even with identical endpoints
+  ---
+  duration_ms: 0.527458
+  type: 'test'
+  ...
+# Subtest: attached reference forces image mode while retaining the selected provider and model
+ok 5 - attached reference forces image mode while retaining the selected provider and model
+  ---
+  duration_ms: 0.559709
+  type: 'test'
+  ...
+# Subtest: reference.attach persists and replays the original operation, revisions and request ID
+ok 6 - reference.attach persists and replays the original operation, revisions and request ID
+  ---
+  duration_ms: 0.91875
+  type: 'test'
+  ...
+# Subtest: reference.attach cannot be reconciled by a coincident job/export ID or a changed project graph
+ok 7 - reference.attach cannot be reconciled by a coincident job/export ID or a changed project graph
+  ---
+  duration_ms: 0.277291
+  type: 'test'
+  ...
+# Subtest: reference.detach persists and replays the original operation, revisions and request ID
+ok 8 - reference.detach persists and replays the original operation, revisions and request ID
+  ---
+  duration_ms: 0.17225
+  type: 'test'
+  ...
+# Subtest: reference.detach cannot be reconciled by a coincident job/export ID or a changed project graph
+ok 9 - reference.detach cannot be reconciled by a coincident job/export ID or a changed project graph
+  ---
+  duration_ms: 0.12425
+  type: 'test'
+  ...
+# Subtest: reference pending guards are specific and remain isolated by project
+ok 10 - reference pending guards are specific and remain isolated by project
+  ---
+  duration_ms: 0.145708
+  type: 'test'
+  ...
+# Subtest: unavailable durable storage prevents dispatching a connection mutation
+ok 11 - unavailable durable storage prevents dispatching a connection mutation
+  ---
+  duration_ms: 0.280875
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 332.449209

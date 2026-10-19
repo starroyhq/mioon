@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: backup explicit locale translates only help prose and preserves legacy help/version
+ok 1 - backup explicit locale translates only help prose and preserves legacy help/version
+  ---
+  duration_ms: 3777.758166
+  type: 'test'
+  ...
+# Subtest: backup parser does not forward locale; only a valid encountered locale affects safe stderr
+ok 2 - backup parser does not forward locale; only a valid encountered locale affects safe stderr
+  ---
+  duration_ms: 6710.9595
+  type: 'test'
+  ...
+# Subtest: MCP launch errors retain validated locale without touching stdout or legacy diagnostics
+ok 3 - MCP launch errors retain validated locale without touching stdout or legacy diagnostics
+  ---
+  duration_ms: 6245.79525
+  type: 'test'
+  ...
+# Subtest: MCP injected stdio startup failure is fixed safe copy in all locales, never raw exception
+ok 4 - MCP injected stdio startup failure is fixed safe copy in all locales, never raw exception
+  ---
+  duration_ms: 1547.661958
+  type: 'test'
+  ...
+# Subtest: backup fixed code diagnostics are exhaustive and machine error, cleanup, provenance remain English
+ok 5 - backup fixed code diagnostics are exhaustive and machine error, cleanup, provenance remain English
+  ---
+  duration_ms: 1267.681
+  type: 'test'
+  ...
+# Subtest: backup restored publication provenance and unknown error fallback never depend on locale
+ok 6 - backup restored publication provenance and unknown error fallback never depend on locale
+  ---
+  duration_ms: 2067.3035
+  type: 'test'
+  ...
+# Subtest: locale never changes backup parser error precedence for mixed modes or malformed help
+ok 7 - locale never changes backup parser error precedence for mixed modes or malformed help
+  ---
+  duration_ms: 1042.138083
+  type: 'test'
+  ...
+# Subtest: backup locale is rejected inside every business flag/value pair before dispatch
+ok 8 - backup locale is rejected inside every business flag/value pair before dispatch
+  ---
+  duration_ms: 3.342792
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 22888.100375

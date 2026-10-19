@@ -1,0 +1,292 @@
+TAP version 13
+# Subtest: mock advertises simulated portrait 2/4/8 second outputs
+ok 1 - mock advertises simulated portrait 2/4/8 second outputs
+  ---
+  duration_ms: 7.425375
+  type: 'test'
+  ...
+# Subtest: accepted then response lost persists the remote record before throwing and reconciles after restart
+not ok 2 - accepted then response lost persists the remote record before throwing and reconciles after restart
+  ---
+  duration_ms: 48.458458
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/providers.test.mjs:53:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'failed'
+    - 'succeeded'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'succeeded'
+  actual: 'failed'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/providers.test.mjs:65:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: mock audit counts duplicate submit attempts independently of one accepted task
+ok 3 - mock audit counts duplicate submit attempts independently of one accepted task
+  ---
+  duration_ms: 4.225084
+  type: 'test'
+  ...
+# Subtest: unknown and rejected submission are distinct and reconciliation does not submit
+ok 4 - unknown and rejected submission are distinct and reconciliation does not submit
+  ---
+  duration_ms: 3.08425
+  type: 'test'
+  ...
+# Subtest: mock delay, failure, timeout and remote cancellation are deterministic
+not ok 5 - mock delay, failure, timeout and remote cancellation are deterministic
+  ---
+  duration_ms: 35.287167
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/providers.test.mjs:88:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'failed'
+    - 'succeeded'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'succeeded'
+  actual: 'failed'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/providers.test.mjs:94:24)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: mock download failure is recoverable without another generation submit
+not ok 6 - mock download failure is recoverable without another generation submit
+  ---
+  duration_ms: 66.9515
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/providers.test.mjs:104:1'
+  failureType: 'testCodeFailure'
+  error: '当前 FFmpeg 缺少 drawtext 滤镜（需要 libfreetype），无法生成模拟视频。请换用包含该滤镜的构建（例如 Homebrew 的 ffmpeg-full），再重新选择 ffmpeg 与 ffprobe。'
+  code: 'MOCK_RENDERER_UNSUPPORTED'
+  stack: |-
+    error (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/providers/mock.mjs:11:59)
+    runFfmpeg (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/providers/mock.mjs:36:131)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async Object.download (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/providers/mock.mjs:175:9)
+    async TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/providers.test.mjs:109:18)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: mock produces playable 9:16 moving MP4s of all advertised durations with simulated labeling
+not ok 7 - mock produces playable 9:16 moving MP4s of all advertised durations with simulated labeling
+  ---
+  duration_ms: 67.376458
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/providers.test.mjs:115:1'
+  failureType: 'testCodeFailure'
+  error: '当前 FFmpeg 缺少 drawtext 滤镜（需要 libfreetype），无法生成模拟视频。请换用包含该滤镜的构建（例如 Homebrew 的 ffmpeg-full），再重新选择 ffmpeg 与 ffprobe。'
+  code: 'MOCK_RENDERER_UNSUPPORTED'
+  stack: |-
+    error (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/providers/mock.mjs:11:59)
+    runFfmpeg (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/providers/mock.mjs:36:131)
+    async Object.download (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/providers/mock.mjs:175:9)
+    async TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/providers.test.mjs:120:5)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: mock rejects unsupported capabilities and unsafe output paths
+ok 8 - mock rejects unsupported capabilities and unsafe output paths
+  ---
+  duration_ms: 3.490709
+  type: 'test'
+  ...
+# Subtest: Runway is disabled by default and construction never fetches
+ok 9 - Runway is disabled by default and construction never fetches
+  ---
+  duration_ms: 2.304333
+  type: 'test'
+  ...
+# Subtest: Runway sends exactly one documented POST with approved data URI, server auth, ratio and seed
+ok 10 - Runway sends exactly one documented POST with approved data URI, server auth, ratio and seed
+  ---
+  duration_ms: 13.511375
+  type: 'test'
+  ...
+# Subtest: Runway network error never retries POST or leaks raw response
+ok 11 - Runway network error never retries POST or leaks raw response
+  ---
+  duration_ms: 2.06925
+  type: 'test'
+  ...
+# Subtest: Runway HTTP 500 never retries POST or leaks raw response
+ok 12 - Runway HTTP 500 never retries POST or leaks raw response
+  ---
+  duration_ms: 1.618125
+  type: 'test'
+  ...
+# Subtest: Runway HTTP 408 never retries POST or leaks raw response
+ok 13 - Runway HTTP 408 never retries POST or leaks raw response
+  ---
+  duration_ms: 1.022084
+  type: 'test'
+  ...
+# Subtest: Runway HTTP 429 never retries POST or leaks raw response
+ok 14 - Runway HTTP 429 never retries POST or leaks raw response
+  ---
+  duration_ms: 1.196292
+  type: 'test'
+  ...
+# Subtest: Runway HTTP 400 never retries POST or leaks raw response
+ok 15 - Runway HTTP 400 never retries POST or leaks raw response
+  ---
+  duration_ms: 1.008041
+  type: 'test'
+  ...
+# Subtest: Runway unreadable success never retries POST or leaks raw response
+ok 16 - Runway unreadable success never retries POST or leaks raw response
+  ---
+  duration_ms: 1.121791
+  type: 'test'
+  ...
+# Subtest: Runway success missing task id never retries POST or leaks raw response
+ok 17 - Runway success missing task id never retries POST or leaks raw response
+  ---
+  duration_ms: 8.916083
+  type: 'test'
+  ...
+# Subtest: Runway enforces asset approval, managed paths, checksums and encoded size before fetch
+ok 18 - Runway enforces asset approval, managed paths, checksums and encoded size before fetch
+  ---
+  duration_ms: 3.63925
+  type: 'test'
+  ...
+# Subtest: Runway rejects mutated valid image and arbitrary URLs without transmission
+ok 19 - Runway rejects mutated valid image and arbitrary URLs without transmission
+  ---
+  duration_ms: 1.226458
+  type: 'test'
+  ...
+# Subtest: Runway capability and parameter validation runs before a paid POST
+ok 20 - Runway capability and parameter validation runs before a paid POST
+  ---
+  duration_ms: 0.918666
+  type: 'test'
+  ...
+# Subtest: Runway maps task states, clamps progress, caches five seconds, and sanitizes failure
+ok 21 - Runway maps task states, clamps progress, caches five seconds, and sanitizes failure
+  ---
+  duration_ms: 1.724625
+  type: 'test'
+  ...
+# Subtest: Runway known task transient polling failure is retryable and malformed task IDs never fetch
+ok 22 - Runway known task transient polling failure is retryable and malformed task IDs never fetch
+  ---
+  duration_ms: 1.125625
+  type: 'test'
+  ...
+# Subtest: Runway cancellation is truthful local-only and never uses destructive DELETE
+ok 23 - Runway cancellation is truthful local-only and never uses destructive DELETE
+  ---
+  duration_ms: 0.850709
+  type: 'test'
+  ...
+# Subtest: Runway downloads a playable output to managed storage without forwarding auth or signed URLs
+not ok 24 - Runway downloads a playable output to managed storage without forwarding auth or signed URLs
+  ---
+  duration_ms: 69.358333
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/providers.test.mjs:250:1'
+  failureType: 'testCodeFailure'
+  error: '当前 FFmpeg 缺少 drawtext 滤镜（需要 libfreetype），无法生成模拟视频。请换用包含该滤镜的构建（例如 Homebrew 的 ffmpeg-full），再重新选择 ffmpeg 与 ffprobe。'
+  code: 'MOCK_RENDERER_UNSUPPORTED'
+  stack: |-
+    error (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/providers/mock.mjs:11:59)
+    runFfmpeg (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/providers/mock.mjs:36:131)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async Object.download (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/providers/mock.mjs:175:9)
+    async TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/providers.test.mjs:253:51)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: Runway blocks unsafe output URL dnznrvs05pmza.cloudfront.net
+ok 25 - Runway blocks unsafe output URL dnznrvs05pmza.cloudfront.net
+  ---
+  duration_ms: 1.471167
+  type: 'test'
+  ...
+# Subtest: Runway blocks unsafe output URL localhost
+ok 26 - Runway blocks unsafe output URL localhost
+  ---
+  duration_ms: 1.171583
+  type: 'test'
+  ...
+# Subtest: Runway blocks unsafe output URL 169.254.169.254
+ok 27 - Runway blocks unsafe output URL 169.254.169.254
+  ---
+  duration_ms: 1.125167
+  type: 'test'
+  ...
+# Subtest: Runway blocks unsafe output URL dnznrvs05pmza.cloudfront.net.evil.test
+ok 28 - Runway blocks unsafe output URL dnznrvs05pmza.cloudfront.net.evil.test
+  ---
+  duration_ms: 0.743541
+  type: 'test'
+  ...
+# Subtest: Runway blocks unsafe output URL dnznrvs05pmza.cloudfront.net
+ok 29 - Runway blocks unsafe output URL dnznrvs05pmza.cloudfront.net
+  ---
+  duration_ms: 0.723917
+  type: 'test'
+  ...
+# Subtest: Runway rejects malformed media and cleans partial files
+ok 30 - Runway rejects malformed media and cleans partial files
+  ---
+  duration_ms: 3.059875
+  type: 'test'
+  ...
+# Subtest: mock recoverable timeout and rejection/failure aliases use the same durable ledger
+not ok 31 - mock recoverable timeout and rejection/failure aliases use the same durable ledger
+  ---
+  duration_ms: 36.97875
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/providers.test.mjs:276:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'failed'
+    - 'succeeded'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'succeeded'
+  actual: 'failed'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/providers.test.mjs:283:10)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: Runway expired download is refreshed by task ID with no second POST
+ok 32 - Runway expired download is refreshed by task ID with no second POST
+  ---
+  duration_ms: 6.991375
+  type: 'test'
+  ...
+1..32
+# tests 32
+# suites 0
+# pass 26
+# fail 6
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 607.609666

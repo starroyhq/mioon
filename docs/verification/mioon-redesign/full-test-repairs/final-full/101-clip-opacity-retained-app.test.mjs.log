@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: actual App installs the same retained-input guard before descendant key, click and submit handlers
+ok 1 - actual App installs the same retained-input guard before descendant key, click and submit handlers
+  ---
+  duration_ms: 0.490959
+  type: 'test'
+  ...
+# Subtest: actual App ancestor preserves native Enter during retained disconnected opacity composition in 42
+ok 2 - actual App ancestor preserves native Enter during retained disconnected opacity composition in 42
+  ---
+  duration_ms: 31.968541
+  type: 'test'
+  ...
+# Subtest: actual App ancestor preserves native Escape during retained disconnected opacity composition in 42
+ok 3 - actual App ancestor preserves native Escape during retained disconnected opacity composition in 42
+  ---
+  duration_ms: 4.485792
+  type: 'test'
+  ...
+# Subtest: actual App ancestor preserves native Enter during retained disconnected opacity composition in 43 memory fallback
+ok 4 - actual App ancestor preserves native Enter during retained disconnected opacity composition in 43 memory fallback
+  ---
+  duration_ms: 2.812666
+  type: 'test'
+  ...
+# Subtest: actual App ancestor preserves native Escape during retained disconnected opacity composition in 43 memory fallback
+ok 5 - actual App ancestor preserves native Escape during retained disconnected opacity composition in 43 memory fallback
+  ---
+  duration_ms: 2.730167
+  type: 'test'
+  ...
+# Subtest: actual App ancestor preserves native Enter during retained disconnected opacity composition in 43 persisted
+ok 6 - actual App ancestor preserves native Enter during retained disconnected opacity composition in 43 persisted
+  ---
+  duration_ms: 3.557917
+  type: 'test'
+  ...
+# Subtest: actual App ancestor preserves native Escape during retained disconnected opacity composition in 43 persisted
+ok 7 - actual App ancestor preserves native Escape during retained disconnected opacity composition in 43 persisted
+  ---
+  duration_ms: 3.701416
+  type: 'test'
+  ...
+# Subtest: actual App retained gate continues allowing volume input and explicit abandonment while blocking unrelated actions
+ok 8 - actual App retained gate continues allowing volume input and explicit abandonment while blocking unrelated actions
+  ---
+  duration_ms: 0.141083
+  type: 'test'
+  ...
+# Subtest: actual App guard does not intercept ordinary interaction without a blocked retained owner
+ok 9 - actual App guard does not intercept ordinary interaction without a blocked retained owner
+  ---
+  duration_ms: 0.060667
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 384.282166

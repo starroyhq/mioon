@@ -1,0 +1,29 @@
+TAP version 13
+# Subtest: real HTTP RPC, CLI and official MCP expose the same strict read-only continuous plan and authenticated mixed PCM
+    # Subtest: the real service facade keeps V1 busy until the continuous session retires
+    ok 1 - the real service facade keeps V1 busy until the continuous session retires
+      ---
+      duration_ms: 2.243042
+      type: 'test'
+      ...
+    # Subtest: retirement reopens V1 with its original pre-gain and pre-fade PCM semantics
+    ok 2 - retirement reopens V1 with its original pre-gain and pre-fade PCM semantics
+      ---
+      duration_ms: 215.513291
+      type: 'test'
+      ...
+    1..2
+ok 1 - real HTTP RPC, CLI and official MCP expose the same strict read-only continuous plan and authenticated mixed PCM
+  ---
+  duration_ms: 1860.228875
+  type: 'test'
+  ...
+1..1
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2305.641292

@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: project-owned Look survives removed source file, cold reopen, render and restored33 backup
+not ok 1 - project-owned Look survives removed source file, cold reopen, render and restored33 backup
+  ---
+  duration_ms: 568.432583
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/look-pack-portability.test.mjs:14:38'
+  failureType: 'testCodeFailure'
+  error: |-
+    {"code":"MEDIA_EXIT_FAILED","message":"Local media tool failed.","retryable":true}
+    + actual - expected
+    
+    + 'failed'
+    - 'succeeded'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'succeeded'
+  actual: 'failed'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/look-pack-portability.test.mjs:43:89)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: project-owned Look survives removed source file, cold reopen, render and restored35 backup
+not ok 2 - project-owned Look survives removed source file, cold reopen, render and restored35 backup
+  ---
+  duration_ms: 381.411458
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/look-pack-portability.test.mjs:14:38'
+  failureType: 'testCodeFailure'
+  error: |-
+    {"code":"MEDIA_EXIT_FAILED","message":"Local media tool failed.","retryable":true}
+    + actual - expected
+    
+    + 'failed'
+    - 'succeeded'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'succeeded'
+  actual: 'failed'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/look-pack-portability.test.mjs:43:89)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 0
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1440.139

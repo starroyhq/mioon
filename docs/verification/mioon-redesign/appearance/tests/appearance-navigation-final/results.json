@@ -1,0 +1,27 @@
+[
+  {
+    "file": "user-flow-navigation.test.mjs",
+    "code": 0,
+    "seconds": 0.43
+  },
+  {
+    "file": "workspace-panel-intent.test.mjs",
+    "code": 0,
+    "seconds": 0.33
+  },
+  {
+    "file": "task-center-app.test.mjs",
+    "code": 0,
+    "seconds": 0.33
+  },
+  {
+    "file": "ui-appearance.test.mjs",
+    "code": 0,
+    "seconds": 0.33
+  },
+  {
+    "file": "settings-appearance.test.mjs",
+    "code": 0,
+    "seconds": 0.37
+  }
+]

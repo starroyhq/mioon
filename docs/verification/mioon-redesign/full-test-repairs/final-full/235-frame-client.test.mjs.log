@@ -1,0 +1,118 @@
+TAP version 13
+# Subtest: frame.extract: strict historical acknowledgement retains exact input and only explicit replay sends again
+ok 1 - frame.extract: strict historical acknowledgement retains exact input and only explicit replay sends again
+  ---
+  duration_ms: 3.673541
+  type: 'test'
+  ...
+# Subtest: frame.extract: malformed 200 acknowledgements retain caller identity without normalization
+ok 2 - frame.extract: malformed 200 acknowledgements retain caller identity without normalization
+  ---
+  duration_ms: 3.883542
+  type: 'test'
+  ...
+# Subtest: frame.extract: lost/truncated/malformed transport never retries or replaces the original key
+ok 3 - frame.extract: lost/truncated/malformed transport never retries or replaces the original key
+  ---
+  duration_ms: 2.457167
+  type: 'test'
+  ...
+# Subtest: frame.extract: only exact code/status/operation/project/key/input-hash refusal proof resolves uncertainty
+ok 4 - frame.extract: only exact code/status/operation/project/key/input-hash refusal proof resolves uncertainty
+  ---
+  duration_ms: 21.763375
+  type: 'test'
+  ...
+# Subtest: frame.task.cancelQueued: strict historical acknowledgement retains exact input and only explicit replay sends again
+ok 5 - frame.task.cancelQueued: strict historical acknowledgement retains exact input and only explicit replay sends again
+  ---
+  duration_ms: 0.628916
+  type: 'test'
+  ...
+# Subtest: frame.task.cancelQueued: malformed 200 acknowledgements retain caller identity without normalization
+ok 6 - frame.task.cancelQueued: malformed 200 acknowledgements retain caller identity without normalization
+  ---
+  duration_ms: 5.337709
+  type: 'test'
+  ...
+# Subtest: frame.task.cancelQueued: lost/truncated/malformed transport never retries or replaces the original key
+ok 7 - frame.task.cancelQueued: lost/truncated/malformed transport never retries or replaces the original key
+  ---
+  duration_ms: 1.49075
+  type: 'test'
+  ...
+# Subtest: frame.task.cancelQueued: only exact code/status/operation/project/key/input-hash refusal proof resolves uncertainty
+ok 8 - frame.task.cancelQueued: only exact code/status/operation/project/key/input-hash refusal proof resolves uncertainty
+  ---
+  duration_ms: 3.51025
+  type: 'test'
+  ...
+# Subtest: frame.task.recoverResult: strict historical acknowledgement retains exact input and only explicit replay sends again
+ok 9 - frame.task.recoverResult: strict historical acknowledgement retains exact input and only explicit replay sends again
+  ---
+  duration_ms: 0.325042
+  type: 'test'
+  ...
+# Subtest: frame.task.recoverResult: malformed 200 acknowledgements retain caller identity without normalization
+ok 10 - frame.task.recoverResult: malformed 200 acknowledgements retain caller identity without normalization
+  ---
+  duration_ms: 5.531625
+  type: 'test'
+  ...
+# Subtest: frame.task.recoverResult: lost/truncated/malformed transport never retries or replaces the original key
+ok 11 - frame.task.recoverResult: lost/truncated/malformed transport never retries or replaces the original key
+  ---
+  duration_ms: 0.970458
+  type: 'test'
+  ...
+# Subtest: frame.task.recoverResult: only exact code/status/operation/project/key/input-hash refusal proof resolves uncertainty
+ok 12 - frame.task.recoverResult: only exact code/status/operation/project/key/input-hash refusal proof resolves uncertainty
+  ---
+  duration_ms: 2.869334
+  type: 'test'
+  ...
+# Subtest: frame input rejects overrides and absent keys before transport and never creates a request ID
+ok 13 - frame input rejects overrides and absent keys before transport and never creates a request ID
+  ---
+  duration_ms: 0.671083
+  type: 'test'
+  ...
+# Subtest: frame abort after dispatch retains identity and does not send cancellation
+ok 14 - frame abort after dispatch retains identity and does not send cancellation
+  ---
+  duration_ms: 0.236834
+  type: 'test'
+  ...
+# Subtest: task reads bind project and target and validate strict result metadata
+ok 15 - task reads bind project and target and validate strict result metadata
+  ---
+  duration_ms: 6.279458
+  type: 'test'
+  ...
+# Subtest: request reads bind exact key/project and immutable operation acknowledgement without becoming writes
+ok 16 - request reads bind exact key/project and immutable operation acknowledgement without becoming writes
+  ---
+  duration_ms: 20.922208
+  type: 'test'
+  ...
+# Subtest: list reads reject foreign/duplicate/oversized items and malformed cursors without pagination writes
+ok 17 - list reads reject foreign/duplicate/oversized items and malformed cursors without pagination writes
+  ---
+  duration_ms: 3.085667
+  type: 'test'
+  ...
+# Subtest: read errors remove an unverified frame refusal marker and do not claim uncertain submission
+ok 18 - read errors remove an unverified frame refusal marker and do not claim uncertain submission
+  ---
+  duration_ms: 0.251209
+  type: 'test'
+  ...
+1..18
+# tests 18
+# suites 0
+# pass 18
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 392.058375

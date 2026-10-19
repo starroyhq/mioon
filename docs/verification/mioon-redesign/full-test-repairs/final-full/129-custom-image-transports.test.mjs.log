@@ -1,0 +1,88 @@
+TAP version 13
+# Subtest: custom Images isolation and one-attempt recovery through real local HTTP, CLI and official MCP
+    # Subtest: custom settings and private review actions require authentication; no public approval or settings operation exists
+    ok 1 - custom settings and private review actions require authentication; no public approval or settings operation exists
+      ---
+      duration_ms: 14.185708
+      type: 'test'
+      ...
+    # Subtest: official and Mock receipts and managed assets exist before custom-slot activation
+    ok 2 - official and Mock receipts and managed assets exist before custom-slot activation
+      ---
+      duration_ms: 497.40625
+      type: 'test'
+      ...
+    # Subtest: custom GET/save makes no DNS or provider POST and cannot consume or alter the official slot
+    ok 3 - custom GET/save makes no DNS or provider POST and cannot consume or alter the official slot
+      ---
+      duration_ms: 15.749834
+      type: 'test'
+      ...
+    # Subtest: CLI and official MCP can prepare/read immutable v2 reviews but cannot approve, reveal keys, or POST
+    ok 4 - CLI and official MCP can prepare/read immutable v2 reviews but cannot approve, reveal keys, or POST
+      ---
+      duration_ms: 1627.261958
+      type: 'test'
+      ...
+    # Subtest: private rejection and immutable same-key intent do not authorize a custom POST
+    ok 5 - private rejection and immutable same-key intent do not authorize a custom POST
+      ---
+      duration_ms: 12.887417
+      type: 'test'
+      ...
+    # Subtest: concurrent exact HTTP approvals reserve one task and send one custom-key POST to the exact prefix
+    ok 6 - concurrent exact HTTP approvals reserve one task and send one custom-key POST to the exact prefix
+      ---
+      duration_ms: 211.085875
+      type: 'test'
+      ...
+    # Subtest: dropped HTTP approval ACK is recovered by the original key and exact approval without another attempt
+    ok 7 - dropped HTTP approval ACK is recovered by the original key and exact approval without another attempt
+      ---
+      duration_ms: 225.000541
+      type: 'test'
+      ...
+    # Subtest: changing recipient or model cannot keep the original key or approve old pending intent
+    ok 8 - changing recipient or model cannot keep the original key or approve old pending intent
+      ---
+      duration_ms: 38.482
+      type: 'test'
+      ...
+    # Subtest: official and Mock task keys, original ACK bytes and assets survive custom configuration changes
+    ok 9 - official and Mock task keys, original ACK bytes and assets survive custom configuration changes
+      ---
+      duration_ms: 22.808125
+      type: 'test'
+      ...
+    # Subtest: strict client rejects malformed custom ACK and review identities over local HTTP without automatic retry
+    ok 10 - strict client rejects malformed custom ACK and review identities over local HTTP without automatic retry
+      ---
+      duration_ms: 7.722625
+      type: 'test'
+      ...
+    # Subtest: restart drops both session keys and retains pending and unknown custom work without re-POST or implicit approval
+    ok 11 - restart drops both session keys and retains pending and unknown custom work without re-POST or implicit approval
+      ---
+      duration_ms: 454.793958
+      type: 'test'
+      ...
+    1..11
+ok 1 - custom Images isolation and one-attempt recovery through real local HTTP, CLI and official MCP
+  ---
+  duration_ms: 3852.00375
+  type: 'test'
+  ...
+# image settlement {"providerId":"mock","wanted":"succeeded","reached":true,"polls":16,"elapsedMs":221,"wallElapsedMs":220,"maximumPollGapMs":39,"maximumReadMs":4,"observations":[{"atMs":4,"state":"dispatching","revision":2,"dispatched":true,"errorCode":null,"createdAt":"2026-10-19T02:59:32.539Z","updatedAt":"2026-10-19T02:59:32.543Z"},{"atMs":175,"state":"persisting","revision":3,"dispatched":true,"errorCode":null,"createdAt":"2026-10-19T02:59:32.539Z","updatedAt":"2026-10-19T02:59:32.717Z"},{"atMs":221,"state":"succeeded","revision":4,"dispatched":true,"errorCode":null,"createdAt":"2026-10-19T02:59:32.539Z","updatedAt":"2026-10-19T02:59:32.762Z"}],"networkCounts":[0,0,0]}
+# image settlement {"providerId":"openai","wanted":"succeeded","reached":true,"polls":16,"elapsedMs":226,"wallElapsedMs":225,"maximumPollGapMs":40,"maximumReadMs":19,"observations":[{"atMs":2,"state":"dispatching","revision":2,"dispatched":true,"errorCode":null,"createdAt":"2026-10-19T02:59:32.788Z","updatedAt":"2026-10-19T02:59:32.794Z"},{"atMs":150,"state":"persisting","revision":3,"dispatched":true,"errorCode":null,"createdAt":"2026-10-19T02:59:32.788Z","updatedAt":"2026-10-19T02:59:32.940Z"},{"atMs":226,"state":"succeeded","revision":4,"dispatched":true,"errorCode":null,"createdAt":"2026-10-19T02:59:32.788Z","updatedAt":"2026-10-19T02:59:33.006Z"}],"networkCounts":[1,1,1]}
+# image settlement {"providerId":"openai-compatible","wanted":"succeeded","reached":true,"polls":10,"elapsedMs":177,"wallElapsedMs":178,"maximumPollGapMs":56,"maximumReadMs":2,"observations":[{"atMs":2,"state":"dispatching","revision":2,"dispatched":true,"errorCode":null,"createdAt":"2026-10-19T02:59:34.684Z","updatedAt":"2026-10-19T02:59:34.690Z"},{"atMs":115,"state":"persisting","revision":3,"dispatched":true,"errorCode":null,"createdAt":"2026-10-19T02:59:34.684Z","updatedAt":"2026-10-19T02:59:34.811Z"},{"atMs":177,"state":"succeeded","revision":4,"dispatched":true,"errorCode":null,"createdAt":"2026-10-19T02:59:34.684Z","updatedAt":"2026-10-19T02:59:34.875Z"}],"networkCounts":[2,2,2]}
+# image settlement {"providerId":"openai-compatible","wanted":"succeeded","reached":true,"polls":11,"elapsedMs":189,"wallElapsedMs":189,"maximumPollGapMs":63,"maximumReadMs":2,"observations":[{"atMs":2,"state":"dispatching","revision":2,"dispatched":true,"errorCode":null,"createdAt":"2026-10-19T02:59:34.902Z","updatedAt":"2026-10-19T02:59:34.910Z"},{"atMs":120,"state":"persisting","revision":3,"dispatched":true,"errorCode":null,"createdAt":"2026-10-19T02:59:34.902Z","updatedAt":"2026-10-19T02:59:35.024Z"},{"atMs":189,"state":"succeeded","revision":4,"dispatched":true,"errorCode":null,"createdAt":"2026-10-19T02:59:34.902Z","updatedAt":"2026-10-19T02:59:35.095Z"}],"networkCounts":[3,3,3]}
+# image settlement {"providerId":"openai-compatible","wanted":"dispatching","reached":true,"polls":1,"elapsedMs":1,"wallElapsedMs":1,"maximumPollGapMs":0,"maximumReadMs":1,"observations":[{"atMs":1,"state":"dispatching","revision":2,"dispatched":true,"errorCode":null,"createdAt":"2026-10-19T02:59:35.195Z","updatedAt":"2026-10-19T02:59:35.202Z"}],"networkCounts":[4,4,4]}
+1..1
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4272.713041

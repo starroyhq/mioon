@@ -1,0 +1,233 @@
+{
+  "metrics": [
+    {
+      "innerWidth": 1440,
+      "innerHeight": 900,
+      "docWidth": 1440,
+      "docHeight": 900,
+      "workbench": {
+        "left": 0,
+        "top": 0,
+        "right": 1440,
+        "bottom": 900
+      },
+      "previewHeight": 452,
+      "zoom": "1",
+      "width": 1440,
+      "height": 900,
+      "scale": 100,
+      "state": "editing"
+    },
+    {
+      "x": 240,
+      "y": 130,
+      "width": 960,
+      "height": 640,
+      "widthViewport": 1440,
+      "heightViewport": 900,
+      "scale": 100,
+      "state": "settings"
+    },
+    {
+      "x": 240,
+      "y": 130,
+      "width": 960,
+      "height": 640,
+      "widthViewport": 1440,
+      "heightViewport": 900,
+      "scale": 100,
+      "state": "export"
+    },
+    {
+      "innerWidth": 1440,
+      "innerHeight": 900,
+      "docWidth": 1440,
+      "docHeight": 900,
+      "workbench": {
+        "left": 0,
+        "top": 0,
+        "right": 1440,
+        "bottom": 900
+      },
+      "previewHeight": 496.65625,
+      "zoom": "0.9",
+      "width": 1440,
+      "height": 900,
+      "scale": 90,
+      "state": "editing"
+    },
+    {
+      "x": 288,
+      "y": 162,
+      "width": 864,
+      "height": 576,
+      "widthViewport": 1440,
+      "heightViewport": 900,
+      "scale": 90,
+      "state": "settings"
+    },
+    {
+      "x": 288,
+      "y": 162,
+      "width": 864,
+      "height": 576,
+      "widthViewport": 1440,
+      "heightViewport": 900,
+      "scale": 90,
+      "state": "export"
+    },
+    {
+      "innerWidth": 1440,
+      "innerHeight": 900,
+      "docWidth": 1440,
+      "docHeight": 900,
+      "workbench": {
+        "left": 0,
+        "top": 0,
+        "right": 1440,
+        "bottom": 900
+      },
+      "previewHeight": 340.5,
+      "zoom": "1.25",
+      "width": 1440,
+      "height": 900,
+      "scale": 125,
+      "state": "editing"
+    },
+    {
+      "x": 120,
+      "y": 50,
+      "width": 1200,
+      "height": 800,
+      "widthViewport": 1440,
+      "heightViewport": 900,
+      "scale": 125,
+      "state": "settings"
+    },
+    {
+      "x": 120,
+      "y": 50,
+      "width": 1200,
+      "height": 800,
+      "widthViewport": 1440,
+      "heightViewport": 900,
+      "scale": 125,
+      "state": "export"
+    },
+    {
+      "innerWidth": 1050,
+      "innerHeight": 680,
+      "docWidth": 1050,
+      "docHeight": 680,
+      "workbench": {
+        "left": 0,
+        "top": 0,
+        "right": 1050,
+        "bottom": 680
+      },
+      "previewHeight": 238,
+      "zoom": "1",
+      "width": 1050,
+      "height": 680,
+      "scale": 100,
+      "state": "editing"
+    },
+    {
+      "x": 45,
+      "y": 20,
+      "width": 960,
+      "height": 640,
+      "widthViewport": 1050,
+      "heightViewport": 680,
+      "scale": 100,
+      "state": "settings"
+    },
+    {
+      "x": 45,
+      "y": 20,
+      "width": 960,
+      "height": 640,
+      "widthViewport": 1050,
+      "heightViewport": 680,
+      "scale": 100,
+      "state": "export"
+    },
+    {
+      "innerWidth": 1050,
+      "innerHeight": 680,
+      "docWidth": 1050,
+      "docHeight": 680,
+      "workbench": {
+        "left": 0,
+        "top": 0,
+        "right": 1050,
+        "bottom": 680
+      },
+      "previewHeight": 276.65625,
+      "zoom": "0.9",
+      "width": 1050,
+      "height": 680,
+      "scale": 90,
+      "state": "editing"
+    },
+    {
+      "x": 93,
+      "y": 52,
+      "width": 864,
+      "height": 576,
+      "widthViewport": 1050,
+      "heightViewport": 680,
+      "scale": 90,
+      "state": "settings"
+    },
+    {
+      "x": 93,
+      "y": 52,
+      "width": 864,
+      "height": 576,
+      "widthViewport": 1050,
+      "heightViewport": 680,
+      "scale": 90,
+      "state": "export"
+    },
+    {
+      "innerWidth": 1050,
+      "innerHeight": 680,
+      "docWidth": 1050,
+      "docHeight": 680,
+      "workbench": {
+        "left": 0,
+        "top": 0,
+        "right": 1050,
+        "bottom": 680
+      },
+      "previewHeight": 295.5,
+      "zoom": "1.25",
+      "width": 1050,
+      "height": 680,
+      "scale": 125,
+      "state": "editing"
+    },
+    {
+      "x": 25,
+      "y": 25,
+      "width": 1000,
+      "height": 630,
+      "widthViewport": 1050,
+      "heightViewport": 680,
+      "scale": 125,
+      "state": "settings"
+    },
+    {
+      "x": 20,
+      "y": 20,
+      "width": 1010,
+      "height": 640,
+      "widthViewport": 1050,
+      "heightViewport": 680,
+      "scale": 125,
+      "state": "export"
+    }
+  ],
+  "errors": []
+}

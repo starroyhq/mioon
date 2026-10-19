@@ -1,0 +1,83 @@
+TAP version 13
+# Subtest: image edits preserve one durable contract across real HTTP, CLI and official MCP
+    # Subtest: discovery exposes only paired strict Mock/official edit fields and leaves built-in Agent catalogs unchanged
+    ok 1 - discovery exposes only paired strict Mock/official edit fields and leaves built-in Agent catalogs unchanged
+      ---
+      duration_ms: 582.73175
+      type: 'test'
+      ...
+    # Subtest: original real Mock T2I source keeps legacy omission, exact PNG bytes and independent provenance
+    ok 2 - original real Mock T2I source keeps legacy omission, exact PNG bytes and independent provenance
+      ---
+      duration_ms: 861.985166
+      type: 'test'
+      ...
+    # Subtest: restart retains interrupted and unknown edits without implicit resume or remote retry
+    ok 3 - restart retains interrupted and unknown edits without implicit resume or remote retry
+      ---
+      duration_ms: 1911.09725
+      type: 'test'
+      ...
+    # Subtest: all transports reject unpaired edit selectors, unsupported provider and public source/URL/byte overrides before writes
+    ok 4 - all transports reject unpaired edit selectors, unsupported provider and public source/URL/byte overrides before writes
+      ---
+      duration_ms: 2282.026125
+      type: 'test'
+      ...
+    # Subtest: cross-project sources and wrong source hashes cannot reserve work; live editing is still disabled
+    ok 5 - cross-project sources and wrong source hashes cannot reserve work; live editing is still disabled
+      ---
+      duration_ms: 1788.074125
+      type: 'test'
+      ...
+    # Subtest: a lost HTTP edit ACK resolves through one durable receipt and one independent Mock asset across HTTP/CLI/MCP
+    ok 6 - a lost HTTP edit ACK resolves through one durable receipt and one independent Mock asset across HTTP/CLI/MCP
+      ---
+      duration_ms: 2066.371333
+      type: 'test'
+      ...
+    # Subtest: same request key with changed prompt, source hash, purpose or project conflicts without new work
+    ok 7 - same request key with changed prompt, source hash, purpose or project conflicts without new work
+      ---
+      duration_ms: 2207.399083
+      type: 'test'
+      ...
+    # Subtest: CLI and official MCP can each initiate one fresh edit; replays share the same task without compound project edits
+    ok 8 - CLI and official MCP can each initiate one fresh edit; replays share the same task without compound project edits
+      ---
+      duration_ms: 3094.727792
+      type: 'test'
+      ...
+    # Subtest: on-disk source hash changes reject admission without writes and restoring the exact bytes permits the original unaccepted key
+    ok 9 - on-disk source hash changes reject admission without writes and restoring the exact bytes permits the original unaccepted key
+      ---
+      duration_ms: 1978.375
+      type: 'test'
+      ...
+    # Subtest: backend and MCP restart preserve exact edit/source receipts and bytes without automatic generation
+    ok 10 - backend and MCP restart preserve exact edit/source receipts and bytes without automatic generation
+      ---
+      duration_ms: 3503.355959
+      type: 'test'
+      ...
+    # Subtest: strict client rejects malformed edit ACK purpose/source identities without retrying a potentially accepted write
+    ok 11 - strict client rejects malformed edit ACK purpose/source identities without retrying a potentially accepted write
+      ---
+      duration_ms: 9.648833
+      type: 'test'
+      ...
+    1..11
+ok 1 - image edits preserve one durable contract across real HTTP, CLI and official MCP
+  ---
+  duration_ms: 22730.430125
+  type: 'test'
+  ...
+1..1
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 23132.483666

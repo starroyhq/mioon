@@ -1,0 +1,98 @@
+TAP version 13
+# Subtest: actual shared Input is controlled, labelled and explicit about blank legacy omission
+ok 1 - actual shared Input is controlled, labelled and explicit about blank legacy omission
+  ---
+  duration_ms: 0.486625
+  type: 'test'
+  ...
+# Subtest: invalid visible text remains exact and emits an accessible bounded validation message
+ok 2 - invalid visible text remains exact and emits an accessible bounded validation message
+  ---
+  duration_ms: 0.102083
+  type: 'test'
+  ...
+# Subtest: named history shows frozen title/time/revision/dimensions/quality after project rename and revision change
+ok 3 - named history shows frozen title/time/revision/dimensions/quality after project rename and revision change
+  ---
+  duration_ms: 12.361625
+  type: 'test'
+  ...
+# Subtest: named downloads use only managed IDs plus exportId and no renderer filename override
+not ok 4 - named downloads use only managed IDs plus exportId and no renderer filename override
+  ---
+  duration_ms: 0.618833
+  type: 'test'
+  location: '/private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/named-delivery-ui.test.mjs:77:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /href="\/media\/bc000000-0000-4000-8000-000000000013\?download=1&amp;exportId=bc000000-0000-4000-8000-000000000003"/. Input:
+    
+    '<div class="export-list"><div class="export-card" data-testid="named-delivery-history"><div class="export-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"></rect><path d="M7 3v18M17 3v18M3 8h4m-4 8h4M17 8h4m-4 8h4M7 12h10"></path></svg></div><div class="export-detail"><strong title="冻结名称 &lt;script&gt; &quot; &amp; / .mp4" data-testid="delivery-history-name">冻结名称 &lt;script&gt; &quot; &amp; / .mp4</strong><span>已完成 · <time dateTime="2026-10-12T06:01:02.000Z">2026年10月12日 14:01:02</time></span><small>时间线导出 · 修订版 4 · 旧快照</small><small class="export-frozen-settings" data-testid="export-history-settings">成片 · 1080 × 1920 · 30 fps · 平均目标 8 Mb/s · 放大输出，不增加细节 · AAC 128 kb/s</small></div><div class="export-file-actions" data-testid="export-file-actions"><button type="button" tabindex="0" data-slot="button" data-testid="export-file-check" data-variant="secondary" data-size="default" class="group/button inline-flex shrink-0 items-center justify-center border border-transparent bg-clip-padding font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50 h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-3.5 wb-button">检查文件</button></div></div></div>'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: '<div class="export-list"><div class="export-card" data-testid="named-delivery-history"><div class="export-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"></rect><path d="M7 3v18M17 3v18M3 8h4m-4 8h4M17 8h4m-4 8h4M7 12h10"></path></svg></div><div class="export-detail"><strong title="冻结名称 &lt;script&gt; &quot; &amp; / .mp4" data-testid="delivery-history-name">冻结名称 &lt;script&gt; &quot; &amp; / .mp4</strong><span>已完成 · <time dateTime="2026-10-12T06:01:02.000Z">2026年10月12日 14:01:02</time></span><small>时间线导出 · 修订版 4 · 旧快照</small><small class="export-frozen-settings" data-testid="export-history-settings">成片 · 1080 × 1920 · 30 fps · 平均目标 8 Mb/s · 放大输出，不增加细节 · AAC 128 kb/s</small></div><div class="export-file-actions" data-testid="export-file-actions"><button type="button" tabindex="0" data-slot="button" data-testid="export-file-check" data-variant="secondary" data-size="default" class="group/button inline-flex shrink-0 items-center justify-center border border-transparent bg-clip-padding font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50 h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-3.5 wb-button">检查文件</button></div></div></div>'
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/named-delivery-ui.test.mjs:78:10)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: held restored rows retain historical labels, successful managed downloads and blocked failed execution
+ok 5 - held restored rows retain historical labels, successful managed downloads and blocked failed execution
+  ---
+  duration_ms: 0.112416
+  type: 'test'
+  ...
+# Subtest: name-only rows use frozen timeline geometry without inventing a quality profile
+ok 6 - name-only rows use frozen timeline geometry without inventing a quality profile
+  ---
+  duration_ms: 0.096875
+  type: 'test'
+  ...
+# Subtest: unnamed legacy rows and storyboard retain their original default display and download behavior
+not ok 7 - unnamed legacy rows and storyboard retain their original default display and download behavior
+  ---
+  duration_ms: 0.156292
+  type: 'test'
+  location: '/private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/named-delivery-ui.test.mjs:96:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /href="\/media\/original-file"/. Input:
+    
+    '<div class="export-list"><div class="export-card"><div class="export-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"></rect><path d="M7 3v18M17 3v18M3 8h4m-4 8h4M17 8h4m-4 8h4M7 12h10"></path></svg></div><div class="export-detail"><strong>旧项目默认.mp4</strong><span>已完成 · 2026年10月12日 14:01:02</span><small>时间线导出 · 修订版 4 · 当前</small></div><div class="export-file-actions" data-testid="export-file-actions"><button type="button" tabindex="0" data-slot="button" data-testid="export-file-check" data-variant="secondary" data-size="default" class="group/button inline-flex shrink-0 items-center justify-center border border-transparent bg-clip-padding font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50 h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-3.5 wb-button">检查文件</button></div></div></div>'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: '<div class="export-list"><div class="export-card"><div class="export-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"></rect><path d="M7 3v18M17 3v18M3 8h4m-4 8h4M17 8h4m-4 8h4M7 12h10"></path></svg></div><div class="export-detail"><strong>旧项目默认.mp4</strong><span>已完成 · 2026年10月12日 14:01:02</span><small>时间线导出 · 修订版 4 · 当前</small></div><div class="export-file-actions" data-testid="export-file-actions"><button type="button" tabindex="0" data-slot="button" data-testid="export-file-check" data-variant="secondary" data-size="default" class="group/button inline-flex shrink-0 items-center justify-center border border-transparent bg-clip-padding font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50 h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-3.5 wb-button">检查文件</button></div></div></div>'
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/named-delivery-ui.test.mjs:97:72)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: malformed named metadata is visibly unavailable without borrowing a project title or download URL
+ok 8 - malformed named metadata is visibly unavailable without borrowing a project title or download URL
+  ---
+  duration_ms: 0.114041
+  type: 'test'
+  ...
+# Subtest: typed components import real shared controls and no unchecked barrel or legacy icon graph
+ok 9 - typed components import real shared controls and no unchecked barrel or legacy icon graph
+  ---
+  duration_ms: 0.461625
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 7
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 693.937583

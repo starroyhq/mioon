@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: range planner preserves original anchors, gaps and all frozen fields without rebasing
+ok 1 - range planner preserves original anchors, gaps and all frozen fields without rebasing
+  ---
+  duration_ms: 1.675375
+  type: 'test'
+  ...
+# Subtest: absent and explicit full span keep exact original segment filter arguments
+ok 2 - absent and explicit full span keep exact original segment filter arguments
+  ---
+  duration_ms: 0.18425
+  type: 'test'
+  ...
+# Subtest: range planner handles half-open boundaries, minimum and bounded maximum without adding edges
+ok 3 - range planner handles half-open boundaries, minimum and bounded maximum without adding edges
+  ---
+  duration_ms: 0.296959
+  type: 'test'
+  ...
+# Subtest: range planner delegates persisted range admission to the shared contract
+ok 4 - range planner delegates persisted range admission to the shared contract
+  ---
+  duration_ms: 0.613875
+  type: 'test'
+  ...
+# Subtest: selected output validates presentation origin without interpreting AAC priming packet DTS
+ok 5 - selected output validates presentation origin without interpreting AAC priming packet DTS
+  ---
+  duration_ms: 0.255208
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 160.699708

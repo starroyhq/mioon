@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: legacy observer completion keeps V2 busy until its exact registered resource settles
+ok 1 - legacy observer completion keeps V2 busy until its exact registered resource settles
+  ---
+  duration_ms: 0.780167
+  type: 'test'
+  ...
+# Subtest: rejected resource settlement releases only the shared quota and preserves lane failure policy
+ok 2 - rejected resource settlement releases only the shared quota and preserves lane failure policy
+  ---
+  duration_ms: 0.301958
+  type: 'test'
+  ...
+# Subtest: synchronous and asynchronous pre-registration failures, and unregistered success, release admission
+ok 3 - synchronous and asynchronous pre-registration failures, and unregistered success, release admission
+  ---
+  duration_ms: 0.165292
+  type: 'test'
+  ...
+# Subtest: registration callback failure retains quota through cleanup without leaking admission
+ok 4 - registration callback failure retains quota through cleanup without leaking admission
+  ---
+  duration_ms: 0.192084
+  type: 'test'
+  ...
+# Subtest: continuous sessions reject V1 before its lane starts and retirement preserves the public surface
+ok 5 - continuous sessions reject V1 before its lane starts and retirement preserves the public surface
+  ---
+  duration_ms: 0.20725
+  type: 'test'
+  ...
+# Subtest: drain starts both lane shutdowns and waits for both to finish
+ok 6 - drain starts both lane shutdowns and waits for both to finish
+  ---
+  duration_ms: 3.346291
+  type: 'test'
+  ...
+# Subtest: shared reader owns one deferred transaction for the full saved graph and preserves an outer transaction
+ok 7 - shared reader owns one deferred transaction for the full saved graph and preserves an outer transaction
+  ---
+  duration_ms: 0.252375
+  type: 'test'
+  ...
+# Subtest: empty and thrown snapshot reads keep the original commit-on-error and outer transaction policy
+ok 8 - empty and thrown snapshot reads keep the original commit-on-error and outer transaction policy
+  ---
+  duration_ms: 0.187625
+  type: 'test'
+  ...
+# Subtest: real V1 and V2 services share saved graph reads, reject corrupt and missing timelines without writes
+ok 9 - real V1 and V2 services share saved graph reads, reject corrupt and missing timelines without writes
+  ---
+  duration_ms: 716.376625
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1235.048916

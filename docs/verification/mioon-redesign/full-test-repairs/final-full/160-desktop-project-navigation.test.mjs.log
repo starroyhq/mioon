@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: native project owner permits only its immutable assigned URL, not another legal project or launcher
+ok 1 - native project owner permits only its immutable assigned URL, not another legal project or launcher
+  ---
+  duration_ms: 1.4325
+  type: 'test'
+  ...
+# Subtest: launcher and settings root may not become an editor; a revoked owner may not reload
+ok 2 - launcher and settings root may not become an editor; a revoked owner may not reload
+  ---
+  duration_ms: 0.112709
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 170.4315

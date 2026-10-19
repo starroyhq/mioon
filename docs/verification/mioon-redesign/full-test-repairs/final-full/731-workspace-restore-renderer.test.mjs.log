@@ -1,0 +1,106 @@
+TAP version 13
+# Subtest: renderer reconnect observations cannot replace its first origin or mutate pinned policy
+ok 1 - renderer reconnect observations cannot replace its first origin or mutate pinned policy
+  ---
+  duration_ms: 1.270458
+  type: 'test'
+  ...
+# Subtest: legacy and two restored pending namespaces coexist through reload and current-only admission
+ok 2 - legacy and two restored pending namespaces coexist through reload and current-only admission
+  ---
+  duration_ms: 9.50625
+  type: 'test'
+  ...
+# Subtest: strict pending scans reject corrupt slot ownership without deleting original bytes
+ok 3 - strict pending scans reject corrupt slot ownership without deleting original bytes
+  ---
+  duration_ms: 0.322333
+  type: 'test'
+  ...
+# Subtest: late pending acknowledgment cannot clear a newer key or another branch
+ok 4 - late pending acknowledgment cannot clear a newer key or another branch
+  ---
+  duration_ms: 0.442083
+  type: 'test'
+  ...
+# Subtest: formatted normal and restored pending intents clear only after matching the complete original intent
+ok 5 - formatted normal and restored pending intents clear only after matching the complete original intent
+  ---
+  duration_ms: 0.526625
+  type: 'test'
+  ...
+# Subtest: raw pending CAS retains a replacement between semantic read and deletion in both workspace profiles
+ok 6 - raw pending CAS retains a replacement between semantic read and deletion in both workspace profiles
+  ---
+  duration_ms: 0.268083
+  type: 'test'
+  ...
+# Subtest: malformed and cross-origin formatted pending records remain byte-exact on acknowledgement
+ok 7 - malformed and cross-origin formatted pending records remain byte-exact on acknowledgement
+  ---
+  duration_ms: 0.225
+  type: 'test'
+  ...
+# Subtest: pending acknowledgement preserves malformed equal records and explicit missing-origin distinctions
+ok 8 - pending acknowledgement preserves malformed equal records and explicit missing-origin distinctions
+  ---
+  duration_ms: 0.190167
+  type: 'test'
+  ...
+# Subtest: restored task load preserves every captured status and acknowledgment without blocking current lanes
+ok 9 - restored task load preserves every captured status and acknowledgment without blocking current lanes
+  ---
+  duration_ms: 2.069083
+  type: 'test'
+  ...
+# Subtest: new task invocation pins once and captured lane coexistence does not rewrite task input
+ok 10 - new task invocation pins once and captured lane coexistence does not rewrite task input
+  ---
+  duration_ms: 0.842791
+  type: 'test'
+  ...
+# Subtest: same-project restored task caches stay separate and wrong-origin replies cannot erase old identity
+ok 11 - same-project restored task caches stay separate and wrong-origin replies cannot erase old identity
+  ---
+  duration_ms: 0.254375
+  type: 'test'
+  ...
+# Subtest: task HTTP and web RPC keep outer context out of immutable intent and preserve refusal ambiguity
+ok 12 - task HTTP and web RPC keep outer context out of immutable intent and preserve refusal ambiguity
+  ---
+  duration_ms: 0.486625
+  type: 'test'
+  ...
+# Subtest: outer project export hold projection validates exact workspace and returned ID subset
+ok 13 - outer project export hold projection validates exact workspace and returned ID subset
+  ---
+  duration_ms: 0.113416
+  type: 'test'
+  ...
+# Subtest: restored preferences never bootstrap a PUT and explicit queued writes keep their origin
+ok 14 - restored preferences never bootstrap a PUT and explicit queued writes keep their origin
+  ---
+  duration_ms: 1.421542
+  type: 'test'
+  ...
+# Subtest: two-step preflight keeps the first explicit invocation across awaited capability result
+ok 15 - two-step preflight keeps the first explicit invocation across awaited capability result
+  ---
+  duration_ms: 1.333167
+  type: 'test'
+  ...
+# Subtest: read-only waveform view never requests or polls captured pending states
+ok 16 - read-only waveform view never requests or polls captured pending states
+  ---
+  duration_ms: 0.758625
+  type: 'test'
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 280.196667

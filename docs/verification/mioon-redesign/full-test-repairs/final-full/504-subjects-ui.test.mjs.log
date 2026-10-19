@@ -1,0 +1,172 @@
+TAP version 13
+# Subtest: only existing owned supported images are eligible and filters leave data untouched
+ok 1 - only existing owned supported images are eligible and filters leave data untouched
+  ---
+  duration_ms: 0.991958
+  type: 'test'
+  ...
+# Subtest: create freezes one exact managed image, mints identity once, clears only a validated draft
+ok 2 - create freezes one exact managed image, mints identity once, clears only a validated draft
+  ---
+  duration_ms: 3.176667
+  type: 'test'
+  ...
+# Subtest: name/type-only drafts are guarded and readonly refresh never replaces unsaved input
+ok 3 - name/type-only drafts are guarded and readonly refresh never replaces unsaved input
+  ---
+  duration_ms: 0.314875
+  type: 'test'
+  ...
+# Subtest: duplicate clicks and edits while preparing cannot create another mutation identity
+ok 4 - duplicate clicks and edits while preparing cannot create another mutation identity
+  ---
+  duration_ms: 0.475375
+  type: 'test'
+  ...
+# Subtest: unknown and wrong acknowledgements retain original drafts and pending lane despite latest GET
+ok 5 - unknown and wrong acknowledgements retain original drafts and pending lane despite latest GET
+  ---
+  duration_ms: 1.109041
+  type: 'test'
+  ...
+# Subtest: explicit discard invalidates prepared intent and stale completion cannot clear a new draft
+ok 6 - explicit discard invalidates prepared intent and stale completion cannot clear a new draft
+  ---
+  duration_ms: 0.266
+  type: 'test'
+  ...
+# Subtest: project/epoch fences reject old GET, queued dispatch, ACK and retained prior-scope callbacks
+ok 7 - project/epoch fences reject old GET, queued dispatch, ACK and retained prior-scope callbacks
+  ---
+  duration_ms: 0.355458
+  type: 'test'
+  ...
+# Subtest: append is CAS pinned to selected subject revision and requires explicit reconfirm after a newer head
+ok 8 - append is CAS pinned to selected subject revision and requires explicit reconfirm after a newer head
+  ---
+  duration_ms: 0.294459
+  type: 'test'
+  ...
+# Subtest: older list generations and stale subject revisions cannot replace a newer confirmed head
+ok 9 - older list generations and stale subject revisions cannot replace a newer confirmed head
+  ---
+  duration_ms: 0.235041
+  type: 'test'
+  ...
+# Subtest: invalid, foreign and duplicate pages fail closed without pretending an empty successful library
+ok 10 - invalid, foreign and duplicate pages fail closed without pretending an empty successful library
+  ---
+  duration_ms: 0.478417
+  type: 'test'
+  ...
+# Subtest: list pagination is visible bounded and never silently scans or repeats a cursor
+ok 11 - list pagination is visible bounded and never silently scans or repeats a cursor
+  ---
+  duration_ms: 0.270709
+  type: 'test'
+  ...
+# Subtest: focus and save refresh read only the active shot, leaving other cached shots stale until selected
+ok 12 - focus and save refresh read only the active shot, leaving other cached shots stale until selected
+  ---
+  duration_ms: 0.812084
+  type: 'test'
+  ...
+# Subtest: binding drafts capture exact historical version and use tombstone revision for relink
+ok 13 - binding drafts capture exact historical version and use tombstone revision for relink
+  ---
+  duration_ms: 0.571667
+  type: 'test'
+  ...
+# Subtest: review keeps or updates the exact pinned version; unlink retains independent revision
+ok 14 - review keeps or updates the exact pinned version; unlink retains independent revision
+  ---
+  duration_ms: 0.657417
+  type: 'test'
+  ...
+# Subtest: late historical binding ACK preserves newer head and binding clocks even when follow-up reads fail
+ok 15 - late historical binding ACK preserves newer head and binding clocks even when follow-up reads fail
+  ---
+  duration_ms: 0.511166
+  type: 'test'
+  ...
+# Subtest: GET begun before ACK installation merges against live binding cache, including failed refresh
+ok 16 - GET begun before ACK installation merges against live binding cache, including failed refresh
+  ---
+  duration_ms: 0.333584
+  type: 'test'
+  ...
+# Subtest: binding merge preserves independent clocks and rejects contradictory equal revisions
+ok 17 - binding merge preserves independent clocks and rejects contradictory equal revisions
+  ---
+  duration_ms: 0.334916
+  type: 'test'
+  ...
+# Subtest: partial binding list blocks writes until all explicitly requested pages have been read
+ok 18 - partial binding list blocks writes until all explicitly requested pages have been read
+  ---
+  duration_ms: 0.384
+  type: 'test'
+  ...
+# Subtest: eight active bindings prevent adding a ninth but allow editing existing and style role is derived explicitly
+ok 19 - eight active bindings prevent adding a ninth but allow editing existing and style role is derived explicitly
+  ---
+  duration_ms: 0.746917
+  type: 'test'
+  ...
+# Subtest: real library callbacks reject hidden, re-shown, stale form, wrong project and unmounted events
+ok 20 - real library callbacks reject hidden, re-shown, stale form, wrong project and unmounted events
+  ---
+  duration_ms: 24.1135
+  type: 'test'
+  ...
+# Subtest: shot controls render exact Use V2 and Keep V1 choices and reject retained row callbacks
+ok 21 - shot controls render exact Use V2 and Keep V1 choices and reject retained row callbacks
+  ---
+  duration_ms: 3.432583
+  type: 'test'
+  ...
+# Subtest: new binding displays the exact selected historical image rather than silently previewing head
+ok 22 - new binding displays the exact selected historical image rather than silently previewing head
+  ---
+  duration_ms: 2.977
+  type: 'test'
+  ...
+# Subtest: library composition retains both panes and never changes source/range selection or imports images
+ok 23 - library composition retains both panes and never changes source/range selection or imports images
+  ---
+  duration_ms: 1.153667
+  type: 'test'
+  ...
+# Subtest: subject library live relabeling preserves one controller, filters, selected subject and every draft
+ok 24 - subject library live relabeling preserves one controller, filters, selected subject and every draft
+  ---
+  duration_ms: 3.186083
+  type: 'test'
+  ...
+# Subtest: read failures store a safe descriptor separately from original diagnostics and relabel without another read
+ok 25 - read failures store a safe descriptor separately from original diagnostics and relabel without another read
+  ---
+  duration_ms: 3.744542
+  type: 'test'
+  ...
+# Subtest: pending mutation notice relabels while retaining exact request identity and unsaved draft
+ok 26 - pending mutation notice relabels while retaining exact request identity and unsaved draft
+  ---
+  duration_ms: 2.72525
+  type: 'test'
+  ...
+# Subtest: shot binding review and selected historical draft relabel without changing bound version targets
+ok 27 - shot binding review and selected historical draft relabel without changing bound version targets
+  ---
+  duration_ms: 5.2325
+  type: 'test'
+  ...
+1..27
+# tests 27
+# suites 0
+# pass 27
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 325.878709

@@ -1,0 +1,9 @@
+{
+  "completedFiles": 2,
+  "totalFiles": 2,
+  "passedFiles": 2,
+  "failedFiles": 0,
+  "timeoutFiles": 0,
+  "seconds": 8.15,
+  "last": "tests/project-home-summary.test.mjs"
+}

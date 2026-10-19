@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: queued cancellation prevents any provider dispatch
+ok 1 - queued cancellation prevents any provider dispatch
+  ---
+  duration_ms: 795.846417
+  type: 'test'
+  ...
+# Subtest: worker reconciliation cannot resurrect a cancellation made while awaiting the provider
+ok 2 - worker reconciliation cannot resurrect a cancellation made while awaiting the provider
+  ---
+  duration_ms: 667.560042
+  type: 'test'
+  ...
+# Subtest: service reconciliation preserves cancellation across the remote lookup await
+ok 3 - service reconciliation preserves cancellation across the remote lookup await
+  ---
+  duration_ms: 745.879667
+  type: 'test'
+  ...
+# Subtest: service reconciliation preserves a completed job and version pointer across a stale poll
+ok 4 - service reconciliation preserves a completed job and version pointer across a stale poll
+  ---
+  duration_ms: 693.075542
+  type: 'test'
+  ...
+# Subtest: accepted submission records its remote ID without undoing local cancellation
+ok 5 - accepted submission records its remote ID without undoing local cancellation
+  ---
+  duration_ms: 715.395625
+  type: 'test'
+  ...
+# Subtest: stale worker polling does not overwrite local cancellation with failure
+ok 6 - stale worker polling does not overwrite local cancellation with failure
+  ---
+  duration_ms: 752.314
+  type: 'test'
+  ...
+# Subtest: reconciliation never reclassifies queued, submitting, or definitively failed jobs as unknown
+ok 7 - reconciliation never reclassifies queued, submitting, or definitively failed jobs as unknown
+  ---
+  duration_ms: 1351.104125
+  type: 'test'
+  ...
+# Subtest: concurrent manual reconciliations cannot attach one remote task to different local snapshots
+ok 8 - concurrent manual reconciliations cannot attach one remote task to different local snapshots
+  ---
+  duration_ms: 890.944
+  type: 'test'
+  ...
+# Subtest: repeated retries with fresh IDs create only one active child, while the original retry remains replayable
+ok 9 - repeated retries with fresh IDs create only one active child, while the original retry remains replayable
+  ---
+  duration_ms: 777.077333
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 7749.801833

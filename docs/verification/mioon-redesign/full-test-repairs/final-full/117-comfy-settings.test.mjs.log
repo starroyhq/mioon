@@ -1,0 +1,130 @@
+TAP version 13
+# Subtest: defaults are disabled and independent; getters and saves never probe the network or adopt secrets
+ok 1 - defaults are disabled and independent; getters and saves never probe the network or adopt secrets
+  ---
+  duration_ms: 3.399875
+  type: 'test'
+  ...
+# Subtest: configuration and update parsers enforce one fixed profile and complete enabled settings
+ok 2 - configuration and update parsers enforce one fixed profile and complete enabled settings
+  ---
+  duration_ms: 1.058875
+  type: 'test'
+  ...
+# Subtest: canonical explicit-port loopback only; no credentials, paths, DNS, query, fragments or URL normalization
+ok 3 - canonical explicit-port loopback only; no credentials, paths, DNS, query, fragments or URL normalization
+  ---
+  duration_ms: 0.990875
+  type: 'test'
+  ...
+# Subtest: trusted own-port policy is checked on save and rechecked synchronously at the final fence
+ok 4 - trusted own-port policy is checked on save and rechecked synchronously at the final fence
+  ---
+  duration_ms: 4.284583
+  type: 'test'
+  ...
+# Subtest: trusted checks are bounded in-memory evidence, permit catalog selection and never persist across restart
+ok 5 - trusted checks are bounded in-memory evidence, permit catalog selection and never persist across restart
+  ---
+  duration_ms: 1.569417
+  type: 'test'
+  ...
+# Subtest: check recording rejects malformed protocol evidence and own backend destinations
+ok 6 - check recording rejects malformed protocol evidence and own backend destinations
+  ---
+  duration_ms: 1.328292
+  type: 'test'
+  ...
+# Subtest: explicit rechecks revoke readiness before I/O and superseded or rejected check responses cannot restore it
+ok 7 - explicit rechecks revoke readiness before I/O and superseded or rejected check responses cannot restore it
+  ---
+  duration_ms: 0.770583
+  type: 'test'
+  ...
+# Subtest: CAS serializes concurrent puts, copies caller data and fences every older revision or changed binding
+ok 8 - CAS serializes concurrent puts, copies caller data and fences every older revision or changed binding
+  ---
+  duration_ms: 0.825333
+  type: 'test'
+  ...
+# Subtest: admitted writes block synchronous read, recording and final fence before and throughout persistence
+ok 9 - admitted writes block synchronous read, recording and final fence before and throughout persistence
+  ---
+  duration_ms: 0.512791
+  type: 'test'
+  ...
+# Subtest: known failed saves prove the exact prior durable envelope before reopening the fence and never retry
+ok 10 - known failed saves prove the exact prior durable envelope before reopening the fence and never retry
+  ---
+  duration_ms: 0.735083
+  type: 'test'
+  ...
+# Subtest: candidate, missing, foreign and unreadable failed-save outcomes latch closed until a fresh owner
+ok 11 - candidate, missing, foreign and unreadable failed-save outcomes latch closed until a fresh owner
+  ---
+  duration_ms: 1.481166
+  type: 'test'
+  ...
+# Subtest: failed-save read-back is time bounded and late proof cannot reopen a latched owner
+ok 12 - failed-save read-back is time bounded and late proof cannot reopen a latched owner
+  ---
+  duration_ms: 0.535792
+  type: 'test'
+  ...
+# Subtest: corrupt initial storage and maximum revisions fail closed with sanitized fixed errors
+ok 13 - corrupt initial storage and maximum revisions fail closed with sanitized fixed errors
+  ---
+  duration_ms: 0.600166
+  type: 'test'
+  ...
+# Subtest: close immediately blocks all new access while an in-flight save reaches one durable outcome
+ok 14 - close immediately blocks all new access while an in-flight save reaches one durable outcome
+  ---
+  duration_ms: 0.345125
+  type: 'test'
+  ...
+# Subtest: default file reads never create directories; writes create only one private atomic envelope
+ok 15 - default file reads never create directories; writes create only one private atomic envelope
+  ---
+  duration_ms: 27.09475
+  type: 'test'
+  ...
+# Subtest: unrelated Agent, Images and custom files retain their exact bytes and modes
+ok 16 - unrelated Agent, Images and custom files retain their exact bytes and modes
+  ---
+  duration_ms: 13.896291
+  type: 'test'
+  ...
+# Subtest: invalid, credential-bearing and oversized envelopes never create or overwrite the dedicated file
+ok 17 - invalid, credential-bearing and oversized envelopes never create or overwrite the dedicated file
+  ---
+  duration_ms: 11.430542
+  type: 'test'
+  ...
+# Subtest: symlinked roots, managed parents, directories and files plus hard links fail closed
+ok 18 - symlinked roots, managed parents, directories and files plus hard links fail closed
+  ---
+  duration_ms: 3.760375
+  type: 'test'
+  ...
+# Subtest: unsafe existing permissions and nonregular files are rejected without repair or truncation
+ok 19 - unsafe existing permissions and nonregular files are rejected without repair or truncation
+  ---
+  duration_ms: 11.893333
+  type: 'test'
+  ...
+# Subtest: path boundaries are absolute and private; raw concurrent readers see only complete atomic envelopes
+ok 20 - path boundaries are absolute and private; raw concurrent readers see only complete atomic envelopes
+  ---
+  duration_ms: 99.228083
+  type: 'test'
+  ...
+1..20
+# tests 20
+# suites 0
+# pass 20
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 334.073333

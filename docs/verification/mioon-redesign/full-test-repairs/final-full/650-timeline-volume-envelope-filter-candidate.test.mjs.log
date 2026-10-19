@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: absent/null append no stage and preserve exact legacy string
+ok 1 - absent/null append no stage and preserve exact legacy string
+  ---
+  duration_ms: 0.642458
+  type: 'test'
+  ...
+# Subtest: nearest holds, exact anchors, sample boundaries and detached output
+ok 2 - nearest holds, exact anchors, sample boundaries and detached output
+  ---
+  duration_ms: 0.791583
+  type: 'test'
+  ...
+# Subtest: original sample offset, seek inside ramp, segment and frame boundaries
+ok 3 - original sample offset, seek inside ramp, segment and frame boundaries
+  ---
+  duration_ms: 0.864125
+  type: 'test'
+  ...
+# Subtest: one point, zero, unity, tiny and scientific notation numbers
+ok 4 - one point, zero, unity, tiny and scientific notation numbers
+  ---
+  duration_ms: 0.165833
+  type: 'test'
+  ...
+# Subtest: 16-point maximum grammar and conservative escaped byte bound
+ok 5 - 16-point maximum grammar and conservative escaped byte bound
+  ---
+  duration_ms: 0.405416
+  type: 'test'
+  ...
+# Subtest: invalid ranges, integer samples, negative zero and unsupported shapes reject
+ok 6 - invalid ranges, integer samples, negative zero and unsupported shapes reject
+  ---
+  duration_ms: 0.488083
+  type: 'test'
+  ...
+# Subtest: malformed records, point arrays and accessor properties reject
+ok 7 - malformed records, point arrays and accessor properties reject
+  ---
+  duration_ms: 1.220375
+  type: 'test'
+  ...
+# Subtest: deterministic curves match pure evaluator over sampled original coordinates
+ok 8 - deterministic curves match pure evaluator over sampled original coordinates
+  ---
+  duration_ms: 5.29575
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 168.615708

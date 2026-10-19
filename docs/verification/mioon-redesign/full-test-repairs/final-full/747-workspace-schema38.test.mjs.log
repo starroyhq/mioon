@@ -1,0 +1,304 @@
+TAP version 13
+# Subtest: 36 to38 is marker-only, preserves raw rows and is idempotent
+ok 1 - 36 to38 is marker-only, preserves raw rows and is idempotent
+  ---
+  duration_ms: 274.277625
+  type: 'test'
+  ...
+# Subtest: 38 restores into fixed39 and does not widen old restored37
+ok 2 - 38 restores into fixed39 and does not widen old restored37
+  ---
+  duration_ms: 422.901917
+  type: 'test'
+  ...
+# Subtest: old profile rejects null evidence in timelines
+ok 3 - old profile rejects null evidence in timelines
+  ---
+  duration_ms: 0.371125
+  type: 'test'
+  ...
+# Subtest: old profile rejects null evidence in timeline_history
+ok 4 - old profile rejects null evidence in timeline_history
+  ---
+  duration_ms: 0.246542
+  type: 'test'
+  ...
+# Subtest: old profile rejects null evidence in timeline_requests
+ok 5 - old profile rejects null evidence in timeline_requests
+  ---
+  duration_ms: 0.266375
+  type: 'test'
+  ...
+# Subtest: old profile rejects null evidence in edit_tasks
+ok 6 - old profile rejects null evidence in edit_tasks
+  ---
+  duration_ms: 0.201625
+  type: 'test'
+  ...
+# Subtest: old profile rejects null evidence in exports
+ok 7 - old profile rejects null evidence in exports
+  ---
+  duration_ms: 0.176084
+  type: 'test'
+  ...
+# Subtest: old profile rejects null evidence in workspace_restore_timeline_history
+ok 8 - old profile rejects null evidence in workspace_restore_timeline_history
+  ---
+  duration_ms: 0.18475
+  type: 'test'
+  ...
+# Subtest: old profile rejects null evidence in agent_edit_proposals
+ok 9 - old profile rejects null evidence in agent_edit_proposals
+  ---
+  duration_ms: 0.18375
+  type: 'test'
+  ...
+# Subtest: old profile rejects escaped evidence in timelines
+ok 10 - old profile rejects escaped evidence in timelines
+  ---
+  duration_ms: 0.183458
+  type: 'test'
+  ...
+# Subtest: old profile rejects escaped evidence in timeline_history
+ok 11 - old profile rejects escaped evidence in timeline_history
+  ---
+  duration_ms: 0.153084
+  type: 'test'
+  ...
+# Subtest: old profile rejects escaped evidence in timeline_requests
+ok 12 - old profile rejects escaped evidence in timeline_requests
+  ---
+  duration_ms: 0.141875
+  type: 'test'
+  ...
+# Subtest: old profile rejects escaped evidence in edit_tasks
+ok 13 - old profile rejects escaped evidence in edit_tasks
+  ---
+  duration_ms: 0.133417
+  type: 'test'
+  ...
+# Subtest: old profile rejects escaped evidence in exports
+ok 14 - old profile rejects escaped evidence in exports
+  ---
+  duration_ms: 0.140875
+  type: 'test'
+  ...
+# Subtest: old profile rejects escaped evidence in workspace_restore_timeline_history
+ok 15 - old profile rejects escaped evidence in workspace_restore_timeline_history
+  ---
+  duration_ms: 0.148834
+  type: 'test'
+  ...
+# Subtest: old profile rejects escaped evidence in agent_edit_proposals
+ok 16 - old profile rejects escaped evidence in agent_edit_proposals
+  ---
+  duration_ms: 0.133625
+  type: 'test'
+  ...
+# Subtest: old profile rejects duplicate evidence in timelines
+ok 17 - old profile rejects duplicate evidence in timelines
+  ---
+  duration_ms: 0.134667
+  type: 'test'
+  ...
+# Subtest: old profile rejects duplicate evidence in timeline_history
+ok 18 - old profile rejects duplicate evidence in timeline_history
+  ---
+  duration_ms: 0.136292
+  type: 'test'
+  ...
+# Subtest: old profile rejects duplicate evidence in timeline_requests
+ok 19 - old profile rejects duplicate evidence in timeline_requests
+  ---
+  duration_ms: 0.127333
+  type: 'test'
+  ...
+# Subtest: old profile rejects duplicate evidence in edit_tasks
+ok 20 - old profile rejects duplicate evidence in edit_tasks
+  ---
+  duration_ms: 0.124
+  type: 'test'
+  ...
+# Subtest: old profile rejects duplicate evidence in exports
+ok 21 - old profile rejects duplicate evidence in exports
+  ---
+  duration_ms: 0.121875
+  type: 'test'
+  ...
+# Subtest: old profile rejects duplicate evidence in workspace_restore_timeline_history
+ok 22 - old profile rejects duplicate evidence in workspace_restore_timeline_history
+  ---
+  duration_ms: 0.138292
+  type: 'test'
+  ...
+# Subtest: old profile rejects duplicate evidence in agent_edit_proposals
+ok 23 - old profile rejects duplicate evidence in agent_edit_proposals
+  ---
+  duration_ms: 0.150209
+  type: 'test'
+  ...
+# Subtest: old profile rejects profile evidence in timelines
+ok 24 - old profile rejects profile evidence in timelines
+  ---
+  duration_ms: 0.141125
+  type: 'test'
+  ...
+# Subtest: old profile rejects profile evidence in timeline_history
+ok 25 - old profile rejects profile evidence in timeline_history
+  ---
+  duration_ms: 0.132208
+  type: 'test'
+  ...
+# Subtest: old profile rejects profile evidence in timeline_requests
+ok 26 - old profile rejects profile evidence in timeline_requests
+  ---
+  duration_ms: 0.118458
+  type: 'test'
+  ...
+# Subtest: old profile rejects profile evidence in edit_tasks
+ok 27 - old profile rejects profile evidence in edit_tasks
+  ---
+  duration_ms: 0.114958
+  type: 'test'
+  ...
+# Subtest: old profile rejects profile evidence in exports
+ok 28 - old profile rejects profile evidence in exports
+  ---
+  duration_ms: 0.115917
+  type: 'test'
+  ...
+# Subtest: old profile rejects profile evidence in workspace_restore_timeline_history
+ok 29 - old profile rejects profile evidence in workspace_restore_timeline_history
+  ---
+  duration_ms: 0.1195
+  type: 'test'
+  ...
+# Subtest: old profile rejects profile evidence in agent_edit_proposals
+ok 30 - old profile rejects profile evidence in agent_edit_proposals
+  ---
+  duration_ms: 0.117833
+  type: 'test'
+  ...
+# Subtest: old profile rejects malformed evidence in timelines
+ok 31 - old profile rejects malformed evidence in timelines
+  ---
+  duration_ms: 0.197958
+  type: 'test'
+  ...
+# Subtest: old profile rejects malformed evidence in timeline_history
+ok 32 - old profile rejects malformed evidence in timeline_history
+  ---
+  duration_ms: 0.1645
+  type: 'test'
+  ...
+# Subtest: old profile rejects malformed evidence in timeline_requests
+ok 33 - old profile rejects malformed evidence in timeline_requests
+  ---
+  duration_ms: 0.136083
+  type: 'test'
+  ...
+# Subtest: old profile rejects malformed evidence in edit_tasks
+ok 34 - old profile rejects malformed evidence in edit_tasks
+  ---
+  duration_ms: 0.154416
+  type: 'test'
+  ...
+# Subtest: old profile rejects malformed evidence in exports
+ok 35 - old profile rejects malformed evidence in exports
+  ---
+  duration_ms: 0.126
+  type: 'test'
+  ...
+# Subtest: old profile rejects malformed evidence in workspace_restore_timeline_history
+ok 36 - old profile rejects malformed evidence in workspace_restore_timeline_history
+  ---
+  duration_ms: 0.118125
+  type: 'test'
+  ...
+# Subtest: old profile rejects malformed evidence in agent_edit_proposals
+ok 37 - old profile rejects malformed evidence in agent_edit_proposals
+  ---
+  duration_ms: 0.1175
+  type: 'test'
+  ...
+# Subtest: new profile rejects duplicate role keys and bounded malformed/oversize cells
+ok 38 - new profile rejects duplicate role keys and bounded malformed/oversize cells
+  ---
+  duration_ms: 2.885334
+  type: 'test'
+  ...
+# Subtest: new profile admits silent video and audio classifications but rejects image explicit clear
+ok 39 - new profile admits silent video and audio classifications but rejects image explicit clear
+  ---
+  duration_ms: 0.757042
+  type: 'test'
+  ...
+# Subtest: role-bearing exports require exact declaration and role-free exports forbid one
+ok 40 - role-bearing exports require exact declaration and role-free exports forbid one
+  ---
+  duration_ms: 0.623458
+  type: 'test'
+  ...
+# Subtest: malformed unrelated legacy payloads are left to historical readers
+ok 41 - malformed unrelated legacy payloads are left to historical readers
+  ---
+  duration_ms: 0.200167
+  type: 'test'
+  ...
+# Subtest: old profiles reject role error proof even when task input has no role
+ok 42 - old profiles reject role error proof even when task input has no role
+  ---
+  duration_ms: 0.200917
+  type: 'test'
+  ...
+# Subtest: 36 to38 rejects smuggled role evidence before marker writes
+ok 43 - 36 to38 rejects smuggled role evidence before marker writes
+  ---
+  duration_ms: 100.0675
+  type: 'test'
+  ...
+# Subtest: marker-only38 refuses missing immutable_timeline_responses without repairs or marker writes
+ok 44 - marker-only38 refuses missing immutable_timeline_responses without repairs or marker writes
+  ---
+  duration_ms: 97.895834
+  type: 'test'
+  ...
+# Subtest: marker-only38 refuses missing immutable_timeline_history without repairs or marker writes
+ok 45 - marker-only38 refuses missing immutable_timeline_history without repairs or marker writes
+  ---
+  duration_ms: 99.240959
+  type: 'test'
+  ...
+# Subtest: marker-only38 refuses missing immutable_timeline_render_snapshot without repairs or marker writes
+ok 46 - marker-only38 refuses missing immutable_timeline_render_snapshot without repairs or marker writes
+  ---
+  duration_ms: 98.238625
+  type: 'test'
+  ...
+# Subtest: marker-only38 refuses missing agent_chat_one_active without repairs or marker writes
+ok 47 - marker-only38 refuses missing agent_chat_one_active without repairs or marker writes
+  ---
+  duration_ms: 98.231167
+  type: 'test'
+  ...
+# Subtest: restored37 refuses role-bearing edit-task preparation without reserving an intent
+ok 48 - restored37 refuses role-bearing edit-task preparation without reserving an intent
+  ---
+  duration_ms: 210.283958
+  type: 'test'
+  ...
+# Subtest: actual backup38 restores role timelines, history and set/clear receipts exactly into editable39
+ok 49 - actual backup38 restores role timelines, history and set/clear receipts exactly into editable39
+  ---
+  duration_ms: 1213.925791
+  type: 'test'
+  ...
+1..49
+# tests 49
+# suites 0
+# pass 49
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2961.695542

@@ -1,0 +1,80 @@
+TAP version 13
+# Subtest: independent schema17 upgrades only image_reviews DDL and retains exact rowids, raw strings, histories and every SQL object
+ok 1 - independent schema17 upgrades only image_reviews DDL and retains exact rowids, raw strings, histories and every SQL object
+  ---
+  duration_ms: 184.5515
+  type: 'test'
+  ...
+# Subtest: rebuild interruption and failed schema18 marker roll back full schema, rows, fences and sequence state
+ok 2 - rebuild interruption and failed schema18 marker roll back full schema, rows, fences and sequence state
+  ---
+  duration_ms: 42.959708
+  type: 'test'
+  ...
+# Subtest: schema18 SQL permits exact custom v2 and rejects cross-branch or mismatched frozen authority
+ok 3 - schema18 SQL permits exact custom v2 and rejects cross-branch or mismatched frozen authority
+  ---
+  duration_ms: 15.905083
+  type: 'test'
+  ...
+# Subtest: normal startup upgrades frozen schema17 once and preserves restart/replay bytes
+not ok 4 - normal startup upgrades frozen schema17 once and preserves restart/replay bytes
+  ---
+  duration_ms: 525.558125
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/image-compatible-migration.test.mjs:81:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      [
+    +   'asset_annotation_requests',
+    +   'asset_annotations',
+        'frame_requests',
+        'frame_tasks',
+        'image_remote_observations',
+        'image_remote_runs',
+    +   'lut_import_requests',
+    +   'project_lut_resources',
+        'timeline_format_requests'
+      ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: 'frame_requests'
+    1: 'frame_tasks'
+    2: 'image_remote_observations'
+    3: 'image_remote_runs'
+    4: 'timeline_format_requests'
+  actual:
+    0: 'asset_annotation_requests'
+    1: 'asset_annotations'
+    2: 'frame_requests'
+    3: 'frame_tasks'
+    4: 'image_remote_observations'
+    5: 'image_remote_runs'
+    6: 'lut_import_requests'
+    7: 'project_lut_resources'
+    8: 'timeline_format_requests'
+  operator: 'deepStrictEqual'
+  stack: |-
+    sameOld (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/image-compatible-migration.test.mjs:21:2203)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/image-compatible-migration.test.mjs:82:251)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 3
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1309.438167

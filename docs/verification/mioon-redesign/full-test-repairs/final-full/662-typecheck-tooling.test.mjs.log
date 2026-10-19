@@ -1,0 +1,118 @@
+TAP version 13
+# Subtest: typecheck accepts no channels, selections, duplicates, project overrides or passthrough arguments
+ok 1 - typecheck accepts no channels, selections, duplicates, project overrides or passthrough arguments
+  ---
+  duration_ms: 0.929625
+  type: 'test'
+  ...
+# Subtest: local TypeScript requires the exact declared metadata and reviewed JavaScript entry paths
+ok 2 - local TypeScript requires the exact declared metadata and reviewed JavaScript entry paths
+  ---
+  duration_ms: 24.058042
+  type: 'test'
+  ...
+# Subtest: normal pnpm package links remain within the repository and use the canonical compiler entry
+ok 3 - normal pnpm package links remain within the repository and use the canonical compiler entry
+  ---
+  duration_ms: 8.485125
+  type: 'test'
+  ...
+# Subtest: missing local compiler fails without an ancestor, global or package-manager fallback
+ok 4 - missing local compiler fails without an ancestor, global or package-manager fallback
+  ---
+  duration_ms: 5.227583
+  type: 'test'
+  ...
+# Subtest: declaration ranges, missing declarations, package substitutions and wrong bin metadata fail closed
+ok 5 - declaration ranges, missing declarations, package substitutions and wrong bin metadata fail closed
+  ---
+  duration_ms: 9.310709
+  type: 'test'
+  ...
+# Subtest: outside node_modules and outside package links cannot become verified local compilers
+ok 6 - outside node_modules and outside package links cannot become verified local compilers
+  ---
+  duration_ms: 11.949917
+  type: 'test'
+  ...
+# Subtest: missing or non-file bin and compiler entries are rejected before execution
+ok 7 - missing or non-file bin and compiler entries are rejected before execution
+  ---
+  duration_ms: 15.091208
+  type: 'test'
+  ...
+# Subtest: entry directory links to outside or alternative in-package locations fail canonical layout checks
+ok 8 - entry directory links to outside or alternative in-package locations fail canonical layout checks
+  ---
+  duration_ms: 22.405625
+  type: 'test'
+  ...
+# Subtest: legacy runtime JavaScript remains accepted while new JS/JSX/MJS/CJS paths fail the language policy
+ok 9 - legacy runtime JavaScript remains accepted while new JS/JSX/MJS/CJS paths fail the language policy
+  ---
+  duration_ms: 9.188083
+  type: 'test'
+  ...
+# Subtest: missing, duplicate and escaping legacy allowlists cannot disable the language guard
+ok 10 - missing, duplicate and escaping legacy allowlists cannot disable the language guard
+  ---
+  duration_ms: 7.512792
+  type: 'test'
+  ...
+# Subtest: runtime TSX outside the browser and unchecked alternate TypeScript extensions are rejected
+ok 11 - runtime TSX outside the browser and unchecked alternate TypeScript extensions are rejected
+  ---
+  duration_ms: 10.756459
+  type: 'test'
+  ...
+# Subtest: fixed compiler projects cover future runtime TypeScript and only the exact legacy browser typed island is excluded
+ok 12 - fixed compiler projects cover future runtime TypeScript and only the exact legacy browser typed island is excluded
+  ---
+  duration_ms: 0.903709
+  type: 'test'
+  ...
+# Subtest: source symlink directories cannot hide new JavaScript from the language guard
+ok 13 - source symlink directories cannot hide new JavaScript from the language guard
+  ---
+  duration_ms: 9.665583
+  type: 'test'
+  ...
+# Subtest: actual standalone typecheck CLI runs both fixed checks without application/build/media prerequisites
+ok 14 - actual standalone typecheck CLI runs both fixed checks without application/build/media prerequisites
+  ---
+  duration_ms: 384.071292
+  type: 'test'
+  ...
+# Subtest: actual CLI rejects flags and invalid metadata without running a compiler
+ok 15 - actual CLI rejects flags and invalid metadata without running a compiler
+  ---
+  duration_ms: 450.078875
+  type: 'test'
+  ...
+# Subtest: actual compiler failure propagates and prevents the second check
+ok 16 - actual compiler failure propagates and prevents the second check
+  ---
+  duration_ms: 269.80175
+  type: 'test'
+  ...
+# Subtest: typecheck reuses the shell-free reduced environment and existing interruption outcomes
+ok 17 - typecheck reuses the shell-free reduced environment and existing interruption outcomes
+  ---
+  duration_ms: 9.607041
+  type: 'test'
+  ...
+# Subtest: build command places both typechecks before the existing build command sequence
+ok 18 - build command places both typechecks before the existing build command sequence
+  ---
+  duration_ms: 0.358875
+  type: 'test'
+  ...
+1..18
+# tests 18
+# suites 0
+# pass 18
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1428.618

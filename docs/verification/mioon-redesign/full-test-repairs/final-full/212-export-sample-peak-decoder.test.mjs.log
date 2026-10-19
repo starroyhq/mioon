@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: export peak raw stereo maxima are exact across arbitrary byte boundaries
+ok 1 - export peak raw stereo maxima are exact across arbitrary byte boundaries
+  ---
+  duration_ms: 6.691417
+  type: 'test'
+  ...
+# Subtest: export peak supports silence, full scale, finite extreme and subnormal without clamping
+ok 2 - export peak supports silence, full scale, finite extreme and subnormal without clamping
+  ---
+  duration_ms: 0.215583
+  type: 'test'
+  ...
+# Subtest: export peak poison, partial frames, empty input and invalid writes cannot be resumed
+ok 3 - export peak poison, partial frames, empty input and invalid writes cannot be resumed
+  ---
+  duration_ms: 1.384708
+  type: 'test'
+  ...
+# Subtest: export peak duration tolerance is inclusive but larger truncation fails
+ok 4 - export peak duration tolerance is inclusive but larger truncation fails
+  ---
+  duration_ms: 6.72325
+  type: 'test'
+  ...
+# Subtest: export peak fixed 600 second ceiling rejects even one additional byte
+ok 5 - export peak fixed 600 second ceiling rejects even one additional byte
+  ---
+  duration_ms: 1227.895333
+  type: 'test'
+  ...
+# Subtest: export peak probe requires exactly one indexed AAC48k stereo stream and MP4
+ok 6 - export peak probe requires exactly one indexed AAC48k stereo stream and MP4
+  ---
+  duration_ms: 0.778
+  type: 'test'
+  ...
+# Subtest: export peak wrapper restricts protocols/demuxer, selects actual stream and never truncates/transforms
+ok 7 - export peak wrapper restricts protocols/demuxer, selects actual stream and never truncates/transforms
+  ---
+  duration_ms: 0.479917
+  type: 'test'
+  ...
+# Subtest: export peak rejects invalid input and expired or aborted work before permit/spawn
+ok 8 - export peak rejects invalid input and expired or aborted work before permit/spawn
+  ---
+  duration_ms: 0.352666
+  type: 'test'
+  ...
+# Subtest: export peak probe has a 10 second subdeadline within the one remaining operation budget
+ok 9 - export peak probe has a 10 second subdeadline within the one remaining operation budget
+  ---
+  duration_ms: 0.281584
+  type: 'test'
+  ...
+# Subtest: export peak after-queue ownership fence prevents probe and no failed probe starts decoder
+ok 10 - export peak after-queue ownership fence prevents probe and no failed probe starts decoder
+  ---
+  duration_ms: 0.218708
+  type: 'test'
+  ...
+# Subtest: export peak callback failure preserves original fence or PCM poison plus unconfirmed termination
+ok 11 - export peak callback failure preserves original fence or PCM poison plus unconfirmed termination
+  ---
+  duration_ms: 0.662167
+  type: 'test'
+  ...
+# Subtest: export peak rejects accidentally asynchronous fences and inconsistent runner byte receipts
+ok 12 - export peak rejects accidentally asynchronous fences and inconsistent runner byte receipts
+  ---
+  duration_ms: 0.448042
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1414.993

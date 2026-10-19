@@ -1,0 +1,43 @@
+TAP version 13
+# Subtest: verify projects an imported oversized text marker to NULL before materializing rows
+ok 1 - verify projects an imported oversized text marker to NULL before materializing rows
+  ---
+  duration_ms: 183.20175
+  type: 'test'
+  ...
+# Subtest: verify projects an imported oversized blob marker to NULL before materializing rows
+ok 2 - verify projects an imported oversized blob marker to NULL before materializing rows
+  ---
+  duration_ms: 166.074625
+  type: 'test'
+  ...
+# Subtest: bounded marker projection refuses unsafe integer values without JavaScript range conversion
+ok 3 - bounded marker projection refuses unsafe integer values without JavaScript range conversion
+  ---
+  duration_ms: 0.516542
+  type: 'test'
+  ...
+# Subtest: ordinary24 unknown journal survives startup migration and cold40 archive while fixed41 restore refuses it
+not ok 4 - ordinary24 unknown journal survives startup migration and cold40 archive while fixed41 restore refuses it
+  ---
+  duration_ms: 66.747917
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-backup-marker-bounds.test.mjs:61:1'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-backup-marker-bounds.test.mjs:71:87)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 3
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 680.973583

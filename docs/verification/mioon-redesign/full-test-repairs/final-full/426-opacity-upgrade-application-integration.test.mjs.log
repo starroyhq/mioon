@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: upgraded web last-project opens and saves in the actual development candidate application
+ok 1 - upgraded web last-project opens and saves in the actual development candidate application
+  ---
+  duration_ms: 1926.711125
+  type: 'test'
+  ...
+# Subtest: upgraded production last-project opens and saves in the actual development candidate application
+ok 2 - upgraded production last-project opens and saves in the actual development candidate application
+  ---
+  duration_ms: 1410.410083
+  type: 'test'
+  ...
+# Subtest: upgraded development last-project opens and saves in the actual development candidate application
+ok 3 - upgraded development last-project opens and saves in the actual development candidate application
+  ---
+  duration_ms: 1279.473042
+  type: 'test'
+  ...
+# Subtest: target development binding does not relax source companion channel validation
+ok 4 - target development binding does not relax source companion channel validation
+  ---
+  duration_ms: 947.061666
+  type: 'test'
+  ...
+# Subtest: acknowledged not_applied timeline.clip.split is explicitly unsupported before any42 publication
+ok 5 - acknowledged not_applied timeline.clip.split is explicitly unsupported before any42 publication
+  ---
+  duration_ms: 1438.343542
+  type: 'test'
+  ...
+# Subtest: acknowledged applied timeline.clip.split is explicitly unsupported before any42 publication
+ok 6 - acknowledged applied timeline.clip.split is explicitly unsupported before any42 publication
+  ---
+  duration_ms: 1478.591375
+  type: 'test'
+  ...
+# Subtest: acknowledged not_applied timeline.clip.replaceSource is explicitly unsupported before any42 publication
+ok 7 - acknowledged not_applied timeline.clip.replaceSource is explicitly unsupported before any42 publication
+  ---
+  duration_ms: 1651.662375
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 10503.377917

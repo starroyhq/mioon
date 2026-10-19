@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: capture reads actual paused currentTime, freezes source/hash/frame and ignores controller and timeline playheads
+ok 1 - capture reads actual paused currentTime, freezes source/hash/frame and ignores controller and timeline playheads
+  ---
+  duration_ms: 4.022667
+  type: 'test'
+  ...
+# Subtest: readiness events enable/disable capture and click revalidation denies stale-enabled media
+ok 2 - readiness events enable/disable capture and click revalidation denies stale-enabled media
+  ---
+  duration_ms: 0.724417
+  type: 'test'
+  ...
+# Subtest: a pending explicit seek is never capture fact; acknowledged quantized seek retains the intended editing mark
+ok 3 - a pending explicit seek is never capture fact; acknowledged quantized seek retains the intended editing mark
+  ---
+  duration_ms: 0.365792
+  type: 'test'
+  ...
+# Subtest: exclusive EOF and unknown source duration cannot be captured
+ok 4 - exclusive EOF and unknown source duration cannot be captured
+  ---
+  duration_ms: 0.4695
+  type: 'test'
+  ...
+# Subtest: old source/readiness handlers and hidden previews cannot submit against a new binding
+ok 5 - old source/readiness handlers and hidden previews cannot submit against a new binding
+  ---
+  duration_ms: 1.348917
+  type: 'test'
+  ...
+# Subtest: capture is absent for audio/image/clip/timeline and requires an actual source hash
+ok 6 - capture is absent for audio/image/clip/timeline and requires an actual source hash
+  ---
+  duration_ms: 0.622625
+  type: 'test'
+  ...
+# Subtest: synchronous in-flight guard suppresses double click before parent busy render
+ok 7 - synchronous in-flight guard suppresses double click before parent busy render
+  ---
+  duration_ms: 0.182
+  type: 'test'
+  ...
+# Subtest: narrow Properties can recover a saved local result while retained hidden Preview capture is denied
+ok 8 - narrow Properties can recover a saved local result while retained hidden Preview capture is denied
+  ---
+  duration_ms: 10.915667
+  type: 'test'
+  ...
+# Subtest: hash-only source replacement remounts decoded media and requires fresh readiness before capturing the new hash
+ok 9 - hash-only source replacement remounts decoded media and requires fresh readiness before capturing the new hash
+  ---
+  duration_ms: 0.423792
+  type: 'test'
+  ...
+# Subtest: candidate exact output player revokes retained play handlers on held, disconnect and application replacement
+ok 10 - candidate exact output player revokes retained play handlers on held, disconnect and application replacement
+  ---
+  duration_ms: 5.646333
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 330.356458

@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: preference reads have no writes, require an existing project, and are absent from RPC schemas
+ok 1 - preference reads have no writes, require an existing project, and are absent from RPC schemas
+  ---
+  duration_ms: 641.692
+  type: 'test'
+  ...
+# Subtest: the full bounded whitelist rejects missing, unknown, free-text, unsafe and malformed values atomically
+ok 2 - the full bounded whitelist rejects missing, unknown, free-text, unsafe and malformed values atomically
+  ---
+  duration_ms: 605.1145
+  type: 'test'
+  ...
+# Subtest: legacy stored v1 preferences normalize and replay canonically without changing bytes or revisions
+ok 3 - legacy stored v1 preferences normalize and replay canonically without changing bytes or revisions
+  ---
+  duration_ms: 952.648334
+  type: 'test'
+  ...
+# Subtest: legacy v1 magnet input still rejects every undocumented omission and unknown field
+ok 4 - legacy v1 magnet input still rejects every undocumented omission and unknown field
+  ---
+  duration_ms: 602.025291
+  type: 'test'
+  ...
+# Subtest: whole-layout legacy migration preserves raw bytes and revisions on GET and exact replay
+ok 5 - whole-layout legacy migration preserves raw bytes and revisions on GET and exact replay
+  ---
+  duration_ms: 623.929084
+  type: 'test'
+  ...
+# Subtest: strict layout input never repairs a supplied partial layout, even for otherwise legacy records
+ok 6 - strict layout input never repairs a supplied partial layout, even for otherwise legacy records
+  ---
+  duration_ms: 0.654209
+  type: 'test'
+  ...
+# Subtest: independent CAS revisions replay only the latest exact write and never overwrite stale state
+ok 7 - independent CAS revisions replay only the latest exact write and never overwrite stale state
+  ---
+  duration_ms: 631.23175
+  type: 'test'
+  ...
+# Subtest: selection IDs can outlive entities, project preferences stay isolated, and business/history bytes are untouched
+ok 8 - selection IDs can outlive entities, project preferences stay isolated, and business/history bytes are untouched
+  ---
+  duration_ms: 649.965375
+  type: 'test'
+  ...
+# Subtest: additive v5 migration preserves legacy records, immutable requests, history and bytes
+ok 9 - additive v5 migration preserves legacy records, immutable requests, history and bytes
+  ---
+  duration_ms: 624.72875
+  type: 'test'
+  ...
+# Subtest: competing database connections commit one CAS winner and deduplicate simultaneous exact retries
+ok 10 - competing database connections commit one CAS winner and deduplicate simultaneous exact retries
+  ---
+  duration_ms: 5452.489416
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 11145.528333

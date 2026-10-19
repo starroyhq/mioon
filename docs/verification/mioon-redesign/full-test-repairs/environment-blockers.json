@@ -1,0 +1,27 @@
+{
+  "scope": "Diagnostic evidence only; final full-suite outcome is recorded separately",
+  "ffmpegVersion": "9.0.2",
+  "ffprobeVersion": "9.0.2",
+  "drawtext": false,
+  "subtitles": false,
+  "originalTargetFilesBlocked": [
+    "tests/cli-v4.test.mjs",
+    "tests/export-settings-media.test.mjs",
+    "tests/integration.test.mjs",
+    "tests/mcp.test.mjs",
+    "tests/timeline-mcp.test.mjs",
+    "tests/timeline-media.test.mjs"
+  ],
+  "fixedCodeDefects": [
+    "Recognize one exact FFmpeg filter-list header separator so proven missing drawtext is terminal",
+    "Use file-value option syntax instead of removed filter_script/filter_complex_script options"
+  ],
+  "noToolInstallationOrDependencyChange": true,
+  "noRenderFallback": true,
+  "noTestSkipAdded": true,
+  "officialMacFullLane": {
+    "exitCode": 2,
+    "code": "NATIVE_TEST_LANE_BLOCKED"
+  },
+  "productionRenderingSourceUnchangedByDiagnosticControls": true
+}

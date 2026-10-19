@@ -1,0 +1,98 @@
+TAP version 13
+# Subtest: multitrack v2 real-media rendering acceptance
+    # Subtest: layer order, transparent contain, exact frame edges, gaps, source trims, preview/export parity
+    ok 1 - layer order, transparent contain, exact frame edges, gaps, source trims, preview/export parity
+      ---
+      duration_ms: 4103.257042
+      type: 'test'
+      ...
+    # Subtest: single-frame clips, leading black gap and non-whole-second ending retain exactly 71 frames
+    ok 2 - single-frame clips, leading black gap and non-whole-second ending retain exactly 71 frames
+      ---
+      duration_ms: 1312.42825
+      type: 'test'
+      ...
+    # Subtest: RGBA source alpha preserves lower pixels and audio-only timelines render a real black video stream
+    ok 3 - RGBA source alpha preserves lower pixels and audio-only timelines render a real black video stream
+      ---
+      duration_ms: 1304.686583
+      type: 'test'
+      ...
+    # Subtest: hidden is picture-only; video mute silences embedded sound; audio mute silences audio tracks
+    ok 4 - hidden is picture-only; video mute silences embedded sound; audio mute silences audio tracks
+      ---
+      duration_ms: 1866.908834
+      type: 'test'
+      ...
+    # Subtest: overlapping independent audio and embedded video sound mix without implicit normalization; clip gain applies
+    ok 5 - overlapping independent audio and embedded video sound mix without implicit normalization; clip gain applies
+      ---
+      duration_ms: 1945.717333
+      type: 'test'
+      ...
+    # Subtest: snapshot, output bytes and original asset references stay frozen after later timeline edits
+    ok 6 - snapshot, output bytes and original asset references stay frozen after later timeline edits
+      ---
+      duration_ms: 946.343
+      type: 'test'
+      ...
+    # Subtest: worker verifies actual source bytes against frozen hashes before rendering
+    ok 7 - worker verifies actual source bytes against frozen hashes before rendering
+      ---
+      duration_ms: 133.40875
+      type: 'test'
+      ...
+    # Subtest: durable running timeline render recovers after actual backend SIGKILL
+    ok 8 - durable running timeline render recovers after actual backend SIGKILL
+      ---
+      duration_ms: 5509.930625
+      type: 'test'
+      ...
+    # Subtest: v1 selected-shot sequence export remains separate and decodable with an empty v2 timeline
+    not ok 9 - v1 selected-shot sequence export remains separate and decodable with an empty v2 timeline
+      ---
+      duration_ms: 879.902125
+      type: 'test'
+      location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-media.test.mjs:114:11'
+      failureType: 'testCodeFailure'
+      error: |-
+        {"id":"0181810e-8a67-46d3-8cac-e24495629290","projectId":"abbedfad-2c51-4746-a009-6c21db0097bc","shotId":"bc647ac2-4962-486d-9127-da78da9409ab","requestId":"5a427e4d-b3c2-4bf3-8c72-4e978fa48563","providerId":"mock","model":"mock-motion-v1","revision":5,"status":"failed","phase":"provider_failed","progress":80,"snapshot":{"shotId":"bc647ac2-4962-486d-9127-da78da9409ab","shotRevision":1,"title":"Original sequence","prompt":"Local mock; no paid generation","referenceAssetIds":["d3304c14-5682-41f4-b518-cdd77028c6cd"],"referenceAssets":[{"id":"d3304c14-5682-41f4-b518-cdd77028c6cd","mimeType":"image/png","sha256":"02ad64fb46537b0364dbc37143489cda1bd434289f917933f025ae034b1cb9e6","width":720,"height":1280,"role":"first_frame","sizeBytes":5559}],"referenceConnections":[],"aspectRatio":"9:16","duration":2,"providerId":"mock","model":"mock-motion-v1","parameters":{},"capabilities":{"id":"mock","name":"Mock · simulated motion","models":["mock-motion-v1"],"inputModes":["image","text"],"aspectRatios":["9:16"],"durations":[2,4,8],"maxReferenceImages":2,"referenceSimulation":"metadata-only","depictsPromptOrReferences":false,"mock":true,"configured":true,"enabled":true,"scenarios":["success","failure","delay","timeout","unknown","reject","download_fail_once","accepted_then_response_lost","rejected_before_accept","terminal_failure","poll_timeout_then_recover"],"supportsRemoteCancel":true,"reconciliation":"request-id","inputProfileVersion":"mioon-input-profiles/1","profileEvaluationDate":"2026-10-19","providerRegion":"local","inputProfiles":[{"profileVersion":"mioon-input-profiles/3","reviewedOn":"2026-10-11","implemented":true,"liveVerified":false,"runtimeAvailability":"not-evaluated","prompt":{"required":false,"maxCodeUnits":5000},"aspectRatios":["9:16"],"durationsSeconds":[2,4,8],"parameters":{"scenario":{"type":"enum","values":["success","failure","delay","timeout","unknown","reject","download_fail_once","rejected_before_accept","accepted_then_response_lost","poll_timeout_then_recover","terminal_failure"]},"delayMs":{"type":"integer","min":0,"max":120000},"seed":{"type":"integer","min":-9007199254740991,"max":9007199254740991}},"approvalRequired":false,"requiresManagedImageVerification":false,"providerId":"mock","model":"mock-motion-v1","profileId":"mock:mock-motion-v1:v3","regions":["local"],"regionMeaning":"Local simulated provider; no external provider.","apiFamily":"mioon-simulation","origins":{},"adapterSource":"packages/business/src/providers/mock.mjs","inputModes":["text","image"],"simulationOnly":true,"output":{"width":360,"height":640,"audio":"disabled","depictsPromptOrReferences":false},"inputs":{"minReferences":0,"maxReferences":2,"combinations":[[],["first_frame"],["first_frame","last_frame"],["subject_reference"]],"roles":{"first_frame":{"implemented":true,"semantics":"simulation-only","min":0,"max":1,"mimeTypes":["image/png","image/jpeg","image/webp"],"maxBytes":31457280,"maxBytesSource":"Mioon asset.import cap; mock does not read reference image bytes","dimensions":null},"last_frame":{"implemented":true,"semantics":"simulation-only","min":0,"max":1,"mimeTypes":["image/png","image/jpeg","image/webp"],"maxBytes":31457280,"maxBytesSource":"Mioon asset.import cap; mock does not read reference image bytes","dimensions":null},"subject_reference":{"implemented":true,"semantics":"simulation-only","min":0,"max":1,"mimeTypes":["image/png","image/jpeg"],"maxBytes":10485760,"maxBytesSource":"Mioon managedImage default","dimensions":null},"style_reference":{"implemented":false,"min":0,"max":0,"reason":"No mapping in the current Mioon adapter."},"motion_reference":{"implemented":false,"min":0,"max":0,"reason":"No mapping in the current Mioon adapter."}},"distinctAssetsRequired":true,"distinctAssetsReason":"Current Mioon app restriction; not a claimed provider requirement."}}],"inputProfileEvaluations":[{"profileId":"mock:mock-motion-v1:v3","ok":true,"evaluatedAsOf":"2026-10-19","issues":[],"warnings":[]}],"modelCapabilities":[{"id":"mock-motion-v1","name":"mock-motion-v1","inputModes":["image","text"],"aspectRatios":["9:16"],"durations":[2,4,8],"referenceImages":{"min":0,"max":2},"parameters":["scenario","delayMs","seed"]}],"status":"available","liveVerified":false,"configuration":{"missing":[],"requirements":[]}},"inputProfileVersion":"mioon-input-profiles/3","inputProfileId":"mock:mock-motion-v1:v3","providerRegion":"local","referenceBindings":[{"role":"first_frame","assetId":"d3304c14-5682-41f4-b518-cdd77028c6cd","sha256":"02ad64fb46537b0364dbc37143489cda1bd434289f917933f025ae034b1cb9e6"}]},"providerJobId":"mock-efdde93e17c6b3131073802d737a6a16","submissionCount":1,"error":{"code":"MOCK_RENDERER_UNSUPPORTED","message":"当前 FFmpeg 缺少 drawtext 滤镜（需要 libfreetype），无法生成模拟视频。请换用包含该滤镜的构建（例如 Homebrew 的 ffmpeg-full），再重新选择 ffmpeg 与 ffprobe。","retryable":false},"createdAt":"2026-10-19T03:10:44.833Z","updatedAt":"2026-10-19T03:10:45.562Z","versionId":null,"cancelScope":null,"retryOfJobId":null,"nextPollAt":1792379445477,"allowedActions":["retry"]}
+        + actual - expected
+        
+        + 'failed'
+        - 'succeeded'
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 'succeeded'
+      actual: 'failed'
+      operator: 'strictEqual'
+      stack: |-
+        file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-media.test.mjs:333:12
+        process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+        async TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-media.test.mjs:115:26)
+        async Test.run (node:internal/test_runner/test:1409:7)
+        async check (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-media.test.mjs:114:3)
+        async TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-media.test.mjs:327:3)
+        async Test.run (node:internal/test_runner/test:1409:7)
+        async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+      ...
+    1..9
+not ok 1 - multitrack v2 real-media rendering acceptance
+  ---
+  duration_ms: 19284.351584
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-media.test.mjs:166:1'
+  failureType: 'subtestsFailed'
+  error: '1 subtest failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+1..1
+# tests 10
+# suites 0
+# pass 8
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 19413.155458

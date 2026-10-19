@@ -1,0 +1,645 @@
+{
+  "url": "http://127.0.0.1:60841",
+  "screenshots": {
+    "empty": {
+      "path": "screenshots/u6-empty.png",
+      "geometry": {
+        ".central-preview": {
+          "x": 273,
+          "y": 51,
+          "width": 834,
+          "height": 536
+        },
+        ".preview-mode-bar": {
+          "x": 273,
+          "y": 51,
+          "width": 834,
+          "height": 36
+        },
+        ".preview-stage": {
+          "x": 273,
+          "y": 87,
+          "width": 834,
+          "height": 452
+        },
+        ".preview-stage>video": null,
+        ".preview-footer": {
+          "x": 273,
+          "y": 539,
+          "width": 834,
+          "height": 48
+        },
+        ".edit-timeline-toolbar": {
+          "x": 7,
+          "y": 595,
+          "width": 1426,
+          "height": 36
+        },
+        ".timeline-ruler-row": {
+          "x": 7,
+          "y": 631,
+          "width": 1426,
+          "height": 24
+        },
+        ".track-label": {
+          "x": 7,
+          "y": 631,
+          "width": 168,
+          "height": 23
+        },
+        ".timeline-track.video": {
+          "x": 7,
+          "y": 655,
+          "width": 1426,
+          "height": 52
+        },
+        ".timeline-track.audio": {
+          "x": 7,
+          "y": 707,
+          "width": 1426,
+          "height": 44
+        },
+        ".timeline-track.subtitle-track": null,
+        ".edit-inspector-save": null
+      }
+    },
+    "selected": {
+      "path": "screenshots/u6-selected.png",
+      "geometry": {
+        ".central-preview": {
+          "x": 273,
+          "y": 51,
+          "width": 834,
+          "height": 536
+        },
+        ".preview-mode-bar": {
+          "x": 273,
+          "y": 51,
+          "width": 834,
+          "height": 36
+        },
+        ".preview-stage": {
+          "x": 273,
+          "y": 87,
+          "width": 834,
+          "height": 452
+        },
+        ".preview-stage>video": {
+          "x": 580.4375,
+          "y": 119,
+          "width": 219.125,
+          "height": 388
+        },
+        ".preview-footer": {
+          "x": 273,
+          "y": 539,
+          "width": 834,
+          "height": 48
+        },
+        ".edit-timeline-toolbar": {
+          "x": 7,
+          "y": 595,
+          "width": 1426,
+          "height": 36
+        },
+        ".timeline-ruler-row": {
+          "x": 7,
+          "y": 631,
+          "width": 1426,
+          "height": 24
+        },
+        ".track-label": {
+          "x": 7,
+          "y": 631,
+          "width": 168,
+          "height": 23
+        },
+        ".timeline-track.video": {
+          "x": 7,
+          "y": 687,
+          "width": 1426,
+          "height": 52
+        },
+        ".timeline-track.audio": {
+          "x": 7,
+          "y": 791,
+          "width": 1426,
+          "height": 44
+        },
+        ".timeline-track.subtitle-track": {
+          "x": 7,
+          "y": 655,
+          "width": 1426,
+          "height": 32
+        },
+        ".edit-inspector-save": {
+          "x": 1115,
+          "y": 539,
+          "width": 318,
+          "height": 48
+        }
+      }
+    },
+    "more": {
+      "path": "screenshots/u6-more.png",
+      "geometry": {
+        ".central-preview": {
+          "x": 273,
+          "y": 51,
+          "width": 834,
+          "height": 536
+        },
+        ".preview-mode-bar": {
+          "x": 273,
+          "y": 51,
+          "width": 834,
+          "height": 36
+        },
+        ".preview-stage": {
+          "x": 273,
+          "y": 87,
+          "width": 834,
+          "height": 452
+        },
+        ".preview-stage>video": {
+          "x": 580.4375,
+          "y": 119,
+          "width": 219.125,
+          "height": 388
+        },
+        ".preview-footer": {
+          "x": 273,
+          "y": 539,
+          "width": 834,
+          "height": 48
+        },
+        ".edit-timeline-toolbar": {
+          "x": 7,
+          "y": 595,
+          "width": 1426,
+          "height": 36
+        },
+        ".timeline-ruler-row": {
+          "x": 7,
+          "y": 631,
+          "width": 1426,
+          "height": 24
+        },
+        ".track-label": {
+          "x": 7,
+          "y": 631,
+          "width": 168,
+          "height": 23
+        },
+        ".timeline-track.video": {
+          "x": 7,
+          "y": 687,
+          "width": 1426,
+          "height": 52
+        },
+        ".timeline-track.audio": {
+          "x": 7,
+          "y": 791,
+          "width": 1426,
+          "height": 44
+        },
+        ".timeline-track.subtitle-track": {
+          "x": 7,
+          "y": 655,
+          "width": 1426,
+          "height": 32
+        },
+        ".edit-inspector-save": {
+          "x": 1115,
+          "y": 539,
+          "width": 318,
+          "height": 48
+        }
+      }
+    },
+    "remove-confirm": {
+      "path": "screenshots/u6-remove-confirm.png",
+      "geometry": {
+        ".central-preview": {
+          "x": 273,
+          "y": 51,
+          "width": 834,
+          "height": 536
+        },
+        ".preview-mode-bar": {
+          "x": 273,
+          "y": 51,
+          "width": 834,
+          "height": 36
+        },
+        ".preview-stage": {
+          "x": 273,
+          "y": 87,
+          "width": 834,
+          "height": 452
+        },
+        ".preview-stage>video": {
+          "x": 580.4375,
+          "y": 119,
+          "width": 219.125,
+          "height": 388
+        },
+        ".preview-footer": {
+          "x": 273,
+          "y": 539,
+          "width": 834,
+          "height": 48
+        },
+        ".edit-timeline-toolbar": {
+          "x": 7,
+          "y": 595,
+          "width": 1426,
+          "height": 36
+        },
+        ".timeline-ruler-row": {
+          "x": 7,
+          "y": 631,
+          "width": 1426,
+          "height": 24
+        },
+        ".track-label": {
+          "x": 7,
+          "y": 631,
+          "width": 168,
+          "height": 23
+        },
+        ".timeline-track.video": {
+          "x": 7,
+          "y": 687,
+          "width": 1426,
+          "height": 52
+        },
+        ".timeline-track.audio": {
+          "x": 7,
+          "y": 791,
+          "width": 1426,
+          "height": 44
+        },
+        ".timeline-track.subtitle-track": {
+          "x": 7,
+          "y": 655,
+          "width": 1426,
+          "height": 32
+        },
+        ".edit-inspector-save": {
+          "x": 1115,
+          "y": 539,
+          "width": 318,
+          "height": 48
+        }
+      }
+    },
+    "ripple-confirm": {
+      "path": "screenshots/u6-ripple-confirm.png",
+      "geometry": {
+        ".central-preview": {
+          "x": 273,
+          "y": 51,
+          "width": 834,
+          "height": 536
+        },
+        ".preview-mode-bar": {
+          "x": 273,
+          "y": 51,
+          "width": 834,
+          "height": 36
+        },
+        ".preview-stage": {
+          "x": 273,
+          "y": 87,
+          "width": 834,
+          "height": 452
+        },
+        ".preview-stage>video": {
+          "x": 580.4375,
+          "y": 119,
+          "width": 219.125,
+          "height": 388
+        },
+        ".preview-footer": {
+          "x": 273,
+          "y": 539,
+          "width": 834,
+          "height": 48
+        },
+        ".edit-timeline-toolbar": {
+          "x": 7,
+          "y": 595,
+          "width": 1426,
+          "height": 36
+        },
+        ".timeline-ruler-row": {
+          "x": 7,
+          "y": 631,
+          "width": 1426,
+          "height": 24
+        },
+        ".track-label": {
+          "x": 7,
+          "y": 631,
+          "width": 168,
+          "height": 23
+        },
+        ".timeline-track.video": {
+          "x": 7,
+          "y": 687,
+          "width": 1426,
+          "height": 52
+        },
+        ".timeline-track.audio": {
+          "x": 7,
+          "y": 791,
+          "width": 1426,
+          "height": 44
+        },
+        ".timeline-track.subtitle-track": {
+          "x": 7,
+          "y": 655,
+          "width": 1426,
+          "height": 32
+        },
+        ".edit-inspector-save": {
+          "x": 1115,
+          "y": 539,
+          "width": 318,
+          "height": 48
+        }
+      }
+    },
+    "audio-expanded": {
+      "path": "screenshots/u6-audio-expanded.png",
+      "geometry": {
+        ".central-preview": {
+          "x": 273,
+          "y": 51,
+          "width": 834,
+          "height": 536
+        },
+        ".preview-mode-bar": {
+          "x": 273,
+          "y": 51,
+          "width": 834,
+          "height": 36
+        },
+        ".preview-stage": {
+          "x": 273,
+          "y": 87,
+          "width": 834,
+          "height": 452
+        },
+        ".preview-stage>video": {
+          "x": 580.4375,
+          "y": 119,
+          "width": 219.125,
+          "height": 388
+        },
+        ".preview-footer": {
+          "x": 273,
+          "y": 539,
+          "width": 834,
+          "height": 48
+        },
+        ".edit-timeline-toolbar": {
+          "x": 7,
+          "y": 595,
+          "width": 1426,
+          "height": 36
+        },
+        ".timeline-ruler-row": {
+          "x": 7,
+          "y": 631,
+          "width": 1426,
+          "height": 24
+        },
+        ".track-label": {
+          "x": 7,
+          "y": 631,
+          "width": 168,
+          "height": 23
+        },
+        ".timeline-track.video": {
+          "x": 7,
+          "y": 687,
+          "width": 1426,
+          "height": 52
+        },
+        ".timeline-track.audio": {
+          "x": 7,
+          "y": 791,
+          "width": 1426,
+          "height": 44
+        },
+        ".timeline-track.subtitle-track": {
+          "x": 7,
+          "y": 655,
+          "width": 1426,
+          "height": 32
+        },
+        ".edit-inspector-save": {
+          "x": 1115,
+          "y": 539,
+          "width": 318,
+          "height": 48
+        }
+      }
+    },
+    "stale": {
+      "path": "screenshots/u6-stale.png",
+      "geometry": {
+        ".central-preview": {
+          "x": 273,
+          "y": 51,
+          "width": 834,
+          "height": 536
+        },
+        ".preview-mode-bar": {
+          "x": 273,
+          "y": 51,
+          "width": 834,
+          "height": 36
+        },
+        ".preview-stage": {
+          "x": 273,
+          "y": 133,
+          "width": 834,
+          "height": 406
+        },
+        ".preview-stage>video": {
+          "x": 593.375,
+          "y": 165,
+          "width": 193.25,
+          "height": 342
+        },
+        ".preview-footer": {
+          "x": 273,
+          "y": 539,
+          "width": 834,
+          "height": 48
+        },
+        ".edit-timeline-toolbar": {
+          "x": 7,
+          "y": 595,
+          "width": 1426,
+          "height": 36
+        },
+        ".timeline-ruler-row": {
+          "x": 7,
+          "y": 631,
+          "width": 1426,
+          "height": 24
+        },
+        ".track-label": {
+          "x": 7,
+          "y": 631,
+          "width": 168,
+          "height": 23
+        },
+        ".timeline-track.video": {
+          "x": 7,
+          "y": 687,
+          "width": 1426,
+          "height": 52
+        },
+        ".timeline-track.audio": {
+          "x": 7,
+          "y": 791,
+          "width": 1426,
+          "height": 44
+        },
+        ".timeline-track.subtitle-track": {
+          "x": 7,
+          "y": 655,
+          "width": 1426,
+          "height": 32
+        },
+        ".edit-inspector-save": {
+          "x": 1115,
+          "y": 539,
+          "width": 318,
+          "height": 48
+        }
+      }
+    },
+    "rendering": {
+      "path": "screenshots/u6-rendering.png",
+      "geometry": {
+        ".central-preview": {
+          "x": 273,
+          "y": 51,
+          "width": 834,
+          "height": 536
+        },
+        ".preview-mode-bar": {
+          "x": 273,
+          "y": 51,
+          "width": 834,
+          "height": 36
+        },
+        ".preview-stage": {
+          "x": 273,
+          "y": 182.390625,
+          "width": 834,
+          "height": 356.609375
+        },
+        ".preview-stage>video": {
+          "x": 607.265625,
+          "y": 214.390625,
+          "width": 165.453125,
+          "height": 292.609375
+        },
+        ".preview-footer": {
+          "x": 273,
+          "y": 539,
+          "width": 834,
+          "height": 48
+        },
+        ".edit-timeline-toolbar": {
+          "x": 7,
+          "y": 595,
+          "width": 1426,
+          "height": 36
+        },
+        ".timeline-ruler-row": {
+          "x": 7,
+          "y": 631,
+          "width": 1426,
+          "height": 24
+        },
+        ".track-label": {
+          "x": 7,
+          "y": 631,
+          "width": 168,
+          "height": 23
+        },
+        ".timeline-track.video": {
+          "x": 7,
+          "y": 687,
+          "width": 1426,
+          "height": 52
+        },
+        ".timeline-track.audio": {
+          "x": 7,
+          "y": 791,
+          "width": 1426,
+          "height": 44
+        },
+        ".timeline-track.subtitle-track": {
+          "x": 7,
+          "y": 655,
+          "width": 1426,
+          "height": 32
+        },
+        ".edit-inspector-save": {
+          "x": 1115,
+          "y": 539,
+          "width": 318,
+          "height": 48
+        }
+      }
+    }
+  },
+  "checks": [
+    "preview fills stage; playback footer at bottom; track header168",
+    "actual selected-clip playback/pause and one-frame step update the bound timeline frame",
+    "actual standalone source playback/pause and one-frame step leave timeline frame0 unchanged",
+    "real ripple preserves existing30f gaps and shifts only later clips by60f",
+    "UI undo/redo round trip",
+    "input/unsaved keyboard cannot remove",
+    "Shift+Backspace opens ripple confirmation; ordinary Backspace leaves gaps; undo restores",
+    "audio role/gain/fade/envelope preset/ducking and explicit measurement entry retain actual capability admission",
+    "render toast has bounded height and does not cover playback footer",
+    "real frozen preview becomes stale after saved edit and new render shows progress"
+  ],
+  "pageErrors": [],
+  "browserVersion": "155.0.8059.80",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "deviceScaleFactor": 1,
+    "zoom": 1,
+    "locale": "zh-Hans"
+  },
+  "playbackSourceBeforeStep": {
+    "frame": 5,
+    "time": 0.198496
+  },
+  "audioEntries": {
+    "hasAudio": true,
+    "role": true,
+    "gain": true,
+    "fade": true,
+    "envelopePresetsAndDucking": true,
+    "explicitMeasurement": true
+  },
+  "toastGeometry": {
+    "x": 1132,
+    "y": 52,
+    "width": 296,
+    "height": 62
+  }
+}

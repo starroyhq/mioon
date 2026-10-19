@@ -1,0 +1,18 @@
+{
+  "files": [
+    "tests/local-drafts-transports.test.mjs",
+    "tests/reference-recovery-transports.test.mjs",
+    "tests/timeline-recovery-transports.test.mjs",
+    "tests/timeline-image-transports.test.mjs",
+    "tests/mock-renderer-capability.test.mjs",
+    "tests/mock-renderer-capability-fences.test.mjs"
+  ],
+  "concurrency": 1,
+  "timeoutSeconds": 900,
+  "separateProcesses": true,
+  "source": "real directory enumeration; no exclusions",
+  "nodeFlags": [
+    "--test",
+    "--test-reporter=tap"
+  ]
+}

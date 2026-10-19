@@ -1,0 +1,54 @@
+TAP version 13
+# Subtest: image inspection shares exact bounded effects and does not widen the generic Agent read catalog
+ok 1 - image inspection shares exact bounded effects and does not widen the generic Agent read catalog
+  ---
+  duration_ms: 2.11725
+  type: 'test'
+  ...
+# Subtest: shared image client preserves SHA-bound image evidence and the historical video DTO unchanged
+ok 2 - shared image client preserves SHA-bound image evidence and the historical video DTO unchanged
+  ---
+  duration_ms: 3.315667
+  type: 'test'
+  ...
+# Subtest: shared image client rejects foreign, unbound, contradictory and path-bearing DTOs once without mutation uncertainty
+ok 3 - shared image client rejects foreign, unbound, contradictory and path-bearing DTOs once without mutation uncertainty
+  ---
+  duration_ms: 2.952709
+  type: 'test'
+  ...
+# Subtest: image inspection refuses caller paths, bytes, decoder arguments and request identities before transport
+ok 4 - image inspection refuses caller paths, bytes, decoder arguments and request identities before transport
+  ---
+  duration_ms: 0.296916
+  type: 'test'
+  ...
+# Subtest: actual authenticated HTTP, CLI and official MCP preserve image inspection scope; restored33 refuses even an explicit origin
+not ok 5 - actual authenticated HTTP, CLI and official MCP preserve image inspection scope; restored33 refuses even an explicit origin
+  ---
+  duration_ms: 2619.41
+  type: 'test'
+  location: '/private/tmp/mioon-redesign-2_80wkck/verify/tests/timeline-image-transports.test.mjs:264:1'
+  failureType: 'testCodeFailure'
+  error: 'Workspace schema role is unsupported'
+  code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  stack: |-
+    unsupported (file:///private/tmp/mioon-redesign-2_80wkck/verify/packages/business/src/workspace-schema-dispatch.ts:38:55)
+    readCurrentWorkspaceRole (file:///private/tmp/mioon-redesign-2_80wkck/verify/packages/business/src/workspace-schema-dispatch.ts:125:30)
+    classify (file:///private/tmp/mioon-redesign-2_80wkck/verify/packages/business/src/workspace-schema-dispatch.ts:193:18)
+    installRestore (file:///private/tmp/mioon-redesign-2_80wkck/verify/packages/business/src/workspace-schema-dispatch.ts:266:21)
+    Object.restore33 (file:///private/tmp/mioon-redesign-2_80wkck/verify/tests/timeline-image-transports.test.mjs:256:20)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async TestContext.<anonymous> (file:///private/tmp/mioon-redesign-2_80wkck/verify/tests/timeline-image-transports.test.mjs:300:22)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 4
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3071.874167

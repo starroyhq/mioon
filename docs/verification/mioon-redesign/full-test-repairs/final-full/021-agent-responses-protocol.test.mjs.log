@@ -1,0 +1,118 @@
+TAP version 13
+# Subtest: explicit profiles preserve all ordered selected history, fixed instruction and field allowlists
+ok 1 - explicit profiles preserve all ordered selected history, fixed instruction and field allowlists
+  ---
+  duration_ms: 6.012625
+  type: 'test'
+  ...
+# Subtest: preflight validates protocol/model/endpoint before key or socket without protocol inference
+ok 2 - preflight validates protocol/model/endpoint before key or socket without protocol inference
+  ---
+  duration_ms: 0.9365
+  type: 'test'
+  ...
+# Subtest: Responses request bounds include fixed instructions and reject injected instructions, incomplete or unordered history
+ok 3 - Responses request bounds include fixed instructions and reject injected instructions, incomplete or unordered history
+  ---
+  duration_ms: 0.373625
+  type: 'test'
+  ...
+# Subtest: native named and data-only SSE handles every UTF-8 byte boundary and completes without DONE or duplicate finals
+ok 4 - native named and data-only SSE handles every UTF-8 byte boundary and completes without DONE or duplicate finals
+  ---
+  duration_ms: 19.311042
+  type: 'test'
+  ...
+# Subtest: multiple text parts and refusal concatenate deltas only; usage maps to safe runtime counters
+ok 5 - multiple text parts and refusal concatenate deltas only; usage maps to safe runtime counters
+  ---
+  duration_ms: 2.19225
+  type: 'test'
+  ...
+# Subtest: DeepSeek and Qwen fixtures use dedicated fixed bodies and terminal native semantics without sentinels
+ok 6 - DeepSeek and Qwen fixtures use dedicated fixed bodies and terminal native semantics without sentinels
+  ---
+  duration_ms: 1.376667
+  type: 'test'
+  ...
+# Subtest: provider HTTP rejection never falls back or retries either protocol
+ok 7 - provider HTTP rejection never falls back or retries either protocol
+  ---
+  duration_ms: 0.430791
+  type: 'test'
+  ...
+# Subtest: identity, monotonic sequence, explicit SSE event type and ordered item/part indices fail closed
+ok 8 - identity, monotonic sequence, explicit SSE event type and ordered item/part indices fail closed
+  ---
+  duration_ms: 14.769167
+  type: 'test'
+  ...
+# Subtest: all final text/part/item/response snapshots must agree with streamed content and completed statuses
+ok 9 - all final text/part/item/response snapshots must agree with streamed content and completed statuses
+  ---
+  duration_ms: 12.507334
+  type: 'test'
+  ...
+# Subtest: hidden tools, reasoning, unknown modalities and unsupported semantic events never complete or execute
+ok 10 - hidden tools, reasoning, unknown modalities and unsupported semantic events never complete or execute
+  ---
+  duration_ms: 15.355417
+  type: 'test'
+  ...
+# Subtest: incomplete, error, filtering, failed and absent terminal remain honest failures with provisional text
+ok 11 - incomplete, error, filtering, failed and absent terminal remain honest failures with provisional text
+  ---
+  duration_ms: 4.932167
+  type: 'test'
+  ...
+# Subtest: no success for malformed/trailing frames, repeated completion, DONE, stream drop, invalid UTF-8 or final-only aggregate
+ok 12 - no success for malformed/trailing frames, repeated completion, DONE, stream drop, invalid UTF-8 or final-only aggregate
+  ---
+  duration_ms: 29.411667
+  type: 'test'
+  ...
+# Subtest: usage counters, reasoning-token accounting, event and text byte/count limits are enforced
+ok 13 - usage counters, reasoning-token accounting, event and text byte/count limits are enforced
+  ---
+  duration_ms: 9.147833
+  type: 'test'
+  ...
+# Subtest: abort before dispatch, before first byte, midstream and iterator return close transport without another POST
+ok 14 - abort before dispatch, before first byte, midstream and iterator return close transport without another POST
+  ---
+  duration_ms: 59.466166
+  type: 'test'
+  ...
+# Subtest: Responses idle and total timeouts preserve network bounds with partial output or keepalives
+ok 15 - Responses idle and total timeouts preserve network bounds with partial output or keepalives
+  ---
+  duration_ms: 72.7835
+  type: 'test'
+  ...
+# Subtest: dispatcher selects exactly one CC adapter or Responses adapter and never interprets cross-protocol bodies
+ok 16 - dispatcher selects exactly one CC adapter or Responses adapter and never interprets cross-protocol bodies
+  ---
+  duration_ms: 3.521583
+  type: 'test'
+  ...
+# Subtest: ordered multiple assistant items retain their identities and duplicate item IDs fail closed
+ok 17 - ordered multiple assistant items retain their identities and duplicate item IDs fail closed
+  ---
+  duration_ms: 3.6665
+  type: 'test'
+  ...
+# Subtest: text-byte, total-wire, item-count bounds and duplicate done frames stay fail-closed
+ok 18 - text-byte, total-wire, item-count bounds and duplicate done frames stay fail-closed
+  ---
+  duration_ms: 22.354083
+  type: 'test'
+  ...
+1..18
+# tests 18
+# suites 0
+# pass 18
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 499.312958

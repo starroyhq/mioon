@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: custom transport pins reviewed hostname/path, DNS selection, TLS identity and key until final fence
+ok 1 - custom transport pins reviewed hostname/path, DNS selection, TLS identity and key until final fence
+  ---
+  duration_ms: 8.147541
+  type: 'test'
+  ...
+# Subtest: only canonical public-HTTPS DNS URLs reach DNS; aliases, ports and ambiguous path syntax cannot be normalized silently
+ok 2 - only canonical public-HTTPS DNS URLs reach DNS; aliases, ports and ambiguous path syntax cannot be normalized silently
+  ---
+  duration_ms: 3.109583
+  type: 'test'
+  ...
+# Subtest: every DNS answer must be public and well formed, without trying another result after rejection
+ok 3 - every DNS answer must be public and well formed, without trying another result after rejection
+  ---
+  duration_ms: 1.081875
+  type: 'test'
+  ...
+# Subtest: peer/TLS mismatch {"peer":"1.1.1.1"} prevents key/body transmission
+ok 4 - peer/TLS mismatch {"peer":"1.1.1.1"} prevents key/body transmission
+  ---
+  duration_ms: 0.253666
+  type: 'test'
+  ...
+# Subtest: peer/TLS mismatch {"peer":"127.0.0.1"} prevents key/body transmission
+ok 5 - peer/TLS mismatch {"peer":"127.0.0.1"} prevents key/body transmission
+  ---
+  duration_ms: 0.129959
+  type: 'test'
+  ...
+# Subtest: peer/TLS mismatch {"port":80} prevents key/body transmission
+ok 6 - peer/TLS mismatch {"port":80} prevents key/body transmission
+  ---
+  duration_ms: 0.108625
+  type: 'test'
+  ...
+# Subtest: peer/TLS mismatch {"authorized":false} prevents key/body transmission
+ok 7 - peer/TLS mismatch {"authorized":false} prevents key/body transmission
+  ---
+  duration_ms: 0.114083
+  type: 'test'
+  ...
+# Subtest: redirect statuses never follow Location, forward the key, retry or report a known remote outcome
+ok 8 - redirect statuses never follow Location, forward the key, retry or report a known remote outcome
+  ---
+  duration_ms: 0.614875
+  type: 'test'
+  ...
+# Subtest: custom transport shares strict encoding/completeness and stream-size caps
+ok 9 - custom transport shares strict encoding/completeness and stream-size caps
+  ---
+  duration_ms: 1.341916
+  type: 'test'
+  ...
+# Subtest: aborts before TLS/fence stay undispatched; abort after POST remains unknown with no retry
+ok 10 - aborts before TLS/fence stay undispatched; abort after POST remains unknown with no retry
+  ---
+  duration_ms: 0.567583
+  type: 'test'
+  ...
+# Subtest: custom connect/total deadlines preserve dispatch classification
+ok 11 - custom connect/total deadlines preserve dispatch classification
+  ---
+  duration_ms: 17.765667
+  type: 'test'
+  ...
+# Subtest: official transport still ignores custom endpoint properties and pins its original destination
+ok 12 - official transport still ignores custom endpoint properties and pins its original destination
+  ---
+  duration_ms: 0.495833
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 244.843167

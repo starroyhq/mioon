@@ -1,0 +1,23 @@
+{
+  "files": [
+    "tests/asset-annotation-components.test.mjs",
+    "tests/clip-opacity-ime-session.test.mjs",
+    "tests/clip-opacity-retained-app.test.mjs",
+    "tests/opacity-restored-draft-ime.test.mjs",
+    "tests/clip-volume-envelope-capability-ui.test.mjs",
+    "tests/clip-lut-ui.test.mjs",
+    "tests/frame-extraction-preview.test.mjs",
+    "tests/source-range-preview.test.mjs",
+    "tests/desktop-security.test.mjs",
+    "tests/export-settings-recovery.test.mjs",
+    "tests/inspection-contracts.test.mjs"
+  ],
+  "concurrency": 1,
+  "timeoutSeconds": 900,
+  "separateProcesses": true,
+  "source": "real directory enumeration; no exclusions",
+  "nodeFlags": [
+    "--test",
+    "--test-reporter=tap"
+  ]
+}

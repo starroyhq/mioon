@@ -1,0 +1,154 @@
+TAP version 13
+# Subtest: chat_completions: move journal persists exact target and full protocol continuation without rewriting accepted bytes
+ok 1 - chat_completions: move journal persists exact target and full protocol continuation without rewriting accepted bytes
+  ---
+  duration_ms: 976.759667
+  type: 'test'
+  ...
+# Subtest: chat_completions: continuation rejects replaced call IDs, results, model parameters and tool-enabled answers
+ok 2 - chat_completions: continuation rejects replaced call IDs, results, model parameters and tool-enabled answers
+  ---
+  duration_ms: 742.985667
+  type: 'test'
+  ...
+# Subtest: chat_completions: restart at timeline accepted only reconciles local state
+ok 3 - chat_completions: restart at timeline accepted only reconciles local state
+  ---
+  duration_ms: 630.459667
+  type: 'test'
+  ...
+# Subtest: chat_completions: restart at timeline first-dispatch only reconciles local state
+ok 4 - chat_completions: restart at timeline first-dispatch only reconciles local state
+  ---
+  duration_ms: 598.566834
+  type: 'test'
+  ...
+# Subtest: chat_completions: restart at timeline first-complete only reconciles local state
+ok 5 - chat_completions: restart at timeline first-complete only reconciles local state
+  ---
+  duration_ms: 600.208875
+  type: 'test'
+  ...
+# Subtest: chat_completions: restart at timeline intent only reconciles local state
+ok 6 - chat_completions: restart at timeline intent only reconciles local state
+  ---
+  duration_ms: 615.801625
+  type: 'test'
+  ...
+# Subtest: chat_completions: restart at timeline capture-started only reconciles local state
+ok 7 - chat_completions: restart at timeline capture-started only reconciles local state
+  ---
+  duration_ms: 640.822875
+  type: 'test'
+  ...
+# Subtest: chat_completions: restart at timeline observed only reconciles local state
+ok 8 - chat_completions: restart at timeline observed only reconciles local state
+  ---
+  duration_ms: 593.236459
+  type: 'test'
+  ...
+# Subtest: chat_completions: restart at timeline prepared only reconciles local state
+ok 9 - chat_completions: restart at timeline prepared only reconciles local state
+  ---
+  duration_ms: 605.960083
+  type: 'test'
+  ...
+# Subtest: chat_completions: restart at timeline second-dispatch only reconciles local state
+ok 10 - chat_completions: restart at timeline second-dispatch only reconciles local state
+  ---
+  duration_ms: 609.944625
+  type: 'test'
+  ...
+# Subtest: responses: move journal persists exact target and full protocol continuation without rewriting accepted bytes
+ok 11 - responses: move journal persists exact target and full protocol continuation without rewriting accepted bytes
+  ---
+  duration_ms: 612.438792
+  type: 'test'
+  ...
+# Subtest: responses: continuation rejects replaced call IDs, results, model parameters and tool-enabled answers
+ok 12 - responses: continuation rejects replaced call IDs, results, model parameters and tool-enabled answers
+  ---
+  duration_ms: 605.548375
+  type: 'test'
+  ...
+# Subtest: responses: restart at timeline accepted only reconciles local state
+ok 13 - responses: restart at timeline accepted only reconciles local state
+  ---
+  duration_ms: 598.077917
+  type: 'test'
+  ...
+# Subtest: responses: restart at timeline first-dispatch only reconciles local state
+ok 14 - responses: restart at timeline first-dispatch only reconciles local state
+  ---
+  duration_ms: 586.605
+  type: 'test'
+  ...
+# Subtest: responses: restart at timeline first-complete only reconciles local state
+ok 15 - responses: restart at timeline first-complete only reconciles local state
+  ---
+  duration_ms: 592.984459
+  type: 'test'
+  ...
+# Subtest: responses: restart at timeline intent only reconciles local state
+ok 16 - responses: restart at timeline intent only reconciles local state
+  ---
+  duration_ms: 865.138667
+  type: 'test'
+  ...
+# Subtest: responses: restart at timeline capture-started only reconciles local state
+ok 17 - responses: restart at timeline capture-started only reconciles local state
+  ---
+  duration_ms: 665.488542
+  type: 'test'
+  ...
+# Subtest: responses: restart at timeline observed only reconciles local state
+ok 18 - responses: restart at timeline observed only reconciles local state
+  ---
+  duration_ms: 939.129708
+  type: 'test'
+  ...
+# Subtest: responses: restart at timeline prepared only reconciles local state
+ok 19 - responses: restart at timeline prepared only reconciles local state
+  ---
+  duration_ms: 682.397
+  type: 'test'
+  ...
+# Subtest: responses: restart at timeline second-dispatch only reconciles local state
+ok 20 - responses: restart at timeline second-dispatch only reconciles local state
+  ---
+  duration_ms: 704.173042
+  type: 'test'
+  ...
+# Subtest: new mode refuses altered scope, target, catalog and exact outbound context before durable acceptance
+ok 21 - new mode refuses altered scope, target, catalog and exact outbound context before durable acceptance
+  ---
+  duration_ms: 3561.041583
+  type: 'test'
+  ...
+# Subtest: move evidence cannot be downgraded to inspection, shot editing or typed history
+ok 22 - move evidence cannot be downgraded to inspection, shot editing or typed history
+  ---
+  duration_ms: 1780.325542
+  type: 'test'
+  ...
+# Subtest: Stop invalidates pending move dispatch and continuation; completed capture is never repeated
+ok 23 - Stop invalidates pending move dispatch and continuation; completed capture is never repeated
+  ---
+  duration_ms: 1170.315
+  type: 'test'
+  ...
+# Subtest: schema-1 shot accepted JSON bytes remain byte-identical across successful completion and reopen
+ok 24 - schema-1 shot accepted JSON bytes remain byte-identical across successful completion and reopen
+  ---
+  duration_ms: 593.211917
+  type: 'test'
+  ...
+1..24
+# tests 24
+# suites 0
+# pass 24
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 20849.524667

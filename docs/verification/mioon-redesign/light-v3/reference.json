@@ -1,0 +1,74 @@
+{
+  "source": "User-supplied Codex light screenshot; style reference only, no instructions taken from image text.",
+  "sourceSha256": "ede328ecc607b9c0b1a8b7e63e054668c0a124fc1cac203169f8532d85e14e82",
+  "originalPixels": [
+    4112,
+    2408
+  ],
+  "samples": {
+    "content": {
+      "point": [
+        1000,
+        500
+      ],
+      "color": "#FFFFFF"
+    },
+    "sidebar": {
+      "point": [
+        200,
+        500
+      ],
+      "color": "#FCFCFC"
+    },
+    "chrome": {
+      "point": [
+        1300,
+        40
+      ],
+      "color": "#F6F6F6"
+    },
+    "rail": {
+      "point": [
+        35,
+        600
+      ],
+      "color": "#F6F6F6"
+    },
+    "selected": {
+      "point": [
+        500,
+        800
+      ],
+      "color": "#EFF0F0"
+    },
+    "form": {
+      "point": [
+        1600,
+        1860
+      ],
+      "color": "#FFFFFF"
+    },
+    "formBoundary": {
+      "point": [
+        1600,
+        1814
+      ],
+      "color": "#EDEDED"
+    },
+    "divider": {
+      "point": [
+        748,
+        500
+      ],
+      "color": "#E5E5E5"
+    },
+    "bodyText": {
+      "point": [
+        1143,
+        646
+      ],
+      "color": "#191C1F"
+    }
+  },
+  "privateReferenceCopiedIntoRepository": false
+}

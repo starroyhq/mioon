@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: image edit entry presents a source-bound intent while leaving the existing image draft for its own exact guard
+ok 1 - image edit entry presents a source-bound intent while leaving the existing image draft for its own exact guard
+  ---
+  duration_ms: 0.989333
+  type: 'test'
+  ...
+# Subtest: image edit entry respects rejection, changed ownership and disconnected/composing admission
+ok 2 - image edit entry respects rejection, changed ownership and disconnected/composing admission
+  ---
+  duration_ms: 0.246458
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 153.084166

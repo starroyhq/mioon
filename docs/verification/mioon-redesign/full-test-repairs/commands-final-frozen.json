@@ -1,0 +1,47 @@
+[
+  {
+    "name": "typecheck-final-frozen",
+    "command": [
+      "node",
+      "scripts/tooling.mjs",
+      "typecheck"
+    ],
+    "exitCode": 0,
+    "seconds": 9.7
+  },
+  {
+    "name": "build-final-frozen",
+    "command": [
+      "node",
+      "scripts/tooling.mjs",
+      "build",
+      "--channel=development"
+    ],
+    "exitCode": 0,
+    "seconds": 25.5
+  },
+  {
+    "name": "portable-final-frozen",
+    "command": [
+      "node",
+      "scripts/tooling.mjs",
+      "test",
+      "--suite=portable",
+      "--concurrency=1"
+    ],
+    "exitCode": 0,
+    "seconds": 22.78
+  },
+  {
+    "name": "official-full-final-frozen",
+    "command": [
+      "node",
+      "scripts/tooling.mjs",
+      "test",
+      "--suite=full",
+      "--concurrency=4"
+    ],
+    "exitCode": 2,
+    "seconds": 0.17
+  }
+]

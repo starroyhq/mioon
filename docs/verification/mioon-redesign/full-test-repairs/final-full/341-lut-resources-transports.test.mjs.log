@@ -1,0 +1,42 @@
+TAP version 13
+# Subtest: actual CLI and official MCP stdio prove project-owned LUT import/replay and failure recovery
+    # Subtest: same-key replay crosses transports and changed-key payload cannot alter the resource
+    ok 1 - same-key replay crosses transports and changed-key payload cannot alter the resource
+      ---
+      duration_ms: 636.851208
+      type: 'test'
+      ...
+    # Subtest: both transports return only owned metadata and never register playable media
+    ok 2 - both transports return only owned metadata and never register playable media
+      ---
+      duration_ms: 1436.036333
+      type: 'test'
+      ...
+    # Subtest: actual CLI lost acknowledgement is uncertain and explicitly recovered across transports
+    ok 3 - actual CLI lost acknowledgement is uncertain and explicitly recovered across transports
+      ---
+      duration_ms: 339.300417
+      type: 'test'
+      ...
+    # Subtest: actual MCP forged-hash acknowledgement is uncertain and explicitly recovered across transports
+    ok 4 - actual MCP forged-hash acknowledgement is uncertain and explicitly recovered across transports
+      ---
+      duration_ms: 645.238458
+      type: 'test'
+      ...
+    1..4
+ok 1 - actual CLI and official MCP stdio prove project-owned LUT import/replay and failure recovery
+  ---
+  duration_ms: 4823.009875
+  type: 'test'
+  ...
+# Owned LUT transport logs: /private/tmp/mioon-full-recheck-_m5c6umh/final-full/test-v8tcng0h/mioon-lut-wire-logs-BeS5j9
+1..1
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5024.629083

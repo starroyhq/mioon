@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: bounded browser read sends exact explicit readonly request with workspace pin and no browser credentials expansion
+ok 1 - bounded browser read sends exact explicit readonly request with workspace pin and no browser credentials expansion
+  ---
+  duration_ms: 17.1615
+  type: 'test'
+  ...
+# Subtest: complete success and error envelopes enforce declared and streamed 8KiB bounds before JSON parsing
+ok 2 - complete success and error envelopes enforce declared and streamed 8KiB bounds before JSON parsing
+  ---
+  duration_ms: 3.216042
+  type: 'test'
+  ...
+# Subtest: stalled body hits one deadline, cancels its stream and yields no partial report
+ok 3 - stalled body hits one deadline, cancels its stream and yields no partial report
+  ---
+  duration_ms: 17.003375
+  type: 'test'
+  ...
+# Subtest: external cancel and deadline finish even when fetch ignores abort and late results never surface
+ok 4 - external cancel and deadline finish even when fetch ignores abort and late results never surface
+  ---
+  duration_ms: 16.339667
+  type: 'test'
+  ...
+# Subtest: pre-abort and absent clip identity never fetch; malformed/truncated/invalid UTF8 bodies fail closed
+ok 5 - pre-abort and absent clip identity never fetch; malformed/truncated/invalid UTF8 bodies fail closed
+  ---
+  duration_ms: 1.530292
+  type: 'test'
+  ...
+# Subtest: actual api.js selects bounded branch, validates report and retains existing non-mix JSON path
+ok 6 - actual api.js selects bounded branch, validates report and retains existing non-mix JSON path
+  ---
+  duration_ms: 2.132083
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 317.136333

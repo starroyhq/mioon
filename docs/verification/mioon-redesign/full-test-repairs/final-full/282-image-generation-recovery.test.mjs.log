@@ -1,0 +1,167 @@
+TAP version 13
+# Subtest: synthetic exception before request receipt rolls back all admission rows and dispatch remains zero
+ok 1 - synthetic exception before request receipt rolls back all admission rows and dispatch remains zero
+  ---
+  duration_ms: 983.428625
+  type: 'test'
+  ...
+# Subtest: unknown acceptance ACK is recovered by request lookup; exact replay never enqueues and restart requires explicit cancellation
+ok 2 - unknown acceptance ACK is recovered by request lookup; exact replay never enqueues and restart requires explicit cancellation
+  ---
+  duration_ms: 638.930459
+  type: 'test'
+  ...
+# Subtest: synthetic exception at after_dispatch_fence preserves ambiguity or local output, and recovery never regenerates
+ok 3 - synthetic exception at after_dispatch_fence preserves ambiguity or local output, and recovery never regenerates
+  ---
+  duration_ms: 632.193916
+  type: 'test'
+  ...
+# Subtest: synthetic exception at after_result_manifest preserves ambiguity or local output, and recovery never regenerates
+ok 4 - synthetic exception at after_result_manifest preserves ambiguity or local output, and recovery never regenerates
+  ---
+  duration_ms: 874.695083
+  type: 'test'
+  ...
+# Subtest: synthetic exception at after_result_receipt preserves ambiguity or local output, and recovery never regenerates
+ok 5 - synthetic exception at after_result_receipt preserves ambiguity or local output, and recovery never regenerates
+  ---
+  duration_ms: 765.11825
+  type: 'test'
+  ...
+# Subtest: synthetic exception at after_media_publication preserves ambiguity or local output, and recovery never regenerates
+ok 6 - synthetic exception at after_media_publication preserves ambiguity or local output, and recovery never regenerates
+  ---
+  duration_ms: 802.634416
+  type: 'test'
+  ...
+# Skipped invalid local image record.
+# Subtest: synthetic exception at before_result_commit preserves ambiguity or local output, and recovery never regenerates
+ok 7 - synthetic exception at before_result_commit preserves ambiguity or local output, and recovery never regenerates
+  ---
+  duration_ms: 800.778916
+  type: 'test'
+  ...
+# Skipped invalid local image record.
+# Subtest: await boundary fences lock-deleted and prevents foreign writes or late private file publication
+ok 8 - await boundary fences lock-deleted and prevents foreign writes or late private file publication
+  ---
+  duration_ms: 678.410125
+  type: 'test'
+  ...
+# Skipped invalid local image record.
+# Subtest: await boundary fences lock-replaced and prevents foreign writes or late private file publication
+ok 9 - await boundary fences lock-replaced and prevents foreign writes or late private file publication
+  ---
+  duration_ms: 690.001583
+  type: 'test'
+  ...
+# Skipped invalid local image record.
+# Subtest: await boundary fences task-deleted and prevents foreign writes or late private file publication
+ok 10 - await boundary fences task-deleted and prevents foreign writes or late private file publication
+  ---
+  duration_ms: 684.416083
+  type: 'test'
+  ...
+# Skipped invalid local image record.
+# Subtest: await boundary fences task-reassigned and prevents foreign writes or late private file publication
+ok 11 - await boundary fences task-reassigned and prevents foreign writes or late private file publication
+  ---
+  duration_ms: 678.791167
+  type: 'test'
+  ...
+# Skipped invalid local image record.
+# Subtest: await boundary fences group-reassigned and prevents foreign writes or late private file publication
+ok 12 - await boundary fences group-reassigned and prevents foreign writes or late private file publication
+  ---
+  duration_ms: 681.631334
+  type: 'test'
+  ...
+# Skipped invalid local image record.
+# Subtest: await boundary fences input-changed and prevents foreign writes or late private file publication
+ok 13 - await boundary fences input-changed and prevents foreign writes or late private file publication
+  ---
+  duration_ms: 678.808708
+  type: 'test'
+  ...
+# Subtest: await boundary fences revision-advanced and prevents foreign writes or late private file publication
+ok 14 - await boundary fences revision-advanced and prevents foreign writes or late private file publication
+  ---
+  duration_ms: 692.386834
+  type: 'test'
+  ...
+# Subtest: bounded Stop joins a noncooperative generator and fences late callbacks (before dispatch)
+ok 15 - bounded Stop joins a noncooperative generator and fences late callbacks (before dispatch)
+  ---
+  duration_ms: 761.953292
+  type: 'test'
+  ...
+# Subtest: bounded Stop joins a noncooperative generator and fences late callbacks (after dispatch)
+ok 16 - bounded Stop joins a noncooperative generator and fences late callbacks (after dispatch)
+  ---
+  duration_ms: 786.807292
+  type: 'test'
+  ...
+# Subtest: cancellation while another task owns the worker removes only the undispatched task and never calls its generator
+ok 17 - cancellation while another task owns the worker removes only the undispatched task and never calls its generator
+  ---
+  duration_ms: 775.138458
+  type: 'test'
+  ...
+# Subtest: local recovery rejects staged-symlink, retains evidence and does not delete foreign bytes
+ok 18 - local recovery rejects staged-symlink, retains evidence and does not delete foreign bytes
+  ---
+  duration_ms: 720.04075
+  type: 'test'
+  ...
+# Subtest: local recovery rejects directory-symlink, retains evidence and does not delete foreign bytes
+ok 19 - local recovery rejects directory-symlink, retains evidence and does not delete foreign bytes
+  ---
+  duration_ms: 826.313209
+  type: 'test'
+  ...
+# Subtest: local recovery rejects final-conflict, retains evidence and does not delete foreign bytes
+ok 20 - local recovery rejects final-conflict, retains evidence and does not delete foreign bytes
+  ---
+  duration_ms: 1094.437667
+  type: 'test'
+  ...
+# Subtest: local recovery rejects receipt-identity, retains evidence and does not delete foreign bytes
+ok 21 - local recovery rejects receipt-identity, retains evidence and does not delete foreign bytes
+  ---
+  duration_ms: 843.243
+  type: 'test'
+  ...
+# Subtest: local recovery rejects receipt-path, retains evidence and does not delete foreign bytes
+ok 22 - local recovery rejects receipt-path, retains evidence and does not delete foreign bytes
+  ---
+  duration_ms: 813.619667
+  type: 'test'
+  ...
+# Subtest: local recovery rejects oversized-receipt, retains evidence and does not delete foreign bytes
+ok 23 - local recovery rejects oversized-receipt, retains evidence and does not delete foreign bytes
+  ---
+  duration_ms: 682.992542
+  type: 'test'
+  ...
+# Subtest: actual process exit at after_dispatch_fence restarts without automatic generation or invented result
+ok 24 - actual process exit at after_dispatch_fence restarts without automatic generation or invented result
+  ---
+  duration_ms: 2068.671542
+  type: 'test'
+  ...
+# Subtest: actual process exit at after_result_manifest restarts without automatic generation or invented result
+ok 25 - actual process exit at after_result_manifest restarts without automatic generation or invented result
+  ---
+  duration_ms: 2432.315083
+  type: 'test'
+  ...
+1..25
+# tests 25
+# suites 0
+# pass 25
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 22423.495208

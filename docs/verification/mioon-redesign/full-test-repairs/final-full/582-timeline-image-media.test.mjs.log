@@ -1,0 +1,60 @@
+TAP version 13
+# Subtest: production mixed PNG/video/subtitle preview and export share exact decoded output
+not ok 1 - production mixed PNG/video/subtitle preview and export share exact decoded output
+  ---
+  duration_ms: 151.577291
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-image-media.test.mjs:29:1'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    Socket.<anonymous> (node:internal/child_process:497:11)
+    Socket.emit (node:events:514:20)
+    Pipe.<anonymous> (node:net:362:12)
+  ...
+# Subtest: creative LUT on straight image RGB leaves alpha/padding/background/subtitle independent
+not ok 2 - creative LUT on straight image RGB leaves alpha/padding/background/subtitle independent
+  ---
+  duration_ms: 146.650208
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-image-media.test.mjs:36:1'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    Socket.<anonymous> (node:internal/child_process:497:11)
+    Socket.emit (node:events:514:20)
+    Pipe.<anonymous> (node:net:362:12)
+  ...
+# Subtest: mixed snapshots cannot downgrade, falsify evidence or bypass required PNG interpretation
+ok 3 - mixed snapshots cannot downgrade, falsify evidence or bypass required PNG interpretation
+  ---
+  duration_ms: 105.331208
+  type: 'test'
+  ...
+# Subtest: cancelled managed render joins owned children before removing private image staging
+ok 4 - cancelled managed render joins owned children before removing private image staging
+  ---
+  duration_ms: 108.683792
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 2
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 813.199917

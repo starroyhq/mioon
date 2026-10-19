@@ -1,0 +1,73 @@
+{
+  "baseline": "8d2f7faea422b60e2030a72f15af2d7aa9d465f6",
+  "environment": {
+    "node": "v26.9.0",
+    "pnpm": "11.25.0",
+    "platform": "Darwin arm64"
+  },
+  "completedFiles": 718,
+  "passedFiles": 583,
+  "failedFiles": 135,
+  "timeoutFiles": 0,
+  "failureCategoryCounts": {
+    "schema-marker-expectation": 27,
+    "source-text-or-harness-assertion": 40,
+    "frozen-fixture-hash-drift": 3,
+    "renderer-harness-import": 6,
+    "source-harness-reference-failure": 20,
+    "mock-media-job-deadline": 5,
+    "legacy-schema-or-exact-byte-expectation": 9,
+    "platform-assumption": 3,
+    "migration-source-identity": 2,
+    "canonical-path-assumption": 4,
+    "test-harness-json-truncation": 2,
+    "local-media-failure": 23,
+    "sqlite-bigint-fixture": 14,
+    "backup-or-restored-profile-identity": 10,
+    "mcp-owner-only-discovery": 1,
+    "localized-native-dialog-expectation": 1,
+    "ordinary-receipt-repair-gate": 3,
+    "archive-without-git-history": 1,
+    "test-runner-module-mock-flag": 1,
+    "runtime-version-pin": 2
+  },
+  "failureCategoriesAreMultiLabel": true,
+  "remainingOwnedMioonTemporaryEntries": [],
+  "resultsJsonl": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/results.jsonl",
+  "triageJson": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/failure-triage.json",
+  "summaryJson": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/summary.json",
+  "metadataJson": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/metadata.json",
+  "baselineTypecheck": {
+    "command": [
+      "node",
+      "scripts/tooling.mjs",
+      "typecheck"
+    ],
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 20.086,
+    "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/typecheck.log"
+  },
+  "baselineDevelopmentBuild": {
+    "command": [
+      "node",
+      "scripts/tooling.mjs",
+      "build",
+      "--channel=development"
+    ],
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 57.556,
+    "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/build-development.log"
+  },
+  "candidateSnapshotStatus": "Root reports current integration snapshot typecheck and complete development build passed; final zoom-coordinate helper requires the next snapshot verification.",
+  "candidateRippleFocused": "10/10 domain+schema+candidate46/47 restore; 1/1 real HTTP+CLI+MCP passed before additional candidate47 durable/reopen test was added.",
+  "limitations": [
+    "macOS direct per-file lane; official tooling full lane remains Linux-only",
+    "Node26.9.0 / pnpm11.25.0 / ffmpeg9.0.2; no supplied node_modules reused",
+    "drawtext/subtitles FFmpeg filters unavailable",
+    "git archive intentionally has no .git history; one frozen legacy render regression test requires git show",
+    "one file requires mock.module experimental test flag absent from the authorized direct node invocation",
+    "reference-connections test TAP606.8s, outer728.2s includes scheduling pause; below900s limit"
+  ]
+}

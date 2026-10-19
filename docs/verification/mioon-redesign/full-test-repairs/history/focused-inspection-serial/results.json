@@ -1,0 +1,21 @@
+[
+  {
+    "file": "tests/inspection-wire-lifecycle.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 4.58,
+    "tapSummary": {
+      "tests": 12,
+      "suites": 0,
+      "pass": 12,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-inspection-serial/001-inspection-wire-lifecycle.test.mjs.log",
+    "sha256": "f9894ff1a12cb132e4538a722025a983e00bf82fba447de3d8a27e35d96924b4",
+    "sourceSha256": "27a86d57c8de8935d2f8a53b074a37cd5d10e1138c9a73ef5dcb38af05359dbe",
+    "failedSubtests": []
+  }
+]

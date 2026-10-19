@@ -1,0 +1,142 @@
+TAP version 13
+# Subtest: blank explicit target cannot measure; accepted finite target ranges have no preset or fallback
+ok 1 - blank explicit target cannot measure; accepted finite target ranges have no preset or fallback
+  ---
+  duration_ms: 1.119542
+  type: 'test'
+  ...
+# Subtest: mount, polling, reconnect, navigation and restart are passive; explicit target is never persisted
+ok 2 - mount, polling, reconnect, navigation and restart are passive; explicit target is never persisted
+  ---
+  duration_ms: 0.420916
+  type: 'test'
+  ...
+# Subtest: prepare captures full saved revision, both explicit profiles/targets and pinned read-only invocation
+ok 3 - prepare captures full saved revision, both explicit profiles/targets and pinned read-only invocation
+  ---
+  duration_ms: 2.861833
+  type: 'test'
+  ...
+# Subtest: live projectId change cancels old response, masks ready result and never restarts
+ok 4 - live projectId change cancels old response, masks ready result and never restarts
+  ---
+  duration_ms: 0.587459
+  type: 'test'
+  ...
+# Subtest: live timelineId change cancels old response, masks ready result and never restarts
+ok 5 - live timelineId change cancels old response, masks ready result and never restarts
+  ---
+  duration_ms: 0.690958
+  type: 'test'
+  ...
+# Subtest: live revision change cancels old response, masks ready result and never restarts
+ok 6 - live revision change cancels old response, masks ready result and never restarts
+  ---
+  duration_ms: 0.621208
+  type: 'test'
+  ...
+# Subtest: live durationFrames change cancels old response, masks ready result and never restarts
+ok 7 - live durationFrames change cancels old response, masks ready result and never restarts
+  ---
+  duration_ms: 0.378125
+  type: 'test'
+  ...
+# Subtest: live sourceIdentity change cancels old response, masks ready result and never restarts
+ok 8 - live sourceIdentity change cancels old response, masks ready result and never restarts
+  ---
+  duration_ms: 0.324417
+  type: 'test'
+  ...
+# Subtest: live scope change cancels old response, masks ready result and never restarts
+ok 9 - live scope change cancels old response, masks ready result and never restarts
+  ---
+  duration_ms: 0.239917
+  type: 'test'
+  ...
+# Subtest: live executionScope change cancels old response, masks ready result and never restarts
+ok 10 - live executionScope change cancels old response, masks ready result and never restarts
+  ---
+  duration_ms: 0.249209
+  type: 'test'
+  ...
+# Subtest: live visible change cancels old response, masks ready result and never restarts
+ok 11 - live visible change cancels old response, masks ready result and never restarts
+  ---
+  duration_ms: 0.252417
+  type: 'test'
+  ...
+# Subtest: live connected change cancels old response, masks ready result and never restarts
+ok 12 - live connected change cancels old response, masks ready result and never restarts
+  ---
+  duration_ms: 0.313417
+  type: 'test'
+  ...
+# Subtest: live restored change cancels old response, masks ready result and never restarts
+ok 13 - live restored change cancels old response, masks ready result and never restarts
+  ---
+  duration_ms: 0.242458
+  type: 'test'
+  ...
+# Subtest: live hasUnsavedDrafts change cancels old response, masks ready result and never restarts
+ok 14 - live hasUnsavedDrafts change cancels old response, masks ready result and never restarts
+  ---
+  duration_ms: 0.166041
+  type: 'test'
+  ...
+# Subtest: live pending change cancels old response, masks ready result and never restarts
+ok 15 - live pending change cancels old response, masks ready result and never restarts
+  ---
+  duration_ms: 0.155084
+  type: 'test'
+  ...
+# Subtest: only saved, connected, visible, ordinary, clean, bounded workspaces admit controls or retained prepare handlers
+ok 16 - only saved, connected, visible, ordinary, clean, bounded workspaces admit controls or retained prepare handlers
+  ---
+  duration_ms: 0.135083
+  type: 'test'
+  ...
+# Subtest: target edits invalidate in-flight results; stale field handlers cannot overwrite a later target
+ok 17 - target edits invalidate in-flight results; stale field handlers cannot overwrite a later target
+  ---
+  duration_ms: 0.068708
+  type: 'test'
+  ...
+# Subtest: repeat clicks do not queue; cancel is observational and old cancel cannot cancel a newer attempt
+ok 18 - repeat clicks do not queue; cancel is observational and old cancel cannot cancel a newer attempt
+  ---
+  duration_ms: 0.230291
+  type: 'test'
+  ...
+# Subtest: dispose/re-attach cannot publish or revive old handlers even when workspace identity is identical
+ok 19 - dispose/re-attach cannot publish or revive old handlers even when workspace identity is identical
+  ---
+  duration_ms: 0.058709
+  type: 'test'
+  ...
+# Subtest: source/revision errors stay unavailable; late unauthorized failures never affect a new project
+ok 20 - source/revision errors stay unavailable; late unauthorized failures never affect a new project
+  ---
+  duration_ms: 0.362208
+  type: 'test'
+  ...
+# Subtest: wrong project, revision, targets, full interval, timeline, profile, margin or apply authority fails closed
+ok 21 - wrong project, revision, targets, full interval, timeline, profile, margin or apply authority fails closed
+  ---
+  duration_ms: 1.544291
+  type: 'test'
+  ...
+# Subtest: silence and out-of-range candidates preserve original measurement and never invent an applicable candidate
+ok 22 - silence and out-of-range candidates preserve original measurement and never invent an applicable candidate
+  ---
+  duration_ms: 0.314625
+  type: 'test'
+  ...
+1..22
+# tests 22
+# suites 0
+# pass 22
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 255.79275

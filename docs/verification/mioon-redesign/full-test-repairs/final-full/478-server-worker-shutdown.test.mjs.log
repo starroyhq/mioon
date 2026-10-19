@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: server close aborts an active RPC media import, reaps its probe, and relaunches without publication
+ok 1 - server close aborts an active RPC media import, reaps its probe, and relaunches without publication
+  ---
+  duration_ms: 4212.557375
+  type: 'test'
+  ...
+# Subtest: shutdown fences a partial HTTP RPC body before it can start a new import or touch closed SQLite
+ok 2 - shutdown fences a partial HTTP RPC body before it can start a new import or touch closed SQLite
+  ---
+  duration_ms: 3676.0795
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 8321.293958

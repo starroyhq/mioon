@@ -1,0 +1,118 @@
+TAP version 13
+# Subtest: chat is project-pinned, pure typed context, SQLite-durable, and one gateway invocation per explicit send
+ok 1 - chat is project-pinned, pure typed context, SQLite-durable, and one gateway invocation per explicit send
+  ---
+  duration_ms: 667.455458
+  type: 'test'
+  ...
+# Subtest: stable request replay precedes stale revisions but follows project and instance checks; changed reuse fails
+ok 2 - stable request replay precedes stale revisions but follows project and instance checks; changed reuse fails
+  ---
+  duration_ms: 621.033708
+  type: 'test'
+  ...
+# Subtest: stale conversation, settings, unreviewed consent, oversized or extended requests never call gateway
+ok 3 - stale conversation, settings, unreviewed consent, oversized or extended requests never call gateway
+  ---
+  duration_ms: 594.898166
+  type: 'test'
+  ...
+# Subtest: navigation/detachment changes no run, stop preserves partial output and ignores every late callback
+ok 4 - navigation/detachment changes no run, stop preserves partial output and ignores every late callback
+  ---
+  duration_ms: 681.943459
+  type: 'test'
+  ...
+# Subtest: Stop while credentials are pending prevents the only network request even after acquisition resolves
+ok 5 - Stop while credentials are pending prevents the only network request even after acquisition resolves
+  ---
+  duration_ms: 624.972375
+  type: 'test'
+  ...
+# Subtest: changed configuration at trusted acquisition fails closed without sending or leaking key
+ok 6 - changed configuration at trusted acquisition fails closed without sending or leaking key
+  ---
+  duration_ms: 601.246041
+  type: 'test'
+  ...
+# Subtest: bounded completed history excludes partial failures and never carries untrusted output as control fields
+ok 7 - bounded completed history excludes partial failures and never carries untrusted output as control fields
+  ---
+  duration_ms: 683.315625
+  type: 'test'
+  ...
+# Subtest: protocol errors, content-filter and oversized response terminate once with safe error and partial text
+ok 8 - protocol errors, content-filter and oversized response terminate once with safe error and partial text
+  ---
+  duration_ms: 2585.323541
+  type: 'test'
+  ...
+# Subtest: one active run per project and four globally; subscriber limits free on detach/terminal
+ok 9 - one active run per project and four globally; subscriber limits free on detach/terminal
+  ---
+  duration_ms: 731.769083
+  type: 'test'
+  ...
+# Subtest: bounded event replay resets stale/ahead cursor by snapshot and never restarts inference
+ok 10 - bounded event replay resets stale/ahead cursor by snapshot and never restarts inference
+  ---
+  duration_ms: 675.783167
+  type: 'test'
+  ...
+# Subtest: recent history is bounded without evicting original requests or enabling duplicate inference
+ok 11 - recent history is bounded without evicting original requests or enabling duplicate inference
+  ---
+  duration_ms: 1165.724083
+  type: 'test'
+  ...
+# Subtest: shutdown interrupts streaming, closes subscribers before returning, makes late callbacks inert and invalidates new sends
+ok 12 - shutdown interrupts streaming, closes subscribers before returning, makes late callbacks inert and invalidates new sends
+  ---
+  duration_ms: 614.631708
+  type: 'test'
+  ...
+# Subtest: backend-instance restart never recreates an old send
+ok 13 - backend-instance restart never recreates an old send
+  ---
+  duration_ms: 1318.246209
+  type: 'test'
+  ...
+# Subtest: run deadline aborts stalled inference, preserves partial output and admits no automatic retry
+ok 14 - run deadline aborts stalled inference, preserves partial output and admits no automatic retry
+  ---
+  duration_ms: 938.0625
+  type: 'test'
+  ...
+# Subtest: explicit protocol and complete endpoint bind consent; no omitted/inferred protocol is accepted
+ok 15 - explicit protocol and complete endpoint bind consent; no omitted/inferred protocol is accepted
+  ---
+  duration_ms: 826.312959
+  type: 'test'
+  ...
+# Subtest: protocol-only race at credential acquisition fails closed; no alternative adapter receives key
+ok 16 - protocol-only race at credential acquisition fails closed; no alternative adapter receives key
+  ---
+  duration_ms: 667.834667
+  type: 'test'
+  ...
+# Subtest: accepted Responses run remains protocol-pinned after settings switch and can still stop
+ok 17 - accepted Responses run remains protocol-pinned after settings switch and can still stop
+  ---
+  duration_ms: 609.472042
+  type: 'test'
+  ...
+# Subtest: unsupported protocol profile fails before any credential acquisition or gateway call
+ok 18 - unsupported protocol profile fails before any credential acquisition or gateway call
+  ---
+  duration_ms: 602.860542
+  type: 'test'
+  ...
+1..18
+# tests 18
+# suites 0
+# pass 18
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 15485.558291

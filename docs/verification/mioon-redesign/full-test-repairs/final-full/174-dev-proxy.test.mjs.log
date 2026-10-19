@@ -1,0 +1,32 @@
+TAP version 13
+# Subtest: Vite dev proxy validates incoming origins before adapting to the strict backend boundary
+not ok 1 - Vite dev proxy validates incoming origins before adapting to the strict backend boundary
+  ---
+  duration_ms: 3.660625
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/dev-proxy.test.mjs:11:1'
+  failureType: 'testCodeFailure'
+  error: 'Private storage cannot traverse symbolic links. Select a canonical directory path.'
+  code: 'STORAGE_PRIVATE_REQUIRED'
+  name: 'PrivateStorageError'
+  stack: |-
+    fail (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:21:43)
+    directoryType (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:71:32)
+    ancestor (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:81:5)
+    walkAncestors (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:110:12)
+    file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:117:65
+    safe (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:23:16)
+    ensurePrivateDirectory (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:117:12)
+    validatePrivateDirectory (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:120:12)
+    validateWorkspaceStorage (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/db.mjs:60:6)
+    composeServer (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/apps/server/src/index.mjs:143:5)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 510.216458

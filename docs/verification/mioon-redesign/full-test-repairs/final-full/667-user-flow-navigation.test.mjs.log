@@ -1,0 +1,382 @@
+TAP version 13
+# Subtest: actual inspect reveals shot inspector from tasks over a retained format draft
+ok 1 - actual inspect reveals shot inspector from tasks over a retained format draft
+  ---
+  duration_ms: 1.631416
+  type: 'test'
+  ...
+# Subtest: actual inspect reveals node inspector from tasks over a retained format draft
+ok 2 - actual inspect reveals node inspector from tasks over a retained format draft
+  ---
+  duration_ms: 0.148167
+  type: 'test'
+  ...
+# Subtest: actual selectClip reveals Properties from tasks and preserves preview when requested
+ok 3 - actual selectClip reveals Properties from tasks and preserves preview when requested
+  ---
+  duration_ms: 0.231292
+  type: 'test'
+  ...
+# Subtest: actual inspect reveals shot inspector from delivery over a retained format draft
+ok 4 - actual inspect reveals shot inspector from delivery over a retained format draft
+  ---
+  duration_ms: 0.130583
+  type: 'test'
+  ...
+# Subtest: actual inspect reveals node inspector from delivery over a retained format draft
+ok 5 - actual inspect reveals node inspector from delivery over a retained format draft
+  ---
+  duration_ms: 0.115875
+  type: 'test'
+  ...
+# Subtest: actual selectClip reveals Properties from delivery and preserves preview when requested
+ok 6 - actual selectClip reveals Properties from delivery and preserves preview when requested
+  ---
+  duration_ms: 0.103541
+  type: 'test'
+  ...
+# Subtest: actual inspect shot preserves the chosen agent dock
+ok 7 - actual inspect shot preserves the chosen agent dock
+  ---
+  duration_ms: 0.087375
+  type: 'test'
+  ...
+# Subtest: actual select clip preserves the chosen agent dock
+ok 8 - actual select clip preserves the chosen agent dock
+  ---
+  duration_ms: 0.074084
+  type: 'test'
+  ...
+# Subtest: actual inspect shot preserves the chosen image dock
+ok 9 - actual inspect shot preserves the chosen image dock
+  ---
+  duration_ms: 0.093
+  type: 'test'
+  ...
+# Subtest: actual select clip preserves the chosen image dock
+ok 10 - actual select clip preserves the chosen image dock
+  ---
+  duration_ms: 0.121417
+  type: 'test'
+  ...
+# Subtest: actual inspect shot preserves the chosen properties dock
+ok 11 - actual inspect shot preserves the chosen properties dock
+  ---
+  duration_ms: 0.074958
+  type: 'test'
+  ...
+# Subtest: actual select clip preserves the chosen properties dock
+ok 12 - actual select clip preserves the chosen properties dock
+  ---
+  duration_ms: 0.055875
+  type: 'test'
+  ...
+# Subtest: same shot selection keeps the current draft and supports explicit narrow-screen reveal
+ok 13 - same shot selection keeps the current draft and supports explicit narrow-screen reveal
+  ---
+  duration_ms: 0.074208
+  type: 'test'
+  ...
+# Subtest: same clip selection keeps the current draft and restores the source preview
+ok 14 - same clip selection keeps the current draft and restores the source preview
+  ---
+  duration_ms: 0.06325
+  type: 'test'
+  ...
+# Subtest: same-clip no-op view patches still publish the accepted navigation epoch without project preference writes
+ok 15 - same-clip no-op view patches still publish the accepted navigation epoch without project preference writes
+  ---
+  duration_ms: 0.355166
+  type: 'test'
+  ...
+# Subtest: same clip still checks unsaved input when an asset is open
+ok 16 - same clip still checks unsaved input when an asset is open
+  ---
+  duration_ms: 0.095208
+  type: 'test'
+  ...
+# Subtest: same clip still checks unsaved input when leaving canvas
+ok 17 - same clip still checks unsaved input when leaving canvas
+  ---
+  duration_ms: 0.051708
+  type: 'test'
+  ...
+# Subtest: same clip selection still guards a dirty subtitle controller
+ok 18 - same clip selection still guards a dirty subtitle controller
+  ---
+  duration_ms: 0.085083
+  type: 'test'
+  ...
+# Subtest: actual inspect shot decline retains the dock, format page, selection and dirty clip
+ok 19 - actual inspect shot decline retains the dock, format page, selection and dirty clip
+  ---
+  duration_ms: 7.951959
+  type: 'test'
+  ...
+# Subtest: actual inspect shot missing target never changes the dock or Properties page
+ok 20 - actual inspect shot missing target never changes the dock or Properties page
+  ---
+  duration_ms: 0.075083
+  type: 'test'
+  ...
+# Subtest: actual inspect shot target removed during confirmation preserves the real dirty clip without DELETE
+ok 21 - actual inspect shot target removed during confirmation preserves the real dirty clip without DELETE
+  ---
+  duration_ms: 0.306041
+  type: 'test'
+  ...
+# Subtest: actual inspect shot source replacement during confirmation blocks navigation while the clip capture remains current
+ok 22 - actual inspect shot source replacement during confirmation blocks navigation while the clip capture remains current
+  ---
+  duration_ms: 0.385667
+  type: 'test'
+  ...
+# Subtest: actual inspect shot permits equivalent same-revision polling objects during confirmation
+ok 23 - actual inspect shot permits equivalent same-revision polling objects during confirmation
+  ---
+  duration_ms: 0.478917
+  type: 'test'
+  ...
+# Subtest: actual inspect shot replacement timeline with the same revision cannot discard an old dirty owner
+ok 24 - actual inspect shot replacement timeline with the same revision cannot discard an old dirty owner
+  ---
+  duration_ms: 0.241583
+  type: 'test'
+  ...
+# Subtest: actual inspect shot source replacement during pending DELETE preserves input without pretending to roll back its ACK
+ok 25 - actual inspect shot source replacement during pending DELETE preserves input without pretending to roll back its ACK
+  ---
+  duration_ms: 0.362875
+  type: 'test'
+  ...
+# Subtest: actual inspect shot rejects changed project during confirmation before discarding
+ok 26 - actual inspect shot rejects changed project during confirmation before discarding
+  ---
+  duration_ms: 0.245542
+  type: 'test'
+  ...
+# Subtest: actual inspect shot rejects changed selection during confirmation before discarding
+ok 27 - actual inspect shot rejects changed selection during confirmation before discarding
+  ---
+  duration_ms: 0.209
+  type: 'test'
+  ...
+# Subtest: actual inspect shot rejects changed workspace during confirmation before discarding
+ok 28 - actual inspect shot rejects changed workspace during confirmation before discarding
+  ---
+  duration_ms: 0.535542
+  type: 'test'
+  ...
+# Subtest: actual inspect shot rejects newer tasks panel choice during confirmation before discarding
+ok 29 - actual inspect shot rejects newer tasks panel choice during confirmation before discarding
+  ---
+  duration_ms: 0.260542
+  type: 'test'
+  ...
+# Subtest: actual inspect shot rejects newer delivery panel choice during confirmation before discarding
+ok 30 - actual inspect shot rejects newer delivery panel choice during confirmation before discarding
+  ---
+  duration_ms: 1.338833
+  type: 'test'
+  ...
+# Subtest: actual inspect shot rejects newer agent panel choice during confirmation before discarding
+ok 31 - actual inspect shot rejects newer agent panel choice during confirmation before discarding
+  ---
+  duration_ms: 0.313167
+  type: 'test'
+  ...
+# Subtest: actual inspect shot rejects newer image panel choice during confirmation before discarding
+ok 32 - actual inspect shot rejects newer image panel choice during confirmation before discarding
+  ---
+  duration_ms: 0.28275
+  type: 'test'
+  ...
+# Subtest: actual inspect shot rechecks panel choice after a clean guard resolves
+ok 33 - actual inspect shot rechecks panel choice after a clean guard resolves
+  ---
+  duration_ms: 0.061583
+  type: 'test'
+  ...
+# Subtest: actual inspect shot late DELETE ACK cannot steal newer tasks panel or clear its input
+ok 34 - actual inspect shot late DELETE ACK cannot steal newer tasks panel or clear its input
+  ---
+  duration_ms: 0.230709
+  type: 'test'
+  ...
+# Subtest: actual inspect shot late DELETE ACK cannot steal newer delivery panel or clear its input
+ok 35 - actual inspect shot late DELETE ACK cannot steal newer delivery panel or clear its input
+  ---
+  duration_ms: 0.156625
+  type: 'test'
+  ...
+# Subtest: actual inspect shot preserves newer clip input typed while DELETE is pending
+ok 36 - actual inspect shot preserves newer clip input typed while DELETE is pending
+  ---
+  duration_ms: 0.173084
+  type: 'test'
+  ...
+# Subtest: actual inspect shot accepted unchanged dirty clip waits for DELETE before updating view
+ok 37 - actual inspect shot accepted unchanged dirty clip waits for DELETE before updating view
+  ---
+  duration_ms: 0.181209
+  type: 'test'
+  ...
+# Subtest: actual inspect shot preserves the existing clip controller ownership guard
+ok 38 - actual inspect shot preserves the existing clip controller ownership guard
+  ---
+  duration_ms: 0.245125
+  type: 'test'
+  ...
+# Subtest: actual inspect shot preserves the existing shot capture ownership guard
+ok 39 - actual inspect shot preserves the existing shot capture ownership guard
+  ---
+  duration_ms: 0.10825
+  type: 'test'
+  ...
+# Subtest: actual inspect shot preserves the existing subtitle draft ownership guard
+ok 40 - actual inspect shot preserves the existing subtitle draft ownership guard
+  ---
+  duration_ms: 0.103375
+  type: 'test'
+  ...
+# Subtest: actual select clip decline retains the dock, format page, selection and dirty clip
+ok 41 - actual select clip decline retains the dock, format page, selection and dirty clip
+  ---
+  duration_ms: 0.101917
+  type: 'test'
+  ...
+# Subtest: actual select clip missing target never changes the dock or Properties page
+ok 42 - actual select clip missing target never changes the dock or Properties page
+  ---
+  duration_ms: 0.032
+  type: 'test'
+  ...
+# Subtest: actual select clip target removed during confirmation preserves the real dirty clip without DELETE
+ok 43 - actual select clip target removed during confirmation preserves the real dirty clip without DELETE
+  ---
+  duration_ms: 0.100917
+  type: 'test'
+  ...
+# Subtest: actual select clip source replacement during confirmation blocks navigation while the clip capture remains current
+ok 44 - actual select clip source replacement during confirmation blocks navigation while the clip capture remains current
+  ---
+  duration_ms: 0.139375
+  type: 'test'
+  ...
+# Subtest: actual select clip permits equivalent same-revision polling objects during confirmation
+ok 45 - actual select clip permits equivalent same-revision polling objects during confirmation
+  ---
+  duration_ms: 0.190208
+  type: 'test'
+  ...
+# Subtest: actual select clip replacement timeline with the same revision cannot discard an old dirty owner
+ok 46 - actual select clip replacement timeline with the same revision cannot discard an old dirty owner
+  ---
+  duration_ms: 0.107958
+  type: 'test'
+  ...
+# Subtest: actual select clip source replacement during pending DELETE preserves input without pretending to roll back its ACK
+ok 47 - actual select clip source replacement during pending DELETE preserves input without pretending to roll back its ACK
+  ---
+  duration_ms: 0.163625
+  type: 'test'
+  ...
+# Subtest: actual select clip rejects changed project during confirmation before discarding
+ok 48 - actual select clip rejects changed project during confirmation before discarding
+  ---
+  duration_ms: 0.113917
+  type: 'test'
+  ...
+# Subtest: actual select clip rejects changed selection during confirmation before discarding
+ok 49 - actual select clip rejects changed selection during confirmation before discarding
+  ---
+  duration_ms: 0.099333
+  type: 'test'
+  ...
+# Subtest: actual select clip rejects changed workspace during confirmation before discarding
+ok 50 - actual select clip rejects changed workspace during confirmation before discarding
+  ---
+  duration_ms: 0.152958
+  type: 'test'
+  ...
+# Subtest: actual select clip rejects newer tasks panel choice during confirmation before discarding
+ok 51 - actual select clip rejects newer tasks panel choice during confirmation before discarding
+  ---
+  duration_ms: 0.122334
+  type: 'test'
+  ...
+# Subtest: actual select clip rejects newer delivery panel choice during confirmation before discarding
+ok 52 - actual select clip rejects newer delivery panel choice during confirmation before discarding
+  ---
+  duration_ms: 0.099208
+  type: 'test'
+  ...
+# Subtest: actual select clip rejects newer agent panel choice during confirmation before discarding
+ok 53 - actual select clip rejects newer agent panel choice during confirmation before discarding
+  ---
+  duration_ms: 0.129875
+  type: 'test'
+  ...
+# Subtest: actual select clip rejects newer image panel choice during confirmation before discarding
+ok 54 - actual select clip rejects newer image panel choice during confirmation before discarding
+  ---
+  duration_ms: 0.099791
+  type: 'test'
+  ...
+# Subtest: actual select clip rechecks panel choice after a clean guard resolves
+ok 55 - actual select clip rechecks panel choice after a clean guard resolves
+  ---
+  duration_ms: 0.034459
+  type: 'test'
+  ...
+# Subtest: actual select clip late DELETE ACK cannot steal newer tasks panel or clear its input
+ok 56 - actual select clip late DELETE ACK cannot steal newer tasks panel or clear its input
+  ---
+  duration_ms: 0.147084
+  type: 'test'
+  ...
+# Subtest: actual select clip late DELETE ACK cannot steal newer delivery panel or clear its input
+ok 57 - actual select clip late DELETE ACK cannot steal newer delivery panel or clear its input
+  ---
+  duration_ms: 0.144584
+  type: 'test'
+  ...
+# Subtest: actual select clip preserves newer clip input typed while DELETE is pending
+ok 58 - actual select clip preserves newer clip input typed while DELETE is pending
+  ---
+  duration_ms: 0.127125
+  type: 'test'
+  ...
+# Subtest: actual select clip accepted unchanged dirty clip waits for DELETE before updating view
+ok 59 - actual select clip accepted unchanged dirty clip waits for DELETE before updating view
+  ---
+  duration_ms: 0.134375
+  type: 'test'
+  ...
+# Subtest: actual select clip preserves the existing clip controller ownership guard
+ok 60 - actual select clip preserves the existing clip controller ownership guard
+  ---
+  duration_ms: 0.170375
+  type: 'test'
+  ...
+# Subtest: actual select clip preserves the existing shot capture ownership guard
+ok 61 - actual select clip preserves the existing shot capture ownership guard
+  ---
+  duration_ms: 0.101208
+  type: 'test'
+  ...
+# Subtest: actual select clip preserves the existing subtitle draft ownership guard
+ok 62 - actual select clip preserves the existing subtitle draft ownership guard
+  ---
+  duration_ms: 0.111584
+  type: 'test'
+  ...
+1..62
+# tests 62
+# suites 0
+# pass 62
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 279.830584

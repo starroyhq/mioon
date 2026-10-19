@@ -1,0 +1,106 @@
+TAP version 13
+# Subtest: image settings are fixed, initially disabled and network-free with a separate trusted namespace
+ok 1 - image settings are fixed, initially disabled and network-free with a separate trusted namespace
+  ---
+  duration_ms: 4.864625
+  type: 'test'
+  ...
+# Subtest: fixed contract rejects custom origin, redirects, other profile/model/options and secret smuggling
+ok 2 - fixed contract rejects custom origin, redirects, other profile/model/options and secret smuggling
+  ---
+  duration_ms: 1.522834
+  type: 'test'
+  ...
+# Subtest: public allowlist never emits plaintext, ciphertext, fingerprints, hashes or hidden capabilities
+ok 3 - public allowlist never emits plaintext, ciphertext, fingerprints, hashes or hidden capabilities
+  ---
+  duration_ms: 0.387542
+  type: 'test'
+  ...
+# Subtest: session keys never persist and vanish on backend restart; enable toggle keeps key while revising authorization
+ok 4 - session keys never persist and vanish on backend restart; enable toggle keeps key while revising authorization
+  ---
+  duration_ms: 1.408667
+  type: 'test'
+  ...
+# Subtest: strict CAS serializes concurrent writes and caller mutation cannot alter an admitted update
+ok 5 - strict CAS serializes concurrent writes and caller mutation cannot alter an admitted update
+  ---
+  duration_ms: 2.308
+  type: 'test'
+  ...
+# Subtest: pending put invalidates sync read and final fence immediately, including failed writes
+ok 6 - pending put invalidates sync read and final fence immediately, including failed writes
+  ---
+  duration_ms: 0.523542
+  type: 'test'
+  ...
+# Subtest: failed remove/replace preserves previous envelope and key; closed service never acquires
+ok 7 - failed remove/replace preserves previous envelope and key; closed service never acquires
+  ---
+  duration_ms: 2.241875
+  type: 'test'
+  ...
+# Subtest: persistent keys are encrypted in one namespace-bound envelope and survive a fresh engine
+ok 8 - persistent keys are encrypted in one namespace-bound envelope and survive a fresh engine
+  ---
+  duration_ms: 1.877334
+  type: 'test'
+  ...
+# Subtest: no codec, unavailable vault and Linux basic_text never silently store a persistent key
+ok 9 - no codec, unavailable vault and Linux basic_text never silently store a persistent key
+  ---
+  duration_ms: 2.498041
+  type: 'test'
+  ...
+# Subtest: locked vault retains ciphertext and permits explicit session replacement or removal
+ok 10 - locked vault retains ciphertext and permits explicit session replacement or removal
+  ---
+  duration_ms: 5.032583
+  type: 'test'
+  ...
+# Subtest: unreadable or foreign decrypted wrapper never leaks a key and can be explicitly replaced
+ok 11 - unreadable or foreign decrypted wrapper never leaks a key and can be explicitly replaced
+  ---
+  duration_ms: 0.930208
+  type: 'test'
+  ...
+# Subtest: stored wrong origins/profiles, Agent envelope and namespace mismatches fail closed without rewriting
+ok 12 - stored wrong origins/profiles, Agent envelope and namespace mismatches fail closed without rewriting
+  ---
+  duration_ms: 0.904459
+  type: 'test'
+  ...
+# Subtest: acquisition validates full configuration/revision and refuses other namespaces or hidden fields
+ok 13 - acquisition validates full configuration/revision and refuses other namespaces or hidden fields
+  ---
+  duration_ms: 0.282375
+  type: 'test'
+  ...
+# Subtest: aborted or closing acquisition rejects and a pending removal prevents final dispatch
+ok 14 - aborted or closing acquisition rejects and a pending removal prevents final dispatch
+  ---
+  duration_ms: 0.439583
+  type: 'test'
+  ...
+# Subtest: OS bridge capability refresh is optional, bounded and failure never prevents explicit session settings
+ok 15 - OS bridge capability refresh is optional, bounded and failure never prevents explicit session settings
+  ---
+  duration_ms: 0.5725
+  type: 'test'
+  ...
+# Subtest: malformed encrypted output or revision overflow cannot be saved
+ok 16 - malformed encrypted output or revision overflow cannot be saved
+  ---
+  duration_ms: 0.4035
+  type: 'test'
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 337.979209

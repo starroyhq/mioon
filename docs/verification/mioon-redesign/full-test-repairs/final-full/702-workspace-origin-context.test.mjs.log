@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: origin is outer context and normal pending input stays unchanged
+ok 1 - origin is outer context and normal pending input stays unchanged
+  ---
+  duration_ms: 1.417792
+  type: 'test'
+  ...
+# Subtest: missing, malformed and mismatched pins remain held without changing the original key
+ok 2 - missing, malformed and mismatched pins remain held without changing the original key
+  ---
+  duration_ms: 0.530209
+  type: 'test'
+  ...
+# Subtest: transport context rejects coercion and never adds a missing field
+ok 3 - transport context rejects coercion and never adds a missing field
+  ---
+  duration_ms: 0.226541
+  type: 'test'
+  ...
+# Subtest: old and new branch pending slots coexist, with compare-and-clear protecting reordered responses
+ok 4 - old and new branch pending slots coexist, with compare-and-clear protecting reordered responses
+  ---
+  duration_ms: 0.12975
+  type: 'test'
+  ...
+# Subtest: complete intent identity distinguishes origin, operation, missing fields and original input
+ok 5 - complete intent identity distinguishes origin, operation, missing fields and original input
+  ---
+  duration_ms: 7.032458
+  type: 'test'
+  ...
+# Subtest: navigation, refresh and reordered inspection cannot restamp a retained intent
+ok 6 - navigation, refresh and reordered inspection cannot restamp a retained intent
+  ---
+  duration_ms: 0.266708
+  type: 'test'
+  ...
+# Subtest: independent windows pin their own origin and a reload does not adopt old session values
+ok 7 - independent windows pin their own origin and a reload does not adopt old session values
+  ---
+  duration_ms: 0.091
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 214.102083

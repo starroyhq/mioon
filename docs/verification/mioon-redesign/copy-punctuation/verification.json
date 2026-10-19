@@ -1,0 +1,93 @@
+{
+  "scope": "Static application copy paragraph-ending full stops only; Chinese/Traditional Chinese/English/Japanese. No runtime trimming of user content, parameters, paths or URLs.",
+  "catalogTemplatesChanged": 6889,
+  "catalogFilesChanged": 29,
+  "byLocale": {
+    "zh-Hans": 1643,
+    "zh-Hant": 1727,
+    "en": 1762,
+    "ja": 1757
+  },
+  "byFile": {
+    "packages/i18n/src/catalogs/annotations.ts": 84,
+    "packages/i18n/src/catalogs/appearance.ts": 20,
+    "packages/i18n/src/catalogs/audio-role.ts": 20,
+    "packages/i18n/src/catalogs/clip-loudness.ts": 108,
+    "packages/i18n/src/catalogs/command.ts": 276,
+    "packages/i18n/src/catalogs/comparison.ts": 32,
+    "packages/i18n/src/catalogs/creation-connections.ts": 725,
+    "packages/i18n/src/catalogs/creation-extra.ts": 146,
+    "packages/i18n/src/catalogs/creation-state.ts": 608,
+    "packages/i18n/src/catalogs/creation-ui.ts": 544,
+    "packages/i18n/src/catalogs/export-file.ts": 8,
+    "packages/i18n/src/catalogs/export-workflow.ts": 4,
+    "packages/i18n/src/catalogs/foundation.ts": 36,
+    "packages/i18n/src/catalogs/native.ts": 168,
+    "packages/i18n/src/catalogs/opacity-envelope.ts": 48,
+    "packages/i18n/src/catalogs/opacity-restored-application.ts": 48,
+    "packages/i18n/src/catalogs/operations.ts": 316,
+    "packages/i18n/src/catalogs/project-browser.ts": 32,
+    "packages/i18n/src/catalogs/redesign-board.ts": 20,
+    "packages/i18n/src/catalogs/settings-redesign.ts": 16,
+    "packages/i18n/src/catalogs/shell.ts": 974,
+    "packages/i18n/src/catalogs/subjects.ts": 166,
+    "packages/i18n/src/catalogs/timeline-delivery.ts": 1264,
+    "packages/i18n/src/catalogs/timeline-editing.ts": 12,
+    "packages/i18n/src/catalogs/timeline.ts": 1122,
+    "packages/i18n/src/catalogs/volume-envelope.ts": 56,
+    "packages/i18n/src/catalogs/workbench-shell.ts": 4,
+    "packages/i18n/src/catalogs/workspace-tools.ts": 28,
+    "packages/i18n/src/index.ts": 4
+  },
+  "removedCatalogFullStops": 6893,
+  "nativeMessagesChanged": 7,
+  "nativeFilesChanged": 4,
+  "sourceFilesVerified": 33,
+  "buildFilesVerified": 61,
+  "commands": [
+    {
+      "command": "CI=true pnpm install --frozen-lockfile",
+      "exitCode": 0,
+      "log": "logs/install.log"
+    },
+    {
+      "command": "node scripts/tooling.mjs typecheck",
+      "exitCode": 0,
+      "log": "logs/typecheck.log"
+    },
+    {
+      "command": "node scripts/tooling.mjs build --channel=development",
+      "exitCode": 0,
+      "log": "logs/build.log"
+    }
+  ],
+  "catalogCheck": "catalog-verification.json",
+  "browser": {
+    "states": 8,
+    "pageErrors": 0,
+    "externalRequests": 0,
+    "results": "browser/results.json"
+  },
+  "tests": {
+    "files": 29,
+    "passedFiles": 22,
+    "failedFiles": [
+      "tests/export-history-ui.test.mjs",
+      "tests/i18n-backup-mcp-diagnostics.test.mjs",
+      "tests/i18n-catalog-integrity.test.mjs",
+      "tests/i18n-command-presentation.test.mjs",
+      "tests/i18n-command-unit.test.mjs",
+      "tests/named-delivery-ui.test.mjs",
+      "tests/desktop-media-shutdown.test.mjs"
+    ],
+    "tests": 375,
+    "pass": 356,
+    "fail": 19,
+    "skipped": 0
+  },
+  "knownPreexistingMissingOperationKeys": "operation-key-comparison.json",
+  "commits": 0,
+  "pushes": 0,
+  "dependencyChanges": [],
+  "supersededBy": "../test-repairs/verification.json"
+}

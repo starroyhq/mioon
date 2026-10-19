@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: actual apply component only offers an explicit review for passing changed candidates; never applies on render
+ok 1 - actual apply component only offers an explicit review for passing changed candidates; never applies on render
+  ---
+  duration_ms: 26.811
+  type: 'test'
+  ...
+# Subtest: unknown UI preserves task action and cannot create another apply; stale report requires a fresh preparation
+ok 2 - unknown UI preserves task action and cannot create another apply; stale report requires a fresh preparation
+  ---
+  duration_ms: 2.429125
+  type: 'test'
+  ...
+# Subtest: explicit export profile selector retains omitted legacy and default-v1 shapes, never selects v2 after apply
+ok 3 - explicit export profile selector retains omitted legacy and default-v1 shapes, never selects v2 after apply
+  ---
+  duration_ms: 2.188791
+  type: 'test'
+  ...
+# Subtest: actual apply hook revokes confirmation on hidden page, pagehide and window blur; remount never resumes it
+ok 4 - actual apply hook revokes confirmation on hidden page, pagehide and window blur; remount never resumes it
+  ---
+  duration_ms: 10.047125
+  type: 'test'
+  ...
+# Subtest: unverified recovery identity displays an actionable explanation without a pending-task action
+ok 5 - unverified recovery identity displays an actionable explanation without a pending-task action
+  ---
+  duration_ms: 1.513166
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 308.380542

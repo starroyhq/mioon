@@ -1,0 +1,16 @@
+TAP version 13
+# Subtest: explicit replacement keeps timing/fades and old exports while new media, preflight and waveform use the new source
+ok 1 - explicit replacement keeps timing/fades and old exports while new media, preflight and waveform use the new source
+  ---
+  duration_ms: 3214.350667
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3747.86075

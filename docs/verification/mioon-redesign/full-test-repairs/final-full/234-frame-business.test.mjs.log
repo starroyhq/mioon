@@ -1,0 +1,131 @@
+TAP version 13
+# Subtest: exact original ACK wins over stale CAS and changed keys, with no replay decode or write
+ok 1 - exact original ACK wins over stale CAS and changed keys, with no replay decode or write
+  ---
+  duration_ms: 834.27375
+  type: 'test'
+  ...
+# Subtest: bounded PNG publication owns a new asset and preserves original, legacy history and ACK
+ok 2 - bounded PNG publication owns a new asset and preserves original, legacy history and ACK
+  ---
+  duration_ms: 1333.713958
+  type: 'test'
+  ...
+# Subtest: nonowner GET/list/request reads perform zero writes or storage creation
+ok 3 - nonowner GET/list/request reads perform zero writes or storage creation
+  ---
+  duration_ms: 1272.523417
+  type: 'test'
+  ...
+# Subtest: strict input and source limits reject foreign or missing identity without decoding
+ok 4 - strict input and source limits reject foreign or missing identity without decoding
+  ---
+  duration_ms: 761.397541
+  type: 'test'
+  ...
+# Subtest: queue and retained capacity fail closed without evicting original receipts
+ok 5 - queue and retained capacity fail closed without evicting original receipts
+  ---
+  duration_ms: 2578.055291
+  type: 'test'
+  ...
+# Subtest: HMAC cursor binds project, limit and stable order; pages and absent reads do not create rows
+ok 6 - HMAC cursor binds project, limit and stable order; pages and absent reads do not create rows
+  ---
+  duration_ms: 625.450125
+  type: 'test'
+  ...
+# Skipped invalid local frame record.
+# Subtest: cancel can win before first spawn, but never after the durable start fence
+ok 7 - cancel can win before first spawn, but never after the durable start fence
+  ---
+  duration_ms: 617.464708
+  type: 'test'
+  ...
+# Skipped invalid local frame record.
+# Subtest: await fence refuses late publication after deleted-lock
+ok 8 - await fence refuses late publication after deleted-lock
+  ---
+  duration_ms: 744.545959
+  type: 'test'
+  ...
+# Skipped invalid local frame record.
+# Subtest: await fence refuses late publication after replaced-lock
+ok 9 - await fence refuses late publication after replaced-lock
+  ---
+  duration_ms: 652.055375
+  type: 'test'
+  ...
+# Skipped invalid local frame record.
+# Subtest: await fence refuses late publication after source-project
+ok 10 - await fence refuses late publication after source-project
+  ---
+  duration_ms: 718.718875
+  type: 'test'
+  ...
+# Skipped invalid local frame record.
+# Subtest: await fence refuses late publication after project-identity
+ok 11 - await fence refuses late publication after project-identity
+  ---
+  duration_ms: 684.024709
+  type: 'test'
+  ...
+# Skipped invalid local frame record.
+# Subtest: await fence refuses late publication after source-hash
+ok 12 - await fence refuses late publication after source-hash
+  ---
+  duration_ms: 631.142541
+  type: 'test'
+  ...
+# Skipped invalid local frame record.
+# Subtest: await fence refuses late publication after source-path
+ok 13 - await fence refuses late publication after source-path
+  ---
+  duration_ms: 649.654709
+  type: 'test'
+  ...
+# Subtest: await fence refuses late publication after source-size
+ok 14 - await fence refuses late publication after source-size
+  ---
+  duration_ms: 720.567209
+  type: 'test'
+  ...
+# Subtest: await fence refuses late publication after source-duration
+ok 15 - await fence refuses late publication after source-duration
+  ---
+  duration_ms: 608.948125
+  type: 'test'
+  ...
+# Subtest: await fence refuses late publication after source-geometry
+ok 16 - await fence refuses late publication after source-geometry
+  ---
+  duration_ms: 612.738333
+  type: 'test'
+  ...
+# Subtest: await fence refuses late publication after source-bytes
+ok 17 - await fence refuses late publication after source-bytes
+  ---
+  duration_ms: 623.08175
+  type: 'test'
+  ...
+# Subtest: global queue admission is bounded across projects and retained rows are never evicted
+ok 18 - global queue admission is bounded across projects and retained rows are never evicted
+  ---
+  duration_ms: 620.713041
+  type: 'test'
+  ...
+# Subtest: concurrent identical keys share one admission; asynchronous preparation is bounded before hashing
+ok 19 - concurrent identical keys share one admission; asynchronous preparation is bounded before hashing
+  ---
+  duration_ms: 617.250833
+  type: 'test'
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 16251.506

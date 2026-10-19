@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: hidden and disabled histories issue no recovery GET and keep the frozen download URL
+ok 1 - hidden and disabled histories issue no recovery GET and keep the frozen download URL
+  ---
+  duration_ms: 24.91225
+  type: 'test'
+  ...
+# Subtest: an old file-chooser change cannot dispatch after hide, reopen, or owner replacement
+ok 2 - an old file-chooser change cannot dispatch after hide, reopen, or owner replacement
+  ---
+  duration_ms: 11.895083
+  type: 'test'
+  ...
+# Subtest: a stale chooser cannot consume the new selection after the same history reopens
+ok 3 - a stale chooser cannot consume the new selection after the same history reopens
+  ---
+  duration_ms: 2.119375
+  type: 'test'
+  ...
+# Subtest: late GET results cannot publish after hidden ABA or same-URL download ownership changes
+ok 4 - late GET results cannot publish after hidden ABA or same-URL download ownership changes
+  ---
+  duration_ms: 1.855625
+  type: 'test'
+  ...
+# Subtest: accepted POST finishes without publishing to a retired hide-reopen owner and releases its shared flight
+ok 5 - accepted POST finishes without publishing to a retired hide-reopen owner and releases its shared flight
+  ---
+  duration_ms: 1.736833
+  type: 'test'
+  ...
+# Subtest: accepted POST finishes without publishing to a retired project owner and releases its shared flight
+ok 6 - accepted POST finishes without publishing to a retired project owner and releases its shared flight
+  ---
+  duration_ms: 1.950709
+  type: 'test'
+  ...
+# Subtest: accepted POST finishes without publishing to a retired disabled owner and releases its shared flight
+ok 7 - accepted POST finishes without publishing to a retired disabled owner and releases its shared flight
+  ---
+  duration_ms: 1.445541
+  type: 'test'
+  ...
+# Subtest: accepted POST is not aborted on hide or unmount and never publishes after unmount
+ok 8 - accepted POST is not aborted on hide or unmount and never publishes after unmount
+  ---
+  duration_ms: 1.918042
+  type: 'test'
+  ...
+# Subtest: size and immutable response mismatches retain the original record and release the next choice
+ok 9 - size and immutable response mismatches retain the original record and release the next choice
+  ---
+  duration_ms: 1.397292
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 268.635458

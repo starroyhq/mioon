@@ -1,0 +1,130 @@
+TAP version 13
+# Subtest: single Look verification is metadata-only and leaves exact Cube bytes unchanged
+ok 1 - single Look verification is metadata-only and leaves exact Cube bytes unchanged
+  ---
+  duration_ms: 6.240334
+  type: 'test'
+  ...
+# Subtest: plain Cube remains opt-in, while the reserved marker cannot silently downgrade
+ok 2 - plain Cube remains opt-in, while the reserved marker cannot silently downgrade
+  ---
+  duration_ms: 1.422042
+  type: 'test'
+  ...
+# Subtest: malformed, repeated, missing and trailing markers have no ambiguous interpretation
+ok 3 - malformed, repeated, missing and trailing markers have no ambiguous interpretation
+  ---
+  duration_ms: 0.444166
+  type: 'test'
+  ...
+# Subtest: unknown executable, remote-asset and path fields fail closed at every schema boundary
+ok 4 - unknown executable, remote-asset and path fields fail closed at every schema boundary
+  ---
+  duration_ms: 2.594583
+  type: 'test'
+  ...
+# Subtest: only the current single creative Rec.709 SDR contract is admitted
+ok 5 - only the current single creative Rec.709 SDR contract is admitted
+  ---
+  duration_ms: 1.143792
+  type: 'test'
+  ...
+# Subtest: duplicate JSON keys are rejected before overwritten values can be trusted
+ok 6 - duplicate JSON keys are rejected before overwritten values can be trusted
+  ---
+  duration_ms: 0.347041
+  type: 'test'
+  ...
+# Subtest: malformed JSON and non-object values fail deterministically
+ok 7 - malformed JSON and non-object values fail deterministically
+  ---
+  duration_ms: 0.904334
+  type: 'test'
+  ...
+# Subtest: depth, key, string, manifest, line and whole-file limits precede unbounded parsing
+ok 8 - depth, key, string, manifest, line and whole-file limits precede unbounded parsing
+  ---
+  duration_ms: 4.362
+  type: 'test'
+  ...
+# Subtest: metadata text limits are independent of JSON and total file bounds
+ok 9 - metadata text limits are independent of JSON and total file bounds
+  ---
+  duration_ms: 3.592375
+  type: 'test'
+  ...
+# Subtest: a valid complete file at exactly the existing 7 MiB cap remains admissible
+ok 10 - a valid complete file at exactly the existing 7 MiB cap remains admissible
+  ---
+  duration_ms: 179.708958
+  type: 'test'
+  ...
+# Subtest: manifest bounds, deep nesting and duplicate keys fail before JSON.parse
+ok 11 - manifest bounds, deep nesting and duplicate keys fail before JSON.parse
+  ---
+  duration_ms: 0.321958
+  type: 'test'
+  ...
+# Subtest: hash and byte size bind the exact body including spacing and LF versus CRLF
+ok 12 - hash and byte size bind the exact body including spacing and LF versus CRLF
+  ---
+  duration_ms: 1.964125
+  type: 'test'
+  ...
+# Subtest: valid body hashes cannot bypass complete existing Cube admission
+ok 13 - valid body hashes cannot bypass complete existing Cube admission
+  ---
+  duration_ms: 1.027458
+  type: 'test'
+  ...
+# Subtest: ASCII, strict UTF-8 and exact delimiters reject BOMs and control characters
+ok 14 - ASCII, strict UTF-8 and exact delimiters reject BOMs and control characters
+  ---
+  duration_ms: 0.19525
+  type: 'test'
+  ...
+# Subtest: public byte APIs reject arbitrary objects, unsafe views, accessors and proxies without invoking them
+ok 15 - public byte APIs reject arbitrary objects, unsafe views, accessors and proxies without invoking them
+  ---
+  duration_ms: 0.725791
+  type: 'test'
+  ...
+# Subtest: an asynchronous hash verifies a private byte snapshot, not subsequently mutated caller input
+ok 16 - an asynchronous hash verifies a private byte snapshot, not subsequently mutated caller input
+  ---
+  duration_ms: 0.305583
+  type: 'test'
+  ...
+# Subtest: synthetic fixtures are valid standalone Cubes with independent nonlinear/identity math
+ok 17 - synthetic fixtures are valid standalone Cubes with independent nonlinear/identity math
+  ---
+  duration_ms: 1.343166
+  type: 'test'
+  ...
+# Subtest: shared response schemas reject additions and declarations cannot masquerade as verified provenance
+ok 18 - shared response schemas reject additions and declarations cannot masquerade as verified provenance
+  ---
+  duration_ms: 0.401166
+  type: 'test'
+  ...
+# Subtest: parser has no file, network, execution, dynamic dependency or storage capability
+ok 19 - parser has no file, network, execution, dynamic dependency or storage capability
+  ---
+  duration_ms: 0.5725
+  type: 'test'
+  ...
+# Subtest: parser bundles for a browser without Node APIs or synthetic fixtures
+ok 20 - parser bundles for a browser without Node APIs or synthetic fixtures
+  ---
+  duration_ms: 20.673167
+  type: 'test'
+  ...
+1..20
+# tests 20
+# suites 0
+# pass 20
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 403.583166

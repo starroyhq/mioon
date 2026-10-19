@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: preview is read-only; explicit acknowledgement adopts exactly original bytes once
+ok 1 - preview is read-only; explicit acknowledgement adopts exactly original bytes once
+  ---
+  duration_ms: 8.845375
+  type: 'test'
+  ...
+# Subtest: cancel and stale file preview cannot import or repaint a different project
+ok 2 - cancel and stale file preview cannot import or repaint a different project
+  ---
+  duration_ms: 0.282042
+  type: 'test'
+  ...
+# Subtest: newer preview wins; repeated selection resets acknowledgement
+ok 3 - newer preview wins; repeated selection resets acknowledgement
+  ---
+  duration_ms: 1.006792
+  type: 'test'
+  ...
+# Subtest: unsupported name, size and malformed pack fail without reading too much or adopting
+ok 4 - unsupported name, size and malformed pack fail without reading too much or adopting
+  ---
+  duration_ms: 0.368875
+  type: 'test'
+  ...
+# Subtest: adoption uses immutable captured bytes, not a second caller-controlled read
+ok 5 - adoption uses immutable captured bytes, not a second caller-controlled read
+  ---
+  duration_ms: 0.493875
+  type: 'test'
+  ...
+# Subtest: duplicate adoption and cancellation during accepted action cannot create another request
+ok 6 - duplicate adoption and cancellation during accepted action cannot create another request
+  ---
+  duration_ms: 0.384208
+  type: 'test'
+  ...
+# Subtest: scope switch after adoption never shows success in the next project
+ok 7 - scope switch after adoption never shows success in the next project
+  ---
+  duration_ms: 0.361125
+  type: 'test'
+  ...
+# Subtest: plain import cannot bypass pack preview even renamed to an ordinary Cube filename
+ok 8 - plain import cannot bypass pack preview even renamed to an ordinary Cube filename
+  ---
+  duration_ms: 4.197833
+  type: 'test'
+  ...
+# Subtest: pack unknown outcome retains the unchanged exact LUT request and explicit retry
+ok 9 - pack unknown outcome retains the unchanged exact LUT request and explicit retry
+  ---
+  duration_ms: 1.462792
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 277.522041

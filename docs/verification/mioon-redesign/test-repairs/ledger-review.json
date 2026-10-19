@@ -1,0 +1,232 @@
+{
+  "removedStale": [
+    {
+      "fragment": "shell",
+      "file": "apps/web/src/App.jsx",
+      "category": "visible-jsx",
+      "hash": "1c73ed523adee3e8abd10cdf89ec61019009e97ffebb2c8f49abbca692c9a071",
+      "owner": "shell",
+      "reason": "Technical version prefix beside an existing version number, not prose or user content; version identity/number is unchanged."
+    },
+    {
+      "fragment": "shell",
+      "file": "apps/web/src/App.jsx",
+      "category": "visible-jsx",
+      "hash": "83d6e86209a5b7d486da38558a8baddc3737d3fcb2deab1db100da0f1b9575cb",
+      "owner": "shell",
+      "reason": "Technical SI seconds unit in compact duration notation; the duration value remains display-only and its numeric protocol value is unchanged."
+    },
+    {
+      "fragment": "shell",
+      "file": "apps/web/src/Nodes.jsx",
+      "category": "visible-jsx",
+      "hash": "1c73ed523adee3e8abd10cdf89ec61019009e97ffebb2c8f49abbca692c9a071",
+      "owner": "shell",
+      "reason": "Technical version prefix beside an existing version number, not prose or user content; version identity/number is unchanged."
+    },
+    {
+      "fragment": "shell",
+      "file": "apps/web/src/ProjectHome.tsx",
+      "category": "visible-jsx",
+      "hash": "6128287041610e3e584b5cc1268df57e8d98f6dc1e16744caf935453325b9b78",
+      "owner": "shell",
+      "reason": "Exact Mioon application brand, including its existing lowercase logo/accessible brand spelling; product identity must not be translated."
+    },
+    {
+      "fragment": "shell",
+      "file": "apps/web/src/ProjectHome.tsx",
+      "category": "visible-jsx",
+      "hash": "e4bb1d84af3d68f8d7999c5aa5b4cbaec430ad95d2cbfb148a9659b1c1b66235",
+      "owner": "shell",
+      "reason": "Exact Mioon application brand, including its existing lowercase logo/accessible brand spelling; product identity must not be translated."
+    },
+    {
+      "fragment": "shell",
+      "file": "apps/web/src/WebSettingsCenter.tsx",
+      "category": "visible-jsx",
+      "hash": "e4bb1d84af3d68f8d7999c5aa5b4cbaec430ad95d2cbfb148a9659b1c1b66235",
+      "owner": "shell",
+      "reason": "Product brand, deliberately unchanged in every language, matching other mioon brand placements."
+    },
+    {
+      "fragment": "creation",
+      "file": "apps/web/src/agent-chat.js",
+      "category": "cjk-source",
+      "hash": "7dbfe873a789300f859c4b1fb23821939546be0a40de85360c4748941e1c8b2d",
+      "owner": "creation",
+      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. AgentPanel renders state.displayMessage/history.displayMessage; agentChatErrorDescriptor and agentChatPromptIssueDescriptor map stable error/validation branches. Timeline block strings only fence authorization; AgentPanel renders the corresponding blocked descriptor prop. Four-locale counterpart: agent.chat.state.consentChanged."
+    },
+    {
+      "fragment": "timeline",
+      "file": "apps/web/src/Preview.jsx",
+      "category": "visible-jsx",
+      "hash": "8170d88edf1074bb37a191df4702b33d3a3944fdac209d0d8d7638ad95aaa4c3",
+      "owner": "timeline",
+      "reason": "Fixed frames-per-second editing/output unit in the original frozen media geometry, not translatable prose. The numeric frame rate and dimensions remain unchanged; surrounding statuses and captions use localized descriptors. Reviewed literal template fragment: 'fps ·'."
+    },
+    {
+      "fragment": "timeline",
+      "file": "apps/web/src/Preview.jsx",
+      "category": "visible-jsx",
+      "hash": "23e3a16cd69e0ea405543ce66c9194e3360e6ae3299a2f4b0e52acf1e401fb74",
+      "owner": "timeline",
+      "reason": "Fixed frames-per-second editing/output unit in the original frozen media geometry, not translatable prose. The numeric frame rate and dimensions remain unchanged; surrounding statuses and captions use localized descriptors. Reviewed literal template fragment: 'fps'."
+    },
+    {
+      "fragment": "timeline",
+      "file": "apps/web/src/Timeline.jsx",
+      "category": "visible-jsx",
+      "hash": "8170d88edf1074bb37a191df4702b33d3a3944fdac209d0d8d7638ad95aaa4c3",
+      "owner": "timeline",
+      "reason": "Fixed frames-per-second editing/output unit in the original frozen media geometry, not translatable prose. The numeric frame rate and dimensions remain unchanged; surrounding statuses and captions use localized descriptors. Reviewed literal template fragment: 'fps ·'."
+    }
+  ],
+  "reviewedCurrent": [
+    {
+      "fragment": "shell",
+      "text": "s",
+      "file": "apps/web/src/AssetLibrary.jsx",
+      "category": "visible-jsx",
+      "hash": "83d6e86209a5b7d486da38558a8baddc3737d3fcb2deab1db100da0f1b9575cb",
+      "owner": "shell",
+      "reason": "Technical SI seconds symbol in asset duration, moved into the asset leaf component; numeric duration and media identity are unchanged."
+    },
+    {
+      "fragment": "shell",
+      "text": "Mioon",
+      "file": "apps/web/src/LoginScreen.tsx",
+      "category": "visible-jsx",
+      "hash": "7a46cf2292a4ae656546bfaaf227049188aa7afe5b12953101345c8916893762",
+      "owner": "shell",
+      "reason": "Exact product brand in the login heading, unchanged across locales; surrounding instructions use catalog messages."
+    },
+    {
+      "fragment": "shell",
+      "text": "data/access-token",
+      "file": "apps/web/src/LoginScreen.tsx",
+      "category": "visible-jsx",
+      "hash": "68155112c228d4225ef47f1e79ddb3650a43b013c4aefc34654902a2bafcd6a8",
+      "owner": "shell",
+      "reason": "Literal default local credential-file path shown as code, not prose or a token value; the path must remain exact in every locale."
+    },
+    {
+      "fragment": "shell",
+      "text": "Mioon",
+      "file": "apps/web/src/ProjectHome.tsx",
+      "category": "visible-jsx",
+      "hash": "3503c0f5cfcc36ae62cf8ff3d8e0fb77cd652a28c283e654e095bb4e3265bec1",
+      "owner": "shell",
+      "reason": "Exact product brand in the home link and its accessible label, unchanged across locales; the redesigned spelling is Mioon."
+    },
+    {
+      "fragment": "shell",
+      "text": "Mioon",
+      "file": "apps/web/src/ProjectHome.tsx",
+      "category": "visible-jsx",
+      "hash": "7a46cf2292a4ae656546bfaaf227049188aa7afe5b12953101345c8916893762",
+      "owner": "shell",
+      "reason": "Exact product brand in the home link and its accessible label, unchanged across locales; the redesigned spelling is Mioon."
+    },
+    {
+      "fragment": "shell",
+      "text": "Mioon",
+      "file": "apps/web/src/SettingsExtraPages.tsx",
+      "category": "visible-jsx",
+      "hash": "7a46cf2292a4ae656546bfaaf227049188aa7afe5b12953101345c8916893762",
+      "owner": "shell",
+      "reason": "Exact product brand in the About page, unchanged across locales; surrounding page copy uses catalog messages."
+    },
+    {
+      "fragment": "shell",
+      "text": "React · MIT",
+      "file": "apps/web/src/SettingsExtraPages.tsx",
+      "category": "visible-jsx",
+      "hash": "97890ad4882a6bbc838a1c20fca197ad01cba6503bca3a15c61dcc829652bab3",
+      "owner": "shell",
+      "reason": "Fixed upstream software/project and MIT license identifiers in the About acknowledgements; technical proper names remain verbatim across locales."
+    },
+    {
+      "fragment": "shell",
+      "text": "Base UI · MIT",
+      "file": "apps/web/src/SettingsExtraPages.tsx",
+      "category": "visible-jsx",
+      "hash": "8e55f97219f5b454cb2b4c34b063f6392deafb6e74688a1358792aadb7bf3ab5",
+      "owner": "shell",
+      "reason": "Fixed upstream software/project and MIT license identifiers in the About acknowledgements; technical proper names remain verbatim across locales."
+    },
+    {
+      "fragment": "shell",
+      "text": "React Flow · MIT",
+      "file": "apps/web/src/SettingsExtraPages.tsx",
+      "category": "visible-jsx",
+      "hash": "a1b6715f2f7d2616829dbeb97f1918eea0c22d84016c9baf528ec21a75fa990b",
+      "owner": "shell",
+      "reason": "Fixed upstream software/project and MIT license identifiers in the About acknowledgements; technical proper names remain verbatim across locales."
+    },
+    {
+      "fragment": "shell",
+      "text": "Tailwind CSS · MIT",
+      "file": "apps/web/src/SettingsExtraPages.tsx",
+      "category": "visible-jsx",
+      "hash": "47a816b7bd48364a03275ba1992ac33ab754f049adc4e885e0cbcbd009d2e1a1",
+      "owner": "shell",
+      "reason": "Fixed upstream software/project and MIT license identifiers in the About acknowledgements; technical proper names remain verbatim across locales."
+    },
+    {
+      "fragment": "shell",
+      "text": "Electron · MIT",
+      "file": "apps/web/src/SettingsExtraPages.tsx",
+      "category": "visible-jsx",
+      "hash": "3c49cc65d7ebf9b443fcf12bc998784aa7d36d3f2842adf863d58d6146170810",
+      "owner": "shell",
+      "reason": "Fixed upstream software/project and MIT license identifiers in the About acknowledgements; technical proper names remain verbatim across locales."
+    },
+    {
+      "fragment": "shell",
+      "text": "MB",
+      "file": "apps/web/src/SettingsWorkspace.tsx",
+      "category": "visible-jsx",
+      "hash": "9221db0f72a6e7ee7cbf600eade275e5e8728c11958d28b4501e6b5346190c40",
+      "owner": "shell",
+      "reason": "Fixed storage-size unit beside a formatted numeric value; not prose, and changing locale does not change stored byte counts."
+    },
+    {
+      "fragment": "shell",
+      "text": "s",
+      "file": "apps/web/src/StoryboardStrip.tsx",
+      "category": "visible-jsx",
+      "hash": "83d6e86209a5b7d486da38558a8baddc3737d3fcb2deab1db100da0f1b9575cb",
+      "owner": "shell",
+      "reason": "Technical SI seconds symbol in storyboard duration; the numeric duration remains display-only."
+    },
+    {
+      "fragment": "shell",
+      "text": "V",
+      "file": "apps/web/src/StoryboardStrip.tsx",
+      "category": "visible-jsx",
+      "hash": "1c73ed523adee3e8abd10cdf89ec61019009e97ffebb2c8f49abbca692c9a071",
+      "owner": "shell",
+      "reason": "Technical version prefix beside the selected version number in the extracted storyboard leaf; version identity is unchanged."
+    },
+    {
+      "fragment": "shell",
+      "text": "s",
+      "file": "apps/web/src/VersionComparison.tsx",
+      "category": "visible-jsx",
+      "hash": "83d6e86209a5b7d486da38558a8baddc3737d3fcb2deab1db100da0f1b9575cb",
+      "owner": "shell",
+      "reason": "Technical SI seconds symbol after synchronized playback times; the media time values and playback controls are unchanged."
+    },
+    {
+      "fragment": "creation",
+      "text": "目标、模型或发送范围尚未授权，或当前请求范围已变化，请核对授权与发送内容。",
+      "file": "apps/web/src/agent-chat.js",
+      "category": "cjk-source",
+      "hash": "e0d4f77831fd29bbd6a86e4cef5920dd9862a1ec143a11d4b6d406d9430dedde",
+      "owner": "creation",
+      "reason": "Retained internal authorization diagnostic, not a display lookup key or translated user content. AgentPanel renders the explicit agent.chat.state.consentChanged descriptor while the original diagnostic remains available for controller compatibility."
+    }
+  ],
+  "scanRulesChanged": false,
+  "runtimeSourceChanged": false
+}

@@ -1,0 +1,466 @@
+TAP version 13
+# Subtest: historical source manifest is pinned to the accepted baseline, not candidate output
+ok 1 - historical source manifest is pinned to the accepted baseline, not candidate output
+  ---
+  duration_ms: 1.402375
+  type: 'test'
+  ...
+# Subtest: constructor remains byte-exact: packages/business/src/workspace-restore-schema.mjs
+ok 2 - constructor remains byte-exact: packages/business/src/workspace-restore-schema.mjs
+  ---
+  duration_ms: 0.366625
+  type: 'test'
+  ...
+# Subtest: constructor remains byte-exact: packages/business/src/workspace-restore-schema-v27.ts
+ok 3 - constructor remains byte-exact: packages/business/src/workspace-restore-schema-v27.ts
+  ---
+  duration_ms: 0.164208
+  type: 'test'
+  ...
+# Subtest: constructor remains byte-exact: packages/business/src/workspace-restore-schema-v29.ts
+ok 4 - constructor remains byte-exact: packages/business/src/workspace-restore-schema-v29.ts
+  ---
+  duration_ms: 0.135792
+  type: 'test'
+  ...
+# Subtest: constructor remains byte-exact: packages/business/src/workspace-restore-schema-v31.ts
+ok 5 - constructor remains byte-exact: packages/business/src/workspace-restore-schema-v31.ts
+  ---
+  duration_ms: 0.123584
+  type: 'test'
+  ...
+# Subtest: constructor remains byte-exact: packages/business/src/workspace-restore-schema-v33.ts
+ok 6 - constructor remains byte-exact: packages/business/src/workspace-restore-schema-v33.ts
+  ---
+  duration_ms: 0.116041
+  type: 'test'
+  ...
+# Subtest: constructor remains byte-exact: packages/business/src/workspace-restore-schema-v35.ts
+ok 7 - constructor remains byte-exact: packages/business/src/workspace-restore-schema-v35.ts
+  ---
+  duration_ms: 0.109
+  type: 'test'
+  ...
+# Subtest: constructor remains byte-exact: packages/business/src/workspace-restore-schema-v37.ts
+ok 8 - constructor remains byte-exact: packages/business/src/workspace-restore-schema-v37.ts
+  ---
+  duration_ms: 0.112375
+  type: 'test'
+  ...
+# Subtest: constructor remains byte-exact: packages/business/src/workspace-restore-schema-v39.ts
+ok 9 - constructor remains byte-exact: packages/business/src/workspace-restore-schema-v39.ts
+  ---
+  duration_ms: 0.152042
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/agent/edit-proposal-schema.mjs
+ok 10 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/agent/edit-proposal-schema.mjs
+  ---
+  duration_ms: 0.135958
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/asset-annotation-validation.ts
+ok 11 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/asset-annotation-validation.ts
+  ---
+  duration_ms: 0.096959
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/comfy-image-schema.mjs
+ok 12 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/comfy-image-schema.mjs
+  ---
+  duration_ms: 0.084958
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/cube-lut.ts
+ok 13 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/cube-lut.ts
+  ---
+  duration_ms: 0.090125
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/edit-task-schema.mjs
+ok 14 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/edit-task-schema.mjs
+  ---
+  duration_ms: 0.079291
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/frame-schema.mjs
+ok 15 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/frame-schema.mjs
+  ---
+  duration_ms: 0.071333
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/image-schema.mjs
+ok 16 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/image-schema.mjs
+  ---
+  duration_ms: 0.068
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/images/review-schema.mjs
+ok 17 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/images/review-schema.mjs
+  ---
+  duration_ms: 0.106458
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/lut-resource-validation.ts
+ok 18 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/lut-resource-validation.ts
+  ---
+  duration_ms: 0.078709
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/subject-schema.mjs
+ok 19 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/subject-schema.mjs
+  ---
+  duration_ms: 0.063541
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/timeline-format-schema.mjs
+ok 20 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/timeline-format-schema.mjs
+  ---
+  duration_ms: 0.05775
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/timeline-subtitle-schema.mjs
+ok 21 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/timeline-subtitle-schema.mjs
+  ---
+  duration_ms: 0.0665
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-audio-role-validation.ts
+ok 22 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-audio-role-validation.ts
+  ---
+  duration_ms: 0.054583
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-colour-validation.ts
+ok 23 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-colour-validation.ts
+  ---
+  duration_ms: 0.068875
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-envelope-runtime.ts
+ok 24 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-envelope-runtime.ts
+  ---
+  duration_ms: 0.059542
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-fixed-schema.mjs
+ok 25 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-fixed-schema.mjs
+  ---
+  duration_ms: 0.074792
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-frozen-evidence-v40.ts
+ok 26 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-frozen-evidence-v40.ts
+  ---
+  duration_ms: 0.051084
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-receipt-protections.ts
+ok 27 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-receipt-protections.ts
+  ---
+  duration_ms: 0.072167
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-restore-schema-v41.ts
+ok 28 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-restore-schema-v41.ts
+  ---
+  duration_ms: 0.458541
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-schema-profile.ts
+ok 29 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-schema-profile.ts
+  ---
+  duration_ms: 0.1585
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-schema-v24-constants.ts
+ok 30 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-schema-v24-constants.ts
+  ---
+  duration_ms: 0.074959
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-schema-v26.ts
+ok 31 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-schema-v26.ts
+  ---
+  duration_ms: 0.074083
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-schema-v28.ts
+ok 32 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-schema-v28.ts
+  ---
+  duration_ms: 0.08225
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-schema-v30.ts
+ok 33 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-schema-v30.ts
+  ---
+  duration_ms: 0.072792
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-schema-v32.ts
+ok 34 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-schema-v32.ts
+  ---
+  duration_ms: 0.06375
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-schema-v34.ts
+ok 35 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-schema-v34.ts
+  ---
+  duration_ms: 0.081917
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-schema-v36.ts
+ok 36 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-schema-v36.ts
+  ---
+  duration_ms: 0.115959
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-schema-v38.ts
+ok 37 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-schema-v38.ts
+  ---
+  duration_ms: 0.088458
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-schema-v40.ts
+ok 38 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-schema-v40.ts
+  ---
+  duration_ms: 0.082917
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-volume-envelope-validation.ts
+ok 39 - fixed initializer, constant and validation dependency remains byte-exact: packages/business/src/workspace-volume-envelope-validation.ts
+  ---
+  duration_ms: 0.073334
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/agent-timeline-gain.ts
+ok 40 - fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/agent-timeline-gain.ts
+  ---
+  duration_ms: 0.123
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/asset-annotations.ts
+ok 41 - fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/asset-annotations.ts
+  ---
+  duration_ms: 0.052916
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/export-loudness.ts
+ok 42 - fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/export-loudness.ts
+  ---
+  duration_ms: 0.068833
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/export-sample-peak.ts
+ok 43 - fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/export-sample-peak.ts
+  ---
+  duration_ms: 0.05875
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/lut-resources.ts
+ok 44 - fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/lut-resources.ts
+  ---
+  duration_ms: 0.064667
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/timeline-audio-role.ts
+ok 45 - fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/timeline-audio-role.ts
+  ---
+  duration_ms: 0.048667
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/timeline-clip-loudness.ts
+ok 46 - fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/timeline-clip-loudness.ts
+  ---
+  duration_ms: 0.055333
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/timeline-colour.ts
+ok 47 - fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/timeline-colour.ts
+  ---
+  duration_ms: 0.0745
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/timeline-delivery.ts
+ok 48 - fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/timeline-delivery.ts
+  ---
+  duration_ms: 0.053083
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/timeline-export-range.ts
+ok 49 - fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/timeline-export-range.ts
+  ---
+  duration_ms: 0.062792
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/timeline-loudness-apply.ts
+ok 50 - fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/timeline-loudness-apply.ts
+  ---
+  duration_ms: 0.052458
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/timeline-mix-loudness.ts
+ok 51 - fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/timeline-mix-loudness.ts
+  ---
+  duration_ms: 0.051417
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/timeline-volume-envelope-processing.ts
+ok 52 - fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/timeline-volume-envelope-processing.ts
+  ---
+  duration_ms: 0.053958
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/timeline-volume-envelope-record.ts
+ok 53 - fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/timeline-volume-envelope-record.ts
+  ---
+  duration_ms: 0.051292
+  type: 'test'
+  ...
+# Subtest: fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/timeline-volume-envelope.ts
+ok 54 - fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/timeline-volume-envelope.ts
+  ---
+  duration_ms: 0.053542
+  type: 'test'
+  ...
+# Subtest: independent historical golden fixture remains byte-exact: tests/fixtures/images-legacy-schema15.sql
+ok 55 - independent historical golden fixture remains byte-exact: tests/fixtures/images-legacy-schema15.sql
+  ---
+  duration_ms: 0.386917
+  type: 'test'
+  ...
+# Subtest: independent historical golden fixture remains byte-exact: tests/fixtures/images-legacy-schema17.sql
+ok 56 - independent historical golden fixture remains byte-exact: tests/fixtures/images-legacy-schema17.sql
+  ---
+  duration_ms: 0.366541
+  type: 'test'
+  ...
+# Subtest: independent historical golden fixture remains byte-exact: tests/fixtures/images-legacy-schema18.sql
+ok 57 - independent historical golden fixture remains byte-exact: tests/fixtures/images-legacy-schema18.sql
+  ---
+  duration_ms: 0.325625
+  type: 'test'
+  ...
+# Subtest: independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-legacy/1536878-db.mjs
+ok 58 - independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-legacy/1536878-db.mjs
+  ---
+  duration_ms: 0.121709
+  type: 'test'
+  ...
+# Subtest: independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-legacy/1536878-server.mjs
+ok 59 - independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-legacy/1536878-server.mjs
+  ---
+  duration_ms: 0.092166
+  type: 'test'
+  ...
+# Subtest: independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-legacy/3446aed-contracts.mjs
+ok 60 - independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-legacy/3446aed-contracts.mjs
+  ---
+  duration_ms: 0.071667
+  type: 'test'
+  ...
+# Subtest: independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-legacy/3446aed-db.mjs
+ok 61 - independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-legacy/3446aed-db.mjs
+  ---
+  duration_ms: 0.058541
+  type: 'test'
+  ...
+# Subtest: independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-legacy/3446aed-server.mjs
+ok 62 - independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-legacy/3446aed-server.mjs
+  ---
+  duration_ms: 0.057083
+  type: 'test'
+  ...
+# Subtest: independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-legacy/3446aed-services.mjs
+ok 63 - independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-legacy/3446aed-services.mjs
+  ---
+  duration_ms: 0.361291
+  type: 'test'
+  ...
+# Subtest: independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-legacy/3446aed-timeline.mjs
+ok 64 - independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-legacy/3446aed-timeline.mjs
+  ---
+  duration_ms: 0.108333
+  type: 'test'
+  ...
+# Subtest: independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-legacy/beb7fcf-db.mjs
+ok 65 - independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-legacy/beb7fcf-db.mjs
+  ---
+  duration_ms: 0.123542
+  type: 'test'
+  ...
+# Subtest: independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-legacy/beb7fcf-desktop-backend.mjs
+ok 66 - independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-legacy/beb7fcf-desktop-backend.mjs
+  ---
+  duration_ms: 0.080166
+  type: 'test'
+  ...
+# Subtest: independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-legacy/beb7fcf-migrate-data.mjs
+ok 67 - independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-legacy/beb7fcf-migrate-data.mjs
+  ---
+  duration_ms: 0.059
+  type: 'test'
+  ...
+# Subtest: independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-legacy/beb7fcf-server.mjs
+ok 68 - independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-legacy/beb7fcf-server.mjs
+  ---
+  duration_ms: 0.071
+  type: 'test'
+  ...
+# Subtest: independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-legacy/provenance.json
+ok 69 - independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-legacy/provenance.json
+  ---
+  duration_ms: 0.069875
+  type: 'test'
+  ...
+# Subtest: independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-v27/legacy-contracts/workspace-backup.mjs
+ok 70 - independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-v27/legacy-contracts/workspace-backup.mjs
+  ---
+  duration_ms: 0.06425
+  type: 'test'
+  ...
+# Subtest: independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-v27/legacy-contracts/workspace-restore-offline.mjs
+ok 71 - independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-v27/legacy-contracts/workspace-restore-offline.mjs
+  ---
+  duration_ms: 0.051958
+  type: 'test'
+  ...
+# Subtest: independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-v27/legacy-contracts/workspace-restore.mjs
+ok 72 - independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-v27/legacy-contracts/workspace-restore.mjs
+  ---
+  duration_ms: 0.048375
+  type: 'test'
+  ...
+# Subtest: independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-v27/manifest.json
+ok 73 - independent historical golden fixture remains byte-exact: tests/fixtures/workspace-restore-v27/manifest.json
+  ---
+  duration_ms: 0.046208
+  type: 'test'
+  ...
+# Subtest: independent historical golden fixture remains byte-exact: tests/fixtures/workspace-schema-profiles/golden.json
+ok 74 - independent historical golden fixture remains byte-exact: tests/fixtures/workspace-schema-profiles/golden.json
+  ---
+  duration_ms: 0.543291
+  type: 'test'
+  ...
+# Subtest: independent historical golden fixture remains byte-exact: tests/fixtures/workspace-schema-profiles/manifest.json
+ok 75 - independent historical golden fixture remains byte-exact: tests/fixtures/workspace-schema-profiles/manifest.json
+  ---
+  duration_ms: 0.135333
+  type: 'test'
+  ...
+# Subtest: the fixed-source snapshot covers every recorded relative import except verified-store runtime wiring
+ok 76 - the fixed-source snapshot covers every recorded relative import except verified-store runtime wiring
+  ---
+  duration_ms: 0.159375
+  type: 'test'
+  ...
+1..76
+# tests 76
+# suites 0
+# pass 76
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 146.040333

@@ -1,0 +1,103 @@
+TAP version 13
+# Subtest: fresh named title is independently frozen and hashed; exact replay survives rename, edit and restart
+    # Subtest: legacy encoding
+    ok 1 - legacy encoding
+      ---
+      duration_ms: 998.419083
+      type: 'test'
+      ...
+    # Subtest: custom encoding
+    ok 2 - custom encoding
+      ---
+      duration_ms: 665.51975
+      type: 'test'
+      ...
+    1..2
+ok 1 - fresh named title is independently frozen and hashed; exact replay survives rename, edit and restart
+  ---
+  duration_ms: 1665.137667
+  type: 'test'
+  ...
+# Subtest: legacy unnamed receipts retain exact absent fields and bytes after later edits and restart
+ok 2 - legacy unnamed receipts retain exact absent fields and bytes after later edits and restart
+  ---
+  duration_ms: 632.889875
+  type: 'test'
+  ...
+# Subtest: name-aware preflight hash binds exact presence, does not probe capabilities, and rejects stale names
+ok 3 - name-aware preflight hash binds exact presence, does not probe capabilities, and rejects stale names
+  ---
+  duration_ms: 611.524125
+  type: 'test'
+  ...
+# Subtest: corrupt or removed title-only identity on either row or immutable receipt never starts worker media
+    # Subtest: export changed
+    ok 1 - export changed
+      ---
+      duration_ms: 591.422916
+      type: 'test'
+      ...
+    # Subtest: export removed
+    ok 2 - export removed
+      ---
+      duration_ms: 591.578333
+      type: 'test'
+      ...
+    # Subtest: receipt changed
+    ok 3 - receipt changed
+      ---
+      duration_ms: 578.987791
+      type: 'test'
+      ...
+    # Subtest: receipt removed
+    ok 4 - receipt removed
+      ---
+      duration_ms: 577.994334
+      type: 'test'
+      ...
+    # Subtest: preview
+    ok 5 - preview
+      ---
+      duration_ms: 582.501917
+      type: 'test'
+      ...
+    1..5
+ok 4 - corrupt or removed title-only identity on either row or immutable receipt never starts worker media
+  ---
+  duration_ms: 2923.253167
+  type: 'test'
+  ...
+# Subtest: normal SQLite mutation fences title-only exports and original receipt
+ok 5 - normal SQLite mutation fences title-only exports and original receipt
+  ---
+  duration_ms: 575.292209
+  type: 'test'
+  ...
+# Subtest: title-only render completes legacy encoding in normal and restored workspaces; held work stays held
+    # Subtest: normal
+    ok 1 - normal
+      ---
+      duration_ms: 1401.125833
+      type: 'test'
+      ...
+    # Subtest: restored
+    ok 2 - restored
+      ---
+      duration_ms: 2531.13075
+      type: 'test'
+      ...
+    1..2
+ok 6 - title-only render completes legacy encoding in normal and restored workspaces; held work stays held
+  ---
+  duration_ms: 3932.684959
+  type: 'test'
+  ...
+1..6
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 10695.953

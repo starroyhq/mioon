@@ -1,0 +1,76 @@
+TAP version 13
+# Subtest: new typed leaf and real barrel expose a closed gain contract without changing public operations
+ok 1 - new typed leaf and real barrel expose a closed gain contract without changing public operations
+  ---
+  duration_ms: 3.716292
+  type: 'test'
+  ...
+# Subtest: gain arguments retain exact finite multipliers and reject coercion, negative zero or wider patches
+ok 2 - gain arguments retain exact finite multipliers and reject coercion, negative zero or wider patches
+  ---
+  duration_ms: 0.273666
+  type: 'test'
+  ...
+# Subtest: source eligibility requires exact saved audio metadata and supported audio/video fingerprint
+ok 3 - source eligibility requires exact saved audio metadata and supported audio/video fingerprint
+  ---
+  duration_ms: 0.934041
+  type: 'test'
+  ...
+# Subtest: private projection preserves complete optional clip fields and source metadata without mutation
+ok 4 - private projection preserves complete optional clip fields and source metadata without mutation
+  ---
+  duration_ms: 0.598042
+  type: 'test'
+  ...
+# Subtest: private target uses canonical clip/track/format validity and exact bounded source fields
+ok 5 - private target uses canonical clip/track/format validity and exact bounded source fields
+  ---
+  duration_ms: 4.106084
+  type: 'test'
+  ...
+# Subtest: private, public and review targets share six exact native/legacy output pairs without changing saved data
+ok 6 - private, public and review targets share six exact native/legacy output pairs without changing saved data
+  ---
+  duration_ms: 3.065958
+  type: 'test'
+  ...
+# Subtest: direct guards never invoke getters and reject hidden, symbol, prototype and non-JSON data
+ok 7 - direct guards never invoke getters and reject hidden, symbol, prototype and non-JSON data
+  ---
+  duration_ms: 2.938875
+  type: 'test'
+  ...
+# Subtest: public review and model projection disclose exactly the selected approved data
+ok 8 - public review and model projection disclose exactly the selected approved data
+  ---
+  duration_ms: 1.69825
+  type: 'test'
+  ...
+# Subtest: one-field exact diff rejects unchanged gain while leaving manual gain contract unchanged
+ok 9 - one-field exact diff rejects unchanged gain while leaving manual gain contract unchanged
+  ---
+  duration_ms: 0.661083
+  type: 'test'
+  ...
+# Subtest: strict public proposal union distinguishes gain provenance and every approval/outcome status
+ok 10 - strict public proposal union distinguishes gain provenance and every approval/outcome status
+  ---
+  duration_ms: 6.116458
+  type: 'test'
+  ...
+# Subtest: gain additions preserve exact legacy move contract and shot/move policy module bytes
+ok 11 - gain additions preserve exact legacy move contract and shot/move policy module bytes
+  ---
+  duration_ms: 0.492542
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 243.128292

@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: 1398 frozen fade implementation retains exact bytes and all valid legacy filter strings
+ok 1 - 1398 frozen fade implementation retains exact bytes and all valid legacy filter strings
+  ---
+  duration_ms: 3.837833
+  type: 'test'
+  ...
+# Subtest: 1398 frozen export segmentation and argument strings remain byte-identical
+ok 2 - 1398 frozen export segmentation and argument strings remain byte-identical
+  ---
+  duration_ms: 2.859
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 184.25775

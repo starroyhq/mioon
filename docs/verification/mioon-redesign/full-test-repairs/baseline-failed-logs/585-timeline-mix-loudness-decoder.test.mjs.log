@@ -1,0 +1,112 @@
+TAP version 13
+# Subtest: shared filter literals retain legacy omitted fades, stream fallback, gain and selected output trim exactly
+ok 1 - shared filter literals retain legacy omitted fades, stream fallback, gain and selected output trim exactly
+  ---
+  duration_ms: 0.75125
+  type: 'test'
+  ...
+# Subtest: historical 0343ed3 audio extraction preserves frozen b9e7d1e renderer bytes
+ok 2 - historical 0343ed3 audio extraction preserves frozen b9e7d1e renderer bytes
+  ---
+  duration_ms: 2.551667
+  type: 'test'
+  ...
+# Subtest: current renderer retains exact shared audio helper wiring and unchanged trusted filter literals
+not ok 3 - current renderer retains exact shared audio helper wiring and unchanged trusted filter literals
+  ---
+  duration_ms: 2.4525
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-mix-loudness-decoder.test.mjs:59:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'f59732a338f5ca9e83c48bae023135edf1c1115ca107fda293e9174c298a6586'
+    - 'c9a288be8773aed61390c37f0fa52b50f8c19a8160c0fbc1d409807ba66c1ee6'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'c9a288be8773aed61390c37f0fa52b50f8c19a8160c0fbc1d409807ba66c1ee6'
+  actual: 'f59732a338f5ca9e83c48bae023135edf1c1115ca107fda293e9174c298a6586'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-mix-loudness-decoder.test.mjs:74:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: typed fade extraction preserves the old helper body byte-for-byte and its public import path
+ok 4 - typed fade extraction preserves the old helper body byte-for-byte and its public import path
+  ---
+  duration_ms: 0.957042
+  type: 'test'
+  ...
+# Subtest: global image/muted/zero-gain edges retain every original reseek and include silent gaps
+ok 5 - global image/muted/zero-gain edges retain every original reseek and include silent gaps
+  ---
+  duration_ms: 4.597042
+  type: 'test'
+  ...
+# Subtest: actual selected index, gain/fades, bounded seek and restrictions use one probe per unique source
+ok 6 - actual selected index, gain/fades, bounded seek and restrictions use one probe per unique source
+  ---
+  duration_ms: 1.186208
+  type: 'test'
+  ...
+# Subtest: borrowed arbitrary chunks stream sequentially into a caller-owned continuous sink without a whole PCM allocation
+ok 7 - borrowed arbitrary chunks stream sequentially into a caller-owned continuous sink without a whole PCM allocation
+  ---
+  duration_ms: 60.448125
+  type: 'test'
+  ...
+# Subtest: resource planner charges per-input original segments and one-frame overread before any media effect
+ok 8 - resource planner charges per-input original segments and one-frame overread before any media effect
+  ---
+  duration_ms: 0.442917
+  type: 'test'
+  ...
+# Subtest: invalid input, effects, paths, source bounds and unsupported actual streams never silently become silence
+ok 9 - invalid input, effects, paths, source bounds and unsupported actual streams never silently become silence
+  ---
+  duration_ms: 0.689833
+  type: 'test'
+  ...
+# Subtest: natural EOF must have the exact finite stereo count for every segment
+ok 10 - natural EOF must have the exact finite stereo count for every segment
+  ---
+  duration_ms: 1.482458
+  type: 'test'
+  ...
+# Subtest: fences, cancellation, synchronous sink and termination doubt retain the exact original failure
+ok 11 - fences, cancellation, synchronous sink and termination doubt retain the exact original failure
+  ---
+  duration_ms: 1.361
+  type: 'test'
+  ...
+# Subtest: stored false video with real audio is rejected before any mixed PCM or candidate can be published
+ok 12 - stored false video with real audio is rejected before any mixed PCM or candidate can be published
+  ---
+  duration_ms: 0.124709
+  type: 'test'
+  ...
+# Subtest: stored true video with no actual audio rejects the same exact presence mismatch
+ok 13 - stored true video with no actual audio rejects the same exact presence mismatch
+  ---
+  duration_ms: 0.108167
+  type: 'test'
+  ...
+# Subtest: legitimate stored false video is probed once without audio work, including a hidden video
+ok 14 - legitimate stored false video is probed once without audio work, including a hidden video
+  ---
+  duration_ms: 0.752792
+  type: 'test'
+  ...
+1..14
+# tests 14
+# suites 0
+# pass 13
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 266.4825

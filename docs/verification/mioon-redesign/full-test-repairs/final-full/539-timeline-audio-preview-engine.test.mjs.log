@@ -1,0 +1,148 @@
+TAP version 13
+# Subtest: strict plan and actual 48k stereo exact buffers required before graph allocation
+ok 1 - strict plan and actual 48k stereo exact buffers required before graph allocation
+  ---
+  duration_ms: 5.523667
+  type: 'test'
+  ...
+# Subtest: production graph uses exact single clock, clipped source offset, original envelope, half-open duration
+ok 2 - production graph uses exact single clock, clipped source offset, original envelope, half-open duration
+  ---
+  duration_ms: 1.312458
+  type: 'test'
+  ...
+# Subtest: overlapping tracks retain additive gain and exact shared buffer, with no normalization
+ok 3 - overlapping tracks retain additive gain and exact shared buffer, with no normalization
+  ---
+  duration_ms: 0.611875
+  type: 'test'
+  ...
+# Subtest: future voice onset and silent trailing interval use the same audio end sentinel
+ok 4 - future voice onset and silent trailing interval use the same audio end sentinel
+  ---
+  duration_ms: 1.3115
+  type: 'test'
+  ...
+# Subtest: pause retains sample-precise cursor, resume never restarts the original fade
+ok 5 - pause retains sample-precise cursor, resume never restarts the original fade
+  ---
+  duration_ms: 2.49875
+  type: 'test'
+  ...
+# Subtest: seek revokes old nodes and old onended cannot end replacement playback
+ok 6 - seek revokes old nodes and old onended cannot end replacement playback
+  ---
+  duration_ms: 0.505917
+  type: 'test'
+  ...
+# Subtest: pending resume is fenced by pause, seek and newer play before asynchronous completion
+ok 7 - pending resume is fenced by pause, seek and newer play before asynchronous completion
+  ---
+  duration_ms: 0.320958
+  type: 'test'
+  ...
+# Subtest: terminal stop before resume closes once and late failures cannot revive or rewrite it
+ok 8 - terminal stop before resume closes once and late failures cannot revive or rewrite it
+  ---
+  duration_ms: 0.457125
+  type: 'test'
+  ...
+# Subtest: suspended stops explicitly and never resumes automatically
+ok 9 - suspended stops explicitly and never resumes automatically
+  ---
+  duration_ms: 0.337542
+  type: 'test'
+  ...
+# Subtest: interrupted stops explicitly and never resumes automatically
+ok 10 - interrupted stops explicitly and never resumes automatically
+  ---
+  duration_ms: 0.626292
+  type: 'test'
+  ...
+# Subtest: closed stops explicitly and never resumes automatically
+ok 11 - closed stops explicitly and never resumes automatically
+  ---
+  duration_ms: 0.242333
+  type: 'test'
+  ...
+# Subtest: error stops explicitly and never resumes automatically
+ok 12 - error stops explicitly and never resumes automatically
+  ---
+  duration_ms: 0.274333
+  type: 'test'
+  ...
+# Subtest: outside and invalid seek revoke the complete interval rather than clamping or extending it
+ok 13 - outside and invalid seek revoke the complete interval rather than clamping or extending it
+  ---
+  duration_ms: 0.731084
+  type: 'test'
+  ...
+# Subtest: RAF reports a clock cursor only; end state belongs solely to the active audio sentinel
+ok 14 - RAF reports a clock cursor only; end state belongs solely to the active audio sentinel
+  ---
+  duration_ms: 1.845834
+  type: 'test'
+  ...
+# Subtest: pending pause before schedule lead leaves exact cursor at the first sample
+ok 15 - pending pause before schedule lead leaves exact cursor at the first sample
+  ---
+  duration_ms: 0.258959
+  type: 'test'
+  ...
+# Subtest: node creation and scheduling failure tear down every partial graph and stop terminally
+ok 16 - node creation and scheduling failure tear down every partial graph and stop terminally
+  ---
+  duration_ms: 0.395667
+  type: 'test'
+  ...
+# Subtest: already-running ready context suspension is terminal; initial suspended context awaits an explicit gesture
+ok 17 - already-running ready context suspension is terminal; initial suspended context awaits an explicit gesture
+  ---
+  duration_ms: 0.273458
+  type: 'test'
+  ...
+# Subtest: synchronous revocation from a starting display notification precedes even the resume call
+ok 18 - synchronous revocation from a starting display notification precedes even the resume call
+  ---
+  duration_ms: 0.198958
+  type: 'test'
+  ...
+# Subtest: context close failure remains observable and idempotent for the owner retirement fence
+ok 19 - context close failure remains observable and idempotent for the owner retirement fence
+  ---
+  duration_ms: 0.751875
+  type: 'test'
+  ...
+# Subtest: dispose acknowledgement waits for exact asynchronous context closure
+ok 20 - dispose acknowledgement waits for exact asynchronous context closure
+  ---
+  duration_ms: 0.211333
+  type: 'test'
+  ...
+# Subtest: late canceled RAF cannot erase the replacement generation paint handle
+ok 21 - late canceled RAF cannot erase the replacement generation paint handle
+  ---
+  duration_ms: 0.202416
+  type: 'test'
+  ...
+# Subtest: reentrant playing notification cannot report success for a revoked graph
+ok 22 - reentrant playing notification cannot report success for a revoked graph
+  ---
+  duration_ms: 0.205917
+  type: 'test'
+  ...
+# Subtest: intrinsic gain matches original envelope before a fractional first automation boundary
+ok 23 - intrinsic gain matches original envelope before a fractional first automation boundary
+  ---
+  duration_ms: 0.371208
+  type: 'test'
+  ...
+1..23
+# tests 23
+# suites 0
+# pass 23
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 256.040542

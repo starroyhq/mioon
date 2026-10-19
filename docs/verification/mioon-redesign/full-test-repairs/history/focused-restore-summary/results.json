@@ -1,0 +1,40 @@
+[
+  {
+    "file": "tests/project-home-summary.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 1.72,
+    "tapSummary": {
+      "tests": 2,
+      "suites": 0,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-restore-summary/002-project-home-summary.test.mjs.log",
+    "sha256": "2f488ea3343f46f9becf9b05c48ce919b84da2f6e2df96ef87eee7dd0dddca68",
+    "sourceSha256": "b614c440d35a15071cb858894aa7ae78e9df2946a34e1c851c8e8fde25494c85",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/workspace-restore-execution.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 6.42,
+    "tapSummary": {
+      "tests": 12,
+      "suites": 0,
+      "pass": 12,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-restore-summary/001-workspace-restore-execution.test.mjs.log",
+    "sha256": "06c9fc190a07c511500b317da678f91b5194f2b0a0e0af8f56ade38a9dc5f760",
+    "sourceSha256": "65aa1760452c4e6530bff115503d9a49e223737a4f83a6a99b79bb98427ed7e3",
+    "failedSubtests": []
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "reason": "Additional concrete FFmpeg CLI compatibility defect found before freeze; interrupted preliminary run is not final validation",
+  "runnerPid": 57676,
+  "ownedChildGroups": [
+    62935,
+    66043,
+    66176,
+    66623
+  ]
+}

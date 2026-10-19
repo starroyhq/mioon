@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: rename uses CAS and exact retained replay; delete requires an explicit strict dangerous confirmation
+ok 1 - rename uses CAS and exact retained replay; delete requires an explicit strict dangerous confirmation
+  ---
+  duration_ms: 1005.885042
+  type: 'test'
+  ...
+# Subtest: completed project permanently deletes real rows, retained replies and exclusive media while preserving other projects and external files
+ok 2 - completed project permanently deletes real rows, retained replies and exclusive media while preserving other projects and external files
+  ---
+  duration_ms: 1027.968084
+  type: 'test'
+  ...
+# Subtest: running, unknown and locally stopped paid jobs block deletion without removing records or media
+ok 3 - running, unknown and locally stopped paid jobs block deletion without removing records or media
+  ---
+  duration_ms: 676.23125
+  type: 'test'
+  ...
+# Subtest: semantic references from another project reject deletion; a shared file path alone preserves that file
+ok 4 - semantic references from another project reject deletion; a shared file path alone preserves that file
+  ---
+  duration_ms: 655.892292
+  type: 'test'
+  ...
+# Subtest: commit failure rolls back rows and scoped authority before any unlink
+ok 5 - commit failure rolls back rows and scoped authority before any unlink
+  ---
+  duration_ms: 640.849458
+  type: 'test'
+  ...
+# Subtest: a crash after committed deletion resumes only local cleanup on reopening
+ok 6 - a crash after committed deletion resumes only local cleanup on reopening
+  ---
+  duration_ms: 683.521208
+  type: 'test'
+  ...
+# Subtest: replaced files and symlinks never inherit a committed cleanup authority
+ok 7 - replaced files and symlinks never inherit a committed cleanup authority
+  ---
+  duration_ms: 737.213
+  type: 'test'
+  ...
+# Subtest: project-only companion removal preserves other project text and rejects a pending text intent
+ok 8 - project-only companion removal preserves other project text and rejects a pending text intent
+  ---
+  duration_ms: 798.738459
+  type: 'test'
+  ...
+# Subtest: a persisted scoped grant cannot survive reopen and cannot authorize another retained row
+ok 9 - a persisted scoped grant cannot survive reopen and cannot authorize another retained row
+  ---
+  duration_ms: 625.432792
+  type: 'test'
+  ...
+# Subtest: a completed mock image deletes cyclic immutable groups/tasks/versions and its exact staging receipt
+ok 10 - a completed mock image deletes cyclic immutable groups/tasks/versions and its exact staging receipt
+  ---
+  duration_ms: 898.031334
+  type: 'test'
+  ...
+# Subtest: another project’s terminal image state is not parsed as a JSON payload or removed
+ok 11 - another project’s terminal image state is not parsed as a JSON payload or removed
+  ---
+  duration_ms: 621.006125
+  type: 'test'
+  ...
+# Subtest: completed chat journals are removed with correct shared quota accounting while global grants remain
+ok 12 - completed chat journals are removed with correct shared quota accounting while global grants remain
+  ---
+  duration_ms: 792.172708
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 9542.682542

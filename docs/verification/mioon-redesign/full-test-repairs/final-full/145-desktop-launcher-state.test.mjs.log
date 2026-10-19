@@ -1,0 +1,106 @@
+TAP version 13
+# Subtest: catalog and create ACK use canonical unknown validation including exact input match
+ok 1 - catalog and create ACK use canonical unknown validation including exact input match
+  ---
+  duration_ms: 1.580541
+  type: 'test'
+  ...
+# Subtest: explicit openings seal a one-use permit and different editor projects never replace the source
+ok 2 - explicit openings seal a one-use permit and different editor projects never replace the source
+  ---
+  duration_ms: 0.729625
+  type: 'test'
+  ...
+# Subtest: accepted already-ready editor targets close the picker while rejected targets retain its error
+ok 3 - accepted already-ready editor targets close the picker while rejected targets retain its error
+  ---
+  duration_ms: 0.415041
+  type: 'test'
+  ...
+# Subtest: an exact late accepted receipt closes the editor picker after an unknown open without redispatch
+ok 4 - an exact late accepted receipt closes the editor picker after an unknown open without redispatch
+  ---
+  duration_ms: 0.243042
+  type: 'test'
+  ...
+# Subtest: programmatic open cannot bypass unknown creation and refreshing never proves creation success
+ok 5 - programmatic open cannot bypass unknown creation and refreshing never proves creation success
+  ---
+  duration_ms: 0.343291
+  type: 'test'
+  ...
+# Subtest: input after dirty confirmation capture cancels before sealing
+ok 6 - input after dirty confirmation capture cancels before sealing
+  ---
+  duration_ms: 0.143083
+  type: 'test'
+  ...
+# Subtest: sealed lock blocks stale mutation handlers and cannot be consumed for a different target twice
+ok 7 - sealed lock blocks stale mutation handlers and cannot be consumed for a different target twice
+  ---
+  duration_ms: 1.985375
+  type: 'test'
+  ...
+# Subtest: lost ACK reconciles only matching receipt, never editorCount, without redispatch
+ok 8 - lost ACK reconciles only matching receipt, never editorCount, without redispatch
+  ---
+  duration_ms: 0.179916
+  type: 'test'
+  ...
+# Subtest: confirmed create keeps one latch into open, and failed open never replays the known create
+ok 9 - confirmed create keeps one latch into open, and failed open never replays the known create
+  ---
+  duration_ms: 0.167709
+  type: 'test'
+  ...
+# Subtest: first startup is read-only, consumed once, and cancelled by newer local input
+ok 10 - first startup is read-only, consumed once, and cancelled by newer local input
+  ---
+  duration_ms: 0.864833
+  type: 'test'
+  ...
+# Subtest: launcher-only locator queue invalidates stale selections before a later ready target
+ok 11 - launcher-only locator queue invalidates stale selections before a later ready target
+  ---
+  duration_ms: 0.277458
+  type: 'test'
+  ...
+# Subtest: entry unknown creation preserves exact P0 close-only risk admission across quit context
+ok 12 - entry unknown creation preserves exact P0 close-only risk admission across quit context
+  ---
+  duration_ms: 0.762167
+  type: 'test'
+  ...
+# Subtest: preload absence remains Web; malformed or changed native role never becomes Web
+ok 13 - preload absence remains Web; malformed or changed native role never becomes Web
+  ---
+  duration_ms: 0.37775
+  type: 'test'
+  ...
+# Subtest: scoped picker Escape/backdrop dismissal is guarded and retains draft metadata
+ok 14 - scoped picker Escape/backdrop dismissal is guarded and retains draft metadata
+  ---
+  duration_ms: 0.166625
+  type: 'test'
+  ...
+# Subtest: exact departure capture survives the caller await before open
+ok 15 - exact departure capture survives the caller await before open
+  ---
+  duration_ms: 0.098917
+  type: 'test'
+  ...
+# Subtest: exact departure capture survives the caller await before dismiss
+ok 16 - exact departure capture survives the caller await before dismiss
+  ---
+  duration_ms: 0.057416
+  type: 'test'
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 263.20825

@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-18T20:27:43.078332+00:00",
+  "scope": "Authorized composer presentation and adjacent renderer fixtures only. No authorization/send/domain change. Replace files by exact filename in aggregate reports; do not sum duplicate runs. Agent tool renderer fixture now follows retained endpoint/model/scope grants, preserving exact outbound payload, unknown recovery and original run identity assertions.",
+  "files": [
+    {
+      "file": "tests/agent-chat-ui.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/agent-chat-ui.test.mjs"
+      ],
+      "exitCode": 0,
+      "tests": 74,
+      "pass": 74,
+      "fail": 0,
+      "skipped": 0,
+      "durationMs": 603.706208,
+      "wallSeconds": 0.75,
+      "sourceRun": "/private/tmp/mioon-redesign-2_80wkck/focused-agent-composer-final2",
+      "testSourceSha256": "519bcb5cd4e07d10df0b8db023731a1022899d9bca76fd2203bb739c832dd3f6"
+    },
+    {
+      "file": "tests/agent-edit-renderer.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/agent-edit-renderer.test.mjs"
+      ],
+      "exitCode": 0,
+      "tests": 37,
+      "pass": 37,
+      "fail": 0,
+      "skipped": 0,
+      "durationMs": 399.992833,
+      "wallSeconds": 0.54,
+      "sourceRun": "/private/tmp/mioon-redesign-2_80wkck/focused-agent-composer-renderers2",
+      "testSourceSha256": "e0d6b74b82fb06dfd47dde96650a1b58f379a574f6dcedc1f1d4b708734ae7ad"
+    },
+    {
+      "file": "tests/agent-tool-renderer.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/agent-tool-renderer.test.mjs"
+      ],
+      "exitCode": 0,
+      "tests": 17,
+      "pass": 17,
+      "fail": 0,
+      "skipped": 0,
+      "durationMs": 345.23675,
+      "wallSeconds": 0.49,
+      "sourceRun": "/private/tmp/mioon-redesign-2_80wkck/focused-agent-composer-tool-final2",
+      "testSourceSha256": "b777db116f42507a2463a5c524df29ebbc840670059d75d3648c01dea6452fe5"
+    },
+    {
+      "file": "tests/agent-timeline-move-renderer.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/agent-timeline-move-renderer.test.mjs"
+      ],
+      "exitCode": 0,
+      "tests": 18,
+      "pass": 18,
+      "fail": 0,
+      "skipped": 0,
+      "durationMs": 359.508541,
+      "wallSeconds": 0.49,
+      "sourceRun": "/private/tmp/mioon-redesign-2_80wkck/focused-agent-composer-adjacent",
+      "testSourceSha256": "23e688cb9d60b24ae187992d52d98944286b8cf6eed77ba0c014f9fea7ae96fa"
+    },
+    {
+      "file": "tests/agent-timeline-gain-renderer.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/agent-timeline-gain-renderer.test.mjs"
+      ],
+      "exitCode": 0,
+      "tests": 23,
+      "pass": 23,
+      "fail": 0,
+      "skipped": 0,
+      "durationMs": 388.305292,
+      "wallSeconds": 0.51,
+      "sourceRun": "/private/tmp/mioon-redesign-2_80wkck/focused-agent-composer-adjacent",
+      "testSourceSha256": "2990bbed10a9ebe587e2ba0523dd96a6436b521c64d37957d1f602e2b92dbe45"
+    },
+    {
+      "file": "tests/agent-settings-ui.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/agent-settings-ui.test.mjs"
+      ],
+      "exitCode": 0,
+      "tests": 32,
+      "pass": 32,
+      "fail": 0,
+      "skipped": 0,
+      "durationMs": 338.178667,
+      "wallSeconds": 0.48,
+      "sourceRun": "/private/tmp/mioon-redesign-2_80wkck/focused-agent-composer-adjacent",
+      "testSourceSha256": "06c7cb5a0bd248294b3bfe0da3fbac638ddca9581f3c7a98608e11c1063b3e50"
+    }
+  ],
+  "totals": {
+    "files": 6,
+    "tests": 201,
+    "pass": 201,
+    "fail": 0,
+    "skipped": 0
+  },
+  "sourceSha256": {
+    "apps/web/src/AgentPanel.jsx": "2facc379bb407e86492de72f54175bbb80e6f1767af9529f9fd5c163731612f5",
+    "tests/agent-chat-ui.test.mjs": "519bcb5cd4e07d10df0b8db023731a1022899d9bca76fd2203bb739c832dd3f6",
+    "tests/agent-edit-renderer.test.mjs": "e0d6b74b82fb06dfd47dde96650a1b58f379a574f6dcedc1f1d4b708734ae7ad",
+    "tests/agent-tool-renderer.test.mjs": "b777db116f42507a2463a5c524df29ebbc840670059d75d3648c01dea6452fe5"
+  },
+  "tapLog": "logs/agent-composer-final.tap",
+  "credentialPatternMatches": 0
+}

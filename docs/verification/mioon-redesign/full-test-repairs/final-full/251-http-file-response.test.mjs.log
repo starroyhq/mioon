@@ -1,0 +1,112 @@
+TAP version 13
+# Subtest: actual media full/HEAD/range/cache/auth and static fallback contracts remain intact
+ok 1 - actual media full/HEAD/range/cache/auth and static fallback contracts remain intact
+  ---
+  duration_ms: 995.084875
+  type: 'test'
+  ...
+# Subtest: missing managed bytes and absent renderer return sanitized failures; backend stays healthy
+ok 2 - missing managed bytes and absent renderer return sanitized failures; backend stays healthy
+  ---
+  duration_ms: 630.065125
+  type: 'test'
+  ...
+# Subtest: descriptor-backed stat and stream survive path replacement with the original bytes
+ok 3 - descriptor-backed stat and stream survive path replacement with the original bytes
+  ---
+  duration_ms: 4.517292
+  type: 'test'
+  ...
+# Subtest: HEAD releases its descriptor without constructing a read stream
+ok 4 - HEAD releases its descriptor without constructing a read stream
+  ---
+  duration_ms: 2.384
+  type: 'test'
+  ...
+# Subtest: range rejection releases its descriptor without constructing a read stream
+ok 5 - range rejection releases its descriptor without constructing a read stream
+  ---
+  duration_ms: 2.020791
+  type: 'test'
+  ...
+# Subtest: empty GET releases its descriptor without constructing a read stream
+ok 6 - empty GET releases its descriptor without constructing a read stream
+  ---
+  duration_ms: 1.938042
+  type: 'test'
+  ...
+# Subtest: regularity and invalid size are rejected before headers without leaking source errors
+ok 7 - regularity and invalid size are rejected before headers without leaking source errors
+  ---
+  duration_ms: 4.127542
+  type: 'test'
+  ...
+# Subtest: open and synchronous stream construction failures are safe before headers
+ok 8 - open and synchronous stream construction failures are safe before headers
+  ---
+  duration_ms: 3.528125
+  type: 'test'
+  ...
+# Subtest: asynchronous read error and truncation abort only their response after headers
+ok 9 - asynchronous read error and truncation abort only their response after headers
+  ---
+  duration_ms: 47.204334
+  type: 'test'
+  ...
+# Subtest: client abort closes a full file source without affecting business data
+ok 10 - client abort closes a full file source without affecting business data
+  ---
+  duration_ms: 8.342917
+  type: 'test'
+  ...
+# Subtest: client abort closes a range file source without affecting business data
+ok 11 - client abort closes a range file source without affecting business data
+  ---
+  duration_ms: 6.807792
+  type: 'test'
+  ...
+# Subtest: disconnect and shutdown during a delayed open close the late descriptor without a stream
+ok 12 - disconnect and shutdown during a delayed open close the late descriptor without a stream
+  ---
+  duration_ms: 30.555208
+  type: 'test'
+  ...
+# Subtest: paused raw client is bounded; active-transfer cap rejects before opening another file
+ok 13 - paused raw client is bounded; active-transfer cap rejects before opening another file
+  ---
+  duration_ms: 107.722667
+  type: 'test'
+  ...
+# Subtest: server shutdown owns active download and rejects late file starts
+ok 14 - server shutdown owns active download and rejects late file starts
+  ---
+  duration_ms: 7.909167
+  type: 'test'
+  ...
+# Subtest: file transport policy refuses unknown or widened test overrides
+ok 15 - file transport policy refuses unknown or widened test overrides
+  ---
+  duration_ms: 0.300083
+  type: 'test'
+  ...
+# Subtest: actual server disconnect/replay and simultaneous SSE/media shutdown preserve durable chat_completions run
+ok 16 - actual server disconnect/replay and simultaneous SSE/media shutdown preserve durable chat_completions run
+  ---
+  duration_ms: 750.090875
+  type: 'test'
+  ...
+# Subtest: actual server disconnect/replay and simultaneous SSE/media shutdown preserve durable responses run
+ok 17 - actual server disconnect/replay and simultaneous SSE/media shutdown preserve durable responses run
+  ---
+  duration_ms: 722.088875
+  type: 'test'
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3672.974541

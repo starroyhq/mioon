@@ -1,0 +1,28 @@
+TAP version 13
+# Subtest: public review operations only prepare/read, and old image.generate shape is unchanged
+ok 1 - public review operations only prepare/read, and old image.generate shape is unchanged
+  ---
+  duration_ms: 3.817625
+  type: 'test'
+  ...
+# Subtest: review DTO binds exact intent, truthful one-POST policy, state and immutable reservation
+ok 2 - review DTO binds exact intent, truthful one-POST policy, state and immutable reservation
+  ---
+  duration_ms: 8.711166
+  type: 'test'
+  ...
+# Subtest: review lists have bounded project-scoped strict envelopes and cursors
+ok 3 - review lists have bounded project-scoped strict envelopes and cursors
+  ---
+  duration_ms: 0.306292
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 165.629958

@@ -1,0 +1,37 @@
+TAP version 13
+# Subtest: real HTTP CLI and official MCP lose attach/detach acknowledgements, retain ownership uncertainty and replay historical exact responses
+not ok 1 - real HTTP CLI and official MCP lose attach/detach acknowledgements, retain ownership uncertainty and replay historical exact responses
+  ---
+  duration_ms: 732.624541
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-transports.test.mjs:64:1'
+  failureType: 'testCodeFailure'
+  error: 'Ordinary receipt protection repair is unsupported: missing receipt protection'
+  code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  stack: |-
+    unsupported (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-receipt-protections.ts:124:23)
+    assertCompleteWorkspaceReceiptProtections (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-receipt-protections.ts:197:68)
+    preflight (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-schema-v40.ts:166:3)
+    initializeWorkspaceSchema40 (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-schema-v40.ts:265:21)
+    Object.initialize (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-schema-dispatch.ts:208:34)
+    openStore (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/db.mjs:97:40)
+    composeServer (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/apps/server/src/index.mjs:140:47)
+    startServer (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/apps/server/src/index.mjs:87:21)
+    Object.restart (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-transports.test.mjs:53:177)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+  ...
+# Subtest: real malformed reference HTTP client CLI MCP successes retain exact request identity and recover without duplicate changes
+ok 2 - real malformed reference HTTP client CLI MCP successes retain exact request identity and recover without duplicate changes
+  ---
+  duration_ms: 1837.614375
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 1
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3077.463958

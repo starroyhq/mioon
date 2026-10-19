@@ -1,0 +1,100 @@
+TAP version 13
+# Subtest: synthetic IME Enter commits text without implicitly saving 42 v3 draft in all locales
+ok 1 - synthetic IME Enter commits text without implicitly saving 42 v3 draft in all locales
+  ---
+  duration_ms: 47.275166
+  type: 'test'
+  ...
+# Subtest: synthetic IME Enter commits text without implicitly saving 43 memory input in all locales
+ok 2 - synthetic IME Enter commits text without implicitly saving 43 memory input in all locales
+  ---
+  duration_ms: 10.505083
+  type: 'test'
+  ...
+# Subtest: 42 Save cannot enter while Cancel is deleting a persisted draft or waiting on its earlier PUT
+ok 3 - 42 Save cannot enter while Cancel is deleting a persisted draft or waiting on its earlier PUT
+  ---
+  duration_ms: 7.974667
+  type: 'test'
+  ...
+# Subtest: synthetic Chinese/Japanese update, blur and Escape preserve the input owner until compositionend in 42
+ok 4 - synthetic Chinese/Japanese update, blur and Escape preserve the input owner until compositionend in 42
+  ---
+  duration_ms: 45.026458
+  type: 'test'
+  ...
+# Subtest: synthetic Chinese/Japanese update, blur and Escape preserve the input owner until compositionend in 43
+ok 5 - synthetic Chinese/Japanese update, blur and Escape preserve the input owner until compositionend in 43
+  ---
+  duration_ms: 28.931583
+  type: 'test'
+  ...
+# Subtest: synthetic Enter229 after compositionend and stale keyup remain fenced, while a later ordinary Enter keeps explicit form behavior
+ok 6 - synthetic Enter229 after compositionend and stale keyup remain fenced, while a later ordinary Enter keeps explicit form behavior
+  ---
+  duration_ms: 3.5435
+  type: 'test'
+  ...
+# Subtest: synthetic Process229 cannot block a later mouse-focused field Enter Save in 42
+ok 7 - synthetic Process229 cannot block a later mouse-focused field Enter Save in 42
+  ---
+  duration_ms: 9.744875
+  type: 'test'
+  ...
+# Subtest: synthetic Process229 cannot block a later mouse-focused field Enter Save in 43
+ok 8 - synthetic Process229 cannot block a later mouse-focused field Enter Save in 43
+  ---
+  duration_ms: 8.436625
+  type: 'test'
+  ...
+# Subtest: synthetic held confirmation Enter repeats cannot Save after compositionend in 42
+ok 9 - synthetic held confirmation Enter repeats cannot Save after compositionend in 42
+  ---
+  duration_ms: 2.331042
+  type: 'test'
+  ...
+# Subtest: synthetic held confirmation Enter repeats cannot Save after compositionend in 43
+ok 10 - synthetic held confirmation Enter repeats cannot Save after compositionend in 43
+  ---
+  duration_ms: 2.190208
+  type: 'test'
+  ...
+# Subtest: synthetic final nonnumeric composition is visibly rejected in four locales without normalizing or saving
+ok 11 - synthetic final nonnumeric composition is visibly rejected in four locales without normalizing or saving
+  ---
+  duration_ms: 13.492166
+  type: 'test'
+  ...
+# Subtest: synthetic stale update/end handlers cannot settle or overwrite a later opacity session
+ok 12 - synthetic stale update/end handlers cannot settle or overwrite a later opacity session
+  ---
+  duration_ms: 3.875125
+  type: 'test'
+  ...
+# Subtest: 42 delayed GET, PUT and DELETE acknowledgments do not release a newer composition or replace its raw draft
+ok 13 - 42 delayed GET, PUT and DELETE acknowledgments do not release a newer composition or replace its raw draft
+  ---
+  duration_ms: 7.69025
+  type: 'test'
+  ...
+# Subtest: repeated Save/Cancel and a late business ACK retain newer Chinese/Japanese input in 42
+ok 14 - repeated Save/Cancel and a late business ACK retain newer Chinese/Japanese input in 42
+  ---
+  duration_ms: 9.232667
+  type: 'test'
+  ...
+# Subtest: repeated Save/Cancel and a late business ACK retain newer Chinese/Japanese input in 43
+ok 15 - repeated Save/Cancel and a late business ACK retain newer Chinese/Japanese input in 43
+  ---
+  duration_ms: 7.979709
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 533.603833

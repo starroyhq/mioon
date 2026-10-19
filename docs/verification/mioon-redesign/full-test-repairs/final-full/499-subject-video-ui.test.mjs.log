@@ -1,0 +1,100 @@
+TAP version 13
+# Subtest: explicit subject choice is immutable, kind-scoped, pinned to history and does not touch prompt or planning bindings
+ok 1 - explicit subject choice is immutable, kind-scoped, pinned to history and does not touch prompt or planning bindings
+  ---
+  duration_ms: 2.271333
+  type: 'test'
+  ...
+# Subtest: subject mode blocks saved or unsaved first/tail sources and edges without clearing any source
+ok 2 - subject mode blocks saved or unsaved first/tail sources and edges without clearing any source
+  ---
+  duration_ms: 1.753792
+  type: 'test'
+  ...
+# Subtest: exact server v3 Ark and Mock accept square references independently of output; unsupported routes and changed metadata fail closed
+ok 3 - exact server v3 Ark and Mock accept square references independently of output; unsupported routes and changed metadata fail closed
+  ---
+  duration_ms: 3.852792
+  type: 'test'
+  ...
+# Subtest: real selector requires a separate version action, uses paginated library, and preserves old/new labels
+ok 4 - real selector requires a separate version action, uses paginated library, and preserves old/new labels
+  ---
+  duration_ms: 6.175542
+  type: 'test'
+  ...
+# Subtest: selector hidden/returned and obsolete model, choice, project, shot callbacks cannot change a session choice
+ok 5 - selector hidden/returned and obsolete model, choice, project, shot callbacks cannot change a session choice
+  ---
+  duration_ms: 19.303167
+  type: 'test'
+  ...
+# Subtest: selector exposes unavailable reasons and never auto-clears saved first or tail choices
+ok 6 - selector exposes unavailable reasons and never auto-clears saved first or tail choices
+  ---
+  duration_ms: 3.30075
+  type: 'test'
+  ...
+# Subtest: subject provenance summary shows human labels, pinned old/current versions and collapsed source identity
+ok 7 - subject provenance summary shows human labels, pinned old/current versions and collapsed source identity
+  ---
+  duration_ms: 1.921459
+  type: 'test'
+  ...
+# Subtest: actual paid review fixes version and source content; stale owner/view/choice/provider/model/profile/asset changes cannot submit
+ok 8 - actual paid review fixes version and source content; stale owner/view/choice/provider/model/profile/asset changes cannot submit
+  ---
+  duration_ms: 13.274709
+  type: 'test'
+  ...
+# Subtest: frozen retry ignores newer subject head/planning choice and uses original version; current source substitution blocks
+ok 9 - frozen retry ignores newer subject head/planning choice and uses original version; current source substitution blocks
+  ---
+  duration_ms: 1.04075
+  type: 'test'
+  ...
+# Subtest: Inspector saves only shot fields then generates explicit pinned option, and late save cannot act on changed selection
+ok 10 - Inspector saves only shot fields then generates explicit pinned option, and late save cannot act on changed selection
+  ---
+  duration_ms: 49.072875
+  type: 'test'
+  ...
+# Subtest: App uses subjectVersionId only on wire, exact expected reference beside pending input, and disclosures in review/history/tasks
+ok 11 - App uses subjectVersionId only on wire, exact expected reference beside pending input, and disclosures in review/history/tasks
+  ---
+  duration_ms: 0.991542
+  type: 'test'
+  ...
+# Subtest: actual App subject retry captures original public snapshot beside unchanged wire input; legacy retries remain unchanged
+ok 12 - actual App subject retry captures original public snapshot beside unchanged wire input; legacy retries remain unchanged
+  ---
+  duration_ms: 0.968042
+  type: 'test'
+  ...
+# Subtest: TaskCenter routes marked or observed subject retries to strict recovery and preserves genuine legacy options
+ok 13 - TaskCenter routes marked or observed subject retries to strict recovery and preserves genuine legacy options
+  ---
+  duration_ms: 5.171542
+  type: 'test'
+  ...
+# Subtest: subject selection and immutable provenance relabel live in all four locales without reselecting or refetching
+ok 14 - subject selection and immutable provenance relabel live in all four locales without reselecting or refetching
+  ---
+  duration_ms: 4.505583
+  type: 'test'
+  ...
+# Subtest: subject warning and reason descriptor sidecars preserve exact legacy meaning and all locales
+ok 15 - subject warning and reason descriptor sidecars preserve exact legacy meaning and all locales
+  ---
+  duration_ms: 1.334375
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 399.139875

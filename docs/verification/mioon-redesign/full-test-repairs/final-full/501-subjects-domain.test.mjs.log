@@ -1,0 +1,86 @@
+TAP version 13
+# Subtest: strict schemas, eleven local operations, mandatory keys and bounded noncreating reads
+not ok 1 - strict schemas, eleven local operations, mandatory keys and bounded noncreating reads
+  ---
+  duration_ms: 637.380541
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subjects-domain.test.mjs:29:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    12 !== 11
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 11
+  actual: 12
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subjects-domain.test.mjs:31:9)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: frozen heads, independent binding revisions, review old selection and tombstones preserve all older data and bytes
+ok 2 - frozen heads, independent binding revisions, review old selection and tombstones preserve all older data and bytes
+  ---
+  duration_ms: 653.360542
+  type: 'test'
+  ...
+# Subtest: exact replay precedes fresh revisions, survives restart and never refreshes historic head fields
+ok 3 - exact replay precedes fresh revisions, survives restart and never refreshes historic head fields
+  ---
+  duration_ms: 925.956
+  type: 'test'
+  ...
+# Subtest: full version pagination, scoped cursors and no-change rejection preserve exact counts
+ok 4 - full version pagination, scoped cursors and no-change rejection preserve exact counts
+  ---
+  duration_ms: 620.11575
+  type: 'test'
+  ...
+# Subtest: role gates, binding ceiling and absent unlink tombstones do not alter shots
+ok 5 - role gates, binding ceiling and absent unlink tombstones do not alter shots
+  ---
+  duration_ms: 646.198625
+  type: 'test'
+  ...
+# Subtest: foreign and corrupt ownership fail closed before receipt or revision, including later replay
+ok 6 - foreign and corrupt ownership fail closed before receipt or revision, including later replay
+  ---
+  duration_ms: 636.972083
+  type: 'test'
+  ...
+# Subtest: owned media lineage rejects hidden foreign generated owners and freezes valid local provenance
+ok 7 - owned media lineage rejects hidden foreign generated owners and freezes valid local provenance
+  ---
+  duration_ms: 565.263292
+  type: 'test'
+  ...
+# Subtest: shared namespace collisions are reciprocal, immutable history resists delete/update/replace, writes roll back with receipt
+ok 8 - shared namespace collisions are reciprocal, immutable history resists delete/update/replace, writes roll back with receipt
+  ---
+  duration_ms: 585.458917
+  type: 'test'
+  ...
+# Subtest: corrupt retained responses, oversized rows and post-write owner changes fail closed without leaking or partial writes
+ok 9 - corrupt retained responses, oversized rows and post-write owner changes fail closed without leaking or partial writes
+  ---
+  duration_ms: 636.189916
+  type: 'test'
+  ...
+# Subtest: version and binding identities enforce relational ownership, frozen JSON and retained monotonic revisions
+ok 10 - version and binding identities enforce relational ownership, frozen JSON and retained monotonic revisions
+  ---
+  duration_ms: 606.10825
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 9
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 6860.177833

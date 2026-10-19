@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: the default timeline panel shows all four default tracks (subtitle, two video, audio) without scrolling
+ok 1 - the default timeline panel shows all four default tracks (subtitle, two video, audio) without scrolling
+  ---
+  duration_ms: 1.767292
+  type: 'test'
+  ...
+# Subtest: the library search uses a drawn icon that cannot collide with the placeholder
+ok 2 - the library search uses a drawn icon that cannot collide with the placeholder
+  ---
+  duration_ms: 0.305333
+  type: 'test'
+  ...
+# Subtest: the redesigned top bar keeps one explicit 44px row and puts language in settings
+ok 3 - the redesigned top bar keeps one explicit 44px row and puts language in settings
+  ---
+  duration_ms: 0.317667
+  type: 'test'
+  ...
+# Subtest: no stylesheet or utility class sets text below the 10px floor
+ok 4 - no stylesheet or utility class sets text below the 10px floor
+  ---
+  duration_ms: 15.683166
+  type: 'test'
+  ...
+# Subtest: small controls keep 24px pointer targets, growing an invisible hit area where the visual stays smaller
+ok 5 - small controls keep 24px pointer targets, growing an invisible hit area where the visual stays smaller
+  ---
+  duration_ms: 0.4495
+  type: 'test'
+  ...
+# Subtest: image provider choices wrap at their separator rather than inside a word
+ok 6 - image provider choices wrap at their separator rather than inside a word
+  ---
+  duration_ms: 0.0875
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 219.00475

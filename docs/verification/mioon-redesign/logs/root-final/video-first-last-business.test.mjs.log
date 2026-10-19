@@ -1,0 +1,184 @@
+TAP version 13
+# Subtest: tail save reuses CAS and original journal replay while absent legacy shape stays absent
+ok 1 - tail save reuses CAS and original journal replay while absent legacy shape stays absent
+  ---
+  duration_ms: 687.384333
+  type: 'test'
+  ...
+# Subtest: tail create/update reject foreign-sql without writing
+ok 2 - tail create/update reject foreign-sql without writing
+  ---
+  duration_ms: 626.191125
+  type: 'test'
+  ...
+# Subtest: tail create/update reject foreign-json without writing
+ok 3 - tail create/update reject foreign-json without writing
+  ---
+  duration_ms: 613.914292
+  type: 'test'
+  ...
+# Subtest: tail create/update reject wrong-mime without writing
+ok 4 - tail create/update reject wrong-mime without writing
+  ---
+  duration_ms: 616.441583
+  type: 'test'
+  ...
+# Subtest: tail create/update reject orphan-frame without writing
+ok 5 - tail create/update reject orphan-frame without writing
+  ---
+  duration_ms: 607.712084
+  type: 'test'
+  ...
+# Subtest: shot replay validates historical tail relations even after later selection
+ok 6 - shot replay validates historical tail relations even after later selection
+  ---
+  duration_ms: 633.273709
+  type: 'test'
+  ...
+# Subtest: shot replay validates current tail relations even after later selection
+ok 7 - shot replay validates current tail relations even after later selection
+  ---
+  duration_ms: 778.449333
+  type: 'test'
+  ...
+# Subtest: first-frame attach/detach and lost ACK replay retain independent tail
+ok 8 - first-frame attach/detach and lost ACK replay retain independent tail
+  ---
+  duration_ms: 657.667208
+  type: 'test'
+  ...
+# Subtest: tail-only and duplicate saved choices cannot create a generation job
+ok 9 - tail-only and duplicate saved choices cannot create a generation job
+  ---
+  duration_ms: 612.291791
+  type: 'test'
+  ...
+# Subtest: admission freezes explicit complete frame manifest and original first connection
+ok 10 - admission freezes explicit complete frame manifest and original first connection
+  ---
+  duration_ms: 662.01525
+  type: 'test'
+  ...
+# Subtest: runway never silently drops a saved tail
+ok 11 - runway never silently drops a saved tail
+  ---
+  duration_ms: 698.492125
+  type: 'test'
+  ...
+# Subtest: veo never silently drops a saved tail
+ok 12 - veo never silently drops a saved tail
+  ---
+  duration_ms: 638.644
+  type: 'test'
+  ...
+# Subtest: minimax never silently drops a saved tail
+ok 13 - minimax never silently drops a saved tail
+  ---
+  duration_ms: 603.175541
+  type: 'test'
+  ...
+# Subtest: vidu never silently drops a saved tail
+ok 14 - vidu never silently drops a saved tail
+  ---
+  duration_ms: 644.820916
+  type: 'test'
+  ...
+# Subtest: unpinned legacy retry never acquires a newly saved tail
+ok 15 - unpinned legacy retry never acquires a newly saved tail
+  ---
+  duration_ms: 690.417916
+  type: 'test'
+  ...
+# Subtest: archived v1 retry never acquires a newly saved tail
+ok 16 - archived v1 retry never acquires a newly saved tail
+  ---
+  duration_ms: 595.8025
+  type: 'test'
+  ...
+# Subtest: pair retry retains original tail and rejects changed frozen tail metadata
+ok 17 - pair retry retains original tail and rejects changed frozen tail metadata
+  ---
+  duration_ms: 598.330375
+  type: 'test'
+  ...
+# Subtest: second-image async fence rejects tail-owner before any actual POST
+ok 18 - second-image async fence rejects tail-owner before any actual POST
+  ---
+  duration_ms: 606.022458
+  type: 'test'
+  ...
+# Subtest: second-image async fence rejects first-metadata before any actual POST
+ok 19 - second-image async fence rejects first-metadata before any actual POST
+  ---
+  duration_ms: 586.927125
+  type: 'test'
+  ...
+# Subtest: second-image async fence rejects shot-owner before any actual POST
+ok 20 - second-image async fence rejects shot-owner before any actual POST
+  ---
+  duration_ms: 597.868875
+  type: 'test'
+  ...
+# Subtest: second-image async fence rejects job-snapshot before any actual POST
+ok 21 - second-image async fence rejects job-snapshot before any actual POST
+  ---
+  duration_ms: 604.967958
+  type: 'test'
+  ...
+# Subtest: second-image async fence rejects cancel before any actual POST
+ok 22 - second-image async fence rejects cancel before any actual POST
+  ---
+  duration_ms: 596.773541
+  type: 'test'
+  ...
+# Subtest: queued pair with null frozen tail pointer fails closed
+ok 23 - queued pair with null frozen tail pointer fails closed
+  ---
+  duration_ms: 597.260334
+  type: 'test'
+  ...
+# Subtest: queued pair with missing frozen tail pointer fails closed
+ok 24 - queued pair with missing frozen tail pointer fails closed
+  ---
+  duration_ms: 594.716917
+  type: 'test'
+  ...
+# Subtest: failed pair with null frozen tail pointer fails closed
+ok 25 - failed pair with null frozen tail pointer fails closed
+  ---
+  duration_ms: 598.627625
+  type: 'test'
+  ...
+# Subtest: failed pair with missing frozen tail pointer fails closed
+ok 26 - failed pair with missing frozen tail pointer fails closed
+  ---
+  duration_ms: 591.361667
+  type: 'test'
+  ...
+# Subtest: historical version tail without legacy reference array is ownership checked and not exposed in Agent DTO
+ok 27 - historical version tail without legacy reference array is ownership checked and not exposed in Agent DTO
+  ---
+  duration_ms: 596.907
+  type: 'test'
+  ...
+# Subtest: typed extracted tail validates full source-owner lineage on save, replay and queued dispatch
+ok 28 - typed extracted tail validates full source-owner lineage on save, replay and queued dispatch
+  ---
+  duration_ms: 614.463958
+  type: 'test'
+  ...
+# Subtest: typed extracted tail validates full source-hash lineage on save, replay and queued dispatch
+ok 29 - typed extracted tail validates full source-hash lineage on save, replay and queued dispatch
+  ---
+  duration_ms: 609.003666
+  type: 'test'
+  ...
+1..29
+# tests 29
+# suites 0
+# pass 29
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 18507.568417

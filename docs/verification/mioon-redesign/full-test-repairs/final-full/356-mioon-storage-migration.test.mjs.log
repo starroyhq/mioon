@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: migration copies all browser records exactly and removes old namespace only after verification
+ok 1 - migration copies all browser records exactly and removes old namespace only after verification
+  ---
+  duration_ms: 0.888125
+  type: 'test'
+  ...
+# Subtest: conflicting destination preflight preserves every source and destination with no partial writes
+ok 2 - conflicting destination preflight preserves every source and destination with no partial writes
+  ---
+  duration_ms: 0.230041
+  type: 'test'
+  ...
+# Subtest: quota failure keeps originals; exact partially copied destination is resumable
+ok 3 - quota failure keeps originals; exact partially copied destination is resumable
+  ---
+  duration_ms: 0.104834
+  type: 'test'
+  ...
+# Subtest: silent storage corruption fails verification and does not delete the original
+ok 4 - silent storage corruption fails verification and does not delete the original
+  ---
+  duration_ms: 0.080042
+  type: 'test'
+  ...
+# Subtest: failed removal leaves verified copy, blocks submission, and can safely retry
+ok 5 - failed removal leaves verified copy, blocks submission, and can safely retry
+  ---
+  duration_ms: 0.095083
+  type: 'test'
+  ...
+# Subtest: pending replay keeps the original request ID instead of creating a duplicate after migration
+ok 6 - pending replay keeps the original request ID instead of creating a duplicate after migration
+  ---
+  duration_ms: 7.596458
+  type: 'test'
+  ...
+# Subtest: conflicting pending destination blocks prepareSubmission without overwriting either request
+ok 7 - conflicting pending destination blocks prepareSubmission without overwriting either request
+  ---
+  duration_ms: 0.107875
+  type: 'test'
+  ...
+# Subtest: denied local view-cache getter does not prevent durable server preferences; denied request storage blocks
+ok 8 - denied local view-cache getter does not prevent durable server preferences; denied request storage blocks
+  ---
+  duration_ms: 0.116417
+  type: 'test'
+  ...
+# Subtest: denied local cache enumeration or reads still permits durable preferences without touching either namespace
+ok 9 - denied local cache enumeration or reads still permits durable preferences without touching either namespace
+  ---
+  duration_ms: 0.138875
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 252.8925

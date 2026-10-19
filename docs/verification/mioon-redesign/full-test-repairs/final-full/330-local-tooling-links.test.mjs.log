@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: tooling refuses a repository node_modules root redirected outside the repository
+ok 1 - tooling refuses a repository node_modules root redirected outside the repository
+  ---
+  duration_ms: 6.198333
+  type: 'test'
+  ...
+# Subtest: tooling refuses package metadata resolving outside canonical node_modules
+ok 2 - tooling refuses package metadata resolving outside canonical node_modules
+  ---
+  duration_ms: 3.912708
+  type: 'test'
+  ...
+# Subtest: tooling refuses an entrypoint symlink outside an otherwise valid local package
+ok 3 - tooling refuses an entrypoint symlink outside an otherwise valid local package
+  ---
+  duration_ms: 4.130792
+  type: 'test'
+  ...
+# Subtest: doctor reads a linked pnpm package version without admitting it as a build dependency
+ok 4 - doctor reads a linked pnpm package version without admitting it as a build dependency
+  ---
+  duration_ms: 3.624916
+  type: 'test'
+  ...
+# Subtest: pnpm metadata or declared entry escaping its package remains unverified
+ok 5 - pnpm metadata or declared entry escaping its package remains unverified
+  ---
+  duration_ms: 5.2915
+  type: 'test'
+  ...
+# Subtest: non-executable pnpm candidates are not reported as installed commands
+ok 6 - non-executable pnpm candidates are not reported as installed commands
+  ---
+  duration_ms: 3.205167
+  type: 'test'
+  ...
+# Subtest: a FIFO masquerading as pnpm package metadata cannot hang doctor
+ok 7 - a FIFO masquerading as pnpm package metadata cannot hang doctor
+  ---
+  duration_ms: 168.730584
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 355.675166

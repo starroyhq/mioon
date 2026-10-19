@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: HTTP, CLI and MCP share rename CAS and permanent-delete receipts
+ok 1 - HTTP, CLI and MCP share rename CAS and permanent-delete receipts
+  ---
+  duration_ms: 3750.431458
+  type: 'test'
+  ...
+# Subtest: SIGKILL after the delete commit leaves a durable cleanup manifest that ordinary server startup resumes
+ok 2 - SIGKILL after the delete commit leaves a durable cleanup manifest that ordinary server startup resumes
+  ---
+  duration_ms: 2967.515834
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 7228.675459

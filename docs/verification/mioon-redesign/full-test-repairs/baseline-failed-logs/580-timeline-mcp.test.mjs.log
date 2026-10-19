@@ -1,0 +1,34 @@
+TAP version 13
+# Subtest: timeline official SDK protocol exercises strict tools, shared HTTP state, exact replay and real backend restart
+not ok 1 - timeline official SDK protocol exercises strict tools, shared HTTP state, exact replay and real backend restart
+  ---
+  duration_ms: 43088.133917
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-mcp.test.mjs:21:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    {"id":"98e87a04-1c5a-448c-bf19-4ac5427f5580","projectId":"539fd355-68df-4a07-9a81-8b6e0d1279a6","shotId":"6f0b2a69-a16c-4011-9b9f-fa9458ed2a80","requestId":"9c7727ac-e745-480b-adc8-59c0dd4205f3","providerId":"mock","model":"mock-motion-v1","revision":38,"status":"downloading","phase":"downloading","progress":90,"snapshot":{"shotId":"6f0b2a69-a16c-4011-9b9f-fa9458ed2a80","shotRevision":1,"title":"Explicitly seeded shot","prompt":"","referenceAssetIds":["28145bee-59a5-49b1-8754-ee5fb42f4c52"],"referenceAssets":[{"id":"28145bee-59a5-49b1-8754-ee5fb42f4c52","mimeType":"image/png","sha256":"67d1fe41ce2e1d39c9ef38aef66e3a49e074efd02159e19816805bc5bf5fbe21","width":64,"height":64,"role":"first_frame","sizeBytes":175}],"referenceConnections":[],"aspectRatio":"9:16","duration":2,"providerId":"mock","model":"mock-motion-v1","parameters":{},"capabilities":{"id":"mock","name":"Mock · simulated motion","models":["mock-motion-v1"],"inputModes":["image","text"],"aspectRatios":["9:16"],"durations":[2,4,8],"maxReferenceImages":2,"referenceSimulation":"metadata-only","depictsPromptOrReferences":false,"mock":true,"configured":true,"enabled":true,"scenarios":["success","failure","delay","timeout","unknown","reject","download_fail_once","accepted_then_response_lost","rejected_before_accept","terminal_failure","poll_timeout_then_recover"],"supportsRemoteCancel":true,"reconciliation":"request-id","inputProfileVersion":"mioon-input-profiles/1","profileEvaluationDate":"2026-10-18","providerRegion":"local","inputProfiles":[{"profileVersion":"mioon-input-profiles/3","reviewedOn":"2026-10-11","implemented":true,"liveVerified":false,"runtimeAvailability":"not-evaluated","prompt":{"required":false,"maxCodeUnits":5000},"aspectRatios":["9:16"],"durationsSeconds":[2,4,8],"parameters":{"scenario":{"type":"enum","values":["success","failure","delay","timeout","unknown","reject","download_fail_once","rejected_before_accept","accepted_then_response_lost","poll_timeout_then_recover","terminal_failure"]},"delayMs":{"type":"integer","min":0,"max":120000},"seed":{"type":"integer","min":-9007199254740991,"max":9007199254740991}},"approvalRequired":false,"requiresManagedImageVerification":false,"providerId":"mock","model":"mock-motion-v1","profileId":"mock:mock-motion-v1:v3","regions":["local"],"regionMeaning":"Local simulated provider; no external provider.","apiFamily":"mioon-simulation","origins":{},"adapterSource":"packages/business/src/providers/mock.mjs","inputModes":["text","image"],"simulationOnly":true,"output":{"width":360,"height":640,"audio":"disabled","depictsPromptOrReferences":false},"inputs":{"minReferences":0,"maxReferences":2,"combinations":[[],["first_frame"],["first_frame","last_frame"],["subject_reference"]],"roles":{"first_frame":{"implemented":true,"semantics":"simulation-only","min":0,"max":1,"mimeTypes":["image/png","image/jpeg","image/webp"],"maxBytes":31457280,"maxBytesSource":"Mioon asset.import cap; mock does not read reference image bytes","dimensions":null},"last_frame":{"implemented":true,"semantics":"simulation-only","min":0,"max":1,"mimeTypes":["image/png","image/jpeg","image/webp"],"maxBytes":31457280,"maxBytesSource":"Mioon asset.import cap; mock does not read reference image bytes","dimensions":null},"subject_reference":{"implemented":true,"semantics":"simulation-only","min":0,"max":1,"mimeTypes":["image/png","image/jpeg"],"maxBytes":10485760,"maxBytesSource":"Mioon managedImage default","dimensions":null},"style_reference":{"implemented":false,"min":0,"max":0,"reason":"No mapping in the current Mioon adapter."},"motion_reference":{"implemented":false,"min":0,"max":0,"reason":"No mapping in the current Mioon adapter."}},"distinctAssetsRequired":true,"distinctAssetsReason":"Current Mioon app restriction; not a claimed provider requirement."}}],"inputProfileEvaluations":[{"profileId":"mock:mock-motion-v1:v3","ok":true,"evaluatedAsOf":"2026-10-18","issues":[],"warnings":[]}],"modelCapabilities":[{"id":"mock-motion-v1","name":"mock-motion-v1","inputModes":["image","text"],"aspectRatios":["9:16"],"durations":[2,4,8],"referenceImages":{"min":0,"max":2},"parameters":["scenario","delayMs","seed"]}],"status":"available","liveVerified":false,"configuration":{"missing":[],"requirements":[]}},"inputProfileVersion":"mioon-input-profiles/3","inputProfileId":"mock:mock-motion-v1:v3","providerRegion":"local","referenceBindings":[{"role":"first_frame","assetId":"28145bee-59a5-49b1-8754-ee5fb42f4c52","sha256":"67d1fe41ce2e1d39c9ef38aef66e3a49e074efd02159e19816805bc5bf5fbe21"}]},"providerJobId":"mock-1bca31da5c228d8b2d054cc85f1ff30d","submissionCount":1,"error":{"code":"MOCK_RENDER_FAILED","message":"Simulated video rendering failed.","retryable":true},"createdAt":"2026-10-18T17:55:18.201Z","updatedAt":"2026-10-18T17:55:57.487Z","versionId":null,"cancelScope":null,"retryOfJobId":null,"nextPollAt":1792346158487,"allowedActions":["cancel"]}
+    + actual - expected
+    
+    + 'downloading'
+    - 'succeeded'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'succeeded'
+  actual: 'downloading'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-mcp.test.mjs:139:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 43604.715167

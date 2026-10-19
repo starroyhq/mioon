@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: locator publication contains bounded flags only and never the CAS body
+ok 1 - locator publication contains bounded flags only and never the CAS body
+  ---
+  duration_ms: 1.029292
+  type: 'test'
+  ...
+# Subtest: exact once recovery intent stays in original launcher and uses original pending body
+ok 2 - exact once recovery intent stays in original launcher and uses original pending body
+  ---
+  duration_ms: 0.383042
+  type: 'test'
+  ...
+# Subtest: stale version, foreign context, blocked retry or quit cannot dispatch recovery
+ok 3 - stale version, foreign context, blocked retry or quit cannot dispatch recovery
+  ---
+  duration_ms: 0.270125
+  type: 'test'
+  ...
+# Subtest: new explicit read-only recovery is not repeated by unrelated context updates
+ok 4 - new explicit read-only recovery is not repeated by unrelated context updates
+  ---
+  duration_ms: 0.156459
+  type: 'test'
+  ...
+# Subtest: a dropped locator publication is repaired only by a same-owner host observation with the exact status identity
+ok 5 - a dropped locator publication is repaired only by a same-owner host observation with the exact status identity
+  ---
+  duration_ms: 2.932291
+  type: 'test'
+  ...
+# Subtest: a late older publication cannot replace or increment the newest status during bounded repair
+ok 6 - a late older publication cannot replace or increment the newest status during bounded repair
+  ---
+  duration_ms: 0.769584
+  type: 'test'
+  ...
+# Subtest: an exact host status echo proves publication despite lost invoke ACK and prevents redundant repair
+ok 7 - an exact host status echo proves publication despite lost invoke ACK and prevents redundant repair
+  ---
+  duration_ms: 0.531458
+  type: 'test'
+  ...
+# Subtest: foreign or disposed owner observations cannot repair publication or inherit pending recovery
+ok 8 - foreign or disposed owner observations cannot repair publication or inherit pending recovery
+  ---
+  duration_ms: 0.617167
+  type: 'test'
+  ...
+# Subtest: repairing exact metadata never repeats recovery, changes CAS input, or increments the status owner version
+ok 9 - repairing exact metadata never repeats recovery, changes CAS input, or increments the status owner version
+  ---
+  duration_ms: 0.592333
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 158.854917

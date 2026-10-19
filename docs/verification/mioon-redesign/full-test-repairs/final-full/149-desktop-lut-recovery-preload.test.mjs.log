@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: preload exposes four frozen fixed-channel metadata operations, never arbitrary transport
+ok 1 - preload exposes four frozen fixed-channel metadata operations, never arbitrary transport
+  ---
+  duration_ms: 2.060375
+  type: 'test'
+  ...
+# Subtest: invalid metadata and accessors never reach IPC and responses never leak diagnostics
+ok 2 - invalid metadata and accessors never reach IPC and responses never leak diagnostics
+  ---
+  duration_ms: 0.897333
+  type: 'test'
+  ...
+# Subtest: preload preserves all recognized application failure codes across serialized envelopes
+ok 3 - preload preserves all recognized application failure codes across serialized envelopes
+  ---
+  duration_ms: 0.88125
+  type: 'test'
+  ...
+# Subtest: desktop missing or broken preload fails closed without touching localStorage
+ok 4 - desktop missing or broken preload fails closed without touching localStorage
+  ---
+  duration_ms: 1.400792
+  type: 'test'
+  ...
+# Subtest: desktop validates tampered bridge output and preserves application error identity without web fallback
+ok 5 - desktop validates tampered bridge output and preserves application error identity without web fallback
+  ---
+  duration_ms: 0.774417
+  type: 'test'
+  ...
+# Subtest: desktop success uses only bridge metadata and does not require Web Locks or localStorage
+ok 6 - desktop success uses only bridge metadata and does not require Web Locks or localStorage
+  ---
+  duration_ms: 0.359
+  type: 'test'
+  ...
+# Subtest: ordinary web selection retains browser storage, locking and compare-and-swap behavior
+ok 7 - ordinary web selection retains browser storage, locking and compare-and-swap behavior
+  ---
+  duration_ms: 0.960958
+  type: 'test'
+  ...
+# Subtest: real sandbox preload bundles metadata bridge with no filesystem or arbitrary transport exposure
+ok 8 - real sandbox preload bundles metadata bridge with no filesystem or arbitrary transport exposure
+  ---
+  duration_ms: 25.791584
+  type: 'test'
+  ...
+# Subtest: desktop bridge timeout fails closed and late completion never accesses browser storage
+ok 9 - desktop bridge timeout fails closed and late completion never accesses browser storage
+  ---
+  duration_ms: 0.615542
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 206.130583

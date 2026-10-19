@@ -1,0 +1,35 @@
+[
+  {
+    "presetId": "portrait_1080",
+    "file": "portrait_1080.mp4",
+    "width": 1080,
+    "height": 1920,
+    "fps": "30/1",
+    "frames": 6,
+    "duration": "0.200000",
+    "codec": "h264",
+    "sizeBytes": 3346
+  },
+  {
+    "presetId": "landscape_1080",
+    "file": "landscape_1080.mp4",
+    "width": 1920,
+    "height": 1080,
+    "fps": "30/1",
+    "frames": 6,
+    "duration": "0.200000",
+    "codec": "h264",
+    "sizeBytes": 3183
+  },
+  {
+    "presetId": "square_1080",
+    "file": "square_1080.mp4",
+    "width": 1080,
+    "height": 1080,
+    "fps": "30/1",
+    "frames": 6,
+    "duration": "0.200000",
+    "codec": "h264",
+    "sizeBytes": 2842
+  }
+]

@@ -1,0 +1,49 @@
+TAP version 13
+# Subtest: composed service measures current full float original and changed-gain candidate with real media, no persistent effects
+ok 1 - composed service measures current full float original and changed-gain candidate with real media, no persistent effects
+  ---
+  duration_ms: 1478.499
+  type: 'test'
+  ...
+# Subtest: saved false audio metadata is verified against real video bytes before silence may be reported
+    # Subtest: false metadata with real AAC refuses
+    ok 1 - false metadata with real AAC refuses
+      ---
+      duration_ms: 753.280917
+      type: 'test'
+      ...
+    # Subtest: verified silent video remains valid silence
+    ok 2 - verified silent video remains valid silence
+      ---
+      duration_ms: 898.365958
+      type: 'test'
+      ...
+    1..2
+ok 2 - saved false audio metadata is verified against real video bytes before silence may be reported
+  ---
+  duration_ms: 1652.295833
+  type: 'test'
+  ...
+# Subtest: maximum 600-second saved mix completes both real float passes within the fixed operation budget
+ok 3 - maximum 600-second saved mix completes both real float passes within the fixed operation budget
+  ---
+  duration_ms: 56587.503875
+  type: 'test'
+  ...
+# Maximum full-mix observation: 55665ms; 460800000 streamed PCM bytes; 38400088 hashed source bytes.
+# Subtest: real candidate rerender changes absolute gate membership and can miss the arithmetic target
+ok 4 - real candidate rerender changes absolute gate membership and can miss the arithmetic target
+  ---
+  duration_ms: 1900.865916
+  type: 'test'
+  ...
+# Gate membership changed 19→37; original -68.1044 LUFS, actual candidate -61.4505 LUFS, arithmetic -60.0000 LUFS.
+1..4
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 62009.717542

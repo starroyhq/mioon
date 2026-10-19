@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: SSE decodes every byte boundary of UTF-8, CRLF, BOM, multiline data and keepalives
+ok 1 - SSE decodes every byte boundary of UTF-8, CRLF, BOM, multiline data and keepalives
+  ---
+  duration_ms: 9.760708
+  type: 'test'
+  ...
+# Subtest: SSE emits error events and empty data while ignoring comment/unknown-only frames
+ok 2 - SSE emits error events and empty data while ignoring comment/unknown-only frames
+  ---
+  duration_ms: 0.125125
+  type: 'test'
+  ...
+# Subtest: SSE rejects invalid UTF-8, incomplete data frame and non-byte input without raw content
+ok 3 - SSE rejects invalid UTF-8, incomplete data frame and non-byte input without raw content
+  ---
+  duration_ms: 0.429292
+  type: 'test'
+  ...
+# Subtest: SSE bounds raw bytes, event/line bytes and number of events including fragmented lines
+ok 4 - SSE bounds raw bytes, event/line bytes and number of events including fragmented lines
+  ---
+  duration_ms: 0.280208
+  type: 'test'
+  ...
+# Subtest: SSE closes the source iterator on early return and rejects an already-aborted signal
+ok 5 - SSE closes the source iterator on early return and rejects an already-aborted signal
+  ---
+  duration_ms: 0.247541
+  type: 'test'
+  ...
+# Subtest: optional event-name metadata distinguishes data-only framing from explicit message or empty names
+ok 6 - optional event-name metadata distinguishes data-only framing from explicit message or empty names
+  ---
+  duration_ms: 0.131167
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 189.875291

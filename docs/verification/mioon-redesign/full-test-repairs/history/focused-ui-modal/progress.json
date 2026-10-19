@@ -1,0 +1,9 @@
+{
+  "completedFiles": 2,
+  "totalFiles": 2,
+  "passedFiles": 1,
+  "failedFiles": 1,
+  "timeoutFiles": 0,
+  "seconds": 1.85,
+  "last": "tests/editor-window-modal-observation.test.mjs"
+}

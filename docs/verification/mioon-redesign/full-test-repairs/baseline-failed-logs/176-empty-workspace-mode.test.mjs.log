@@ -1,0 +1,39 @@
+TAP version 13
+# node:internal/modules/run_main:107
+#     triggerUncaughtException(
+#     ^
+# AssertionError [ERR_ASSERTION]: Missing source seam:   if (!workbenchReady) return <ProjectHome 
+#     at section (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/empty-workspace-mode.test.mjs:24:10)
+#     at file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/empty-workspace-mode.test.mjs:30:22
+#     at ModuleJob.run (node:internal/modules/esm/module_job:569:25)
+#     at async node:internal/modules/esm/loader:650:26
+#     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {
+#   generatedMessage: false,
+#   code: 'ERR_ASSERTION',
+#   actual: false,
+#   expected: true,
+#   operator: '==',
+#   diff: 'simple'
+# }
+# Node.js v26.9.0
+# Subtest: tests/empty-workspace-mode.test.mjs
+not ok 1 - tests/empty-workspace-mode.test.mjs
+  ---
+  duration_ms: 697.447792
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/empty-workspace-mode.test.mjs:1:1'
+  failureType: 'testCodeFailure'
+  exitCode: 1
+  signal: ~
+  error: 'test failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 707.012416

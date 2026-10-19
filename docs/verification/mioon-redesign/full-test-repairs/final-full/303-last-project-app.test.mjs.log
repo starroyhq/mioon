@@ -1,0 +1,96 @@
+TAP version 13
+# Subtest: initial choice uses valid explicit URL then valid locator then ordinary fallback without mutation
+ok 1 - initial choice uses valid explicit URL then valid locator then ordinary fallback without mutation
+  ---
+  duration_ms: 1.166209
+  type: 'test'
+  ...
+# Subtest: verified identity cannot change on reconnect and read failure preserves an established scope
+ok 2 - verified identity cannot change on reconnect and read failure preserves an established scope
+  ---
+  duration_ms: 0.252917
+  type: 'test'
+  ...
+# Subtest: boot tickets reject later boots, project changes and StrictMode disposed lifetimes
+ok 3 - boot tickets reject later boots, project changes and StrictMode disposed lifetimes
+  ---
+  duration_ms: 0.099334
+  type: 'test'
+  ...
+# Subtest: actual App only remembers a successfully loaded explicit project, never initial recovery or reload-view
+ok 4 - actual App only remembers a successfully loaded explicit project, never initial recovery or reload-view
+  ---
+  duration_ms: 2.935042
+  type: 'test'
+  ...
+# Subtest: actual App rejects failed, foreign, unmounted or overtaken load without remembering it
+ok 5 - actual App rejects failed, foreign, unmounted or overtaken load without remembering it
+  ---
+  duration_ms: 3.256625
+  type: 'test'
+  ...
+# Subtest: actual same-project shortcut requires loaded project and a failed activation can be explicitly retried
+ok 6 - actual same-project shortcut requires loaded project and a failed activation can be explicitly retried
+  ---
+  duration_ms: 0.376125
+  type: 'test'
+  ...
+# Subtest: actual preference-load setup rejection releases only its current loading owner and never remembers
+ok 7 - actual preference-load setup rejection releases only its current loading owner and never remembers
+  ---
+  duration_ms: 1.142542
+  type: 'test'
+  ...
+# Subtest: actual App startup chooses the remembered nonfirst project, with explicit URL precedence and no remember write
+ok 8 - actual App startup chooses the remembered nonfirst project, with explicit URL precedence and no remember write
+  ---
+  duration_ms: 2.379625
+  type: 'test'
+  ...
+# (node:38603) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: actual App stale startup cannot replace newer selection, publish data after unmount or inspect restored locator
+ok 9 - actual App stale startup cannot replace newer selection, publish data after unmount or inspect restored locator
+  ---
+  duration_ms: 1.871083
+  type: 'test'
+  ...
+# Subtest: initial foreign locator permits uncached manual project fallback; changed established identity blocks startup
+ok 10 - initial foreign locator permits uncached manual project fallback; changed established identity blocks startup
+  ---
+  duration_ms: 0.629375
+  type: 'test'
+  ...
+# Subtest: App verified preference scope excludes foreign same-UUID and legacy bare-cache imports
+ok 11 - App verified preference scope excludes foreign same-UUID and legacy bare-cache imports
+  ---
+  duration_ms: 1.18875
+  type: 'test'
+  ...
+# Subtest: same verified workspace can reuse its bounded cache, while unverified offline fallback cannot
+ok 12 - same verified workspace can reuse its bounded cache, while unverified offline fallback cannot
+  ---
+  duration_ms: 0.393458
+  type: 'test'
+  ...
+# Subtest: a new boot without verified scope cannot flush queued previous-scope view edits into the new connection
+ok 13 - a new boot without verified scope cannot flush queued previous-scope view edits into the new connection
+  ---
+  duration_ms: 0.413708
+  type: 'test'
+  ...
+# Subtest: same-session locator mismatch disables previous workspace cache and queued preference writes immediately
+ok 14 - same-session locator mismatch disables previous workspace cache and queued preference writes immediately
+  ---
+  duration_ms: 1.374542
+  type: 'test'
+  ...
+1..14
+# tests 14
+# suites 0
+# pass 14
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 262.892041

@@ -1,0 +1,413 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-19T00:31:29.401657+00:00",
+  "status": "passed_with_screenshot_limitation",
+  "scope": "macOS development native appearance journey; no packaged release acceptance",
+  "build": {
+    "manifest": "build-inputs.json",
+    "sha256": "5604d2caaa1bc725473ea55a0feba317b833ac26915edf16d028bb495ec145a0",
+    "filesVerifiedBeforeLaunch": 56,
+    "mismatches": 0,
+    "version": "0.4.1",
+    "electron": "44.7.0",
+    "wrapper": "observation-harness.cjs",
+    "wrapperDeviation": "Private copy package.json main points at a fixed read-only wrapper which requires the byte-identical main.cjs; other original build bytes are unchanged. No IPC/debug server or application-source changes."
+  },
+  "checks": [
+    {
+      "name": "saved-light-restored-after-owned-process-restart",
+      "passed": true,
+      "evidence": "final-01-persisted-light.json"
+    },
+    {
+      "name": "draft-preview-local-no-native-or-other-window-mutation",
+      "passed": true,
+      "evidence": "final-02-dark-draft.json"
+    },
+    {
+      "name": "save-dark-all-three-windows-without-reload",
+      "passed": true,
+      "revision": 5,
+      "evidence": "final-03-dark-saved-all-windows.json"
+    },
+    {
+      "name": "save-light-all-three-windows-without-reload",
+      "passed": true,
+      "revision": 6,
+      "evidence": "final-04-light-saved-all-windows.json"
+    },
+    {
+      "name": "save-system-real-os-light-all-three-windows-without-reload",
+      "passed": true,
+      "revision": 7,
+      "evidence": "final-05-system-saved-all-windows.json"
+    },
+    {
+      "name": "restore-light-all-three-windows-without-reload",
+      "passed": true,
+      "revision": 8,
+      "evidence": "final-06-light-restored-all-windows.json"
+    },
+    {
+      "name": "editor-stays-light-after-settings-close-without-reload",
+      "passed": true,
+      "evidence": "final-07-editor-after-settings-close.json"
+    }
+  ],
+  "observations": [
+    {
+      "path": "final-01-persisted-light.json",
+      "timestamp": "2026-10-19T00:26:50.418Z",
+      "windowCount": 3,
+      "nativeTheme": {
+        "themeSource": "system",
+        "shouldUseDarkColors": false
+      },
+      "windowStates": [
+        {
+          "id": 3,
+          "requested": "light",
+          "resolved": "light",
+          "rootClasses": "light",
+          "nativeBackground": "#F6F6F6",
+          "visible": true,
+          "focused": true,
+          "workbench": false
+        },
+        {
+          "id": 2,
+          "requested": "light",
+          "resolved": "light",
+          "rootClasses": "light",
+          "nativeBackground": "#F6F6F6",
+          "visible": true,
+          "focused": false,
+          "workbench": true
+        },
+        {
+          "id": 1,
+          "requested": "light",
+          "resolved": "light",
+          "rootClasses": "light",
+          "nativeBackground": "#F6F6F6",
+          "visible": false,
+          "focused": false,
+          "workbench": false
+        }
+      ]
+    },
+    {
+      "path": "final-02-dark-draft.json",
+      "timestamp": "2026-10-19T00:27:00.747Z",
+      "windowCount": 3,
+      "nativeTheme": {
+        "themeSource": "system",
+        "shouldUseDarkColors": false
+      },
+      "windowStates": [
+        {
+          "id": 3,
+          "requested": "dark",
+          "resolved": "dark",
+          "rootClasses": "dark",
+          "nativeBackground": "#F6F6F6",
+          "visible": true,
+          "focused": false,
+          "workbench": false
+        },
+        {
+          "id": 2,
+          "requested": "light",
+          "resolved": "light",
+          "rootClasses": "light",
+          "nativeBackground": "#F6F6F6",
+          "visible": true,
+          "focused": false,
+          "workbench": true
+        },
+        {
+          "id": 1,
+          "requested": "light",
+          "resolved": "light",
+          "rootClasses": "light",
+          "nativeBackground": "#F6F6F6",
+          "visible": false,
+          "focused": false,
+          "workbench": false
+        }
+      ]
+    },
+    {
+      "path": "final-03-dark-saved-all-windows.json",
+      "timestamp": "2026-10-19T00:27:10.778Z",
+      "windowCount": 3,
+      "nativeTheme": {
+        "themeSource": "system",
+        "shouldUseDarkColors": false
+      },
+      "windowStates": [
+        {
+          "id": 3,
+          "requested": "dark",
+          "resolved": "dark",
+          "rootClasses": "dark",
+          "nativeBackground": "#0B0C0E",
+          "visible": true,
+          "focused": true,
+          "workbench": false
+        },
+        {
+          "id": 2,
+          "requested": "dark",
+          "resolved": "dark",
+          "rootClasses": "dark",
+          "nativeBackground": "#0B0C0E",
+          "visible": true,
+          "focused": false,
+          "workbench": true
+        },
+        {
+          "id": 1,
+          "requested": "dark",
+          "resolved": "dark",
+          "rootClasses": "dark",
+          "nativeBackground": "#0B0C0E",
+          "visible": false,
+          "focused": false,
+          "workbench": false
+        }
+      ]
+    },
+    {
+      "path": "final-04-light-saved-all-windows.json",
+      "timestamp": "2026-10-19T00:27:27.332Z",
+      "windowCount": 3,
+      "nativeTheme": {
+        "themeSource": "system",
+        "shouldUseDarkColors": false
+      },
+      "windowStates": [
+        {
+          "id": 3,
+          "requested": "light",
+          "resolved": "light",
+          "rootClasses": "light",
+          "nativeBackground": "#F6F6F6",
+          "visible": true,
+          "focused": true,
+          "workbench": false
+        },
+        {
+          "id": 2,
+          "requested": "light",
+          "resolved": "light",
+          "rootClasses": "light",
+          "nativeBackground": "#F6F6F6",
+          "visible": true,
+          "focused": false,
+          "workbench": true
+        },
+        {
+          "id": 1,
+          "requested": "light",
+          "resolved": "light",
+          "rootClasses": "light",
+          "nativeBackground": "#F6F6F6",
+          "visible": false,
+          "focused": false,
+          "workbench": false
+        }
+      ]
+    },
+    {
+      "path": "final-05-system-saved-all-windows.json",
+      "timestamp": "2026-10-19T00:27:45.635Z",
+      "windowCount": 3,
+      "nativeTheme": {
+        "themeSource": "system",
+        "shouldUseDarkColors": false
+      },
+      "windowStates": [
+        {
+          "id": 3,
+          "requested": "system",
+          "resolved": "light",
+          "rootClasses": "light",
+          "nativeBackground": "#F6F6F6",
+          "visible": true,
+          "focused": true,
+          "workbench": false
+        },
+        {
+          "id": 2,
+          "requested": "system",
+          "resolved": "light",
+          "rootClasses": "light",
+          "nativeBackground": "#F6F6F6",
+          "visible": true,
+          "focused": false,
+          "workbench": true
+        },
+        {
+          "id": 1,
+          "requested": "system",
+          "resolved": "light",
+          "rootClasses": "light",
+          "nativeBackground": "#F6F6F6",
+          "visible": false,
+          "focused": false,
+          "workbench": false
+        }
+      ]
+    },
+    {
+      "path": "final-06-light-restored-all-windows.json",
+      "timestamp": "2026-10-19T00:28:08.474Z",
+      "windowCount": 3,
+      "nativeTheme": {
+        "themeSource": "system",
+        "shouldUseDarkColors": false
+      },
+      "windowStates": [
+        {
+          "id": 3,
+          "requested": "light",
+          "resolved": "light",
+          "rootClasses": "light",
+          "nativeBackground": "#F6F6F6",
+          "visible": true,
+          "focused": true,
+          "workbench": false
+        },
+        {
+          "id": 2,
+          "requested": "light",
+          "resolved": "light",
+          "rootClasses": "light",
+          "nativeBackground": "#F6F6F6",
+          "visible": true,
+          "focused": false,
+          "workbench": true
+        },
+        {
+          "id": 1,
+          "requested": "light",
+          "resolved": "light",
+          "rootClasses": "light",
+          "nativeBackground": "#F6F6F6",
+          "visible": false,
+          "focused": false,
+          "workbench": false
+        }
+      ]
+    },
+    {
+      "path": "final-07-editor-after-settings-close.json",
+      "timestamp": "2026-10-19T00:28:44.078Z",
+      "windowCount": 2,
+      "nativeTheme": {
+        "themeSource": "system",
+        "shouldUseDarkColors": false
+      },
+      "windowStates": [
+        {
+          "id": 2,
+          "requested": "light",
+          "resolved": "light",
+          "rootClasses": "light",
+          "nativeBackground": "#F6F6F6",
+          "visible": true,
+          "focused": true,
+          "workbench": true
+        },
+        {
+          "id": 1,
+          "requested": "light",
+          "resolved": "light",
+          "rootClasses": "light",
+          "nativeBackground": "#F6F6F6",
+          "visible": false,
+          "focused": false,
+          "workbench": false
+        }
+      ]
+    }
+  ],
+  "nativeWindow": {
+    "cgWindowId": 78321,
+    "cgBoundsPoints": {
+      "x": 278,
+      "y": 121,
+      "width": 1500,
+      "height": 960
+    },
+    "backingScale": 2,
+    "windowPixelsExcludingShadow": {
+      "width": 3000,
+      "height": 1920
+    },
+    "observedTrafficLightApiPosition": {
+      "x": 20,
+      "y": 22
+    },
+    "nativeThemeSourceThroughout": "system"
+  },
+  "screenshots": [
+    {
+      "path": "final/light-native-system-frame.png",
+      "pixels": {
+        "width": 3224,
+        "height": 2144
+      },
+      "bytes": 1081252,
+      "sha256": "05518a506077a824f5fe9e6b4f88cadeb198188e74e91b6ab7d70dd52336b2e9",
+      "method": "screenshot skill take_screenshot.py -> OS screencapture -l, unedited PNG",
+      "webContentsCapturePage": false
+    },
+    {
+      "path": "before-window-sync/light-native-system-frame.png",
+      "pixels": {
+        "width": 3224,
+        "height": 2144
+      },
+      "bytes": 1078645,
+      "sha256": "827cf558dde32ab9fadebd996688194491efcf908426abe3e63d67a2a0c7bd3f",
+      "method": "screenshot skill take_screenshot.py -> OS screencapture -l, unedited PNG",
+      "webContentsCapturePage": false
+    }
+  ],
+  "discoveredIssue": {
+    "description": "Earlier build kept editor/launcher document theme stale after saving in a separate native Settings window.",
+    "beforeEvidence": "../before-window-sync/02-light-saved.json",
+    "finalResult": "Fixed build synchronizes accepted-save hints across the same origin. All three native windows were observed switching without reload.",
+    "beforeBuildManifest": "../before-window-sync/build-inputs.json"
+  },
+  "limits": [
+    "The final new-build OS screenshot retains a purple macOS sharing indicator covering the traffic-light region. It is not retouched and does not by itself verify visible red/yellow/green colors.",
+    "The earlier phase has an actual unobstructed red/yellow/green light-frame screenshot. Its separate build hashes are preserved; it is not represented as the final build.",
+    "Real OS appearance was light throughout. No user-wide OS appearance setting was changed; physical OS light/dark toggling is outside this run. Native OS updated and stale-owner semantics are covered by dedicated helper tests.",
+    "ReactFlow canvas, shot nodes and inspector were visually checked in the final system screenshot; no separate ReactFlow DOM class probe was added to the fixed observation wrapper.",
+    "The existing full 22-check native smoke was not rerun in this journey. This is independent real UI/native-API evidence, not a replacement or a fabricated smoke pass."
+  ],
+  "safety": {
+    "syntheticProjectsOnly": true,
+    "realProviderCalls": 0,
+    "generationSubmissions": 0,
+    "credentialConfiguration": false,
+    "publicIpcAdded": false
+  },
+  "unitResults": "../tests/manifest.json",
+  "cleanup": {
+    "mainPid": 87332,
+    "ownedProcessCount": 6,
+    "remainingOwnedProcesses": [],
+    "signal": "SIGTERM -> existing app.quit",
+    "temporaryRoot": "/private/tmp/mioon-appearance-native-vhsh3ayd",
+    "temporaryRootRemoved": true
+  },
+  "credentialScan": {
+    "matches": 0,
+    "broadPatternFalsePositives": 3,
+    "falsePositiveReason": "dark-* acceptance/evidence labels contain the substring rk-; word-boundary credential patterns match zero."
+  }
+}

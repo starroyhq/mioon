@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: full-mix default is125s; explicit timeouts and unrelated30s defaults stay intact
+ok 1 - full-mix default is125s; explicit timeouts and unrelated30s defaults stay intact
+  ---
+  duration_ms: 23.860667
+  type: 'test'
+  ...
+# Subtest: typed helper and shared RPC preserve explicit target and transport-only workspace/cancellation
+ok 2 - typed helper and shared RPC preserve explicit target and transport-only workspace/cancellation
+  ---
+  duration_ms: 1.549708
+  type: 'test'
+  ...
+# Subtest: missing explicit profiles/target and authority/path/URL fields reject before any dispatch
+ok 3 - missing explicit profiles/target and authority/path/URL fields reject before any dispatch
+  ---
+  duration_ms: 1.515083
+  type: 'test'
+  ...
+# Subtest: reports bind request/revision/profiles/target and actual candidate/gain/work evidence without retry
+ok 4 - reports bind request/revision/profiles/target and actual candidate/gain/work evidence without retry
+  ---
+  duration_ms: 6.175416
+  type: 'test'
+  ...
+# Subtest: 64KiB reader rejects declared, streamed and error-body overflow before unbounded JSON decoding
+ok 5 - 64KiB reader rejects declared, streamed and error-body overflow before unbounded JSON decoding
+  ---
+  duration_ms: 1.239292
+  type: 'test'
+  ...
+# Subtest: bounded reader handles split UTF8, exact envelope limit and rejects invalid bytes/JSON or absent streams
+ok 6 - bounded reader handles split UTF8, exact envelope limit and rejects invalid bytes/JSON or absent streams
+  ---
+  duration_ms: 0.516792
+  type: 'test'
+  ...
+# Subtest: pending streamed response cancels on caller abort or deadline; owned body is retired without retry
+ok 7 - pending streamed response cancels on caller abort or deadline; owned body is retired without retry
+  ---
+  duration_ms: 20.884417
+  type: 'test'
+  ...
+# Subtest: transport loss and safe backend errors carry no mutation receipt/retry authority or credentials
+ok 8 - transport loss and safe backend errors carry no mutation receipt/retry authority or credentials
+  ---
+  duration_ms: 0.921083
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 266.511125

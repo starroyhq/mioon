@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: processing projection preserves exact absence/null/value, detached points and strict dispatch
+ok 1 - processing projection preserves exact absence/null/value, detached points and strict dispatch
+  ---
+  duration_ms: 3.233709
+  type: 'test'
+  ...
+# Subtest: envelope-bearing wrapper enforces exact unchanged 256 KiB boundary including null
+ok 2 - envelope-bearing wrapper enforces exact unchanged 256 KiB boundary including null
+  ---
+  duration_ms: 2.218416
+  type: 'test'
+  ...
+# Subtest: graph preserves exact absent/null bytes and inserts sample-aware fenced stage after fades
+ok 3 - graph preserves exact absent/null bytes and inserts sample-aware fenced stage after fades
+  ---
+  duration_ms: 0.764042
+  type: 'test'
+  ...
+# Subtest: render required verification includes muted/zero/cached-no-audio and all-zero curves
+ok 4 - render required verification includes muted/zero/cached-no-audio and all-zero curves
+  ---
+  duration_ms: 47.093334
+  type: 'test'
+  ...
+# Subtest: legacy audition rejects non-null before projection even muted or zero gain
+ok 5 - legacy audition rejects non-null before projection even muted or zero gain
+  ---
+  duration_ms: 3.307083
+  type: 'test'
+  ...
+# Subtest: reader profile derivation never erases explicit conflicting evidence
+ok 6 - reader profile derivation never erases explicit conflicting evidence
+  ---
+  duration_ms: 0.273708
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 345.797166

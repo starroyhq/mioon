@@ -1,0 +1,166 @@
+TAP version 13
+# Subtest: App unsaved subtitle blocks both history directions before minting or dispatching an intent
+ok 1 - App unsaved subtitle blocks both history directions before minting or dispatching an intent
+  ---
+  duration_ms: 1.364542
+  type: 'test'
+  ...
+# Subtest: App undo: held prepare and repeated shortcut/click create one exact intent
+ok 2 - App undo: held prepare and repeated shortcut/click create one exact intent
+  ---
+  duration_ms: 0.724334
+  type: 'test'
+  ...
+# Subtest: App undo: bound not_applied conflict closes the task and refreshes current state
+ok 3 - App undo: bound not_applied conflict closes the task and refreshes current state
+  ---
+  duration_ms: 3.030709
+  type: 'test'
+  ...
+# Subtest: App undo: ordinary 409 retains the original intent without automatic retry
+ok 4 - App undo: ordinary 409 retains the original intent without automatic retry
+  ---
+  duration_ms: 0.329458
+  type: 'test'
+  ...
+# Subtest: App undo: recreated function scope explicitly recovers a historical ACK without installing it
+ok 5 - App undo: recreated function scope explicitly recovers a historical ACK without installing it
+  ---
+  duration_ms: 0.401209
+  type: 'test'
+  ...
+# Subtest: App undo: closing Tasks during lookup revokes the passed execution callback
+ok 6 - App undo: closing Tasks during lookup revokes the passed execution callback
+  ---
+  duration_ms: 0.390875
+  type: 'test'
+  ...
+# Subtest: App redo: held prepare and repeated shortcut/click create one exact intent
+ok 7 - App redo: held prepare and repeated shortcut/click create one exact intent
+  ---
+  duration_ms: 0.142667
+  type: 'test'
+  ...
+# Subtest: App redo: bound not_applied conflict closes the task and refreshes current state
+ok 8 - App redo: bound not_applied conflict closes the task and refreshes current state
+  ---
+  duration_ms: 0.20475
+  type: 'test'
+  ...
+# Subtest: App redo: ordinary 409 retains the original intent without automatic retry
+ok 9 - App redo: ordinary 409 retains the original intent without automatic retry
+  ---
+  duration_ms: 0.14925
+  type: 'test'
+  ...
+# Subtest: App redo: recreated function scope explicitly recovers a historical ACK without installing it
+ok 10 - App redo: recreated function scope explicitly recovers a historical ACK without installing it
+  ---
+  duration_ms: 0.198542
+  type: 'test'
+  ...
+# Subtest: App redo: closing Tasks during lookup revokes the passed execution callback
+ok 11 - App redo: closing Tasks during lookup revokes the passed execution callback
+  ---
+  duration_ms: 0.290042
+  type: 'test'
+  ...
+# Subtest: actual history state stays blocked across stale aggregate/history arrival order and pending recovery
+ok 12 - actual history state stays blocked across stale aggregate/history arrival order and pending recovery
+  ---
+  duration_ms: 0.237875
+  type: 'test'
+  ...
+# Subtest: SQLite undo: receipt insertion failure then same-key reopen recovery moves once
+ok 13 - SQLite undo: receipt insertion failure then same-key reopen recovery moves once
+  ---
+  duration_ms: 1423.369125
+  type: 'test'
+  ...
+# Subtest: SQLite undo: post-COMMIT exception never claims not_applied and reopens exact receipt
+ok 14 - SQLite undo: post-COMMIT exception never claims not_applied and reopens exact receipt
+  ---
+  duration_ms: 634.367584
+  type: 'test'
+  ...
+# Subtest: Durable undo: afterClaim, reopen and exact recovery preserve a single traversal
+ok 15 - Durable undo: afterClaim, reopen and exact recovery preserve a single traversal
+  ---
+  duration_ms: 644.107916
+  type: 'test'
+  ...
+# Subtest: Durable undo: beforeDispatch, reopen and exact recovery preserve a single traversal
+ok 16 - Durable undo: beforeDispatch, reopen and exact recovery preserve a single traversal
+  ---
+  duration_ms: 711.610708
+  type: 'test'
+  ...
+# Subtest: Durable undo: afterBusinessCommit, reopen and exact recovery preserve a single traversal
+ok 17 - Durable undo: afterBusinessCommit, reopen and exact recovery preserve a single traversal
+  ---
+  duration_ms: 656.731083
+  type: 'test'
+  ...
+# Subtest: Durable undo: beforeOutcomePersist, reopen and exact recovery preserve a single traversal
+ok 18 - Durable undo: beforeOutcomePersist, reopen and exact recovery preserve a single traversal
+  ---
+  duration_ms: 651.844083
+  type: 'test'
+  ...
+# Subtest: Durable undo: afterOutcomePersist, reopen and exact recovery preserve a single traversal
+ok 19 - Durable undo: afterOutcomePersist, reopen and exact recovery preserve a single traversal
+  ---
+  duration_ms: 641.175125
+  type: 'test'
+  ...
+# Subtest: SQLite redo: receipt insertion failure then same-key reopen recovery moves once
+ok 20 - SQLite redo: receipt insertion failure then same-key reopen recovery moves once
+  ---
+  duration_ms: 628.856125
+  type: 'test'
+  ...
+# Subtest: SQLite redo: post-COMMIT exception never claims not_applied and reopens exact receipt
+ok 21 - SQLite redo: post-COMMIT exception never claims not_applied and reopens exact receipt
+  ---
+  duration_ms: 628.128625
+  type: 'test'
+  ...
+# Subtest: Durable redo: afterClaim, reopen and exact recovery preserve a single traversal
+ok 22 - Durable redo: afterClaim, reopen and exact recovery preserve a single traversal
+  ---
+  duration_ms: 643.698083
+  type: 'test'
+  ...
+# Subtest: Durable redo: beforeDispatch, reopen and exact recovery preserve a single traversal
+ok 23 - Durable redo: beforeDispatch, reopen and exact recovery preserve a single traversal
+  ---
+  duration_ms: 646.389209
+  type: 'test'
+  ...
+# Subtest: Durable redo: afterBusinessCommit, reopen and exact recovery preserve a single traversal
+ok 24 - Durable redo: afterBusinessCommit, reopen and exact recovery preserve a single traversal
+  ---
+  duration_ms: 640.845375
+  type: 'test'
+  ...
+# Subtest: Durable redo: beforeOutcomePersist, reopen and exact recovery preserve a single traversal
+ok 25 - Durable redo: beforeOutcomePersist, reopen and exact recovery preserve a single traversal
+  ---
+  duration_ms: 627.412542
+  type: 'test'
+  ...
+# Subtest: Durable redo: afterOutcomePersist, reopen and exact recovery preserve a single traversal
+ok 26 - Durable redo: afterOutcomePersist, reopen and exact recovery preserve a single traversal
+  ---
+  duration_ms: 631.274292
+  type: 'test'
+  ...
+1..26
+# tests 26
+# suites 0
+# pass 26
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 10067.62275

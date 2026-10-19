@@ -1,0 +1,126 @@
+TAP version 13
+# Subtest: strict raw schema retains bounded editing strings and absent/null independently
+ok 1 - strict raw schema retains bounded editing strings and absent/null independently
+  ---
+  duration_ms: 3.377041
+  type: 'test'
+  ...
+# Subtest: v1 read is byte-preserving; legacy PUT stays v1; explicit null promotes all rows atomically; v2 never downgrades
+ok 2 - v1 read is byte-preserving; legacy PUT stays v1; explicit null promotes all rows atomically; v2 never downgrades
+  ---
+  duration_ms: 63.007333
+  type: 'test'
+  ...
+# Subtest: actual frozen old service reads v1 but rejects v2 GET/list/PUT/DELETE without replacing bytes
+ok 3 - actual frozen old service reads v1 but rejects v2 GET/list/PUT/DELETE without replacing bytes
+  ---
+  duration_ms: 34.156875
+  type: 'test'
+  ...
+# Subtest: strict v1 rejects envelope presence and strict v2 rejects future fields without repair
+ok 4 - strict v1 rejects envelope presence and strict v2 rejects future fields without repair
+  ---
+  duration_ms: 18.115583
+  type: 'test'
+  ...
+# Subtest: arrays only admitted at exact points path and all descriptors inspected without getters/proxy traps
+ok 5 - arrays only admitted at exact points path and all descriptors inspected without getters/proxy traps
+  ---
+  duration_ms: 14.665375
+  type: 'test'
+  ...
+# Subtest: promotion beforePersist retains old bytes or exact new bytes and supports qualified retry
+ok 6 - promotion beforePersist retains old bytes or exact new bytes and supports qualified retry
+  ---
+  duration_ms: 25.618916
+  type: 'test'
+  ...
+# Subtest: promotion afterPersist retains old bytes or exact new bytes and supports qualified retry
+ok 7 - promotion afterPersist retains old bytes or exact new bytes and supports qualified retry
+  ---
+  duration_ms: 28.2395
+  type: 'test'
+  ...
+# Subtest: promotion beforeDirectorySync retains old bytes or exact new bytes and supports qualified retry
+ok 8 - promotion beforeDirectorySync retains old bytes or exact new bytes and supports qualified retry
+  ---
+  duration_ms: 37.992083
+  type: 'test'
+  ...
+# Subtest: published limits stay unchanged
+ok 9 - published limits stay unchanged
+  ---
+  duration_ms: 0.149458
+  type: 'test'
+  ...
+# Subtest: complete ordinary6611/adversarial9373 fixtures qualify aggregate rows, requests and success wrappers
+ok 10 - complete ordinary6611/adversarial9373 fixtures qualify aggregate rows, requests and success wrappers
+  ---
+  duration_ms: 22.995625
+  type: 'test'
+  ...
+# {"legacySlotBytes":5430,"ordinaryEnvelopeSlotBytes":6611,"adversarialEnvelopeSlotBytes":9373,"completePutBytes":6706,"completeSuccessBytes":6817,"maximumRowSuccessBytes":8398}
+# Subtest: serialized complete row 8191: inclusive real service read boundary and evidence preservation
+ok 11 - serialized complete row 8191: inclusive real service read boundary and evidence preservation
+  ---
+  duration_ms: 5.9895
+  type: 'test'
+  ...
+# Subtest: serialized complete row 8192: inclusive real service read boundary and evidence preservation
+ok 12 - serialized complete row 8192: inclusive real service read boundary and evidence preservation
+  ---
+  duration_ms: 1.849292
+  type: 'test'
+  ...
+# Subtest: serialized complete row 8193: inclusive real service read boundary and evidence preservation
+ok 13 - serialized complete row 8193: inclusive real service read boundary and evidence preservation
+  ---
+  duration_ms: 1.657958
+  type: 'test'
+  ...
+# Subtest: actual HTTP handler accepts12287/12288 and refuses12289 bytes before mutation for declared and streamed requests
+ok 14 - actual HTTP handler accepts12287/12288 and refuses12289 bytes before mutation for declared and streamed requests
+  ---
+  duration_ms: 36.175333
+  type: 'test'
+  ...
+# Subtest: complete 128 maximum rows and mixed tombstones fit disk accounting; no 129th slot eviction
+ok 15 - complete 128 maximum rows and mixed tombstones fit disk accounting; no 129th slot eviction
+  ---
+  duration_ms: 47.529959
+  type: 'test'
+  ...
+# {"max128RowsDiskBytes":1048814,"mixed127RowsOneTombstoneBytes":1040815,"tombstoneBytes":193,"metadataCommasNewlineBytes":238}
+# Subtest: actual companion file 2097151 bytes: whitespace counts toward disk read cap
+ok 16 - actual companion file 2097151 bytes: whitespace counts toward disk read cap
+  ---
+  duration_ms: 6.627125
+  type: 'test'
+  ...
+# Subtest: actual companion file 2097152 bytes: whitespace counts toward disk read cap
+ok 17 - actual companion file 2097152 bytes: whitespace counts toward disk read cap
+  ---
+  duration_ms: 6.972209
+  type: 'test'
+  ...
+# Subtest: actual companion file 2097153 bytes: whitespace counts toward disk read cap
+ok 18 - actual companion file 2097153 bytes: whitespace counts toward disk read cap
+  ---
+  duration_ms: 3.92175
+  type: 'test'
+  ...
+# Subtest: maximum-row success wrapper accepts12287/12288 and rejects12289 actual client response bytes
+ok 19 - maximum-row success wrapper accepts12287/12288 and rejects12289 actual client response bytes
+  ---
+  duration_ms: 17.150333
+  type: 'test'
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 560.478334

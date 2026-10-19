@@ -1,0 +1,175 @@
+TAP version 13
+# Subtest: classic TSX shared controls render compact measure-only default, optional collapsed targets and honest limits
+not ok 1 - classic TSX shared controls render compact measure-only default, optional collapsed targets and honest limits
+  ---
+  duration_ms: 603.855208
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/export-loudness-ui.test.mjs:51:1'
+  failureType: 'hookFailed'
+  error: 'Unterminated string in JSON at position 59279 (line 1 column 59280)'
+  code: 'ERR_TEST_FAILURE'
+  name: 'SyntaxError'
+  stack: |-
+    JSON.parse (<anonymous>)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/export-loudness-ui.test.mjs:49:19)
+    async TestHook.run (node:internal/test_runner/test:1409:7)
+  ...
+# Subtest: ready keeps exact file/range/revision/profile/hashes inside collapsed details and shows distinct units
+not ok 2 - ready keeps exact file/range/revision/profile/hashes inside collapsed details and shows distinct units
+  ---
+  duration_ms: 0.142
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/export-loudness-ui.test.mjs:58:1'
+  failureType: 'hookFailed'
+  error: 'Unterminated string in JSON at position 59279 (line 1 column 59280)'
+  code: 'ERR_TEST_FAILURE'
+  name: 'SyntaxError'
+  stack: |-
+    JSON.parse (<anonymous>)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/export-loudness-ui.test.mjs:49:19)
+    async TestHook.run (node:internal/test_runner/test:1409:7)
+  ...
+# Subtest: custom target shows exact needed gain and peak-room conflict, never a clamped gain or application control
+not ok 3 - custom target shows exact needed gain and peak-room conflict, never a clamped gain or application control
+  ---
+  duration_ms: 0.048
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/export-loudness-ui.test.mjs:65:1'
+  failureType: 'hookFailed'
+  error: 'Unterminated string in JSON at position 59279 (line 1 column 59280)'
+  code: 'ERR_TEST_FAILURE'
+  name: 'SyntaxError'
+  stack: |-
+    JSON.parse (<anonymous>)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/export-loudness-ui.test.mjs:49:19)
+    async TestHook.run (node:internal/test_runner/test:1409:7)
+  ...
+# Subtest: silence, short program, and below-gate measurements remain distinct from missing audio and failures
+not ok 4 - silence, short program, and below-gate measurements remain distinct from missing audio and failures
+  ---
+  duration_ms: 0.032208
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/export-loudness-ui.test.mjs:71:1'
+  failureType: 'hookFailed'
+  error: 'Unterminated string in JSON at position 59279 (line 1 column 59280)'
+  code: 'ERR_TEST_FAILURE'
+  name: 'SyntaxError'
+  stack: |-
+    JSON.parse (<anonymous>)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/export-loudness-ui.test.mjs:49:19)
+    async TestHook.run (node:internal/test_runner/test:1409:7)
+  ...
+# Subtest: pending makes all explicit actions busy, cancel is observer-only on owned row, drafts remain editable
+not ok 5 - pending makes all explicit actions busy, cancel is observer-only on owned row, drafts remain editable
+  ---
+  duration_ms: 0.045792
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/export-loudness-ui.test.mjs:78:1'
+  failureType: 'hookFailed'
+  error: 'Unterminated string in JSON at position 59279 (line 1 column 59280)'
+  code: 'ERR_TEST_FAILURE'
+  name: 'SyntaxError'
+  stack: |-
+    JSON.parse (<anonymous>)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/export-loudness-ui.test.mjs:49:19)
+    async TestHook.run (node:internal/test_runner/test:1409:7)
+  ...
+# Subtest: invalid draft, cancelled, nonready, restored and disconnected states remain explicit
+not ok 6 - invalid draft, cancelled, nonready, restored and disconnected states remain explicit
+  ---
+  duration_ms: 0.029875
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/export-loudness-ui.test.mjs:83:1'
+  failureType: 'hookFailed'
+  error: 'Unterminated string in JSON at position 59279 (line 1 column 59280)'
+  code: 'ERR_TEST_FAILURE'
+  name: 'SyntaxError'
+  stack: |-
+    JSON.parse (<anonymous>)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/export-loudness-ui.test.mjs:49:19)
+    async TestHook.run (node:internal/test_runner/test:1409:7)
+  ...
+# Subtest: named and unnamed frozen exports share row control, other render kinds do not; download links stay unchanged
+not ok 7 - named and unnamed frozen exports share row control, other render kinds do not; download links stay unchanged
+  ---
+  duration_ms: 0.044917
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/export-loudness-ui.test.mjs:89:1'
+  failureType: 'hookFailed'
+  error: 'Unterminated string in JSON at position 59279 (line 1 column 59280)'
+  code: 'ERR_TEST_FAILURE'
+  name: 'SyntaxError'
+  stack: |-
+    JSON.parse (<anonymous>)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/export-loudness-ui.test.mjs:49:19)
+    async TestHook.run (node:internal/test_runner/test:1409:7)
+  ...
+# Subtest: layout reuses existing bounded dock row, without global CSS or widening layout
+not ok 8 - layout reuses existing bounded dock row, without global CSS or widening layout
+  ---
+  duration_ms: 0.03825
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/export-loudness-ui.test.mjs:95:1'
+  failureType: 'hookFailed'
+  error: 'Unterminated string in JSON at position 59279 (line 1 column 59280)'
+  code: 'ERR_TEST_FAILURE'
+  name: 'SyntaxError'
+  stack: |-
+    JSON.parse (<anonymous>)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/export-loudness-ui.test.mjs:49:19)
+    async TestHook.run (node:internal/test_runner/test:1409:7)
+  ...
+# Subtest: actual component callbacks are passive until clicked, capture draft version, and prevent late result after input edit
+not ok 9 - actual component callbacks are passive until clicked, capture draft version, and prevent late result after input edit
+  ---
+  duration_ms: 0.058417
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/export-loudness-ui.test.mjs:109:1'
+  failureType: 'hookFailed'
+  error: 'Unterminated string in JSON at position 59279 (line 1 column 59280)'
+  code: 'ERR_TEST_FAILURE'
+  name: 'SyntaxError'
+  stack: |-
+    JSON.parse (<anonymous>)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/export-loudness-ui.test.mjs:49:19)
+    async TestHook.run (node:internal/test_runner/test:1409:7)
+  ...
+# Subtest: actual cancel callback is bound to its row/attempt and cannot cancel newer work
+not ok 10 - actual cancel callback is bound to its row/attempt and cannot cancel newer work
+  ---
+  duration_ms: 0.061834
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/export-loudness-ui.test.mjs:119:1'
+  failureType: 'hookFailed'
+  error: 'Unterminated string in JSON at position 59279 (line 1 column 59280)'
+  code: 'ERR_TEST_FAILURE'
+  name: 'SyntaxError'
+  stack: |-
+    JSON.parse (<anonymous>)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/export-loudness-ui.test.mjs:49:19)
+    async TestHook.run (node:internal/test_runner/test:1409:7)
+  ...
+# Subtest: actual App hook wiring uses accepted live ownership, pinned invocation and exact read-only operation
+not ok 11 - actual App hook wiring uses accepted live ownership, pinned invocation and exact read-only operation
+  ---
+  duration_ms: 0.023834
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/export-loudness-ui.test.mjs:125:1'
+  failureType: 'hookFailed'
+  error: 'Unterminated string in JSON at position 59279 (line 1 column 59280)'
+  code: 'ERR_TEST_FAILURE'
+  name: 'SyntaxError'
+  stack: |-
+    JSON.parse (<anonymous>)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/export-loudness-ui.test.mjs:49:19)
+    async TestHook.run (node:internal/test_runner/test:1409:7)
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 0
+# fail 11
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 922.961125

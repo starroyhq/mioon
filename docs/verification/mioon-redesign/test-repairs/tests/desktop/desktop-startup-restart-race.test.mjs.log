@@ -1,0 +1,603 @@
+TAP version 13
+# Subtest: old validation resolve after replacement is pending cannot quit it
+not ok 1 - old validation resolve after replacement is pending cannot quit it
+  ---
+  duration_ms: 3.950166
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:206:3'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:208:27)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.start (node:internal/test_runner/test:1262:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+  ...
+# Subtest: old validation cancel after replacement is pending cannot quit it
+not ok 2 - old validation cancel after replacement is pending cannot quit it
+  ---
+  duration_ms: 0.609625
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:206:3'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:208:27)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: old validation reject after replacement is pending cannot quit it
+not ok 3 - old validation reject after replacement is pending cannot quit it
+  ---
+  duration_ms: 0.548709
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:206:3'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:208:27)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: old validation resolve after replacement is successful cannot quit it
+not ok 4 - old validation resolve after replacement is successful cannot quit it
+  ---
+  duration_ms: 0.660291
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:206:3'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:208:27)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: old validation cancel after replacement is successful cannot quit it
+not ok 5 - old validation cancel after replacement is successful cannot quit it
+  ---
+  duration_ms: 0.6145
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:206:3'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:208:27)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: old validation reject after replacement is successful cannot quit it
+not ok 6 - old validation reject after replacement is successful cannot quit it
+  ---
+  duration_ms: 0.6565
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:206:3'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:208:27)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: replacement itself failing remains fatal even when both starts reject the same Error
+not ok 7 - replacement itself failing remains fatal even when both starts reject the same Error
+  ---
+  duration_ms: 0.572125
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:226:1'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:228:25)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: current uncancelled start error DESKTOP_START_CANCELLED is still fatal
+not ok 8 - current uncancelled start error DESKTOP_START_CANCELLED is still fatal
+  ---
+  duration_ms: 0.64225
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:241:3'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:243:27)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: current uncancelled start error BACKEND_START_CANCELLED is still fatal
+not ok 9 - current uncancelled start error BACKEND_START_CANCELLED is still fatal
+  ---
+  duration_ms: 0.900041
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:241:3'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:243:27)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: current uncancelled start error MEDIA_CANCELLED is still fatal
+not ok 10 - current uncancelled start error MEDIA_CANCELLED is still fatal
+  ---
+  duration_ms: 0.655333
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:241:3'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:243:27)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: current uncancelled start error CURRENT_FAILURE is still fatal
+not ok 11 - current uncancelled start error CURRENT_FAILURE is still fatal
+  ---
+  duration_ms: 0.512375
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:241:3'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:243:27)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: late settings acquisition closes the old instance once and preserves replacement settings
+not ok 12 - late settings acquisition closes the old instance once and preserves replacement settings
+  ---
+  duration_ms: 0.509042
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:250:1'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:252:25)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: late settings close failure SETTINGS_CLOSE_FAILED remains visible after restart
+not ok 13 - late settings close failure SETTINGS_CLOSE_FAILED remains visible after restart
+  ---
+  duration_ms: 0.455708
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:265:3'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:267:27)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: late settings close failure DESKTOP_START_CANCELLED remains visible after restart
+not ok 14 - late settings close failure DESKTOP_START_CANCELLED remains visible after restart
+  ---
+  duration_ms: 0.443666
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:265:3'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:267:27)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: late settings close failure SETTINGS_CLOSE_FAILED remains visible after quit
+not ok 15 - late settings close failure SETTINGS_CLOSE_FAILED remains visible after quit
+  ---
+  duration_ms: 0.493083
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:265:3'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:267:27)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: late settings close failure DESKTOP_START_CANCELLED remains visible after quit
+not ok 16 - late settings close failure DESKTOP_START_CANCELLED remains visible after quit
+  ---
+  duration_ms: 0.416125
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:265:3'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:267:27)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: restart waits for the owned child exit even though old backend.start already rejected
+not ok 17 - restart waits for the owned child exit even though old backend.start already rejected
+  ---
+  duration_ms: 0.449167
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:277:1'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:278:25)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: old cookie completion after replacement success cannot publish or fail another start
+not ok 18 - old cookie completion after replacement success cannot publish or fail another start
+  ---
+  duration_ms: 0.495417
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:296:3'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:298:27)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: old load completion after replacement success cannot publish or fail another start
+not ok 19 - old load completion after replacement success cannot publish or fail another start
+  ---
+  duration_ms: 0.656625
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:296:3'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:298:27)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: duplicate restart shares the drain and creates only one replacement
+not ok 20 - duplicate restart shares the drain and creates only one replacement
+  ---
+  duration_ms: 0.596916
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:313:1'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:315:25)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: quit during restart drain shares quit work and prevents replacement startup
+not ok 21 - quit during restart drain shares quit work and prevents replacement startup
+  ---
+  duration_ms: 0.533958
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:327:1'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:329:25)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: backend stop unconfirmed remains a replacement barrier with cancelled old start
+not ok 22 - backend stop unconfirmed remains a replacement barrier with cancelled old start
+  ---
+  duration_ms: 0.457834
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:346:3'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:347:27)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: backend stop media remains a replacement barrier with cancelled old start
+not ok 23 - backend stop media remains a replacement barrier with cancelled old start
+  ---
+  duration_ms: 0.69825
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:346:3'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:347:27)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: backend stop failed remains a replacement barrier with cancelled old start
+not ok 24 - backend stop failed remains a replacement barrier with cancelled old start
+  ---
+  duration_ms: 0.423541
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:346:3'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:347:27)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: drain failure is not hidden by old startup cancellation
+not ok 25 - drain failure is not hidden by old startup cancellation
+  ---
+  duration_ms: 0.442208
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:370:3'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:375:27)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: remove failure is not hidden by old startup cancellation
+not ok 26 - remove failure is not hidden by old startup cancellation
+  ---
+  duration_ms: 0.462708
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:370:3'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:375:27)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: clear failure is not hidden by old startup cancellation
+not ok 27 - clear failure is not hidden by old startup cancellation
+  ---
+  duration_ms: 0.503375
+  type: 'test'
+  location: '/private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:370:3'
+  failureType: 'testCodeFailure'
+  error: 'CLIP_LUT_RECOVERY_CHANNEL is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    actual-desktop-main.mjs:382:16
+    Script.runInContext (node:vm:150:12)
+    Object.runInContext (node:vm:302:6)
+    harness (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:176:6)
+    TestContext.<anonymous> (file:///private/tmp/mioon-test-repair-7cywd8uj/verify/tests/desktop-startup-restart-race.test.mjs:375:27)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+1..27
+# tests 27
+# suites 0
+# pass 0
+# fail 27
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 256.719667

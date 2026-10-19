@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: JPEG inspection uses its distinct route and never infers sRGB or saves a clip
+ok 1 - JPEG inspection uses its distinct route and never infers sRGB or saves a clip
+  ---
+  duration_ms: 4.07175
+  type: 'test'
+  ...
+# Subtest: PNG and video routing remain distinct from JPEG
+ok 2 - PNG and video routing remain distinct from JPEG
+  ---
+  duration_ms: 1.023375
+  type: 'test'
+  ...
+# Subtest: JPEG controller rejects foreign SHA, legacy PNG evidence, unsupported metadata and forged compatibility
+ok 3 - JPEG controller rejects foreign SHA, legacy PNG evidence, unsupported metadata and forged compatibility
+  ---
+  duration_ms: 3.2625
+  type: 'test'
+  ...
+# Subtest: late JPEG inspection cannot act after navigation, source replacement, hash or MIME changes
+ok 4 - late JPEG inspection cannot act after navigation, source replacement, hash or MIME changes
+  ---
+  duration_ms: 0.910916
+  type: 'test'
+  ...
+# Subtest: JPEG reinspection revokes approval and stale inspection requests cannot win
+ok 5 - JPEG reinspection revokes approval and stale inspection requests cannot win
+  ---
+  duration_ms: 0.266625
+  type: 'test'
+  ...
+# Subtest: reconfirming a replaced JPEG preserves the exact disabled Look and frozen source evidence
+ok 6 - reconfirming a replaced JPEG preserves the exact disabled Look and frozen source evidence
+  ---
+  duration_ms: 0.397042
+  type: 'test'
+  ...
+# Subtest: JPEG declaration and Look survive durable drafts and common Save rejects dropped evidence
+ok 7 - JPEG declaration and Look survive durable drafts and common Save rejects dropped evidence
+  ---
+  duration_ms: 9.260583
+  type: 'test'
+  ...
+# Subtest: JPEG source replacement acknowledgment requires cleared source but preserved exact Look
+ok 8 - JPEG source replacement acknowledgment requires cleared source but preserved exact Look
+  ---
+  duration_ms: 0.305416
+  type: 'test'
+  ...
+# Subtest: actual JPEG controls disclose format, interpretation limits, draft-only save and no video range control
+ok 9 - actual JPEG controls disclose format, interpretation limits, draft-only save and no video range control
+  ---
+  duration_ms: 26.962916
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 316.4875

@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: edit wire is one exact inline PNG with fixed model/options and no source metadata or unsupported parameters
+ok 1 - edit wire is one exact inline PNG with fixed model/options and no source metadata or unsupported parameters
+  ---
+  duration_ms: 7.547375
+  type: 'test'
+  ...
+# Subtest: malformed trusted source arguments fail before transport: exact Buffer, bounded bytes, paired hash/length and descriptor
+ok 2 - malformed trusted source arguments fail before transport: exact Buffer, bounded bytes, paired hash/length and descriptor
+  ---
+  duration_ms: 50.308083
+  type: 'test'
+  ...
+# Subtest: source actual PNG content is independently checked, including corruption, dimension mismatch, animation and transparency
+ok 3 - source actual PNG content is independently checked, including corruption, dimension mismatch, animation and transparency
+  ---
+  duration_ms: 1.270667
+  type: 'test'
+  ...
+# Subtest: edit adapters take a private byte/snapshot copy before validation awaits
+ok 4 - edit adapters take a private byte/snapshot copy before validation awaits
+  ---
+  duration_ms: 0.525583
+  type: 'test'
+  ...
+# Subtest: mock edit validates source, fences once and retains the clearly labeled prompt-independent synthetic test card
+ok 5 - mock edit validates source, fences once and retains the clearly labeled prompt-independent synthetic test card
+  ---
+  duration_ms: 127.506042
+  type: 'test'
+  ...
+# Subtest: edit adapter denies custom providers, public byte fields, disabled transport and source bytes on generation
+ok 6 - edit adapter denies custom providers, public byte fields, disabled transport and source bytes on generation
+  ---
+  duration_ms: 0.379959
+  type: 'test'
+  ...
+# Subtest: edit output decoder and post-fence uncertainty remain unchanged without automatic retry
+ok 7 - edit output decoder and post-fence uncertainty remain unchanged without automatic retry
+  ---
+  duration_ms: 49.778834
+  type: 'test'
+  ...
+# Subtest: official edit gateway uses dedicated settings key, immutable review, fixed endpoint and synchronous settings→source/task fence→POST
+ok 8 - official edit gateway uses dedicated settings key, immutable review, fixed endpoint and synchronous settings→source/task fence→POST
+  ---
+  duration_ms: 38.331833
+  type: 'test'
+  ...
+# Subtest: edit gateway snapshots source and public input before credential wait, then rejects changed settings at actual fence
+ok 9 - edit gateway snapshots source and public input before credential wait, then rejects changed settings at actual fence
+  ---
+  duration_ms: 29.14525
+  type: 'test'
+  ...
+# Subtest: source/task fence failure after DNS or TLS blocks edits without durable dispatch or POST
+ok 10 - source/task fence failure after DNS or TLS blocks edits without durable dispatch or POST
+  ---
+  duration_ms: 0.734125
+  type: 'test'
+  ...
+# Subtest: official edit gateway revalidates credential namespace/revision/configuration and never borrows custom or Agent credentials
+ok 11 - official edit gateway revalidates credential namespace/revision/configuration and never borrows custom or Agent credentials
+  ---
+  duration_ms: 1.39175
+  type: 'test'
+  ...
+# Subtest: edit source validation cancellation never fences and post-fence abort keeps existing uncertainty
+ok 12 - edit source validation cancellation never fences and post-fence abort keeps existing uncertainty
+  ---
+  duration_ms: 1.364958
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 523.801708

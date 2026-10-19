@@ -1,0 +1,136 @@
+TAP version 13
+# Subtest: requested zero exit is normal, persisted before listeners, and contains only safe metadata
+ok 1 - requested zero exit is normal, persisted before listeners, and contains only safe metadata
+  ---
+  duration_ms: 50.29375
+  type: 'test'
+  ...
+# Subtest: unsolicited utility exit 0 is abnormal and never triggers an automatic replacement
+ok 2 - unsolicited utility exit 0 is abnormal and never triggers an automatic replacement
+  ---
+  duration_ms: 32.723458
+  type: 'test'
+  ...
+# Subtest: unsolicited utility exit 9 is abnormal and never triggers an automatic replacement
+ok 3 - unsolicited utility exit 9 is abnormal and never triggers an automatic replacement
+  ---
+  duration_ms: 34.477792
+  type: 'test'
+  ...
+# Subtest: unsolicited utility exit null is abnormal and never triggers an automatic replacement
+ok 4 - unsolicited utility exit null is abnormal and never triggers an automatic replacement
+  ---
+  duration_ms: 34.695
+  type: 'test'
+  ...
+# Subtest: stop escalation records each attempted termination separately from exit confirmation
+ok 5 - stop escalation records each attempted termination separately from exit confirmation
+  ---
+  duration_ms: 69.309042
+  type: 'test'
+  ...
+# Subtest: heartbeat IPC loss is distinct from a utility crash even after a supervisor kill
+ok 6 - heartbeat IPC loss is distinct from a utility crash even after a supervisor kill
+  ---
+  duration_ms: 38.707166
+  type: 'test'
+  ...
+# Subtest: backend notice lease-expired retains its cause through a later user stop
+ok 7 - backend notice lease-expired retains its cause through a later user stop
+  ---
+  duration_ms: 50.020125
+  type: 'test'
+  ...
+# Subtest: backend notice signal-term retains its cause through a later user stop
+ok 8 - backend notice signal-term retains its cause through a later user stop
+  ---
+  duration_ms: 49.501375
+  type: 'test'
+  ...
+# Subtest: backend notice signal-int retains its cause through a later user stop
+ok 9 - backend notice signal-int retains its cause through a later user stop
+  ---
+  duration_ms: 49.486916
+  type: 'test'
+  ...
+# Subtest: backend notice uncaught-exception retains its cause through a later user stop
+ok 10 - backend notice uncaught-exception retains its cause through a later user stop
+  ---
+  duration_ms: 49.816834
+  type: 'test'
+  ...
+# Subtest: backend notice unhandled-rejection retains its cause through a later user stop
+ok 11 - backend notice unhandled-rejection retains its cause through a later user stop
+  ---
+  duration_ms: 52.165833
+  type: 'test'
+  ...
+# Subtest: shutdown cleanup failure cannot be classified as a normal zero exit
+ok 12 - shutdown cleanup failure cannot be classified as a normal zero exit
+  ---
+  duration_ms: 57.516208
+  type: 'test'
+  ...
+# Subtest: fatal exception after signal-term remains abnormal with both causes retained
+ok 13 - fatal exception after signal-term remains abnormal with both causes retained
+  ---
+  duration_ms: 53.998834
+  type: 'test'
+  ...
+# Subtest: fatal exception after signal-int remains abnormal with both causes retained
+ok 14 - fatal exception after signal-int remains abnormal with both causes retained
+  ---
+  duration_ms: 45.322375
+  type: 'test'
+  ...
+# Subtest: fatal exception after lease-expired remains abnormal with both causes retained
+ok 15 - fatal exception after lease-expired remains abnormal with both causes retained
+  ---
+  duration_ms: 47.162166
+  type: 'test'
+  ...
+# Subtest: startup timeout cause is recorded without replacing the owned child
+ok 16 - startup timeout cause is recorded without replacing the owned child
+  ---
+  duration_ms: 35.755167
+  type: 'test'
+  ...
+# Subtest: spawn failures persist a fixed type with no fabricated exit code or confirmation
+ok 17 - spawn failures persist a fixed type with no fabricated exit code or confirmation
+  ---
+  duration_ms: 25.382625
+  type: 'test'
+  ...
+# Subtest: diagnostic write failure does not turn a clean shutdown into a lifecycle failure
+ok 18 - diagnostic write failure does not turn a clean shutdown into a lifecycle failure
+  ---
+  duration_ms: 8.2355
+  type: 'test'
+  ...
+# Subtest: runtime errors persist a fixed cause and an invalid notice cannot replace it
+ok 19 - runtime errors persist a fixed cause and an invalid notice cannot replace it
+  ---
+  duration_ms: 41.678208
+  type: 'test'
+  ...
+# Subtest: confirmed utility death keeps unconfirmed media ownership visible and blocks restart
+ok 20 - confirmed utility death keeps unconfirmed media ownership visible and blocks restart
+  ---
+  duration_ms: 32.800917
+  type: 'test'
+  ...
+# Subtest: late old-child notices cannot contaminate the restarted backend run
+ok 21 - late old-child notices cannot contaminate the restarted backend run
+  ---
+  duration_ms: 81.4705
+  type: 'test'
+  ...
+1..21
+# tests 21
+# suites 0
+# pass 21
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1151.981916

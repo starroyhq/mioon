@@ -1,0 +1,34 @@
+TAP version 13
+# Subtest: gain submission fence accepts only synchronous completed checks and sanitizes failure text
+ok 1 - gain submission fence accepts only synchronous completed checks and sanitizes failure text
+  ---
+  duration_ms: 1.643459
+  type: 'test'
+  ...
+# Subtest: gain submission fence stops before target access after Stop and cannot recover authority after target failure
+ok 2 - gain submission fence stops before target access after Stop and cannot recover authority after target failure
+  ---
+  duration_ms: 0.293375
+  type: 'test'
+  ...
+# Subtest: complete serialized gain request budget counts JSON escaping and UTF-8 but leaves existing scopes untouched
+ok 3 - complete serialized gain request budget counts JSON escaping and UTF-8 but leaves existing scopes untouched
+  ---
+  duration_ms: 0.289792
+  type: 'test'
+  ...
+# Subtest: both real gain builders enforce complete escaped request bytes before any dispatch
+ok 4 - both real gain builders enforce complete escaped request bytes before any dispatch
+  ---
+  duration_ms: 74.173583
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 248.520791

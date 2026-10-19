@@ -1,0 +1,214 @@
+TAP version 13
+# Subtest: initial asynchronous GET gates defaults and every save
+ok 1 - initial asynchronous GET gates defaults and every save
+  ---
+  duration_ms: 2.234833
+  type: 'test'
+  ...
+# Subtest: only confirmed absence imports a sanitized legacy record; search is renderer-only
+ok 2 - only confirmed absence imports a sanitized legacy record; search is renderer-only
+  ---
+  duration_ms: 0.753041
+  type: 'test'
+  ...
+# Subtest: an existing remote workspace wins over stale local preferences without a write
+ok 3 - an existing remote workspace wins over stale local preferences without a write
+  ---
+  duration_ms: 0.33375
+  type: 'test'
+  ...
+# Subtest: a complete legacy v1 GET defaults snapping on without a migration write
+ok 4 - a complete legacy v1 GET defaults snapping on without a migration write
+  ---
+  duration_ms: 1.360042
+  type: 'test'
+  ...
+# Subtest: a raw legacy v1 cache defaults snapping on for safe import or offline fallback
+ok 5 - a raw legacy v1 cache defaults snapping on for safe import or offline fallback
+  ---
+  duration_ms: 1.56875
+  type: 'test'
+  ...
+# Subtest: GET accepts only whole-layout legacy omission and seeds both mode flags without migration writes
+ok 6 - GET accepts only whole-layout legacy omission and seeds both mode flags without migration writes
+  ---
+  duration_ms: 0.621208
+  type: 'test'
+  ...
+# Subtest: raw legacy layout cache safely imports after confirmed absence and remains local when offline
+ok 7 - raw legacy layout cache safely imports after confirmed absence and remains local when offline
+  ---
+  duration_ms: 0.620875
+  type: 'test'
+  ...
+# Subtest: mode layout changes persist independently and a lost response replays the exact layout body
+ok 8 - mode layout changes persist independently and a lost response replays the exact layout body
+  ---
+  duration_ms: 0.930584
+  type: 'test'
+  ...
+# Subtest: PUT acknowledgement cannot omit layout or repair a missing nested field even when defaults match
+ok 9 - PUT acknowledgement cannot omit layout or repair a missing nested field even when defaults match
+  ---
+  duration_ms: 4.901167
+  type: 'test'
+  ...
+# Subtest: magnet off persists, reloads, and stays isolated while lost responses replay its exact CAS body
+ok 10 - magnet off persists, reloads, and stays isolated while lost responses replay its exact CAS body
+  ---
+  duration_ms: 0.653583
+  type: 'test'
+  ...
+# Subtest: a PUT acknowledgement cannot omit the magnet field even when its default would match
+ok 11 - a PUT acknowledgement cannot omit the magnet field even when its default would match
+  ---
+  duration_ms: 0.674583
+  type: 'test'
+  ...
+# Subtest: absent or malformed legacy storage does not schedule a default-state write
+ok 12 - absent or malformed legacy storage does not schedule a default-state write
+  ---
+  duration_ms: 0.185791
+  type: 'test'
+  ...
+# Subtest: an unavailable API keeps the remote untouched, permits local fallback, and reloads authoritatively
+ok 13 - an unavailable API keeps the remote untouched, permits local fallback, and reloads authoritatively
+  ---
+  duration_ms: 0.31875
+  type: 'test'
+  ...
+# Subtest: denied storage is harmless while API preferences load and save
+ok 14 - denied storage is harmless while API preferences load and save
+  ---
+  duration_ms: 0.291917
+  type: 'test'
+  ...
+# Subtest: a denied global localStorage getter never prevents remote persistence
+ok 15 - a denied global localStorage getter never prevents remote persistence
+  ---
+  duration_ms: 0.301459
+  type: 'test'
+  ...
+# Subtest: transient saves retry serially and retain the latest edits behind the exact failed body
+ok 16 - transient saves retry serially and retain the latest edits behind the exact failed body
+  ---
+  duration_ms: 0.615625
+  type: 'test'
+  ...
+# Subtest: lost response retries the exact acknowledged write before saving a newer desired state
+ok 17 - lost response retries the exact acknowledged write before saving a newer desired state
+  ---
+  duration_ms: 1.337416
+  type: 'test'
+  ...
+# Subtest: automatic retry count is finite and explicit flush can recover the retained request
+ok 18 - automatic retry count is finite and explicit flush can recover the retained request
+  ---
+  duration_ms: 0.662083
+  type: 'test'
+  ...
+# Subtest: a flush waits the in-flight request and chains only the newest state with the next revision
+ok 19 - a flush waits the in-flight request and chains only the newest state with the next revision
+  ---
+  duration_ms: 0.645
+  type: 'test'
+  ...
+# Subtest: a final flush resolves on an in-flight failure with pending unsaved state instead of looping
+ok 20 - a final flush resolves on an in-flight failure with pending unsaved state instead of looping
+  ---
+  duration_ms: 0.227834
+  type: 'test'
+  ...
+# Subtest: conflict blocks all further writes until an explicit authoritative reload
+ok 21 - conflict blocks all further writes until an explicit authoritative reload
+  ---
+  duration_ms: 0.476833
+  type: 'test'
+  ...
+# Subtest: non-transient save errors do not auto-retry or overwrite on a later flush
+ok 22 - non-transient save errors do not auto-retry or overwrite on a later flush
+  ---
+  duration_ms: 0.203958
+  type: 'test'
+  ...
+# Subtest: stale project loads cannot replace the active UI, while sessions remain independent
+ok 23 - stale project loads cannot replace the active UI, while sessions remain independent
+  ---
+  duration_ms: 0.282167
+  type: 'test'
+  ...
+# Subtest: a superseded same-project reload ignores the older delayed load result
+ok 24 - a superseded same-project reload ignores the older delayed load result
+  ---
+  duration_ms: 0.172625
+  type: 'test'
+  ...
+# Subtest: project switching flushes the previous project without waiting to load the next
+ok 25 - project switching flushes the previous project without waiting to load the next
+  ---
+  duration_ms: 0.2775
+  type: 'test'
+  ...
+# Subtest: trailing debounce coalesces frequent geometry changes and has a bounded max wait
+ok 26 - trailing debounce coalesces frequent geometry changes and has a bounded max wait
+  ---
+  duration_ms: 0.771792
+  type: 'test'
+  ...
+# Subtest: lifecycle flush bypasses trailing throttle and local-only search changes never write remotely
+ok 27 - lifecycle flush bypasses trailing throttle and local-only search changes never write remotely
+  ---
+  duration_ms: 0.213542
+  type: 'test'
+  ...
+# Subtest: disposal ignores delayed loads and callbacks, and does not import defaults or legacy afterward
+ok 28 - disposal ignores delayed loads and callbacks, and does not import defaults or legacy afterward
+  ---
+  duration_ms: 0.136292
+  type: 'test'
+  ...
+# Subtest: disposal keeps an existing save and final queued keepalive update alive without callbacks
+ok 29 - disposal keeps an existing save and final queued keepalive update alive without callbacks
+  ---
+  duration_ms: 0.21225
+  type: 'test'
+  ...
+# Subtest: transport timeout is bounded and cannot later apply a stale GET result
+ok 30 - transport timeout is bounded and cannot later apply a stale GET result
+  ---
+  duration_ms: 0.196959
+  type: 'test'
+  ...
+# Subtest: malformed remote envelopes never establish absence or trigger legacy import
+ok 31 - malformed remote envelopes never establish absence or trigger legacy import
+  ---
+  duration_ms: 0.295333
+  type: 'test'
+  ...
+# Subtest: partial, unbounded or unexpected successful remote states cannot become writable defaults
+ok 32 - partial, unbounded or unexpected successful remote states cannot become writable defaults
+  ---
+  duration_ms: 5.447541
+  type: 'test'
+  ...
+# Subtest: complete remote preferences accept JSON field reordering without a write
+ok 33 - complete remote preferences accept JSON field reordering without a write
+  ---
+  duration_ms: 0.198709
+  type: 'test'
+  ...
+# Subtest: response validation matches the backend UUID contract including sentinel IDs
+ok 34 - response validation matches the backend UUID contract including sentinel IDs
+  ---
+  duration_ms: 0.112583
+  type: 'test'
+  ...
+1..34
+# tests 34
+# suites 0
+# pass 34
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 358.062792

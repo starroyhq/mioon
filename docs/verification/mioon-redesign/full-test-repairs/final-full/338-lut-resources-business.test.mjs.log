@@ -1,0 +1,118 @@
+TAP version 13
+# Subtest: exact bytes, project ownership, immutable hash and metadata-only resource flow
+ok 1 - exact bytes, project ownership, immutable hash and metadata-only resource flow
+  ---
+  duration_ms: 6.600916
+  type: 'test'
+  ...
+# Subtest: same request across restart wrappers replays exactly; every changed input conflicts
+ok 2 - same request across restart wrappers replays exactly; every changed input conflicts
+  ---
+  duration_ms: 1.50225
+  type: 'test'
+  ...
+# Subtest: different explicit requests create distinct immutable copies, never silently rename or dedupe
+ok 3 - different explicit requests create distinct immutable copies, never silently rename or dedupe
+  ---
+  duration_ms: 1.172959
+  type: 'test'
+  ...
+# Subtest: foreign or absent project resource has no disclosure; pages are bounded and stable
+ok 4 - foreign or absent project resource has no disclosure; pages are bounded and stable
+  ---
+  duration_ms: 3.060583
+  type: 'test'
+  ...
+# Subtest: source bounds, strict byte decoding and canonical base64 reject before writes
+ok 5 - source bounds, strict byte decoding and canonical base64 reject before writes
+  ---
+  duration_ms: 1.259334
+  type: 'test'
+  ...
+# Subtest: plain inputs do not invoke getters, accept paths or client ownership claims
+ok 6 - plain inputs do not invoke getters, accept paths or client ownership claims
+  ---
+  duration_ms: 0.872041
+  type: 'test'
+  ...
+# Subtest: ownership and restored-workspace denial precede import admission
+ok 7 - ownership and restored-workspace denial precede import admission
+  ---
+  duration_ms: 0.743792
+  type: 'test'
+  ...
+# Subtest: every precommit interruption rolls back both BLOB and receipt, with explicit retry
+ok 8 - every precommit interruption rolls back both BLOB and receipt, with explicit retry
+  ---
+  duration_ms: 3.844292
+  type: 'test'
+  ...
+# Subtest: lease loss before commit cannot publish; lost response after commit exact-replays
+ok 9 - lease loss before commit cannot publish; lost response after commit exact-replays
+  ---
+  duration_ms: 1.567709
+  type: 'test'
+  ...
+# Subtest: project count capacity is atomic; exact replay works even when full
+ok 10 - project count capacity is atomic; exact replay works even when full
+  ---
+  duration_ms: 41.114125
+  type: 'test'
+  ...
+# Subtest: SQL protections reject mutation, replacement and deletion with recursive triggers off
+ok 11 - SQL protections reject mutation, replacement and deletion with recursive triggers off
+  ---
+  duration_ms: 1.370125
+  type: 'test'
+  ...
+# Subtest: content corruption fails inspect and strict offline validation, not metadata-only listing
+ok 12 - content corruption fails inspect and strict offline validation, not metadata-only listing
+  ---
+  duration_ms: 1.085958
+  type: 'test'
+  ...
+# Subtest: real shared services persist through close/reopen, create no playable asset or file
+ok 13 - real shared services persist through close/reopen, create no playable asset or file
+  ---
+  duration_ms: 1090.797958
+  type: 'test'
+  ...
+# Subtest: fixed512MiB headroom checks use allocated pages, reject before write, and roll back actual-growth overflow
+ok 14 - fixed512MiB headroom checks use allocated pages, reject before write, and roll back actual-growth overflow
+  ---
+  duration_ms: 5.661125
+  type: 'test'
+  ...
+# Subtest: workspace512 count cap is global across projects while full-quota exactreplay remains available
+ok 15 - workspace512 count cap is global across projects while full-quota exactreplay remains available
+  ---
+  duration_ms: 226.826541
+  type: 'test'
+  ...
+# Subtest: largest admitted7MiB exact source round-trips without canonicalization; one extra byte refuses
+ok 16 - largest admitted7MiB exact source round-trips without canonicalization; one extra byte refuses
+  ---
+  duration_ms: 166.251208
+  type: 'test'
+  ...
+# Subtest: names and keys preserve Unicode scalar text and reject lone surrogates before write
+ok 17 - names and keys preserve Unicode scalar text and reject lone surrogates before write
+  ---
+  duration_ms: 1.514541
+  type: 'test'
+  ...
+# Subtest: SQL and service enforce project64MiB/workspace128MiB byte quotas independently of count
+ok 18 - SQL and service enforce project64MiB/workspace128MiB byte quotas independently of count
+  ---
+  duration_ms: 119.706583
+  type: 'test'
+  ...
+1..18
+# tests 18
+# suites 0
+# pass 18
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2033.50175

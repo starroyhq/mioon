@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: shared client marks every malformed RPC envelope ambiguous and never retries
+ok 1 - shared client marks every malformed RPC envelope ambiguous and never retries
+  ---
+  duration_ms: 2.391709
+  type: 'test'
+  ...
+# Subtest: shared client keeps caller input unchanged and does not invent optional IDs
+ok 2 - shared client keeps caller input unchanged and does not invent optional IDs
+  ---
+  duration_ms: 0.326583
+  type: 'test'
+  ...
+# Subtest: shared client preserves backend rollback proof and legacy health response
+ok 3 - shared client preserves backend rollback proof and legacy health response
+  ---
+  duration_ms: 0.525209
+  type: 'test'
+  ...
+# Subtest: web RPC malformed success/error JSON remains ambiguous including non-JSON and contradictory status
+ok 4 - web RPC malformed success/error JSON remains ambiguous including non-JSON and contradictory status
+  ---
+  duration_ms: 0.563333
+  type: 'test'
+  ...
+# Subtest: web RPC preserves a valid definite no-commit proof and exact serialized payload
+ok 5 - web RPC preserves a valid definite no-commit proof and exact serialized payload
+  ---
+  duration_ms: 0.225667
+  type: 'test'
+  ...
+# Subtest: shared client accepts exact valid responses for all six mutations, keyed and legacy unkeyed
+ok 6 - shared client accepts exact valid responses for all six mutations, keyed and legacy unkeyed
+  ---
+  duration_ms: 0.806959
+  type: 'test'
+  ...
+# Subtest: shared client rejects malformed six-op data with original key guidance and no retry
+ok 7 - shared client rejects malformed six-op data with original key guidance and no retry
+  ---
+  duration_ms: 2.025041
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 228.895333

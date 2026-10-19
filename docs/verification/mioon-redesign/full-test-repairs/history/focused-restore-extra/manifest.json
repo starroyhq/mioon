@@ -1,0 +1,15 @@
+{
+  "files": [
+    "tests/workspace-restore-execution.test.mjs",
+    "tests/workspace-restore-schema.test.mjs",
+    "tests/workspace-restore-integrity-source-guard.test.mjs"
+  ],
+  "concurrency": 1,
+  "timeoutSeconds": 900,
+  "separateProcesses": true,
+  "source": "real directory enumeration; no exclusions",
+  "nodeFlags": [
+    "--test",
+    "--test-reporter=tap"
+  ]
+}

@@ -1,0 +1,22 @@
+[
+  {
+    "file": "i18n-catalog-integrity.test.mjs",
+    "code": 1,
+    "seconds": 1.11
+  },
+  {
+    "file": "i18n-task-errors.test.mjs",
+    "code": 0,
+    "seconds": 0.58
+  },
+  {
+    "file": "desktop-runtime.test.mjs",
+    "code": 0,
+    "seconds": 0.58
+  },
+  {
+    "file": "desktop-media-shutdown.test.mjs",
+    "code": 1,
+    "seconds": 1.71
+  }
+]

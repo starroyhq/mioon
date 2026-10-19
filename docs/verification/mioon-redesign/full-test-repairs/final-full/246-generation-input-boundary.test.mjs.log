@@ -1,0 +1,358 @@
+TAP version 13
+# Subtest: production discovery carries exact safe regions, lifecycle results and all role facts
+ok 1 - production discovery carries exact safe regions, lifecycle results and all role facts
+  ---
+  duration_ms: 653.700333
+  type: 'test'
+  ...
+# Subtest: new snapshot pins profile, exact region, complete role identity and byte size
+ok 2 - new snapshot pins profile, exact region, complete role identity and byte size
+  ---
+  duration_ms: 605.169041
+  type: 'test'
+  ...
+# Subtest: new submit missing full saved reference has no inserts or POST
+ok 3 - new submit missing full saved reference has no inserts or POST
+  ---
+  duration_ms: 590.778125
+  type: 'test'
+  ...
+# Subtest: new submit foreign relational owner has no inserts or POST
+ok 4 - new submit foreign relational owner has no inserts or POST
+  ---
+  duration_ms: 581.506583
+  type: 'test'
+  ...
+# Subtest: new submit missing size has no inserts or POST
+ok 5 - new submit missing size has no inserts or POST
+  ---
+  duration_ms: 584.805166
+  type: 'test'
+  ...
+# Subtest: new submit oversize has no inserts or POST
+ok 6 - new submit oversize has no inserts or POST
+  ---
+  duration_ms: 581.823542
+  type: 'test'
+  ...
+# Subtest: new submit unsupported image MIME has no inserts or POST
+ok 7 - new submit unsupported image MIME has no inserts or POST
+  ---
+  duration_ms: 595.801833
+  type: 'test'
+  ...
+# Subtest: new submit oversize metadata row has no inserts or POST
+ok 8 - new submit oversize metadata row has no inserts or POST
+  ---
+  duration_ms: 568.60825
+  type: 'test'
+  ...
+# Subtest: relational owner and JSON owner must agree; no pruning or duplicate IDs
+ok 9 - relational owner and JSON owner must agree; no pruning or duplicate IDs
+  ---
+  duration_ms: 583.811333
+  type: 'test'
+  ...
+# Subtest: old error order: revision, disabled provider, legacy limits precede new profile checks
+ok 10 - old error order: revision, disabled provider, legacy limits precede new profile checks
+  ---
+  duration_ms: 589.062875
+  type: 'test'
+  ...
+# Subtest: request replay returns historical response before clock, reference and authorization drift
+ok 11 - request replay returns historical response before clock, reference and authorization drift
+  ---
+  duration_ms: 577.127125
+  type: 'test'
+  ...
+# Subtest: legacy failed retry resolves size from same owned asset without rewriting old snapshot
+ok 12 - legacy failed retry resolves size from same owned asset without rewriting old snapshot
+  ---
+  duration_ms: 574.736917
+  type: 'test'
+  ...
+# Subtest: new retry checks frozen references, manifest and current lifecycle but preserves accepted job
+ok 13 - new retry checks frozen references, manifest and current lifecycle but preserves accepted job
+  ---
+  duration_ms: 572.625166
+  type: 'test'
+  ...
+# Subtest: queued contradictory role rejected before attempt or POST
+ok 14 - queued contradictory role rejected before attempt or POST
+  ---
+  duration_ms: 625.546708
+  type: 'test'
+  ...
+# Subtest: queued partial manifest rejected before attempt or POST
+ok 15 - queued partial manifest rejected before attempt or POST
+  ---
+  duration_ms: 593.923666
+  type: 'test'
+  ...
+# Subtest: queued missing pin rejected before attempt or POST
+ok 16 - queued missing pin rejected before attempt or POST
+  ---
+  duration_ms: 600.6175
+  type: 'test'
+  ...
+# Subtest: queued changed profile rejected before attempt or POST
+ok 17 - queued changed profile rejected before attempt or POST
+  ---
+  duration_ms: 595.383208
+  type: 'test'
+  ...
+# Subtest: queued unlisted reference rejected before attempt or POST
+ok 18 - queued unlisted reference rejected before attempt or POST
+  ---
+  duration_ms: 587.092417
+  type: 'test'
+  ...
+# Subtest: queued frozen mismatch rejected before attempt or POST
+ok 19 - queued frozen mismatch rejected before attempt or POST
+  ---
+  duration_ms: 581.512458
+  type: 'test'
+  ...
+# Subtest: synchronous POST fence catches date after adapter preparation without counting dispatch
+ok 20 - synchronous POST fence catches date after adapter preparation without counting dispatch
+  ---
+  duration_ms: 588.902667
+  type: 'test'
+  ...
+# Subtest: synchronous POST fence catches region after adapter preparation without counting dispatch
+ok 21 - synchronous POST fence catches region after adapter preparation without counting dispatch
+  ---
+  duration_ms: 591.902208
+  type: 'test'
+  ...
+# Subtest: synchronous POST fence catches ownership after adapter preparation without counting dispatch
+ok 22 - synchronous POST fence catches ownership after adapter preparation without counting dispatch
+  ---
+  duration_ms: 587.233042
+  type: 'test'
+  ...
+# Subtest: accepted reconciliation and polling are allowed after new-submission cutoff
+ok 23 - accepted reconciliation and polling are allowed after new-submission cutoff
+  ---
+  duration_ms: 589.11125
+  type: 'test'
+  ...
+# Subtest: registry wrappers and copied handles retain policy, unknown configured model fails closed
+ok 24 - registry wrappers and copied handles retain policy, unknown configured model fails closed
+  ---
+  duration_ms: 588.222417
+  type: 'test'
+  ...
+# Subtest: trusted direct-factory embedding stays legacy; profiles require production registry ownership
+ok 25 - trusted direct-factory embedding stays legacy; profiles require production registry ownership
+  ---
+  duration_ms: 589.590291
+  type: 'test'
+  ...
+# Subtest: legacy frozen explicit role=style_reference is never relabeled or dropped
+ok 26 - legacy frozen explicit role=style_reference is never relabeled or dropped
+  ---
+  duration_ms: 582.865834
+  type: 'test'
+  ...
+# Subtest: legacy frozen explicit role=unknown_role is never relabeled or dropped
+ok 27 - legacy frozen explicit role=unknown_role is never relabeled or dropped
+  ---
+  duration_ms: 588.493917
+  type: 'test'
+  ...
+# Subtest: legacy frozen explicit durationSeconds=2 is never relabeled or dropped
+ok 28 - legacy frozen explicit durationSeconds=2 is never relabeled or dropped
+  ---
+  duration_ms: 585.732125
+  type: 'test'
+  ...
+# Subtest: legacy frozen explicit duration=2 is never relabeled or dropped
+ok 29 - legacy frozen explicit duration=2 is never relabeled or dropped
+  ---
+  duration_ms: 585.486834
+  type: 'test'
+  ...
+# Subtest: pinned frozen explicit role=style_reference is never relabeled or dropped
+ok 30 - pinned frozen explicit role=style_reference is never relabeled or dropped
+  ---
+  duration_ms: 583.273416
+  type: 'test'
+  ...
+# Subtest: pinned frozen explicit role=unknown_role is never relabeled or dropped
+ok 31 - pinned frozen explicit role=unknown_role is never relabeled or dropped
+  ---
+  duration_ms: 586.60175
+  type: 'test'
+  ...
+# Subtest: pinned frozen explicit durationSeconds=2 is never relabeled or dropped
+ok 32 - pinned frozen explicit durationSeconds=2 is never relabeled or dropped
+  ---
+  duration_ms: 588.610958
+  type: 'test'
+  ...
+# Subtest: pinned frozen explicit duration=2 is never relabeled or dropped
+ok 33 - pinned frozen explicit duration=2 is never relabeled or dropped
+  ---
+  duration_ms: 598.664459
+  type: 'test'
+  ...
+# Subtest: managed asset explicit style_reference is not reinterpreted
+ok 34 - managed asset explicit style_reference is not reinterpreted
+  ---
+  duration_ms: 605.247875
+  type: 'test'
+  ...
+# Subtest: managed asset explicit unknown_role is not reinterpreted
+ok 35 - managed asset explicit unknown_role is not reinterpreted
+  ---
+  duration_ms: 583.171625
+  type: 'test'
+  ...
+# Subtest: POST fence leaves relational jobs reassignment and events byte-identical
+ok 36 - POST fence leaves relational jobs reassignment and events byte-identical
+  ---
+  duration_ms: 627.40975
+  type: 'test'
+  ...
+# Subtest: POST fence leaves relational shots reassignment and events byte-identical
+ok 37 - POST fence leaves relational shots reassignment and events byte-identical
+  ---
+  duration_ms: 655.162458
+  type: 'test'
+  ...
+# Subtest: explicit copied Map wrappers and recreated registry on worker restart retain lifecycle gate
+ok 38 - explicit copied Map wrappers and recreated registry on worker restart retain lifecycle gate
+  ---
+  duration_ms: 582.045666
+  type: 'test'
+  ...
+# Subtest: unknown configured model is rejected at queued dispatch
+ok 39 - unknown configured model is rejected at queued dispatch
+  ---
+  duration_ms: 598.64975
+  type: 'test'
+  ...
+# Subtest: private fence abort and post-dispatch uncertainty retain existing request semantics
+ok 40 - private fence abort and post-dispatch uncertainty retain existing request semantics
+  ---
+  duration_ms: 0.313584
+  type: 'test'
+  ...
+# Subtest: local cancellation during adapter preparation preserves cancellation without POST
+ok 41 - local cancellation during adapter preparation preserves cancellation without POST
+  ---
+  duration_ms: 582.701833
+  type: 'test'
+  ...
+# Subtest: minimax invalid server-configured region advertises no exact profile and cannot insert or POST
+ok 42 - minimax invalid server-configured region advertises no exact profile and cannot insert or POST
+  ---
+  duration_ms: 583.103958
+  type: 'test'
+  ...
+# Subtest: vidu invalid server-configured region advertises no exact profile and cannot insert or POST
+ok 43 - vidu invalid server-configured region advertises no exact profile and cannot insert or POST
+  ---
+  duration_ms: 597.820917
+  type: 'test'
+  ...
+# Subtest: queued startup relational-owner rejection leaves raw jobs and events unchanged
+ok 44 - queued startup relational-owner rejection leaves raw jobs and events unchanged
+  ---
+  duration_ms: 583.464209
+  type: 'test'
+  ...
+# Subtest: queued startup json-owner rejection leaves raw jobs and events unchanged
+ok 45 - queued startup json-owner rejection leaves raw jobs and events unchanged
+  ---
+  duration_ms: 582.260167
+  type: 'test'
+  ...
+# Subtest: queued startup shot-owner rejection leaves raw jobs and events unchanged
+ok 46 - queued startup shot-owner rejection leaves raw jobs and events unchanged
+  ---
+  duration_ms: 577.504917
+  type: 'test'
+  ...
+# Subtest: submitting startup relational-owner rejection leaves raw jobs and events unchanged
+ok 47 - submitting startup relational-owner rejection leaves raw jobs and events unchanged
+  ---
+  duration_ms: 573.7895
+  type: 'test'
+  ...
+# Subtest: submitting startup json-owner rejection leaves raw jobs and events unchanged
+ok 48 - submitting startup json-owner rejection leaves raw jobs and events unchanged
+  ---
+  duration_ms: 576.926375
+  type: 'test'
+  ...
+# Subtest: submitting startup shot-owner rejection leaves raw jobs and events unchanged
+ok 49 - submitting startup shot-owner rejection leaves raw jobs and events unchanged
+  ---
+  duration_ms: 586.625792
+  type: 'test'
+  ...
+# Subtest: deferred deleted-job cannot authorize preflight-failure persistence
+ok 50 - deferred deleted-job cannot authorize preflight-failure persistence
+  ---
+  duration_ms: 581.123625
+  type: 'test'
+  ...
+# Subtest: deferred json-identity cannot authorize preflight-failure persistence
+ok 51 - deferred json-identity cannot authorize preflight-failure persistence
+  ---
+  duration_ms: 582.093
+  type: 'test'
+  ...
+# Subtest: deferred snapshot cannot authorize preflight-failure persistence
+ok 52 - deferred snapshot cannot authorize preflight-failure persistence
+  ---
+  duration_ms: 574.771417
+  type: 'test'
+  ...
+# Subtest: deferred revision cannot authorize preflight-failure persistence
+ok 53 - deferred revision cannot authorize preflight-failure persistence
+  ---
+  duration_ms: 591.424541
+  type: 'test'
+  ...
+# Subtest: deferred coherent-reassignment cannot authorize preflight-failure persistence
+ok 54 - deferred coherent-reassignment cannot authorize preflight-failure persistence
+  ---
+  duration_ms: 580.320333
+  type: 'test'
+  ...
+# Subtest: registration and metadata-only initialization trigger no unknown provider Proxy traps
+ok 55 - registration and metadata-only initialization trigger no unknown provider Proxy traps
+  ---
+  duration_ms: 630.421125
+  type: 'test'
+  ...
+# Subtest: opaque registration cannot be copied or disabled through serialized capability fields
+ok 56 - opaque registration cannot be copied or disabled through serialized capability fields
+  ---
+  duration_ms: 578.157792
+  type: 'test'
+  ...
+# Subtest: only registered enforcement publishes canonical reserved profile discovery fields
+ok 57 - only registered enforcement publishes canonical reserved profile discovery fields
+  ---
+  duration_ms: 591.947583
+  type: 'test'
+  ...
+# Subtest: archived v1 queued unsupported role retains semantic rejection without dispatch
+ok 58 - archived v1 queued unsupported role retains semantic rejection without dispatch
+  ---
+  duration_ms: 597.017334
+  type: 'test'
+  ...
+1..58
+# tests 58
+# suites 0
+# pass 58
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 34029.076334

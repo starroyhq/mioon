@@ -1,0 +1,45 @@
+[
+  {
+    "file": "tests/comfy-image-ui.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 1.33,
+    "tapSummary": {
+      "tests": 33,
+      "suites": 0,
+      "pass": 33,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-modal/001-comfy-image-ui.test.mjs.log",
+    "sha256": "3c57de834457391d8a946e891094dd854d694cedfb538b0f1fe4394f84390742",
+    "sourceSha256": "21ebd167d020650fb9c602899366cf779143e157eecceeae62fb223ed51ffc32",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/editor-window-modal-observation.test.mjs",
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 0.51,
+    "tapSummary": {
+      "tests": 9,
+      "suites": 0,
+      "pass": 5,
+      "fail": 4,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-modal/002-editor-window-modal-observation.test.mjs.log",
+    "sha256": "5a47f26dfdd7e4dfaa4cc8c026efe53b23ccf1337755a408d2a6d287cb3b2289",
+    "sourceSha256": "dd67823514260ccf06918e2dbbac8318201c60be0fa469f830d8e2553bbeb554",
+    "failedSubtests": [
+      "only the current cancellation resumes one Agent read and never restores old send consent",
+      "cancelling while still blurred waits for actual focus rather than reviving an inactive Agent",
+      "new inspection replaces pause ownership; late old cancel and commit cannot resume or authorize the new attempt",
+      "final unload veto never resumes reads inline; exact main cancellation resumes after consumed ticket"
+    ]
+  }
+]

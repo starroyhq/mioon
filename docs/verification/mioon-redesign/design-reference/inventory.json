@@ -1,0 +1,248 @@
+[
+  {
+    "id": "T51NFi",
+    "name": "01 基础规范 Foundations",
+    "width": 1440
+  },
+  {
+    "id": "SqOTq",
+    "name": "02 组件 · 基础控件 Controls",
+    "width": 1440
+  },
+  {
+    "id": "cZaUU",
+    "name": "03 组件 · 内容与反馈 Content",
+    "width": 1440
+  },
+  {
+    "id": "nni9E",
+    "name": "04 组件 · 面板与浮层 Panels",
+    "width": 1440
+  },
+  {
+    "id": "FlfTo",
+    "name": "05 组件 · 时间线 Timeline",
+    "width": 1440
+  },
+  {
+    "id": "XFmp7",
+    "name": "06 组件 · 外壳 Shell",
+    "width": 1640
+  },
+  {
+    "id": "AXWIo",
+    "name": "01 登录 Login 1440×900",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "zIKos",
+    "name": "02 项目首页 · 空状态 1440×900",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "a4jM1",
+    "name": "03 项目首页 · 有项目 1440×900",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "U8uCG",
+    "name": "04 新建项目弹窗 1440×900",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "aWsLD",
+    "name": "01 画板 · 空状态",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "YBDza",
+    "name": "02 画板 · 镜头与节点",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "EcwlK",
+    "name": "03 画板 · 选中镜头",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "ARfj5",
+    "name": "04 画板 · 版本页",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "w394T4",
+    "name": "05 画板 · 版本对比",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "pB79F",
+    "name": "06 画板 · 生成中",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "g4H17A",
+    "name": "01 剪辑 · 空时间线（引导拖入素材）",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "kW2kV",
+    "name": "02 剪辑 · 选中片段（基础/画面展开）",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "Oq580",
+    "name": "03 剪辑 · 预览已过期",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "y1lmu",
+    "name": "04 剪辑 · 正在渲染预览",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "V6Ofzj",
+    "name": "05 剪辑 · 音频分组展开",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "lcuQ6",
+    "name": "06a 剪辑 · 片段“更多”菜单",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "HBh5I",
+    "name": "06b 剪辑 · 移除片段确认",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "IRPyq",
+    "name": "01 导出 · 检查",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "I5h8FC",
+    "name": "02 导出 · 设置",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "B1mjSX",
+    "name": "03 导出 · 确认",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "MshFL",
+    "name": "04 导出 · 进行中",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "g1aNJ",
+    "name": "05 导出 · 完成",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "WufZ7",
+    "name": "06 导出 · 导出记录",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "NXLjA",
+    "name": "01 顶栏 · 任务浮层展开",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "Y4vMi",
+    "name": "02 任务弹窗 · 全部 · 结果未知详情",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "nYnEe",
+    "name": "03 智能助理 · 首次发送授权确认",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "fp82j",
+    "name": "04 智能助理 · 对话与修改建议",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "OsUcJ",
+    "name": "05 设置中心 · 通用",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "r9Wzb",
+    "name": "06 设置中心 · 模型与服务",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "ck2ln",
+    "name": "07 设置中心 · 工作区",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "pxnNA",
+    "name": "08 设置中心 · 视频工具",
+    "width": 1440,
+    "height": 900
+  },
+  {
+    "id": "iRUKE",
+    "name": "01 画板 · 紧凑 1050×680（素材库收起）",
+    "width": 1050,
+    "height": 680
+  },
+  {
+    "id": "Yy2RG",
+    "name": "02 画板 · 素材库临时展开（浮层盖在画布上）",
+    "width": 1050,
+    "height": 680
+  },
+  {
+    "id": "Q90DkQ",
+    "name": "03 剪辑 · 紧凑 1050×680（时间线最小 160）",
+    "width": 1050,
+    "height": 680
+  },
+  {
+    "id": "fwg1T",
+    "name": "04 剪辑 · 时间线收起为工具栏，预览最大化",
+    "width": 1050,
+    "height": 680
+  },
+  {
+    "id": "JR3Bc",
+    "name": "05 剪辑 · 属性面板也收起（仅图标栏）",
+    "width": 1050,
+    "height": 680
+  }
+]

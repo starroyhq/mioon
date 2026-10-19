@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: timeline demo refuses a broad existing root without repairing it or spawning a backend
+ok 1 - timeline demo refuses a broad existing root without repairing it or spawning a backend
+  ---
+  duration_ms: 127.000917
+  type: 'test'
+  ...
+# Subtest: timeline demo rejects an alias before creating nonexistent descendants outside the selected path
+ok 2 - timeline demo rejects an alias before creating nonexistent descendants outside the selected path
+  ---
+  duration_ms: 120.525375
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 370.955084

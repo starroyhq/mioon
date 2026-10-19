@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: actual42 prepare and execute commit exact opacity while preserving volume, role and colour
+ok 1 - actual42 prepare and execute commit exact opacity while preserving volume, role and colour
+  ---
+  duration_ms: 1085.560917
+  type: 'test'
+  ...
+# Subtest: 42 durable replay, reopen, undo/redo and compound updates preserve exact fields and reject shrink atomically
+ok 2 - 42 durable replay, reopen, undo/redo and compound updates preserve exact fields and reject shrink atomically
+  ---
+  duration_ms: 1748.058792
+  type: 'test'
+  ...
+# Subtest: a real receipt INSERT followed by failure rolls back timeline, redo replacement, history and cursor before exact retry
+ok 3 - a real receipt INSERT followed by failure rolls back timeline, redo replacement, history and cursor before exact retry
+  ---
+  duration_ms: 737.371333
+  type: 'test'
+  ...
+# Subtest: 43 requires exact origin, holds captured tasks, and reopens after fresh update/undo/redo with frozen evidence intact
+ok 4 - 43 requires exact origin, holds captured tasks, and reopens after fresh update/undo/redo with frozen evidence intact
+  ---
+  duration_ms: 1793.646709
+  type: 'test'
+  ...
+# Subtest: candidate task services must be privately bound to the same store, including duplicate domain IDs
+ok 5 - candidate task services must be privately bound to the same store, including duplicate domain IDs
+  ---
+  duration_ms: 518.739708
+  type: 'test'
+  ...
+# Subtest: revision digit growth refuses the final complete record above 262144 bytes with no partial history or receipt
+ok 6 - revision digit growth refuses the final complete record above 262144 bytes with no partial history or receipt
+  ---
+  duration_ms: 337.253958
+  type: 'test'
+  ...
+# Subtest: default48 still refuses opacity and never upgrades to candidate42
+ok 7 - default48 still refuses opacity and never upgrades to candidate42
+  ---
+  duration_ms: 614.790125
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 7226.389959

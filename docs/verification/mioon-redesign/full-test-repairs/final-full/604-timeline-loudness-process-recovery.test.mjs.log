@@ -1,0 +1,18 @@
+TAP version 13
+# Subtest: SIGKILL after real loudness commit retains one history/receipt and recovers the original durable ACK with missing media/tools
+ok 1 - SIGKILL after real loudness commit retains one history/receipt and recovers the original durable ACK with missing media/tools
+  ---
+  duration_ms: 3575.005666
+  type: 'test'
+  ...
+# SIGKILL afterBusinessCommit confirmed for owned worker 55535; new owner 55754 recovered original ACK without media or redispatch.
+# Reaped 2 owned workers: 55535, 55754
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4011.015667

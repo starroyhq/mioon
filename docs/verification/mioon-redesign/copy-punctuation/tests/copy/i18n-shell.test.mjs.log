@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: shell catalog has all four locales, exact placeholders, and no missing-key fallback
+ok 1 - shell catalog has all four locales, exact placeholders, and no missing-key fallback
+  ---
+  duration_ms: 19.2105
+  type: 'test'
+  ...
+# Subtest: reference display changes language without changing record identity or full user names
+ok 2 - reference display changes language without changing record identity or full user names
+  ---
+  duration_ms: 0.59975
+  type: 'test'
+  ...
+# Subtest: stored uncertainty notices re-render without changing filenames, outcomes, or request data
+ok 3 - stored uncertainty notices re-render without changing filenames, outcomes, or request data
+  ---
+  duration_ms: 0.382
+  type: 'test'
+  ...
+# Subtest: shell component controllers are not keyed or reconstructed by locale
+ok 4 - shell component controllers are not keyed or reconstructed by locale
+  ---
+  duration_ms: 0.942
+  type: 'test'
+  ...
+# Subtest: header actions and native settings remain reachable without locale or resize remount keys
+ok 5 - header actions and native settings remain reachable without locale or resize remount keys
+  ---
+  duration_ms: 2.244875
+  type: 'test'
+  ...
+# Subtest: known workspace/storage diagnostics retain actionable meaning without exposing raw server text
+ok 6 - known workspace/storage diagnostics retain actionable meaning without exposing raw server text
+  ---
+  duration_ms: 0.581958
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 232.274542

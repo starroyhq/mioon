@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: offline upgrade parser requires every explicit input, exact channels and region-neutral languages
+ok 1 - offline upgrade parser requires every explicit input, exact channels and region-neutral languages
+  ---
+  duration_ms: 2.288792
+  type: 'test'
+  ...
+# Subtest: upgrade result strictly binds ordinary40 to ordinary42 with explicit preservation and cleanup policies
+ok 2 - upgrade result strictly binds ordinary40 to ordinary42 with explicit preservation and cleanup policies
+  ---
+  duration_ms: 0.843416
+  type: 'test'
+  ...
+# Subtest: all four help copies disclose read-only existing backup, preservation, qualifications and remaining acceptance
+ok 3 - all four help copies disclose read-only existing backup, preservation, qualifications and remaining acceptance
+  ---
+  duration_ms: 0.724125
+  type: 'test'
+  ...
+# Subtest: fixed error messages are localized and never disclose unknown errors, getters or private text
+ok 4 - fixed error messages are localized and never disclose unknown errors, getters or private text
+  ---
+  duration_ms: 0.950458
+  type: 'test'
+  ...
+# Subtest: uncertain publication sanitizes exact generated binding and retains cleanup uncertainty without retry advice
+ok 5 - uncertain publication sanitizes exact generated binding and retains cleanup uncertainty without retry advice
+  ---
+  duration_ms: 0.249417
+  type: 'test'
+  ...
+# Subtest: actual Node CLI help/schema stay inert and return one JSON envelope with no business imports
+ok 6 - actual Node CLI help/schema stay inert and return one JSON envelope with no business imports
+  ---
+  duration_ms: 1374.241042
+  type: 'test'
+  ...
+# Subtest: actual CLI runner adapter checks exact arguments, result schema, cancellation and scoped listeners without executing a workspace
+ok 7 - actual CLI runner adapter checks exact arguments, result schema, cancellation and scoped listeners without executing a workspace
+  ---
+  duration_ms: 950.11925
+  type: 'test'
+  ...
+# Subtest: actual CLI upgrades only its own closed40 fixture from a read-only existing backup and leaves source bytes intact
+ok 8 - actual CLI upgrades only its own closed40 fixture from a read-only existing backup and leaves source bytes intact
+  ---
+  duration_ms: 3572.25475
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 6250.819542

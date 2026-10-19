@@ -1,0 +1,232 @@
+TAP version 13
+# Subtest: exact40 read gate and copied upgrade retain raw histories, receipts, ACK task, LUT bytes, preferences and sequence
+ok 1 - exact40 read gate and copied upgrade retain raw histories, receipts, ACK task, LUT bytes, preferences and sequence
+  ---
+  duration_ms: 2510.177458
+  type: 'test'
+  ...
+# Subtest: unresolved or unacknowledged prepared task refuses without state edits
+ok 2 - unresolved or unacknowledged prepared task refuses without state edits
+  ---
+  duration_ms: 933.885791
+  type: 'test'
+  ...
+# Subtest: unresolved or unacknowledged unknown task refuses without state edits
+ok 3 - unresolved or unacknowledged unknown task refuses without state edits
+  ---
+  duration_ms: 788.987
+  type: 'test'
+  ...
+# Subtest: unresolved or unacknowledged dispatching task refuses without state edits
+ok 4 - unresolved or unacknowledged dispatching task refuses without state edits
+  ---
+  duration_ms: 893.707625
+  type: 'test'
+  ...
+# Subtest: unresolved or unacknowledged applied task refuses without state edits
+ok 5 - unresolved or unacknowledged applied task refuses without state edits
+  ---
+  duration_ms: 992.434667
+  type: 'test'
+  ...
+# Subtest: unresolved or unacknowledged not_applied task refuses without state edits
+ok 6 - unresolved or unacknowledged not_applied task refuses without state edits
+  ---
+  duration_ms: 948.566791
+  type: 'test'
+  ...
+# Subtest: terminal acknowledged task still needs its original request digest and receipt evidence
+ok 7 - terminal acknowledged task still needs its original request digest and receipt evidence
+  ---
+  duration_ms: 1038.555125
+  type: 'test'
+  ...
+# Subtest: restored41 remains held with its original origin and epoch and is never converted
+ok 8 - restored41 remains held with its original origin and epoch and is never converted
+  ---
+  duration_ms: 1011.059791
+  type: 'test'
+  ...
+# Subtest: unknown table source fails closed without a42 marker
+ok 9 - unknown table source fails closed without a42 marker
+  ---
+  duration_ms: 858.821791
+  type: 'test'
+  ...
+# Subtest: missing marker source fails closed without a42 marker
+ok 10 - missing marker source fails closed without a42 marker
+  ---
+  duration_ms: 1146.733333
+  type: 'test'
+  ...
+# Subtest: foreign key source fails closed without a42 marker
+ok 11 - foreign key source fails closed without a42 marker
+  ---
+  duration_ms: 988.358833
+  type: 'test'
+  ...
+# Subtest: malformed JSON source fails closed without a42 marker
+ok 12 - malformed JSON source fails closed without a42 marker
+  ---
+  duration_ms: 876.810167
+  type: 'test'
+  ...
+# Subtest: duplicate JSON source fails closed without a42 marker
+ok 13 - duplicate JSON source fails closed without a42 marker
+  ---
+  duration_ms: 990.738125
+  type: 'test'
+  ...
+# Subtest: bad preferences source fails closed without a42 marker
+ok 14 - bad preferences source fails closed without a42 marker
+  ---
+  duration_ms: 875.953542
+  type: 'test'
+  ...
+# Subtest: candidate incompatible asset provenance refuses source intact
+ok 15 - candidate incompatible asset provenance refuses source intact
+  ---
+  duration_ms: 955.004292
+  type: 'test'
+  ...
+# Subtest: candidate incompatible asset relativePath refuses source intact
+ok 16 - candidate incompatible asset relativePath refuses source intact
+  ---
+  duration_ms: 903.365292
+  type: 'test'
+  ...
+# Subtest: candidate incompatible asset relativePath refuses source intact
+ok 17 - candidate incompatible asset relativePath refuses source intact
+  ---
+  duration_ms: 829.245167
+  type: 'test'
+  ...
+# Subtest: candidate incompatible asset mimeType refuses source intact
+ok 18 - candidate incompatible asset mimeType refuses source intact
+  ---
+  duration_ms: 830.456583
+  type: 'test'
+  ...
+# Subtest: candidate incompatible asset sha256 refuses source intact
+ok 19 - candidate incompatible asset sha256 refuses source intact
+  ---
+  duration_ms: 1341.313167
+  type: 'test'
+  ...
+# Subtest: candidate incompatible asset sizeBytes refuses source intact
+ok 20 - candidate incompatible asset sizeBytes refuses source intact
+  ---
+  duration_ms: 1629.679875
+  type: 'test'
+  ...
+# Subtest: legacy sequence export is explicitly unsupported rather than hidden from project reads
+ok 21 - legacy sequence export is explicitly unsupported rather than hidden from project reads
+  ---
+  duration_ms: 1471.073792
+  type: 'test'
+  ...
+# Subtest: valid failed timeline export with its queued identity receipt survives as read-only history
+ok 22 - valid failed timeline export with its queued identity receipt survives as read-only history
+  ---
+  duration_ms: 1417.016125
+  type: 'test'
+  ...
+# Subtest: timeline export missing receipt cannot acquire42 admission
+ok 23 - timeline export missing receipt cannot acquire42 admission
+  ---
+  duration_ms: 1033.798042
+  type: 'test'
+  ...
+# Subtest: timeline export wrong identity cannot acquire42 admission
+ok 24 - timeline export wrong identity cannot acquire42 admission
+  ---
+  duration_ms: 934.753291
+  type: 'test'
+  ...
+# Subtest: timeline export invalid snapshot cannot acquire42 admission
+ok 25 - timeline export invalid snapshot cannot acquire42 admission
+  ---
+  duration_ms: 1089.465333
+  type: 'test'
+  ...
+# Subtest: timeline export queued cannot acquire42 admission
+ok 26 - timeline export queued cannot acquire42 admission
+  ---
+  duration_ms: 1243.239833
+  type: 'test'
+  ...
+# Subtest: throw after marker rolls back marker and all private-copy changes
+ok 27 - throw after marker rolls back marker and all private-copy changes
+  ---
+  duration_ms: 1200.698292
+  type: 'test'
+  ...
+# Subtest: unknown table after marker rolls back marker and all private-copy changes
+ok 28 - unknown table after marker rolls back marker and all private-copy changes
+  ---
+  duration_ms: 858.699167
+  type: 'test'
+  ...
+# Subtest: row mutation after marker rolls back marker and all private-copy changes
+ok 29 - row mutation after marker rolls back marker and all private-copy changes
+  ---
+  duration_ms: 1027.774042
+  type: 'test'
+  ...
+# Subtest: nested caller transaction and unsafe PRAGMAs refuse without ending a caller transaction
+ok 30 - nested caller transaction and unsafe PRAGMAs refuse without ending a caller transaction
+  ---
+  duration_ms: 1362.884625
+  type: 'test'
+  ...
+# Subtest: legitimate acknowledged not_applied task retains its absence proof and cannot be resumed
+ok 31 - legitimate acknowledged not_applied task retains its absence proof and cannot be resumed
+  ---
+  duration_ms: 967.954333
+  type: 'test'
+  ...
+# Subtest: generation job queued cannot enter ordinary42
+ok 32 - generation job queued cannot enter ordinary42
+  ---
+  duration_ms: 1474.812458
+  type: 'test'
+  ...
+# Subtest: generation job submitting cannot enter ordinary42
+ok 33 - generation job submitting cannot enter ordinary42
+  ---
+  duration_ms: 1136.522583
+  type: 'test'
+  ...
+# Subtest: generation job submission_unknown cannot enter ordinary42
+ok 34 - generation job submission_unknown cannot enter ordinary42
+  ---
+  duration_ms: 922.29575
+  type: 'test'
+  ...
+# Subtest: generation job running cannot enter ordinary42
+ok 35 - generation job running cannot enter ordinary42
+  ---
+  duration_ms: 872.275667
+  type: 'test'
+  ...
+# Subtest: generation job downloading cannot enter ordinary42
+ok 36 - generation job downloading cannot enter ordinary42
+  ---
+  duration_ms: 985.529625
+  type: 'test'
+  ...
+# Subtest: generation job unknown cannot enter ordinary42
+ok 37 - generation job unknown cannot enter ordinary42
+  ---
+  duration_ms: 1314.245875
+  type: 'test'
+  ...
+1..37
+# tests 37
+# suites 0
+# pass 37
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 41142.924291

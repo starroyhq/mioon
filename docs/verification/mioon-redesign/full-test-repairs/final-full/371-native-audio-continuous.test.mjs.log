@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: continuous native ownership retains one 96 MiB lease across blocks and seek generations
+ok 1 - continuous native ownership retains one 96 MiB lease across blocks and seek generations
+  ---
+  duration_ms: 12.669084
+  type: 'test'
+  ...
+# Subtest: continuous proofs reject forged identity, method, query, replays and a second active consumer
+ok 2 - continuous proofs reject forged identity, method, query, replays and a second active consumer
+  ---
+  duration_ms: 3.437208
+  type: 'test'
+  ...
+# Subtest: cross-window handoff awaits cursor retirement plus exact resource, response, invocation and renderer proof
+ok 3 - cross-window handoff awaits cursor retirement plus exact resource, response, invocation and renderer proof
+  ---
+  duration_ms: 4.601291
+  type: 'test'
+  ...
+# Subtest: DELETE is method-bound, single-use cleanup and cannot admit more PCM even before main retirement
+ok 4 - DELETE is method-bound, single-use cleanup and cannot admit more PCM even before main retirement
+  ---
+  duration_ms: 4.632833
+  type: 'test'
+  ...
+# Subtest: cancelled requests may leave bounded sequence and generation gaps, including before the first network admission
+ok 5 - cancelled requests may leave bounded sequence and generation gaps, including before the first network admission
+  ---
+  duration_ms: 3.723416
+  type: 'test'
+  ...
+# Subtest: a newer signed seek fences the old consumer before its delayed network close without releasing its resource proof
+ok 6 - a newer signed seek fences the old consumer before its delayed network close without releasing its resource proof
+  ---
+  duration_ms: 2.815458
+  type: 'test'
+  ...
+# Subtest: cleanup uncertainty keeps a continuous session charged after all ordinary closures
+ok 7 - cleanup uncertainty keeps a continuous session charged after all ordinary closures
+  ---
+  duration_ms: 1.912875
+  type: 'test'
+  ...
+# Subtest: retiring a provisional continuous reserve cannot publish its late plan or omit session cleanup
+ok 8 - retiring a provisional continuous reserve cannot publish its late plan or omit session cleanup
+  ---
+  duration_ms: 0.908833
+  type: 'test'
+  ...
+# Subtest: continuous preload and renderer adapter bind the exact session and retain late cleanup
+ok 9 - continuous preload and renderer adapter bind the exact session and retain late cleanup
+  ---
+  duration_ms: 3.673542
+  type: 'test'
+  ...
+# Subtest: v2 signatures cannot be reused under another backend epoch or v1 protocol
+ok 10 - v2 signatures cannot be reused under another backend epoch or v1 protocol
+  ---
+  duration_ms: 1.357208
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 279.10175

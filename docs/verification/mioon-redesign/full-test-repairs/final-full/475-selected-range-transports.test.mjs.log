@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: actual offline CLI and official MCP discover the same optional strict selected-range schema and unchanged operation effects
+ok 1 - actual offline CLI and official MCP discover the same optional strict selected-range schema and unchanged operation effects
+  ---
+  duration_ms: 1103.161875
+  type: 'test'
+  ...
+# Subtest: real HTTP, CLI and official MCP preflight/render preserve exact range, full graph and immutable lost-ACK replay
+ok 2 - real HTTP, CLI and official MCP preflight/render preserve exact range, full graph and immutable lost-ACK replay
+  ---
+  duration_ms: 4582.742375
+  type: 'test'
+  ...
+# Subtest: all transports reject invalid/preview ranges; omission retains legacy bytes and full-span is distinct
+ok 3 - all transports reject invalid/preview ranges; omission retains legacy bytes and full-span is distinct
+  ---
+  duration_ms: 6820.206709
+  type: 'test'
+  ...
+# Subtest: actual CLI and official MCP reject removed or changed range acknowledgements and explicitly recover the original single export
+ok 4 - actual CLI and official MCP reject removed or changed range acknowledgements and explicitly recover the original single export
+  ---
+  duration_ms: 2078.436291
+  type: 'test'
+  ...
+# Subtest: selected-range preflight still checks a missing off-range source across actual HTTP, CLI and MCP
+ok 5 - selected-range preflight still checks a missing off-range source across actual HTTP, CLI and MCP
+  ---
+  duration_ms: 1341.610375
+  type: 'test'
+  ...
+# Subtest: HTTP abort, actual CLI Ctrl+C and official MCP cancellation revoke only the selected-range preflight observer
+ok 6 - HTTP abort, actual CLI Ctrl+C and official MCP cancellation revoke only the selected-range preflight observer
+  ---
+  duration_ms: 1769.761917
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 18111.149334

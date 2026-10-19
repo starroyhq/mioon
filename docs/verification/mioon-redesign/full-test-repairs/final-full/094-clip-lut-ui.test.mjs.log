@@ -1,0 +1,364 @@
+TAP version 13
+# Subtest: legacy is unchanged until explicit open, range choice and source declaration
+ok 1 - legacy is unchanged until explicit open, range choice and source declaration
+  ---
+  duration_ms: 4.462417
+  type: 'test'
+  ...
+# Subtest: known HDR/Log/tag/range conflicts cannot be overridden by declaration
+ok 2 - known HDR/Log/tag/range conflicts cannot be overridden by declaration
+  ---
+  duration_ms: 5.259625
+  type: 'test'
+  ...
+# Subtest: source inspection binds project asset and exact hash and ignores stale owners
+ok 3 - source inspection binds project asset and exact hash and ignores stale owners
+  ---
+  duration_ms: 3.954291
+  type: 'test'
+  ...
+# Subtest: resource inspection and creative declaration are separate from import and source confirmation
+ok 4 - resource inspection and creative declaration are separate from import and source confirmation
+  ---
+  duration_ms: 1.052125
+  type: 'test'
+  ...
+# Subtest: selection races, disconnected controls and reconfirmed replacement preserve safe boundaries
+ok 5 - selection races, disconnected controls and reconfirmed replacement preserve safe boundaries
+  ---
+  duration_ms: 1.797166
+  type: 'test'
+  ...
+# Subtest: explicit Cube imports are bounded, byte-exact and never change clip drafts
+ok 6 - explicit Cube imports are bounded, byte-exact and never change clip drafts
+  ---
+  duration_ms: 7.354708
+  type: 'test'
+  ...
+# Subtest: unknown imports block replacement files and retry only exact original bytes and request ID
+ok 7 - unknown imports block replacement files and retry only exact original bytes and request ID
+  ---
+  duration_ms: 1.815833
+  type: 'test'
+  ...
+# Subtest: hash-mismatched ACK is uncertain; same-session navigation retains exact retry without stale clip writes
+ok 8 - hash-mismatched ACK is uncertain; same-session navigation retains exact retry without stale clip writes
+  ---
+  duration_ms: 2.659209
+  type: 'test'
+  ...
+# Subtest: stale chosen-file reads never dispatch import for a different clip or project
+ok 9 - stale chosen-file reads never dispatch import for a different clip or project
+  ---
+  duration_ms: 1.16525
+  type: 'test'
+  ...
+# Subtest: colour absent, null, disabled and full settings remain exact across raw patches and durable schema
+ok 10 - colour absent, null, disabled and full settings remain exact across raw patches and durable schema
+  ---
+  duration_ms: 1.18075
+  type: 'test'
+  ...
+# Subtest: common draft controller persists and restores LUT edits and rejects ACKs dropping colour
+ok 11 - common draft controller persists and restores LUT edits and rejects ACKs dropping colour
+  ---
+  duration_ms: 10.879041
+  type: 'test'
+  ...
+# Subtest: source replacement ACK must clear interpretation but retain exact creative look
+ok 12 - source replacement ACK must clear interpretation but retain exact creative look
+  ---
+  duration_ms: 0.696083
+  type: 'test'
+  ...
+# Subtest: actual controls disclose whole-timeline adoption, source-ungraded status and import versus save
+ok 13 - actual controls disclose whole-timeline adoption, source-ungraded status and import versus save
+  ---
+  duration_ms: 30.165958
+  type: 'test'
+  ...
+# Subtest: actual source Preview visibly discloses unprocessed audio and image while rendered timeline output does not
+ok 14 - actual source Preview visibly discloses unprocessed audio and image while rendered timeline output does not
+  ---
+  duration_ms: 5.094208
+  type: 'test'
+  ...
+# Subtest: retained controls cannot act after disposal; source reinspection revokes old approval
+ok 15 - retained controls cannot act after disposal; source reinspection revokes old approval
+  ---
+  duration_ms: 0.453958
+  type: 'test'
+  ...
+# Subtest: timed-out imports remain uncertain and exact replay resolves them without creating another request
+ok 16 - timed-out imports remain uncertain and exact replay resolves them without creating another request
+  ---
+  duration_ms: 16.530292
+  type: 'test'
+  ...
+# Subtest: LUT project/hash mismatches and stale selection replies never become applicable
+ok 17 - LUT project/hash mismatches and stale selection replies never become applicable
+  ---
+  duration_ms: 1.725
+  type: 'test'
+  ...
+# Subtest: shared source evidence classifier blocks opaque RGB, alpha, unsupported depth and forged compatibility
+ok 18 - shared source evidence classifier blocks opaque RGB, alpha, unsupported depth and forged compatibility
+  ---
+  duration_ms: 0.167459
+  type: 'test'
+  ...
+# Subtest: pending metadata survives a fresh controller and changed editor scope; only reselect plus explicit retry dispatches
+ok 19 - pending metadata survives a fresh controller and changed editor scope; only reselect plus explicit retry dispatches
+  ---
+  duration_ms: 1.520125
+  type: 'test'
+  ...
+# Subtest: reselected name, size or same-size different bytes cannot reuse the original request ID
+ok 20 - reselected name, size or same-size different bytes cannot reuse the original request ID
+  ---
+  duration_ms: 1.054291
+  type: 'test'
+  ...
+# Subtest: verified workspace fingerprints isolate identical project IDs; live workspace changes block every import dispatch
+ok 21 - verified workspace fingerprints isolate identical project IDs; live workspace changes block every import dispatch
+  ---
+  duration_ms: 2.016541
+  type: 'test'
+  ...
+# Subtest: unverified, foreign-key, restored and missing-clip workspace replies prevent storage or import
+ok 22 - unverified, foreign-key, restored and missing-clip workspace replies prevent storage or import
+  ---
+  duration_ms: 1.472292
+  type: 'test'
+  ...
+# Subtest: quota errors and unconfirmed writes fail before RPC; already-written metadata stays recoverable
+ok 23 - quota errors and unconfirmed writes fail before RPC; already-written metadata stays recoverable
+  ---
+  duration_ms: 1.340375
+  type: 'test'
+  ...
+# Subtest: corrupt, duplicate-key, foreign-identity, extra-field and oversized metadata is preserved and blocks import
+ok 24 - corrupt, duplicate-key, foreign-identity, extra-field and oversized metadata is preserved and blocks import
+  ---
+  duration_ms: 1.462834
+  type: 'test'
+  ...
+# Subtest: new imports cannot overwrite another window’s pending metadata, and old success cannot clear a newer request
+ok 25 - new imports cannot overwrite another window’s pending metadata, and old success cannot clear a newer request
+  ---
+  duration_ms: 3.13875
+  type: 'test'
+  ...
+# Subtest: a verified import ACK with failed metadata cleanup stays visibly successful and can clean up without another import
+ok 26 - a verified import ACK with failed metadata cleanup stays visibly successful and can clean up without another import
+  ---
+  duration_ms: 0.613
+  type: 'test'
+  ...
+# Subtest: actual reopened controls require reselect and explicit retry and disclose desktop and web persistence boundaries
+ok 27 - actual reopened controls require reselect and explicit retry and disclose desktop and web persistence boundaries
+  ---
+  duration_ms: 2.952792
+  type: 'test'
+  ...
+# Subtest: browser storage requires cross-window lock support and preserves one canonical pending request under concurrent reserve
+ok 28 - browser storage requires cross-window lock support and preserves one canonical pending request under concurrent reserve
+  ---
+  duration_ms: 0.603917
+  type: 'test'
+  ...
+# Subtest: metadata published before a blocked dispatch is retained without submitting and can be reselected after reconnect
+ok 29 - metadata published before a blocked dispatch is retained without submitting and can be reselected after reconnect
+  ---
+  duration_ms: 0.721541
+  type: 'test'
+  ...
+# Subtest: selected project Look declaration is read-only, identity-bound and stale-selection fenced
+ok 30 - selected project Look declaration is read-only, identity-bound and stale-selection fenced
+  ---
+  duration_ms: 2.88375
+  type: 'test'
+  ...
+# Subtest: PNG controller uses dedicated inspection and explicit sRGB declaration with no range guess
+ok 31 - PNG controller uses dedicated inspection and explicit sRGB declaration with no range guess
+  ---
+  duration_ms: 0.525458
+  type: 'test'
+  ...
+# Subtest: PNG reply cannot widen colour, lose byte binding or survive kind/source changes
+ok 32 - PNG reply cannot widen colour, lose byte binding or survive kind/source changes
+  ---
+  duration_ms: 0.599708
+  type: 'test'
+  ...
+# Subtest: image controls disclose reference display, strict PNG admission, alpha and encoded composition
+ok 33 - image controls disclose reference display, strict PNG admission, alpha and encoded composition
+  ---
+  duration_ms: 1.7415
+  type: 'test'
+  ...
+# Subtest: confirmed cleanup acknowledged after disposal retires only its exact shared map entry
+ok 34 - confirmed cleanup acknowledged after disposal retires only its exact shared map entry
+  ---
+  duration_ms: 1.337833
+  type: 'test'
+  ...
+# Subtest: lost cleanup ACK reconciles only confirmed outcomes after validated absent-hint read, without writes or retry
+ok 35 - lost cleanup ACK reconciles only confirmed outcomes after validated absent-hint read, without writes or retry
+  ---
+  duration_ms: 2.009208
+  type: 'test'
+  ...
+# Subtest: absent-hint reconciliation preserves newer, foreign, mismatching and unconfirmed records
+ok 36 - absent-hint reconciliation preserves newer, foreign, mismatching and unconfirmed records
+  ---
+  duration_ms: 1.271667
+  type: 'test'
+  ...
+# Subtest: video limits and unknown source are visible before any explicit probe (zh-Hans)
+ok 37 - video limits and unknown source are visible before any explicit probe (zh-Hans)
+  ---
+  duration_ms: 3.778375
+  type: 'test'
+  ...
+# Subtest: video limits and unknown source are visible before any explicit probe (zh-Hant)
+ok 38 - video limits and unknown source are visible before any explicit probe (zh-Hant)
+  ---
+  duration_ms: 3.492583
+  type: 'test'
+  ...
+# Subtest: video limits and unknown source are visible before any explicit probe (en)
+ok 39 - video limits and unknown source are visible before any explicit probe (en)
+  ---
+  duration_ms: 3.386875
+  type: 'test'
+  ...
+# Subtest: video limits and unknown source are visible before any explicit probe (ja)
+ok 40 - video limits and unknown source are visible before any explicit probe (ja)
+  ---
+  duration_ms: 3.131833
+  type: 'test'
+  ...
+# Subtest: explicit source check shows exact 8-bit stream observations (zh-Hans)
+ok 41 - explicit source check shows exact 8-bit stream observations (zh-Hans)
+  ---
+  duration_ms: 5.567792
+  type: 'test'
+  ...
+# Subtest: explicit source check shows exact 10-bit stream observations (zh-Hans)
+ok 42 - explicit source check shows exact 10-bit stream observations (zh-Hans)
+  ---
+  duration_ms: 4.923042
+  type: 'test'
+  ...
+# Subtest: explicit source check shows exact unknown-bit stream observations (zh-Hans)
+ok 43 - explicit source check shows exact unknown-bit stream observations (zh-Hans)
+  ---
+  duration_ms: 4.734709
+  type: 'test'
+  ...
+# Subtest: explicit source check shows exact 8-bit stream observations (zh-Hant)
+ok 44 - explicit source check shows exact 8-bit stream observations (zh-Hant)
+  ---
+  duration_ms: 4.910333
+  type: 'test'
+  ...
+# Subtest: explicit source check shows exact 10-bit stream observations (zh-Hant)
+ok 45 - explicit source check shows exact 10-bit stream observations (zh-Hant)
+  ---
+  duration_ms: 4.7905
+  type: 'test'
+  ...
+# Subtest: explicit source check shows exact unknown-bit stream observations (zh-Hant)
+ok 46 - explicit source check shows exact unknown-bit stream observations (zh-Hant)
+  ---
+  duration_ms: 4.708583
+  type: 'test'
+  ...
+# Subtest: explicit source check shows exact 8-bit stream observations (en)
+ok 47 - explicit source check shows exact 8-bit stream observations (en)
+  ---
+  duration_ms: 4.9385
+  type: 'test'
+  ...
+# Subtest: explicit source check shows exact 10-bit stream observations (en)
+ok 48 - explicit source check shows exact 10-bit stream observations (en)
+  ---
+  duration_ms: 4.268583
+  type: 'test'
+  ...
+# Subtest: explicit source check shows exact unknown-bit stream observations (en)
+ok 49 - explicit source check shows exact unknown-bit stream observations (en)
+  ---
+  duration_ms: 5.124208
+  type: 'test'
+  ...
+# Subtest: explicit source check shows exact 8-bit stream observations (ja)
+ok 50 - explicit source check shows exact 8-bit stream observations (ja)
+  ---
+  duration_ms: 4.283667
+  type: 'test'
+  ...
+# Subtest: explicit source check shows exact 10-bit stream observations (ja)
+ok 51 - explicit source check shows exact 10-bit stream observations (ja)
+  ---
+  duration_ms: 4.982
+  type: 'test'
+  ...
+# Subtest: explicit source check shows exact unknown-bit stream observations (ja)
+ok 52 - explicit source check shows exact unknown-bit stream observations (ja)
+  ---
+  duration_ms: 4.313708
+  type: 'test'
+  ...
+# Subtest: observed HDR, Log and non-709 tags remain raw and cannot be overridden from the actual controls
+ok 53 - observed HDR, Log and non-709 tags remain raw and cannot be overridden from the actual controls
+  ---
+  duration_ms: 22.96
+  type: 'test'
+  ...
+# Subtest: missing tags and no reported HDR side data stay observations, with no automatic SDR declaration
+ok 54 - missing tags and no reported HDR side data stay observations, with no automatic SDR declaration
+  ---
+  duration_ms: 12.523375
+  type: 'test'
+  ...
+# Subtest: 10-bit inspection remains read-only until the original range and declaration buttons are used
+ok 55 - 10-bit inspection remains read-only until the original range and declaration buttons are used
+  ---
+  duration_ms: 6.176917
+  type: 'test'
+  ...
+# Subtest: explicit reinspection clears old observations while loading and after probe errors
+ok 56 - explicit reinspection clears old observations while loading and after probe errors
+  ---
+  duration_ms: 13.949042
+  type: 'test'
+  ...
+# Subtest: a retained observed snapshot never displays probe evidence for a different project, asset or hash
+ok 57 - a retained observed snapshot never displays probe evidence for a different project, asset or hash
+  ---
+  duration_ms: 19.356208
+  type: 'test'
+  ...
+# Subtest: source replacement drops late responses and requires an explicit check of the replacement bytes
+ok 58 - source replacement drops late responses and requires an explicit check of the replacement bytes
+  ---
+  duration_ms: 5.40825
+  type: 'test'
+  ...
+# Subtest: image and audio controls do not inherit video limits or video probe depth
+ok 59 - image and audio controls do not inherit video limits or video probe depth
+  ---
+  duration_ms: 43.131084
+  type: 'test'
+  ...
+1..59
+# tests 59
+# suites 0
+# pass 59
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 593.155875

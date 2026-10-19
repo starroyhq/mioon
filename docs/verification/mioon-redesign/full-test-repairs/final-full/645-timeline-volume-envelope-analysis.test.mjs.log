@@ -1,0 +1,94 @@
+TAP version 13
+# Subtest: analysis response dispatch is explicit, bounded and preserves old response shape
+ok 1 - analysis response dispatch is explicit, bounded and preserves old response shape
+  ---
+  duration_ms: 3.668166
+  type: 'test'
+  ...
+# Subtest: full analysis verifies non-null muted and zero gain sources before silence output
+ok 2 - full analysis verifies non-null muted and zero gain sources before silence output
+  ---
+  duration_ms: 6.259125
+  type: 'test'
+  ...
+# Subtest: non-null cached no-audio sources cannot bypass actual audio eligibility
+ok 3 - non-null cached no-audio sources cannot bypass actual audio eligibility
+  ---
+  duration_ms: 0.364709
+  type: 'test'
+  ...
+# Subtest: isolated analysis rebases clip origin but preserves points and source slip
+ok 4 - isolated analysis rebases clip origin but preserves points and source slip
+  ---
+  duration_ms: 0.847041
+  type: 'test'
+  ...
+# Subtest: service projections preserve absent/null/value and report exact non-null identity
+ok 5 - service projections preserve absent/null/value and report exact non-null identity
+  ---
+  duration_ms: 19.230833
+  type: 'test'
+  ...
+# Subtest: muted and zero envelope verification bytes are charged before hash or decode
+ok 6 - muted and zero envelope verification bytes are charged before hash or decode
+  ---
+  duration_ms: 0.50975
+  type: 'test'
+  ...
+# Subtest: scalar candidate keeps every envelope point unchanged for the second actual pass
+ok 7 - scalar candidate keeps every envelope point unchanged for the second actual pass
+  ---
+  duration_ms: 12.15
+  type: 'test'
+  ...
+# Subtest: invalid envelopes fail planning before any media effect
+ok 8 - invalid envelopes fail planning before any media effect
+  ---
+  duration_ms: 0.226042
+  type: 'test'
+  ...
+# Subtest: non-null source identities remain in silent muted/zero reports with two hashes
+ok 9 - non-null source identities remain in silent muted/zero reports with two hashes
+  ---
+  duration_ms: 4.742291
+  type: 'test'
+  ...
+# Subtest: decoder captures detached envelope points before asynchronous source verification
+ok 10 - decoder captures detached envelope points before asynchronous source verification
+  ---
+  duration_ms: 0.816209
+  type: 'test'
+  ...
+# Subtest: whole envelope processing snapshot includes original source metadata in the unchanged 256-KiB cap
+ok 11 - whole envelope processing snapshot includes original source metadata in the unchanged 256-KiB cap
+  ---
+  duration_ms: 2.69375
+  type: 'test'
+  ...
+# Subtest: absent envelope retains historical raw snapshot budget and identity
+ok 12 - absent envelope retains historical raw snapshot budget and identity
+  ---
+  duration_ms: 7.413041
+  type: 'test'
+  ...
+# Subtest: analysis reader rejects explicit conflicting processing profile before media effects
+ok 13 - analysis reader rejects explicit conflicting processing profile before media effects
+  ---
+  duration_ms: 0.72025
+  type: 'test'
+  ...
+# Subtest: cached false audio and faded sources still reach actual probe for non-null automation
+ok 14 - cached false audio and faded sources still reach actual probe for non-null automation
+  ---
+  duration_ms: 0.254458
+  type: 'test'
+  ...
+1..14
+# tests 14
+# suites 0
+# pass 14
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 267.76675

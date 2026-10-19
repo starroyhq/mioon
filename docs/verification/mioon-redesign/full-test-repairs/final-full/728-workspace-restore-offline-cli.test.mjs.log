@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: strict restore parser exposes only documented local commands and explicit status binding
+ok 1 - strict restore parser exposes only documented local commands and explicit status binding
+  ---
+  duration_ms: 0.993084
+  type: 'test'
+  ...
+# Subtest: real offline CLI restores and observes exact origin without network, credentials, subprocess, provider or service construction
+ok 2 - real offline CLI restores and observes exact origin without network, credentials, subprocess, provider or service construction
+  ---
+  duration_ms: 2229.949292
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2537.954125

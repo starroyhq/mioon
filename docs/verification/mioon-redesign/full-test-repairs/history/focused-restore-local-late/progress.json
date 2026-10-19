@@ -1,0 +1,9 @@
+{
+  "completedFiles": 1,
+  "totalFiles": 1,
+  "passedFiles": 0,
+  "failedFiles": 1,
+  "timeoutFiles": 0,
+  "seconds": 21.93,
+  "last": "tests/workspace-restore-local-execution.test.mjs"
+}

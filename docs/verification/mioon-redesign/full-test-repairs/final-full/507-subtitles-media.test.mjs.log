@@ -1,0 +1,81 @@
+TAP version 13
+# Subtest: streaming ink scanner crosses arbitrary chunk boundaries and rejects empty/clipped/short/extra frames
+ok 1 - streaming ink scanner crosses arbitrary chunk boundaries and rejects empty/clipped/short/extra frames
+  ---
+  duration_ms: 14.94225
+  type: 'test'
+  ...
+# Subtest: one bounded font-only process measures distinct UTF-8 literal cues with hostile paths and all 100 captions
+not ok 2 - one bounded font-only process measures distinct UTF-8 literal cues with hostile paths and all 100 captions
+  ---
+  duration_ms: 80.283542
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subtitles-media.test.mjs:29:1'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    ChildProcess._handle.onexit (node:internal/child_process:305:5)
+  ...
+# Subtest: caption filters preserve half-open global frames across media edges without adding audio filters
+not ok 3 - caption filters preserve half-open global frames across media edges without adding audio filters
+  ---
+  duration_ms: 66.909459
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subtitles-media.test.mjs:42:1'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    ChildProcess._handle.onexit (node:internal/child_process:305:5)
+  ...
+# Subtest: portrait landscape and square renders show correct boundary frames with identical audio and cleanup
+not ok 4 - portrait landscape and square renders show correct boundary frames with identical audio and cleanup
+  ---
+  duration_ms: 352.135125
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subtitles-media.test.mjs:53:1'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    Socket.<anonymous> (node:internal/child_process:497:11)
+    Socket.emit (node:events:514:20)
+    Pipe.<anonymous> (node:net:362:12)
+  ...
+# Subtest: cancelled subtitle measurement joins the child and removes staged files before publication
+ok 5 - cancelled subtitle measurement joins the child and removes staged files before publication
+  ---
+  duration_ms: 27.73275
+  type: 'test'
+  ...
+# Subtest: old and empty-cue exports still render when the bundled font directory is absent
+ok 6 - old and empty-cue exports still render when the bundled font directory is absent
+  ---
+  duration_ms: 515.313875
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 3
+# fail 3
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1352.637208

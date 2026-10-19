@@ -1,0 +1,130 @@
+TAP version 13
+# Subtest: chat_completions/openai: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+ok 1 - chat_completions/openai: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 13.031083
+  type: 'test'
+  ...
+# Subtest: chat_completions/custom: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+ok 2 - chat_completions/custom: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 3.294333
+  type: 'test'
+  ...
+# Subtest: chat_completions/openrouter: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+ok 3 - chat_completions/openrouter: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 3.555167
+  type: 'test'
+  ...
+# Subtest: chat_completions/qwen: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+ok 4 - chat_completions/qwen: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.983625
+  type: 'test'
+  ...
+# Subtest: chat_completions/deepseek: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+ok 5 - chat_completions/deepseek: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 1.354583
+  type: 'test'
+  ...
+# Subtest: chat_completions/zhipu: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+ok 6 - chat_completions/zhipu: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.8775
+  type: 'test'
+  ...
+# Subtest: chat_completions/kimi: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+ok 7 - chat_completions/kimi: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.871167
+  type: 'test'
+  ...
+# Subtest: chat_completions/minimax: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+ok 8 - chat_completions/minimax: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.782209
+  type: 'test'
+  ...
+# Subtest: chat_completions/ollama: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+ok 9 - chat_completions/ollama: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.836791
+  type: 'test'
+  ...
+# Subtest: chat_completions: edit tool rejects read catalog, identifiers, duplicate keys and incomplete streams before any completed call
+ok 10 - chat_completions: edit tool rejects read catalog, identifiers, duplicate keys and incomplete streams before any completed call
+  ---
+  duration_ms: 2.191125
+  type: 'test'
+  ...
+# Subtest: chat_completions: terminal function snapshot changes fail closed and answer phase cannot call again
+ok 11 - chat_completions: terminal function snapshot changes fail closed and answer phase cannot call again
+  ---
+  duration_ms: 1.734458
+  type: 'test'
+  ...
+# Subtest: chat_completions: full bounded selected context plus large proposal remains scoped to edit; arbitrary catalogs fail validation
+ok 12 - chat_completions: full bounded selected context plus large proposal remains scoped to edit; arbitrary catalogs fail validation
+  ---
+  duration_ms: 0.960208
+  type: 'test'
+  ...
+# Subtest: responses/openai: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+ok 13 - responses/openai: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 2.677833
+  type: 'test'
+  ...
+# Subtest: responses/custom: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+ok 14 - responses/custom: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 1.978
+  type: 'test'
+  ...
+# Subtest: responses/qwen: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+ok 15 - responses/qwen: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 1.698459
+  type: 'test'
+  ...
+# Subtest: responses/deepseek: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+ok 16 - responses/deepseek: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 1.54425
+  type: 'test'
+  ...
+# Subtest: responses/ollama: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+ok 17 - responses/ollama: scoped edit catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 1.188125
+  type: 'test'
+  ...
+# Subtest: responses: edit tool rejects read catalog, identifiers, duplicate keys and incomplete streams before any completed call
+ok 18 - responses: edit tool rejects read catalog, identifiers, duplicate keys and incomplete streams before any completed call
+  ---
+  duration_ms: 2.580875
+  type: 'test'
+  ...
+# Subtest: responses: terminal function snapshot changes fail closed and answer phase cannot call again
+ok 19 - responses: terminal function snapshot changes fail closed and answer phase cannot call again
+  ---
+  duration_ms: 2.079875
+  type: 'test'
+  ...
+# Subtest: responses: full bounded selected context plus large proposal remains scoped to edit; arbitrary catalogs fail validation
+ok 20 - responses: full bounded selected context plus large proposal remains scoped to edit; arbitrary catalogs fail validation
+  ---
+  duration_ms: 1.369875
+  type: 'test'
+  ...
+1..20
+# tests 20
+# suites 0
+# pass 20
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 279.588292

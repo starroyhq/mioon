@@ -1,0 +1,88 @@
+TAP version 13
+# Subtest: named download uses actual response metadata and trusted Downloads only, with native overwrite and cancellation
+not ok 1 - named download uses actual response metadata and trusted Downloads only, with native overwrite and cancellation
+  ---
+  duration_ms: 4.940042
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/named-delivery-desktop.test.mjs:34:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      {
+    +   buttonLabel: '保存视频',
+        defaultPath: '/private/tmp/mioon-full-recheck-_m5c6umh/final-full/test-nqjvv060/mioon-download-cancel-4UUl96/海边最终版-123456789abc.mp4',
+        filters: [
+          {
+            extensions: [
+              'mp4'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    title: '保存视频'
+    defaultPath: '/private/tmp/mioon-full-recheck-_m5c6umh/final-full/test-nqjvv060/mioon-download-cancel-4UUl96/海边最终版-123456789abc.mp4'
+    filters:
+      0:
+        name: 'MP4 视频'
+        extensions:
+          0: 'mp4'
+    properties:
+      0: 'showOverwriteConfirmation'
+  actual:
+    title: '保存视频'
+    buttonLabel: '保存视频'
+    defaultPath: '/private/tmp/mioon-full-recheck-_m5c6umh/final-full/test-nqjvv060/mioon-download-cancel-4UUl96/海边最终版-123456789abc.mp4'
+    filters:
+      0:
+        name: 'MP4 视频'
+        extensions:
+          0: 'mp4'
+    properties:
+      0: 'showOverwriteConfirmation'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/named-delivery-desktop.test.mjs:40:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: desktop accepts canonical named query and legacy managed routes, rejecting ambiguous or injected syntax
+ok 2 - desktop accepts canonical named query and legacy managed routes, rejecting ambiguous or injected syntax
+  ---
+  duration_ms: 0.539417
+  type: 'test'
+  ...
+# Subtest: actual frame initiator, current window, nonempty same-origin redirect chain and final identity must all agree
+ok 3 - actual frame initiator, current window, nonempty same-origin redirect chain and final identity must all agree
+  ---
+  duration_ms: 0.718
+  type: 'test'
+  ...
+# Subtest: only complete bound response headers can supply a named default
+ok 4 - only complete bound response headers can supply a named default
+  ---
+  duration_ms: 0.828417
+  type: 'test'
+  ...
+# Subtest: path, bidi, reserved and extension-like display names remain unchanged metadata but safe native basenames
+ok 5 - path, bidi, reserved and extension-like display names remain unchanged metadata but safe native basenames
+  ---
+  duration_ms: 0.681875
+  type: 'test'
+  ...
+# Subtest: legacy unnamed and storyboard downloads retain their old default and always require the real initiator
+ok 6 - legacy unnamed and storyboard downloads retain their old default and always require the real initiator
+  ---
+  duration_ms: 0.201917
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 5
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 176.691833

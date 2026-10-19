@@ -1,0 +1,34 @@
+TAP version 13
+# Subtest: name schema is exact, bounded, non-transforming, export-only and rejects explicit undefined
+ok 1 - name schema is exact, bounded, non-transforming, export-only and rejects explicit undefined
+  ---
+  duration_ms: 4.75075
+  type: 'test'
+  ...
+# Subtest: ACK guards bind exact own name independently from encoding; historical omissions stay absent
+ok 2 - ACK guards bind exact own name independently from encoding; historical omissions stay absent
+  ---
+  duration_ms: 3.048375
+  type: 'test'
+  ...
+# Subtest: preflight reports bind name presence and exact text
+ok 3 - preflight reports bind name presence and exact text
+  ---
+  duration_ms: 1.035417
+  type: 'test'
+  ...
+# Subtest: safe filenames preserve display names and canonical headers reject ambiguity
+ok 4 - safe filenames preserve display names and canonical headers reject ambiguity
+  ---
+  duration_ms: 1.744375
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 221.113375

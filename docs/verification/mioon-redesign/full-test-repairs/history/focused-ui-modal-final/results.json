@@ -1,0 +1,59 @@
+[
+  {
+    "file": "tests/comfy-image-ui.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 1.27,
+    "tapSummary": {
+      "tests": 33,
+      "suites": 0,
+      "pass": 33,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-modal-final/001-comfy-image-ui.test.mjs.log",
+    "sha256": "9ef472e1cb99d70216cbb427b674aa5bec3a713de414b44b1b403382c38495d2",
+    "sourceSha256": "21ebd167d020650fb9c602899366cf779143e157eecceeae62fb223ed51ffc32",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/editor-window-modal-observation.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.62,
+    "tapSummary": {
+      "tests": 9,
+      "suites": 0,
+      "pass": 9,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-modal-final/002-editor-window-modal-observation.test.mjs.log",
+    "sha256": "a4ff4e1d731a7feb350b98ca99dcabf19a575fc4f7c1f38218d77923300dd56d",
+    "sourceSha256": "f80967cc5f8ea82ddd2bc9a37606d0370997738681b0c975ec17fc31dd63fbb3",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/image-edit-ui.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.65,
+    "tapSummary": {
+      "tests": 17,
+      "suites": 0,
+      "pass": 17,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-modal-final/003-image-edit-ui.test.mjs.log",
+    "sha256": "d010e542db1375b2fe40b7a08494985aeb81668a594bb71aaf09ffd1643f0578",
+    "sourceSha256": "97e3665f97fb826a67b1f4ab63a0441f72ac5e32c473fab3283c0f9631f142ac",
+    "failedSubtests": []
+  }
+]

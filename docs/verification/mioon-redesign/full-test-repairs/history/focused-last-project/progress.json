@@ -1,0 +1,9 @@
+{
+  "completedFiles": 1,
+  "totalFiles": 1,
+  "passedFiles": 1,
+  "failedFiles": 0,
+  "timeoutFiles": 0,
+  "seconds": 0.45,
+  "last": "tests/last-project-app.test.mjs"
+}

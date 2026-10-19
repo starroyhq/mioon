@@ -1,0 +1,29 @@
+[
+  {
+    "stage": "initial export journey",
+    "observation": "CSP rejected a bare JavaScript wait predicate; then a response observer incorrectly expected timeline.render RPC although ordinary export uses local-delivery/execute.",
+    "change": "Use function predicates and wait for the actual local delivery receipt; no application change."
+  },
+  {
+    "stage": "latest four-language rerun",
+    "observation": "The script could act on the task popover before the clip navigation completed; a later wait incorrectly required a hidden compact inspector to be visible.",
+    "change": "Wait for selection ACK and mounted inspector rather than forcing hidden compact content. Latest120 states pass.",
+    "rawLog": "logs/four-languages-harness-race.log"
+  },
+  {
+    "stage": "Agent dialog resize",
+    "observation": "Resizing from wide to compact retires the hidden inspector disclosure, as required by the owner guard.",
+    "change": "Open the actual inspector for each size after geometry commit. No guard was relaxed.",
+    "rawLog": "logs/agent-dialog-owner-race.log"
+  },
+  {
+    "stage": "Agent compact overlay",
+    "observation": "Normal click uncovered an application layout defect: inspector body width0 and review button center outside the viewport.",
+    "status": "Fixed in application grid placement; latest final build passes normal clicks in 8 authorization states and 7 compact interactions. No runtime style injection.",
+    "rawLog": "logs/agent-dialog-overlay-click-failure.log",
+    "evidence": [
+      "agent-dialog/results.json",
+      "compact-panels-browser-results.json"
+    ]
+  }
+]

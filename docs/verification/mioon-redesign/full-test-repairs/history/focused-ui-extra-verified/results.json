@@ -1,0 +1,116 @@
+[
+  {
+    "file": "tests/opacity-candidate-app-entry.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.43,
+    "tapSummary": {
+      "tests": 6,
+      "suites": 0,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-extra-verified/001-opacity-candidate-app-entry.test.mjs.log",
+    "sha256": "f576a31076d2abffc80495ad8c35a4492733128be6957f8ee9260b29d568ad66",
+    "sourceSha256": "b0f7ec054da8f2fad0ac50145fd9804cb44a97746fc032c64027d115ed8a0be7",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/opacity-restored-application-ui.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 10.2,
+    "tapSummary": {
+      "tests": 6,
+      "suites": 0,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-extra-verified/002-opacity-restored-application-ui.test.mjs.log",
+    "sha256": "4ae699572536b1cbe333fe7ea2da1ae93c529bd814839db9563a35230c1284fb",
+    "sourceSha256": "60f02e236cb1a97d1127a526ce08d2f08ff36b2e31db0ac48ca8b858ab4a28bf",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/settings-navigation-state.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.64,
+    "tapSummary": {
+      "tests": 47,
+      "suites": 0,
+      "pass": 47,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-extra-verified/003-settings-navigation-state.test.mjs.log",
+    "sha256": "b530b2ced40c1245016a2daee4575cc38bafa701d88a083139f691c9b528ea1b",
+    "sourceSha256": "0c534c9008a55b78484df4907abe8e7e966e9239b19f49cea0b42b46a73dc8bc",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/subject-video-ui.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.53,
+    "tapSummary": {
+      "tests": 15,
+      "suites": 0,
+      "pass": 15,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-extra-verified/004-subject-video-ui.test.mjs.log",
+    "sha256": "54b4253e7e5fe1f5b3d310ee1b237d87800b74e4172960fd4b3eb3c09715997c",
+    "sourceSha256": "f7658a6ab15cbf5ece50a90d3d161946052d84deee9882194db805d3eed7759f",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/timeline-fades-ui.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.68,
+    "tapSummary": {
+      "tests": 19,
+      "suites": 0,
+      "pass": 19,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-extra-verified/005-timeline-fades-ui.test.mjs.log",
+    "sha256": "41f22966c5c6d71fe8f3275d1587c61e86ff2a2f3a60b0c976cd8b95a25c8000",
+    "sourceSha256": "033d30dc56ccc1d0851c79cfef9934a9bb0fcc09cbab63a389b253932a4a9a65",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/waveform-ui.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.6,
+    "tapSummary": {
+      "tests": 23,
+      "suites": 0,
+      "pass": 23,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-extra-verified/006-waveform-ui.test.mjs.log",
+    "sha256": "10098ca593e0ddad7fe6343b0bef8435bb7746207aa19af47b68316cfb4904c8",
+    "sourceSha256": "3db9098d0d9076c4d0454a1cab0cd53113decb9385db96d875680afa941dfc8e",
+    "failedSubtests": []
+  }
+]

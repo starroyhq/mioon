@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: renderer uses selected model limits rather than union provider limits
+ok 1 - renderer uses selected model limits rather than union provider limits
+  ---
+  duration_ms: 1.268583
+  type: 'test'
+  ...
+# Subtest: changing provider or model never silently discards an existing image
+ok 2 - changing provider or model never silently discards an existing image
+  ---
+  duration_ms: 0.641208
+  type: 'test'
+  ...
+# Subtest: text mode is inferred from zero references, while explicit empty image mode blocks
+ok 3 - text mode is inferred from zero references, while explicit empty image mode blocks
+  ---
+  duration_ms: 0.139458
+  type: 'test'
+  ...
+# Subtest: missing references, image metadata, prompt and seed limits share backend checks
+ok 4 - missing references, image metadata, prompt and seed limits share backend checks
+  ---
+  duration_ms: 1.202666
+  type: 'test'
+  ...
+# Subtest: unknown selected provider/model blocks rather than falling back to another service
+ok 5 - unknown selected provider/model blocks rather than falling back to another service
+  ---
+  duration_ms: 0.172542
+  type: 'test'
+  ...
+# Subtest: status reporting distinguishes disabled, incomplete, and available without secret values
+ok 6 - status reporting distinguishes disabled, incomplete, and available without secret values
+  ---
+  duration_ms: 0.138208
+  type: 'test'
+  ...
+# Subtest: capabilities and shot parameters stay separate from the scalar selection map
+ok 7 - capabilities and shot parameters stay separate from the scalar selection map
+  ---
+  duration_ms: 0.094084
+  type: 'test'
+  ...
+# Subtest: output shape review is distinct from user cancellation and never suggests a retry
+ok 8 - output shape review is distinct from user cancellation and never suggests a retry
+  ---
+  duration_ms: 5.087834
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 256.471041

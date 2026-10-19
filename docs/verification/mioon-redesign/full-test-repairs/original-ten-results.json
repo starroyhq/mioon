@@ -1,0 +1,227 @@
+{
+  "files": 10,
+  "passedFiles": 4,
+  "failedFiles": 6,
+  "testTotals": {
+    "tests": 66,
+    "pass": 50,
+    "fail": 16,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0
+  },
+  "results": [
+    {
+      "file": "tests/cli-v4.test.mjs",
+      "exitCode": 1,
+      "timeout": false,
+      "seconds": 14.92,
+      "tapSummary": {
+        "tests": 9,
+        "suites": 0,
+        "pass": 5,
+        "fail": 4,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "final-full/070-cli-v4.test.mjs.log",
+      "sha256": "caa3c4505ef6bc097e69285c2ccf3f34721dbb262e1f85948abcb29be07b1a97",
+      "sourceSha256": "f436bbbcd9d6be600043828544612a421e94fd5c63be587b8db5248ca73f8762",
+      "failedSubtests": [
+        "stable request IDs replay exactly across CLI and MCP and never duplicate provider submits",
+        "version selection, timeline editing and export watch use actual durable media",
+        "watch reports terminal failure and strict revision conflicts without mutating existing work",
+        "CLI inputs, MCP crossvisibility, stable replay, watches and real mock export share one backend"
+      ]
+    },
+    {
+      "file": "tests/export-settings-media.test.mjs",
+      "exitCode": 1,
+      "timeout": false,
+      "seconds": 17.44,
+      "tapSummary": {
+        "tests": 20,
+        "suites": 0,
+        "pass": 19,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "final-full/224-export-settings-media.test.mjs.log",
+      "sha256": "6e30dbbd8db8646f546e661c56bc264bfae1f59f882900caa756ac7a28af0811",
+      "sourceSha256": "47b967f4bdda990273bba9d766e8f44a708ea055390350f129955ef946de9bea",
+      "failedSubtests": [
+        "all three timeline aspects deliver native/360/1080 with post-caption scale, exact frame boundaries and identical audio"
+      ]
+    },
+    {
+      "file": "tests/integration.test.mjs",
+      "exitCode": 1,
+      "timeout": false,
+      "seconds": 148.11,
+      "tapSummary": {
+        "tests": 9,
+        "suites": 0,
+        "pass": 2,
+        "fail": 7,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "final-full/301-integration.test.mjs.log",
+      "sha256": "67b024b79793b567167bd5c062502bc5b3dcb894537846a7e17fc6bbd8c3ab29",
+      "sourceSha256": "ebc6d4f27ce19ad00e64f0b11a66f2c7dd63dd9e09f9b015a1cc6832a9770904",
+      "failedSubtests": [
+        "A4 twenty concurrent replays plus stale replay create one durable provider submission and accepted task",
+        "A5 stale shot, node, ordering and selected-version writes return HTTP 409 and preserve latest state",
+        "A6 two real immutable versions survive later edits; original replay works and different reuse conflicts",
+        "A7 rejection, terminal failure, unknown, poll timeout, download retry, accepted-response loss and local cancellation",
+        "security denies unauthenticated, foreign Host/Origin, paths, URLs, cross-project references and invalid MIME",
+        "A8 export stitches three genuine clips into default native H264 1080x1920 MP4 with summed duration",
+        "durable HTTP acceptance: real process restarts, provider side effects, media and security"
+      ]
+    },
+    {
+      "file": "tests/local-drafts-transports.test.mjs",
+      "exitCode": 0,
+      "timeout": false,
+      "seconds": 17.99,
+      "tapSummary": {
+        "tests": 7,
+        "suites": 0,
+        "pass": 7,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "final-full/319-local-drafts-transports.test.mjs.log",
+      "sha256": "891f4031da63f1a7bad6e2dfa79bdc340ef91f29c29c20aa4dc89c68e1385e2a",
+      "sourceSha256": "a00a206bd4da65b9836d799ccbfa9fb98338b10e434e4ed6241801f3112b4cac",
+      "failedSubtests": []
+    },
+    {
+      "file": "tests/mcp.test.mjs",
+      "exitCode": 1,
+      "timeout": false,
+      "seconds": 2.92,
+      "tapSummary": {
+        "tests": 1,
+        "suites": 0,
+        "pass": 0,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "final-full/345-mcp.test.mjs.log",
+      "sha256": "138e1d61d300d06f6c3f84d2743da56c0cb398559a33819b1a80dc8f5dd13a82",
+      "sourceSha256": "681a094ca7597edf87946e2d791ac756b06a59b6076bbf807c03f401a70cacc1",
+      "failedSubtests": [
+        "A3 official MCP SDK stdio initialize/list/call controls durable HTTP project, jobs and versions"
+      ]
+    },
+    {
+      "file": "tests/reference-recovery-transports.test.mjs",
+      "exitCode": 0,
+      "timeout": false,
+      "seconds": 10.73,
+      "tapSummary": {
+        "tests": 2,
+        "suites": 0,
+        "pass": 2,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "final-full/467-reference-recovery-transports.test.mjs.log",
+      "sha256": "9ecff208ddb2b83521ab257d0e8327ee868f122d4fa9835d06d150ad35ffda52",
+      "sourceSha256": "fbdb600dc7d4d1d96223f5ce244a48d8d8363f92ba131a9d45cac54ec375a34c",
+      "failedSubtests": []
+    },
+    {
+      "file": "tests/timeline-image-transports.test.mjs",
+      "exitCode": 0,
+      "timeout": false,
+      "seconds": 4.81,
+      "tapSummary": {
+        "tests": 5,
+        "suites": 0,
+        "pass": 5,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "final-full/585-timeline-image-transports.test.mjs.log",
+      "sha256": "70fddd0cf1a69b626ecee958918ef76c6e6e28579eee13088c724728cc04a502",
+      "sourceSha256": "463b4042dc19ad8eaed8ab10af47233a1890a5b2f7cc44686013e3df37804bb8",
+      "failedSubtests": []
+    },
+    {
+      "file": "tests/timeline-mcp.test.mjs",
+      "exitCode": 1,
+      "timeout": false,
+      "seconds": 4.66,
+      "tapSummary": {
+        "tests": 1,
+        "suites": 0,
+        "pass": 0,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "final-full/606-timeline-mcp.test.mjs.log",
+      "sha256": "14e358e5b4dfaec04457ac1526edc40f992f6c9e99ce625a26fef4dc0489084c",
+      "sourceSha256": "bf157d63f09a8adce3fae0c6e9bf8147fc5168aa42c8aa5428c4171f1f14d8ca",
+      "failedSubtests": [
+        "timeline official SDK protocol exercises strict tools, shared HTTP state, exact replay and real backend restart"
+      ]
+    },
+    {
+      "file": "tests/timeline-media.test.mjs",
+      "exitCode": 1,
+      "timeout": false,
+      "seconds": 19.54,
+      "tapSummary": {
+        "tests": 10,
+        "suites": 0,
+        "pass": 8,
+        "fail": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "final-full/607-timeline-media.test.mjs.log",
+      "sha256": "4865234dc5fd2ad043cbc9423a2ca4b319a911eb84c7a8cbfac59b579f7338a9",
+      "sourceSha256": "8cb9a6f02eaf39485f1f8f55156667e27ee9cc56918683da81d8f3dcbdcc6eb3",
+      "failedSubtests": [
+        "v1 selected-shot sequence export remains separate and decodable with an empty v2 timeline",
+        "multitrack v2 real-media rendering acceptance"
+      ]
+    },
+    {
+      "file": "tests/timeline-recovery-transports.test.mjs",
+      "exitCode": 0,
+      "timeout": false,
+      "seconds": 5.99,
+      "tapSummary": {
+        "tests": 2,
+        "suites": 0,
+        "pass": 2,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "final-full/633-timeline-recovery-transports.test.mjs.log",
+      "sha256": "136275629a48248f8e64096e7b6bce4914d1d61385abb7ef678ea069d4a5e580",
+      "sourceSha256": "564d715e1853101b75ac5e703505aeff897d9424ead39fc8c84936398af31889",
+      "failedSubtests": []
+    }
+  ]
+}

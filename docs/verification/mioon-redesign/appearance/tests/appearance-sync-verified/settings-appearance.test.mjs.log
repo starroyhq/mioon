@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: actual zh-Hans settings present dark, light and system with approved localized labels
+ok 1 - actual zh-Hans settings present dark, light and system with approved localized labels
+  ---
+  duration_ms: 1.875375
+  type: 'test'
+  ...
+# Subtest: actual zh-Hant settings present dark, light and system with approved localized labels
+ok 2 - actual zh-Hant settings present dark, light and system with approved localized labels
+  ---
+  duration_ms: 0.238375
+  type: 'test'
+  ...
+# Subtest: actual en settings present dark, light and system with approved localized labels
+ok 3 - actual en settings present dark, light and system with approved localized labels
+  ---
+  duration_ms: 0.201542
+  type: 'test'
+  ...
+# Subtest: actual ja settings present dark, light and system with approved localized labels
+ok 4 - actual ja settings present dark, light and system with approved localized labels
+  ---
+  duration_ms: 0.11525
+  type: 'test'
+  ...
+# Subtest: all three explicit theme choices reach the existing edit/report path while unknown values are rejected
+ok 5 - all three explicit theme choices reach the existing edit/report path while unknown values are rejected
+  ---
+  duration_ms: 0.285292
+  type: 'test'
+  ...
+# Subtest: hidden and unmounted setting callbacks cannot edit, save or discard a theme draft
+ok 6 - hidden and unmounted setting callbacks cannot edit, save or discard a theme draft
+  ---
+  duration_ms: 0.335
+  type: 'test'
+  ...
+# Subtest: theme input preserves its existing admission fence {"phase":"loading"}
+ok 7 - theme input preserves its existing admission fence {"phase":"loading"}
+  ---
+  duration_ms: 0.13075
+  type: 'test'
+  ...
+# Subtest: theme input preserves its existing admission fence {"phase":"saving"}
+ok 8 - theme input preserves its existing admission fence {"phase":"saving"}
+  ---
+  duration_ms: 0.113125
+  type: 'test'
+  ...
+# Subtest: theme input preserves its existing admission fence {"pending":true}
+ok 9 - theme input preserves its existing admission fence {"pending":true}
+  ---
+  duration_ms: 0.117167
+  type: 'test'
+  ...
+# Subtest: theme input preserves its existing admission fence {"saved":{"writable":false}}
+ok 10 - theme input preserves its existing admission fence {"saved":{"writable":false}}
+  ---
+  duration_ms: 0.125542
+  type: 'test'
+  ...
+# Subtest: a controlled saved light value is shown and save/discard continue through the existing owner
+ok 11 - a controlled saved light value is shown and save/discard continue through the existing owner
+  ---
+  duration_ms: 0.167917
+  type: 'test'
+  ...
+# Subtest: a reload finishing after the settings unmount cannot discard the live global draft
+ok 12 - a reload finishing after the settings unmount cannot discard the live global draft
+  ---
+  duration_ms: 0.1375
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 241.635833

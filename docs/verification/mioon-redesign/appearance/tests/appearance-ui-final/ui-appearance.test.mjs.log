@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: saved dark applies mutually exclusive root classes without an OS subscription
+ok 1 - saved dark applies mutually exclusive root classes without an OS subscription
+  ---
+  duration_ms: 1.997334
+  type: 'test'
+  ...
+# Subtest: saved light applies mutually exclusive root classes without an OS subscription
+ok 2 - saved light applies mutually exclusive root classes without an OS subscription
+  ---
+  duration_ms: 0.242958
+  type: 'test'
+  ...
+# Subtest: system follows both initial and live OS states without writes or project/layout changes
+ok 3 - system follows both initial and live OS states without writes or project/layout changes
+  ---
+  duration_ms: 1.24475
+  type: 'test'
+  ...
+# Subtest: a theme draft previews immediately and discard restores the saved system subscription
+ok 4 - a theme draft previews immediately and discard restores the saved system subscription
+  ---
+  duration_ms: 0.778916
+  type: 'test'
+  ...
+# Subtest: retired system callbacks cannot revive after system to manual to system transitions
+ok 5 - retired system callbacks cannot revive after system to manual to system transitions
+  ---
+  duration_ms: 0.420792
+  type: 'test'
+  ...
+# Subtest: cleanup removes the media listener and queued callbacks cannot mutate the unmounted root
+ok 6 - cleanup removes the media listener and queued callbacks cannot mutate the unmounted root
+  ---
+  duration_ms: 0.404208
+  type: 'test'
+  ...
+# Subtest: a late initial preference read after unmount cannot activate light or subscribe
+ok 7 - a late initial preference read after unmount cannot activate light or subscribe
+  ---
+  duration_ms: 0.805041
+  type: 'test'
+  ...
+# Subtest: saving a light draft retains the same CAS request after an unknown result and admits no intervening edits
+ok 8 - saving a light draft retains the same CAS request after an unknown result and admits no intervening edits
+  ---
+  duration_ms: 1.35875
+  type: 'test'
+  ...
+# Subtest: readonly preferences cannot be edited or saved but system still follows the OS
+ok 9 - readonly preferences cannot be edited or saved but system still follows the OS
+  ---
+  duration_ms: 0.18775
+  type: 'test'
+  ...
+# Subtest: a draft survives reloading a newer saved theme until explicit discard
+ok 10 - a draft survives reloading a newer saved theme until explicit discard
+  ---
+  duration_ms: 0.249208
+  type: 'test'
+  ...
+# Subtest: an authoritative light reload wins over an older in-flight dark response
+ok 11 - an authoritative light reload wins over an older in-flight dark response
+  ---
+  duration_ms: 0.201792
+  type: 'test'
+  ...
+# Subtest: without matchMedia manual light works while system retains the deterministic dark fallback
+ok 12 - without matchMedia manual light works while system retains the deterministic dark fallback
+  ---
+  duration_ms: 0.1485
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 208.996459

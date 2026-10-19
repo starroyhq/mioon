@@ -1,0 +1,166 @@
+TAP version 13
+# Subtest: locale input zh-Hant resolves without a region-specific catalog
+ok 1 - locale input zh-Hant resolves without a region-specific catalog
+  ---
+  duration_ms: 0.620625
+  type: 'test'
+  ...
+# Subtest: locale input zh-TW resolves without a region-specific catalog
+ok 2 - locale input zh-TW resolves without a region-specific catalog
+  ---
+  duration_ms: 0.114458
+  type: 'test'
+  ...
+# Subtest: locale input zh-HK resolves without a region-specific catalog
+ok 3 - locale input zh-HK resolves without a region-specific catalog
+  ---
+  duration_ms: 0.318375
+  type: 'test'
+  ...
+# Subtest: locale input zh-MO resolves without a region-specific catalog
+ok 4 - locale input zh-MO resolves without a region-specific catalog
+  ---
+  duration_ms: 0.052875
+  type: 'test'
+  ...
+# Subtest: locale input zh-Hant-CN resolves without a region-specific catalog
+ok 5 - locale input zh-Hant-CN resolves without a region-specific catalog
+  ---
+  duration_ms: 0.067167
+  type: 'test'
+  ...
+# Subtest: locale input zh-Hans-TW resolves without a region-specific catalog
+ok 6 - locale input zh-Hans-TW resolves without a region-specific catalog
+  ---
+  duration_ms: 0.039375
+  type: 'test'
+  ...
+# Subtest: locale input zh resolves without a region-specific catalog
+ok 7 - locale input zh resolves without a region-specific catalog
+  ---
+  duration_ms: 0.048208
+  type: 'test'
+  ...
+# Subtest: locale input zh-CN resolves without a region-specific catalog
+ok 8 - locale input zh-CN resolves without a region-specific catalog
+  ---
+  duration_ms: 0.039708
+  type: 'test'
+  ...
+# Subtest: locale input zh-SG resolves without a region-specific catalog
+ok 9 - locale input zh-SG resolves without a region-specific catalog
+  ---
+  duration_ms: 0.062834
+  type: 'test'
+  ...
+# Subtest: locale input en-GB resolves without a region-specific catalog
+ok 10 - locale input en-GB resolves without a region-specific catalog
+  ---
+  duration_ms: 0.078166
+  type: 'test'
+  ...
+# Subtest: locale input ja-JP resolves without a region-specific catalog
+ok 11 - locale input ja-JP resolves without a region-specific catalog
+  ---
+  duration_ms: 0.0475
+  type: 'test'
+  ...
+# Subtest: locale input ja_JP.UTF-8 resolves without a region-specific catalog
+ok 12 - locale input ja_JP.UTF-8 resolves without a region-specific catalog
+  ---
+  duration_ms: 0.042875
+  type: 'test'
+  ...
+# Subtest: invalid/unsupported system locale falls back to English and explicit choice wins
+ok 13 - invalid/unsupported system locale falls back to English and explicit choice wins
+  ---
+  duration_ms: 0.455292
+  type: 'test'
+  ...
+# Subtest: foundation/native catalogs have complete four-language placeholders
+ok 14 - foundation/native catalogs have complete four-language placeholders
+  ---
+  duration_ms: 12.074
+  type: 'test'
+  ...
+# Subtest: preference envelope and IPC are narrow, exact and data-only
+ok 15 - preference envelope and IPC are narrow, exact and data-only
+  ---
+  duration_ms: 0.283542
+  type: 'test'
+  ...
+# Subtest: native preference authorizes before any read/write, broadcasts and survives a fresh host
+ok 16 - native preference authorizes before any read/write, broadcasts and survives a fresh host
+  ---
+  duration_ms: 0.247167
+  type: 'test'
+  ...
+# Subtest: corrupt/read-only preference never lies about persistence or overwrites on read
+ok 17 - corrupt/read-only preference never lies about persistence or overwrites on read
+  ---
+  duration_ms: 0.09225
+  type: 'test'
+  ...
+# Subtest: preload exposes fixed typed methods and rejects arbitrary channels/fields
+ok 18 - preload exposes fixed typed methods and rejects arbitrary channels/fields
+  ---
+  duration_ms: 0.239958
+  type: 'test'
+  ...
+# Subtest: web manual language persists independently and storage events do not write back
+ok 19 - web manual language persists independently and storage events do not write back
+  ---
+  duration_ms: 0.223125
+  type: 'test'
+  ...
+# Subtest: web storage failure is session-only without changing other app state
+ok 20 - web storage failure is session-only without changing other app state
+  ---
+  duration_ms: 0.05325
+  type: 'test'
+  ...
+# Subtest: native stale reads cannot overwrite a newer broadcast and reconnect does not remount application state
+ok 21 - native stale reads cannot overwrite a newer broadcast and reconnect does not remount application state
+  ---
+  duration_ms: 0.170833
+  type: 'test'
+  ...
+# Subtest: catalog fragments cannot silently overwrite a duplicate semantic key
+ok 22 - catalog fragments cannot silently overwrite a duplicate semantic key
+  ---
+  duration_ms: 0.181209
+  type: 'test'
+  ...
+# Subtest: plural selection keeps numeric counts while formatting only their display value
+ok 23 - plural selection keeps numeric counts while formatting only their display value
+  ---
+  duration_ms: 0.438334
+  type: 'test'
+  ...
+# Subtest: system-language changes affect only system preference without saving or requests
+ok 24 - system-language changes affect only system preference without saving or requests
+  ---
+  duration_ms: 0.088458
+  type: 'test'
+  ...
+# Subtest: unknown language requests reject accessors and unsupported prototypes without invoking them
+ok 25 - unknown language requests reject accessors and unsupported prototypes without invoking them
+  ---
+  duration_ms: 0.049083
+  type: 'test'
+  ...
+# Subtest: a native system-language refresh updates menus and every window without persisting project data
+ok 26 - a native system-language refresh updates menus and every window without persisting project data
+  ---
+  duration_ms: 0.086375
+  type: 'test'
+  ...
+1..26
+# tests 26
+# suites 0
+# pass 26
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 226.993417

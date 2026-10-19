@@ -1,0 +1,53 @@
+TAP version 13
+# Subtest: image generation uses one durable contract across real HTTP, CLI and official MCP
+    # Subtest: discovery has strict matching schemas/effects and keeps built-in Agent catalogs unchanged
+    ok 1 - discovery has strict matching schemas/effects and keeps built-in Agent catalogs unchanged
+      ---
+      duration_ms: 647.177834
+      type: 'test'
+      ...
+    # Subtest: startup never dispatches retained queued or ambiguous work; cancellation is explicit and replayable
+    ok 2 - startup never dispatches retained queued or ambiguous work; cancellation is explicit and replayable
+      ---
+      duration_ms: 2938.792625
+      type: 'test'
+      ...
+    # Subtest: OpenAI is disabled without dedicated settings and scoped rejections never create image work
+    ok 3 - OpenAI is disabled without dedicated settings and scoped rejections never create image work
+      ---
+      duration_ms: 1961.170875
+      type: 'test'
+      ...
+    # Subtest: a lost HTTP acknowledgement recovers the exact receipt with one persistent real Mock PNG
+    ok 4 - a lost HTTP acknowledgement recovers the exact receipt with one persistent real Mock PNG
+      ---
+      duration_ms: 1991.982583
+      type: 'test'
+      ...
+    # Subtest: backend and client restart lookup is read-only, preserves bytes, and cannot start new inference
+    ok 5 - backend and client restart lookup is read-only, preserves bytes, and cannot start new inference
+      ---
+      duration_ms: 3457.150875
+      type: 'test'
+      ...
+    # Subtest: explicit group generation adds an immutable version without implicit timeline/reference/subject edits
+    ok 6 - explicit group generation adds an immutable version without implicit timeline/reference/subject edits
+      ---
+      duration_ms: 1231.507875
+      type: 'test'
+      ...
+    1..6
+ok 1 - image generation uses one durable contract across real HTTP, CLI and official MCP
+  ---
+  duration_ms: 14179.744458
+  type: 'test'
+  ...
+1..1
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 14570.511917

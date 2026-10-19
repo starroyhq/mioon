@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: loudness reuses exact samplePeak probe/decode argument bytes without transforms or file output
+ok 1 - loudness reuses exact samplePeak probe/decode argument bytes without transforms or file output
+  ---
+  duration_ms: 13.654416
+  type: 'test'
+  ...
+# Subtest: strict probe distinguishes no audio from unsupported or malformed MP4
+ok 2 - strict probe distinguishes no audio from unsupported or malformed MP4
+  ---
+  duration_ms: 0.819667
+  type: 'test'
+  ...
+# Subtest: no-audio and unsupported probes never start ffmpeg
+ok 3 - no-audio and unsupported probes never start ffmpeg
+  ---
+  duration_ms: 0.420125
+  type: 'test'
+  ...
+# Subtest: measurement waits for natural EOF and includes the last decoded sample and FIR tail
+ok 4 - measurement waits for natural EOF and includes the last decoded sample and FIR tail
+  ---
+  duration_ms: 3.099917
+  type: 'test'
+  ...
+# Subtest: valid partial PCM cannot become success after a decoder error, cancellation, truncation, or inconsistent receipt
+ok 5 - valid partial PCM cannot become success after a decoder error, cancellation, truncation, or inconsistent receipt
+  ---
+  duration_ms: 13.680916
+  type: 'test'
+  ...
+# Subtest: input/deadline rejection precedes permit and child launch
+ok 6 - input/deadline rejection precedes permit and child launch
+  ---
+  duration_ms: 0.3495
+  type: 'test'
+  ...
+# Subtest: probe subdeadline is capped within a decreasing one-operation deadline
+ok 7 - probe subdeadline is capped within a decreasing one-operation deadline
+  ---
+  duration_ms: 2.728375
+  type: 'test'
+  ...
+# Subtest: after-permit fence and callback failures retain exact cause and termination uncertainty
+ok 8 - after-permit fence and callback failures retain exact cause and termination uncertainty
+  ---
+  duration_ms: 0.208834
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 226.172375

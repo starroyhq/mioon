@@ -1,0 +1,118 @@
+TAP version 13
+# Subtest: all loaded assets are read serially in ordered 100-ID batches without hidden truncation
+ok 1 - all loaded assets are read serially in ordered 100-ID batches without hidden truncation
+  ---
+  duration_ms: 6.974584
+  type: 'test'
+  ...
+# Subtest: only confirmed revision-zero rows are neutral; loading, failed and omitted rows stay unknown
+ok 2 - only confirmed revision-zero rows are neutral; loading, failed and omitted rows stay unknown
+  ---
+  duration_ms: 1.113125
+  type: 'test'
+  ...
+# Subtest: missing, reordered, foreign, duplicate and invalid batch payloads cannot confirm even one row
+ok 3 - missing, reordered, foreign, duplicate and invalid batch payloads cannot confirm even one row
+  ---
+  duration_ms: 1.023042
+  type: 'test'
+  ...
+# Subtest: failed middle batch preserves successful batches and retry is GET-only with all IDs
+ok 4 - failed middle batch preserves successful batches and retry is GET-only with all IDs
+  ---
+  duration_ms: 2.249875
+  type: 'test'
+  ...
+# Subtest: failed refresh and contradictory same-revision reads expose unknown instead of cached neutral
+ok 5 - failed refresh and contradictory same-revision reads expose unknown instead of cached neutral
+  ---
+  duration_ms: 0.388208
+  type: 'test'
+  ...
+# Subtest: synchronous repeated clicks issue one CAS write and never mutate files, assets or clips
+ok 6 - synchronous repeated clicks issue one CAS write and never mutate files, assets or clips
+  ---
+  duration_ms: 0.434125
+  type: 'test'
+  ...
+# Subtest: two windows use independent disposition CAS and a loser rereads before a fresh choice
+ok 7 - two windows use independent disposition CAS and a loser rereads before a fresh choice
+  ---
+  duration_ms: 0.552208
+  type: 'test'
+  ...
+# Subtest: unknown write outcome is fenced even after a latest read; only receipt recovery reopens editing
+ok 8 - unknown write outcome is fenced even after a latest read; only receipt recovery reopens editing
+  ---
+  duration_ms: 0.229375
+  type: 'test'
+  ...
+# Subtest: resolving an unrelated pending mutation releases stale uncertainty without a user reread
+ok 9 - resolving an unrelated pending mutation releases stale uncertainty without a user reread
+  ---
+  duration_ms: 0.159042
+  type: 'test'
+  ...
+# Subtest: newer reads and a late acknowledgement cannot downgrade the independent revision
+ok 10 - newer reads and a late acknowledgement cannot downgrade the independent revision
+  ---
+  duration_ms: 0.190208
+  type: 'test'
+  ...
+# Subtest: older GET generations are ignored and stale latest reads retain a newer confirmed revision
+ok 11 - older GET generations are ignored and stale latest reads retain a newer confirmed revision
+  ---
+  duration_ms: 0.1295
+  type: 'test'
+  ...
+# Subtest: project navigation, return-to-project epochs, removed IDs and unmount reject obsolete work
+ok 12 - project navigation, return-to-project epochs, removed IDs and unmount reject obsolete work
+  ---
+  duration_ms: 0.316625
+  type: 'test'
+  ...
+# Subtest: disposition filters are a pure local view and keep unknown metadata visible
+ok 13 - disposition filters are a pure local view and keep unknown metadata visible
+  ---
+  duration_ms: 0.144542
+  type: 'test'
+  ...
+# Subtest: disposition receipts use asset ownership and exact keyed mutation recovery
+ok 14 - disposition receipts use asset ownership and exact keyed mutation recovery
+  ---
+  duration_ms: 10.088542
+  type: 'test'
+  ...
+# Subtest: actual App recovery replays the exact key and refreshes current marks separately from historical ACK
+ok 15 - actual App recovery replays the exact key and refreshes current marks separately from historical ACK
+  ---
+  duration_ms: 3.592167
+  type: 'test'
+  ...
+# Subtest: actual App annotation recovery preserves the exact session intent and rereads separately from historical ACK
+ok 16 - actual App annotation recovery preserves the exact session intent and rereads separately from historical ACK
+  ---
+  duration_ms: 1.312958
+  type: 'test'
+  ...
+# Subtest: mark controls are accessible and reject retained hidden, re-shown, project-stale and unmounted clicks
+ok 17 - mark controls are accessible and reject retained hidden, re-shown, project-stale and unmounted clicks
+  ---
+  duration_ms: 5.300125
+  type: 'test'
+  ...
+# Subtest: shared library keeps an excluded source editable and resets filters without touching source selection or range scope
+ok 18 - shared library keeps an excluded source editable and resets filters without touching source selection or range scope
+  ---
+  duration_ms: 18.046833
+  type: 'test'
+  ...
+1..18
+# tests 18
+# suites 0
+# pass 18
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 369.829209

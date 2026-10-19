@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: actual CLI deadline remains15s and clears its timer on either settlement
+ok 1 - actual CLI deadline remains15s and clears its timer on either settlement
+  ---
+  duration_ms: 1.219875
+  type: 'test'
+  ...
+# Subtest: actual owned cleanup uses only its child handle and never signals after observed exit
+ok 2 - actual owned cleanup uses only its child handle and never signals after observed exit
+  ---
+  duration_ms: 0.532917
+  type: 'test'
+  ...
+# Subtest: CLI timeout captures diagnostics and waits for exact-child cleanup before returning original failure
+ok 3 - CLI timeout captures diagnostics and waits for exact-child cleanup before returning original failure
+  ---
+  duration_ms: 0.214834
+  type: 'test'
+  ...
+# Subtest: unconfirmed cleanup preserves the original deadline failure and emits no false confirmed release
+ok 4 - unconfirmed cleanup preserves the original deadline failure and emits no false confirmed release
+  ---
+  duration_ms: 0.156417
+  type: 'test'
+  ...
+# Subtest: actual CLI snapshot bounds and allowlists phase data without args, raw output, paths or credentials
+ok 5 - actual CLI snapshot bounds and allowlists phase data without args, raw output, paths or credentials
+  ---
+  duration_ms: 1.879875
+  type: 'test'
+  ...
+# Subtest: optional fetch phases preserve exact responses/rejections, guard order and default promise identity
+ok 6 - optional fetch phases preserve exact responses/rejections, guard order and default promise identity
+  ---
+  duration_ms: 0.263083
+  type: 'test'
+  ...
+# Subtest: fixture phases are opt-in, constant-only, capped16 and use no process lifecycle hook
+ok 7 - fixture phases are opt-in, constant-only, capped16 and use no process lifecycle hook
+  ---
+  duration_ms: 0.212709
+  type: 'test'
+  ...
+# Subtest: actual worker readiness deadline stays10s with its original failure and timer cleanup
+ok 8 - actual worker readiness deadline stays10s with its original failure and timer cleanup
+  ---
+  duration_ms: 0.176542
+  type: 'test'
+  ...
+# Subtest: actual worker observations are capped and omit raw output, unknown phases and nonnumeric resource fields
+ok 9 - actual worker observations are capped and omit raw output, unknown phases and nonnumeric resource fields
+  ---
+  duration_ms: 0.7075
+  type: 'test'
+  ...
+# Subtest: worker fixture milestones contain fixed labels and numeric resource counters only
+ok 10 - worker fixture milestones contain fixed labels and numeric resource counters only
+  ---
+  duration_ms: 0.252667
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 134.987

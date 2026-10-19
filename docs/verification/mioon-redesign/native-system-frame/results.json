@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-18T23:39:30.483309+00:00",
+  "scope": "macOS system-frame evidence only, final development build before inactive light-theme CSS candidate v2",
+  "result": "passed_with_limitations",
+  "screenRecordingPreflight": {
+    "exitCode": 0,
+    "result": "Screen Recording permission already granted"
+  },
+  "build": {
+    "channel": "development",
+    "appId": "app.starroy.mioon.dev",
+    "productName": "Mioon Dev",
+    "version": "0.4.1",
+    "manifest": "build-inputs.json",
+    "manifestSha256": "0a55a309bab9265997e6d8b9283725fdffecc764dec0e673ebb3c33c4b0b76e6",
+    "filesCheckedBeforeLaunch": 61,
+    "hashMismatchesBeforeLaunch": 0,
+    "candidateNote": "Root subsequently rebuilt inactive light-theme CSS candidate v2. This capture intentionally records the earlier 61-file manifest; native and backend artifacts are unchanged.",
+    "sourceManifest": "../build-artifacts.json (subsequently updated)",
+    "electronBundleVersion": "44.7.0",
+    "electronVersionEvidence": "Electron.app/Contents/Info.plist CFBundleShortVersionString (read only)"
+  },
+  "window": {
+    "windowId": 77543,
+    "ownerPid": 42518,
+    "owner": "Electron",
+    "title": "Mioon · 影像工作台",
+    "cgWindowBoundsPoints": {
+      "x": 278,
+      "y": 121,
+      "width": 1500,
+      "height": 960
+    },
+    "backingScale": 2,
+    "windowPixelsExcludingShadow": {
+      "width": 3000,
+      "height": 1920
+    },
+    "boundsSource": "CGWindowListCopyWindowInfo filtered by our PID and observed window id",
+    "pixelCaution": "CGWindow bounds are logical global coordinates. PNG includes OS shadow; its dimensions are not the window bounds."
+  },
+  "fixture": {
+    "syntheticOnly": true,
+    "projectName": "原生窗口边框验收 · 合成项目",
+    "shots": 3,
+    "generationSubmissions": 0,
+    "externalProviderCalls": 0,
+    "credentialConfiguration": false,
+    "createdVia": "private instance project.create and shot.create; native UI opened project"
+  },
+  "observations": [
+    {
+      "name": "native-frame-and-traffic-lights",
+      "passed": true,
+      "evidence": "native-workbench-system-frame.png",
+      "details": "OS window capture includes native rounded edge/shadow and three gray traffic-light circles. It is an actual inactive native window capture, not web content capture or a composited mock."
+    },
+    {
+      "name": "loaded-workbench",
+      "passed": true,
+      "details": "Project selector, canvas with three persisted synthetic shots, asset library, inspector and saved indicator are visible. Native AX tree confirms editor project URL and close/fullscreen/minimize controls."
+    },
+    {
+      "name": "traffic-light-header-clearance",
+      "passed": true,
+      "details": "In primary PNG, three circle bounding boxes are [64,50,92,78], [110,50,138,78], [156,50,184,78] in image pixels. Mioon text starts about x=222px; measured visible clearance is about 38px (19pt). No overlap with the logo, project selector or mode tabs was seen."
+    }
+  ],
+  "screenshots": [
+    {
+      "path": "native-workbench-system-frame.png",
+      "sha256": "3e0611b8be37701e9f04d68e4a4310fc232db1004d4738f57fa6a8a362390c76",
+      "bytes": 895007,
+      "pixels": {
+        "width": 3092,
+        "height": 2012
+      },
+      "method": "screenshot skill take_screenshot.py → macOS screencapture -l77543; original unedited PNG",
+      "webContentsCapturePage": false
+    },
+    {
+      "path": "native-workbench-automation-indicator.png",
+      "sha256": "4370c1354ae21b502bbb3e3b9f4bdefabbc5d44225f398a413170227bd82a095",
+      "bytes": 906058,
+      "pixels": {
+        "width": 3092,
+        "height": 2012
+      },
+      "method": "screenshot skill take_screenshot.py → macOS screencapture -l77543; original unedited PNG",
+      "webContentsCapturePage": false
+    }
+  ],
+  "limitations": [
+    "The primary capture shows inactive gray traffic lights. Focused red/yellow/green colors and control click behavior were not verified in this evidence task.",
+    "Selecting/activating through automation produced a purple system sharing indicator over the control area; the secondary screenshot records that state and is not used to pass the traffic-light requirement.",
+    "Screenshot pixels demonstrate visible clearance; they do not independently prove Electron getWindowButtonPosition({x:20,y:22}). Existing native smoke report is the separate API-position evidence.",
+    "Development build only; no packaged release, Linux or Windows verification was added."
+  ],
+  "cleanup": {
+    "mainPid": 42518,
+    "backendPid": 42590,
+    "ownedProcessCount": 6,
+    "remainingOwnedProcesses": [],
+    "gracefulSignal": "SIGTERM handled by app.quit",
+    "temporaryRoot": "/private/tmp/mioon-native-system-frame-mkcdexrt",
+    "temporaryRootRemoved": true
+  }
+}

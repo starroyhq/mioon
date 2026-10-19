@@ -1,0 +1,268 @@
+TAP version 13
+# Subtest: activate cannot open a second window at restart drain
+ok 1 - activate cannot open a second window at restart drain
+  ---
+  duration_ms: 18.558125
+  type: 'test'
+  ...
+# Subtest: activate cannot open a second window at restart backend-stop
+ok 2 - activate cannot open a second window at restart backend-stop
+  ---
+  duration_ms: 4.409875
+  type: 'test'
+  ...
+# Subtest: activate cannot open a second window at restart remove
+ok 3 - activate cannot open a second window at restart remove
+  ---
+  duration_ms: 3.099292
+  type: 'test'
+  ...
+# Subtest: activate cannot open a second window at restart clear
+ok 4 - activate cannot open a second window at restart clear
+  ---
+  duration_ms: 3.500417
+  type: 'test'
+  ...
+# Subtest: activate cannot open a second window at restart new-validation
+ok 5 - activate cannot open a second window at restart new-validation
+  ---
+  duration_ms: 2.915291
+  type: 'test'
+  ...
+# Subtest: activate cannot open a second window at restart new-backend
+ok 6 - activate cannot open a second window at restart new-backend
+  ---
+  duration_ms: 2.608042
+  type: 'test'
+  ...
+# Subtest: activate cannot open a second window at restart new-cookie
+ok 7 - activate cannot open a second window at restart new-cookie
+  ---
+  duration_ms: 3.004333
+  type: 'test'
+  ...
+# Subtest: activate cannot open a second window at restart new-connection
+ok 8 - activate cannot open a second window at restart new-connection
+  ---
+  duration_ms: 2.979083
+  type: 'test'
+  ...
+# Subtest: activate cannot open a second window at restart new-load
+ok 9 - activate cannot open a second window at restart new-load
+  ---
+  duration_ms: 3.4345
+  type: 'test'
+  ...
+# Subtest: unexpected backend exit during initial cookie preparation fails before publishing a window context
+ok 10 - unexpected backend exit during initial cookie preparation fails before publishing a window context
+  ---
+  duration_ms: 1.691708
+  type: 'test'
+  ...
+# Subtest: unexpected backend exit during initial connection preparation fails before publishing a window context
+ok 11 - unexpected backend exit during initial connection preparation fails before publishing a window context
+  ---
+  duration_ms: 1.194
+  type: 'test'
+  ...
+# Subtest: unexpected backend exit before the handshake continuation fails before preparing a session
+ok 12 - unexpected backend exit before the handshake continuation fails before preparing a session
+  ---
+  duration_ms: 1.183333
+  type: 'test'
+  ...
+# Subtest: initial cookie preparation cannot be bypassed by activate
+ok 13 - initial cookie preparation cannot be bypassed by activate
+  ---
+  duration_ms: 1.441542
+  type: 'test'
+  ...
+# Subtest: initial connection preparation cannot be bypassed by activate
+ok 14 - initial connection preparation cannot be bypassed by activate
+  ---
+  duration_ms: 1.455917
+  type: 'test'
+  ...
+# Subtest: normal activate reopens only the existing authenticated backend session
+ok 15 - normal activate reopens only the existing authenticated backend session
+  ---
+  duration_ms: 2.295958
+  type: 'test'
+  ...
+# Subtest: old closed, ready-to-show and renderer events cannot affect a replacement
+ok 16 - old closed, ready-to-show and renderer events cannot affect a replacement
+  ---
+  duration_ms: 2.911083
+  type: 'test'
+  ...
+# Subtest: activate cannot navigate to the old origin while its session is clearing
+ok 17 - activate cannot navigate to the old origin while its session is clearing
+  ---
+  duration_ms: 3.584667
+  type: 'test'
+  ...
+# Subtest: superseded activate navigation resolve cannot fail its replacement
+ok 18 - superseded activate navigation resolve cannot fail its replacement
+  ---
+  duration_ms: 2.944166
+  type: 'test'
+  ...
+# Subtest: superseded activate navigation reject cannot fail its replacement
+ok 19 - superseded activate navigation reject cannot fail its replacement
+  ---
+  duration_ms: 2.803917
+  type: 'test'
+  ...
+# Subtest: superseded renderer dialog result 0 cannot reload or quit replacement
+ok 20 - superseded renderer dialog result 0 cannot reload or quit replacement
+  ---
+  duration_ms: 2.475541
+  type: 'test'
+  ...
+# Subtest: superseded renderer dialog result 1 cannot reload or quit replacement
+ok 21 - superseded renderer dialog result 1 cannot reload or quit replacement
+  ---
+  duration_ms: 2.466083
+  type: 'test'
+  ...
+# Subtest: superseded renderer dialog result reject cannot reload or quit replacement
+ok 22 - superseded renderer dialog result reject cannot reload or quit replacement
+  ---
+  duration_ms: 2.459334
+  type: 'test'
+  ...
+# Subtest: pending old renderer dialog 0 cannot block or release replacement dialog ownership
+ok 23 - pending old renderer dialog 0 cannot block or release replacement dialog ownership
+  ---
+  duration_ms: 3.005083
+  type: 'test'
+  ...
+# Subtest: pending old renderer dialog 1 cannot block or release replacement dialog ownership
+ok 24 - pending old renderer dialog 1 cannot block or release replacement dialog ownership
+  ---
+  duration_ms: 2.66325
+  type: 'test'
+  ...
+# Subtest: pending old renderer dialog reject cannot block or release replacement dialog ownership
+ok 25 - pending old renderer dialog reject cannot block or release replacement dialog ownership
+  ---
+  duration_ms: 2.880625
+  type: 'test'
+  ...
+# Subtest: current activate navigation failure is still fatal, even with a cancellation-shaped code
+ok 26 - current activate navigation failure is still fatal, even with a cancellation-shaped code
+  ---
+  duration_ms: 3.785209
+  type: 'test'
+  ...
+# Subtest: current renderer navigation failure is still fatal, even with a cancellation-shaped code
+ok 27 - current renderer navigation failure is still fatal, even with a cancellation-shaped code
+  ---
+  duration_ms: 1.705083
+  type: 'test'
+  ...
+# Subtest: current menu navigation failure is still fatal, even with a cancellation-shaped code
+ok 28 - current menu navigation failure is still fatal, even with a cancellation-shaped code
+  ---
+  duration_ms: 1.946875
+  type: 'test'
+  ...
+# Subtest: duplicate restart and activate retain one owned drain and one replacement
+ok 29 - duplicate restart and activate retain one owned drain and one replacement
+  ---
+  duration_ms: 2.181166
+  type: 'test'
+  ...
+# Subtest: quit wins over activate and replacement during the owned restart drain
+ok 30 - quit wins over activate and replacement during the owned restart drain
+  ---
+  duration_ms: 2.146459
+  type: 'test'
+  ...
+# Subtest: activate between accepted window close and quit continuation cannot replace that window
+ok 31 - activate between accepted window close and quit continuation cannot replace that window
+  ---
+  duration_ms: 1.571166
+  type: 'test'
+  ...
+# Subtest: actual before-quit inspects focused editor dirty first and cancellation retains both owners and backend
+ok 32 - actual before-quit inspects focused editor dirty first and cancellation retains both owners and backend
+  ---
+  duration_ms: 2.634459
+  type: 'test'
+  ...
+# Subtest: actual before-quit inspects focused editor unknown first and cancellation retains both owners and backend
+ok 33 - actual before-quit inspects focused editor unknown first and cancellation retains both owners and backend
+  ---
+  duration_ms: 2.077375
+  type: 'test'
+  ...
+# Subtest: actual before-quit with none focus falls back to the complete owned window set
+ok 34 - actual before-quit with none focus falls back to the complete owned window set
+  ---
+  duration_ms: 2.407208
+  type: 'test'
+  ...
+# Subtest: actual before-quit with untrusted focus falls back to the complete owned window set
+ok 35 - actual before-quit with untrusted focus falls back to the complete owned window set
+  ---
+  duration_ms: 2.050333
+  type: 'test'
+  ...
+# Subtest: actual before-quit with focused owned replaced frame falls back without skipping either owner
+ok 36 - actual before-quit with focused owned replaced frame falls back without skipping either owner
+  ---
+  duration_ms: 2.431375
+  type: 'test'
+  ...
+# Subtest: actual before-quit with focused owned uncommitted frame falls back without skipping either owner
+ok 37 - actual before-quit with focused owned uncommitted frame falls back without skipping either owner
+  ---
+  duration_ms: 2.184792
+  type: 'test'
+  ...
+# Subtest: actual focused editor close reaches later launcher dirty prompt; cancelling partial quit retains its backend
+ok 38 - actual focused editor close reaches later launcher dirty prompt; cancelling partial quit retains its backend
+  ---
+  duration_ms: 2.46175
+  type: 'test'
+  ...
+# Subtest: drain failure remains visible and cannot authorize a replacement window or backend
+ok 39 - drain failure remains visible and cannot authorize a replacement window or backend
+  ---
+  duration_ms: 2.312458
+  type: 'test'
+  ...
+# Subtest: remove failure remains visible and cannot authorize a replacement window or backend
+ok 40 - remove failure remains visible and cannot authorize a replacement window or backend
+  ---
+  duration_ms: 1.842542
+  type: 'test'
+  ...
+# Subtest: clear failure remains visible and cannot authorize a replacement window or backend
+ok 41 - clear failure remains visible and cannot authorize a replacement window or backend
+  ---
+  duration_ms: 1.666125
+  type: 'test'
+  ...
+# Subtest: backend-stop failure remains visible and cannot authorize a replacement window or backend
+ok 42 - backend-stop failure remains visible and cannot authorize a replacement window or backend
+  ---
+  duration_ms: 1.823167
+  type: 'test'
+  ...
+# Subtest: unconfirmed-media failure remains visible and cannot authorize a replacement window or backend
+ok 43 - unconfirmed-media failure remains visible and cannot authorize a replacement window or backend
+  ---
+  duration_ms: 1.880459
+  type: 'test'
+  ...
+1..43
+# tests 43
+# suites 0
+# pass 43
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 352.212583

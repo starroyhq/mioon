@@ -1,0 +1,374 @@
+TAP version 13
+# Subtest: all four inspect operations use safe DTOs, preserve legacy data, make zero writes and no outbound calls
+ok 1 - all four inspect operations use safe DTOs, preserve legacy data, make zero writes and no outbound calls
+  ---
+  duration_ms: 1042.920958
+  type: 'test'
+  ...
+# Subtest: absent timeline stays null and inspection requires an existing owned project
+ok 2 - absent timeline stays null and inspection requires an existing owned project
+  ---
+  duration_ms: 690.633917
+  type: 'test'
+  ...
+# Subtest: SQL pagination limits rows before JSON materialization and signed cursors bind project, operation, limit and backend lifetime
+ok 3 - SQL pagination limits rows before JSON materialization and signed cursors bind project, operation, limit and backend lifetime
+  ---
+  duration_ms: 669.85325
+  type: 'test'
+  ...
+# Subtest: context brand, immutable scope, capability allowlist, argument descriptors and call/result budgets cannot be forged
+ok 4 - context brand, immutable scope, capability allowlist, argument descriptors and call/result budgets cannot be forged
+  ---
+  duration_ms: 668.7215
+  type: 'test'
+  ...
+# Subtest: hostile saved text remains data; UTF-8 prompt excerpts are bounded without altering saved text
+ok 5 - hostile saved text remains data; UTF-8 prompt excerpts are bounded without altering saved text
+  ---
+  duration_ms: 644.464083
+  type: 'test'
+  ...
+# Subtest: oversized or corrupt rows are guarded in SQL before JSON.parse and never silently omitted
+    # Subtest: assets: 9
+    ok 1 - assets: 9
+      ---
+      duration_ms: 623.687167
+      type: 'test'
+      ...
+    # Subtest: assets: 20014
+    ok 2 - assets: 20014
+      ---
+      duration_ms: 677.597875
+      type: 'test'
+      ...
+    # Subtest: shots: 40014
+    ok 3 - shots: 40014
+      ---
+      duration_ms: 667.332167
+      type: 'test'
+      ...
+    # Subtest: timelines: 262158
+    ok 4 - timelines: 262158
+      ---
+      duration_ms: 639.405833
+      type: 'test'
+      ...
+    1..4
+ok 6 - oversized or corrupt rows are guarded in SQL before JSON.parse and never silently omitted
+  ---
+  duration_ms: 2609.222958
+  type: 'test'
+  ...
+# Subtest: row SQL and JSON identities, scalars and timeline collection bounds are validated
+    # Subtest: asset-id
+    ok 1 - asset-id
+      ---
+      duration_ms: 626.064917
+      type: 'test'
+      ...
+    # Subtest: asset-json-project
+    ok 2 - asset-json-project
+      ---
+      duration_ms: 590.382083
+      type: 'test'
+      ...
+    # Subtest: shot-id
+    ok 3 - shot-id
+      ---
+      duration_ms: 580.743708
+      type: 'test'
+      ...
+    # Subtest: shot-json-project
+    ok 4 - shot-json-project
+      ---
+      duration_ms: 576.57775
+      type: 'test'
+      ...
+    # Subtest: project-id
+    ok 5 - project-id
+      ---
+      duration_ms: 564.593625
+      type: 'test'
+      ...
+    # Subtest: project-name
+    ok 6 - project-name
+      ---
+      duration_ms: 566.651917
+      type: 'test'
+      ...
+    # Subtest: prompt-too-long
+    ok 7 - prompt-too-long
+      ---
+      duration_ms: 565.235208
+      type: 'test'
+      ...
+    # Subtest: asset-scalar
+    ok 8 - asset-scalar
+      ---
+      duration_ms: 581.268125
+      type: 'test'
+      ...
+    # Subtest: timeline-json-project
+    ok 9 - timeline-json-project
+      ---
+      duration_ms: 580.904334
+      type: 'test'
+      ...
+    # Subtest: timeline-tracks
+    ok 10 - timeline-tracks
+      ---
+      duration_ms: 564.737458
+      type: 'test'
+      ...
+    # Subtest: timeline-clips
+    ok 11 - timeline-clips
+      ---
+      duration_ms: 571.272167
+      type: 'test'
+      ...
+    1..11
+ok 7 - row SQL and JSON identities, scalars and timeline collection bounds are validated
+  ---
+  duration_ms: 6369.725
+  type: 'test'
+  ...
+# Subtest: selected-version and clip chains fail closed for foreign, missing or corrupted asset/version/job/shot links
+    # Subtest: foreign-reference
+    ok 1 - foreign-reference
+      ---
+      duration_ms: 576.655709
+      type: 'test'
+      ...
+    # Subtest: missing-reference
+    ok 2 - missing-reference
+      ---
+      duration_ms: 569.782333
+      type: 'test'
+      ...
+    # Subtest: foreign-version
+    ok 3 - foreign-version
+      ---
+      duration_ms: 573.392375
+      type: 'test'
+      ...
+    # Subtest: missing-version
+    ok 4 - missing-version
+      ---
+      duration_ms: 569.579167
+      type: 'test'
+      ...
+    # Subtest: version-json-project
+    ok 5 - version-json-project
+      ---
+      duration_ms: 586.264834
+      type: 'test'
+      ...
+    # Subtest: version-sql-project
+    ok 6 - version-sql-project
+      ---
+      duration_ms: 599.93725
+      type: 'test'
+      ...
+    # Subtest: version-job-column
+    ok 7 - version-job-column
+      ---
+      duration_ms: 574.783292
+      type: 'test'
+      ...
+    # Subtest: foreign-asset
+    ok 8 - foreign-asset
+      ---
+      duration_ms: 636.46725
+      type: 'test'
+      ...
+    # Subtest: asset-json-project
+    ok 9 - asset-json-project
+      ---
+      duration_ms: 582.956917
+      type: 'test'
+      ...
+    # Subtest: foreign-job
+    ok 10 - foreign-job
+      ---
+      duration_ms: 583.101708
+      type: 'test'
+      ...
+    # Subtest: job-json-project
+    ok 11 - job-json-project
+      ---
+      duration_ms: 585.626958
+      type: 'test'
+      ...
+    # Subtest: job-sql-project
+    ok 12 - job-sql-project
+      ---
+      duration_ms: 591.344417
+      type: 'test'
+      ...
+    # Subtest: job-shot
+    ok 13 - job-shot
+      ---
+      duration_ms: 572.94925
+      type: 'test'
+      ...
+    # Subtest: job-version
+    ok 14 - job-version
+      ---
+      duration_ms: 572.209625
+      type: 'test'
+      ...
+    # Subtest: version-shot
+    ok 15 - version-shot
+      ---
+      duration_ms: 577.093417
+      type: 'test'
+      ...
+    # Subtest: snapshot-reference
+    ok 16 - snapshot-reference
+      ---
+      duration_ms: 571.047583
+      type: 'test'
+      ...
+    # Subtest: snapshot-project
+    ok 17 - snapshot-project
+      ---
+      duration_ms: 576.991959
+      type: 'test'
+      ...
+    # Subtest: foreign-clip-asset
+    ok 18 - foreign-clip-asset
+      ---
+      duration_ms: 563.970541
+      type: 'test'
+      ...
+    # Subtest: clip-generated-corrupt-job
+    ok 19 - clip-generated-corrupt-job
+      ---
+      duration_ms: 568.07225
+      type: 'test'
+      ...
+    # Subtest: spoofed-provenance
+    ok 20 - spoofed-provenance
+      ---
+      duration_ms: 563.561
+      type: 'test'
+      ...
+    # Subtest: foreign-reverse-owner
+    ok 21 - foreign-reverse-owner
+      ---
+      duration_ms: 568.098542
+      type: 'test'
+      ...
+    # Subtest: duplicate-owner
+    ok 22 - duplicate-owner
+      ---
+      duration_ms: 575.61825
+      type: 'test'
+      ...
+    1..22
+ok 8 - selected-version and clip chains fail closed for foreign, missing or corrupted asset/version/job/shot links
+  ---
+  duration_ms: 12741.659834
+  type: 'test'
+  ...
+# Subtest: missing and foreign links produce identical non-enumerating errors
+ok 9 - missing and foreign links produce identical non-enumerating errors
+  ---
+  duration_ms: 567.591333
+  type: 'test'
+  ...
+# Subtest: indexed reverse ownership and scoped pagination avoid unrelated-project scans
+ok 10 - indexed reverse ownership and scoped pagination avoid unrelated-project scans
+  ---
+  duration_ms: 659.286791
+  type: 'test'
+  ...
+# Subtest: additive inspection index migration tolerates malformed and huge legacy version JSON without rewriting records
+ok 11 - additive inspection index migration tolerates malformed and huge legacy version JSON without rewriting records
+  ---
+  duration_ms: 648.180167
+  type: 'test'
+  ...
+# Subtest: historical connection and optional clip relation IDs are deeply checked without requiring deleted edges
+    # Subtest: sourceAssetId
+    ok 1 - sourceAssetId
+      ---
+      duration_ms: 589.781666
+      type: 'test'
+      ...
+    # Subtest: sourceNodeId
+    ok 2 - sourceNodeId
+      ---
+      duration_ms: 571.079375
+      type: 'test'
+      ...
+    # Subtest: foreign-edge
+    ok 3 - foreign-edge
+      ---
+      duration_ms: 568.073167
+      type: 'test'
+      ...
+    # Subtest: edge-foreign-asset
+    ok 4 - edge-foreign-asset
+      ---
+      duration_ms: 578.074875
+      type: 'test'
+      ...
+    # Subtest: edge-foreign-node
+    ok 5 - edge-foreign-node
+      ---
+      duration_ms: 598.585
+      type: 'test'
+      ...
+    # Subtest: edge-mismatched-asset
+    ok 6 - edge-mismatched-asset
+      ---
+      duration_ms: 575.691167
+      type: 'test'
+      ...
+    # Subtest: deleted-edge
+    ok 7 - deleted-edge
+      ---
+      duration_ms: 579.463459
+      type: 'test'
+      ...
+    # Subtest: clip-aliased-job
+    ok 8 - clip-aliased-job
+      ---
+      duration_ms: 579.63175
+      type: 'test'
+      ...
+    # Subtest: clip-wrong-shot
+    ok 9 - clip-wrong-shot
+      ---
+      duration_ms: 566.471375
+      type: 'test'
+      ...
+    1..9
+ok 12 - historical connection and optional clip relation IDs are deeply checked without requiring deleted edges
+  ---
+  duration_ms: 5208.014625
+  type: 'test'
+  ...
+# Subtest: inspection preserves legacy duplicate reference IDs rather than imposing a new uniqueness rule
+ok 13 - inspection preserves legacy duplicate reference IDs rather than imposing a new uniqueness rule
+  ---
+  duration_ms: 567.972833
+  type: 'test'
+  ...
+# Subtest: RPC validation preserves shared schema errors for invalid JSON types without traversing nested objects
+ok 14 - RPC validation preserves shared schema errors for invalid JSON types without traversing nested objects
+  ---
+  duration_ms: 566.162166
+  type: 'test'
+  ...
+1..14
+# tests 60
+# suites 0
+# pass 60
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 34008.111208

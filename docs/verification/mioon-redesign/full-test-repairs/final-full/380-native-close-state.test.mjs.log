@@ -1,0 +1,142 @@
+TAP version 13
+# Subtest: registry accepts only fixed sources and unreported owners fail closed
+ok 1 - registry accepts only fixed sources and unreported owners fail closed
+  ---
+  duration_ms: 1.762292
+  type: 'test'
+  ...
+# Subtest: replacement and retired callbacks cannot erase or certify another owner
+ok 2 - replacement and retired callbacks cannot erase or certify another owner
+  ---
+  duration_ms: 0.196917
+  type: 'test'
+  ...
+# Subtest: malformed source report invalidates the previous clean snapshot
+ok 3 - malformed source report invalidates the previous clean snapshot
+  ---
+  duration_ms: 0.148917
+  type: 'test'
+  ...
+# Subtest: equal or older report versions never clear busy or unknown
+ok 4 - equal or older report versions never clear busy or unknown
+  ---
+  duration_ms: 0.104875
+  type: 'test'
+  ...
+# Subtest: busy cannot be converted into discard permission
+ok 5 - busy cannot be converted into discard permission
+  ---
+  duration_ms: 0.539625
+  type: 'test'
+  ...
+# Subtest: blocked cannot be converted into discard permission
+ok 6 - blocked cannot be converted into discard permission
+  ---
+  duration_ms: 0.160375
+  type: 'test'
+  ...
+# Subtest: dirty confirmation is exact and consumed only once without changing source state
+ok 7 - dirty confirmation is exact and consumed only once without changing source state
+  ---
+  duration_ms: 0.133417
+  type: 'test'
+  ...
+# Subtest: new same-boolean input invalidates confirmation, including edit then clear
+ok 8 - new same-boolean input invalidates confirmation, including edit then clear
+  ---
+  duration_ms: 0.130375
+  type: 'test'
+  ...
+# Subtest: DOM interaction and project/workspace changes invalidate an already armed close
+ok 9 - DOM interaction and project/workspace changes invalidate an already armed close
+  ---
+  duration_ms: 0.141458
+  type: 'test'
+  ...
+# Subtest: all settings owners participate even while hidden and blocked is never discardable
+ok 10 - all settings owners participate even while hidden and blocked is never discardable
+  ---
+  duration_ms: 0.259083
+  type: 'test'
+  ...
+# Subtest: settings same-dirty new input or newer owner invalidates prior approval
+ok 11 - settings same-dirty new input or newer owner invalidates prior approval
+  ---
+  duration_ms: 0.093333
+  type: 'test'
+  ...
+# Subtest: legacy dirty still needs explicit confirmation, and successful drain may remove it
+ok 12 - legacy dirty still needs explicit confirmation, and successful drain may remove it
+  ---
+  duration_ms: 0.064
+  type: 'test'
+  ...
+# Subtest: expiry and cancellation cannot leave permission for a later unload
+ok 13 - expiry and cancellation cannot leave permission for a later unload
+  ---
+  duration_ms: 0.074875
+  type: 'test'
+  ...
+# Subtest: late commit after cancellation and old cancel after replacement never authorize or revoke another attempt
+ok 14 - late commit after cancellation and old cancel after replacement never authorize or revoke another attempt
+  ---
+  duration_ms: 0.052959
+  type: 'test'
+  ...
+# Subtest: malformed and excessive commit leases fail closed
+ok 15 - malformed and excessive commit leases fail closed
+  ---
+  duration_ms: 0.069708
+  type: 'test'
+  ...
+# Subtest: disposed renderer cannot grant or consume an outstanding native ticket
+ok 16 - disposed renderer cannot grant or consume an outstanding native ticket
+  ---
+  duration_ms: 0.076209
+  type: 'test'
+  ...
+# Subtest: a failed synchronous owner read still vetoes unload rather than throwing past the browser guard
+ok 17 - a failed synchronous owner read still vetoes unload rather than throwing past the browser guard
+  ---
+  duration_ms: 0.065375
+  type: 'test'
+  ...
+# Subtest: public inspection exposes only protocol token and disposition
+ok 18 - public inspection exposes only protocol token and disposition
+  ---
+  duration_ms: 0.106458
+  type: 'test'
+  ...
+# Subtest: reload ticket is bound to the exact current document and cannot authorize close or another navigation
+ok 19 - reload ticket is bound to the exact current document and cannot authorize close or another navigation
+  ---
+  duration_ms: 0.072375
+  type: 'test'
+  ...
+# Subtest: reload rejects arbitrary target URLs and malformed actions; valid reload still requires exact dirty confirmation
+ok 20 - reload rejects arbitrary target URLs and malformed actions; valid reload still requires exact dirty confirmation
+  ---
+  duration_ms: 0.082541
+  type: 'test'
+  ...
+# Subtest: actual delivery controller programmatic dirty-to-dirty edit cannot reuse native discard permission
+ok 21 - actual delivery controller programmatic dirty-to-dirty edit cannot reuse native discard permission
+  ---
+  duration_ms: 59.706041
+  type: 'test'
+  ...
+# Subtest: commit and final unload use pure real shot getter without synchronizing, scheduling or transport
+ok 22 - commit and final unload use pure real shot getter without synchronizing, scheduling or transport
+  ---
+  duration_ms: 6.3155
+  type: 'test'
+  ...
+1..22
+# tests 22
+# suites 0
+# pass 22
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 234.581458

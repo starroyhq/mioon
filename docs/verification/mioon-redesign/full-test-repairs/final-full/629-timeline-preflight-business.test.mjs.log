@@ -1,0 +1,302 @@
+TAP version 13
+# Subtest: preflight never initializes a legacy timeline, writes tables, or creates files
+ok 1 - preflight never initializes a legacy timeline, writes tables, or creates files
+  ---
+  duration_ms: 662.085208
+  type: 'test'
+  ...
+# Subtest: ready report summarizes saved state, hashes once and probes once without writes
+ok 2 - ready report summarizes saved state, hashes once and probes once without writes
+  ---
+  duration_ms: 614.089375
+  type: 'test'
+  ...
+# Subtest: missing, corrupt and byte-replaced sources block with sanitized reasons
+ok 3 - missing, corrupt and byte-replaced sources block with sanitized reasons
+  ---
+  duration_ms: 591.428417
+  type: 'test'
+  ...
+# Subtest: deep ownership and SQL JSON bounds prevent foreign reference and path leakage before probes
+ok 4 - deep ownership and SQL JSON bounds prevent foreign reference and path leakage before probes
+  ---
+  duration_ms: 606.580792
+  type: 'test'
+  ...
+# Subtest: symlinks are refused without repairing files or permissions
+ok 5 - symlinks are refused without repairing files or permissions
+  ---
+  duration_ms: 621.117083
+  type: 'test'
+  ...
+# Subtest: caps and exhausted total budget return incomplete while legacy rendering still queues
+ok 6 - caps and exhausted total budget return incomplete while legacy rendering still queues
+  ---
+  duration_ms: 632.490708
+  type: 'test'
+  ...
+# Subtest: stale revision and source metadata drift never publish ready
+ok 7 - stale revision and source metadata drift never publish ready
+  ---
+  duration_ms: 636.989625
+  type: 'test'
+  ...
+# Subtest: source reassignment during a probe is stale without disclosing the foreign owner
+ok 8 - source reassignment during a probe is stale without disclosing the foreign owner
+  ---
+  duration_ms: 586.328
+  type: 'test'
+  ...
+# Subtest: new digest render rejects drift after CAS, but exact replay returns original bytes
+ok 9 - new digest render rejects drift after CAS, but exact replay returns original bytes
+  ---
+  duration_ms: 606.682875
+  type: 'test'
+  ...
+# Subtest: one active check has no queue; time budget cancels late work without writes
+ok 10 - one active check has no queue; time budget cancels late work without writes
+  ---
+  duration_ms: 632.484833
+  type: 'test'
+  ...
+# Subtest: drain cancels pending read and late probe completion cannot publish or read a closed store
+ok 11 - drain cancels pending read and late probe completion cannot publish or read a closed store
+  ---
+  duration_ms: 594.323375
+  type: 'test'
+  ...
+# Subtest: cancelled queued probe never spawns and ready checks launch only ffprobe
+ok 12 - cancelled queued probe never spawns and ready checks launch only ffprobe
+  ---
+  duration_ms: 656.87075
+  type: 'test'
+  ...
+# Subtest: playlist-shaped bytes cannot make the restricted metadata probe contact a network endpoint
+ok 13 - playlist-shaped bytes cannot make the restricted metadata probe contact a network endpoint
+  ---
+  duration_ms: 644.009083
+  type: 'test'
+  ...
+# Subtest: shared renderer validator retains precise legacy messages and input preparation is uncapped by default
+ok 14 - shared renderer validator retains precise legacy messages and input preparation is uncapped by default
+  ---
+  duration_ms: 587.394791
+  type: 'test'
+  ...
+# Subtest: ready matches saved enqueue duration/fade rules and unknown legacy audio is verified by probe
+ok 15 - ready matches saved enqueue duration/fade rules and unknown legacy audio is verified by probe
+  ---
+  duration_ms: 598.05875
+  type: 'test'
+  ...
+# Subtest: optional foreign clip lineage and generated reverse ownership block before filesystem work
+ok 16 - optional foreign clip lineage and generated reverse ownership block before filesystem work
+  ---
+  duration_ms: 598.290459
+  type: 'test'
+  ...
+# Subtest: oversized relational timeline identity is replaced with SQL NULL before materialization
+ok 17 - oversized relational timeline identity is replaced with SQL NULL before materialization
+  ---
+  duration_ms: 612.85275
+  type: 'test'
+  ...
+# Subtest: a caller deadline retains the exact uncooperative preparation admission until settlement
+ok 18 - a caller deadline retains the exact uncooperative preparation admission until settlement
+  ---
+  duration_ms: 659.475458
+  type: 'test'
+  ...
+# Subtest: valid imported, generated, mock and export source ownership all remain usable
+ok 19 - valid imported, generated, mock and export source ownership all remain usable
+  ---
+  duration_ms: 658.636792
+  type: 'test'
+  ...
+# Subtest: bounded graph metadata exhaustion is incomplete and never reported as corrupt media
+ok 20 - bounded graph metadata exhaustion is incomplete and never reported as corrupt media
+  ---
+  duration_ms: 765.150125
+  type: 'test'
+  ...
+# Subtest: legacy recovered snapshots with omitted relativePath and hasAudio still prepare actual media
+ok 21 - legacy recovered snapshots with omitted relativePath and hasAudio still prepare actual media
+  ---
+  duration_ms: 585.321458
+  type: 'test'
+  ...
+# Subtest: restricted metadata probe accepts PNG JPEG WEBP MP4 WebM MP3 WAV and M4A with no full-decode process
+not ok 22 - restricted metadata probe accepts PNG JPEG WEBP MP4 WebM MP3 WAV and M4A with no full-decode process
+  ---
+  duration_ms: 764.350875
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-preflight-business.test.mjs:244:1'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    ChildProcess._handle.onexit (node:internal/child_process:305:5)
+  ...
+# Subtest: default source byte cap rejects sparse oversized files before SHA or probe
+ok 23 - default source byte cap rejects sparse oversized files before SHA or probe
+  ---
+  duration_ms: 578.004917
+  type: 'test'
+  ...
+# Subtest: unconfirmed owned media termination fences later checks and prevents successful drain
+ok 24 - unconfirmed owned media termination fences later checks and prevents successful drain
+  ---
+  duration_ms: 579.590541
+  type: 'test'
+  ...
+# Subtest: recovered snapshots bind the exact expected project and contain only referenced assets before file work
+ok 25 - recovered snapshots bind the exact expected project and contain only referenced assets before file work
+  ---
+  duration_ms: 572.38975
+  type: 'test'
+  ...
+# Subtest: worker startup and queued enumeration leave aliased foreign malformed and oversized timeline rows untouched
+    # Subtest: running
+    ok 1 - running
+      ---
+      duration_ms: 641.375292
+      type: 'test'
+      ...
+    # Subtest: queued
+    ok 2 - queued
+      ---
+      duration_ms: 642.405792
+      type: 'test'
+      ...
+    1..2
+ok 26 - worker startup and queued enumeration leave aliased foreign malformed and oversized timeline rows untouched
+  ---
+  duration_ms: 1284.310625
+  type: 'test'
+  ...
+# Subtest: worker keeps valid timeline recovery and large ordinary storyboard recovery compatible
+ok 27 - worker keeps valid timeline recovery and large ordinary storyboard recovery compatible
+  ---
+  duration_ms: 649.110292
+  type: 'test'
+  ...
+# Subtest: worker rechecks relational identity inside recovery and queued status transactions before the first write
+    # Subtest: running
+    ok 1 - running
+      ---
+      duration_ms: 590.747667
+      type: 'test'
+      ...
+    # Subtest: queued
+    ok 2 - queued
+      ---
+      duration_ms: 591.030792
+      type: 'test'
+      ...
+    1..2
+ok 28 - worker rechecks relational identity inside recovery and queued status transactions before the first write
+  ---
+  duration_ms: 1182.225875
+  type: 'test'
+  ...
+# Subtest: worker rechecks the timeline export owner after preparation before renderer dispatch
+ok 29 - worker rechecks the timeline export owner after preparation before renderer dispatch
+  ---
+  duration_ms: 625.3595
+  type: 'test'
+  ...
+# Subtest: worker rechecks relational ownership after rendering and never publishes to a reassigned row
+ok 30 - worker rechecks relational ownership after rendering and never publishes to a reassigned row
+  ---
+  duration_ms: 802.411958
+  type: 'test'
+  ...
+# Subtest: worker timeline failure guard and status write share one transaction and preserve a reassigned row
+ok 31 - worker timeline failure guard and status write share one transaction and preserve a reassigned row
+  ---
+  duration_ms: 608.265459
+  type: 'test'
+  ...
+# Subtest: worker rejects malformed 36-character and traversal UUID identities before recovery status or filename use
+    # Subtest: running
+    ok 1 - running
+      ---
+      duration_ms: 671.719333
+      type: 'test'
+      ...
+    # Subtest: queued
+    ok 2 - queued
+      ---
+      duration_ms: 587.966416
+      type: 'test'
+      ...
+    1..2
+ok 32 - worker rejects malformed 36-character and traversal UUID identities before recovery status or filename use
+  ---
+  duration_ms: 1260.20325
+  type: 'test'
+  ...
+# Subtest: SQL rejects duplicate mode keys before oversized timeline JSON can bypass its materialization cap
+ok 33 - SQL rejects duplicate mode keys before oversized timeline JSON can bypass its materialization cap
+  ---
+  duration_ms: 883.510625
+  type: 'test'
+  ...
+# Subtest: worker row identity cannot be bypassed by absent storyboard or relabeled legacy mode
+    # Subtest: running
+    ok 1 - running
+      ---
+      duration_ms: 581.725292
+      type: 'test'
+      ...
+    # Subtest: queued
+    ok 2 - queued
+      ---
+      duration_ms: 1242.435083
+      type: 'test'
+      ...
+    1..2
+ok 34 - worker row identity cannot be bypassed by absent storyboard or relabeled legacy mode
+  ---
+  duration_ms: 1824.594334
+  type: 'test'
+  ...
+# Subtest: timeline byte mismatch preserves path-free legacy worker error text and preflight classification
+ok 35 - timeline byte mismatch preserves path-free legacy worker error text and preflight classification
+  ---
+  duration_ms: 821.197084
+  type: 'test'
+  ...
+# Subtest: ordinary storyboard recovery and queued dispatch re-read ownership inside the write transaction
+    # Subtest: running
+    ok 1 - running
+      ---
+      duration_ms: 625.012791
+      type: 'test'
+      ...
+    # Subtest: queued
+    ok 2 - queued
+      ---
+      duration_ms: 587.53375
+      type: 'test'
+      ...
+    1..2
+ok 36 - ordinary storyboard recovery and queued dispatch re-read ownership inside the write transaction
+  ---
+  duration_ms: 1212.972541
+  type: 'test'
+  ...
+1..36
+# tests 46
+# suites 0
+# pass 45
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 27146.402541

@@ -1,0 +1,449 @@
+{
+  "url": "http://127.0.0.1:55203",
+  "errors": [],
+  "checks": [
+    {
+      "compactUsage": {
+        "usageBottom": 277.5,
+        "usageHeight": 24,
+        "metaTop": 285.5,
+        "usageText": "0"
+      }
+    },
+    "tag options and unused filter work with normal pointer; chips remove filters; list/grid switch",
+    "image edit exact source/mode; source dropdown; keep guard retains exact dirty name/prompt/source",
+    "four languages at 1440/1050: fit normal pointer, storyboard collapse/expand and ordinary center selection;  no document overflow",
+    {
+      "storyboardControlsBelowPreview": {
+        "previewBottom": 847,
+        "controls": [
+          {
+            "top": 855,
+            "height": 24
+          },
+          {
+            "top": 855,
+            "height": 24
+          }
+        ]
+      },
+      "ordinaryCenterSelect": true,
+      "laterThenEarlierRestoresOriginalOrder": true,
+      "dedicatedStoryboardUndo": "No existing storyboard undo control; inverse move restores only this synthetic order."
+    }
+  ],
+  "metrics": [
+    {
+      "name": "annotations-1440",
+      "innerWidth": 1440,
+      "innerHeight": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900,
+      "zoom": "1"
+    },
+    {
+      "name": "filters-1440",
+      "innerWidth": 1440,
+      "innerHeight": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900,
+      "zoom": "1"
+    },
+    {
+      "name": "list-1440",
+      "innerWidth": 1440,
+      "innerHeight": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900,
+      "zoom": "1"
+    },
+    {
+      "name": "image-edit-1440",
+      "innerWidth": 1440,
+      "innerHeight": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900,
+      "zoom": "1"
+    },
+    {
+      "name": "image-draft-guard-1440",
+      "innerWidth": 1440,
+      "innerHeight": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900,
+      "zoom": "1"
+    },
+    {
+      "name": "selected-zh-Hans-1440",
+      "innerWidth": 1440,
+      "innerHeight": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900,
+      "zoom": "1"
+    },
+    {
+      "name": "selected-zh-Hans-1050",
+      "innerWidth": 1050,
+      "innerHeight": 680,
+      "scrollWidth": 1050,
+      "scrollHeight": 680,
+      "zoom": "1"
+    },
+    {
+      "name": "selected-en-1440",
+      "innerWidth": 1440,
+      "innerHeight": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900,
+      "zoom": "1"
+    },
+    {
+      "name": "selected-en-1050",
+      "innerWidth": 1050,
+      "innerHeight": 680,
+      "scrollWidth": 1050,
+      "scrollHeight": 680,
+      "zoom": "1"
+    },
+    {
+      "name": "selected-ja-1440",
+      "innerWidth": 1440,
+      "innerHeight": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900,
+      "zoom": "1"
+    },
+    {
+      "name": "selected-ja-1050",
+      "innerWidth": 1050,
+      "innerHeight": 680,
+      "scrollWidth": 1050,
+      "scrollHeight": 680,
+      "zoom": "1"
+    },
+    {
+      "name": "selected-zh-Hant-1440",
+      "innerWidth": 1440,
+      "innerHeight": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900,
+      "zoom": "1"
+    },
+    {
+      "name": "selected-zh-Hant-1050",
+      "innerWidth": 1050,
+      "innerHeight": 680,
+      "scrollWidth": 1050,
+      "scrollHeight": 680,
+      "zoom": "1"
+    },
+    {
+      "name": "storyboard-reordered-1440",
+      "innerWidth": 1440,
+      "innerHeight": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900,
+      "zoom": "1"
+    },
+    {
+      "name": "storyboard-controls-1440",
+      "innerWidth": 1440,
+      "innerHeight": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900,
+      "zoom": "1"
+    },
+    {
+      "name": "empty-1440",
+      "innerWidth": 1440,
+      "innerHeight": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900,
+      "zoom": "1"
+    },
+    {
+      "name": "empty-1050",
+      "innerWidth": 1050,
+      "innerHeight": 680,
+      "scrollWidth": 1050,
+      "scrollHeight": 680,
+      "zoom": "1"
+    }
+  ],
+  "operations": [
+    "workspace.restore.inspect",
+    "workspace.restore.inspect",
+    "project.list",
+    "provider.list",
+    "workspace.restore.inspect",
+    "project.summary.list",
+    "workspace.restore.inspect",
+    "project.get",
+    "provider.list",
+    "asset.disposition.list",
+    "asset.annotation.list",
+    "subject.list",
+    "subject.binding.list",
+    "image.group.list",
+    "image.task.list",
+    "image.review.list",
+    "image.group.list",
+    "image.task.list",
+    "image.review.list",
+    "workspace.restore.inspect",
+    "workspace.restore.inspect",
+    "project.list",
+    "provider.list",
+    "workspace.restore.inspect",
+    "project.summary.list",
+    "workspace.restore.inspect",
+    "project.get",
+    "provider.list",
+    "asset.disposition.list",
+    "asset.annotation.list",
+    "subject.list",
+    "subject.binding.list",
+    "subject.binding.list",
+    "workspace.restore.inspect",
+    "workspace.restore.inspect",
+    "project.list",
+    "provider.list",
+    "workspace.restore.inspect",
+    "project.summary.list",
+    "workspace.restore.inspect",
+    "project.get",
+    "provider.list",
+    "asset.disposition.list",
+    "asset.annotation.list",
+    "subject.list",
+    "workspace.restore.inspect",
+    "workspace.restore.inspect",
+    "project.list",
+    "provider.list",
+    "workspace.restore.inspect",
+    "project.summary.list",
+    "workspace.restore.inspect",
+    "project.get",
+    "provider.list",
+    "asset.disposition.list",
+    "asset.annotation.list",
+    "subject.list",
+    "subject.binding.list",
+    "subject.binding.list",
+    "subject.binding.list",
+    "workspace.restore.inspect",
+    "workspace.restore.inspect",
+    "project.list",
+    "provider.list",
+    "workspace.restore.inspect",
+    "project.summary.list",
+    "workspace.restore.inspect",
+    "project.get",
+    "provider.list",
+    "asset.disposition.list",
+    "asset.annotation.list",
+    "subject.list",
+    "workspace.restore.inspect",
+    "workspace.restore.inspect",
+    "project.list",
+    "provider.list",
+    "workspace.restore.inspect",
+    "project.summary.list",
+    "workspace.restore.inspect",
+    "project.get",
+    "provider.list",
+    "asset.disposition.list",
+    "asset.annotation.list",
+    "subject.list",
+    "subject.binding.list",
+    "subject.binding.list",
+    "subject.binding.list",
+    "workspace.restore.inspect",
+    "workspace.restore.inspect",
+    "project.list",
+    "provider.list",
+    "workspace.restore.inspect",
+    "project.summary.list",
+    "workspace.restore.inspect",
+    "project.get",
+    "provider.list",
+    "asset.disposition.list",
+    "asset.annotation.list",
+    "subject.list",
+    "workspace.restore.inspect",
+    "workspace.restore.inspect",
+    "project.list",
+    "provider.list",
+    "workspace.restore.inspect",
+    "project.summary.list",
+    "workspace.restore.inspect",
+    "project.get",
+    "provider.list",
+    "asset.disposition.list",
+    "asset.annotation.list",
+    "subject.list",
+    "subject.binding.list",
+    "subject.binding.list",
+    "subject.binding.list",
+    "workspace.restore.inspect",
+    "workspace.restore.inspect",
+    "project.list",
+    "provider.list",
+    "workspace.restore.inspect",
+    "project.summary.list",
+    "workspace.restore.inspect",
+    "project.get",
+    "provider.list",
+    "asset.disposition.list",
+    "asset.annotation.list",
+    "subject.list",
+    "workspace.restore.inspect",
+    "workspace.restore.inspect",
+    "project.list",
+    "provider.list",
+    "workspace.restore.inspect",
+    "project.summary.list",
+    "workspace.restore.inspect",
+    "project.get",
+    "provider.list",
+    "asset.disposition.list",
+    "asset.annotation.list",
+    "subject.list",
+    "subject.binding.list",
+    "subject.binding.list",
+    "shot.reorder",
+    "project.get",
+    "provider.list",
+    "shot.reorder",
+    "project.get",
+    "provider.list",
+    "workspace.restore.inspect",
+    "workspace.restore.inspect",
+    "project.list",
+    "provider.list",
+    "workspace.restore.inspect",
+    "project.summary.list",
+    "workspace.restore.inspect",
+    "project.get",
+    "provider.list",
+    "subject.list",
+    "workspace.restore.inspect",
+    "workspace.restore.inspect",
+    "project.list",
+    "provider.list",
+    "workspace.restore.inspect",
+    "project.summary.list",
+    "workspace.restore.inspect",
+    "project.get",
+    "provider.list",
+    "subject.list"
+  ],
+  "preferenceWrites": [],
+  "recentOpenedNotifications": 12,
+  "passed": true,
+  "screenshots": [
+    {
+      "path": "screenshots/board-annotations-1440.png",
+      "sha256": "82296a2fbea8343b4ddc06b80c4620805cac7fd4ea0f2646ad40b86992f21875",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "path": "screenshots/board-filters-1440.png",
+      "sha256": "598d1d9e4bab5a1605a623fb8446261b867ad19a943f2c82c0cbf5561b650421",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "path": "screenshots/board-list-1440.png",
+      "sha256": "8c70d894d9a8cb0ca69579e1e4919d34af7de7ba11320248a68c6f59bc1ac571",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "path": "screenshots/board-image-edit-1440.png",
+      "sha256": "d1b71936082595afadd0b4b16e595dcfe1613cb97c4dc0b9b7e006393c176d4f",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "path": "screenshots/board-image-draft-guard-1440.png",
+      "sha256": "b2479bd031840a530778371f988d1fc187f487882bba212f666c7f6d776d9f37",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "path": "screenshots/board-selected-zh-Hans-1440.png",
+      "sha256": "cf32239d2223e1946c25bbac01cef3109e160b5cb5f2a09bd358c17003ea6cea",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "path": "screenshots/board-selected-zh-Hans-1050.png",
+      "sha256": "287af6021aab6f2d1206e7d8329ae361ba1f5ff0783ca6de94387ead42b00c7d",
+      "width": 1050,
+      "height": 680
+    },
+    {
+      "path": "screenshots/board-selected-en-1440.png",
+      "sha256": "377bc800cdb6a8d8c7120434e67390e00aaa129d7e043644d0305719a82451d3",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "path": "screenshots/board-selected-en-1050.png",
+      "sha256": "be5f54afbe0224568e63fe9e014e9d642dd572e9b8bafbda248ac1b00d7abcea",
+      "width": 1050,
+      "height": 680
+    },
+    {
+      "path": "screenshots/board-selected-ja-1440.png",
+      "sha256": "c1475d01bd286a3c10aa919df13807bcc9e9087634e03715c243513556db2d2c",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "path": "screenshots/board-selected-ja-1050.png",
+      "sha256": "2138084268471dfd06b86ed744a3f3d06b44271811337abeab838584c81f4235",
+      "width": 1050,
+      "height": 680
+    },
+    {
+      "path": "screenshots/board-selected-zh-Hant-1440.png",
+      "sha256": "4185aab00ef7996ce143a1d0a3a0c632e79602d50a8e46f32ad0cbf0f58b8cde",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "path": "screenshots/board-selected-zh-Hant-1050.png",
+      "sha256": "8435680462eff0f2e8b2af886b3d2bad54d9177c24913ac9d01f6d631a9636db",
+      "width": 1050,
+      "height": 680
+    },
+    {
+      "path": "screenshots/board-storyboard-reordered-1440.png",
+      "sha256": "eaa7793731575dd20d31748a3431d8f585a3594b2f5411a66b5551779c07cf04",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "path": "screenshots/board-storyboard-controls-1440.png",
+      "sha256": "7d003bcf2358d6bdd8e6fca9de23f3d5eeab5609c89e939cbb158006cc629e3d",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "path": "screenshots/board-empty-1440.png",
+      "sha256": "1ece99f742539dd6e838de9fcf573040c7d2305cc8bac3e02b0c6d197cb58d2b",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "path": "screenshots/board-empty-1050.png",
+      "sha256": "15798a0fcdf70d5a9d4073b374bb4a44ba0296a7856c5e7b677e5830113979c6",
+      "width": 1050,
+      "height": 680
+    }
+  ],
+  "evidenceScope": "Final 55203 build; all screenshots captured after login in synthetic projects. Automatic recent-opened notifications are separate from unchanged appearance preferences."
+}

@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: annotation contract bounds Unicode, canonical tags, literal notes and response identity
+ok 1 - annotation contract bounds Unicode, canonical tags, literal notes and response identity
+  ---
+  duration_ms: 3.916
+  type: 'test'
+  ...
+# Subtest: ordered bounded reads are noncreating and all-or-nothing; missing/foreign fail uniformly
+ok 2 - ordered bounded reads are noncreating and all-or-nothing; missing/foreign fail uniformly
+  ---
+  duration_ms: 690.293625
+  type: 'test'
+  ...
+# Subtest: save/clear independent CAS and historical replay survive restart without changing assets or other tables
+ok 3 - save/clear independent CAS and historical replay survive restart without changing assets or other tables
+  ---
+  duration_ms: 983.410583
+  type: 'test'
+  ...
+# Subtest: ownership drift prevents reads and replay; direct SQL cannot replace or delete state/receipts
+ok 4 - ownership drift prevents reads and replay; direct SQL cannot replace or delete state/receipts
+  ---
+  duration_ms: 606.0005
+  type: 'test'
+  ...
+# Subtest: all four legacy companion keys collide with annotations in both SQL directions
+ok 5 - all four legacy companion keys collide with annotations in both SQL directions
+  ---
+  duration_ms: 663.86125
+  type: 'test'
+  ...
+# Subtest: receipt insertion failure rolls back annotation save atomically
+ok 6 - receipt insertion failure rolls back annotation save atomically
+  ---
+  duration_ms: 1019.990541
+  type: 'test'
+  ...
+# Subtest: corrupt stored shapes and oversized bounded fields fail closed without raw TypeErrors
+ok 7 - corrupt stored shapes and oversized bounded fields fail closed without raw TypeErrors
+  ---
+  duration_ms: 766.660042
+  type: 'test'
+  ...
+# Subtest: two-process annotation CAS race commits one immutable receipt
+ok 8 - two-process annotation CAS race commits one immutable receipt
+  ---
+  duration_ms: 1477.692958
+  type: 'test'
+  ...
+# Subtest: two-process annotation exact replay race commits one immutable receipt
+ok 9 - two-process annotation exact replay race commits one immutable receipt
+  ---
+  duration_ms: 1386.28175
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 7984.843875

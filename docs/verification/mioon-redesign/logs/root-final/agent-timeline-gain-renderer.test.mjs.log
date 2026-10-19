@@ -1,0 +1,148 @@
+TAP version 13
+# Subtest: saved gain selection requires saved owned audio metadata and never exposes source identity
+ok 1 - saved gain selection requires saved owned audio metadata and never exposes source identity
+  ---
+  duration_ms: 2.95875
+  type: 'test'
+  ...
+# Subtest: gain capability is independent, exact, immutable and preserves old capabilities
+ok 2 - gain capability is independent, exact, immutable and preserves old capabilities
+  ---
+  duration_ms: 1.28275
+  type: 'test'
+  ...
+# Subtest: gain provenance, tool and proposal shape cannot be confused with the same-operation move
+ok 3 - gain provenance, tool and proposal shape cannot be confused with the same-operation move
+  ---
+  duration_ms: 2.447625
+  type: 'test'
+  ...
+# Subtest: gain authorization survives saved projection changes while each send binds the current complete projection
+ok 4 - gain authorization survives saved projection changes while each send binds the current complete projection
+  ---
+  duration_ms: 2.964875
+  type: 'test'
+  ...
+# Subtest: accepted gain run must match displayed gain and mute even at identical project, clip and revision
+ok 5 - accepted gain run must match displayed gain and mute even at identical project, clip and revision
+  ---
+  duration_ms: 1.715583
+  type: 'test'
+  ...
+# Subtest: gain sends invalidate on mode, settings, project selection and hidden panes without losing draft
+ok 6 - gain sends invalidate on mode, settings, project selection and hidden panes without losing draft
+  ---
+  duration_ms: 0.701625
+  type: 'test'
+  ...
+# Subtest: fresh gain approval requires exact saved project/clip/revision/gain/track and clean context
+ok 7 - fresh gain approval requires exact saved project/clip/revision/gain/track and clean context
+  ---
+  duration_ms: 2.945208
+  type: 'test'
+  ...
+# Subtest: gain historical recovery and applied acknowledgement survive later edits, mute, deletion and another selected clip
+ok 8 - gain historical recovery and applied acknowledgement survive later edits, mute, deletion and another selected clip
+  ---
+  duration_ms: 0.538875
+  type: 'test'
+  ...
+# Subtest: gain unknown remains monotonic and late approved response cannot refresh a disposed project
+ok 9 - gain unknown remains monotonic and late approved response cannot refresh a disposed project
+  ---
+  duration_ms: 1.550666
+  type: 'test'
+  ...
+# Subtest: actual gain card renders immutable exact multipliers, friendly percents, saved identity and explicit dry-preview warning
+ok 10 - actual gain card renders immutable exact multipliers, friendly percents, saved identity and explicit dry-preview warning
+  ---
+  duration_ms: 26.667875
+  type: 'test'
+  ...
+# Subtest: actual gain warnings disclose muted track, amplification risk and zero silence without calling it track mute
+ok 11 - actual gain warnings disclose muted track, amplification risk and zero silence without calling it track mute
+  ---
+  duration_ms: 7.722834
+  type: 'test'
+  ...
+# Subtest: actual gain card stale selection/dirty/mode callbacks stay inert, while Reject remains reachable
+ok 12 - actual gain card stale selection/dirty/mode callbacks stay inert, while Reject remains reachable
+  ---
+  duration_ms: 4.837416
+  type: 'test'
+  ...
+# Subtest: actual gain composer keeps separate context consent, mute disclosure and dirty fences with stale callbacks rejected
+ok 13 - actual gain composer keeps separate context consent, mute disclosure and dirty fences with stale callbacks rejected
+  ---
+  duration_ms: 12.345083
+  type: 'test'
+  ...
+# Subtest: actual gain activity distinguishes saved proposal from application with no media or authority controls
+ok 14 - actual gain activity distinguishes saved proposal from application with no media or authority controls
+  ---
+  duration_ms: 7.931416
+  type: 'test'
+  ...
+# Subtest: actual App saved selection and review fences include connection, dirty forms, candidate and pending timeline actions
+ok 15 - actual App saved selection and review fences include connection, dirty forms, candidate and pending timeline actions
+  ---
+  duration_ms: 2.26975
+  type: 'test'
+  ...
+# Subtest: actual clip draft hook separately fences loading/recovered candidates without changing ordinary dirty semantics
+ok 16 - actual clip draft hook separately fences loading/recovered candidates without changing ordinary dirty semantics
+  ---
+  duration_ms: 2.451166
+  type: 'test'
+  ...
+# Subtest: three-page discovery of 60 mixed shot/move/gain unknown proposals never pins old pages over fetched rows
+ok 17 - three-page discovery of 60 mixed shot/move/gain unknown proposals never pins old pages over fetched rows
+  ---
+  duration_ms: 7.966667
+  type: 'test'
+  ...
+# Subtest: gain local transport uncertainty never displaces a fetched full page when advancing the cursor
+ok 18 - gain local transport uncertainty never displaces a fetched full page when advancing the cursor
+  ---
+  duration_ms: 3.846208
+  type: 'test'
+  ...
+# Subtest: 50 local gain pins block a new approval without losing keys, while exact existing recovery clears a pin
+ok 19 - 50 local gain pins block a new approval without losing keys, while exact existing recovery clears a pin
+  ---
+  duration_ms: 16.870333
+  type: 'test'
+  ...
+# Subtest: actual gain review labels an off-page local uncertainty and retains its exact identity beside all fetched rows
+ok 20 - actual gain review labels an off-page local uncertainty and retains its exact identity beside all fetched rows
+  ---
+  duration_ms: 11.524125
+  type: 'test'
+  ...
+# Subtest: real installed React renders the typed gain diff as escaped inert HTML with exact raw values
+ok 21 - real installed React renders the typed gain diff as escaped inert HTML with exact raw values
+  ---
+  duration_ms: 18.767375
+  type: 'test'
+  ...
+# Subtest: actual gain review survives complete recreation without POST and only explicit matching approval applies
+ok 22 - actual gain review survives complete recreation without POST and only explicit matching approval applies
+  ---
+  duration_ms: 9.5375
+  type: 'test'
+  ...
+# Subtest: unavailable or unsupported selected source leaves the gain mode unoffered for sending
+ok 23 - unavailable or unsupported selected source leaves the gain mode unoffered for sending
+  ---
+  duration_ms: 7.392291
+  type: 'test'
+  ...
+1..23
+# tests 23
+# suites 0
+# pass 23
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 446.949542

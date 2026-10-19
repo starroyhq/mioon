@@ -1,0 +1,9 @@
+{
+  "completedFiles": 4,
+  "totalFiles": 4,
+  "passedFiles": 4,
+  "failedFiles": 0,
+  "timeoutFiles": 0,
+  "seconds": 62.12,
+  "last": "tests/opacity-candidate-preflight-execution.test.mjs"
+}

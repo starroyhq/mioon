@@ -1,0 +1,196 @@
+TAP version 13
+# Subtest: mount and context refresh perform no preparation, RPC, context allocation or autoplay
+ok 1 - mount and context refresh perform no preparation, RPC, context allocation or autoplay
+  ---
+  duration_ms: 0.666125
+  type: 'test'
+  ...
+# Subtest: explicit prepare is complete before play; clock ticks never persist and pause/repeated seek remain local
+ok 2 - explicit prepare is complete before play; clock ticks never persist and pause/repeated seek remain local
+  ---
+  duration_ms: 0.953959
+  type: 'test'
+  ...
+# Subtest: interval endpoint is explicitly ended, outside seek releases and never expands or silently re-prepares
+ok 3 - interval endpoint is explicitly ended, outside seek releases and never expands or silently re-prepares
+  ---
+  duration_ms: 0.590666
+  type: 'test'
+  ...
+# Subtest: unsaved draft warning never changes draft values, saved input, candidate ownership or admission
+ok 4 - unsaved draft warning never changes draft values, saved input, candidate ownership or admission
+  ---
+  duration_ms: 1.266708
+  type: 'test'
+  ...
+# Subtest: revision revokes playback and late preparation without a persistence write or automatic resume
+ok 5 - revision revokes playback and late preparation without a persistence write or automatic resume
+  ---
+  duration_ms: 1.188542
+  type: 'test'
+  ...
+# Subtest: source revokes playback and late preparation without a persistence write or automatic resume
+ok 6 - source revokes playback and late preparation without a persistence write or automatic resume
+  ---
+  duration_ms: 0.988584
+  type: 'test'
+  ...
+# Subtest: project revokes playback and late preparation without a persistence write or automatic resume
+ok 7 - project revokes playback and late preparation without a persistence write or automatic resume
+  ---
+  duration_ms: 0.527125
+  type: 'test'
+  ...
+# Subtest: workspace revokes playback and late preparation without a persistence write or automatic resume
+ok 8 - workspace revokes playback and late preparation without a persistence write or automatic resume
+  ---
+  duration_ms: 0.381291
+  type: 'test'
+  ...
+# Subtest: navigation revokes playback and late preparation without a persistence write or automatic resume
+ok 9 - navigation revokes playback and late preparation without a persistence write or automatic resume
+  ---
+  duration_ms: 0.301208
+  type: 'test'
+  ...
+# Subtest: hidden revokes playback and late preparation without a persistence write or automatic resume
+ok 10 - hidden revokes playback and late preparation without a persistence write or automatic resume
+  ---
+  duration_ms: 0.451792
+  type: 'test'
+  ...
+# Subtest: logout revokes playback and late preparation without a persistence write or automatic resume
+ok 11 - logout revokes playback and late preparation without a persistence write or automatic resume
+  ---
+  duration_ms: 0.236708
+  type: 'test'
+  ...
+# Subtest: restored revokes playback and late preparation without a persistence write or automatic resume
+ok 12 - restored revokes playback and late preparation without a persistence write or automatic resume
+  ---
+  duration_ms: 0.241042
+  type: 'test'
+  ...
+# Subtest: cancel and unmount invalidate an ignored late acknowledgment, including A to B to A ownership
+ok 13 - cancel and unmount invalidate an ignored late acknowledgment, including A to B to A ownership
+  ---
+  duration_ms: 0.430833
+  type: 'test'
+  ...
+# Subtest: native-player revocation and page disposal reject late play acknowledgments
+ok 14 - native-player revocation and page disposal reject late play acknowledgments
+  ---
+  duration_ms: 0.177417
+  type: 'test'
+  ...
+# Subtest: retained handlers and a render before layout cleanup cannot show or play stale saved data
+ok 15 - retained handlers and a render before layout cleanup cannot show or play stale saved data
+  ---
+  duration_ms: 0.192084
+  type: 'test'
+  ...
+# Subtest: real shared controls render compact exact half-open window, saved revision, sound-only and separate-video labels
+ok 16 - real shared controls render compact exact half-open window, saved revision, sound-only and separate-video labels
+  ---
+  duration_ms: 0.203
+  type: 'test'
+  ...
+# Subtest: presentation covers explicit prepare/cancel/play/pause/end, warnings and restored failure without whole-timeline completion
+ok 17 - presentation covers explicit prepare/cancel/play/pause/end, warnings and restored failure without whole-timeline completion
+  ---
+  duration_ms: 0.132625
+  type: 'test'
+  ...
+# Subtest: new TS/TSX owns no persistence, durable work, decoder shortcut or autoplay and listens to page hiding
+ok 18 - new TS/TSX owns no persistence, durable work, decoder shortcut or autoplay and listens to page hiding
+  ---
+  duration_ms: 0.570875
+  type: 'test'
+  ...
+# Subtest: saved source identity excludes drafts/private paths/irrelevant library rows but tracks all sound owners
+ok 19 - saved source identity excludes drafts/private paths/irrelevant library rows but tracks all sound owners
+  ---
+  duration_ms: 0.460417
+  type: 'test'
+  ...
+# Subtest: App helpers keep playback ephemeral and route each explicit seek to exactly one owner
+ok 20 - App helpers keep playback ephemeral and route each explicit seek to exactly one owner
+  ---
+  duration_ms: 0.376542
+  type: 'test'
+  ...
+# Subtest: retained UI action bindings cannot prepare or seek a later project owner
+ok 21 - retained UI action bindings cannot prepare or seek a later project owner
+  ---
+  duration_ms: 0.193542
+  type: 'test'
+  ...
+# Subtest: deferred context close fences new preparation until exact retirement acknowledgment
+ok 22 - deferred context close fences new preparation until exact retirement acknowledgment
+  ---
+  duration_ms: 4.050333
+  type: 'test'
+  ...
+# Subtest: failed context close remains visibly blocked across retries and reattachment
+ok 23 - failed context close remains visibly blocked across retries and reattachment
+  ---
+  duration_ms: 0.523
+  type: 'test'
+  ...
+# Subtest: old prepare flight must settle before new context admission and cannot double-close resources
+ok 24 - old prepare flight must settle before new context admission and cannot double-close resources
+  ---
+  duration_ms: 0.7385
+  type: 'test'
+  ...
+# Subtest: client resource settlement is distinct from promptly completed cancellation/timeout
+ok 25 - client resource settlement is distinct from promptly completed cancellation/timeout
+  ---
+  duration_ms: 3.822084
+  type: 'test'
+  ...
+# Subtest: retirement progress/failure remain visible and disable reprepare; float parity limitation is explicit
+ok 26 - retirement progress/failure remain visible and disable reprepare; float parity limitation is explicit
+  ---
+  duration_ms: 0.18425
+  type: 'test'
+  ...
+# Subtest: known unknown-audio, unsupported, stale and decoder errors state a safe specific reason
+ok 27 - known unknown-audio, unsupported, stale and decoder errors state a safe specific reason
+  ---
+  duration_ms: 0.46275
+  type: 'test'
+  ...
+# Subtest: closed context during deferred preparation cannot publish a ready interval or construct a transport
+ok 28 - closed context during deferred preparation cannot publish a ready interval or construct a transport
+  ---
+  duration_ms: 0.7915
+  type: 'test'
+  ...
+# Subtest: initially suspended context remains eligible for explicit play after complete preparation
+ok 29 - initially suspended context remains eligible for explicit play after complete preparation
+  ---
+  duration_ms: 0.235666
+  type: 'test'
+  ...
+# Subtest: explicit editor seek beyond saved duration stops sound and persists once up to the existing 18000-frame bound
+ok 30 - explicit editor seek beyond saved duration stops sound and persists once up to the existing 18000-frame bound
+  ---
+  duration_ms: 0.269125
+  type: 'test'
+  ...
+# Subtest: out-of-editor bounds and stale owners still cannot change the saved playhead
+ok 31 - out-of-editor bounds and stale owners still cannot change the saved playhead
+  ---
+  duration_ms: 0.143375
+  type: 'test'
+  ...
+1..31
+# tests 31
+# suites 0
+# pass 31
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 619.524625

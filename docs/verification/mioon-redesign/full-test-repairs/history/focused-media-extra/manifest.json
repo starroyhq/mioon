@@ -1,0 +1,15 @@
+{
+  "files": [
+    "tests/storyboard-multistream-media.test.mjs",
+    "tests/opacity-restored-application-server.test.mjs",
+    "tests/subject-video-provider.test.mjs"
+  ],
+  "concurrency": 1,
+  "timeoutSeconds": 900,
+  "separateProcesses": true,
+  "source": "real directory enumeration; no exclusions",
+  "nodeFlags": [
+    "--test",
+    "--test-reporter=tap"
+  ]
+}

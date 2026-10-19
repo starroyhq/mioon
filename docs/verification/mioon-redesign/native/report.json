@@ -1,0 +1,155 @@
+{
+  "ok": true,
+  "appVersion": "0.4.1",
+  "runtime": {
+    "electron": "44.7.0",
+    "node": "24.21.0",
+    "sqlite": "3.53.4",
+    "pid": 70644
+  },
+  "ffmpeg": {
+    "ffmpeg": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+    "ffprobe": "ffprobe version 9.0.2 Copyright (c) 2007-2026 the FFmpeg developers"
+  },
+  "checks": [
+    {
+      "name": "embedded-app-identity-and-data-ownership",
+      "ok": true,
+      "channel": "development",
+      "appId": "app.starroy.mioon.dev",
+      "productName": "Mioon Dev",
+      "executableName": "mioon-dev"
+    },
+    {
+      "name": "bundled-electron-utility-node-sqlite",
+      "ok": true,
+      "electron": "44.7.0",
+      "node": "24.21.0",
+      "sqlite": "3.53.4",
+      "pid": 70644
+    },
+    {
+      "name": "renderer-sandbox-context-isolation-no-node",
+      "ok": true
+    },
+    {
+      "name": "native-macos-traffic-light-position",
+      "ok": true,
+      "position": {
+        "x": 20,
+        "y": 22
+      }
+    },
+    {
+      "name": "native-fixed-workspace-tools-and-real-channel",
+      "ok": true
+    },
+    {
+      "name": "no-node-no-bridge-no-readable-cookie-no-url-secret",
+      "ok": true
+    },
+    {
+      "name": "secure-httponly-strict-memory-cookie",
+      "ok": true
+    },
+    {
+      "name": "authenticated-loopback-fetch-with-secure-cookie",
+      "ok": true
+    },
+    {
+      "name": "v4-six-provider-catalog-safe-status",
+      "ok": true,
+      "providers": [
+        {
+          "id": "mock",
+          "status": "available"
+        },
+        {
+          "id": "runway",
+          "status": "not_configured"
+        },
+        {
+          "id": "ark",
+          "status": "not_configured"
+        },
+        {
+          "id": "veo",
+          "status": "not_configured"
+        },
+        {
+          "id": "minimax",
+          "status": "not_configured"
+        },
+        {
+          "id": "vidu",
+          "status": "not_configured"
+        }
+      ]
+    },
+    {
+      "name": "anonymous-loopback-denied",
+      "ok": true
+    },
+    {
+      "name": "new-window-denied",
+      "ok": true
+    },
+    {
+      "name": "external-network-denied",
+      "ok": true
+    },
+    {
+      "name": "permission-denied",
+      "ok": true
+    },
+    {
+      "name": "external-navigation-denied",
+      "ok": true
+    },
+    {
+      "name": "reload-preserves-session",
+      "ok": true
+    },
+    {
+      "name": "private-mcp-discovery-files",
+      "ok": true
+    },
+    {
+      "name": "graceful-backend-restart-persists-data-rotates-auth",
+      "ok": true
+    },
+    {
+      "name": "crashed-backend-recovery-clears-stale-lock",
+      "ok": true
+    },
+    {
+      "name": "real-shared-ffmpeg-layered-render-and-authenticated-media",
+      "ok": true,
+      "bytes": 31073
+    },
+    {
+      "name": "graceful-restart-interrupts-and-recovers-active-render",
+      "ok": true
+    },
+    {
+      "name": "actual-renderer-beforeunload-cancel-preserves-window-and-service",
+      "ok": true
+    },
+    {
+      "name": "shared-react-ui-stable-and-real-timeline-video-decoded",
+      "ok": true,
+      "width": 720,
+      "height": 1280,
+      "duration": 10,
+      "readyState": 4,
+      "currentTime": 3.024104
+    }
+  ],
+  "skippedChecks": [
+    {
+      "name": "active-render-utility-crash-media-ownership-recovery",
+      "reason": "Native orphan ownership and cleanup are unverified. A stale reported PID is not safe authority to signal; automatic restart is blocked when media exit is unknown."
+    }
+  ],
+  "screenshot": "/private/tmp/mioon-redesign-2_80wkck/output/native-final/electron-workbench.png"
+}

@@ -1,0 +1,124 @@
+TAP version 13
+# Subtest: fade draft preserves omission, explicit zero and immutable copies
+ok 1 - fade draft preserves omission, explicit zero and immutable copies
+  ---
+  duration_ms: 1.085083
+  type: 'test'
+  ...
+# Subtest: fade validation checks both integers, per-side bounds, their sum and confirmed audio
+ok 2 - fade validation checks both integers, per-side bounds, their sum and confirmed audio
+  ---
+  duration_ms: 0.576917
+  type: 'test'
+  ...
+# Subtest: actual inspector renders integer fade controls inside its existing ScrollArea and keeps gain semantics
+ok 3 - actual inspector renders integer fade controls inside its existing ScrollArea and keeps gain semantics
+  ---
+  duration_ms: 66.023791
+  type: 'test'
+  ...
+# Subtest: silent and unknown-audio videos show disabled fades with an honest no-effect explanation; images have no audio controls
+ok 4 - silent and unknown-audio videos show disabled fades with an honest no-effect explanation; images have no audio controls
+  ---
+  duration_ms: 36.302708
+  type: 'test'
+  ...
+# Subtest: unrelated save on legacy clip never adds zero fields; explicitly changing one missing fade adds only that zero
+ok 5 - unrelated save on legacy clip never adds zero fields; explicitly changing one missing fade adds only that zero
+  ---
+  duration_ms: 17.004209
+  type: 'test'
+  ...
+# Subtest: unrelated save preserves explicit zero and fade values while discard restores omission
+ok 6 - unrelated save preserves explicit zero and fade values while discard restores omission
+  ---
+  duration_ms: 42.19175
+  type: 'test'
+  ...
+# Subtest: trim never silently clamps either fade and invalid totals cannot submit
+ok 7 - trim never silently clamps either fade and invalid totals cannot submit
+  ---
+  duration_ms: 16.149541
+  type: 'test'
+  ...
+# Subtest: invalid local fade drafts stay visible and block even direct form submission
+ok 8 - invalid local fade drafts stay visible and block even direct form submission
+  ---
+  duration_ms: 48.74
+  type: 'test'
+  ...
+# Subtest: edits made during save survive its acknowledgment without silently rebasing the newer draft
+ok 9 - edits made during save survive its acknowledgment without silently rebasing the newer draft
+  ---
+  duration_ms: 19.433292
+  type: 'test'
+  ...
+# Subtest: failed or unacknowledged save preserves fade edits and does not retry
+ok 10 - failed or unacknowledged save preserves fade edits and does not retry
+  ---
+  duration_ms: 23.405875
+  type: 'test'
+  ...
+# Subtest: every newer timeline revision preserves the exact dirty fade input and requires explicit reload
+ok 11 - every newer timeline revision preserves the exact dirty fade input and requires explicit reload
+  ---
+  duration_ms: 12.257167
+  type: 'test'
+  ...
+# Subtest: keyed project unmount fences late fade acknowledgments and retained form submit
+ok 12 - keyed project unmount fences late fade acknowledgments and retained form submit
+  ---
+  duration_ms: 22.055375
+  type: 'test'
+  ...
+# Subtest: source playback copy stays explicit about dry audio and the shared render path
+ok 13 - source playback copy stays explicit about dry audio and the shared render path
+  ---
+  duration_ms: 0.420209
+  type: 'test'
+  ...
+# Subtest: real inspector adopts SDR, applies a declared creative LUT and saves through the common draft pipeline
+ok 14 - real inspector adopts SDR, applies a declared creative LUT and saves through the common draft pipeline
+  ---
+  duration_ms: 16.991542
+  type: 'test'
+  ...
+# Subtest: actual inspector role selection uses shared dirty form and one existing Save revision
+ok 15 - actual inspector role selection uses shared dirty form and one existing Save revision
+  ---
+  duration_ms: 11.142208
+  type: 'test'
+  ...
+# Subtest: missing role capability blocks captured selector callbacks but unrelated inspector edits save
+ok 16 - missing role capability blocks captured selector callbacks but unrelated inspector edits save
+  ---
+  duration_ms: 10.24475
+  type: 'test'
+  ...
+# Subtest: role eligibility includes silent video, zero gain and muted timeline without enabling fades
+ok 17 - role eligibility includes silent video, zero gain and muted timeline without enabling fades
+  ---
+  duration_ms: 10.568667
+  type: 'test'
+  ...
+# Subtest: image inspector excludes audio role; restored supported editor can save without sidecar support
+ok 18 - image inspector excludes audio role; restored supported editor can save without sidecar support
+  ---
+  duration_ms: 19.514542
+  type: 'test'
+  ...
+# Subtest: captured enabled role selector cannot write after capability loss or owner unmount
+ok 19 - captured enabled role selector cannot write after capability loss or owner unmount
+  ---
+  duration_ms: 9.458125
+  type: 'test'
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 667.847833

@@ -1,0 +1,88 @@
+TAP version 13
+# Subtest: named download uses actual response metadata and trusted Downloads only, with native overwrite and cancellation
+not ok 1 - named download uses actual response metadata and trusted Downloads only, with native overwrite and cancellation
+  ---
+  duration_ms: 31.04625
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/named-delivery-desktop.test.mjs:34:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      {
+    +   buttonLabel: '保存视频',
+        defaultPath: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/tmp/mioon-download-cancel-9I242U/海边最终版-123456789abc.mp4',
+        filters: [
+          {
+            extensions: [
+              'mp4'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    title: '保存视频'
+    defaultPath: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/tmp/mioon-download-cancel-9I242U/海边最终版-123456789abc.mp4'
+    filters:
+      0:
+        name: 'MP4 视频'
+        extensions:
+          0: 'mp4'
+    properties:
+      0: 'showOverwriteConfirmation'
+  actual:
+    title: '保存视频'
+    buttonLabel: '保存视频'
+    defaultPath: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/tmp/mioon-download-cancel-9I242U/海边最终版-123456789abc.mp4'
+    filters:
+      0:
+        name: 'MP4 视频'
+        extensions:
+          0: 'mp4'
+    properties:
+      0: 'showOverwriteConfirmation'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/named-delivery-desktop.test.mjs:40:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: desktop accepts canonical named query and legacy managed routes, rejecting ambiguous or injected syntax
+ok 2 - desktop accepts canonical named query and legacy managed routes, rejecting ambiguous or injected syntax
+  ---
+  duration_ms: 0.683625
+  type: 'test'
+  ...
+# Subtest: actual frame initiator, current window, nonempty same-origin redirect chain and final identity must all agree
+ok 3 - actual frame initiator, current window, nonempty same-origin redirect chain and final identity must all agree
+  ---
+  duration_ms: 0.865458
+  type: 'test'
+  ...
+# Subtest: only complete bound response headers can supply a named default
+ok 4 - only complete bound response headers can supply a named default
+  ---
+  duration_ms: 1.170667
+  type: 'test'
+  ...
+# Subtest: path, bidi, reserved and extension-like display names remain unchanged metadata but safe native basenames
+ok 5 - path, bidi, reserved and extension-like display names remain unchanged metadata but safe native basenames
+  ---
+  duration_ms: 1.981041
+  type: 'test'
+  ...
+# Subtest: legacy unnamed and storyboard downloads retain their old default and always require the real initiator
+ok 6 - legacy unnamed and storyboard downloads retain their old default and always require the real initiator
+  ---
+  duration_ms: 0.432459
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 5
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 297.449708

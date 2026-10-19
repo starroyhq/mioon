@@ -1,0 +1,9 @@
+{
+  "completedFiles": 3,
+  "totalFiles": 3,
+  "passedFiles": 3,
+  "failedFiles": 0,
+  "timeoutFiles": 0,
+  "seconds": 2.55,
+  "last": "tests/image-edit-ui.test.mjs"
+}

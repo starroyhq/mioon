@@ -1,0 +1,37 @@
+TAP version 13
+# Subtest: real worker full/ranged AAC from 44.1k sources matches independent complete PCM and ebur128 without any observation writes
+ok 1 - real worker full/ranged AAC from 44.1k sources matches independent complete PCM and ebur128 without any observation writes
+  ---
+  duration_ms: 7395.475375
+  type: 'test'
+  ...
+# {"range":null,"frames":144000,"integratedLufs":-16.729679009908214,"referenceLufs":-16.7,"truePeakDbtp":-12.715532744044625,"referenceTruePeakDbtp":-12.7}
+# {"range":{"startFrame":30,"endFrame":90},"frames":96000,"integratedLufs":-20.70922618861448,"referenceLufs":-20.7,"truePeakDbtp":-18.164129114707876,"referenceTruePeakDbtp":-18.2}
+# Subtest: actual worker silent export remains digital silence with no finite LUFS or gain recommendation
+ok 2 - actual worker silent export remains digital silence with no finite LUFS or gain recommendation
+  ---
+  duration_ms: 3018.788666
+  type: 'test'
+  ...
+# Subtest: real strict decoder rejects no-audio, nonnative and ambiguous files without inventing silence
+ok 3 - real strict decoder rejects no-audio, nonnative and ambiguous files without inventing silence
+  ---
+  duration_ms: 264.253291
+  type: 'test'
+  ...
+# Subtest: real encoded intersample programme preserves native sample peaks and cross-checks estimated true peak
+ok 4 - real encoded intersample programme preserves native sample peaks and cross-checks estimated true peak
+  ---
+  duration_ms: 283.849541
+  type: 'test'
+  ...
+# {"samplePeakDbfs":-3.3835433562571615,"truePeakDbtp":-0.6496271862723038,"referenceTruePeakDbtp":-0.6}
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 11488.309458

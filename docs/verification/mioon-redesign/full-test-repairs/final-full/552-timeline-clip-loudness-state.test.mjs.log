@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: attach and context changes never analyze; explicit read sends exact saved selection only
+ok 1 - attach and context changes never analyze; explicit read sends exact saved selection only
+  ---
+  duration_ms: 6.952958
+  type: 'test'
+  ...
+# Subtest: saved-only admission blocks invalid identity, dirty/conflict/pending/recovery, mute/zero/no-audio, and long clip
+ok 2 - saved-only admission blocks invalid identity, dirty/conflict/pending/recovery, mute/zero/no-audio, and long clip
+  ---
+  duration_ms: 0.575416
+  type: 'test'
+  ...
+# Subtest: every identity/execution/visibility change aborts and clears before late fulfillment or failure
+ok 3 - every identity/execution/visibility change aborts and clears before late fulfillment or failure
+  ---
+  duration_ms: 1.839875
+  type: 'test'
+  ...
+# Subtest: A→B→A cannot restore an old report or reuse an old Analyze/Cancel callback
+ok 4 - A→B→A cannot restore an old report or reuse an old Analyze/Cancel callback
+  ---
+  duration_ms: 0.534
+  type: 'test'
+  ...
+# Subtest: live context catches pre-effect changes; render suppresses ready response before layout effect
+ok 5 - live context catches pre-effect changes; render suppresses ready response before layout effect
+  ---
+  duration_ms: 0.272167
+  type: 'test'
+  ...
+# Subtest: cancel, collapse revoke, dispose and strict-mode reattach abort with no retry or restored report
+ok 6 - cancel, collapse revoke, dispose and strict-mode reattach abort with no retry or restored report
+  ---
+  duration_ms: 0.203583
+  type: 'test'
+  ...
+# Subtest: duplicates do not queue; exact clip ranges, gain/fades, track and asset must match current saved identity
+ok 7 - duplicates do not queue; exact clip ranges, gain/fades, track and asset must match current saved identity
+  ---
+  duration_ms: 2.992459
+  type: 'test'
+  ...
+# Subtest: saved public context preserves saved gain and probes audio/video despite false/unknown cached audio metadata
+ok 8 - saved public context preserves saved gain and probes audio/video despite false/unknown cached audio metadata
+  ---
+  duration_ms: 0.269416
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 258.211458

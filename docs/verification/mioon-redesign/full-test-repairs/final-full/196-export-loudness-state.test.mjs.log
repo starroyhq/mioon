@@ -1,0 +1,292 @@
+TAP version 13
+# Subtest: optional target is absent by default, exact bounded explicit values only
+ok 1 - optional target is absent by default, exact bounded explicit values only
+  ---
+  duration_ms: 2.40125
+  type: 'test'
+  ...
+# Subtest: complete owned validated output metadata is required; download strings cannot grant measurement
+ok 2 - complete owned validated output metadata is required; download strings cannot grant measurement
+  ---
+  duration_ms: 10.28325
+  type: 'test'
+  ...
+# Subtest: mount, polling, history open, draft edits and reconnect never decode or restart
+ok 3 - mount, polling, history open, draft edits and reconnect never decode or restart
+  ---
+  duration_ms: 1.99425
+  type: 'test'
+  ...
+# Subtest: explicit measurement captures project/export/expected hash/profile, with no implicit target or mutable authority
+ok 4 - explicit measurement captures project/export/expected hash/profile, with no implicit target or mutable authority
+  ---
+  duration_ms: 2.096542
+  type: 'test'
+  ...
+# Subtest: target edits clear advice immediately; custom response and suggestion bind exact captured target
+ok 5 - target edits clear advice immediately; custom response and suggestion bind exact captured target
+  ---
+  duration_ms: 2.117708
+  type: 'test'
+  ...
+# Subtest: partial invalid target prevents decoding and has no fallback standard
+ok 6 - partial invalid target prevents decoding and has no fallback standard
+  ---
+  duration_ms: 1.289875
+  type: 'test'
+  ...
+# Subtest: rapid same/different repeated clicks never queue work
+ok 7 - rapid same/different repeated clicks never queue work
+  ---
+  duration_ms: 1.10325
+  type: 'test'
+  ...
+# Subtest: live result fence before layout: {"scope":"other:2:normal","projectId":"bf000000-0000-4000-8000-000000000099"}
+ok 8 - live result fence before layout: {"scope":"other:2:normal","projectId":"bf000000-0000-4000-8000-000000000099"}
+  ---
+  duration_ms: 0.501375
+  type: 'test'
+  ...
+# Subtest: live result fence before layout: {"scope":"bf000000-0000-4000-8000-000000000001:2:normal"}
+ok 9 - live result fence before layout: {"scope":"bf000000-0000-4000-8000-000000000001:2:normal"}
+  ---
+  duration_ms: 0.654291
+  type: 'test'
+  ...
+# Subtest: live result fence before layout: {"restored":true}
+ok 10 - live result fence before layout: {"restored":true}
+  ---
+  duration_ms: 1.302375
+  type: 'test'
+  ...
+# Subtest: live result fence before layout: {"executionScope":"1:9:canvas"}
+ok 11 - live result fence before layout: {"executionScope":"1:9:canvas"}
+  ---
+  duration_ms: 0.762417
+  type: 'test'
+  ...
+# Subtest: live result fence before layout: {"visible":false}
+ok 12 - live result fence before layout: {"visible":false}
+  ---
+  duration_ms: 0.812375
+  type: 'test'
+  ...
+# Subtest: live result fence before layout: {"connected":false}
+ok 13 - live result fence before layout: {"connected":false}
+  ---
+  duration_ms: 0.564209
+  type: 'test'
+  ...
+# Subtest: editing target while pending aborts observer and rejects late success, without retrying
+ok 14 - editing target while pending aborts observer and rejects late success, without retrying
+  ---
+  duration_ms: 1.943125
+  type: 'test'
+  ...
+# Subtest: cancel and stale row callbacks cannot replace target or cancel a newer observer
+ok 15 - cancel and stale row callbacks cannot replace target or cancel a newer observer
+  ---
+  duration_ms: 1.363584
+  type: 'test'
+  ...
+# Subtest: same row old cancellation cannot cancel its newer explicit measurement
+ok 16 - same row old cancellation cannot cancel its newer explicit measurement
+  ---
+  duration_ms: 1.129042
+  type: 'test'
+  ...
+# Subtest: A→B→A and dispose/reattach cannot revive old report or target draft
+ok 17 - A→B→A and dispose/reattach cannot revive old report or target draft
+  ---
+  duration_ms: 1.095625
+  type: 'test'
+  ...
+# Subtest: historical observation survives unrelated timeline/source edits; exact output replacement invalidates it
+ok 18 - historical observation survives unrelated timeline/source edits; exact output replacement invalidates it
+  ---
+  duration_ms: 1.268042
+  type: 'test'
+  ...
+# Subtest: pre-layout replacement and owner projections never flash old numeric advice
+ok 19 - pre-layout replacement and owner projections never flash old numeric advice
+  ---
+  duration_ms: 2.449291
+  type: 'test'
+  ...
+# Subtest: misbound or invalid project fails closed
+ok 20 - misbound or invalid project fails closed
+  ---
+  duration_ms: 2.080916
+  type: 'test'
+  ...
+# Subtest: misbound or invalid export fails closed
+ok 21 - misbound or invalid export fails closed
+  ---
+  duration_ms: 0.903416
+  type: 'test'
+  ...
+# Subtest: misbound or invalid expected hash fails closed
+ok 22 - misbound or invalid expected hash fails closed
+  ---
+  duration_ms: 0.814833
+  type: 'test'
+  ...
+# Subtest: misbound or invalid hash fails closed
+ok 23 - misbound or invalid hash fails closed
+  ---
+  duration_ms: 0.948833
+  type: 'test'
+  ...
+# Subtest: misbound or invalid asset fails closed
+ok 24 - misbound or invalid asset fails closed
+  ---
+  duration_ms: 0.685083
+  type: 'test'
+  ...
+# Subtest: misbound or invalid revision fails closed
+ok 25 - misbound or invalid revision fails closed
+  ---
+  duration_ms: 0.601625
+  type: 'test'
+  ...
+# Subtest: misbound or invalid name fails closed
+ok 26 - misbound or invalid name fails closed
+  ---
+  duration_ms: 0.710333
+  type: 'test'
+  ...
+# Subtest: misbound or invalid snapshot digest fails closed
+ok 27 - misbound or invalid snapshot digest fails closed
+  ---
+  duration_ms: 0.658042
+  type: 'test'
+  ...
+# Subtest: misbound or invalid profile fails closed
+ok 28 - misbound or invalid profile fails closed
+  ---
+  duration_ms: 0.655334
+  type: 'test'
+  ...
+# Subtest: misbound or invalid target fails closed
+ok 29 - misbound or invalid target fails closed
+  ---
+  duration_ms: 0.738167
+  type: 'test'
+  ...
+# Subtest: misbound or invalid nonfinite fails closed
+ok 30 - misbound or invalid nonfinite fails closed
+  ---
+  duration_ms: 0.633791
+  type: 'test'
+  ...
+# Subtest: misbound or invalid gain authority fails closed
+ok 31 - misbound or invalid gain authority fails closed
+  ---
+  duration_ms: 0.657125
+  type: 'test'
+  ...
+# Subtest: misbound or invalid advisory arithmetic fails closed
+ok 32 - misbound or invalid advisory arithmetic fails closed
+  ---
+  duration_ms: 0.654125
+  type: 'test'
+  ...
+# Subtest: misbound or invalid extra path fails closed
+ok 33 - misbound or invalid extra path fails closed
+  ---
+  duration_ms: 2.782834
+  type: 'test'
+  ...
+# Subtest: misbound or invalid duration fails closed
+ok 34 - misbound or invalid duration fails closed
+  ---
+  duration_ms: 1.017708
+  type: 'test'
+  ...
+# Subtest: NO_AUDIO discards prior numbers and never automatically retries
+ok 35 - NO_AUDIO discards prior numbers and never automatically retries
+  ---
+  duration_ms: 0.934541
+  type: 'test'
+  ...
+# Subtest: UNSUPPORTED_FORMAT discards prior numbers and never automatically retries
+ok 36 - UNSUPPORTED_FORMAT discards prior numbers and never automatically retries
+  ---
+  duration_ms: 0.8275
+  type: 'test'
+  ...
+# Subtest: TIMEOUT discards prior numbers and never automatically retries
+ok 37 - TIMEOUT discards prior numbers and never automatically retries
+  ---
+  duration_ms: 1.813667
+  type: 'test'
+  ...
+# Subtest: BUSY discards prior numbers and never automatically retries
+ok 38 - BUSY discards prior numbers and never automatically retries
+  ---
+  duration_ms: 2.115917
+  type: 'test'
+  ...
+# Subtest: ARTIFACT_CHANGED discards prior numbers and never automatically retries
+ok 39 - ARTIFACT_CHANGED discards prior numbers and never automatically retries
+  ---
+  duration_ms: 1.103625
+  type: 'test'
+  ...
+# Subtest: current unauthorized is surfaced once and server/private messages are not shown
+ok 40 - current unauthorized is surfaced once and server/private messages are not shown
+  ---
+  duration_ms: 0.829125
+  type: 'test'
+  ...
+# Subtest: restored, hidden, disconnected, stale scope and arbitrary caller artifact cannot authorize measurement
+ok 41 - restored, hidden, disconnected, stale scope and arbitrary caller artifact cannot authorize measurement
+  ---
+  duration_ms: 3.510417
+  type: 'test'
+  ...
+# Subtest: complete captured frozen range is authoritative while current timeline is irrelevant
+ok 42 - complete captured frozen range is authoritative while current timeline is irrelevant
+  ---
+  duration_ms: 2.380167
+  type: 'test'
+  ...
+# Subtest: live hash replacement before layout aborts pending result
+ok 43 - live hash replacement before layout aborts pending result
+  ---
+  duration_ms: 0.655958
+  type: 'test'
+  ...
+# Subtest: live frozen snapshot replacement before layout aborts pending result
+ok 44 - live frozen snapshot replacement before layout aborts pending result
+  ---
+  duration_ms: 0.621166
+  type: 'test'
+  ...
+# Subtest: live frozen range replacement before layout aborts pending result
+ok 45 - live frozen range replacement before layout aborts pending result
+  ---
+  duration_ms: 2.859291
+  type: 'test'
+  ...
+# Subtest: same-duration shifted range response cannot stand in for the captured export range
+ok 46 - same-duration shifted range response cannot stand in for the captured export range
+  ---
+  duration_ms: 0.74975
+  type: 'test'
+  ...
+# Subtest: a newly selected row never inherits another file’s custom target
+ok 47 - a newly selected row never inherits another file’s custom target
+  ---
+  duration_ms: 0.916292
+  type: 'test'
+  ...
+1..47
+# tests 47
+# suites 0
+# pass 47
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 404.455417

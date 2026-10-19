@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: real named media GET HEAD ranges and later historical edits retain immutable naming without writes
+ok 1 - real named media GET HEAD ranges and later historical edits retain immutable naming without writes
+  ---
+  duration_ms: 1061.099292
+  type: 'test'
+  ...
+# Subtest: named request syntax is exact and authentication precedes descriptor disclosure
+ok 2 - named request syntax is exact and authentication precedes descriptor disclosure
+  ---
+  duration_ms: 632.59775
+  type: 'test'
+  ...
+# Subtest: foreign or corrupt export, receipt, project and output rows are opaque and read-only
+ok 3 - foreign or corrupt export, receipt, project and output rows are opaque and read-only
+  ---
+  duration_ms: 726.664375
+  type: 'test'
+  ...
+# Subtest: existing safe output graph rejects foreign reverse owners without consulting current source clips
+ok 4 - existing safe output graph rejects foreign reverse owners without consulting current source clips
+  ---
+  duration_ms: 616.492416
+  type: 'test'
+  ...
+# Subtest: unnamed/storyboard URL compatibility retains mioon default, while named missing bytes remain sanitized
+ok 5 - unnamed/storyboard URL compatibility retains mioon default, while named missing bytes remain sanitized
+  ---
+  duration_ms: 621.604333
+  type: 'test'
+  ...
+# Subtest: bounded descriptor proof is repeated after file open and releases the fd on changed ownership
+ok 6 - bounded descriptor proof is repeated after file open and releases the fd on changed ownership
+  ---
+  duration_ms: 601.229209
+  type: 'test'
+  ...
+# Subtest: pre-header change fence includes frozen receipt and snapshot even when safe basename stays identical
+ok 7 - pre-header change fence includes frozen receipt and snapshot even when safe basename stays identical
+  ---
+  duration_ms: 591.594125
+  type: 'test'
+  ...
+# Subtest: named download binds the exact worker output path and rejects swapped same-project export artifacts
+ok 8 - named download binds the exact worker output path and rejects swapped same-project export artifacts
+  ---
+  duration_ms: 631.314916
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5850.050292

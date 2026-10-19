@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: ripple contract is strict, shares the durable timeline lane and preserves ordinary remove schema
+ok 1 - ripple contract is strict, shares the durable timeline lane and preserves ordinary remove schema
+  ---
+  duration_ms: 1.965834
+  type: 'test'
+  ...
+# Subtest: ripple closes only the removed interval on its own track; one edit undoes/redoes and exactly replays across restart
+ok 2 - ripple closes only the removed interval on its own track; one edit undoes/redoes and exactly replays across restart
+  ---
+  duration_ms: 982.970667
+  type: 'test'
+  ...
+# Subtest: last/only clip removal reaches an empty timeline and ordinary removal continues to leave a gap
+ok 3 - last/only clip removal reaches an empty timeline and ordinary removal continues to leave a gap
+  ---
+  duration_ms: 607.707333
+  type: 'test'
+  ...
+# Subtest: shifted media retains source clocks, provenance, fades, audio role and relative volume automation
+ok 4 - shifted media retains source clocks, provenance, fades, audio role and relative volume automation
+  ---
+  duration_ms: 1046.632916
+  type: 'test'
+  ...
+# Subtest: stale revisions, foreign clip IDs and out-of-bounds retained subtitles reject atomically
+ok 5 - stale revisions, foreign clip IDs and out-of-bounds retained subtitles reject atomically
+  ---
+  duration_ms: 642.299916
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3618.578959

@@ -1,0 +1,101 @@
+TAP version 13
+# Subtest: 25-second playback crosses twelve pull boundaries with one decoder and two hashes
+ok 1 - 25-second playback crosses twelve pull boundaries with one decoder and two hashes
+  ---
+  duration_ms: 88.459625
+  type: 'test'
+  ...
+# Subtest: ten-minute single segment is admitted, pulled in 300 bounded buffers and released
+ok 2 - ten-minute single segment is admitted, pulled in 300 bounded buffers and released
+  ---
+  duration_ms: 1299.4895
+  type: 'test'
+  ...
+# {"sampleFrames":28800000,"largestMixedPcmBytes":768000,"hashPasses":2,"decoderRuns":1}
+# Subtest: pause makes no source progress and seek restarts at original composition boundary
+ok 3 - pause makes no source progress and seek restarts at original composition boundary
+  ---
+  duration_ms: 15.951666
+  type: 'test'
+  ...
+# Subtest: all muted/image edges remain decoder restart boundaries and fades retain the clip clock
+ok 4 - all muted/image edges remain decoder restart boundaries and fades retain the clip clock
+  ---
+  duration_ms: 16.068292
+  type: 'test'
+  ...
+# Subtest: reverse clip UUIDs at a same-track boundary never replace an unconsumed cursor or repeat a segment
+ok 5 - reverse clip UUIDs at a same-track boundary never replace an unconsumed cursor or repeat a segment
+  ---
+  duration_ms: 28.590542
+  type: 'test'
+  ...
+# Subtest: twelve simultaneous voices use at most twelve cursors and preserve over-full floating mix
+ok 6 - twelve simultaneous voices use at most twelve cursors and preserve over-full floating mix
+  ---
+  duration_ms: 79.460125
+  type: 'test'
+  ...
+# Subtest: saved revision and exact source stat changes reject publication without stale mix
+ok 7 - saved revision and exact source stat changes reject publication without stale mix
+  ---
+  duration_ms: 13.694542
+  type: 'test'
+  ...
+# Subtest: sequence replay rejects while forward and initial gaps tolerate pre-send cancellation
+ok 8 - sequence replay rejects while forward and initial gaps tolerate pre-send cancellation
+  ---
+  duration_ms: 20.50025
+  type: 'test'
+  ...
+# Subtest: abort retains the active resource until consumer settles; next generation waits exact cleanup
+ok 9 - abort retains the active resource until consumer settles; next generation waits exact cleanup
+  ---
+  duration_ms: 14.946834
+  type: 'test'
+  ...
+# Subtest: rapid seeks retain one active consumer and only the latest pending intent
+ok 10 - rapid seeks retain one active consumer and only the latest pending intent
+  ---
+  duration_ms: 12.553917
+  type: 'test'
+  ...
+# Subtest: seek generations cannot reset the cumulative actually decoded prefix work budget
+ok 11 - seek generations cannot reset the cumulative actually decoded prefix work budget
+  ---
+  duration_ms: 299.53075
+  type: 'test'
+  ...
+# Subtest: fifty pause cancellations during active prefetch remain bounded and can resume a ten-minute source
+ok 12 - fifty pause cancellations during active prefetch remain bounded and can resume a ten-minute source
+  ---
+  duration_ms: 86.770625
+  type: 'test'
+  ...
+# Subtest: a pre-try saved-snapshot failure cannot leave a settled active slot blocking later generations
+ok 13 - a pre-try saved-snapshot failure cannot leave a settled active slot blocking later generations
+  ---
+  duration_ms: 13.456333
+  type: 'test'
+  ...
+# Subtest: source/hash admission and restored rejection happen before any source I/O or payload getters
+ok 14 - source/hash admission and restored rejection happen before any source I/O or payload getters
+  ---
+  duration_ms: 0.397833
+  type: 'test'
+  ...
+# Subtest: native resource registration precedes all source effects and failed registration starts no work
+ok 15 - native resource registration precedes all source effects and failed registration starts no work
+  ---
+  duration_ms: 8.41175
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2196.7035

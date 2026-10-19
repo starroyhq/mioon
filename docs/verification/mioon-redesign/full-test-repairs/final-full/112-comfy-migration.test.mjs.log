@@ -1,0 +1,141 @@
+TAP version 13
+# Subtest: frozen independent schema18 upgrade retains every old row/rowid/raw string and all but the one narrowly extended trigger
+ok 1 - frozen independent schema18 upgrade retains every old row/rowid/raw string and all but the one narrowly extended trigger
+  ---
+  duration_ms: 37.793459
+  type: 'test'
+  ...
+# Subtest: copy/drop/remote-schema/marker interruptions roll the complete schema19 transaction back
+ok 2 - copy/drop/remote-schema/marker interruptions roll the complete schema19 transaction back
+  ---
+  duration_ms: 80.008792
+  type: 'test'
+  ...
+# Subtest: schema19 admits bound local review/remote identity and keeps graph and journal immutable
+ok 3 - schema19 admits bound local review/remote identity and keeps graph and journal immutable
+  ---
+  duration_ms: 13.31
+  type: 'test'
+  ...
+# Subtest: only a bound running observation of content-verified local failure can close an unknown image task
+ok 4 - only a bound running observation of content-verified local failure can close an unknown image task
+  ---
+  duration_ms: 11.722416
+  type: 'test'
+  ...
+# Subtest: completed local result pins descriptor, hash and byte count before any later local recovery
+ok 5 - completed local result pins descriptor, hash and byte count before any later local recovery
+  ---
+  duration_ms: 13.205125
+  type: 'test'
+  ...
+# Subtest: normal startup upgrades frozen schema18 once and restarts without rewriting retained bytes
+not ok 6 - normal startup upgrades frozen schema18 once and restarts without rewriting retained bytes
+  ---
+  duration_ms: 870.982916
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/comfy-migration.test.mjs:144:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      [Object: null prototype] {
+        name: 'edit_tasks',
+        sql: 'CREATE TABLE "edit_tasks"(\n' +
+          ' position INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE CHECK(length(CAST(id AS BLOB))=36),\n' +
+          ' projectId TEXT NOT NULL REFERENCES projects(id) CHECK(length(CAST(projectId AS BLOB))=36),\n' +
+    +     " operation TEXT NOT NULL CHECK(operation IN ('timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.replaceSource','timeline.clip.remove','timeline.clip.rippleRemove','timeline.clip.split','timeline.seed','timeline.undo','timeline.redo','reference.attach','reference.detach','subject.create','subject.version.add','subject.binding.set')),\n" +
+    -     " operation TEXT NOT NULL CHECK(operation IN ('timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.replaceSource','timeline.clip.remove','timeline.clip.split','timeline.seed','timeline.undo','timeline.redo','reference.attach','reference.detach','subject.create','subject.version.add','subject.binding.set')),\n" +
+          " input TEXT NOT NULL CHECK(json_valid(input) AND json_type(input)='object' AND length(CAST(input AS BLOB)) BETWEEN 1 AND 8192),\n" +
+          ' requestId TEXT NOT NULL CHECK(length(requestId) BETWEEN 8 AND 200 AND length(CAST(requestId AS BLOB))<=800),\n' +
+          ' digest TEXT NOT NULL CHECK(length(CAST(digest AS BLOB))=64),\n' +
+          " lane TEXT NOT NULL CHECK(lane IN ('timeline:mutation','reference:mutation','subject:mutation')),\n" +
+          " origin TEXT NOT NULL CHECK(origin IN ('new','legacy_session')),\n" +
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    type: 'table'
+    name: 'edit_tasks'
+    tbl_name: 'edit_tasks'
+    sql: |-
+      CREATE TABLE "edit_tasks"(
+       position INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE CHECK(length(CAST(id AS BLOB))=36),
+       projectId TEXT NOT NULL REFERENCES projects(id) CHECK(length(CAST(projectId AS BLOB))=36),
+       operation TEXT NOT NULL CHECK(operation IN ('timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.replaceSource','timeline.clip.remove','timeline.clip.split','timeline.seed','timeline.undo','timeline.redo','reference.attach','reference.detach','subject.create','subject.version.add','subject.binding.set')),
+       input TEXT NOT NULL CHECK(json_valid(input) AND json_type(input)='object' AND length(CAST(input AS BLOB)) BETWEEN 1 AND 8192),
+       requestId TEXT NOT NULL CHECK(length(requestId) BETWEEN 8 AND 200 AND length(CAST(requestId AS BLOB))<=800),
+       digest TEXT NOT NULL CHECK(length(CAST(digest AS BLOB))=64),
+       lane TEXT NOT NULL CHECK(lane IN ('timeline:mutation','reference:mutation','subject:mutation')),
+       origin TEXT NOT NULL CHECK(origin IN ('new','legacy_session')),
+       status TEXT NOT NULL CHECK(status IN ('prepared','dispatching','unknown','applied','not_applied')),
+       revision INTEGER NOT NULL CHECK(typeof(revision)='integer' AND revision BETWEEN 1 AND 9007199254740991),
+       acknowledged INTEGER NOT NULL CHECK(acknowledged IN (0,1)),
+       claim TEXT CHECK(claim IS NULL OR length(CAST(claim AS BLOB))=36),
+       claimInstance TEXT CHECK(claimInstance IS NULL OR length(CAST(claimInstance AS BLOB))=36),
+       receiptDigest TEXT CHECK(receiptDigest IS NULL OR length(CAST(receiptDigest AS BLOB))=64),
+       errorCode TEXT CHECK(errorCode IS NULL OR length(CAST(errorCode AS BLOB)) BETWEEN 1 AND 80),
+       createdAt TEXT NOT NULL CHECK(length(CAST(createdAt AS BLOB)) BETWEEN 1 AND 40),
+       updatedAt TEXT NOT NULL CHECK(length(CAST(updatedAt AS BLOB)) BETWEEN 1 AND 40),
+       bytes INTEGER NOT NULL CHECK(bytes=16384),UNIQUE(lane,requestId),
+       CHECK(json_extract(input,'$.projectId')=projectId AND json_extract(input,'$.requestId')=requestId),
+       CHECK((operation LIKE 'timeline.%' AND lane='timeline:mutation') OR (operation LIKE 'reference.%' AND lane='reference:mutation') OR (operation IN ('subject.create','subject.version.add','subject.binding.set') AND lane='subject:mutation')),
+       CHECK((status='applied')=(receiptDigest IS NOT NULL)),CHECK((status='not_applied')=(errorCode IS NOT NULL)),
+       CHECK((claim IS NULL)=(claimInstance IS NULL)),CHECK(status!='dispatching' OR claim IS NOT NULL),
+       CHECK(status!='prepared' OR (origin='new' AND claim IS NULL)),CHECK(acknowledged=0 OR status IN ('applied','not_applied')))
+  actual:
+    type: 'table'
+    name: 'edit_tasks'
+    tbl_name: 'edit_tasks'
+    sql: |-
+      CREATE TABLE "edit_tasks"(
+       position INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE CHECK(length(CAST(id AS BLOB))=36),
+       projectId TEXT NOT NULL REFERENCES projects(id) CHECK(length(CAST(projectId AS BLOB))=36),
+       operation TEXT NOT NULL CHECK(operation IN ('timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.replaceSource','timeline.clip.remove','timeline.clip.rippleRemove','timeline.clip.split','timeline.seed','timeline.undo','timeline.redo','reference.attach','reference.detach','subject.create','subject.version.add','subject.binding.set')),
+       input TEXT NOT NULL CHECK(json_valid(input) AND json_type(input)='object' AND length(CAST(input AS BLOB)) BETWEEN 1 AND 8192),
+       requestId TEXT NOT NULL CHECK(length(requestId) BETWEEN 8 AND 200 AND length(CAST(requestId AS BLOB))<=800),
+       digest TEXT NOT NULL CHECK(length(CAST(digest AS BLOB))=64),
+       lane TEXT NOT NULL CHECK(lane IN ('timeline:mutation','reference:mutation','subject:mutation')),
+       origin TEXT NOT NULL CHECK(origin IN ('new','legacy_session')),
+       status TEXT NOT NULL CHECK(status IN ('prepared','dispatching','unknown','applied','not_applied')),
+       revision INTEGER NOT NULL CHECK(typeof(revision)='integer' AND revision BETWEEN 1 AND 9007199254740991),
+       acknowledged INTEGER NOT NULL CHECK(acknowledged IN (0,1)),
+       claim TEXT CHECK(claim IS NULL OR length(CAST(claim AS BLOB))=36),
+       claimInstance TEXT CHECK(claimInstance IS NULL OR length(CAST(claimInstance AS BLOB))=36),
+       receiptDigest TEXT CHECK(receiptDigest IS NULL OR length(CAST(receiptDigest AS BLOB))=64),
+       errorCode TEXT CHECK(errorCode IS NULL OR length(CAST(errorCode AS BLOB)) BETWEEN 1 AND 80),
+       createdAt TEXT NOT NULL CHECK(length(CAST(createdAt AS BLOB)) BETWEEN 1 AND 40),
+       updatedAt TEXT NOT NULL CHECK(length(CAST(updatedAt AS BLOB)) BETWEEN 1 AND 40),
+       bytes INTEGER NOT NULL CHECK(bytes=16384),UNIQUE(lane,requestId),
+       CHECK(json_extract(input,'$.projectId')=projectId AND json_extract(input,'$.requestId')=requestId),
+       CHECK((operation LIKE 'timeline.%' AND lane='timeline:mutation') OR (operation LIKE 'reference.%' AND lane='reference:mutation') OR (operation IN ('subject.create','subject.version.add','subject.binding.set') AND lane='subject:mutation')),
+       CHECK((status='applied')=(receiptDigest IS NOT NULL)),CHECK((status='not_applied')=(errorCode IS NOT NULL)),
+       CHECK((claim IS NULL)=(claimInstance IS NULL)),CHECK(status!='dispatching' OR claim IS NOT NULL),
+       CHECK(status!='prepared' OR (origin='new' AND claim IS NULL)),CHECK(acknowledged=0 OR status IN ('applied','not_applied')))
+  operator: 'deepStrictEqual'
+  stack: |-
+    sameOld (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/comfy-migration.test.mjs:24:941)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/comfy-migration.test.mjs:146:117)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: unsafe local settings fail preflight before SQLite or backend-owned files are created
+ok 7 - unsafe local settings fail preflight before SQLite or backend-owned files are created
+  ---
+  duration_ms: 2.442958
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 6
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1591.498792

@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: client persists the exact request before the caller can dispatch it
+ok 1 - client persists the exact request before the caller can dispatch it
+  ---
+  duration_ms: 1.440042
+  type: 'test'
+  ...
+# Subtest: lost-response replay keeps the original operation, requestId, revision, and full payload
+ok 2 - lost-response replay keeps the original operation, requestId, revision, and full payload
+  ---
+  duration_ms: 0.268584
+  type: 'test'
+  ...
+# Subtest: an absent or unrelated server job does not prove rejection and never clears the pending request
+ok 3 - an absent or unrelated server job does not prove rejection and never clears the pending request
+  ---
+  duration_ms: 0.404208
+  type: 'test'
+  ...
+# Subtest: matching durable request IDs reconcile only their corresponding project requests
+ok 4 - matching durable request IDs reconcile only their corresponding project requests
+  ---
+  duration_ms: 8.2855
+  type: 'test'
+  ...
+# Subtest: generation, explicit failed-job retry, and export each have separate stable replay keys
+ok 5 - generation, explicit failed-job retry, and export each have separate stable replay keys
+  ---
+  duration_ms: 2.087375
+  type: 'test'
+  ...
+# Subtest: unavailable storage prevents an unprotected submission before network dispatch
+ok 6 - unavailable storage prevents an unprotected submission before network dispatch
+  ---
+  duration_ms: 0.413833
+  type: 'test'
+  ...
+# Subtest: silent storage write failure is detected before dispatch
+ok 7 - silent storage write failure is detected before dispatch
+  ---
+  duration_ms: 0.148541
+  type: 'test'
+  ...
+# Subtest: corrupted pending record blocks replacement instead of generating a new request ID
+ok 8 - corrupted pending record blocks replacement instead of generating a new request ID
+  ---
+  duration_ms: 0.144291
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 266.960709

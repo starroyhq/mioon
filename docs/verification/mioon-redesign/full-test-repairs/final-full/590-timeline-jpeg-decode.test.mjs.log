@@ -1,0 +1,76 @@
+TAP version 13
+# Subtest: strict 444 decoder and transfer use actual RGB24, not lossy pre-encode pixels
+not ok 1 - strict 444 decoder and transfer use actual RGB24, not lossy pre-encode pixels
+  ---
+  duration_ms: 118.009625
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-jpeg-decode.test.mjs:21:43'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    ChildProcess._handle.onexit (node:internal/child_process:305:5)
+  ...
+# decoded RGB24 SHA256 d13115f31b354670daa00ea7b6f98b94f730172289fd7ac342bb5083f47b38dd; JPEG loss max=22, mean=4.790346907993967
+# Subtest: strict 422 decoder and transfer use actual RGB24, not lossy pre-encode pixels
+not ok 2 - strict 422 decoder and transfer use actual RGB24, not lossy pre-encode pixels
+  ---
+  duration_ms: 104.57175
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-jpeg-decode.test.mjs:21:43'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    ChildProcess._handle.onexit (node:internal/child_process:305:5)
+  ...
+# decoded RGB24 SHA256 ea08092c0fe8dd9f5c2a1fd9f8ac223828d24b77bfeb8629f0bec0203faf6488; JPEG loss max=154, mean=26.19607843137255
+# Subtest: strict 420 decoder and transfer use actual RGB24, not lossy pre-encode pixels
+not ok 3 - strict 420 decoder and transfer use actual RGB24, not lossy pre-encode pixels
+  ---
+  duration_ms: 101.325541
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-jpeg-decode.test.mjs:21:43'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    ChildProcess._handle.onexit (node:internal/child_process:305:5)
+  ...
+# decoded RGB24 SHA256 a1caf34f2bf3145acb49d5f34d0be2ce28aba4cee9f1754dc5f142dd6c9faa7d; JPEG loss max=192, mean=36.44645550527903
+# Subtest: 444 fixed matrix is independent full-range BT.601, not video BT.709
+ok 4 - 444 fixed matrix is independent full-range BT.601, not video BT.709
+  ---
+  duration_ms: 102.25125
+  type: 'test'
+  ...
+# Subtest: strict JPEG decoder requires full bounded pixel output and preserves cancellation
+ok 5 - strict JPEG decoder requires full bounded pixel output and preserves cancellation
+  ---
+  duration_ms: 1.963166
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 2
+# fail 3
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 604.168292

@@ -1,0 +1,322 @@
+TAP version 13
+# Subtest: explicit cold ordinary40 copy produces a verified original40 backup and independently reopenable ordinary42 application
+ok 1 - explicit cold ordinary40 copy produces a verified original40 backup and independently reopenable ordinary42 application
+  ---
+  duration_ms: 1936.057583
+  type: 'test'
+  ...
+# Subtest: remembered project is explicitly rebound to the new path and database identity while view preference rows are byte-preserved
+ok 2 - remembered project is explicitly rebound to the new path and database identity while view preference rows are byte-preserved
+  ---
+  duration_ms: 1236.766542
+  type: 'test'
+  ...
+# Subtest: the source remains an ordinary40 workspace and its default40-to41 backup restore behavior is unchanged
+ok 3 - the source remains an ordinary40 workspace and its default40-to41 backup restore behavior is unchanged
+  ---
+  duration_ms: 1647.777542
+  type: 'test'
+  ...
+# Subtest: ordinary42 cannot be silently admitted through the default production40 constructor and its logical rows remain intact
+ok 4 - ordinary42 cannot be silently admitted through the default production40 constructor and its logical rows remain intact
+  ---
+  duration_ms: 1241.800125
+  type: 'test'
+  ...
+# Subtest: upgrade refuses the preexisting source lock "42218" without deleting or taking it over
+ok 5 - upgrade refuses the preexisting source lock "42218" without deleting or taking it over
+  ---
+  duration_ms: 948.160334
+  type: 'test'
+  ...
+# Subtest: upgrade refuses the preexisting source lock "2147483647" without deleting or taking it over
+ok 6 - upgrade refuses the preexisting source lock "2147483647" without deleting or taking it over
+  ---
+  duration_ms: 1158.866291
+  type: 'test'
+  ...
+# Subtest: upgrade refuses the preexisting source lock "invalid stale token" without deleting or taking it over
+ok 7 - upgrade refuses the preexisting source lock "invalid stale token" without deleting or taking it over
+  ---
+  duration_ms: 890.456709
+  type: 'test'
+  ...
+# Subtest: upgrade refuses the preexisting source lock "" without deleting or taking it over
+ok 8 - upgrade refuses the preexisting source lock "" without deleting or taking it over
+  ---
+  duration_ms: 994.571583
+  type: 'test'
+  ...
+# Subtest: a real active source lease remains owned after the upgrade is refused
+ok 9 - a real active source lease remains owned after the upgrade is refused
+  ---
+  duration_ms: 950.489083
+  type: 'test'
+  ...
+# Subtest: upgrade refuses nonempty -wal and never repairs the cold-source failure
+ok 10 - upgrade refuses nonempty -wal and never repairs the cold-source failure
+  ---
+  duration_ms: 976.998583
+  type: 'test'
+  ...
+# Subtest: upgrade refuses nonempty -journal and never repairs the cold-source failure
+ok 11 - upgrade refuses nonempty -journal and never repairs the cold-source failure
+  ---
+  duration_ms: 882.137541
+  type: 'test'
+  ...
+# Subtest: upgrade refuses corrupt non-sqlite without changing the source or publishing42
+ok 12 - upgrade refuses corrupt non-sqlite without changing the source or publishing42
+  ---
+  duration_ms: 938.668166
+  type: 'test'
+  ...
+# Subtest: upgrade refuses corrupt bad-catalog without changing the source or publishing42
+ok 13 - upgrade refuses corrupt bad-catalog without changing the source or publishing42
+  ---
+  duration_ms: 967.915791
+  type: 'test'
+  ...
+# Subtest: upgrade refuses corrupt bad-project-json without changing the source or publishing42
+ok 14 - upgrade refuses corrupt bad-project-json without changing the source or publishing42
+  ---
+  duration_ms: 1953.29175
+  type: 'test'
+  ...
+# Subtest: upgrade refuses corrupt dangling-media without changing the source or publishing42
+ok 15 - upgrade refuses corrupt dangling-media without changing the source or publishing42
+  ---
+  duration_ms: 1912.689625
+  type: 'test'
+  ...
+# Subtest: upgrade refuses corrupt bad-media-hash without changing the source or publishing42
+ok 16 - upgrade refuses corrupt bad-media-hash without changing the source or publishing42
+  ---
+  duration_ms: 1949.954375
+  type: 'test'
+  ...
+# Subtest: upgrade preserves an existing empty destination directory
+ok 17 - upgrade preserves an existing empty destination directory
+  ---
+  duration_ms: 914.889541
+  type: 'test'
+  ...
+# Subtest: upgrade preserves an existing nonempty destination directory
+ok 18 - upgrade preserves an existing nonempty destination directory
+  ---
+  duration_ms: 876.0295
+  type: 'test'
+  ...
+# Subtest: upgrade refuses an empty directory that is not a complete40 backup
+ok 19 - upgrade refuses an empty directory that is not a complete40 backup
+  ---
+  duration_ms: 952.102167
+  type: 'test'
+  ...
+# Subtest: upgrade refuses an nonempty directory that is not a complete40 backup
+ok 20 - upgrade refuses an nonempty directory that is not a complete40 backup
+  ---
+  duration_ms: 1209.1435
+  type: 'test'
+  ...
+# Subtest: upgrade refuses source-root symlinks without following or changing their targets
+ok 21 - upgrade refuses source-root symlinks without following or changing their targets
+  ---
+  duration_ms: 1248.918375
+  type: 'test'
+  ...
+# Subtest: upgrade refuses source-database symlinks without following or changing their targets
+ok 22 - upgrade refuses source-database symlinks without following or changing their targets
+  ---
+  duration_ms: 934.466084
+  type: 'test'
+  ...
+# Subtest: upgrade refuses source-media-file symlinks without following or changing their targets
+ok 23 - upgrade refuses source-media-file symlinks without following or changing their targets
+  ---
+  duration_ms: 1146.265959
+  type: 'test'
+  ...
+# Subtest: upgrade refuses source-media-directory symlinks without following or changing their targets
+ok 24 - upgrade refuses source-media-directory symlinks without following or changing their targets
+  ---
+  duration_ms: 1417.764417
+  type: 'test'
+  ...
+# Subtest: upgrade refuses backup-root symlinks without following or changing their targets
+ok 25 - upgrade refuses backup-root symlinks without following or changing their targets
+  ---
+  duration_ms: 1042.940708
+  type: 'test'
+  ...
+# Subtest: upgrade refuses destination-root symlinks without following or changing their targets
+ok 26 - upgrade refuses destination-root symlinks without following or changing their targets
+  ---
+  duration_ms: 1470.501125
+  type: 'test'
+  ...
+# Subtest: upgrade refuses destination-parent symlinks without following or changing their targets
+ok 27 - upgrade refuses destination-parent symlinks without following or changing their targets
+  ---
+  duration_ms: 1232.142
+  type: 'test'
+  ...
+# Subtest: upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+ok 28 - upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+  ---
+  duration_ms: 1011.784791
+  type: 'test'
+  ...
+# Subtest: upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+ok 29 - upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+  ---
+  duration_ms: 965.66225
+  type: 'test'
+  ...
+# Subtest: upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+ok 30 - upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+  ---
+  duration_ms: 982.238125
+  type: 'test'
+  ...
+# Subtest: upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+ok 31 - upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+  ---
+  duration_ms: 1581.823
+  type: 'test'
+  ...
+# Subtest: upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+ok 32 - upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+  ---
+  duration_ms: 1173.943625
+  type: 'test'
+  ...
+# Subtest: upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+ok 33 - upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+  ---
+  duration_ms: 1222.538958
+  type: 'test'
+  ...
+# Subtest: upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+ok 34 - upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+  ---
+  duration_ms: 1147.003334
+  type: 'test'
+  ...
+# Subtest: upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+ok 35 - upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+  ---
+  duration_ms: 1602.73725
+  type: 'test'
+  ...
+# Subtest: upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+ok 36 - upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+  ---
+  duration_ms: 1055.632917
+  type: 'test'
+  ...
+# Subtest: upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+ok 37 - upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+  ---
+  duration_ms: 1021.853542
+  type: 'test'
+  ...
+# Subtest: upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+ok 38 - upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+  ---
+  duration_ms: 888.816834
+  type: 'test'
+  ...
+# Subtest: upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+ok 39 - upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+  ---
+  duration_ms: 977.369166
+  type: 'test'
+  ...
+# Subtest: an existing workspace ancestor prevents a nested upgrade destination even when the destination leaf is new
+ok 40 - an existing workspace ancestor prevents a nested upgrade destination even when the destination leaf is new
+  ---
+  duration_ms: 1353.017083
+  type: 'test'
+  ...
+# Subtest: restored41 and already ordinary42 inputs remain separate profiles and are never relabeled as ordinary42
+ok 41 - restored41 and already ordinary42 inputs remain separate profiles and are never relabeled as ordinary42
+  ---
+  duration_ms: 1911.294834
+  type: 'test'
+  ...
+# Subtest: a source with a new pending task beside acknowledged history is refused without resuming or rewriting either task
+ok 42 - a source with a new pending task beside acknowledged history is refused without resuming or rewriting either task
+  ---
+  duration_ms: 1342.515417
+  type: 'test'
+  ...
+# Subtest: ordinary42 exposes the copied project and new opacity edits while preserved acknowledged tasks do not reenter execution
+ok 43 - ordinary42 exposes the copied project and new opacity edits while preserved acknowledged tasks do not reenter execution
+  ---
+  duration_ms: 1532.060042
+  type: 'test'
+  ...
+# Subtest: upgrade refuses missing backup evidence without repairing it
+ok 44 - upgrade refuses missing backup evidence without repairing it
+  ---
+  duration_ms: 1389.441083
+  type: 'test'
+  ...
+# Subtest: upgrade refuses tampered-manifest backup evidence without repairing it
+ok 45 - upgrade refuses tampered-manifest backup evidence without repairing it
+  ---
+  duration_ms: 1203.599334
+  type: 'test'
+  ...
+# Subtest: upgrade refuses tampered-database backup evidence without repairing it
+ok 46 - upgrade refuses tampered-database backup evidence without repairing it
+  ---
+  duration_ms: 1383.658167
+  type: 'test'
+  ...
+# Subtest: upgrade refuses tampered-media backup evidence without repairing it
+ok 47 - upgrade refuses tampered-media backup evidence without repairing it
+  ---
+  duration_ms: 1052.971875
+  type: 'test'
+  ...
+# Subtest: injected afterDatabase failure removes only this unpublished target and preserves source and backup
+ok 48 - injected afterDatabase failure removes only this unpublished target and preserves source and backup
+  ---
+  duration_ms: 1062.901459
+  type: 'test'
+  ...
+# Subtest: injected beforePublish failure removes only this unpublished target and preserves source and backup
+ok 49 - injected beforePublish failure removes only this unpublished target and preserves source and backup
+  ---
+  duration_ms: 1384.346792
+  type: 'test'
+  ...
+# Subtest: a fault after the atomic publication is uncertain and preserves the ordinary42 database rather than rolling back
+ok 50 - a fault after the atomic publication is uncertain and preserves the ordinary42 database rather than rolling back
+  ---
+  duration_ms: 1508.686375
+  type: 'test'
+  ...
+# Subtest: cancellation beforeStart cannot publish42 or mutate the original workspace and archive
+ok 51 - cancellation beforeStart cannot publish42 or mutate the original workspace and archive
+  ---
+  duration_ms: 1213.463833
+  type: 'test'
+  ...
+# Subtest: cancellation afterDatabase cannot publish42 or mutate the original workspace and archive
+ok 52 - cancellation afterDatabase cannot publish42 or mutate the original workspace and archive
+  ---
+  duration_ms: 1198.407791
+  type: 'test'
+  ...
+1..52
+# tests 52
+# suites 0
+# pass 52
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 64556.700833

@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: the explicit candidate client preserves unfinished opacity text and unchanged HTTP authority on GET/PUT/DELETE
+ok 1 - the explicit candidate client preserves unfinished opacity text and unchanged HTTP authority on GET/PUT/DELETE
+  ---
+  duration_ms: 17.610625
+  type: 'test'
+  ...
+# Subtest: legacy construction and public admission keep rejecting opacity before fetch, irrespective of payload or option flags
+ok 2 - legacy construction and public admission keep rejecting opacity before fetch, irrespective of payload or option flags
+  ---
+  duration_ms: 0.818958
+  type: 'test'
+  ...
+# Subtest: candidate identity cannot be copied, wrapped, proxied or manufactured by a payload
+ok 3 - candidate identity cannot be copied, wrapped, proxied or manufactured by a payload
+  ---
+  duration_ms: 0.090375
+  type: 'test'
+  ...
+# Subtest: candidate write/envelope schemas remain closed, seven-point bounded, and preserve optional absent/null semantics
+ok 4 - candidate write/envelope schemas remain closed, seven-point bounded, and preserve optional absent/null semantics
+  ---
+  duration_ms: 1.510708
+  type: 'test'
+  ...
+# Subtest: candidate responses retain the complete row budget and inclusive streamed HTTP limit
+ok 5 - candidate responses retain the complete row budget and inclusive streamed HTTP limit
+  ---
+  duration_ms: 3.6365
+  type: 'test'
+  ...
+# Subtest: candidate outgoing complete serialized row and HTTP budgets refuse before fetch without pruning fields
+ok 6 - candidate outgoing complete serialized row and HTTP budgets refuse before fetch without pruning fields
+  ---
+  duration_ms: 0.18825
+  type: 'test'
+  ...
+# Subtest: candidate transport preserves exact error evidence and unsupported handling
+ok 7 - candidate transport preserves exact error evidence and unsupported handling
+  ---
+  duration_ms: 1.229625
+  type: 'test'
+  ...
+# Subtest: candidate deadline covers hanging headers without retries or accepting late evidence
+ok 8 - candidate deadline covers hanging headers without retries or accepting late evidence
+  ---
+  duration_ms: 3.890292
+  type: 'test'
+  ...
+# Subtest: candidate deadline covers hanging body without retries or accepting late evidence
+ok 9 - candidate deadline covers hanging body without retries or accepting late evidence
+  ---
+  duration_ms: 0.893625
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 201.931666

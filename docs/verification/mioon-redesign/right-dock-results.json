@@ -1,0 +1,23 @@
+{
+  "files": [
+    {
+      "file": "tests/right-dock-layout.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/right-dock-layout.test.mjs"
+      ],
+      "exitCode": 0,
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "skipped": 0,
+      "durationMs": 210.453
+    }
+  ],
+  "scope": "Only outdated layout/source guards maintained: fixed clip save form + source ordering, sticky Agent authorization entrance with explicit guarded review dialog. No product change.",
+  "tests": 6,
+  "pass": 6,
+  "fail": 0
+}

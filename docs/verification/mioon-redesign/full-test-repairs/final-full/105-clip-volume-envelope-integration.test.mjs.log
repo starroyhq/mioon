@@ -1,0 +1,142 @@
+TAP version 13
+# Subtest: real in preset edits only the draft until ordinary Save, preserving gain and legacy fades
+ok 1 - real in preset edits only the draft until ordinary Save, preserving gain and legacy fades
+  ---
+  duration_ms: 42.362542
+  type: 'test'
+  ...
+# Subtest: real out preset edits only the draft until ordinary Save, preserving gain and legacy fades
+ok 2 - real out preset edits only the draft until ordinary Save, preserving gain and legacy fades
+  ---
+  duration_ms: 6.382958
+  type: 'test'
+  ...
+# Subtest: preset draft recovery is explicit and Cancel restores the original curve without business Save
+ok 3 - preset draft recovery is explicit and Cancel restores the original curve without business Save
+  ---
+  duration_ms: 3.879042
+  type: 'test'
+  ...
+# Subtest: manual tool parameter edits stay temporary; real Apply persists only its curve through original Save
+ok 4 - manual tool parameter edits stay temporary; real Apply persists only its curve through original Save
+  ---
+  duration_ms: 4.696209
+  type: 'test'
+  ...
+# Subtest: manual Apply recovery requires explicit restore and Cancel retains the original complete raw clip
+ok 5 - manual Apply recovery requires explicit restore and Cancel retains the original complete raw clip
+  ---
+  duration_ms: 3.978958
+  type: 'test'
+  ...
+# Subtest: manual parameter IME reaches the real controller close/Save guard but never persists transient tool text
+ok 6 - manual parameter IME reaches the real controller close/Save guard but never persists transient tool text
+  ---
+  duration_ms: 4.255458
+  type: 'test'
+  ...
+# Subtest: retained manual Apply cannot send a replacement into a changed draft owner
+ok 7 - retained manual Apply cannot send a replacement into a changed draft owner
+  ---
+  duration_ms: 2.7035
+  type: 'test'
+  ...
+# Subtest: raw projection, proposed shrink, explicit replacement and clear preserve envelope presence
+ok 8 - raw projection, proposed shrink, explicit replacement and clear preserve envelope presence
+  ---
+  duration_ms: 0.190583
+  type: 'test'
+  ...
+# Subtest: bounded invalid intermediates persist exactly without becoming business Save
+ok 9 - bounded invalid intermediates persist exactly without becoming business Save
+  ---
+  duration_ms: 0.436125
+  type: 'test'
+  ...
+# Subtest: composition is controller-owned dirty close/navigation protection and cannot persist transient text
+ok 10 - composition is controller-owned dirty close/navigation protection and cannot persist transient text
+  ---
+  duration_ms: 0.385041
+  type: 'test'
+  ...
+# Subtest: composition settlement retains admitted input under capability loss and disconnect
+ok 11 - composition settlement retains admitted input under capability loss and disconnect
+  ---
+  duration_ms: 0.215125
+  type: 'test'
+  ...
+# Subtest: old owner/token cannot update form or release a later composition
+ok 12 - old owner/token cannot update form or release a later composition
+  ---
+  duration_ms: 0.261833
+  type: 'test'
+  ...
+# Subtest: business ACK checks omitted unchanged envelope absent
+ok 13 - business ACK checks omitted unchanged envelope absent
+  ---
+  duration_ms: 0.393959
+  type: 'test'
+  ...
+# Subtest: business ACK checks omitted unchanged envelope null
+ok 14 - business ACK checks omitted unchanged envelope null
+  ---
+  duration_ms: 0.193333
+  type: 'test'
+  ...
+# Subtest: business ACK checks omitted unchanged envelope value
+ok 15 - business ACK checks omitted unchanged envelope value
+  ---
+  duration_ms: 0.270084
+  type: 'test'
+  ...
+# Subtest: exact business ACK clears exact sidecar and saves numeric envelope through ordinary Save
+ok 16 - exact business ACK clears exact sidecar and saves numeric envelope through ordinary Save
+  ---
+  duration_ms: 0.354542
+  type: 'test'
+  ...
+# Subtest: changed recovered unsupported curve remains visible and blocked
+ok 17 - changed recovered unsupported curve remains visible and blocked
+  ---
+  duration_ms: 0.172209
+  type: 'test'
+  ...
+# Subtest: late business ACK cannot delete newer curve input
+ok 18 - late business ACK cannot delete newer curve input
+  ---
+  duration_ms: 0.537417
+  type: 'test'
+  ...
+# Subtest: restored explicit capable business edits remain available without local companion IO
+ok 19 - restored explicit capable business edits remain available without local companion IO
+  ---
+  duration_ms: 0.224291
+  type: 'test'
+  ...
+# Subtest: capability loss during flush cancels business submission without stripping saved draft
+ok 20 - capability loss during flush cancels business submission without stripping saved draft
+  ---
+  duration_ms: 0.589334
+  type: 'test'
+  ...
+# Subtest: over-budget accepted form stays in memory with explicit refusal and close protection, no fetch
+ok 21 - over-budget accepted form stays in memory with explicit refusal and close protection, no fetch
+  ---
+  duration_ms: 1.011541
+  type: 'test'
+  ...
+# Subtest: external owner-context replacement retains original pending composition and freezes effects
+ok 22 - external owner-context replacement retains original pending composition and freezes effects
+  ---
+  duration_ms: 0.587041
+  type: 'test'
+  ...
+1..22
+# tests 22
+# suites 0
+# pass 22
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 322.070583

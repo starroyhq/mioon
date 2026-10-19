@@ -1,0 +1,148 @@
+TAP version 13
+# Subtest: actual App legacy session runner keeps changed draft blocked until explicit original replay, with no automatic POST
+not ok 1 - actual App legacy session runner keeps changed draft blocked until explicit original replay, with no automatic POST
+  ---
+  duration_ms: 1.301541
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/client-mutation-app.test.mjs:45:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at compile (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/client-mutation-app.test.mjs:17:216), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/client-mutation-app.test.mjs:48:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.start (node:internal/test_runner/test:1262:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+  ...
+# Subtest: actual App legacy session runner retains auth/ID-conflict/protocol failures and clears only bound rollback proof
+not ok 2 - actual App legacy session runner retains auth/ID-conflict/protocol failures and clears only bound rollback proof
+  ---
+  duration_ms: 0.21975
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/client-mutation-app.test.mjs:62:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at compile (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/client-mutation-app.test.mjs:17:216), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/client-mutation-app.test.mjs:65:11)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: malformed six-op success is not acknowledged and remains explicitly recoverable
+not ok 3 - malformed six-op success is not acknowledged and remains explicitly recoverable
+  ---
+  duration_ms: 0.147334
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/client-mutation-app.test.mjs:76:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at compile (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/client-mutation-app.test.mjs:17:216), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/client-mutation-app.test.mjs:78:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: late project A success cannot refresh or navigate project B and mutation locks are isolated
+not ok 4 - late project A success cannot refresh or navigate project B and mutation locks are isolated
+  ---
+  duration_ms: 0.583375
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/client-mutation-app.test.mjs:82:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    0 !== 1
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/client-mutation-app.test.mjs:87:10)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual structure action stops on first unacknowledged step and reports partial count
+ok 5 - actual structure action stops on first unacknowledged step and reports partial count
+  ---
+  duration_ms: 12.042
+  type: 'test'
+  ...
+# Subtest: actual structure action rejects stale, now-nonempty and late-navigation continuations
+ok 6 - actual structure action rejects stale, now-nonempty and late-navigation continuations
+  ---
+  duration_ms: 0.270458
+  type: 'test'
+  ...
+# Subtest: retained old Inspector save and version-selection callbacks cannot write after project switch
+not ok 7 - retained old Inspector save and version-selection callbacks cannot write after project switch
+  ---
+  duration_ms: 0.508125
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/client-mutation-app.test.mjs:125:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    run (eval at compile (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/client-mutation-app.test.mjs:17:216), <anonymous>:4:5)
+    saveShot (eval at compile (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/client-mutation-app.test.mjs:17:216), <anonymous>:5:12)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/client-mutation-app.test.mjs:132:22)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: explicit stored replay survives removal of target from current snapshot without wrong-project admission
+not ok 8 - explicit stored replay survives removal of target from current snapshot without wrong-project admission
+  ---
+  duration_ms: 0.166291
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/client-mutation-app.test.mjs:141:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at compile (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/client-mutation-app.test.mjs:17:216), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/client-mutation-app.test.mjs:144:11)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Error: Test "late project A success cannot refresh or navigate project B and mutation locks are isolated" at tests/client-mutation-app.test.mjs:82:1 generated asynchronous activity after the test ended. This activity created the error "ReferenceError: clipConnectionBlocked is not defined" and would have caused the test to fail, but instead triggered an unhandledRejection event.
+1..8
+# tests 8
+# suites 0
+# pass 2
+# fail 6
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 306.218667

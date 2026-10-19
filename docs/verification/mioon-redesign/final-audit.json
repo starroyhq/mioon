@@ -1,0 +1,60 @@
+{
+  "head": "8d2f7faea422b60e2030a72f15af2d7aa9d465f6",
+  "branch": "codex/mioon-redesign",
+  "aheadOfOriginMain": 22,
+  "verifiedSourceFiles": 410,
+  "buildFiles": 61,
+  "designSourceCopies": 19,
+  "designBoardPngs": 42,
+  "languagePngs": 124,
+  "evidenceMarkdownLinks": {
+    "checked": 302,
+    "missing": 0
+  },
+  "credentialPatternFileMatches": 0,
+  "gitDiffCheckExit": 0,
+  "dependencyManifestChanges": [],
+  "officialSourcesUnchanged": 15,
+  "preexistingOfficialManifestDrift": [
+    "dialog"
+  ],
+  "latestFollowup": {
+    "approval": "第三版通过，启用浅色及跟随系统",
+    "productionThemeActivated": true,
+    "themes": [
+      "dark",
+      "light",
+      "system"
+    ],
+    "verification": "appearance/verification.json",
+    "report": "appearance/README.md",
+    "native": "appearance/native/final",
+    "cleanup": "appearance/cleanup.json"
+  },
+  "previewTokenLiteralScanBeforeCleanup": 0,
+  "cleanup": "appearance/cleanup.json",
+  "finalCandidateSummary": {
+    "files": 189,
+    "passedFiles": 179,
+    "failedFiles": 10,
+    "remainingFailedFiles": [
+      "tests/cli-v4.test.mjs",
+      "tests/export-settings-media.test.mjs",
+      "tests/integration.test.mjs",
+      "tests/local-drafts-transports.test.mjs",
+      "tests/mcp.test.mjs",
+      "tests/reference-recovery-transports.test.mjs",
+      "tests/timeline-image-transports.test.mjs",
+      "tests/timeline-mcp.test.mjs",
+      "tests/timeline-media.test.mjs",
+      "tests/timeline-recovery-transports.test.mjs"
+    ],
+    "tests": 2509,
+    "pass": 2489,
+    "fail": 20,
+    "skipped": 0
+  },
+  "scope": "Frozen appearance activation phase audit; later copy-only changes are recorded separately",
+  "supersededBy": "test-repairs/verification.json",
+  "appearancePhaseHashesMatchedAtVerification": true
+}

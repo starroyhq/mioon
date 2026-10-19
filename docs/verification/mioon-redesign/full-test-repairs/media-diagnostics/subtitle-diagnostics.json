@@ -1,0 +1,96 @@
+{
+  "production": {
+    "code": "MEDIA_EXIT_FAILED",
+    "message": "Local media tool failed."
+  },
+  "commands": [
+    {
+      "label": "subtitle-exact-measurement",
+      "file": "/opt/homebrew/bin/ffmpeg",
+      "args": [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-filter_threads",
+        "1",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=black@0:s=4096x256:r=30,format=rgba",
+        "-filter_script:v",
+        "/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/subtitle-work/subtitle-measure.filter",
+        "-frames:v",
+        "1",
+        "-an",
+        "-c:v",
+        "rawvideo",
+        "-pix_fmt",
+        "gray",
+        "-threads",
+        "1",
+        "-f",
+        "rawvideo",
+        "pipe:1"
+      ],
+      "exitCode": 8,
+      "stdoutBytes": 0,
+      "stderr": "Unrecognized option 'filter_script:v'.\nError splitting the argument list: Option not found\n"
+    },
+    {
+      "label": "subtitle-measurement-inline-filter",
+      "file": "/opt/homebrew/bin/ffmpeg",
+      "args": [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-filter_threads",
+        "1",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=black@0:s=4096x256:r=30,format=rgba",
+        "-vf",
+        "drawtext=fontfile=/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/subtitle-work/subtitle-font.otf:textfile=/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/subtitle-work/subtitle-000.txt:expansion=none:text_shaping=0:fontsize=28:borderw=2:line_spacing=8:fontcolor=white:bordercolor=white:x=64:y=64:enable='eq(n,0)',alphaextract,format=gray",
+        "-frames:v",
+        "1",
+        "-an",
+        "-c:v",
+        "rawvideo",
+        "-pix_fmt",
+        "gray",
+        "-threads",
+        "1",
+        "-f",
+        "rawvideo",
+        "pipe:1"
+      ],
+      "exitCode": 8,
+      "stdoutBytes": 0,
+      "stderr": "[AVFilterGraph @ 0x792ac20100] No such filter: 'drawtext'\nError opening output file pipe:1.\nError opening output files: Filter not found\n"
+    },
+    {
+      "label": "independent-libass-subtitles-filter",
+      "file": "/opt/homebrew/bin/ffmpeg",
+      "args": [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=black:s=64x64:r=30",
+        "-vf",
+        "subtitles=/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/subtitle-work/sample.srt",
+        "-frames:v",
+        "1",
+        "-f",
+        "null",
+        "-"
+      ],
+      "exitCode": 234,
+      "stdoutBytes": 0,
+      "stderr": "[AVFilterGraph @ 0x7c80c14080] No option name near '/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/subtitle-work/sample.srt'\n[AVFilterGraph @ 0x7c80c14080] Error parsing a filter description around: \n[AVFilterGraph @ 0x7c80c14080] Error parsing filterchain 'subtitles=/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/subtitle-work/sample.srt' around: \nError opening output file -.\nError opening output files: Invalid argument\n"
+    }
+  ],
+  "measurementFilter": "drawtext=fontfile=/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/subtitle-work/subtitle-font.otf:textfile=/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/subtitle-work/subtitle-000.txt:expansion=none:text_shaping=0:fontsize=28:borderw=2:line_spacing=8:fontcolor=white:bordercolor=white:x=64:y=64:enable='eq(n,0)',alphaextract,format=gray"
+}

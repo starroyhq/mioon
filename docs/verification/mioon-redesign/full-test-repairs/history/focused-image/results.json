@@ -1,0 +1,23 @@
+[
+  {
+    "file": "tests/timeline-image-transports.test.mjs",
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 4.16,
+    "tapSummary": {
+      "tests": 5,
+      "suites": 0,
+      "pass": 4,
+      "fail": 1,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-image/001-timeline-image-transports.test.mjs.log",
+    "sha256": "d4436fe34c4457e091efc5a8f7a6a1719ac563d5e7060ec816bf966d380310b4",
+    "sourceSha256": "0b09b81d69c1cf45d3a22b7f4216d8036edde83e17c3e8dcae698a9fa0cf8789",
+    "failedSubtests": [
+      "actual authenticated HTTP, CLI and official MCP preserve image inspection scope; restored33 refuses even an explicit origin"
+    ]
+  }
+]

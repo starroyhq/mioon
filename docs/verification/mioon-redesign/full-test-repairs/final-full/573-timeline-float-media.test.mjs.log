@@ -1,0 +1,67 @@
+TAP version 13
+# Subtest: actual v2 retains 1.4/1.6 float headroom and rejects before creating final AAC artifact
+ok 1 - actual v2 retains 1.4/1.6 float headroom and rejects before creating final AAC artifact
+  ---
+  duration_ms: 945.8865
+  type: 'test'
+  ...
+# Subtest: actual quiet v2 whole/range uses exact sample counts across muted segment edges, global fades and mono44.1k conversion
+ok 2 - actual quiet v2 whole/range uses exact sample counts across muted segment edges, global fades and mono44.1k conversion
+  ---
+  duration_ms: 1479.176333
+  type: 'test'
+  ...
+# Subtest: omitted and explicit v1 preserve byte-identical integer rendering with no audioCheck field
+ok 3 - omitted and explicit v1 preserve byte-identical integer rendering with no audioCheck field
+  ---
+  duration_ms: 371.198292
+  type: 'test'
+  ...
+# Subtest: actual complete within-limit check survives a subsequent AAC spawn failure as owned evidence
+ok 4 - actual complete within-limit check survives a subsequent AAC spawn failure as owned evidence
+  ---
+  duration_ms: 477.3835
+  type: 'test'
+  ...
+# Subtest: actual selected v2 preserves global subtitle timing and exact float envelope, with observed intermediate storage tradeoff
+not ok 5 - actual selected v2 preserves global subtitle timing and exact float envelope, with observed intermediate storage tradeoff
+  ---
+  duration_ms: 479.219583
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-float-media.test.mjs:101:1'
+  failureType: 'testCodeFailure'
+  error: 'ifError got unwanted exception: Local media tool failed.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: ~
+  actual:
+  error: 'Local media tool failed.'
+  stack: |-
+    mediaError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    ChildProcess._handle.onexit (node:internal/child_process:305:5)
+  operator: 'ifError'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-float-media.test.mjs:109:118)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+    mediaError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    ChildProcess._handle.onexit (node:internal/child_process:305:5)
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 4
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4057.055959

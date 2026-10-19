@@ -1,0 +1,106 @@
+TAP version 13
+# Subtest: fixed closed encoder arguments cover both exclusive rate branches and reject forged delivery before spawning
+ok 1 - fixed closed encoder arguments cover both exclusive rate branches and reject forged delivery before spawning
+  ---
+  duration_ms: 34.306125
+  type: 'test'
+  ...
+# Subtest: actual installed FFmpeg proves selected CRF and bitrate profiles with bounded pipe output and no scratch files
+ok 2 - actual installed FFmpeg proves selected CRF and bitrate profiles with bounded pipe output and no scratch files
+  ---
+  duration_ms: 210.38475
+  type: 'test'
+  ...
+# Subtest: capability classifies missing encoder safely
+ok 3 - capability classifies missing encoder safely
+  ---
+  duration_ms: 414.258708
+  type: 'test'
+  ...
+# Subtest: capability classifies empty listing safely
+ok 4 - capability classifies empty listing safely
+  ---
+  duration_ms: 374.271917
+  type: 'test'
+  ...
+# Subtest: capability classifies malformed listing safely
+ok 5 - capability classifies malformed listing safely
+  ---
+  duration_ms: 390.619625
+  type: 'test'
+  ...
+# Subtest: capability classifies malformed rows safely
+ok 6 - capability classifies malformed rows safely
+  ---
+  duration_ms: 389.195125
+  type: 'test'
+  ...
+# Subtest: capability classifies advertised encoder that fails actual encode safely
+ok 7 - capability classifies advertised encoder that fails actual encode safely
+  ---
+  duration_ms: 501.371583
+  type: 'test'
+  ...
+# Subtest: capability classifies success exit with bogus MP4 safely
+ok 8 - capability classifies success exit with bogus MP4 safely
+  ---
+  duration_ms: 479.8325
+  type: 'test'
+  ...
+# Subtest: capability classifies encode stdout overflow safely
+ok 9 - capability classifies encode stdout overflow safely
+  ---
+  duration_ms: 502.103417
+  type: 'test'
+  ...
+# Subtest: capability classifies encode stderr overflow safely
+ok 10 - capability classifies encode stderr overflow safely
+  ---
+  duration_ms: 838.199042
+  type: 'test'
+  ...
+# Subtest: capability classifies listing stdout overflow safely
+ok 11 - capability classifies listing stdout overflow safely
+  ---
+  duration_ms: 379.617541
+  type: 'test'
+  ...
+# Subtest: a missing executable is unavailable, while invalid configured paths are incomplete
+ok 12 - a missing executable is unavailable, while invalid configured paths are incomplete
+  ---
+  duration_ms: 4.435708
+  type: 'test'
+  ...
+# Subtest: one process-wide capability runs with no queue; abort reaps exact owned child and releases its slot
+ok 13 - one process-wide capability runs with no queue; abort reaps exact owned child and releases its slot
+  ---
+  duration_ms: 493.124916
+  type: 'test'
+  ...
+# Subtest: already cancelled capability and scoped shutdown preserve cancellation semantics
+ok 14 - already cancelled capability and scoped shutdown preserve cancellation semantics
+  ---
+  duration_ms: 200.221542
+  type: 'test'
+  ...
+# Subtest: compute timeout plus a TERM-ignoring child remains within the fixed cleanup budget
+ok 15 - compute timeout plus a TERM-ignoring child remains within the fixed cleanup budget
+  ---
+  duration_ms: 14006.147541
+  type: 'test'
+  ...
+# Subtest: unconfirmed child keeps capability ownership held until real close, including late duplicate callbacks
+ok 16 - unconfirmed child keeps capability ownership held until real close, including late duplicate callbacks
+  ---
+  duration_ms: 3203.958166
+  type: 'test'
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 22709.994

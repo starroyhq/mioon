@@ -1,0 +1,76 @@
+TAP version 13
+# Subtest: offline backup help/version disclose whole-workspace sensitivity without startup or credentials
+ok 1 - offline backup help/version disclose whole-workspace sensitivity without startup or credentials
+  ---
+  duration_ms: 1726.193625
+  type: 'test'
+  ...
+# Subtest: offline backup rejects unknown commands, duplicates, extra arguments and noncanonical paths before writes
+ok 2 - offline backup rejects unknown commands, duplicates, extra arguments and noncanonical paths before writes
+  ---
+  duration_ms: 5104.761958
+  type: 'test'
+  ...
+# Subtest: offline CLI creates and verifies a real closed workspace without reading credentials or changing source bytes
+ok 3 - offline CLI creates and verifies a real closed workspace without reading credentials or changing source bytes
+  ---
+  duration_ms: 1974.15
+  type: 'test'
+  ...
+# Subtest: offline CLI refusals preserve existing destinations and foreign locks and suppress private paths
+ok 4 - offline CLI refusals preserve existing destinations and foreign locks and suppress private paths
+  ---
+  duration_ms: 2125.251167
+  type: 'test'
+  ...
+# Subtest: offline CLI emits a complete bounded inventory result larger than a pipe buffer
+ok 5 - offline CLI emits a complete bounded inventory result larger than a pipe buffer
+  ---
+  duration_ms: 1340.168167
+  type: 'test'
+  ...
+# Subtest: offline CLI reports corrupt payload and private-storage refusal through bounded safe diagnostics
+ok 6 - offline CLI reports corrupt payload and private-storage refusal through bounded safe diagnostics
+  ---
+  duration_ms: 1918.093458
+  type: 'test'
+  ...
+# Subtest: offline CLI preserves publication uncertainty without raw exception details or automatic retry
+ok 7 - offline CLI preserves publication uncertainty without raw exception details or automatic retry
+  ---
+  duration_ms: 2060.894666
+  type: 'test'
+  ...
+# Subtest: offline CLI reports unconfirmed source lock cleanup without reversing a published backup or replacing an error
+ok 8 - offline CLI reports unconfirmed source lock cleanup without reversing a published backup or replacing an error
+  ---
+  duration_ms: 2290.222417
+  type: 'test'
+  ...
+# Subtest: offline CLI SIGINT waits for owned lock cleanup and leaves no complete marker
+ok 9 - offline CLI SIGINT waits for owned lock cleanup and leaves no complete marker
+  ---
+  duration_ms: 1879.795709
+  type: 'test'
+  ...
+# Subtest: offline CLI SIGTERM waits for owned lock cleanup and leaves no complete marker
+ok 10 - offline CLI SIGTERM waits for owned lock cleanup and leaves no complete marker
+  ---
+  duration_ms: 1893.6415
+  type: 'test'
+  ...
+# Subtest: offline CLI imports are inert and only attach operation-scoped signal listeners
+ok 11 - offline CLI imports are inert and only attach operation-scoped signal listeners
+  ---
+  duration_ms: 42.829333
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 22603.357542

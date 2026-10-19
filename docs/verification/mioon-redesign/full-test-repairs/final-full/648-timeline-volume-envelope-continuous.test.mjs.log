@@ -1,0 +1,100 @@
+TAP version 13
+# Subtest: continuous automation multiplies independently evaluated fade and local envelope at every sample
+ok 1 - continuous automation multiplies independently evaluated fade and local envelope at every sample
+  ---
+  duration_ms: 22.923708
+  type: 'test'
+  ...
+# Subtest: absent and null retain identical PCM but distinct snapshot identity and unchanged legacy response keys
+ok 2 - absent and null retain identical PCM but distinct snapshot identity and unchanged legacy response keys
+  ---
+  duration_ms: 19.064125
+  type: 'test'
+  ...
+# Subtest: muted, zero scalar, cached-no-audio and all-zero envelope each still require actual source verification
+ok 3 - muted, zero scalar, cached-no-audio and all-zero envelope each still require actual source verification
+  ---
+  duration_ms: 5.560375
+  type: 'test'
+  ...
+# Subtest: silent automated sources complete both hashes without opening a cursor
+ok 4 - silent automated sources complete both hashes without opening a cursor
+  ---
+  duration_ms: 6.265208
+  type: 'test'
+  ...
+# Subtest: automation source budget is independent of silent voice selection
+ok 5 - automation source budget is independent of silent voice selection
+  ---
+  duration_ms: 0.3605
+  type: 'test'
+  ...
+# Subtest: snapshot and plan use exact profile dispatch and reject malformed envelope data
+ok 6 - snapshot and plan use exact profile dispatch and reject malformed envelope data
+  ---
+  duration_ms: 1.541542
+  type: 'test'
+  ...
+# Subtest: cached no-audio is rejected only after actual verification and never silently emitted
+ok 7 - cached no-audio is rejected only after actual verification and never silently emitted
+  ---
+  duration_ms: 1.196042
+  type: 'test'
+  ...
+# Subtest: all-zero automation still decodes its verified audible source and emits exact silence
+ok 8 - all-zero automation still decodes its verified audible source and emits exact silence
+  ---
+  duration_ms: 20.838334
+  type: 'test'
+  ...
+# Subtest: block boundaries and initial seeks use clip-local envelope time, with held anchors
+ok 9 - block boundaries and initial seeks use clip-local envelope time, with held anchors
+  ---
+  duration_ms: 43.568833
+  type: 'test'
+  ...
+# Subtest: malformed saved automation fails bounded admission before any source effect
+ok 10 - malformed saved automation fails bounded admission before any source effect
+  ---
+  duration_ms: 1.68075
+  type: 'test'
+  ...
+# Subtest: hash reservation includes silent automated assets, separately from PCM voices
+ok 11 - hash reservation includes silent automated assets, separately from PCM voices
+  ---
+  duration_ms: 0.837166
+  type: 'test'
+  ...
+# Subtest: envelope edits stale an existing plan even when revision and scalar gain are unchanged
+ok 12 - envelope edits stale an existing plan even when revision and scalar gain are unchanged
+  ---
+  duration_ms: 0.456209
+  type: 'test'
+  ...
+# Subtest: complete source wrapper budget counts metadata discarded by projection without changing absent admission
+ok 13 - complete source wrapper budget counts metadata discarded by projection without changing absent admission
+  ---
+  duration_ms: 3.290041
+  type: 'test'
+  ...
+# Subtest: reader profiles are derived only when absent, never normalized from conflicting evidence
+ok 14 - reader profiles are derived only when absent, never normalized from conflicting evidence
+  ---
+  duration_ms: 1.093791
+  type: 'test'
+  ...
+# Subtest: cached-no-audio with fades still reaches actual verification in non-null branch
+ok 15 - cached-no-audio with fades still reaches actual verification in non-null branch
+  ---
+  duration_ms: 2.854916
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 320.692333

@@ -1,0 +1,76 @@
+TAP version 13
+# Subtest: opacity form and v3 raw draft have identical lexical limits while incomplete values cannot Save
+ok 1 - opacity form and v3 raw draft have identical lexical limits while incomplete values cannot Save
+  ---
+  duration_ms: 2.902416
+  type: 'test'
+  ...
+# Subtest: final opacity uses proposed duration, exact clip-local points, absence and explicit clear
+ok 2 - final opacity uses proposed duration, exact clip-local points, absence and explicit clear
+  ---
+  duration_ms: 0.899166
+  type: 'test'
+  ...
+# Subtest: stored opacity double values round trip without percentage rounding
+ok 3 - stored opacity double values round trip without percentage rounding
+  ---
+  duration_ms: 10.155375
+  type: 'test'
+  ...
+# Subtest: four locale catalogs and installed React render accessible numeric-text controls
+ok 4 - four locale catalogs and installed React render accessible numeric-text controls
+  ---
+  duration_ms: 20.656125
+  type: 'test'
+  ...
+# Subtest: real React renders incomplete and nonfinite duration recovery in four locales without accepting the invalid draft
+ok 5 - real React renders incomplete and nonfinite duration recovery in four locales without accepting the invalid draft
+  ---
+  duration_ms: 6.825458
+  type: 'test'
+  ...
+# Subtest: bounded structure never normalizes absence and rejects retained stale click handlers
+ok 6 - bounded structure never normalizes absence and rejects retained stale click handlers
+  ---
+  duration_ms: 0.315958
+  type: 'test'
+  ...
+# Subtest: whole pasted events reject visibly in all languages and retain incomplete draft values
+ok 7 - whole pasted events reject visibly in all languages and retain incomplete draft values
+  ---
+  duration_ms: 0.844334
+  type: 'test'
+  ...
+# Subtest: IME guards structure synchronously and admits one owner-tagged edit before releasing pending
+ok 8 - IME guards structure synchronously and admits one owner-tagged edit before releasing pending
+  ---
+  duration_ms: 0.232083
+  type: 'test'
+  ...
+# Subtest: IME rejection rolls back, cancellation retains original, disabled controls cannot edit
+ok 9 - IME rejection rolls back, cancellation retains original, disabled controls cannot edit
+  ---
+  duration_ms: 0.18775
+  type: 'test'
+  ...
+# Subtest: retained handlers cannot edit or settle a newer same-row IME session
+ok 10 - retained handlers cannot edit or settle a newer same-row IME session
+  ---
+  duration_ms: 0.16975
+  type: 'test'
+  ...
+# Subtest: IME synchronous start/change/end before React rerender still forwards its session
+ok 11 - IME synchronous start/change/end before React rerender still forwards its session
+  ---
+  duration_ms: 0.0915
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 287.109834

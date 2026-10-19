@@ -1,0 +1,224 @@
+[
+  {
+    "file": "tests/asset-annotation-components.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.54,
+    "tapSummary": {
+      "tests": 7,
+      "suites": 0,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-repairs/001-asset-annotation-components.test.mjs.log",
+    "sha256": "aae2fe66744802539b5fe26afe8ff0f92ef41637a2ea683ba100cb0b6c7df4b1",
+    "sourceSha256": "f01ffe6cc6accb5188c67c91949d8542c8118777d36cf68dd1e797cdfae1ac35",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/clip-lut-ui.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.8,
+    "tapSummary": {
+      "tests": 59,
+      "suites": 0,
+      "pass": 59,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-repairs/006-clip-lut-ui.test.mjs.log",
+    "sha256": "9be7d69c3e24f6d71176010cda6e757ebfaa04a265125f2c0b041b07069bb43d",
+    "sourceSha256": "3271493b570cc9ddba75fc622054e81c63f9afd66043df8200c1aaa77739c0c8",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/clip-opacity-ime-session.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.76,
+    "tapSummary": {
+      "tests": 15,
+      "suites": 0,
+      "pass": 15,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-repairs/002-clip-opacity-ime-session.test.mjs.log",
+    "sha256": "cd6670944ffffad731ce52d5e797e5d0847f2c0d8f7136c3118385ad487df8ec",
+    "sourceSha256": "26510bc730951ed5c55029e2497a75629db76b2700bf6702b9804e57e37a24bb",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/clip-opacity-retained-app.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.54,
+    "tapSummary": {
+      "tests": 9,
+      "suites": 0,
+      "pass": 9,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-repairs/003-clip-opacity-retained-app.test.mjs.log",
+    "sha256": "cf47175aade7ffbb3f84a0a5f137f30654be774dc13b07eaaa81f5e3b58c978d",
+    "sourceSha256": "a7cc234d86910b607619be8cf071790105dc8f3a6122e4a2940d670ad52d77c7",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/clip-volume-envelope-capability-ui.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.49,
+    "tapSummary": {
+      "tests": 14,
+      "suites": 0,
+      "pass": 14,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-repairs/005-clip-volume-envelope-capability-ui.test.mjs.log",
+    "sha256": "dd4e8e9e561b5e17c5b974ff22fb913713a3e40bb5511f6a46c004d2be29d2e6",
+    "sourceSha256": "8385d7c34276a1039e1c4c218c7f0040d5b692aa1d10166e7e84dac046f35158",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/desktop-security.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.33,
+    "tapSummary": {
+      "tests": 10,
+      "suites": 0,
+      "pass": 10,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-repairs/009-desktop-security.test.mjs.log",
+    "sha256": "d435b0fcb84272151ff6702505a79177bc9b198f5c500c3e8b8a0249581e58d4",
+    "sourceSha256": "dca9044b02ca61e3aca9022a59cbd4698caf30a356119cff345bbd986eb92d50",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/export-settings-recovery.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 9.92,
+    "tapSummary": {
+      "tests": 13,
+      "suites": 0,
+      "pass": 13,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-repairs/010-export-settings-recovery.test.mjs.log",
+    "sha256": "1ccd550c3ff48e1b52be0b91a670f19ca202ee6d4f269e3ed384ecaf76335683",
+    "sourceSha256": "af6c2486f5a903404a3b9323514deb52927201428bb3faea31da9355e9f43995",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/frame-extraction-preview.test.mjs",
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 0.49,
+    "tapSummary": {
+      "tests": 10,
+      "suites": 0,
+      "pass": 0,
+      "fail": 10,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-repairs/007-frame-extraction-preview.test.mjs.log",
+    "sha256": "a6e4522270722c0e2572213400f801be18a0afe160c8cf2a3600298b69861f16",
+    "sourceSha256": "d291a8dabf2944b4b9a9363a2911510ca55e6c4d2930a27dab5b997143a0f577",
+    "failedSubtests": [
+      "capture reads actual paused currentTime, freezes source/hash/frame and ignores controller and timeline playheads",
+      "readiness events enable/disable capture and click revalidation denies stale-enabled media",
+      "a pending explicit seek is never capture fact; acknowledged quantized seek retains the intended editing mark",
+      "exclusive EOF and unknown source duration cannot be captured",
+      "old source/readiness handlers and hidden previews cannot submit against a new binding",
+      "capture is absent for audio/image/clip/timeline and requires an actual source hash",
+      "synchronous in-flight guard suppresses double click before parent busy render",
+      "narrow Properties can recover a saved local result while retained hidden Preview capture is denied",
+      "hash-only source replacement remounts decoded media and requires fresh readiness before capturing the new hash",
+      "candidate exact output player revokes retained play handlers on held, disconnect and application replacement"
+    ]
+  },
+  {
+    "file": "tests/inspection-contracts.test.mjs",
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 0.33,
+    "tapSummary": {
+      "tests": 1,
+      "suites": 0,
+      "pass": 0,
+      "fail": 1,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-repairs/011-inspection-contracts.test.mjs.log",
+    "sha256": "c14739a9bd443b50c21d61d38a859cf6208fcbbab351db6858c2b5ae01f3d501",
+    "sourceSha256": "a0e476755a340a0e156cb557717ef3d0cd2d3d694d2a69a44e08d3f8c51178c5",
+    "failedSubtests": [
+      "tests/inspection-contracts.test.mjs"
+    ]
+  },
+  {
+    "file": "tests/opacity-restored-draft-ime.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.55,
+    "tapSummary": {
+      "tests": 6,
+      "suites": 0,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-repairs/004-opacity-restored-draft-ime.test.mjs.log",
+    "sha256": "9540bbb850cb5817de2c6f89bf93cc946845fb112cfea2a7e254bf3da6212cd7",
+    "sourceSha256": "0f2ff172231dbf92baaf40df18cd0a2811c4524bcdfa4a7ec9c855937e15071a",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/source-range-preview.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.49,
+    "tapSummary": {
+      "tests": 26,
+      "suites": 0,
+      "pass": 26,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-repairs/008-source-range-preview.test.mjs.log",
+    "sha256": "a45cdfbf3e93fbd7648be787f7e0f6e4c79a643f02ede28e92dfea942f80cf57",
+    "sourceSha256": "72c70b5a27d6b1a8c7cd1723c727bae9eefaa1e9ae4dbb9716a0d0868ea6cb69",
+    "failedSubtests": []
+  }
+]

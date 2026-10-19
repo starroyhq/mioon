@@ -1,0 +1,17 @@
+TAP version 13
+# Subtest: old40/41 graphs and argv match pinned pre-seam renderer except equivalent file-option aliases
+ok 1 - old40/41 graphs and argv match pinned pre-seam renderer except equivalent file-option aliases
+  ---
+  duration_ms: 1099.444917
+  type: 'test'
+  ...
+# 8 before/after comparisons with two explicit file-option aliases; all other argv and bytes exact; real in-memory40/41 receipt capture; all media mocked; zero child attempts; no encoded-file identity claim
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1406.561

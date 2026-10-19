@@ -1,0 +1,314 @@
+TAP version 13
+# Subtest: 28 to30 is marker-only and preserves frozen seeded raw rows, rowids and schema SQL
+not ok 1 - 28 to30 is marker-only and preserves frozen seeded raw rows, rowids and schema SQL
+  ---
+  duration_ms: 5.665625
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema30.test.mjs:73:1'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema30.test.mjs:32:14)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema30.test.mjs:74:11)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.start (node:internal/test_runner/test:1262:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+  ...
+# Subtest: schema30 migration is atomic after marker
+ok 2 - schema30 migration is atomic after marker
+  ---
+  duration_ms: 75.259875
+  type: 'test'
+  ...
+# Subtest: schema30 migration is atomic before commit
+ok 3 - schema30 migration is atomic before commit
+  ---
+  duration_ms: 73.836958
+  type: 'test'
+  ...
+# Subtest: current reader keeps exact source24/restored25 pair
+ok 4 - current reader keeps exact source24/restored25 pair
+  ---
+  duration_ms: 213.126667
+  type: 'test'
+  ...
+# Subtest: current reader keeps exact source26/restored27 pair
+ok 5 - current reader keeps exact source26/restored27 pair
+  ---
+  duration_ms: 184.002667
+  type: 'test'
+  ...
+# Subtest: current reader keeps exact source28/restored29 pair
+ok 6 - current reader keeps exact source28/restored29 pair
+  ---
+  duration_ms: 203.033375
+  type: 'test'
+  ...
+# Subtest: current reader keeps exact source30/restored31 pair
+ok 7 - current reader keeps exact source30/restored31 pair
+  ---
+  duration_ms: 216.498833
+  type: 'test'
+  ...
+# Subtest: pair contracts keep30/31 and current32/33 exact while rejecting unknown versions and cross-pairs
+not ok 8 - pair contracts keep30/31 and current32/33 exact while rejecting unknown versions and cross-pairs
+  ---
+  duration_ms: 1.503167
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema30.test.mjs:96:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    true !== false
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: false
+  actual: true
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema30.test.mjs:98:59)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: new role rejects stale/corrupt markers: future marker
+ok 9 - new role rejects stale/corrupt markers: future marker
+  ---
+  duration_ms: 73.522
+  type: 'test'
+  ...
+# Subtest: new role rejects stale/corrupt markers: missing30
+ok 10 - new role rejects stale/corrupt markers: missing30
+  ---
+  duration_ms: 74.229
+  type: 'test'
+  ...
+# Subtest: new role rejects stale/corrupt markers: missing26
+ok 11 - new role rejects stale/corrupt markers: missing26
+  ---
+  duration_ms: 71.686042
+  type: 'test'
+  ...
+# Subtest: new role rejects stale/corrupt markers: restore31 without30
+ok 12 - new role rejects stale/corrupt markers: restore31 without30
+  ---
+  duration_ms: 70.473583
+  type: 'test'
+  ...
+# Subtest: historical28 refuses colour including null in timeline without mutating anything
+ok 13 - historical28 refuses colour including null in timeline without mutating anything
+  ---
+  duration_ms: 68.145459
+  type: 'test'
+  ...
+# Subtest: historical28 refuses colour including null in history without mutating anything
+ok 14 - historical28 refuses colour including null in history without mutating anything
+  ---
+  duration_ms: 67.777167
+  type: 'test'
+  ...
+# Subtest: historical28 refuses colour including null in receipt without mutating anything
+ok 15 - historical28 refuses colour including null in receipt without mutating anything
+  ---
+  duration_ms: 67.905791
+  type: 'test'
+  ...
+# Subtest: historical28 refuses colour including null in snapshot without mutating anything
+ok 16 - historical28 refuses colour including null in snapshot without mutating anything
+  ---
+  duration_ms: 68.006208
+  type: 'test'
+  ...
+# Subtest: historical28 refuses colour including null in task without mutating anything
+ok 17 - historical28 refuses colour including null in task without mutating anything
+  ---
+  duration_ms: 67.70575
+  type: 'test'
+  ...
+# Subtest: historical28 refuses colour including null in escaped key without mutating anything
+ok 18 - historical28 refuses colour including null in escaped key without mutating anything
+  ---
+  duration_ms: 67.046875
+  type: 'test'
+  ...
+# Subtest: schema30 rejects corrupt or stale unknown colour profile
+ok 19 - schema30 rejects corrupt or stale unknown colour profile
+  ---
+  duration_ms: 75.621917
+  type: 'test'
+  ...
+# Subtest: schema30 rejects corrupt or stale invalid strength
+ok 20 - schema30 rejects corrupt or stale invalid strength
+  ---
+  duration_ms: 74.928208
+  type: 'test'
+  ...
+# Subtest: schema30 rejects corrupt or stale source hash
+ok 21 - schema30 rejects corrupt or stale source hash
+  ---
+  duration_ms: 73.362083
+  type: 'test'
+  ...
+# Subtest: schema30 rejects corrupt or stale missing resource
+ok 22 - schema30 rejects corrupt or stale missing resource
+  ---
+  duration_ms: 73.791708
+  type: 'test'
+  ...
+# Subtest: schema30 rejects corrupt or stale resource hash
+ok 23 - schema30 rejects corrupt or stale resource hash
+  ---
+  duration_ms: 74.369292
+  type: 'test'
+  ...
+# Subtest: schema30 rejects corrupt or stale resource owner
+ok 24 - schema30 rejects corrupt or stale resource owner
+  ---
+  duration_ms: 73.264292
+  type: 'test'
+  ...
+# Subtest: schema30 rejects corrupt or stale duplicate key
+ok 25 - schema30 rejects corrupt or stale duplicate key
+  ---
+  duration_ms: 74.817917
+  type: 'test'
+  ...
+# Subtest: schema30 snapshot gate refuses missing plan
+ok 26 - schema30 snapshot gate refuses missing plan
+  ---
+  duration_ms: 71.172666
+  type: 'test'
+  ...
+# Subtest: schema30 snapshot gate refuses changed plan
+ok 27 - schema30 snapshot gate refuses changed plan
+  ---
+  duration_ms: 69.966042
+  type: 'test'
+  ...
+# Subtest: schema30 snapshot gate refuses extra plan field
+ok 28 - schema30 snapshot gate refuses extra plan field
+  ---
+  duration_ms: 71.3265
+  type: 'test'
+  ...
+# Subtest: null and invalidated source declarations persist exactly without becoming a render plan
+ok 29 - null and invalidated source declarations persist exactly without becoming a render plan
+  ---
+  duration_ms: 72.535916
+  type: 'test'
+  ...
+# Subtest: cold backup30 and restored31 preserve exact colour, snapshots, history, LUT bytes and source bytes
+not ok 30 - cold backup30 and restored31 preserve exact colour, snapshots, history, LUT bytes and source bytes
+  ---
+  duration_ms: 628.866166
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema30.test.mjs:167:1'
+  failureType: 'testCodeFailure'
+  error: 'Workspace schema role is unsupported'
+  code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  stack: |-
+    unsupported (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/workspace-schema-dispatch.ts:38:55)
+    readCurrentWorkspaceRole (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/workspace-schema-dispatch.ts:125:30)
+    detect (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/workspace-schema-dispatch.ts:188:18)
+    withOrdinaryMigrationSource (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/apps/desktop/scripts/migration-restore-guard.mjs:48:6)
+    async TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema30.test.mjs:174:21)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: cold capture and migration refuse missing30 or corrupt colour before publishing a destination
+not ok 31 - cold capture and migration refuse missing30 or corrupt colour before publishing a destination
+  ---
+  duration_ms: 622.46525
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema30.test.mjs:189:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      Comparison {
+    +   code: 'WORKSPACE_BACKUP_IO'
+    -   code: 'WORKSPACE_BACKUP_DATABASE_INVALID'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    code: 'WORKSPACE_BACKUP_DATABASE_INVALID'
+  actual:
+  error: 'The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.'
+  stack: |-
+    backupError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/workspace-backup-storage.mjs:27:58)
+    safeBackupError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/workspace-backup-storage.mjs:32:9)
+    createWorkspaceBackup (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/workspace-backup.mjs:176:31)
+    async waitForActual (node:assert:615:5)
+    async strict.rejects (node:assert:738:25)
+    async TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema30.test.mjs:196:3)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  operator: 'rejects'
+  stack: |-
+    async TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema30.test.mjs:196:3)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restored31 revalidation refuses corrupted live colour and exact archived evidence
+ok 32 - restored31 revalidation refuses corrupted live colour and exact archived evidence
+  ---
+  duration_ms: 107.063541
+  type: 'test'
+  ...
+# Subtest: durable prepared colour intent may retain an unknown LUT and stale source without blocking reopen or backup
+ok 33 - durable prepared colour intent may retain an unknown LUT and stale source without blocking reopen or backup
+  ---
+  duration_ms: 123.59825
+  type: 'test'
+  ...
+# Subtest: durable not_applied colour intent may retain an unknown LUT and stale source without blocking reopen or backup
+ok 34 - durable not_applied colour intent may retain an unknown LUT and stale source without blocking reopen or backup
+  ---
+  duration_ms: 123.609375
+  type: 'test'
+  ...
+# Subtest: accepted managed colour refuses audio track
+ok 35 - accepted managed colour refuses audio track
+  ---
+  duration_ms: 68.429917
+  type: 'test'
+  ...
+# Subtest: accepted managed colour refuses image source
+ok 36 - accepted managed colour refuses image source
+  ---
+  duration_ms: 66.983083
+  type: 'test'
+  ...
+# Subtest: restored31 rejects corrupt archived colour even when its live timeline is valid
+ok 37 - restored31 rejects corrupt archived colour even when its live timeline is valid
+  ---
+  duration_ms: 107.711667
+  type: 'test'
+  ...
+# Subtest: oversized JSON is refused before any JSON parser or traversal runs
+ok 38 - oversized JSON is refused before any JSON parser or traversal runs
+  ---
+  duration_ms: 69.230834
+  type: 'test'
+  ...
+1..38
+# tests 38
+# suites 0
+# pass 34
+# fail 4
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4673.068

@@ -1,0 +1,130 @@
+TAP version 13
+# Subtest: offline restore crash at raw_copy never publishes raw schema24 and preserves original bytes/modes
+ok 1 - offline restore crash at raw_copy never publishes raw schema24 and preserves original bytes/modes
+  ---
+  duration_ms: 651.982375
+  type: 'test'
+  ...
+# Subtest: offline restore crash at schema_ddl never publishes raw schema24 and preserves original bytes/modes
+ok 2 - offline restore crash at schema_ddl never publishes raw schema24 and preserves original bytes/modes
+  ---
+  duration_ms: 771.260667
+  type: 'test'
+  ...
+# Subtest: offline restore crash at identity never publishes raw schema24 and preserves original bytes/modes
+ok 3 - offline restore crash at identity never publishes raw schema24 and preserves original bytes/modes
+  ---
+  duration_ms: 718.451541
+  type: 'test'
+  ...
+# Subtest: offline restore crash at schema_commit never publishes raw schema24 and preserves original bytes/modes
+ok 4 - offline restore crash at schema_commit never publishes raw schema24 and preserves original bytes/modes
+  ---
+  duration_ms: 757.358709
+  type: 'test'
+  ...
+# Subtest: offline restore crash at checkpoint never publishes raw schema24 and preserves original bytes/modes
+ok 5 - offline restore crash at checkpoint never publishes raw schema24 and preserves original bytes/modes
+  ---
+  duration_ms: 756.91075
+  type: 'test'
+  ...
+# Subtest: offline restore crash at candidate_sync never publishes raw schema24 and preserves original bytes/modes
+ok 6 - offline restore crash at candidate_sync never publishes raw schema24 and preserves original bytes/modes
+  ---
+  duration_ms: 788.681041
+  type: 'test'
+  ...
+# Subtest: offline restore crash at media_sync never publishes raw schema24 and preserves original bytes/modes
+ok 7 - offline restore crash at media_sync never publishes raw schema24 and preserves original bytes/modes
+  ---
+  duration_ms: 734.849375
+  type: 'test'
+  ...
+# Subtest: offline restore crash at before_activation never publishes raw schema24 and preserves original bytes/modes
+ok 8 - offline restore crash at before_activation never publishes raw schema24 and preserves original bytes/modes
+  ---
+  duration_ms: 1197.432458
+  type: 'test'
+  ...
+# Subtest: offline restore crash at between_link_unlink never publishes raw schema24 and preserves original bytes/modes
+ok 9 - offline restore crash at between_link_unlink never publishes raw schema24 and preserves original bytes/modes
+  ---
+  duration_ms: 1433.191625
+  type: 'test'
+  ...
+# Subtest: offline restore crash at after_activation never publishes raw schema24 and preserves original bytes/modes
+ok 10 - offline restore crash at after_activation never publishes raw schema24 and preserves original bytes/modes
+  ---
+  duration_ms: 752.034083
+  type: 'test'
+  ...
+# Subtest: offline restore crash at directory_sync never publishes raw schema24 and preserves original bytes/modes
+ok 11 - offline restore crash at directory_sync never publishes raw schema24 and preserves original bytes/modes
+  ---
+  duration_ms: 749.745292
+  type: 'test'
+  ...
+# Subtest: offline restore crash at ack_loss never publishes raw schema24 and preserves original bytes/modes
+ok 12 - offline restore crash at ack_loss never publishes raw schema24 and preserves original bytes/modes
+  ---
+  duration_ms: 1567.741792
+  type: 'test'
+  ...
+# Subtest: publication directory_fsync_error is precise unknown, keeps guarded output, and never claims rollback
+ok 13 - publication directory_fsync_error is precise unknown, keeps guarded output, and never claims rollback
+  ---
+  duration_ms: 847.276625
+  type: 'test'
+  ...
+# Subtest: publication link_ack_error is precise unknown, keeps guarded output, and never claims rollback
+ok 14 - publication link_ack_error is precise unknown, keeps guarded output, and never claims rollback
+  ---
+  duration_ms: 745.829083
+  type: 'test'
+  ...
+# Subtest: offline publication safely handles collision
+ok 15 - offline publication safely handles collision
+  ---
+  duration_ms: 784.497959
+  type: 'test'
+  ...
+# Subtest: offline publication safely handles cancel_before
+ok 16 - offline publication safely handles cancel_before
+  ---
+  duration_ms: 749.125917
+  type: 'test'
+  ...
+# Subtest: offline publication safely handles cancel_after
+ok 17 - offline publication safely handles cancel_after
+  ---
+  duration_ms: 763.418041
+  type: 'test'
+  ...
+# Subtest: offline publication safely handles replace_lock
+ok 18 - offline publication safely handles replace_lock
+  ---
+  duration_ms: 773.6705
+  type: 'test'
+  ...
+# Subtest: offline publication safely handles replace_source
+ok 19 - offline publication safely handles replace_source
+  ---
+  duration_ms: 757.52025
+  type: 'test'
+  ...
+# Subtest: offline publication safely handles unknown_destination
+ok 20 - offline publication safely handles unknown_destination
+  ---
+  duration_ms: 784.664792
+  type: 'test'
+  ...
+1..20
+# tests 20
+# suites 0
+# pass 20
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 17373.6075

@@ -1,0 +1,110 @@
+TAP version 13
+# Subtest: pending request diagnostics relabel in all four locales without changing original input or saved bytes
+not ok 1 - pending request diagnostics relabel in all four locales without changing original input or saved bytes
+  ---
+  duration_ms: 1.649542
+  type: 'test'
+  location: '/private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/i18n-task-errors.test.mjs:37:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + '待确认请求记录损坏。为防止重复提交，请先核实服务器任务'
+    - '待确认请求记录损坏。为防止重复提交，请先核实服务器任务。'
+                                  ^
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: '待确认请求记录损坏。为防止重复提交，请先核实服务器任务。'
+  actual: '待确认请求记录损坏。为防止重复提交，请先核实服务器任务'
+  operator: 'strictEqual'
+  stack: |-
+    verify (file:///private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/i18n-task-errors.test.mjs:30:10)
+    Object.<anonymous> (file:///private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/i18n-task-errors.test.mjs:35:62)
+    expectedException (node:assert:547:17)
+    expectsError (node:assert:672:21)
+    strict.throws (node:assert:728:3)
+    throws (file:///private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/i18n-task-errors.test.mjs:35:42)
+    TestContext.<anonymous> (file:///private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/i18n-task-errors.test.mjs:40:3)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.start (node:internal/test_runner/test:1262:17)
+  ...
+# Subtest: mutation error sidecars keep exact original codes, guidance and recovery identity
+not ok 2 - mutation error sidecars keep exact original codes, guidance and recovery identity
+  ---
+  duration_ms: 0.256375
+  type: 'test'
+  location: '/private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/i18n-task-errors.test.mjs:57:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + '项目或编辑目标已变化，已阻止旧面板提交。请在当前项目重新选择目标'
+    - '项目或编辑目标已变化，已阻止旧面板提交。请在当前项目重新选择目标。'
+                                       ^
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: '项目或编辑目标已变化，已阻止旧面板提交。请在当前项目重新选择目标。'
+  actual: '项目或编辑目标已变化，已阻止旧面板提交。请在当前项目重新选择目标'
+  operator: 'strictEqual'
+  stack: |-
+    verify (file:///private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/i18n-task-errors.test.mjs:30:10)
+    Object.<anonymous> (file:///private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/i18n-task-errors.test.mjs:35:62)
+    expectedException (node:assert:547:17)
+    expectsError (node:assert:672:21)
+    strict.throws (node:assert:728:3)
+    throws (file:///private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/i18n-task-errors.test.mjs:35:42)
+    TestContext.<anonymous> (file:///private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/i18n-task-errors.test.mjs:59:3)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+  ...
+# Subtest: task controller errors remain descriptors across relabeling with no extra task calls
+not ok 3 - task controller errors remain descriptors across relabeling with no extra task calls
+  ---
+  duration_ms: 0.384917
+  type: 'test'
+  location: '/private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/i18n-task-errors.test.mjs:67:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + '任务恢复列表尚未核对完成。请先在任务中心重新载入，再继续编辑'
+    - '任务恢复列表尚未核对完成。请先在任务中心重新载入，再继续编辑。'
+                                     ^
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: '任务恢复列表尚未核对完成。请先在任务中心重新载入，再继续编辑。'
+  actual: '任务恢复列表尚未核对完成。请先在任务中心重新载入，再继续编辑'
+  operator: 'strictEqual'
+  stack: |-
+    verify (file:///private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/i18n-task-errors.test.mjs:30:10)
+    Object.<anonymous> (file:///private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/i18n-task-errors.test.mjs:72:110)
+    expectedException (node:assert:547:17)
+    expectsError (node:assert:672:21)
+    strict.rejects (node:assert:738:3)
+    async TestContext.<anonymous> (file:///private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/i18n-task-errors.test.mjs:72:3)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: every retained local task diagnostic has an adjacent explicit display descriptor
+ok 4 - every retained local task diagnostic has an adjacent explicit display descriptor
+  ---
+  duration_ms: 16.499625
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 1
+# fail 3
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 428.686417

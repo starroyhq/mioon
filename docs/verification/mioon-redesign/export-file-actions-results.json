@@ -1,0 +1,54 @@
+{
+  "files": [
+    {
+      "file": "tests/export-file-actions-ui.test.mjs",
+      "exitCode": 0,
+      "tests": 9,
+      "pass": 9,
+      "fail": 0,
+      "skipped": 0,
+      "durationMs": 272.508125,
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/export-file-actions-ui.test.mjs"
+      ]
+    },
+    {
+      "file": "tests/export-settings-ui.test.mjs",
+      "exitCode": 0,
+      "tests": 37,
+      "pass": 37,
+      "fail": 0,
+      "skipped": 0,
+      "durationMs": 317.226333,
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/export-settings-ui.test.mjs"
+      ]
+    },
+    {
+      "file": "tests/export-file-recovery.test.mjs",
+      "exitCode": 0,
+      "tests": 1,
+      "pass": 1,
+      "fail": 0,
+      "skipped": 0,
+      "durationMs": 1399.689542,
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/export-file-recovery.test.mjs"
+      ]
+    }
+  ],
+  "tests": 47,
+  "pass": 47,
+  "fail": 0,
+  "typecheckExitCode": 0,
+  "scope": "Real component retained callbacks plus existing immutable HTTP recovery. Existing export-settings assertions unchanged; only hook injection expanded."
+}

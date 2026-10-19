@@ -1,0 +1,37 @@
+{
+  "mode": "Independent read-only reviews; no tests rerun by these final reviewers",
+  "sourceReview": {
+    "files": [
+      "apps/web/src/Preview.jsx",
+      "packages/contracts/src/agent-timeline-gain.ts",
+      "packages/business/src/workspace-restore-policy.mjs",
+      "packages/business/src/workspace-restore-read.mjs",
+      "packages/business/src/providers/mock-renderer-capability.ts",
+      "packages/business/src/subtitle-media.mjs",
+      "packages/business/src/timeline-media.mjs"
+    ],
+    "confirmedUnfixedDefects": []
+  },
+  "frozenEvidenceReview": {
+    "reviewedSourcePaths": 10,
+    "uniqueInverseSnippets": 38,
+    "oldManifestAndPinsUnchanged": true,
+    "confirmedUnfixedDefects": []
+  },
+  "reportReview": {
+    "fixedIssues": [
+      "Exact baseline test-log selection excludes install/typecheck/build logs",
+      "Historical log fields resolve from history/; final logs from report root"
+    ],
+    "pendingFinalTotalsCheck": false,
+    "finalRecomputedCountsMatch": true,
+    "all755TapHashesMatch": true,
+    "localLinksValidBeforeCleanup": true
+  },
+  "limitations": [
+    "Read-only source review does not replace tests",
+    "No new browser or native layout acceptance",
+    "Restore summary tests represent25/41/49 rather than every historical schema",
+    "Generic media wrapper failures remain unconfirmed unless evidence establishes the cause"
+  ]
+}

@@ -1,0 +1,9 @@
+CAPTURE empty
+CAPTURE selected
+CAPTURE more
+CAPTURE remove-confirm
+CAPTURE ripple-confirm
+CAPTURE audio-expanded
+CAPTURE stale
+CAPTURE rendering
+{"checks": ["preview fills stage; playback footer at bottom; track header168", "actual selected-clip playback/pause and one-frame step update the bound timeline frame", "actual standalone source playback/pause and one-frame step leave timeline frame0 unchanged", "real ripple preserves existing30f gaps and shifts only later clips by60f", "UI undo/redo round trip", "input/unsaved keyboard cannot remove", "Shift+Backspace opens ripple confirmation; ordinary Backspace leaves gaps; undo restores", "audio role/gain/fade/envelope preset/ducking and explicit measurement entry retain actual capability admission", "render toast has bounded height and does not cover playback footer", "real frozen preview becomes stale after saved edit and new render shows progress"], "screenshots": ["empty", "selected", "more", "remove-confirm", "ripple-confirm", "audio-expanded", "stale", "rendering"], "errors": []}

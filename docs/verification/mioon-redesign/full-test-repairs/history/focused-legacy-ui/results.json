@@ -1,0 +1,59 @@
+[
+  {
+    "file": "tests/named-delivery-app.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.43,
+    "tapSummary": {
+      "tests": 20,
+      "suites": 0,
+      "pass": 20,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-legacy-ui/001-named-delivery-app.test.mjs.log",
+    "sha256": "7e14e483dd5a52d7f584c895185ca89c749e92760e0799d00c82e9a5b32ee72f",
+    "sourceSha256": "b47824562bca19222a392c80cbebe0c8854388053fcba4b29a61eef87800a345",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/video-first-last-ui.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.74,
+    "tapSummary": {
+      "tests": 24,
+      "suites": 0,
+      "pass": 24,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-legacy-ui/002-video-first-last-ui.test.mjs.log",
+    "sha256": "e6b2bb7f70cf0498d6d955e8fab9f0060338c13c841c3f84004ef5d723cf8470",
+    "sourceSha256": "daa5a447f22a547d80112e52104b913c1888a53004a905605f4ce8d989e1073d",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/workspace-visibility.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.47,
+    "tapSummary": {
+      "tests": 13,
+      "suites": 0,
+      "pass": 13,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-legacy-ui/003-workspace-visibility.test.mjs.log",
+    "sha256": "df57b36744f7152420ea380ac42cae63f162d3b66acc1396175da24e1bc841ca",
+    "sourceSha256": "d92e7be208c0b2eabb00d56a37b71645ea7fa929f90cb2c0882636bd9b6e2883",
+    "failedSubtests": []
+  }
+]

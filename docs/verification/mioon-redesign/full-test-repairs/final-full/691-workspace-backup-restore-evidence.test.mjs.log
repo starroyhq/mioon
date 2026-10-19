@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: source24 partial metadata table preserves explicit backup refusal before target creation
+ok 1 - source24 partial metadata table preserves explicit backup refusal before target creation
+  ---
+  duration_ms: 109.981792
+  type: 'test'
+  ...
+# Subtest: source24 case folded metadata preserves explicit backup refusal before target creation
+ok 2 - source24 case folded metadata preserves explicit backup refusal before target creation
+  ---
+  duration_ms: 93.60375
+  type: 'test'
+  ...
+# Subtest: source24 restore guard preserves explicit backup refusal before target creation
+ok 3 - source24 restore guard preserves explicit backup refusal before target creation
+  ---
+  duration_ms: 137.997458
+  type: 'test'
+  ...
+# Subtest: source24 execution epoch preserves explicit backup refusal before target creation
+ok 4 - source24 execution epoch preserves explicit backup refusal before target creation
+  ---
+  duration_ms: 92.282958
+  type: 'test'
+  ...
+# Subtest: source26 partial metadata table preserves explicit backup refusal before target creation
+ok 5 - source26 partial metadata table preserves explicit backup refusal before target creation
+  ---
+  duration_ms: 106.832167
+  type: 'test'
+  ...
+# Subtest: source26 case folded metadata preserves explicit backup refusal before target creation
+ok 6 - source26 case folded metadata preserves explicit backup refusal before target creation
+  ---
+  duration_ms: 108.365708
+  type: 'test'
+  ...
+# Subtest: source26 restore guard preserves explicit backup refusal before target creation
+ok 7 - source26 restore guard preserves explicit backup refusal before target creation
+  ---
+  duration_ms: 98.731334
+  type: 'test'
+  ...
+# Subtest: source26 execution epoch preserves explicit backup refusal before target creation
+ok 8 - source26 execution epoch preserves explicit backup refusal before target creation
+  ---
+  duration_ms: 112.600708
+  type: 'test'
+  ...
+# Subtest: source24 unknown marker without restore evidence is still rejected as unsupported
+ok 9 - source24 unknown marker without restore evidence is still rejected as unsupported
+  ---
+  duration_ms: 107.818084
+  type: 'test'
+  ...
+# Subtest: source26 unknown marker without restore evidence is still rejected as unsupported
+ok 10 - source26 unknown marker without restore evidence is still rejected as unsupported
+  ---
+  duration_ms: 104.391083
+  type: 'test'
+  ...
+# Subtest: source24 unrelated data remains a byte-exact verifiable cold archive
+ok 11 - source24 unrelated data remains a byte-exact verifiable cold archive
+  ---
+  duration_ms: 139.929792
+  type: 'test'
+  ...
+# Subtest: source26 unrelated data remains a byte-exact verifiable cold archive
+ok 12 - source26 unrelated data remains a byte-exact verifiable cold archive
+  ---
+  duration_ms: 158.46625
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1665.477084

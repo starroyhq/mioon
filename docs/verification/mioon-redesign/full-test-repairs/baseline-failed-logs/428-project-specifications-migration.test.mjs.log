@@ -1,0 +1,258 @@
+TAP version 13
+# Subtest: startup SQL normalization rejects missing, duplicate, extra and isolated loudness expansion
+ok 1 - startup SQL normalization rejects missing, duplicate, extra and isolated loudness expansion
+  ---
+  duration_ms: 32.645333
+  type: 'test'
+  ...
+# Subtest: schema21 preserves independently frozen schema20 rows, raw task inputs, all states, every index and trigger
+ok 2 - schema21 preserves independently frozen schema20 rows, raw task inputs, all states, every index and trigger
+  ---
+  duration_ms: 115.537916
+  type: 'test'
+  ...
+# Subtest: actual schema20 startup migration matches fresh schema26 and is byte-stable across repeated restarts
+not ok 3 - actual schema20 startup migration matches fresh schema26 and is byte-stable across repeated restarts
+  ---
+  duration_ms: 2338.008375
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/project-specifications-migration.test.mjs:206:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    ... Skipped lines
+    
+      [
+        1,
+        2,
+        3,
+        4,
+    ...
+        26,
+    +   28,
+    +   30,
+    +   32,
+    +   34,
+    +   36,
+    +   38,
+    +   40
+      ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: 1
+    1: 2
+    2: 3
+    3: 4
+    4: 5
+    5: 6
+    6: 7
+    7: 8
+    8: 9
+    9: 10
+    10: 11
+    11: 12
+    12: 13
+    13: 14
+    14: 15
+    15: 16
+    16: 17
+    17: 18
+    18: 19
+    19: 20
+    20: 21
+    21: 22
+    22: 23
+    23: 24
+    24: 26
+  actual:
+    0: 1
+    1: 2
+    2: 3
+    3: 4
+    4: 5
+    5: 6
+    6: 7
+    7: 8
+    8: 9
+    9: 10
+    10: 11
+    11: 12
+    12: 13
+    13: 14
+    14: 15
+    15: 16
+    16: 17
+    17: 18
+    18: 19
+    19: 20
+    20: 21
+    21: 22
+    22: 23
+    23: 24
+    24: 26
+    25: 28
+    26: 30
+    27: 32
+    28: 34
+    29: 36
+    30: 38
+    31: 40
+  operator: 'deepStrictEqual'
+  stack: |-
+    assertNarrowExpansion (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/project-specifications-migration.test.mjs:177:9)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/project-specifications-migration.test.mjs:209:32)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: schema21 keeps an empty v20 edit-task sequence absent
+ok 4 - schema21 keeps an empty v20 edit-task sequence absent
+  ---
+  duration_ms: 28.858375
+  type: 'test'
+  ...
+# Subtest: schema21 keeps an empty v20 edit-task sequence 0
+ok 5 - schema21 keeps an empty v20 edit-task sequence 0
+  ---
+  duration_ms: 32.252833
+  type: 'test'
+  ...
+# Subtest: schema21 keeps an empty v20 edit-task sequence 8123
+ok 6 - schema21 keeps an empty v20 edit-task sequence 8123
+  ---
+  duration_ms: 36.18975
+  type: 'test'
+  ...
+# Subtest: failed schema21 marker rolls back both new objects and raw-column task rebuild, then startup succeeds
+not ok 7 - failed schema21 marker rolls back both new objects and raw-column task rebuild, then startup succeeds
+  ---
+  duration_ms: 576.063083
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/project-specifications-migration.test.mjs:223:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    ... Skipped lines
+    
+      [
+        1,
+        2,
+        3,
+        4,
+    ...
+        26,
+    +   28,
+    +   30,
+    +   32,
+    +   34,
+    +   36,
+    +   38,
+    +   40
+      ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: 1
+    1: 2
+    2: 3
+    3: 4
+    4: 5
+    5: 6
+    6: 7
+    7: 8
+    8: 9
+    9: 10
+    10: 11
+    11: 12
+    12: 13
+    13: 14
+    14: 15
+    15: 16
+    16: 17
+    17: 18
+    18: 19
+    19: 20
+    20: 21
+    21: 22
+    22: 23
+    23: 24
+    24: 26
+  actual:
+    0: 1
+    1: 2
+    2: 3
+    3: 4
+    4: 5
+    5: 6
+    6: 7
+    7: 8
+    8: 9
+    9: 10
+    10: 11
+    11: 12
+    12: 13
+    13: 14
+    14: 15
+    15: 16
+    16: 17
+    17: 18
+    18: 19
+    19: 20
+    20: 21
+    21: 22
+    22: 23
+    23: 24
+    24: 26
+    25: 28
+    26: 30
+    27: 32
+    28: 34
+    29: 36
+    30: 38
+    31: 40
+  operator: 'deepStrictEqual'
+  stack: |-
+    assertNarrowExpansion (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/project-specifications-migration.test.mjs:177:9)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/project-specifications-migration.test.mjs:229:93)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: migration transaction preconditions and inconsistent task sequence fail without partial rebuild
+ok 8 - migration transaction preconditions and inconsistent task sequence fail without partial rebuild
+  ---
+  duration_ms: 15.554542
+  type: 'test'
+  ...
+# Subtest: expanded edit-task allowlist keeps all original lane, identity, transition and retained-capacity constraints
+ok 9 - expanded edit-task allowlist keeps all original lane, identity, transition and retained-capacity constraints
+  ---
+  duration_ms: 25.364208
+  type: 'test'
+  ...
+# Subtest: format companion binds a retained timeline request and preserves immutable canonical input bytes
+ok 10 - format companion binds a retained timeline request and preserves immutable canonical input bytes
+  ---
+  duration_ms: 21.487833
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 8
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3678.691083

@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: only exact restored43 application admission grants delivery; generic, copied and other database handles refuse
+ok 1 - only exact restored43 application admission grants delivery; generic, copied and other database handles refuse
+  ---
+  duration_ms: 1917.418417
+  type: 'test'
+  ...
+# Subtest: new-origin preview and named/unnamed exports retain opacity, receipts and guarded range bytes across reopen
+ok 2 - new-origin preview and named/unnamed exports retain opacity, receipts and guarded range bytes across reopen
+  ---
+  duration_ms: 3592.930375
+  type: 'test'
+  ...
+# Subtest: restored canonical captured imports serve bytes; held output never becomes a raw import by relabeling
+ok 3 - restored canonical captured imports serve bytes; held output never becomes a raw import by relabeling
+  ---
+  duration_ms: 1591.069417
+  type: 'test'
+  ...
+# Subtest: missing receipt or origin and corrupt acceptance identity refuse outputs without weakening restored SQL guards
+ok 4 - missing receipt or origin and corrupt acceptance identity refuse outputs without weakening restored SQL guards
+  ---
+  duration_ms: 1647.964541
+  type: 'test'
+  ...
+# Subtest: foreign output ownership and late source/export changes close file descriptors without streaming
+ok 5 - foreign output ownership and late source/export changes close file descriptors without streaming
+  ---
+  duration_ms: 1866.453
+  type: 'test'
+  ...
+# Subtest: cancelled range response owns only its descriptor and closing application revokes every retained media grant
+ok 6 - cancelled range response owns only its descriptor and closing application revokes every retained media grant
+  ---
+  duration_ms: 1907.724125
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 12817.207875

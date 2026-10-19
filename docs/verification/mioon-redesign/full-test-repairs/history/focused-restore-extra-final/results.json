@@ -1,0 +1,78 @@
+[
+  {
+    "file": "tests/workspace-opacity-candidate.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.38,
+    "tapSummary": {
+      "tests": 6,
+      "suites": 0,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-restore-extra-final/004-workspace-opacity-candidate.test.mjs.log",
+    "sha256": "127d47821cb4fd40f92214d2ad86739e28c72f2a26201f3706786baced9ca4de",
+    "sourceSha256": "0e38dedd9352de83f515ef4ebcd50fe7d2f7f611b285b23d1335143121391341",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/workspace-restore-execution.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 5.31,
+    "tapSummary": {
+      "tests": 8,
+      "suites": 0,
+      "pass": 8,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-restore-extra-final/001-workspace-restore-execution.test.mjs.log",
+    "sha256": "294614c1765d3407852fd6fb8d55f849751f3e2385337cd9775529c46e87fddb",
+    "sourceSha256": "7d49b1a9d84f300175da3c61c75b507658dee348f87cf52327248ea124e2d08a",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/workspace-restore-integrity-source-guard.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.34,
+    "tapSummary": {
+      "tests": 76,
+      "suites": 0,
+      "pass": 76,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-restore-extra-final/003-workspace-restore-integrity-source-guard.test.mjs.log",
+    "sha256": "78efb3145f98f6d442807fa2d30bdc87c6d57135f830d8fe2d5e337f3bb55e66",
+    "sourceSha256": "8a62cad5c0b467578992f40b55e49d99c4fd7b4692d1927f5f86189a83004931",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/workspace-restore-schema.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 5.31,
+    "tapSummary": {
+      "tests": 19,
+      "suites": 0,
+      "pass": 19,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-restore-extra-final/002-workspace-restore-schema.test.mjs.log",
+    "sha256": "61e24a6978c0e0b207e411e4f14169b7c7ef3ecb73fc4ca10223dccbaa8c9877",
+    "sourceSha256": "71d39923a32ff76dd4ec1c9cdfca7bdf9eccca458b9f567696eca0626085ca02",
+    "failedSubtests": []
+  }
+]

@@ -1,0 +1,23 @@
+[
+  {
+    "file": "tests/workspace-restore-local-execution.test.mjs",
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 21.92,
+    "tapSummary": {
+      "tests": 19,
+      "suites": 0,
+      "pass": 18,
+      "fail": 1,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-restore-local-late/001-workspace-restore-local-execution.test.mjs.log",
+    "sha256": "6217a292e27c708ebbf9bcb1f36cf3de1ffa509f7c71d8cca7833239cae09dfe",
+    "sourceSha256": "b1318c8833f099c8dcdea52896bc3914ade9c73ac4381b68e2615f7506881daf",
+    "failedSubtests": [
+      "ordinary v24 actual Mock download decodes and publishes a selected version"
+    ]
+  }
+]

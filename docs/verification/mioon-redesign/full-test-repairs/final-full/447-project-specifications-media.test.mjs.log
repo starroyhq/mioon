@@ -1,0 +1,59 @@
+TAP version 13
+# Subtest: three current and three legacy frozen timeline presets render exact real media and retain project-sized storyboard exports
+    # Subtest: portrait_1080
+    ok 1 - portrait_1080
+      ---
+      duration_ms: 6151.756542
+      type: 'test'
+      ...
+    # Subtest: landscape_1080
+    ok 2 - landscape_1080
+      ---
+      duration_ms: 6768.047042
+      type: 'test'
+      ...
+    # Subtest: square_1080
+    ok 3 - square_1080
+      ---
+      duration_ms: 3954.279667
+      type: 'test'
+      ...
+    # Subtest: portrait_720
+    ok 4 - portrait_720
+      ---
+      duration_ms: 3784.02675
+      type: 'test'
+      ...
+    # Subtest: landscape_720
+    ok 5 - landscape_720
+      ---
+      duration_ms: 3458.647
+      type: 'test'
+      ...
+    # Subtest: square_720
+    ok 6 - square_720
+      ---
+      duration_ms: 3636.753709
+      type: 'test'
+      ...
+    # Subtest: retained receipts/output stay unchanged while a new storyboard export freezes saved project geometry
+    ok 7 - retained receipts/output stay unchanged while a new storyboard export freezes saved project geometry
+      ---
+      duration_ms: 625.476958
+      type: 'test'
+      ...
+    1..7
+ok 1 - three current and three legacy frozen timeline presets render exact real media and retain project-sized storyboard exports
+  ---
+  duration_ms: 29768.482041
+  type: 'test'
+  ...
+1..1
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 30306.248917

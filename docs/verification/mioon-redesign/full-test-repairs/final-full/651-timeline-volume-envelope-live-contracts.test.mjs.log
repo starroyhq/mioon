@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: live add/update retain exact bounded presence and lexical historical-update semantics
+ok 1 - live add/update retain exact bounded presence and lexical historical-update semantics
+  ---
+  duration_ms: 3.196208
+  type: 'test'
+  ...
+# Subtest: live point schema refuses sparse, custom, extra-property and unknown typed fields
+ok 2 - live point schema refuses sparse, custom, extra-property and unknown typed fields
+  ---
+  duration_ms: 1.219417
+  type: 'test'
+  ...
+# Subtest: JSON round-tripped ACK uses envelope-only typed equality and exact add/null presence
+ok 3 - JSON round-tripped ACK uses envelope-only typed equality and exact add/null presence
+  ---
+  duration_ms: 1.537792
+  type: 'test'
+  ...
+# Subtest: render ACK accepts only the production string profile with exact absent/null behavior
+ok 4 - render ACK accepts only the production string profile with exact absent/null behavior
+  ---
+  duration_ms: 1.598708
+  type: 'test'
+  ...
+# Subtest: render envelope snapshot wrapper stays bounded at 262143/262144/262145 bytes beneath 4-MiB outer cap
+ok 5 - render envelope snapshot wrapper stays bounded at 262143/262144/262145 bytes beneath 4-MiB outer cap
+  ---
+  duration_ms: 13.828125
+  type: 'test'
+  ...
+# Subtest: new rejection codes bind exact operation/project/request even for scalar loudness and never accept uncertain outcomes
+ok 6 - new rejection codes bind exact operation/project/request even for scalar loudness and never accept uncertain outcomes
+  ---
+  duration_ms: 0.711417
+  type: 'test'
+  ...
+# Subtest: complete live durable task retains the existing byte budgets and exact typed input
+ok 7 - complete live durable task retains the existing byte budgets and exact typed input
+  ---
+  duration_ms: 0.364958
+  type: 'test'
+  ...
+# Subtest: split ACK preserves envelope presence/null and exact meeting value, not array equality
+ok 8 - split ACK preserves envelope presence/null and exact meeting value, not array equality
+  ---
+  duration_ms: 0.381167
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 242.849375

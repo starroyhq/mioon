@@ -1,0 +1,88 @@
+TAP version 13
+# Subtest: visibility defaults to visible and nested visible panels cannot override a hidden ancestor
+ok 1 - visibility defaults to visible and nested visible panels cannot override a hidden ancestor
+  ---
+  duration_ms: 0.959166
+  type: 'test'
+  ...
+# Subtest: video Media pauses before passive effects; hide/reopen preserves element, source and time
+ok 2 - video Media pauses before passive effects; hide/reopen preserves element, source and time
+  ---
+  duration_ms: 1.004792
+  type: 'test'
+  ...
+# Subtest: video Preview ignores late hidden callbacks and does not seek or resume on reopen
+ok 3 - video Preview ignores late hidden callbacks and does not seek or resume on reopen
+  ---
+  duration_ms: 1.372959
+  type: 'test'
+  ...
+# Subtest: audio Media pauses before passive effects; hide/reopen preserves element, source and time
+ok 4 - audio Media pauses before passive effects; hide/reopen preserves element, source and time
+  ---
+  duration_ms: 0.163542
+  type: 'test'
+  ...
+# Subtest: audio Preview ignores late hidden callbacks and does not seek or resume on reopen
+ok 5 - audio Preview ignores late hidden callbacks and does not seek or resume on reopen
+  ---
+  duration_ms: 0.26875
+  type: 'test'
+  ...
+# Subtest: source Preview cannot publish late playback or native-seek events while hidden
+ok 6 - source Preview cannot publish late playback or native-seek events while hidden
+  ---
+  duration_ms: 0.287583
+  type: 'test'
+  ...
+# Subtest: timeline Preview cannot publish late playback or native-seek events while hidden
+ok 7 - timeline Preview cannot publish late playback or native-seek events while hidden
+  ---
+  duration_ms: 0.248625
+  type: 'test'
+  ...
+# Subtest: Preview applies a changed playhead deferred while hidden, without publishing that programmatic seek
+ok 8 - Preview applies a changed playhead deferred while hidden, without publishing that programmatic seek
+  ---
+  duration_ms: 0.359334
+  type: 'test'
+  ...
+# Subtest: replaced Preview sources reject old callbacks and Strict Mode disposal restores the current source
+ok 9 - replaced Preview sources reject old callbacks and Strict Mode disposal restores the current source
+  ---
+  duration_ms: 0.602042
+  type: 'test'
+  ...
+# Subtest: Inspector cancels pending highlight focus when hidden and does not refocus on reopening or refresh
+ok 10 - Inspector cancels pending highlight focus when hidden and does not refocus on reopening or refresh
+  ---
+  duration_ms: 17.153541
+  type: 'test'
+  ...
+# Subtest: Inspector never schedules hidden focus, and an unmounted pending callback is inert
+ok 11 - Inspector never schedules hidden focus, and an unmounted pending callback is inert
+  ---
+  duration_ms: 2.278709
+  type: 'test'
+  ...
+# Subtest: collapsing Inspector preserves the draft and an already requested save-and-generate continuation
+ok 12 - collapsing Inspector preserves the draft and an already requested save-and-generate continuation
+  ---
+  duration_ms: 1.064166
+  type: 'test'
+  ...
+# Subtest: language-only updates preserve the exact media decoder, playback position and source identity
+ok 13 - language-only updates preserve the exact media decoder, playback position and source identity
+  ---
+  duration_ms: 0.167208
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 327.851084

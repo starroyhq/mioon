@@ -1,0 +1,196 @@
+TAP version 13
+# Subtest: mount and draft or locale presentation refresh never allocate, fetch or autoplay a continuous session
+ok 1 - mount and draft or locale presentation refresh never allocate, fetch or autoplay a continuous session
+  ---
+  duration_ms: 3.614959
+  type: 'test'
+  ...
+# Subtest: continuous ticks and buffering remain ephemeral; each explicit seek and stop persists exactly once
+ok 2 - continuous ticks and buffering remain ephemeral; each explicit seek and stop persists exactly once
+  ---
+  duration_ms: 0.63625
+  type: 'test'
+  ...
+# Subtest: play pauses the separate media player and pause does not persist a tick or destroy prepared resources
+ok 3 - play pauses the separate media player and pause does not persist a tick or destroy prepared resources
+  ---
+  duration_ms: 0.332959
+  type: 'test'
+  ...
+# Subtest: revision change synchronously revokes the saved snapshot and rejects late preparation
+ok 4 - revision change synchronously revokes the saved snapshot and rejects late preparation
+  ---
+  duration_ms: 0.401041
+  type: 'test'
+  ...
+# Subtest: source change synchronously revokes the saved snapshot and rejects late preparation
+ok 5 - source change synchronously revokes the saved snapshot and rejects late preparation
+  ---
+  duration_ms: 0.325833
+  type: 'test'
+  ...
+# Subtest: workspace change synchronously revokes the saved snapshot and rejects late preparation
+ok 6 - workspace change synchronously revokes the saved snapshot and rejects late preparation
+  ---
+  duration_ms: 2.17
+  type: 'test'
+  ...
+# Subtest: project change synchronously revokes the saved snapshot and rejects late preparation
+ok 7 - project change synchronously revokes the saved snapshot and rejects late preparation
+  ---
+  duration_ms: 0.477666
+  type: 'test'
+  ...
+# Subtest: timeline change synchronously revokes the saved snapshot and rejects late preparation
+ok 8 - timeline change synchronously revokes the saved snapshot and rejects late preparation
+  ---
+  duration_ms: 0.486542
+  type: 'test'
+  ...
+# Subtest: navigation change synchronously revokes the saved snapshot and rejects late preparation
+ok 9 - navigation change synchronously revokes the saved snapshot and rejects late preparation
+  ---
+  duration_ms: 0.613708
+  type: 'test'
+  ...
+# Subtest: hidden change synchronously revokes the saved snapshot and rejects late preparation
+ok 10 - hidden change synchronously revokes the saved snapshot and rejects late preparation
+  ---
+  duration_ms: 0.43175
+  type: 'test'
+  ...
+# Subtest: disconnect change synchronously revokes the saved snapshot and rejects late preparation
+ok 11 - disconnect change synchronously revokes the saved snapshot and rejects late preparation
+  ---
+  duration_ms: 0.304667
+  type: 'test'
+  ...
+# Subtest: restored change synchronously revokes the saved snapshot and rejects late preparation
+ok 12 - restored change synchronously revokes the saved snapshot and rejects late preparation
+  ---
+  duration_ms: 0.280334
+  type: 'test'
+  ...
+# Subtest: retained controls recheck the latest binding before prepare, play, seek or position persistence
+ok 13 - retained controls recheck the latest binding before prepare, play, seek or position persistence
+  ---
+  duration_ms: 0.21025
+  type: 'test'
+  ...
+# Subtest: pause, revoke and project changes reject late resume acknowledgments without reviving audio
+ok 14 - pause, revoke and project changes reject late resume acknowledgments without reviving audio
+  ---
+  duration_ms: 0.361375
+  type: 'test'
+  ...
+# Subtest: cancel, unmount and A to B to A generation changes cannot publish an ignored late preparation
+ok 15 - cancel, unmount and A to B to A generation changes cannot publish an ignored late preparation
+  ---
+  duration_ms: 0.404417
+  type: 'test'
+  ...
+# Subtest: a synchronous preparing observer revokes before any new context or request is allocated
+ok 16 - a synchronous preparing observer revokes before any new context or request is allocated
+  ---
+  duration_ms: 0.251
+  type: 'test'
+  ...
+# Subtest: initial playback seeks keep only the latest target and resume its original explicit play intent after exact retirement
+ok 17 - initial playback seeks keep only the latest target and resume its original explicit play intent after exact retirement
+  ---
+  duration_ms: 0.862625
+  type: 'test'
+  ...
+# Subtest: queued seeks during explicit preparation preserve the absence of an autoplay intent
+ok 18 - queued seeks during explicit preparation preserve the absence of an autoplay intent
+  ---
+  duration_ms: 0.645667
+  type: 'test'
+  ...
+# Subtest: cancel invalidates a queued initial seek so ignored late PCM cannot restart it
+ok 19 - cancel invalidates a queued initial seek so ignored late PCM cannot restart it
+  ---
+  duration_ms: 0.339166
+  type: 'test'
+  ...
+# Subtest: stop invalidates a queued initial seek so ignored late PCM cannot restart it
+ok 20 - stop invalidates a queued initial seek so ignored late PCM cannot restart it
+  ---
+  duration_ms: 0.383208
+  type: 'test'
+  ...
+# Subtest: revoke invalidates a queued initial seek so ignored late PCM cannot restart it
+ok 21 - revoke invalidates a queued initial seek so ignored late PCM cannot restart it
+  ---
+  duration_ms: 0.339542
+  type: 'test'
+  ...
+# Subtest: dispose invalidates a queued initial seek so ignored late PCM cannot restart it
+ok 22 - dispose invalidates a queued initial seek so ignored late PCM cannot restart it
+  ---
+  duration_ms: 0.268292
+  type: 'test'
+  ...
+# Subtest: revision invalidates a queued initial seek so ignored late PCM cannot restart it
+ok 23 - revision invalidates a queued initial seek so ignored late PCM cannot restart it
+  ---
+  duration_ms: 0.312375
+  type: 'test'
+  ...
+# Subtest: an unconfirmed original retirement prevents every queued target from acquiring a replacement context
+ok 24 - an unconfirmed original retirement prevents every queued target from acquiring a replacement context
+  ---
+  duration_ms: 0.327375
+  type: 'test'
+  ...
+# Subtest: new preparation remains blocked until context, original prepare and client resource retirement all settle
+ok 25 - new preparation remains blocked until context, original prepare and client resource retirement all settle
+  ---
+  duration_ms: 0.259125
+  type: 'test'
+  ...
+# Subtest: session disposal is part of the retirement fence even after the renderer context has closed
+ok 26 - session disposal is part of the retirement fence even after the renderer context has closed
+  ---
+  duration_ms: 0.244875
+  type: 'test'
+  ...
+# Subtest: failed context retirement stays blocked across reattachment and cannot reopen a sound owner
+ok 27 - failed context retirement stays blocked across reattachment and cannot reopen a sound owner
+  ---
+  duration_ms: 0.210708
+  type: 'test'
+  ...
+# Subtest: context closure failure still cancels the backend session and keeps admission blocked
+ok 28 - context closure failure still cancels the backend session and keeps admission blocked
+  ---
+  duration_ms: 0.239209
+  type: 'test'
+  ...
+# Subtest: a context closed during deferred preparation cannot publish a ready session or construct a transport
+ok 29 - a context closed during deferred preparation cannot publish a ready session or construct a transport
+  ---
+  duration_ms: 0.819625
+  type: 'test'
+  ...
+# Subtest: saved duration boundaries reject invalid seeks without persistence and accept the final stopped endpoint
+ok 30 - saved duration boundaries reject invalid seeks without persistence and accept the final stopped endpoint
+  ---
+  duration_ms: 0.278292
+  type: 'test'
+  ...
+# Subtest: decoder failure and unauthorized status revoke the entire owner while preserving the explanatory cursor
+ok 31 - decoder failure and unauthorized status revoke the entire owner while preserving the explanatory cursor
+  ---
+  duration_ms: 0.439958
+  type: 'test'
+  ...
+1..31
+# tests 31
+# suites 0
+# pass 31
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 249.331167

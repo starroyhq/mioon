@@ -1,0 +1,224 @@
+TAP version 13
+# Subtest: baseline oracle is exact frozen shipped markup with two sibling divs
+ok 1 - baseline oracle is exact frozen shipped markup with two sibling divs
+  ---
+  duration_ms: 109.357083
+  type: 'test'
+  ...
+# Subtest: baseline real React markup characterizes offline, busy, dirty, clean and localized time precedence
+ok 2 - baseline real React markup characterizes offline, busy, dirty, clean and localized time precedence
+  ---
+  duration_ms: 13.951584
+  type: 'test'
+  ...
+# Subtest: baseline real shared Buttons characterize all preference priority and recovery combinations
+ok 3 - baseline real shared Buttons characterize all preference priority and recovery combinations
+  ---
+  duration_ms: 6.229916
+  type: 'test'
+  ...
+# Subtest: extracted presentation boundary exists as typed source
+ok 4 - extracted presentation boundary exists as typed source
+  ---
+  duration_ms: 0.103584
+  type: 'test'
+  ...
+# Subtest: actual classic JSX transform executes without relying on an ambient React global
+ok 5 - actual classic JSX transform executes without relying on an ambient React global
+  ---
+  duration_ms: 2.875083
+  type: 'test'
+  ...
+# Subtest: extracted real React markup is byte-equivalent to frozen shipped markup across the full matrix
+ok 6 - extracted real React markup is byte-equivalent to frozen shipped markup across the full matrix
+  ---
+  duration_ms: 101.497208
+  type: 'test'
+  ...
+# Subtest: extracted Fragment retains exact sibling and shared Button semantics with opaque callback identity
+ok 7 - extracted Fragment retains exact sibling and shared Button semantics with opaque callback identity
+  ---
+  duration_ms: 0.409209
+  type: 'test'
+  ...
+# Subtest: parent rerender, hidden/restored status and project replacement never call recovery automatically
+ok 8 - parent rerender, hidden/restored status and project replacement never call recovery automatically
+  ---
+  duration_ms: 0.773792
+  type: 'test'
+  ...
+# Subtest: App owns one busy projection, annotation-aware dirty status, late-bound Retry and unchanged reload fence
+not ok 9 - App owns one busy projection, annotation-aware dirty status, late-bound Retry and unchanged reload fence
+  ---
+  duration_ms: 1.07775
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:220:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+      'async function reloadPreferences() {\n' +
+        '    const captured = context();\n' +
+        "    if (!await confirm(msg('shell.confirm.loadSavedView'))) return;\n" +
+        '    if (isCurrent(captured)) await selectProject(captured.projectId, false, true, true);\n' +
+    +   '  }\n' +
+    +   '  // Optional feature discovery has its own connection epoch. Project selection\n' +
+    +   '  // must not cancel it, and legacy servers must not delay ordinary boot/editing.\n' +
+    +   '  useEffect(() => {\n' +
+    +   '    const epoch = volumeEnvelopeProbeEpoch.current;\n' +
+    +   '    const publish = status => setVolumeEnvelopeObservation({ epoch, status });\n' +
+    +   "    publish(online && auth === true ? 'loading' : 'unavailable');\n" +
+    +   '    if (!online || auth !== true || !workspace || clipInspectorRetention.current.retained) return;\n' +
+    +   '    return observeClipVolumeEnvelopeCapability(workspace,\n' +
+    +   "      signal => rpc('workspace.restore.inspect', { includeVolumeEnvelopeCapability: true }, { signal }),\n" +
+    +   '      isWorkspaceInspection, canEditTimelineVolumeEnvelope,\n' +
+    +   '      () => volumeEnvelopeProbeEpoch.current === epoch && workspaceRef.current === workspace && !clipInspectorRetention.current.retained,\n' +
+    +   '      publish);\n' +
+    +   '  }, [workspace, online, auth]);'
+    -   '  }'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: |-
+    async function reloadPreferences() {
+        const captured = context();
+        if (!await confirm(msg('shell.confirm.loadSavedView'))) return;
+        if (isCurrent(captured)) await selectProject(captured.projectId, false, true, true);
+      }
+  actual: |-
+    async function reloadPreferences() {
+        const captured = context();
+        if (!await confirm(msg('shell.confirm.loadSavedView'))) return;
+        if (isCurrent(captured)) await selectProject(captured.projectId, false, true, true);
+      }
+      // Optional feature discovery has its own connection epoch. Project selection
+      // must not cancel it, and legacy servers must not delay ordinary boot/editing.
+      useEffect(() => {
+        const epoch = volumeEnvelopeProbeEpoch.current;
+        const publish = status => setVolumeEnvelopeObservation({ epoch, status });
+        publish(online && auth === true ? 'loading' : 'unavailable');
+        if (!online || auth !== true || !workspace || clipInspectorRetention.current.retained) return;
+        return observeClipVolumeEnvelopeCapability(workspace,
+          signal => rpc('workspace.restore.inspect', { includeVolumeEnvelopeCapability: true }, { signal }),
+          isWorkspaceInspection, canEditTimelineVolumeEnvelope,
+          () => volumeEnvelopeProbeEpoch.current === epoch && workspaceRef.current === workspace && !clipInspectorRetention.current.retained,
+          publish);
+      }, [workspace, online, auth]);
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:229:10)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App ignores delayed A acknowledgement after B activation without a new write or stale visible state
+not ok 10 - actual App ignores delayed A acknowledgement after B activation without a new write or stale visible state
+  ---
+  duration_ms: 0.822042
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:316:1'
+  failureType: 'testCodeFailure'
+  error: 'useEffect is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    eval (eval at compile (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:150:46), <anonymous>:90:3)
+    compile (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:150:111)
+    harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:306:19)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:317:13)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual Reload waits for confirmation and rejects newer project, navigation or workspace context
+not ok 11 - actual Reload waits for confirmation and rejects newer project, navigation or workspace context
+  ---
+  duration_ms: 0.235209
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:331:1'
+  failureType: 'testCodeFailure'
+  error: 'useEffect is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    eval (eval at compile (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:150:46), <anonymous>:90:3)
+    compile (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:150:111)
+    harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:306:19)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:333:15)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual Retry replays exact lost-response body and cannot clean inspector or format drafts
+not ok 12 - actual Retry replays exact lost-response body and cannot clean inspector or format drafts
+  ---
+  duration_ms: 0.203584
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:360:1'
+  failureType: 'testCodeFailure'
+  error: 'useEffect is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    eval (eval at compile (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:150:46), <anonymous>:90:3)
+    compile (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:150:111)
+    harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:306:19)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:361:13)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App Retry callback reads the current project ref at click rather than render
+not ok 13 - actual App Retry callback reads the current project ref at click rather than render
+  ---
+  duration_ms: 0.161916
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:380:1'
+  failureType: 'testCodeFailure'
+  error: 'useEffect is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    eval (eval at compile (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:150:46), <anonymous>:90:3)
+    compile (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:150:111)
+    harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:306:19)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:381:13)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual conflict has only Reload and passive rerenders during held saves cannot mutate drafts, panels or paid review
+not ok 14 - actual conflict has only Reload and passive rerenders during held saves cannot mutate drafts, panels or paid review
+  ---
+  duration_ms: 0.197334
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:391:1'
+  failureType: 'testCodeFailure'
+  error: 'useEffect is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    eval (eval at compile (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:150:46), <anonymous>:90:3)
+    compile (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:150:111)
+    harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:306:19)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/topbar-save-status.test.mjs:392:13)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App status reports annotation drafts without broadening timeline dirty inputs
+ok 15 - actual App status reports annotation drafts without broadening timeline dirty inputs
+  ---
+  duration_ms: 1.072166
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 9
+# fail 6
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 496.574875

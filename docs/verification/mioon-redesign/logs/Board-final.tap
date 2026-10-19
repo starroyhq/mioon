@@ -1,0 +1,3424 @@
+# File: tests/asset-disposition-ui.test.mjs
+TAP version 13
+# Subtest: all loaded assets are read serially in ordered 100-ID batches without hidden truncation
+ok 1 - all loaded assets are read serially in ordered 100-ID batches without hidden truncation
+  ---
+  duration_ms: 4.25775
+  type: 'test'
+  ...
+# Subtest: only confirmed revision-zero rows are neutral; loading, failed and omitted rows stay unknown
+ok 2 - only confirmed revision-zero rows are neutral; loading, failed and omitted rows stay unknown
+  ---
+  duration_ms: 0.338542
+  type: 'test'
+  ...
+# Subtest: missing, reordered, foreign, duplicate and invalid batch payloads cannot confirm even one row
+ok 3 - missing, reordered, foreign, duplicate and invalid batch payloads cannot confirm even one row
+  ---
+  duration_ms: 0.408667
+  type: 'test'
+  ...
+# Subtest: failed middle batch preserves successful batches and retry is GET-only with all IDs
+ok 4 - failed middle batch preserves successful batches and retry is GET-only with all IDs
+  ---
+  duration_ms: 1.25925
+  type: 'test'
+  ...
+# Subtest: failed refresh and contradictory same-revision reads expose unknown instead of cached neutral
+ok 5 - failed refresh and contradictory same-revision reads expose unknown instead of cached neutral
+  ---
+  duration_ms: 0.227917
+  type: 'test'
+  ...
+# Subtest: synchronous repeated clicks issue one CAS write and never mutate files, assets or clips
+ok 6 - synchronous repeated clicks issue one CAS write and never mutate files, assets or clips
+  ---
+  duration_ms: 0.261959
+  type: 'test'
+  ...
+# Subtest: two windows use independent disposition CAS and a loser rereads before a fresh choice
+ok 7 - two windows use independent disposition CAS and a loser rereads before a fresh choice
+  ---
+  duration_ms: 0.385
+  type: 'test'
+  ...
+# Subtest: unknown write outcome is fenced even after a latest read; only receipt recovery reopens editing
+ok 8 - unknown write outcome is fenced even after a latest read; only receipt recovery reopens editing
+  ---
+  duration_ms: 0.168916
+  type: 'test'
+  ...
+# Subtest: resolving an unrelated pending mutation releases stale uncertainty without a user reread
+ok 9 - resolving an unrelated pending mutation releases stale uncertainty without a user reread
+  ---
+  duration_ms: 0.131833
+  type: 'test'
+  ...
+# Subtest: newer reads and a late acknowledgement cannot downgrade the independent revision
+ok 10 - newer reads and a late acknowledgement cannot downgrade the independent revision
+  ---
+  duration_ms: 0.171834
+  type: 'test'
+  ...
+# Subtest: older GET generations are ignored and stale latest reads retain a newer confirmed revision
+ok 11 - older GET generations are ignored and stale latest reads retain a newer confirmed revision
+  ---
+  duration_ms: 0.112125
+  type: 'test'
+  ...
+# Subtest: project navigation, return-to-project epochs, removed IDs and unmount reject obsolete work
+ok 12 - project navigation, return-to-project epochs, removed IDs and unmount reject obsolete work
+  ---
+  duration_ms: 0.265125
+  type: 'test'
+  ...
+# Subtest: disposition filters are a pure local view and keep unknown metadata visible
+ok 13 - disposition filters are a pure local view and keep unknown metadata visible
+  ---
+  duration_ms: 0.125292
+  type: 'test'
+  ...
+# Subtest: disposition receipts use asset ownership and exact keyed mutation recovery
+ok 14 - disposition receipts use asset ownership and exact keyed mutation recovery
+  ---
+  duration_ms: 8.367
+  type: 'test'
+  ...
+# Subtest: actual App recovery replays the exact key and refreshes current marks separately from historical ACK
+ok 15 - actual App recovery replays the exact key and refreshes current marks separately from historical ACK
+  ---
+  duration_ms: 3.697208
+  type: 'test'
+  ...
+# Subtest: actual App annotation recovery preserves the exact session intent and rereads separately from historical ACK
+ok 16 - actual App annotation recovery preserves the exact session intent and rereads separately from historical ACK
+  ---
+  duration_ms: 1.660833
+  type: 'test'
+  ...
+# Subtest: mark controls are accessible and reject retained hidden, re-shown, project-stale and unmounted clicks
+ok 17 - mark controls are accessible and reject retained hidden, re-shown, project-stale and unmounted clicks
+  ---
+  duration_ms: 4.1675
+  type: 'test'
+  ...
+# Subtest: shared library keeps an excluded source editable and resets filters without touching source selection or range scope
+ok 18 - shared library keeps an excluded source editable and resets filters without touching source selection or range scope
+  ---
+  duration_ms: 10.380875
+  type: 'test'
+  ...
+1..18
+# tests 18
+# suites 0
+# pass 18
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 314.757458
+
+
+# File: tests/redesign-board-ui.test.mjs
+TAP version 13
+# Subtest: library chips, layout and filter portal retire across hide/reopen and project ownership
+ok 1 - library chips, layout and filter portal retire across hide/reopen and project ownership
+  ---
+  duration_ms: 52.070917
+  type: 'test'
+  ...
+# Subtest: storyboard dragging and selection retain source asset but cannot reorder another project or hidden surface
+ok 2 - storyboard dragging and selection retain source asset but cannot reorder another project or hidden surface
+  ---
+  duration_ms: 3.316875
+  type: 'test'
+  ...
+# Subtest: storyboard separate move controls retain order boundaries and retire stale callbacks
+ok 3 - storyboard separate move controls retain order boundaries and retire stale callbacks
+  ---
+  duration_ms: 1.24175
+  type: 'test'
+  ...
+# Subtest: compact node player preserves explicit seek and pauses late play after its source is replaced
+ok 4 - compact node player preserves explicit seek and pauses late play after its source is replaced
+  ---
+  duration_ms: 1.873708
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 266.263375
+
+
+# File: tests/comparison-playback.test.mjs
+TAP version 13
+# Subtest: explicit shared start owns both players once and a partial play rejection pauses both
+ok 1 - explicit shared start owns both players once and a partial play rejection pauses both
+  ---
+  duration_ms: 2.45625
+  type: 'test'
+  ...
+# Subtest: closing, source change, or explicit pause fences late success and cancellation is not a media error
+ok 2 - closing, source change, or explicit pause fences late success and cancellation is not a media error
+  ---
+  duration_ms: 0.54725
+  type: 'test'
+  ...
+# Subtest: owner callback revalidation prevents either decoder from starting after navigation
+ok 3 - owner callback revalidation prevents either decoder from starting after navigation
+  ---
+  duration_ms: 0.1855
+  type: 'test'
+  ...
+# Subtest: shared seek uses the shorter source and a seek failure stops both sources
+ok 4 - shared seek uses the shorter source and a seek failure stops both sources
+  ---
+  duration_ms: 0.187083
+  type: 'test'
+  ...
+# Subtest: parameter differences use frozen source references and seed without current shot fallbacks
+ok 5 - parameter differences use frozen source references and seed without current shot fallbacks
+  ---
+  duration_ms: 0.580708
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 158.866125
+
+
+# File: tests/version-comparison-ui.test.mjs
+TAP version 13
+# Subtest: actual dialog requires two explicit distinct choices and never defaults latest
+ok 1 - actual dialog requires two explicit distinct choices and never defaults latest
+  ---
+  duration_ms: 3.423125
+  type: 'test'
+  ...
+# Subtest: playback owns one side, pauses peer and registers external pause
+ok 2 - playback owns one side, pauses peer and registers external pause
+  ---
+  duration_ms: 0.770709
+  type: 'test'
+  ...
+# Subtest: offline fences retained events immediately and requires explicit clear/reselection after reconnect
+ok 3 - offline fences retained events immediately and requires explicit clear/reselection after reconnect
+  ---
+  duration_ms: 0.786333
+  type: 'test'
+  ...
+# Subtest: retained use/play callbacks cannot select or play a newly substituted side
+ok 4 - retained use/play callbacks cannot select or play a newly substituted side
+  ---
+  duration_ms: 0.605916
+  type: 'test'
+  ...
+# Subtest: same-ID mutated source, project scope, and hidden dialog suppress actual players
+ok 5 - same-ID mutated source, project scope, and hidden dialog suppress actual players
+  ---
+  duration_ms: 1.713416
+  type: 'test'
+  ...
+# Subtest: single decoder cleans up src and restores it during StrictMode-style effect replay
+ok 6 - single decoder cleans up src and restores it during StrictMode-style effect replay
+  ---
+  duration_ms: 0.283708
+  type: 'test'
+  ...
+# Subtest: all four locales render actual ready and stale controls without resetting choices
+ok 7 - all four locales render actual ready and stale controls without resetting choices
+  ---
+  duration_ms: 0.80075
+  type: 'test'
+  ...
+# Subtest: retained chooser and reset cannot rebind or clear a newer scope or newer choices
+ok 8 - retained chooser and reset cannot rebind or clear a newer scope or newer choices
+  ---
+  duration_ms: 0.701916
+  type: 'test'
+  ...
+# Subtest: removing the open shot retains a closable unavailable dialog without playback or replacement
+ok 9 - removing the open shot retains a closable unavailable dialog without playback or replacement
+  ---
+  duration_ms: 0.371833
+  type: 'test'
+  ...
+# Subtest: actual differences switch filters frozen parameters and stale add cannot insert a replacement source
+ok 10 - actual differences switch filters frozen parameters and stale add cannot insert a replacement source
+  ---
+  duration_ms: 1.023666
+  type: 'test'
+  ...
+# Subtest: enabling synchronized playback is explicit and does not start either decoder
+ok 11 - enabling synchronized playback is explicit and does not start either decoder
+  ---
+  duration_ms: 0.561833
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 244.80925
+
+
+# File: tests/provider-settings-ui.test.mjs
+TAP version 13
+# Subtest: provider readiness uses compact, safe, collapsed Base UI controls for every status
+ok 1 - provider readiness uses compact, safe, collapsed Base UI controls for every status
+  ---
+  duration_ms: 439.559791
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 568.257417
+
+
+# File: tests/asset-annotation-ui-state.test.mjs
+TAP version 13
+# Subtest: bounded canonical tags, literal plain text, clear stages draft and independent revision save
+ok 1 - bounded canonical tags, literal plain text, clear stages draft and independent revision save
+  ---
+  duration_ms: 4.833
+  type: 'test'
+  ...
+# Subtest: draft survives asset filtering, project navigation, stale reads, and explicit refresh never merges
+ok 2 - draft survives asset filtering, project navigation, stale reads, and explicit refresh never merges
+  ---
+  duration_ms: 2.557167
+  type: 'test'
+  ...
+# Subtest: delayed historical ACK never regresses newer read and cannot silently overwrite it
+ok 3 - delayed historical ACK never regresses newer read and cannot silently overwrite it
+  ---
+  duration_ms: 0.530667
+  type: 'test'
+  ...
+# Subtest: uncertain request blocks rekey, clear and discard until exact session receipt resolves
+ok 4 - uncertain request blocks rekey, clear and discard until exact session receipt resolves
+  ---
+  duration_ms: 0.826292
+  type: 'test'
+  ...
+# Subtest: old-workspace uncertainty uses its original owner after navigation
+ok 5 - old-workspace uncertainty uses its original owner after navigation
+  ---
+  duration_ms: 0.567208
+  type: 'test'
+  ...
+# Subtest: 32 dirty owner cap blocks new drafts without evicting old ones
+ok 6 - 32 dirty owner cap blocks new drafts without evicting old ones
+  ---
+  duration_ms: 1.821125
+  type: 'test'
+  ...
+# Subtest: unknown tags stay visible, validation error does not erase verified tags
+ok 7 - unknown tags stay visible, validation error does not erase verified tags
+  ---
+  duration_ms: 0.441375
+  type: 'test'
+  ...
+# Subtest: StrictMode cleanup/setup keeps controller usable and does not lose dirty draft
+ok 8 - StrictMode cleanup/setup keeps controller usable and does not lose dirty draft
+  ---
+  duration_ms: 0.402375
+  type: 'test'
+  ...
+# Subtest: unchanged pending scan does not emit and stale close tickets fail after draft changes
+ok 9 - unchanged pending scan does not emit and stale close tickets fail after draft changes
+  ---
+  duration_ms: 0.922834
+  type: 'test'
+  ...
+# Subtest: cap includes unloaded pending owners and never evicts preexisting overflow receipts
+ok 10 - cap includes unloaded pending owners and never evicts preexisting overflow receipts
+  ---
+  duration_ms: 2.024167
+  type: 'test'
+  ...
+# Subtest: unchanged metadata refresh does not invalidate native-close draft identity
+ok 11 - unchanged metadata refresh does not invalidate native-close draft identity
+  ---
+  duration_ms: 0.384625
+  type: 'test'
+  ...
+# Subtest: UI reads every loaded asset in bounded batches and rejects a whole malformed batch
+ok 12 - UI reads every loaded asset in bounded batches and rejects a whole malformed batch
+  ---
+  duration_ms: 3.223167
+  type: 'test'
+  ...
+# Subtest: repeated save cannot dispatch twice and exact immutable request survives draft identity
+ok 13 - repeated save cannot dispatch twice and exact immutable request survives draft identity
+  ---
+  duration_ms: 0.335375
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 222.614375
+
+
+# File: tests/local-shot-text-ui.test.mjs
+TAP version 13
+# Subtest: passive mount, hydration, read and reconnect never create writes or restore text
+ok 1 - passive mount, hydration, read and reconnect never create writes or restore text
+  ---
+  duration_ms: 11.592583
+  type: 'test'
+  ...
+# Subtest: user empty prompt and invalid blank title remain exact recoverable raw input
+ok 2 - user empty prompt and invalid blank title remain exact recoverable raw input
+  ---
+  duration_ms: 2.781833
+  type: 'test'
+  ...
+# Subtest: restoration preserves original revision and exact original text rather than today baseline
+ok 3 - restoration preserves original revision and exact original text rather than today baseline
+  ---
+  duration_ms: 0.605959
+  type: 'test'
+  ...
+# Subtest: raw guard preserves maximum Unicode and controls without truncation or forged local evidence
+ok 4 - raw guard preserves maximum Unicode and controls without truncation or forged local evidence
+  ---
+  duration_ms: 1.402583
+  type: 'test'
+  ...
+# Subtest: full form capture fences same-tick nontext edits independently of text serial
+ok 5 - full form capture fences same-tick nontext edits independently of text serial
+  ---
+  duration_ms: 0.442
+  type: 'test'
+  ...
+# Subtest: loaded selected target required for legacy admission; restored fallback remains available
+ok 6 - loaded selected target required for legacy admission; restored fallback remains available
+  ---
+  duration_ms: 0.464041
+  type: 'test'
+  ...
+# Subtest: fresh submit durably saves raw then prepares immutable text-only intent before execute
+ok 7 - fresh submit durably saves raw then prepares immutable text-only intent before execute
+  ---
+  duration_ms: 1.066583
+  type: 'test'
+  ...
+# Subtest: legacy mutation/ref busy blocks text handlers even without a rerender
+ok 8 - legacy mutation/ref busy blocks text handlers even without a rerender
+  ---
+  duration_ms: 0.42925
+  type: 'test'
+  ...
+# Subtest: full form serial, current revision, action epoch, visibility and busy each fence late prepare
+ok 9 - full form serial, current revision, action epoch, visibility and busy each fence late prepare
+  ---
+  duration_ms: 3.750083
+  type: 'test'
+  ...
+# Subtest: late text ACK preserves newer typing and never acknowledges current form
+ok 10 - late text ACK preserves newer typing and never acknowledges current form
+  ---
+  duration_ms: 0.935
+  type: 'test'
+  ...
+# Subtest: fresh text merge preserves all unrelated draft values and nontext dirty state
+ok 11 - fresh text merge preserves all unrelated draft values and nontext dirty state
+  ---
+  duration_ms: 0.501166
+  type: 'test'
+  ...
+# Subtest: duration edit during text execution requires explicit current-text acceptance without another no-op request
+ok 12 - duration edit during text execution requires explicit current-text acceptance without another no-op request
+  ---
+  duration_ms: 1.121292
+  type: 'test'
+  ...
+# Subtest: unknown PUT survives empty reread and exact retry uses fresh nonce, original raw and CAS
+ok 13 - unknown PUT survives empty reread and exact retry uses fresh nonce, original raw and CAS
+  ---
+  duration_ms: 1.503125
+  type: 'test'
+  ...
+# Subtest: known refusal permits explicit leave but never unlocks a separate legacy busy state
+ok 14 - known refusal permits explicit leave but never unlocks a separate legacy busy state
+  ---
+  duration_ms: 0.556417
+  type: 'test'
+  ...
+# Subtest: unknown preparation never dispatches and empty reread cannot revoke original identity
+ok 15 - unknown preparation never dispatches and empty reread cannot revoke original identity
+  ---
+  duration_ms: 2.6565
+  type: 'test'
+  ...
+# Subtest: passive terminal reveal cannot resurrect same identity or substitute frozen input at higher revision
+ok 16 - passive terminal reveal cannot resurrect same identity or substitute frozen input at higher revision
+  ---
+  duration_ms: 1.169417
+  type: 'test'
+  ...
+# Subtest: malformed response, wrong unchanged prompt and wrong revision remain pending
+ok 17 - malformed response, wrong unchanged prompt and wrong revision remain pending
+  ---
+  duration_ms: 3.862792
+  type: 'test'
+  ...
+# Subtest: unknown PUT and preparation survive actual controller disposal/remount with session retention
+ok 18 - unknown PUT and preparation survive actual controller disposal/remount with session retention
+  ---
+  duration_ms: 1.359792
+  type: 'test'
+  ...
+# Subtest: ambiguous DELETE survives remount; null unchanged GET cannot settle; explicit newer authoritative state preserves candidate
+ok 19 - ambiguous DELETE survives remount; null unchanged GET cannot settle; explicit newer authoritative state preserves candidate
+  ---
+  duration_ms: 0.937208
+  type: 'test'
+  ...
+# Subtest: other-shot project pending is visible and blocks fresh submission without hidden dispatch
+ok 20 - other-shot project pending is visible and blocks fresh submission without hidden dispatch
+  ---
+  duration_ms: 0.352667
+  type: 'test'
+  ...
+# Subtest: hidden view cannot restore or initiate persistence, business save or recovery
+ok 21 - hidden view cannot restore or initiate persistence, business save or recovery
+  ---
+  duration_ms: 0.379417
+  type: 'test'
+  ...
+# Subtest: two local controllers cannot overwrite another window draft CAS
+ok 22 - two local controllers cannot overwrite another window draft CAS
+  ---
+  duration_ms: 0.587792
+  type: 'test'
+  ...
+# Subtest: fixed scoped client endpoints, exact refusal codes, bounded timeout and malformed protocol
+ok 23 - fixed scoped client endpoints, exact refusal codes, bounded timeout and malformed protocol
+  ---
+  duration_ms: 29.209791
+  type: 'test'
+  ...
+# Subtest: accepted navigation releases only abandoned local input synchronously, retaining request uncertainty
+ok 24 - accepted navigation releases only abandoned local input synchronously, retaining request uncertainty
+  ---
+  duration_ms: 1.051959
+  type: 'test'
+  ...
+# Subtest: unknown DELETE with unchanged original draft can explicitly retry exact original CAS using fresh nonce
+ok 25 - unknown DELETE with unchanged original draft can explicitly retry exact original CAS using fresh nonce
+  ---
+  duration_ms: 0.708166
+  type: 'test'
+  ...
+# Subtest: a refused exact DELETE retry cannot disprove original deletion uncertainty
+ok 26 - a refused exact DELETE retry cannot disprove original deletion uncertainty
+  ---
+  duration_ms: 0.565291
+  type: 'test'
+  ...
+# Subtest: session retention reveals private raw only after matching verified workspace authority
+ok 27 - session retention reveals private raw only after matching verified workspace authority
+  ---
+  duration_ms: 1.715875
+  type: 'test'
+  ...
+# Subtest: an authoritative unsupported response detaches previously displayed recovery payloads without deleting retention
+ok 28 - an authoritative unsupported response detaches previously displayed recovery payloads without deleting retention
+  ---
+  duration_ms: 0.415292
+  type: 'test'
+  ...
+1..28
+# tests 28
+# suites 0
+# pass 28
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 330.84975
+
+
+# File: tests/reference-connections.test.mjs
+TAP version 13
+# Subtest: reference attach binds one managed image and detach removes only its owned reference
+ok 1 - reference attach binds one managed image and detach removes only its owned reference
+  ---
+  duration_ms: 800.83575
+  type: 'test'
+  ...
+# Subtest: exact reference request responses survive detach, new bindings and store restart
+ok 2 - exact reference request responses survive detach, new bindings and store restart
+  ---
+  duration_ms: 1019.649667
+  type: 'test'
+  ...
+# Subtest: manual selections are protected even when the same asset is being attached
+ok 3 - manual selections are protected even when the same asset is being attached
+  ---
+  duration_ms: 709.291958
+  type: 'test'
+  ...
+# Subtest: typed binding prevents hidden reference changes but permits exact refs and unrelated shot edits
+ok 4 - typed binding prevents hidden reference changes but permits exact refs and unrelated shot edits
+  ---
+  duration_ms: 709.546125
+  type: 'test'
+  ...
+# Subtest: legacy decorative edges do not bind, collide with, or detach a typed reference
+ok 5 - legacy decorative edges do not bind, collide with, or detach a typed reference
+  ---
+  duration_ms: 637.047042
+  type: 'test'
+  ...
+# Subtest: reference source and target must be existing same-project image node and shot
+ok 6 - reference source and target must be existing same-project image node and shot
+  ---
+  duration_ms: 685.421208
+  type: 'test'
+  ...
+# Subtest: attach checks both expected revisions; detach checks current target revision and project
+ok 7 - attach checks both expected revisions; detach checks current target revision and project
+  ---
+  duration_ms: 683.70575
+  type: 'test'
+  ...
+# Subtest: concurrent duplicate requests apply once and competing bindings reject without mixed state
+ok 8 - concurrent duplicate requests apply once and competing bindings reject without mixed state
+  ---
+  duration_ms: 734.405542
+  type: 'test'
+  ...
+# Subtest: independent SQLite connections serialize the exact reference request without double mutation
+ok 9 - independent SQLite connections serialize the exact reference request without double mutation
+  ---
+  duration_ms: 2732.829291
+  type: 'test'
+  ...
+# Subtest: generation freezes connection provenance and adapter inputs across detach, rebinding, edits and retry
+ok 10 - generation freezes connection provenance and adapter inputs across detach, rebinding, edits and retry
+  ---
+  duration_ms: 772.654458
+  type: 'test'
+  ...
+# Subtest: manual generation references keep working without invented connection provenance
+ok 11 - manual generation references keep working without invented connection provenance
+  ---
+  duration_ms: 641.139208
+  type: 'test'
+  ...
+# Subtest: durable response failures roll back attach and detach together with their shot changes
+ok 12 - durable response failures roll back attach and detach together with their shot changes
+  ---
+  duration_ms: 712.876417
+  type: 'test'
+  ...
+# Subtest: inconsistent stored bindings fail closed without erasing manual data or queuing a generation
+ok 13 - inconsistent stored bindings fail closed without erasing manual data or queuing a generation
+  ---
+  duration_ms: 753.757208
+  type: 'test'
+  ...
+# Subtest: additive reference migration does not rewrite legacy decorative edges or manual selections
+ok 14 - additive reference migration does not rewrite legacy decorative edges or manual selections
+  ---
+  duration_ms: 649.33225
+  type: 'test'
+  ...
+# Subtest: bound image reaches the real Ark adapter first-frame payload through an injected HTTP transport only
+ok 15 - bound image reaches the real Ark adapter first-frame payload through an injected HTTP transport only
+  ---
+  duration_ms: 698.734042
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 13308.964542
+
+
+# File: tests/canvas-position.test.mjs
+TAP version 13
+# Subtest: new canvas nodes keep a clear requested drop and avoid existing moved shot/text/image cards
+ok 1 - new canvas nodes keep a clear requested drop and avoid existing moved shot/text/image cards
+  ---
+  duration_ms: 0.840542
+  type: 'test'
+  ...
+# Subtest: dense boards use a bounded outside fallback and malformed positions cannot produce NaN
+ok 2 - dense boards use a bounded outside fallback and malformed positions cannot produce NaN
+  ---
+  duration_ms: 2.377667
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 152.702208
+
+
+# File: tests/asset-timeline-usage-ui.test.mjs
+TAP version 13
+# Subtest: only an own key in this project ready snapshot means zero; absence stays unknown
+ok 1 - only an own key in this project ready snapshot means zero; absence stays unknown
+  ---
+  duration_ms: 25.16575
+  type: 'test'
+  ...
+# Subtest: unused is a pure local view, combines existing results, and keeps unknown assets visible
+ok 2 - unused is a pure local view, combines existing results, and keeps unknown assets visible
+  ---
+  duration_ms: 3.541041
+  type: 'test'
+  ...
+# Subtest: filter resets on each project epoch and obsolete or hidden handlers cannot change it
+ok 3 - filter resets on each project epoch and obsolete or hidden handlers cannot change it
+  ---
+  duration_ms: 3.542125
+  type: 'test'
+  ...
+# Subtest: compact count expands explicit destinations and sends precisely the chosen immutable use
+ok 4 - compact count expands explicit destinations and sends precisely the chosen immutable use
+  ---
+  duration_ms: 15.449875
+  type: 'test'
+  ...
+# Subtest: unchanged saved polling preserves expansion and pending choice; changed source metadata invalidates
+ok 5 - unchanged saved polling preserves expansion and pending choice; changed source metadata invalidates
+  ---
+  duration_ms: 4.731834
+  type: 'test'
+  ...
+# Subtest: unknown, unavailable and foreign assets cannot claim unused or expose destinations
+ok 6 - unknown, unavailable and foreign assets cannot claim unused or expose destinations
+  ---
+  duration_ms: 15.921625
+  type: 'test'
+  ...
+# Subtest: navigation callbacks and in-flight predicates expire on hide, scope, snapshot, asset change and unmount
+ok 7 - navigation callbacks and in-flight predicates expire on hide, scope, snapshot, asset change and unmount
+  ---
+  duration_ms: 16.905666
+  type: 'test'
+  ...
+# Subtest: controls do not nest buttons or drag assets; target labels remain narrow-panel keyboard buttons
+ok 8 - controls do not nest buttons or drag assets; target labels remain narrow-panel keyboard buttons
+  ---
+  duration_ms: 3.587333
+  type: 'test'
+  ...
+# Subtest: actual library composes usage filter, preserves hidden selected source and resets all filters
+ok 9 - actual library composes usage filter, preserves hidden selected source and resets all filters
+  ---
+  duration_ms: 5.504416
+  type: 'test'
+  ...
+# Subtest: usage, type and mark filters compose once in the shared filter popover above the scrolling cards
+ok 10 - usage, type and mark filters compose once in the shared filter popover above the scrolling cards
+  ---
+  duration_ms: 5.354041
+  type: 'test'
+  ...
+# Subtest: actual library passes explicit hidden and subjects visibility to usage controls
+ok 11 - actual library passes explicit hidden and subjects visibility to usage controls
+  ---
+  duration_ms: 3.497416
+  type: 'test'
+  ...
+# Subtest: filter copy identifies saved revision and unavailable data, and stays guarded while hidden
+ok 12 - filter copy identifies saved revision and unavailable data, and stays guarded while hidden
+  ---
+  duration_ms: 2.950584
+  type: 'test'
+  ...
+# Subtest: real React and shared Button render safe compact HTML without network or storage
+ok 13 - real React and shared Button render safe compact HTML without network or storage
+  ---
+  duration_ms: 364.729
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 733.723125
+
+
+# File: tests/image-generation-ui.test.mjs
+TAP version 13
+# Subtest: fixed Mock intent is persisted and verified before one explicit dispatch
+ok 1 - fixed Mock intent is persisted and verified before one explicit dispatch
+  ---
+  duration_ms: 13.055542
+  type: 'test'
+  ...
+# Subtest: storage failure and silent storage discard fail before dispatch
+ok 2 - storage failure and silent storage discard fail before dispatch
+  ---
+  duration_ms: 0.987458
+  type: 'test'
+  ...
+# Subtest: lost acknowledgement remains unknown across renderer recreation and null lookup never resends
+ok 3 - lost acknowledgement remains unknown across renderer recreation and null lookup never resends
+  ---
+  duration_ms: 1.232916
+  type: 'test'
+  ...
+# Subtest: historical receipt is followed by authoritative task get and never downgrades current success
+ok 4 - historical receipt is followed by authoritative task get and never downgrades current success
+  ---
+  duration_ms: 2.927792
+  type: 'test'
+  ...
+# Subtest: forged receipt operation, scope, payload or regressed task cannot clear pending
+ok 5 - forged receipt operation, scope, payload or regressed task cannot clear pending
+  ---
+  duration_ms: 2.13475
+  type: 'test'
+  ...
+# Subtest: only an exact operation, project, request and input-hash rejection proof releases the intent
+ok 6 - only an exact operation, project, request and input-hash rejection proof releases the intent
+  ---
+  duration_ms: 5.957208
+  type: 'test'
+  ...
+# Subtest: timed out submission retains exact request and never automatically retries
+ok 7 - timed out submission retains exact request and never automatically retries
+  ---
+  duration_ms: 11.058417
+  type: 'test'
+  ...
+# Subtest: 507 capacity proof clears a rejected intent while arbitrary server errors stay unknown
+ok 8 - 507 capacity proof clears a rejected intent while arbitrary server errors stay unknown
+  ---
+  duration_ms: 1.172166
+  type: 'test'
+  ...
+# Subtest: late read and acknowledgement from disposed project cannot change state, receipt or callbacks
+ok 9 - late read and acknowledgement from disposed project cannot change state, receipt or callbacks
+  ---
+  duration_ms: 0.487625
+  type: 'test'
+  ...
+# Subtest: double click dispatches once, hidden panels keep draft and only visible reads poll with bounded budget
+ok 10 - double click dispatches once, hidden panels keep draft and only visible reads poll with bounded budget
+  ---
+  duration_ms: 1.579709
+  type: 'test'
+  ...
+# Subtest: interrupted and queued tasks cancel explicitly; local-result recovery never calls generate
+ok 11 - interrupted and queued tasks cancel explicitly; local-result recovery never calls generate
+  ---
+  duration_ms: 3.6105
+  type: 'test'
+  ...
+# Subtest: new-version target requires explicit draft discard, preserves immutable name and binds base revision
+ok 12 - new-version target requires explicit draft discard, preserves immutable name and binds base revision
+  ---
+  duration_ms: 1.180916
+  type: 'test'
+  ...
+# Subtest: accepted group omitted from first page is resolved by identity and remains selected with its task
+ok 13 - accepted group omitted from first page is resolved by identity and remains selected with its task
+  ---
+  duration_ms: 0.506625
+  type: 'test'
+  ...
+# Subtest: same-project stale list cannot downgrade a newer mutation acknowledgement
+ok 14 - same-project stale list cannot downgrade a newer mutation acknowledgement
+  ---
+  duration_ms: 0.608583
+  type: 'test'
+  ...
+# Subtest: completion is observed before rereading current group and immutable result page
+ok 15 - completion is observed before rereading current group and immutable result page
+  ---
+  duration_ms: 0.297209
+  type: 'test'
+  ...
+# Subtest: actual library reveal respects newer project, navigation and panel choices while refresh is pending
+ok 16 - actual library reveal respects newer project, navigation and panel choices while refresh is pending
+  ---
+  duration_ms: 32.616917
+  type: 'test'
+  ...
+# Subtest: input limits match contract and state copy distinguishes unknown, failure, cancellation and local failure
+ok 17 - input limits match contract and state copy distinguishes unknown, failure, cancellation and local failure
+  ---
+  duration_ms: 0.128208
+  type: 'test'
+  ...
+# Subtest: renderer remains an extracted dock with explicit providers, fixed paid disclosure and local previews
+ok 18 - renderer remains an extracted dock with explicit providers, fixed paid disclosure and local previews
+  ---
+  duration_ms: 9.4195
+  type: 'test'
+  ...
+# Subtest: actual composer keeps draft across hidden tabs and invalidates old edit/submit handlers after reveal
+ok 19 - actual composer keeps draft across hidden tabs and invalidates old edit/submit handlers after reveal
+  ---
+  duration_ms: 9.225875
+  type: 'test'
+  ...
+# Subtest: actual composer fences project navigation and current submit uses only typed image fields
+ok 20 - actual composer fences project navigation and current submit uses only typed image fields
+  ---
+  duration_ms: 12.707833
+  type: 'test'
+  ...
+# Subtest: paid generation saves the exact visible prompt before preparation and sends only one private approval
+ok 21 - paid generation saves the exact visible prompt before preparation and sends only one private approval
+  ---
+  duration_ms: 2.379709
+  type: 'test'
+  ...
+# Subtest: hide and reveal during preparation never auto-approves; explicit approval uses the original review
+ok 22 - hide and reveal during preparation never auto-approves; explicit approval uses the original review
+  ---
+  duration_ms: 2.746166
+  type: 'test'
+  ...
+# Subtest: configuration changes during preparation keep original review stale and cannot authorize a new configuration
+ok 23 - configuration changes during preparation keep original review stale and cannot authorize a new configuration
+  ---
+  duration_ms: 2.253167
+  type: 'test'
+  ...
+# Subtest: a changed prepared prompt, provider, destination or settings revision is never privately approved
+ok 24 - a changed prepared prompt, provider, destination or settings revision is never privately approved
+  ---
+  duration_ms: 1.704375
+  type: 'test'
+  ...
+# Subtest: lost paid acknowledgement recovers original task receipt without another approval or generation
+ok 25 - lost paid acknowledgement recovers original task receipt without another approval or generation
+  ---
+  duration_ms: 1.869375
+  type: 'test'
+  ...
+# Subtest: lost approval with no receipt is retained across restart and never repeated by reads
+ok 26 - lost approval with no receipt is retained across restart and never repeated by reads
+  ---
+  duration_ms: 3.23475
+  type: 'test'
+  ...
+# Subtest: external review approval preserves separate composer draft and rejection never generates
+ok 27 - external review approval preserves separate composer draft and rejection never generates
+  ---
+  duration_ms: 2.719542
+  type: 'test'
+  ...
+# Subtest: double approval, late project completion and settings-read outage remain safe
+ok 28 - double approval, late project completion and settings-read outage remain safe
+  ---
+  duration_ms: 0.863292
+  type: 'test'
+  ...
+# Subtest: actual paid button is the only composer action authorizing payment; settings navigation retains draft
+ok 29 - actual paid button is the only composer action authorizing payment; settings navigation retains draft
+  ---
+  duration_ms: 7.23025
+  type: 'test'
+  ...
+# Subtest: exact pending review stays visible when omitted from the current review page
+ok 30 - exact pending review stays visible when omitted from the current review page
+  ---
+  duration_ms: 0.960583
+  type: 'test'
+  ...
+# Subtest: valid-shaped altered rejection acknowledgement cannot release an uncertain original request
+ok 31 - valid-shaped altered rejection acknowledgement cannot release an uncertain original request
+  ---
+  duration_ms: 1.609209
+  type: 'test'
+  ...
+# Subtest: custom paid click binds full immutable configuration and resolved destination with no endpoint in typed input
+ok 32 - custom paid click binds full immutable configuration and resolved destination with no endpoint in typed input
+  ---
+  duration_ms: 2.961333
+  type: 'test'
+  ...
+# Subtest: custom paid preparation refuses valid-shaped destination/configuration substitution and never normalizes receipts
+ok 33 - custom paid preparation refuses valid-shaped destination/configuration substitution and never normalizes receipts
+  ---
+  duration_ms: 1.667084
+  type: 'test'
+  ...
+# Subtest: custom preparation hide, slot switch and changed configuration never auto-approve on return
+ok 34 - custom preparation hide, slot switch and changed configuration never auto-approve on return
+  ---
+  duration_ms: 6.903834
+  type: 'test'
+  ...
+# Subtest: custom unknown approval survives restart as exact v2 intent and is not reapproved by reads
+ok 35 - custom unknown approval survives restart as exact v2 intent and is not reapproved by reads
+  ---
+  duration_ms: 3.860041
+  type: 'test'
+  ...
+# Subtest: custom lost approval ACK resolves only the retained request without a second paid dispatch
+ok 36 - custom lost approval ACK resolves only the retained request without a second paid dispatch
+  ---
+  duration_ms: 1.85225
+  type: 'test'
+  ...
+# Subtest: historical custom review authority survives advanced task states and current settings outages
+ok 37 - historical custom review authority survives advanced task states and current settings outages
+  ---
+  duration_ms: 1.165292
+  type: 'test'
+  ...
+# Subtest: actual custom paid button is explicit, settings slots stay mounted and history never invents a recipient
+ok 38 - actual custom paid button is explicit, settings slots stay mounted and history never invents a recipient
+  ---
+  duration_ms: 8.23125
+  type: 'test'
+  ...
+# Subtest: a paid button authorization snapshot cannot authorize later draft or same-revision custom destination changes
+ok 39 - a paid button authorization snapshot cannot authorize later draft or same-revision custom destination changes
+  ---
+  duration_ms: 0.621125
+  type: 'test'
+  ...
+# Subtest: only allowlisted custom failures proven before dispatch show safe actionable connection explanations
+ok 40 - only allowlisted custom failures proven before dispatch show safe actionable connection explanations
+  ---
+  duration_ms: 0.227
+  type: 'test'
+  ...
+# Subtest: actual custom failed task shows fixed pre-dispatch guidance without reflecting raw provider text
+ok 41 - actual custom failed task shows fixed pre-dispatch guidance without reflecting raw provider text
+  ---
+  duration_ms: 16.378292
+  type: 'test'
+  ...
+# Subtest: history selection clears wrong-group versions and cursors during delayed failure, then retries without losing draft or recovery
+ok 42 - history selection clears wrong-group versions and cursors during delayed failure, then retries without losing draft or recovery
+  ---
+  duration_ms: 1.088125
+  type: 'test'
+  ...
+# Subtest: history selection preserves the current group’s versions, page and draft through failed refresh
+ok 43 - history selection preserves the current group’s versions, page and draft through failed refresh
+  ---
+  duration_ms: 0.4815
+  type: 'test'
+  ...
+# Subtest: history selection version pagination clears the prior page on failure and can return to the retained page identity
+ok 44 - history selection version pagination clears the prior page on failure and can return to the retained page identity
+  ---
+  duration_ms: 0.747375
+  type: 'test'
+  ...
+# Subtest: history selection group pagination removes old versions before its new group page is readable
+ok 45 - history selection group pagination removes old versions before its new group page is readable
+  ---
+  duration_ms: 0.512041
+  type: 'test'
+  ...
+# Subtest: history selection after explicit target confirmation reloads its own versions without replacing a newer draft
+ok 46 - history selection after explicit target confirmation reloads its own versions without replacing a newer draft
+  ---
+  duration_ms: 0.607458
+  type: 'test'
+  ...
+# Subtest: actual history selection never labels or reveals A’s saved asset as B during a failed read
+ok 47 - actual history selection never labels or reveals A’s saved asset as B during a failed read
+  ---
+  duration_ms: 6.876625
+  type: 'test'
+  ...
+# Subtest: history selection from accepted or recovered generation clears another group’s versions even when follow-up reads fail
+ok 48 - history selection from accepted or recovered generation clears another group’s versions even when follow-up reads fail
+  ---
+  duration_ms: 1.153292
+  type: 'test'
+  ...
+# Subtest: history selection from saved paid approval clears the old group while keeping the unrelated composer draft
+ok 49 - history selection from saved paid approval clears the old group while keeping the unrelated composer draft
+  ---
+  duration_ms: 0.89475
+  type: 'test'
+  ...
+# Subtest: history selection same-group accepted generation or approval clears an older version page until the first page is confirmed
+ok 50 - history selection same-group accepted generation or approval clears an older version page until the first page is confirmed
+  ---
+  duration_ms: 2.514
+  type: 'test'
+  ...
+# Subtest: history selection accepted generation or approval invalidates an older group cursor before a failed first-page refresh
+ok 51 - history selection accepted generation or approval invalidates an older group cursor before a failed first-page refresh
+  ---
+  duration_ms: 2.147333
+  type: 'test'
+  ...
+# Subtest: four-language changes preserve mounted image drafts and the same pending paid review without automatic approval
+ok 52 - four-language changes preserve mounted image drafts and the same pending paid review without automatic approval
+  ---
+  duration_ms: 10.80725
+  type: 'test'
+  ...
+# Subtest: external image edit intent prefills one exact source without generating or approving
+ok 53 - external image edit intent prefills one exact source without generating or approving
+  ---
+  duration_ms: 0.794333
+  type: 'test'
+  ...
+# Subtest: image edit intent uses the existing discard guard and stale form/source confirmations preserve the draft
+ok 54 - image edit intent uses the existing discard guard and stale form/source confirmations preserve the draft
+  ---
+  duration_ms: 0.497917
+  type: 'test'
+  ...
+# Subtest: hiding or retiring an image edit intent rejects old confirmation even after showing the same project
+ok 55 - hiding or retiring an image edit intent rejects old confirmation even after showing the same project
+  ---
+  duration_ms: 0.242
+  type: 'test'
+  ...
+# Subtest: actual image composer waits for its reads before applying a fresh edit intent and never submits it
+ok 56 - actual image composer waits for its reads before applying a fresh edit intent and never submits it
+  ---
+  duration_ms: 4.863709
+  type: 'test'
+  ...
+# Subtest: image edit intent capture rejects foreign, duplicate and unsupported source identities
+ok 57 - image edit intent capture rejects foreign, duplicate and unsupported source identities
+  ---
+  duration_ms: 0.074958
+  type: 'test'
+  ...
+1..57
+# tests 57
+# suites 0
+# pass 57
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 488.794209
+
+
+
+# File: tests/ui-components.test.mjs
+TAP version 13
+# Subtest: all fifteen shadcn base-nova components match the pinned official source
+    # Subtest: button
+    ok 1 - button
+      ---
+      duration_ms: 1.445166
+      type: 'test'
+      ...
+    # Subtest: input
+    ok 2 - input
+      ---
+      duration_ms: 0.421208
+      type: 'test'
+      ...
+    # Subtest: textarea
+    ok 3 - textarea
+      ---
+      duration_ms: 0.481334
+      type: 'test'
+      ...
+    # Subtest: select
+    ok 4 - select
+      ---
+      duration_ms: 0.687417
+      type: 'test'
+      ...
+    # Subtest: dialog
+    ok 5 - dialog
+      ---
+      duration_ms: 0.46075
+      type: 'test'
+      ...
+    # Subtest: dropdown-menu
+    ok 6 - dropdown-menu
+      ---
+      duration_ms: 0.441625
+      type: 'test'
+      ...
+    # Subtest: tabs
+    ok 7 - tabs
+      ---
+      duration_ms: 0.689542
+      type: 'test'
+      ...
+    # Subtest: switch
+    ok 8 - switch
+      ---
+      duration_ms: 0.243458
+      type: 'test'
+      ...
+    # Subtest: collapsible
+    ok 9 - collapsible
+      ---
+      duration_ms: 0.323209
+      type: 'test'
+      ...
+    # Subtest: tooltip
+    ok 10 - tooltip
+      ---
+      duration_ms: 0.298916
+      type: 'test'
+      ...
+    # Subtest: scroll-area
+    ok 11 - scroll-area
+      ---
+      duration_ms: 0.243875
+      type: 'test'
+      ...
+    # Subtest: label
+    ok 12 - label
+      ---
+      duration_ms: 0.249417
+      type: 'test'
+      ...
+    # Subtest: badge
+    ok 13 - badge
+      ---
+      duration_ms: 0.237333
+      type: 'test'
+      ...
+    # Subtest: separator
+    ok 14 - separator
+      ---
+      duration_ms: 0.199291
+      type: 'test'
+      ...
+    # Subtest: slider
+    ok 15 - slider
+      ---
+      duration_ms: 0.194084
+      type: 'test'
+      ...
+    1..15
+ok 1 - all fifteen shadcn base-nova components match the pinned official source
+  ---
+  duration_ms: 8.018084
+  type: 'test'
+  ...
+# Subtest: DialogContent defaults to the upstream portal lifetime and forwards only explicit keepMounted to the real portal boundary
+ok 2 - DialogContent defaults to the upstream portal lifetime and forwards only explicit keepMounted to the real portal boundary
+  ---
+  duration_ms: 99.140875
+  type: 'test'
+  ...
+# Subtest: behavioral components use real Base UI primitives
+ok 3 - behavioral components use real Base UI primitives
+  ---
+  duration_ms: 0.611833
+  type: 'test'
+  ...
+# Subtest: dialog, select and menu preserve primitive portals and accessible composition
+ok 4 - dialog, select and menu preserve primitive portals and accessible composition
+  ---
+  duration_ms: 0.323458
+  type: 'test'
+  ...
+# Subtest: Tailwind scans both workspace components and renderer sources and maps Base UI state
+ok 5 - Tailwind scans both workspace components and renderer sources and maps Base UI state
+  ---
+  duration_ms: 0.186791
+  type: 'test'
+  ...
+# Subtest: shared package config supports official Base UI registry installation
+ok 6 - shared package config supports official Base UI registry installation
+  ---
+  duration_ms: 0.98325
+  type: 'test'
+  ...
+# Subtest: shadcn MIT copyright and permission notice travel with the vendored source
+ok 7 - shadcn MIT copyright and permission notice travel with the vendored source
+  ---
+  duration_ms: 0.110792
+  type: 'test'
+  ...
+# Subtest: installed Base UI components render semantic controls with real runtime dependencies
+ok 8 - installed Base UI components render semantic controls with real runtime dependencies
+  ---
+  duration_ms: 205.212375
+  type: 'test'
+  ...
+# Subtest: renderer uses shared components for ordinary controls and modal confirmations
+ok 9 - renderer uses shared components for ordinary controls and modal confirmations
+  ---
+  duration_ms: 3.573125
+  type: 'test'
+  ...
+# Subtest: confirmation dismissal and concurrent requests never imply approval
+ok 10 - confirmation dismissal and concurrent requests never imply approval
+  ---
+  duration_ms: 0.277209
+  type: 'test'
+  ...
+# Subtest: timeline retains specialized positioning and accessible Base UI controls
+ok 11 - timeline retains specialized positioning and accessible Base UI controls
+  ---
+  duration_ms: 0.433208
+  type: 'test'
+  ...
+# Subtest: timeline ruler keyboard navigation stays inside integer-frame bounds
+ok 12 - timeline ruler keyboard navigation stays inside integer-frame bounds
+  ---
+  duration_ms: 0.192917
+  type: 'test'
+  ...
+# Subtest: project menu labels are grouped for Base UI MenuGroupContext
+ok 13 - project menu labels are grouped for Base UI MenuGroupContext
+  ---
+  duration_ms: 0.265084
+  type: 'test'
+  ...
+# Subtest: legacy button reset does not override shared semantic foreground colors
+ok 14 - legacy button reset does not override shared semantic foreground colors
+  ---
+  duration_ms: 0.254
+  type: 'test'
+  ...
+1..14
+# tests 29
+# suites 0
+# pass 29
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 532.647416
+
+
+
+# File: tests/opacity-upgrade-application-integration.test.mjs
+TAP version 13
+# Subtest: upgraded web last-project opens and saves in the actual development candidate application
+ok 1 - upgraded web last-project opens and saves in the actual development candidate application
+  ---
+  duration_ms: 1660.195708
+  type: 'test'
+  ...
+# Subtest: upgraded production last-project opens and saves in the actual development candidate application
+ok 2 - upgraded production last-project opens and saves in the actual development candidate application
+  ---
+  duration_ms: 1204.489542
+  type: 'test'
+  ...
+# Subtest: upgraded development last-project opens and saves in the actual development candidate application
+ok 3 - upgraded development last-project opens and saves in the actual development candidate application
+  ---
+  duration_ms: 1190.2055
+  type: 'test'
+  ...
+# Subtest: target development binding does not relax source companion channel validation
+ok 4 - target development binding does not relax source companion channel validation
+  ---
+  duration_ms: 819.800917
+  type: 'test'
+  ...
+# Subtest: acknowledged not_applied timeline.clip.split is explicitly unsupported before any42 publication
+ok 5 - acknowledged not_applied timeline.clip.split is explicitly unsupported before any42 publication
+  ---
+  duration_ms: 825.467625
+  type: 'test'
+  ...
+# Subtest: acknowledged applied timeline.clip.split is explicitly unsupported before any42 publication
+ok 6 - acknowledged applied timeline.clip.split is explicitly unsupported before any42 publication
+  ---
+  duration_ms: 852.762125
+  type: 'test'
+  ...
+# Subtest: acknowledged not_applied timeline.clip.replaceSource is explicitly unsupported before any42 publication
+ok 7 - acknowledged not_applied timeline.clip.replaceSource is explicitly unsupported before any42 publication
+  ---
+  duration_ms: 827.178542
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 7742.530208
+
+
+# File: tests/opacity-upgrade-database.test.mjs
+TAP version 13
+# Subtest: exact40 read gate and copied upgrade retain raw histories, receipts, ACK task, LUT bytes, preferences and sequence
+ok 1 - exact40 read gate and copied upgrade retain raw histories, receipts, ACK task, LUT bytes, preferences and sequence
+  ---
+  duration_ms: 1110.135958
+  type: 'test'
+  ...
+# Subtest: unresolved or unacknowledged prepared task refuses without state edits
+ok 2 - unresolved or unacknowledged prepared task refuses without state edits
+  ---
+  duration_ms: 759.359209
+  type: 'test'
+  ...
+# Subtest: unresolved or unacknowledged unknown task refuses without state edits
+ok 3 - unresolved or unacknowledged unknown task refuses without state edits
+  ---
+  duration_ms: 757.987083
+  type: 'test'
+  ...
+# Subtest: unresolved or unacknowledged dispatching task refuses without state edits
+ok 4 - unresolved or unacknowledged dispatching task refuses without state edits
+  ---
+  duration_ms: 754.4315
+  type: 'test'
+  ...
+# Subtest: unresolved or unacknowledged applied task refuses without state edits
+ok 5 - unresolved or unacknowledged applied task refuses without state edits
+  ---
+  duration_ms: 749.030959
+  type: 'test'
+  ...
+# Subtest: unresolved or unacknowledged not_applied task refuses without state edits
+ok 6 - unresolved or unacknowledged not_applied task refuses without state edits
+  ---
+  duration_ms: 747.053459
+  type: 'test'
+  ...
+# Subtest: terminal acknowledged task still needs its original request digest and receipt evidence
+ok 7 - terminal acknowledged task still needs its original request digest and receipt evidence
+  ---
+  duration_ms: 844.81725
+  type: 'test'
+  ...
+# Subtest: restored41 remains held with its original origin and epoch and is never converted
+ok 8 - restored41 remains held with its original origin and epoch and is never converted
+  ---
+  duration_ms: 814.715125
+  type: 'test'
+  ...
+# Subtest: unknown table source fails closed without a42 marker
+ok 9 - unknown table source fails closed without a42 marker
+  ---
+  duration_ms: 732.738666
+  type: 'test'
+  ...
+# Subtest: missing marker source fails closed without a42 marker
+ok 10 - missing marker source fails closed without a42 marker
+  ---
+  duration_ms: 861.780875
+  type: 'test'
+  ...
+# Subtest: foreign key source fails closed without a42 marker
+ok 11 - foreign key source fails closed without a42 marker
+  ---
+  duration_ms: 731.924041
+  type: 'test'
+  ...
+# Subtest: malformed JSON source fails closed without a42 marker
+ok 12 - malformed JSON source fails closed without a42 marker
+  ---
+  duration_ms: 886.521375
+  type: 'test'
+  ...
+# Subtest: duplicate JSON source fails closed without a42 marker
+ok 13 - duplicate JSON source fails closed without a42 marker
+  ---
+  duration_ms: 814.20975
+  type: 'test'
+  ...
+# Subtest: bad preferences source fails closed without a42 marker
+ok 14 - bad preferences source fails closed without a42 marker
+  ---
+  duration_ms: 765.620334
+  type: 'test'
+  ...
+# Subtest: candidate incompatible asset provenance refuses source intact
+ok 15 - candidate incompatible asset provenance refuses source intact
+  ---
+  duration_ms: 752.67425
+  type: 'test'
+  ...
+# Subtest: candidate incompatible asset relativePath refuses source intact
+ok 16 - candidate incompatible asset relativePath refuses source intact
+  ---
+  duration_ms: 811.702458
+  type: 'test'
+  ...
+# Subtest: candidate incompatible asset relativePath refuses source intact
+ok 17 - candidate incompatible asset relativePath refuses source intact
+  ---
+  duration_ms: 737.610333
+  type: 'test'
+  ...
+# Subtest: candidate incompatible asset mimeType refuses source intact
+ok 18 - candidate incompatible asset mimeType refuses source intact
+  ---
+  duration_ms: 731.000167
+  type: 'test'
+  ...
+# Subtest: candidate incompatible asset sha256 refuses source intact
+ok 19 - candidate incompatible asset sha256 refuses source intact
+  ---
+  duration_ms: 731.383875
+  type: 'test'
+  ...
+# Subtest: candidate incompatible asset sizeBytes refuses source intact
+ok 20 - candidate incompatible asset sizeBytes refuses source intact
+  ---
+  duration_ms: 744.6935
+  type: 'test'
+  ...
+# Subtest: legacy sequence export is explicitly unsupported rather than hidden from project reads
+ok 21 - legacy sequence export is explicitly unsupported rather than hidden from project reads
+  ---
+  duration_ms: 743.861833
+  type: 'test'
+  ...
+# Subtest: valid failed timeline export with its queued identity receipt survives as read-only history
+ok 22 - valid failed timeline export with its queued identity receipt survives as read-only history
+  ---
+  duration_ms: 757.770583
+  type: 'test'
+  ...
+# Subtest: timeline export missing receipt cannot acquire42 admission
+ok 23 - timeline export missing receipt cannot acquire42 admission
+  ---
+  duration_ms: 822.7095
+  type: 'test'
+  ...
+# Subtest: timeline export wrong identity cannot acquire42 admission
+ok 24 - timeline export wrong identity cannot acquire42 admission
+  ---
+  duration_ms: 832.730667
+  type: 'test'
+  ...
+# Subtest: timeline export invalid snapshot cannot acquire42 admission
+ok 25 - timeline export invalid snapshot cannot acquire42 admission
+  ---
+  duration_ms: 805.61725
+  type: 'test'
+  ...
+# Subtest: timeline export queued cannot acquire42 admission
+ok 26 - timeline export queued cannot acquire42 admission
+  ---
+  duration_ms: 823.060583
+  type: 'test'
+  ...
+# Subtest: throw after marker rolls back marker and all private-copy changes
+ok 27 - throw after marker rolls back marker and all private-copy changes
+  ---
+  duration_ms: 721.541209
+  type: 'test'
+  ...
+# Subtest: unknown table after marker rolls back marker and all private-copy changes
+ok 28 - unknown table after marker rolls back marker and all private-copy changes
+  ---
+  duration_ms: 742.224416
+  type: 'test'
+  ...
+# Subtest: row mutation after marker rolls back marker and all private-copy changes
+ok 29 - row mutation after marker rolls back marker and all private-copy changes
+  ---
+  duration_ms: 740.560417
+  type: 'test'
+  ...
+# Subtest: nested caller transaction and unsafe PRAGMAs refuse without ending a caller transaction
+ok 30 - nested caller transaction and unsafe PRAGMAs refuse without ending a caller transaction
+  ---
+  duration_ms: 737.143709
+  type: 'test'
+  ...
+# Subtest: legitimate acknowledged not_applied task retains its absence proof and cannot be resumed
+ok 31 - legitimate acknowledged not_applied task retains its absence proof and cannot be resumed
+  ---
+  duration_ms: 769.787125
+  type: 'test'
+  ...
+# Subtest: generation job queued cannot enter ordinary42
+ok 32 - generation job queued cannot enter ordinary42
+  ---
+  duration_ms: 747.97925
+  type: 'test'
+  ...
+# Subtest: generation job submitting cannot enter ordinary42
+ok 33 - generation job submitting cannot enter ordinary42
+  ---
+  duration_ms: 748.136875
+  type: 'test'
+  ...
+# Subtest: generation job submission_unknown cannot enter ordinary42
+ok 34 - generation job submission_unknown cannot enter ordinary42
+  ---
+  duration_ms: 759.132958
+  type: 'test'
+  ...
+# Subtest: generation job running cannot enter ordinary42
+ok 35 - generation job running cannot enter ordinary42
+  ---
+  duration_ms: 747.45925
+  type: 'test'
+  ...
+# Subtest: generation job downloading cannot enter ordinary42
+ok 36 - generation job downloading cannot enter ordinary42
+  ---
+  duration_ms: 755.371
+  type: 'test'
+  ...
+# Subtest: generation job unknown cannot enter ordinary42
+ok 37 - generation job unknown cannot enter ordinary42
+  ---
+  duration_ms: 742.199541
+  type: 'test'
+  ...
+1..37
+# tests 37
+# suites 0
+# pass 37
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 29182.490375
+
+
+# File: tests/opacity-upgrade-companions.test.mjs
+TAP version 13
+# Subtest: missing companion capture is noncreating and records all fixed absent paths without changing SQLite
+ok 1 - missing companion capture is noncreating and records all fixed absent paths without changing SQLite
+  ---
+  duration_ms: 5.2065
+  type: 'test'
+  ...
+# Subtest: last-project rebinding preserves revision, project and timestamp, and normal target CAS rejects old source authority
+ok 2 - last-project rebinding preserves revision, project and timestamp, and normal target CAS rejects old source authority
+  ---
+  duration_ms: 18.981208
+  type: 'test'
+  ...
+# Subtest: legacy clip content version1 tombstones are explicitly excluded without rewriting source bytes
+ok 3 - legacy clip content version1 tombstones are explicitly excluded without rewriting source bytes
+  ---
+  duration_ms: 2.936292
+  type: 'test'
+  ...
+# Subtest: legacy clip content version2 tombstones are explicitly excluded without rewriting source bytes
+ok 4 - legacy clip content version2 tombstones are explicitly excluded without rewriting source bytes
+  ---
+  duration_ms: 2.782583
+  type: 'test'
+  ...
+# Subtest: delivery and shot-text tombstones and empty files are validated and explicitly excluded
+ok 5 - delivery and shot-text tombstones and empty files are validated and explicitly excluded
+  ---
+  duration_ms: 4.591916
+  type: 'test'
+  ...
+# Subtest: local-drafts-v1.json retained draft/raw refuses without data loss or implicit task execution
+ok 6 - local-drafts-v1.json retained draft/raw refuses without data loss or implicit task execution
+  ---
+  duration_ms: 2.868
+  type: 'test'
+  ...
+# Subtest: local-delivery-v1.json retained draft/raw refuses without data loss or implicit task execution
+ok 7 - local-delivery-v1.json retained draft/raw refuses without data loss or implicit task execution
+  ---
+  duration_ms: 2.058125
+  type: 'test'
+  ...
+# Subtest: local-delivery-v1.json retained intent/pending refuses without data loss or implicit task execution
+ok 8 - local-delivery-v1.json retained intent/pending refuses without data loss or implicit task execution
+  ---
+  duration_ms: 1.782125
+  type: 'test'
+  ...
+# Subtest: local-delivery-v1.json retained intent/accepted refuses without data loss or implicit task execution
+ok 9 - local-delivery-v1.json retained intent/accepted refuses without data loss or implicit task execution
+  ---
+  duration_ms: 1.696958
+  type: 'test'
+  ...
+# Subtest: local-shot-text-v1.json retained draft/raw refuses without data loss or implicit task execution
+ok 10 - local-shot-text-v1.json retained draft/raw refuses without data loss or implicit task execution
+  ---
+  duration_ms: 2.850083
+  type: 'test'
+  ...
+# Subtest: local-shot-text-v1.json retained intent/pending refuses without data loss or implicit task execution
+ok 11 - local-shot-text-v1.json retained intent/pending refuses without data loss or implicit task execution
+  ---
+  duration_ms: 1.866542
+  type: 'test'
+  ...
+# Subtest: local-shot-text-v1.json retained intent/applied refuses without data loss or implicit task execution
+ok 12 - local-shot-text-v1.json retained intent/applied refuses without data loss or implicit task execution
+  ---
+  duration_ms: 2.102917
+  type: 'test'
+  ...
+# Subtest: ordinary40 never imports or resets local-drafts-v3.json
+ok 13 - ordinary40 never imports or resets local-drafts-v3.json
+  ---
+  duration_ms: 2.828917
+  type: 'test'
+  ...
+# Subtest: ordinary40 never imports or resets local-drafts-restored43-v1.json
+ok 14 - ordinary40 never imports or resets local-drafts-restored43-v1.json
+  ---
+  duration_ms: 1.995167
+  type: 'test'
+  ...
+# Subtest: decoded duplicate keys, fatal UTF-8, malformed JSON and unknown formats remain untouched
+ok 15 - decoded duplicate keys, fatal UTF-8, malformed JSON and unknown formats remain untouched
+  ---
+  duration_ms: 5.289292
+  type: 'test'
+  ...
+# Subtest: foreign workspace or channel scope rejects valid locator and empty drafts without rebinding them
+ok 16 - foreign workspace or channel scope rejects valid locator and empty drafts without rebinding them
+  ---
+  duration_ms: 3.552208
+  type: 'test'
+  ...
+# Subtest: last-project target must exist and match bounded relational JSON identity
+ok 17 - last-project target must exist and match bounded relational JSON identity
+  ---
+  duration_ms: 5.169458
+  type: 'test'
+  ...
+# Subtest: slot uniqueness, known formats, missing fields and slot capacity are strict for excluded files
+ok 18 - slot uniqueness, known formats, missing fields and slot capacity are strict for excluded files
+  ---
+  duration_ms: 13.216459
+  type: 'test'
+  ...
+# Subtest: last-project-v1.json enforces its original 4096-byte bound
+ok 19 - last-project-v1.json enforces its original 4096-byte bound
+  ---
+  duration_ms: 2.903291
+  type: 'test'
+  ...
+# Subtest: local-drafts-v1.json enforces its original 2097152-byte bound
+ok 20 - local-drafts-v1.json enforces its original 2097152-byte bound
+  ---
+  duration_ms: 1.900375
+  type: 'test'
+  ...
+# Subtest: local-delivery-v1.json enforces its original 2097152-byte bound
+ok 21 - local-delivery-v1.json enforces its original 2097152-byte bound
+  ---
+  duration_ms: 1.902958
+  type: 'test'
+  ...
+# Subtest: local-shot-text-v1.json enforces its original 16777216-byte bound
+ok 22 - local-shot-text-v1.json enforces its original 16777216-byte bound
+  ---
+  duration_ms: 4.802875
+  type: 'test'
+  ...
+# Subtest: symlink, hardlink, directory and nonprivate mode refuse without repairs
+ok 23 - symlink, hardlink, directory and nonprivate mode refuse without repairs
+  ---
+  duration_ms: 2.644125
+  type: 'test'
+  ...
+# Subtest: final capture verification detects new paths, deletion, content changes and same-byte inode replacement
+ok 24 - final capture verification detects new paths, deletion, content changes and same-byte inode replacement
+  ---
+  duration_ms: 4.04275
+  type: 'test'
+  ...
+# Subtest: source identity admission rejects stale directory/database identities and lexical path aliases
+ok 25 - source identity admission rejects stale directory/database identities and lexical path aliases
+  ---
+  duration_ms: 1.591833
+  type: 'test'
+  ...
+1..25
+# tests 25
+# suites 0
+# pass 25
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 274.306541
+
+
+# File: tests/opacity-upgrade-cli.test.mjs
+TAP version 13
+# Subtest: offline upgrade parser requires every explicit input, exact channels and region-neutral languages
+ok 1 - offline upgrade parser requires every explicit input, exact channels and region-neutral languages
+  ---
+  duration_ms: 2.241083
+  type: 'test'
+  ...
+# Subtest: upgrade result strictly binds ordinary40 to ordinary42 with explicit preservation and cleanup policies
+ok 2 - upgrade result strictly binds ordinary40 to ordinary42 with explicit preservation and cleanup policies
+  ---
+  duration_ms: 0.937083
+  type: 'test'
+  ...
+# Subtest: all four help copies disclose read-only existing backup, preservation, qualifications and remaining acceptance
+ok 3 - all four help copies disclose read-only existing backup, preservation, qualifications and remaining acceptance
+  ---
+  duration_ms: 0.634833
+  type: 'test'
+  ...
+# Subtest: fixed error messages are localized and never disclose unknown errors, getters or private text
+ok 4 - fixed error messages are localized and never disclose unknown errors, getters or private text
+  ---
+  duration_ms: 1.172042
+  type: 'test'
+  ...
+# Subtest: uncertain publication sanitizes exact generated binding and retains cleanup uncertainty without retry advice
+ok 5 - uncertain publication sanitizes exact generated binding and retains cleanup uncertainty without retry advice
+  ---
+  duration_ms: 0.244875
+  type: 'test'
+  ...
+# Subtest: actual Node CLI help/schema stay inert and return one JSON envelope with no business imports
+ok 6 - actual Node CLI help/schema stay inert and return one JSON envelope with no business imports
+  ---
+  duration_ms: 1294.1255
+  type: 'test'
+  ...
+# Subtest: actual CLI runner adapter checks exact arguments, result schema, cancellation and scoped listeners without executing a workspace
+ok 7 - actual CLI runner adapter checks exact arguments, result schema, cancellation and scoped listeners without executing a workspace
+  ---
+  duration_ms: 583.772416
+  type: 'test'
+  ...
+# Subtest: actual CLI upgrades only its own closed40 fixture from a read-only existing backup and leaves source bytes intact
+ok 8 - actual CLI upgrades only its own closed40 fixture from a read-only existing backup and leaves source bytes intact
+  ---
+  duration_ms: 1986.995334
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4197.230709
+
+
+# File: tests/opacity-workspace-upgrade.test.mjs
+TAP version 13
+# Subtest: explicit cold ordinary40 copy produces a verified original40 backup and independently reopenable ordinary42 application
+ok 1 - explicit cold ordinary40 copy produces a verified original40 backup and independently reopenable ordinary42 application
+  ---
+  duration_ms: 1601.026042
+  type: 'test'
+  ...
+# Subtest: remembered project is explicitly rebound to the new path and database identity while view preference rows are byte-preserved
+ok 2 - remembered project is explicitly rebound to the new path and database identity while view preference rows are byte-preserved
+  ---
+  duration_ms: 979.078
+  type: 'test'
+  ...
+# Subtest: the source remains an ordinary40 workspace and its default40-to41 backup restore behavior is unchanged
+ok 3 - the source remains an ordinary40 workspace and its default40-to41 backup restore behavior is unchanged
+  ---
+  duration_ms: 1356.491125
+  type: 'test'
+  ...
+# Subtest: ordinary42 cannot be silently admitted through the default production40 constructor and its logical rows remain intact
+ok 4 - ordinary42 cannot be silently admitted through the default production40 constructor and its logical rows remain intact
+  ---
+  duration_ms: 991.518792
+  type: 'test'
+  ...
+# Subtest: upgrade refuses the preexisting source lock "47734" without deleting or taking it over
+ok 5 - upgrade refuses the preexisting source lock "47734" without deleting or taking it over
+  ---
+  duration_ms: 806.106
+  type: 'test'
+  ...
+# Subtest: upgrade refuses the preexisting source lock "2147483647" without deleting or taking it over
+ok 6 - upgrade refuses the preexisting source lock "2147483647" without deleting or taking it over
+  ---
+  duration_ms: 805.987125
+  type: 'test'
+  ...
+# Subtest: upgrade refuses the preexisting source lock "invalid stale token" without deleting or taking it over
+ok 7 - upgrade refuses the preexisting source lock "invalid stale token" without deleting or taking it over
+  ---
+  duration_ms: 796.625834
+  type: 'test'
+  ...
+# Subtest: upgrade refuses the preexisting source lock "" without deleting or taking it over
+ok 8 - upgrade refuses the preexisting source lock "" without deleting or taking it over
+  ---
+  duration_ms: 811.463125
+  type: 'test'
+  ...
+# Subtest: a real active source lease remains owned after the upgrade is refused
+ok 9 - a real active source lease remains owned after the upgrade is refused
+  ---
+  duration_ms: 855.526375
+  type: 'test'
+  ...
+# Subtest: upgrade refuses nonempty -wal and never repairs the cold-source failure
+ok 10 - upgrade refuses nonempty -wal and never repairs the cold-source failure
+  ---
+  duration_ms: 817.386625
+  type: 'test'
+  ...
+# Subtest: upgrade refuses nonempty -journal and never repairs the cold-source failure
+ok 11 - upgrade refuses nonempty -journal and never repairs the cold-source failure
+  ---
+  duration_ms: 815.823125
+  type: 'test'
+  ...
+# Subtest: upgrade refuses corrupt non-sqlite without changing the source or publishing42
+ok 12 - upgrade refuses corrupt non-sqlite without changing the source or publishing42
+  ---
+  duration_ms: 857.575917
+  type: 'test'
+  ...
+# Subtest: upgrade refuses corrupt bad-catalog without changing the source or publishing42
+ok 13 - upgrade refuses corrupt bad-catalog without changing the source or publishing42
+  ---
+  duration_ms: 872.924166
+  type: 'test'
+  ...
+# Subtest: upgrade refuses corrupt bad-project-json without changing the source or publishing42
+ok 14 - upgrade refuses corrupt bad-project-json without changing the source or publishing42
+  ---
+  duration_ms: 864.806125
+  type: 'test'
+  ...
+# Subtest: upgrade refuses corrupt dangling-media without changing the source or publishing42
+ok 15 - upgrade refuses corrupt dangling-media without changing the source or publishing42
+  ---
+  duration_ms: 865.100875
+  type: 'test'
+  ...
+# Subtest: upgrade refuses corrupt bad-media-hash without changing the source or publishing42
+ok 16 - upgrade refuses corrupt bad-media-hash without changing the source or publishing42
+  ---
+  duration_ms: 868.172208
+  type: 'test'
+  ...
+# Subtest: upgrade preserves an existing empty destination directory
+ok 17 - upgrade preserves an existing empty destination directory
+  ---
+  duration_ms: 803.849125
+  type: 'test'
+  ...
+# Subtest: upgrade preserves an existing nonempty destination directory
+ok 18 - upgrade preserves an existing nonempty destination directory
+  ---
+  duration_ms: 812.4725
+  type: 'test'
+  ...
+# Subtest: upgrade refuses an empty directory that is not a complete40 backup
+ok 19 - upgrade refuses an empty directory that is not a complete40 backup
+  ---
+  duration_ms: 814.013333
+  type: 'test'
+  ...
+# Subtest: upgrade refuses an nonempty directory that is not a complete40 backup
+ok 20 - upgrade refuses an nonempty directory that is not a complete40 backup
+  ---
+  duration_ms: 826.658041
+  type: 'test'
+  ...
+# Subtest: upgrade refuses source-root symlinks without following or changing their targets
+ok 21 - upgrade refuses source-root symlinks without following or changing their targets
+  ---
+  duration_ms: 816.1165
+  type: 'test'
+  ...
+# Subtest: upgrade refuses source-database symlinks without following or changing their targets
+ok 22 - upgrade refuses source-database symlinks without following or changing their targets
+  ---
+  duration_ms: 836.399875
+  type: 'test'
+  ...
+# Subtest: upgrade refuses source-media-file symlinks without following or changing their targets
+ok 23 - upgrade refuses source-media-file symlinks without following or changing their targets
+  ---
+  duration_ms: 863.835709
+  type: 'test'
+  ...
+# Subtest: upgrade refuses source-media-directory symlinks without following or changing their targets
+ok 24 - upgrade refuses source-media-directory symlinks without following or changing their targets
+  ---
+  duration_ms: 803.384792
+  type: 'test'
+  ...
+# Subtest: upgrade refuses backup-root symlinks without following or changing their targets
+ok 25 - upgrade refuses backup-root symlinks without following or changing their targets
+  ---
+  duration_ms: 789.161208
+  type: 'test'
+  ...
+# Subtest: upgrade refuses destination-root symlinks without following or changing their targets
+ok 26 - upgrade refuses destination-root symlinks without following or changing their targets
+  ---
+  duration_ms: 805.551417
+  type: 'test'
+  ...
+# Subtest: upgrade refuses destination-parent symlinks without following or changing their targets
+ok 27 - upgrade refuses destination-parent symlinks without following or changing their targets
+  ---
+  duration_ms: 840.584
+  type: 'test'
+  ...
+# Subtest: upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+ok 28 - upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+  ---
+  duration_ms: 799.113333
+  type: 'test'
+  ...
+# Subtest: upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+ok 29 - upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+  ---
+  duration_ms: 809.562541
+  type: 'test'
+  ...
+# Subtest: upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+ok 30 - upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+  ---
+  duration_ms: 842.915042
+  type: 'test'
+  ...
+# Subtest: upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+ok 31 - upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+  ---
+  duration_ms: 812.197458
+  type: 'test'
+  ...
+# Subtest: upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+ok 32 - upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+  ---
+  duration_ms: 807.264041
+  type: 'test'
+  ...
+# Subtest: upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+ok 33 - upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+  ---
+  duration_ms: 818.680625
+  type: 'test'
+  ...
+# Subtest: upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+ok 34 - upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+  ---
+  duration_ms: 798.716334
+  type: 'test'
+  ...
+# Subtest: upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+ok 35 - upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+  ---
+  duration_ms: 793.784208
+  type: 'test'
+  ...
+# Subtest: upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+ok 36 - upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+  ---
+  duration_ms: 806.8605
+  type: 'test'
+  ...
+# Subtest: upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+ok 37 - upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+  ---
+  duration_ms: 800.005792
+  type: 'test'
+  ...
+# Subtest: upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+ok 38 - upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+  ---
+  duration_ms: 818.205
+  type: 'test'
+  ...
+# Subtest: upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+ok 39 - upgrade rejects overlapping, nested, relative or noncanonical explicit paths
+  ---
+  duration_ms: 798.723458
+  type: 'test'
+  ...
+# Subtest: an existing workspace ancestor prevents a nested upgrade destination even when the destination leaf is new
+ok 40 - an existing workspace ancestor prevents a nested upgrade destination even when the destination leaf is new
+  ---
+  duration_ms: 790.558208
+  type: 'test'
+  ...
+# Subtest: restored41 and already ordinary42 inputs remain separate profiles and are never relabeled as ordinary42
+ok 41 - restored41 and already ordinary42 inputs remain separate profiles and are never relabeled as ordinary42
+  ---
+  duration_ms: 1375.522458
+  type: 'test'
+  ...
+# Subtest: a source with a new pending task beside acknowledged history is refused without resuming or rewriting either task
+ok 42 - a source with a new pending task beside acknowledged history is refused without resuming or rewriting either task
+  ---
+  duration_ms: 830.019375
+  type: 'test'
+  ...
+# Subtest: ordinary42 exposes the copied project and new opacity edits while preserved acknowledged tasks do not reenter execution
+ok 43 - ordinary42 exposes the copied project and new opacity edits while preserved acknowledged tasks do not reenter execution
+  ---
+  duration_ms: 1324.486625
+  type: 'test'
+  ...
+# Subtest: upgrade refuses missing backup evidence without repairing it
+ok 44 - upgrade refuses missing backup evidence without repairing it
+  ---
+  duration_ms: 798.566
+  type: 'test'
+  ...
+# Subtest: upgrade refuses tampered-manifest backup evidence without repairing it
+ok 45 - upgrade refuses tampered-manifest backup evidence without repairing it
+  ---
+  duration_ms: 826.402416
+  type: 'test'
+  ...
+# Subtest: upgrade refuses tampered-database backup evidence without repairing it
+ok 46 - upgrade refuses tampered-database backup evidence without repairing it
+  ---
+  duration_ms: 829.283917
+  type: 'test'
+  ...
+# Subtest: upgrade refuses tampered-media backup evidence without repairing it
+ok 47 - upgrade refuses tampered-media backup evidence without repairing it
+  ---
+  duration_ms: 828.919291
+  type: 'test'
+  ...
+# Subtest: injected afterDatabase failure removes only this unpublished target and preserves source and backup
+ok 48 - injected afterDatabase failure removes only this unpublished target and preserves source and backup
+  ---
+  duration_ms: 903.443584
+  type: 'test'
+  ...
+# Subtest: injected beforePublish failure removes only this unpublished target and preserves source and backup
+ok 49 - injected beforePublish failure removes only this unpublished target and preserves source and backup
+  ---
+  duration_ms: 956.40825
+  type: 'test'
+  ...
+# Subtest: a fault after the atomic publication is uncertain and preserves the ordinary42 database rather than rolling back
+ok 50 - a fault after the atomic publication is uncertain and preserves the ordinary42 database rather than rolling back
+  ---
+  duration_ms: 952.395458
+  type: 'test'
+  ...
+# Subtest: cancellation beforeStart cannot publish42 or mutate the original workspace and archive
+ok 51 - cancellation beforeStart cannot publish42 or mutate the original workspace and archive
+  ---
+  duration_ms: 801.288416
+  type: 'test'
+  ...
+# Subtest: cancellation afterDatabase cannot publish42 or mutate the original workspace and archive
+ok 52 - cancellation afterDatabase cannot publish42 or mutate the original workspace and archive
+  ---
+  duration_ms: 922.071167
+  type: 'test'
+  ...
+1..52
+# tests 52
+# suites 0
+# pass 52
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 46161.616416
+
+
+# File: tests/opacity-workspace-upgrade-faults.test.mjs
+TAP version 13
+# Subtest: synchronous afterValidation failure publishes nothing and removes only owned staging
+ok 1 - synchronous afterValidation failure publishes nothing and removes only owned staging
+  ---
+  duration_ms: 1085.634542
+  type: 'test'
+  ...
+# Subtest: synchronous afterDatabase failure publishes nothing and removes only owned staging
+ok 2 - synchronous afterDatabase failure publishes nothing and removes only owned staging
+  ---
+  duration_ms: 1056.34525
+  type: 'test'
+  ...
+# Subtest: synchronous afterMedia failure publishes nothing and removes only owned staging
+ok 3 - synchronous afterMedia failure publishes nothing and removes only owned staging
+  ---
+  duration_ms: 942.6245
+  type: 'test'
+  ...
+# Subtest: synchronous beforePublish failure publishes nothing and removes only owned staging
+ok 4 - synchronous beforePublish failure publishes nothing and removes only owned staging
+  ---
+  duration_ms: 970.762375
+  type: 'test'
+  ...
+# Subtest: an afterPublish failure preserves the published42 bytes and exact uncertainty proof
+ok 5 - an afterPublish failure preserves the published42 bytes and exact uncertainty proof
+  ---
+  duration_ms: 989.960708
+  type: 'test'
+  ...
+# Subtest: afterValidation database same-inode-change is detected before publication and the external change is preserved
+ok 6 - afterValidation database same-inode-change is detected before publication and the external change is preserved
+  ---
+  duration_ms: 883.843791
+  type: 'test'
+  ...
+# Subtest: afterValidation database same-bytes-new-inode is detected before publication and the external change is preserved
+ok 7 - afterValidation database same-bytes-new-inode is detected before publication and the external change is preserved
+  ---
+  duration_ms: 879.980208
+  type: 'test'
+  ...
+# Subtest: afterValidation media same-inode-change is detected before publication and the external change is preserved
+ok 8 - afterValidation media same-inode-change is detected before publication and the external change is preserved
+  ---
+  duration_ms: 868.669
+  type: 'test'
+  ...
+# Subtest: afterValidation media same-bytes-new-inode is detected before publication and the external change is preserved
+ok 9 - afterValidation media same-bytes-new-inode is detected before publication and the external change is preserved
+  ---
+  duration_ms: 868.889625
+  type: 'test'
+  ...
+# Subtest: afterValidation companion same-inode-change is detected before publication and the external change is preserved
+ok 10 - afterValidation companion same-inode-change is detected before publication and the external change is preserved
+  ---
+  duration_ms: 880.894166
+  type: 'test'
+  ...
+# Subtest: afterValidation companion same-bytes-new-inode is detected before publication and the external change is preserved
+ok 11 - afterValidation companion same-bytes-new-inode is detected before publication and the external change is preserved
+  ---
+  duration_ms: 876.280208
+  type: 'test'
+  ...
+# Subtest: beforePublish database same-inode-change is detected before publication and the external change is preserved
+ok 12 - beforePublish database same-inode-change is detected before publication and the external change is preserved
+  ---
+  duration_ms: 963.120416
+  type: 'test'
+  ...
+# Subtest: beforePublish database same-bytes-new-inode is detected before publication and the external change is preserved
+ok 13 - beforePublish database same-bytes-new-inode is detected before publication and the external change is preserved
+  ---
+  duration_ms: 964.211292
+  type: 'test'
+  ...
+# Subtest: beforePublish media same-inode-change is detected before publication and the external change is preserved
+ok 14 - beforePublish media same-inode-change is detected before publication and the external change is preserved
+  ---
+  duration_ms: 961.580625
+  type: 'test'
+  ...
+# Subtest: beforePublish media same-bytes-new-inode is detected before publication and the external change is preserved
+ok 15 - beforePublish media same-bytes-new-inode is detected before publication and the external change is preserved
+  ---
+  duration_ms: 952.706583
+  type: 'test'
+  ...
+# Subtest: beforePublish companion same-inode-change is detected before publication and the external change is preserved
+ok 16 - beforePublish companion same-inode-change is detected before publication and the external change is preserved
+  ---
+  duration_ms: 965.694208
+  type: 'test'
+  ...
+# Subtest: beforePublish companion same-bytes-new-inode is detected before publication and the external change is preserved
+ok 17 - beforePublish companion same-bytes-new-inode is detected before publication and the external change is preserved
+  ---
+  duration_ms: 960.61425
+  type: 'test'
+  ...
+# Subtest: afterValidation detects previously missing local-drafts-v1.json appearing without migrating or deleting it
+ok 18 - afterValidation detects previously missing local-drafts-v1.json appearing without migrating or deleting it
+  ---
+  duration_ms: 878.90125
+  type: 'test'
+  ...
+# Subtest: afterValidation detects previously missing local-delivery-v1.json appearing without migrating or deleting it
+ok 19 - afterValidation detects previously missing local-delivery-v1.json appearing without migrating or deleting it
+  ---
+  duration_ms: 874.309792
+  type: 'test'
+  ...
+# Subtest: afterValidation detects previously missing local-shot-text-v1.json appearing without migrating or deleting it
+ok 20 - afterValidation detects previously missing local-shot-text-v1.json appearing without migrating or deleting it
+  ---
+  duration_ms: 872.832083
+  type: 'test'
+  ...
+# Subtest: afterValidation detects previously missing local-drafts-v3.json appearing without migrating or deleting it
+ok 21 - afterValidation detects previously missing local-drafts-v3.json appearing without migrating or deleting it
+  ---
+  duration_ms: 863.0135
+  type: 'test'
+  ...
+# Subtest: afterValidation detects previously missing local-drafts-restored43-v1.json appearing without migrating or deleting it
+ok 22 - afterValidation detects previously missing local-drafts-restored43-v1.json appearing without migrating or deleting it
+  ---
+  duration_ms: 870.339042
+  type: 'test'
+  ...
+# Subtest: beforePublish detects previously missing local-drafts-v1.json appearing without migrating or deleting it
+ok 23 - beforePublish detects previously missing local-drafts-v1.json appearing without migrating or deleting it
+  ---
+  duration_ms: 973.76
+  type: 'test'
+  ...
+# Subtest: beforePublish detects previously missing local-delivery-v1.json appearing without migrating or deleting it
+ok 24 - beforePublish detects previously missing local-delivery-v1.json appearing without migrating or deleting it
+  ---
+  duration_ms: 1263.418792
+  type: 'test'
+  ...
+# Subtest: beforePublish detects previously missing local-shot-text-v1.json appearing without migrating or deleting it
+ok 25 - beforePublish detects previously missing local-shot-text-v1.json appearing without migrating or deleting it
+  ---
+  duration_ms: 1261.14875
+  type: 'test'
+  ...
+# Subtest: beforePublish detects previously missing local-drafts-v3.json appearing without migrating or deleting it
+ok 26 - beforePublish detects previously missing local-drafts-v3.json appearing without migrating or deleting it
+  ---
+  duration_ms: 1254.577417
+  type: 'test'
+  ...
+# Subtest: beforePublish detects previously missing local-drafts-restored43-v1.json appearing without migrating or deleting it
+ok 27 - beforePublish detects previously missing local-drafts-restored43-v1.json appearing without migrating or deleting it
+  ---
+  duration_ms: 1390.178
+  type: 'test'
+  ...
+# Subtest: a replaced target staging database is retained while cleanup refuses the foreign inode
+ok 28 - a replaced target staging database is retained while cleanup refuses the foreign inode
+  ---
+  duration_ms: 906.76275
+  type: 'test'
+  ...
+# Subtest: cleanup retains an unknown target file and marks incomplete removal instead of deleting foreign contents
+ok 29 - cleanup retains an unknown target file and marks incomplete removal instead of deleting foreign contents
+  ---
+  duration_ms: 939.596625
+  type: 'test'
+  ...
+# Subtest: the final publication fence refuses an unknown target file appearing at beforePublish
+ok 30 - the final publication fence refuses an unknown target file appearing at beforePublish
+  ---
+  duration_ms: 955.650291
+  type: 'test'
+  ...
+# Subtest: the final fence refuses a same-bytes replacement of the target candidate inode
+ok 31 - the final fence refuses a same-bytes replacement of the target candidate inode
+  ---
+  duration_ms: 959.754292
+  type: 'test'
+  ...
+# Subtest: the final fence refuses a same-bytes replacement of the target media inode
+ok 32 - the final fence refuses a same-bytes replacement of the target media inode
+  ---
+  duration_ms: 967.493542
+  type: 'test'
+  ...
+# Subtest: the final fence refuses a same-bytes replacement of the target proof inode
+ok 33 - the final fence refuses a same-bytes replacement of the target proof inode
+  ---
+  duration_ms: 958.260208
+  type: 'test'
+  ...
+# Subtest: a competing destination lease is retained after the owned lease is revoked
+ok 34 - a competing destination lease is retained after the owned lease is revoked
+  ---
+  duration_ms: 901.66875
+  type: 'test'
+  ...
+# Subtest: a replaced destination root is retained without deleting files in the foreign directory
+ok 35 - a replaced destination root is retained without deleting files in the foreign directory
+  ---
+  duration_ms: 907.026583
+  type: 'test'
+  ...
+# Subtest: candidate fsync failure before publication removes verified owned staging and leaves source and archive intact
+ok 36 - candidate fsync failure before publication removes verified owned staging and leaves source and archive intact
+  ---
+  duration_ms: 948.90725
+  type: 'test'
+  ...
+# Subtest: proof-file fsync failure before publication removes the file created by this operation
+ok 37 - proof-file fsync failure before publication removes the file created by this operation
+  ---
+  duration_ms: 915.384625
+  type: 'test'
+  ...
+# Subtest: publication directory fsync failure retains42 with uncertainty proof and no automatic retry
+ok 38 - publication directory fsync failure retains42 with uncertainty proof and no automatic retry
+  ---
+  duration_ms: 944.0165
+  type: 'test'
+  ...
+# Subtest: publication link reports EIO before linking remains uncertain and preserves evidence
+ok 39 - publication link reports EIO before linking remains uncertain and preserves evidence
+  ---
+  duration_ms: 943.427375
+  type: 'test'
+  ...
+# Subtest: publication link succeeds then reports failure remains uncertain and preserves evidence
+ok 40 - publication link succeeds then reports failure remains uncertain and preserves evidence
+  ---
+  duration_ms: 940.387
+  type: 'test'
+  ...
+# Subtest: no-clobber EEXIST retains the competing canonical file and never overwrites or unlinks it
+ok 41 - no-clobber EEXIST retains the competing canonical file and never overwrites or unlinks it
+  ---
+  duration_ms: 954.741375
+  type: 'test'
+  ...
+# Subtest: publication unlink failure leaves both same-inode paths and reports uncertainty without rollback
+ok 42 - publication unlink failure leaves both same-inode paths and reports uncertainty without rollback
+  ---
+  duration_ms: 959.74675
+  type: 'test'
+  ...
+# Subtest: already aborted input creates no destination and does not touch the source or archive
+ok 43 - already aborted input creates no destination and does not touch the source or archive
+  ---
+  duration_ms: 815.952167
+  type: 'test'
+  ...
+# Subtest: cancellation at afterValidation stops before publication and removes owned staging
+ok 44 - cancellation at afterValidation stops before publication and removes owned staging
+  ---
+  duration_ms: 874.952208
+  type: 'test'
+  ...
+# Subtest: cancellation at afterDatabase stops before publication and removes owned staging
+ok 45 - cancellation at afterDatabase stops before publication and removes owned staging
+  ---
+  duration_ms: 880.566208
+  type: 'test'
+  ...
+# Subtest: cancellation at afterMedia stops before publication and removes owned staging
+ok 46 - cancellation at afterMedia stops before publication and removes owned staging
+  ---
+  duration_ms: 906.691708
+  type: 'test'
+  ...
+# Subtest: cancellation at beforePublish stops before publication and removes owned staging
+ok 47 - cancellation at beforePublish stops before publication and removes owned staging
+  ---
+  duration_ms: 929.622333
+  type: 'test'
+  ...
+# Subtest: cancellation during streamed media copying closes and removes the partially copied owned file
+ok 48 - cancellation during streamed media copying closes and removes the partially copied owned file
+  ---
+  duration_ms: 910.965375
+  type: 'test'
+  ...
+# Subtest: cancellation after durable publication does not roll back the completed target
+ok 49 - cancellation after durable publication does not roll back the completed target
+  ---
+  duration_ms: 938.734083
+  type: 'test'
+  ...
+1..49
+# tests 49
+# suites 0
+# pass 49
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 47278.803125
+
+
+# File: tests/workspace-backup-readiness.test.mjs
+TAP version 13
+# Subtest: shared inspection reads empty workspace without constructing data, filesystem work or model authority
+ok 1 - shared inspection reads empty workspace without constructing data, filesystem work or model authority
+  ---
+  duration_ms: 910.151709
+  type: 'test'
+  ...
+# Subtest: summary preserves unknown tasks and excludes all stored text, identities, paths and provider IDs
+ok 2 - summary preserves unknown tasks and excludes all stored text, identities, paths and provider IDs
+  ---
+  duration_ms: 579.907541
+  type: 'test'
+  ...
+# Subtest: malformed or oversized JSON is unknown, never clean zero or parsed user content
+ok 3 - malformed or oversized JSON is unknown, never clean zero or parsed user content
+  ---
+  duration_ms: 604.189375
+  type: 'test'
+  ...
+# Subtest: row cap applies before materialization, keeps unknown count and leaves caller transaction intact
+ok 4 - row cap applies before materialization, keeps unknown count and leaves caller transaction intact
+  ---
+  duration_ms: 608.948
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3035.792791
+
+
+# File: tests/workspace-restore-backup-boundary.test.mjs
+TAP version 13
+# Subtest: restored backup capture refuses before output creation and preserves the whole source
+ok 1 - restored backup capture refuses before output creation and preserves the whole source
+  ---
+  duration_ms: 967.06375
+  type: 'test'
+  ...
+# Subtest: partial restore evidence cannot pass backup capture as an ordinary workspace
+ok 2 - partial restore evidence cannot pass backup capture as an ordinary workspace
+  ---
+  duration_ms: 596.139667
+  type: 'test'
+  ...
+# Subtest: frozen ordinary40 capture retains unrelated unknown data without granting current-schema restoration
+ok 3 - frozen ordinary40 capture retains unrelated unknown data without granting current-schema restoration
+  ---
+  duration_ms: 204.929542
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2027.867625
+
+
+# File: tests/workspace-schema38.test.mjs
+TAP version 13
+# Subtest: 36 to38 is marker-only, preserves raw rows and is idempotent
+ok 1 - 36 to38 is marker-only, preserves raw rows and is idempotent
+  ---
+  duration_ms: 283.279417
+  type: 'test'
+  ...
+# Subtest: 38 restores into fixed39 and does not widen old restored37
+ok 2 - 38 restores into fixed39 and does not widen old restored37
+  ---
+  duration_ms: 433.073458
+  type: 'test'
+  ...
+# Subtest: old profile rejects null evidence in timelines
+ok 3 - old profile rejects null evidence in timelines
+  ---
+  duration_ms: 0.366916
+  type: 'test'
+  ...
+# Subtest: old profile rejects null evidence in timeline_history
+ok 4 - old profile rejects null evidence in timeline_history
+  ---
+  duration_ms: 0.258709
+  type: 'test'
+  ...
+# Subtest: old profile rejects null evidence in timeline_requests
+ok 5 - old profile rejects null evidence in timeline_requests
+  ---
+  duration_ms: 0.25425
+  type: 'test'
+  ...
+# Subtest: old profile rejects null evidence in edit_tasks
+ok 6 - old profile rejects null evidence in edit_tasks
+  ---
+  duration_ms: 0.210458
+  type: 'test'
+  ...
+# Subtest: old profile rejects null evidence in exports
+ok 7 - old profile rejects null evidence in exports
+  ---
+  duration_ms: 0.183041
+  type: 'test'
+  ...
+# Subtest: old profile rejects null evidence in workspace_restore_timeline_history
+ok 8 - old profile rejects null evidence in workspace_restore_timeline_history
+  ---
+  duration_ms: 0.188
+  type: 'test'
+  ...
+# Subtest: old profile rejects null evidence in agent_edit_proposals
+ok 9 - old profile rejects null evidence in agent_edit_proposals
+  ---
+  duration_ms: 0.191167
+  type: 'test'
+  ...
+# Subtest: old profile rejects escaped evidence in timelines
+ok 10 - old profile rejects escaped evidence in timelines
+  ---
+  duration_ms: 0.189958
+  type: 'test'
+  ...
+# Subtest: old profile rejects escaped evidence in timeline_history
+ok 11 - old profile rejects escaped evidence in timeline_history
+  ---
+  duration_ms: 0.157708
+  type: 'test'
+  ...
+# Subtest: old profile rejects escaped evidence in timeline_requests
+ok 12 - old profile rejects escaped evidence in timeline_requests
+  ---
+  duration_ms: 0.162041
+  type: 'test'
+  ...
+# Subtest: old profile rejects escaped evidence in edit_tasks
+ok 13 - old profile rejects escaped evidence in edit_tasks
+  ---
+  duration_ms: 0.148667
+  type: 'test'
+  ...
+# Subtest: old profile rejects escaped evidence in exports
+ok 14 - old profile rejects escaped evidence in exports
+  ---
+  duration_ms: 0.147917
+  type: 'test'
+  ...
+# Subtest: old profile rejects escaped evidence in workspace_restore_timeline_history
+ok 15 - old profile rejects escaped evidence in workspace_restore_timeline_history
+  ---
+  duration_ms: 0.152
+  type: 'test'
+  ...
+# Subtest: old profile rejects escaped evidence in agent_edit_proposals
+ok 16 - old profile rejects escaped evidence in agent_edit_proposals
+  ---
+  duration_ms: 0.140583
+  type: 'test'
+  ...
+# Subtest: old profile rejects duplicate evidence in timelines
+ok 17 - old profile rejects duplicate evidence in timelines
+  ---
+  duration_ms: 0.147083
+  type: 'test'
+  ...
+# Subtest: old profile rejects duplicate evidence in timeline_history
+ok 18 - old profile rejects duplicate evidence in timeline_history
+  ---
+  duration_ms: 0.137
+  type: 'test'
+  ...
+# Subtest: old profile rejects duplicate evidence in timeline_requests
+ok 19 - old profile rejects duplicate evidence in timeline_requests
+  ---
+  duration_ms: 0.14275
+  type: 'test'
+  ...
+# Subtest: old profile rejects duplicate evidence in edit_tasks
+ok 20 - old profile rejects duplicate evidence in edit_tasks
+  ---
+  duration_ms: 0.137208
+  type: 'test'
+  ...
+# Subtest: old profile rejects duplicate evidence in exports
+ok 21 - old profile rejects duplicate evidence in exports
+  ---
+  duration_ms: 0.131583
+  type: 'test'
+  ...
+# Subtest: old profile rejects duplicate evidence in workspace_restore_timeline_history
+ok 22 - old profile rejects duplicate evidence in workspace_restore_timeline_history
+  ---
+  duration_ms: 0.143667
+  type: 'test'
+  ...
+# Subtest: old profile rejects duplicate evidence in agent_edit_proposals
+ok 23 - old profile rejects duplicate evidence in agent_edit_proposals
+  ---
+  duration_ms: 0.376
+  type: 'test'
+  ...
+# Subtest: old profile rejects profile evidence in timelines
+ok 24 - old profile rejects profile evidence in timelines
+  ---
+  duration_ms: 0.196625
+  type: 'test'
+  ...
+# Subtest: old profile rejects profile evidence in timeline_history
+ok 25 - old profile rejects profile evidence in timeline_history
+  ---
+  duration_ms: 0.144
+  type: 'test'
+  ...
+# Subtest: old profile rejects profile evidence in timeline_requests
+ok 26 - old profile rejects profile evidence in timeline_requests
+  ---
+  duration_ms: 0.135292
+  type: 'test'
+  ...
+# Subtest: old profile rejects profile evidence in edit_tasks
+ok 27 - old profile rejects profile evidence in edit_tasks
+  ---
+  duration_ms: 0.139417
+  type: 'test'
+  ...
+# Subtest: old profile rejects profile evidence in exports
+ok 28 - old profile rejects profile evidence in exports
+  ---
+  duration_ms: 0.148209
+  type: 'test'
+  ...
+# Subtest: old profile rejects profile evidence in workspace_restore_timeline_history
+ok 29 - old profile rejects profile evidence in workspace_restore_timeline_history
+  ---
+  duration_ms: 0.130375
+  type: 'test'
+  ...
+# Subtest: old profile rejects profile evidence in agent_edit_proposals
+ok 30 - old profile rejects profile evidence in agent_edit_proposals
+  ---
+  duration_ms: 0.115417
+  type: 'test'
+  ...
+# Subtest: old profile rejects malformed evidence in timelines
+ok 31 - old profile rejects malformed evidence in timelines
+  ---
+  duration_ms: 0.184291
+  type: 'test'
+  ...
+# Subtest: old profile rejects malformed evidence in timeline_history
+ok 32 - old profile rejects malformed evidence in timeline_history
+  ---
+  duration_ms: 0.142459
+  type: 'test'
+  ...
+# Subtest: old profile rejects malformed evidence in timeline_requests
+ok 33 - old profile rejects malformed evidence in timeline_requests
+  ---
+  duration_ms: 0.155042
+  type: 'test'
+  ...
+# Subtest: old profile rejects malformed evidence in edit_tasks
+ok 34 - old profile rejects malformed evidence in edit_tasks
+  ---
+  duration_ms: 0.131125
+  type: 'test'
+  ...
+# Subtest: old profile rejects malformed evidence in exports
+ok 35 - old profile rejects malformed evidence in exports
+  ---
+  duration_ms: 0.115375
+  type: 'test'
+  ...
+# Subtest: old profile rejects malformed evidence in workspace_restore_timeline_history
+ok 36 - old profile rejects malformed evidence in workspace_restore_timeline_history
+  ---
+  duration_ms: 0.107542
+  type: 'test'
+  ...
+# Subtest: old profile rejects malformed evidence in agent_edit_proposals
+ok 37 - old profile rejects malformed evidence in agent_edit_proposals
+  ---
+  duration_ms: 0.105583
+  type: 'test'
+  ...
+# Subtest: new profile rejects duplicate role keys and bounded malformed/oversize cells
+ok 38 - new profile rejects duplicate role keys and bounded malformed/oversize cells
+  ---
+  duration_ms: 2.196208
+  type: 'test'
+  ...
+# Subtest: new profile admits silent video and audio classifications but rejects image explicit clear
+ok 39 - new profile admits silent video and audio classifications but rejects image explicit clear
+  ---
+  duration_ms: 0.613875
+  type: 'test'
+  ...
+# Subtest: role-bearing exports require exact declaration and role-free exports forbid one
+ok 40 - role-bearing exports require exact declaration and role-free exports forbid one
+  ---
+  duration_ms: 0.502292
+  type: 'test'
+  ...
+# Subtest: malformed unrelated legacy payloads are left to historical readers
+ok 41 - malformed unrelated legacy payloads are left to historical readers
+  ---
+  duration_ms: 0.145375
+  type: 'test'
+  ...
+# Subtest: old profiles reject role error proof even when task input has no role
+ok 42 - old profiles reject role error proof even when task input has no role
+  ---
+  duration_ms: 0.155458
+  type: 'test'
+  ...
+# Subtest: 36 to38 rejects smuggled role evidence before marker writes
+ok 43 - 36 to38 rejects smuggled role evidence before marker writes
+  ---
+  duration_ms: 99.981917
+  type: 'test'
+  ...
+# Subtest: marker-only38 refuses missing immutable_timeline_responses without repairs or marker writes
+ok 44 - marker-only38 refuses missing immutable_timeline_responses without repairs or marker writes
+  ---
+  duration_ms: 99.907125
+  type: 'test'
+  ...
+# Subtest: marker-only38 refuses missing immutable_timeline_history without repairs or marker writes
+ok 45 - marker-only38 refuses missing immutable_timeline_history without repairs or marker writes
+  ---
+  duration_ms: 101.208833
+  type: 'test'
+  ...
+# Subtest: marker-only38 refuses missing immutable_timeline_render_snapshot without repairs or marker writes
+ok 46 - marker-only38 refuses missing immutable_timeline_render_snapshot without repairs or marker writes
+  ---
+  duration_ms: 99.84275
+  type: 'test'
+  ...
+# Subtest: marker-only38 refuses missing agent_chat_one_active without repairs or marker writes
+ok 47 - marker-only38 refuses missing agent_chat_one_active without repairs or marker writes
+  ---
+  duration_ms: 100.940334
+  type: 'test'
+  ...
+# Subtest: restored37 refuses role-bearing edit-task preparation without reserving an intent
+ok 48 - restored37 refuses role-bearing edit-task preparation without reserving an intent
+  ---
+  duration_ms: 192.077625
+  type: 'test'
+  ...
+# Subtest: actual backup38 restores role timelines, history and set/clear receipts exactly into editable39
+ok 49 - actual backup38 restores role timelines, history and set/clear receipts exactly into editable39
+  ---
+  duration_ms: 1168.159042
+  type: 'test'
+  ...
+1..49
+# tests 49
+# suites 0
+# pass 49
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2926.602917
+
+
+# File: tests/timeline-volume-envelope-durable-ingress.test.mjs
+TAP version 13
+# Subtest: frozen old38 admission refuses both typed paths and explicit null before any durable insert
+ok 1 - frozen old38 admission refuses both typed paths and explicit null before any durable insert
+  ---
+  duration_ms: 280.84725
+  type: 'test'
+  ...
+# Subtest: frozen ordinary40 still admits valid envelope evidence without acquiring execution authority
+ok 2 - frozen ordinary40 still admits valid envelope evidence without acquiring execution authority
+  ---
+  duration_ms: 271.275333
+  type: 'test'
+  ...
+# Subtest: outer prepare and nested point capture execute zero getter/proxy traps
+ok 3 - outer prepare and nested point capture execute zero getter/proxy traps
+  ---
+  duration_ms: 584.398958
+  type: 'test'
+  ...
+# Subtest: typed arrays do not relax unrelated paths, malformed Unicode or the 128-node/depth8 budgets
+ok 4 - typed arrays do not relax unrelated paths, malformed Unicode or the 128-node/depth8 budgets
+  ---
+  duration_ms: 574.913875
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 coordinator captures both exact points paths and production hashes without dispatch
+ok 5 - owned ordinary48 coordinator captures both exact points paths and production hashes without dispatch
+  ---
+  duration_ms: 1540.740709
+  type: 'test'
+  ...
+# Subtest: real live coordinator construction admits validated48 without insertion or dispatch
+ok 6 - real live coordinator construction admits validated48 without insertion or dispatch
+  ---
+  duration_ms: 577.043791
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4158.016792
+
+
+# File: tests/timeline-volume-envelope-owned-startup.test.mjs
+TAP version 13
+# Subtest: owned ordinary48 in preset 15/60 replaces the curve through durable Save, history and reopen
+ok 1 - owned ordinary48 in preset 15/60 replaces the curve through durable Save, history and reopen
+  ---
+  duration_ms: 2028.358291
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 in preset 60/60 replaces the curve through durable Save, history and reopen
+ok 2 - owned ordinary48 in preset 60/60 replaces the curve through durable Save, history and reopen
+  ---
+  duration_ms: 1375.56875
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 out preset 15/60 replaces the curve through durable Save, history and reopen
+ok 3 - owned ordinary48 out preset 15/60 replaces the curve through durable Save, history and reopen
+  ---
+  duration_ms: 1361.965792
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 out preset 60/60 replaces the curve through durable Save, history and reopen
+ok 4 - owned ordinary48 out preset 60/60 replaces the curve through durable Save, history and reopen
+  ---
+  duration_ms: 1358.415625
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 manual ducking four-point interval saves exact anchors and preserves source identity through history and reopen
+ok 5 - owned ordinary48 manual ducking four-point interval saves exact anchors and preserves source identity through history and reopen
+  ---
+  duration_ms: 1501.370375
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 manual ducking triangle with a shared ramp anchor saves exact anchors and preserves source identity through history and reopen
+ok 6 - owned ordinary48 manual ducking triangle with a shared ramp anchor saves exact anchors and preserves source identity through history and reopen
+  ---
+  duration_ms: 1488.725416
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 manual ducking full-range zero-ramp attenuation saves exact anchors and preserves source identity through history and reopen
+ok 7 - owned ordinary48 manual ducking full-range zero-ramp attenuation saves exact anchors and preserves source identity through history and reopen
+  ---
+  duration_ms: 1496.117083
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 manual ducking one-frame full-range attack saves exact anchors and preserves source identity through history and reopen
+ok 8 - owned ordinary48 manual ducking one-frame full-range attack saves exact anchors and preserves source identity through history and reopen
+  ---
+  duration_ms: 1488.009166
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 starts, durably prepares/applies, replays after Undo and reopens exact envelope receipts
+ok 9 - owned ordinary48 starts, durably prepares/applies, replays after Undo and reopens exact envelope receipts
+  ---
+  duration_ms: 1100.3275
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 source replacement, atomic shrink/clear, split and history preserve exact anchors
+ok 10 - owned ordinary48 source replacement, atomic shrink/clear, split and history preserve exact anchors
+  ---
+  duration_ms: 1305.313542
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 durable invalid source is terminal not_applied with no domain writes
+ok 11 - owned ordinary48 durable invalid source is terminal not_applied with no domain writes
+  ---
+  duration_ms: 654.045542
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 afterClaim interruption recovers without dispatch and rejects stale instance
+ok 12 - owned ordinary48 afterClaim interruption recovers without dispatch and rejects stale instance
+  ---
+  duration_ms: 815.817292
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 afterBusinessCommit interruption recovers without dispatch and rejects stale instance
+ok 13 - owned ordinary48 afterBusinessCommit interruption recovers without dispatch and rejects stale instance
+  ---
+  duration_ms: 831.956792
+  type: 'test'
+  ...
+# Subtest: owned restored49 keeps captured evidence immutable and admits envelope writes only in the current origin/epoch
+ok 14 - owned restored49 keeps captured evidence immutable and admits envelope writes only in the current origin/epoch
+  ---
+  duration_ms: 2493.569959
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 durable updates distinguish absent/null/value and retain inherited role/colour fields
+ok 15 - owned ordinary48 durable updates distinguish absent/null/value and retain inherited role/colour fields
+  ---
+  duration_ms: 1430.934
+  type: 'test'
+  ...
+# Subtest: owned restored49 current-epoch afterClaim recovery preserves captured holds and rejects stale instances
+ok 16 - owned restored49 current-epoch afterClaim recovery preserves captured holds and rejects stale instances
+  ---
+  duration_ms: 1498.170584
+  type: 'test'
+  ...
+# Subtest: owned restored49 current-epoch afterBusinessCommit recovery preserves captured holds and rejects stale instances
+ok 17 - owned restored49 current-epoch afterBusinessCommit recovery preserves captured holds and rejects stale instances
+  ---
+  duration_ms: 1411.66425
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 complete envelope budget fails atomically before history/redo/receipt/task writes
+ok 18 - owned ordinary48 complete envelope budget fails atomically before history/redo/receipt/task writes
+  ---
+  duration_ms: 1295.396
+  type: 'test'
+  ...
+# Subtest: owned restored49 complete envelope budget fails atomically before history/redo/receipt/task writes
+ok 19 - owned restored49 complete envelope budget fails atomically before history/redo/receipt/task writes
+  ---
+  duration_ms: 1715.802
+  type: 'test'
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 27031.468042
+
+
+# File: tests/opacity-candidate-application-services.test.mjs
+TAP version 13
+# Subtest: application grant requires a newly created exact42 store and cannot be reconstituted
+ok 1 - application grant requires a newly created exact42 store and cannot be reconstituted
+  ---
+  duration_ms: 603.513792
+  type: 'test'
+  ...
+# Subtest: fresh42 actual services create/hydrate project, import managed bytes, add clip, save opacity and undo/redo
+ok 2 - fresh42 actual services create/hydrate project, import managed bytes, add clip, save opacity and undo/redo
+  ---
+  duration_ms: 716.420291
+  type: 'test'
+  ...
+# Subtest: a pre-aborted application call cannot create a project or initialize a missing timeline
+ok 3 - a pre-aborted application call cannot create a project or initialize a missing timeline
+  ---
+  duration_ms: 171.438375
+  type: 'test'
+  ...
+# Subtest: shared ordinary48 importer retains successful bytes/type rejection and cleanup without candidate grant
+ok 4 - shared ordinary48 importer retains successful bytes/type rejection and cleanup without candidate grant
+  ---
+  duration_ms: 570.01875
+  type: 'test'
+  ...
+# Subtest: candidate import refuses project identity replacement before publication and removes its owned source
+ok 5 - candidate import refuses project identity replacement before publication and removes its owned source
+  ---
+  duration_ms: 209.885375
+  type: 'test'
+  ...
+# Subtest: candidate source replacement is refused without deleting another inode
+ok 6 - candidate source replacement is refused without deleting another inode
+  ---
+  duration_ms: 206.6275
+  type: 'test'
+  ...
+# Subtest: candidate drain waits for its live import and propagates its cancellation failure
+ok 7 - candidate drain waits for its live import and propagates its cancellation failure
+  ---
+  duration_ms: 201.429417
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3009.620083
+
+
+# File: tests/opacity-candidate-transactions.test.mjs
+TAP version 13
+# Subtest: actual42 prepare and execute commit exact opacity while preserving volume, role and colour
+ok 1 - actual42 prepare and execute commit exact opacity while preserving volume, role and colour
+  ---
+  duration_ms: 771.979792
+  type: 'test'
+  ...
+# Subtest: 42 durable replay, reopen, undo/redo and compound updates preserve exact fields and reject shrink atomically
+ok 2 - 42 durable replay, reopen, undo/redo and compound updates preserve exact fields and reject shrink atomically
+  ---
+  duration_ms: 1363.984375
+  type: 'test'
+  ...
+# Subtest: a real receipt INSERT followed by failure rolls back timeline, redo replacement, history and cursor before exact retry
+ok 3 - a real receipt INSERT followed by failure rolls back timeline, redo replacement, history and cursor before exact retry
+  ---
+  duration_ms: 606.696834
+  type: 'test'
+  ...
+# Subtest: 43 requires exact origin, holds captured tasks, and reopens after fresh update/undo/redo with frozen evidence intact
+ok 4 - 43 requires exact origin, holds captured tasks, and reopens after fresh update/undo/redo with frozen evidence intact
+  ---
+  duration_ms: 1733.678542
+  type: 'test'
+  ...
+# Subtest: candidate task services must be privately bound to the same store, including duplicate domain IDs
+ok 5 - candidate task services must be privately bound to the same store, including duplicate domain IDs
+  ---
+  duration_ms: 410.818125
+  type: 'test'
+  ...
+# Subtest: revision digit growth refuses the final complete record above 262144 bytes with no partial history or receipt
+ok 6 - revision digit growth refuses the final complete record above 262144 bytes with no partial history or receipt
+  ---
+  duration_ms: 290.32
+  type: 'test'
+  ...
+# Subtest: default48 still refuses opacity and never upgrades to candidate42
+ok 7 - default48 still refuses opacity and never upgrades to candidate42
+  ---
+  duration_ms: 576.79975
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 6078.896875
+
+
+# File: tests/workspace-restore-media-fences.test.mjs
+TAP version 13
+# Subtest: expired synchronous fences preserve all restriction identities and spawn zero
+ok 1 - expired synchronous fences preserve all restriction identities and spawn zero
+  ---
+  duration_ms: 5.751042
+  type: 'test'
+  ...
+# Subtest: runtime supports synchronous beforeSpawn plus beforeEffect and rejects async guards before spawn
+ok 2 - runtime supports synchronous beforeSpawn plus beforeEffect and rejects async guards before spawn
+  ---
+  duration_ms: 214.176417
+  type: 'test'
+  ...
+# Subtest: queued probe checks a revoked caller after permit dequeue and spawns zero
+ok 3 - queued probe checks a revoked caller after permit dequeue and spawns zero
+  ---
+  duration_ms: 405.718791
+  type: 'test'
+  ...
+# Subtest: queued probeTimelineSource checks a revoked caller after permit dequeue and spawns zero
+ok 4 - queued probeTimelineSource checks a revoked caller after permit dequeue and spawns zero
+  ---
+  duration_ms: 144.156625
+  type: 'test'
+  ...
+# Subtest: timeline source revocation during hash await preserves its exact rejection and never probes
+ok 5 - timeline source revocation during hash await preserves its exact rejection and never probes
+  ---
+  duration_ms: 153.652125
+  type: 'test'
+  ...
+# Subtest: fileInfo and stitch reject expiry after input ffprobe without output or later ffmpeg
+ok 6 - fileInfo and stitch reject expiry after input ffprobe without output or later ffmpeg
+  ---
+  duration_ms: 257.545208
+  type: 'test'
+  ...
+# Subtest: capability expiry after listing does not launch proof or remap restriction into a result
+ok 7 - capability expiry after listing does not launch proof or remap restriction into a result
+  ---
+  duration_ms: 473.1015
+  type: 'test'
+  ...
+# Subtest: timeline expiry after child 1 prevents every later segment/concat/probe
+ok 8 - timeline expiry after child 1 prevents every later segment/concat/probe
+  ---
+  duration_ms: 144.396333
+  type: 'test'
+  ...
+# Subtest: timeline expiry after child 2 prevents every later segment/concat/probe
+ok 9 - timeline expiry after child 2 prevents every later segment/concat/probe
+  ---
+  duration_ms: 255.354167
+  type: 'test'
+  ...
+# Subtest: timeline expiry after child 3 prevents every later segment/concat/probe
+ok 10 - timeline expiry after child 3 prevents every later segment/concat/probe
+  ---
+  duration_ms: 368.095
+  type: 'test'
+  ...
+# Subtest: revoked timeline cleanup preserves replaced output inode and unknown nested children
+ok 11 - revoked timeline cleanup preserves replaced output inode and unknown nested children
+  ---
+  duration_ms: 144.955833
+  type: 'test'
+  ...
+# Subtest: timeline cleanup never follows a replaced work directory
+ok 12 - timeline cleanup never follows a replaced work directory
+  ---
+  duration_ms: 147.01325
+  type: 'test'
+  ...
+# Subtest: subtitle font copy rechecks before each write and removes only its owned partial file on expiry
+ok 13 - subtitle font copy rechecks before each write and removes only its owned partial file on expiry
+  ---
+  duration_ms: 3.736459
+  type: 'test'
+  ...
+# Subtest: subtitle measurement expiry never starts a media segment and cleans all known subtitle files
+ok 14 - subtitle measurement expiry never starts a media segment and cleans all known subtitle files
+  ---
+  duration_ms: 176.025292
+  type: 'test'
+  ...
+# Subtest: valid guarded subtitle render and omitted-callback legacy paths preserve their normal results
+ok 15 - valid guarded subtitle render and omitted-callback legacy paths preserve their normal results
+  ---
+  duration_ms: 1691.560583
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4849.798875
+
+
+# File: tests/agent-timeline-gain-media.test.mjs
+TAP version 13
+# Subtest: reviewed Agent gain reaches real queued media and undo restores decoded audio
+ok 1 - reviewed Agent gain reaches real queued media and undo restores decoded audio
+  ---
+  duration_ms: 16400.283792
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 16719.427417
+
+
+# File: tests/frame-consumption.test.mjs
+TAP version 13
+# Subtest: real extraction reaches first-frame reference, frozen subject versions and full timeline export while old bytes survive
+ok 1 - real extraction reaches first-frame reference, frozen subject versions and full timeline export while old bytes survive
+  ---
+  duration_ms: 2205.590917
+  type: 'test'
+  ...
+# Subtest: all explicit consumers reject malformed original ACK before any write
+ok 2 - all explicit consumers reject malformed original ACK before any write
+  ---
+  duration_ms: 817.529292
+  type: 'test'
+  ...
+# Subtest: all explicit consumers reject hidden mixed legacy owner before any write
+ok 3 - all explicit consumers reject hidden mixed legacy owner before any write
+  ---
+  duration_ms: 806.790125
+  type: 'test'
+  ...
+# Subtest: all explicit consumers reject reassigned frame owner before any write
+ok 4 - all explicit consumers reject reassigned frame owner before any write
+  ---
+  duration_ms: 786.272875
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4975.580666
+
+
+# File: tests/storyboard-multistream-media.test.mjs
+TAP version 13
+# Subtest: provider output passes real version publication but storyboard must use the identified later streams
+ok 1 - provider output passes real version publication but storyboard must use the identified later streams
+  ---
+  duration_ms: 1360.10075
+  type: 'test'
+  ...
+# Subtest: stitch preserves ordinary audio, silent video and video with an attached cover
+    # Subtest: ordinary
+    ok 1 - ordinary
+      ---
+      duration_ms: 288.85125
+      type: 'test'
+      ...
+    # Subtest: silent
+    ok 2 - silent
+      ---
+      duration_ms: 285.891042
+      type: 'test'
+      ...
+    # Subtest: covered
+    ok 3 - covered
+      ---
+      duration_ms: 284.016791
+      type: 'test'
+      ...
+    1..3
+ok 2 - stitch preserves ordinary audio, silent video and video with an attached cover
+  ---
+  duration_ms: 1051.124292
+  type: 'test'
+  ...
+# Subtest: stitch rejects an audio-only cover without creating an output
+ok 3 - stitch rejects an audio-only cover without creating an output
+  ---
+  duration_ms: 149.252042
+  type: 'test'
+  ...
+1..3
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2886.010584
+
+
+# File: tests/timeline-fades-media.test.mjs
+TAP version 13
+# Subtest: audio fades preserve exact segment PCM and real queued render envelopes
+    # Subtest: stereo-separated
+    ok 1 - stereo-separated
+      ---
+      duration_ms: 52.183167
+      type: 'test'
+      ...
+    # Subtest: mono-resampled-meeting
+    ok 2 - mono-resampled-meeting
+      ---
+      duration_ms: 53.6275
+      type: 'test'
+      ...
+    # Subtest: full-duration-fade-in
+    ok 3 - full-duration-fade-in
+      ---
+      duration_ms: 47.41725
+      type: 'test'
+      ...
+    # Subtest: full-duration-fade-out
+    ok 4 - full-duration-fade-out
+      ---
+      duration_ms: 46.135792
+      type: 'test'
+      ...
+    # Subtest: one-frame-ends
+    ok 5 - one-frame-ends
+      ---
+      duration_ms: 44.305208
+      type: 'test'
+      ...
+    # Subtest: HTTP snapshots and production MP4 audio
+    ok 6 - HTTP snapshots and production MP4 audio
+      ---
+      duration_ms: 3948.309583
+      type: 'test'
+      ...
+    1..6
+ok 1 - audio fades preserve exact segment PCM and real queued render envelopes
+  ---
+  duration_ms: 4198.405
+  type: 'test'
+  ...
+1..1
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4550.555084
+
+
+# File: tests/timeline-replacement-media.test.mjs
+TAP version 13
+# Subtest: explicit replacement keeps timing/fades and old exports while new media, preflight and waveform use the new source
+ok 1 - explicit replacement keeps timing/fades and old exports while new media, preflight and waveform use the new source
+  ---
+  duration_ms: 2932.802542
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3279.142959

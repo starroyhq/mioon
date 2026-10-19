@@ -1,0 +1,213 @@
+TAP version 13
+# Subtest: frozen table is exact trusted canonical bytes and output-referred sRGB, not source709
+ok 1 - frozen table is exact trusted canonical bytes and output-referred sRGB, not source709
+  ---
+  duration_ms: 2.64625
+  type: 'test'
+  ...
+# Subtest: graph validates finite bounded geometry and internal labels, while paths use filter escaping
+ok 2 - graph validates finite bounded geometry and internal labels, while paths use filter escaping
+  ---
+  duration_ms: 0.806625
+  type: 'test'
+  ...
+# Subtest: actual PNG production conversion covers all256 RGB and alpha codes without scaling
+not ok 3 - actual PNG production conversion covers all256 RGB and alpha codes without scaling
+  ---
+  duration_ms: 45.313459
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-image-filter.test.mjs:76:1'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    Socket.<anonymous> (node:internal/child_process:497:11)
+    Socket.emit (node:events:514:20)
+    Pipe.<anonymous> (node:net:362:12)
+  ...
+# Subtest: narrow and odd plane boundaries preserve straight RGB, alpha and final RGBA8
+not ok 4 - narrow and odd plane boundaries preserve straight RGB, alpha and final RGBA8
+  ---
+  duration_ms: 34.276583
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-image-filter.test.mjs:83:1'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    ChildProcess._handle.onexit (node:internal/child_process:305:5)
+  ...
+# Subtest: nonidentity creative look is after display conversion on straight RGB and never alpha
+not ok 5 - nonidentity creative look is after display conversion on straight RGB and never alpha
+  ---
+  duration_ms: 39.756584
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-image-filter.test.mjs:91:1'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    ChildProcess._handle.onexit (node:internal/child_process:305:5)
+  ...
+# Subtest: production resize matches mirrored bilinear oracle up/down, odd and 65536 pixel bound
+not ok 6 - production resize matches mirrored bilinear oracle up/down, odd and 65536 pixel bound
+  ---
+  duration_ms: 44.700125
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-image-filter.test.mjs:98:1'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    Socket.<anonymous> (node:internal/child_process:497:11)
+    Socket.emit (node:events:514:20)
+    Pipe.<anonymous> (node:net:362:12)
+  ...
+# Subtest: hidden RGB is invariant after look/resize and contain padding remains transparent
+not ok 7 - hidden RGB is invariant after look/resize and contain padding remains transparent
+  ---
+  duration_ms: 38.505625
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-image-filter.test.mjs:105:1'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    Socket.<anonymous> (node:internal/child_process:497:11)
+    Socket.emit (node:events:514:20)
+    Pipe.<anonymous> (node:net:362:12)
+  ...
+# Subtest: one/two encoded RGB8 premultiplied overlays match independent composition oracle
+not ok 8 - one/two encoded RGB8 premultiplied overlays match independent composition oracle
+  ---
+  duration_ms: 35.94125
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-image-filter.test.mjs:112:1'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    Socket.<anonymous> (node:internal/child_process:497:11)
+    Socket.emit (node:events:514:20)
+    Pipe.<anonymous> (node:net:362:12)
+  ...
+# Subtest: mixed known BT709 limited video background and PNG keep explicit limited YUV420 output mapping
+not ok 9 - mixed known BT709 limited video background and PNG keep explicit limited YUV420 output mapping
+  ---
+  duration_ms: 40.621875
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-image-filter.test.mjs:119:1'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    Socket.<anonymous> (node:internal/child_process:497:11)
+    Socket.emit (node:events:514:20)
+    Pipe.<anonymous> (node:net:362:12)
+  ...
+# Subtest: owned static layer derives once, binds exact look identity and decodes byte-identically to direct graph
+not ok 10 - owned static layer derives once, binds exact look identity and decodes byte-identically to direct graph
+  ---
+  duration_ms: 41.181125
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-image-filter.test.mjs:135:1'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    Socket.<anonymous> (node:internal/child_process:497:11)
+    Socket.emit (node:events:514:20)
+    Pipe.<anonymous> (node:net:362:12)
+  ...
+# Subtest: owned layer rejects hash tampering and preserves unknown replacement files
+not ok 11 - owned layer rejects hash tampering and preserves unknown replacement files
+  ---
+  duration_ms: 39.335292
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-image-filter.test.mjs:146:1'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    Socket.<anonymous> (node:internal/child_process:497:11)
+    Socket.emit (node:events:514:20)
+    Pipe.<anonymous> (node:net:362:12)
+  ...
+# Subtest: layer admission binds source hash, look identity and source/output budgets before derivation
+ok 12 - layer admission binds source hash, look identity and source/output budgets before derivation
+  ---
+  duration_ms: 4.745834
+  type: 'test'
+  ...
+# Subtest: cancelled layer derivation joins its exact FFmpeg child and removes owned partial staging
+ok 13 - cancelled layer derivation joins its exact FFmpeg child and removes owned partial staging
+  ---
+  duration_ms: 7.3275
+  type: 'test'
+  ...
+# Subtest: unconfirmed failed derivation retains its exact owned staging until runtime confirms the join
+ok 14 - unconfirmed failed derivation retains its exact owned staging until runtime confirms the join
+  ---
+  duration_ms: 14.758875
+  type: 'test'
+  ...
+# Subtest: a FIFO source replacement rejects without blocking file open
+ok 15 - a FIFO source replacement rejects without blocking file open
+  ---
+  duration_ms: 189.784292
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 6
+# fail 9
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 775.506292

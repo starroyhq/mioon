@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: application grant requires a newly created exact42 store and cannot be reconstituted
+ok 1 - application grant requires a newly created exact42 store and cannot be reconstituted
+  ---
+  duration_ms: 633.756042
+  type: 'test'
+  ...
+# Subtest: fresh42 actual services create/hydrate project, import managed bytes, add clip, save opacity and undo/redo
+ok 2 - fresh42 actual services create/hydrate project, import managed bytes, add clip, save opacity and undo/redo
+  ---
+  duration_ms: 764.458875
+  type: 'test'
+  ...
+# Subtest: a pre-aborted application call cannot create a project or initialize a missing timeline
+ok 3 - a pre-aborted application call cannot create a project or initialize a missing timeline
+  ---
+  duration_ms: 189.914958
+  type: 'test'
+  ...
+# Subtest: shared ordinary48 importer retains successful bytes/type rejection and cleanup without candidate grant
+ok 4 - shared ordinary48 importer retains successful bytes/type rejection and cleanup without candidate grant
+  ---
+  duration_ms: 617.226375
+  type: 'test'
+  ...
+# Subtest: candidate import refuses project identity replacement before publication and removes its owned source
+ok 5 - candidate import refuses project identity replacement before publication and removes its owned source
+  ---
+  duration_ms: 228.221709
+  type: 'test'
+  ...
+# Subtest: candidate source replacement is refused without deleting another inode
+ok 6 - candidate source replacement is refused without deleting another inode
+  ---
+  duration_ms: 223.526125
+  type: 'test'
+  ...
+# Subtest: candidate drain waits for its live import and propagates its cancellation failure
+ok 7 - candidate drain waits for its live import and propagates its cancellation failure
+  ---
+  duration_ms: 212.4185
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3208.612292

@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: history reads and unavailable undo/redo never initialize a timeline or journal
+ok 1 - history reads and unavailable undo/redo never initialize a timeline or journal
+  ---
+  duration_ms: 1084.076167
+  type: 'test'
+  ...
+# Subtest: every track and clip edit round-trips complete domain snapshots with stable IDs and monotonic revisions
+ok 2 - every track and clip edit round-trips complete domain snapshots with stable IDs and monotonic revisions
+  ---
+  duration_ms: 1083.083208
+  type: 'test'
+  ...
+# Subtest: seed undo/redo retains its frozen asset references and does not reverse selections, jobs, exports or spending
+ok 3 - seed undo/redo retains its frozen asset references and does not reverse selections, jobs, exports or spending
+  ---
+  duration_ms: 1352.257458
+  type: 'test'
+  ...
+# Subtest: new edits discard redo, while old edit/undo/redo requests replay exactly after branching and restart
+ok 4 - new edits discard redo, while old edit/undo/redo requests replay exactly after branching and restart
+  ---
+  duration_ms: 676.384875
+  type: 'test'
+  ...
+# Subtest: history duplicates apply once and competing fresh revisions conflict atomically in both directions
+ok 5 - history duplicates apply once and competing fresh revisions conflict atomically in both directions
+  ---
+  duration_ms: 772.582208
+  type: 'test'
+  ...
+# Subtest: independent SQLite connections serialize duplicate undo requests without double traversal
+ok 6 - independent SQLite connections serialize duplicate undo requests without double traversal
+  ---
+  duration_ms: 3432.400666
+  type: 'test'
+  ...
+# Subtest: failed durable-response commit rolls back snapshots, branch removal, cursor and timeline together
+ok 7 - failed durable-response commit rolls back snapshots, branch removal, cursor and timeline together
+  ---
+  duration_ms: 739.357417
+  type: 'test'
+  ...
+# Subtest: additive migration preserves legacy timeline and response bytes, using legacy state as first undo baseline
+ok 8 - additive migration preserves legacy timeline and response bytes, using legacy state as first undo baseline
+  ---
+  duration_ms: 779.577459
+  type: 'test'
+  ...
+# Subtest: project history, cursor, request identities and state remain isolated
+ok 9 - project history, cursor, request identities and state remain isolated
+  ---
+  duration_ms: 635.030084
+  type: 'test'
+  ...
+# Subtest: history metadata and project snapshots stay coherent during independent SQLite undo/redo writes
+ok 10 - history metadata and project snapshots stay coherent during independent SQLite undo/redo writes
+  ---
+  duration_ms: 1567.906458
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 12519.725375

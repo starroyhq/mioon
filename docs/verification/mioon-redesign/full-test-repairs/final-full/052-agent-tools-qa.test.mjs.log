@@ -1,0 +1,88 @@
+TAP version 13
+# Subtest: chat_completions: QA mock requests each real function wire and final text reflects the supplied observation
+ok 1 - chat_completions: QA mock requests each real function wire and final text reflects the supplied observation
+  ---
+  duration_ms: 38.507625
+  type: 'test'
+  ...
+# Subtest: chat_completions: typed and explicit no-call requests never invent project access
+ok 2 - chat_completions: typed and explicit no-call requests never invent project access
+  ---
+  duration_ms: 10.091708
+  type: 'test'
+  ...
+# Subtest: chat_completions: invalid scope, unknown function, provider error and incomplete request are genuine safe adapter failures
+ok 3 - chat_completions: invalid scope, unknown function, provider error and incomplete request are genuine safe adapter failures
+  ---
+  duration_ms: 7.045
+  type: 'test'
+  ...
+# Subtest: chat_completions: Stop during fragmented first tool and partial second answer closes the actual sockets
+ok 4 - chat_completions: Stop during fragmented first tool and partial second answer closes the actual sockets
+  ---
+  duration_ms: 26.935583
+  type: 'test'
+  ...
+# Subtest: chat_completions: explicit hold releases preserve function completion and native result linkage
+ok 5 - chat_completions: explicit hold releases preserve function completion and native result linkage
+  ---
+  duration_ms: 107.146791
+  type: 'test'
+  ...
+# Subtest: responses: QA mock requests each real function wire and final text reflects the supplied observation
+ok 6 - responses: QA mock requests each real function wire and final text reflects the supplied observation
+  ---
+  duration_ms: 23.791416
+  type: 'test'
+  ...
+# Subtest: responses: typed and explicit no-call requests never invent project access
+ok 7 - responses: typed and explicit no-call requests never invent project access
+  ---
+  duration_ms: 5.404042
+  type: 'test'
+  ...
+# Subtest: responses: invalid scope, unknown function, provider error and incomplete request are genuine safe adapter failures
+ok 8 - responses: invalid scope, unknown function, provider error and incomplete request are genuine safe adapter failures
+  ---
+  duration_ms: 6.994333
+  type: 'test'
+  ...
+# Subtest: responses: Stop during fragmented first tool and partial second answer closes the actual sockets
+ok 9 - responses: Stop during fragmented first tool and partial second answer closes the actual sockets
+  ---
+  duration_ms: 20.80775
+  type: 'test'
+  ...
+# Subtest: responses: explicit hold releases preserve function completion and native result linkage
+ok 10 - responses: explicit hold releases preserve function completion and native result linkage
+  ---
+  duration_ms: 114.75775
+  type: 'test'
+  ...
+# Subtest: QA logs retain exact body hash and safe marker booleans, never body contents, result text or keys
+ok 11 - QA logs retain exact body hash and safe marker booleans, never body contents, result text or keys
+  ---
+  duration_ms: 8.489958
+  type: 'test'
+  ...
+# Subtest: tools QA plumbing is additive and leaves existing chat/Responses/durable fixture defaults available
+ok 12 - tools QA plumbing is additive and leaves existing chat/Responses/durable fixture defaults available
+  ---
+  duration_ms: 1.152042
+  type: 'test'
+  ...
+# Subtest: readonly QA ledger projection correlates exact request/result hashes without exposing bodies
+ok 13 - readonly QA ledger projection correlates exact request/result hashes without exposing bodies
+  ---
+  duration_ms: 5.552875
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 604.454958

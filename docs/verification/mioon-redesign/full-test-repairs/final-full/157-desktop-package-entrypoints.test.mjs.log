@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: package:linux resolves the real tooling contract and plans Web before same-channel desktop staging
+ok 1 - package:linux resolves the real tooling contract and plans Web before same-channel desktop staging
+  ---
+  duration_ms: 4.553083
+  type: 'test'
+  ...
+# Subtest: package:dir resolves the real tooling contract and plans Web before same-channel desktop staging
+ok 2 - package:dir resolves the real tooling contract and plans Web before same-channel desktop staging
+  ---
+  duration_ms: 0.262875
+  type: 'test'
+  ...
+# Subtest: package:mac resolves the real tooling contract and plans Web before same-channel desktop staging
+ok 3 - package:mac resolves the real tooling contract and plans Web before same-channel desktop staging
+  ---
+  duration_ms: 0.202541
+  type: 'test'
+  ...
+# Subtest: package:linux:dev resolves the real tooling contract and plans Web before same-channel desktop staging
+ok 4 - package:linux:dev resolves the real tooling contract and plans Web before same-channel desktop staging
+  ---
+  duration_ms: 0.399458
+  type: 'test'
+  ...
+# Subtest: package:dir:dev resolves the real tooling contract and plans Web before same-channel desktop staging
+ok 5 - package:dir:dev resolves the real tooling contract and plans Web before same-channel desktop staging
+  ---
+  duration_ms: 0.184333
+  type: 'test'
+  ...
+# Subtest: package:mac:dev resolves the real tooling contract and plans Web before same-channel desktop staging
+ok 6 - package:mac:dev resolves the real tooling contract and plans Web before same-channel desktop staging
+  ---
+  duration_ms: 0.174958
+  type: 'test'
+  ...
+# Subtest: entrypoint checks reject the old staging-only path and channel or publication regressions
+ok 7 - entrypoint checks reject the old staging-only path and channel or publication regressions
+  ---
+  duration_ms: 3.723125
+  type: 'test'
+  ...
+# Subtest: entrypoint checks reject missing, reversed or extra stages and misrouted builder arguments
+ok 8 - entrypoint checks reject missing, reversed or extra stages and misrouted builder arguments
+  ---
+  duration_ms: 2.968458
+  type: 'test'
+  ...
+# Subtest: other desktop entrypoints retain their existing behavior
+ok 9 - other desktop entrypoints retain their existing behavior
+  ---
+  duration_ms: 0.119375
+  type: 'test'
+  ...
+# Subtest: root Linux package aliases forward directly to the checked workspace scripts
+ok 10 - root Linux package aliases forward directly to the checked workspace scripts
+  ---
+  duration_ms: 0.094375
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 174.753875

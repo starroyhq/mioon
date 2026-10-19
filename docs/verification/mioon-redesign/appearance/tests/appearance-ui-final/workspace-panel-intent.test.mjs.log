@@ -1,0 +1,60 @@
+TAP version 13
+# Subtest: an uninterrupted Add-to-Timeline acknowledgement reveals its accepted clip once without opening a collapsed inspector
+ok 1 - an uninterrupted Add-to-Timeline acknowledgement reveals its accepted clip once without opening a collapsed inspector
+  ---
+  duration_ms: 2.153709
+  type: 'test'
+  ...
+# Subtest: a newer canvas panel hide wins over a held bridge reveal while preserving the accepted clip
+ok 2 - a newer canvas panel hide wins over a held bridge reveal while preserving the accepted clip
+  ---
+  duration_ms: 0.302792
+  type: 'test'
+  ...
+# Subtest: newer narrow canvas navigation to its center suppresses a held bridge reveal
+not ok 3 - newer narrow canvas navigation to its center suppresses a held bridge reveal
+  ---
+  duration_ms: 0.218375
+  type: 'test'
+  location: '/private/tmp/mioon-light-v3-uf1kv1gy/verify/tests/workspace-panel-intent.test.mjs:74:3'
+  failureType: 'testCodeFailure'
+  error: 'clipDraftRef is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    mobileNavigate (eval at <anonymous> (file:///private/tmp/mioon-light-v3-uf1kv1gy/verify/tests/workspace-panel-intent.test.mjs:76:22), <anonymous>:3:41)
+    TestContext.<anonymous> (file:///private/tmp/mioon-light-v3-uf1kv1gy/verify/tests/workspace-panel-intent.test.mjs:81:5)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: a newer editing panel hide wins over a held bridge reveal while preserving the accepted clip
+ok 4 - a newer editing panel hide wins over a held bridge reveal while preserving the accepted clip
+  ---
+  duration_ms: 0.10975
+  type: 'test'
+  ...
+# Subtest: newer narrow editing navigation to its center suppresses a held bridge reveal
+not ok 5 - newer narrow editing navigation to its center suppresses a held bridge reveal
+  ---
+  duration_ms: 0.0825
+  type: 'test'
+  location: '/private/tmp/mioon-light-v3-uf1kv1gy/verify/tests/workspace-panel-intent.test.mjs:74:3'
+  failureType: 'testCodeFailure'
+  error: 'clipDraftRef is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    mobileNavigate (eval at <anonymous> (file:///private/tmp/mioon-light-v3-uf1kv1gy/verify/tests/workspace-panel-intent.test.mjs:76:22), <anonymous>:3:41)
+    TestContext.<anonymous> (file:///private/tmp/mioon-light-v3-uf1kv1gy/verify/tests/workspace-panel-intent.test.mjs:81:5)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 3
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 292.853834

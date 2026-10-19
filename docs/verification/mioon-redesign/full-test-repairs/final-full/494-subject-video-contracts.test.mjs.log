@@ -1,0 +1,112 @@
+TAP version 13
+# Subtest: generation.submit adds only a truly optional version UUID and preserves omitted input byte shape
+ok 1 - generation.submit adds only a truly optional version UUID and preserves omitted input byte shape
+  ---
+  duration_ms: 2.023084
+  type: 'test'
+  ...
+# Subtest: the new immutable subject reference retains the entire strict version and typed provenance
+ok 2 - the new immutable subject reference retains the entire strict version and typed provenance
+  ---
+  duration_ms: 1.302542
+  type: 'test'
+  ...
+# Subtest: v3 activates only Mock and Ark, keeps exact v1/v2 archived resolution, and never upgrades a pin
+ok 3 - v3 activates only Mock and Ark, keeps exact v1/v2 archived resolution, and never upgrades a pin
+  ---
+  duration_ms: 1.399166
+  type: 'test'
+  ...
+# Subtest: Ark subject input aspect is independent while PNG/JPEG bytes, sides and aspect envelope are exact
+ok 4 - Ark subject input aspect is independent while PNG/JPEG bytes, sides and aspect envelope are exact
+  ---
+  duration_ms: 1.0255
+  type: 'test'
+  ...
+# Subtest: Mock subject image restrictions are new and do not relax or tighten its existing first-frame route
+ok 5 - Mock subject image restrictions are new and do not relax or tighten its existing first-frame route
+  ---
+  duration_ms: 0.227833
+  type: 'test'
+  ...
+# Subtest: role combinations stay explicit, single-subject only, and the v3 bridge never loses first/last roles
+ok 6 - role combinations stay explicit, single-subject only, and the v3 bridge never loses first/last roles
+  ---
+  duration_ms: 1.057125
+  type: 'test'
+  ...
+# Subtest: strict frozen manifest rejects partial, mixed, mismatched and unpinned subject claims without fallback
+ok 7 - strict frozen manifest rejects partial, mixed, mismatched and unpinned subject claims without fallback
+  ---
+  duration_ms: 3.604667
+  type: 'test'
+  ...
+# Subtest: shared snapshot checks permit square subject references and retain strict frame metadata and profile gates
+ok 8 - shared snapshot checks permit square subject references and retain strict frame metadata and profile gates
+  ---
+  duration_ms: 2.22
+  type: 'test'
+  ...
+# Subtest: subject ACK is operation-bound, strict and matches the full expected frozen reference on progressed records
+ok 9 - subject ACK is operation-bound, strict and matches the full expected frozen reference on progressed records
+  ---
+  duration_ms: 10.330208
+  type: 'test'
+  ...
+# Subtest: ACK checks supplied parameter overrides without inferring omitted values or changing input
+ok 10 - ACK checks supplied parameter overrides without inferring omitted values or changing input
+  ---
+  duration_ms: 0.575083
+  type: 'test'
+  ...
+# Subtest: subject ACK revalidates the exact Ark profile prompt without accepting blank or oversized text
+ok 11 - subject ACK revalidates the exact Ark profile prompt without accepting blank or oversized text
+  ---
+  duration_ms: 0.400667
+  type: 'test'
+  ...
+# Subtest: subject ACK revalidates exact profile parameter keys, enum values and integer ranges
+ok 12 - subject ACK revalidates exact profile parameter keys, enum values and integer ranges
+  ---
+  duration_ms: 1.530583
+  type: 'test'
+  ...
+# Subtest: frozen subject manifests require an explicit own empty connection array without changing legacy or planning
+ok 13 - frozen subject manifests require an explicit own empty connection array without changing legacy or planning
+  ---
+  duration_ms: 0.252416
+  type: 'test'
+  ...
+# Subtest: subject retry ACK binds the original job and request without admitting a retry as a new submit
+ok 14 - subject retry ACK binds the original job and request without admitting a retry as a new submit
+  ---
+  duration_ms: 10.080041
+  type: 'test'
+  ...
+# Subtest: subject retry ACK cannot replace a pinned public snapshot with internally consistent new sources or options
+ok 15 - subject retry ACK cannot replace a pinned public snapshot with internally consistent new sources or options
+  ---
+  duration_ms: 2.134875
+  type: 'test'
+  ...
+# Subtest: subject retry ACK rejects missing markers, old profile promotion, partial manifests and hostile JSON
+ok 16 - subject retry ACK rejects missing markers, old profile promotion, partial manifests and hostile JSON
+  ---
+  duration_ms: 2.044166
+  type: 'test'
+  ...
+# Subtest: subject guards reject hostile records and arrays without evaluating accessors
+ok 17 - subject guards reject hostile records and arrays without evaluating accessors
+  ---
+  duration_ms: 0.197167
+  type: 'test'
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 245.368958

@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: typed record extraction preserves absent/null/value, owner binding and detached bytes
+ok 1 - typed record extraction preserves absent/null/value, owner binding and detached bytes
+  ---
+  duration_ms: 2.316833
+  type: 'test'
+  ...
+# Subtest: Unicode ES2022 predicate is equivalent for every UTF-16 code unit and pair boundaries
+ok 2 - Unicode ES2022 predicate is equivalent for every UTF-16 code unit and pair boundaries
+  ---
+  duration_ms: 7.87175
+  type: 'test'
+  ...
+# Subtest: decoded JSON retains negative-zero, unknown-key, typed-array and profile refusal
+ok 3 - decoded JSON retains negative-zero, unknown-key, typed-array and profile refusal
+  ---
+  duration_ms: 1.27825
+  type: 'test'
+  ...
+# Subtest: prototype/descriptor/proxy and array-cap invariant matches without effects
+ok 4 - prototype/descriptor/proxy and array-cap invariant matches without effects
+  ---
+  duration_ms: 3.076458
+  type: 'test'
+  ...
+# Subtest: complete timeline aggregate retains exact 256KiB boundary
+ok 5 - complete timeline aggregate retains exact 256KiB boundary
+  ---
+  duration_ms: 47.682167
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 293.585

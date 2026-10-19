@@ -1,0 +1,106 @@
+TAP version 13
+# Subtest: production construction has no live fallback and fixed profile has no endpoint/settings activation
+ok 1 - production construction has no live fallback and fixed profile has no endpoint/settings activation
+  ---
+  duration_ms: 1.020416
+  type: 'test'
+  ...
+# Subtest: wire body is exactly the verified pinned model/allowlist with no response_format or fallback
+ok 2 - wire body is exactly the verified pinned model/allowlist with no response_format or fallback
+  ---
+  duration_ms: 3.103292
+  type: 'test'
+  ...
+# Subtest: all DNS answers must be public and well-formed; no fallback around rejected answers
+ok 3 - all DNS answers must be public and well-formed; no fallback around rejected answers
+  ---
+  duration_ms: 4.430791
+  type: 'test'
+  ...
+# Subtest: fixed HTTPS peer and certificate verified before synchronous fence and first possible POST
+ok 4 - fixed HTTPS peer and certificate verified before synchronous fence and first possible POST
+  ---
+  duration_ms: 2.438167
+  type: 'test'
+  ...
+# Subtest: peer mismatch, bad port/TLS, DNS failure and fence failure cannot transmit
+ok 5 - peer mismatch, bad port/TLS, DNS failure and fence failure cannot transmit
+  ---
+  duration_ms: 1.12975
+  type: 'test'
+  ...
+# Subtest: redirects, compressed/non-JSON responses and incomplete/mismatched bodies fail without any retry
+ok 6 - redirects, compressed/non-JSON responses and incomplete/mismatched bodies fail without any retry
+  ---
+  duration_ms: 1.09825
+  type: 'test'
+  ...
+# Subtest: JSON stream byte bound is enforced before Buffer.concat or JSON.parse, including dishonest lengths
+ok 7 - JSON stream byte bound is enforced before Buffer.concat or JSON.parse, including dishonest lengths
+  ---
+  duration_ms: 0.739834
+  type: 'test'
+  ...
+# Subtest: pre/post-transmission cancellation and connect/total timeout retain distinct uncertainty
+ok 8 - pre/post-transmission cancellation and connect/total timeout retain distinct uncertainty
+  ---
+  duration_ms: 22.459375
+  type: 'test'
+  ...
+# Subtest: strict canonical base64 rejects empty, data URI, whitespace, alphabet/padding errors and noncanonical pad bits
+ok 9 - strict canonical base64 rejects empty, data URI, whitespace, alphabet/padding errors and noncanonical pad bits
+  ---
+  duration_ms: 0.290709
+  type: 'test'
+  ...
+# Subtest: valid offline response preserves only bounded metadata and verified PNG bytes
+ok 10 - valid offline response preserves only bounded metadata and verified PNG bytes
+  ---
+  duration_ms: 162.33675
+  type: 'test'
+  ...
+# Subtest: JSON rejects URL/multiple/empty results, duplicate escaped keys, unknown metadata, malformed UTF8 and unsafe numbers
+ok 11 - JSON rejects URL/multiple/empty results, duplicate escaped keys, unknown metadata, malformed UTF8 and unsafe numbers
+  ---
+  duration_ms: 1.1365
+  type: 'test'
+  ...
+# Subtest: OpenAI adapter fences once and preserves post-dispatch invalid PNG/transport uncertainty without retry
+ok 12 - OpenAI adapter fences once and preserves post-dispatch invalid PNG/transport uncertainty without retry
+  ---
+  duration_ms: 36.400459
+  type: 'test'
+  ...
+# Subtest: Mock adapter is prompt-independent, truthfully labeled and validates input before local fence
+ok 13 - Mock adapter is prompt-independent, truthfully labeled and validates input before local fence
+  ---
+  duration_ms: 156.066875
+  type: 'test'
+  ...
+# Subtest: errors do not echo arbitrary upstream messages, response headers, bodies or credential sentinel
+ok 14 - errors do not echo arbitrary upstream messages, response headers, bodies or credential sentinel
+  ---
+  duration_ms: 0.122875
+  type: 'test'
+  ...
+# Subtest: Mock errors after the host fence preserve dispatched state without remote uncertainty
+ok 15 - Mock errors after the host fence preserve dispatched state without remote uncertainty
+  ---
+  duration_ms: 0.084625
+  type: 'test'
+  ...
+# Subtest: OpenAI malformed transport return after its fence stays conservatively dispatched
+ok 16 - OpenAI malformed transport return after its fence stays conservatively dispatched
+  ---
+  duration_ms: 0.077333
+  type: 'test'
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 604.972917

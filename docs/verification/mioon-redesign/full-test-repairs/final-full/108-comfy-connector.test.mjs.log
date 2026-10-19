@@ -1,0 +1,94 @@
+TAP version 13
+# Subtest: explicit check reads only version and six known classes, returns bounded checkpoint names without host details
+ok 1 - explicit check reads only version and six known classes, returns bounded checkpoint names without host details
+  ---
+  duration_ms: 5.667625
+  type: 'test'
+  ...
+# Subtest: check rejects wrong/missing version, missing/custom/partner nodes, unsafe checkpoints and unsupported sampler
+ok 2 - check rejects wrong/missing version, missing/custom/partner nodes, unsafe checkpoints and unsupported sampler
+  ---
+  duration_ms: 2.968
+  type: 'test'
+  ...
+# Subtest: node metadata aggregate and explicit check wall-clock are bounded
+ok 3 - node metadata aggregate and explicit check wall-clock are bounded
+  ---
+  duration_ms: 10.940208
+  type: 'test'
+  ...
+# Subtest: submit sends exactly one fixed body after fence; acknowledgement is not proof of execution
+ok 4 - submit sends exactly one fixed body after fence; acknowledgement is not proof of execution
+  ---
+  duration_ms: 9.769166
+  type: 'test'
+  ...
+# Subtest: lost, malformed, mismatched and node-error acknowledgements stay unknown and never repost or auto-observe
+ok 5 - lost, malformed, mismatched and node-error acknowledgements stay unknown and never repost or auto-observe
+  ---
+  duration_ms: 13.595959
+  type: 'test'
+  ...
+# Subtest: disabled or mismatched config, arbitrary graph and missing/async fence cannot POST
+ok 6 - disabled or mismatched config, arbitrary graph and missing/async fence cannot POST
+  ---
+  duration_ms: 1.984542
+  type: 'test'
+  ...
+# Subtest: one-shot pending/running/not-found observations never attest content or retrieve an output
+ok 7 - one-shot pending/running/not-found observations never attest content or retrieve an output
+  ---
+  duration_ms: 1.301708
+  type: 'test'
+  ...
+# Subtest: success requires complete original graph, exact marker and affirmative execution status before view
+ok 8 - success requires complete original graph, exact marker and affirmative execution status before view
+  ---
+  duration_ms: 8.165917
+  type: 'test'
+  ...
+# Subtest: terminal success rejects all extra or path-authoritative descriptors without view
+ok 9 - terminal success rejects all extra or path-authoritative descriptors without view
+  ---
+  duration_ms: 3.957791
+  type: 'test'
+  ...
+# Subtest: valid terminal result yields one staged 512 PNG and provenance after exactly one job GET and one view
+ok 10 - valid terminal result yields one staged 512 PNG and provenance after exactly one job GET and one view
+  ---
+  duration_ms: 19.10225
+  type: 'test'
+  ...
+# Subtest: invalid, truncated or wrong-dimension PNG cannot produce a candidate
+ok 11 - invalid, truncated or wrong-dimension PNG cannot produce a candidate
+  ---
+  duration_ms: 3.493583
+  type: 'test'
+  ...
+# Subtest: failed/interrupted terminal evidence is correlated and never retrieves or retries work
+ok 12 - failed/interrupted terminal evidence is correlated and never retrieves or retries work
+  ---
+  duration_ms: 0.719791
+  type: 'test'
+  ...
+# Subtest: connector snapshots caller-owned execution and config across the asynchronous observation
+ok 13 - connector snapshots caller-owned execution and config across the asynchronous observation
+  ---
+  duration_ms: 15.441833
+  type: 'test'
+  ...
+# Subtest: stop-observing aborts local GET and never calls a remote interrupt or cancellation route
+ok 14 - stop-observing aborts local GET and never calls a remote interrupt or cancellation route
+  ---
+  duration_ms: 0.506208
+  type: 'test'
+  ...
+1..14
+# tests 14
+# suites 0
+# pass 14
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 250.929458

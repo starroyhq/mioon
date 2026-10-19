@@ -1,0 +1,163 @@
+TAP version 13
+# Subtest: schema20 adds exactly two tables and preserves every pre-existing row, rowid, receipt, index and trigger
+ok 1 - schema20 adds exactly two tables and preserves every pre-existing row, rowid, receipt, index and trigger
+  ---
+  duration_ms: 48.753167
+  type: 'test'
+  ...
+# Subtest: schema20 marker failure rolls back all added objects and keeps raw legacy content
+ok 2 - schema20 marker failure rolls back all added objects and keeps raw legacy content
+  ---
+  duration_ms: 44.964708
+  type: 'test'
+  ...
+# Subtest: frame task and original queued ACK commit together and resist mutation, replacement and deletion
+ok 3 - frame task and original queued ACK commit together and resist mutation, replacement and deletion
+  ---
+  duration_ms: 18.856291
+  type: 'test'
+  ...
+# Subtest: start fence, interrupted cancellation and recovery never reopen decoding
+ok 4 - start fence, interrupted cancellation and recovery never reopen decoding
+  ---
+  duration_ms: 20.112792
+  type: 'test'
+  ...
+# Subtest: queued admission and active transition caps do not block running-to-persisting or explicit recovery
+ok 5 - queued admission and active transition caps do not block running-to-persisting or explicit recovery
+  ---
+  duration_ms: 22.320917
+  type: 'test'
+  ...
+# Subtest: staged frame ownership excludes legacy and image owners regardless of provenance and raw JSON size
+ok 6 - staged frame ownership excludes legacy and image owners regardless of provenance and raw JSON size
+  ---
+  duration_ms: 50.818083
+  type: 'test'
+  ...
+# Subtest: frame result attachment rejects cross-project publication and altered receipt identity
+ok 7 - frame result attachment rejects cross-project publication and altered receipt identity
+  ---
+  duration_ms: 17.847833
+  type: 'test'
+  ...
+# Subtest: control receipt budget is retained per task and exact acknowledgement bytes remain immutable
+ok 8 - control receipt budget is retained per task and exact acknowledgement bytes remain immutable
+  ---
+  duration_ms: 40.688917
+  type: 'test'
+  ...
+# Subtest: retained task cap never evicts old acknowledgements or consumes another task control reserve
+ok 9 - retained task cap never evicts old acknowledgements or consumes another task control reserve
+  ---
+  duration_ms: 196.930208
+  type: 'test'
+  ...
+# Subtest: real fresh and independently frozen schema19 workspace startup produce identical frame invariants
+not ok 10 - real fresh and independently frozen schema19 workspace startup produce identical frame invariants
+  ---
+  duration_ms: 848.248334
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/frame-migration.test.mjs:205:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    ... Skipped lines
+    
+      [
+        1,
+        2,
+        3,
+        4,
+    ...
+        26,
+    +   28,
+    +   30,
+    +   32,
+    +   34,
+    +   36,
+    +   38,
+    +   40
+      ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: 1
+    1: 2
+    2: 3
+    3: 4
+    4: 5
+    5: 6
+    6: 7
+    7: 8
+    8: 9
+    9: 10
+    10: 11
+    11: 12
+    12: 13
+    13: 14
+    14: 15
+    15: 16
+    16: 17
+    17: 18
+    18: 19
+    19: 20
+    20: 21
+    21: 22
+    22: 23
+    23: 24
+    24: 26
+  actual:
+    0: 1
+    1: 2
+    2: 3
+    3: 4
+    4: 5
+    5: 6
+    6: 7
+    7: 8
+    8: 9
+    9: 10
+    10: 11
+    11: 12
+    12: 13
+    13: 14
+    14: 15
+    15: 16
+    16: 17
+    17: 18
+    18: 19
+    19: 20
+    20: 21
+    21: 22
+    22: 23
+    23: 24
+    24: 26
+    25: 28
+    26: 30
+    27: 32
+    28: 34
+    29: 36
+    30: 38
+    31: 40
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/frame-migration.test.mjs:220:11)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 9
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1898.516125
