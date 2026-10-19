@@ -5,22 +5,24 @@ import { readFileSync, readdirSync } from 'node:fs';
 const root = new URL('../', import.meta.url);
 const css = readFileSync(new URL('packages/ui/src/styles/globals.css', root), 'utf8');
 const controls = readFileSync(new URL('packages/ui/src/styles/workbench.css', root), 'utf8');
-const tokens = new Map([...css.matchAll(/(--[\w-]+):\s*([^;]+);/g)].map(([, key, value]) => [key, value.trim()]));
-const color = key => {
+const tokenMatcher = /(--[\w-]+):\s*([^;]+);/g;
+const tokenPairs = (source: string): [string,string][] => [...source.matchAll(tokenMatcher)].map((match): [string,string] => [match[1] ?? '', (match[2] ?? '').trim()]);
+const tokens = new Map<string,string>(tokenPairs(css));
+const color = (key: string): string => {
   const value = tokens.get(key);
   assert.ok(value, `Missing token ${key}`);
   const alias = /^var\((--[\w-]+)\)$/.exec(value);
-  return alias ? color(alias[1]) : value;
+  return alias ? color(alias[1]!) : value;
 };
-const luminance = value => {
+const luminance = (value: string): number => {
   assert.match(value, /^#[\da-f]{6}$/i);
-  return [1, 3, 5].map(index => parseInt(value.slice(index, index + 2), 16) / 255)
-    .map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4)
-    .reduce((sum, value, index) => sum + value * [.2126, .7152, .0722][index], 0);
+  return [1, 3, 5].map((index: number) => parseInt(value.slice(index, index + 2), 16) / 255)
+    .map((channel: number) => channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4)
+    .reduce((sum: number, channel: number, index: number) => sum + channel * [.2126, .7152, .0722][index]!, 0);
 };
-const contrast = (foreground, background) => {
-  const values = [luminance(color(foreground)), luminance(color(background))].sort((a, b) => b - a);
-  return (values[0] + .05) / (values[1] + .05);
+const contrast = (foreground: string, background: string): number => {
+  const values = [luminance(color(foreground)), luminance(color(background))].sort((a: number, b: number) => b - a);
+  return (values[0]! + .05) / (values[1]! + .05);
 };
 
 test('white action tokens remain separate from shadcn hover semantics', () => {
@@ -75,8 +77,8 @@ test('approved light tokens preserve readable text and semantic media colors', (
   const preview = readFileSync(new URL('packages/ui/src/styles/light.css', root), 'utf8');
   assert.match(preview, /:root\.light\s*\{/);
   assert.doesNotMatch(preview, /prefers-color-scheme/);
-  const light = new Map([...tokens, ...[...preview.matchAll(/(--[\w-]+):\s*([^;]+);/g)].map(([, key, value]) => [key, value.trim()])]);
-  const ratio = (foreground, background) => { const values = [luminance(light.get(foreground)), luminance(light.get(background))].sort((a,b)=>b-a); return (values[0]+.05)/(values[1]+.05); };
+  const light = new Map<string,string>([...tokens, ...tokenPairs(preview)]);
+  const ratio = (foreground: string, background: string): number => { const values = [luminance(light.get(foreground) ?? ''), luminance(light.get(background) ?? '')].sort((a: number,b: number)=>b-a); return (values[0]!+.05)/(values[1]!+.05); };
   for (const background of ['--wb-bg','--wb-panel','--wb-card','--wb-raised','--wb-selected']) for (const foreground of ['--wb-text','--wb-soft','--wb-muted']) assert.ok(ratio(foreground,background)>=4.5, `${foreground}/${background}`);
   assert.ok(ratio('--wb-accent-foreground','--wb-accent')>=4.5);assert.ok(ratio('--wb-danger-foreground','--wb-danger-fill')>=4.5);
   for(const media of ['video','image','audio','subtitle'])assert.ok(ratio('--wb-media-text',`--wb-${media}`)>=9,media);

@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fitPadding, measuredFitPadding } from '../apps/web/src/canvas-fit.ts';
 
-const box = (left, top, right, bottom) => ({ left, top, right, bottom, width: right - left, height: bottom - top });
+interface Box {left: number; top: number; right: number; bottom: number; width: number; height: number}
+const box = (left: number, top: number, right: number, bottom: number): Box => ({ left, top, right, bottom, width: right - left, height: bottom - top });
 const pane = box(0, 60, 1500, 960);
 
 test('fit padding clears the docks, heading and storyboard that float over the full-bleed pane', () => {
@@ -21,11 +22,12 @@ test('uncovered sides keep only the margin, and an overlay covering most of an a
   assert.ok(left > 0 && right > 0);
 });
 
-function fakeDocument(layout) {
-  const element = rect => ({ getClientRects: () => (rect ? [rect] : []), getBoundingClientRect: () => rect ?? box(0, 0, 0, 0) });
-  return { querySelectorAll: selector => (layout[selector] ?? []).map(element) };
+type LayoutMap = Record<string, (Box|null)[]>;
+function fakeDocument(layout: LayoutMap) {
+  const element = (rect: Box|null) => ({ getClientRects: () => (rect ? [rect] : []), getBoundingClientRect: () => rect ?? box(0, 0, 0, 0) });
+  return { querySelectorAll: (selector: string) => (layout[selector] ?? []).map(element) };
 }
-const paneElement = (document, rect = pane) => ({ ownerDocument: document, getBoundingClientRect: () => rect });
+const paneElement = (document: ReturnType<typeof fakeDocument>, rect = pane) => ({ ownerDocument: document, getBoundingClientRect: () => rect });
 
 test('measured padding reads only the visible overlays and falls back when the pane is not on screen', () => {
   const document = fakeDocument({
@@ -33,8 +35,8 @@ test('measured padding reads only the visible overlays and falls back when the p
     '#dock-inspector[data-visible="true"]': [], '.recall-inspector': [box(1460, 72, 1488, 948)],
     '.board-toolbar-heading': [box(266, 72, 1166, 114)], '.board-storyboard': [box(266, 915, 1166, 948)],
   });
-  assert.deepEqual(measuredFitPadding(paneElement(document)), { top: '74px', right: '60px', bottom: '65px', left: '274px' });
+  assert.deepEqual(measuredFitPadding(paneElement(document) as never), { top: '74px', right: '60px', bottom: '65px', left: '274px' });
   assert.equal(measuredFitPadding(null, 0.18), 0.18);
   assert.equal(measuredFitPadding(undefined), 0.16);
-  assert.equal(measuredFitPadding(paneElement(document, box(0, 0, 0, 0)), 0.25), 0.25);
+  assert.equal(measuredFitPadding(paneElement(document, box(0, 0, 0, 0)) as never, 0.25), 0.25);
 });

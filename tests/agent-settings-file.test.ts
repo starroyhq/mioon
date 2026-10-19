@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
@@ -8,7 +8,7 @@ import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
 
 const envelope = (revision = 1) => ({version: 2, revision, configuration: {...DEFAULT_AGENT_CONFIGURATION}, secret: null});
-async function fixture(t) {
+async function fixture(t: TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-agent-file-'));
   t.after(() => rm(root, {recursive: true, force: true}));
   const directory = path.join(root, 'agent-settings'), file = path.join(directory, 'settings.json');
@@ -35,7 +35,7 @@ test('corrupt and oversized envelopes fail closed without overwrite or raw conte
   await mkdir(f.directory, {mode: 0o700});
   for (const content of ['{"secret":"synthetic-corrupt', 'x'.repeat(64 * 1024 + 1)]) {
     await writeFile(f.file, content, {mode: 0o600});
-    await assert.rejects(f.persistence.load(), error => error.code === 'AGENT_SETTINGS_CORRUPT' && !error.message.includes('synthetic-corrupt'));
+    await assert.rejects(f.persistence.load(), (error: unknown) => {const failure = error as {code?: string; message?: string}; return failure.code === 'AGENT_SETTINGS_CORRUPT' && !String(failure.message).includes('synthetic-corrupt');});
     const settings = await createAgentSettings({persistence: f.persistence});
     await assert.rejects(settings.put({expectedRevision: 0, configuration: {...DEFAULT_AGENT_CONFIGURATION}, secret: {action: 'remove'}}), {code: 'AGENT_SETTINGS_CORRUPT'});
     assert.equal(await readFile(f.file, 'utf8'), content);
@@ -83,7 +83,7 @@ test('unsafe owner permissions and invalid file types fail closed without chmod-
 test('concurrent readers see only old or new complete settings envelopes', async t => {
   const f = await fixture(t);
   await f.persistence.save(envelope());
-  const observed = [];
+  const observed: Array<{revision: number}> = [];
   // Raw readers are used here because the stricter protected reader deliberately
   // rejects an inode swap between lstat/open instead of trusting raced metadata.
   const reader = (async () => { for (let i = 0; i < 100; i++) observed.push(JSON.parse(await readFile(f.file, 'utf8'))); })();
