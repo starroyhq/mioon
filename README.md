@@ -18,7 +18,7 @@
   <img alt="本地保存" src="https://img.shields.io/badge/%E6%95%B0%E6%8D%AE-%E6%9C%AC%E5%9C%B0%E4%BF%9D%E5%AD%98-16a34a" />
 </p>
 
-[![Mioon 剪辑界面：左侧整理素材，中间查看画面，下方编排视频和声音](docs/verification/mioon-redesign/appearance/browser/languages/zh-Hans-1440-editing.png)](docs/verification/mioon-redesign/appearance/browser/languages/zh-Hans-1440-editing.png)
+[![Mioon 深色剪辑界面：左侧整理素材，中间查看画面，下方编排视频和声音](docs/verification/mioon-redesign/appearance/browser/canvas-dark.png)](docs/verification/mioon-redesign/appearance/browser/canvas-dark.png)
 
 ## Mioon 是什么
 
@@ -34,7 +34,7 @@ Mioon 是一个个人视频创作工具。你可以先用画板整理想法，�
 
 画板适合构思，剪辑区适合做成片，随时切换就能继续工作
 
-[![Mioon 画板：用镜头卡片、参考图片和文字整理创作想法](docs/verification/mioon-redesign/appearance/browser/languages/zh-Hans-1440-canvas.png)](docs/verification/mioon-redesign/appearance/browser/languages/zh-Hans-1440-canvas.png)
+[![Mioon 深色画板：用镜头卡片、参考图片和文字整理创作想法](docs/verification/mioon-redesign/screenshots/board-selected-zh-Hans-1440.png)](docs/verification/mioon-redesign/screenshots/board-selected-zh-Hans-1440.png)
 
 ### 把零散素材剪成一个故事
 
