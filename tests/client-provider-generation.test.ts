@@ -2,18 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generationSelection, generationInputIssue, providerAvailabilityIssue, providerStatus, providerStatusLabel, providerModels } from '../apps/web/src/generation-settings.ts';
 import { getGenerationIssue } from '@mioon/contracts';
+import type {GenerationAsset, GenerationModelCapability, GenerationProvider, GenerationShot} from '../apps/web/src/generation-settings.ts';
 
-const image = { id: 'image-a', mimeType: 'image/png', width: 720, height: 1280 };
-const imageModel = { id: 'image-model', name: 'Image Model', inputModes: ['image'], aspectRatios: ['9:16'], durations: [4], referenceImages: { min: 1, max: 1, mimeTypes: ['image/png'], matchAspectRatio: true }, promptRequired: true, maxPromptLength: 500, parameters: ['seed'], seed: { min: 0, max: 100 } };
-const textModel = { id: 'text-model', name: 'Text Model', inputModes: ['text'], aspectRatios: ['16:9'], durations: [8], referenceImages: { min: 0, max: 0 }, parameters: [] };
-const provider = { id: 'new-provider', name: 'Future provider', enabled: true, configured: true, status: 'available', models: ['image-model', 'text-model'], inputModes: ['image', 'text'], aspectRatios: ['9:16', '16:9'], durations: [4, 8], modelCapabilities: [imageModel, textModel] };
-const shot = { prompt: 'A quiet sunrise', referenceAssetIds: [image.id], aspectRatio: '9:16', duration: 4, parameters: {} };
+const image: GenerationAsset = { id: 'image-a', mimeType: 'image/png', width: 720, height: 1280 };
+const imageModel: GenerationModelCapability = { id: 'image-model', name: 'Image Model', inputModes: ['image'], aspectRatios: ['9:16'], durations: [4], referenceImages: { min: 1, max: 1, mimeTypes: ['image/png'], matchAspectRatio: true }, promptRequired: true, maxPromptLength: 500, parameters: ['seed'], seed: { min: 0, max: 100 } };
+const textModel: GenerationModelCapability = { id: 'text-model', name: 'Text Model', inputModes: ['text'], aspectRatios: ['16:9'], durations: [8], referenceImages: { min: 0, max: 0 }, parameters: [] };
+const provider: GenerationProvider = { id: 'new-provider', name: 'Future provider', enabled: true, configured: true, status: 'available', models: ['image-model', 'text-model'], inputModes: ['image', 'text'], aspectRatios: ['9:16', '16:9'], durations: [4, 8], modelCapabilities: [imageModel, textModel] };
+const shot: GenerationShot = { prompt: 'A quiet sunrise', referenceAssetIds: [image.id!], aspectRatio: '9:16', duration: 4, parameters: {} };
 
 test('renderer uses selected model limits rather than union provider limits', () => {
   const selected = generationSelection([provider], { providerId: provider.id, model: 'image-model' }, shot);
   assert.equal(selected.capabilities, imageModel);
   const incompatible = { ...shot, duration: 8 };
-  assert.equal(generationInputIssue(incompatible, provider, selected.model, [image], 'image'), getGenerationIssue({ ...incompatible, model: selected.model, referenceAssets: [image] }, provider).message);
+  assert.equal(generationInputIssue(incompatible, provider, selected.model, [image], 'image'), getGenerationIssue({ ...incompatible, model: selected.model, referenceAssets: [image] }, provider)?.message);
   assert.equal(generationInputIssue(shot, provider, selected.model, [image], 'image'), '');
 });
 
@@ -34,13 +35,14 @@ test('text mode is inferred from zero references, while explicit empty image mod
 });
 
 test('missing references, image metadata, prompt and seed limits share backend checks', () => {
-  assert.match(generationInputIssue(shot, provider, imageModel.id, [], 'image'), /已不存在/);
-  for (const [draft, assets] of [
+  assert.match(generationInputIssue(shot, provider, imageModel.id!, [], 'image'), /已不存在/);
+  const cases: Array<[GenerationShot, GenerationAsset[]]> = [
     [{ ...shot, prompt: '' }, [image]],
     [{ ...shot, parameters: { seed: 101 } }, [image]],
     [shot, [{ ...image, mimeType: 'image/webp' }]],
     [shot, [{ ...image, width: 360, height: 480 }]],
-  ]) assert.equal(generationInputIssue(draft, provider, imageModel.id, assets, 'image'), getGenerationIssue({ ...draft, model: imageModel.id, referenceAssets: assets }, provider).message);
+  ];
+  for (const [draft, assets] of cases) assert.equal(generationInputIssue(draft, provider, imageModel.id!, assets, 'image'), getGenerationIssue({ ...draft, model: imageModel.id!, referenceAssets: assets }, provider)?.message);
 });
 
 test('unknown selected provider/model blocks rather than falling back to another service', () => {
@@ -54,7 +56,8 @@ test('unknown selected provider/model blocks rather than falling back to another
 });
 
 test('status reporting distinguishes disabled, incomplete, and available without secret values', () => {
-  for (const [status, label] of [['available', '可用'], ['disabled', '未启用'], ['not_configured', '配置未完成']]) {
+  const statuses: Array<[string, string]> = [['available', '可用'], ['disabled', '未启用'], ['not_configured', '配置未完成']];
+  for (const [status, label] of statuses) {
     const item = { ...provider, status };
     assert.equal(providerStatus(item), status);
     assert.equal(providerStatusLabel(item), label);

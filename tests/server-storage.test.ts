@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,9 +9,9 @@ import {startServer} from '@mioon/server';
 import {openStore} from '@mioon/business';
 import {validateWorkspaceStorage} from '@mioon/business/db';
 
-const posix = {skip: process.platform === 'win32'};
+const posix: {skip: boolean} = {skip: process.platform === 'win32'};
 const token = 'synthetic-server-storage-token';
-function fixture(t) {
+function fixture(t: TestContext): {base: string; root: string; outside: string} {
   const base = fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()), 'mioon-server-storage-'));
   t.after(() => fs.rmSync(base, {recursive: true, force: true}));
   const root = path.join(base, 'workspace'), outside = path.join(base, 'outside');
@@ -19,9 +19,10 @@ function fixture(t) {
   fs.writeFileSync(path.join(outside, 'sentinel'), 'synthetic-outside-preserved', {mode: 0o600});
   return {base, root, outside};
 }
-function snapshot(root) {
-  const values = {};
-  const visit = (file, key) => {
+interface SnapshotEntry {mode: number; uid: number; ino: number; nlink: number; content: string | null}
+function snapshot(root: string): Record<string, SnapshotEntry> {
+  const values: Record<string, SnapshotEntry> = {};
+  const visit = (file: string, key: string): void => {
     const info = fs.lstatSync(file);
     values[key] = {mode: info.mode, uid: info.uid, ino: info.ino, nlink: info.nlink,
       content: info.isFile() ? fs.readFileSync(file).toString('hex') : info.isSymbolicLink() ? fs.readlinkSync(file) : null};
@@ -29,7 +30,7 @@ function snapshot(root) {
   };
   visit(root, 'root'); return values;
 }
-const storageFailure = error => error.code === 'STORAGE_PRIVATE_REQUIRED' && Boolean(error.reason) && Boolean(error.recovery) && !error.message.includes('mioon-server-storage-') && !error.message.includes(token);
+const storageFailure = (error: unknown): boolean => { const failure = error as {code?: string; reason?: unknown; recovery?: unknown; message: string}; return failure.code === 'STORAGE_PRIVATE_REQUIRED' && Boolean(failure.reason) && Boolean(failure.recovery) && !failure.message.includes('mioon-server-storage-') && !failure.message.includes(token); };
 
 for (const mode of [0o755, 0o777]) test(`unsafe existing root${mode.toString(8)} fails before any initialization or permission repair`, posix, async t => {
   const f = fixture(t); fs.chmodSync(f.root, mode); const before = snapshot(f.base);
@@ -64,7 +65,8 @@ for (const entry of ['workbench.sqlite', 'workbench.sqlite-wal', 'workbench.sqli
 }
 
 test('token permissions and bounded size remain mandatory even when a valid token is supplied', posix, async t => {
-  for (const [mode, contents] of [[0o644, token], [0o600, 'x'.repeat(4099)]]) {
+  const cases: Array<[number, string]> = [[0o644, token], [0o600, 'x'.repeat(4099)]];
+  for (const [mode, contents] of cases) {
     const f = fixture(t); fs.writeFileSync(path.join(f.root, 'access-token'), contents, {mode});
     const before = snapshot(f.base); await assert.rejects(startServer({dataDir: f.root, port: 0, token}), storageFailure);
     assert.deepEqual(snapshot(f.base), before);
@@ -83,7 +85,7 @@ test('consumed malformed token fails before DB/media creation or removal of a sa
 test('valid supplied token overrides unused malformed contents without ever reading or rewriting them', posix, async t => {
   const f = fixture(t), file = path.join(f.root, 'access-token'); fs.writeFileSync(file, 'bad', {mode: 0o600});
   const original = fs.openSync; let reads = 0;
-  t.mock.method(fs, 'openSync', function (candidate, flags, ...args) { if (candidate === file) { reads++; throw Error('stored-token-must-not-be-opened'); } return original(candidate, flags, ...args); });
+  t.mock.method(fs, 'openSync', function (candidate: unknown, flags: unknown, ...args: unknown[]): unknown { if (candidate === file) { reads++; throw Error('stored-token-must-not-be-opened'); } return (original as (...values: unknown[]) => unknown)(candidate, flags, ...args); });
   syncBuiltinESMExports();
   let service;
   try { service = await startServer({dataDir: f.root, port: 0, token}); assert.equal(service.token, token); assert.equal(reads, 0); }

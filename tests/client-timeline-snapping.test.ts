@@ -7,18 +7,24 @@ import {
   assetTimelineDuration,
   snapTimelinePosition,
   timelineDropPreview,
+  type SnappingAsset,
+  type SnappingClip,
+  type SnappingTimeline,
+  type SnapResult,
+  type SnapTimelineInput,
+  type DropPreviewInput,
 } from '../apps/web/src/timeline-snapping.ts';
 
-const videoTrack = { id: 'video-track', kind: 'video' };
-const audioTrack = { id: 'audio-track', kind: 'audio' };
-const videoAsset = { id: 'video', mimeType: 'video/mp4', duration: 1 };
-const audioAsset = { id: 'audio', mimeType: 'audio/wav', duration: 1 };
-const imageAsset = { id: 'image', mimeType: 'image/png' };
-const clip = (patch = {}) => ({ id: 'clip', assetId: 'video', trackId: videoTrack.id, startFrame: 300, durationFrames: 30, sourceInFrame: 0, ...patch });
-const timeline = (clips = []) => ({ id: 'timeline', projectId: 'project', revision: 7, fps: 30, tracks: [videoTrack, audioTrack], clips });
-const snap = (patch = {}) => snapTimelinePosition({ pointerFrame: 200, durationFrames: 30, pixelsPerFrame: 1, playhead: 1500, ...patch });
-const preview = (patch = {}) => timelineDropPreview({ timeline: timeline(), track: videoTrack, asset: videoAsset, pointerFrame: 200, pixelsPerFrame: 1, playhead: 1500, enabled: true, ...patch });
-const near = (actual, expected, message) => assert.ok(Math.abs(actual - expected) < 1e-7, message || `${actual} should be near ${expected}`);
+const videoTrack: { id: string; kind: string } = { id: 'video-track', kind: 'video' };
+const audioTrack: { id: string; kind: string } = { id: 'audio-track', kind: 'audio' };
+const videoAsset: SnappingAsset = { id: 'video', mimeType: 'video/mp4', duration: 1 };
+const audioAsset: SnappingAsset = { id: 'audio', mimeType: 'audio/wav', duration: 1 };
+const imageAsset: SnappingAsset = { id: 'image', mimeType: 'image/png' };
+const clip = (patch: Partial<SnappingClip> = {}): SnappingClip => ({ id: 'clip', assetId: 'video', trackId: videoTrack.id, startFrame: 300, durationFrames: 30, sourceInFrame: 0, ...patch });
+const timeline = (clips: SnappingClip[] = []): SnappingTimeline => ({ id: 'timeline', projectId: 'project', revision: 7, fps: 30, tracks: [videoTrack, audioTrack], clips });
+const snap = (patch: Partial<SnapTimelineInput> = {}): SnapResult => snapTimelinePosition({ pointerFrame: 200, durationFrames: 30, pixelsPerFrame: 1, playhead: 1500, ...patch });
+const preview = (patch: Partial<DropPreviewInput> = {}) => timelineDropPreview({ timeline: timeline(), track: videoTrack, asset: videoAsset, pointerFrame: 200, pixelsPerFrame: 1, playhead: 1500, enabled: true, ...patch });
+const near = (actual: number, expected: number, message = ''): void => assert.ok(Math.abs(actual - expected) < 1e-7, message || `${actual} should be near ${expected}`);
 
 for (const movingEdge of ['start', 'end']) {
   for (const targetEdge of ['start', 'end']) {
@@ -28,12 +34,12 @@ for (const movingEdge of ['start', 'end']) {
       const startFrame = targetFrame - (movingEdge === 'end' ? 30 : 0);
       const result = snap({ pointerFrame: startFrame + 2.25, clips: [target] });
       assert.equal(result.startFrame, startFrame);
-      assert.equal(result.snap.edge, movingEdge);
-      assert.equal(result.snap.kind, 'clip');
-      assert.equal(result.snap.id, target.id);
-      assert.equal(result.snap.frame, targetFrame);
-      assert.equal(result.snap.label, targetEdge === 'start' ? '片段起点' : '片段终点');
-      assert.equal(result.snap.distance, 2.25);
+      assert.equal(result.snap!.edge, movingEdge);
+      assert.equal(result.snap!.kind, 'clip');
+      assert.equal(result.snap!.id, target.id);
+      assert.equal(result.snap!.frame, targetFrame);
+      assert.equal(result.snap!.label, targetEdge === 'start' ? '片段起点' : '片段终点');
+      assert.equal(result.snap!.distance, 2.25);
     });
   }
 }
@@ -45,7 +51,7 @@ test('clip boundaries are available across tracks and media types', () => {
     clip({ id: 'audio', assetId: 'audio', trackId: audioTrack.id }),
   ]) {
     const result = snap({ pointerFrame: 301, clips: [target] });
-    assert.equal(result.snap.id, target.id);
+    assert.equal(result.snap!.id, target.id);
     assert.equal(result.startFrame, 300);
   }
 });
@@ -56,7 +62,7 @@ test('moving clip excludes both its own boundaries, but retains other coincident
     assert.equal(snap({ pointerFrame, clips: [moving], excludeClipId: moving.id }).snap, null);
   }
   const result = snap({ pointerFrame: 302, clips: [moving, clip({ id: 'other' })], excludeClipId: moving.id });
-  assert.equal(result.snap.id, 'other');
+  assert.equal(result.snap!.id, 'other');
   assert.equal(result.startFrame, 300);
 });
 
@@ -64,14 +70,15 @@ test('zero and playhead are targets for eligible moving edges', () => {
   assert.equal(SNAP_THRESHOLD_PX, 8);
   const zero = snap({ pointerFrame: 3, playhead: 0 });
   assert.equal(zero.startFrame, 0);
-  assert.equal(zero.snap.kind, 'zero');
-  assert.equal(zero.snap.edge, 'start');
-  for (const [pointerFrame, expectedStart, edge] of [[503, 500, 'start'], [473, 470, 'end']]) {
+  assert.equal(zero.snap!.kind, 'zero');
+  assert.equal(zero.snap!.edge, 'start');
+  const playheadCases: Array<[number, number, 'start' | 'end']> = [[503, 500, 'start'], [473, 470, 'end']];
+  for (const [pointerFrame, expectedStart, edge] of playheadCases) {
     const result = snap({ pointerFrame, playhead: 500 });
     assert.equal(result.startFrame, expectedStart);
-    assert.equal(result.snap.kind, 'playhead');
-    assert.equal(result.snap.frame, 500);
-    assert.equal(result.snap.edge, edge);
+    assert.equal(result.snap!.kind, 'playhead');
+    assert.equal(result.snap!.frame, 500);
+    assert.equal(result.snap!.edge, edge);
   }
 });
 
@@ -85,8 +92,8 @@ for (const pixelsPerSecond of [28, 76, 220]) {
         for (const distancePx of [7.999, 8]) {
           const result = snap({ pointerFrame: expectedStart + direction * distancePx / pixelsPerFrame, pixelsPerFrame, clips: [target] });
           assert.equal(result.startFrame, expectedStart);
-          assert.equal(result.snap.edge, edge);
-          near(result.snap.distance, distancePx);
+          assert.equal(result.snap!.edge, edge);
+          near(result.snap!.distance, distancePx);
           near(Math.abs(result.startFrame - (expectedStart + direction * distancePx / pixelsPerFrame)) * pixelsPerFrame, distancePx);
         }
         const pointerFrame = expectedStart + direction * 8.001 / pixelsPerFrame;
@@ -101,24 +108,24 @@ for (const pixelsPerSecond of [28, 76, 220]) {
 test('nearest distance wins before edge preference, with deterministic equal-distance edge ties', () => {
   const nearest = snap({ pointerFrame: 100, playhead: 131, clips: [clip({ startFrame: 97, durationFrames: 200 })] });
   assert.equal(nearest.startFrame, 101);
-  assert.equal(nearest.snap.edge, 'end');
-  assert.equal(nearest.snap.kind, 'playhead');
+  assert.equal(nearest.snap!.edge, 'end');
+  assert.equal(nearest.snap!.kind, 'playhead');
   const tie = snap({ pointerFrame: 100, playhead: 132, clips: [clip({ startFrame: 98, durationFrames: 200 })] });
   assert.equal(tie.startFrame, 98);
-  assert.equal(tie.snap.edge, 'start');
+  assert.equal(tie.snap!.edge, 'start');
 });
 
 test('equal-distance candidates prefer earlier targets, then target kind, then stable clip ID', () => {
   const earlier = snap({ pointerFrame: 300, clips: [clip({ id: 'later', startFrame: 304, durationFrames: 100 }), clip({ id: 'earlier', startFrame: 296, durationFrames: 100 })] });
-  assert.equal(earlier.snap.id, 'earlier');
+  assert.equal(earlier.snap!.id, 'earlier');
   const playhead = snap({ pointerFrame: 302, playhead: 300, clips: [clip()] });
-  assert.equal(playhead.snap.kind, 'playhead');
+  assert.equal(playhead.snap!.kind, 'playhead');
   const zero = snap({ pointerFrame: 2, playhead: 0, clips: [clip({ startFrame: 0 })] });
-  assert.equal(zero.snap.kind, 'zero');
+  assert.equal(zero.snap!.kind, 'zero');
   const sameBoundary = [clip({ id: 'z-clip' }), clip({ id: 'a-clip' }), clip({ id: 'm-clip' })];
   for (const ordered of [sameBoundary, [...sameBoundary].reverse(), [sameBoundary[1], sameBoundary[0], sameBoundary[2]]]) {
     const result = snap({ pointerFrame: 302, clips: ordered });
-    assert.equal(result.snap.id, 'a-clip');
+    assert.equal(result.snap!.id, 'a-clip');
     assert.equal(result.startFrame, 300);
   }
 });
@@ -129,7 +136,7 @@ test('fractional grab offsets are preserved until final position rounding or sna
   assert.equal(freely.snap, null);
   const snapped = snap({ pointerFrame: 315.125, grabFrame: 12.75, clips: [clip()] });
   assert.equal(snapped.startFrame, 300);
-  assert.equal(snapped.snap.distance, 2.375);
+  assert.equal(snapped.snap!.distance, 2.375);
   const atOriginalPosition = snap({ pointerFrame: 312.75, grabFrame: 12.75, enabled: false });
   assert.equal(atOriginalPosition.startFrame, 300);
 });
@@ -176,11 +183,11 @@ test('free placement clamps the whole duration within zero and 18000 frames', ()
 test('snap candidates cannot pull the clip before zero or past its duration-aware upper limit', () => {
   const beforeZero = snap({ pointerFrame: 2, playhead: 29, durationFrames: 30 });
   assert.equal(beforeZero.startFrame, 0);
-  assert.equal(beforeZero.snap.kind, 'zero');
+  assert.equal(beforeZero.snap!.kind, 'zero');
   const upper = snap({ pointerFrame: 17969, playhead: 18000, durationFrames: 30 });
   assert.equal(upper.startFrame, 17970);
-  assert.equal(upper.snap.edge, 'end');
-  assert.equal(upper.snap.frame, 18000);
+  assert.equal(upper.snap!.edge, 'end');
+  assert.equal(upper.snap!.frame, 18000);
   const beyond = snap({ pointerFrame: 17980, playhead: 18001, durationFrames: 30 });
   assert.equal(beyond.startFrame, 17970);
   assert.equal(beyond.snap, null);
@@ -205,8 +212,9 @@ test('invalid pixel scales and malformed target frames cannot create snap candid
     assert.equal(result.startFrame, 302);
     assert.equal(result.snap, null);
   }
-  for (const frame of [-1, 300.5, NaN, Infinity, '300', 18001]) {
-    const result = snap({ pointerFrame: 302.25, playhead: frame, clips: [clip({ startFrame: frame, durationFrames: 30 })] });
+  const invalidFrames: unknown[] = [-1, 300.5, NaN, Infinity, '300', 18001];
+  for (const frame of invalidFrames) {
+    const result = snap({ pointerFrame: 302.25, playhead: frame as number, clips: [clip({ startFrame: frame as number, durationFrames: 30 })] });
     assert.equal(result.startFrame, 302);
     assert.equal(result.snap, null);
   }
@@ -216,8 +224,8 @@ test('a colliding nearest snap stays invalid instead of silently choosing a near
   const blocker = clip({ id: 'blocker', startFrame: 300, durationFrames: 6 });
   const result = preview({ timeline: timeline([blocker]), pointerFrame: 301 });
   assert.equal(result.startFrame, 300);
-  assert.equal(result.snap.frame, 300);
-  assert.equal(result.snap.edge, 'start');
+  assert.equal(result.snap!.frame, 300);
+  assert.equal(result.snap!.edge, 'start');
   assert.equal(result.valid, false);
   assert.match(result.reason, /重叠/);
   // A legal snap at the blocker's end is only five pixels away, but is not
@@ -226,10 +234,11 @@ test('a colliding nearest snap stays invalid instead of silently choosing a near
 });
 
 test('type-incompatible drop retains its exact selected position and reports why it is invalid', () => {
-  for (const [asset, track] of [[videoAsset, audioTrack], [imageAsset, audioTrack], [audioAsset, videoTrack]]) {
+  const typeCases: Array<[SnappingAsset, { id: string; kind?: string }]> = [[videoAsset, audioTrack], [imageAsset, audioTrack], [audioAsset, videoTrack]];
+  for (const [asset, track] of typeCases) {
     const result = preview({ asset, track, timeline: timeline([clip({ trackId: 'somewhere-else' })]), pointerFrame: 302 });
     assert.equal(result.startFrame, 300);
-    assert.equal(result.snap.frame, 300);
+    assert.equal(result.snap!.frame, 300);
     assert.equal(result.valid, false);
     assert.match(result.reason, /类型.*不兼容/);
   }

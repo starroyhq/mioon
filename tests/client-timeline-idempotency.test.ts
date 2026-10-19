@@ -1,17 +1,20 @@
-import test from 'node:test';
+import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import { isTimelineRenderRecord } from '@mioon/contracts';
 import {prepareSubmission,readPending,clearPending,pendingForProject,reconcilePending} from '../apps/web/src/submissions.ts';
+import type {PendingEntry} from '../apps/web/src/submissions.ts';
+type RenderInput = {projectId: string; requestId: string; expectedRevision: number; purpose: string};
+type TimelineRequest = PendingEntry & {input: RenderInput};
 class SessionStore{
- values=new Map();get length(){return this.values.size;}key(n){return [...this.values.keys()][n]??null;}getItem(k){return this.values.get(k)??null;}setItem(k,v){this.values.set(k,String(v));}removeItem(k){this.values.delete(k);}
+ values=new Map<string,string>();get length(){return this.values.size;}key(n: number): string|null{return [...this.values.keys()][n]??null;}getItem(k: string): string|null{return this.values.get(k)??null;}setItem(k: string,v: unknown){this.values.set(k,String(v));}removeItem(k: string){this.values.delete(k);}
 }
-function fixture(t){const prior=Object.getOwnPropertyDescriptor(globalThis,'sessionStorage');const storage=new SessionStore();Object.defineProperty(globalThis,'sessionStorage',{configurable:true,value:storage});t.after(()=>{if(prior)Object.defineProperty(globalThis,'sessionStorage',prior);else delete globalThis.sessionStorage;});return storage;}
-const request=(operation='timeline.clip.update',key='timeline:mutation')=>({projectId:'project-v2',key,operation,createdAt:'2026-10-09T10:00:00.000Z',input:{projectId:'project-v2',expectedRevision:7,requestId:'timeline-original-request',clipId:'clip-original',patch:{trackId:'track-two',startFrame:47,durationFrames:82,sourceInFrame:11,rect:{x:100,y:200,width:300,height:400},gain:0.5}}});
-test('timeline mutations retain exact frame, rect, revision and request identity across a lost response',t=>{fixture(t);const original=request();prepareSubmission(original);const replacement=request('timeline.track.add');replacement.input={...replacement.input,expectedRevision:8,requestId:'must-never-replace'};assert.deepEqual(prepareSubmission(replacement),original);assert.deepEqual(readPending('project-v2','timeline:mutation'),original);});
-test('fetching a newer timeline cannot prove an uncertain mutation succeeded; only explicit replay clears it',t=>{fixture(t);const original=request();prepareSubmission(original);reconcilePending('project-v2',{timeline:{revision:99,clips:[]},jobs:[],exports:[]});assert.deepEqual(pendingForProject('project-v2'),[original]);clearPending('project-v2','timeline:mutation');assert.equal(pendingForProject('project-v2').length,0);});
-test('all supported timeline mutation operations and render accept durable recovery records',t=>{fixture(t);for(const [i,op] of ['timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.remove','timeline.clip.rippleRemove','timeline.clip.split','timeline.clip.replaceSource','timeline.seed','timeline.render','timeline.undo','timeline.redo'].entries()){const entry=request(op,`timeline:${i}`);entry.input.requestId+=i;assert.deepEqual(prepareSubmission(entry),entry);}assert.equal(pendingForProject('project-v2').length,12);});
-const id = value => `81000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
-function renderRecord(input, status = 'queued') {
+function fixture(t: TestContext){const prior=Object.getOwnPropertyDescriptor(globalThis,'sessionStorage');const storage=new SessionStore();Object.defineProperty(globalThis,'sessionStorage',{configurable:true,value:storage});t.after(()=>{if(prior)Object.defineProperty(globalThis,'sessionStorage',prior);else delete (globalThis as {sessionStorage?: unknown}).sessionStorage;});return storage;}
+const request=(operation: string='timeline.clip.update',key: string='timeline:mutation'): TimelineRequest=>({projectId:'project-v2',key,operation,createdAt:'2026-10-09T10:00:00.000Z',input:{projectId:'project-v2',expectedRevision:7,requestId:'timeline-original-request',clipId:'clip-original',patch:{trackId:'track-two',startFrame:47,durationFrames:82,sourceInFrame:11,rect:{x:100,y:200,width:300,height:400},gain:0.5}}} as unknown as TimelineRequest);
+test('timeline mutations retain exact frame, rect, revision and request identity across a lost response',(t: TestContext)=>{fixture(t);const original=request();prepareSubmission(original);const replacement=request('timeline.track.add');replacement.input={...replacement.input,expectedRevision:8,requestId:'must-never-replace'};assert.deepEqual(prepareSubmission(replacement),original);assert.deepEqual(readPending('project-v2','timeline:mutation'),original);});
+test('fetching a newer timeline cannot prove an uncertain mutation succeeded; only explicit replay clears it',(t: TestContext)=>{fixture(t);const original=request();prepareSubmission(original);reconcilePending('project-v2',{timeline:{revision:99,clips:[]},jobs:[],exports:[]});assert.deepEqual(pendingForProject('project-v2'),[original]);clearPending('project-v2','timeline:mutation');assert.equal(pendingForProject('project-v2').length,0);});
+test('all supported timeline mutation operations and render accept durable recovery records',(t: TestContext)=>{fixture(t);for(const [i,op] of ['timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.remove','timeline.clip.rippleRemove','timeline.clip.split','timeline.clip.replaceSource','timeline.seed','timeline.render','timeline.undo','timeline.redo'].entries()){const entry=request(op,`timeline:${i}`);(entry.input as {requestId: string}).requestId+=i;assert.deepEqual(prepareSubmission(entry),entry);}assert.equal(pendingForProject('project-v2').length,12);});
+const id = (value: number): string => `81000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
+function renderRecord(input: RenderInput, status: string = 'queued') {
   const timeline = { id: id(2), projectId: input.projectId, revision: input.expectedRevision, fps: 30, width: 720, height: 1280,
     durationFrames: 30, createdAt: '2026-10-10T00:00:00.000Z', updatedAt: '2026-10-10T00:00:00.000Z',
     tracks: [{ id: id(3), name: 'Video', kind: 'video', orderIndex: 0, hidden: false, muted: false }],
@@ -23,7 +26,7 @@ function renderRecord(input, status = 'queued') {
     createdAt: timeline.createdAt, updatedAt: timeline.updatedAt };
 }
 
-test('preview and export recovery identities stay separate and public render records never release either key', t => {
+test('preview and export recovery identities stay separate and public render records never release either key', (t: TestContext) => {
   fixture(t); const projectId = id(1);
   const preview = { ...request('timeline.render', 'timeline:render:preview'), projectId, input: { projectId, expectedRevision: 7, requestId: 'preview-original', purpose: 'preview' } };
   const exported = { ...preview, key: 'timeline:render:export', input: { ...preview.input, requestId: 'export-original', purpose: 'export' } };
@@ -45,9 +48,10 @@ test('preview and export recovery identities stay separate and public render rec
   assert.deepEqual(readPending(projectId, exported.key), exported);
 });
 
-test('every valid public render lifecycle record preserves the original receipt after same-session reload', t => {
+test('every valid public render lifecycle record preserves the original receipt after same-session reload', (t: TestContext) => {
   fixture(t); const projectId = id(1);
-  for (const status of ['queued', 'running', 'succeeded', 'failed']) {
+  const statuses: string[] = ['queued', 'running', 'succeeded', 'failed'];
+  for (const status of statuses) {
     const entry = { ...request('timeline.render', 'timeline:render:export'), projectId, input: { projectId, expectedRevision: 7, requestId: `original-${status}`, purpose: 'export' } };
     prepareSubmission(entry);
     assert.deepEqual(pendingForProject(projectId, { strict: true }), [entry]);
@@ -99,7 +103,7 @@ test('lost replacement keeps the exact fixed source and optional version despite
     assert.deepEqual(prepareSubmission(changed), original);
     assert.deepEqual(readPending('project-v2', 'timeline:mutation'), original);
     assert.deepEqual(pendingForProject('project-v2', {strict: true}), [original]);
-    assert.equal(Object.hasOwn(readPending('project-v2', 'timeline:mutation').input, 'versionId'), Object.hasOwn(provenance, 'versionId'));
+    assert.equal(Object.hasOwn(readPending('project-v2', 'timeline:mutation')!.input, 'versionId'), Object.hasOwn(provenance, 'versionId'));
     clearPending('project-v2', 'timeline:mutation');
   }
 });

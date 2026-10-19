@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {mkdtemp, mkdir, readFile, writeFile, rename, unlink, realpath, rm} from 'node:fs/promises';
@@ -25,7 +25,7 @@ function versionSlice() {
   return `${imports[0][0]}\n${declaration[0]}\n`;
 }
 
-async function fixture(t, manifest = applicationPackage) {
+async function fixture(t: TestContext, manifest: Record<string, unknown> = applicationPackage) {
   const directory = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-client-version-'));
   t.after(() => rm(directory, {recursive: true, force: true}));
   const sourceRoot = path.join(directory, 'source');
@@ -39,14 +39,14 @@ async function fixture(t, manifest = applicationPackage) {
   return {directory, sourceRoot, cwd};
 }
 
-function runVersion(sourceRoot, cwd) {
+function runVersion(sourceRoot: string, cwd: string) {
   const moduleUrl = pathToFileURL(path.join(sourceRoot, 'packages/client/src/index.ts')).href;
   return spawnSync(process.execPath, ['--input-type=module', '--eval',
     `import {VERSION} from ${JSON.stringify(moduleUrl)}; process.stdout.write(JSON.stringify(VERSION));`],
   {cwd, env: {}, encoding: 'utf8', timeout: 10_000, maxBuffer: 64 * 1024});
 }
 
-function assertVersion(result, expected) {
+function assertVersion(result: ReturnType<typeof runVersion>, expected: unknown) {
   assert.ifError(result.error);
   assert.equal(result.signal, null);
   assert.equal(result.status, 0, result.stderr);
@@ -112,7 +112,7 @@ test('full client VERSION and schema discovery match the root when workspace dep
   for (const dependency of ['@mioon/contracts', 'zod', 'zod-to-json-schema']) {
     try { require.resolve(dependency); }
     catch (error) {
-      if (error.code !== 'MODULE_NOT_FOUND') throw error;
+      if ((error as {code?: string}).code !== 'MODULE_NOT_FOUND') throw error;
       missing.push(dependency);
     }
   }
@@ -126,12 +126,12 @@ test('full client VERSION and schema discovery match the root when workspace dep
   assert.equal(client.discoverSchema().version, applicationPackage.version);
 });
 
-function hasRuntimeDependencies(t, dependencies) {
+function hasRuntimeDependencies(t: TestContext, dependencies: string[]) {
   const require = createRequire(clientFile);
   for (const dependency of dependencies) {
     try { require.resolve(dependency); }
     catch (error) {
-      if (error.code !== 'MODULE_NOT_FOUND') throw error;
+      if ((error as {code?: string}).code !== 'MODULE_NOT_FOUND') throw error;
       t.skip(`Workspace dependency not initialized: ${dependency}; runtime check was not executed`);
       return false;
     }
@@ -149,7 +149,7 @@ test('actual CLI startup reports the application version from unrelated cwd with
     assert.ifError(result.error); assert.equal(result.status, 0, result.stderr); assert.equal(result.signal, null);
     const envelope = JSON.parse(result.stdout);
     assert.equal(envelope.ok, true); assert.equal(envelope.data.version, applicationPackage.version);
-    if (args[0] === 'schema') assert.ok(envelope.data.operations.some(item => item.operation === 'image.task.observeRemote'));
+    if (args[0] === 'schema') assert.ok((envelope.data as {operations: Array<{operation: string}>}).operations.some(item => item.operation === 'image.task.observeRemote'));
   }
 });
 
@@ -162,43 +162,50 @@ test('official MCP initialization separates application serverInfo from negotiat
   const transport = new StdioClientTransport({command: process.execPath,
     args: [fileURLToPath(new URL('apps/mcp/src/index.ts', root))], cwd: fileURLToPath(root),
     env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}, stderr: 'pipe'});
-  let stderr = ''; transport.stderr.setEncoding('utf8').on('data', bytes => { stderr += bytes; });
-  const messages = [];
-  const wire = {
+  let stderr = '';
+  const stderrStream = transport.stderr as unknown as {setEncoding(encoding: string): {on(event: string, listener: (chunk: string) => void): void}} | null;
+  stderrStream?.setEncoding('utf8').on('data', (bytes: string) => { stderr += bytes; });
+  interface WireMessage {method?: string; result?: {serverInfo?: unknown; protocolVersion?: string}; params?: {name?: string}}
+  const messages: WireMessage[] = [];
+  interface WireTransport {
+    onmessage?: (message: WireMessage) => void; onerror?: (error: unknown) => void; onclose?: () => void;
+    start(): Promise<void>; send(message: unknown, options?: unknown): Promise<void>; close(): Promise<void>; readonly sessionId?: string;
+  }
+  const wire: WireTransport = {
     onmessage: undefined, onerror: undefined, onclose: undefined,
     async start() {
-      transport.onmessage = message => { messages.push(message); wire.onmessage?.(message); };
-      transport.onerror = error => wire.onerror?.(error); transport.onclose = () => wire.onclose?.();
+      transport.onmessage = (message: unknown) => { messages.push(message as WireMessage); wire.onmessage?.(message as WireMessage); };
+      transport.onerror = (error: unknown) => wire.onerror?.(error); transport.onclose = () => wire.onclose?.();
       await transport.start();
     },
-    send: (message, options) => transport.send(message, options), close: () => transport.close(),
-    get sessionId() { return transport.sessionId; },
+    send: (message: unknown, options?: unknown) => (transport.send as (message: never, options?: never) => Promise<void>)(message as never, options as never), close: () => transport.close(),
+    get sessionId() { return (transport as unknown as {sessionId?: string}).sessionId; },
   };
   t.after(() => client.close());
-  await client.connect(wire);
+  await client.connect(wire as never);
   assert.deepEqual(client.getServerVersion(), {name: 'mioon', version: applicationPackage.version});
   const initialized = messages.find(message => message.result?.serverInfo)?.result;
-  assert.ok(initialized); assert.ok(SUPPORTED_PROTOCOL_VERSIONS.includes(initialized.protocolVersion));
-  assert.match(initialized.protocolVersion, /^\d{4}-\d{2}-\d{2}$/);
+  assert.ok(initialized); assert.ok(SUPPORTED_PROTOCOL_VERSIONS.includes(initialized.protocolVersion as string));
+  assert.match(initialized.protocolVersion as string, /^\d{4}-\d{2}-\d{2}$/);
   assert.notEqual(initialized.protocolVersion, applicationPackage.version);
   const listing = await client.listTools();
   assert.ok(listing.tools.some(tool => tool.name === 'image_task_observeRemote'));
   const schema = await client.callTool({name: 'mioon_schema', arguments: {}});
-  assert.equal(schema.isError, false); assert.equal(schema.structuredContent.data.version, applicationPackage.version);
+  assert.equal(schema.isError, false); assert.equal((schema.structuredContent as {data: {version: string}}).data.version, applicationPackage.version);
   assert.equal(stderr, '');
 });
 
 test('doctor preserves distinct backend version rather than rewriting it to application identity', async t => {
   if (!hasRuntimeDependencies(t, clientDependencies)) return;
   const {createClient} = await import(clientFile.href);
-  const calls = [];
+  const calls: Array<{url: string; method?: string}> = [];
   const client = createClient({env: {MIOON_BASE_URL: 'http://127.0.0.1:45678', MIOON_TOKEN: 'synthetic-version-test-never-live'},
-    fetchImpl: async (url, options) => {
+    fetchImpl: (async (url: string, options: {method?: string; body?: string}) => {
       calls.push({url, method: options.method});
       if (url.endsWith('/health')) return new Response(JSON.stringify({ok: true, service: 'mioon', version: 'backend-compatibility-fixture', sqlite: true}));
-      assert.equal(JSON.parse(options.body).operation, 'provider.list');
+      assert.equal(JSON.parse(options.body!).operation, 'provider.list');
       return new Response(JSON.stringify({ok: true, data: []}));
-    }});
+    }) as unknown as typeof fetch});
   const result = await client.doctor();
   assert.equal(result.clientVersion, applicationPackage.version);
   assert.equal(result.backend.version, 'backend-compatibility-fixture');

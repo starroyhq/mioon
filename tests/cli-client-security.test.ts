@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import {mkdtemp, writeFile, readFile, rm} from 'node:fs/promises';
@@ -8,13 +8,15 @@ import {randomUUID} from 'node:crypto';
 import {createClient} from '@mioon/client';
 import {downloadAsset} from '@mioon/client/download';
 
-async function fixture(t, handler) {
+async function fixture(t: TestContext, handler: http.RequestListener): Promise<string> {
   const server = http.createServer(handler);
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise(resolve => {server.closeAllConnections(); server.close(resolve);}));
-  return `http://127.0.0.1:${server.address().port}`;
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise<void>(resolve => {server.closeAllConnections(); server.close(() => resolve());}));
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('Expected a bound TCP address');
+  return `http://127.0.0.1:${address.port}`;
 }
-async function credentials(t) {
+async function credentials(t: TestContext): Promise<{root: string; tokenFile: string; token: string}> {
   const root = await mkdtemp(path.join(tmpdir(), 'wb-client-security-'));
   t.after(() => rm(root, {recursive:true, force:true}));
   const tokenFile = path.join(root, 'token');
@@ -23,10 +25,10 @@ async function credentials(t) {
   return {root, tokenFile, token};
 }
 
-test('shared direct token-file client re-reads credentials between calls without logging them', async t => {
+test('shared direct token-file client re-reads credentials between calls without logging them', async (t: TestContext) => {
   const {tokenFile, token} = await credentials(t);
   let expected = token, authenticated = 0;
-  const base = await fixture(t, (req, res) => {
+  const base = await fixture(t, (req: http.IncomingMessage, res: http.ServerResponse) => {
     assert.equal(req.headers.authorization, `Bearer ${expected}`);
     authenticated++;
     res.setHeader('content-type', 'application/json');
@@ -39,9 +41,9 @@ test('shared direct token-file client re-reads credentials between calls without
   assert.equal(authenticated, 2);
 });
 
-test('watch deadline bounds a hanging get and never dispatches job.cancel', async t => {
-  const {tokenFile} = await credentials(t), operations = [];
-  const base = await fixture(t, async (req, _res) => {
+test('watch deadline bounds a hanging get and never dispatches job.cancel', async (t: TestContext) => {
+  const {tokenFile} = await credentials(t), operations: string[] = [];
+  const base = await fixture(t, async (req: http.IncomingMessage, _res: http.ServerResponse) => {
     const chunks = []; for await (const chunk of req) chunks.push(chunk);
     operations.push(JSON.parse(Buffer.concat(chunks).toString()).operation);
     // Intentionally leave the response open until the client's watch deadline.
@@ -53,11 +55,11 @@ test('watch deadline bounds a hanging get and never dispatches job.cancel', asyn
   assert.deepEqual(operations, ['job.get']);
 });
 
-test('RPC and download refuse redirects without forwarding credentials or keeping partial output', async t => {
+test('RPC and download refuse redirects without forwarding credentials or keeping partial output', async (t: TestContext) => {
   const {root, tokenFile} = await credentials(t);
   let redirectedRequests = 0;
-  const destination = await fixture(t, (_req, res) => {redirectedRequests++;res.end('must not be fetched');});
-  const base = await fixture(t, (_req, res) => {res.writeHead(302,{location:destination});res.end();});
+  const destination = await fixture(t, (_req: http.IncomingMessage, res: http.ServerResponse) => {redirectedRequests++;res.end('must not be fetched');});
+  const base = await fixture(t, (_req: http.IncomingMessage, res: http.ServerResponse) => {res.writeHead(302,{location:destination});res.end();});
   const env = {MIOON_BASE_URL:base,MIOON_TOKEN_FILE:tokenFile};
   await assert.rejects(createClient({env}).rpc('project.list'), {code:'BACKEND_UNAVAILABLE'});
   const output = path.join(root, 'must-not-remain.mp4');
@@ -66,11 +68,11 @@ test('RPC and download refuse redirects without forwarding credentials or keepin
   await assert.rejects(readFile(output), {code:'ENOENT'});
 });
 
-test('interrupted media stream closes only the client and removes its partial output', async t => {
+test('interrupted media stream closes only the client and removes its partial output', async (t: TestContext) => {
   const {root,tokenFile} = await credentials(t);
-  let started;
-  const ready = new Promise(resolve => {started = resolve;});
-  const base = await fixture(t, (_req,res) => {res.writeHead(200,{'content-type':'video/mp4'});res.write(Buffer.alloc(16));started();});
+  let started: () => void;
+  const ready = new Promise<void>(resolve => {started = resolve;});
+  const base = await fixture(t, (_req: http.IncomingMessage, res: http.ServerResponse) => {res.writeHead(200,{'content-type':'video/mp4'});res.write(Buffer.alloc(16));started();});
   const controller = new AbortController(), output = path.join(root,'interrupted.mp4');
   const result = downloadAsset({assetId:randomUUID()},output,{env:{MIOON_BASE_URL:base,MIOON_TOKEN_FILE:tokenFile},signal:controller.signal});
   const rejected = assert.rejects(result, {code:'INTERRUPTED',exitCode:130});

@@ -7,24 +7,40 @@ import {TIMELINE_LOUDNESS_APPLY_RESPONSE_BYTES} from '@mioon/contracts/timeline-
 import {loudnessApplyFixture} from './fixtures/timeline-loudness-apply.ts';
 
 const env = {MIOON_TOKEN: 'synthetic-timeline-recovery-token'};
-const clone = value => structuredClone(value);
-const response = (data, status = 200) => new Response(JSON.stringify(data), {status, headers: {'content-type': 'application/json'}});
-const success = value => response({ok: true, data: value});
-const rect = () => ({x: 0, y: 0, width: 720, height: 1280});
-const loudnessApply = await loudnessApplyFixture();
-function fixture(operation, {empty = false, fades = {}} = {}) {
+interface ClientFailure {code?: string; details?: Record<string, unknown>; status?: number}
+const failureOf = (error: unknown): ClientFailure => error as ClientFailure;
+const clone = <T>(value: T): T => structuredClone(value);
+const response = (data: unknown, status = 200): Response => new Response(JSON.stringify(data), {status, headers: {'content-type': 'application/json'}});
+const success = (value: unknown): Response => response({ok: true, data: value});
+interface TClipRect {x: number; y: number; width: number; height: number; [key: string]: unknown}
+interface TTrack {id: string; name: string; kind: string; orderIndex: number; hidden: boolean | string; muted: boolean; [key: string]: unknown}
+interface TClip {id: string; trackId: string; assetId: string; name: string; startFrame: number; durationFrames: number; sourceInFrame: number; rect: TClipRect; gain: number | string; [key: string]: unknown}
+interface TAsset {id: string; sha256: string; mimeType: string; duration?: number | null; width?: number | null; height?: number | null; hasAudio?: boolean | string | null; relativePath?: string | number | null; [key: string]: unknown}
+interface TSnapshot {timeline: TValue; assets: TAsset[]; [key: string]: unknown}
+interface TSubCue {id: string; text: string; startFrame: number; durationFrames: number; [key: string]: unknown}
+interface TSubtitles {profileId: string; cues: TSubCue[]; [key: string]: unknown}
+interface TApplication {candidateDigest: string; snapshotSha256: string; beforeRevision: number; afterRevision: number; target: {integratedLufs: number; [key: string]: unknown}; [key: string]: unknown}
+interface TValue {id: string; projectId: string; revision: number; fps: number; width: number; height: number; durationFrames: number; createdAt: string; updatedAt: string; status: string; mode: string; purpose: string; timelineRevision: number; snapshot: TSnapshot; timeline: TValue; application: TApplication; assetId: string | null; url: string | null; error: unknown; tracks: TTrack[]; clips: TClip[]; subtitles: TSubtitles; [key: string]: unknown}
+interface TimelineInput {projectId: string; expectedRevision?: number; requestId: string; exportId?: string; timelineId?: string; clipId?: string; assetId?: string; kind?: string; trackId?: string; startFrame?: number; durationFrames?: number; text?: string; cueId?: string; patch?: {text: string}; presetId?: string; expectedProjectRevision?: number; atFrame?: number; purpose?: string; versionId?: string; edgeId?: string; sourceNodeId?: string; targetShotId?: string; expectedSourceRevision?: number; role?: string; [key: string]: unknown}
+const frozen = <T>(value: T): T => {
+  if (value && typeof value === 'object') {Object.values(value).forEach(frozen); Object.freeze(value);}
+  return value;
+};
+const rect = (): TClipRect => ({x: 0, y: 0, width: 720, height: 1280});
+const loudnessApply = await loudnessApplyFixture() as unknown as {input: TimelineInput; response: TValue};
+function fixture(operation: string, {empty = false, fades = {}}: {empty?: boolean; fades?: Record<string, unknown>} = {}): {input: TimelineInput; value: TValue} {
   if (operation === 'timeline.loudness.apply') return {input: clone(loudnessApply.input), value: clone(loudnessApply.response)};
-  const input = {projectId: randomUUID(), expectedRevision: 7, requestId: randomUUID()};
+  const input: TimelineInput = {projectId: randomUUID(), expectedRevision: 7, requestId: randomUUID()};
   if(operation==='timeline.format.set')empty=true;
   const trackId = randomUUID(), clipId = randomUUID(), assetId = randomUUID();
-  const value = {id: randomUUID(), projectId: input.projectId, revision: 8, fps: 30, width: 720, height: 1280,
+  const value: TValue = {id: randomUUID(), projectId: input.projectId, revision: 8, fps: 30, width: 720, height: 1280,
     tracks: [{id: trackId, name: 'Video 1', kind: 'video', orderIndex: 0, hidden: false, muted: false}],
     clips: empty ? [] : [{id: clipId, trackId, assetId, name: 'Fixed source', startFrame: 0, durationFrames: 90, sourceInFrame: 0, rect: rect(), gain: 1, ...fades}],
-    durationFrames: empty ? 0 : 90, createdAt: '2026-10-10T00:00:00.000Z', updatedAt: '2026-10-10T00:00:01.000Z'};
+    durationFrames: empty ? 0 : 90, createdAt: '2026-10-10T00:00:00.000Z', updatedAt: '2026-10-10T00:00:01.000Z'} as unknown as TValue;
   switch (operation) {
     case 'timeline.format.set': Object.assign(input,{expectedProjectRevision:3,presetId:'landscape_720'});value.width=1280;value.height=720;break;
-    case 'timeline.subtitle.add': Object.assign(input,{text:'字幕 added',startFrame:0,durationFrames:30});value.subtitles={profileId:'bottom_cjk_v1',cues:[{id:randomUUID(),text:input.text,startFrame:0,durationFrames:30}]};break;
-    case 'timeline.subtitle.update': Object.assign(input,{cueId:randomUUID(),patch:{text:'字幕 changed'}});value.subtitles={profileId:'bottom_cjk_v1',cues:[{id:input.cueId,text:input.patch.text,startFrame:0,durationFrames:30}]};break;
+    case 'timeline.subtitle.add': Object.assign(input,{text:'字幕 added',startFrame:0,durationFrames:30});value.subtitles={profileId:'bottom_cjk_v1',cues:[{id:randomUUID(),text:input.text as string,startFrame:0,durationFrames:30}]};break;
+    case 'timeline.subtitle.update': Object.assign(input,{cueId:randomUUID(),patch:{text:'字幕 changed'}});value.subtitles={profileId:'bottom_cjk_v1',cues:[{id:input.cueId as string,text:(input.patch as {text: string}).text,startFrame:0,durationFrames:30}]};break;
     case 'timeline.subtitle.remove': input.cueId=randomUUID();value.subtitles={profileId:'bottom_cjk_v1',cues:[]};break;
     case 'timeline.track.add': input.kind = 'video'; break;
     case 'timeline.track.update': Object.assign(input, {trackId, patch: {name: 'Renamed', muted: true}}); Object.assign(value.tracks[0], input.patch); break;
@@ -35,25 +51,21 @@ function fixture(operation, {empty = false, fades = {}} = {}) {
     case 'timeline.clip.rippleRemove': input.clipId = randomUUID(); break;
     case 'timeline.clip.split': {
       Object.assign(input, {clipId, atFrame: 30});
-      const left = value.clips[0], right = {...clone(left), id: randomUUID(), startFrame: 30, durationFrames: 60, sourceInFrame: 30};
+      const left: TClip = value.clips[0], right: TClip = {...clone(left), id: randomUUID(), startFrame: 30, durationFrames: 60, sourceInFrame: 30};
       left.durationFrames = 30;
       if (Object.hasOwn(left, 'fadeInFrames')) right.fadeInFrames = 0;
       if (Object.hasOwn(left, 'fadeOutFrames')) left.fadeOutFrames = 0;
       value.clips.push(right); break;
     }
     case 'timeline.render': {
-      input.purpose = 'export'; value.revision = input.expectedRevision;
-      return {input, value: {id: randomUUID(), projectId: input.projectId, requestId: input.requestId, mode: 'timeline', purpose: input.purpose,
+      input.purpose = 'export'; value.revision = input.expectedRevision as number;
+      return {input, value: {id: randomUUID(), projectId: input.projectId, requestId: input.requestId, mode: 'timeline', purpose: input.purpose as string,
         timelineRevision: input.expectedRevision, snapshot: {timeline: value, assets: [{id: assetId, sha256: 'a'.repeat(64), mimeType: 'video/mp4', duration: 3, width: 720, height: 1280}]},
-        status: 'queued', assetId: null, url: null, error: null, createdAt: value.createdAt, updatedAt: value.updatedAt}};
+        status: 'queued', assetId: null, url: null, error: null, createdAt: value.createdAt, updatedAt: value.updatedAt} as unknown as TValue};
     }
   }
   return {input, value};
 }
-const frozen = value => {
-  if (value && typeof value === 'object') {Object.values(value).forEach(frozen); Object.freeze(value);}
-  return value;
-};
 
 test('the strict timeline acknowledgement allowlist covers exactly the seventeen replay-keyed operations', () => {
   assert.deepEqual([...TIMELINE_MUTATION_OPERATIONS].sort(), [
@@ -69,10 +81,10 @@ test('the strict timeline acknowledgement allowlist covers exactly the seventeen
 
 test('all seventeen complete historical acknowledgements validate without edits, defaults or array sorting', async () => {
   for (const operation of TIMELINE_MUTATION_OPERATIONS) {
-    const {input, value} = fixture(operation), before = clone(value), seen = [];
+    const {input, value} = fixture(operation), before = clone(value), seen: unknown[] = [];
     frozen(input); frozen(value);
     assert.equal(isTimelineMutationResponse(operation, input, value), true, operation);
-    const client = createClient({env, fetchImpl: async (_url, options) => {seen.push(JSON.parse(options.body)); return success(value);}});
+    const client = createClient({env, fetchImpl: (async (_url: string, options: {body?: string}) => {seen.push(JSON.parse(options.body!)); return success(value);}) as unknown as typeof fetch});
     assert.deepEqual(await client.rpc(operation, input), before);
     assert.deepEqual(await client.rpc(operation, input), before);
     assert.deepEqual(seen, [{operation, input}, {operation, input}], 'only explicit replay sends another request');
@@ -118,16 +130,16 @@ test('empty timelines are valid for track edits, removals, undo and redo, while 
 test('timeline shape rejects malformed complete records across every mutation and preserves exact recovery identity', async () => {
   for (const operation of TIMELINE_MUTATION_OPERATIONS) {
     const {input, value} = fixture(operation);
-    const edit = callback => {const result = clone(value); callback(operation === 'timeline.render' ? result.snapshot.timeline : operation === 'timeline.loudness.apply' ? result.timeline : result); return result;};
+    const edit = (callback: (v: TValue) => void): TValue => {const result = clone(value); callback(operation === 'timeline.render' ? result.snapshot.timeline : operation === 'timeline.loudness.apply' ? result.timeline : result); return result;};
     const bad = [null, [], {}, 4, 'timeline',
       ...(operation === 'timeline.loudness.apply' ? [clone(value.timeline), {...clone(value), projectId: input.projectId}] : []),
-      edit(v => delete v.id), edit(v => v.id = 'bad'), edit(v => v.projectId = randomUUID()), edit(v => v.revision++),
+      edit(v => delete (v as {id?: string}).id), edit(v => v.id = 'bad'), edit(v => v.projectId = randomUUID()), edit(v => v.revision++),
       edit(v => v.fps = 24), edit(v => v.durationFrames++), edit(v => v.updatedAt = 'invalid'),
       edit(v => v.tracks = []), edit(v => v.tracks.push(clone(v.tracks[0]))),
       edit(v => v.extra = true), edit(v => v.tracks[0].name = 'x'.repeat(151)),
       ...(operation==='timeline.format.set' ? [
         edit(v => v.width=720), // Supported square dimensions still mismatch this request.
-        edit(v => v.clips=null), edit(v => v.clips=[{}]),
+        edit(v => v.clips=null as never), edit(v => v.clips=[{}] as never),
         edit(v => {v.clips=[{id:randomUUID(),trackId:v.tracks[0].id,assetId:randomUUID(),name:'Unexpected content',startFrame:0,durationFrames:30,sourceInFrame:0,rect:{x:0,y:0,width:v.width,height:v.height},gain:1}];v.durationFrames=30;}),
       ] : [
         edit(v => v.clips.push(clone(v.clips[0]))), edit(v => v.clips[0].trackId = randomUUID()),
@@ -138,11 +150,12 @@ test('timeline shape rejects malformed complete records across every mutation an
     for (const invalid of bad) {
       assert.equal(isTimelineMutationResponse(operation, input, invalid), false, operation);
       let calls = 0;
-      const client = createClient({env, fetchImpl: async () => {calls++; return success(invalid);}});
-      await assert.rejects(client.rpc(operation, input), error => {
-        assert.equal(error.code, 'BACKEND_PROTOCOL_ERROR'); assert.equal(error.details.operation, operation);
-        assert.equal(error.details.requestId, input.requestId); assert.equal(error.details.submissionMayHaveSucceeded, true);
-        assert.match(error.details.recovery, /exact original input.*same requestId/); return true;
+      const client = createClient({env, fetchImpl: (async () => {calls++; return success(invalid);}) as unknown as typeof fetch});
+      await assert.rejects(client.rpc(operation, input), (error: unknown) => {
+        const failure = failureOf(error);
+        assert.equal(failure.code, 'BACKEND_PROTOCOL_ERROR'); assert.equal(failure.details?.operation, operation);
+        assert.equal(failure.details?.requestId, input.requestId); assert.equal(failure.details?.submissionMayHaveSucceeded, true);
+        assert.match(failure.details?.recovery as string, /exact original input.*same requestId/); return true;
       });
       assert.equal(calls, 1);
     }
@@ -150,7 +163,7 @@ test('timeline shape rejects malformed complete records across every mutation an
 });
 
 test('each mutation binds the caller-verifiable track, clip or source intent', () => {
-  const changes = [
+  const changes: Array<[string, (value: TValue, input: TimelineInput) => void]> = [
     ['timeline.loudness.apply', v => v.operation='timeline.clip.update'],
     ['timeline.loudness.apply', v => v.requestId=randomUUID()],
     ['timeline.loudness.apply', v => v.application.candidateDigest='timeline-loudness-candidate-v1:'+ 'f'.repeat(64)],
@@ -164,7 +177,7 @@ test('each mutation binds the caller-verifiable track, clip or source intent', (
     ['timeline.subtitle.add', v => v.subtitles.cues[0].startFrame=1],
     ['timeline.subtitle.update', v => v.subtitles.cues[0].id=randomUUID()],
     ['timeline.subtitle.update', v => v.subtitles.cues[0].text='Wrong'],
-    ['timeline.subtitle.remove', (v,i) => v.subtitles.cues.push({id:i.cueId,text:'Retained',startFrame:0,durationFrames:30})],
+    ['timeline.subtitle.remove', (v,i) => v.subtitles.cues.push({id:i.cueId as string,text:'Retained',startFrame:0,durationFrames:30})],
     ['timeline.track.add', v => v.tracks[0].name = 'Unrelated name'],
     ['timeline.track.add', v => v.tracks[0].muted = true],
     ['timeline.track.update', v => v.tracks[0].id = randomUUID()],
@@ -178,8 +191,8 @@ test('each mutation binds the caller-verifiable track, clip or source intent', (
     ['timeline.clip.update', v => v.clips[0].name = 'Ignored patch'],
     ['timeline.clip.update', v => v.clips[0].rect.width = 200],
     ['timeline.clip.replaceSource', v => v.clips[0].assetId = randomUUID()],
-    ['timeline.clip.remove', (v, i) => v.clips[0].id = i.clipId],
-    ['timeline.clip.rippleRemove', (v, i) => v.clips[0].id = i.clipId],
+    ['timeline.clip.remove', (v, i) => v.clips[0].id = i.clipId as string],
+    ['timeline.clip.rippleRemove', (v, i) => v.clips[0].id = i.clipId as string],
     ['timeline.clip.split', v => v.clips[0].durationFrames--],
     ['timeline.clip.split', v => v.clips[1].sourceInFrame++],
     ['timeline.clip.split', v => v.clips[1].assetId = randomUUID()],
@@ -217,9 +230,9 @@ test('render recovery validates progressed statuses, fixed snapshot and optional
 });
 
 test('render acknowledgements reject wrong purpose, request, snapshot, source links, outputs and known-state violations', () => {
-  const edits = [v => v.id = 'bad', v => v.projectId = randomUUID(), v => v.requestId = randomUUID(), v => v.mode = 'storyboard',
+  const edits: Array<(value: TValue) => void> = [v => v.id = 'bad', v => v.projectId = randomUUID(), v => v.requestId = randomUUID(), v => v.mode = 'storyboard',
     v => v.purpose = 'preview', v => v.timelineRevision++, v => v.status = 'cancelled', v => v.status = 'invented',
-    v => v.snapshot = {clips: []}, v => v.snapshot.timeline.projectId = randomUUID(), v => v.snapshot.timeline.revision++,
+    v => v.snapshot = {clips: []} as never, v => v.snapshot.timeline.projectId = randomUUID(), v => v.snapshot.timeline.revision++,
     v => v.snapshot.assets = [], v => v.snapshot.assets.push(clone(v.snapshot.assets[0])),
     v => v.snapshot.assets[0].id = randomUUID(), v => v.snapshot.assets[0].sha256 = 'hash',
     v => v.snapshot.assets[0].mimeType = 'audio/wav', v => v.snapshot.assets[0].duration = 1,
@@ -258,26 +271,27 @@ test('proof validation requires exact identity and a known transaction rejection
 });
 
 test('shared client keeps ambiguous timeline and reference errors bound to the original key without retry or forged proof', async () => {
-  const calls = [];
+  const calls: unknown[] = [];
   const timeline = fixture('timeline.clip.update').input;
-  const cases = [
+  const cases: Array<[string, TimelineInput]> = [
     ['timeline.clip.update', timeline],
     ['reference.attach', {projectId: randomUUID(), sourceNodeId: randomUUID(), targetShotId: randomUUID(), expectedSourceRevision: 1, expectedShotRevision: 1, requestId: randomUUID(), role: 'first_frame'}],
     ['reference.detach', {projectId: randomUUID(), edgeId: randomUUID(), expectedShotRevision: 1, requestId: randomUUID()}],
   ];
-  for (const [operation, input] of cases) for (const [status, code, details] of [
+  for (const [operation, input] of cases) for (const [status, code, details] of ([
     [400, 'INVALID_CLIP_TYPE', {}], [401, 'UNAUTHORIZED', {}], [403, 'ORIGIN_REJECTED', {}], [404, 'NOT_FOUND', {}],
     [409, 'IDEMPOTENCY_CONFLICT', {mutationOutcome: 'not_applied', requestId: input.requestId}],
     [409, 'REVISION_CONFLICT', {mutationOutcome: 'not_applied', requestId: 'wrong-request-id'}],
     [409, 'REVISION_CONFLICT', {mutationOutcome: 'not_applied', requestId: input.requestId, operation: 'unrelated.operation'}],
     [500, 'REVISION_CONFLICT', {mutationOutcome: 'not_applied', requestId: input.requestId}],
-  ]) {
-    const client = createClient({env, fetchImpl: async (_url, options) => {calls.push(JSON.parse(options.body)); return response({ok: false, error: {code, message: 'Synthetic rejection', details}}, status);}});
+  ] as Array<[number, string, Record<string, unknown>]>)) {
+    const client = createClient({env, fetchImpl: (async (_url: string, options: {body?: string}) => {calls.push(JSON.parse(options.body!)); return response({ok: false, error: {code, message: 'Synthetic rejection', details}}, status);}) as unknown as typeof fetch});
     const before = calls.length;
-    await assert.rejects(client.rpc(operation, input), error => {
-      assert.equal(error.code, code); assert.equal(error.status, status); assert.equal(error.details.operation, operation);
-      assert.equal(error.details.requestId, input.requestId); assert.equal(error.details.submissionMayHaveSucceeded, true);
-      assert.equal(Object.hasOwn(error.details, 'mutationOutcome'), false); assert.match(error.details.recovery, /exact original input/); return true;
+    await assert.rejects(client.rpc(operation, input), (error: unknown) => {
+      const failure = failureOf(error);
+      assert.equal(failure.code, code); assert.equal(failure.status, status); assert.equal(failure.details?.operation, operation);
+      assert.equal(failure.details?.requestId, input.requestId); assert.equal(failure.details?.submissionMayHaveSucceeded, true);
+      assert.equal(Object.hasOwn(failure.details ?? {}, 'mutationOutcome'), false); assert.match(failure.details?.recovery as string, /exact original input/); return true;
     });
     assert.deepEqual(calls.slice(before), [{operation, input}]);
   }
@@ -286,13 +300,14 @@ test('shared client keeps ambiguous timeline and reference errors bound to the o
 test('shared client accepts exact backend no-application proof and preserves unrelated error policy', async () => {
   const operation = 'timeline.clip.update', {input} = fixture(operation);
   const proof = {mutationOutcome: 'not_applied', requestId: input.requestId};
-  const client = createClient({env, fetchImpl: async () => response({ok: false, error: {code: 'REVISION_CONFLICT', message: 'Changed', details: proof}}, 409)});
-  await assert.rejects(client.rpc(operation, input), error => {
-    assert.equal(error.details.submissionMayHaveSucceeded, false); assert.equal(error.details.mutationOutcome, 'not_applied');
-    assert.equal(error.details.requestId, input.requestId); assert.equal(Object.hasOwn(error.details, 'recovery'), false); return true;
+  const client = createClient({env, fetchImpl: (async () => response({ok: false, error: {code: 'REVISION_CONFLICT', message: 'Changed', details: proof}}, 409)) as unknown as typeof fetch});
+  await assert.rejects(client.rpc(operation, input), (error: unknown) => {
+    const failure = failureOf(error);
+    assert.equal(failure.details?.submissionMayHaveSucceeded, false); assert.equal(failure.details?.mutationOutcome, 'not_applied');
+    assert.equal(failure.details?.requestId, input.requestId); assert.equal(Object.hasOwn(failure.details ?? {}, 'recovery'), false); return true;
   });
-  await assert.rejects(client.rpc('shot.create', {projectId: input.projectId, title: 'Unrelated', requestId: input.requestId}), error => {
-    assert.deepEqual(error.details, proof); return true;
+  await assert.rejects(client.rpc('shot.create', {projectId: input.projectId, title: 'Unrelated', requestId: input.requestId}), (error: unknown) => {
+    assert.deepEqual(failureOf(error).details, proof); return true;
   });
 });
 
@@ -322,7 +337,7 @@ test('maximum escaped legacy names and subtitle cues fit the unified bounded ack
   assert.equal(isTimelineReplacementResponse(value, replacement), true);
   assert.equal(isTimelineMutationResponse('timeline.clip.replaceSource', replacement, value), true);
   let calls = 0;
-  const client = createClient({env, fetchImpl: async () => {calls++; return success(value);}});
+  const client = createClient({env, fetchImpl: (async () => {calls++; return success(value);}) as unknown as typeof fetch});
   assert.deepEqual(await client.rpc('timeline.undo', input), before);
   assert.equal(calls, 1);
   assert.deepEqual(value, before, 'Validation does not sanitize or rewrite the legacy response');

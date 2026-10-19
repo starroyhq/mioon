@@ -5,41 +5,50 @@ import {REFERENCE_MUTATION_OPERATIONS, REFERENCE_RESPONSE_BYTES, isReferenceMuta
 import {createClient} from '@mioon/client';
 
 const env = {MIOON_TOKEN: 'synthetic-reference-response-token'};
-const clone = value => structuredClone(value);
-const response = (data, status = 200) => ({ok: status >= 200 && status < 300, status, json: async () => data});
-const success = data => response({ok: true, data});
-const frozen = value => {
+interface ClientFailure {code?: string; details?: Record<string, unknown>; status?: number}
+const failureOf = (error: unknown): ClientFailure => error as ClientFailure;
+const clone = <T>(value: T): T => structuredClone(value);
+const response = (data: unknown, status = 200): Response => ({ok: status >= 200 && status < 300, status, json: async () => data} as unknown as Response);
+const success = (data: unknown): Response => response({ok: true, data});
+const frozen = <T>(value: T): T => {
   if (value && typeof value === 'object') {Object.values(value).forEach(frozen); Object.freeze(value);}
   return value;
 };
-function fixture(operation, {noop = false} = {}) {
+interface ReferenceEdge {id: string; projectId: string; source: string; target: string; kind: string; role: string; sourceAssetId: string; createdAt: string; [key: string]: unknown}
+interface ReferenceShot {id: string; projectId: string; title: string; prompt: string | null; referenceAssetIds: string[] | null; aspectRatio: string; duration: number; parameters: unknown; position: {x: number; y?: number; [key: string]: unknown}; orderIndex: number; revision: number; selectedVersionId: string | null; createdAt: string; updatedAt: string; [key: string]: unknown}
+interface ReferenceValue {edge: ReferenceEdge; shot: ReferenceShot; detached?: boolean; [key: string]: unknown}
+type MutableReference = Omit<ReferenceValue, 'edge' | 'shot'> & {edge: ReferenceEdge; shot: ReferenceShot};
+interface ReferenceInput {projectId: string; requestId: string; expectedShotRevision: number; sourceNodeId?: string; targetShotId?: string; expectedSourceRevision?: number; role?: string; edgeId?: string; [key: string]: unknown}
+function fixture(operation: string, {noop = false}: {noop?: boolean} = {}): {input: ReferenceInput; value: ReferenceValue} {
   const projectId = randomUUID(), source = randomUUID(), target = randomUUID(), sourceAssetId = randomUUID();
-  const edge = {id: randomUUID(), projectId, source, target, kind: 'reference', role: 'first_frame', sourceAssetId, createdAt: '2024-01-01T00:00:00.000Z'};
+  const edge: ReferenceEdge = {id: randomUUID(), projectId, source, target, kind: 'reference', role: 'first_frame', sourceAssetId, createdAt: '2024-01-01T00:00:00.000Z'};
   const attach = operation === 'reference.attach';
-  const input = {projectId, requestId: randomUUID(), expectedShotRevision: 7,
+  const input: ReferenceInput = {projectId, requestId: randomUUID(), expectedShotRevision: 7,
     ...(attach ? {sourceNodeId: source, targetShotId: target, expectedSourceRevision: 3, role: 'first_frame'} : {edgeId: edge.id})};
-  const shot = {id: target, projectId, title: 'Historical shot', prompt: '', referenceAssetIds: attach ? [sourceAssetId] : [],
+  const shot: ReferenceShot = {id: target, projectId, title: 'Historical shot', prompt: '', referenceAssetIds: attach ? [sourceAssetId] : [],
     aspectRatio: '9:16', duration: 2, parameters: {}, position: {x: 80, y: -100}, orderIndex: 0, revision: attach && noop ? 7 : 8,
     selectedVersionId: null, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:01.000Z'};
-  return {input, value: {edge, shot, ...(attach ? {} : {detached: true})}};
+  return {input, value: {edge, shot, ...(attach ? {} : {detached: true})} as ReferenceValue};
 }
 
 test('reference acknowledgement allowlist is exact and immutable', () => {
   assert.deepEqual(REFERENCE_MUTATION_OPERATIONS, ['reference.attach', 'reference.detach']);
   assert.equal(Object.isFrozen(REFERENCE_MUTATION_OPERATIONS), true);
   const {input, value} = fixture('reference.attach');
-  for (const operation of [undefined, '', 'edge.create', 'edge.delete', 'shot.update', 'timeline.undo', 'generation.submit'])
-    assert.equal(isReferenceMutationResponse(operation, input, value), false);
+  const invalidOperations: Array<string | undefined> = [undefined, '', 'edge.create', 'edge.delete', 'shot.update', 'timeline.undo', 'generation.submit'];
+  for (const operation of invalidOperations)
+    assert.equal(isReferenceMutationResponse(operation as string, input, value), false);
 });
 
 test('complete legacy, existing-binding no-op and historical reference results remain exact and read-only', async () => {
-  for (const [operation, options] of [['reference.attach', {}], ['reference.attach', {noop: true}], ['reference.detach', {}]]) {
-    const {input, value} = fixture(operation, options), before = clone(value), beforeInput = clone(input), calls = [];
+  const scenarios: Array<[string, {noop?: boolean}]> = [['reference.attach', {}], ['reference.attach', {noop: true}], ['reference.detach', {}]];
+  for (const [operation, options] of scenarios) {
+    const {input, value} = fixture(operation, options), before = clone(value), beforeInput = clone(input), calls: unknown[] = [];
     frozen(input); frozen(value);
     assert.equal(isReferenceShotRecord(value.shot, {projectId: input.projectId}), true);
     assert.equal(isReferenceEdgeRecord(value.edge, {projectId: input.projectId}), true);
     assert.equal(isReferenceMutationResponse(operation, input, value), true);
-    const client = createClient({env, fetchImpl: async (_url, options) => {calls.push(JSON.parse(options.body)); return success(value);}});
+    const client = createClient({env, fetchImpl: (async (_url: string, options: {body?: string}) => {calls.push(JSON.parse(options.body!)); return success(value);}) as unknown as typeof fetch});
     // No current edge or latest shot is required to acknowledge a stored result.
     // The caller may replay it after detach, rebinding or unrelated shot edits.
     assert.equal(await client.rpc(operation, input), value);
@@ -78,10 +87,10 @@ test('reference acknowledgement input identity is complete, strict and safe-inte
 test('malformed reference 200s preserve caller operation and request key and never auto-resubmit', async () => {
   for (const operation of REFERENCE_MUTATION_OPERATIONS) {
     const {input, value} = fixture(operation);
-    const edit = change => {const result = clone(value); change(result); return result;};
+    const edit = (change: (value: MutableReference) => void): unknown => {const result = clone(value) as MutableReference; change(result); return result;};
     const invalid = [null, [], {}, 7, 'reference',
-      edit(v => delete v.edge), edit(v => delete v.shot), edit(v => v.extra = true),
-      edit(v => v.edge = []), edit(v => v.shot = null), edit(v => v.edge.id = 'bad'), edit(v => v.shot.id = 'bad'),
+      edit(v => delete (v as {edge?: ReferenceEdge}).edge), edit(v => delete (v as {shot?: ReferenceShot}).shot), edit(v => v.extra = true),
+      edit(v => v.edge = [] as never), edit(v => v.shot = null as never), edit(v => v.edge.id = 'bad'), edit(v => v.shot.id = 'bad'),
       edit(v => v.shot.projectId = randomUUID()), edit(v => v.edge.projectId = randomUUID()),
       edit(v => v.edge.projectId = v.shot.projectId = randomUUID()),
       edit(v => v.edge.target = randomUUID()), edit(v => v.edge.kind = 'decorative'), edit(v => v.edge.role = 'last_frame'),
@@ -107,18 +116,19 @@ test('malformed reference 200s preserve caller operation and request key and nev
     if (operation === 'reference.attach') invalid.push(
       edit(v => v.edge.source = randomUUID()), edit(v => v.edge.target = v.shot.id = randomUUID()),
       edit(v => v.shot.referenceAssetIds = []), edit(v => v.shot.referenceAssetIds = [randomUUID()]),
-      edit(v => v.shot.referenceAssetIds.push(v.edge.sourceAssetId)), edit(v => v.detached = true), edit(v => v.detached = false));
+      edit(v => v.shot.referenceAssetIds!.push(v.edge.sourceAssetId)), edit(v => v.detached = true), edit(v => v.detached = false));
     else invalid.push(edit(v => v.edge.id = randomUUID()), edit(v => v.shot.revision = input.expectedShotRevision),
       edit(v => v.shot.referenceAssetIds = [v.edge.sourceAssetId]), edit(v => delete v.detached), edit(v => v.detached = false));
     for (const [index, candidate] of invalid.entries()) {
       assert.equal(isReferenceMutationResponse(operation, input, candidate), false, `${operation} malformed case ${index}`);
-      const calls = [];
-      const client = createClient({env, fetchImpl: async (_url, options) => {calls.push(JSON.parse(options.body)); return success(candidate);}});
-      await assert.rejects(client.rpc(operation, input), error => {
-        assert.equal(error.code, 'BACKEND_PROTOCOL_ERROR'); assert.equal(error.details.operation, operation);
-        assert.equal(error.details.requestId, input.requestId); assert.equal(error.details.submissionMayHaveSucceeded, true);
-        assert.equal(Object.hasOwn(error.details, 'mutationOutcome'), false);
-        assert.match(error.details.recovery, /exact original input.*same requestId/); return true;
+      const calls: unknown[] = [];
+      const client = createClient({env, fetchImpl: (async (_url: string, options: {body?: string}) => {calls.push(JSON.parse(options.body!)); return success(candidate);}) as unknown as typeof fetch});
+      await assert.rejects(client.rpc(operation, input), (error: unknown) => {
+        const failure = failureOf(error);
+        assert.equal(failure.code, 'BACKEND_PROTOCOL_ERROR'); assert.equal(failure.details?.operation, operation);
+        assert.equal(failure.details?.requestId, input.requestId); assert.equal(failure.details?.submissionMayHaveSucceeded, true);
+        assert.equal(Object.hasOwn(failure.details ?? {}, 'mutationOutcome'), false);
+        assert.match(failure.details?.recovery as string, /exact original input.*same requestId/); return true;
       });
       assert.deepEqual(calls, [{operation, input}], 'Malformed acknowledgement cannot cause a second request');
     }
@@ -140,7 +150,7 @@ test('maximum escaped historical fields fit the reference byte bound without dis
     assert.ok(bytes < REFERENCE_RESPONSE_BYTES, `Every bounded field fits: ${bytes}`);
     const before = clone(value); frozen(value); frozen(input);
     assert.equal(isReferenceMutationResponse(operation, input, value), true);
-    const client = createClient({env, fetchImpl: async () => success(value)});
+    const client = createClient({env, fetchImpl: (async () => success(value)) as unknown as typeof fetch});
     assert.deepEqual(await client.rpc(operation, input), before); assert.deepEqual(value, before);
   }
 });
@@ -157,7 +167,7 @@ test('maximum revision still acknowledges an existing binding but cannot acknowl
 });
 
 const safeCodes = ['REVISION_CONFLICT', 'REFERENCE_CONNECTED', 'REFERENCE_SELECTION_EXISTS', 'INVALID_REFERENCE_SOURCE', 'INVALID_REFERENCE_EDGE', 'REFERENCE_REVISION_LIMIT'];
-const proof = (operation, input) => ({mutationOutcome: 'not_applied', operation, projectId: input.projectId, requestId: input.requestId});
+const proof = (operation: string, input: ReferenceInput) => ({mutationOutcome: 'not_applied', operation, projectId: input.projectId, requestId: input.requestId});
 test('reference rejection proof requires its own exact operation, project, request and reference-only safe code', () => {
   for (const operation of REFERENCE_MUTATION_OPERATIONS) {
     const {input} = fixture(operation), details = proof(operation, input);
@@ -171,9 +181,9 @@ test('reference rejection proof requires its own exact operation, project, reque
       assert.equal(hasRequestNotAppliedProof({...error, code}, input, {operation}), false, code);
     for (const status of [200, 401, 403, 500, undefined]) assert.equal(hasRequestNotAppliedProof({...error, status}, input, {operation}), false);
     for (const key of ['mutationOutcome', 'operation', 'projectId', 'requestId']) {
-      const missing = {...details}; delete missing[key];
+      const missing: Record<string, unknown> = {...details}; delete missing[key];
       assert.equal(hasRequestNotAppliedProof({...error, details: missing}, input, {operation}), false, `Missing ${key}`);
-      const inherited = Object.assign(Object.create({[key]: details[key]}), missing);
+      const inherited = Object.assign(Object.create({[key]: (details as Record<string, unknown>)[key]}), missing);
       assert.equal(hasRequestNotAppliedProof({...error, details: inherited}, input, {operation}), false, `Inherited ${key}`);
     }
     for (const changed of [{requestId: randomUUID()}, {projectId: randomUUID()}, {operation: 'timeline.clip.update'}, {operation: operation === 'reference.attach' ? 'reference.detach' : 'reference.attach'}, {mutationOutcome: 'applied'}])
@@ -185,7 +195,7 @@ test('reference rejection proof requires its own exact operation, project, reque
 test('shared client releases only exact reference prewrite proofs and leaves ambiguous errors replayable', async () => {
   for (const operation of REFERENCE_MUTATION_OPERATIONS) {
     const {input} = fixture(operation), exact = proof(operation, input);
-    const cases = [
+    const cases: unknown[][] = [
       ...safeCodes.map(code => [409, code, exact, true]),
       [400, 'INVALID_REFERENCE_SOURCE', exact, true],
       [409, 'REVISION_CONFLICT', {}, false],
@@ -200,17 +210,19 @@ test('shared client releases only exact reference prewrite proofs and leaves amb
       [409, 'REFERENCE_STATE_CONFLICT', exact, false], [401, 'REVISION_CONFLICT', exact, false],
       [403, 'REVISION_CONFLICT', exact, false], [500, 'REVISION_CONFLICT', exact, false],
     ];
-    for (const [status, code, details, proven] of cases) {
-      const calls = [], client = createClient({env, fetchImpl: async (_url, options) => {
-        calls.push(JSON.parse(options.body)); return response({ok: false, error: {code, message: 'Synthetic reference rejection', details}}, status);
-      }});
-      await assert.rejects(client.rpc(operation, input), error => {
-        assert.equal(error.code, code); assert.equal(error.status, status);
-        assert.equal(error.details.operation, operation); assert.equal(error.details.requestId, input.requestId);
-        assert.equal(error.details.submissionMayHaveSucceeded, !proven);
-        assert.equal(Object.hasOwn(error.details, 'mutationOutcome'), proven);
-        assert.equal(Object.hasOwn(error.details, 'recovery'), !proven);
-        if (proven) assert.equal(error.details.projectId, input.projectId);
+    const rejectionCases: Array<[number, string, Record<string, unknown>, boolean]> = cases as Array<[number, string, Record<string, unknown>, boolean]>;
+    for (const [status, code, details, proven] of rejectionCases) {
+      const calls: unknown[] = [], client = createClient({env, fetchImpl: (async (_url: string, options: {body?: string}) => {
+        calls.push(JSON.parse(options.body!)); return response({ok: false, error: {code, message: 'Synthetic reference rejection', details}}, status);
+      }) as unknown as typeof fetch});
+      await assert.rejects(client.rpc(operation, input), (error: unknown) => {
+        const failure = failureOf(error);
+        assert.equal(failure.code, code); assert.equal(failure.status, status);
+        assert.equal(failure.details?.operation, operation); assert.equal(failure.details?.requestId, input.requestId);
+        assert.equal(failure.details?.submissionMayHaveSucceeded, !proven);
+        assert.equal(Object.hasOwn(failure.details ?? {}, 'mutationOutcome'), proven);
+        assert.equal(Object.hasOwn(failure.details ?? {}, 'recovery'), !proven);
+        if (proven) assert.equal(failure.details?.projectId, input.projectId);
         return true;
       });
       assert.deepEqual(calls, [{operation, input}]);
