@@ -6,7 +6,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { identityForChannel } from '../apps/desktop/identity.ts';
 import { resolveConnection, connectionSource } from '@mioon/client/connection';
 import { COOKIE_NAME, sessionCookie } from '../apps/desktop/src/security.ts';
-const read = name => readFile(new URL(`../${name}`, import.meta.url), 'utf8');
+const read = (name: string): Promise<string> => readFile(new URL(`../${name}`, import.meta.url), 'utf8');
 
 test('Mioon is the sole application identity while production and development data roots remain exact', () => {
   assert.deepEqual(identityForChannel('production'), { channel: 'production', appId: 'app.starroy.mioon', productName: 'Mioon', executableName: 'mioon' });
