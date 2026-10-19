@@ -4,15 +4,18 @@ import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
 import {i18nTestModule} from './helpers/i18n.ts';
 const source=readFileSync(new URL('../apps/web/src/ExportWorkflow.tsx',import.meta.url),'utf8');
-const nodes=tree=>Array.isArray(tree)?tree.flatMap(nodes):tree&&typeof tree==='object'?[tree,...nodes(tree.props?.children)]:[];
-const find=(tree,id)=>nodes(tree).find(node=>node.props?.['data-testid']===id);
-function harness(initial={}){
- const slots=[],effects=[],calls=[];let cursor=0,context=1,props={phase:'idle',children:'retained controls',onRecheck:()=>calls.push('check'),onTasks:()=>calls.push('tasks'),...initial};
- const react={createElement:(type,props,...children)=>({type,props:{...props,children:children.length===1?children[0]:children}}),createContext:()=>({Provider:'Provider'}),useContext:()=>context,
-  useRef(value){const i=cursor++;return slots[i]??=( {current:value} );},useState(value){const i=cursor++;if(!(i in slots))slots[i]=typeof value==='function'?value():value;return[slots[i],next=>{slots[i]=typeof next==='function'?next(slots[i]):next;}];},
-  useEffect(run,deps){const i=cursor++,before=slots[i];if(before&&deps.every((value,n)=>Object.is(value,before[n])))return;slots[i]=deps;effects.push(run);}};
- const mod={exports:{}};Function('module','exports','require',transformSync(source,{loader:'tsx',format:'cjs',jsx:'transform'}).code)(mod,mod.exports,name=>name==='react'?react:name.endsWith('I18nProvider.tsx')?i18nTestModule():name.endsWith('.css')?{}:{WorkbenchButton:'Button',WorkbenchProgress:'Progress',WorkbenchIcon:'WorkbenchIcon'});
- return{calls,render(patch={}){props={...props,...patch};cursor=0;let tree=mod.exports.default(props);for(const run of effects.splice(0))run();cursor=0;tree=mod.exports.default(props);return tree;},section(step,values){context=step;return mod.exports.ExportWorkflowSection({steps:values,children:'retained'});}};
+interface UiNode {readonly type?: unknown; readonly props: Record<string, any> & {children?: unknown}}
+type Render = (props: Record<string, unknown>) => unknown;
+const nodes=(tree: unknown): UiNode[]=>Array.isArray(tree)?tree.flatMap(nodes):tree&&typeof tree==='object'?[tree as UiNode,...nodes((tree as UiNode).props?.children)]:[];
+
+const find=(tree: unknown,id: string): UiNode=>(nodes(tree).find(node=>node.props?.['data-testid']===id) as UiNode);
+function harness(initial: Record<string, unknown> = {}) {
+ const slots: unknown[]=[],effects:(()=>unknown)[]=[],calls:string[]=[];let cursor=0,context=1,props: Record<string, unknown>={phase:'idle',children:'retained controls',onRecheck:()=>calls.push('check'),onTasks:()=>calls.push('tasks'),...initial};
+ const react={createElement:(type: unknown,props: Record<string, unknown>,...children: unknown[])=>({type,props:{...props,children:children.length===1?children[0]:children}}),createContext:()=>({Provider:'Provider'}),useContext:()=>context,
+  useRef(value: unknown){const i=cursor++;return slots[i]??=( {current:value} );},useState(value: unknown){const i=cursor++;if(!(i in slots))slots[i]=typeof value==='function'?(value as ()=>unknown)():value;return[slots[i],(next: unknown)=>{slots[i]=typeof next==='function'?(next as (current: unknown)=>unknown)(slots[i]):next;}];},
+  useEffect(run: ()=>unknown,deps: unknown[]){const i=cursor++,before=slots[i] as unknown[]|undefined;if(before&&deps.every((value,n)=>Object.is(value,before[n])))return;slots[i]=deps;effects.push(run);}};
+ const mod: {exports: {default: Render; ExportWorkflowSection: Render}}={exports:{default:()=>null,ExportWorkflowSection:()=>null}};Function('module','exports','require',transformSync(source,{loader:'tsx',format:'cjs',jsx:'transform'}).code)(mod,mod.exports,(name: string)=>name==='react'?react:name.endsWith('I18nProvider.tsx')?i18nTestModule():name.endsWith('.css')?{}:{WorkbenchButton:'Button',WorkbenchProgress:'Progress',WorkbenchIcon:'WorkbenchIcon'});
+ return{calls,render(patch: Record<string, unknown> = {}){props={...props,...patch};cursor=0;let tree=mod.exports.default(props);for(const run of effects.splice(0))run();cursor=0;tree=mod.exports.default(props);return tree;},section(step: number,values: unknown): UiNode{context=step;return mod.exports.ExportWorkflowSection({steps:values,children:'retained'}) as UiNode;}};
 }
 test('workflow opens passively and latest check phase fences retained next handlers',()=>{
  const h=harness();let tree=h.render();assert.equal(find(tree,'export-workflow').props['data-step'],1);assert.equal(find(tree,'export-workflow-next').props.disabled,true);assert.deepEqual(h.calls,[]);
