@@ -29,12 +29,17 @@ test('every workspace package uses @mioon and CLI publishes no old command alias
 });
 
 test('login, loading, header and browser title display Mioon rather than prior branding', async () => {
-  const app = await read('apps/web/src/App.jsx'), html = await read('apps/web/index.html');
-  assert.equal((app.match(/<\/span>Mioon|className="brand-name">Mioon/g) || []).length, 3);
+  const app = await read('apps/web/src/App.jsx'), login = await read('apps/web/src/LoginScreen.tsx'), html = await read('apps/web/index.html');
+  assert.match(app, /className="boot-page"[\s\S]*?<\/span>Mioon/);
+  assert.match(app, /<WorkbenchTopbar brand=\{<a[\s\S]*?className="brand-name">Mioon/);
+  assert.match(app, /import Login from '\.\/LoginScreen\.tsx';/);
+  assert.match(app, /<Login onLogin=/);
+  assert.match(login, /<h1 id="login-title">Mioon<\/h1>/);
   assert.match(app, /aria-label=\{t\('shell.title'\)\}/);
   for (const locale of LOCALES) { assert.match(translate(locale, 'shell.title'), /Mioon/); assert.match(translate(locale, 'app.title'), /Mioon/); }
   assert.equal(translate('zh-Hans', 'shell.title'), 'Mioon 影像工作台');
   assert.doesNotMatch(app, />frame|Frame 影像|Video Workbench|VideoWorkbench/);
+  assert.doesNotMatch(login, />frame|Frame 影像|Video Workbench|VideoWorkbench/);
   assert.match(html, /<title>Mioon<\/title>/);
   assert.match(await read('apps/desktop/src/main.mjs'), /title: identity\.productName/);
 });

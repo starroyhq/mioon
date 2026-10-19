@@ -14,9 +14,6 @@ import {upgradeOpacityWorkspace40To42 as upgrade} from '../packages/business/src
 import {calculateWorkspaceScope} from '../packages/contracts/src/workspace-scope.ts';
 import {createExistingOpacityCandidateLaunch} from '../apps/server/src/opacity-candidate-launch.ts';
 import {createOpacityCandidateRequestApplication} from '../apps/server/src/index.mjs';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
 import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
 
 // Actual server composition and stream requests, without a listener, provider,
@@ -82,17 +79,18 @@ test('target development binding does not relax source companion channel validat
 });
 
 for (const [operation, status] of [['timeline.clip.split', 'not_applied'], ['timeline.clip.split', 'applied'], ['timeline.clip.replaceSource', 'not_applied']]) test(`acknowledged ${status} ${operation} is explicitly unsupported before any42 publication`, async t => {
-  const f = await opacityUpgradeFixture(t), store = openStore(f.source), services = createServices(store, new Map()), tasks = createEditTasks({store, services});
-  try {
-    const input = {projectId: f.projectId, requestId: randomUUID(), expectedRevision: status === 'applied' ? f.timeline.revision : 999,
-      ...(operation === 'timeline.clip.split' ? {clipId: f.clipId, atFrame: 15} : {clipId: f.clipId, assetId: f.assetId})};
-    const prepared = tasks.prepare({projectId: f.projectId, operation, input, origin: 'new'});
-    const result = await tasks.execute({projectId: f.projectId, taskId: prepared.task.id, digest: prepared.task.digest, instanceId: prepared.instanceId});
+  // Seed the genuine terminal receipt before constructing exact40. Opening
+  // source40 with today's runtime would legitimately migrate it to current.
+  const f = await opacityUpgradeFixture(t, {beforeFreeze: async ({tasks, projectId, timeline, clipId, assetId}) => {
+    const input = {projectId, requestId: randomUUID(), expectedRevision: status === 'applied' ? timeline.revision : 999,
+      ...(operation === 'timeline.clip.split' ? {clipId, atFrame: 15} : {clipId, assetId})};
+    const prepared = tasks.prepare({projectId, operation, input, origin: 'new'});
+    const result = await tasks.execute({projectId, taskId: prepared.task.id, digest: prepared.task.digest, instanceId: prepared.instanceId});
     assert.equal(result.task.status, status);
-    const acknowledged = tasks.acknowledge({projectId: f.projectId, taskId: result.task.id, digest: result.task.digest,
+    const acknowledged = tasks.acknowledge({projectId, taskId: result.task.id, digest: result.task.digest,
       expectedRevision: result.task.revision, status});
     assert.equal(acknowledged.task.acknowledged, true);
-  } finally {await tasks.drain(); await services.drain(); store.close();}
+  }});
   await createWorkspaceBackup({source: f.source, destination: f.backup});
   const sourceBefore = tree(f.source), backupBefore = tree(f.backup);
   await assert.rejects(upgrade({source: f.source, backup: f.backup, destination: f.destination, channel: 'web'}), {code: 'WORKSPACE_UPGRADE_SOURCE_UNSUPPORTED'});

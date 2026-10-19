@@ -22,6 +22,7 @@ import { createComfyImageSettingsClient, comfyConnectorAvailable, comfyConnector
 import { createImageSettingsClient } from './image-settings.js';
 import Icon from './icons.jsx';
 import './image-generation.css';
+import { createImageEditIntentController } from './image-edit-intent.ts';
 
 const noop = () => {};
 const shortDate = (value, formatDate) => formatDate(value, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -29,7 +30,7 @@ const shortDate = (value, formatDate) => formatDate(value, { month: '2-digit', d
 const sourceDetails = (source, visible, title, t) => <div className="image-generation-source-preview" data-testid="image-source-preview"><img src={visible ? `/media/${encodeURIComponent(source.assetId || source.id)}` : undefined} alt={t('image.studio.sourcePreviewAlt', { title, name: creationParameter(source.name) })} width={source.width} height={source.height} loading="lazy" decoding="async" /><div><strong>{title} · {source.name}</strong><span>{source.width} × {source.height} · PNG · {Math.ceil((source.byteLength || source.sizeBytes) / 1024)} KB</span>{source.origin && <span>{t('image.studio.sourceLabel', { value: creationParameter({ 'user-import': t('image.studio.importedAsset'), generated: t('image.studio.generatedImage'), 'synthetic-mock': t('image.studio.mockTestImage'), 'extracted-frame': t('image.studio.extractedFrame') }[source.origin.kind]) })}</span>}<details><summary>{t('image.studio.fixedSourceIdentity')}</summary><span className="image-generation-id">{t('image.studio.assetIdentity', { value: creationParameter(source.assetId || source.id) })}</span><span className="image-generation-id">SHA-256 {source.sha256}</span></details></div></div>;
 
 /** Kept mounted by AgentDockPane. Hiding stops reads and media, never resets a draft. */
-export default function ImageGeneration({ onOpenSettings, settingsOverlayOpen = false, nativeSettingsScope, nativeCloseRegistry, navigationRegistry, projectId, projectName, projectAssets = [], api, storage, settingsClient, customSettingsClient, comfySettingsClient, reviewClient, onDirtyChange = noop, onGenerated = noop, onRevealAsset }) {
+export default function ImageGeneration({ editIntent = null, isEditIntentCurrent, onOpenSettings, settingsOverlayOpen = false, nativeSettingsScope, nativeCloseRegistry, navigationRegistry, projectId, projectName, projectAssets = [], api, storage, settingsClient, customSettingsClient, comfySettingsClient, reviewClient, onDirtyChange = noop, onGenerated = noop, onRevealAsset }) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const [state, setState] = useState(initialImageGenerationState), [page, setPage] = useState('compose'), [settingsSlot, setSettingsSlot] = useState('official');
   const imageSettingsClient = useMemo(() => settingsClient || createImageSettingsClient(), [settingsClient]);
@@ -41,6 +42,12 @@ export default function ImageGeneration({ onOpenSettings, settingsOverlayOpen = 
   const visible = paneVisible && nativeActive && !settingsOverlayOpen;
   const callbacks = useRef({ onGenerated, onDirtyChange, onRevealAsset });
   const composerVisible = visible && page === 'compose';
+  const intentContext = useRef(null), [editAdmission, setEditAdmission] = useState({ phase: 'idle' });
+  const [editController] = useState(() => createImageEditIntentController({
+    getContext: () => intentContext.current ? { ...intentContext.current, visible: intentContext.current.visible && (typeof document === 'undefined' || document.visibilityState !== 'hidden') } : { visible: false, scope: '', projectId: undefined, assets: [], session: null, isCurrent: () => false },
+    isDirty: value => imageDraftDirty(value),
+    onChange: value => { if (lifetime.current && !lifetime.current.closed) setEditAdmission(value); },
+  }));
   const interaction = useMemo(() => ({ projectId, visible: composerVisible }), [projectId, composerVisible, state.draft, state.providerId, state.mode, state.inputImage, state.target]), interactionRef = useRef(interaction), visibilityRef = useRef(composerVisible);
   useLayoutEffect(() => { callbacks.current = { onGenerated, onDirtyChange, onRevealAsset }; });
   useLayoutEffect(() => {
@@ -63,6 +70,15 @@ export default function ImageGeneration({ onOpenSettings, settingsOverlayOpen = 
     interactionRef.current = interaction; visibilityRef.current = composerVisible;
     session.current?.setVisible(composerVisible && (typeof document === 'undefined' || document.visibilityState !== 'hidden'));
   }, [interaction]);
+  useLayoutEffect(() => { intentContext.current = { visible: composerVisible && (typeof document === 'undefined' || document.visibilityState !== 'hidden'), scope: editIntent?.scope || '', projectId, assets: projectAssets, session: session.current, isCurrent: intent => editIntent === intent && isEditIntentCurrent?.(intent) === true }; });
+  useLayoutEffect(() => { if (composerVisible && editIntent && state.loaded && state.historyPhase !== 'loading') void editController.receive(editIntent); }, [editController, editIntent, composerVisible, projectId, state.loaded, state.historyPhase]);
+  useLayoutEffect(() => () => editController.retire(), [editController, editIntent, composerVisible, projectId]);
+  useLayoutEffect(() => {
+    if (typeof document === 'undefined') return () => editController.retire();
+    const hide = () => { if (document.visibilityState === 'hidden') editController.retire(); };
+    document.addEventListener('visibilitychange', hide);
+    return () => { document.removeEventListener('visibilitychange', hide); editController.retire(); };
+  }, [editController]);
   useLayoutEffect(() => { generationDirty.current = imageDraftDirty(state) && !state.pending; callbacks.current.onDirtyChange(generationDirty.current || Object.values(settingsDirty.current).some(Boolean)); }, [state.draft, state.target, state.mode, state.inputImage, state.pending]);
   const owner = lifetime.current;
   const usable = () => Boolean(composerVisible && interactionRef.current === interaction && owner && !owner.closed && lifetime.current === owner && owner.projectId === projectId && (typeof document === 'undefined' || document.visibilityState !== 'hidden'));
@@ -89,7 +105,8 @@ export default function ImageGeneration({ onOpenSettings, settingsOverlayOpen = 
     {!projectId ? <p className="image-generation-empty">{t('image.studio.selectProject')}</p> : <div className="image-generation-scroll">
       <form className="image-generation-composer" onSubmit={event => { event.preventDefault(); run(current => current?.generate()); }} noValidate>
         <div className="image-generation-target"><strong>{state.target ? t('image.studio.groupNewVersion', { expectedRevision: creationParameter(state.target.expectedRevision) }) : t('image.studio.newImageGroup')}</strong>{state.target && <span>{targetGroup?.name || state.draft.name}</span>}<Button type="button" variant="ghost" className="button quiet" data-testid="image-new-group" disabled={busy} onClick={() => run(current => current?.requestTarget(null))}>{t('image.studio.newImageGroup')}</Button></div>
-        {state.targetRequest && <div className="image-generation-notice" role="alert" data-testid="image-draft-guard"><p>{t('image.studio.discardDraftQuestion')}</p><div className="image-generation-actions"><Button type="button" variant="ghost" className="button" disabled={busy} onClick={() => run(current => current?.keepDraft())}>{t('image.studio.keepDraft')}</Button><Button type="button" variant="ghost" className="button" data-testid="image-discard-draft" disabled={busy} onClick={() => run(current => current?.confirmTarget())}>{t('image.studio.discardAndSwitch')}</Button></div></div>}
+        {state.targetRequest && <div className="image-generation-notice" role="alert" data-testid="image-draft-guard"><p>{t('image.studio.discardDraftQuestion')}</p><div className="image-generation-actions"><Button type="button" variant="ghost" className="button" disabled={busy} onClick={() => run(current => editAdmission.phase === 'confirm' ? editController.keep(editAdmission.ticket) : current?.keepDraft())}>{t('image.studio.keepDraft')}</Button><Button type="button" variant="ghost" className="button" data-testid="image-discard-draft" disabled={busy} onClick={() => run(current => editAdmission.phase === 'confirm' ? editController.confirm(editAdmission.ticket) : current?.confirmTarget())}>{t('image.studio.discardAndSwitch')}</Button></div></div>}
+        {editAdmission.phase === 'unavailable' && <p className="image-generation-notice" role="status" data-testid="image-edit-intent-unavailable">{t('redesign.board.editUnavailable')}</p>}
         <div className="image-generation-mode-tabs" role="group" aria-label={t('image.studio.creationMode')}><Button type="button" variant="ghost" className="button" data-testid="image-mode-text" aria-pressed={!editing} disabled={busy} onClick={() => run(current => current?.selectMode('text'))}>{t('image.studio.textToImage')}</Button><Button type="button" variant="ghost" className="button" data-testid="image-mode-edit" aria-pressed={editing} disabled={busy} onClick={() => run(current => current?.selectMode('edit'))}>{t('image.studio.editSource')}</Button></div>
         {editing && <div className="image-generation-source" data-testid="image-edit-source"><Label htmlFor="image-source-asset">{t('image.studio.projectSourceImage')}</Label><WorkbenchSelect id="image-source-asset" data-testid="image-source-asset" value={state.inputImage ? `${state.inputImage.assetId}:${state.inputImage.sha256}` : ''} disabled={busy} onChange={event => run(current => { const chosen = sourceAssets.find(asset => `${asset.id}:${asset.sha256}` === event.target.value); if (!event.target.value || chosen) current?.selectSource(chosen || null); })}><option value="">{t('image.studio.selectPng')}</option>{state.inputImage && !sourceAssets.some(asset => asset.id === state.inputImage.assetId && asset.sha256 === state.inputImage.sha256) && <option value={`${state.inputImage.assetId}:${state.inputImage.sha256}`}>{t('image.studio.originalIdentityKept', { value: creationParameter(selectedSource?.name || t('image.studio.fixedSourceImage')) })}</option>}{sourceAssets.map(asset => <option key={`${asset.id}:${asset.sha256}`} value={`${asset.id}:${asset.sha256}`} disabled={Boolean(imageEditSourceIssue(asset, projectId))}>{asset.name}{imageEditSourceIssue(asset, projectId) ? ` · ${renderMessage(imageEditSourceIssueDescriptor(asset, projectId))}` : ` · ${asset.width} × ${asset.height}`}</option>)}</WorkbenchSelect>{selectedSource && sourceDetails(selectedSource, composerVisible, t('image.studio.selectedSourceImage'), t)}<p>{t('image.studio.selectionScope')}</p><details><summary>{t('image.studio.editingSupport')}</summary><p>{t('image.studio.editingLimits')}</p><p>{t('image.studio.editingEffects')}</p></details></div>}
         <Label htmlFor="image-generation-name">{t('image.studio.imageName')}</Label>

@@ -12,8 +12,8 @@ export type OpacityRestoreStatusOptions = Readonly<{destination: string; signal?
   {directory: string; restorationId?: never; sourceBackupId?: never; manifestHash?: never; sourceDbHash?: never} |
   {directory?: never; restorationId: string; sourceBackupId: string; manifestHash: string; sourceDbHash: string}
 )>;
-async function invoke(moduleName: string, member: string, options: unknown, schema: {safeParse(value: unknown): {success: boolean; data?: unknown}}): Promise<unknown> {
-  const module: unknown = require(moduleName);
+async function invoke(moduleName: './workspace-backup.mjs' | './workspace-restore.mjs', member: string, options: unknown, schema: {safeParse(value: unknown): {success: boolean; data?: unknown}}): Promise<unknown> {
+  const module: unknown = moduleName === './workspace-backup.mjs' ? require('./workspace-backup.mjs') : require('./workspace-restore.mjs');
   if (!object(module) || typeof module[member] !== 'function') throw new Error('The fixed offline archive runtime is unavailable.');
   const result: unknown = await Reflect.apply(module[member], module, [options, profile]);
   if (!schema.safeParse(result).success) throw Object.assign(new Error('Invalid fixed candidate offline result.'), {code: 'WORKSPACE_BACKUP_IO'});

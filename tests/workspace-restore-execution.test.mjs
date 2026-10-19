@@ -1,16 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
-import {mkdtempSync,rmSync,existsSync} from 'node:fs';
+import {mkdtempSync,rmSync,existsSync,readdirSync,mkdirSync,writeFileSync,readFileSync,statSync,chmodSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {schemas,isWorkspaceRestoreInspection,isEditTaskEnvelope,isEditTaskListEnvelope} from '@mioon/contracts';
 import {installCurrentWorkspaceRestoreSchema, openStore} from '../packages/business/src/db.mjs';
 import {getWorkspaceRestoreContext} from '../packages/business/src/workspace-restore-schema.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
+import {initializeWorkspaceSchema28} from '../packages/business/src/workspace-schema-v28.ts';
+import {initializeWorkspaceSchema30} from '../packages/business/src/workspace-schema-v30.ts';
+import {initializeWorkspaceSchema32} from '../packages/business/src/workspace-schema-v32.ts';
+import {initializeWorkspaceSchema34} from '../packages/business/src/workspace-schema-v34.ts';
+import {initializeWorkspaceSchema36} from '../packages/business/src/workspace-schema-v36.ts';
+import {initializeWorkspaceSchema38} from '../packages/business/src/workspace-schema-v38.ts';
+import {initializeWorkspaceSchema40} from '../packages/business/src/workspace-schema-v40.ts';
+import {snapshot as rawSchemaSnapshot} from './workspace-schema26-fixtures.mjs';
 import {RESTORE_READ_OPERATIONS,RESTORE_LOCAL_OPERATIONS,RESTORE_DENIED_OPERATIONS,assertWorkspaceRestoreOrigin,refuseRestoredOperation} from '../packages/business/src/workspace-restore-policy.mjs';
 import {createServices} from '../packages/business/src/services.mjs';
 import {startWorker} from '../packages/business/src/jobs.mjs';
+import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
 import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
 import {createImageServices} from '../packages/business/src/images.mjs';
 import {createFrameServices} from '../packages/business/src/frames.mjs';
@@ -33,6 +44,13 @@ import {EventEmitter} from 'node:events';
 const isCode=code=>error=>error?.code===code;
 const tables=['projects','jobs','exports','edit_tasks','timelines','timeline_requests','timeline_history','timeline_history_cursors','workspace_restore_holds'];
 const snapshot=db=>JSON.stringify(Object.fromEntries(tables.map(table=>[table,db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])));
+const deniedRedesignInputs=projectId=>({
+ 'agent.authorization.list':{},
+ 'agent.authorization.grant':{requestId:randomUUID(),expectedRevision:0,expectedSettingsRevision:0,destination:'https://synthetic.invalid/v1/chat/completions',model:'synthetic-model',scope:'typed_chat_only'},
+ 'agent.authorization.revoke':{requestId:randomUUID(),expectedRevision:0,authorizationId:randomUUID()},
+ 'project.rename':{projectId,requestId:randomUUID(),expectedRevision:1,name:'Refused restored rename'},
+ 'project.delete':{projectId,requestId:randomUUID(),expectedRevision:1,confirmPermanentDeletion:true},
+});
 async function fixture(t){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-restore-execution-'));
  let store=openStore(root),services=createServices(store,new Map()),tasks=createEditTasks({store,services});
@@ -58,14 +76,20 @@ test('restored profile has fixed catalogue coverage with no hint-based or suffix
  const names=[...RESTORE_READ_OPERATIONS,...RESTORE_LOCAL_OPERATIONS,...RESTORE_DENIED_OPERATIONS];
  assert.equal(new Set(names).size,names.length);
  assert.deepEqual([...names].sort(),Object.keys(schemas).sort());
+ assert.ok(RESTORE_READ_OPERATIONS.includes('project.summary.list'));
+ assert.ok(RESTORE_LOCAL_OPERATIONS.includes('timeline.clip.rippleRemove'));
+ for(const operation of Object.keys(deniedRedesignInputs(randomUUID()))){
+  assert.ok(RESTORE_DENIED_OPERATIONS.includes(operation));
+  assert.equal(RESTORE_READ_OPERATIONS.includes(operation)||RESTORE_LOCAL_OPERATIONS.includes(operation),false);
+ }
 });
 
-test('restored catalogue reports four disabled media operations and refuses calls without writes',async t=>{
+test('restored catalogue reports exact disabled media and redesign operations and refuses calls without writes',async t=>{
  const root=mkdtempSync(path.join(tmpdir(),'restore-denied-catalogue-'));
  const store=openStore(root);installCurrentWorkspaceRestoreSchema(store.db,{restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:new Date().toISOString()});store.close();
  const restored=openStore(root),services=createServices(restored,new Proxy(new Map(),{get(){throw Error('Disabled catalogue inspected a provider');}}));
  t.after(async()=>{await services.drain();restored.close();rmSync(root,{recursive:true,force:true});});
- const before=snapshot(restored.db),changes=restored.db.prepare('SELECT total_changes() AS n').get().n;
+ const before=snapshot(restored.db),changes=restored.db.prepare('SELECT total_changes() AS n').get().n,files=readdirSync(root,{recursive:true}).sort();
  const inspection=await services.call('workspace.restore.inspect',{});
  assert.ok(isWorkspaceRestoreInspection(inspection));
  assert.deepEqual(inspection.operationPolicy.map(item=>item.operation).sort(),Object.keys(schemas).sort());
@@ -77,8 +101,60 @@ test('restored catalogue reports four disabled media operations and refuses call
    await assert.rejects(services.handlers[operation]({},context),isCode('RESTORE_OPERATION_UNAVAILABLE'));
   }
  }
+ for(const [operation,input]of Object.entries(deniedRedesignInputs(randomUUID()))){
+  assert.deepEqual(inspection.operationPolicy.filter(item=>item.operation===operation),[{operation,available:false,reason:'RESTORE_OPERATION_UNAVAILABLE'}]);
+  for(const context of [{},{expectedWorkspaceOrigin:inspection.workspaceOrigin}]){
+   await assert.rejects(services.call(operation,input,context),isCode('RESTORE_OPERATION_UNAVAILABLE'));
+   await assert.rejects(services.handlers[operation](input,context),isCode('RESTORE_OPERATION_UNAVAILABLE'));
+  }
+ }
  assert.equal(restored.db.prepare('SELECT total_changes() AS n').get().n,changes);
  assert.equal(snapshot(restored.db),before);
+ assert.deepEqual(readdirSync(root,{recursive:true}).sort(),files);
+ assert.equal(existsSync(path.join(root,'agent-authorizations-v1.json')),false);
+});
+
+test('restored summary reads saved metadata in current49 and historical25/41 without writes or recent-opened access',async t=>{
+ for(const version of [24,40,48])await t.test(`source${version} restored${version+1}`,async t=>{
+  const root=mkdtempSync(path.join(tmpdir(),'mioon-restored-summary-')),filename=path.join(root,'workbench.sqlite');
+  let store,services;
+  t.after(async()=>{await services?.drain();store?.close();rmSync(root,{recursive:true,force:true});});
+  if(version===48){const source=openStore(root);source.close();}
+  const db=new DatabaseSync(filename),projectId=randomUUID(),emptyId=randomUUID(),assetId=randomUUID(),timelineId=randomUUID(),trackId=randomUUID();
+  const stamp='2026-10-19T00:00:00.000Z',bytes=Buffer.from('SYNTHETIC_OPAQUE_MEDIA_MUST_NOT_BE_DECODED'),relativePath=`media/${assetId}.png`;
+  const metadata={restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:stamp};
+  const width=version===48?1080:720,height=version===48?1920:1280;
+  try{
+   db.exec('PRAGMA trusted_schema=OFF;PRAGMA foreign_keys=ON;');
+   if(version!==48){
+    initializeWorkspaceSchemaThrough24(db);
+    if(version===40)for(const initialize of [initializeWorkspaceSchema26,initializeWorkspaceSchema28,initializeWorkspaceSchema30,initializeWorkspaceSchema32,initializeWorkspaceSchema34,initializeWorkspaceSchema36,initializeWorkspaceSchema38,initializeWorkspaceSchema40])initialize(db);
+   }
+   for(const [id,name]of [[projectId,'Saved restored summary'],[emptyId,'No initialized timeline']])db.prepare('INSERT INTO projects(id,data) VALUES(?,?)').run(id,JSON.stringify({id,name,description:'',revision:1,createdAt:stamp,updatedAt:stamp}));
+   db.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(assetId,projectId,JSON.stringify({id:assetId,projectId,name:'Opaque cover.png',mimeType:'image/png',width:16,height:16,sizeBytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),relativePath,createdAt:stamp}));
+   db.prepare('INSERT INTO timelines(id,projectId,data) VALUES(?,?,?)').run(timelineId,projectId,JSON.stringify({id:timelineId,projectId,revision:1,fps:30,width,height,tracks:[{id:trackId,name:'Video',kind:'video',orderIndex:0,hidden:false,muted:false}],clips:[{id:randomUUID(),trackId,assetId,name:'Saved cover',startFrame:0,durationFrames:30,sourceInFrame:0,rect:{x:0,y:0,width,height},gain:1}],durationFrames:30,createdAt:stamp,updatedAt:stamp}));
+   const installed=installCurrentWorkspaceRestoreSchema(db,metadata);assert.equal(installed.schemaVersion,version+1);assert.equal(installed.sourceSchema,version);
+  }finally{db.close();}
+  chmodSync(filename,0o600);mkdirSync(path.join(root,'media'),{recursive:true,mode:0o700});writeFileSync(path.join(root,relativePath),bytes,{mode:0o600});
+  let mediaProcesses=0;const off=onMediaProcess(()=>mediaProcesses++);t.after(off);
+  store=openStore(root);
+  services=createServices(store,new Proxy(new Map(),{get(){throw Error('A summary inspected a provider');}}),{readRecentOpened(){throw Error('Restored summaries must not read recent-opened preferences');}});
+  assert.equal(getWorkspaceRestoreContext(store).schemaVersion,version+1);
+  const fileState=()=>Object.fromEntries(readdirSync(root,{recursive:true}).sort().filter(name=>!/^workbench\.sqlite(?:-(?:wal|shm))?$/u.test(name)).map(name=>[name,statSync(path.join(root,name)).isFile()?readFileSync(path.join(root,name)).toString('hex'):null]));
+  const before=rawSchemaSnapshot(store.db),changes=store.db.prepare('SELECT total_changes() AS n').get().n,files=fileState();
+  const inspection=await services.call('workspace.restore.inspect',{});
+  assert.deepEqual(inspection.operationPolicy.filter(row=>row.operation==='project.summary.list'),[{operation:'project.summary.list',available:true,reason:'AVAILABLE'}]);
+  for(const context of [{},{expectedWorkspaceOrigin:metadata.workspaceOrigin}]){
+   const summaries=await services.call('project.summary.list',{},context);assert.equal(summaries.length,2);
+   const saved=summaries.find(row=>row.id===projectId),empty=summaries.find(row=>row.id===emptyId);
+   assert.deepEqual([saved.name,saved.width,saved.height,saved.durationFrames,saved.lastOpenedAt],['Saved restored summary',width,height,30,null]);
+   assert.deepEqual(saved.cover,{assetId,mimeType:'image/png',url:`/media/${assetId}`});assert.equal(empty.cover,null);assert.equal(empty.lastOpenedAt,null);
+   assert.deepEqual(await services.handlers['project.summary.list']({},context),summaries);
+  }
+  assert.equal(store.db.prepare('SELECT total_changes() AS n').get().n,changes);assert.deepEqual(rawSchemaSnapshot(store.db),before);
+  assert.deepEqual(fileState(),files);assert.equal(mediaProcesses,0);assert.deepEqual(readFileSync(path.join(root,relativePath)),bytes);
+  assert.equal(existsSync(path.join(root,'ui-preferences-v1.json')),false);assert.equal(existsSync(path.join(root,'agent-authorizations-v1.json')),false);
+ });
 });
 
 test('restored composition and automatic/manual workers leave all captured rows exact',async t=>{
@@ -147,6 +223,14 @@ test('restored server skips settings/runtime constructors and special routes sha
    const result=await request(server.url,route,{method,input:method==='GET'?undefined:{expectedWorkspaceOrigin:f.metadata.workspaceOrigin}});
    assert.equal(result.status,409,route);assert.equal(result.body.error.code,'RESTORE_OPERATION_UNAVAILABLE',route);assert.deepEqual(result.body.error.details,{});
   }
+  const files=readdirSync(f.root,{recursive:true}).sort();
+  for(const [operation,input]of Object.entries(deniedRedesignInputs(f.project.id)))for(const origin of [undefined,f.metadata.workspaceOrigin]){
+   const result=await request(server.url,'/api/rpc',{method:'POST',input:{operation,input,...(origin?{expectedWorkspaceOrigin:origin}:{})}});
+   assert.equal(result.status,409,operation);assert.equal(result.body.ok,false);assert.equal(result.body.error.code,'RESTORE_OPERATION_UNAVAILABLE',operation);
+   assert.deepEqual(result.body.error.details,{});
+  }
+  assert.deepEqual(readdirSync(f.root,{recursive:true}).sort(),files);
+  assert.equal(existsSync(path.join(f.root,'agent-authorizations-v1.json')),false);
   const denied=await request(server.url,'/api/rpc',{method:'POST',input:{operation:'project.create',input:{name:'No'}}});
   assert.equal(denied.body.error.code,'RESTORE_WORKSPACE_ORIGIN_REQUIRED');
   const held=await request(server.url,`/api/tasks/${f.pending.task.id}/reconcile`,{method:'POST',input:{projectId:f.project.id,digest:f.pending.task.digest,expectedWorkspaceOrigin:f.metadata.workspaceOrigin}});

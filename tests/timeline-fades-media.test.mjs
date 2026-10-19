@@ -161,6 +161,9 @@ async function queuedAcceptance(root) {
   const f = await httpFixture(root);
   try {
     const project = await f.request('project.create', {name: 'Synthetic audio fade acceptance'});
+ // This pixel/audio fixture explicitly preserves its historical 720 canvas.
+ await f.request('timeline.format.set',{projectId:project.id,expectedProjectRevision:project.revision,expectedRevision:0,requestId:randomUUID(),presetId:'portrait_720'});
+
     let timeline = await f.request('timeline.get', {projectId: project.id});
     const mutate = async (operation, fields) => timeline = await f.request(operation, {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(), ...fields});
     const assets = new Map();

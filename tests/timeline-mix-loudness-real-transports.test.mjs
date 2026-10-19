@@ -21,7 +21,7 @@ import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
 
 const execute=promisify(execFile),repo=fileURLToPath(new URL('..',import.meta.url));
 const operation='timeline.loudness.prepare',sha=bytes=>createHash('sha256').update(bytes).digest('hex');
-const environment=(url,token)=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',RUNWAY_MAX_GENERATIONS:'0',
+const environment=(url,token)=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',
   MIOON_BASE_URL:url,MIOON_TOKEN:token});
 async function bounded(promise,label,ms=20000){let timer;try{
   return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(label+' timed out')),ms);})]);
@@ -106,7 +106,7 @@ test('real saved full mix matches across HTTP, CLI and official MCP without rows
   const observe=(req,res)=>{
     if(req.url!=='/api/rpc')return;
     const baseline={request:req.listenerCount('aborted'),response:res.listenerCount('close')};
-    res.once('finish',()=>listeners.push({baseline,remaining:{request:req.listenerCount('aborted'),response:res.listenerCount('close')}}));
+    res.once('finish',()=>queueMicrotask(()=>listeners.push({baseline,remaining:{request:req.listenerCount('aborted'),response:res.listenerCount('close')}})));
   };
   server.prependListener('request',observe);t.after(()=>server.removeListener('request',observe));
   const events=[];off=onMediaProcess(event=>events.push(event));

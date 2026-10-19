@@ -107,8 +107,9 @@ test('GET/list are noncreating, strictly bound queries and never convert reads i
 
 test('fixed durable tasks cannot expose generation, rendering, arbitrary RPC or model/MCP authority', async t => {
   const f = await taskFixture(t), before = snapshot(f.root);
-  assert.equal(DURABLE_EDIT_OPERATIONS.length, 20);
+  assert.equal(DURABLE_EDIT_OPERATIONS.length, 21);
   assert.equal(DURABLE_EDIT_OPERATIONS.includes('timeline.loudness.apply'), true);
+  assert.equal(DURABLE_EDIT_OPERATIONS.includes('timeline.clip.rippleRemove'), true);
   for (const operation of ['timeline.render', 'generation.submit', 'shot.update', 'task.execute', 'agent.edit.approve', 'project.create']) {
     const response = await f.request('/api/tasks/prepare', {method: 'POST', input: {projectId: f.project.id, operation, input: trackInput(f), origin: 'new'}});
     assert.equal(response.status, 400); assertSafe(response, f);

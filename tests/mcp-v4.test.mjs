@@ -18,7 +18,7 @@ const token = 'synthetic-v4-mcp-token-never-live';
 function environment(extra = {}) {
   const env = {...process.env};
   for (const key of Object.keys(env)) if (/^(MIOON_|RUNWAY|ARK_|VEO_|GOOGLE_|MIOON_)/.test(key)) delete env[key];
-  return {...env, MIOON_ENABLE_LIVE_PROVIDER:'0', RUNWAY_MAX_GENERATIONS:'0', ...extra};
+  return {...env, MIOON_ENABLE_LIVE_PROVIDER:'0', ...extra};
 }
 async function bridge(t, env = {}) {
   const client = new Client({name:'v4-protocol-regression', version:'1.0.0'}, {capabilities:{}});
@@ -143,7 +143,9 @@ test('one MCP process follows private desktop descriptor and token rotation, pre
   assert.equal(doctor.ready, true); assert.equal(doctor.connection.source, 'desktop-descriptor');
   assert.equal(doctor.connection.credentialsReloadedPerRequest, true);
   assert.equal(doctor.backend.service, 'mioon');
-  assert.deepEqual(await mcp.call('mioon_capabilities'), (await httpRpc(service, 'provider.list')).body.data);
+  const capabilities = await mcp.call('mioon_capabilities');
+  assert.deepEqual(capabilities, (await httpRpc(service, 'provider.list')).body.data);
+  assert.doesNotMatch(JSON.stringify(capabilities), /MAX_GENERATIONS|maxGenerations|usedGenerations|remainingGenerations/);
   const before = await mcp.call('project_get', {projectId:project.id});
   assert.equal(before.shots[0].title, updated.title);
 

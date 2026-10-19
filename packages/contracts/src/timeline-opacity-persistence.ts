@@ -114,6 +114,21 @@ export function captureOpacityApplicationPrepare(value: unknown) {
   return capturePrepare(value, applicationOperations);
 }
 
+/** Selected only by a privately registered46/47 assembly. Historical42/43
+ * prepare grammars remain closed even though the public RPC catalog grows. */
+export function captureRippleOpacityPrepare(value: unknown, application: boolean) {
+  return capturePrepare(value, [...(application ? applicationOperations : ['timeline.clip.update', 'timeline.undo', 'timeline.redo']), 'timeline.clip.rippleRemove']);
+}
+
+export function isRippleOpacityMutationResponse(input: unknown, value: unknown): boolean {
+  try {
+    const record = captureOpacityTimelineRecord(value).record;
+    if (!object(record)) return false;
+    const intent = captureOpacityTimelineIntent('timeline.clip.rippleRemove', input).input;
+    return fn('isTimelineMutationResponse')('timeline.clip.rippleRemove', intent, projection(record)) === true;
+  } catch {return false;}
+}
+
 function projection(record: Value): Value {
   if (!Array.isArray(record.clips)) return fail();
   return {...record, clips: record.clips.map((clip: unknown) => {

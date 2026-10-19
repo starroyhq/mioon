@@ -56,7 +56,7 @@ export async function runSplitBrowserAcceptance({tab,projectId,dataDir,outDir}){
   await tab.playwright.getByTestId('timeline-undo').click();timeline=await settle(++revision);
   // An independent real writer advances the version before the displayed split.
   const competitor=await s.call('timeline.track.update',{projectId,expectedRevision:revision,requestId:randomUUID(),trackId:timeline.tracks[0].id,patch:{name:'Split QA concurrent track'}});revision=competitor.revision;
-  await tab.playwright.getByTestId('timeline-split').click();await tab.playwright.getByText('保存冲突：内容已在其他窗口更新。已刷新最新状态，请检查后再保存。',{exact:true}).waitFor({state:'visible',timeoutMs:10000});timeline=await settle(revision);equal(timeline,competitor);log('Stale split is rejected and refreshes without overwriting concurrent edit',{revision});
+  await tab.playwright.getByTestId('timeline-split').click();await tab.playwright.getByText('保存冲突：内容已在其他窗口更新。已刷新最新状态，请检查后再保存',{exact:true}).waitFor({state:'visible',timeoutMs:10000});timeline=await settle(revision);equal(timeline,competitor);log('Stale split is rejected and refreshes without overwriting concurrent edit',{revision});
   await tab.playwright.getByRole('button',{name:'关闭提示',exact:true}).click();await tab.playwright.getByTestId('timeline-undo').click();timeline=await settle(++revision);equal(domain(timeline),domain(baseline));
   await tab.playwright.getByTestId('timeline-split').click();timeline=await settle(++revision);
   equal(Object.fromEntries(Object.keys(outside).map(table=>[table,store.list(table)])),outside);log('No original media, graph, versions, jobs, exports or project changed');

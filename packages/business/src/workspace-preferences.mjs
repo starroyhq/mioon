@@ -48,7 +48,7 @@ export function parseWorkspacePreferencesState(value) {
   const c = object(s.canvas, ['viewport', 'selectedId', 'selectedEdgeId', 'inspectorTab', 'highlightedVersionId', 'storyboardOpen', 'miniMap'], ['state', 'canvas']);
   const e = object(s.editing, ['selectedClipId', 'quickAssetId', 'previewKind', 'playhead', 'pixelsPerSecond', 'scrollLeft', 'scrollTop', 'timelineCollapsed'], ['state', 'editing'], ['snappingEnabled']);
   const shared = object(s.shared, ['assetFilter', 'assetsCollapsed', 'inspectorCollapsed'], ['state', 'shared']);
-  const legacyPanel = () => ({ assetsWidth: 242, inspectorWidth: 310,
+  const legacyPanel = () => ({ assetsWidth: 260, inspectorWidth: 320,
     assetsCollapsed: bool(shared.assetsCollapsed, ['state', 'shared', 'assetsCollapsed']),
     inspectorCollapsed: bool(shared.inspectorCollapsed, ['state', 'shared', 'inspectorCollapsed']) });
   let layout;
@@ -58,7 +58,7 @@ export function parseWorkspacePreferencesState(value) {
   } else {
     // Only whole-layout omission is a legacy exception. Never repair a partial
     // layout, and never let old shared flags override a supplied mode layout.
-    layout = { canvas: legacyPanel(), editing: { ...legacyPanel(), timelineHeight: 320 } };
+    layout = { canvas: legacyPanel(), editing: { ...legacyPanel(), timelineHeight: 300 } };
   }
   let viewport = null;
   if (c.viewport !== null) {

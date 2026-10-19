@@ -52,7 +52,7 @@ function request(url, route, {method = 'GET', input, raw, authenticated = true, 
 function startProcess(root, auditPath) {
   const child = spawn(process.execPath, [workerPath, auditPath], {cwd: repo, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     env: {PATH: process.env.PATH || '', HOME: root, TMPDIR: root, LANG: 'C.UTF-8', NODE_ENV: 'test',
-      MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAY_MAX_GENERATIONS: '0'},
+      MIOON_ENABLE_LIVE_PROVIDER: '0'},
   });
   let output = '', outputBytes = 0, stopped;
   // One inventoried text-consumer registration, shared by the two owned pipes.

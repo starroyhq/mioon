@@ -21,6 +21,8 @@ This does not typecheck the existing contracts/client barrels or every legacy JS
 
 ## Runtime and packaging
 
+Desktop bundles now trace the fixed local `createRequire(import.meta.url)` adapters through an AST-checked build transform. The transform is limited to repository-owned business/contracts/server TypeScript leaves, rejects dynamic or escaped require calls, and keeps each relative literal at its original resolve directory. Source-level `unknown` validation and the exact legacy schema catalogs remain unchanged. A runtime test executes the resulting CJS outside the source tree and verifies ordinary48, explicit46, backup/restore47, and refusal by the ordinary/old42 openers. Native source execution still uses Node's normal local require semantics.
+
 The repository's Node24 source workflow uses native type erasure for `.ts`, with explicit extensions and `import type`. The observed pnpm workspace symlinks resolve to real source paths outside `node_modules`; actual CLI/MCP entrypoints are tested. Node deliberately refuses native type stripping for TS physically inside `node_modules`. Publishing bare-TS npm packages or using `--preserve-symlinks` is not supported by this slice.
 
 `erasableSyntaxOnly`, `verbatimModuleSyntax`, `isolatedModules` and explicit import extensions keep the supported syntax narrow. Runtime enums, parameter properties, namespaces with values, TS import aliases, decorators and path-alias-dependent imports are outside this source-runtime contract. Node ignores tsconfig and does not typecheck. Compiler success alone does not prove Node parser/runtime compatibility; real entrypoint tests remain required. Node cannot execute `.tsx` directly.

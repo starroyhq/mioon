@@ -3,15 +3,21 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
-import {mkdtemp, readFile, realpath, rm, stat, writeFile} from 'node:fs/promises';
+import {chmod, copyFile, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import {LOCAL_DRAFT_LIMITS, clipDraftEnvelopeSchema, clipDraftListSchema} from '@mioon/contracts/local-drafts';
-import {openStore} from '../packages/business/src/db.mjs';
+import {openStore, classifyCurrentWorkspaceSchema} from '../packages/business/src/db.mjs';
 import {createServices} from '../packages/business/src/services.mjs';
 import {createWorkspaceBackup, verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
+import {createLocalDrafts} from '../packages/business/src/local-drafts.ts';
+import {createTimelineRecoveryBoundary} from '../packages/business/src/timeline-recovery.mjs';
+import {acquireWorkspaceLock} from '../packages/business/src/workspace-lock.mjs';
+import {readPrivateFile, writePrivateFileAtomic, validatePrivateDirectory, validateManagedFile} from '@mioon/contracts/private-storage';
 import {syntheticPng} from './helpers/runway-unknown-fixture.mjs';
 
 const repo = fileURLToPath(new URL('../', import.meta.url));
@@ -57,7 +63,7 @@ function request(url, route, {method = 'GET', input, raw, authenticated = true, 
 function startProcess(root, auditPath) {
   const child = spawn(process.execPath, [workerPath, auditPath], {cwd: repo, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     env: {PATH: process.env.PATH || '', HOME: root, TMPDIR: root, LANG: 'C.UTF-8', NODE_ENV: 'test',
-      MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAY_MAX_GENERATIONS: '0'},
+      MIOON_ENABLE_LIVE_PROVIDER: '0'},
   });
   let output = '', outputBytes = 0, stopped;
   // One inventoried text-consumer registration, shared by the two owned pipes.
@@ -335,11 +341,52 @@ test('local draft HTTP keeps token/cookie/origin auth, exact fields, bounded bod
 });
 
 test('a real cold schema-26 backup excludes populated local drafts and preserves the source sidecar exactly', {timeout: 30000}, async t => {
-  const f = await fixture(t), initial = await f.draft();
-  const saved = await f.data('/api/local-drafts/clip', {method: 'PUT', input: write(f, initial,
-    rawClip(f, {name: 'LOCAL_DRAFT_EXCLUDED_FROM_BACKUP_🎬', startFrame: '-', gain: ''}))});
-  assert.equal(saved.revision, 1); await f.noEffects();
-  await f.backend.close();
+  const seed = await fixture(t), initial = await seed.draft();
+  const saved = await seed.data('/api/local-drafts/clip', {method: 'PUT', input: write(seed, initial,
+    rawClip(seed, {name: 'LOCAL_DRAFT_EXCLUDED_FROM_BACKUP_🎬', startFrame: '-', gain: ''}))});
+  assert.equal(saved.revision, 1); await seed.noEffects();
+  await seed.backend.close();
+  // Current services seed real imported bytes and a real HTTP-saved draft.
+  // Construct a separate frozen26 source, never relabel/downgrade that runtime.
+  // It retains a deleted-target draft: newer colour timelines/receipts cannot
+  // be copied into an old role, while the owned historical source still exists.
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'mioon-local-drafts-frozen26-')));
+  t.after(() => rm(root, {recursive: true, force: true}));
+  const database = path.join(root, 'workbench.sqlite'), frozen = new DatabaseSync(database);
+  try {
+    frozen.exec('PRAGMA trusted_schema=OFF; PRAGMA foreign_keys=ON;');
+    initializeWorkspaceSchemaThrough24(frozen); initializeWorkspaceSchema26(frozen);
+    for (const row of seed.read(db => db.prepare('SELECT id,data FROM projects ORDER BY rowid').all()))
+      frozen.prepare('INSERT INTO projects(id,data) VALUES(?,?)').run(row.id, row.data);
+    const row = seed.read(db => db.prepare('SELECT id,projectId,data FROM assets WHERE id=?').get(seed.source.id));
+    frozen.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(row.id, row.projectId, row.data);
+    assert.deepEqual(classifyCurrentWorkspaceSchema(frozen), {schemaVersion: 26, profile: 'ordinary'});
+    assert.deepEqual(frozen.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row => row.version),
+      [...Array.from({length: 24}, (_, index) => index + 1), 26]);
+    assert.equal(frozen.prepare('SELECT count(*) AS n FROM timelines').get().n, 0);
+    assert.equal(frozen.prepare('SELECT count(*) AS n FROM timeline_requests').get().n, 0);
+  } finally { frozen.close(); }
+  await chmod(database, 0o600);
+  const media = path.join(root, seed.sourceRelativePath);
+  await mkdir(path.dirname(media), {recursive: true, mode: 0o700});
+  await copyFile(path.join(seed.root, seed.sourceRelativePath), media); await chmod(media, 0o600);
+  const lease = acquireWorkspaceLock(root), reader = new DatabaseSync(database, {readOnly: true});
+  try {
+    reader.exec('PRAGMA trusted_schema=OFF; PRAGMA foreign_keys=ON;');
+    const drafts = createLocalDrafts({root, storage: {readPrivateFile, writePrivateFileAtomic, validatePrivateDirectory, validateManagedFile},
+      guards: {ownsLock: () => lease.isOwned(), isRestored: () => classifyCurrentWorkspaceSchema(reader).profile !== 'ordinary',
+        readTimeline: projectId => createTimelineRecoveryBoundary(reader, {projectId}).read(),
+        readClipAsset: (projectId, clip) => createTimelineRecoveryBoundary(reader, {projectId}).clipSource(clip)}});
+    const empty = drafts.get(seed.key), disk = JSON.parse(await readFile(path.join(seed.root, 'local-drafts-v1.json'), 'utf8'));
+    // Only this newly constructed fixture's workspace fingerprint changes.
+    // Retained key/revision/source/raw draft cells remain exactly HTTP-produced.
+    writePrivateFileAtomic(path.join(root, 'local-drafts-v1.json'), JSON.stringify({...disk, workspaceScope: empty.workspaceScope}) + '\n',
+      {root, private: true, maxBytes: LOCAL_DRAFT_LIMITS.envelopeBytes});
+    const retained = drafts.get(seed.key);
+    assert.equal(retained.targetStatus, 'missing'); assert.deepEqual(retained.draft, saved.draft); assert.equal(retained.revision, saved.revision);
+    assert.deepEqual(classifyCurrentWorkspaceSchema(reader), {schemaVersion: 26, profile: 'ordinary'});
+  } finally { reader.close(); assert.equal(lease.release(), true); }
+  const f = {root, sourceRelativePath: seed.sourceRelativePath};
   await assert.rejects(stat(path.join(f.root, 'server.lock')), {code: 'ENOENT'});
   const sidecar = path.join(f.root, 'local-drafts-v1.json');
   const before = {bytes: await readFile(sidecar), stat: await stat(sidecar), database: await readFile(path.join(f.root, 'workbench.sqlite'))};

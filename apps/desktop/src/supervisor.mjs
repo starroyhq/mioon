@@ -11,9 +11,9 @@ import { createExitDiagnostics, classifyBackendExit } from './exit-diagnostics.t
 // is not proof of exit: keep the owned handle until Electron reports its exit.
 export const BACKEND_STOP_BUDGET = Object.freeze({ gracefulMs: 10000, terminateMs: 2000, confirmMs: 1000 });
 const stopError = (code, exitConfirmed) => Object.assign(new Error(code === 'BACKEND_STOP_UNCONFIRMED'
-  ? '本地服务未确认退出。请稍后重试；在确认退出前不能重启服务。'
-  : code === 'BACKEND_MEDIA_EXIT_UNCONFIRMED' ? '本地服务已退出，但媒体子进程是否退出尚无法确认。不能自动重启服务。'
-  : '本地服务退出时未能完成正常清理。已保存的数据将在下次启动时恢复。'), { code, exitConfirmed });
+  ? '本地服务未确认退出。请稍后重试；在确认退出前不能重启服务'
+  : code === 'BACKEND_MEDIA_EXIT_UNCONFIRMED' ? '本地服务已退出，但媒体子进程是否退出尚无法确认。不能自动重启服务'
+  : '本地服务退出时未能完成正常清理。已保存的数据将在下次启动时恢复'), { code, exitConfirmed });
 const unconfirmedMediaError = () => Object.assign(stopError('BACKEND_MEDIA_EXIT_UNCONFIRMED', true), { mediaExitConfirmed: false });
 const forceOwnedUtility = child => {
   const pid = child.pid;
@@ -132,7 +132,7 @@ export class BackendSupervisor extends EventEmitter {
         }
         if (message?.type === 'failed') {
           this.noteExitReason('startup-failed'); this.recordDiagnostic('backend-notice');
-          fail(new Error('本地服务启动失败。请检查数据目录和应用文件。')); return;
+          fail(new Error('本地服务启动失败。请检查数据目录和应用文件')); return;
         }
         if (message?.type !== 'ready' || settled || this.state !== 'starting') return;
         try { this.origin = trustedOrigin(message.url); }

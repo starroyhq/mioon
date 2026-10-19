@@ -3,24 +3,35 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { PANEL_BOUNDS } from '../apps/web/src/workspace-layout.js';
+import { timelineVisibleTracks } from '../apps/web/src/timeline-view-geometry.ts';
 
 const read = name => readFileSync(new URL(`../apps/web/src/${name}`, import.meta.url), 'utf8');
 const css = read('styles.css');
 const px = (pattern, label) => { const value = css.match(pattern)?.[1]; assert.ok(value, `Missing ${label}`); return Number(value); };
 
 test('the default timeline panel shows all four default tracks (subtitle, two video, audio) without scrolling', () => {
-  const header = px(/\.dock-workbench:not\(\.dock-narrow\) \.timeline-header \{ height: (\d+)px; \}/, 'dock timeline header height');
-  const toolbar = px(/\.dock-workbench:not\(\.dock-narrow\) \.timeline-toolbar \{ height: (\d+)px;/, 'dock timeline toolbar height');
-  const track = px(/\.dock-workbench:not\(\.dock-narrow\) \.timeline-track \{ height: (\d+)px; \}/, 'dock track height');
-  const footnote = px(/\.dock-workbench:not\(\.dock-narrow\) \.timeline-footnote \{ height: (\d+)px; \}/, 'dock footnote height');
-  const ruler = px(/\.timeline-ruler-row\{display:flex;height:(\d+)px/, 'ruler row height');
-  const clip = css.match(/\.dock-workbench:not\(\.dock-narrow\) \.timeline-clip \{ top: (\d+)px; height: (\d+)px; \}/);
-  assert.ok(clip, 'Missing dock clip geometry');
-  assert.ok(Number(clip[1]) * 2 + Number(clip[2]) <= track + 1, 'A clip must fit inside its track row');
-  // Header, toolbar, ruler and footnote each carry a one pixel rule; the panel itself has a top border.
-  const borders = 4, tracks = 4;
-  assert.ok(header + toolbar + ruler + tracks * track + footnote + borders <= PANEL_BOUNDS.timelineHeight.default,
-    `${header} + ${toolbar} + ${ruler} + ${tracks}×${track} + ${footnote} exceeds the ${PANEL_BOUNDS.timelineHeight.default}px default`);
+  const editing = read('timeline-editing.css');
+  const tokens = readFileSync(new URL('../packages/ui/src/styles/globals.css', import.meta.url), 'utf8');
+  const token = name => {const value = tokens.match(new RegExp(`--wb-${name}: (\\d+)px;`))?.[1]; assert.ok(value, `Missing ${name}`); return Number(value);};
+  const toolbar = Number(editing.match(/\.edit-timeline-toolbar\{height:(\d+)px;/)?.[1]);
+  const footnote = Number(editing.match(/\.timeline-footnote\{height:(\d+)px;/)?.[1]);
+  assert.equal(toolbar, 36); assert.equal(footnote, 24);
+  const video = token('track-video'), audio = token('track-audio'), subtitle = token('track-subtitle'), ruler = token('ruler');
+  assert.deepEqual([video, audio, subtitle, ruler], [52, 44, 32, 24]);
+  for (const kind of ['video', 'audio', 'subtitle']) assert.match(editing, new RegExp(`height:var\\(--wb-track-${kind}\\)`));
+  assert.match(editing, /\.timeline-clip\{top:4px;height:calc\(100% - 8px\)/);
+  assert.match(editing, /\.timeline-clip\.subtitle-cue\{[^}]*height:24px/);
+  assert.ok(4 * 2 + 24 <= subtitle, 'Subtitle cues must fit inside the shortest row');
+  // The toolbar replaces the old separate header; retain all populated lanes.
+  const borders = 4, fullHeight = toolbar + ruler + subtitle + 2 * video + audio + footnote + borders;
+  assert.ok(fullHeight <= PANEL_BOUNDS.timelineHeight.default, `${fullHeight}px exceeds the default panel height`);
+  const tracks = [{id:'v2',kind:'video'}, {id:'v1',kind:'video'}, {id:'a1',kind:'audio'}];
+  assert.strictEqual(timelineVisibleTracks(tracks, false), tracks, 'Saved/custom lanes must remain available after editing');
+  assert.deepEqual(timelineVisibleTracks(tracks, true).map(track => track.id), ['v1', 'a1']);
+  const empty = Number(editing.match(/\.edit-timeline-empty\{[^}]*min-height:(\d+)px;/)?.[1]);
+  assert.ok(toolbar + ruler + video + audio + empty + footnote + borders <= PANEL_BOUNDS.timelineHeight.default, 'The pristine drop zones and empty prompt must also fit');
+  assert.match(read('Timeline.jsx'), /const pristineEmpty = !timeline\?\.clips\?\.length && historyState\?\.length === 0/);
+  assert.match(read('Timeline.jsx'), /timeline && !pristineEmpty && !basicEditingOnly && <SubtitleLane/);
 });
 
 test('the library search uses a drawn icon that cannot collide with the placeholder', () => {
@@ -33,12 +44,13 @@ test('the library search uses a drawn icon that cannot collide with the placehol
   assert.ok(px(/\.asset-search input\{padding:8px 9px 8px (\d+)px/, 'search input padding') >= 10 + 14 + 2);
 });
 
-test('the narrow top bar keeps language and status in explicit rows without an implicit third row', () => {
-  assert.match(css, /\.dock-workbench\.dock-narrow \.topbar \{ grid-template-columns: auto minmax\(0,1fr\) auto auto; grid-template-rows: 28px 30px;/);
-  assert.match(css, /\.dock-workbench\.dock-narrow \.topbar-status \{ grid-row: 2; grid-column: 3;/);
-  assert.match(css, /\.dock-workbench\.dock-narrow \.topbar > \.language-control \{ grid-row: 1; grid-column: 3 \/ span 2;/);
-  // The geometry hook measures the header at a fixed 82px, so the narrow rows must not grow.
-  assert.match(css, /\.workbench\.workbench-v2\.dock-workbench\.dock-narrow\{grid-template-rows:82px minmax\(0,1fr\) 42px\}/);
+test('the redesigned top bar keeps one explicit 44px row and puts language in settings', () => {
+  assert.match(css, /\.shell-redesign \.workbench-topbar \{[^}]*grid-template-columns: minmax\(0, 1fr\) auto minmax\(0, 1fr\); grid-template-rows: 1fr;/);
+  assert.match(css, /\.workbench\.workbench-v2\.dock-workbench\.shell-redesign \{ grid-template-rows: var\(--wb-topbar\) minmax\(0, 1fr\)/);
+  const shell = read('WorkbenchShell.tsx');
+  assert.match(shell, /workbench-topbar-project/); assert.match(shell, /workbench-topbar-mode/);
+  assert.doesNotMatch(shell, /LanguageControl/);
+  assert.match(read('ProjectHomeConnections.tsx'), /<LanguageControl/);
 });
 
 test('no stylesheet or utility class sets text below the 10px floor', () => {

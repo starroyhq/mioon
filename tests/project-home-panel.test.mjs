@@ -92,6 +92,9 @@ function harness(patch = {}) {
     if (name === '../../../packages/i18n/src/index.ts') return i18nCore;
     if (name === './LanguageControl.tsx') return { __esModule: true, default: 'LanguageControl' };
     if (name === 'react') return react;
+    if (name === '@mioon/ui/components/workbench-icons') return { WorkbenchIcon: () => null };
+    if (name === '@mioon/ui/components/dialog') return { Dialog: ({children}) => actual.React.createElement(actual.React.Fragment, null, children) };
+    if (name === '@mioon/ui/components/workbench-controls') return { WorkbenchDialogContent: ({children}) => actual.React.createElement('section', {role:'dialog'}, children) };
     if (name.endsWith('.css')) return {};
     const key = { '@mioon/ui/components/button': 'Button', '@mioon/ui/components/input': 'Input', '@mioon/ui/components/textarea': 'Textarea', '@mioon/ui/components/label': 'Label' }[name];
     if (key) return { [key]: actual[key] };
@@ -128,7 +131,7 @@ componentTest('empty home is a standalone welcome without project controls or a 
   assert.match(html, /data-testid="project-home"/);
   assert.match(html, /还没有项目/);
   assert.match(html, /创建第一个项目/);
-  assert.match(html, /当前工作区/);
+  assert.match(html, /项目/);
   assert.match(html, /data-testid="project-home-create-toggle"/);
   assert.doesNotMatch(html, /react-flow|timeline-panel|asset-panel|inspector-region|task-workspace|image-generation|role="dialog"|aria-modal/);
   assert.doesNotMatch(html, /暂无任务|没有任务|关闭项目/);
@@ -142,7 +145,7 @@ componentTest('real shared controls render keyboard-native page and project butt
   assert.match(html, /data-slot="button"/);
   assert.match(html, /更新时间/);
   assert.match(html, /dateTime="2026-10-13T10:30:00.000Z"/i);
-  assert.match(html, /秋日短片/);
+  assert.match(html, /山野之间/);
   assert.doesNotMatch(html, /最近打开|上次打开|MRU/);
   assert.ok(html.indexOf('山野之间') < html.indexOf('第二个故事'), 'Keep the supplied list order');
 });
@@ -219,21 +222,21 @@ componentTest('opening cannot enter settings, while an error preserves controlle
   assert.equal(h.props.page, 'settings', 'Leaving settings also waits for the parent');
 });
 
-componentTest('inline creation uses labeled shared inputs, existing limits, and native form submission', () => {
+componentTest('modal creation uses labeled shared inputs, 500-character direction and native form submission', () => {
   const h = harness(), tree = showForm(h), html = h.html(tree);
   const name = find(tree, 'project-home-name'), description = find(tree, 'project-home-description');
   assert.equal(name.type, ui().Input); assert.equal(description.type, ui().Textarea);
   assert.equal(name.props.maxLength, 150); assert.equal(name.props.required, true);
-  assert.equal(description.props.maxLength, 2000);
+  assert.equal(description.props.maxLength, 500);
   assert.ok(nodes(tree).some(node => node.type === ui().Label && node.props.htmlFor === name.props.id));
   assert.ok(nodes(tree).some(node => node.type === ui().Label && node.props.htmlFor === description.props.id));
   assert.match(html, /<form[^>]*data-testid="project-home-create-form"/);
   assert.equal(find(tree, 'project-home-create-submit').props.type, 'submit');
-  assert.doesNotMatch(html, /role="dialog"|aria-modal/);
+  assert.match(html, /role="dialog"/);
 });
 
 componentTest('required-name and length validation reject programmatic invalid submissions', async () => {
-  for (const [name, description] of [['   ', ''], ['n'.repeat(151), ''], ['valid', 'd'.repeat(2001)]]) {
+  for (const [name, description] of [['   ', ''], ['n'.repeat(151), ''], ['valid', 'd'.repeat(501)]]) {
     const h = harness(); showForm(h); fill(h, name, description); await submit(h);
     assert.deepEqual(h.calls, []); assert.match(h.html(h.render()), /role="alert"/);
   }
@@ -256,7 +259,7 @@ componentTest('create trims inputs, dispatches once before a parent rerender, an
   const pending = deferred(), calls = [], h = harness({ onCreate: (...args) => { calls.push(args); return pending.promise; } });
   showForm(h); fill(h); const original = find(h.render(), 'project-home-create-form').props.onSubmit;
   const first = original(event()); const duplicate = original(event()); await duplicate;
-  assert.deepEqual(calls, [['新的故事', '简短说明']]);
+  assert.deepEqual(calls, [['新的故事', '简短说明', 'portrait_1080']]);
   const busy = h.render(); assert.equal(find(busy, 'project-home-create-submit').props.disabled, true);
   assert.equal(find(busy, 'project-home-open-project-a').props.disabled, true);
   pending.resolve(true); await first;
@@ -292,12 +295,15 @@ componentTest('classic JSX executes with explicit React import and presentation 
   assert.equal(typeof globalThis.React, 'undefined');
   const h = harness(); assert.match(h.html(h.render()), /项目列表/);
   const source = readFileSync(sourceFile, 'utf8');
-  assert.doesNotMatch(source, /\bfetch\s*\(|\brpc\s*\(|localStorage|sessionStorage|setInterval|setTimeout|createPortal|components\/dialog|:\s*any\b|as\s+any\b|@ts-ignore|@ts-nocheck/);
+  assert.doesNotMatch(source, /\bfetch\s*\(|\brpc\s*\(|localStorage|sessionStorage|setInterval|setTimeout|createPortal|:\s*any\b|as\s+any\b|@ts-ignore|@ts-nocheck/);
 });
 
 componentTest('home styles are scoped and include bounded scrolling and narrow-window layout', () => {
   const css = readFileSync(join(root, 'apps/web/src/project-home.css'), 'utf8');
-  assert.match(css, /\.project-home\s*\{/); assert.match(css, /height:\s*100dvh/);
+  assert.match(css, /\.project-home\s*\{/); assert.match(css, /height:\s*100%/);
+  const redesigned = readFileSync(join(root, 'apps/web/src/project-home-redesign.css'), 'utf8');
+  assert.match(redesigned, /\.project-home-page \{ height: 100dvh;/);
+  assert.match(redesigned, /\.project-home-embedded > \.project-home \{ height: 100%; min-height: 0;/);
   assert.match(css, /overflow-y:\s*auto/); assert.match(css, /min-width:\s*0/);
   assert.match(css, /overflow-wrap:\s*anywhere/); assert.match(css, /@media\s*\(max-width:\s*720px\)/);
   assert.doesNotMatch(css, /\.workbench|\.topbar|\.inspector-region|\.timeline-panel|\.asset-panel|^body\b/m);
@@ -305,9 +311,12 @@ componentTest('home styles are scoped and include bounded scrolling and narrow-w
 
 componentTest('mac-inset home header preserves native-control space and interactive no-drag boundaries', () => {
   const css = readFileSync(join(root, 'apps/web/src/project-home.css'), 'utf8');
-  assert.match(css, /:root\[data-desktop-frame="mac-inset"\] \.project-home \.project-home-header\s*\{[^}]*padding-left:\s*88px;[^}]*-webkit-app-region:\s*drag;/);
-  assert.match(css, /:root\[data-desktop-frame="mac-inset"\] \.project-home \.project-home-header :is\(a, button, input, select, textarea,[^}]*summary\)\s*\{\s*-webkit-app-region:\s*no-drag;/);
-  for (const selector of css.matchAll(/:root[^{}]+\{/g)) assert.match(selector[0], /\.project-home \.project-home-header/);
+  assert.match(css, /:root\[data-desktop-frame="mac-inset"\] \.project-home-settings-window \.project-home-header\s*\{[^}]*padding-left:\s*88px;[^}]*-webkit-app-region:\s*drag;/);
+  assert.match(css, /:root\[data-desktop-frame="mac-inset"\] \.project-home-settings-window \.project-home-header :is\(a, button, input, select, textarea,[^}]*summary\)\s*\{\s*-webkit-app-region:\s*no-drag;/);
+  for (const selector of css.matchAll(/:root[^{}]+\{/g)) assert.match(selector[0], /\.project-home-settings-window \.project-home-header/);
+  const redesigned = readFileSync(join(root, 'apps/web/src/project-home-redesign.css'), 'utf8');
+  assert.match(redesigned, /:root\[data-desktop-frame="mac-inset"\] \.project-home-page \.project-home-header \{[^}]*padding-left: 88px/);
+  assert.match(redesigned, /\.project-home-embedded > \.project-home > \.project-home-header \{[^}]*-webkit-app-region: no-drag/);
 });
 
 
@@ -343,10 +352,10 @@ componentTest('four-language live rendering retains draft fields, form ownership
     assert.equal(find(tree, 'project-home-description').props.value, ' 日本語の内容 stays unchanged ');
     assert.equal(find(tree, 'project-home-name').props.disabled, true);
     assert.equal(requests.length, 1); assert.equal(reports.length, reportCount, 'Language is presentation only, not a new draft version');
-    assert.ok(text(tree).includes(i18nCore.translate(locale, 'projects.home')));
+    assert.ok(text(tree).includes(i18nCore.translate(locale, 'projects.list')));
   }
   answer.resolve(false); await work;
-  assert.deepEqual(requests, [['用户项目 <literal>', '日本語の内容 stays unchanged']]);
+  assert.deepEqual(requests, [['用户项目 <literal>', '日本語の内容 stays unchanged', 'portrait_1080']]);
   for (const locale of ['en', 'ja', 'zh-Hant', 'zh-Hans']) {
     h.setLanguage(locale); const tree = h.render();
     assert.equal(find(tree, 'project-home-name').props.value, ' 用户项目 <literal> ');

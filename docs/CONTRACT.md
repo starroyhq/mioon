@@ -1,5 +1,7 @@
 # Shared contract v1 (2026-10-09)
 
+`timeline.clip.rippleRemove {projectId,expectedRevision,requestId,clipId}` removes one clip and shifts only later clips on its track by the removed duration. It returns the saved timeline, records one undoable edit, and retains its exact request/response for replay. Ordinary `timeline.clip.remove` remains non-ripple. See [ripple deletion and recovery](TIMELINE-RIPPLE-DELETE.md).
+
 Shared public business operations go through `services.call(operation, input)`, used by authenticated HTTP `POST /api/rpc` and official SDK MCP stdio and CLI shared client. UI business calls use that API; private authenticated settings and user-approval routes remain outside the public operation catalog. JSON response `{ok:true,data}` or `{ok:false,error:{code,message,details}}`; conflict HTTP 409, validation 400, not found 404. Dates ISO UTC. IDs opaque UUID. Revisions integers starting at 1. All updates require expectedRevision. SQLite transactions, WAL, foreign keys and busy timeout. Project `revision` protects project-wide shot ordering; each shot/node has its own revision. Position never defines sequence.
 
 ## Image task/version contract

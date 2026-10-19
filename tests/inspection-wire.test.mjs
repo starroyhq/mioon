@@ -35,7 +35,7 @@ function environment(extra = {}) {
   for (const key of Object.keys(env)) {
     if (/^(?:MIOON_|RUNWAY_|ARK_|VEO_|GOOGLE_|MINIMAX_|VIDU_|OPENAI_|ANTHROPIC_|AZURE_|AWS_|NODE_OPTIONS$|HTTPS?_PROXY$|ALL_PROXY$)/i.test(key)) delete env[key];
   }
-  return {...env, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAY_MAX_GENERATIONS: '0',
+  return {...env, MIOON_ENABLE_LIVE_PROVIDER: '0',
     MIOON_INSPECTION_WIRE_GUARD: '1', ...extra};
 }
 

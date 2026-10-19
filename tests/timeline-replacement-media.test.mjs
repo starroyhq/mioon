@@ -54,6 +54,9 @@ test('explicit replacement keeps timing/fades and old exports while new media, p
   return {job:current,file,sha256:hash(bytes),sample:await sample(file)};
  };
  const project=await rpc('project.create',{name:'Synthetic fixed-source replacement'});
+ // This pixel/audio fixture explicitly preserves its historical 720 canvas.
+ await rpc('timeline.format.set',{projectId:project.id,expectedProjectRevision:project.revision,expectedRevision:0,requestId:randomUUID(),presetId:'portrait_720'});
+
  let timeline=await rpc('timeline.get',{projectId:project.id});const assets=[];
  for(const [color,frequency] of [['red',440],['blue',880]]){
   const file=path.join(root,color+'.mp4');

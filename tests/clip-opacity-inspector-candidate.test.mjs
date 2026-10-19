@@ -1,3 +1,5 @@
+import * as removalState from '../apps/web/src/timeline-removal.ts';
+import {hasOpenWorkbenchModal} from '../apps/web/src/workbench-modal-state.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -54,9 +56,21 @@ function inspector(t, { locale = 'en', binding = 'exact', kind = 'image', clipPa
   props.opacityCandidate = bindingValue;
   const fallbackClient = createClipDraftClient(fetcher);
   const stub = name => { if (!stubs.has(name)) stubs.set(name, props => props); return stubs.get(name); };
-  const react = { createElement: (type, properties, ...children) => ({ type, props: { ...properties, children } }), useRef: initial => hooks[cursor++] ??= { current: initial }, useLayoutEffect: callback => { callback(); } }; react.default = react;
+  const react = { createElement: (type, properties, ...children) => type === removalModule.exports.ClipActionsMenu ? type({...properties,children}) : ({ type, props: { ...properties, children } }), useRef: initial => hooks[cursor++] ??= { current: initial }, useState: initial => { const i=cursor++; if (!(i in hooks)) hooks[i]=initial; return [hooks[i],next=>{hooks[i]=typeof next==='function'?next(hooks[i]):next;}]; }, useEffect() {}, useLayoutEffect: callback => { callback(); } }; react.default = react;
+  const removalModule = {exports:{}};
+  Function('require','module','exports',transformSync(readFileSync(new URL('../apps/web/src/ClipRemovalControls.tsx',import.meta.url),'utf8'),{loader:'tsx',format:'cjs'}).code)(name=>{
+    if(name==='react')return react;
+    if(name.includes('I18nProvider'))return i18nTestModule(locale);
+    if(name==='./timeline-removal.ts')return removalState;
+    if(name==='./workbench-modal-state.ts')return {hasOpenWorkbenchModal};
+    if(name==='lucide-react'||name.startsWith('@mioon/ui/'))return new Proxy({}, {get:(_,key)=>stub(key)});
+    throw Error(name);
+  },removalModule,removalModule.exports);
   const module = { exports: {} };
   Function('require', 'module', 'exports', inspectorCode)(name => {
+    if (name === './UiPreferencesProvider.tsx') return {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})};
+    if (name === './timeline-removal.ts') return removalState;
+    if (name === './ClipRemovalControls.tsx') return removalModule.exports;
     if (name === 'react') return react;
     if (name.includes('I18nProvider')) return i18nTestModule(locale);
     if (name.includes('i18n/src/index')) return { message };

@@ -15,7 +15,7 @@ test('shell catalog has all four locales, exact placeholders, and no missing-key
       const rendered = translate(locale, key, params);
       assert.ok(rendered.length, `${key}/${locale}`);
       assert.doesNotMatch(rendered, /\{[A-Za-z][A-Za-z0-9_]*\}/u, `${key}/${locale}`);
-      assert.notEqual(rendered, 'This message cannot be displayed right now.');
+      assert.notEqual(rendered, 'This message cannot be displayed right now');
     }
   }
   assert.equal(translate('en', 'shell.node.versionCount', { count: 1 }), '1 version');
@@ -63,8 +63,11 @@ test('shell component controllers are not keyed or reconstructed by locale', () 
 
 test('header actions and native settings remain reachable without locale or resize remount keys', () => {
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
-  const header = app.slice(app.indexOf('<header className="topbar">'), app.indexOf('</header>', app.indexOf('<header className="topbar">')));
-  assert.match(header, /data-testid="global-settings-open" onClick=\{\(\) => openGlobalSettings\(\)\}/u);
+  const header = app.slice(app.indexOf('<WorkbenchTopbar'), app.indexOf('{showGuide && <section'));
+  const shell = readFileSync(new URL('../apps/web/src/WorkbenchShell.tsx', import.meta.url), 'utf8');
+  const task = readFileSync(new URL('../apps/web/src/TaskPopover.tsx', import.meta.url), 'utf8');
+  const delivery = readFileSync(new URL('../apps/web/src/DeliveryWorkspace.tsx', import.meta.url), 'utf8');
+  assert.match(header, /data-testid="global-settings-open"[^>]+onClick=\{\(\) => openGlobalSettings\(\)\}/u);
   assert.doesNotMatch(header, /<LanguageControl \/>/u);
   const settingsCenter = readFileSync(new URL('../apps/web/src/ProjectHomeConnections.tsx', import.meta.url), 'utf8');
   assert.match(settingsCenter, /data-testid="settings-general"/u);
@@ -72,10 +75,15 @@ test('header actions and native settings remain reachable without locale or resi
   const home = readFileSync(new URL('../apps/web/src/ProjectHome.tsx', import.meta.url), 'utf8');
   assert.match(home, /data-testid="project-home-page-settings"/u);
   assert.match(home, /onPage\('settings'\)/u); assert.doesNotMatch(home, /<LanguageControl \/>/u);
-  assert.match(header, /data-testid="workbench-actions"/u);
-  for (const id of ['agent-chat-open', 'agent-settings-open', 'region-guide-toggle', 'jobs-button', 'export-history', 'export-button', 'export-timeline']) assert.match(header, new RegExp(`<DropdownMenuItem[^>]*data-testid="${id}"`));
-  assert.match(header, /data-testid="export-timeline" disabled=\{!canOpenExport\} onClick=\{openTimelineExport\}/u);
-  assert.match(header, /data-testid="export-button" disabled=\{!data\.shots\.length \|\| selectedCount !== data\.shots\.length \|\| busy\.export\}/u);
+  for (const id of ['agent-chat-open', 'agent-settings-open', 'region-guide-toggle', 'jobs-button', 'export-history', 'export-button', 'export-timeline']) assert.ok((app + shell + task + delivery).includes(`data-testid="${id}"`), id);
+  assert.match(app, /if \(value === 'agent'\) \{ setRightDockTab\('agent'\); setAgentPage\('chat'\);/);
+  assert.match(shell, /data-testid="agent-chat-open"/);
+  assert.match(app, /onOpenTasks=\{\(\) => openTasks\(\)\}/);
+  assert.match(delivery, /value === 'history'\) onPage\(value\)/);
+  assert.match(delivery, /<TabsTrigger[^>]+value="history"[^>]+data-testid="delivery-page-history"/);
+  assert.match(app, /setShowExports\(page === 'history'\)/);
+  assert.match(app, /data-testid="export-timeline" disabled=\{!canOpenExport\} onClick=\{openTimelineExport\}/u);
+  assert.match(app, /data-testid="export-button" disabled=\{Boolean\(application\) \|\| !data\.shots\.length \|\| selectedCount !== data\.shots\.length \|\| busy\.export\}/u);
   const settingsCss = readFileSync(new URL('../apps/web/src/project-home.css', import.meta.url), 'utf8');
   assert.match(settingsCss, /\.project-home-settings-window > \.project-home-settings \{[^}]*flex: 1 1 auto;[^}]*min-height: 0;[^}]*overflow-y: auto;/u);
   const css = readFileSync(new URL('../apps/web/src/styles.css', import.meta.url), 'utf8');
@@ -84,7 +92,7 @@ test('header actions and native settings remain reachable without locale or resi
 
 test('known workspace/storage diagnostics retain actionable meaning without exposing raw server text', () => {
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
-  const source = app.slice(app.indexOf('function readableError(error)'), app.indexOf('function Login('));
+  const source = app.slice(app.indexOf('function readableError(error)'), app.indexOf('function Modal('));
   const readableError = Function('msg', `${source}; return readableError;`)(message);
   const cases = {
     STORAGE_MIGRATION_BLOCKED: 'shell.error.storageMigration', WORKSPACE_ORIGIN_UNVERIFIED: 'tasks.unverifiedWorkspace',

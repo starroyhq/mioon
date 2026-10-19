@@ -23,7 +23,7 @@ function environment(extra = {}) {
   for (const key of Object.keys(env)) {
     if (/^(MIOON_|RUNWAY|ARK_|VEO_|GOOGLE_|MINIMAX_|VIDU_|MIOON_)/.test(key)) delete env[key];
   }
-  return {...env, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAY_MAX_GENERATIONS: '0', ...extra};
+  return {...env, MIOON_ENABLE_LIVE_PROVIDER: '0', ...extra};
 }
 
 async function cli(args, env = {}, expectedError) {

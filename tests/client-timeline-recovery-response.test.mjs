@@ -31,7 +31,8 @@ function fixture(operation, {empty = false, fades = {}} = {}) {
     case 'timeline.clip.add': Object.assign(input, {assetId, trackId, startFrame: 0, durationFrames: 90, ...fades}); break;
     case 'timeline.clip.update': Object.assign(input, {clipId, patch: {name: 'Updated', gain: 0.5, rect: {x: 100, y: 200, width: 400, height: 600}}}); Object.assign(value.clips[0], clone(input.patch)); break;
     case 'timeline.clip.replaceSource': Object.assign(input, {clipId, assetId}); break;
-    case 'timeline.clip.remove': input.clipId = randomUUID(); break;
+    case 'timeline.clip.remove':
+    case 'timeline.clip.rippleRemove': input.clipId = randomUUID(); break;
     case 'timeline.clip.split': {
       Object.assign(input, {clipId, atFrame: 30});
       const left = value.clips[0], right = {...clone(left), id: randomUUID(), startFrame: 30, durationFrames: 60, sourceInFrame: 30};
@@ -54,10 +55,10 @@ const frozen = value => {
   return value;
 };
 
-test('the strict timeline acknowledgement allowlist covers exactly the sixteen replay-keyed operations', () => {
+test('the strict timeline acknowledgement allowlist covers exactly the seventeen replay-keyed operations', () => {
   assert.deepEqual([...TIMELINE_MUTATION_OPERATIONS].sort(), [
     'timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update', 'timeline.clip.replaceSource',
-    'timeline.clip.remove', 'timeline.clip.split', 'timeline.seed', 'timeline.undo', 'timeline.redo', 'timeline.render', 'timeline.format.set',
+    'timeline.clip.remove', 'timeline.clip.rippleRemove', 'timeline.clip.split', 'timeline.seed', 'timeline.undo', 'timeline.redo', 'timeline.render', 'timeline.format.set',
     'timeline.subtitle.add', 'timeline.subtitle.update', 'timeline.subtitle.remove',
     'timeline.loudness.apply',
   ].sort());
@@ -66,7 +67,7 @@ test('the strict timeline acknowledgement allowlist covers exactly the sixteen r
   for (const operation of ['timeline.get', 'timeline.format.get', 'timeline.history.get', 'timeline.export.preflight', 'export.create', 'reference.attach']) assert.equal(isTimelineMutationResponse(operation, input, value), false);
 });
 
-test('all sixteen complete historical acknowledgements validate without edits, defaults or array sorting', async () => {
+test('all seventeen complete historical acknowledgements validate without edits, defaults or array sorting', async () => {
   for (const operation of TIMELINE_MUTATION_OPERATIONS) {
     const {input, value} = fixture(operation), before = clone(value), seen = [];
     frozen(input); frozen(value);
@@ -102,7 +103,7 @@ test('format acknowledgements alone accept explicit timeline absence and bind th
 });
 
 test('empty timelines are valid for track edits, removals, undo and redo, while replacement, seed and render require content', () => {
-  for (const operation of ['timeline.track.add', 'timeline.track.update', 'timeline.clip.remove', 'timeline.undo', 'timeline.redo', 'timeline.format.set']) {
+  for (const operation of ['timeline.track.add', 'timeline.track.update', 'timeline.clip.remove', 'timeline.clip.rippleRemove', 'timeline.undo', 'timeline.redo', 'timeline.format.set']) {
     const {input, value} = fixture(operation, {empty: true});
     assert.equal(isTimelineRecord(value, {projectId: input.projectId}), true);
     assert.equal(isTimelineMutationResponse(operation, input, value), true, operation);
@@ -178,6 +179,7 @@ test('each mutation binds the caller-verifiable track, clip or source intent', (
     ['timeline.clip.update', v => v.clips[0].rect.width = 200],
     ['timeline.clip.replaceSource', v => v.clips[0].assetId = randomUUID()],
     ['timeline.clip.remove', (v, i) => v.clips[0].id = i.clipId],
+    ['timeline.clip.rippleRemove', (v, i) => v.clips[0].id = i.clipId],
     ['timeline.clip.split', v => v.clips[0].durationFrames--],
     ['timeline.clip.split', v => v.clips[1].sourceInFrame++],
     ['timeline.clip.split', v => v.clips[1].assetId = randomUUID()],

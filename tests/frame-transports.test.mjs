@@ -27,7 +27,7 @@ const token = 'frame-transport-synthetic-local-token';
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const toolName = operation => operation.replaceAll('.', '_');
-const environment = extra => ({...mediaEnvironment(), MIOON_ENABLE_LIVE_PROVIDER:'0', RUNWAY_MAX_GENERATIONS:'0', ...extra});
+const environment = extra => ({...mediaEnvironment(), MIOON_ENABLE_LIVE_PROVIDER:'0', ...extra});
 const recovery = 'Replay the exact original input with the same requestId; do not invent a replacement ID.';
 async function bounded(promise, label, ms = 15_000) {
   let timer;

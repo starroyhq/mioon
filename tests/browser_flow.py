@@ -1,7 +1,7 @@
 """Actual Chromium user-flow and MCP-result visual evidence; no UI state mocks."""
 import json, os, pathlib, shutil, socket, subprocess, tempfile, time, urllib.request
 from playwright.sync_api import sync_playwright, expect
-from browser_workbench_actions import workbench_action
+from browser_workbench_actions import workbench_action, close_task_center
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 OUT=pathlib.Path(os.environ.get('MIOON_BROWSER_EVIDENCE',str(ROOT/'evidence'/'browser')));OUT.mkdir(parents=True,exist_ok=True)
 TOKEN='browser-local-test-token-2026-only'
@@ -11,7 +11,7 @@ def log(name,**details):
 def start(data):
     sock=socket.socket();sock.bind(('127.0.0.1',0));port=sock.getsockname()[1];sock.close()
     handle=open(OUT/('server-'+str(port)+'.log'),'w')
-    proc=subprocess.Popen(['node','server/index.mjs'],cwd=ROOT,env={**os.environ,'PORT':str(port),'MIOON_TOKEN':TOKEN,'MIOON_DATA_DIR':str(data),'MIOON_ENABLE_LIVE_PROVIDER':'0','RUNWAYML_API_SECRET':'','RUNWAY_MAX_GENERATIONS':'0'},stdout=handle,stderr=subprocess.STDOUT)
+    proc=subprocess.Popen(['node','server/index.mjs'],cwd=ROOT,env={**os.environ,'PORT':str(port),'MIOON_TOKEN':TOKEN,'MIOON_DATA_DIR':str(data),'MIOON_ENABLE_LIVE_PROVIDER':'0','RUNWAYML_API_SECRET':''},stdout=handle,stderr=subprocess.STDOUT)
     base=f'http://127.0.0.1:{port}'
     for _ in range(100):
         if proc.poll() is not None: raise RuntimeError('Backend exited; inspect server log')
@@ -41,13 +41,12 @@ def login(page,base,project=None):
     page.goto(base+('/?project='+project if project else '/'))
     page.get_by_label('访问令牌',exact=True).fill(TOKEN)
     page.get_by_role('button',name='进入工作台',exact=True).click()
-    expect(page.get_by_test_id('workbench')).to_be_visible(timeout=15000)
+    expect(page.get_by_test_id('workbench' if project else 'project-home')).to_be_visible(timeout=15000)
 def screenshot(page,name):page.screenshot(path=str(OUT/name),full_page=True)
 def select_shot(page,shot):
+    close_task_center(page)
     page.get_by_test_id('workspace-canvas').click()
     if page.get_by_role('button',name='展开分镜',exact=True).is_visible():page.get_by_role('button',name='展开分镜',exact=True).click()
-    close=page.get_by_role('button',name='关闭生成任务')
-    if close.is_visible():close.click()
     page.get_by_test_id('storyboard-shot-'+shot['id']).locator('.storyboard-preview').click();expect(page.get_by_test_id('shot-title')).to_have_value(shot['title'])
 with sync_playwright() as p:
     browser=p.chromium.launch(executable_path=shutil.which('chromium'),headless=True,chromium_sandbox=True)
@@ -58,9 +57,9 @@ with sync_playwright() as p:
         page=context.new_page();page.on('pageerror',lambda error:errors.append(str(error)))
         login(page,base);log('A1: backend and actual Chromium login reachable',base=base)
         screenshot(page,'A1-empty-workbench.png')
-        page.get_by_test_id('empty-create-project').click()
-        page.get_by_test_id('project-name').fill('浏览器验收 · 星星故事')
-        page.get_by_test_id('create-project-submit').click()
+        page.get_by_test_id('project-home-create-toggle').click()
+        page.get_by_test_id('project-home-name').fill('浏览器验收 · 星星故事')
+        page.get_by_test_id('project-home-create-submit').click()
         expect(page.get_by_test_id('project-switcher')).to_contain_text('浏览器验收')
         project=rpc(base,'project.list',{})[0];pid=project['id']
         page.get_by_test_id('asset-upload').set_input_files(str(ROOT/'examples/synthetic/reference.png'))
@@ -97,16 +96,16 @@ with sync_playwright() as p:
         assert len(state['jobs'])==before+1 and len(lost_responses)==1
         page.unroute('**/api/rpc',lose_generation_response)
         log('A10: response lost after server acceptance plus double-click generated exactly one new immutable version',requestId=lost_responses[0])
-        if page.get_by_role('button',name='关闭生成任务').is_visible():page.get_by_role('button',name='关闭生成任务').click()
+        close_task_center(page)
         if page.get_by_role('button',name='关闭提示').is_visible():page.get_by_role('button',name='关闭提示').click()
-        page.get_by_role('tab',name='版本历史').click()
+        page.get_by_test_id('right-dock-tab-versions').click()
         page.get_by_role('button',name='比较',exact=True).click()
         expect(page.get_by_role('dialog',name='版本对比')).to_be_visible()
         expect(page.get_by_role('dialog').locator('video')).to_have_count(2)
         screenshot(page,'A6-version-comparison.png')
         page.get_by_role('button',name='选用版本 2',exact=True).click()
         poll(lambda:rpc(base,'project.get',{'projectId':pid}),lambda v:next(s for s in v['shots'] if s['id']==first['id'])['selectedVersionId']==next(x for x in v['versions'] if x['shotId']==first['id'] and x['number']==2)['id'])
-        page.get_by_role('button',name='关闭对话框').click()
+        page.get_by_role('dialog',name='版本对比').get_by_role('button',name='关闭对话框',exact=True).click()
         # Reordering explicitly differs from canvas coordinates.
         page.get_by_role('button',name='将 '+shots[2]['title']+' 前移',exact=True).click()
         state=poll(lambda:rpc(base,'project.get',{'projectId':pid}),lambda v:v['shots'][1]['id']==shots[2]['id'])
@@ -123,17 +122,17 @@ with sync_playwright() as p:
         select_shot(page,first);page.get_by_role('button',name='高级参数',exact=True).click();page.get_by_test_id('mock-scenario').click();page.get_by_role('option',name='提交状态未知（禁止重提）',exact=True).click();page.get_by_test_id('generate-shot').click()
         state=poll(lambda:rpc(base,'project.get',{'projectId':pid}),lambda v:any(j['status']=='submission_unknown' for j in v['jobs']))
         # Submission opens its modal asynchronously; await it instead of racing a second trigger click.
-        expect(page.get_by_role('button',name='关闭生成任务')).to_be_visible(timeout=15000)
-        expect(page.get_by_text('服务商可能已接受任务并计费。请在服务商核实，系统不会盲目重新提交。',exact=True)).to_be_visible(timeout=15000)
-        screenshot(page,'A7-unknown-submission.png');page.get_by_role('button',name='关闭生成任务').click()
+        expect(page.get_by_test_id('task-center-dialog')).to_be_visible(timeout=15000)
+        expect(page.get_by_text('服务商可能已接受任务并计费。请在服务商核实，系统不会盲目重新提交',exact=True)).to_be_visible(timeout=15000)
+        screenshot(page,'A7-unknown-submission.png');close_task_center(page)
         log('A7: UI visibly preserves unknown submission warning, no automatic second submit')
-        workbench_action(page, 'export-button').click();expect(page.get_by_role('dialog',name='导出记录')).to_be_visible()
+        workbench_action(page, 'export-button').click();expect(page.get_by_test_id('timeline-export-dialog')).to_be_visible()
         expect(page.get_by_test_id('download-export')).to_be_visible(timeout=90000)
         screenshot(page,'A8-export-ready.png')
         with page.expect_download() as download_info:page.get_by_test_id('download-export').click()
         download=download_info.value;download.save_as(str(OUT/'browser-export-portrait.mp4'))
         log('A8/A10: actual UI export and download completed',file='browser-export-portrait.mp4')
-        page.get_by_role('button',name='关闭对话框').click();workbench_action(page, 'jobs-button').click();page.get_by_role('button',name='关闭生成任务').click()
+        page.get_by_test_id('timeline-export-dialog').get_by_role('button',name='关闭',exact=True).click();workbench_action(page, 'jobs-button').click();close_task_center(page)
         state=rpc(base,'project.get',{'projectId':pid});(OUT/'project-state.json').write_text(json.dumps(state,ensure_ascii=False,indent=2))
         (OUT/'browser-errors.json').write_text(json.dumps(errors,indent=2));assert not errors,errors
         context.close()

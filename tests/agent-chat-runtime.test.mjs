@@ -1,3 +1,4 @@
+import {createTestAuthorizations,authorizeTestScope} from './helpers/agent-authorizations.mjs';
 import {deriveAgentEndpoint} from '@mioon/contracts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -22,12 +23,13 @@ async function fixture(t, gateway, settingsOverride) {
   const realGet = store.get;
   store.get = (table, id) => { reads.push([table, id]); assert.equal(table, 'projects'); return projects.has(id) ? realGet(table, id) : null; };
   const calls = [];
-  const runtime = createChatRuntime({store,
+  const authorizations=createTestAuthorizations(store,settings);
+  const runtime = createChatRuntime({store,authorizations,
     agentSettings: settingsOverride ? settingsOverride(settings) : settings, selfPort: () => 4318, mode: 'simulated',
     gateway: async function* (options) { calls.push(options); if (gateway) yield* gateway(options); else { yield {type: 'delta', text: 'Synthetic answer'}; yield {type: 'done', finishReason: 'stop'}; } }});
   t.after(async () => { runtime.close(); await settings.close(); store.close(); rmSync(root, {recursive: true, force: true}); });
   return {runtime, settings, calls, projects, reads, store, root,
-    async input(project = 'p1', changes = {}) { const snapshot = await runtime.snapshot(project); return {requestId: randomUUID(), instanceId: snapshot.instanceId,
+    async input(project = 'p1', changes = {}) { await authorizeTestScope(authorizations); const snapshot = await runtime.snapshot(project); return {requestId: randomUUID(), instanceId: snapshot.instanceId,
       expectedSettingsRevision: snapshot.settings.revision, expectedConversationRevision: snapshot.revision, message: 'Typed test text',
       consent: {destination: deriveAgentEndpoint(snapshot.settings.configuration), protocol: snapshot.settings.configuration.protocol, model: snapshot.settings.configuration.model, context: 'typed_chat_only'}, ...changes}; }};
 }

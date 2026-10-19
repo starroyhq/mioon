@@ -1,3 +1,4 @@
+import {createTestAuthorizations,authorizeTestScope} from './helpers/agent-authorizations.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -42,12 +43,14 @@ async function fixture(t, protocol = 'chat_completions', options = {}) {
     if (args.readTools?.scope === 'selected_shot_edit' && args.readTools.phase === 'request') yield done(protocol);
     else {yield {type: 'delta', text: args.readTools ? 'EDIT_ANSWER_PENDING_REVIEW_NOT_APPLIED' : 'TYPED_ANSWER'}; yield {type: 'done', finishReason: 'stop'};}
   };
-  const make = () => createChatRuntime({store, agentSettings: supplied, editService, gateway, selfPort: () => 4318, mode: 'simulated'});
+  const authorizations=createTestAuthorizations(store,settings);
+  const make = () => createChatRuntime({store,authorizations, agentSettings: supplied, editService, gateway, selfPort: () => 4318, mode: 'simulated'});
   let runtime = make();
   t.after(async () => {runtime.close(); await settings.close(); store.close(); await rm(root, {recursive: true, force: true});});
   return {store, services, project, other, shot, foreign, calls, acquired, editService, get runtime() {return runtime;},
     restart() {runtime.close(); runtime = make();},
     async input(context = 'selected_shot_edit') {
+      await authorizeTestScope(authorizations,context);
       const snap = await runtime.snapshot(project.id), configuration = snap.settings.configuration, {available, ...capability} = snap.edit;
       const {available: _available, ...inspection} = snap.inspection;
       return {requestId: randomUUID(), instanceId: snap.instanceId, expectedSettingsRevision: snap.settings.revision,

@@ -30,6 +30,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from playwright.sync_api import expect, sync_playwright
+from browser_workbench_actions import workbench_action, close_task_center
 
 
 def check(value, message):
@@ -244,13 +245,11 @@ class Trial:
         self.page.goto(self.base + ("/?project=" + project if project else "/"))
         self.page.get_by_label("访问令牌", exact=True).fill(self.token)
         self.page.get_by_role("button", name="进入工作台", exact=True).click()
-        expect(self.page.get_by_test_id("workbench")).to_be_visible()
+        expect(self.page.get_by_test_id("workbench" if project else "project-home")).to_be_visible()
         expect(self.page.get_by_test_id("workspace-loading")).to_have_count(0)
 
     def close_tasks(self):
-        tasks = self.page.get_by_role("tab", name="任务", exact=True)
-        if tasks.is_visible() and tasks.get_attribute("aria-selected") == "true":
-            self.page.get_by_role("tab", name="属性", exact=True).click()
+        close_task_center(self.page)
 
     def choose(self, testid, label):
         self.page.get_by_test_id(testid).click()
@@ -260,7 +259,7 @@ class Trial:
         self.close_tasks()
         self.page.get_by_test_id("workspace-canvas").click()
         self.page.get_by_test_id("shot-node-" + sid).locator(".node-header").click()
-        self.page.get_by_role("tab", name="创作参数", exact=True).click()
+        self.page.get_by_test_id("right-dock-tab-properties").click()
         expect(self.page.get_by_test_id("shot-inspector")).to_be_visible()
 
     def playback(self, video, seek=False):
@@ -279,7 +278,7 @@ class Trial:
 
     def render_preview(self):
         existing = {e["id"] for e in self.state()["exports"]}
-        self.page.get_by_test_id("timeline-render-preview").click()
+        workbench_action(self.page, "timeline-render-preview").click()
         state = self.wait(self.state, lambda s: any(e["id"] not in existing and e["status"] == "succeeded" for e in s["exports"]),
                           "preview render", 120)
         added = [e for e in state["exports"] if e["id"] not in existing]
@@ -301,9 +300,9 @@ class Trial:
         mock = next(p for p in caps if p["id"] == "mock")
         check(mock["mock"] and mock["status"] == "available", "Local mock unavailable")
         check(all(not p.get("enabled") for p in caps if not p.get("mock")), "A live provider was enabled")
-        self.page.get_by_test_id("empty-create-project").click()
-        self.page.get_by_test_id("project-name").fill("首次试用 · 本地模拟验收")
-        self.page.get_by_test_id("create-project-submit").click()
+        self.page.get_by_test_id("project-home-create-toggle").click()
+        self.page.get_by_test_id("project-home-name").fill("首次试用 · 本地模拟验收")
+        self.page.get_by_test_id("project-home-create-submit").click()
         projects = self.wait(lambda: self.rpc("project.list"), lambda p: len(p) == 1, "one new project")
         self.pid = projects[0]["id"]
         expect(self.page.get_by_test_id("project-switcher")).to_contain_text("首次试用")
@@ -345,7 +344,7 @@ class Trial:
         self.choose("shot-ratio", "9:16")
         self.page.get_by_test_id("generate-shot").click()
         state = self.wait(self.state, lambda s: len(s["versions"]) == 1 and s["jobs"][0]["status"] == "succeeded", "V1 mock generation", 90)
-        expect(self.page.get_by_role("tab", name="任务", exact=True)).to_have_attribute("aria-selected", "true")
+        expect(self.page.get_by_test_id("task-center-dialog")).to_be_visible()
         self.close_tasks()
         v1 = copy.deepcopy(state["versions"][0])
         check(v1["isMock"] and v1["snapshot"]["referenceAssetIds"] == [image["id"]], "Mock/reference snapshot missing")
@@ -359,12 +358,12 @@ class Trial:
         self.page.get_by_test_id("shot-prompt").fill("原创几何测试图，换一种运动节奏。仅验证本地模拟流程。V2")
         self.page.get_by_test_id("generate-shot").click()  # Real Save-and-Generate path.
         state = self.wait(self.state, lambda s: len(s["versions"]) == 2 and all(j["status"] == "succeeded" for j in s["jobs"]), "V2 mock generation", 90)
-        expect(self.page.get_by_role("tab", name="任务", exact=True)).to_have_attribute("aria-selected", "true")
+        expect(self.page.get_by_test_id("task-center-dialog")).to_be_visible()
         self.close_tasks()
         v2 = next(v for v in state["versions"] if v["id"] != v1["id"])
         check(next(v for v in state["versions"] if v["id"] == v1["id"]) == v1, "Regeneration changed V1")
         check(v2["isMock"] and v2["snapshot"]["prompt"] != v1["snapshot"]["prompt"], "V2 lacks new immutable prompt")
-        self.page.get_by_role("tab", name=re.compile("版本历史")).click()
+        self.page.get_by_test_id("right-dock-tab-versions").click()
         self.page.get_by_role("button", name="比较", exact=True).click()
         comparison = self.page.get_by_role("dialog", name="版本对比", exact=True)
         expect(comparison.locator("video")).to_have_count(2)
@@ -415,7 +414,7 @@ class Trial:
         new_preview = self.render_preview()
         expect(self.page.get_by_test_id("preview-stale")).to_have_count(0)
         playback = self.playback(self.page.get_by_test_id("timeline-preview-video"), seek=True)
-        check(playback["width"] == 720 and playback["height"] == 1280, "Wrong preview dimensions")
+        check(playback["width"] == 1080 and playback["height"] == 1920, "Wrong preview dimensions")
         check(new_preview["timelineRevision"] == self.state()["timeline"]["revision"], "Preview is not current")
         self.capture("08-current-composition.png")
         self.record(8, "Updated real composition plays and seeks", previewId=new_preview["id"], playback=playback)
@@ -428,13 +427,16 @@ class Trial:
         expect(self.page.get_by_test_id("export-preflight")).to_have_attribute("data-phase", "ready", timeout=45000)
         check(len(self.state()["exports"]) == len(before_export["exports"]), "Preflight unexpectedly exported")
         self.capture("09-preflight-ready.png")
+        self.page.get_by_test_id("export-workflow-next").click()
+        self.page.get_by_test_id("export-workflow-next").click()
         self.page.get_by_test_id("preflight-export").click()
         state = self.wait(self.state, lambda s: any(e.get("purpose") == "export" and e["status"] == "succeeded" for e in s["exports"]), "real timeline export", 120)
         exports = [e for e in state["exports"] if e.get("purpose") == "export"]
         check(len(exports) == 1 and len(state["exports"]) == 3, "Expected two previews and exactly one export")
         exported = exports[0]
         check(exported["timelineRevision"] == state["timeline"]["revision"], "Export snapshot revision mismatch")
-        dialog = self.page.get_by_role("dialog", name="导出记录", exact=True)
+        dialog = self.page.get_by_test_id("timeline-export-dialog")
+        dialog.get_by_test_id("delivery-page-history").click()
         row = dialog.locator(".export-card").filter(has_text="时间线导出")
         expect(row).to_have_count(1)
         with self.page.expect_download(timeout=30000) as event:
@@ -449,7 +451,7 @@ class Trial:
         probe = json.loads(probe_run.stdout)
         write_json(self.out / "export-probe.json", probe)
         video = next(s for s in probe["streams"] if s["codec_type"] == "video")
-        check(video["codec_name"] == "h264" and (video["width"], video["height"]) == (720, 1280), "Wrong exported video format")
+        check(video["codec_name"] == "h264" and (video["width"], video["height"]) == (1080, 1920), "Wrong exported video format")
         check(video["r_frame_rate"] == "30/1" and int(video["nb_read_frames"]) == 45, "Expected exactly 45 frames at 30fps")
         check(abs(float(video["duration"]) - 1.5) < 0.04, "Wrong exported video duration")
         check(any(s["codec_type"] == "audio" and s["codec_name"] == "aac" for s in probe["streams"]), "AAC audio stream missing")
@@ -457,10 +459,10 @@ class Trial:
         (self.out / "export-decode.log").write_text(decode.stderr)
         check(decode.returncode == 0, "Saved MP4 failed full FFmpeg decode")
         self.capture("09-export-and-download.png")
-        dialog.get_by_role("button", name="关闭对话框", exact=True).click()
+        dialog.get_by_role("button", name="关闭", exact=True).click()
         self.record(9, "Saved browser download fully decodes: H264/AAC, 45 frames", exportId=exported["id"], sha256=digest(output.read_bytes()), nativeSaveAs="not_verified")
 
-        self.page.get_by_test_id("jobs-button").click()
+        workbench_action(self.page, "jobs-button").click()
         expect(self.page.get_by_test_id("no-durable-tasks")).to_be_visible()
         self.close_tasks()
         self.wait(lambda: self.page.get_by_test_id("workspace-save-status").inner_text(),
@@ -475,7 +477,7 @@ class Trial:
         self.launch_browser(playwright)
         self.login(self.pid)
         expect(self.page.get_by_test_id("workspace-editing")).to_have_attribute("aria-selected", "true")
-        self.page.get_by_test_id("jobs-button").click()
+        workbench_action(self.page, "jobs-button").click()
         expect(self.page.get_by_test_id("no-durable-tasks")).to_be_visible()
         self.close_tasks()
         # Observe through two normal 2.5-second UI refresh cycles after readiness.

@@ -38,9 +38,10 @@ function fixture(overrides = {}) {
 }
 const ready = async value => { const controller = createEditTaskController({ client: value.client }); await controller.load(projectId); return controller; };
 
-test('the durable allowlist includes the exact existing operations plus atomic loudness apply and preserves exclusions', () => {
-  assert.equal(DURABLE_EDIT_OPERATIONS.length, 20);
+test('the durable allowlist includes the exact existing operations plus atomic loudness apply and ripple remove and preserves exclusions', () => {
+  assert.equal(DURABLE_EDIT_OPERATIONS.length, 21);
   assert.equal(isDurableEditOperation('timeline.loudness.apply'), true);
+  assert.equal(isDurableEditOperation('timeline.clip.rippleRemove'), true);
   for (const op of ['timeline.render', 'generation.submit', 'job.retry', 'export.create', 'shot.update', 'asset.range.set', 'asset.disposition.set']) assert.equal(isDurableEditOperation(op), false);
   assert.equal(isEditTaskEnvelope(envelope(makeTask({ status: 'applied' }), { result: result() })), true);
 });

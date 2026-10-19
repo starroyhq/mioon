@@ -9,6 +9,11 @@ import { createClipLutRecovery, clipLutRecoveryKey, clipLutRecoveryMetadata } fr
 import { clipDraftRaw, clipDraftPatch, createClipDraftController } from '../apps/web/src/clip-draft-state.ts';
 import { clipDraftRawSchema, clipDraftDiskSchema } from '../packages/contracts/src/local-drafts.ts';
 import { clipReplacementAcknowledged } from '../apps/web/src/clip-source-replacement.js';
+import { DEFAULT_UI_PREFERENCES } from '../packages/contracts/src/ui-preferences.ts';
+import * as creationI18n from '../apps/web/src/creation-i18n.ts';
+import * as exportSettings from '../apps/web/src/export-settings-state.js';
+import * as sourceRanges from '../apps/web/src/source-range-state.js';
+import { i18nTestModule } from './helpers/i18n.ts';
 
 const id = n => `90000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), clipId = id(2), assetId = id(3), timelineId = id(4), trackId = id(5), stamp = '2026-10-14T18:00:00.000Z';
@@ -193,8 +198,48 @@ test('actual controls disclose whole-timeline adoption, source-ungraded status a
   assert.equal(byId('clip-lut-file').props.accept, '.cube'); assert.equal(byId('clip-lut-strength').props.min, 0); assert.equal(byId('clip-lut-strength').props.max, 100);
   assert.equal(nodes(tree).filter(node => String(node.type).includes('button')).every(node => node.props.type === 'button'), true);
   assert.match(readFileSync(new URL('../apps/web/src/TimelineInspector.jsx', import.meta.url), 'utf8'), /<ClipLutControls/);
-  assert.match(readFileSync(new URL('../apps/web/src/Preview.jsx', import.meta.url), 'utf8'), /t\('timeline\.preview\.sourceUnprocessed'\)/);
   assert.match(translate('zh-Hans', 'timeline.preview.sourceUnprocessed'), /未调色，不应用片段 LUT/);
+});
+
+test('actual source Preview visibly discloses unprocessed audio and image while rendered timeline output does not', () => {
+  const code = transformSync(readFileSync(new URL('../apps/web/src/Preview.jsx', import.meta.url), 'utf8'), {loader:'jsx', format:'cjs'}).code;
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) {
+    const noop = () => {}, module = {exports:{}};
+    // Only render-phase wiring is exercised here; the existing playback and
+    // visibility suites own media lifecycle and asynchronous browser events.
+    const react = {createElement:(type, props, ...children) => ({type, props:{...props, children}}), useRef:value => ({current:value}), useState:value => [value, noop], useEffect:noop, useLayoutEffect:noop};
+    react.default = react;
+    Function('require', 'module', 'exports', code)(name => {
+      if (name === 'react') return react;
+      if (name === './i18n/I18nProvider.tsx') return i18nTestModule(locale);
+      if (name === './UiPreferencesProvider.tsx') return {useUiPreferences:() => ({preferences:DEFAULT_UI_PREFERENCES})};
+      if (name === './creation-i18n.ts') return creationI18n;
+      if (name === './export-settings-state.js') return exportSettings;
+      if (name === './source-range-state.js') return sourceRanges;
+      if (name === './api.js') return {assetUrl:asset => asset?.url || ''};
+      if (name === './Timeline.jsx') return {assetKind:asset => asset?.mimeType?.split('/')[0]};
+      if (name === './workspace-visibility.jsx') return {useWorkspaceVisibility:() => true};
+      if (name.endsWith('.css')) return {};
+      return new Proxy({}, {get:(_, key) => String(key)});
+    }, module, module.exports);
+    const timeline = {id:timelineId, projectId, revision:1, width:720, height:1280, fps:30, durationFrames:30, clips:[{id:clipId}]};
+    const base = {kind:'source', timeline, playhead:0, onSeek:noop};
+    for (const mimeType of ['video/mp4', 'image/png', 'audio/wav']) for (const clip of [undefined, {id:clipId, startFrame:0, sourceInFrame:0, durationFrames:30}]) {
+      const asset = {id:assetId, projectId, mimeType, name:'Owned original', url:'/media/owned-original', duration:1, width:720, height:1280};
+      const tree = module.exports.default({...base, asset, clip});
+      const notice = nodes(tree).find(node => node.props?.['data-testid'] === 'preview-source-unprocessed');
+      assert.ok(notice, `${locale} ${mimeType} source disclosure`);
+      assert.equal(textOf(notice), translate(locale, 'timeline.preview.sourceUnprocessed'));
+      const label = nodes(tree).find(node => node.props?.className === 'preview-stage-label');
+      assert.equal(label.props.style.whiteSpace, 'normal', 'The visible source disclosure wraps instead of hiding its LUT qualification');
+      assert.equal(label.props.hidden, undefined); assert.equal(label.props['aria-hidden'], undefined);
+      assert.equal(nodes(tree).find(node => ['video','audio','img'].includes(node.type))?.props.src, asset.url);
+    }
+    const rendered = module.exports.default({...base, kind:'timeline', job:{id:id(90), status:'succeeded', timelineRevision:1, url:'/media/frozen-render', snapshot:{timeline}}});
+    assert.equal(nodes(rendered).some(node => node.props?.['data-testid'] === 'preview-source-unprocessed'), false);
+    const empty = module.exports.default(base);
+    assert.equal(nodes(empty).some(node => node.props?.['data-testid'] === 'preview-source-unprocessed'), false);
+  }
 });
 
 test('retained controls cannot act after disposal; source reinspection revokes old approval', async t => {

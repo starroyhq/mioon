@@ -31,7 +31,7 @@ test('measured padding reads only the visible overlays and falls back when the p
   const document = fakeDocument({
     '#dock-assets[data-visible="true"]': [box(12, 72, 254, 948)], '.recall-assets': [null],
     '#dock-inspector[data-visible="true"]': [], '.recall-inspector': [box(1460, 72, 1488, 948)],
-    '.canvas-heading': [box(266, 72, 1166, 114)], '.storyboard': [box(266, 915, 1166, 948)],
+    '.board-toolbar-heading': [box(266, 72, 1166, 114)], '.board-storyboard': [box(266, 915, 1166, 948)],
   });
   assert.deepEqual(measuredFitPadding(paneElement(document)), { top: '74px', right: '60px', bottom: '65px', left: '274px' });
   assert.equal(measuredFitPadding(null, 0.18), 0.18);

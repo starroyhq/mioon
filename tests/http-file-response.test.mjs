@@ -11,6 +11,7 @@ import {openStore} from '@mioon/business';
 import {startServer} from '@mioon/server';
 import {deriveAgentEndpoint} from '@mioon/contracts';
 import {createFileResponses, FILE_RESPONSE_LIMITS} from '../apps/server/src/file-response.mjs';
+import {authorizeHttpSnapshot} from './helpers/agent-authorizations.mjs';
 
 const token = 'synthetic-q4-file-response-token';
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -202,20 +203,34 @@ for (const protocol of ['chat_completions', 'responses']) test(`actual server di
     await new Promise(resolve => {if (signal.aborted) resolve(); else signal.addEventListener('abort', resolve, {once: true});});
     yield {type: 'delta', text: 'LATE_NOT_COMMITTED'}; yield {type: 'done', finishReason: 'stop'};
   }});
-  const json = async (route, method = 'GET', input) => (await f.request(route, {method, headers: {'content-type': 'application/json'}, ...(input ? {body: JSON.stringify(input)} : {})})).json();
-  const settings = (await json('/api/agent/settings')).data;
+  const requestJson = async (route, {method = 'GET', input} = {}) => {
+    const response = await f.request(route, {method, headers: {'content-type': 'application/json'}, ...(input ? {body: JSON.stringify(input)} : {})});
+    return {status: response.status, body: await response.json()};
+  };
+  const json = async (route, method = 'GET', input) => {
+    const response = await requestJson(route, {method,input});
+    assert.equal(response.status, 200, `${method} ${route}: ${JSON.stringify(response.body)}`);
+    assert.equal(response.body?.ok, true, `${method} ${route}: ${JSON.stringify(response.body)}`);
+    return response.body;
+  };
+  const data = async (...args) => { const body = await json(...args); assert.ok(Object.hasOwn(body, 'data'), 'successful API response has a data envelope'); return body.data; };
+  const settings = await data('/api/agent/settings');
   assert.equal((await json('/api/agent/settings', 'PUT', {expectedRevision: settings.revision,
     configuration: {...settings.configuration, protocol}, secret: {action: 'replace', storage: 'session', value: 'SYNTHETIC_Q4_ONLY'}})).ok, true);
-  const base = `/api/agent/chat/${f.projectId}`, snapshot = (await json(base)).data;
+  const base = `/api/agent/chat/${f.projectId}`;
+  await authorizeHttpSnapshot(requestJson, await data(base), 'typed_chat_only');
+  const snapshot = await data(base);
+  assert.ok(snapshot.authorization.scopes.includes('typed_chat_only'), 'the real server persisted the exact typed-chat grant');
   const input = {requestId: randomUUID(), instanceId: snapshot.instanceId, expectedSettingsRevision: snapshot.settings.revision,
     expectedConversationRevision: snapshot.revision, message: 'Synthetic typed-only transport check',
     consent: {destination: deriveAgentEndpoint(snapshot.settings.configuration), protocol, model: snapshot.settings.configuration.model, context: 'typed_chat_only'}};
-  const accepted = (await json(base + '/runs', 'POST', input)).data;
+  const accepted = await data(base + '/runs', 'POST', input);
   const events = `${base}/runs/${accepted.run.id}/events?instanceId=${accepted.instanceId}&after=0`;
-  const first = await f.request(events), reader = first.body.getReader(); await reader.read(); await reader.cancel();
-  const running = (await json(`${base}/runs/${accepted.run.id}?instanceId=${accepted.instanceId}`)).data;
+  const first = await f.request(events); assert.equal(first.status, 200); assert.match(first.headers.get('content-type'), /text\/event-stream/);
+  const reader = first.body.getReader(); await reader.read(); await reader.cancel();
+  const running = await data(`${base}/runs/${accepted.run.id}?instanceId=${accepted.instanceId}`);
   assert.equal(running.run.status, 'running');
-  const replay = (await json(base + '/runs', 'POST', input)).data; assert.equal(replay.run.id, accepted.run.id); assert.equal(calls, 1);
+  const replay = await data(base + '/runs', 'POST', input); assert.equal(replay.run.id, accepted.run.id); assert.equal(calls, 1);
   const handle = await open(f.file, 'r+'); await handle.truncate(64 * 1024 * 1024); await handle.close();
   const sockets = [];
   for (const route of [`/media/${f.id}`, events]) {
@@ -225,9 +240,12 @@ for (const protocol of ['chat_completions', 'responses']) test(`actual server di
   }
   await delay(20); const started = Date.now(); await f.service.close();
   assert.ok(Date.now() - started < 5000); for (const socket of sockets) socket.destroy();
-  await f.restart(); const recovered = (await json(`${base}/requests/${input.requestId}`)).data;
+  await f.restart(); const recovered = await data(`${base}/requests/${input.requestId}`);
   assert.equal(recovered.run.id, accepted.run.id); assert.equal(recovered.run.status, 'interrupted');
   assert.ok(!recovered.run.assistantText.includes('LATE_NOT_COMMITTED')); assert.equal(calls, 1);
+  const current = await data(base);
+  assert.equal(current.authorization.revision, snapshot.authorization.revision);
+  assert.ok(current.authorization.scopes.includes('typed_chat_only'), 'disconnect, shutdown and restart do not revoke the saved grant');
   const health = await json('/health'); assert.equal(health.ok, true);
   const assets = await json('/api/rpc', 'POST', {operation: 'asset.list', input: {projectId: f.projectId}});
   assert.equal(assets.data.length, 1, 'transport cancellation must not create or remove business assets');

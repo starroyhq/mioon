@@ -25,7 +25,7 @@ function homeHarness(patch = {}) {
     if (name.endsWith('/i18n/I18nProvider.tsx')) return i18nTestModule();
     if (name.includes('packages/i18n/src/index.ts')) return i18nCore;
     if (name === './LanguageControl.tsx') return { default: () => null };
-    return Object.fromEntries(['Button', 'Input', 'Textarea', 'Label'].map(key => [key, key.toLowerCase()]));
+    return Object.fromEntries(['Button', 'Input', 'Textarea', 'Label', 'Dialog', 'WorkbenchDialogContent'].map(key => [key, key.toLowerCase()]));
   }, module, module.exports);
   const props = { projects: [], phase: 'home', busy: false, listBusy: false, page: 'projects', onPage() {}, onOpen() {}, onRetry() {}, onRefresh() {}, onCreate: async () => true, settings: null, onCreateStateChange: state => reports.push(state), ...patch };
   return { reports, render(next = {}) { Object.assign(props, next); cursor = 0; return module.exports.default(props); } };

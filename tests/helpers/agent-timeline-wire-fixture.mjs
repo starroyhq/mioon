@@ -1,3 +1,4 @@
+import {authorizeHttpSnapshot} from './agent-authorizations.mjs';
 /** Timeline-only extension of the existing owned HTTP/SSE fixture. Sources are
  * deliberately metadata-only: these tests never import, render or call FFmpeg. */
 import assert from 'node:assert/strict';
@@ -42,6 +43,7 @@ export async function timelineWireFixture(t, protocol) {
   };
   f.input = async (projectId, selection, {message = MOVE_MESSAGE, consent: overrides, ...changes} = {}) => {
     const snapshot = await f.data(chatRoute(projectId)), configuration = snapshot.settings.configuration;
+    await authorizeHttpSnapshot((...args)=>f.request(...args),snapshot,AGENT_TIMELINE_MOVE_CONTEXT);
     assert.equal(snapshot.timelineEdit?.available, true, JSON.stringify(snapshot.timelineEdit));
     const {available, ...capability} = snapshot.timelineEdit;
     const timeline = selection.timeline ?? selection;

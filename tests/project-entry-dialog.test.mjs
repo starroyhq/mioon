@@ -11,6 +11,7 @@ const renderer = join(root, 'apps/web/src');
 const require = createRequire(import.meta.url);
 const entrySource = readFileSync(process.env.MIOON_PROJECT_ENTRY_SOURCE || join(renderer, 'ProjectEntry.tsx'), 'utf8');
 const css = readFileSync(join(renderer, 'styles.css'), 'utf8');
+const homeCss = readFileSync(join(renderer, 'project-home-redesign.css'), 'utf8');
 const output = buildSync({ stdin: { contents: entrySource.replace("import { useI18n } from './i18n/I18nProvider.tsx';", "import { createI18nTestContext } from '../../../tests/helpers/i18n.ts'; const useI18n = () => createI18nTestContext();") + '\nexport { React, Dialog, DialogContent, ProjectHome };', loader: 'tsx', resolveDir: renderer },
   bundle: true, platform: 'node', format: 'cjs', write: false, jsx: 'transform', loader: { '.css': 'empty' },
   define: { 'process.env.NODE_ENV': '"production"' } });
@@ -53,8 +54,9 @@ test('real ProjectEntry shared Dialog output opts into the existing modal stack 
   assert.ok(popup.props.className.split(/\s+/).includes('modal'), 'The real popup must use the existing modal stacking rule, not only shadcn z-50');
   const backdrop = zIndex('[data-slot="dialog-overlay"]'), picker = zIndex('.modal[data-slot="dialog-content"]');
   assert.equal(backdrop, 80); assert.equal(picker, 90); assert.ok(picker > backdrop);
-  assert.equal(popup.props.style.width, 'min(980px, 94vw)'); assert.equal(popup.props.style.maxHeight, '90vh');
-  assert.equal(Object.hasOwn(popup.props.style, 'zIndex'), false, 'Use the established CSS class, not a competing inline/global restyle');
+  assert.equal(popup.props['data-testid'], 'project-entry-dialog');
+  assert.equal(popup.props.style, undefined, 'Geometry belongs to the zoom-aware scoped stylesheet');
+  assert.match(homeCss, /\.project-entry-dialog\.modal\[data-slot="dialog-content"\] \{[^}]*display: flex;[^}]*height: min\(640px, calc\(var\(--mioon-viewport-height\) - 40px\)\)/);
   assert.deepEqual(f.calls, []);
 });
 
@@ -67,8 +69,18 @@ test('real hidden picker remains a controlled inert keepMounted dialog with the 
   assert.equal(closed.popup.props.hidden, true); assert.equal(closed.popup.props.inert, true); assert.equal(closed.popup.props.style.display, 'none');
   const form = elements(closed.popup).find(element => element.type === ProjectHome); assert.ok(form);
   assert.equal(form.props.onCreate, f.controller.create); assert.equal(form.props.onCreateStateChange, f.controller.reportCreate);
+  assert.equal(form.props.presentation, 'embedded');
   assert.equal(form.props.canMutateEntry, f.controller.canMutate); assert.deepEqual(f.calls, []);
   assert.notEqual(f.render(false).type, Dialog, 'The launcher remains a page, not a new modal');
+  assert.equal(elements(f.render(false)).find(element => element.type === ProjectHome).props.presentation, 'page');
+});
+
+test('the retained embedded catalog has one full-width scrolling column and bounded error text', () => {
+  assert.match(homeCss, /\.project-home-screen > \.project-home > \.project-home-layout \{[^}]*display: block/);
+  assert.match(homeCss, /\.project-entry-dialog > \.project-home-embedded \{[^}]*flex: 1; min-height: 0; overflow: hidden/);
+  assert.match(homeCss, /\.project-home-embedded > \.project-home \{ height: 100%; min-height: 0;/);
+  assert.match(homeCss, /\.project-home-embedded > \.project-home \.project-home-feedback > strong \{ flex: 1 1 320px; min-width: 0;/);
+  assert.doesNotMatch(readFileSync(join(renderer, 'viewport-scale.css'), 'utf8'), /\.workbench, \.project-home,/);
 });
 
 test('real picker Escape or outside-dismiss callback cancels primitive dismissal before asking its retained owner', () => {
@@ -103,7 +115,7 @@ test('existing nested confirmation output layers above both picker and raised ba
   assert.ok(popup.props.className.split(/\s+/).includes('workbench-confirm'));
   assert.equal(content.props.showCloseButton, false); assert.ok(content.props.initialFocus);
   const picker = zIndex('.modal[data-slot="dialog-content"]');
-  const backdrop = zIndex('body:has(.workbench-confirm) [data-slot="dialog-overlay"]');
+  const backdrop = zIndex('body:has(.workbench-confirm[data-open]) [data-slot="dialog-overlay"]');
   const confirmationZ = zIndex('.workbench-confirm[data-slot="dialog-content"]');
   assert.equal(backdrop, 110); assert.equal(confirmationZ, 120); assert.ok(picker < backdrop && backdrop < confirmationZ);
   confirmation.props.onOpenChange(false); assert.equal(await pending, false);

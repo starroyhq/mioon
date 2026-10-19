@@ -1,12 +1,12 @@
 import type { MessageCatalog } from '../types.ts';
 export const comparisonMessages = {
-  'comparison.help': { 'zh-Hans': '明确选择两个已保存的视频版本，独立检查原始素材。不会生成新内容。', 'zh-Hant': '明確選擇兩個已儲存的影片版本，獨立檢查原始素材。不會產生新內容。', en: 'Choose two saved video versions to inspect their original media. No new content is generated.', ja: '保存済みの動画を2つ選び、元の素材を比較します。新しいコンテンツは生成しません。' },
-  'comparison.insufficient': { 'zh-Hans': '此镜头少于两个可用的本地 MP4 版本。不会自动生成或获取素材。', 'zh-Hant': '此鏡頭少於兩個可用的本機 MP4 版本。不會自動產生或取得素材。', en: 'This shot has fewer than two available local MP4 versions. No media will be generated or retrieved automatically.', ja: 'このショットには比較できるローカルMP4バージョンが2つありません。素材を自動生成・取得することはありません。' },
-  'comparison.chooseBoth': { 'zh-Hans': '请选择两个不同版本。选择完成后才能播放。', 'zh-Hant': '請選擇兩個不同版本。選擇完成後才能播放。', en: 'Choose two different versions before playback.', ja: '再生する前に、異なる2つのバージョンを選んでください。' },
+  'comparison.help': { 'zh-Hans': '明确选择两个已保存的视频版本，独立检查原始素材。不会生成新内容', 'zh-Hant': '明確選擇兩個已儲存的影片版本，獨立檢查原始素材。不會產生新內容', en: 'Choose two saved video versions to inspect their original media. No new content is generated', ja: '保存済みの動画を2つ選び、元の素材を比較します。新しいコンテンツは生成しません' },
+  'comparison.insufficient': { 'zh-Hans': '此镜头少于两个可用的本地 MP4 版本。不会自动生成或获取素材', 'zh-Hant': '此鏡頭少於兩個可用的本機 MP4 版本。不會自動產生或取得素材', en: 'This shot has fewer than two available local MP4 versions. No media will be generated or retrieved automatically', ja: 'このショットには比較できるローカルMP4バージョンが2つありません。素材を自動生成・取得することはありません' },
+  'comparison.chooseBoth': { 'zh-Hans': '请选择两个不同版本。选择完成后才能播放', 'zh-Hant': '請選擇兩個不同版本。選擇完成後才能播放', en: 'Choose two different versions before playback', ja: '再生する前に、異なる2つのバージョンを選んでください' },
   'comparison.choose': { 'zh-Hans': '选择版本', 'zh-Hant': '選擇版本', en: 'Choose a version', ja: 'バージョンを選択' },
-  'comparison.ready': { 'zh-Hans': '已固定所选版本。一次只播放一侧，默认静音。', 'zh-Hant': '已固定所選版本。一次只播放一側，預設靜音。', en: 'Selected versions are fixed. One side plays at a time, initially muted.', ja: '選択したバージョンは固定されています。一度に片側のみ再生し、初期状態はミュートです。' },
-  'comparison.unavailable': { 'zh-Hans': '当前连接或工作区不允许此对比。已停止播放。', 'zh-Hant': '目前的連線或工作區不允許此比較。已停止播放。', en: 'Comparison is unavailable in the current connection or workspace. Playback has stopped.', ja: '現在の接続またはワークスペースでは比較できません。再生を停止しました。' },
-  'comparison.stale': { 'zh-Hans': '所选版本的来源已无法确认。请清空并重新选择，不会自动替换版本。', 'zh-Hant': '所選版本的來源已無法確認。請清空並重新選擇，不會自動替換版本。', en: 'The selected source can no longer be confirmed. Clear and choose again; versions are never replaced automatically.', ja: '選択した素材の参照を確認できなくなりました。選択をクリアして選び直してください。自動置換はしません。' },
+  'comparison.ready': { 'zh-Hans': '已固定所选版本。一次只播放一侧，默认静音', 'zh-Hant': '已固定所選版本。一次只播放一側，預設靜音', en: 'Selected versions are fixed. One side plays at a time, initially muted', ja: '選択したバージョンは固定されています。一度に片側のみ再生し、初期状態はミュートです' },
+  'comparison.unavailable': { 'zh-Hans': '当前连接或工作区不允许此对比。已停止播放', 'zh-Hant': '目前的連線或工作區不允許此比較。已停止播放', en: 'Comparison is unavailable in the current connection or workspace. Playback has stopped', ja: '現在の接続またはワークスペースでは比較できません。再生を停止しました' },
+  'comparison.stale': { 'zh-Hans': '所选版本的来源已无法确认。请清空并重新选择，不会自动替换版本', 'zh-Hant': '所選版本的來源已無法確認。請清空並重新選擇，不會自動替換版本', en: 'The selected source can no longer be confirmed. Clear and choose again; versions are never replaced automatically', ja: '選択した素材の参照を確認できなくなりました。選択をクリアして選び直してください。自動置換はしません' },
   'comparison.noPlayback': { 'zh-Hans': '等待两个有效版本', 'zh-Hant': '等待兩個有效版本', en: 'Waiting for two valid versions', ja: '有効な2つのバージョンを選択してください' },
   'comparison.reset': { 'zh-Hans': '清空对比选择', 'zh-Hant': '清空比較選擇', en: 'Clear comparison choices', ja: '比較の選択をクリア' },
   'comparison.unknown': { 'zh-Hans': '未记录', 'zh-Hant': '未記錄', en: 'Not recorded', ja: '記録なし' },
@@ -17,6 +17,6 @@ export const comparisonMessages = {
   'comparison.asset': { 'zh-Hans': '素材：{id}', 'zh-Hant': '素材：{id}', en: 'Asset: {id}', ja: '素材: {id}' },
   'comparison.player': { 'zh-Hans': '{label} 侧，版本 {number}', 'zh-Hant': '{label} 側，版本 {number}', en: 'Side {label}, version {number}', ja: '{label} 側、バージョン {number}' },
   'comparison.hash': { 'zh-Hans': 'SHA-256：{hash}', 'zh-Hant': 'SHA-256：{hash}', en: 'SHA-256: {hash}', ja: 'SHA-256: {hash}' },
-  'comparison.hashBoundary': { 'zh-Hans': '此摘要匹配已保存的版本与素材记录；播放时不会重新计算整个文件摘要。', 'zh-Hant': '此摘要符合已儲存的版本與素材記錄；播放時不會重新計算整個檔案摘要。', en: 'This hash matches saved version and asset records; playback does not rehash the whole file.', ja: 'このハッシュは保存済みのバージョンと素材の記録に一致します。再生時にファイル全体を再ハッシュしません。' },
-  'comparison.mediaError': { 'zh-Hans': '无法播放这个固定素材。不会改用其他版本。', 'zh-Hant': '無法播放這個固定素材。不會改用其他版本。', en: 'This fixed media could not be played. No other version will be substituted.', ja: 'この固定素材を再生できません。別のバージョンには切り替えません。' },
+  'comparison.hashBoundary': { 'zh-Hans': '此摘要匹配已保存的版本与素材记录；播放时不会重新计算整个文件摘要', 'zh-Hant': '此摘要符合已儲存的版本與素材記錄；播放時不會重新計算整個檔案摘要', en: 'This hash matches saved version and asset records; playback does not rehash the whole file', ja: 'このハッシュは保存済みのバージョンと素材の記録に一致します。再生時にファイル全体を再ハッシュしません' },
+  'comparison.mediaError': { 'zh-Hans': '无法播放这个固定素材。不会改用其他版本', 'zh-Hant': '無法播放這個固定素材。不會改用其他版本', en: 'This fixed media could not be played. No other version will be substituted', ja: 'この固定素材を再生できません。別のバージョンには切り替えません' },
 } as const satisfies MessageCatalog;

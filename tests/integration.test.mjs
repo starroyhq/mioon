@@ -29,7 +29,7 @@ async function fixture(t) {
   const base = `http://127.0.0.1:${port}`; let processHandle, processNumber = 0;
   async function start() {
     const number = ++processNumber;
-    processHandle = spawn(process.execPath, ['server/index.mjs'], { cwd: repo, env: { ...process.env, PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '', RUNWAY_MAX_GENERATIONS: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    processHandle = spawn(process.execPath, ['server/index.mjs'], { cwd: repo, env: { ...process.env, PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '', stderr = ''; processHandle.stdout.setEncoding('utf8').on('data', data => stdout += data); processHandle.stderr.setEncoding('utf8').on('data', data => stderr += data);
     const childPid = processHandle.pid; processHandle.on('close', (code, signal) => records.processEvents.push({ number, pid: childPid, code, signal, stdout, stderr }));
     records.processEvents.push({ action: 'spawn', number, pid: processHandle.pid, port, dataDirectory: root });
@@ -189,14 +189,14 @@ test('durable HTTP acceptance: real process restarts, provider side effects, med
     records.assertions.push({ id: 'security', result: 'passed', guards: ['authentication', 'media auth', 'Host', 'Origin', 'HttpOnly SameSite cookie', 'strict schema path and URL denial', 'MIME bytes', 'project association', 'cross-job provider task ownership', 'public serialization', 'live provider disabled', 'unknown operation denial'] });
   });
 
-  await t.test('A8 export stitches three genuine clips into decodable H264 720x1280 MP4 with summed duration', async () => {
+  await t.test('A8 export stitches three genuine clips into default native H264 1080x1920 MP4 with summed duration', async () => {
     for (const shot of (await rpc('project.get', { projectId: project.id })).shots) if (!shot.selectedVersionId) { const job = await rpc('generation.submit', { shotId: shot.id, expectedRevision: shot.revision, requestId: randomUUID(), providerId: 'mock' }); await f.until(job.id, j => j.status === 'succeeded'); }
     const state = await rpc('project.get', { projectId: project.id }); const selected = state.shots.map(s => state.versions.find(v => v.id === s.selectedVersionId)); assert.equal(selected.length, 3);
     const expectedDuration = selected.reduce((sum, v) => sum + state.assets.find(a => a.id === v.assetId).duration, 0);
     const requestId = randomUUID(), exported = await rpc('export.create', { projectId: project.id, requestId }); assert.deepEqual(exported.orderedVersionIds, selected.map(v => v.id)); assert.equal((await rpc('export.create', { projectId: project.id, requestId })).id, exported.id);
     let done; const deadline = Date.now() + 60_000; do { done = await rpc('export.get', { exportId: exported.id }); if (done.status === 'succeeded' || done.status === 'failed') break; await pause(150); } while (Date.now() < deadline); assert.equal(done.status, 'succeeded', JSON.stringify(done));
     const response = await fetch(f.base + done.url, { headers: { authorization: `Bearer ${token}` } }); assert.equal(response.status, 200); const bytes = Buffer.from(await response.arrayBuffer()); const file = path.join(evidence, 'three-shot-portrait.mp4'); await mkdir(evidence, { recursive: true }); await writeFile(file, bytes);
-    const probed = JSON.parse(await command('ffprobe', ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', file])); const stream = probed.streams.find(s => s.codec_type === 'video'); assert.equal(stream.codec_name, 'h264'); assert.equal(stream.width, 720); assert.equal(stream.height, 1280); assert.ok(Math.abs(Number(probed.format.duration) - expectedDuration) < 0.15); assert.match(probed.format.format_name, /mp4/);
+    const probed = JSON.parse(await command('ffprobe', ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', file])); const stream = probed.streams.find(s => s.codec_type === 'video'); assert.equal(stream.codec_name, 'h264'); assert.equal(stream.width, 1080); assert.equal(stream.height, 1920); assert.ok(Math.abs(Number(probed.format.duration) - expectedDuration) < 0.15); assert.match(probed.format.format_name, /mp4/);
     await command('ffmpeg', ['-v', 'error', '-i', file, '-f', 'null', '-']);
     await writeFile(path.join(evidence, 'export-probe.json'), JSON.stringify(probed, null, 2));
     const range = await fetch(f.base + done.url, { headers: { authorization: `Bearer ${token}`, range: 'bytes=0-31' } }); assert.equal(range.status, 206); assert.equal((await range.arrayBuffer()).byteLength, 32);

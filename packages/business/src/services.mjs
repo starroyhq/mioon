@@ -1,4 +1,9 @@
 import {createManagedAssetImportHandler} from './managed-asset-import.ts';
+import {freezeStoryboardOutputGeometry} from './storyboard-output.ts';
+import {AgentAuthorizationError} from './agent/authorizations.ts';
+import {createProjectHomeServices} from './project-home.ts';
+import {createProjectLifecycleServices} from './project-lifecycle.ts';
+import {validateManagedFile,validateManagedDirectory} from '@mioon/contracts/private-storage';
 import {getOpacityCandidateAssembly} from './opacity-candidate-store.ts';
 import {createOpacityCandidateServices} from './opacity-candidate-services.ts';
 import {readTimelineVolumeEnvelopeCapability} from './timeline-volume-envelope-capability.ts';
@@ -26,7 +31,7 @@ import {createRestoredReadServices} from './workspace-restore-read.mjs';
 import {inspectWorkspaceBackup} from './backup-readiness.mjs';
 import {randomUUID,createHash} from 'node:crypto';
 import {parse,AppError,publicValue,getGenerationIssue,getSubjectGenerationSnapshotIssue} from '@mioon/contracts';
-import {normalizedCapabilities,generationLimit,providerSettings,usesInputProfiles} from './provider-registry.mjs';
+import {normalizedCapabilities,usesInputProfiles} from './provider-registry.mjs';
 import {prepareGenerationInputs,generationReferenceSelection,readGenerationAsset,assertGenerationReferenceIds,assertGenerationShotOwnership,assertGenerationJobOwnership,currentGenerationClaim,hasSubjectGeneration,validateSubjectGenerationOwnership,assertSubjectGenerationSelection,assertSubjectGenerationRequestVacant,readGenerationLinkedJob} from './generation-inputs.mjs';
 import {createTimelineServices} from './timeline.mjs';
 import {createTimelineExportAdmissionServices} from './timeline-export-admission.mjs';
@@ -61,7 +66,7 @@ import {awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.mj
 export const now=()=>new Date().toISOString();
 export function canonical(v){return JSON.stringify(v,(_,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x);}
 export const hash=v=>createHash('sha256').update(canonical(v)).digest('hex');
-export function createServices(store,providers,{env=process.env,signal:ownerSignal,profileNow=Date.now,imageOptions,frameOptions,exportOptions}={}){
+export function createServices(store,providers,{env=process.env,signal:ownerSignal,profileNow=Date.now,imageOptions,frameOptions,exportOptions,agentAuthorizations,readRecentOpened}={}){
  if(getOpacityCandidateAssembly(store))return createOpacityCandidateServices(store,{signal:ownerSignal});
  const restored=getWorkspaceRestoreContext(store);
  const restoredReads=restored?createRestoredReadServices(store,{signal:ownerSignal}):null;
@@ -69,6 +74,12 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  const inactive=()=>({handlers:{},drain:async()=>{},approveReviewed:disabled,rejectReview:disabled});
  const active=new Set(),restoredLifetime=restored?new AbortController():null;let shutdownFailure;
  const {db,root,get,list,put,tx}=store;
+ const projectHome=createProjectHomeServices(store,{readRecentOpened});
+ const projectLifecycle=restored?{handlers:{},setProjectDeletionCompanions:disabled}:createProjectLifecycleServices(store,{
+  storage:{validateManagedFile,validateManagedDirectory},
+  ownsLock:()=>ownsStoreLock(store),isReadOnly:()=>Boolean(restored),signal:ownerSignal,
+  assertIdle:()=>{if(active.size)throw new AppError('PROJECT_DELETE_BUSY','工作区仍有异步操作在执行，请结束后再删除项目。',409);},
+ });
  const luts=restored?inactive():createLutResourceServices(store,{signal:ownerSignal,runtime:{ownsLock:()=>ownsStoreLock(store),assertReadable:()=>{},assertImportAllowed:()=>{if(getWorkspaceRestoreContext(store))disabled();}}});
  const lookPacks=restored?inactive():createLookPackInspectionServices(store,{signal:ownerSignal,runtime:{ownsLock:()=>ownsStoreLock(store),assertReadable:()=>{}}});
  const required=(t,id)=>{const v=get(t,id);if(!v)throw new AppError('NOT_FOUND','找不到记录',404,{id});return v;};
@@ -78,7 +89,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  const event=(job,event)=>{if(restored)disabled();return db.prepare('INSERT INTO job_events(jobId,event,createdAt) VALUES(?,?,?)').run(job.id,JSON.stringify(event),now());};
  const saveJob=(job,patch)=>{if(restored)disabled();const current=required('jobs',job.id);if((current.revision||0)!==(job.revision||0))return current;const result={...current,...patch,revision:(current.revision||0)+1,updatedAt:now()};put('jobs',result);event(result,{status:result.status,phase:result.phase,error:result.error});return result;};
  const profilePolicy=restored?false:usesInputProfiles(providers),currentProfileDate=()=>new Date(profileNow()).toISOString().slice(0,10);
- const capabilitiesFor=(provider,asOf=currentProfileDate())=>normalizedCapabilities(provider,env,list('jobs').filter(j=>j.providerId===provider.id).length,{asOf,requireInputProfiles:profilePolicy||usesInputProfiles(provider)});
+ const capabilitiesFor=(provider,asOf=currentProfileDate())=>normalizedCapabilities(provider,env,0,{asOf,requireInputProfiles:profilePolicy||usesInputProfiles(provider)});
  const validateProvider=(source,providerId,requestedModel,parameters,projectId,frozen=false,subjectGraph=null)=>{
   const p=providers.get(providerId);if(!p)throw new AppError('PROVIDER_NOT_FOUND','供应商不存在');
   const c=capabilitiesFor(p),first=c.models[0],model=requestedModel||(typeof first==='string'?first:first.id);
@@ -93,13 +104,9 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   if(hasSubjectGeneration(source)&&!['ark','mock'].includes(providerId))throw new AppError('UNSUPPORTED_INPUT_ROLE','此供应商尚未实现主体参考视频输入',400,{providerId,model});
   const hasLastFrame=(frozen?source.referenceBindings:selection.references)?.some(reference=>reference?.role==='last_frame')||source.lastFrameAssetId!=null;
   if(hasLastFrame&&!['ark','mock'].includes(providerId))throw new AppError('UNSUPPORTED_INPUT_ROLE','此供应商尚未实现首尾帧输入；不会忽略尾帧',400,{providerId,model});
-  // Config checks never reveal credentials. Raw adapter enabled remains distinct from
-  // the exhausted/missing local generation limit exposed in the capability status.
+  // Config checks never reveal credentials. Live calls still require the
+  // adapter's explicit backend enable switch and credential configuration.
   if(!p.capabilities.enabled||!p.capabilities.configured)throw new AppError('PROVIDER_DISABLED','真实供应商尚未安全配置并授权；当前可使用模拟供应商',403,{providerId,status:c.status,configuration:c.configuration});
-  if(providerSettings[providerId]){
-   const max=generationLimit(providerId,env),used=list('jobs').filter(j=>j.providerId===providerId).length;
-   if(!max||used>=max)throw new AppError('LIVE_BUDGET_REQUIRED','需要后端设置已授权生成次数上限，或当前额度已耗尽',403,{providerId,budget:c.budget});
-  }
   if(source.capabilities?.region&&c.region!==source.capabilities.region)throw new AppError('PROVIDER_REGION_CHANGED','供应商账户区域已更改，请恢复此任务原有区域后继续',409);
   const subjectMode=hasSubjectGeneration(source);
   let prepared=subjectMode?prepareGenerationInputs({source:{...source,parameters},projectId,providerId,model,capabilities:c,readAsset:id=>subjectGraph?subjectGraph.asset(id):readGenerationAsset(db,id,projectId),asOf:c.profileEvaluationDate,frozen}):null;
@@ -283,7 +290,12 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  ...timeline.handlers,
  ...references.handlers,
  ...localMutations.handlers,
- 'project.create':i=>put('projects',{id:randomUUID(),name:i.name,description:i.description||'',revision:1,createdAt:now(),updatedAt:now()}),
+ ...projectHome.handlers,
+ ...projectLifecycle.handlers,
+ 'agent.authorization.list':i=>{if(!agentAuthorizations)throw new AgentAuthorizationError('AGENT_AUTHORIZATION_UNAVAILABLE');return agentAuthorizations.list(i);},
+ 'agent.authorization.grant':i=>{if(!agentAuthorizations)throw new AgentAuthorizationError('AGENT_AUTHORIZATION_UNAVAILABLE');return agentAuthorizations.grant(i);},
+ 'agent.authorization.revoke':i=>{if(!agentAuthorizations)throw new AgentAuthorizationError('AGENT_AUTHORIZATION_UNAVAILABLE');return agentAuthorizations.revoke(i);},
+ 'project.create':i=>tx(()=>{const project=put('projects',{id:randomUUID(),name:i.name,description:i.description||'',revision:1,createdAt:now(),updatedAt:now()});if(i.timelinePresetId!==undefined)timeline.initializeProjectFormat(project.id,i.timelinePresetId);return project;}),
  'project.list':()=>list('projects').sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)),
  'project.get':i=>tx(()=>{const project=required('projects',i.projectId);return {project,timeline:timeline.ensure(i.projectId),timelineHistory:timeline.history(i.projectId),...Object.fromEntries(['assets','shots','nodes','edges','jobs','versions','exports'].map(t=>[t,(t==='exports'?exportValues(i.projectId):list(t,i.projectId).map(value=>subjectDisclosure(t,value,i.projectId))).sort(t==='shots'?(a,b)=>a.orderIndex-b.orderIndex:(a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''))]))};}),
  'asset.import':createManagedAssetImportHandler(store,{required,now,signal:ownerSignal,guarded:Boolean(restored),effectFence:()=>restoreEffectFence(store),unsafe:workspaceRestoreError,safeError:safeWorkspaceRestoreError}),
@@ -329,7 +341,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   return disclose(saveJob(j,{status:'running',phase:'polling',providerJobId:found.providerJobId,error:null,cancelScope:null}));
  },
  'version.list':i=>{const s=required('shots',i.shotId);return list('versions',s.projectId).filter(v=>v.shotId===s.id).map(value=>subjectDisclosure('versions',value,s.projectId)).sort((a,b)=>a.number-b.number);},
- 'export.create':i=>tx(()=>{const h=hash(i),prior=dedupe('export',i.requestId,h,'exports');if(prior)return prior;required('projects',i.projectId);const shots=list('shots',i.projectId).sort((a,b)=>a.orderIndex-b.orderIndex);if(!shots.length||shots.some(s=>!s.selectedVersionId))throw new AppError('MISSING_SELECTION','请为每个镜头选择已生成的视频版本');const versions=shots.map(s=>{const version=required('versions',s.selectedVersionId);if(restored){const graph=createOwnedMediaGraphReader(db,i.projectId),owned=graph.version(version.id,s.id,version.assetId),asset=graph.asset(owned.assetId);if(typeof owned.sha256!=='string'||owned.sha256!==asset.sha256)throw workspaceRestoreError();return owned;}return version;});const e={id:randomUUID(),projectId:i.projectId,requestId:i.requestId,status:'queued',orderedVersionIds:versions.map(v=>v.id),snapshot:versions.map(v=>({versionId:v.id,assetId:v.assetId,sha256:v.sha256,shotId:v.shotId})),assetId:null,url:null,error:null,createdAt:now(),updatedAt:now()};put('exports',e);idem('export',i.requestId,h,e.id);bindRestoredExport(store,'export.create',i,e,h);return e;}),
+ 'export.create':i=>tx(()=>{const h=hash(i),prior=dedupe('export',i.requestId,h,'exports');if(prior)return prior;required('projects',i.projectId);const shots=list('shots',i.projectId).sort((a,b)=>a.orderIndex-b.orderIndex);if(!shots.length||shots.some(s=>!s.selectedVersionId))throw new AppError('MISSING_SELECTION','请为每个镜头选择已生成的视频版本');const versions=shots.map(s=>{const version=required('versions',s.selectedVersionId);if(restored){const graph=createOwnedMediaGraphReader(db,i.projectId),owned=graph.version(version.id,s.id,version.assetId),asset=graph.asset(owned.assetId);if(typeof owned.sha256!=='string'||owned.sha256!==asset.sha256)throw workspaceRestoreError();return owned;}return version;});const e={id:randomUUID(),projectId:i.projectId,requestId:i.requestId,status:'queued',outputGeometry:freezeStoryboardOutputGeometry(db,i.projectId),orderedVersionIds:versions.map(v=>v.id),snapshot:versions.map(v=>({versionId:v.id,assetId:v.assetId,sha256:v.sha256,shotId:v.shotId})),assetId:null,url:null,error:null,createdAt:now(),updatedAt:now()};put('exports',e);idem('export',i.requestId,h,e.id);bindRestoredExport(store,'export.create',i,e,h);return e;}),
  'export.get':i=>subjectDisclosure('exports',required('exports',i.exportId),undefined,i.exportId)
  };
  // Public handlers are the same invocation boundary as RPC. Raw internal
@@ -351,7 +363,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
     // Frozen restored profiles admit only their own colour generation: video
     // in 31, video/PNG in 33, and video/PNG/JFIF in 35. No numeric widening.
     if(op==='timeline.clip.add'&&Object.hasOwn(parsed,'colour')||op==='timeline.clip.update'&&Object.hasOwn(parsed.patch,'colour')){
-     if(![31,33,35,37,39,41].includes(restored.schemaVersion))throw workspaceRestoreError();
+     if(![31,33,35,37,39,41,45,49].includes(restored.schemaVersion))throw workspaceRestoreError();
      const colour=op==='timeline.clip.add'?parsed.colour:parsed.patch.colour;
      if(restored.schemaVersion===31&&!nullableTimelineClipColourSchema.safeParse(colour).success)throw workspaceRestoreError();
      if(restored.schemaVersion===33&&!nullableTimelineClipColourSchema.safeParse(colour).success&&!timelineImageClipColourSchema.safeParse(colour).success)throw workspaceRestoreError();
@@ -431,5 +443,5 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
    return saveJob(current,patch);
   });
  }
- return {call,drain,audioPreview,saveGenerationGuarded,validateGenerationDispatch,updateShotInProject:restored?disabled:updateShotInProject,moveTimelineClipInProject:restored?disabled:moveTimelineClipInProject,setTimelineClipGainInProject:restored?disabled:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed,imageRejection:images.rejectReview};
+ return {setProjectDeletionCompanions:projectLifecycle.setProjectDeletionCompanions,call,drain,audioPreview,saveGenerationGuarded,validateGenerationDispatch,updateShotInProject:restored?disabled:updateShotInProject,moveTimelineClipInProject:restored?disabled:moveTimelineClipInProject,setTimelineClipGainInProject:restored?disabled:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed,imageRejection:images.rejectReview};
 }

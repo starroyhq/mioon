@@ -176,13 +176,13 @@ export async function renderTimeline(snapshot,assets,destination,{signal,beforeE
    const captioned=timelineSubtitleFilters(subtitles,begin,end,visual);filters.push(...captioned.filters);visual=captioned.visual;
    // Scale the completed editing-canvas composition, including captions. Clip
    // rectangles, subtitle layout/cues, source sampling and audio stay untouched.
-   // 1080 short edge is a 1.5x upscale of the fixed 720-short-edge composition.
+   // Delivery scaling is independent of the project's native composition size.
    const scale=delivery&&(delivery.effective.width!==width||delivery.effective.height!==height)
     ?`scale=${delivery.effective.width}:${delivery.effective.height}:flags=${delivery.effective.scaling},setsar=1,`:'';
    filters.push(`[${visual}]${scale}trim=end_frame=${frames},${selected.videoOutputTrim}setpts=N/(${FPS}*TB),${colour?TIMELINE_COLOUR_OUTPUT_FILTER:'format=yuv420p'}[outv]`);
    const segmentFile=path.join(work,`segment-${String(segment).padStart(3,'0')}.mov`);
    const filterArgs=['-filter_complex',filters.join(';')];
-   if(subtitles||colour){const script=path.join(work,`segment-${segment}.filter`);checkMediaEffect(effect,signal);await (owned?owned.writeOwnedFile(script,filters.join(';')):writeFile(script,filters.join(';'),{flag:'wx',mode:0o600}));checkMediaEffect(effect,signal);filterArgs.splice(0,2,'-filter_complex_script',script);}
+   if(subtitles||colour){const script=path.join(work,`segment-${segment}.filter`);checkMediaEffect(effect,signal);await (owned?owned.writeOwnedFile(script,filters.join(';')):writeFile(script,filters.join(';'),{flag:'wx',mode:0o600}));checkMediaEffect(effect,signal);filterArgs.splice(0,2,'-/filter_complex',script);}
    const videoArgs=delivery?timelineExportVideoArgs(delivery):['-c:v','libx264','-preset','veryfast','-crf','23','-threads','2','-bf','0','-g','60','-pix_fmt','yuv420p','-r',String(FPS),'-video_track_timescale','30000'];
    args.push(...filterArgs,'-map','[outv]','-map','[outa]',...videoArgs,...(colour?TIMELINE_COLOUR_OUTPUT_ARGS:[]),'-c:a',floatChecked?'pcm_f32le':'pcm_s16le','-ar','48000','-ac','2','-t',seconds(selected.outputFrames),segmentFile);
    owned?.reserve(segmentFile);

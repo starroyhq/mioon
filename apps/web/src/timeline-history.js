@@ -6,6 +6,7 @@ const operationMessages = {
   'timeline.clip.update': message('timeline.history.clipUpdate'),
   'timeline.clip.replaceSource': message('timeline.history.clipReplace'),
   'timeline.clip.remove': message('timeline.history.clipRemove'),
+  'timeline.clip.rippleRemove': message('timeline.history.clipRippleRemove'),
   'timeline.clip.split': message('timeline.history.clipSplit'),
   'timeline.subtitle.add': message('timeline.history.subtitleAdd'),
   'timeline.subtitle.update': message('timeline.history.subtitleUpdate'),

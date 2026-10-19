@@ -64,7 +64,7 @@ export async function runHistoryBrowserAcceptance({tab,projectId,dataDir,outDir}
   // Deliberately race a real independent writer against the displayed revision.
   // No response is mocked: the backend itself must return REVISION_CONFLICT.
   const competing=await services.call('timeline.track.update',{projectId,expectedRevision:revision,requestId:randomUUID(),trackId:timeline.tracks[0].id,patch:{name:'History QA competing edit'}});revision=competing.revision;
-  await tab.playwright.getByTestId('timeline-undo').click();await tab.playwright.getByText('保存冲突：内容已在其他窗口更新。已刷新最新状态，请检查后再保存。',{exact:true}).waitFor({state:'visible',timeoutMs:10000});
+  await tab.playwright.getByTestId('timeline-undo').click();await tab.playwright.getByText('保存冲突：内容已在其他窗口更新。已刷新最新状态，请检查后再保存',{exact:true}).waitFor({state:'visible',timeoutMs:10000});
   timeline=await settle(revision);equal(timeline,competing);assert.equal((await history()).revision,revision);assert.equal(await tab.playwright.getByTestId('timeline-undo').isEnabled(),true);
   log('Stale Undo rejects atomically and refreshes current timeline/history',{revision});await capture('05-conflict-refresh.jpg');
   await tab.playwright.getByRole('button',{name:'关闭提示',exact:true}).click();

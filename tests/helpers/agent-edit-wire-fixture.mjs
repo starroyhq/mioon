@@ -1,3 +1,4 @@
+import {authorizeHttpSnapshot} from './agent-authorizations.mjs';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -48,6 +49,7 @@ export async function editWireFixture(t, protocol) {
     },
     async input(projectId, shot, {message = 'Improve this selected saved shot', context = 'selected_shot_edit', consent: overrides, ...changes} = {}) {
       const snapshot = await this.data(chatRoute(projectId)), configuration = snapshot.settings.configuration;
+    await authorizeHttpSnapshot((...args)=>this.request(...args),snapshot,context);
       const base = {destination: deriveAgentEndpoint(configuration), protocol: configuration.protocol, model: configuration.model, context};
       let consent = base;
       if (context === 'selected_shot_edit') {

@@ -1,5 +1,7 @@
 @import "tailwindcss" source(none);
 @import "tw-animate-css";
+@import "./workbench.css";
+@import "./light.css";
 
 /* Workspace packages are outside the web application's automatic scan root. */
 @source "../components/**/*.{ts,tsx}";
@@ -18,7 +20,8 @@
 @custom-variant data-vertical (&:where([data-orientation="vertical"]));
 
 @theme inline {
-  --font-sans: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-sans: "PingFang SC", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
   --font-heading: var(--font-sans);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -61,43 +64,129 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* Neutral dark surfaces with the editor's existing sage primary treatment.
-   The renderer opts into dark component variants with <html class="dark">. */
+/* Mioon design tokens. Theme overrides replace these values, not component CSS. */
 :root,
 .dark {
-  --radius: 0.625rem;
-  --background: #101114;
-  --foreground: #e4e5e7;
-  --card: #1e2025;
-  --card-foreground: #e4e5e7;
-  --popover: #22242a;
-  --popover-foreground: #e4e5e7;
-  --primary: #d7e6aa;
-  --primary-foreground: #24291a;
-  --secondary: #23252b;
-  --secondary-foreground: #d8dbe1;
-  --muted: #22242a;
-  --muted-foreground: #949ba7;
-  --accent: #30333b;
-  --accent-foreground: #edf0f5;
-  --destructive: #ee998f;
-  --destructive-foreground: #221514;
-  --border: #30333b;
-  --input: #3b3e47;
-  --ring: #a4bb79;
-  --chart-1: #d7e6aa;
-  --chart-2: #9ac7bd;
-  --chart-3: #aab8e6;
-  --chart-4: #ddb47e;
-  --chart-5: #ee998f;
-  --sidebar: #17181c;
-  --sidebar-foreground: #e4e5e7;
-  --sidebar-primary: #d7e6aa;
-  --sidebar-primary-foreground: #24291a;
-  --sidebar-accent: #23252b;
-  --sidebar-accent-foreground: #edf0f5;
-  --sidebar-border: #2b2d34;
-  --sidebar-ring: #a4bb79;
+  --wb-bg: #0B0C0E;
+  --wb-panel: #141518;
+  --wb-card: #1B1D21;
+  --wb-raised: #23252A;
+  --wb-hover: #2A2D33;
+  --wb-selected: #31343B;
+  --wb-input: #0F1013;
+  --wb-line-subtle: #22242A;
+  --wb-line: #2E3138;
+  --wb-line-strong: #3D4149;
+  --wb-text: #ECEDEF;
+  --wb-soft: #A3A7AF;
+  --wb-muted: #7D828C;
+  --wb-disabled: #4A4E56;
+  --wb-accent: #F2F3F5;
+  --wb-accent-hover: #FFFFFF;
+  --wb-accent-pressed: #D4D6DA;
+  --wb-accent-foreground: #0B0C0E;
+  --wb-accent-line: #FFFFFF;
+  --wb-accent-subtle: rgb(255 255 255 / 10%);
+  --wb-accent-dim: var(--wb-soft);
+  --wb-danger: #F26464;
+  --wb-danger-fill: #D63A3A;
+  --wb-danger-foreground: #FFFFFF;
+  --wb-danger-subtle: rgb(240 74 74 / 14%);
+  --wb-warning: #F2A93B;
+  --wb-warning-subtle: rgb(242 169 59 / 14%);
+  --wb-success: #3DBE7A;
+  --wb-success-subtle: rgb(61 190 122 / 14%);
+  --wb-orange: var(--wb-warning);
+  --wb-video: #1E3A5F;
+  --wb-video-edge: #5B9BE6;
+  --wb-image: #1F4A45;
+  --wb-image-edge: #4FC1B0;
+  --wb-audio: #24452C;
+  --wb-audio-edge: #5FC27A;
+  --wb-subtitle: #33295C;
+  --wb-subtitle-edge: #9C8CFF;
+  --wb-media-text: #FFFFFF;
+  --wb-overlay: rgb(0 0 0 / 64%);
+  --wb-media-overlay: rgb(0 0 0 / 64%);
+  --wb-shadow-color: rgb(0 0 0 / 45%);
+  --wb-shadow: 0 8px 24px var(--wb-shadow-color);
+  --wb-font-sans: "PingFang SC", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --wb-font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  --wb-text-display: 24px;
+  --wb-text-title: 18px;
+  --wb-text-section: 14px;
+  --wb-text-body: 13px;
+  --wb-text-label: 12px;
+  --wb-text-caption: 11px;
+  --wb-text-min: 10px;
+  --wb-text-timecode: 20px;
+  --wb-space-1: 4px;
+  --wb-space-2: 8px;
+  --wb-space-3: 12px;
+  --wb-space-4: 16px;
+  --wb-space-5: 20px;
+  --wb-space-6: 24px;
+  --wb-space-8: 32px;
+  --wb-radius-control: 6px;
+  --wb-radius-card: 8px;
+  --wb-radius-panel: 10px;
+  --wb-radius-dialog: 12px;
+  --wb-control-compact: 24px;
+  --wb-control: 28px;
+  --wb-control-large: 36px;
+  --wb-topbar: 44px;
+  --wb-panel-heading: 36px;
+  --wb-action-bar: 48px;
+  --wb-assets-width: 260px;
+  --wb-inspector-width: 320px;
+  --wb-timeline-height: 300px;
+  --wb-timeline-min: 160px;
+  --wb-timeline-collapsed: 40px;
+  --wb-panel-rail: 44px;
+  --wb-panel-gap: 6px;
+  --wb-track-heading: 168px;
+  --wb-track-video: 52px;
+  --wb-track-audio: 44px;
+  --wb-track-subtitle: 32px;
+  --wb-ruler: 24px;
+  --wb-dialog-confirm: 420px;
+  --wb-dialog-standard: 560px;
+  --wb-dialog-large: 960px;
+  --wb-dialog-large-height: 640px;
+  --radius: var(--wb-radius-panel);
+  --background: var(--wb-bg);
+  --foreground: var(--wb-text);
+  --card: var(--wb-card);
+  --card-foreground: var(--wb-text);
+  --popover: var(--wb-raised);
+  --popover-foreground: var(--wb-text);
+  --primary: var(--wb-accent);
+  --primary-foreground: var(--wb-accent-foreground);
+  --secondary: var(--wb-card);
+  --secondary-foreground: var(--wb-text);
+  --muted: var(--wb-card);
+  --muted-foreground: var(--wb-soft);
+  /* shadcn accent means hover surface; the white action color is --primary. */
+  --accent: var(--wb-hover);
+  --accent-foreground: var(--wb-text);
+  --destructive: var(--wb-danger);
+  --destructive-foreground: var(--wb-danger-foreground);
+  --border: var(--wb-line);
+  --input: var(--wb-line);
+  --ring: var(--wb-accent-line);
+  --chart-1: var(--wb-video-edge);
+  --chart-2: var(--wb-image-edge);
+  --chart-3: var(--wb-audio-edge);
+  --chart-4: var(--wb-subtitle-edge);
+  --chart-5: var(--wb-warning);
+  --sidebar: var(--wb-panel);
+  --sidebar-foreground: var(--wb-text);
+  --sidebar-primary: var(--wb-accent);
+  --sidebar-primary-foreground: var(--wb-accent-foreground);
+  --sidebar-accent: var(--wb-hover);
+  --sidebar-accent-foreground: var(--wb-text);
+  --sidebar-border: var(--wb-line-subtle);
+  --sidebar-ring: var(--wb-accent-line);
 }
 
 @utility cn-font-heading {

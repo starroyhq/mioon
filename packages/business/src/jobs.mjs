@@ -17,6 +17,7 @@ import {terminateMediaProcesses,waitForMediaProcesses} from './media-processes.m
 import {rename,link,unlink,lstat,open} from 'node:fs/promises';
 import path from 'node:path';
 import {fileInfo,probe,safePath,stitch,run} from './media.mjs';
+import {storyboardOutputGeometry} from './storyboard-output.ts';
 import {renderTimeline} from './timeline-media.mjs';
 import {readTimelineReceipt} from './timeline-recovery.mjs';
 import {prepareTimelineInputs,readOwnedTimelineAsset,validateFrozenTimelineSourceGraph,validatePreparedTimelineSources} from './timeline-sources.mjs';
@@ -299,7 +300,7 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
     }
     if(currentOwnedExport(e)?.status!=='running')return;
     checkStoryboard();
-    await stitch(files,part,{signal,beforeEffect});checkpoint(signal);
+    await stitch(files,part,{signal,beforeEffect,outputGeometry:storyboardOutputGeometry(e)});checkpoint(signal);
    }
    const info=await fileInfo(part,{signal,beforeEffect});checkpoint(signal);
    // Recheck the preserved relational owner immediately before publication.
@@ -321,7 +322,7 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
    await link(part,file);linkedOutput=true;checkpoint(signal);beforeEffect?.();
    if(fencedAttempt){const actual=await lstat(part);beforeEffect();if(actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino)throw effectError();}
    await unlink(part);checkpoint(signal);beforeEffect?.();
-   tx(()=>{beforeEffect?.();if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('Invalid local export record.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();const ratio=e.mode==='timeline'?(e.snapshot.timeline.width===e.snapshot.timeline.height?'1x1':e.snapshot.timeline.width>e.snapshot.timeline.height?'16x9':'9x16'):null;const a={id:randomUUID(),projectId:e.projectId,name:e.mode==='timeline'?`多轨时间线-${e.purpose==='preview'?'预览':'导出'}-${ratio}.mp4`:'分镜拼接-9x16.mp4',mimeType:'video/mp4',relativePath,...info,provenance:'export',createdAt:now()};a.url=`/media/${a.id}`;put('assets',a);put('exports',{...e,status:'succeeded',assetId:a.id,url:a.url,error:null,...(floatExport?{audioCheck:bindFloatTimelineMeasurement(e,floatMeasurement,now(),{assetId:a.id,sha256:a.sha256})}:{}),updatedAt:now()});});
+   tx(()=>{beforeEffect?.();if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('Invalid local export record.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();const output=e.mode==='timeline'?e.snapshot.timeline:storyboardOutputGeometry(e);const ratio=output.width===output.height?'1x1':output.width>output.height?'16x9':'9x16';const a={id:randomUUID(),projectId:e.projectId,name:e.mode==='timeline'?`多轨时间线-${e.purpose==='preview'?'预览':'导出'}-${ratio}.mp4`:`分镜拼接-${ratio}.mp4`,mimeType:'video/mp4',relativePath,...info,provenance:'export',createdAt:now()};a.url=`/media/${a.id}`;put('assets',a);put('exports',{...e,status:'succeeded',assetId:a.id,url:a.url,error:null,...(floatExport?{audioCheck:bindFloatTimelineMeasurement(e,floatMeasurement,now(),{assetId:a.id,sha256:a.sha256})}:{}),updatedAt:now()});});
    publicationAccepted=true;
   } catch(error) {
    terminationUnconfirmed=Boolean(error.terminationUnconfirmed);

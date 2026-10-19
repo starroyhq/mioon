@@ -62,7 +62,7 @@ def start(data):
         sock.bind(('127.0.0.1', 0))
         port = sock.getsockname()[1]
     handle = open(OUT / 'server.log', 'w')
-    proc = subprocess.Popen(['node', 'apps/server/src/cli.mjs'], cwd=ROOT, env={**os.environ, 'PORT': str(port), 'MIOON_TOKEN': TOKEN, 'MIOON_DATA_DIR': str(data), 'MIOON_ENABLE_LIVE_PROVIDER': '0', 'RUNWAYML_API_SECRET': '', 'RUNWAY_MAX_GENERATIONS': '0'}, stdout=handle, stderr=subprocess.STDOUT)
+    proc = subprocess.Popen(['node', 'apps/server/src/cli.mjs'], cwd=ROOT, env={**os.environ, 'PORT': str(port), 'MIOON_TOKEN': TOKEN, 'MIOON_DATA_DIR': str(data), 'MIOON_ENABLE_LIVE_PROVIDER': '0', 'RUNWAYML_API_SECRET': ''}, stdout=handle, stderr=subprocess.STDOUT)
     base = f'http://127.0.0.1:{port}'
     for _ in range(150):
         if proc.poll() is not None:

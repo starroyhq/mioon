@@ -1,4 +1,14 @@
 import { opacityEnvelopeMessages } from './catalogs/opacity-envelope.ts';
+import { redesignOutputMessages } from './catalogs/redesign-output.ts';
+import { workbenchShellMessages } from './catalogs/workbench-shell.ts';
+import { exportWorkflowMessages } from './catalogs/export-workflow.ts';
+import { timelineEditingMessages } from './catalogs/timeline-editing.ts';
+import { workspaceToolsMessages } from './catalogs/workspace-tools.ts';
+import { settingsRedesignMessages } from './catalogs/settings-redesign.ts';
+import { exportFileMessages } from './catalogs/export-file.ts';
+import { projectBrowserMessages } from './catalogs/project-browser.ts';
+import { redesignBoardMessages } from './catalogs/redesign-board.ts';
+import { appearanceMessages } from './catalogs/appearance.ts';
 import { opacityRestoredApplicationMessages } from './catalogs/opacity-restored-application.ts';
 import { volumeEnvelopeMessages } from './catalogs/volume-envelope.ts';
 import { audioRoleMessages } from './catalogs/audio-role.ts';
@@ -18,8 +28,8 @@ export * from './types.ts';
 export * from './locale.ts';
 import { assertNoDuplicateMessageKeys } from './catalog-integrity.ts';
 export { assertNoDuplicateMessageKeys } from './catalog-integrity.ts';
-assertNoDuplicateMessageKeys(opacityRestoredApplicationMessages, opacityEnvelopeMessages, volumeEnvelopeMessages, audioRoleMessages, comparisonMessages, annotationMessages, clipLoudnessMessages, commandMessages, operationMessages, foundationMessages, nativeMessages, shellMessages, creationMessages, timelineMessages);
-export const catalogs = Object.freeze({ ...opacityRestoredApplicationMessages, ...opacityEnvelopeMessages, ...volumeEnvelopeMessages, ...audioRoleMessages, ...clipLoudnessMessages, ...comparisonMessages, ...annotationMessages, ...commandMessages, ...operationMessages, ...foundationMessages, ...nativeMessages, ...shellMessages, ...creationMessages, ...timelineMessages });
+assertNoDuplicateMessageKeys(projectBrowserMessages, redesignBoardMessages, exportFileMessages, workspaceToolsMessages, settingsRedesignMessages, exportWorkflowMessages, timelineEditingMessages, appearanceMessages, workbenchShellMessages, redesignOutputMessages, opacityRestoredApplicationMessages, opacityEnvelopeMessages, volumeEnvelopeMessages, audioRoleMessages, comparisonMessages, annotationMessages, clipLoudnessMessages, commandMessages, operationMessages, foundationMessages, nativeMessages, shellMessages, creationMessages, timelineMessages);
+export const catalogs = Object.freeze({ ...projectBrowserMessages, ...redesignBoardMessages, ...exportFileMessages, ...workspaceToolsMessages, ...settingsRedesignMessages, ...exportWorkflowMessages, ...timelineEditingMessages, ...appearanceMessages, ...workbenchShellMessages, ...redesignOutputMessages, ...opacityRestoredApplicationMessages, ...opacityEnvelopeMessages, ...volumeEnvelopeMessages, ...audioRoleMessages, ...clipLoudnessMessages, ...comparisonMessages, ...annotationMessages, ...commandMessages, ...operationMessages, ...foundationMessages, ...nativeMessages, ...shellMessages, ...creationMessages, ...timelineMessages });
 export type MessageKey = keyof typeof catalogs;
 type TemplateText<T> = T extends string ? T : T extends { one: infer O extends string; other: infer R extends string } ? O | R : never;
 type Placeholders<T extends string> = T extends `${string}{${infer P}}${infer Rest}` ? P | Placeholders<Rest> : never;
@@ -30,7 +40,7 @@ export function message<K extends MessageKey>(key: K, ...args: MessageArguments<
   const params = args[0] as MessageParameters | undefined;
   return Object.freeze({ key, ...(params ? { params: Object.freeze({ ...params }) } : {}) });
 }
-const missing: Readonly<Record<Locale, string>> = Object.freeze({ 'zh-Hans': '此提示暂时无法显示。', 'zh-Hant': '此提示暫時無法顯示。', en: 'This message cannot be displayed right now.', ja: '現在、このメッセージを表示できません。' });
+const missing: Readonly<Record<Locale, string>> = Object.freeze({ 'zh-Hans': '此提示暂时无法显示', 'zh-Hant': '此提示暫時無法顯示', en: 'This message cannot be displayed right now', ja: '現在、このメッセージを表示できません' });
 function formatTemplate(locale: Locale, template: MessageTemplate, params: MessageParameters = {}): string {
   let value: string;
   if (typeof template === 'string') value = template;

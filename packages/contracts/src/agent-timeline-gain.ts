@@ -1,3 +1,5 @@
+import {timelineOutputPreset} from './timeline-output-geometry.ts';
+
 // Closed, reviewed selected-clip gain contracts. This creates no operation and
 // grants no execution authority. Canonical timeline and rollback validators are
 // fixed dependencies supplied once by the existing contracts barrel.
@@ -113,12 +115,12 @@ export function isAgentTimelineGainSource(value: unknown): value is AgentTimelin
     typeof value.mimeType === 'string' && sourceTypes.includes(value.mimeType) && value.hasAudio === true;
 }
 function publicTargetValid(value: Record<string, unknown>, projectId: unknown): boolean {
-  // This public selected projection admits only the three existing 30fps output
-  // pairs. Private targets additionally pass the canonical timeline validator.
+  // Share the closed native/legacy output set with private timeline targets.
+  // Neither projection may invent a geometry or normalize saved dimensions.
   return uuid(value.projectId) && (projectId === undefined || value.projectId === projectId) && uuid(value.timelineId) &&
     uuid(value.clipId) && uuid(value.trackId) && integer(value.expectedRevision, 1, Number.MAX_SAFE_INTEGER - 1) &&
     text(value.clipName, 200) && text(value.trackName, 150) && (value.trackKind === 'video' || value.trackKind === 'audio') &&
-    value.fps === 30 && (value.width === 720 && (value.height === 720 || value.height === 1280) || value.width === 1280 && value.height === 720) &&
+    value.fps === 30 && timelineOutputPreset(value) !== null &&
     typeof value.trackMuted === 'boolean' && value.hasAudio === true;
 }
 export function isAgentTimelineGainPublicTarget(value: unknown, {projectId}: AgentTimelineGainValidationOptions = {}): value is AgentTimelineGainPublicTarget {

@@ -53,7 +53,7 @@ export async function prepareTimelineSubtitles(snapshot,work,{signal,beforeEffec
  filters.push('alphaextract,format=gray');
  const script=path.join(work,'subtitle-measure.filter');checkMediaEffect(beforeEffect,signal);await (writeOwnedFile?writeOwnedFile(script,filters.join(',')):writeFile(script,filters.join(','),{flag:'wx',mode:0o600}));checkMediaEffect(beforeEffect,signal);
  await runStreaming('ffmpeg',['-hide_banner','-loglevel','error','-filter_threads','1','-f','lavfi','-i',`color=c=black@0:s=${WIDTH}x${HEIGHT}:r=30,format=rgba`,
-  '-filter_script:v',script,'-frames:v',String(distinct.length),'-an','-c:v','rawvideo','-pix_fmt','gray','-threads','1','-f','rawvideo','pipe:1'],
+  '-/filter:v',script,'-frames:v',String(distinct.length),'-an','-c:v','rawvideo','-pix_fmt','gray','-threads','1','-f','rawvideo','pipe:1'],
   {signal,beforeEffect,timeout:30000,maxStdoutBytes:distinct.length*FRAME_BYTES,maxStderrBytes:64*1024,onStdout:chunk=>scanner.consume(chunk)});
  checkMediaEffect(beforeEffect,signal);
  const measured=scanner.finish();

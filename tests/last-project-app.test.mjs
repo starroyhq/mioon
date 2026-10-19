@@ -7,7 +7,9 @@ import {createWorkspacePreferences} from '../apps/web/src/workspace-preferences.
 import {defaultWorkspaceState,writeWorkspaceState,reconcileWorkspaceState} from '../apps/web/src/workspace-state.js';
 import {validateProjectWorkspace} from '../apps/web/src/restored-workspace.js';
 import {workspaceOriginScope} from '../apps/web/src/workspace-origin.js';
-import {projectOpenAttempt,canPublishProjectOpen,projectResponseMatches,projectOpenFailureKind} from '../apps/web/src/project-open-state.ts';
+import {projectOpenAttempt,canPublishProjectOpen,projectResponseMatches,hasProjectResponseOriginMismatch,projectOpenFailureKind} from '../apps/web/src/project-open-state.ts';
+import {observeClipAudioRoleCapability} from '../apps/web/src/clip-audio-role-state.ts';
+import {isWorkspaceRestoreInspection,canEditTimelineAudioRole} from '@mioon/contracts';
 import {createSettingsNavigationRegistry} from '../apps/web/src/settings-navigation-state.ts';
 import {createLastProjectController} from '../apps/web/src/last-project-state.ts';
 import {editorInitialSelection} from '../apps/web/src/editor-native-window.ts';
@@ -57,7 +59,7 @@ function selectionHarness({refresh,confirm=true}={}){
   agentDraft:{current:false},imageDraft:{current:false},confirm:async()=>confirm,
   dirtyRef:{current:!confirm},subtitlesRef:{current:null},clipDraftRef:{current:null},shotTextRef:{current:null},subjectsRef:{current:null},
   timelineFormatRef:{current:null},deliveryNameRef:{current:null},localDeliveryRef:{current:null},
-  workspaceOriginScope,validateProjectWorkspace,reconcileWorkspaceState,reconcilePending(){},useCallback:fn=>fn,projectOpenAttempt,canPublishProjectOpen,projectResponseMatches,projectOpenFailureKind,
+  application:null,workspaceOriginScope,validateProjectWorkspace,reconcileWorkspaceState,reconcilePending(){},useCallback:fn=>fn,projectOpenAttempt,canPublishProjectOpen,projectResponseMatches,hasProjectResponseOriginMismatch,projectOpenFailureKind,
   openedProject:{current:projectOpenAttempt(id(1),0,'normal')},settingsNavigation:{current:createSettingsNavigationRegistry()},
   projectOpening:{phase:'ready',projectId:id(1),error:''},homePage:'projects',
   lastProjectRef:{current:{invalidateNavigation:epoch=>calls.push(['invalidate',epoch]),rememberOpened:(projectId,epoch)=>calls.push(['remember',projectId,epoch])}},
@@ -65,8 +67,8 @@ function selectionHarness({refresh,confirm=true}={}){
   tasksRef:{current:{getState:()=>({phase:'idle'}),load:async()=>{}}},viewReady:{current:true},dataRef:{current:{project:{id:id(1)}}},
   emptyData:{},pendingForProject:()=>[],dragging:{current:false},viewRef:{current:view},
   updateView:()=>{},URL,
-  window:{location:{href:'http://127.0.0.1:4318/'},history:{pushState(){},replaceState(){}}},
-  ...Object.fromEntries(['setLastSync','setProviders','setOnline','setPropertiesPage','setTaskState','setPreferenceStatus','setPending','setShowProjects','setData','setNodes','setLoading','setShotDirty','setClipDirty','setSourceDirty','setSubjectDirty','setSubtitleDirty','setInspectorEpoch','setRightDockTab','setShowExports','setComparisonId','setPreviewAsset','setRealConfirm','setToast','setMobilePanel','setView','setZoom'].map(name=>[name,value=>calls.push([name,value])])),
+  window:{location:{href:'http://127.0.0.1:4318/'},history:{pushState(){},replaceState(){}},__mioonUiPreferences:{markOpened:projectId=>calls.push(['markOpened',projectId])}},
+  ...Object.fromEntries(['setLastSync','setProviders','setOnline','setPropertiesPage','setTaskState','setPreferenceStatus','setPending','setShowProjects','setData','setNodes','setLoading','setShotDirty','setClipDirty','setSourceDirty','setSubjectDirty','setSubtitleDirty','setInspectorEpoch','setRightDockTab','setPanelOverlay','setShowTasks','setShowDelivery','setShowImage','setShowProjectChooser','setShowExports','setComparisonId','setPreviewAsset','setRealConfirm','setToast','setMobilePanel','setView','setZoom'].map(name=>[name,value=>calls.push([name,value])])),
  };
  env.context=()=>({projectId:currentProject.current,epoch:navigationEpoch.current,workspace:env.workspaceRef.current});
  env.isCurrent=captured=>captured.projectId===currentProject.current&&captured.epoch===navigationEpoch.current&&workspaceOriginScope(captured.workspace)===workspaceOriginScope(env.workspaceRef.current);
@@ -89,16 +91,18 @@ function selectionHarness({refresh,confirm=true}={}){
 }
 test('actual App only remembers a successfully loaded explicit project, never initial recovery or reload-view',async()=>{
  const f=selectionHarness();assert.equal(await f.select(id(2)),true);assert.equal(f.env.projectSessionReady(),true);assert.deepEqual(f.calls.filter(x=>x[0]==='remember'),[['remember',id(2),1]]);
+ assert.deepEqual(f.calls.filter(x=>x[0]==='markOpened'),[['markOpened',id(2)]]);
+ assert.ok(f.calls.findIndex(x=>x[0]==='markOpened')>f.calls.findIndex(x=>x[0]==='setProjectOpening'&&x[1].phase==='ready'),'recent-open time is recorded only after the actual project-open gate accepts');
  const resetTab=f.calls.find(call=>call[0]==='setRightDockTab')[1];assert.equal(resetTab('tasks'),'properties');
  for(const tab of ['properties','agent','image','delivery'])assert.equal(resetTab(tab),tab);
- for(const args of [[id(2),true],[id(2),false,true,true]]){const g=selectionHarness();assert.equal(await g.select(...args),true);assert.equal(g.calls.some(x=>x[0]==='remember'),false);}
+ for(const args of [[id(2),true],[id(2),false,true,true]]){const g=selectionHarness();assert.equal(await g.select(...args),true);assert.equal(g.calls.some(x=>x[0]==='remember'),false);assert.deepEqual(g.calls.filter(x=>x[0]==='markOpened'),[['markOpened',id(2)]]);}
  const cancelled=selectionHarness({confirm:false});assert.equal(await cancelled.select(id(2)),false);assert.deepEqual(cancelled.calls,[]);
 });
 test('actual App rejects failed, foreign, unmounted or overtaken load without remembering it',async()=>{
- for(const next of [null,{project:{id:id(3)},shots:[],nodes:[]}]){const f=selectionHarness({refresh:async()=>next});assert.equal(await f.select(id(2)),false);assert.equal(f.calls.some(x=>x[0]==='remember'),false);}
+ for(const next of [null,{project:{id:id(3)},shots:[],nodes:[]}]){const f=selectionHarness({refresh:async()=>next});assert.equal(await f.select(id(2)),false);assert.equal(f.calls.some(x=>x[0]==='remember'||x[0]==='markOpened'),false);}
  const gate=deferred(),f=selectionHarness({refresh:()=>gate.promise}),attempt=f.select(id(2));await new Promise(setImmediate);
- f.env.projectEpoch.current++;f.env.currentProject.current=id(3);gate.resolve({project:{id:id(2)},shots:[],nodes:[]});assert.equal(await attempt,false);assert.equal(f.calls.some(x=>x[0]==='remember'),false);
- const g=selectionHarness();g.env.importSession.current.active=false;assert.equal(await g.select(id(2)),false);assert.equal(g.calls.some(x=>x[0]==='remember'),false);
+ f.env.projectEpoch.current++;f.env.currentProject.current=id(3);gate.resolve({project:{id:id(2)},shots:[],nodes:[]});assert.equal(await attempt,false);assert.equal(f.calls.some(x=>x[0]==='remember'||x[0]==='markOpened'),false);
+ const g=selectionHarness();g.env.importSession.current.active=false;assert.equal(await g.select(id(2)),false);assert.equal(g.calls.some(x=>x[0]==='remember'||x[0]==='markOpened'),false);
 });
 test('actual same-project shortcut requires loaded project and a failed activation can be explicitly retried',async()=>{
  const f=selectionHarness();assert.equal(await f.select(id(1)),true);assert.deepEqual(f.calls,[['remember',id(1),0]]);
@@ -106,9 +110,9 @@ test('actual same-project shortcut requires loaded project and a failed activati
 });
 test('actual preference-load setup rejection releases only its current loading owner and never remembers',async()=>{
  const f=selectionHarness();f.env.preferencesRef.current.load=async()=>{throw Error('Preference identity rejected');};
- assert.equal(await f.select(id(2)),false);assert.equal(f.env.projectOpening.phase,'error');assert.match(f.env.projectOpening.error,/Preference identity rejected/);assert.equal(f.env.projectSessionReady(),false);assert.ok(f.calls.some(x=>x[0]==='setLoading'&&x[1]===false));assert.equal(f.calls.some(x=>x[0]==='remember'),false);
+ assert.equal(await f.select(id(2)),false);assert.equal(f.env.projectOpening.phase,'error');assert.match(f.env.projectOpening.error,/Preference identity rejected/);assert.equal(f.env.projectSessionReady(),false);assert.ok(f.calls.some(x=>x[0]==='setLoading'&&x[1]===false));assert.equal(f.calls.some(x=>x[0]==='remember'||x[0]==='markOpened'),false);
  const gate=deferred(),g=selectionHarness();g.env.preferencesRef.current.load=()=>gate.promise;const pending=g.select(id(2));await new Promise(setImmediate);g.env.currentProject.current=id(3);g.env.projectEpoch.current++;gate.reject(Error('late'));
- assert.equal(await pending,false);assert.equal(g.calls.some(x=>x[0]==='notice'||x[0]==='setLoading'&&x[1]===false||x[0]==='setProjectOpening'&&x[1].phase==='error'),false);
+ assert.equal(await pending,false);assert.equal(g.calls.some(x=>x[0]==='notice'||x[0]==='remember'||x[0]==='markOpened'||x[0]==='setLoading'&&x[1]===false||x[0]==='setProjectOpening'&&x[1].phase==='error'),false);
 });
 
 function bootHarness({discovery=Promise.resolve({envelope,workspaceScope:scope}),restored=false,explicit=null}={}){
@@ -116,6 +120,7 @@ function bootHarness({discovery=Promise.resolve({envelope,workspaceScope:scope})
  const guard=createProjectBootGuard(()=>epoch.current);guard.activate();const readRpc=env.rpc;
  env.currentProject.current=null;env.openedProject.current=null;env.dataRef.current={};env.viewReady.current=false;
  Object.assign(env,{bootGuard:{current:guard},migrateBrowserStorage:()=>{},workspaceRef:{current:null},preferenceScope:{current:null},locatorIdentity:{current:null},
+  audioRoleProbe:{current:null},audioRoleProbeEpoch:{current:0},setAudioRoleCapability:value=>calls.push(['audioRoleCapability',value]),observeClipAudioRoleCapability,isWorkspaceInspection:isWorkspaceRestoreInspection,canEditTimelineAudioRole,
   rpc:async(op,input)=>op==='workspace.restore.inspect'?{restored,...(restored?{workspaceOrigin:id(10)}:{})}:op==='project.list'?projects:readRpc(op,input),
   retainWorkspaceIdentity:(_current,observed)=>observed,setWorkspace:x=>calls.push(['workspace',x]),
   lastProjectRef:{current:{...env.lastProjectRef.current,getState:()=>({identityBlocked:false,revision:null}),discover:()=>{calls.push(['discover']);return discovery;}}},
@@ -133,7 +138,7 @@ test('actual App startup chooses the remembered nonfirst project, with explicit 
 test('actual App stale startup cannot replace newer selection, publish data after unmount or inspect restored locator',async()=>{
  const gate=deferred(),f=bootHarness({discovery:gate.promise}),old=f.boot();await new Promise(setImmediate);f.epoch.current++;gate.resolve({envelope,workspaceScope:scope});await old;assert.equal(f.calls.some(x=>x[0]==='select'||x[0]==='projects'),false);
  const held=deferred(),g=bootHarness({discovery:held.promise}),pending=g.boot();await new Promise(setImmediate);g.guard.deactivate();held.resolve({envelope,workspaceScope:scope});await pending;assert.equal(g.calls.some(x=>x[0]==='select'||x[0]==='projects'),false);
- const restored=bootHarness({restored:true});await restored.boot();assert.equal(restored.calls.some(x=>x[0]==='discover'),false);assert.deepEqual(restored.calls.filter(x=>x[0]==='select'),[['select',id(1),true]]);
+ const restored=bootHarness({restored:true});await restored.boot();assert.equal(restored.calls.some(x=>x[0]==='discover'||x[0]==='markOpened'),false);assert.deepEqual(restored.calls.filter(x=>x[0]==='select'),[['select',id(1),true]]);
 });
 test('initial foreign locator permits uncached manual project fallback; changed established identity blocks startup',async()=>{
  const first=bootHarness({discovery:Promise.resolve(null)});first.env.lastProjectRef.current.getState=()=>({identityBlocked:true,revision:null});await first.boot();

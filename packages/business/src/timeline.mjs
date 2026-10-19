@@ -16,6 +16,8 @@ import {AppError,sourceFrameCount,isTimelineMutationResponse as legacyMutationRe
 import {getTimelineFormat,readTimelineFormatOwner,readTimelineFormatState,assertTimelineFormatEligible} from './timeline-format.mjs';
 import {canonicalFormatValue} from './timeline-format-receipts.mjs';
 import {freezeTimelineSnapshot} from './timeline-inputs.mjs';
+import {removeTimelineClipWithRipple} from './timeline-ripple-remove.ts';
+import {initializeProjectTimelineFormat} from './project-timeline-format.ts';
 export {TIMELINE_LIMITS} from './timeline-inputs.mjs';
 import {readTimelinePreflightSnapshot} from './timeline-sources.mjs';
 import {createTimelineReplacementBoundary} from './timeline-replacement.mjs';
@@ -269,6 +271,7 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
    clip(timeline,input.clipId);
    timeline.clips=timeline.clips.filter(item=>item.id!==input.clipId);
   }),
+  'timeline.clip.rippleRemove':input=>mutate('timeline.clip.rippleRemove',input,timeline=>removeTimelineClipWithRipple(timeline,input.clipId)),
   'timeline.clip.split':input=>mutate('timeline.clip.split',input,(timeline,boundary)=>{
    const left=clip(timeline,input.clipId),end=left.startFrame+left.durationFrames;
    if(input.atFrame<=left.startFrame||input.atFrame>=end)
@@ -329,5 +332,9 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
   error:(code,status=409)=>new AppError(code,'已审核的固定增益无法应用，请重新检查当前时间线',status),
   isDomainError:error=>error instanceof AppError,
  },assertAvailable);
- return {ensure,history,handlers,moveClipInProject,setClipGainInProject,createLoudnessApplyTransactions};
+ const initializeProjectFormat=(projectId,presetId)=>initializeProjectTimelineFormat({
+  inTransaction:()=>db.isTransaction,requireProject:id=>required('projects',id),findTimeline:find,
+  create:newTimeline,save:value=>put('timelines',value),
+ },projectId,presetId);
+ return {ensure,history,handlers,moveClipInProject,setClipGainInProject,createLoudnessApplyTransactions,initializeProjectFormat};
 }

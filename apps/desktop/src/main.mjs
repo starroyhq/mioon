@@ -7,7 +7,11 @@ import { createAppLanguageHost } from './app-language-host.ts';
 import { APP_LANGUAGE_CHANNEL } from '../../../packages/i18n/src/preference.ts';
 import { resolveLocale } from '../../../packages/i18n/src/locale.ts';
 import { nativeText as nt, setNativeLanguageReader } from './app-language-text.ts';
-import { app, BrowserWindow, Menu, session, dialog, utilityProcess, safeStorage, ipcMain } from 'electron';
+import { app, BrowserWindow, Menu, session, dialog, utilityProcess, safeStorage, ipcMain, shell, nativeTheme } from 'electron';
+import {createWorkspaceToolsHost} from './workspace-tools-host.ts';
+import {WORKSPACE_TOOLS_CHANNEL} from '../../../packages/contracts/src/workspace-info.ts';
+import {inspectMediaTools} from '../../../packages/business/src/media-tool-diagnostics.ts';
+import {run as runMedia} from '@mioon/business/media-runtime';
 import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -29,6 +33,7 @@ import { PROJECT_WINDOW_CHANNEL } from './project-window-protocol.ts';
 import { installNativeCloseAdmission } from './native-close.ts';
 import { secureWebPreferences, sessionCookie, installSessionPolicy, installWindowPolicy, isAllowedNavigation } from './security.mjs';
 import { windowChromeOptions } from './window-chrome.ts';
+import { createDesktopWindowAppearance } from './window-appearance.ts';
 
 // The renderer never receives privileged Electron APIs or native filesystem paths.
 app.enableSandbox();
@@ -50,6 +55,7 @@ let win, backend, activeSession, ready, restarting = false, quitting = false;
 let agentSettings;
 let startupOperation;
 let windowContext, windowHost, nativeAudioHost, lutRecoveryHost;
+let workspaceToolsHost;
 const windowAdmissions = new WeakMap();
 const initialWindowLoads = new WeakMap();
 const cancelledStartupErrors = new WeakSet();
@@ -144,13 +150,16 @@ async function start() {
     // A backend handshake alone is not permission to open a window. Publish its
     // context only after this start owns a prepared session and discovery file.
     const context = windowContext = { startup, ready: started, session: activeSession, incident };
+    context.appearance = createDesktopWindowAppearance({root:paths.dataDir,channel:identity.channel,nativeTheme,signal:startup.signal,
+      storage:{validatePrivateDirectory,validateManagedFile,readPrivateFile},isCurrent:()=>ownsWindowContext(context),
+      getWindows:()=>windowHost?.windows()||[],ownsWindow:window=>ownsWindow(window,context)});
     windowHost = createProjectWindowHost({
       backendId, launcherUrl: `${started.url}/`, editorUrl: projectId => `${started.url}/?project=${projectId}`,
       isCurrent: () => ownsWindowContext(context),
       canInteract: () => quitRouter.allowsWindows && !context.incident.failed,
       createWindow: () => new BrowserWindow({ title: identity.productName, width: 1500, height: 960,
         icon: path.join(app.getAppPath(), 'icons/icon.png'),
-        minWidth: 1050, minHeight: 680, backgroundColor: '#f6f4ef', show: false,
+        minWidth: 1050, minHeight: 680, backgroundColor: context.appearance.backgroundColor(), show: false,
         autoHideMenuBar: process.platform !== 'darwin', ...windowChromeOptions(),
         webPreferences: { ...secureWebPreferences(context.session), preload: path.join(app.getAppPath(), 'preload.cjs') } }),
       prepareWindow: (window, owner) => prepareOwnedWindow(window, context, owner),
@@ -197,6 +206,7 @@ async function start() {
     startup.checkpoint();
     return { identity, runtime: ready.runtime, tools: tools.versions };
   } catch (error) {
+    if(windowContext?.startup===startup)windowContext.appearance?.dispose();
     // stop()/quit abort this scope before draining, so an old result may arrive
     // even before its replacement starts. Never suppress a failed settings drain.
     if (startup.signal.aborted && !closingCancelledSettings) throw cancelledStartupError();
@@ -225,6 +235,9 @@ async function openWindow(context = windowContext) {
 function prepareOwnedWindow(window, context, owner) {
   win = window;
   const contents = window.webContents;
+  const refreshAppearance = () => context.appearance.refresh();
+  window.on('focus', refreshAppearance);
+  window.once('closed', () => window.removeListener('focus', refreshAppearance));
   const initialLoad = observeInitialProjectLoad(window, owner.url, () => ownsWindow(window, context));
   initialWindowLoads.set(window, initialLoad);
   installWindowPolicy(window, context.ready.url, { url: owner.url, isCurrent: () => owner.isCurrent() });
@@ -266,8 +279,9 @@ function prepareOwnedWindow(window, context, owner) {
 async function stop() {
   const context = windowContext, audioHost = context?.audioHost;
   await audioHost?.shutdown();
-  if (context && windowContext !== context) throw Object.assign(new Error('Desktop ownership changed during shutdown.'), { code: 'BACKEND_STOP_FAILED' });
+  if (context && windowContext !== context) throw Object.assign(new Error('Desktop ownership changed during shutdown'), { code: 'BACKEND_STOP_FAILED' });
   if (nativeAudioHost === audioHost) nativeAudioHost = null;
+  context?.appearance?.dispose();
   windowHost?.dispose(); windowHost = null;
   windowContext = null;
   await startupOperation?.abort();
@@ -373,6 +387,7 @@ const quitCoordinator = new MultiWindowQuitCoordinator({ getWindows: () => windo
   onStateChange: () => windowHost?.refresh(),
   stop: async () => {
     quitting = true;
+    windowContext?.appearance?.dispose();
     windowHost?.dispose(); windowHost = null;
     windowContext = null;
     const onUnconfirmed = () => smokeOutput ? undefined : dialog.showMessageBox({ type: 'error', title: nt('native.waitExitTitle'),
@@ -401,6 +416,10 @@ const restartCoordinator = new MultiWindowRestartCoordinator({
 const quitRouter = createProjectWindowQuitRouter({ quit: quitCoordinator, restart: restartCoordinator, onPendingChange: () => windowHost?.refresh() });
 function requestApplicationQuit(source) { return quitRouter.request(source).catch(quitFailed); }
 ipcMain.handle(CLIP_LUT_RECOVERY_CHANNEL, (event, request) => lutRecoveryHost?.dispatch(event, request) ?? { ok: false, code: 'LUT_RECOVERY_UNAVAILABLE' });
+ipcMain.handle(WORKSPACE_TOOLS_CHANNEL,(event,request)=>{
+  if(!workspaceToolsHost)throw new Error('Workspace tools are unavailable.');
+  return workspaceToolsHost.dispatch(event,request);
+});
 ipcMain.handle(APP_LANGUAGE_CHANNEL, (event, request) => {
   if (!languageHost) throw new Error('App language preferences are not available.');
   return languageHost.dispatch(event, request);
@@ -446,6 +465,22 @@ else {
   process.on('SIGINT', () => app.quit());
   app.whenReady().then(async () => {
     if (process.platform === 'darwin') app.dock?.setIcon(path.join(app.getAppPath(), 'icons/icon.png'));
+    workspaceToolsHost=createWorkspaceToolsHost({
+      isTrusted:event=>{
+        const window=windowHost?.windowForContents(event.sender),owner=windowHost?.ownerForContents(event.sender);
+        return Boolean(!restarting&&quitCoordinator.state==='idle'&&window&&owner&&ownsWindow(window,windowContext)&&owner.isCurrent()&&
+          event.senderFrame===window.webContents.mainFrame&&event.senderFrame===owner.frame&&event.senderFrame?.url===owner.url);
+      },
+      read:()=>readToolConfig(paths.configFile),
+      select:async name=>{const result=await dialog.showOpenDialog({title:nt('native.chooseExecutable',{name}),properties:['openFile']});return result.canceled||result.filePaths.length!==1?null:result.filePaths[0];},
+      check:async configuration=>{
+        const signal=windowContext?.startup.signal;if(!signal)throw new Error('Workspace tools are unavailable.');
+        const checked=await validateTools(configuration,{signal});
+        return inspectMediaTools({ffmpeg:checked.ffmpeg,ffprobe:checked.ffprobe},{execute:runMedia,signal});
+      },
+      save:configuration=>saveToolConfig(paths.configFile,configuration),
+      revealWorkspace:async()=>{validatePrivateDirectory(paths.dataDir);return (await shell.openPath(paths.dataDir))==='';},
+    });
     languageHost = createAppLanguageHost({ systemLanguages,
       storage: { read: () => readAppLanguagePreference(paths), write: text => writeAppLanguagePreference(paths, text) },
       isTrusted: event => {
@@ -467,7 +502,9 @@ else {
     if (smokeOutput) {
       const { runSmoke } = await import('./smoke-checks.mjs');
       await runSmoke({ app, getWindow: () => win, getSession: () => activeSession,
-        getReady: () => ready, getBackend: () => backend, restart, paths, report, output: smokeOutput,
+        getProjectWindow: projectId => windowHost?.windows().find(window => windowHost.contextFor(window)?.initialProjectId === projectId),
+        getReady: () => ready, getBackend: () => backend, restart,
+        reload: () => windowAdmissions.get(win)?.requestReload() ?? Promise.resolve(false), paths, report, output: smokeOutput,
         attemptDirtyQuit: async () => {
           smokeDiscardDecision = false;
           try { return await quitCoordinator.request(); }

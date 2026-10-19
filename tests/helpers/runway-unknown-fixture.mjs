@@ -12,7 +12,7 @@ export const syntheticPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC
 export async function createRunwayUnknownFixture(root) {
   const store = openStore(root), calls = [];
   let worker;
-  const env = { RUNWAYML_API_SECRET: 'OFFLINE-Q1-SENTINEL', MIOON_ENABLE_LIVE_PROVIDER: '1', RUNWAY_MAX_GENERATIONS: '2', RUNWAY_APPROVED_ASSET_SHA256: createHash('sha256').update(syntheticPng).digest('hex') };
+  const env = { RUNWAYML_API_SECRET: 'OFFLINE-Q1-SENTINEL', MIOON_ENABLE_LIVE_PROVIDER: '1', RUNWAY_APPROVED_ASSET_SHA256: createHash('sha256').update(syntheticPng).digest('hex') };
   const provider = createRunwayProvider({ root, env, fetchImpl: async (url, init) => {
     calls.push({ url, method: init.method });
     assert.equal(url, 'https://api.dev.runwayml.com/v1/image_to_video');

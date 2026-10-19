@@ -21,7 +21,7 @@ function png(fill){
  return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',head),chunk('IDAT',deflateSync(Buffer.alloc((360*3+1)*640,fill))),chunk('IEND',Buffer.alloc(0))]);
 }
 async function fixture(t){
- const root=await mkdtemp(path.join(tmpdir(),'mioon-frame-pair-')),store=openStore(root),env={MIOON_ENABLE_LIVE_PROVIDER:'1',ARK_API_KEY:'inert',ARK_MAX_GENERATIONS:'20',GEMINI_API_KEY:'inert',VEO_MAX_GENERATIONS:'20',RUNWAYML_API_SECRET:'inert',RUNWAY_MAX_GENERATIONS:'20',MINIMAX_API_KEY:'inert',MINIMAX_MAX_GENERATIONS:'20',VIDU_API_KEY:'inert',VIDU_MAX_GENERATIONS:'20',VIDU_OUTPUT_HOSTS:'offline.invalid'};
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-frame-pair-')),store=openStore(root),env={MIOON_ENABLE_LIVE_PROVIDER:'1',ARK_API_KEY:'inert',GEMINI_API_KEY:'inert',RUNWAYML_API_SECRET:'inert',MINIMAX_API_KEY:'inert',VIDU_API_KEY:'inert',VIDU_OUTPUT_HOSTS:'offline.invalid'};
  const providers=createProviderRegistry({db:store.db,root,env}),services=createServices(store,providers,{env,profileNow:()=>Date.parse('2026-10-11T12:00:00Z')});let worker,posts=0;
  const call=(op,input)=>services.call(op,input),project=await call('project.create',{name:'Offline frame pair'}),other=await call('project.create',{name:'Other owner'});
  async function asset(patch={}){const bytes=png(store.list('assets').length),id=randomUUID(),record={id,projectId:project.id,name:'Synthetic frame',mimeType:'image/png',relativePath:`media/${id}.png`,sha256:sha(bytes),sizeBytes:bytes.length,width:360,height:640,provenance:'user-import',createdAt:new Date().toISOString(),...patch};store.put('assets',record);await writeFile(path.join(root,record.relativePath),bytes);return record;}

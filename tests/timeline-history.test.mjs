@@ -49,6 +49,7 @@ test('every track and clip edit round-trips complete domain snapshots with stabl
  const f=await fixture(t),projectId=f.projectId,asset=f.asset(projectId,'video/mp4');
  let timeline=await f.call('timeline.get',{projectId}),revision=timeline.revision;
  const original=clone(timeline),snapshots=[domain(timeline)],requests=[];
+ assert.deepEqual([original.width,original.height],[1080,1920]);
  async function edit(operation,fields){const params=input(projectId,timeline,fields);timeline=await f.call(operation,params);assert.equal(timeline.revision,++revision);snapshots.push(domain(timeline));requests.push({operation,params,response:clone(timeline)});}
  await edit('timeline.track.add',{kind:'video',name:'Overlay'});
  const lane=timeline.tracks.at(-1).id;
@@ -68,7 +69,7 @@ test('every track and clip edit round-trips complete domain snapshots with stabl
  for(let index=4;index>=0;index--){
   const history=await f.call('timeline.history.get',{projectId});assert.equal(history.undoEntry.id,entries[index].id);
   timeline=await f.call('timeline.undo',input(projectId,timeline));assert.equal(timeline.revision,++revision);assert.deepEqual(domain(timeline),snapshots[index]);
-  assert.equal(timeline.id,original.id);assert.equal(timeline.createdAt,original.createdAt);assert.equal(timeline.fps,original.fps);assert.equal(timeline.width,720);assert.equal(timeline.height,1280);
+  assert.equal(timeline.id,original.id);assert.equal(timeline.createdAt,original.createdAt);assert.equal(timeline.fps,original.fps);assert.equal(timeline.width,original.width);assert.equal(timeline.height,original.height);
  }
  await rejectAtomic(f,'timeline.undo',input(projectId,timeline),'NOTHING_TO_UNDO');
  f.restart();

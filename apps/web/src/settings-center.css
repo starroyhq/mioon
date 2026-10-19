@@ -18,6 +18,26 @@
 .settings-workspace-status > summary { cursor: pointer; font-size: 12px; color: var(--muted-foreground); }
 .settings-workspace-status > div { margin-top: 12px; }
 .settings-center [hidden] { display: none !important; }
+.settings-appearance { display: flex; flex-direction: column; gap: var(--wb-space-3); min-width: 0; margin-top: var(--wb-space-5); }
+.settings-appearance > h2 { color: var(--wb-text); font-size: var(--wb-text-section); font-weight: 600; }
+.settings-appearance-row { display: flex; align-items: center; justify-content: space-between; gap: var(--wb-space-4); min-height: var(--wb-control-large); }
+.settings-appearance-row > [data-slot="label"] { flex: 1; min-width: 0; font-size: var(--wb-text-body); }
+.settings-appearance-row > .workbench-select { max-width: 240px; }
+.settings-appearance-scale { display: flex; align-items: center; gap: var(--wb-space-3); width: 240px; }
+.settings-appearance-scale > [data-slot="slider"] { flex: 1; }
+.settings-appearance-scale [data-slot="slider-thumb"]:has(input:focus-visible) { outline: 2px solid var(--wb-accent-line); outline-offset: 2px; }
+.settings-appearance-scale > output { min-width: 4ch; text-align: right; font: 500 var(--wb-text-label)/1.4 var(--wb-font-mono); color: var(--wb-soft); }
+.settings-appearance-hint { color: var(--wb-soft); font-size: var(--wb-text-caption); line-height: 1.5; }
+.settings-appearance-actions { position: sticky; bottom: 0; z-index: 1; display: flex; align-items: center; justify-content: flex-end; gap: var(--wb-space-2); min-height: var(--wb-action-bar); padding-block: var(--wb-space-2); background: var(--wb-panel); border-top: 1px solid var(--wb-line-subtle); }
+.settings-appearance-actions > .wb-badge { margin-right: auto; }
+html[data-reduce-motion="true"] *, html[data-reduce-motion="true"] *::before, html[data-reduce-motion="true"] *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+html[data-density="compact"] { --wb-control: var(--wb-control-compact); }
+html[data-density="compact"] :is(.canvas-heading, .timeline-toolbar) .button,
+html[data-density="compact"] :is(.board-floating-toolbar, .task-overview, .edit-timeline-toolbar) [data-slot="button"],
+html[data-density="compact"] [data-slot="dropdown-menu-item"] { min-height: var(--wb-control-compact); height: var(--wb-control-compact); padding-block: 0; }
+html[data-density="compact"] .task-workspace :is(.job-actions, .reconcile-job, .notice) > [data-slot="button"] { min-height: var(--wb-control-compact); height: auto; padding-block: 0; }
+html[data-density="compact"] :is(.task-workspace .job-card, .task-overview-items article) { padding-block: var(--wb-space-2); }
+html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--wb-space-2); margin-bottom: var(--wb-space-2); }
 .settings-center .agent-settings-page, .settings-center .image-settings-page, .settings-center .comfy-image-settings-page { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
 .project-home-settings-window > .project-home-settings { padding-top: 32px; }
 @media (max-width: 800px) {
@@ -42,3 +62,38 @@
 }
 
 .settings-workspace-status-global { margin: 0 0 24px; padding: 12px 16px; }
+
+/* DialogContent uses the independent translate property. Reset it as well as
+ * transform so the centered inset layout is not shifted a second time. */
+.web-settings-dialog.project-home { inset: 0; left: 0; top: 0; translate: none; transform: none; width: min(960px, calc(100vw - 40px)); height: min(640px, calc(100dvh - 40px)); border-radius: var(--wb-radius-dialog); background: var(--wb-raised); }
+.web-settings-dialog .web-settings-scroll { display: flex; flex: 1; overflow: hidden; padding: 0; }
+.web-settings-dialog .settings-center { flex: 1; min-height: 0; grid-template-columns: 220px minmax(0, 1fr); gap: 0; }
+.settings-center-close { position: absolute; top: 10px; right: 10px; z-index: 4; width: var(--wb-control); height: var(--wb-control); padding: 0; color: var(--wb-soft); font-size: 21px; }
+.web-settings-dialog .settings-center-nav { gap: 2px; min-height: 0; padding: 20px 8px 12px; border-right: 1px solid var(--wb-line-subtle); background: var(--wb-panel); }
+.web-settings-dialog .settings-center-nav-label { padding: 0 12px 14px; color: var(--wb-text); font-size: var(--wb-text-title); letter-spacing: 0; font-weight: 600; }
+.web-settings-dialog .settings-center-nav [data-slot="button"] { min-height: 32px; height: 32px; padding: 0 12px; border-radius: var(--wb-radius-control); color: var(--wb-soft); }
+.web-settings-dialog .settings-center [aria-current="page"] { background: var(--wb-hover); color: var(--wb-text); }
+.web-settings-dialog .settings-center-nav > p { margin: auto 10px 0; font-size: var(--wb-text-caption); line-height: 1.5; color: var(--wb-muted); }
+.web-settings-dialog .settings-center-content { overflow-y: auto; overscroll-behavior: contain; min-height: 0; padding: 16px 24px 0; scrollbar-gutter: stable; }
+.web-settings-dialog .settings-center-heading { margin: 0 28px 24px 0; }
+.web-settings-dialog .settings-center-heading h1 { margin-bottom: 4px; font-size: var(--wb-text-section); font-weight: 600; }
+.web-settings-dialog .settings-center-heading p { font-size: var(--wb-text-caption); line-height: 1.5; }
+.web-settings-dialog .settings-preference { min-height: 60px; padding: 0; border: 0; border-radius: 0; background: none; }
+.web-settings-dialog .settings-preference h2 { font-size: var(--wb-text-body); margin-bottom: 4px; }
+.web-settings-dialog .settings-preference p { font-size: var(--wb-text-caption); color: var(--wb-muted); line-height: 1.5; }
+.web-settings-dialog .settings-appearance { margin-top: 20px; gap: 16px; }
+.web-settings-dialog .settings-appearance-row { min-height: 42px; }
+.web-settings-dialog .settings-appearance-actions { margin-top: 24px; margin-inline: -24px; padding-inline: 24px; background: var(--wb-raised); }
+.web-settings-dialog .settings-service-nav { margin-bottom: 16px; gap: 4px; padding-bottom: 12px; }
+.web-settings-dialog .settings-service-nav [data-slot="button"] { min-height: var(--wb-control); padding: 0 8px; }
+.web-settings-dialog .agent-settings-page, .web-settings-dialog .image-settings-page, .web-settings-dialog .comfy-image-settings-page { border: 0; border-radius: 0; background: none; }
+@media (max-height: 720px) { .web-settings-dialog .settings-center-content { padding-top: 12px; } .web-settings-dialog .settings-center-heading { margin-bottom: 16px; } .web-settings-dialog .settings-appearance { gap: 12px; } }
+.settings-services > p { margin-bottom: 16px; line-height: 1.6; }
+.settings-services dl > div, .settings-shortcuts > div, .settings-about dl > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 52px; border-bottom: 1px solid var(--wb-line-subtle); }
+.settings-services dt, .settings-shortcuts dt, .settings-about dt { font-size: var(--wb-text-body); }
+.settings-services dt code { display: block; color: var(--wb-muted); font: 11px/1.6 var(--wb-font-mono); }
+.settings-services dd, .settings-shortcuts dd, .settings-about dd { flex: none; color: var(--wb-soft); font-size: var(--wb-text-label); }
+.settings-services > .wb-button { margin-top: 16px; }
+.settings-about h2 { font-size: var(--wb-text-display); margin-bottom: 20px; }
+.settings-about h3 { font-size: var(--wb-text-section); margin-top: 24px; }
+.settings-about p { color: var(--wb-soft); font-size: var(--wb-text-label); line-height: 1.8; margin-top: 12px; }

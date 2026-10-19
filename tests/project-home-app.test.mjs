@@ -95,7 +95,7 @@ function environment(options = {}) {
   for (const name of ['ProjectOpening', 'HomePage', 'ProjectListStatus', 'Auth', 'Online', 'Data', 'Projects', 'Providers', 'LastSync',
     'PropertiesPage', 'TaskState', 'PreferenceStatus', 'Pending', 'ShowProjects', 'Nodes', 'Loading', 'ShotDirty', 'ClipDirty', 'SourceDirty',
     'SubjectDirty', 'SubtitleDirty', 'InspectorEpoch', 'RightDockTab', 'ShowExports', 'ComparisonId', 'PreviewAsset', 'RealConfirm',
-    'Toast', 'MobilePanel', 'View', 'Zoom', 'Workspace', 'ShowCreate', 'WebSettingsRequest', 'WebSettingsOpen', 'AudioRoleCapability']) {
+    'Toast', 'MobilePanel', 'PanelOverlay', 'ShowTasks', 'ShowDelivery', 'ShowImage', 'ShowProjectChooser', 'View', 'Zoom', 'Workspace', 'ShowCreate', 'WebSettingsRequest', 'WebSettingsOpen', 'AudioRoleCapability']) {
     const key = name[0].toLowerCase() + name.slice(1);
     env[`set${name}`] = value => { env[key] = typeof value === 'function' ? value(env[key]) : value; calls.push([`set${name}`, env[key]]); };
   }
@@ -114,7 +114,7 @@ function harness(options = {}) {
     section('  async function createProject(', '  async function addShot(')].join('\n');
   // A live lexical environment models React rerenders without reimplementing the
   // production functions. Only external services and unrelated draft guards are fakes.
-  const api = Function('env', `with (env) { ${source}\nreturn { projectSessionReady, selectProject, refresh, prepareSettingsDeparture, openGlobalSettings, changeHomePage, refreshHomeProjects, createProject, boot }; }`)(env);
+  const api = Function('env', `with (env) { ${source}\nreturn { projectSessionReady, selectProject, refresh, prepareSettingsDeparture, openGlobalSettings, changeHomePage, refreshHomeProjects, createProject, showProjectHome, boot }; }`)(env);
   return { env, calls, registry, ...api,
     eligible: () => opening.canPublishProjectOpen(env.openedProject.current, { active: env.importSession.current.active,
       currentProjectId: env.currentProject.current, epoch: env.projectEpoch.current, workspaceScope: workspaceOriginScope(env.workspaceRef.current) || '',
@@ -468,7 +468,7 @@ test('actual App shares authenticated settled project readiness between workbenc
     h.env.data = h.env.dataRef.current = snapshot(id(1)); change(h.env);
     const env = { LanguageControl: () => null, renderImportFeedback: (locale, value) => renderCoreMessage(locale, value), msg, ...createI18nTestContext(), localizedError: displayMessage => Object.assign(new Error(renderCoreMessage('zh-Hans', displayMessage)), { displayMessage }), ...h.env, modeLayout, workspaceMode: 'canvas',
       useRef: initial => ({ current: initial }), useState: initial => [initial, () => {}],
-      usePanelGeometry: (...args) => { observations.push(args); return { narrow: false, style: {} }; },
+      usePanelGeometry: (...args) => { observations.push(args); return { narrow: false, style: {}, effective: modeLayout }; },
     };
     const result = Function('env', `with (env) { ${wiring}\nreturn { workbenchReady, geometry }; }`)(env);
     assert.equal(observations.length, 1, label);
@@ -517,4 +517,15 @@ test('native alternate project delegates before any editor draft, request or URL
   assert.deepEqual(h.calls.slice(count), [['nativeEntry.open', id(2)]]);
   assert.equal(h.env.data, data); assert.equal(h.env.currentProject.current, id(3));
   assert.equal(h.env.projectEpoch.current, epoch); assert.equal(h.env.navigationEpoch.current, navigation);
+});
+
+
+test('returning to home uses exact navigation guards, invalidates old project reads and leaves recency intact',async()=>{
+ const h=harness();await h.selectProject(id(1));const remembered=callsOf(h,'remember').length,epoch=h.env.projectEpoch.current;
+ assert.equal(await h.showProjectHome(),true);assert.equal(h.env.currentProject.current,null);assert.equal(h.env.openedProject.current,null);assert.equal(h.env.viewReady.current,false);assert.equal(h.env.data.project,null);assert.equal(h.env.projectOpening.phase,'home');assert.ok(h.env.projectEpoch.current>epoch);assert.equal(callsOf(h,'remember').length,remembered);
+ const native=harness({nativeWindow:nativeEditor(id(1))});assert.equal(await native.showProjectHome(),false);assert.deepEqual(callsOf(native,'nativeEntry.show'),[['nativeEntry.show','open']]);
+});
+
+test('home navigation cannot discard over a newer scope or a refused draft confirmation',async()=>{
+ const h=harness({guard:async()=>false});h.env.currentProject.current=id(1);const before=h.env.projectEpoch.current;assert.equal(await h.showProjectHome(),false);assert.equal(h.env.currentProject.current,id(1));assert.equal(h.env.projectEpoch.current,before);
 });

@@ -16,7 +16,7 @@ test('export preflight accepts exactly the supported frozen dimension pairs at 3
   const value=report();Object.assign(value.summary,{fps,width,height});
   assert.ok(isExportPreflightResponse(value,{projectId:value.projectId,expectedRevision:3}));
  }
- for(const patch of [{width:1280,height:1280},{width:720,height:1080},{width:1920,height:1080},
+ for(const patch of [{width:1280,height:1280},{width:720,height:1080},{width:1920,height:1079},{width:1080,height:1919},{width:1920,height:1920},
   {width:1280,height:720,fps:24},{width:720,height:720,fps:60},{width:720.5},{fps:'30'}]){
   const value=report();Object.assign(value.summary,patch);
   assert.equal(isExportPreflightResponse(value),false,JSON.stringify(patch));

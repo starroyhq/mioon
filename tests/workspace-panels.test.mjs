@@ -42,6 +42,7 @@ function harness(name) {
     createElement: (type, props, ...children) => ({ type, props: { ...props, children: children.length === 1 ? children[0] : children } }),
     useRef(value) { const index = cursor++; return slots[index] ||= { current: value }; },
     useState(value) { const index = cursor++; slots[index] ||= { value: typeof value === 'function' ? value() : value }; return [slots[index].value, next => { slots[index].value = typeof next === 'function' ? next(slots[index].value) : next; }]; },
+    useMemo(callback, deps) { const index = cursor++, old = slots[index]; if (!old || deps.some((value, i) => value !== old.deps[i])) slots[index] = { deps, value: callback() }; return slots[index].value; },
     useLayoutEffect: (callback, deps) => effect('layout', callback, deps),
     useEffect: (callback, deps) => effect('passive', callback, deps),
   };
@@ -72,7 +73,7 @@ function harness(name) {
     callback => { frames.set(++frameId, callback); return frameId; }, id => frames.delete(id),
     ResizeObserver,
   );
-  const Component = name === 'usePanelGeometry' ? props => module.exports.usePanelGeometry(props.surface, props.preferred, props.mode, props.scope, props.ready) : module.exports[name];
+  const Component = name === 'usePanelGeometry' ? props => module.exports.usePanelGeometry(props.surface, props.preferred, props.mode, props.scope, props.ready, props.presentationScope) : module.exports[name];
   function flush(queue) { for (const index of queue) { const slot = slots[index]; slot.cleanup?.(); slot.cleanup = slot.callback(); } }
   return {
     fallback, document,
@@ -122,6 +123,18 @@ for (const [name, coordinate, moved, expected] of [['assets', 'clientX', 150, 35
     f.fire('onLostPointerCapture'); f.fire('onPointerUp'); assert.equal(f.commits.length, 1);
   });
 }
+
+test('panel pointer resize converts physical deltas at 90% and 125% into logical preferred sizes', () => {
+  for (const scale of [0.9, 1.25]) for (const name of ['assets', 'inspector', 'timeline']) {
+    const f = resizeFixture(name), element = f.element();
+    element.offsetWidth = 8; element.getBoundingClientRect = () => ({ width: 8 * scale });
+    f.start();
+    f.fire('onPointerMove', name === 'assets' ? { clientX: 100 + 40 * scale } : name === 'inspector' ? { clientX: 100 - 40 * scale } : { clientY: 100 - 40 * scale });
+    f.fire('onPointerUp');
+    assert.deepEqual(f.commits, [[f.props.field, 340]]);
+    f.h.unmount();
+  }
+});
 
 test('resize is inert for disabled handles, secondary buttons, clicks without motion, and unrelated keys', () => {
   for (const overrides of [{ enabled: false }, {}]) {
@@ -289,13 +302,13 @@ test('the preview keeps a comfortable height while the timeline keeps one track,
   const h = harness('usePanelGeometry'), preferred = layout.defaultWorkspaceLayout().editing;
   const surface = { current: { clientWidth: 1400, clientHeight: 620 } }, props = { surface, preferred, mode: 'editing', scope: 'project-one:editing' };
   h.render(props); let geometry = h.render(props);
-  // 620px minus 36px of padding and gap leaves 584px: a 300px preview and a 284px timeline. The preferred 320px is untouched.
-  assert.equal(geometry.effective.timelineHeight, 284); assert.equal(geometry.maxima.timelineHeight, 284); assert.equal(preferred.timelineHeight, 320);
+  // Reserve 240px of stage plus 84px of preview controls; keep the 300px preference untouched.
+  assert.equal(geometry.effective.timelineHeight, 278); assert.equal(geometry.maxima.timelineHeight, 278); assert.equal(preferred.timelineHeight, 300);
   surface.current.clientHeight = 900; h.resize(); geometry = h.render(props);
-  assert.equal(geometry.effective.timelineHeight, 320); assert.equal(geometry.maxima.timelineHeight, 564);
+  assert.equal(geometry.effective.timelineHeight, 300); assert.equal(geometry.maxima.timelineHeight, 558);
   // A short window lets the preview give way before the timeline drops below one track.
   surface.current.clientHeight = 470; h.resize(); geometry = h.render(props);
-  assert.equal(geometry.narrow, false); assert.equal(geometry.effective.timelineHeight, 220); assert.equal(geometry.maxima.timelineHeight, 220);
+  assert.equal(geometry.narrow, false); assert.equal(geometry.effective.timelineHeight, 160); assert.equal(geometry.maxima.timelineHeight, 160);
   h.unmount();
 });
 
@@ -377,35 +390,127 @@ for (const reason of ['changed scope', 'detached panel', 'still hidden', 'newer 
   });
 }
 
-test('narrow/wide header-height feedback settles within two measurements across 300–900px outer heights', () => {
-  // This models the fixed outer CSS rows and the actual geometry hook. It is
-  // not evidence about Chromium rendering, compositor, or extension crashes.
+test('the supported 1050×680 and larger shell keeps a fixed 44px header without geometry feedback writes', () => {
   const css = readFileSync(new URL('../apps/web/src/styles.css', import.meta.url), 'utf8');
-  const wideHeader = Number(css.match(/\.workbench\.workbench-v2\.dock-workbench\{[^}]*grid-template-rows:(\d+)px minmax\(0,1fr\)/)?.[1]);
-  const narrowRows = css.match(/\.workbench\.workbench-v2\.dock-workbench\.dock-narrow\{grid-template-rows:(\d+)px minmax\(0,1fr\) (\d+)px\}/);
-  const narrowFixed = Number(narrowRows?.[1]) + Number(narrowRows?.[2]);
-  assert.equal(wideHeader, 60); assert.equal(narrowFixed, 124);
-  for (const mode of ['canvas', 'editing']) for (let outerHeight = 300; outerHeight <= 900; outerHeight++) {
-    for (const [fromWidth, toWidth] of [[500, 1180], [1180, 500]]) {
-      const h = harness('usePanelGeometry'), surface = { current: { clientWidth: fromWidth, clientHeight: outerHeight - wideHeader } };
-      const props = { surface, preferred: layout.defaultWorkspaceLayout()[mode], mode, scope: `project:${mode}`, ready: true };
-      h.render(props); let geometry = h.render(props);
-      function settle(width) {
-        for (let pass = 1; pass <= 2; pass++) {
-          const previousNarrow = geometry.narrow;
-          surface.current.clientWidth = width;
-          surface.current.clientHeight = Math.max(0, outerHeight - (previousNarrow ? narrowFixed : wideHeader));
-          h.resize(); geometry = h.render(props);
-          assert.equal(h.observerCount(), 1); assert.equal(h.observerCreations(), 1);
-          if (geometry.narrow === previousNarrow) return pass;
-        }
-        assert.fail(`Unsettled ${mode} ${fromWidth}→${width} at outer height ${outerHeight}`);
-      }
-      settle(fromWidth); settle(toWidth);
-      assert.equal(geometry.narrow, toWidth === 500 || outerHeight < 460 + narrowFixed);
-      // A redundant observer delivery must retain the same class and observer.
-      const settled = geometry.narrow; h.resize(); geometry = h.render(props); assert.equal(geometry.narrow, settled);
-      h.unmount(); assert.equal(h.observerCount(), 0);
-    }
+  const tokens = readFileSync(new URL('../packages/ui/src/styles/globals.css', import.meta.url), 'utf8');
+  assert.match(tokens, /--wb-topbar: 44px;/);
+  assert.match(css, /\.workbench\.workbench-v2\.dock-workbench\.shell-redesign \{ grid-template-rows: var\(--wb-topbar\) minmax\(0, 1fr\)/);
+  for (const mode of ['canvas', 'editing']) for (const width of [1050, 1180, 1440]) for (const height of [680, 814, 900]) {
+    const h = harness('usePanelGeometry'), surface = { current: { clientWidth: width, clientHeight: height - 44 } };
+    const preferred = layout.defaultWorkspaceLayout()[mode], before = structuredClone(preferred);
+    const props = { surface, preferred, mode, scope: `project:${mode}`, ready: true };
+    h.render(props); let geometry = h.render(props);
+    assert.equal(geometry.narrow, false);
+    assert.equal(h.observerCount(), 1);
+    const first = geometry.effective;
+    h.resize(); geometry = h.render(props);
+    assert.deepEqual(geometry.effective, first);
+    assert.deepEqual(preferred, before);
+    assert.equal(h.observerCreations(), 1);
+    h.unmount(); assert.equal(h.observerCount(), 0);
   }
+});
+
+test('supported scaled editing windows reserve a 240px physical preview stage without changing saved heights', () => {
+  for (const scale of [0.9, 1, 1.25]) for (const [width, height] of [[1050, 680], [1440, 900]]) {
+    const h = harness('usePanelGeometry'), preferred = layout.defaultWorkspaceLayout().editing, before = structuredClone(preferred);
+    const surface = { current: { clientWidth: width / scale, clientHeight: height / scale - 44 } };
+    const props = { surface, preferred, mode: 'editing', scope: `scaled:${scale}`, ready: true };
+    h.render(props); const geometry = h.render(props);
+    const previewHeight = surface.current.clientHeight - 12 - 6 - geometry.effective.timelineHeight;
+    assert.ok((previewHeight - 84) * scale >= 240, `${width}×${height} at ${scale}: stage budget`);
+    assert.deepEqual(preferred, before); h.unmount();
+  }
+});
+
+test('1050px desktop uses two 44px rails at every supported scale, independently of the very narrow fallback', () => {
+  for (const scale of [0.9, 1, 1.25]) {
+    const h = harness('usePanelGeometry'), preferred = layout.defaultWorkspaceLayout().editing, before = structuredClone(preferred);
+    const surface = {current:{clientWidth:1050 / scale, clientHeight:680 / scale - 44, getBoundingClientRect:()=>({width:1050})}};
+    const props = {surface, preferred, mode:'editing', scope:'project:editing:gesture', presentationScope:'project:editing'};
+    h.render(props); const geometry = h.render(props);
+    assert.equal(geometry.narrow,false); assert.equal(geometry.compact,true);
+    assert.deepEqual([geometry.effective.assetsWidth,geometry.effective.inspectorWidth],[44,44]);
+    assert.deepEqual([geometry.effective.assetsCollapsed,geometry.effective.inspectorCollapsed],[true,true]);
+    assert.deepEqual(preferred,before);h.unmount();
+  }
+  const h=harness('usePanelGeometry'),preferred=layout.defaultWorkspaceLayout().canvas,surface={current:{clientWidth:740,clientHeight:500,getBoundingClientRect:()=>({width:740})}},props={surface,preferred,mode:'canvas',scope:'small'};
+  h.render(props);const geometry=h.render(props);assert.equal(geometry.narrow,true);assert.equal(geometry.compact,false);h.unmount();
+});
+
+test('compact pinning is transient, survives panel intents, and restores the original wide-window preference', () => {
+  const h=harness('usePanelGeometry'),preferred={...layout.defaultWorkspaceLayout().canvas,assetsWidth:360,inspectorWidth:420},before=structuredClone(preferred);
+  const surface={current:{clientWidth:1050,clientHeight:636,getBoundingClientRect:()=>({width:surface.current.clientWidth})}},props={surface,preferred,mode:'canvas',scope:'p:canvas:0',presentationScope:'p:canvas'};
+  h.render(props);let geometry=h.render(props);const retained=geometry.pinPanel;
+  assert.equal(geometry.pinPanel('assets',true),true);geometry=h.render({...props,scope:'p:canvas:1'});
+  assert.equal(geometry.effective.assetsCollapsed,false);assert.equal(geometry.effective.assetsWidth,360);assert.equal(geometry.effective.inspectorWidth,44);
+  assert.equal(geometry.style['--dock-inspector-preferred'],'420px');assert.deepEqual(preferred,before);
+  surface.current.clientWidth=1440;h.resize();geometry=h.render(props);
+  assert.equal(geometry.compact,false);assert.deepEqual([geometry.effective.assetsCollapsed,geometry.effective.inspectorCollapsed],[false,false]);
+  assert.deepEqual([geometry.effective.assetsWidth,geometry.effective.inspectorWidth],[360,420]);assert.equal(retained('inspector',true),false);
+  surface.current.clientWidth=1050;h.resize();geometry=h.render(props);
+  assert.deepEqual([geometry.effective.assetsWidth,geometry.effective.inspectorWidth],[44,44],'Returning to compact must not resurrect an old transient pin');
+  assert.equal(geometry.pinPanel('inspector',true),true);geometry=h.render({...props,presentationScope:'other-project:canvas'});
+  assert.deepEqual([geometry.effective.assetsWidth,geometry.effective.inspectorWidth],[44,44]);assert.deepEqual(preferred,before);h.unmount();
+});
+
+test('actual App rail overlay and pin callbacks use presentation state without persisting an automatic collapse', () => {
+  const source=readFileSync(new URL('../apps/web/src/App.jsx',import.meta.url),'utf8'),css=readFileSync(new URL('../apps/web/src/styles.css',import.meta.url),'utf8');
+  const start=source.indexOf('  function setPanelOpen('),end=source.indexOf('  const setSelectedId =',start);assert.ok(start>=0&&end>start);
+  const h=harness('usePanelGeometry'),preferred=layout.defaultWorkspaceLayout().canvas,before=structuredClone(preferred),surface={current:{clientWidth:1050,clientHeight:636}},props={surface,preferred,mode:'canvas',scope:'p:canvas:0',presentationScope:'p:canvas'};
+  h.render(props);let geometry=h.render(props),overlay=null,marks=0;const persisted=[];
+  const invoke=()=>{const env={clipDraftRef:{current:null},layoutOwner:'p',layoutOwnerEpoch:1,currentProject:{current:'p'},projectEpoch:{current:1},viewRef:{current:{activeMode:'canvas'}},geometry,
+    markPanelIntent(){marks++;},setPanelOverlay(value){overlay=typeof value==='function'?value(overlay):value;},updateView:(...args)=>persisted.push(args),updateModeLayout:(...args)=>persisted.push(args),
+    mobilePanel:'canvas',setMobilePanel(){assert.fail('Compact desktop must not enter the old mobile single-panel flow');},workspaceMode:'canvas',data:{project:{id:'p'}},useEffect(){},assetsCollapsed:geometry.effective.assetsCollapsed,inspectorCollapsed:geometry.effective.inspectorCollapsed,timelineCollapsed:false,panelOverlay:overlay,loading:false,
+    PanelResizeHandle:'Resize',React:{createElement(){}},panelScope:'p:canvas',defaultWorkspaceLayout:layout.defaultWorkspaceLayout};
+    return Function('env',`with(env){${transformSync(source.slice(start,end),{loader:'jsx'}).code};return{setPanelOpen,togglePanelOverlay,panelVisible};}`)(env);};
+  let actions=invoke();assert.equal(actions.panelVisible('assets'),false);assert.equal(actions.panelVisible('inspector'),false);assert.equal(actions.panelVisible('canvas'),true);
+  actions.togglePanelOverlay('assets');actions=invoke();assert.equal(actions.panelVisible('assets'),true);assert.equal(overlay,'assets');assert.deepEqual(persisted,[]);
+  actions.setPanelOpen('assets',true);geometry=h.render({...props,scope:'p:canvas:1'});actions=invoke();assert.equal(overlay,null);assert.equal(actions.panelVisible('assets'),true);assert.equal(actions.panelVisible('inspector'),false);assert.deepEqual(persisted,[]);
+  actions.setPanelOpen('assets',false);geometry=h.render(props);assert.equal(geometry.effective.assetsWidth,44);assert.deepEqual(preferred,before);assert.deepEqual(persisted,[]);assert.equal(marks,3);
+  assert.match(source,/\{assetsCollapsed && <PanelRecall name="assets"/);assert.match(source,/\{inspectorCollapsed && <PanelRecall name="inspector"/);
+  assert.match(source,/const \{ assetsCollapsed, inspectorCollapsed \} = geometry\.effective/);
+  assert.match(css,/\.shell-redesign\.dock-compact \.dock-recall:not\(\.recall-timeline\) > span/);h.unmount();
+});
+
+test('actual App desktop collapse retains the toolbar container, hides body and resize, and restores the current timeline view', () => {
+  const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const start = source.indexOf('  function setPanelOpen('), end = source.indexOf('  const setSelectedId =', start);
+  assert.ok(start >= 0 && end > start);
+  const viewRef = {current:{activeMode:'editing',editing:{timelineCollapsed:true,selectedClipId:'clip-one'}}};
+  const currentProject = {current:'project-one'}, projectEpoch = {current:1};
+  const composing = {current:false}, writes = [], sizes = []; let marks = 0;
+  function render({narrow = false, mode = 'editing'} = {}) {
+    const env = {viewRef,currentProject,projectEpoch,layoutOwner:'project-one',layoutOwnerEpoch:1,workspaceMode:mode,
+      clipDraftRef:{current:{hasPendingComposition:()=>composing.current}},
+      geometry:{narrow,effective:{timelineHeight:160},maxima:{timelineHeight:500},size:{width:narrow?740:1050,height:636},preview(){}},
+      timelineCollapsed:viewRef.current.editing.timelineCollapsed,assetsCollapsed:true,inspectorCollapsed:true,panelOverlay:null,mobilePanel:'canvas',loading:false,data:{project:{id:'project-one'}},
+      markPanelIntent(){marks++;},setPanelOverlay(){},updateView(section,patch){writes.push([section,patch]);Object.assign(viewRef.current[section],patch);},updateModeLayout(...args){sizes.push(args);},
+      setMobilePanel(){},defaultWorkspaceLayout:layout.defaultWorkspaceLayout,useEffect(){},PanelResizeHandle:'Resize',panelScope:'project-one:editing',
+      React:{createElement:(type,props)=>({type,props})}};
+    return Function('env',`with(env){${transformSync(source.slice(start,end),{loader:'jsx'}).code};return{toggleTimelinePanel,panelVisible,timelineContainerVisible,resizeHandle};}`)(env);
+  }
+  const collapsed = render(), retainedToggle = collapsed.toggleTimelinePanel;
+  assert.equal(collapsed.timelineContainerVisible,true,'Desktop toolbar remains in its existing PanelBoundary');
+  assert.equal(collapsed.panelVisible('timeline'),false,'Hidden body does not become visible merely to expose the toolbar');
+  assert.equal(collapsed.resizeHandle('timeline','timelineHeight').props.enabled,false);
+  retainedToggle();
+  assert.deepEqual(writes,[['editing',{timelineCollapsed:false}]]);
+  assert.equal(viewRef.current.editing.selectedClipId,'clip-one');assert.deepEqual(sizes,[]);
+  const expanded = render();assert.equal(expanded.timelineContainerVisible,true);assert.equal(expanded.panelVisible('timeline'),true);
+  assert.equal(expanded.resizeHandle('timeline','timelineHeight').props.enabled,true);
+  // A retained event callback reads the current state instead of replaying its
+  // captured collapsed value over a newer panel intent.
+  retainedToggle();assert.equal(viewRef.current.editing.timelineCollapsed,true);assert.equal(marks,2);
+  const before = writes.length;
+  composing.current=true;render().toggleTimelinePanel();assert.equal(writes.length,before);composing.current=false;
+  currentProject.current='project-two';retainedToggle();assert.equal(writes.length,before);currentProject.current='project-one';
+  projectEpoch.current=2;retainedToggle();assert.equal(writes.length,before);projectEpoch.current=1;
+  viewRef.current.activeMode='canvas';retainedToggle();assert.equal(writes.length,before);viewRef.current.activeMode='editing';
+  const narrow = render({narrow:true});assert.equal(narrow.timelineContainerVisible,false);assert.equal(narrow.panelVisible('timeline'),false);
+  assert.equal(narrow.resizeHandle('timeline','timelineHeight').props.enabled,false);
+  assert.match(source, /<PanelBoundary name="timeline" visible=\{timelineContainerVisible\}/);
+  assert.match(source, /presentationVisible=\{timelineContainerVisible\} visible=\{panelVisible\('timeline'\)\} collapsed=\{timelineCollapsed\} onCollapse=\{toggleTimelinePanel\}/);
+  assert.match(source, /\{timelineCollapsed && geometry\.narrow && <PanelRecall name="timeline"/);
+  assert.doesNotMatch(source, /timelineCollapsed\s*\?[^\n]*<Timeline/,'Collapse keeps one Timeline instance rather than replacing it');
 });

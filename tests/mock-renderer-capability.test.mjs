@@ -46,3 +46,17 @@ test('a render failure on a build that has drawtext, or whose filter list is unr
     assert.equal(error.message, 'Simulated video rendering failed.');
   }
 });
+
+test('the current FFmpeg legend separator preserves proven missing and present drawtext results', async t => {
+  const header = 'Filters:\n  T.. = Timeline support\n  .S. = Slice threading\n  A = Audio input/output\n  V = Video input/output\n  N = Dynamic number and/or type of input/output\n  | = Source or sink filter\n  ------\n';
+  for (const supported of [false, true]) {
+    const rows = ['scale', 'drawbox', ...(supported ? ['drawtext'] : [])]
+      .map(name => ` .. ${name.padEnd(16)} V->V       Synthetic filter.\n`).join('');
+    const {provider, id, download} = await renderFailure(t, header + rows);
+    const polled = await provider.poll(id, {});
+    assert.equal(polled.status, supported ? 'succeeded' : 'failed');
+    const error = await download();
+    assert.equal(error.code, supported ? 'MOCK_RENDER_FAILED' : 'MOCK_RENDERER_UNSUPPORTED');
+    assert.equal(error.retryable, supported);
+  }
+});

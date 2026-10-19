@@ -181,7 +181,7 @@ export function createNativeAudioPreviewHost(options:Options){
     // Only this native attempt's terminal signal can release its own fence.
     return Promise.race([retired,interrupted]);
   }
-  const shutdownUnconfirmed=()=>Object.assign(new Error('The previous native sound audition has not confirmed retirement.'),{code:'NATIVE_AUDIO_UNCONFIRMED'});
+  const shutdownUnconfirmed=()=>Object.assign(new Error('The previous native sound audition has not confirmed retirement'),{code:'NATIVE_AUDIO_UNCONFIRMED'});
   const fenceAdmission=():void=>{admissionFenced=true;if(pending)pending.cancelled=true;};
   async function shutdown({timeoutMs=10000}:{timeoutMs?:number}={}):Promise<void>{
     if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>60000)throw shutdownUnconfirmed();

@@ -1,0 +1,12 @@
+.task-overview { width: 360px; max-width: calc(var(--mioon-viewport-width, 100vw) - 32px); border: 1px solid var(--wb-line); border-radius: var(--wb-radius-panel); background: var(--wb-raised); color: var(--wb-text); box-shadow: var(--wb-shadow); }
+.task-overview > header { display: flex; align-items: center; justify-content: space-between; height: 44px; padding-inline: 16px; border-bottom: 1px solid var(--wb-line-subtle); font-size: var(--wb-text-section); font-weight: 600; }
+.task-overview-items { padding: 12px 16px; max-height: 360px; overflow-y: auto; }
+.task-overview-items article { padding-block: 12px; border-bottom: 1px solid var(--wb-line-subtle); }
+.task-overview-items article:last-child { border: 0; }
+.task-overview-items article > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.task-overview-items strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--wb-text-label); font-weight: 500; }
+.task-overview-items > p { color: var(--wb-muted); font-size: var(--wb-text-label); line-height: 1.6; }
+.task-overview-items > .task-overview-warning { color: var(--wb-warning); }
+.task-overview > footer { display: flex; justify-content: flex-end; padding: 8px 12px; border-top: 1px solid var(--wb-line-subtle); }
+.task-render-list .job-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.task-render-list .wb-progress { margin-block: 12px; }

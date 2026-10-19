@@ -39,7 +39,7 @@ export function assertRestoreInvocation(store,operation,input){
  if(!getWorkspaceRestoreContext(store))return;
  const entry=invocations.getStore();live(entry,store);
  // These are fixed internal edges, never caller-selected operation delegates.
- if(operation==='timeline.get'&&input?.projectId===entry.projectId&&['timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.replaceSource','timeline.clip.remove','timeline.clip.split','timeline.seed','timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove'].includes(entry.operation))return;
+ if(operation==='timeline.get'&&input?.projectId===entry.projectId&&['timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.replaceSource','timeline.clip.remove','timeline.clip.rippleRemove','timeline.clip.split','timeline.seed','timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove'].includes(entry.operation))return;
  if(operation==='timeline.export.capabilities'&&input===undefined&&['timeline.render','timeline.export.capabilities'].includes(entry.operation))return;
  if(entry.operation!==operation||entry.inputDigest!==restoreDigest(input))unavailable();
 }

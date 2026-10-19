@@ -63,8 +63,9 @@ test('language switches preserve frame extraction unknown identity, hash, source
   frame.configure({ projectId, sourceScope: 'source:1', sourceAsset: source, assets: [], visible: true, blocked: false });
   await frame.refreshTasks(); await frame.capture({ sourceScope: 'source:1', sourceAssetId: source.id, sourceHash: source.sha256, sourceFrame: 40 });
   let reads = 0, submits = 0;
-  const format = createTimelineFormatController({ read: async () => { reads++; return { projectId, projectRevision: 2, timelineId: null, timelineRevision: 0, presetId: 'portrait_720', fps: 30, width: 720, height: 1280, eligible: true, blockedReasons: [] }; }, submit: async () => { submits++; }, createRequestId: () => 'unused-format-request' });
-  format.setContext({ scope: 'format:1', projectId, connected: true, pending: false }); format.setVisible(true); await format.load(); format.choose('landscape_720');
+  const format = createTimelineFormatController({ read: async () => { reads++; return { projectId, projectRevision: 2, timelineId: null, timelineRevision: 0, presetId: 'portrait_1080', fps: 30, width: 1080, height: 1920, eligible: true, blockedReasons: [] }; }, submit: async () => { submits++; }, createRequestId: () => 'unused-format-request' });
+  format.setContext({ scope: 'format:1', projectId, connected: true, pending: false }); format.setVisible(true); await format.load(); assert.equal(format.getState().phase, 'ready'); assert.equal(format.choose('landscape_1080'), true);
+  assert.equal(format.getState().dirty, true); assert.equal(format.getState().draftPresetId, 'landscape_1080');
   const original = frame.getState(), originalFormat = format.getState(), snapshots = structuredClone({ frame: original, format: originalFormat, calls });
   const store = languageStore(), texts = new Set(); const release = store.subscribe(() => texts.add(i18n.renderMessage(store.getSnapshot().locale, frame.getState().messageDescriptor)));
   for (const locale of i18n.LOCALES) { await store.setPreference(locale); assert.equal(frame.getState(), original); assert.equal(format.getState(), originalFormat); }

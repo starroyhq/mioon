@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
 // Marker remains available if any later bridge setup fails.
 contextBridge.exposeInMainWorld('__mioonDesktop', true);
+import {createWorkspaceToolsBridge} from './workspace-tools-preload.ts';
+contextBridge.exposeInMainWorld('__mioonWorkspaceTools',createWorkspaceToolsBridge((channel,request)=>ipcRenderer.invoke(channel,request)));
 import { createDesktopLutRecoveryBridge } from './lut-recovery-preload.ts';
 contextBridge.exposeInMainWorld('__mioonLutRecovery', createDesktopLutRecoveryBridge({
   invoke: (channel, request) => ipcRenderer.invoke(channel, request),

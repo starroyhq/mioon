@@ -28,16 +28,19 @@ const clipSource = { assetId: id(5), assetSha256: 'a'.repeat(64) };
 const targetClipId = id(7), targetShotId = id(8), targetNodeId = id(9), selectedShotId = id(10);
 const rejectUnexpected = name => () => assert.fail(`Unexpected dependency: ${name}`);
 
-function harness({ dock = 'tasks', page = 'format', mode = 'editing', dirty = false, confirm = async () => true, controller = null, quickAssetId = null, narrow = false } = {}) {
-  const events = [], resets = [], confirmations = [];
+function harness({ dock = 'tasks', page = 'format', mode = 'editing', dirty = false, confirm = async () => true, controller = null, quickAssetId = null, narrow = false, realView = false } = {}) {
+  const events = [], resets = [], confirmations = [], presentations = [];
+  let presentation = 0;
   const formatDraft = Object.freeze({ width: '1280', height: '', dirty: true });
-  const state = { dock, page, mobile: 'canvas', view: { activeMode: mode,
+  const state = { dock: ['tasks', 'delivery'].includes(dock) ? 'properties' : dock,
+    showTasks: dock === 'tasks', showDelivery: dock === 'delivery', page, mobile: 'canvas', view: { activeMode: mode,
     canvas: { selectedId: selectedShotId, inspectorTab: 'settings', highlightedVersionId: null },
     editing: { selectedClipId: key.clipId, quickAssetId, playhead: 12, previewKind: 'timeline' } } };
   const env = { msg, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }),
     nativeWindow: null,
     selectedId: selectedShotId, selectedClipId: key.clipId, workspaceMode: mode, quickAssetId,
     currentProject: { current: key.projectId }, navigationEpoch: { current: 5 }, panelIntent: { current: 2 },
+    setNavigationPresentation: update => { presentation = update(presentation); presentations.push({ value: presentation, epoch: env.navigationEpoch.current }); },
     workspaceRef: { current: { restored: false } }, workspaceOriginScope,
     dataRef: { current: { shots: [{ id: selectedShotId }, { id: targetShotId }], nodes: [{ id: targetNodeId }],
       timeline: { id: key.timelineId, projectId: key.projectId, revision: 7, clips: [
@@ -48,6 +51,8 @@ function harness({ dock = 'tasks', page = 'format', mode = 'editing', dirty = fa
     timelineFormatRef: { current: { controller: { getState: () => formatDraft, hasUnsaved: () => true, discardDraft: rejectUnexpected('format draft discard') } } },
     confirm: message => { confirmations.push(message); return confirm(message); },
     setRightDockTab: value => { state.dock = typeof value === 'function' ? value(state.dock) : value; events.push(['dock', state.dock]); },
+    setShowTasks: value => { state.showTasks = value; events.push(['tasks', value]); },
+    setShowDelivery: value => { state.showDelivery = value; events.push(['delivery', value]); },
     setPropertiesPage: value => { assert.equal(value, 'inspector'); state.page = value; events.push(['page', value]); },
     updateView: (area, value) => {
       assert.ok(['canvas', 'editing', 'activeMode'].includes(area));
@@ -60,9 +65,23 @@ function harness({ dock = 'tasks', page = 'format', mode = 'editing', dirty = fa
     ...Object.fromEntries(['setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch'].map(name => [name, value => resets.push([name, typeof value === 'function' ? value(3) : value])])),
     run: rejectUnexpected('business mutation'), rpc: rejectUnexpected('RPC'),
   };
+  if (realView) {
+    // Run the same no-op comparison used by App, so a state setter or preference
+    // write cannot accidentally stand in for the new presentation publication.
+    env.dataRef.current.project = { id: key.projectId };
+    const viewEnv = { ...env, application: null, viewReady: { current: true }, viewRef: { current: state.view },
+      useCallback: callback => callback, clipLoudnessEpoch: { current: 0 },
+      setView: rejectUnexpected('view state write for equivalent values'),
+      preferencesRef: { current: { update: rejectUnexpected('project preference write for equivalent values') } },
+      pinNewWorkspaceIntent: rejectUnexpected('restored preference intent'),
+    };
+    delete viewEnv.updateView;
+    const actualUpdateView = section('  const updateView = useCallback(', '  const field =');
+    env.updateView = Function(...Object.keys(viewEnv), `${actualUpdateView}\nreturn updateView;`)(...Object.values(viewEnv));
+  }
   const api = Function(...Object.keys(env), `${source}\nreturn { inspect, selectClip };`)(...Object.values(env));
-  return { env, api, state, events, resets, confirmations, formatDraft,
-    chooseDock(value) { env.panelIntent.current++; state.dock = value; },
+  return { env, api, state, events, resets, confirmations, presentations, formatDraft,
+    chooseDock(value) { env.panelIntent.current++; state.showTasks = value === 'tasks'; state.showDelivery = value === 'delivery'; if (!['tasks', 'delivery'].includes(value)) state.dock = value; },
   };
 }
 
@@ -109,6 +128,7 @@ for (const dock of ['tasks', 'delivery']) {
     const h = harness({ dock }), data = structuredClone(h.env.dataRef.current), epoch = h.env.navigationEpoch.current;
     assert.equal(await h.api.inspect(target, 'versions', id(20), { reveal: true }), true);
     assert.equal(h.state.dock, 'properties'); assert.equal(h.state.page, 'inspector'); assert.equal(h.state.view.activeMode, 'canvas');
+    assert.equal(h.state.showTasks, false); assert.equal(h.state.showDelivery, false);
     assert.deepEqual(h.state.view.canvas, { selectedId: target, inspectorTab: 'versions', highlightedVersionId: id(20) });
     assert.equal(h.env.navigationEpoch.current, epoch + 1); assert.ok(h.events.some(event => event[0] === 'panel'));
     assert.equal(h.env.timelineFormatRef.current.controller.getState(), h.formatDraft); assert.equal(h.formatDraft.height, '');
@@ -118,6 +138,7 @@ for (const dock of ['tasks', 'delivery']) {
     const h = harness({ dock }), data = structuredClone(h.env.dataRef.current);
     await h.api.selectClip(targetClipId, false);
     assert.equal(h.state.dock, 'properties'); assert.equal(h.state.page, 'inspector'); assert.equal(h.state.view.activeMode, 'editing');
+    assert.equal(h.state.showTasks, false); assert.equal(h.state.showDelivery, false);
     assert.deepEqual(h.state.view.editing, { selectedClipId: targetClipId, quickAssetId: null, playhead: 90, previewKind: 'timeline' });
     assert.deepEqual(h.env.dataRef.current, data); assert.deepEqual(h.resets, []); assert.deepEqual(h.confirmations, []);
   });
@@ -141,6 +162,17 @@ test('same clip selection keeps the current draft and restores the source previe
   assert.equal(h.state.dock, 'properties'); assert.equal(h.state.page, 'inspector');
   assert.deepEqual(h.state.view.editing, { selectedClipId: key.clipId, quickAssetId: null, playhead: 0, previewKind: 'source' });
   assert.equal(h.env.dirtyRef.current, true); assert.deepEqual(h.confirmations, []); assert.deepEqual(h.resets, []);
+});
+test('same-clip no-op view patches still publish the accepted navigation epoch without project preference writes', async () => {
+  const h = harness({ dock: 'properties', page: 'inspector', realView: true });
+  Object.assign(h.state.view.editing, { playhead: 0, previewKind: 'source' });
+  const before = structuredClone(h.state), epoch = h.env.navigationEpoch.current;
+  await h.api.selectClip(key.clipId);
+  assert.deepEqual(h.state, before);
+  assert.equal(h.env.navigationEpoch.current, epoch + 1);
+  assert.deepEqual(h.presentations, [{ value: 1, epoch: epoch + 1 }]);
+  assert.deepEqual(h.resets, []); assert.deepEqual(h.confirmations, []);
+  assert.match(app, /const \[, setNavigationPresentation\] = useState\(0\)/);
 });
 for (const options of [{ quickAssetId: id(30) }, { mode: 'canvas' }]) test(`same clip still checks unsaved input when ${options.quickAssetId ? 'an asset is open' : 'leaving canvas'}`, async () => {
   const h = harness({ ...options, dirty: true, confirm: async () => false }), before = structuredClone(h.state);

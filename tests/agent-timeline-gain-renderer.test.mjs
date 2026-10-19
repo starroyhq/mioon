@@ -1,3 +1,4 @@
+import {createAgentAuthorizationUiMock} from './helpers/agent-authorization-ui.mjs';
 import { message } from './helpers/i18n.ts';
 import { creationTestDependency } from './helpers/creation-i18n.ts';
 import * as nativeCloseSources from '../apps/web/src/native-close-sources.ts';
@@ -22,7 +23,7 @@ const moveTarget = Object.fromEntries(Object.entries(moveSelection).filter(([key
 const moveProposal = () => ({ ...proposal(), target: moveTarget, patch: { startFrame: 180 }, diff: { before: { startFrame: 90, endFrame: 150, durationFrames: 60, timelineDurationFrames: 150 }, after: { startFrame: 180, endFrame: 240, durationFrames: 60, timelineDurationFrames: 240 } }, provenance: { runId, toolCallId: 'move-call', toolName: 'mioon_propose_timeline_clip_move' } });
 const configuration = { presetId: 'openai', platformId: 'global', baseUrl: 'https://example.com/v1', model: 'gpt-4.1-mini', protocol: 'chat_completions' };
 const settings = { revision: 0, configuration, secret: { configured: true, storage: 'session' }, storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY' }, presets: [{ id: 'openai', label: 'OpenAI', platforms: [{ id: 'global', label: 'Global', defaultProtocol: 'chat_completions', availableProtocols: ['chat_completions', 'responses'], ...configuration }] }], scope: 'settings_only', verification: 'not_tested' };
-const snapshot = (patch = {}) => ({ instanceId, threadId, projectId, revision: 0, scope: 'chat_and_reviewed_timeline_edits', persistence: 'local_database', mode: 'simulated', timelineGainEdit: { available: true, ...policy.AGENT_TIMELINE_GAIN_POLICY, catalogHash: 'f'.repeat(64) }, timelineEdit: { available: true, ...policy.AGENT_TIMELINE_LIMITS, catalogHash: 'a'.repeat(64) }, edit: { available: true, ...policy.AGENT_EDIT_LIMITS, catalogHash: 'b'.repeat(64) }, inspection: { available: true, ...policy.AGENT_INSPECTION_LIMITS, catalogHash: 'c'.repeat(64) }, settings, runs: [], historyCursor: null, ...patch });
+const snapshot = (patch = {}) => ({ instanceId, threadId, projectId, revision: 0, authorization:{revision:0,scopes:[]}, scope: 'chat_and_reviewed_timeline_edits', persistence: 'local_database', mode: 'simulated', timelineGainEdit: { available: true, ...policy.AGENT_TIMELINE_GAIN_POLICY, catalogHash: 'f'.repeat(64) }, timelineEdit: { available: true, ...policy.AGENT_TIMELINE_LIMITS, catalogHash: 'a'.repeat(64) }, edit: { available: true, ...policy.AGENT_EDIT_LIMITS, catalogHash: 'b'.repeat(64) }, inspection: { available: true, ...policy.AGENT_INSPECTION_LIMITS, catalogHash: 'c'.repeat(64) }, settings, runs: [], historyCursor: null, ...patch });
 const run = (patch = {}) => ({ id: runId, requestId, threadId, projectId, status: 'completed', userText: 'Lower selected clip to 40%', assistantText: 'Already applied! <img src=x>', configuration, createdAt: at, updatedAt: at, lastEventId: 3, contextMode: policy.AGENT_TIMELINE_GAIN_CONTEXT, editTarget: selected, provenance: { category: 'project_selected_timeline_audio_gain', projectId, sourceRunIds: [] }, activity: [{ id: id(20), kind: 'model', ordinal: 1, status: 'completed' }], ...patch });
 const proposal = (patch = {}) => ({ id: proposalId, projectId, runId, digest: 'd'.repeat(64), status: 'pending', runStatus: 'completed', operation: 'timeline.clip.update', target: publicTarget, patch: { gain: 0.4 }, diff: { before: { gain: 1 }, after: { gain: 0.4 } }, provenance: { runId, toolCallId: 'gain-call-1', toolName: 'mioon_propose_timeline_clip_gain' }, createdAt: at, updatedAt: at, ...patch });
 const approval = { requestId: id(10), approvedAt: at };
@@ -46,7 +47,7 @@ function fixture(options = {}) {
 function chatFixture(options = {}) {
   const calls = []; let value = snapshot();
   const receipts = { get: () => null, set() {} };
-  const client = { read: async () => value, start: async (_, input) => { calls.push(input); return options.start ? options.start(input) : { instanceId, threadId, projectId, revision: 1, run: run({ userText: input.message }) }; }, lookup: async () => { throw error('AGENT_CHAT_NOT_FOUND'); }, stream: async () => {} };
+  const client = { ...createAgentAuthorizationUiMock(async () => value), start: async (_, input) => { calls.push(input); return options.start ? options.start(input) : { instanceId, threadId, projectId, revision: 1, run: run({ userText: input.message }) }; }, lookup: async () => { throw error('AGENT_CHAT_NOT_FOUND'); }, stream: async () => {} };
   return { calls, client, receipts, setSnapshot: next => { value = next; }, session: chat.createAgentChatSession({ projectId, client, receipts, requestId: () => requestId }) };
 }
 
@@ -72,6 +73,7 @@ function harness(file, options = {}) {
     if (name === './agent-edits.js') return { ...edits, createAgentEditsSession: input => edits.createAgentEditsSession({ ...input, client: options.client }) };
     if (name === './agent-chat.js') return { ...chat, createAgentChatSession: input => chat.createAgentChatSession({ ...input, client: options.chatClient, receipts: options.receipts, requestId: () => requestId }) };
     if (name === './agent-tool-state.js') return policy;
+    if (name === './AgentAuthorizations.tsx') return {__esModule:true,default:'AgentAuthorizations'};
     if (name === './AgentEditProposal.jsx') return { __esModule: true, default: 'AgentEditProposal' };
     if (name === './AgentRunActivity.jsx') return load('AgentRunActivity');
     if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
@@ -86,7 +88,7 @@ function harness(file, options = {}) {
     render(patch = {}) { props = { ...props, ...patch }; cursor = 0; effects = []; tree = component(props); for (const index of effects) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].fn(); } return tree; },
     find: id => nodes(tree).find(node => node.props['data-testid'] === id),
     all: id => nodes(tree).filter(node => node.props['data-testid'] === id),
-    change(id, value) { h.find(id).props.onChange({ target: { value, checked: value } }); h.render(); },
+    change(id, value) { if(id==='agent-chat-consent'&&value){h.find('agent-chat-authorization-open')?.props.onClick();h.render();} h.find(id).props.onChange({ target: { value, checked: value } }); h.render(); if(id==='agent-chat-consent'&&value){h.find('agent-chat-authorization-confirm').props.onClick();h.render();} },
     click(id) { h.find(id).props.onClick(); h.render(); },
     submit() { nodes(tree).find(node => node.type === 'form').props.onSubmit({ preventDefault() {} }); },
     hide(value = true) { visible = !value; h.render(); },
@@ -137,15 +139,14 @@ test('gain provenance, tool and proposal shape cannot be confused with the same-
   assert.equal(chat.safeAgentChatRun(run({ activity }), projectId).activity[1].name, 'mioon_propose_timeline_clip_gain');
 });
 
-test('gain consent binds exact destination, independent limits and complete displayed audio projection', async () => {
+test('gain authorization survives saved projection changes while each send binds the current complete projection', async () => {
   const f = chatFixture(); await f.session.load(); f.session.setTimelineGainTarget(selected); f.session.setContextMode(policy.AGENT_TIMELINE_GAIN_CONTEXT); f.session.edit('Lower to 40%');
-  assert.equal(f.session.approve(true), true); const original = f.session.getState().consent;
+  assert.equal(await f.session.approve(true), true); const original = f.session.getState().consent;
   for (const change of [{ expectedRevision: 5 }, { gain: 0.5 }, { trackMuted: true }, { clipName: 'Changed clip' }, { trackName: 'New track' }, { width: 1280, height: 720 }, { clipId: id(77) }, { timelineId: id(78) }, { trackKind: 'video' }]) {
-    f.session.setTimelineGainTarget({ ...selected, ...change }); assert.equal(f.session.getState().consent, null); assert.equal(await f.session.send(), false);
-    assert.equal(f.session.approve(true), true); assert.notEqual(f.session.getState().consent, original);
+    f.session.setTimelineGainTarget({ ...selected, ...change }); assert.equal(f.session.getState().consent, original); assert.equal(chat.agentChatCanSend(f.session.getState()), true);
   }
-  f.session.setTimelineGainTarget(selected, '存在已恢复但未保存的片段草稿'); assert.equal(f.session.approve(true), false); assert.equal(await f.session.send(), false);
-  f.session.setTimelineGainTarget(selected); f.session.approve(true); assert.equal(await f.session.send(), true);
+  f.session.setTimelineGainTarget(selected, '存在已恢复但未保存的片段草稿'); assert.equal(await f.session.approve(true), false); assert.equal(await f.session.send(), false);
+  f.session.setTimelineGainTarget(selected); await f.session.approve(true); assert.equal(await f.session.send(), true);
   assert.deepEqual(f.calls[0].consent, { destination: chat.deriveAgentEndpoint(configuration), protocol: configuration.protocol, model: configuration.model, context: policy.AGENT_TIMELINE_GAIN_CONTEXT,
     projectId, ...policy.AGENT_TIMELINE_GAIN_POLICY, catalogHash: 'f'.repeat(64), timelineId, clipId, expectedRevision: 4, reviewTarget: selected });
   assert.doesNotMatch(JSON.stringify(f.calls[0]), /assetId|sha256|sourceInFrame|path|occupiedIntervals/); f.session.dispose();
@@ -154,18 +155,18 @@ test('gain consent binds exact destination, independent limits and complete disp
 test('accepted gain run must match displayed gain and mute even at identical project, clip and revision', async () => {
   for (const change of [{ gain: 0.5 }, { trackMuted: true }, { clipName: 'changed' }]) {
     const f = chatFixture({ start: input => ({ instanceId, threadId, projectId, revision: 1, run: run({ userText: input.message, editTarget: { ...selected, ...change } }) }) });
-    await f.session.load(); f.session.setTimelineGainTarget(selected); f.session.setContextMode(policy.AGENT_TIMELINE_GAIN_CONTEXT); f.session.edit('Lower to 40%'); f.session.approve(true);
+    await f.session.load(); f.session.setTimelineGainTarget(selected); f.session.setContextMode(policy.AGENT_TIMELINE_GAIN_CONTEXT); f.session.edit('Lower to 40%'); await f.session.approve(true);
     assert.equal(await f.session.send(), false); assert.equal(f.calls.length, 1); assert.equal(f.session.getState().phase, 'unknown'); assert.equal(f.session.getState().draft, 'Lower to 40%'); f.session.dispose();
   }
 });
 
 test('gain sends invalidate on mode, settings, project selection and hidden panes without losing draft', async () => {
-  const f = chatFixture(); await f.session.load(); f.session.setTimelineGainTarget(selected); f.session.setContextMode(policy.AGENT_TIMELINE_GAIN_CONTEXT); f.session.edit('Lower to 40%'); f.session.approve(true);
-  f.session.setContextMode(policy.AGENT_TYPED_CONTEXT); assert.equal(f.session.getState().consent, null); f.session.setContextMode(policy.AGENT_TIMELINE_GAIN_CONTEXT); f.session.approve(true);
-  f.session.setVisible(false); assert.equal(f.session.getState().consent, null); assert.equal(f.session.approve(true), false); assert.equal(await f.session.send(), false);
-  f.session.setVisible(true); await flush(); f.session.approve(true);
+  const f = chatFixture(); await f.session.load(); f.session.setTimelineGainTarget(selected); f.session.setContextMode(policy.AGENT_TIMELINE_GAIN_CONTEXT); f.session.edit('Lower to 40%'); await f.session.approve(true);
+  f.session.setContextMode(policy.AGENT_TYPED_CONTEXT); assert.equal(f.session.getState().consent, null); f.session.setContextMode(policy.AGENT_TIMELINE_GAIN_CONTEXT); await f.session.approve(true);
+  f.session.setVisible(false); assert.equal(f.session.getState().consent, null); assert.equal(await f.session.approve(true), false); assert.equal(await f.session.send(), false);
+  f.session.setVisible(true); await flush(); await f.session.approve(true);
   f.setSnapshot(snapshot({ settings: { ...settings, revision: 1, configuration: { ...configuration, protocol: 'responses', baseUrl: 'https://other.example/v1', model: 'gpt-4.1' } } })); await f.session.load(); assert.equal(f.session.getState().consent, null);
-  f.session.setTimelineGainTarget({ ...selected, projectId: id(99) }); assert.equal(f.session.getState().timelineGainTarget, null); assert.equal(f.session.approve(true), false);
+  f.session.setTimelineGainTarget({ ...selected, projectId: id(99) }); assert.equal(f.session.getState().timelineGainTarget, null); assert.equal(await f.session.approve(true), false);
   assert.equal(f.session.getState().draft, 'Lower to 40%'); assert.equal(f.calls.length, 0); f.session.dispose();
 });
 
@@ -226,9 +227,9 @@ test('actual gain composer keeps separate context consent, mute disclosure and d
   const f = chatFixture(), h = harness('AgentPanel', { chatClient: f.client, receipts: f.receipts, props: { selectedTimelineGainClip: { ...selected, trackMuted: true } } }); h.render(); await flush(); h.render();
   h.change('agent-chat-mode-gain', true); h.change('agent-chat-prompt', 'Lower this music to 40%'); assert.ok(h.find('agent-gain-selected-target')); assert.ok(h.find('agent-gain-track-muted'));
   assert.equal(h.find('agent-chat-consent').props.checked, false); assert.match(JSON.stringify(h.find('agent-chat-context')), /仅 gain|波形或响度测量/);
-  h.change('agent-chat-consent', true); const staleConsent = h.find('agent-chat-consent').props.onChange, staleSubmit = nodes(h.render()).find(node => node.type === 'form').props.onSubmit;
+  h.change('agent-chat-consent', true); await flush(); h.render(); const staleConsent = h.find('agent-chat-consent').props.onChange, staleSubmit = nodes(h.render()).find(node => node.type === 'form').props.onSubmit;
   h.render({ timelineGainBlockedReason: '未保存源范围草稿' }); h.render(); staleConsent({ target: { checked: true } }); staleSubmit({ preventDefault() {} }); await flush(); h.render();
-  assert.equal(f.calls.length, 0); assert.equal(h.find('agent-chat-consent').props.checked, false); assert.equal(h.find('agent-chat-consent').props.disabled, true); assert.equal(h.find('agent-chat-prompt').props.value, 'Lower this music to 40%');
+  assert.equal(f.calls.length, 0); assert.equal(h.find('agent-chat-consent').props.checked, true); assert.equal(h.find('agent-chat-consent').props.disabled, true); assert.equal(h.find('agent-chat-prompt').props.value, 'Lower this music to 40%');
   h.render({ timelineGainBlockedReason: '' }); h.render(); h.change('agent-chat-mode-typed', true); assert.equal(h.find('agent-gain-selected-target'), undefined); h.unmount();
 });
 

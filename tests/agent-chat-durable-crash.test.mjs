@@ -1,3 +1,4 @@
+import {authorizeHttpSnapshot} from './helpers/agent-authorizations.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -162,6 +163,7 @@ async function fixture(t, protocol, {hold = false} = {}) {
     async snapshot(projectId) { return this.data(route(projectId)); },
     async input(projectId, message = 'Synthetic typed text') {
       const snapshot = await this.snapshot(projectId);
+      await authorizeHttpSnapshot((...args)=>this.request(...args),snapshot);
       return {requestId: randomUUID(), instanceId: snapshot.instanceId, expectedSettingsRevision: snapshot.settings.revision,
         expectedConversationRevision: snapshot.revision, message,
         consent: {destination: deriveAgentEndpoint(snapshot.settings.configuration), protocol: snapshot.settings.configuration.protocol,

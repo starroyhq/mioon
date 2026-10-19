@@ -4,6 +4,7 @@ import { Button } from '@mioon/ui/components/button';
 import Icon from './icons.jsx';
 import { preflightErrorMessage, preflightIssueMessage, exportCapabilityMessage } from './export-preflight-state.js';
 
+import ExportWorkflow, { ExportWorkflowSection } from './ExportWorkflow.tsx';
 import ExportRangeControls from './ExportRangeControls.tsx';
 import ExportRangeSummary from './ExportRangeSummary.tsx';
 import TimelineExportSettings from './TimelineExportSettings.jsx';
@@ -13,20 +14,20 @@ const bytesLabel = bytes => bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} K
 
 // Presentation only: the parent owns the saved context, explicit read, and
 // durable render submission. Hidden tabs retain this view without starting work.
-export default function TimelineExportPreflight({ preview, recovery, state, projectName, timeline, exportSettings, settingsDisabled, onSettingsChange, deliveryName = '', deliveryNameError, deliveryNameDisabled, onDeliveryNameChange, rangeDraft, exportRange, rangeError, rangeDisabled, onRangeChange, canCheck, exportBusy, pendingExport, dirty, onCheck, onExport, onUncheckedExport }) {
+export default function TimelineExportPreflight({ preview, recovery, state, projectName, timeline, exportSettings, settingsDisabled, onSettingsChange, deliveryName = '', deliveryNameError, deliveryNameDisabled, onDeliveryNameChange, rangeDraft, exportRange, rangeError, rangeDisabled, onRangeChange, canCheck, exportBusy, pendingExport, dirty, onCheck, onExport, onUncheckedExport, renderRecord, onTasks, downloadEnabled, reviewVersion }) {
   const { t, locale, formatDate, formatNumber, renderMessage } = useI18n();
   const phase = state?.phase || 'idle', report = state?.report, summary = report?.summary;
   const oldReport = Boolean(report && ['checking', 'stale', 'error'].includes(phase));
   const canExport = Boolean(state?.binding && ['ready', 'incomplete'].includes(phase) && !exportBusy && !pendingExport && !state.attempted);
   const canExportUnchecked = Boolean(state?.uncheckedIntent && phase === 'incomplete' && !exportBusy && !pendingExport && !state.attempted);
-  return <aside className="export-preflight" data-testid="export-preflight" data-phase={phase} aria-label={t('export.preflight.label')}>
+  return <ExportWorkflow preview={preview} phase={phase} attempted={state?.attempted} exportBusy={exportBusy} pendingExport={pendingExport} record={renderRecord} onTasks={onTasks} onRecheck={onCheck} canCheck={canCheck} downloadEnabled={downloadEnabled} reviewVersion={reviewVersion}><aside className="export-preflight" data-testid="export-preflight" data-phase={phase} aria-label={t('export.preflight.label')}>
     <header className="export-preflight-heading"><div><h2>{t('export.preflight.title')}</h2><p title={projectName}>{projectName || t('export.preflight.selectProject')}</p></div><Icon name="info" size={15} /></header>
     <div className="export-preflight-body">
-      {recovery}
-      <TimelineDeliveryName value={deliveryName} error={deliveryNameError} disabled={deliveryNameDisabled || settingsDisabled || exportBusy || pendingExport} onChange={onDeliveryNameChange} />
+      <ExportWorkflowSection steps={[1, 2]}>{recovery}</ExportWorkflowSection>
+      <ExportWorkflowSection steps={[2]}><TimelineDeliveryName value={deliveryName} error={deliveryNameError} disabled={deliveryNameDisabled || settingsDisabled || exportBusy || pendingExport} onChange={onDeliveryNameChange} />
       <ExportRangeControls draft={rangeDraft} value={exportRange} durationFrames={timeline?.durationFrames} error={rangeError} disabled={rangeDisabled || settingsDisabled || exportBusy || pendingExport} onChange={onRangeChange} />
-      <TimelineExportSettings timeline={timeline} value={exportSettings} disabled={settingsDisabled || exportBusy || pendingExport} onChange={onSettingsChange} />
-      {preview}
+      <TimelineExportSettings timeline={timeline} value={exportSettings} disabled={settingsDisabled || exportBusy || pendingExport} onChange={onSettingsChange} /></ExportWorkflowSection>
+      <ExportWorkflowSection steps={[1, 3]}>
       {exportSettings && <div className={`export-capability-status is-${state?.capabilityPhase || 'idle'}`} data-testid="export-capability-status" data-status={state?.capabilityPhase || 'idle'} role="status" aria-live="polite"><strong>{t('export.preflight.capability')}</strong><p>{exportCapabilityMessage(state?.capabilityPhase || 'idle', locale)}</p></div>}
       <details className="export-preflight-scope" data-testid="preflight-scope-details"><summary>{t('export.preflight.scopeTitle')}</summary><p>{t('export.preflight.scope')}</p></details>
       {dirty && <p className="export-preflight-draft" data-testid="preflight-unsaved">{t('export.preflight.unsaved')}</p>}
@@ -58,8 +59,8 @@ export default function TimelineExportPreflight({ preview, recovery, state, proj
       {pendingExport && <p className="notice warning">{t('export.preflight.pending')}</p>}
       {state?.attempted && <p className="export-preflight-note" role="status">{t('export.preflight.attempted')}</p>}
       <p className="export-preflight-note">{t('export.preflight.encodingScope')}</p>
-      <p className="export-preflight-note">{t('export.preflight.limits')}</p>
+      <p className="export-preflight-note">{t('export.preflight.limits')}</p></ExportWorkflowSection>
     </div>
-    <footer className="export-preflight-actions"><Button variant="ghost" className="button" data-testid="preflight-check" disabled={!canCheck || Boolean(deliveryNameError) || Boolean(rangeError) || phase === 'checking' || exportBusy} onClick={onCheck}><Icon name="refresh" size={14} />{phase === 'checking' ? state?.checkingStep === 'capability' ? t('export.preflight.checkCapability') : t('export.preflight.checkAssets') : t('export.preflight.check')}</Button>{!state?.uncheckedIntent && <Button variant="ghost" className={`button ${phase === 'incomplete' ? 'preflight-attempt' : 'primary'}`} data-testid="preflight-export" disabled={!canExport} onClick={() => onExport(state.binding)}><Icon name="download" size={14} />{exportBusy ? t('export.preflight.submitting') : phase === 'incomplete' ? t('export.preflight.attempt') : t('export.preflight.confirm')}</Button>}{state?.uncheckedIntent && <Button variant="ghost" className="button preflight-attempt" data-testid="preflight-export-unchecked" disabled={!canExportUnchecked} onClick={() => onUncheckedExport(state.uncheckedIntent)}><Icon name="download" size={14} />{t('export.preflight.unchecked')}</Button>}</footer>
-  </aside>;
+    <footer className="export-preflight-actions"><ExportWorkflowSection steps={[1, 2]}><Button variant="ghost" className="button" data-testid="preflight-check" disabled={!canCheck || Boolean(deliveryNameError) || Boolean(rangeError) || phase === 'checking' || exportBusy} onClick={onCheck}><Icon name="refresh" size={14} />{phase === 'checking' ? state?.checkingStep === 'capability' ? t('export.preflight.checkCapability') : t('export.preflight.checkAssets') : t('export.preflight.check')}</Button></ExportWorkflowSection><ExportWorkflowSection steps={[3]}>{!state?.uncheckedIntent && <Button variant="ghost" className={`button ${phase === 'incomplete' ? 'preflight-attempt' : 'primary'}`} data-testid="preflight-export" disabled={!canExport} onClick={() => onExport(state.binding)}><Icon name="download" size={14} />{exportBusy ? t('export.preflight.submitting') : phase === 'incomplete' ? t('export.preflight.attempt') : t('export.preflight.confirm')}</Button>}{state?.uncheckedIntent && <Button variant="ghost" className="button preflight-attempt" data-testid="preflight-export-unchecked" disabled={!canExportUnchecked} onClick={() => onUncheckedExport(state.uncheckedIntent)}><Icon name="download" size={14} />{t('export.preflight.unchecked')}</Button>}</ExportWorkflowSection></footer>
+  </aside></ExportWorkflow>;
 }

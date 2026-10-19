@@ -196,7 +196,7 @@ test('legacy cache seeds independent mode layouts from shared flags without rewr
       assert.equal(restored.layout[mode].inspectorCollapsed, inspectorCollapsed);
     }
     assert.notEqual(restored.layout.canvas, restored.layout.editing);
-    assert.equal(restored.layout.editing.timelineHeight, 320);
+    assert.equal(restored.layout.editing.timelineHeight, 300);
     assert.equal(restored.editing.snappingEnabled, false);
     assert.equal(storage.getItem('mioon.workspace.v1:project-a'), raw);
   }

@@ -166,9 +166,9 @@ test('whole-layout legacy migration preserves raw bytes and revisions on GET and
   assert.equal(canonical.editing.snappingEnabled, true);
   for (const mode of ['canvas', 'editing']) {
     assert.deepEqual(Object.fromEntries(Object.entries(canonical.layout[mode]).filter(([key]) => key !== 'timelineHeight')),
-      { assetsWidth: 242, inspectorWidth: 310, assetsCollapsed: true, inspectorCollapsed: true });
+      { assetsWidth: 260, inspectorWidth: 320, assetsCollapsed: true, inspectorCollapsed: true });
   }
-  assert.equal(canonical.layout.editing.timelineHeight, 320);
+  assert.equal(canonical.layout.editing.timelineHeight, 300);
   assert.notEqual(canonical.layout.canvas, canonical.layout.editing);
   assert.deepEqual(f.preferences.get(projectId).state, canonical);
   for (const value of [legacy, canonical]) {

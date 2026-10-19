@@ -1,9 +1,13 @@
+import {validateWorkspaceSchema48} from './workspace-schema-v48.ts';
+import {validateWorkspaceRestoreSchemaV49} from './workspace-restore-schema-v49.ts';
 import {requireWorkspaceEnvelopeRuntime} from './workspace-envelope-runtime.ts';
 import {readCurrentWorkspaceRole} from './workspace-schema-dispatch.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {isProxy} from 'node:util/types';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {validateWorkspaceSchema40} from './workspace-schema-v40.ts';
+import {validateWorkspaceSchema44} from './workspace-schema-v44.ts';
+import {validateWorkspaceRestoreSchemaV45} from './workspace-restore-schema-v45.ts';
 import {validateVolumeEnvelope} from '../../contracts/src/timeline-volume-envelope.ts';
 
 export const TIMELINE_VOLUME_ENVELOPE_REJECTION_CODES=Object.freeze([
@@ -31,7 +35,12 @@ export function assertTimelineVolumeEnvelopeWorkspace(db:DatabaseSync,value:unkn
  if(!hasTimelineVolumeEnvelope(value))return;
  try{
   const runtime=requireWorkspaceEnvelopeRuntime();
-  if(readCurrentWorkspaceRole(db)==='restored-41-evidence')runtime.validateRestored41(db);
+  const role=readCurrentWorkspaceRole(db);
+  if(role==='ordinary-48')validateWorkspaceSchema48(db);
+  else if(role==='restored-49-evidence')validateWorkspaceRestoreSchemaV49(db);
+  else if(role==='ordinary-44')validateWorkspaceSchema44(db);
+  else if(role==='restored-45-evidence')validateWorkspaceRestoreSchemaV45(db);
+  else if(role==='restored-41-evidence')runtime.validateRestored41(db);
   else validateWorkspaceSchema40(db,{verifyBytes:false});
  }
  catch{throw volumeEnvelopeMutationError('TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED');}

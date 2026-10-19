@@ -19,7 +19,7 @@ export function png(width=480,height=480,fill=0){
 export const insert=(db,table,value)=>{const keys=Object.keys(value);db.prepare(`INSERT INTO ${table}(${keys.join(',')}) VALUES(${keys.map(()=>'?').join(',')})`).run(...Object.values(value));};
 export const rowBytes=(f,table,id)=>f.store.db.prepare(`SELECT data FROM ${table} WHERE id=?`).get(id)?.data;
 export async function fixture(t){
- const root=await mkdtemp(path.join(tmpdir(),'mioon-subject-video-')),store=openStore(root),env={MIOON_ENABLE_LIVE_PROVIDER:'1',ARK_API_KEY:'inert-offline',ARK_MAX_GENERATIONS:'50'};
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-subject-video-')),store=openStore(root),env={MIOON_ENABLE_LIVE_PROVIDER:'1',ARK_API_KEY:'inert-offline'};
  const providers=createProviderRegistry({db:store.db,root,env});let asOf=Date.parse('2026-10-11T12:00:00Z'),worker,posts=0;
  const services=createServices(store,providers,{env,profileNow:()=>asOf}),call=(op,input)=>services.call(op,input);
  const project=await call('project.create',{name:'Subject video offline'}),other=await call('project.create',{name:'Other private project'});

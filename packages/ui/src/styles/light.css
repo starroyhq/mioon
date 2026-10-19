@@ -1,0 +1,191 @@
+/* Approved light palette. UiPreferencesProvider resolves the saved choice and
+ * system appearance; media overlays remain independent from dialog backdrops. */
+:root.light {
+  color-scheme: light !important;
+  /* Sampled from the supplied Codex reference: chrome F6F6F6, sidebar
+   * FCFCFC, content FFFFFF, selected row EFF0F0, body text 191C1F. */
+  --wb-bg: #F6F6F6;
+  --wb-panel: #FFFFFF;
+  --wb-card: #FCFCFC;
+  --wb-raised: #FFFFFF;
+  --wb-hover: #F3F3F3;
+  --wb-selected: #EFF0F0;
+  --wb-input: #FFFFFF;
+  --wb-line-subtle: #EDEDED;
+  --wb-line: #E5E5E5;
+  --wb-line-strong: #D6D8DA;
+  --wb-text: #191C1F;
+  --wb-soft: #3B3E40;
+  --wb-muted: #66686A;
+  --wb-disabled: #A2A4A5;
+  --wb-accent: #303336;
+  --wb-accent-hover: #232629;
+  --wb-accent-pressed: #191C1F;
+  --wb-accent-foreground: #FFFFFF;
+  --wb-accent-line: #606469;
+  --wb-accent-subtle: rgb(48 51 54 / 7%);
+  --wb-danger: #B52A2A;
+  --wb-danger-fill: #BA2525;
+  --wb-danger-foreground: #FFFFFF;
+  --wb-danger-subtle: rgb(181 42 42 / 9%);
+  --wb-warning: #8A5300;
+  --wb-warning-subtle: rgb(242 169 59 / 14%);
+  --wb-success: #2B704D;
+  --wb-success-subtle: rgb(43 112 77 / 9%);
+  --wb-video-edge: #7694B2;
+  --wb-image-edge: #7CA699;
+  --wb-audio-edge: #819C72;
+  --wb-subtitle-edge: #9B8FB6;
+  --wb-overlay: rgb(0 0 0 / 24%);
+  --wb-media-overlay: rgb(0 0 0 / 64%);
+  --wb-shadow-color: rgb(0 0 0 / 8%);
+  /* Primary is the action color; accent remains a hover surface. */
+  --background: var(--wb-bg);
+  --foreground: var(--wb-text);
+  --card: var(--wb-card);
+  --card-foreground: var(--wb-text);
+  --popover: var(--wb-raised);
+  --popover-foreground: var(--wb-text);
+  --primary: var(--wb-accent);
+  --primary-foreground: var(--wb-accent-foreground);
+  --secondary: var(--wb-card);
+  --secondary-foreground: var(--wb-text);
+  --muted: var(--wb-card);
+  --muted-foreground: var(--wb-soft);
+  --accent: var(--wb-hover);
+  --accent-foreground: var(--wb-text);
+  --destructive: var(--wb-danger);
+  --destructive-foreground: var(--wb-danger-foreground);
+  --border: var(--wb-line);
+  --input: var(--wb-line);
+  --ring: var(--wb-accent-line);
+  --sidebar: var(--wb-panel);
+  --sidebar-foreground: var(--wb-text);
+  --sidebar-primary: var(--wb-accent);
+  --sidebar-primary-foreground: var(--wb-accent-foreground);
+  --sidebar-accent: var(--wb-hover);
+  --sidebar-accent-foreground: var(--wb-text);
+  --sidebar-border: var(--wb-line-subtle);
+  --sidebar-ring: var(--wb-accent-line);
+}
+
+/* Surface steps carry the hierarchy; ordinary outlines should recede behind
+ * content. Keep focus and selection separate from these quiet separators. */
+:root.light .dock-workbench .dock-panel,
+:root.light .dock-workbench.mode-editing .dock-canvas {
+  border-color: var(--wb-line-subtle);
+  box-shadow: none;
+}
+:root.light .dock-workbench .topbar {
+  background: var(--wb-bg);
+  border-bottom-color: var(--wb-line);
+}
+:root.light .dock-workbench .dock-panel > .asset-panel,
+:root.light .dock-workbench .inspector-region-heading,
+:root.light .dock-workbench .timeline-panel.edit-timeline .track-label,
+:root.light .dock-workbench .timeline-panel.edit-timeline .timeline-ruler,
+:root.light .dock-workbench .timeline-panel.edit-timeline .ruler-label {
+  background: var(--wb-card);
+}
+:root.light .dock-workbench .dock-panel > .inspector-region,
+:root.light .dock-workbench .inspector-container .inspector,
+:root.light .dock-workbench .timeline-panel.edit-timeline :is(.timeline-body, .timeline-scroll) {
+  background: var(--wb-panel);
+}
+:root.light .dock-workbench .timeline-panel.edit-timeline .edit-timeline-toolbar {
+  background: var(--wb-bg);
+}
+:root.light .web-settings-dialog.project-home {
+  border-color: var(--wb-line);
+  box-shadow: 0 20px 56px rgb(0 0 0 / 12%), 0 2px 8px rgb(0 0 0 / 3%);
+}
+:root.light .web-settings-dialog .settings-center-nav {
+  background: var(--wb-card);
+  border-right-color: var(--wb-line);
+}
+:root.light .web-settings-dialog .settings-center-content,
+:root.light .web-settings-dialog .settings-appearance-actions {
+  background: var(--wb-raised);
+}
+:root.light .web-settings-dialog .settings-center [aria-current="page"] {
+  background: var(--wb-selected);
+  color: var(--wb-accent);
+}
+:root.light .dock-workbench .edit-clip-inspector :is(input, select, button[data-slot="select-trigger"]):not(:focus):not(:focus-visible):not([aria-invalid="true"]),
+:root.light .web-settings-dialog :is([data-slot="input"], [data-slot="textarea"], .workbench-select):not(:focus):not(:focus-visible):not([aria-invalid="true"]) {
+  border-color: var(--wb-line);
+  background: var(--wb-input);
+}
+:root.light :is(button, a, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--wb-accent-line);
+  outline-offset: 2px;
+}
+/* The range input receives keyboard focus inside the visual thumb. */
+:root.light [data-slot="slider-thumb"]:has(input:focus-visible) {
+  outline: 2px solid var(--wb-accent-line);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--wb-accent-subtle);
+}
+
+/* A light timeline is a working surface, rather than a full-width table grid. */
+:root.light .dock-workbench .timeline-panel.edit-timeline :is(.timeline-toolbar, .timeline-track, .track-label) {
+  border-color: var(--wb-line-subtle);
+}
+:root.light .dock-workbench .timeline-panel.edit-timeline .ruler-tick {
+  border-color: var(--wb-line);
+}
+:root.light .dock-workbench .timeline-panel.edit-timeline .track-lane:not(.drag-over):not(.drag-invalid) {
+  background-color: var(--wb-panel);
+  background-image: linear-gradient(to right, color-mix(in srgb, var(--wb-line) 40%, transparent) 1px, transparent 1px);
+}
+
+/* Media keeps its semantic dark fill and white labels. Thumbnail pixels are
+ * unconstrained, so overlaid labels need their own opaque backing. */
+:root.light .dock-workbench .timeline-panel.edit-timeline :is(.timeline-clip, .track-kind),
+:root.light .dock-workbench .timeline-panel.edit-timeline .timeline-clip :is(.clip-copy > strong, .timeline-waveform, .timeline-waveform-placeholder) {
+  color: var(--wb-media-text);
+  text-shadow: none;
+}
+:root.light .dock-workbench .timeline-panel.edit-timeline .timeline-clip:hover {
+  filter: none;
+}
+:root.light .dock-workbench .timeline-panel.edit-timeline :is(.timeline-waveform, .timeline-waveform-placeholder) {
+  opacity: 1;
+}
+:root.light .dock-workbench .timeline-panel.edit-timeline .timeline-clip:has(> :is(img, video.clip-thumbnail)) :is(.clip-copy > strong, .clip-symbol),
+:root.light .dock-workbench .timeline-panel.edit-timeline .timeline-clip:has(> :is(img, video.clip-thumbnail)) .timeline-waveform-placeholder,
+:root.light .central-preview.edit-preview .preview-stage-label,
+:root.light .dock-workbench :is(.asset-kind, .asset-duration, .asset-marks-compact .unknown, .asset-usage-compact) {
+  color: var(--wb-media-text);
+  background: #303336;
+  border-color: transparent;
+}
+:root.light .dock-workbench .asset-marks-compact .asset-disposition-buttons > button {
+  background: #303336;
+}
+:root.light .dock-workbench .asset-marks-compact button[aria-pressed="true"][data-testid*="-favorite-"] {
+  color: #F2A93B;
+}
+:root.light .dock-workbench .asset-marks-compact button[aria-pressed="true"][data-testid*="-rejected-"] {
+  color: #F26464;
+}
+:root.light .dock-workbench .asset-layout-grid .asset-kind {
+  background: var(--wb-video);
+  border-color: var(--wb-video-edge);
+}
+:root.light .dock-workbench .asset-layout-grid .asset-card.image .asset-kind {
+  background: var(--wb-image);
+  border-color: var(--wb-image-edge);
+}
+:root.light .dock-workbench .asset-layout-grid .asset-card.audio .asset-kind {
+  background: var(--wb-audio);
+  border-color: var(--wb-audio-edge);
+}
+:root.light .dock-workbench .timeline-panel.edit-timeline .timeline-clip.selected {
+  border-color: var(--wb-media-text);
+  outline: 2px solid var(--wb-accent-line);
+  outline-offset: 1px;
+}
+:root.light .dock-workbench .timeline-panel.edit-timeline .clip-trim-mark {
+  background: var(--wb-media-text);
+}

@@ -17,9 +17,10 @@ function timeline(){const projectId=randomUUID(),trackId=randomUUID(),assetId=ra
 
 test('subtitle schemas accept exactly three keyed manual operations and preserve the historical16 prefix',()=>{
  assert.deepEqual(TIMELINE_SUBTITLE_OPERATIONS,['timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove']);
- assert.deepEqual(DURABLE_EDIT_OPERATIONS.slice(0,16),['timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.replaceSource','timeline.clip.remove','timeline.clip.split','timeline.seed','timeline.undo','timeline.redo','reference.attach','reference.detach','subject.create','subject.version.add','subject.binding.set','timeline.format.set']);
- assert.deepEqual(DURABLE_EDIT_OPERATIONS.slice(16,19),TIMELINE_SUBTITLE_OPERATIONS);
- assert.deepEqual(DURABLE_EDIT_OPERATIONS.slice(19),['timeline.loudness.apply']);
+ assert.deepEqual(DURABLE_EDIT_OPERATIONS.filter(operation=>operation!=='timeline.clip.rippleRemove').slice(0,16),['timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.replaceSource','timeline.clip.remove','timeline.clip.split','timeline.seed','timeline.undo','timeline.redo','reference.attach','reference.detach','subject.create','subject.version.add','subject.binding.set','timeline.format.set']);
+ assert.deepEqual(DURABLE_EDIT_OPERATIONS.slice(17,20),TIMELINE_SUBTITLE_OPERATIONS);
+ assert.equal(DURABLE_EDIT_OPERATIONS.filter(operation=>operation==='timeline.clip.rippleRemove').length,1);
+ assert.deepEqual(DURABLE_EDIT_OPERATIONS.slice(20),['timeline.loudness.apply']);
  for(const operation of TIMELINE_SUBTITLE_OPERATIONS){assert.equal(editTaskLane(operation),'timeline:mutation');const effects=operationEffect(operation);assert.equal(effects.idempotent,true);for(const flag of ['externalIO','fileWrite','localProcess','paidGeneration'])assert.equal(effects[flag],false);}
  const add={...base(),text:'第一行\nSecond line',startFrame:1,durationFrames:29};assert.equal(schemas['timeline.subtitle.add'].safeParse(add).success,true);
  for(const patch of [{id:randomUUID()},{profileId:TIMELINE_SUBTITLE_PROFILE_ID},{fontFile:'anything'},{expectedRevision:0},{expectedRevision:Number.MAX_SAFE_INTEGER+1},{startFrame:.1},{durationFrames:0},{startFrame:18000},{requestId:'short'},{text:undefined}])assert.equal(schemas['timeline.subtitle.add'].safeParse({...add,...patch}).success,false,JSON.stringify(patch));

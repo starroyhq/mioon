@@ -31,7 +31,7 @@ function environment(extra = {}) {
   for (const key of Object.keys(env)) {
     if (/^(?:MIOON_|RUNWAY|ARK_|VEO_|GOOGLE_|MINIMAX_|VIDU_|OPENAI_|ANTHROPIC_|AZURE_|AWS_|NODE_OPTIONS$|HTTPS?_PROXY$|ALL_PROXY$)/i.test(key)) delete env[key];
   }
-  return {...env, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAY_MAX_GENERATIONS: '0', ...extra};
+  return {...env, MIOON_ENABLE_LIVE_PROVIDER: '0', ...extra};
 }
 
 async function cli(args, env = {}, expectedError) {
@@ -79,8 +79,8 @@ test('fade CLI and official MCP schemas are optional, strict, offline and retain
   const mcp = await mcpFixture(t), catalog = await cli(['schema']);
   assert.deepEqual(await mcp.call('mioon_schema', {}), catalog);
   const tools = (await mcp.client.listTools()).tools;
-  const timelineOperations = ['timeline.audioPreview.continuousPlan', 'timeline.colour.source.inspect', 'timeline.colour.image.inspect', 'timeline.colour.jpeg.inspect', 'timeline.audioPreview.plan', 'timeline.subtitle.add', 'timeline.subtitle.update', 'timeline.subtitle.remove', 'timeline.format.get', 'timeline.format.set', 'timeline.get', 'timeline.inspect', 'timeline.history.get', 'timeline.export.preflight', 'timeline.export.capabilities', 'timeline.export.samplePeak', 'timeline.export.loudness', 'timeline.loudness.prepare', 'timeline.clip.loudness', 'timeline.loudness.apply', 'timeline.undo', 'timeline.redo', 'timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update', 'timeline.clip.remove', 'timeline.clip.split', 'timeline.clip.replaceSource', 'timeline.seed', 'timeline.render'];
-  assert.deepEqual(catalog.operations.filter(item => item.operation.startsWith('timeline.')).map(item => item.operation).sort(), timelineOperations.sort(), 'timeline discovery includes the explicit replacement operation alongside existing fade fields');
+  const timelineOperations = ['timeline.audioPreview.continuousPlan', 'timeline.colour.source.inspect', 'timeline.colour.image.inspect', 'timeline.colour.jpeg.inspect', 'timeline.audioPreview.plan', 'timeline.subtitle.add', 'timeline.subtitle.update', 'timeline.subtitle.remove', 'timeline.format.get', 'timeline.format.set', 'timeline.get', 'timeline.inspect', 'timeline.history.get', 'timeline.export.preflight', 'timeline.export.capabilities', 'timeline.export.samplePeak', 'timeline.export.loudness', 'timeline.loudness.prepare', 'timeline.clip.loudness', 'timeline.loudness.apply', 'timeline.undo', 'timeline.redo', 'timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update', 'timeline.clip.remove', 'timeline.clip.rippleRemove', 'timeline.clip.split', 'timeline.clip.replaceSource', 'timeline.seed', 'timeline.render'];
+  assert.deepEqual(catalog.operations.filter(item => item.operation.startsWith('timeline.')).map(item => item.operation).sort(), timelineOperations.sort(), 'timeline discovery includes explicit source replacement and ripple removal alongside existing fade fields');
   // Public local inspection is broader than the explicitly consented Agent tool set.
   assert.deepEqual(catalog.operations.filter(item => item.operation.endsWith('.inspect')).map(item => item.operation).sort(), ['asset.inspect', 'lut.inspect', 'lut.look.inspect', 'project.inspect', 'shot.inspect', 'timeline.colour.image.inspect', 'timeline.colour.jpeg.inspect', 'timeline.colour.source.inspect', 'timeline.inspect', 'workspace.backup.inspect', 'workspace.restore.inspect']);
   assert.deepEqual(READ_TOOL_DEFINITIONS.map(tool => tool.name), ['mioon_project_inspect', 'mioon_asset_inspect', 'mioon_shot_inspect', 'mioon_timeline_inspect']);

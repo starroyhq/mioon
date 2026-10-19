@@ -72,7 +72,7 @@ function codecFor(f) {
         return JSON.stringify(probeData({source}));
       }
       assert.equal(command, 'ffmpeg');
-      const graphAt = argv.indexOf('-filter_complex'), scriptAt = argv.indexOf('-filter_complex_script');
+      const graphAt = argv.indexOf('-filter_complex'), scriptAt = argv.indexOf('-/filter_complex');
       const graph = graphAt >= 0 ? argv[graphAt + 1] : scriptAt >= 0 ? fs.readFileSync(argv[scriptAt + 1], 'utf8') : null;
       const file = argv.at(-1);
       assert.ok(path.isAbsolute(file) && file.startsWith(f.root + path.sep), 'codec output stays in this fixture');

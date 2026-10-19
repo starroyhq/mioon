@@ -1,3 +1,4 @@
+import {OPACITY_RIPPLE_CANDIDATE_BACKUP_PROFILE} from './opacity-ripple-candidate-backup-profile.ts';
 import path from 'node:path';
 import applicationPackage from '../../../package.json' with {type:'json'};
 import {randomUUID,createHash} from 'node:crypto';
@@ -38,7 +39,7 @@ function checkFixedProfile(fixedProfile){
  // Only this module-owned fixed candidate is an alternate offline assembly.
  // Public options, copied objects and arbitrary schema-reader callbacks cannot
  // select a new source profile or weaken the historical default reader.
- if(fixedProfile!==undefined&&fixedProfile!==OPACITY_CANDIDATE_BACKUP_PROFILE)fail('DATABASE_INVALID');
+ if(fixedProfile!==undefined&&fixedProfile!==OPACITY_CANDIDATE_BACKUP_PROFILE&&fixedProfile!==OPACITY_RIPPLE_CANDIDATE_BACKUP_PROFILE)fail('DATABASE_INVALID');
 }
 function resultFor(manifest,fixedProfile){
  return validated(fixedProfile?fixedProfile.resultSchema:workspaceBackupResultSchema,{format,formatVersion,backupId:manifest.backupId,integrity:'verified',restoration:'not_tested',

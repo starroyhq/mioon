@@ -13,7 +13,7 @@ import {callObservedRpc} from '../apps/server/src/rpc-observation.mjs';
 import {mixLoudnessOperation as operation,mixLoudnessInput as input,mixLoudnessToken as token,readyMixLoudness,silentMixLoudness} from './fixtures/timeline-mix-loudness-fixtures.mjs';
 
 const repo=fileURLToPath(new URL('..',import.meta.url));
-const env=url=>({PATH:process.env.PATH||'',MIOON_ENABLE_LIVE_PROVIDER:'0',RUNWAY_MAX_GENERATIONS:'0',...(url?{MIOON_BASE_URL:url,MIOON_TOKEN:token}:{})});
+const env=url=>({PATH:process.env.PATH||'',MIOON_ENABLE_LIVE_PROVIDER:'0',...(url?{MIOON_BASE_URL:url,MIOON_TOKEN:token}:{})});
 const deferred=()=>{let resolve;const promise=new Promise(r=>{resolve=r;});return {promise,resolve};};
 async function bounded(promise,label,ms=10000){let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(label+' timed out')),ms);})]);}finally{clearTimeout(timer);}}
 function cli(t,url,args){

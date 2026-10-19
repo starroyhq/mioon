@@ -10,6 +10,7 @@ import { createFrameExtractionController, frameCaptureBusy } from '../apps/web/s
 import * as candidatePresentation from '../apps/web/src/opacity-candidate-render-presentation.ts';
 import {createOpacityCandidateApplication} from '../apps/web/src/opacity-candidate-application.ts';
 import * as contracts from '@mioon/contracts';
+import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
 import {rpc} from '../apps/web/src/api.js';
 import {createEditTaskClient} from '../apps/web/src/edit-task-client.js';
 import {createOpacityRenderSnapshotPlan} from '../packages/contracts/src/timeline-opacity-render-candidate.ts';
@@ -30,7 +31,7 @@ function harness() {
     useLayoutEffect: (fn, deps) => effect(layouts, fn, deps), useEffect: (fn, deps) => effect(effects, fn, deps),
   }; react.default = react;
   const module = { exports: {} };
-  Function('require', 'module', 'exports', code)(id => id === './i18n/I18nProvider.tsx' ? i18nTestModule() : id === './creation-i18n.ts' ? creationI18n : id === 'react' ? react : id === './export-settings-state.js' ? exportSettings : id === './source-range-state.js' ? ranges : id === './opacity-candidate-render-presentation.ts' ? candidatePresentation : id === './api.js' ? { assetUrl: asset => asset?.url || '', statusText: String } : id === './Timeline.jsx' ? { assetKind: asset => asset?.mimeType.split('/')[0], framesLabel: String } : id === './workspace-visibility.jsx' ? { useWorkspaceVisibility: () => h.visible } : id === './Nodes.jsx' ? { disposeMedia: element => { element.pause(); element.removeAttribute('src'); element.load(); } } : id === './icons.jsx' ? { default: 'Icon', __esModule: true } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
+  Function('require', 'module', 'exports', code)(id => id === './i18n/I18nProvider.tsx' ? i18nTestModule() : id === './creation-i18n.ts' ? creationI18n : id === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:DEFAULT_UI_PREFERENCES})} : id === 'react' ? react : id === './export-settings-state.js' ? exportSettings : id === './source-range-state.js' ? ranges : id === './opacity-candidate-render-presentation.ts' ? candidatePresentation : id === './api.js' ? { assetUrl: asset => asset?.url || '', statusText: String } : id === './Timeline.jsx' ? { assetKind: asset => asset?.mimeType.split('/')[0], framesLabel: String } : id === './workspace-visibility.jsx' ? { useWorkspaceVisibility: () => h.visible } : id === './Nodes.jsx' ? { disposeMedia: element => { element.pause(); element.removeAttribute('src'); element.load(); } } : id === './icons.jsx' ? { default: 'Icon', __esModule: true } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
   const renderComponent = (name, component, properties) => { if (!components.has(name)) components.set(name, []); active = components.get(name); cursor = 0; return component(properties); };
   const cleanup = name => { components.get(name)?.forEach(slot => slot.cleanup?.()); components.delete(name); };
   const flush = queue => { for (const [slots, index] of queue) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].fn(); } };

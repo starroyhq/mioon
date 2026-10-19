@@ -12,6 +12,7 @@ import { createHash } from 'node:crypto';
 import { canonicalImageInput } from '../packages/contracts/src/images.mjs';
 import { ApiError } from '../apps/web/src/api.js';
 import * as imageLogic from '../apps/web/src/image-generation.js';
+import * as imageEditIntents from '../apps/web/src/image-edit-intent.ts';
 import { IMAGE_LIMITS } from '../packages/contracts/src/images.mjs';
 import { DEFAULT_IMAGE_CONFIGURATION, DEFAULT_CUSTOM_IMAGE_CONFIGURATION } from '../packages/contracts/src/image-settings.mjs';
 import { IMAGE_REVIEW_DESTINATION, IMAGE_REVIEW_POLICY } from '../packages/contracts/src/image-reviews.mjs';
@@ -191,7 +192,10 @@ test('actual library reveal respects newer project, navigation and panel choices
     assert.equal(calls.length, changed ? 0 : 3, String(changed));
     if (!changed) assert.deepEqual(calls[0], ['view', 'shared', { assetSearch: 'Saved image', assetFilter: 'all' }]);
   }
-  assert.match(app, /\['properties', 'agent', 'image', 'delivery', 'tasks'\]\.includes\(value\)\) \{ markPanelIntent\(\); setRightDockTab\(value\); \}/);
+  assert.match(app, /<Dialog open=\{showImage\}/);
+  assert.match(app, /<AgentDockPane id="right-dock-image"[^>]*visible=\{showImage\}/);
+  assert.match(app, /setShowTasks\(false\); setShowDelivery\(false\); setShowImage\(true\)/);
+  assert.doesNotMatch(app, /rightDockTab === 'image'/);
   assert.doesNotMatch(source, /node\.create|setPreviewAsset|image\.generate/);
   assert.doesNotThrow(() => transformSync(app, { loader: 'jsx', format: 'esm' }));
 });
@@ -238,6 +242,7 @@ function renderer(f, options = {}) {
     if (name === 'react') return react;
     if (name === '@mioon/contracts') return { IMAGE_LIMITS };
     if (name === './image-generation.js') return { ...imageLogic, createImageGenerationSession: options => createImageGenerationSession({ ...options, api: f.api, storage: f.storage, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) };
+    if (name === './image-edit-intent.ts') return imageEditIntents;
     if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
     if (name === './ComfyImageSettings.jsx') return { __esModule: true, default: 'ComfyImageSettings' };
     if (name === './ComfyImageDetails.jsx') return { ComfyImageReviewDetails: 'ComfyImageReviewDetails', ComfyImageTaskDetails: 'ComfyImageTaskDetails' };
@@ -253,7 +258,7 @@ function renderer(f, options = {}) {
   };
   Function('module', 'exports', 'require', transformSync(componentSource, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, require);
   const harness = {
-    render(owner = currentProject) { currentProject = owner; index = 0; effects = []; tree = module.exports.default({ projectId: owner, projectName: 'Test project', reviewClient: f.reviewClient, settingsClient: f.settingsClient, customSettingsClient: f.customSettingsClient, onDirtyChange: value => { dirty = value; }, onRevealAsset: options.onRevealAsset }); for (const slot of effects) { slots[slot].cleanup?.(); slots[slot].cleanup = slots[slot].callback(); } return tree; },
+    render(owner = currentProject) { currentProject = owner; index = 0; effects = []; tree = module.exports.default({ projectId: owner, projectName: 'Test project', reviewClient: f.reviewClient, settingsClient: f.settingsClient, customSettingsClient: f.customSettingsClient, onDirtyChange: value => { dirty = value; }, onRevealAsset: options.onRevealAsset, projectAssets: options.projectAssets || [], editIntent: options.editIntent || null, isEditIntentCurrent: options.isEditIntentCurrent }); for (const slot of effects) { slots[slot].cleanup?.(); slots[slot].cleanup = slots[slot].callback(); } return tree; },
     find(id) { return nodes(tree).find(node => node.props['data-testid'] === id); },
     form() { return nodes(tree).find(node => node.type === 'form'); },
     change(id, value) { harness.find(id).props.onChange({ target: { value } }); harness.render(); },
@@ -673,4 +678,62 @@ test('four-language changes preserve mounted image drafts and the same pending p
   ui.click('image-review-approve'); await flush(); ui.render();
   assert.equal(f.privateCalls.length, 1); assert.equal(f.privateCalls[0].review.input.name, name); assert.equal(f.privateCalls[0].review.input.prompt, prompt);
   ui.unmount(); f.session.dispose(); languageStore.dispose();
+});
+
+const editAsset = () => ({ id: assetId, projectId, name: 'Owned reference.png', sha256: 'a'.repeat(64), mimeType: 'image/png', provenance: 'user-import', sizeBytes: 120, width: 64, height: 64 });
+function editIntentFixture(f) {
+  const source = editAsset(), changes = [];
+  let visible = true, sources = [source], current = true;
+  const controller = imageEditIntents.createImageEditIntentController({
+    getContext: () => ({ visible, scope: 'project:epoch:panel', projectId, assets: sources, session: f.session, isCurrent: () => current }),
+    isDirty: imageDraftDirty, onChange: value => changes.push(value),
+  });
+  return { controller, changes, source,
+    intent: number => imageEditIntents.captureImageEditIntent({ id: id(number), scope: 'project:epoch:panel', projectId, asset: source }),
+    hide() { visible = false; f.session.setVisible(false); controller.retire(); }, show() { visible = true; f.session.setVisible(true); }, setSources(value) { sources = value; }, current(value) { current = value; } };
+}
+test('external image edit intent prefills one exact source without generating or approving', async () => {
+  const f = fixture(); await f.session.load(); const h = editIntentFixture(f), intent = h.intent(900);
+  await h.controller.receive(intent); assert.equal(h.changes.at(-1).phase, 'applied');
+  assert.equal(f.session.getState().mode, 'edit'); assert.deepEqual(f.session.getState().inputImage, { assetId, sha256: 'a'.repeat(64) });
+  assert.equal(mutations(f).length, 0); assert.equal(f.privateCalls.length, 0);
+  assert.equal(f.calls.some(call => call.operation === 'image.review.prepare'), false);
+  f.session.edit('prompt', 'Keep edited description'); await h.controller.receive(intent);
+  assert.equal(f.session.getState().draft.prompt, 'Keep edited description'); f.session.dispose();
+});
+test('image edit intent uses the existing discard guard and stale form/source confirmations preserve the draft', async () => {
+  const f = fixture(); await ready(f); const h = editIntentFixture(f);
+  await h.controller.receive(h.intent(901)); assert.equal(h.changes.at(-1).phase, 'confirm');
+  const stale = h.changes.at(-1).ticket; assert.equal(f.session.getState().draft.prompt, '清晨的山间小屋');
+  f.session.edit('prompt', 'Newer form'); assert.equal(await h.controller.confirm(stale), false); assert.equal(f.session.getState().draft.prompt, 'Newer form');
+  await h.controller.receive(h.intent(902)); const changedSource = h.changes.at(-1).ticket;
+  h.setSources([{ ...editAsset(), sha256: 'b'.repeat(64) }]); assert.equal(await h.controller.confirm(changedSource), false); assert.equal(f.session.getState().draft.prompt, 'Newer form');
+  h.setSources([editAsset()]); await h.controller.receive(h.intent(903)); const confirmed = h.changes.at(-1).ticket;
+  assert.equal(await h.controller.confirm(confirmed), true); assert.equal(f.session.getState().draft.prompt, ''); assert.equal(f.session.getState().mode, 'edit');
+  assert.equal(mutations(f).length, 0); assert.equal(f.privateCalls.length, 0); f.session.dispose();
+});
+test('hiding or retiring an image edit intent rejects old confirmation even after showing the same project', async () => {
+  const f = fixture(); await ready(f); const h = editIntentFixture(f);
+  await h.controller.receive(h.intent(904)); const ticket = h.changes.at(-1).ticket;
+  h.hide(); h.show(); assert.equal(await h.controller.confirm(ticket), false);
+  assert.equal(f.session.getState().draft.prompt, '清晨的山间小屋'); assert.equal(f.session.getState().mode, 'text');
+  assert.equal(mutations(f).length, 0); f.session.dispose();
+});
+test('actual image composer waits for its reads before applying a fresh edit intent and never submits it', async () => {
+  const f = fixture(), source = editAsset(), intent = imageEditIntents.captureImageEditIntent({ id: id(905), scope: 'project:epoch:panel', projectId, asset: source });
+  const options = { projectAssets: [source], editIntent: intent, isEditIntentCurrent: value => value === intent }, ui = renderer(f, options);
+  ui.render(); await flush(); ui.render(); await flush(); ui.render();
+  assert.equal(ui.find('image-mode-edit').props['aria-pressed'], true);
+  assert.equal(ui.find('image-source-asset').props.value, `${assetId}:${source.sha256}`);
+  assert.equal(mutations(f).length, 0); assert.equal(f.privateCalls.length, 0); ui.unmount(); f.session.dispose();
+});
+
+test('image edit intent capture rejects foreign, duplicate and unsupported source identities', () => {
+  const source = editAsset(), capture = value => imageEditIntents.captureImageEditIntent({ id: id(906), scope: 'scope', projectId, asset: value });
+  assert.equal(capture({ ...source, projectId: id(999) }), null);
+  assert.equal(capture({ ...source, mimeType: 'image/jpeg' }), null);
+  assert.equal(capture({ ...source, width: 2048 }), null);
+  const intent = capture(source); assert.ok(Object.isFrozen(intent));
+  assert.equal(imageEditIntents.imageEditIntentSource(intent, { scope: 'scope', projectId, assets: [source, source] }), null);
+  assert.equal(imageEditIntents.imageEditIntentSource(intent, { scope: 'other', projectId, assets: [source] }), null);
 });

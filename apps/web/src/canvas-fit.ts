@@ -8,7 +8,7 @@ export type Side = 'left' | 'right' | 'top' | 'bottom';
 const OVERLAYS: ReadonlyArray<readonly [Side, string]> = [
   ['left', '#dock-assets[data-visible="true"]'], ['left', '.recall-assets'],
   ['right', '#dock-inspector[data-visible="true"]'], ['right', '.recall-inspector'],
-  ['top', '.canvas-heading'], ['bottom', '.storyboard'],
+  ['top', '.board-toolbar-heading'], ['bottom', '.board-storyboard'],
 ];
 const MAX_SHARE = 0.8;
 

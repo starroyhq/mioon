@@ -84,7 +84,7 @@ export function createOpacityCandidateServices(store: unknown, options: {signal?
     handlers['timeline.get'] = (input: Value) => typedStore.tx(() => typeof input.projectId === 'string' ? ensureTimeline(input.projectId) : unavailable());
   }
   const reads = new Set(['timeline.get', 'timeline.history.get', ...applicationReads]);
-  const mutations = new Set(['timeline.clip.update', 'timeline.undo', 'timeline.redo', 'timeline.render', ...(application ? ['timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.remove'] : [])]);
+  const mutations = new Set(['timeline.clip.update', 'timeline.undo', 'timeline.redo', 'timeline.render', ...(assembly.rippleRemove ? ['timeline.clip.rippleRemove'] : []), ...(application ? ['timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.remove'] : [])]);
   const preparations = new Set(['timeline.export.preflight', 'timeline.export.capabilities']);
   const pending = new Set<Promise<unknown>>();
   async function invokeCall(operation: string, input: unknown, context: Value = {}): Promise<unknown> {

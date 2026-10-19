@@ -41,44 +41,40 @@ function shellHarness() {
   const Component = componentModule('ProjectHomeConnections.tsx', react, {
     './i18n/I18nProvider.tsx': { useI18n: () => createI18nTestContext(locale) },
     '@mioon/ui/components/button': { Button: 'Button' },
+    '@mioon/ui/components/workbench-icons': {WorkbenchIcon:'WorkbenchIcon'},
     './LanguageControl.tsx': { __esModule: true, default: 'LanguageControl' },
     './workspace-visibility.jsx': { WorkspaceVisibilityProvider: 'WorkspaceVisibilityProvider' },
+    './settings-window-state.ts': { isSettingsConnectionPage: page => slots.includes(page) },
+    './SettingsExtraPages.tsx': { SettingsAbout:'SettingsAbout', SettingsShortcuts:'SettingsShortcuts', SettingsModelServices:'SettingsModelServices' },
   }).default;
   const panes = Object.fromEntries(slots.map(slot => [slot, { type: `form:${slot}`, props: { 'data-testid': `owner-${slot}`, value: `retained-${slot}` } }]));
   const props = { selected: 'agent', page: 'agent', onSelect: slot => calls.push(['slot', slot]), onPage: page => calls.push(['page', page]), panes };
   return { calls, panes, render(patch = {}, nextLocale = locale) { Object.assign(props, patch); locale = nextLocale; cursor = 0; return Component(props); } };
 }
 
-test('shared settings shell groups stable General, Model Services and Extensions categories without new provider slots', () => {
-  const h = shellHarness();
-  for (const [page, category] of [['general', 'general'], ['agent', 'models'], ['official', 'models'], ['custom', 'models'], ['comfy', 'extensions']]) {
-    const tree = h.render({ page });
-    assert.equal(find(tree, 'settings-center').props['data-page'], page);
-    for (const id of ['general', 'models', 'extensions']) assert.equal(find(tree, `settings-category-${id}`).props['aria-current'], category === id ? 'page' : undefined);
-    const serviceNavigation = nodes(tree).find(node => node.props?.className === 'settings-service-nav');
-    assert.equal(serviceNavigation.props.hidden, category !== 'models'); assert.equal(serviceNavigation.props.inert, category !== 'models');
-    assert.deepEqual(nodes(serviceNavigation).filter(node => node.type === 'Button').map(node => node.props['data-testid']), ['settings-service-agent', 'settings-service-official', 'settings-service-custom']);
-    assert.equal(nodes(tree).some(node => node.props?.['data-testid'] === 'settings-service-comfy'), false);
+test('settings shell has eight stable categories while connection owners retain four IPC slots', () => {
+  const h = shellHarness(), categories = ['general','workspace','video-tools','models','agent','extensions','shortcuts','about'];
+  for (const [page, category] of [['general','general'],['workspace','workspace'],['video-tools','video-tools'],['models','models'],['agent','agent'],['official','models'],['custom','extensions'],['comfy','extensions'],['shortcuts','shortcuts'],['about','about']]) {
+    const tree = h.render({page});
+    assert.equal(find(tree,'settings-center').props['data-page'],page);
+    for(const id of categories) assert.equal(find(tree,`settings-category-${id}`).props['aria-current'],category===id?'page':undefined);
+    const nav=nodes(tree).find(node=>node.props?.className==='settings-service-nav');
+    const expected=category==='models'?['settings-service-official']:category==='extensions'?['settings-service-custom','settings-service-comfy']:[];
+    assert.equal(nav.props.hidden,!expected.length);assert.equal(nav.props.inert,!expected.length);
+    assert.deepEqual(nodes(nav).filter(node=>node.type==='Button').map(node=>node.props['data-testid']),expected);
   }
 });
-
-test('page navigation delegates once and Models remembers the last model rather than selecting an extension', () => {
-  const h = shellHarness(); h.render({ page: 'custom', selected: 'custom' });
-  let tree = h.render({ page: 'comfy', selected: 'comfy' }); find(tree, 'settings-category-models').props.onClick();
-  assert.deepEqual(h.calls, [['page', 'custom']]);
-  tree = h.render({ page: 'general' });
-  find(tree, 'settings-category-extensions').props.onClick(); find(tree, 'settings-service-official').props.onClick();
-  find(tree, 'settings-category-general').props.onClick();
-  assert.deepEqual(h.calls, [['page', 'custom'], ['page', 'comfy'], ['page', 'official'], ['page', 'general']]);
-  assert.equal(find(tree, 'settings-center').props['data-page'], 'general', 'The shell cannot bypass its guarded owner by changing page locally');
+test('category and connection navigation delegates once without selecting a page locally',()=>{
+ const h=shellHarness();let tree=h.render({page:'general'});find(tree,'settings-category-models').props.onClick();
+ tree=h.render({page:'models'});find(tree,'settings-service-official').props.onClick();find(tree,'settings-category-extensions').props.onClick();
+ tree=h.render({page:'extensions'});find(tree,'settings-service-custom').props.onClick();find(tree,'settings-category-agent').props.onClick();
+ assert.deepEqual(h.calls,[['page','models'],['page','official'],['page','extensions'],['page','custom'],['page','agent']]);assert.equal(find(tree,'settings-center').props['data-page'],'extensions');
 });
-
-test('legacy shell consumers can still select connection slots but cannot publish General as an IPC slot', () => {
-  const h = shellHarness(), tree = h.render({ page: undefined, onPage: undefined, selected: 'official' });
-  assert.equal(find(tree, 'settings-center').props['data-page'], 'official');
-  find(tree, 'settings-service-custom').props.onClick(); find(tree, 'settings-category-extensions').props.onClick();
-  find(tree, 'settings-category-general').props.onClick();
-  assert.deepEqual(h.calls, [['slot', 'custom'], ['slot', 'comfy']]);
+test('legacy consumers can select connection slots but internal categories never become IPC slots',()=>{
+ const h=shellHarness();let tree=h.render({page:undefined,onPage:undefined,selected:'official'});
+ find(tree,'settings-service-official').props.onClick();
+ for(const id of ['general','workspace','models','extensions','shortcuts','about'])find(tree,`settings-category-${id}`).props.onClick();
+ assert.deepEqual(h.calls,[['slot','official']]);
 });
 
 test('General does not mount unvisited connections and hiding visited forms retains exact keyed owners', () => {
@@ -124,12 +120,12 @@ test('General language controls and category copy change in four locales without
     assert.ok(text(general).includes(translate(locale, 'language.label')));
     assert.ok(text(general).includes(translate(locale, 'settings.languageHint')));
     assert.equal(nodes(general).filter(node => node.type === 'LanguageControl').length, 1);
-    for (const category of ['general', 'models', 'extensions']) assert.equal(text(find(tree, `settings-category-${category}`)), translate(locale, `settings.${category}`));
+    for (const category of ['general','workspace','video-tools','models','agent','extensions','shortcuts','about']) assert.equal(text(find(tree, `settings-category-${category}`)), translate(locale, category === 'general' ? 'settings.general' : `redesign.settings.${category}`));
     headings.add(text(find(tree, 'settings-category-models')));
     assert.equal(find(tree, 'owner-custom'), h.panes.custom); assert.equal(find(tree, 'settings-center').props['data-page'], 'general');
     find(tree, 'settings-category-models').props.onClick();
   }
-  assert.equal(headings.size, 4); assert.deepEqual(h.calls, LOCALES.map(() => ['page', 'custom']));
+  assert.equal(headings.size, 4); assert.deepEqual(h.calls, LOCALES.map(() => ['page', 'models']));
 });
 
 let presentation;
@@ -157,7 +153,7 @@ test('actual shared controls render accessible four-language settings and one co
   for (const locale of LOCALES) {
     const html = renderPresentation(locale, 'general');
     assert.ok(html.includes(`aria-label="${htmlText(translate(locale, 'settings.categories'))}"`));
-    for (const key of ['settings.general', 'settings.models', 'settings.extensions', 'settings.languageHint']) assert.ok(html.includes(htmlText(translate(locale, key))), `${locale}/${key}`);
+    for (const key of ['settings.general', 'redesign.settings.models', 'redesign.settings.extensions', 'settings.languageHint']) assert.ok(html.includes(htmlText(translate(locale, key))), `${locale}/${key}`);
     assert.equal((html.match(/data-testid="language-select"/gu) || []).length, 1);
     for (const value of ['system', ...LOCALES]) assert.ok(html.includes(`value="${value}"`));
     assert.doesNotMatch(html, /data-owner=/u, 'Opening General must not mount connection forms or read provider settings');
@@ -182,7 +178,7 @@ test('shared native center receives page routing and visibility without replacin
   const main = app.slice(app.indexOf('export function SettingsConnectionForms('), app.indexOf('export default function App('));
   assert.match(native, /installNativeCloseAdmission/u); assert.match(native, /navigation\.selectPage/u);
   assert.match(native, /page:\s*navigation\.page/u); assert.match(native, /window\.close\(\); return false/u);
-  assert.match(main, /<ProjectHomeConnections selected=\{selected\} page=\{page\}/u);
+  assert.match(main, /<ProjectHomeConnections\b/u); assert.match(main, /selected=\{selected\} page=\{page\}/u); assert.match(main, /slot="home:video-tools"/u);
   for (const slot of slots) assert.ok(main.includes(`page === '${slot}'`));
   assert.equal((main.match(/onRequestSelectSlot=\{onSelect\}/gu) || []).length, 3);
   const recovery = native.indexOf('<details className="settings-workspace-status settings-workspace-status-global"');
@@ -199,10 +195,10 @@ test('unavailable connections leave General usable while disabled categories and
     const tree = h.render({ page: 'general', connectionsAvailable: false }, locale);
     assert.notEqual(find(tree, 'settings-category-general').props.disabled, true);
     assert.equal(find(tree, 'settings-general').props.hidden, false);
-    for (const category of ['models', 'extensions']) {
+    for (const category of ['models', 'agent', 'extensions']) {
       const button = find(tree, `settings-category-${category}`); assert.equal(button.props.disabled, true); button.props.onClick();
     }
-    for (const slot of ['agent', 'official', 'custom']) find(tree, `settings-service-${slot}`).props.onClick();
+    for (const page of ['models','extensions']) { const pane=h.render({page,connectionsAvailable:false},locale); for(const node of nodes(pane).filter(node=>node.props?.['data-testid']?.startsWith('settings-service-'))) { assert.equal(node.props.disabled,true);node.props.onClick(); } }
     assert.equal(nodes(tree).filter(node => String(node.type).startsWith('form:')).length, 0);
   }
   assert.deepEqual(h.calls, []);
@@ -223,6 +219,7 @@ function webHarness(confirm = async () => true) {
     './i18n/I18nProvider.tsx': { useI18n: () => createI18nTestContext(locale) },
     '@mioon/ui/components/dialog': { Dialog: 'Dialog', DialogContent: 'DialogContent', DialogTitle: 'DialogTitle' },
     '@mioon/ui/components/button': { Button: 'Button' },
+    '@mioon/ui/components/workbench-icons': {WorkbenchIcon:'WorkbenchIcon'},
     '@mioon/ui/components/workbench-confirm': { useConfirmation: () => confirm },
     './web-settings-navigation.ts': { createWebSettingsNavigation: options => { const navigation = createWebSettingsNavigation(options); controllers.push(navigation); return navigation; } },
   }).default;
@@ -291,14 +288,14 @@ test('restored web requests normalize to General and cannot activate model pages
   assert.equal(forms.props.connectionsAvailable, false); assert.equal(forms.props.registry, h.registry);
   forms.props.onSelect('custom'); forms.props.onPage('comfy');
   assert.equal(h.controllers[0].page, 'general'); assert.deepEqual(h.registry.capture(), []);
-  const app = source('App.jsx'); assert.match(app, /connectionsAvailable=\{!restored\}/u);
+  const app = source('App.jsx'); assert.match(app, /connectionsAvailable=\{!application && !restored\}/u);
   h.unmount();
 });
 
 test('web center stays first keyed sibling across home and workbench rather than replacing the editor tree', () => {
   const app = source('App.jsx');
   assert.match(app, /const webSettingsCenter = nativeWindow \? null : <WebSettingsCenter key="global-settings-center" request=\{webSettingsRequest\} registry=\{settingsNavigation\.current\}/u);
-  assert.match(app, /if \(!workbenchReady\) return <>\{webSettingsCenter\}<ProjectHome/u);
+  assert.match(app, /if \(!workbenchReady && !retainWorkbenchForClip\) return <>\{webSettingsCenter\}<ProjectHome/u);
   assert.match(app, /return <>\{webSettingsCenter\}<main className=\{`workbench/u);
   assert.doesNotMatch(app, /webSettingsOpen\s*\?\s*<WebSettingsCenter|webSettingsOpen\s*&&\s*<WebSettingsCenter/u);
   const web = source('WebSettingsCenter.tsx');
@@ -336,7 +333,7 @@ test('actual App Ctrl+B and undo handlers work before settings opens and after c
   assert.ok(guards >= 0); const start = app.lastIndexOf('    const onKeyDown = event => {', guards), end = app.indexOf("    window.addEventListener('keydown', onKeyDown);", guards);
   assert.ok(start >= 0 && end > start);
   const settings = modalElement({ role: 'dialog', hidden: '' }), confirmation = modalElement({ role: 'alertdialog', 'data-closed': '' });
-  const calls = [], env = { viewRef: { current: { activeMode: 'editing' } }, document: modalDocument([settings, confirmation]),
+  const calls = [], env = { application:null, viewRef: { current: { activeMode: 'editing' } }, document: modalDocument([settings, confirmation]),
     hasOpenWorkbenchModal, timelineSplitActionForKey, timelineHistoryActionForKey, splitState: { canSplit: true }, historyState: { canUndo: true, canRedo: true },
     splitTimelineClip: () => calls.push('split'), changeTimelineHistory: direction => calls.push(direction),
   };

@@ -1,3 +1,4 @@
+import {authorizeHttpSnapshot} from './helpers/agent-authorizations.mjs';
 import {deriveAgentEndpoint} from '@mioon/contracts';
 import {responsesFixture, frameResponsesEvent} from './agent-responses-fixture.mjs';
 import test from 'node:test';
@@ -56,6 +57,7 @@ async function fixture(t, {gateway, modelServer = false, hold = false, protocol 
     async stream(route, signal) { return fetch(server.url + route, {headers: {authorization: `Bearer ${token}`}, signal}); },
     async rpc(operation, input = {}) { const r = await this.request('/api/rpc', {method: 'POST', input: {operation, input}}); assert.equal(r.status, 200); return r.body.data; },
     async sendInput(projectId, changes = {}) { const snap = (await this.request(`/api/agent/chat/${projectId}`)).body.data;
+      await authorizeHttpSnapshot((...args)=>this.request(...args),snap);
       return {requestId: randomUUID(), instanceId: snap.instanceId, expectedSettingsRevision: snap.settings.revision, expectedConversationRevision: snap.revision,
         message: 'Synthetic typed text', consent: {destination: deriveAgentEndpoint(snap.settings.configuration), protocol: snap.settings.configuration.protocol, model: snap.settings.configuration.model, context: 'typed_chat_only'}, ...changes}; },
   };
@@ -223,6 +225,7 @@ test('shutdown during pending trusted acquisition is bounded and late credential
   const request = async (route, method = 'GET', body) => (await fetch(server.url + route, {method, headers: {authorization: `Bearer ${token}`, 'content-type': 'application/json'}, ...(body ? {body: JSON.stringify(body)} : {})})).json();
   const project = (await request('/api/rpc', 'POST', {operation: 'project.create', input: {name: 'Synthetic pending acquire'}})).data;
   const snap = (await request(route(project.id))).data;
+  await authorizeHttpSnapshot(async(route,options)=>({status:200,body:await request(route,options.method,options.input)}),snap);
   const sent = (await request(route(project.id) + '/runs', 'POST', {requestId: randomUUID(), instanceId: snap.instanceId,
     expectedSettingsRevision: snap.settings.revision, expectedConversationRevision: snap.revision, message: 'Typed only',
     consent: {destination: deriveAgentEndpoint(snap.settings.configuration), protocol: snap.settings.configuration.protocol, model: snap.settings.configuration.model, context: 'typed_chat_only'}})).data;

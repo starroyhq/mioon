@@ -2,7 +2,7 @@
 export interface ComparisonVersion {
   id: string; projectId: string; shotId: string; assetId: string; sha256: string;
   number: number; providerId?: string; model?: string; createdAt?: string; isMock?: boolean;
-  snapshot?: { prompt?: string; duration?: number; aspectRatio?: string; model?: string };
+  snapshot?: { prompt?: string; duration?: number; aspectRatio?: string; model?: string; referenceAssetIds?: readonly string[]; parameters?: { seed?: number } };
 }
 export interface ComparisonAsset { id: string; projectId: string; sha256: string; mimeType: string }
 export interface ComparisonContext {
@@ -16,7 +16,7 @@ export interface ComparisonBinding {
   readonly versionId: string; readonly assetId: string; readonly sha256: string;
   readonly number: number; readonly key: string; readonly url: string;
   readonly metadata: Readonly<{ prompt: string | null; duration: number | null; aspectRatio: string | null;
-    provider: string | null; model: string | null; createdAt: string | null; isMock: boolean }>;
+    provider: string | null; model: string | null; createdAt: string | null; isMock: boolean; references: string | null; seed: number | null }>;
 }
 const id = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 const hash = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
@@ -38,7 +38,9 @@ export function captureComparison(context: ComparisonContext, versionId: string)
     duration: typeof version.snapshot?.duration === 'number' && Number.isFinite(version.snapshot.duration) && version.snapshot.duration > 0 ? version.snapshot.duration : null,
     aspectRatio: text(version.snapshot?.aspectRatio, 40), provider: text(version.providerId, 200),
     model: text(version.model, 200) || text(version.snapshot?.model, 200),
-    createdAt: typeof version.createdAt === 'string' && Number.isFinite(Date.parse(version.createdAt)) ? version.createdAt : null, isMock: version.isMock === true });
+    createdAt: typeof version.createdAt === 'string' && Number.isFinite(Date.parse(version.createdAt)) ? version.createdAt : null, isMock: version.isMock === true,
+    references: Array.isArray(version.snapshot?.referenceAssetIds) && version.snapshot.referenceAssetIds.length <= 100 && version.snapshot.referenceAssetIds.every(id) ? version.snapshot.referenceAssetIds.join(', ') : null,
+    seed: Number.isSafeInteger(version.snapshot?.parameters?.seed) ? version.snapshot!.parameters!.seed! : null });
   const identity = { projectId: context.projectId!, shotId: context.shot!.id, versionId, assetId: version.assetId, sha256: version.sha256, workspaceOrigin: 'normal' };
   return Object.freeze({ ...identity, scope: context.scope!, number: version.number, metadata,
     key: JSON.stringify([context.scope, identity, version.number, metadata]),

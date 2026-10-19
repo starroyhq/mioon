@@ -220,6 +220,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
    case 'timeline.clip.update': return services.call('timeline.clip.update',input);
    case 'timeline.clip.replaceSource': return services.call('timeline.clip.replaceSource',input);
    case 'timeline.clip.remove': return services.call('timeline.clip.remove',input);
+   case 'timeline.clip.rippleRemove': return services.call('timeline.clip.rippleRemove',input);
    case 'timeline.clip.split': return services.call('timeline.clip.split',input);
    case 'timeline.seed': return services.call('timeline.seed',input);
    case 'timeline.undo': return services.call('timeline.undo',input);
@@ -237,6 +238,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
    open();owner();let args;
    if(domain){try{args=domain.capturePrepare(input);}catch{invalid();}}else args=prepareFields(input);
    if(!['new','legacy_session'].includes(args.origin))invalid();
+   if(restored&&args.operation==='timeline.clip.rippleRemove'&&(opacity?!opacity.rippleRemove:![45,49].includes(restored.schemaVersion)))refuseRestoredTask(store);
    const intent=parseIntent(args.operation,args.input,args.projectId);
    if(restored){project(args.projectId);assertWorkspaceRestoreOrigin(store,context);if(args.origin!=='new')refuseRestoredTask(store);assertRestoreRequestVacant(store,args.operation,intent.input);if(args.operation==='timeline.loudness.apply')refuseRestoredTask(store);}
    const result=store.tx(()=>{

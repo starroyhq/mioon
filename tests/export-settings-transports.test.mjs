@@ -24,7 +24,7 @@ const REPO=fileURLToPath(new URL('..',import.meta.url));
 const TOKEN='synthetic-export-settings-wire-token';
 const operation='timeline.export.capabilities';
 const settings=(rateControl={mode:'crf',quality:'standard'})=>({profileId:'mp4_h264_v1',resolution:'short_360',rateControl});
-const environment=url=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',RUNWAY_MAX_GENERATIONS:'0',...(url?{MIOON_BASE_URL:url,MIOON_TOKEN:TOKEN}:{})});
+const environment=url=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',...(url?{MIOON_BASE_URL:url,MIOON_TOKEN:TOKEN}:{})});
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const noPrivate=value=>{const text=typeof value==='string'?value:JSON.stringify(value);assert.ok(!text.includes(TOKEN));assert.ok(!text.includes('Bearer '));};

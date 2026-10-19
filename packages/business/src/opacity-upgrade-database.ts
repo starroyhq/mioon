@@ -32,8 +32,21 @@ export class OpacityUpgradeDatabaseError extends Error {
   constructor(code: OpacityUpgradeDatabaseCode) {super(messages[code]); this.name = 'OpacityUpgradeDatabaseError'; this.code = code;}
 }
 function fail(code: OpacityUpgradeDatabaseCode = 'SOURCE_INVALID'): never {throw new OpacityUpgradeDatabaseError(code);}
+function runtimeModule(moduleName: string): unknown {
+  switch (moduleName) {
+    case '../../contracts/src/index.mjs': return require('../../contracts/src/index.mjs');
+    case './timeline-sources.mjs': return require('./timeline-sources.mjs');
+    case './db.mjs': return require('./db.mjs');
+    case './workspace-preferences.mjs': return require('./workspace-preferences.mjs');
+    case './timeline-recovery.mjs': return require('./timeline-recovery.mjs');
+    case './reference-recovery.mjs': return require('./reference-recovery.mjs');
+    case './subject-recovery.mjs': return require('./subject-recovery.mjs');
+    case './subjects.mjs': return require('./subjects.mjs');
+    default: return fail();
+  }
+}
 function invoke(moduleName: string, name: string, args: unknown[]): unknown {
-  const module: unknown = require(moduleName);
+  const module = runtimeModule(moduleName);
   if (!object(module) || typeof module[name] !== 'function') return fail();
   return Reflect.apply(module[name], module, args) as unknown;
 }

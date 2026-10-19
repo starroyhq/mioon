@@ -16,8 +16,14 @@ function parse(argv) {
 test('pure help retains exact legacy bytes and schema object content in every presentation locale',()=>{
   const original=help(undefined,dependencies);
   const frozen = readFileSync(new URL('./fixtures/cli-help-legacy.json',import.meta.url),'utf8');
-  // Only explicit V2 and annotation discovery additions differ; retain frozen legacy bytes and ordering.
-  const expected = frozen.replace('"timeline.audioPreview.plan",', '"timeline.audioPreview.plan","timeline.audioPreview.continuousPlan",').replace('"asset.disposition.set",', '"asset.disposition.set","asset.annotation.list","asset.annotation.set",');
+  // Only explicit discovery additions differ; retain every frozen legacy byte
+  // and operation's relative order, including the original machine prose.
+  const expected = frozen
+    .replace('"operations":["lut.import",', '"operations":["project.rename","project.delete","project.summary.list","agent.authorization.list","agent.authorization.grant","agent.authorization.revoke","lut.import",')
+    .replace('"timeline.loudness.prepare",', '"timeline.loudness.prepare","timeline.clip.loudness",')
+    .replace('"timeline.audioPreview.plan",', '"timeline.audioPreview.plan","timeline.audioPreview.continuousPlan",')
+    .replace('"asset.disposition.set",', '"asset.disposition.set","asset.annotation.list","asset.annotation.set",')
+    .replace('"timeline.clip.remove",', '"timeline.clip.remove","timeline.clip.rippleRemove",');
   assert.notEqual(expected, frozen);
   assert.equal(JSON.stringify(successEnvelope(original))+'\n', expected);
   assert.equal(localizeHelp(original),original);

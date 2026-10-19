@@ -13,7 +13,6 @@ import {opacityWorkspaceUpgradeResultSchema} from '../packages/contracts/src/opa
 import {classifyCurrentWorkspaceSchema, openStore} from '../packages/business/src/db.mjs';
 import {classifyWorkspaceSchema42} from '../packages/business/src/workspace-schema-v42.ts';
 import {initializeOpacityLegacyThrough40} from '../packages/business/src/workspace-opacity-legacy.ts';
-import {createServices} from '../packages/business/src/services.mjs';
 import {reopenOpacityCandidateApplicationStore, getOpacityCandidateAssembly, isOpacityCandidateApplicationStore} from '../packages/business/src/opacity-candidate-store.ts';
 import {createOpacityCandidateApplicationServices} from '../packages/business/src/opacity-candidate-services.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
@@ -40,9 +39,8 @@ after(() => {
 });
 
 const args = f => ({source: f.source, backup: f.backup, destination: f.destination, channel: 'web'});
-async function opacityUpgradeFixture(t, beforeBackup = () => {}) {
-  const f = await seedFixture(t);
-  await beforeBackup(f);
+async function opacityUpgradeFixture(t, beforeFreeze) {
+  const f = await seedFixture(t, {beforeFreeze});
   const remembered = {version: 1, workspaceScope: calculateWorkspaceScope({channel: 'web', root: f.source,
     directory: fs.statSync(f.source), db: fs.statSync(f.database)}), revision: 3, projectId: f.projectId, updatedAt: upgradeFixtureStamp};
   fs.writeFileSync(path.join(f.source, 'last-project-v1.json'), JSON.stringify(remembered) + '\n', {mode: 0o600});
@@ -279,13 +277,10 @@ test('restored41 and already ordinary42 inputs remain separate profiles and are 
 });
 
 test('a source with a new pending task beside acknowledged history is refused without resuming or rewriting either task', async t => {
-  const f = await opacityUpgradeFixture(t, async owned => {
-    const store = openStore(owned.source), services = createServices(store, new Map()), tasks = createEditTasks({store, services});
-    try {
-      const input = {...owned.input, requestId: randomUUID(), expectedRevision: owned.timeline.revision, patch: {name: 'New pending owned intent'}};
-      const pending = tasks.prepare({projectId: owned.projectId, operation: 'timeline.clip.update', input, origin: 'new'});
-      assert.equal(pending.task.status, 'prepared'); assert.equal(pending.task.acknowledged, false);
-    } finally {await tasks.drain(); await services.drain(); store.close();}
+  const f = await opacityUpgradeFixture(t, ({tasks, input: originalInput, timeline, projectId}) => {
+    const input = {...originalInput, requestId: randomUUID(), expectedRevision: timeline.revision, patch: {name: 'New pending owned intent'}};
+    const pending = tasks.prepare({projectId, operation: 'timeline.clip.update', input, origin: 'new'});
+    assert.equal(pending.task.status, 'prepared'); assert.equal(pending.task.acknowledged, false);
   });
   const before = tree(f.source); await assert.rejects(upgrade(args(f))); noSourceChange(f, before); noPublication(f.destination);
 });

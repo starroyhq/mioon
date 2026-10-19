@@ -1,5 +1,11 @@
 # Timeline MP4/H.264 export settings
 
+## 改版：导出记录文件恢复
+
+普通工作区的导出记录通过受认证的 `GET /api/export-files?projectId=…&exportId=…` 检查托管文件是否存在。文件丢失时，用户可显式选择原文件，以同一身份 `POST` 原始字节。后端核对已保存导出、素材及回执的归属，流式校验原大小与 SHA-256，只用不覆盖链接恢复原托管路径，不修改导出/素材记录或历史快照。错误文件、符号链接、共享路径与其他项目身份均拒绝。已有文件不覆盖；关闭界面或丢失回复后再次检查即可确认状态。恢复与 opacity 候选工作区保留既有下载边界，不开放文件写回。
+
+失败或取消后的“重新导出”回到当前导出配置与重新预检，使用新的业务请求；它不重新发送历史 requestId。导出弹窗关闭不会取消正在运行的导出，任务入口仍可查询进度。
+
 Baseline: `733ed9306de9d5ac813afffc01fd55f947241b32` (2026-10-11).
 Implemented and focused-tested; fresh production Web/desktop/package and Linux
 packaged native acceptance passed. The independent parent full gate passed
@@ -14,20 +20,24 @@ bounded local encoder proof and then the saved-source preflight. The user can
 review the effective dimensions and rate control before confirming export.
 Settings are session-local; the accepted render freezes them in its snapshot.
 Existing clips, timeline geometry, source bytes, selected generated versions,
-subtitles, undo/redo and past exports are unchanged. Storyboard export retains
-its existing fixed output. Editing preview retains its existing default path;
+subtitles, undo/redo and past exports are unchanged. New storyboard exports
+freeze the project output size (1080×1920 if absent); historical queued records
+without geometry retain their old size. Editing preview uses project geometry;
 playing an actual delivered artifact uses that artifact's frozen dimensions.
 
 The closed `mp4_h264_v1` profile accepts:
 
-- Resolution: `native`, `short_360`, or `short_1080`.
+- Resolution: `native`, `short_720`, `short_360`, or legacy-compatible `short_1080`.
 - CRF quality: `compact` = 28, `standard` = 23, `high` = 18; or
 - Single-pass average target video bitrate: 2000, 4000 or 8000 kb/s.
 
-Portrait outputs are 720×1280, 360×640 or 1080×1920. Landscape outputs are
-1280×720, 640×360 or 1920×1080. Square outputs are 720², 360² or 1080².
-The 1080 short-edge option enlarges the existing 720 short-edge composition by
-1.5×; it cannot restore additional source detail. Scaling occurs after video
+New portrait outputs are natively 1080×1920, with 720×1280 and 360×640 downscales.
+Landscape outputs are natively 1920×1080, with 1280×720 and 640×360 downscales.
+Square outputs are natively 1080², with 720² and 360² downscales.
+The UI offers native/720/360 for 1080 projects. Old 720 projects keep
+native/360/1080; their 1080 option is an explicit 1.5× upscale and cannot restore
+additional source detail. Both v1 and float-v2 resolve from the saved native
+short edge, never a fixed 720 intermediate. Scaling occurs after video
 composition and subtitle burn-in, with Lanczos sampling. Text is not reflowed.
 
 Container MP4, software libx264, yuv420p, veryfast, 30fps, GOP 60/no B frames,

@@ -24,7 +24,7 @@ export default function DeliveryWorkspace({ page, onPage, children }: DeliveryWo
     <Tabs className="delivery-workspace-tabs" value={page} onValueChange={value => { if (value === 'compose' || value === 'history') onPage(value); }}>
       <TabsList className="delivery-workspace-tablist" aria-label={t('export.workspace.pages')}>
         <TabsTrigger id="delivery-compose-tab" value="compose" aria-controls="delivery-compose-pane" data-testid="delivery-page-compose">{t('export.workspace.compose')}</TabsTrigger>
-        <TabsTrigger id="delivery-history-tab" value="history" aria-controls="delivery-history-pane" data-testid="delivery-page-history">{t('export.workspace.history')}</TabsTrigger>
+        <TabsTrigger id="delivery-history-tab" value="history" aria-controls="delivery-history-pane" data-testid="delivery-page-history"><span data-testid="export-history">{t('export.workspace.history')}</span></TabsTrigger>
       </TabsList>
       <div className="delivery-workspace-content" data-testid="delivery-workspace-content">{children}</div>
     </Tabs>

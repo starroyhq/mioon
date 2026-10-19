@@ -49,6 +49,7 @@ function harness(operations = contracts.DURABLE_EDIT_OPERATIONS) {
       if (name === '@mioon/contracts') return { ...contracts, DURABLE_EDIT_OPERATIONS: operations };
       if (name === './RecoveryStorageDetails.tsx') return load('RecoveryStorageDetails.tsx');
       if (name === './TaskWorkspace.tsx') return load('TaskWorkspace.tsx');
+      if (name === './TaskRenderList.tsx') return load('TaskRenderList.tsx');
       if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => h.visible };
       if (name === './TaskWorkspace.css') return {};
       if (name === './PendingSubmission.jsx') return load('PendingSubmission.jsx');
@@ -59,7 +60,7 @@ function harness(operations = contracts.DURABLE_EDIT_OPERATIONS) {
       if (name === './workspace-origin.js') return workspaceOrigin;
       if (name === './reference-connections.js') return references;
       if (name === './icons.jsx' || name === './SubjectVideoSummary.jsx') return { __esModule: true, default: name };
-      const primitives = { '@mioon/ui/components/badge': ['Badge'], '@mioon/ui/components/button': ['Button'], '@mioon/ui/components/input': ['Input'], '@mioon/ui/components/label': ['Label'], '@mioon/ui/components/dialog': ['Dialog', 'DialogContent', 'DialogTitle', 'DialogDescription'] };
+      const primitives = { '@mioon/ui/components/workbench-controls': ['WorkbenchBadge', 'WorkbenchButton', 'WorkbenchProgress'], '@mioon/ui/components/badge': ['Badge'], '@mioon/ui/components/button': ['Button'], '@mioon/ui/components/input': ['Input'], '@mioon/ui/components/label': ['Label'], '@mioon/ui/components/dialog': ['Dialog', 'DialogContent', 'DialogTitle', 'DialogDescription'] };
       if (primitives[name]) return Object.fromEntries(primitives[name].map(key => [key, key]));
       assert.fail(`Unexpected TaskCenter dependency: ${name}`);
     };

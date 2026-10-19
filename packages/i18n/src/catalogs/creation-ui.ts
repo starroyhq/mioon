@@ -1,5 +1,25 @@
 import type { MessageCatalog } from '../types.ts';
 export const creationUiMessages = {
+  "agent.authorization.title": {"zh-Hans": "确认智能助理发送范围", "zh-Hant": "確認智慧助理傳送範圍", "en": "Authorize Agent sending scope", "ja": "アシスタントの送信範囲を許可"},
+  "agent.authorization.explanation": {"zh-Hans": "相同目标地址、模型和发送范围只需确认一次，授权保存在本机工作区，可在设置中撤销", "zh-Hant": "相同目標位址、模型與傳送範圍只需確認一次，授權儲存在本機工作區，可在設定中撤銷", "en": "Authorize each destination, model, and sending scope once. Permission is saved in this local workspace and can be revoked in Settings", "ja": "送信先、モデル、送信範囲ごとに一度許可します。許可はこのローカルワークスペースに保存され、設定で取り消せます"},
+  "agent.authorization.cost": {"zh-Hans": "发送内容可能离开本机，模型调用可能计费；撤销不会撤回已发送的请求", "zh-Hant": "傳送內容可能離開本機，模型呼叫可能計費；撤銷不會撤回已傳送的請求", "en": "Content may leave this device and model calls may incur charges. Revoking permission cannot recall a request already sent", "ja": "内容が端末外に送信され、モデルの呼び出しに料金が発生する場合があります。許可を取り消しても送信済みのリクエストは撤回されません"},
+  "agent.authorization.remember": {"zh-Hans": "我确认此目标、模型与发送范围，并保存授权", "zh-Hant": "我確認此目標、模型與傳送範圍，並儲存授權", "en": "I approve this destination, model, and sending scope and want to save permission", "ja": "この送信先、モデル、送信範囲を確認し、許可を保存します"},
+  "agent.authorization.firstRequired": {"zh-Hans": "首次使用此发送范围需要确认", "zh-Hant": "首次使用此傳送範圍需要確認", "en": "Confirm this sending scope before first use", "ja": "初めての送信範囲には確認が必要です"},
+  "agent.authorization.saved": {"zh-Hans": "此目标、模型与发送范围已授权", "zh-Hant": "此目標、模型與傳送範圍已授權", "en": "This destination, model, and sending scope are authorized", "ja": "この送信先、モデル、送信範囲は許可済みです"},
+  "agent.authorization.review": {"zh-Hans": "查看并授权", "zh-Hant": "查看並授權", "en": "Review permission", "ja": "確認して許可"},
+  "agent.authorization.confirm": {"zh-Hans": "保存授权", "zh-Hant": "儲存授權", "en": "Save permission", "ja": "許可を保存"},
+  "agent.authorization.saving": {"zh-Hans": "正在保存…", "zh-Hant": "正在儲存…", "en": "Saving…", "ja": "保存中…"},
+  "agent.authorization.cancel": {"zh-Hans": "取消", "zh-Hant": "取消", "en": "Cancel", "ja": "キャンセル"},
+  "agent.authorization.listTitle": {"zh-Hans": "已授权目标", "zh-Hant": "已授權目標", "en": "Authorized destinations", "ja": "許可済みの送信先"},
+  "agent.authorization.refresh": {"zh-Hans": "刷新", "zh-Hant": "重新整理", "en": "Refresh", "ja": "更新"},
+  "agent.authorization.revoke": {"zh-Hans": "撤销授权", "zh-Hant": "撤銷授權", "en": "Revoke permission", "ja": "許可を取り消す"},
+  "agent.authorization.empty": {"zh-Hans": "尚未授权任何目标", "zh-Hant": "尚未授權任何目標", "en": "No destinations authorized yet", "ja": "許可済みの送信先はありません"},
+  "agent.authorization.error": {"zh-Hans": "授权状态暂时无法确认，请刷新后重试", "zh-Hant": "暫時無法確認授權狀態，請重新整理後重試", "en": "Permission status could not be confirmed. Refresh before trying again", "ja": "許可の状態を確認できませんでした。更新してから再試行してください"},
+  "agent.authorization.scope.typed_chat_only": {"zh-Hans": "仅对话文字", "zh-Hant": "僅對話文字", "en": "Chat text only", "ja": "会話テキストのみ"},
+  "agent.authorization.scope.project_inspection": {"zh-Hans": "项目文字与元数据", "zh-Hant": "專案文字與中繼資料", "en": "Project text and metadata", "ja": "プロジェクトのテキストとメタデータ"},
+  "agent.authorization.scope.selected_shot_edit": {"zh-Hans": "项目与选中镜头", "zh-Hant": "專案與所選鏡頭", "en": "Project and selected shot", "ja": "プロジェクトと選択ショット"},
+  "agent.authorization.scope.selected_timeline_clip_move": {"zh-Hans": "时间线与选中片段移动", "zh-Hant": "時間軸與所選片段移動", "en": "Timeline and selected clip movement", "ja": "タイムラインと選択クリップの移動"},
+  "agent.authorization.scope.selected_timeline_clip_gain": {"zh-Hans": "时间线与选中片段音量", "zh-Hant": "時間軸與所選片段音量", "en": "Timeline and selected clip volume", "ja": "タイムラインと選択クリップの音量"},
   "agent.chat.replyRunning": {
     "zh-Hans": "正在回复",
     "zh-Hant": "正在回覆",
@@ -103,16 +123,16 @@ export const creationUiMessages = {
     "ja": "最初の文章を待機中…"
   },
   "agent.chat.noReplyText": {
-    "zh-Hans": "没有收到回复文字。",
-    "zh-Hant": "未收到回覆文字。",
-    "en": "No reply text was received.",
-    "ja": "返信の文章を受信できませんでした。"
+    "zh-Hans": "没有收到回复文字",
+    "zh-Hant": "未收到回覆文字",
+    "en": "No reply text was received",
+    "ja": "返信の文章を受信できませんでした"
   },
   "agent.chat.interruptedDisclosure": {
-    "zh-Hans": "已保存的回复中断，不会自动续接或重新发送；远端仍可能已计算或计费。",
-    "zh-Hant": "已儲存的回覆中斷，不會自動接續或重新傳送；遠端仍可能已進行運算或計費。",
-    "en": "The saved reply was interrupted and will not resume or resend automatically. Remote computation or charges may already have occurred.",
-    "ja": "保存された返信は中断されました。自動で再開や再送はしません。リモート側で処理や課金が発生している可能性があります。"
+    "zh-Hans": "已保存的回复中断，不会自动续接或重新发送；远端仍可能已计算或计费",
+    "zh-Hant": "已儲存的回覆中斷，不會自動接續或重新傳送；遠端仍可能已進行運算或計費",
+    "en": "The saved reply was interrupted and will not resume or resend automatically. Remote computation or charges may already have occurred",
+    "ja": "保存された返信は中断されました。自動で再開や再送はしません。リモート側で処理や課金が発生している可能性があります"
   },
   "agent.chat.conversationEyebrow": {
     "zh-Hans": "AGENT · CONVERSATION",
@@ -193,10 +213,10 @@ export const creationUiMessages = {
     "ja": "テキストチャットではこのラベルを送信しません"
   },
   "agent.chat.localStorageDisclosure": {
-    "zh-Hans": "记录保存在本地应用数据库，并非密钥保险库加密。请勿输入密钥或其他秘密。",
-    "zh-Hant": "記錄儲存在本機應用程式資料庫，未經密鑰保管庫加密。請勿輸入密鑰或其他機密。",
-    "en": "Records are stored in the local app database, without secret-vault encryption. Do not enter keys or other secrets.",
-    "ja": "記録はローカルのアプリデータベースに保存され、秘密情報用保管庫の暗号化は適用されません。キーなどの秘密情報は入力しないでください。"
+    "zh-Hans": "记录保存在本地应用数据库，并非密钥保险库加密。请勿输入密钥或其他秘密",
+    "zh-Hant": "記錄儲存在本機應用程式資料庫，未經密鑰保管庫加密。請勿輸入密鑰或其他機密",
+    "en": "Records are stored in the local app database, without secret-vault encryption. Do not enter keys or other secrets",
+    "ja": "記録はローカルのアプリデータベースに保存され、秘密情報用保管庫の暗号化は適用されません。キーなどの秘密情報は入力しないでください"
   },
   "agent.chat.simulatedRun": {
     "zh-Hans": "模拟测试 · 无真实模型调用",
@@ -211,16 +231,16 @@ export const creationUiMessages = {
     "ja": "保存と実行について"
   },
   "agent.chat.draftPersistence": {
-    "zh-Hans": "已发送文字、回复及读取结果会保存在本地。切换页签、收起面板或重新读取保留草稿；刷新页面或退出应用会丢失未发送草稿。切换项目前会确认放弃草稿。",
-    "zh-Hant": "已傳送文字、回覆及讀取結果會儲存在本機。切換分頁、收起面板或重新讀取時會保留草稿；重新整理頁面或結束應用程式會遺失未傳送草稿。切換專案前會確認是否放棄草稿。",
-    "en": "Sent text, replies, and read results are saved locally. Switching tabs, collapsing the panel, or reloading preserves drafts. Refreshing the page or quitting the app loses unsent drafts. Switching projects asks before discarding a draft.",
-    "ja": "送信済みの文章、返信、読み取り結果はローカルに保存されます。タブの切り替え、パネルの折りたたみ、再読み込みでは下書きを保持します。ページの更新やアプリの終了で未送信の下書きは失われます。プロジェクトを切り替える前に下書きの破棄を確認します。"
+    "zh-Hans": "已发送文字、回复及读取结果会保存在本地。切换页签、收起面板或重新读取保留草稿；刷新页面或退出应用会丢失未发送草稿。切换项目前会确认放弃草稿",
+    "zh-Hant": "已傳送文字、回覆及讀取結果會儲存在本機。切換分頁、收起面板或重新讀取時會保留草稿；重新整理頁面或結束應用程式會遺失未傳送草稿。切換專案前會確認是否放棄草稿",
+    "en": "Sent text, replies, and read results are saved locally. Switching tabs, collapsing the panel, or reloading preserves drafts. Refreshing the page or quitting the app loses unsent drafts. Switching projects asks before discarding a draft",
+    "ja": "送信済みの文章、返信、読み取り結果はローカルに保存されます。タブの切り替え、パネルの折りたたみ、再読み込みでは下書きを保持します。ページの更新やアプリの終了で未送信の下書きは失われます。プロジェクトを切り替える前に下書きの破棄を確認します"
   },
   "agent.chat.contextLimits": {
-    "zh-Hans": "从最近 16 轮中最多选取 12 轮已完成对话。仅文字聊天会排除所有项目读取和修改提议轮次，与固定提示和本条输入合计最多 32 KiB；项目检查的首次上下文最多 20 KiB，镜头或片段提议的首次上下文最多 30 KiB。更早历史仅供查阅，不扩大上下文。",
-    "zh-Hant": "從最近 16 輪中最多選取 12 輪已完成對話。僅文字聊天會排除所有專案讀取及修改提議輪次，連同固定提示與本條輸入最多 32 KiB；專案檢查的首次上下文最多 20 KiB，鏡頭或片段提議的首次上下文最多 30 KiB。較早記錄僅供查閱，不會擴大上下文。",
-    "en": "Up to 12 completed turns are selected from the latest 16. Text-only chat excludes all project inspection and edit-proposal turns and is limited to 32 KiB including fixed instructions and this input. Initial context is limited to 20 KiB for project inspection and 30 KiB for shot or clip proposals. Older history is for viewing only and does not extend context.",
-    "ja": "直近16ターンから完了済みの最大12ターンを選びます。テキストチャットではプロジェクト確認と変更提案のターンをすべて除外し、固定指示と今回の入力を含め最大32 KiBです。初回コンテキストはプロジェクト確認で最大20 KiB、ショット・クリップ提案で最大30 KiBです。過去の履歴は閲覧専用で、コンテキストには追加されません。"
+    "zh-Hans": "从最近 16 轮中最多选取 12 轮已完成对话。仅文字聊天会排除所有项目读取和修改提议轮次，与固定提示和本条输入合计最多 32 KiB；项目检查的首次上下文最多 20 KiB，镜头或片段提议的首次上下文最多 30 KiB。更早历史仅供查阅，不扩大上下文",
+    "zh-Hant": "從最近 16 輪中最多選取 12 輪已完成對話。僅文字聊天會排除所有專案讀取及修改提議輪次，連同固定提示與本條輸入最多 32 KiB；專案檢查的首次上下文最多 20 KiB，鏡頭或片段提議的首次上下文最多 30 KiB。較早記錄僅供查閱，不會擴大上下文",
+    "en": "Up to 12 completed turns are selected from the latest 16. Text-only chat excludes all project inspection and edit-proposal turns and is limited to 32 KiB including fixed instructions and this input. Initial context is limited to 20 KiB for project inspection and 30 KiB for shot or clip proposals. Older history is for viewing only and does not extend context",
+    "ja": "直近16ターンから完了済みの最大12ターンを選びます。テキストチャットではプロジェクト確認と変更提案のターンをすべて除外し、固定指示と今回の入力を含め最大32 KiBです。初回コンテキストはプロジェクト確認で最大20 KiB、ショット・クリップ提案で最大30 KiBです。過去の履歴は閲覧専用で、コンテキストには追加されません"
   },
   "agent.chat.readOnlyToolVersion": {
     "zh-Hans": "只读工具定义 v{schemaVersion} · 目录 {catalogHash}",
@@ -229,34 +249,34 @@ export const creationUiMessages = {
     "ja": "読み取り専用ツール定義 v{schemaVersion} · カタログ {catalogHash}"
   },
   "agent.chat.inspectionDisclosure": {
-    "zh-Hans": "项目检查仅限 project.inspect、asset.inspect、shot.inspect、timeline.inspect 的固定只读范围：已保存项目、素材、镜头及时间线文字与元数据。每轮最多读取一次、结果最多 8 KiB；不发送媒体、路径、凭据或未保存编辑。文字中可能包含你保存的私人内容，请先核对。",
-    "zh-Hant": "專案檢查僅限 project.inspect、asset.inspect、shot.inspect、timeline.inspect 的固定唯讀範圍：已儲存的專案、素材、鏡頭及時間軸文字與中繼資料。每輪最多讀取一次，結果最多 8 KiB；不傳送媒體、路徑、憑證或未儲存編輯。文字可能包含你儲存的私人內容，請先核對。",
-    "en": "Project inspection is limited to the fixed read-only scope of project.inspect, asset.inspect, shot.inspect, and timeline.inspect: saved project, asset, shot, and timeline text and metadata. Each turn allows one read with at most 8 KiB of results. Media, paths, credentials, and unsaved edits are not sent. Text may include private content you saved; review it first.",
-    "ja": "プロジェクト確認は project.inspect、asset.inspect、shot.inspect、timeline.inspect の固定された読み取り専用範囲に限ります。対象は保存済みのプロジェクト、素材、ショット、タイムラインの文章とメタデータです。各ターンの読み取りは最大1回、結果は最大8 KiBです。メディア、パス、認証情報、未保存の編集は送信しません。保存した私的な内容が文章に含まれる場合があるため、事前に確認してください。"
+    "zh-Hans": "项目检查仅限 project.inspect、asset.inspect、shot.inspect、timeline.inspect 的固定只读范围：已保存项目、素材、镜头及时间线文字与元数据。每轮最多读取一次、结果最多 8 KiB；不发送媒体、路径、凭据或未保存编辑。文字中可能包含你保存的私人内容，请先核对",
+    "zh-Hant": "專案檢查僅限 project.inspect、asset.inspect、shot.inspect、timeline.inspect 的固定唯讀範圍：已儲存的專案、素材、鏡頭及時間軸文字與中繼資料。每輪最多讀取一次，結果最多 8 KiB；不傳送媒體、路徑、憑證或未儲存編輯。文字可能包含你儲存的私人內容，請先核對",
+    "en": "Project inspection is limited to the fixed read-only scope of project.inspect, asset.inspect, shot.inspect, and timeline.inspect: saved project, asset, shot, and timeline text and metadata. Each turn allows one read with at most 8 KiB of results. Media, paths, credentials, and unsaved edits are not sent. Text may include private content you saved; review it first",
+    "ja": "プロジェクト確認は project.inspect、asset.inspect、shot.inspect、timeline.inspect の固定された読み取り専用範囲に限ります。対象は保存済みのプロジェクト、素材、ショット、タイムラインの文章とメタデータです。各ターンの読み取りは最大1回、結果は最大8 KiBです。メディア、パス、認証情報、未保存の編集は送信しません。保存した私的な内容が文章に含まれる場合があるため、事前に確認してください"
   },
   "agent.chat.shotProposalDisclosure": {
-    "zh-Hans": "选中镜头修改提议只发送所选已保存镜头的完整标题与画面描述，不含属性面板的未保存草稿。每轮最多 2 次模型请求、1 次提议工具调用，工具只创建待审阅提议。null 保持字段不变，空画面描述会清空，标题不能为空；提议不能在审阅时编辑或自动重新基于新版本生成。",
-    "zh-Hant": "所選鏡頭的修改提議只傳送該已儲存鏡頭的完整標題與畫面描述，不含屬性面板的未儲存草稿。每輪最多 2 次模型請求、1 次提議工具呼叫，工具只建立待審閱提議。null 保持欄位不變，空白畫面描述會清空內容，標題不可為空；審閱時不能編輯提議，也不會自動依新版本重新產生。",
-    "en": "Shot edit proposals send only the selected saved shot’s full title and visual description, excluding unsaved Inspector drafts. Each turn allows at most 2 model requests and 1 proposal-tool call, which only creates a proposal for review. null leaves a field unchanged; an empty visual description clears it; titles cannot be empty. Proposals cannot be edited during review or automatically rebased onto a newer version.",
-    "ja": "ショットの変更提案では、選択した保存済みショットのタイトル全文と画面描写だけを送信し、インスペクターの未保存の下書きは含めません。各ターンはモデルへのリクエスト最大2回、提案ツールの呼び出し最大1回です。ツールはレビュー待ちの提案を作成するだけです。null は変更なし、空の画面描写は内容の消去を意味し、タイトルは空にできません。レビュー時の提案の編集や、新しいバージョンに基づく自動再作成は行いません。"
+    "zh-Hans": "选中镜头修改提议只发送所选已保存镜头的完整标题与画面描述，不含属性面板的未保存草稿。每轮最多 2 次模型请求、1 次提议工具调用，工具只创建待审阅提议。null 保持字段不变，空画面描述会清空，标题不能为空；提议不能在审阅时编辑或自动重新基于新版本生成",
+    "zh-Hant": "所選鏡頭的修改提議只傳送該已儲存鏡頭的完整標題與畫面描述，不含屬性面板的未儲存草稿。每輪最多 2 次模型請求、1 次提議工具呼叫，工具只建立待審閱提議。null 保持欄位不變，空白畫面描述會清空內容，標題不可為空；審閱時不能編輯提議，也不會自動依新版本重新產生",
+    "en": "Shot edit proposals send only the selected saved shot’s full title and visual description, excluding unsaved Inspector drafts. Each turn allows at most 2 model requests and 1 proposal-tool call, which only creates a proposal for review. null leaves a field unchanged; an empty visual description clears it; titles cannot be empty. Proposals cannot be edited during review or automatically rebased onto a newer version",
+    "ja": "ショットの変更提案では、選択した保存済みショットのタイトル全文と画面描写だけを送信し、インスペクターの未保存の下書きは含めません。各ターンはモデルへのリクエスト最大2回、提案ツールの呼び出し最大1回です。ツールはレビュー待ちの提案を作成するだけです。null は変更なし、空の画面描写は内容の消去を意味し、タイトルは空にできません。レビュー時の提案の編集や、新しいバージョンに基づく自動再作成は行いません"
   },
   "agent.chat.moveProposalDisclosure": {
-    "zh-Hans": "选中片段移动提议只发送一个已保存片段的名称和时间、当前轨道名称和类型、30fps 以及同轨其他片段的有界数值占用区间。不发送其他轨道、媒体、源路径或未保存草稿。工具只提议 startFrame，批准后仅在原轨道非波纹移动。",
-    "zh-Hant": "片段移動提議只傳送一個已儲存片段的名稱與時間、目前軌道的名稱與類型、30fps，以及同軌其他片段在限定範圍內的數值佔用區間。不傳送其他軌道、媒體、來源路徑或未儲存草稿。工具只提議 startFrame，批准後僅在原軌道進行非波紋移動。",
-    "en": "Clip move proposals send only one saved clip’s name and timing, the current track’s name and type, 30 fps, and bounded numeric occupied intervals for other clips on that track. Other tracks, media, source paths, and unsaved drafts are not sent. The tool proposes only startFrame; approval performs a non-ripple move on the original track.",
-    "ja": "クリップの移動提案では、保存済みクリップ1つの名前と時間、現在のトラックの名前と種類、30 fps、同じトラック上の他のクリップが占有する範囲内の数値区間だけを送信します。他のトラック、メディア、ソースのパス、未保存の下書きは送信しません。提案は startFrame のみで、承認後も元のトラック上でリップルなしの移動のみを行います。"
+    "zh-Hans": "选中片段移动提议只发送一个已保存片段的名称和时间、当前轨道名称和类型、30fps 以及同轨其他片段的有界数值占用区间。不发送其他轨道、媒体、源路径或未保存草稿。工具只提议 startFrame，批准后仅在原轨道非波纹移动",
+    "zh-Hant": "片段移動提議只傳送一個已儲存片段的名稱與時間、目前軌道的名稱與類型、30fps，以及同軌其他片段在限定範圍內的數值佔用區間。不傳送其他軌道、媒體、來源路徑或未儲存草稿。工具只提議 startFrame，批准後僅在原軌道進行非波紋移動",
+    "en": "Clip move proposals send only one saved clip’s name and timing, the current track’s name and type, 30 fps, and bounded numeric occupied intervals for other clips on that track. Other tracks, media, source paths, and unsaved drafts are not sent. The tool proposes only startFrame; approval performs a non-ripple move on the original track",
+    "ja": "クリップの移動提案では、保存済みクリップ1つの名前と時間、現在のトラックの名前と種類、30 fps、同じトラック上の他のクリップが占有する範囲内の数値区間だけを送信します。他のトラック、メディア、ソースのパス、未保存の下書きは送信しません。提案は startFrame のみで、承認後も元のトラック上でリップルなしの移動のみを行います"
   },
   "agent.chat.hiddenRunDisclosure": {
-    "zh-Hans": "隐藏窗口、切换页签、收起面板或切换项目后，已接受的限界运行可能继续。停止可阻止后续步骤，无法撤回已发生的计算或费用；重启后不会自动续接或重新发送。",
-    "zh-Hant": "隱藏視窗、切換分頁、收起面板或切換專案後，已接受的限界執行仍可能繼續。停止可阻止後續步驟，但無法撤回已發生的運算或費用；重啟後不會自動接續或重新傳送。",
-    "en": "Accepted bounded runs may continue after hiding the window, switching tabs, collapsing the panel, or switching projects. Stopping blocks later steps but cannot undo computation or charges already incurred. Restarting will not automatically resume or resend.",
-    "ja": "ウィンドウを隠す、タブを切り替える、パネルを折りたたむ、プロジェクトを切り替える操作の後も、受け付け済みの制限付き実行は続く場合があります。停止で後続の処理は止められますが、発生済みの処理や料金は取り消せません。再起動後の自動再開や再送は行いません。"
+    "zh-Hans": "隐藏窗口、切换页签、收起面板或切换项目后，已接受的限界运行可能继续。停止可阻止后续步骤，无法撤回已发生的计算或费用；重启后不会自动续接或重新发送",
+    "zh-Hant": "隱藏視窗、切換分頁、收起面板或切換專案後，已接受的限界執行仍可能繼續。停止可阻止後續步驟，但無法撤回已發生的運算或費用；重啟後不會自動接續或重新傳送",
+    "en": "Accepted bounded runs may continue after hiding the window, switching tabs, collapsing the panel, or switching projects. Stopping blocks later steps but cannot undo computation or charges already incurred. Restarting will not automatically resume or resend",
+    "ja": "ウィンドウを隠す、タブを切り替える、パネルを折りたたむ、プロジェクトを切り替える操作の後も、受け付け済みの制限付き実行は続く場合があります。停止で後続の処理は止められますが、発生済みの処理や料金は取り消せません。再起動後の自動再開や再送は行いません"
   },
   "agent.chat.backendRestarted": {
-    "zh-Hans": "后端已重新启动。已保存的历史仍保留；中断的回复不会自动续接或重发。",
-    "zh-Hant": "後端已重新啟動。已儲存的歷史仍保留；中斷的回覆不會自動接續或重送。",
-    "en": "The backend restarted. Saved history is retained; interrupted replies will not resume or resend automatically.",
-    "ja": "バックエンドが再起動しました。保存済みの履歴は保持されます。中断した返信を自動で再開・再送することはありません。"
+    "zh-Hans": "后端已重新启动。已保存的历史仍保留；中断的回复不会自动续接或重发",
+    "zh-Hant": "後端已重新啟動。已儲存的歷史仍保留；中斷的回覆不會自動接續或重送",
+    "en": "The backend restarted. Saved history is retained; interrupted replies will not resume or resend automatically",
+    "ja": "バックエンドが再起動しました。保存済みの履歴は保持されます。中断した返信を自動で再開・再送することはありません"
   },
   "agent.chat.loadingSavedConversation": {
     "zh-Hans": "正在读取已保存的对话…",
@@ -271,10 +291,10 @@ export const creationUiMessages = {
     "ja": "会話を利用できません"
   },
   "agent.chat.openReadsOnly": {
-    "zh-Hans": "打开窗口只读取状态，不会连接模型。",
-    "zh-Hant": "開啟視窗只會讀取狀態，不會連接模型。",
-    "en": "Opening this window only reads status; it does not contact a model.",
-    "ja": "ウィンドウを開く操作は状態を読み取るだけで、モデルには接続しません。"
+    "zh-Hans": "打开窗口只读取状态，不会连接模型",
+    "zh-Hant": "開啟視窗只會讀取狀態，不會連接模型",
+    "en": "Opening this window only reads status; it does not contact a model",
+    "ja": "ウィンドウを開く操作は状態を読み取るだけで、モデルには接続しません"
   },
   "agent.chat.startWithIdea": {
     "zh-Hans": "从一个想法开始",
@@ -283,34 +303,34 @@ export const creationUiMessages = {
     "ja": "アイデアから始めましょう"
   },
   "agent.chat.gainEmptyHint": {
-    "zh-Hans": "可请 Agent 把一个已保存有声片段的音量调到 40% 等数值。先核对发送范围，再审阅固定倍率；明确批准后才会应用。",
-    "zh-Hant": "可請 Agent 將一個已儲存且含音訊的片段音量調至 40% 等數值。先核對傳送範圍，再審閱固定倍率；只有明確批准後才會套用。",
-    "en": "Ask Agent to set a saved clip with audio to a level such as 40%. Check the sending scope, then review the fixed gain. It is applied only after explicit approval.",
-    "ja": "音声を含む保存済みクリップの音量を40%などにする提案を Agent に依頼できます。送信範囲を確認してから固定倍率をレビューしてください。明示的に承認するまで適用されません。"
+    "zh-Hans": "可请 Agent 把一个已保存有声片段的音量调到 40% 等数值。先核对发送范围，再审阅固定倍率；明确批准后才会应用",
+    "zh-Hant": "可請 Agent 將一個已儲存且含音訊的片段音量調至 40% 等數值。先核對傳送範圍，再審閱固定倍率；只有明確批准後才會套用",
+    "en": "Ask Agent to set a saved clip with audio to a level such as 40%. Check the sending scope, then review the fixed gain. It is applied only after explicit approval",
+    "ja": "音声を含む保存済みクリップの音量を40%などにする提案を Agent に依頼できます。送信範囲を確認してから固定倍率をレビューしてください。明示的に承認するまで適用されません"
   },
   "agent.chat.moveEmptyHint": {
-    "zh-Hans": "可请 Agent 为一个已保存时间线片段提出同轨移动。先核对发送范围，再审阅固定前后时间；明确批准后才会应用。",
-    "zh-Hant": "可請 Agent 為一個已儲存的時間軸片段提議同軌移動。先核對傳送範圍，再審閱固定的前後時間；只有明確批准後才會套用。",
-    "en": "Ask Agent to propose moving a saved timeline clip on the same track. Check the sending scope, then review the fixed before-and-after timing. It is applied only after explicit approval.",
-    "ja": "保存済みタイムラインクリップを同じトラック内で移動する提案を Agent に依頼できます。送信範囲を確認してから移動前後の固定時刻をレビューしてください。明示的に承認するまで適用されません。"
+    "zh-Hans": "可请 Agent 为一个已保存时间线片段提出同轨移动。先核对发送范围，再审阅固定前后时间；明确批准后才会应用",
+    "zh-Hant": "可請 Agent 為一個已儲存的時間軸片段提議同軌移動。先核對傳送範圍，再審閱固定的前後時間；只有明確批准後才會套用",
+    "en": "Ask Agent to propose moving a saved timeline clip on the same track. Check the sending scope, then review the fixed before-and-after timing. It is applied only after explicit approval",
+    "ja": "保存済みタイムラインクリップを同じトラック内で移動する提案を Agent に依頼できます。送信範囲を確認してから移動前後の固定時刻をレビューしてください。明示的に承認するまで適用されません"
   },
   "agent.chat.shotEmptyHint": {
-    "zh-Hans": "可请 Agent 为当前选中镜头的已保存标题或画面描述提出修改，审阅差异并明确批准后才会应用。",
-    "zh-Hant": "可請 Agent 為目前所選鏡頭的已儲存標題或畫面描述提議修改；審閱差異並明確批准後才會套用。",
-    "en": "Ask Agent to propose changes to the selected shot’s saved title or visual description. Changes are applied only after you review the diff and explicitly approve.",
-    "ja": "選択中ショットの保存済みタイトルや画面描写の変更を Agent に提案してもらえます。差分をレビューし、明示的に承認した後でのみ適用されます。"
+    "zh-Hans": "可请 Agent 为当前选中镜头的已保存标题或画面描述提出修改，审阅差异并明确批准后才会应用",
+    "zh-Hant": "可請 Agent 為目前所選鏡頭的已儲存標題或畫面描述提議修改；審閱差異並明確批准後才會套用",
+    "en": "Ask Agent to propose changes to the selected shot’s saved title or visual description. Changes are applied only after you review the diff and explicitly approve",
+    "ja": "選択中ショットの保存済みタイトルや画面描写の変更を Agent に提案してもらえます。差分をレビューし、明示的に承認した後でのみ適用されます"
   },
   "agent.chat.inspectionEmptyHint": {
-    "zh-Hans": "可请求查看本项目已保存的文字与元数据。不会查看媒体画面或执行修改。",
-    "zh-Hant": "可要求查看本專案已儲存的文字與中繼資料。不會查看媒體畫面或執行修改。",
-    "en": "Ask to inspect this project’s saved text and metadata. Media content will not be viewed and no edits will be made.",
-    "ja": "このプロジェクトの保存済みの文章とメタデータを確認できます。メディアの映像を見たり、変更を加えたりはしません。"
+    "zh-Hans": "可请求查看本项目已保存的文字与元数据。不会查看媒体画面或执行修改",
+    "zh-Hant": "可要求查看本專案已儲存的文字與中繼資料。不會查看媒體畫面或執行修改",
+    "en": "Ask to inspect this project’s saved text and metadata. Media content will not be viewed and no edits will be made",
+    "ja": "このプロジェクトの保存済みの文章とメタデータを確認できます。メディアの映像を見たり、変更を加えたりはしません"
   },
   "agent.chat.chatEmptyHint": {
-    "zh-Hans": "可以讨论叙事、镜头语言或台词。需要项目资料时，请先选择只读检查。",
-    "zh-Hant": "可以討論敘事、鏡頭語言或台詞。需要專案資料時，請先選擇唯讀檢查。",
-    "en": "Discuss storytelling, visual language, or dialogue. Select read-only inspection first if project information is needed.",
-    "ja": "物語、映像表現、台詞について話せます。プロジェクトの情報が必要な場合は、先に読み取り専用確認を選んでください。"
+    "zh-Hans": "可以讨论叙事、镜头语言或台词。需要项目资料时，请先选择只读检查",
+    "zh-Hant": "可以討論敘事、鏡頭語言或台詞。需要專案資料時，請先選擇唯讀檢查",
+    "en": "Discuss storytelling, visual language, or dialogue. Select read-only inspection first if project information is needed",
+    "ja": "物語、映像表現、台詞について話せます。プロジェクトの情報が必要な場合は、先に読み取り専用確認を選んでください"
   },
   "agent.chat.olderSavedConversation": {
     "zh-Hans": "更早的已保存对话",
@@ -325,10 +345,10 @@ export const creationUiMessages = {
     "ja": "1ページにつき最大16ターン"
   },
   "agent.chat.historyReadOnly": {
-    "zh-Hans": "仅供查阅。查看更早记录不会把它们加入发送上下文；下方最近对话、当前回复与草稿保持独立。",
-    "zh-Hant": "僅供查閱。查看較早記錄不會將其加入傳送上下文；下方最近對話、目前回覆與草稿保持獨立。",
-    "en": "For viewing only. Opening older records does not add them to sent context. Recent conversation, the current reply, and the draft below remain independent.",
-    "ja": "閲覧専用です。過去の記録を開いても送信コンテキストには追加されません。下部の直近の会話、現在の返信、下書きは独立したままです。"
+    "zh-Hans": "仅供查阅。查看更早记录不会把它们加入发送上下文；下方最近对话、当前回复与草稿保持独立",
+    "zh-Hant": "僅供查閱。查看較早記錄不會將其加入傳送上下文；下方最近對話、目前回覆與草稿保持獨立",
+    "en": "For viewing only. Opening older records does not add them to sent context. Recent conversation, the current reply, and the draft below remain independent",
+    "ja": "閲覧専用です。過去の記録を開いても送信コンテキストには追加されません。下部の直近の会話、現在の返信、下書きは独立したままです"
   },
   "agent.chat.loading": {
     "zh-Hans": "正在读取…",
@@ -361,10 +381,10 @@ export const creationUiMessages = {
     "ja": "履歴を折りたたむ"
   },
   "agent.chat.oldestRecordReached": {
-    "zh-Hans": "已到最早保存的记录。",
-    "zh-Hant": "已到最早儲存的記錄。",
-    "en": "You have reached the oldest saved record.",
-    "ja": "最も古い保存済み記録です。"
+    "zh-Hans": "已到最早保存的记录",
+    "zh-Hant": "已到最早儲存的記錄",
+    "en": "You have reached the oldest saved record",
+    "ja": "最も古い保存済み記録です"
   },
   "agent.chat.savedHistoryPage": {
     "zh-Hans": "已保存历史页",
@@ -373,10 +393,10 @@ export const creationUiMessages = {
     "ja": "保存済み履歴のページ"
   },
   "agent.chat.originalRequestFound": {
-    "zh-Hans": "已找到原请求，未重新发送。这条记录不在最近 16 轮中，仅供查阅。",
-    "zh-Hant": "已找到原請求，未重新傳送。這筆記錄不在最近 16 輪中，僅供查閱。",
-    "en": "The original request was found and was not resent. This record is outside the latest 16 turns and is for viewing only.",
-    "ja": "元のリクエストが見つかりました。再送はしていません。この記録は直近16ターンより前のもので、閲覧専用です。"
+    "zh-Hans": "已找到原请求，未重新发送。这条记录不在最近 16 轮中，仅供查阅",
+    "zh-Hant": "已找到原請求，未重新傳送。這筆記錄不在最近 16 輪中，僅供查閱",
+    "en": "The original request was found and was not resent. This record is outside the latest 16 turns and is for viewing only",
+    "ja": "元のリクエストが見つかりました。再送はしていません。この記録は直近16ターンより前のもので、閲覧専用です"
   },
   "agent.chat.confirmedOriginalRequest": {
     "zh-Hans": "已确认的原请求",
@@ -391,10 +411,10 @@ export const creationUiMessages = {
     "ja": "送信結果の確認待ち"
   },
   "agent.chat.checkingOriginalRequest": {
-    "zh-Hans": "正在核对原请求。请勿重复发送同一消息。",
-    "zh-Hant": "正在核對原請求。請勿重複傳送同一訊息。",
-    "en": "Checking the original request. Do not send the same message again.",
-    "ja": "元のリクエストを確認しています。同じメッセージを重複して送信しないでください。"
+    "zh-Hans": "正在核对原请求。请勿重复发送同一消息",
+    "zh-Hant": "正在核對原請求。請勿重複傳送同一訊息",
+    "en": "Checking the original request. Do not send the same message again",
+    "ja": "元のリクエストを確認しています。同じメッセージを重複して送信しないでください"
   },
   "agent.chat.endPendingState": {
     "zh-Hans": "结束本地待确认状态…",
@@ -499,10 +519,10 @@ export const creationUiMessages = {
     "ja": "ショット {shotId} · 基準リビジョン {expectedRevision}"
   },
   "agent.chat.savedShotScope": {
-    "zh-Hans": "范围：完整已保存标题与画面描述，不含未保存草稿。",
-    "zh-Hant": "範圍：完整已儲存標題與畫面描述，不含未儲存草稿。",
-    "en": "Scope: the full saved title and visual description, excluding unsaved drafts.",
-    "ja": "対象：保存済みタイトル全文と画面描写。未保存の下書きは含みません。"
+    "zh-Hans": "范围：完整已保存标题与画面描述，不含未保存草稿",
+    "zh-Hant": "範圍：完整已儲存標題與畫面描述，不含未儲存草稿",
+    "en": "Scope: the full saved title and visual description, excluding unsaved drafts",
+    "ja": "対象：保存済みタイトル全文と画面描写。未保存の下書きは含みません"
   },
   "agent.chat.fullTextLimits": {
     "zh-Hans": "完整发送文字与工具限额",
@@ -517,10 +537,10 @@ export const creationUiMessages = {
     "ja": "確認済みの全文とツールの上限を展開"
   },
   "agent.chat.savedTextDisclosure": {
-    "zh-Hans": "以下是将发给模型的完整已保存文字。属性面板里的未保存输入不在其中；切换镜头或保存内容变化后需重新确认。",
-    "zh-Hant": "以下是將傳送給模型的完整已儲存文字，不含屬性面板裡的未儲存輸入。切換鏡頭或已儲存內容變更後，須重新確認。",
-    "en": "Below is the full saved text that will be sent to the model, excluding unsaved Inspector input. Confirm again after changing shots or saved content.",
-    "ja": "以下はモデルに送信する保存済みの全文です。インスペクター内の未保存の入力は含みません。ショットの切り替えや保存内容の変更後には、再確認が必要です。"
+    "zh-Hans": "以下是将发给模型的完整已保存文字。属性面板里的未保存输入不在其中；切换镜头或保存内容变化后需重新确认",
+    "zh-Hant": "以下是將傳送給模型的完整已儲存文字，不含屬性面板裡的未儲存輸入。切換鏡頭或已儲存內容變更後，須重新確認",
+    "en": "Below is the full saved text that will be sent to the model, excluding unsaved Inspector input. Confirm again after changing shots or saved content",
+    "ja": "以下はモデルに送信する保存済みの全文です。インスペクター内の未保存の入力は含みません。ショットの切り替えや保存内容の変更後には、再確認が必要です"
   },
   "agent.chat.savedTitle": {
     "zh-Hans": "已保存标题",
@@ -547,10 +567,10 @@ export const creationUiMessages = {
     "ja": "提案ツール v{schemaVersion} · カタログ {catalogHash} · タイトルは最大150文字 / 600バイト、画面描写は最大5000文字 / 20000バイト"
   },
   "agent.chat.selectSavedShot": {
-    "zh-Hans": "请先在画板中选择一个已保存镜头。标题或画面描述超出安全长度限制时不能发送。",
-    "zh-Hant": "請先在畫板選擇一個已儲存鏡頭。標題或畫面描述超出安全長度限制時，無法傳送。",
-    "en": "Select a saved shot on the canvas first. Sending is blocked if the title or visual description exceeds the safe length limit.",
-    "ja": "先にキャンバスで保存済みショットを選択してください。タイトルまたは画面描写が安全な長さの上限を超える場合、送信できません。"
+    "zh-Hans": "请先在画板中选择一个已保存镜头。标题或画面描述超出安全长度限制时不能发送",
+    "zh-Hant": "請先在畫板選擇一個已儲存鏡頭。標題或畫面描述超出安全長度限制時，無法傳送",
+    "en": "Select a saved shot on the canvas first. Sending is blocked if the title or visual description exceeds the safe length limit",
+    "ja": "先にキャンバスで保存済みショットを選択してください。タイトルまたは画面描写が安全な長さの上限を超える場合、送信できません"
   },
   "agent.chat.savedShotTextScope": {
     "zh-Hans": "本次发送的已保存镜头文字",
@@ -601,10 +621,10 @@ export const creationUiMessages = {
     "ja": "確認済みの送信範囲とツールの上限を展開"
   },
   "agent.chat.moveDataDisclosure": {
-    "zh-Hans": "发给模型的项目资料仅为上方片段名称和时间、轨道名称和类型、30fps，以及以下同轨其他片段的开始/结束帧。结束帧为排他端点。",
-    "zh-Hant": "傳送給模型的專案資料僅為上方的片段名稱與時間、軌道名稱與類型、30fps，以及以下同軌其他片段的開始與結束影格。結束影格為不包含在內的端點。",
-    "en": "Project data sent to the model is limited to the clip name and timing above, track name and type, 30 fps, and the start/end frames below for other clips on the same track. End frames are exclusive.",
-    "ja": "モデルに送信するプロジェクト情報は、上記のクリップ名と時間、トラック名と種類、30 fps、および以下の同一トラック上の他のクリップの開始・終了フレームのみです。終了フレームは区間に含まれません。"
+    "zh-Hans": "发给模型的项目资料仅为上方片段名称和时间、轨道名称和类型、30fps，以及以下同轨其他片段的开始/结束帧。结束帧为排他端点",
+    "zh-Hant": "傳送給模型的專案資料僅為上方的片段名稱與時間、軌道名稱與類型、30fps，以及以下同軌其他片段的開始與結束影格。結束影格為不包含在內的端點",
+    "en": "Project data sent to the model is limited to the clip name and timing above, track name and type, 30 fps, and the start/end frames below for other clips on the same track. End frames are exclusive",
+    "ja": "モデルに送信するプロジェクト情報は、上記のクリップ名と時間、トラック名と種類、30 fps、および以下の同一トラック上の他のクリップの開始・終了フレームのみです。終了フレームは区間に含まれません"
   },
   "agent.chat.frameInterval": {
     "zh-Hans": "{startFrame} → {endFrame} 帧",
@@ -613,10 +633,10 @@ export const creationUiMessages = {
     "ja": "{startFrame} → {endFrame} フレーム"
   },
   "agent.chat.noOtherClips": {
-    "zh-Hans": "同轨没有其他片段。",
-    "zh-Hant": "同軌沒有其他片段。",
-    "en": "No other clips on this track.",
-    "ja": "このトラックに他のクリップはありません。"
+    "zh-Hans": "同轨没有其他片段",
+    "zh-Hant": "同軌沒有其他片段",
+    "en": "No other clips on this track",
+    "ja": "このトラックに他のクリップはありません"
   },
   "agent.chat.sentOccupiedIntervals": {
     "zh-Hans": "将发送的同轨其他片段数值区间",
@@ -626,27 +646,27 @@ export const creationUiMessages = {
   },
   "agent.chat.moveBounds": {
     "zh-Hans": {
-      "one": "同轨其他区间 {count} 个，最多 99 个。最大结束位置 18000 帧 / 600 秒；仅提议新的开始帧，不换轨、不裁切、不改变时长，也不自动移动其他片段。",
-      "other": "同轨其他区间 {count} 个，最多 99 个。最大结束位置 18000 帧 / 600 秒；仅提议新的开始帧，不换轨、不裁切、不改变时长，也不自动移动其他片段。"
+      "one": "同轨其他区间 {count} 个，最多 99 个。最大结束位置 18000 帧 / 600 秒；仅提议新的开始帧，不换轨、不裁切、不改变时长，也不自动移动其他片段",
+      "other": "同轨其他区间 {count} 个，最多 99 个。最大结束位置 18000 帧 / 600 秒；仅提议新的开始帧，不换轨、不裁切、不改变时长，也不自动移动其他片段"
     },
     "zh-Hant": {
-      "one": "同軌其他區間共 {count} 個，最多 99 個。最大結束位置為 18000 影格 / 600 秒；僅提議新的開始影格，不換軌、不裁切、不改變時長，也不自動移動其他片段。",
-      "other": "同軌其他區間共 {count} 個，最多 99 個。最大結束位置為 18000 影格 / 600 秒；僅提議新的開始影格，不換軌、不裁切、不改變時長，也不自動移動其他片段。"
+      "one": "同軌其他區間共 {count} 個，最多 99 個。最大結束位置為 18000 影格 / 600 秒；僅提議新的開始影格，不換軌、不裁切、不改變時長，也不自動移動其他片段",
+      "other": "同軌其他區間共 {count} 個，最多 99 個。最大結束位置為 18000 影格 / 600 秒；僅提議新的開始影格，不換軌、不裁切、不改變時長，也不自動移動其他片段"
     },
     "en": {
-      "one": "There is {count} other interval on this track, with a maximum of 99. The latest end is 18000 frames / 600 seconds. Only a new start frame is proposed: no track change, trimming, duration change, or automatic movement of other clips.",
-      "other": "There are {count} other intervals on this track, with a maximum of 99. The latest end is 18000 frames / 600 seconds. Only a new start frame is proposed: no track change, trimming, duration change, or automatic movement of other clips."
+      "one": "There is {count} other interval on this track, with a maximum of 99. The latest end is 18000 frames / 600 seconds. Only a new start frame is proposed: no track change, trimming, duration change, or automatic movement of other clips",
+      "other": "There are {count} other intervals on this track, with a maximum of 99. The latest end is 18000 frames / 600 seconds. Only a new start frame is proposed: no track change, trimming, duration change, or automatic movement of other clips"
     },
     "ja": {
-      "one": "同じトラックの他の区間は{count}個で、最大99個です。終了位置の上限は18000フレーム / 600秒です。新しい開始フレームのみを提案し、トラックの変更、トリミング、長さの変更、他のクリップの自動移動は行いません。",
-      "other": "同じトラックの他の区間は{count}個で、最大99個です。終了位置の上限は18000フレーム / 600秒です。新しい開始フレームのみを提案し、トラックの変更、トリミング、長さの変更、他のクリップの自動移動は行いません。"
+      "one": "同じトラックの他の区間は{count}個で、最大99個です。終了位置の上限は18000フレーム / 600秒です。新しい開始フレームのみを提案し、トラックの変更、トリミング、長さの変更、他のクリップの自動移動は行いません",
+      "other": "同じトラックの他の区間は{count}個で、最大99個です。終了位置の上限は18000フレーム / 600秒です。新しい開始フレームのみを提案し、トラックの変更、トリミング、長さの変更、他のクリップの自動移動は行いません"
     }
   },
   "agent.chat.movePreservedAndConflicts": {
-    "zh-Hans": "片段源、画面几何、音量及淡入淡出保持不变；移动末尾片段可能改变时间线总时长。重叠、超界、字幕范围或保存版本冲突由服务端阻止，不会自动修正。",
-    "zh-Hant": "片段來源、畫面位置與大小、音量及淡入淡出保持不變；移動末尾片段可能改變時間軸總時長。重疊、超出範圍、字幕範圍或儲存版本衝突會由伺服器阻止，不會自動修正。",
-    "en": "Clip source, visual geometry, gain, and fades stay unchanged. Moving the last clip may change total timeline duration. The server blocks overlaps, out-of-bounds positions, subtitle-range conflicts, and saved-revision conflicts; it does not correct them automatically.",
-    "ja": "クリップのソース、映像の位置とサイズ、音量、フェードは変わりません。末尾のクリップを移動するとタイムライン全体の長さが変わる場合があります。重なり、範囲外、字幕範囲、保存リビジョンの競合はサーバーが拒否し、自動修正はしません。"
+    "zh-Hans": "片段源、画面几何、音量及淡入淡出保持不变；移动末尾片段可能改变时间线总时长。重叠、超界、字幕范围或保存版本冲突由服务端阻止，不会自动修正",
+    "zh-Hant": "片段來源、畫面位置與大小、音量及淡入淡出保持不變；移動末尾片段可能改變時間軸總時長。重疊、超出範圍、字幕範圍或儲存版本衝突會由伺服器阻止，不會自動修正",
+    "en": "Clip source, visual geometry, gain, and fades stay unchanged. Moving the last clip may change total timeline duration. The server blocks overlaps, out-of-bounds positions, subtitle-range conflicts, and saved-revision conflicts; it does not correct them automatically",
+    "ja": "クリップのソース、映像の位置とサイズ、音量、フェードは変わりません。末尾のクリップを移動するとタイムライン全体の長さが変わる場合があります。重なり、範囲外、字幕範囲、保存リビジョンの競合はサーバーが拒否し、自動修正はしません"
   },
   "agent.chat.proposalToolLimits": {
     "zh-Hans": "提议工具 v{schemaVersion} · 目录 {catalogHash} · 最多 2 次模型请求 / 1 次提议 / 8 KiB 结果",
@@ -673,10 +693,10 @@ export const creationUiMessages = {
     "ja": "タイムライン {timelineId} · クリップ {clipId} · トラック {trackId}"
   },
   "agent.chat.selectSavedClip": {
-    "zh-Hans": "请先在时间线中选中一个已保存片段。片段和同轨区间必须符合安全范围。",
-    "zh-Hant": "請先在時間軸選中一個已儲存片段。片段及同軌區間必須符合安全範圍。",
-    "en": "Select a saved timeline clip first. The clip and same-track intervals must fit the safe bounds.",
-    "ja": "先にタイムラインで保存済みクリップを選択してください。クリップと同じトラックの区間は安全な範囲内である必要があります。"
+    "zh-Hans": "请先在时间线中选中一个已保存片段。片段和同轨区间必须符合安全范围",
+    "zh-Hant": "請先在時間軸選中一個已儲存片段。片段及同軌區間必須符合安全範圍",
+    "en": "Select a saved timeline clip first. The clip and same-track intervals must fit the safe bounds",
+    "ja": "先にタイムラインで保存済みクリップを選択してください。クリップと同じトラックの区間は安全な範囲内である必要があります"
   },
   "agent.chat.savedTimingScope": {
     "zh-Hans": "本次发送的已保存片段时间范围",
@@ -703,58 +723,58 @@ export const creationUiMessages = {
     "ja": "サービスURL未入力"
   },
   "agent.chat.moveSendDisclosure": {
-    "zh-Hans": "发送本条输入、范围内已完成的纯聊天文字，以及上方明确展示的已保存片段与同轨数值时间范围。不含其他轨道、媒体、路径、ID、源身份或未保存草稿；最多 2 次模型请求、1 次仅 startFrame 的提议工具调用、8 KiB 结果。续接关闭工具，提议不会自动应用。",
-    "zh-Hant": "傳送本條輸入、範圍內已完成的純聊天文字，以及上方明確展示的已儲存片段與同軌數值時間範圍。不含其他軌道、媒體、路徑、ID、來源身份或未儲存草稿；最多 2 次模型請求、1 次僅 startFrame 的提議工具呼叫、8 KiB 結果。接續時關閉工具，提議不會自動套用。",
-    "en": "Send this input, completed text-only chat within scope, and the explicitly displayed saved clip and numeric same-track time ranges above. Excludes other tracks, media, paths, IDs, source identities, and unsaved drafts. At most 2 model requests, 1 startFrame-only proposal-tool call, and 8 KiB of results. Tools are disabled on continuation; proposals are not applied automatically.",
-    "ja": "今回の入力、範囲内の完了済みテキストチャット、上に明示された保存済みクリップと同一トラックの数値時間範囲を送信します。他のトラック、メディア、パス、ID、ソースの識別情報、未保存の下書きは含みません。モデルへのリクエストは最大2回、startFrame のみを提案するツール呼び出しは最大1回、結果は最大8 KiBです。続行時はツールを無効にし、提案は自動適用しません。"
+    "zh-Hans": "发送本条输入、范围内已完成的纯聊天文字，以及上方明确展示的已保存片段与同轨数值时间范围。不含其他轨道、媒体、路径、ID、源身份或未保存草稿；最多 2 次模型请求、1 次仅 startFrame 的提议工具调用、8 KiB 结果。续接关闭工具，提议不会自动应用",
+    "zh-Hant": "傳送本條輸入、範圍內已完成的純聊天文字，以及上方明確展示的已儲存片段與同軌數值時間範圍。不含其他軌道、媒體、路徑、ID、來源身份或未儲存草稿；最多 2 次模型請求、1 次僅 startFrame 的提議工具呼叫、8 KiB 結果。接續時關閉工具，提議不會自動套用",
+    "en": "Send this input, completed text-only chat within scope, and the explicitly displayed saved clip and numeric same-track time ranges above. Excludes other tracks, media, paths, IDs, source identities, and unsaved drafts. At most 2 model requests, 1 startFrame-only proposal-tool call, and 8 KiB of results. Tools are disabled on continuation; proposals are not applied automatically",
+    "ja": "今回の入力、範囲内の完了済みテキストチャット、上に明示された保存済みクリップと同一トラックの数値時間範囲を送信します。他のトラック、メディア、パス、ID、ソースの識別情報、未保存の下書きは含みません。モデルへのリクエストは最大2回、startFrame のみを提案するツール呼び出しは最大1回、結果は最大8 KiBです。続行時はツールを無効にし、提案は自動適用しません"
   },
   "agent.chat.shotSendDisclosure": {
-    "zh-Hans": "发送本条输入、范围内已完成的纯聊天文字，以及上方一个镜头的完整已保存标题和画面描述。仅允许 shot.update 的 title、prompt 提议，不发送其他镜头、媒体、未保存草稿或项目读取及修改提议轮次。最多 2 次模型请求、1 次提议工具调用、8 KiB 结果；续接关闭工具，提议不会自动应用。",
-    "zh-Hant": "傳送本條輸入、範圍內已完成的純聊天文字，以及上方一個鏡頭的完整已儲存標題與畫面描述。僅允許 shot.update 的 title、prompt 提議，不傳送其他鏡頭、媒體、未儲存草稿或專案讀取與修改提議輪次。最多 2 次模型請求、1 次提議工具呼叫、8 KiB 結果；接續時關閉工具，提議不會自動套用。",
-    "en": "Send this input, completed text-only chat within scope, and the full saved title and visual description of the one shot above. Only shot.update proposals for title and prompt are allowed. Other shots, media, unsaved drafts, and project inspection/edit-proposal turns are excluded. At most 2 model requests, 1 proposal-tool call, and 8 KiB of results. Tools are disabled on continuation; proposals are not applied automatically.",
-    "ja": "今回の入力、範囲内の完了済みテキストチャット、上記の1ショットの保存済みタイトル全文と画面描写を送信します。許可する提案は shot.update の title と prompt のみです。他のショット、メディア、未保存の下書き、プロジェクト確認・変更提案のターンは送信しません。モデルへのリクエストは最大2回、提案ツールの呼び出しは最大1回、結果は最大8 KiBです。続行時はツールを無効にし、提案は自動適用しません。"
+    "zh-Hans": "发送本条输入、范围内已完成的纯聊天文字，以及上方一个镜头的完整已保存标题和画面描述。仅允许 shot.update 的 title、prompt 提议，不发送其他镜头、媒体、未保存草稿或项目读取及修改提议轮次。最多 2 次模型请求、1 次提议工具调用、8 KiB 结果；续接关闭工具，提议不会自动应用",
+    "zh-Hant": "傳送本條輸入、範圍內已完成的純聊天文字，以及上方一個鏡頭的完整已儲存標題與畫面描述。僅允許 shot.update 的 title、prompt 提議，不傳送其他鏡頭、媒體、未儲存草稿或專案讀取與修改提議輪次。最多 2 次模型請求、1 次提議工具呼叫、8 KiB 結果；接續時關閉工具，提議不會自動套用",
+    "en": "Send this input, completed text-only chat within scope, and the full saved title and visual description of the one shot above. Only shot.update proposals for title and prompt are allowed. Other shots, media, unsaved drafts, and project inspection/edit-proposal turns are excluded. At most 2 model requests, 1 proposal-tool call, and 8 KiB of results. Tools are disabled on continuation; proposals are not applied automatically",
+    "ja": "今回の入力、範囲内の完了済みテキストチャット、上記の1ショットの保存済みタイトル全文と画面描写を送信します。許可する提案は shot.update の title と prompt のみです。他のショット、メディア、未保存の下書き、プロジェクト確認・変更提案のターンは送信しません。モデルへのリクエストは最大2回、提案ツールの呼び出しは最大1回、結果は最大8 KiBです。続行時はツールを無効にし、提案は自動適用しません"
   },
   "agent.chat.inspectionSendDisclosure": {
-    "zh-Hans": "发送本条输入、范围内的已完成对话，以及上方项目“{value}”的一次已保存文字与元数据读取结果。最多 2 次模型请求、1 次只读工具调用、8 KiB 结果；仅一次续接，续接时关闭工具。",
-    "zh-Hant": "傳送本條輸入、範圍內已完成的對話，以及上方專案「{value}」的一次已儲存文字與中繼資料讀取結果。最多 2 次模型請求、1 次唯讀工具呼叫、8 KiB 結果；僅接續一次，接續時關閉工具。",
-    "en": "Send this input, completed conversation within scope, and one read of saved text and metadata from project “{value}” above. At most 2 model requests, 1 read-only tool call, and 8 KiB of results. Only one continuation is allowed, with tools disabled.",
-    "ja": "今回の入力、範囲内の完了済み会話、上記プロジェクト「{value}」の保存済み文章とメタデータの1回分の読み取り結果を送信します。モデルへのリクエストは最大2回、読み取り専用ツールの呼び出しは最大1回、結果は最大8 KiBです。続行は1回のみで、その際はツールを無効にします。"
+    "zh-Hans": "发送本条输入、范围内的已完成对话，以及上方项目“{value}”的一次已保存文字与元数据读取结果。最多 2 次模型请求、1 次只读工具调用、8 KiB 结果；仅一次续接，续接时关闭工具",
+    "zh-Hant": "傳送本條輸入、範圍內已完成的對話，以及上方專案「{value}」的一次已儲存文字與中繼資料讀取結果。最多 2 次模型請求、1 次唯讀工具呼叫、8 KiB 結果；僅接續一次，接續時關閉工具",
+    "en": "Send this input, completed conversation within scope, and one read of saved text and metadata from project “{value}” above. At most 2 model requests, 1 read-only tool call, and 8 KiB of results. Only one continuation is allowed, with tools disabled",
+    "ja": "今回の入力、範囲内の完了済み会話、上記プロジェクト「{value}」の保存済み文章とメタデータの1回分の読み取り結果を送信します。モデルへのリクエストは最大2回、読み取り専用ツールの呼び出しは最大1回、結果は最大8 KiBです。続行は1回のみで、その際はツールを無効にします"
   },
   "agent.chat.chatSendDisclosure": {
-    "zh-Hans": "仅发送本条输入及范围内的已完成纯聊天文字。不含项目名称、ID、记录、媒体或项目读取轮次。",
-    "zh-Hant": "僅傳送本條輸入及範圍內已完成的純聊天文字，不含專案名稱、ID、記錄、媒體或專案讀取輪次。",
-    "en": "Send only this input and completed text-only chat within scope. Excludes project names, IDs, records, media, and project inspection turns.",
-    "ja": "今回の入力と範囲内の完了済みテキストチャットのみを送信します。プロジェクト名、ID、記録、メディア、プロジェクト確認のターンは含みません。"
+    "zh-Hans": "仅发送本条输入及范围内的已完成纯聊天文字。不含项目名称、ID、记录、媒体或项目读取轮次",
+    "zh-Hant": "僅傳送本條輸入及範圍內已完成的純聊天文字，不含專案名稱、ID、記錄、媒體或專案讀取輪次",
+    "en": "Send only this input and completed text-only chat within scope. Excludes project names, IDs, records, media, and project inspection turns",
+    "ja": "今回の入力と範囲内の完了済みテキストチャットのみを送信します。プロジェクト名、ID、記録、メディア、プロジェクト確認のターンは含みません"
   },
   "agent.chat.consentAndHiddenNotice": {
-    "zh-Hans": "{value}隐藏面板、页签或切换项目后，已接受的运行仍可能继续。",
-    "zh-Hant": "{value}隱藏面板、分頁或切換專案後，已接受的執行仍可能繼續。",
-    "en": "{value} Accepted runs may continue after hiding this panel or tab, or switching projects.",
-    "ja": "{value} パネルやタブを隠したりプロジェクトを切り替えたりしても、受け付け済みの実行は続く場合があります。"
+    "zh-Hans": "{value}隐藏面板、页签或切换项目后，已接受的运行仍可能继续",
+    "zh-Hant": "{value}隱藏面板、分頁或切換專案後，已接受的執行仍可能繼續",
+    "en": "{value} Accepted runs may continue after hiding this panel or tab, or switching projects",
+    "ja": "{value} パネルやタブを隠したりプロジェクトを切り替えたりしても、受け付け済みの実行は続く場合があります"
   },
   "agent.chat.moveSendConsent": {
-    "zh-Hans": "我授权按以上项目、片段、保存版本、所展示的片段及同轨数值时间范围、协议、地址、模型和限额发送本条输入与纯聊天上下文，并保存记录；最多 2 次模型请求可能计费。这里只允许提出移动差异，应用仍需我另行明确批准。",
-    "zh-Hant": "我授權依以上專案、片段、儲存版本、所展示的片段與同軌數值時間範圍、協議、地址、模型及限額傳送本條輸入與純聊天上下文，並儲存記錄；最多 2 次模型請求可能計費。此處僅允許提出移動差異，套用仍須我另行明確批准。",
-    "en": "I authorize sending this input and text-only chat context and saving records using the project, clip, saved revision, displayed clip and same-track numeric time ranges, protocol, URL, model, and limits above. Up to 2 model requests may incur charges. This permits only a move proposal; applying it still requires my separate explicit approval.",
-    "ja": "上記のプロジェクト、クリップ、保存リビジョン、表示されたクリップと同一トラックの数値時間範囲、プロトコル、URL、モデル、上限に従って、今回の入力とテキストチャットのコンテキストを送信し、記録を保存することを許可します。最大2回のモデルへのリクエストに料金が発生する場合があります。許可するのは移動差分の提案のみで、適用には私の別途の明示的な承認が必要です。"
+    "zh-Hans": "我授权按以上项目、片段、保存版本、所展示的片段及同轨数值时间范围、协议、地址、模型和限额发送本条输入与纯聊天上下文，并保存记录；最多 2 次模型请求可能计费。这里只允许提出移动差异，应用仍需我另行明确批准",
+    "zh-Hant": "我授權依以上專案、片段、儲存版本、所展示的片段與同軌數值時間範圍、協議、地址、模型及限額傳送本條輸入與純聊天上下文，並儲存記錄；最多 2 次模型請求可能計費。此處僅允許提出移動差異，套用仍須我另行明確批准",
+    "en": "I authorize sending this input and text-only chat context and saving records using the project, clip, saved revision, displayed clip and same-track numeric time ranges, protocol, URL, model, and limits above. Up to 2 model requests may incur charges. This permits only a move proposal; applying it still requires my separate explicit approval",
+    "ja": "上記のプロジェクト、クリップ、保存リビジョン、表示されたクリップと同一トラックの数値時間範囲、プロトコル、URL、モデル、上限に従って、今回の入力とテキストチャットのコンテキストを送信し、記録を保存することを許可します。最大2回のモデルへのリクエストに料金が発生する場合があります。許可するのは移動差分の提案のみで、適用には私の別途の明示的な承認が必要です"
   },
   "agent.chat.shotSendConsent": {
-    "zh-Hans": "我授权按以上项目、镜头、已保存版本、完整文字、协议、地址、模型和工具限额发送本条输入、范围内纯聊天上下文及镜头文字，并保存本次记录；最多 2 次模型请求可能计费。此授权只允许提出差异，应用还需我另行明确批准。",
-    "zh-Hant": "我授權依以上專案、鏡頭、已儲存版本、完整文字、協議、地址、模型與工具限額傳送本條輸入、範圍內純聊天上下文及鏡頭文字，並儲存此次記錄；最多 2 次模型請求可能計費。此授權只允許提出差異，套用仍須我另行明確批准。",
-    "en": "I authorize sending this input, text-only chat context within scope, and shot text, and saving this record using the project, shot, saved revision, full text, protocol, URL, model, and tool limits above. Up to 2 model requests may incur charges. This permits only a proposal; applying it requires my separate explicit approval.",
-    "ja": "上記のプロジェクト、ショット、保存リビジョン、全文、プロトコル、URL、モデル、ツールの上限に従って、今回の入力、範囲内のテキストチャットのコンテキスト、ショットの文章を送信し、記録を保存することを許可します。最大2回のモデルへのリクエストに料金が発生する場合があります。この許可は差分の提案のみを対象とし、適用には私の別途の明示的な承認が必要です。"
+    "zh-Hans": "我授权按以上项目、镜头、已保存版本、完整文字、协议、地址、模型和工具限额发送本条输入、范围内纯聊天上下文及镜头文字，并保存本次记录；最多 2 次模型请求可能计费。此授权只允许提出差异，应用还需我另行明确批准",
+    "zh-Hant": "我授權依以上專案、鏡頭、已儲存版本、完整文字、協議、地址、模型與工具限額傳送本條輸入、範圍內純聊天上下文及鏡頭文字，並儲存此次記錄；最多 2 次模型請求可能計費。此授權只允許提出差異，套用仍須我另行明確批准",
+    "en": "I authorize sending this input, text-only chat context within scope, and shot text, and saving this record using the project, shot, saved revision, full text, protocol, URL, model, and tool limits above. Up to 2 model requests may incur charges. This permits only a proposal; applying it requires my separate explicit approval",
+    "ja": "上記のプロジェクト、ショット、保存リビジョン、全文、プロトコル、URL、モデル、ツールの上限に従って、今回の入力、範囲内のテキストチャットのコンテキスト、ショットの文章を送信し、記録を保存することを許可します。最大2回のモデルへのリクエストに料金が発生する場合があります。この許可は差分の提案のみを対象とし、適用には私の別途の明示的な承認が必要です"
   },
   "agent.chat.inspectionSendConsent": {
-    "zh-Hans": "我授权本次按以上协议、地址、模型和项目范围发送数据并保存记录；允许一次读取及关闭工具后的有限续接，不逐次询问。最多 2 次模型请求可能计费。",
-    "zh-Hant": "我授權此次依以上協議、地址、模型與專案範圍傳送資料並儲存記錄；允許一次讀取及關閉工具後的有限接續，不逐次詢問。最多 2 次模型請求可能計費。",
-    "en": "I authorize sending data and saving records for this turn using the protocol, URL, model, and project scope above. I allow one read and bounded continuation with tools disabled, without individual prompts. Up to 2 model requests may incur charges.",
-    "ja": "今回、上記のプロトコル、URL、モデル、プロジェクト範囲に従ってデータを送信し、記録を保存することを許可します。1回の読み取りと、ツールを無効にした制限付きの続行を、個別確認なしで許可します。最大2回のモデルへのリクエストに料金が発生する場合があります。"
+    "zh-Hans": "我授权本次按以上协议、地址、模型和项目范围发送数据并保存记录；允许一次读取及关闭工具后的有限续接，不逐次询问。最多 2 次模型请求可能计费",
+    "zh-Hant": "我授權此次依以上協議、地址、模型與專案範圍傳送資料並儲存記錄；允許一次讀取及關閉工具後的有限接續，不逐次詢問。最多 2 次模型請求可能計費",
+    "en": "I authorize sending data and saving records for this turn using the protocol, URL, model, and project scope above. I allow one read and bounded continuation with tools disabled, without individual prompts. Up to 2 model requests may incur charges",
+    "ja": "今回、上記のプロトコル、URL、モデル、プロジェクト範囲に従ってデータを送信し、記録を保存することを許可します。1回の読み取りと、ツールを無効にした制限付きの続行を、個別確認なしで許可します。最大2回のモデルへのリクエストに料金が発生する場合があります"
   },
   "agent.chat.chatSendConsent": {
-    "zh-Hans": "我确认按以上协议、地址和模型发送本条输入及纯聊天上下文，并保存记录。一次模型请求可能计费。",
-    "zh-Hant": "我確認依以上協議、地址與模型傳送本條輸入及純聊天上下文，並儲存記錄。一次模型請求可能計費。",
-    "en": "I confirm sending this input and text-only chat context using the protocol, URL, and model above, and saving the record. One model request may incur charges.",
-    "ja": "上記のプロトコル、URL、モデルで今回の入力とテキストチャットのコンテキストを送信し、記録を保存することを確認します。1回のモデルへのリクエストに料金が発生する場合があります。"
+    "zh-Hans": "我确认按以上协议、地址和模型发送本条输入及纯聊天上下文，并保存记录。一次模型请求可能计费",
+    "zh-Hant": "我確認依以上協議、地址與模型傳送本條輸入及純聊天上下文，並儲存記錄。一次模型請求可能計費",
+    "en": "I confirm sending this input and text-only chat context using the protocol, URL, and model above, and saving the record. One model request may incur charges",
+    "ja": "上記のプロトコル、URL、モデルで今回の入力とテキストチャットのコンテキストを送信し、記録を保存することを確認します。1回のモデルへのリクエストに料金が発生する場合があります"
   },
   "agent.chat.messageLabel": {
     "zh-Hans": "给 Agent 的消息",
@@ -793,10 +813,10 @@ export const creationUiMessages = {
     "ja": "送信"
   },
   "agent.chat.stopDisclosure": {
-    "zh-Hans": "停止阻止后续步骤，保留已有文字与结果；无法撤回已发生的费用。重启不会自动续接。",
-    "zh-Hant": "停止會阻止後續步驟，保留已有文字與結果；無法撤回已發生的費用。重啟不會自動接續。",
-    "en": "Stopping blocks later steps and retains existing text and results. It cannot reverse charges already incurred. Restarting will not resume automatically.",
-    "ja": "停止すると後続の処理を止め、既存の文章と結果を保持します。発生済みの料金は取り消せません。再起動しても自動では再開しません。"
+    "zh-Hans": "停止阻止后续步骤，保留已有文字与结果；无法撤回已发生的费用。重启不会自动续接",
+    "zh-Hant": "停止會阻止後續步驟，保留已有文字與結果；無法撤回已發生的費用。重啟不會自動接續",
+    "en": "Stopping blocks later steps and retains existing text and results. It cannot reverse charges already incurred. Restarting will not resume automatically",
+    "ja": "停止すると後続の処理を止め、既存の文章と結果を保持します。発生済みの料金は取り消せません。再起動しても自動では再開しません"
   },
   "agent.chat.conversationAria": {
     "zh-Hans": "Agent 文字对话",
@@ -902,33 +922,33 @@ export const creationUiMessages = {
   },
   "agent.activity.chatTurnCount": {
     "zh-Hans": {
-      "one": "另包含 {count} 轮已完成纯聊天文字。",
-      "other": "另包含 {count} 轮已完成纯聊天文字。"
+      "one": "另包含 {count} 轮已完成纯聊天文字",
+      "other": "另包含 {count} 轮已完成纯聊天文字"
     },
     "zh-Hant": {
-      "one": "另含 {count} 輪已完成的純聊天文字。",
-      "other": "另含 {count} 輪已完成的純聊天文字。"
+      "one": "另含 {count} 輪已完成的純聊天文字",
+      "other": "另含 {count} 輪已完成的純聊天文字"
     },
     "en": {
-      "one": "Also includes {count} completed text-only chat turn.",
-      "other": "Also includes {count} completed text-only chat turns."
+      "one": "Also includes {count} completed text-only chat turn",
+      "other": "Also includes {count} completed text-only chat turns"
     },
     "ja": {
-      "one": "完了済みのテキストチャット{count}ターンも含みます。",
-      "other": "完了済みのテキストチャット{count}ターンも含みます。"
+      "one": "完了済みのテキストチャット{count}ターンも含みます",
+      "other": "完了済みのテキストチャット{count}ターンも含みます"
     }
   },
   "agent.activity.moveProvenance": {
-    "zh-Hans": "不含媒体、源身份、其他轨道或未保存编辑；只提出 startFrame 差异，不代表已应用。本轮文字不加入纯聊天上下文，应用状态请查看独立审阅区。",
-    "zh-Hant": "不含媒體、來源身份、其他軌道或未儲存編輯；只提出 startFrame 差異，不代表已套用。本輪文字不加入純聊天上下文，套用狀態請查看獨立審閱區。",
-    "en": "Excludes media, source identities, other tracks, and unsaved edits. This only proposes a startFrame change; it does not establish that it was applied. This turn’s text is not added to text-only chat context. Check the separate review area for application status.",
-    "ja": "メディア、ソースの識別情報、他のトラック、未保存の編集は含みません。startFrame の差分を提案するだけで、適用済みという意味ではありません。このターンの文章はテキストチャットのコンテキストには追加されません。適用状態は専用のレビュー欄で確認してください。"
+    "zh-Hans": "不含媒体、源身份、其他轨道或未保存编辑；只提出 startFrame 差异，不代表已应用。本轮文字不加入纯聊天上下文，应用状态请查看独立审阅区",
+    "zh-Hant": "不含媒體、來源身份、其他軌道或未儲存編輯；只提出 startFrame 差異，不代表已套用。本輪文字不加入純聊天上下文，套用狀態請查看獨立審閱區",
+    "en": "Excludes media, source identities, other tracks, and unsaved edits. This only proposes a startFrame change; it does not establish that it was applied. This turn’s text is not added to text-only chat context. Check the separate review area for application status",
+    "ja": "メディア、ソースの識別情報、他のトラック、未保存の編集は含みません。startFrame の差分を提案するだけで、適用済みという意味ではありません。このターンの文章はテキストチャットのコンテキストには追加されません。適用状態は専用のレビュー欄で確認してください"
   },
   "agent.activity.shotAuthorization": {
-    "zh-Hans": "本轮授权：项目 {projectId} 的镜头 {shotId}、保存版本 {expectedRevision} 的完整标题和画面描述。{value}不包含未保存编辑；本轮文字不加入纯聊天上下文。工具只提议，不代表已应用，请查看独立审阅区的保存状态。",
-    "zh-Hant": "本輪授權：專案 {projectId} 的鏡頭 {shotId}、儲存版本 {expectedRevision} 的完整標題與畫面描述。{value}不含未儲存編輯；本輪文字不加入純聊天上下文。工具僅提出提議，不代表已套用，請查看獨立審閱區的儲存狀態。",
-    "en": "Authorized for this turn: the full title and visual description of shot {shotId} in project {projectId}, saved revision {expectedRevision}. {value}Excludes unsaved edits; this turn is not added to text-only chat context. The tool only proposes changes, not applies them. Check saved status in the separate review area.",
-    "ja": "今回の許可範囲：プロジェクト {projectId} のショット {shotId}、保存リビジョン {expectedRevision} のタイトル全文と画面描写。{value}未保存の編集は含まず、このターンの文章はテキストチャットのコンテキストに追加しません。ツールは提案するだけで、適用済みではありません。保存状態は専用のレビュー欄で確認してください。"
+    "zh-Hans": "本轮授权：项目 {projectId} 的镜头 {shotId}、保存版本 {expectedRevision} 的完整标题和画面描述。{value}不包含未保存编辑；本轮文字不加入纯聊天上下文。工具只提议，不代表已应用，请查看独立审阅区的保存状态",
+    "zh-Hant": "本輪授權：專案 {projectId} 的鏡頭 {shotId}、儲存版本 {expectedRevision} 的完整標題與畫面描述。{value}不含未儲存編輯；本輪文字不加入純聊天上下文。工具僅提出提議，不代表已套用，請查看獨立審閱區的儲存狀態",
+    "en": "Authorized for this turn: the full title and visual description of shot {shotId} in project {projectId}, saved revision {expectedRevision}. {value}Excludes unsaved edits; this turn is not added to text-only chat context. The tool only proposes changes, not applies them. Check saved status in the separate review area",
+    "ja": "今回の許可範囲：プロジェクト {projectId} のショット {shotId}、保存リビジョン {expectedRevision} のタイトル全文と画面描写。{value}未保存の編集は含まず、このターンの文章はテキストチャットのコンテキストに追加しません。ツールは提案するだけで、適用済みではありません。保存状態は専用のレビュー欄で確認してください"
   },
   "agent.activity.projectAuthorizationHeading": {
     "zh-Hans": "本轮授权项目资料 · 不加入纯聊天上下文",
@@ -937,10 +957,10 @@ export const creationUiMessages = {
     "ja": "今回許可されたプロジェクト情報 · テキストチャットのコンテキストには追加しません"
   },
   "agent.activity.projectAuthorization": {
-    "zh-Hans": "本轮授权：项目 {projectId} 的已保存文字与元数据{value}。这类回复不会加入后续“仅文字聊天”的上下文；授权范围不代表所有资料均已读取。",
-    "zh-Hant": "本輪授權：專案 {projectId} 的已儲存文字與中繼資料{value}。這類回覆不會加入後續「僅文字聊天」的上下文；授權範圍不代表所有資料均已讀取。",
-    "en": "Authorized for this turn: saved text and metadata from project {projectId}{value}. These replies are not added to later text-only chat context. Authorization does not mean all data was read.",
-    "ja": "今回の許可範囲：プロジェクト {projectId} の保存済み文章とメタデータ{value}。この種類の返信は後続のテキストチャットのコンテキストには追加されません。許可範囲内のすべての情報を読み取ったことを意味するものではありません。"
+    "zh-Hans": "本轮授权：项目 {projectId} 的已保存文字与元数据{value}。这类回复不会加入后续“仅文字聊天”的上下文；授权范围不代表所有资料均已读取",
+    "zh-Hant": "本輪授權：專案 {projectId} 的已儲存文字與中繼資料{value}。這類回覆不會加入後續「僅文字聊天」的上下文；授權範圍不代表所有資料均已讀取",
+    "en": "Authorized for this turn: saved text and metadata from project {projectId}{value}. These replies are not added to later text-only chat context. Authorization does not mean all data was read",
+    "ja": "今回の許可範囲：プロジェクト {projectId} の保存済み文章とメタデータ{value}。この種類の返信は後続のテキストチャットのコンテキストには追加されません。許可範囲内のすべての情報を読み取ったことを意味するものではありません"
   },
   "agent.activity.referencedTurns": {
     "zh-Hans": {
@@ -961,10 +981,10 @@ export const creationUiMessages = {
     }
   },
   "agent.activity.chatContext": {
-    "zh-Hans": "本轮上下文：仅聊天文字，不含项目读取对话。",
-    "zh-Hant": "本輪上下文：僅聊天文字，不含專案讀取對話。",
-    "en": "This turn’s context: chat text only, excluding project inspection turns.",
-    "ja": "今回のコンテキスト：チャットの文章のみ。プロジェクト確認の会話は含みません。"
+    "zh-Hans": "本轮上下文：仅聊天文字，不含项目读取对话",
+    "zh-Hant": "本輪上下文：僅聊天文字，不含專案讀取對話",
+    "en": "This turn’s context: chat text only, excluding project inspection turns",
+    "ja": "今回のコンテキスト：チャットの文章のみ。プロジェクト確認の会話は含みません"
   },
   "agent.activity.modelRequestOrdinal": {
     "zh-Hans": "模型请求 {ordinal} / 2{value}",
@@ -1105,16 +1125,16 @@ export const creationUiMessages = {
     "ja": "クリップの長さは {value} のままです"
   },
   "agent.proposal.movePreservesFields": {
-    "zh-Hans": "仅改变当前轨道上的开始位置。源素材、裁切、画面位置和大小、音量及淡入淡出保持不变。",
-    "zh-Hant": "僅改變目前軌道上的開始位置。來源素材、裁切、畫面位置與大小、音量及淡入淡出保持不變。",
-    "en": "Only the start position on the current track changes. Source asset, trim, visual position and size, gain, and fades stay unchanged.",
-    "ja": "現在のトラック上の開始位置だけを変更します。ソース素材、トリミング、映像の位置とサイズ、音量、フェードは変わりません。"
+    "zh-Hans": "仅改变当前轨道上的开始位置。源素材、裁切、画面位置和大小、音量及淡入淡出保持不变",
+    "zh-Hant": "僅改變目前軌道上的開始位置。來源素材、裁切、畫面位置與大小、音量及淡入淡出保持不變",
+    "en": "Only the start position on the current track changes. Source asset, trim, visual position and size, gain, and fades stay unchanged",
+    "ja": "現在のトラック上の開始位置だけを変更します。ソース素材、トリミング、映像の位置とサイズ、音量、フェードは変わりません"
   },
   "agent.proposal.nonRippleMove": {
-    "zh-Hans": "非波纹移动：不会自动移动其他片段，不会换轨、夹紧或避让。重叠、超界、字幕超出范围或版本变化会阻止应用。",
-    "zh-Hant": "非波紋移動：不會自動移動其他片段，也不會換軌、限制到邊界或避讓。重疊、超出範圍、字幕超出範圍或版本變更會阻止套用。",
-    "en": "Non-ripple move: other clips are not moved automatically, and there is no track change, clamping, or collision avoidance. Overlaps, out-of-bounds positions, out-of-range subtitles, or revision changes block application.",
-    "ja": "リップルなしの移動です。他のクリップを自動で動かしたり、トラックを変えたり、境界内に補正したり、重なりを避けたりはしません。重なり、範囲外の位置や字幕、リビジョンの変更がある場合は適用を拒否します。"
+    "zh-Hans": "非波纹移动：不会自动移动其他片段，不会换轨、夹紧或避让。重叠、超界、字幕超出范围或版本变化会阻止应用",
+    "zh-Hant": "非波紋移動：不會自動移動其他片段，也不會換軌、限制到邊界或避讓。重疊、超出範圍、字幕超出範圍或版本變更會阻止套用",
+    "en": "Non-ripple move: other clips are not moved automatically, and there is no track change, clamping, or collision avoidance. Overlaps, out-of-bounds positions, out-of-range subtitles, or revision changes block application",
+    "ja": "リップルなしの移動です。他のクリップを自動で動かしたり、トラックを変えたり、境界内に補正したり、重なりを避けたりはしません。重なり、範囲外の位置や字幕、リビジョンの変更がある場合は適用を拒否します"
   },
   "agent.proposal.totalDuration": {
     "zh-Hans": "时间线总时长：{value} → {value2}{value3}",
@@ -1153,10 +1173,10 @@ export const creationUiMessages = {
     "ja": "独立して保存 · 再起動後も確認可能"
   },
   "agent.proposal.proposalAuthority": {
-    "zh-Hans": "模型文字可能说“已修改”，请以这里的保存状态为准。只有明确批准后才会应用这份固定差异；不会自动执行、改写或重新基于新版本生成。",
-    "zh-Hant": "模型文字可能表示「已修改」，請以此處的儲存狀態為準。只有明確批准後才會套用這份固定差異；不會自動執行、改寫或依新版本重新產生。",
-    "en": "Model text may say “changed”; use the saved status here as the authority. This fixed diff is applied only after explicit approval. It will not execute, rewrite, or rebase onto a newer revision automatically.",
-    "ja": "モデルの文章に「変更しました」とあっても、ここに表示する保存状態を確認してください。この固定差分は明示的な承認後にのみ適用されます。自動実行、書き換え、新しいリビジョンに基づく再作成は行いません。"
+    "zh-Hans": "模型文字可能说“已修改”，请以这里的保存状态为准。只有明确批准后才会应用这份固定差异；不会自动执行、改写或重新基于新版本生成",
+    "zh-Hant": "模型文字可能表示「已修改」，請以此處的儲存狀態為準。只有明確批准後才會套用這份固定差異；不會自動執行、改寫或依新版本重新產生",
+    "en": "Model text may say “changed”; use the saved status here as the authority. This fixed diff is applied only after explicit approval. It will not execute, rewrite, or rebase onto a newer revision automatically",
+    "ja": "モデルの文章に「変更しました」とあっても、ここに表示する保存状態を確認してください。この固定差分は明示的な承認後にのみ適用されます。自動実行、書き換え、新しいリビジョンに基づく再作成は行いません"
   },
   "agent.proposal.unresolved": {
     "zh-Hans": "待处理",
@@ -1177,10 +1197,10 @@ export const creationUiMessages = {
     "ja": "読み取り専用で確認"
   },
   "agent.proposal.pinCapacity": {
-    "zh-Hans": "已有 50 份原操作待核对。请先只读核对或恢复保留的原提议，再批准新的提议。原身份与请求不会丢弃。",
-    "zh-Hant": "已有 50 份原操作待核對。請先以唯讀方式核對或還原保留的原提議，再批准新提議。原身份與請求不會被丟棄。",
-    "en": "50 original operations are awaiting verification. Check them read-only or recover the retained original proposals before approving new ones. Original identities and requests will not be discarded.",
-    "ja": "元の操作50件が確認待ちです。新しい提案を承認する前に、保持された元の提案を読み取り専用で確認するか復元してください。元の識別情報とリクエストは破棄しません。"
+    "zh-Hans": "已有 50 份原操作待核对。请先只读核对或恢复保留的原提议，再批准新的提议。原身份与请求不会丢弃",
+    "zh-Hant": "已有 50 份原操作待核對。請先以唯讀方式核對或還原保留的原提議，再批准新提議。原身份與請求不會被丟棄",
+    "en": "50 original operations are awaiting verification. Check them read-only or recover the retained original proposals before approving new ones. Original identities and requests will not be discarded",
+    "ja": "元の操作50件が確認待ちです。新しい提案を承認する前に、保持された元の提案を読み取り専用で確認するか復元してください。元の識別情報とリクエストは破棄しません"
   },
   "agent.proposal.loadingProposals": {
     "zh-Hans": "正在读取保存的提议…",
@@ -1189,22 +1209,22 @@ export const creationUiMessages = {
     "ja": "保存済みの提案を読み込み中…"
   },
   "agent.proposal.proposalStatusUnavailable": {
-    "zh-Hans": "提议状态暂不可用。",
-    "zh-Hant": "提議狀態暫時無法使用。",
-    "en": "Proposal status is unavailable.",
-    "ja": "提案の状態を確認できません。"
+    "zh-Hans": "提议状态暂不可用",
+    "zh-Hant": "提議狀態暫時無法使用",
+    "en": "Proposal status is unavailable",
+    "ja": "提案の状態を確認できません"
   },
   "agent.proposal.noPendingProposals": {
-    "zh-Hans": "没有待处理的提议。已应用、拒绝或失效的提议可在全部记录中查看。",
-    "zh-Hant": "沒有待處理提議。已套用、拒絕或失效的提議可在全部記錄查看。",
-    "en": "No pending proposals. Applied, rejected, or invalidated proposals are available under All records.",
-    "ja": "保留中の提案はありません。適用済み、拒否済み、無効になった提案は「すべての記録」で確認できます。"
+    "zh-Hans": "没有待处理的提议。已应用、拒绝或失效的提议可在全部记录中查看",
+    "zh-Hant": "沒有待處理提議。已套用、拒絕或失效的提議可在全部記錄查看",
+    "en": "No pending proposals. Applied, rejected, or invalidated proposals are available under All records",
+    "ja": "保留中の提案はありません。適用済み、拒否済み、無効になった提案は「すべての記録」で確認できます"
   },
   "agent.proposal.noSavedProposals": {
-    "zh-Hans": "还没有保存的修改提议。",
-    "zh-Hant": "尚無已儲存的修改提議。",
-    "en": "No saved edit proposals yet.",
-    "ja": "保存済みの変更提案はまだありません。"
+    "zh-Hans": "还没有保存的修改提议",
+    "zh-Hant": "尚無已儲存的修改提議",
+    "en": "No saved edit proposals yet",
+    "ja": "保存済みの変更提案はまだありません"
   },
   "agent.proposal.pinnedOriginal": {
     "zh-Hans": "原操作待核对 · 保留显示",
@@ -1309,10 +1329,10 @@ export const creationUiMessages = {
     "ja": "保存済みの元のリクエスト {requestId}"
   },
   "agent.proposal.completedRunRequired": {
-    "zh-Hans": "只有本轮成功完成后才能批准或拒绝。停止、失败或中断的运行不能批准；停止会使尚未批准的提议失效。",
-    "zh-Hant": "本輪成功完成後才能批准或拒絕。停止、失敗或中斷的執行不能批准；停止會使尚未批准的提議失效。",
-    "en": "Approval or rejection requires this turn to finish successfully. Stopped, failed, or interrupted runs cannot be approved. Stopping invalidates proposals that have not been approved.",
-    "ja": "このターンが正常に完了してから承認または拒否できます。停止、失敗、中断した実行は承認できません。停止すると未承認の提案は無効になります。"
+    "zh-Hans": "只有本轮成功完成后才能批准或拒绝。停止、失败或中断的运行不能批准；停止会使尚未批准的提议失效",
+    "zh-Hant": "本輪成功完成後才能批准或拒絕。停止、失敗或中斷的執行不能批准；停止會使尚未批准的提議失效",
+    "en": "Approval or rejection requires this turn to finish successfully. Stopped, failed, or interrupted runs cannot be approved. Stopping invalidates proposals that have not been approved",
+    "ja": "このターンが正常に完了してから承認または拒否できます。停止、失敗、中断した実行は承認できません。停止すると未承認の提案は無効になります"
   },
   "agent.proposal.notAppliedReceipt": {
     "zh-Hans": "保存服务已确认未应用{value}",
@@ -1321,22 +1341,22 @@ export const creationUiMessages = {
     "ja": "保存サービスが未適用を確認しました{value}"
   },
   "agent.proposal.revisionConflictDetail": {
-    "zh-Hans": "：已保存内容已变化，请核对最新版本。旧提议不会自动重新基于新版本修改。",
-    "zh-Hant": "：已儲存內容已變更，請核對最新版本。舊提議不會自動依新版本修改。",
-    "en": ": saved content has changed. Check the latest revision. The old proposal will not be rebased automatically.",
-    "ja": "。保存済みの内容が変わっています。最新リビジョンを確認してください。古い提案を自動で新しいリビジョンに合わせることはありません。"
+    "zh-Hans": "：已保存内容已变化，请核对最新版本。旧提议不会自动重新基于新版本修改",
+    "zh-Hant": "：已儲存內容已變更，請核對最新版本。舊提議不會自動依新版本修改",
+    "en": ": saved content has changed. Check the latest revision. The old proposal will not be rebased automatically",
+    "ja": "。保存済みの内容が変わっています。最新リビジョンを確認してください。古い提案を自動で新しいリビジョンに合わせることはありません"
   },
   "agent.proposal.reviewCurrentContent": {
-    "zh-Hans": "。请核对提议和当前保存内容。",
-    "zh-Hant": "。請核對提議與目前已儲存內容。",
-    "en": ". Review the proposal and currently saved content.",
-    "ja": "。提案と現在の保存内容を確認してください。"
+    "zh-Hans": "。请核对提议和当前保存内容",
+    "zh-Hant": "。請核對提議與目前已儲存內容",
+    "en": ". Review the proposal and currently saved content",
+    "ja": "。提案と現在の保存内容を確認してください"
   },
   "agent.proposal.appliedHistoricalReceipt": {
-    "zh-Hans": "保存服务已确认应用，{value}版本 {revision}。这是一条历史回执；当前内容会单独读取，不会覆盖更新的时间线或把未保存草稿标记为已保存。",
-    "zh-Hant": "儲存服務已確認套用，{value}版本 {revision}。這是歷史回執；目前內容會另行讀取，不會覆蓋較新的時間軸，也不會將未儲存草稿標示為已儲存。",
-    "en": "The save service confirmed application at {value} revision {revision}. This is a historical receipt. Current content is read separately; it will not overwrite a newer timeline or mark unsaved drafts as saved.",
-    "ja": "保存サービスが{value}のリビジョン {revision} への適用を確認しました。これは過去の受領記録です。現在の内容は別途読み取ります。新しいタイムラインを上書きしたり、未保存の下書きを保存済みとしたりはしません。"
+    "zh-Hans": "保存服务已确认应用，{value}版本 {revision}。这是一条历史回执；当前内容会单独读取，不会覆盖更新的时间线或把未保存草稿标记为已保存",
+    "zh-Hant": "儲存服務已確認套用，{value}版本 {revision}。這是歷史回執；目前內容會另行讀取，不會覆蓋較新的時間軸，也不會將未儲存草稿標示為已儲存",
+    "en": "The save service confirmed application at {value} revision {revision}. This is a historical receipt. Current content is read separately; it will not overwrite a newer timeline or mark unsaved drafts as saved",
+    "ja": "保存サービスが{value}のリビジョン {revision} への適用を確認しました。これは過去の受領記録です。現在の内容は別途読み取ります。新しいタイムラインを上書きしたり、未保存の下書きを保存済みとしたりはしません"
   },
   "agent.proposal.timelineObject": {
     "zh-Hans": "时间线",
@@ -1351,16 +1371,16 @@ export const creationUiMessages = {
     "ja": "ショット"
   },
   "agent.proposal.retryApprovalDisclosure": {
-    "zh-Hans": "较早的批准请求可能已被接受。重试只提交同一提议、同一摘要的批准，复用服务端已保存的原请求；不会创建新差异或新请求 ID。",
-    "zh-Hant": "較早的批准請求可能已被接受。重試只提交同一提議、同一摘要的批准，沿用伺服器已儲存的原請求；不會建立新差異或新請求 ID。",
-    "en": "An earlier approval request may have been accepted. Retrying approves only the same proposal and digest, reusing the original request saved by the server. It does not create a new diff or request ID.",
-    "ja": "以前の承認リクエストは受け付け済みかもしれません。再試行では同じ提案とダイジェストの承認のみを送信し、サーバーが保存した元のリクエストを再利用します。新しい差分やリクエストIDは作成しません。"
+    "zh-Hans": "较早的批准请求可能已被接受。重试只提交同一提议、同一摘要的批准，复用服务端已保存的原请求；不会创建新差异或新请求 ID",
+    "zh-Hant": "較早的批准請求可能已被接受。重試只提交同一提議、同一摘要的批准，沿用伺服器已儲存的原請求；不會建立新差異或新請求 ID",
+    "en": "An earlier approval request may have been accepted. Retrying approves only the same proposal and digest, reusing the original request saved by the server. It does not create a new diff or request ID",
+    "ja": "以前の承認リクエストは受け付け済みかもしれません。再試行では同じ提案とダイジェストの承認のみを送信し、サーバーが保存した元のリクエストを再利用します。新しい差分やリクエストIDは作成しません"
   },
   "agent.proposal.recoverOriginalDisclosure": {
-    "zh-Hans": "仅恢复上方已批准并保存的原请求，使用同一请求 ID 和差异。结果可能仍未知，不会创建新请求或再次调用模型。",
-    "zh-Hant": "僅還原上方已批准並儲存的原請求，使用同一請求 ID 與差異。結果可能仍未知，不會建立新請求或再次呼叫模型。",
-    "en": "Recover only the approved, saved original request above, using the same request ID and diff. The outcome may remain unknown. No new request or model call is created.",
-    "ja": "上記の承認・保存済みの元のリクエストだけを、同じリクエストIDと差分で復元します。結果が不明のままの場合もあります。新しいリクエストやモデル呼び出しは行いません。"
+    "zh-Hans": "仅恢复上方已批准并保存的原请求，使用同一请求 ID 和差异。结果可能仍未知，不会创建新请求或再次调用模型",
+    "zh-Hant": "僅還原上方已批准並儲存的原請求，使用同一請求 ID 與差異。結果可能仍未知，不會建立新請求或再次呼叫模型",
+    "en": "Recover only the approved, saved original request above, using the same request ID and diff. The outcome may remain unknown. No new request or model call is created",
+    "ja": "上記の承認・保存済みの元のリクエストだけを、同じリクエストIDと差分で復元します。結果が不明のままの場合もあります。新しいリクエストやモデル呼び出しは行いません"
   },
   "agent.proposal.approveApply": {
     "zh-Hans": "批准并应用此差异",
@@ -1417,34 +1437,34 @@ export const creationUiMessages = {
     "ja": "保存済みの変更提案をレビュー"
   },
   "agent.gain.sendDisclosure": {
-    "zh-Hans": "发送本条输入、范围内已完成的纯聊天文字，以及上方明确展示的片段名称与已保存音量、轨道名称与类型及静音状态、已知含音频与 0–2 音量范围。不含媒体、路径、ID、源指纹、其他片段、波形或响度测量。最多 2 次模型请求、1 次仅 gain 的提议工具调用、8 KiB 结果；续接关闭工具，提议不会自动应用。",
-    "zh-Hant": "傳送本條輸入、範圍內已完成的純聊天文字，以及上方明確展示的片段名稱與已儲存音量、軌道名稱與類型及靜音狀態、已知含音訊與 0–2 音量範圍。不含媒體、路徑、ID、來源指紋、其他片段、波形或響度測量。最多 2 次模型請求、1 次僅 gain 的提議工具呼叫、8 KiB 結果；接續時關閉工具，提議不會自動套用。",
-    "en": "Send this input, completed text-only chat within scope, and the explicitly displayed clip name and saved gain, track name, type and mute state, known audio presence, and 0–2 gain range. Excludes media, paths, IDs, source fingerprints, other clips, waveforms, and loudness measurements. At most 2 model requests, 1 gain-only proposal-tool call, and 8 KiB of results. Tools are disabled on continuation; proposals are not applied automatically.",
-    "ja": "今回の入力、範囲内の完了済みテキストチャット、上に明示されたクリップ名と保存済み音量、トラック名・種類・ミュート状態、確認済みの音声の有無、0–2の音量範囲を送信します。メディア、パス、ID、ソースの指紋、他のクリップ、波形、ラウドネス測定値は含みません。モデルへのリクエストは最大2回、gain のみを提案するツール呼び出しは最大1回、結果は最大8 KiBです。続行時はツールを無効にし、提案は自動適用しません。"
+    "zh-Hans": "发送本条输入、范围内已完成的纯聊天文字，以及上方明确展示的片段名称与已保存音量、轨道名称与类型及静音状态、已知含音频与 0–2 音量范围。不含媒体、路径、ID、源指纹、其他片段、波形或响度测量。最多 2 次模型请求、1 次仅 gain 的提议工具调用、8 KiB 结果；续接关闭工具，提议不会自动应用",
+    "zh-Hant": "傳送本條輸入、範圍內已完成的純聊天文字，以及上方明確展示的片段名稱與已儲存音量、軌道名稱與類型及靜音狀態、已知含音訊與 0–2 音量範圍。不含媒體、路徑、ID、來源指紋、其他片段、波形或響度測量。最多 2 次模型請求、1 次僅 gain 的提議工具呼叫、8 KiB 結果；接續時關閉工具，提議不會自動套用",
+    "en": "Send this input, completed text-only chat within scope, and the explicitly displayed clip name and saved gain, track name, type and mute state, known audio presence, and 0–2 gain range. Excludes media, paths, IDs, source fingerprints, other clips, waveforms, and loudness measurements. At most 2 model requests, 1 gain-only proposal-tool call, and 8 KiB of results. Tools are disabled on continuation; proposals are not applied automatically",
+    "ja": "今回の入力、範囲内の完了済みテキストチャット、上に明示されたクリップ名と保存済み音量、トラック名・種類・ミュート状態、確認済みの音声の有無、0–2の音量範囲を送信します。メディア、パス、ID、ソースの指紋、他のクリップ、波形、ラウドネス測定値は含みません。モデルへのリクエストは最大2回、gain のみを提案するツール呼び出しは最大1回、結果は最大8 KiBです。続行時はツールを無効にし、提案は自動適用しません"
   },
   "agent.gain.sendConsent": {
-    "zh-Hans": "我授权按以上项目、片段、保存版本、所展示的音量与轨道状态、协议、地址、模型和限额发送本条输入与纯聊天上下文，并保存记录；最多 2 次模型请求可能计费。这里只允许提出音量差异，应用仍需我另行明确批准。",
-    "zh-Hant": "我授權依以上專案、片段、儲存版本、所展示的音量與軌道狀態、協議、地址、模型及限額傳送本條輸入與純聊天上下文，並儲存記錄；最多 2 次模型請求可能計費。此處僅允許提出音量差異，套用仍須我另行明確批准。",
-    "en": "I authorize sending this input and text-only chat context and saving records using the project, clip, saved revision, displayed gain and track state, protocol, URL, model, and limits above. Up to 2 model requests may incur charges. This permits only a gain proposal; applying it still requires my separate explicit approval.",
-    "ja": "上記のプロジェクト、クリップ、保存リビジョン、表示された音量とトラックの状態、プロトコル、URL、モデル、上限に従って、今回の入力とテキストチャットのコンテキストを送信し、記録を保存することを許可します。最大2回のモデルへのリクエストに料金が発生する場合があります。許可するのは音量差分の提案のみで、適用には私の別途の明示的な承認が必要です。"
+    "zh-Hans": "我授权按以上项目、片段、保存版本、所展示的音量与轨道状态、协议、地址、模型和限额发送本条输入与纯聊天上下文，并保存记录；最多 2 次模型请求可能计费。这里只允许提出音量差异，应用仍需我另行明确批准",
+    "zh-Hant": "我授權依以上專案、片段、儲存版本、所展示的音量與軌道狀態、協議、地址、模型及限額傳送本條輸入與純聊天上下文，並儲存記錄；最多 2 次模型請求可能計費。此處僅允許提出音量差異，套用仍須我另行明確批准",
+    "en": "I authorize sending this input and text-only chat context and saving records using the project, clip, saved revision, displayed gain and track state, protocol, URL, model, and limits above. Up to 2 model requests may incur charges. This permits only a gain proposal; applying it still requires my separate explicit approval",
+    "ja": "上記のプロジェクト、クリップ、保存リビジョン、表示された音量とトラックの状態、プロトコル、URL、モデル、上限に従って、今回の入力とテキストチャットのコンテキストを送信し、記録を保存することを許可します。最大2回のモデルへのリクエストに料金が発生する場合があります。許可するのは音量差分の提案のみで、適用には私の別途の明示的な承認が必要です"
   },
   "agent.gain.mutedTrackWarning": {
-    "zh-Hans": "此轨道已静音。音量会保存，但轨道保持静音时仍听不到；不会自动取消轨道静音。",
-    "zh-Hant": "此軌道已靜音。音量會儲存，但軌道維持靜音時仍無法聽見；不會自動取消軌道靜音。",
-    "en": "This track is muted. Gain will be saved, but it remains inaudible while the track is muted. The track will not be unmuted automatically.",
-    "ja": "このトラックはミュート中です。音量は保存されますが、トラックがミュート中は聞こえません。自動でミュートを解除することはありません。"
+    "zh-Hans": "此轨道已静音。音量会保存，但轨道保持静音时仍听不到；不会自动取消轨道静音",
+    "zh-Hant": "此軌道已靜音。音量會儲存，但軌道維持靜音時仍無法聽見；不會自動取消軌道靜音",
+    "en": "This track is muted. Gain will be saved, but it remains inaudible while the track is muted. The track will not be unmuted automatically",
+    "ja": "このトラックはミュート中です。音量は保存されますが、トラックがミュート中は聞こえません。自動でミュートを解除することはありません"
   },
   "agent.gain.clippingWarning": {
-    "zh-Hans": "音量倍率高于 1 可能增加削波失真风险；这里没有自动限幅或响度测量。",
-    "zh-Hant": "音量倍率高於 1 可能增加削波失真風險；此處沒有自動限幅或響度測量。",
-    "en": "Gain above 1 may increase clipping risk. There is no automatic limiter or loudness measurement here.",
-    "ja": "音量倍率が1を超えるとクリッピングによる歪みのリスクが高まる場合があります。ここには自動リミッターやラウドネス測定はありません。"
+    "zh-Hans": "音量倍率高于 1 可能增加削波失真风险；这里没有自动限幅或响度测量",
+    "zh-Hant": "音量倍率高於 1 可能增加削波失真風險；此處沒有自動限幅或響度測量",
+    "en": "Gain above 1 may increase clipping risk. There is no automatic limiter or loudness measurement here",
+    "ja": "音量倍率が1を超えるとクリッピングによる歪みのリスクが高まる場合があります。ここには自動リミッターやラウドネス測定はありません"
   },
   "agent.gain.previewScope": {
-    "zh-Hans": "混音、渲染预览及导出使用此音量。原始源素材预览不会改变；请自行使用普通渲染预览或导出控件核对，不会自动渲染或播放。",
-    "zh-Hant": "混音、渲染預覽與匯出會使用此音量。原始來源素材預覽不會改變；請自行使用一般渲染預覽或匯出控制項核對，不會自動渲染或播放。",
-    "en": "Mixing, rendered previews, and exports use this gain. Original source previews stay unchanged. Check using the normal rendered-preview or export controls; no rendering or playback starts automatically.",
-    "ja": "ミックス、レンダリングプレビュー、書き出しにはこの音量を使います。元のソース素材のプレビューは変わりません。通常のレンダリングプレビューや書き出しの操作で確認してください。自動でレンダリングや再生は開始しません。"
+    "zh-Hans": "混音、渲染预览及导出使用此音量。原始源素材预览不会改变；请自行使用普通渲染预览或导出控件核对，不会自动渲染或播放",
+    "zh-Hant": "混音、渲染預覽與匯出會使用此音量。原始來源素材預覽不會改變；請自行使用一般渲染預覽或匯出控制項核對，不會自動渲染或播放",
+    "en": "Mixing, rendered previews, and exports use this gain. Original source previews stay unchanged. Check using the normal rendered-preview or export controls; no rendering or playback starts automatically",
+    "ja": "ミックス、レンダリングプレビュー、書き出しにはこの音量を使います。元のソース素材のプレビューは変わりません。通常のレンダリングプレビューや書き出しの操作で確認してください。自動でレンダリングや再生は開始しません"
   },
   "agent.gain.linearGainHeading": {
     "zh-Hans": "片段音量 · 线性振幅倍率",
@@ -1465,16 +1485,16 @@ export const creationUiMessages = {
     "ja": "提案による変更後"
   },
   "agent.gain.percentageDisclosure": {
-    "zh-Hans": "百分比仅供阅读，实际保存上方完整倍率。0 仅让此片段静音，不改变轨道静音状态。",
-    "zh-Hant": "百分比僅供閱讀，實際儲存上方完整倍率。0 只會讓此片段靜音，不改變軌道靜音狀態。",
-    "en": "Percentages are for display only; the full multiplier above is saved. 0 silences only this clip and does not change track mute state.",
-    "ja": "パーセントは表示用です。実際には上記の完全な倍率を保存します。0はこのクリップだけを無音にし、トラックのミュート状態は変えません。"
+    "zh-Hans": "百分比仅供阅读，实际保存上方完整倍率。0 仅让此片段静音，不改变轨道静音状态",
+    "zh-Hant": "百分比僅供閱讀，實際儲存上方完整倍率。0 只會讓此片段靜音，不改變軌道靜音狀態",
+    "en": "Percentages are for display only; the full multiplier above is saved. 0 silences only this clip and does not change track mute state",
+    "ja": "パーセントは表示用です。実際には上記の完全な倍率を保存します。0はこのクリップだけを無音にし、トラックのミュート状態は変えません"
   },
   "agent.gain.preservedFields": {
-    "zh-Hans": "仅改变这个已保存片段的 gain。时间、时长、源素材、画面位置、其他片段、字幕、淡入淡出和轨道静音保持不变。",
-    "zh-Hant": "僅改變此已儲存片段的 gain。時間、時長、來源素材、畫面位置、其他片段、字幕、淡入淡出與軌道靜音保持不變。",
-    "en": "Only this saved clip’s gain changes. Timing, duration, source asset, visual position, other clips, subtitles, fades, and track mute remain unchanged.",
-    "ja": "この保存済みクリップの gain だけを変更します。時間、長さ、ソース素材、映像の位置、他のクリップ、字幕、フェード、トラックのミュートは変わりません。"
+    "zh-Hans": "仅改变这个已保存片段的 gain。时间、时长、源素材、画面位置、其他片段、字幕、淡入淡出和轨道静音保持不变",
+    "zh-Hant": "僅改變此已儲存片段的 gain。時間、時長、來源素材、畫面位置、其他片段、字幕、淡入淡出與軌道靜音保持不變",
+    "en": "Only this saved clip’s gain changes. Timing, duration, source asset, visual position, other clips, subtitles, fades, and track mute remain unchanged",
+    "ja": "この保存済みクリップの gain だけを変更します。時間、長さ、ソース素材、映像の位置、他のクリップ、字幕、フェード、トラックのミュートは変わりません"
   },
   "agent.gain.diffAria": {
     "zh-Hans": "不可修改的已保存片段音量差异",
@@ -1525,10 +1545,10 @@ export const creationUiMessages = {
     "ja": "ミュートなし"
   },
   "agent.gain.modelHasNotHeardMedia": {
-    "zh-Hans": "以上片段与轨道名称、类型、音量及静音状态是发给模型的全部项目资料。模型没有听过媒体，不能判断实际响度或是否清晰。",
-    "zh-Hant": "以上片段與軌道的名稱、類型、音量及靜音狀態，是傳送給模型的全部專案資料。模型未聽過媒體，不能判斷實際響度或清晰度。",
-    "en": "The clip and track names, types, gain, and mute state above are all the project data sent to the model. The model has not heard the media and cannot judge actual loudness or clarity.",
-    "ja": "上記のクリップとトラックの名前、種類、音量、ミュート状態が、モデルに送信するプロジェクト情報のすべてです。モデルはメディアを聞いておらず、実際のラウドネスや明瞭さは判断できません。"
+    "zh-Hans": "以上片段与轨道名称、类型、音量及静音状态是发给模型的全部项目资料。模型没有听过媒体，不能判断实际响度或是否清晰",
+    "zh-Hant": "以上片段與軌道的名稱、類型、音量及靜音狀態，是傳送給模型的全部專案資料。模型未聽過媒體，不能判斷實際響度或清晰度",
+    "en": "The clip and track names, types, gain, and mute state above are all the project data sent to the model. The model has not heard the media and cannot judge actual loudness or clarity",
+    "ja": "上記のクリップとトラックの名前、種類、音量、ミュート状態が、モデルに送信するプロジェクト情報のすべてです。モデルはメディアを聞いておらず、実際のラウドネスや明瞭さは判断できません"
   },
   "agent.gain.toolLimits": {
     "zh-Hans": "提议工具 v{schemaVersion} · 目录 {catalogHash} · 最多 2 次模型请求 / 1 次提议 / 8 KiB 结果",
@@ -1555,10 +1575,10 @@ export const creationUiMessages = {
     "ja": "タイムライン {timelineId} · クリップ {clipId} · トラック {trackId}"
   },
   "agent.gain.selectKnownAudio": {
-    "zh-Hans": "请选中一个已保存音频片段或已知含音频的视频片段。图片、无声视频和音频元数据未知的素材不能使用此模式。",
-    "zh-Hant": "請選中一個已儲存的音訊片段，或已知含音訊的影片片段。圖片、無聲影片及音訊中繼資料未知的素材不能使用此模式。",
-    "en": "Select a saved audio clip or a video clip known to contain audio. Images, silent videos, and assets with unknown audio metadata cannot use this mode.",
-    "ja": "保存済みのオーディオクリップ、または音声を含むことが確認されたビデオクリップを選択してください。画像、無音の動画、音声メタデータが不明な素材ではこのモードを使用できません。"
+    "zh-Hans": "请选中一个已保存音频片段或已知含音频的视频片段。图片、无声视频和音频元数据未知的素材不能使用此模式",
+    "zh-Hant": "請選中一個已儲存的音訊片段，或已知含音訊的影片片段。圖片、無聲影片及音訊中繼資料未知的素材不能使用此模式",
+    "en": "Select a saved audio clip or a video clip known to contain audio. Images, silent videos, and assets with unknown audio metadata cannot use this mode",
+    "ja": "保存済みのオーディオクリップ、または音声を含むことが確認されたビデオクリップを選択してください。画像、無音の動画、音声メタデータが不明な素材ではこのモードを使用できません"
   },
   "agent.gain.selectionAria": {
     "zh-Hans": "本次发送的已保存片段音量范围",
@@ -1567,16 +1587,16 @@ export const creationUiMessages = {
     "ja": "今回送信する保存済みクリップの音量範囲"
   },
   "agent.gain.activityProvenance": {
-    "zh-Hans": "片段音量提议 · {clipName} · {trackName} · 保存版本 {expectedRevision} · 已保存音量 {value} · 轨道{value2}。{value3}不含媒体、源身份、其他片段或未保存编辑；只提出 gain 差异，不代表已应用。本轮文字不加入其他范围的项目上下文或纯聊天上下文，应用状态请查看独立审阅区。",
-    "zh-Hant": "片段音量提議 · {clipName} · {trackName} · 儲存版本 {expectedRevision} · 已儲存音量 {value} · 軌道{value2}。{value3}不含媒體、來源身份、其他片段或未儲存編輯；僅提出 gain 差異，不代表已套用。本輪文字不加入其他範圍的專案上下文或純聊天上下文，套用狀態請查看獨立審閱區。",
-    "en": "Clip gain proposal · {clipName} · {trackName} · Saved revision {expectedRevision} · Saved gain {value} · Track {value2}. {value3}Excludes media, source identities, other clips, and unsaved edits. It only proposes a gain change and does not establish application. This turn is excluded from other project scopes and text-only chat context. Check the separate review area for application status.",
-    "ja": "クリップ音量提案 · {clipName} · {trackName} · 保存リビジョン {expectedRevision} · 保存済み音量 {value} · トラック{value2}。{value3}メディア、ソースの識別情報、他のクリップ、未保存の編集は含みません。gain の差分を提案するだけで、適用済みではありません。このターンの文章は他の範囲のプロジェクトコンテキストやテキストチャットのコンテキストには追加しません。適用状態は専用のレビュー欄で確認してください。"
+    "zh-Hans": "片段音量提议 · {clipName} · {trackName} · 保存版本 {expectedRevision} · 已保存音量 {value} · 轨道{value2}。{value3}不含媒体、源身份、其他片段或未保存编辑；只提出 gain 差异，不代表已应用。本轮文字不加入其他范围的项目上下文或纯聊天上下文，应用状态请查看独立审阅区",
+    "zh-Hant": "片段音量提議 · {clipName} · {trackName} · 儲存版本 {expectedRevision} · 已儲存音量 {value} · 軌道{value2}。{value3}不含媒體、來源身份、其他片段或未儲存編輯；僅提出 gain 差異，不代表已套用。本輪文字不加入其他範圍的專案上下文或純聊天上下文，套用狀態請查看獨立審閱區",
+    "en": "Clip gain proposal · {clipName} · {trackName} · Saved revision {expectedRevision} · Saved gain {value} · Track {value2}. {value3}Excludes media, source identities, other clips, and unsaved edits. It only proposes a gain change and does not establish application. This turn is excluded from other project scopes and text-only chat context. Check the separate review area for application status",
+    "ja": "クリップ音量提案 · {clipName} · {trackName} · 保存リビジョン {expectedRevision} · 保存済み音量 {value} · トラック{value2}。{value3}メディア、ソースの識別情報、他のクリップ、未保存の編集は含みません。gain の差分を提案するだけで、適用済みではありません。このターンの文章は他の範囲のプロジェクトコンテキストやテキストチャットのコンテキストには追加しません。適用状態は専用のレビュー欄で確認してください"
   },
   "agent.gain.chatTurnCount": {
-    "zh-Hans": { "one": "另包含 {count} 轮已完成纯聊天文字。", "other": "另包含 {count} 轮已完成纯聊天文字。" },
-    "zh-Hant": { "one": "另含 {count} 輪已完成的純聊天文字。", "other": "另含 {count} 輪已完成的純聊天文字。" },
-    "en": { "one": "Also includes {count} completed text-only chat turn.", "other": "Also includes {count} completed text-only chat turns." },
-    "ja": { "one": "完了済みのテキストチャット{count}ターンも含みます。", "other": "完了済みのテキストチャット{count}ターンも含みます。" }
+    "zh-Hans": { "one": "另包含 {count} 轮已完成纯聊天文字", "other": "另包含 {count} 轮已完成纯聊天文字" },
+    "zh-Hant": { "one": "另含 {count} 輪已完成的純聊天文字", "other": "另含 {count} 輪已完成的純聊天文字" },
+    "en": { "one": "Also includes {count} completed text-only chat turn", "other": "Also includes {count} completed text-only chat turns" },
+    "ja": { "one": "完了済みのテキストチャット{count}ターンも含みます", "other": "完了済みのテキストチャット{count}ターンも含みます" }
   },
   "agent.workspace.selectProject": {
     "zh-Hans": "选择一个项目开始对话",
@@ -1585,10 +1605,10 @@ export const creationUiMessages = {
     "ja": "プロジェクトを選択して会話を始める"
   },
   "agent.workspace.noImplicitProjectContent": {
-    "zh-Hans": "聊天文字不会自动包含项目内容。",
-    "zh-Hant": "聊天文字不會自動包含專案內容。",
-    "en": "Chat text does not automatically include project content.",
-    "ja": "チャットにプロジェクトの内容が自動で含まれることはありません。"
+    "zh-Hans": "聊天文字不会自动包含项目内容",
+    "zh-Hant": "聊天文字不會自動包含專案內容",
+    "en": "Chat text does not automatically include project content",
+    "ja": "チャットにプロジェクトの内容が自動で含まれることはありません"
   },
   "image.comfy.details.executionParameters": {
     "zh-Hans": "种子 {seed} · 20 steps · CFG 8 · euler / normal · denoise 1",
@@ -1621,10 +1641,10 @@ export const creationUiMessages = {
     "ja": "固定されたワークフロー全体（承認後、この内容を送信）"
   },
   "image.comfy.details.approvalDisclosure": {
-    "zh-Hans": "批准后向所列本机地址提交最多 1 次，可能占用 GPU、内存与磁盘。停止观察或关闭应用不会取消远端工作，GPU 工作可能继续。该地址与模型名称不保证免费、可信或完全离线。保留原始描述，不会自动重试。",
-    "zh-Hant": "批准後會向所列本機地址提交最多 1 次，可能使用 GPU、記憶體及磁碟。停止觀察或關閉應用程式不會取消遠端工作，GPU 工作可能繼續。該地址與模型名稱不保證免費、可信或完全離線。保留原始描述，不會自動重試。",
-    "en": "Approval submits at most once to the listed local address and may use GPU, memory, and disk. Stopping observation or closing the app does not cancel remote work; GPU processing may continue. The address and model name do not guarantee that it is free, trusted, or entirely offline. The original prompt is preserved; there is no automatic retry.",
-    "ja": "承認後、表示されたローカルアドレスへ最大1回送信し、GPU、メモリ、ディスクを使用する場合があります。監視の停止やアプリの終了ではリモート処理をキャンセルせず、GPU処理が続く可能性があります。アドレスやモデル名は、無料、信頼できる、完全にオフラインであることを保証しません。元のプロンプトを保持し、自動再試行はしません。"
+    "zh-Hans": "批准后向所列本机地址提交最多 1 次，可能占用 GPU、内存与磁盘。停止观察或关闭应用不会取消远端工作，GPU 工作可能继续。该地址与模型名称不保证免费、可信或完全离线。保留原始描述，不会自动重试",
+    "zh-Hant": "批准後會向所列本機地址提交最多 1 次，可能使用 GPU、記憶體及磁碟。停止觀察或關閉應用程式不會取消遠端工作，GPU 工作可能繼續。該地址與模型名稱不保證免費、可信或完全離線。保留原始描述，不會自動重試",
+    "en": "Approval submits at most once to the listed local address and may use GPU, memory, and disk. Stopping observation or closing the app does not cancel remote work; GPU processing may continue. The address and model name do not guarantee that it is free, trusted, or entirely offline. The original prompt is preserved; there is no automatic retry",
+    "ja": "承認後、表示されたローカルアドレスへ最大1回送信し、GPU、メモリ、ディスクを使用する場合があります。監視の停止やアプリの終了ではリモート処理をキャンセルせず、GPU処理が続く可能性があります。アドレスやモデル名は、無料、信頼できる、完全にオフラインであることを保証しません。元のプロンプトを保持し、自動再試行はしません"
   },
   "image.comfy.details.originalConfiguration": {
     "zh-Hans": "原审批配置 r{settingsRevision} · {profileId}",
@@ -1639,10 +1659,10 @@ export const creationUiMessages = {
     "ja": "固定ワークフロー SHA-256 {graphHash}"
   },
   "image.comfy.details.originalReviewNotLoaded": {
-    "zh-Hans": "此页未载入任务关联的原始审批，当前连接设置不代表此任务。",
-    "zh-Hant": "本頁未載入此工作對應的原批准記錄；目前連線設定不代表此工作。",
-    "en": "This page has not loaded the task’s original approval. Current connection settings do not represent this task.",
-    "ja": "このページにはタスクに対応する元の承認が読み込まれていません。現在の接続設定は、このタスクの設定を示すものではありません。"
+    "zh-Hans": "此页未载入任务关联的原始审批，当前连接设置不代表此任务",
+    "zh-Hant": "本頁未載入此工作對應的原批准記錄；目前連線設定不代表此工作",
+    "en": "This page has not loaded the task’s original approval. Current connection settings do not represent this task",
+    "ja": "このページにはタスクに対応する元の承認が読み込まれていません。現在の接続設定は、このタスクの設定を示すものではありません"
   },
   "image.comfy.details.remoteIdentityStatus": {
     "zh-Hans": "远端身份状态：{value}",
@@ -1693,16 +1713,16 @@ export const creationUiMessages = {
     "ja": "今回の照会は中断されました。再度明示的に照会してください。生成を再送信することはありません"
   },
   "image.comfy.details.noVerifiableResult": {
-    "zh-Hans": "。未能取回可核验结果，请查看身份与内容状态。",
-    "zh-Hant": "。未能取回可核驗結果，請查看身份與內容狀態。",
-    "en": ". No verifiable result was retrieved. Check identity and content status.",
-    "ja": "。検証可能な結果を取得できませんでした。識別情報と内容の状態を確認してください。"
+    "zh-Hans": "。未能取回可核验结果，请查看身份与内容状态",
+    "zh-Hant": "。未能取回可核驗結果，請查看身份與內容狀態",
+    "en": ". No verifiable result was retrieved. Check identity and content status",
+    "ja": "。検証可能な結果を取得できませんでした。識別情報と内容の状態を確認してください"
   },
   "image.comfy.details.observationScope": {
-    "zh-Hans": "“查询并取回”只查询此任务并核验后取回结果，不重提生成。关闭面板或停止读取不会停止 ComfyUI 的 GPU 工作。",
-    "zh-Hant": "「查詢並取回」只會查詢此工作，並在核驗後取回結果，不會重新提交生成。關閉面板或停止讀取不會停止 ComfyUI 的 GPU 工作。",
-    "en": "“Query and retrieve” only queries this task and retrieves its result after verification; it does not resubmit generation. Closing the panel or stopping reads does not stop ComfyUI GPU work.",
-    "ja": "「照会して取得」はこのタスクを照会し、検証後に結果を取得するだけで、生成を再送信しません。パネルを閉じたり読み取りを停止したりしても、ComfyUIのGPU処理は停止しません。"
+    "zh-Hans": "“查询并取回”只查询此任务并核验后取回结果，不重提生成。关闭面板或停止读取不会停止 ComfyUI 的 GPU 工作",
+    "zh-Hant": "「查詢並取回」只會查詢此工作，並在核驗後取回結果，不會重新提交生成。關閉面板或停止讀取不會停止 ComfyUI 的 GPU 工作",
+    "en": "“Query and retrieve” only queries this task and retrieves its result after verification; it does not resubmit generation. Closing the panel or stopping reads does not stop ComfyUI GPU work",
+    "ja": "「照会して取得」はこのタスクを照会し、検証後に結果を取得するだけで、生成を再送信しません。パネルを閉じたり読み取りを停止したりしても、ComfyUIのGPU処理は停止しません"
   },
   "image.comfy.details.identitySaved": {
     "zh-Hans": "已保存身份，尚未发送",
@@ -1849,16 +1869,16 @@ export const creationUiMessages = {
     "ja": "数量未確認"
   },
   "generation.inputs.roleLimitsUnavailable": {
-    "zh-Hans": "尚未取得此模型的角色限制，请刷新服务商信息后核对。",
-    "zh-Hant": "尚未取得此模型的角色限制，請重新整理服務商資訊後核對。",
-    "en": "Role limits for this model are not available yet. Refresh provider information and check again.",
-    "ja": "このモデルの参照用途ごとの制限をまだ取得できていません。プロバイダー情報を更新して確認してください。"
+    "zh-Hans": "尚未取得此模型的角色限制，请刷新服务商信息后核对",
+    "zh-Hant": "尚未取得此模型的角色限制，請重新整理服務商資訊後核對",
+    "en": "Role limits for this model are not available yet. Refresh provider information and check again",
+    "ja": "このモデルの参照用途ごとの制限をまだ取得できていません。プロバイダー情報を更新して確認してください"
   },
   "generation.inputs.roleNotImplemented": {
-    "zh-Hans": "Mioon 当前适配器未接入此角色，尚无对应的生成输入映射。",
-    "zh-Hant": "Mioon 目前的適配器尚未接入此角色，沒有對應的生成輸入映射。",
-    "en": "The current Mioon adapter does not implement this role or a corresponding generation-input mapping.",
-    "ja": "現在の Mioon アダプターはこの参照用途に未対応で、対応する生成入力のマッピングもありません。"
+    "zh-Hans": "Mioon 当前适配器未接入此角色，尚无对应的生成输入映射",
+    "zh-Hant": "Mioon 目前的適配器尚未接入此角色，沒有對應的生成輸入映射",
+    "en": "The current Mioon adapter does not implement this role or a corresponding generation-input mapping",
+    "ja": "現在の Mioon アダプターはこの参照用途に未対応で、対応する生成入力のマッピングもありません"
   },
   "generation.inputs.formats": {
     "zh-Hans": "格式：{value}",
@@ -1945,10 +1965,10 @@ export const creationUiMessages = {
     "ja": "このアダプタープロファイルではピクセル範囲が定義されていません"
   },
   "generation.inputs.adapterScope": {
-    "zh-Hans": "Mioon 当前适配器的已接入范围；不代表服务商全部能力。",
-    "zh-Hant": "Mioon 目前適配器已接入的範圍，不代表服務商的全部能力。",
-    "en": "Scope implemented by the current Mioon adapter, not the provider’s full capabilities.",
-    "ja": "現在の Mioon アダプターで実装されている範囲です。プロバイダーのすべての機能を示すものではありません。"
+    "zh-Hans": "Mioon 当前适配器的已接入范围；不代表服务商全部能力",
+    "zh-Hant": "Mioon 目前適配器已接入的範圍，不代表服務商的全部能力",
+    "en": "Scope implemented by the current Mioon adapter, not the provider’s full capabilities",
+    "ja": "現在の Mioon アダプターで実装されている範囲です。プロバイダーのすべての機能を示すものではありません"
   },
   "generation.inputs.totalReferences": {
     "zh-Hans": "总参考图：{minReferences}–{maxReferences} 张。{value}{value2}",
@@ -1957,22 +1977,22 @@ export const creationUiMessages = {
     "ja": "参照画像の合計：{minReferences}–{maxReferences}枚。{value}{value2}"
   },
   "generation.inputs.firstLastCombination": {
-    "zh-Hans": "支持单张首帧，或一张首帧加一张尾帧；尾帧不能单独提交。",
-    "zh-Hant": "支援單張首影格，或一張首影格加一張尾影格；尾影格不能單獨提交。",
-    "en": "Supports one first frame, or one first frame plus one last frame. A last frame cannot be submitted alone.",
-    "ja": "開始フレーム1枚、または開始フレーム1枚と終了フレーム1枚に対応します。終了フレームだけでは送信できません。"
+    "zh-Hans": "支持单张首帧，或一张首帧加一张尾帧；尾帧不能单独提交",
+    "zh-Hant": "支援單張首影格，或一張首影格加一張尾影格；尾影格不能單獨提交",
+    "en": "Supports one first frame, or one first frame plus one last frame. A last frame cannot be submitted alone",
+    "ja": "開始フレーム1枚、または開始フレーム1枚と終了フレーム1枚に対応します。終了フレームだけでは送信できません"
   },
   "generation.inputs.firstFrameOnly": {
-    "zh-Hans": "只接入单张首帧，不组合多个参考角色。",
-    "zh-Hant": "僅接入單張首影格，不組合多個參考角色。",
-    "en": "Only one first frame is implemented; multiple reference roles are not combined.",
-    "ja": "開始フレーム1枚のみに対応し、複数の参照用途は組み合わせません。"
+    "zh-Hans": "只接入单张首帧，不组合多个参考角色",
+    "zh-Hant": "僅接入單張首影格，不組合多個參考角色",
+    "en": "Only one first frame is implemented; multiple reference roles are not combined",
+    "ja": "開始フレーム1枚のみに対応し、複数の参照用途は組み合わせません"
   },
   "generation.inputs.fixedSubjectAlternative": {
-    "zh-Hans": "另支持单张固定主体图片；不能与首帧、尾帧或连线组合。",
-    "zh-Hant": "另支援單張固定主體圖片；不能與首影格、尾影格或連線組合。",
-    "en": "Also supports one fixed subject image, which cannot be combined with first frames, last frames, or connections.",
-    "ja": "固定された被写体画像1枚にも対応します。開始フレーム、終了フレーム、接続との併用はできません。"
+    "zh-Hans": "另支持单张固定主体图片；不能与首帧、尾帧或连线组合",
+    "zh-Hant": "另支援單張固定主體圖片；不能與首影格、尾影格或連線組合",
+    "en": "Also supports one fixed subject image, which cannot be combined with first frames, last frames, or connections",
+    "ja": "固定された被写体画像1枚にも対応します。開始フレーム、終了フレーム、接続との併用はできません"
   },
   "generation.inputs.roleLimitsAria": {
     "zh-Hans": "各参考角色的数量与限制",
@@ -1981,10 +2001,10 @@ export const creationUiMessages = {
     "ja": "参照用途ごとの数量と制限"
   },
   "generation.inputs.planningNotGeneration": {
-    "zh-Hans": "主体与风格的策划关联不会自动作为生成输入。角色、产品或场景图片须在镜头属性中明确选择本次固定版本；此入口仅接入 Mock 与 Ark 的 doubao-seedance-2-5-260628。风格仍仅供策划。首帧仍由现有参考图选择或首帧连接提供。尾帧在镜头属性中单独保存；首尾帧组合仅接入 Ark 与 Mock，同一素材不可同时作为首尾帧（当前应用限制）。",
-    "zh-Hant": "主體與風格的策劃關聯不會自動成為生成輸入。角色、產品或場景圖片須在鏡頭屬性中明確選擇此次的固定版本；此入口僅接入 Mock 與 Ark 的 doubao-seedance-2-5-260628。風格仍僅供策劃。首影格仍由現有參考圖選擇或首影格連線提供。尾影格在鏡頭屬性中另行儲存；首尾影格組合僅接入 Ark 與 Mock，同一素材不可同時作為首尾影格（目前應用程式的限制）。",
-    "en": "Planning associations for subjects and styles do not automatically become generation inputs. Explicitly select the fixed version of a character, product, or scene image in shot properties for this request. This entry point supports only Mock and Ark’s doubao-seedance-2-5-260628. Styles remain planning-only. First frames still come from the existing reference-image selector or first-frame connections. Last frames are saved separately in shot properties. First/last combinations are implemented only for Ark and Mock; the same asset cannot serve as both (a current app limitation).",
-    "ja": "被写体やスタイルの企画上の関連付けは、自動で生成入力にはなりません。人物、製品、シーンの画像は、ショットのプロパティで今回使用する固定バージョンを明示的に選択してください。この入口は Mock と Ark の doubao-seedance-2-5-260628 のみに対応します。スタイルは引き続き企画専用です。開始フレームは既存の参照画像選択または開始フレーム接続で指定します。終了フレームはショットのプロパティで別途保存します。開始・終了フレームの組み合わせは Ark と Mock のみに対応し、同じ素材を両方に使用することはできません（現在のアプリの制限）。"
+    "zh-Hans": "主体与风格的策划关联不会自动作为生成输入。角色、产品或场景图片须在镜头属性中明确选择本次固定版本；此入口仅接入 Mock 与 Ark 的 doubao-seedance-2-5-260628。风格仍仅供策划。首帧仍由现有参考图选择或首帧连接提供。尾帧在镜头属性中单独保存；首尾帧组合仅接入 Ark 与 Mock，同一素材不可同时作为首尾帧（当前应用限制）",
+    "zh-Hant": "主體與風格的策劃關聯不會自動成為生成輸入。角色、產品或場景圖片須在鏡頭屬性中明確選擇此次的固定版本；此入口僅接入 Mock 與 Ark 的 doubao-seedance-2-5-260628。風格仍僅供策劃。首影格仍由現有參考圖選擇或首影格連線提供。尾影格在鏡頭屬性中另行儲存；首尾影格組合僅接入 Ark 與 Mock，同一素材不可同時作為首尾影格（目前應用程式的限制）",
+    "en": "Planning associations for subjects and styles do not automatically become generation inputs. Explicitly select the fixed version of a character, product, or scene image in shot properties for this request. This entry point supports only Mock and Ark’s doubao-seedance-2-5-260628. Styles remain planning-only. First frames still come from the existing reference-image selector or first-frame connections. Last frames are saved separately in shot properties. First/last combinations are implemented only for Ark and Mock; the same asset cannot serve as both (a current app limitation)",
+    "ja": "被写体やスタイルの企画上の関連付けは、自動で生成入力にはなりません。人物、製品、シーンの画像は、ショットのプロパティで今回使用する固定バージョンを明示的に選択してください。この入口は Mock と Ark の doubao-seedance-2-5-260628 のみに対応します。スタイルは引き続き企画専用です。開始フレームは既存の参照画像選択または開始フレーム接続で指定します。終了フレームはショットのプロパティで別途保存します。開始・終了フレームの組み合わせは Ark と Mock のみに対応し、同じ素材を両方に使用することはできません（現在のアプリの制限）"
   },
   "generation.inputs.adapterProfile": {
     "zh-Hans": "适配配置",
@@ -2023,10 +2043,10 @@ export const creationUiMessages = {
     "ja": "API の地域"
   },
   "generation.inputs.lifecycleDates": {
-    "zh-Hans": "生命周期核查：{checkedOn}；最早关闭日期：{earliestShutdownDate}。到期需重新核验该精确模型，不会自动替换模型。",
-    "zh-Hant": "生命週期核查：{checkedOn}；最早關閉日期：{earliestShutdownDate}。到期須重新核驗該精確模型，不會自動替換模型。",
-    "en": "Lifecycle reviewed: {checkedOn}; earliest shutdown: {earliestShutdownDate}. This exact model must be revalidated when due; it will not be replaced automatically.",
-    "ja": "ライフサイクル確認日：{checkedOn}。最も早い終了日：{earliestShutdownDate}。期限にはこの正確なモデルの再検証が必要です。自動で別のモデルに変更することはありません。"
+    "zh-Hans": "生命周期核查：{checkedOn}；最早关闭日期：{earliestShutdownDate}。到期需重新核验该精确模型，不会自动替换模型",
+    "zh-Hant": "生命週期核查：{checkedOn}；最早關閉日期：{earliestShutdownDate}。到期須重新核驗該精確模型，不會自動替換模型",
+    "en": "Lifecycle reviewed: {checkedOn}; earliest shutdown: {earliestShutdownDate}. This exact model must be revalidated when due; it will not be replaced automatically",
+    "ja": "ライフサイクル確認日：{checkedOn}。最も早い終了日：{earliestShutdownDate}。期限にはこの正確なモデルの再検証が必要です。自動で別のモデルに変更することはありません"
   },
   "generation.inputs.providerLifecycleLink": {
     "zh-Hans": "查看服务商生命周期说明",
@@ -2035,10 +2055,10 @@ export const creationUiMessages = {
     "ja": "プロバイダーのライフサイクル情報を見る"
   },
   "generation.inputs.lifecycleBlocked": {
-    "zh-Hans": "服务端评估（{evaluatedAsOf}）：此 Veo 模型已到生命周期复核日期，已阻止新提交。",
-    "zh-Hant": "伺服器評估（{evaluatedAsOf}）：此 Veo 模型已到生命週期複核日期，已阻止新的提交。",
-    "en": "Server evaluation ({evaluatedAsOf}): this Veo model has reached its lifecycle review date; new submissions are blocked.",
-    "ja": "サーバー評価（{evaluatedAsOf}）：この Veo モデルはライフサイクルの再確認日を迎えたため、新規送信を停止しています。"
+    "zh-Hans": "服务端评估（{evaluatedAsOf}）：此 Veo 模型已到生命周期复核日期，已阻止新提交",
+    "zh-Hant": "伺服器評估（{evaluatedAsOf}）：此 Veo 模型已到生命週期複核日期，已阻止新的提交",
+    "en": "Server evaluation ({evaluatedAsOf}): this Veo model has reached its lifecycle review date; new submissions are blocked",
+    "ja": "サーバー評価（{evaluatedAsOf}）：この Veo モデルはライフサイクルの再確認日を迎えたため、新規送信を停止しています"
   },
   "generation.inputs.noModelSelected": {
     "zh-Hans": "尚未选择模型",
@@ -2071,16 +2091,16 @@ export const creationUiMessages = {
     "ja": "未対応"
   },
   "generation.inputs.noAutomaticReplacement": {
-    "zh-Hans": "{lifecycleMessage} 不会自动替换模型。",
-    "zh-Hant": "{lifecycleMessage} 不會自動替換模型。",
-    "en": "{lifecycleMessage} The model will not be replaced automatically.",
-    "ja": "{lifecycleMessage} 自動で別のモデルに変更することはありません。"
+    "zh-Hans": "{lifecycleMessage} 不会自动替换模型",
+    "zh-Hant": "{lifecycleMessage} 不會自動替換模型",
+    "en": "{lifecycleMessage} The model will not be replaced automatically",
+    "ja": "{lifecycleMessage} 自動で別のモデルに変更することはありません"
   },
   "generation.inputs.lifecycleWarning": {
-    "zh-Hans": "Veo 生命周期提示：最早 {earliestShutdownDate} 关闭；核查于 {checkedOn}，到期需重新核验。",
-    "zh-Hant": "Veo 生命週期提示：最早於 {earliestShutdownDate} 關閉；核查日期 {checkedOn}，到期須重新核驗。",
-    "en": "Veo lifecycle notice: may shut down as early as {earliestShutdownDate}; reviewed {checkedOn}. Revalidation is required when due.",
-    "ja": "Veo ライフサイクルのお知らせ：最も早い終了日は{earliestShutdownDate}です。確認日は{checkedOn}で、期限には再検証が必要です。"
+    "zh-Hans": "Veo 生命周期提示：最早 {earliestShutdownDate} 关闭；核查于 {checkedOn}，到期需重新核验",
+    "zh-Hant": "Veo 生命週期提示：最早於 {earliestShutdownDate} 關閉；核查日期 {checkedOn}，到期須重新核驗",
+    "en": "Veo lifecycle notice: may shut down as early as {earliestShutdownDate}; reviewed {checkedOn}. Revalidation is required when due",
+    "ja": "Veo ライフサイクルのお知らせ：最も早い終了日は{earliestShutdownDate}です。確認日は{checkedOn}で、期限には再検証が必要です"
   },
   "generation.inputs.viewLimits": {
     "zh-Hans": "查看输入限制",
@@ -2185,10 +2205,10 @@ export const creationUiMessages = {
     "ja": "設定"
   },
   "image.studio.selectProject": {
-    "zh-Hans": "选择一个项目开始创建图像。",
-    "zh-Hant": "請選擇專案，開始建立圖像。",
-    "en": "Select a project to start creating images.",
-    "ja": "プロジェクトを選択して画像を作成してください。"
+    "zh-Hans": "选择一个项目开始创建图像",
+    "zh-Hant": "請選擇專案，開始建立圖像",
+    "en": "Select a project to start creating images",
+    "ja": "プロジェクトを選択して画像を作成してください"
   },
   "image.studio.groupNewVersion": {
     "zh-Hans": "此组的新版本 · 基准 r{expectedRevision}",
@@ -2269,10 +2289,10 @@ export const creationUiMessages = {
     "ja": "選択した元画像"
   },
   "image.studio.selectionScope": {
-    "zh-Hans": "选择只保留本地素材身份，不会上传或生成。最终以后端核验为准。",
-    "zh-Hant": "選擇僅保留本機素材身分，不會上傳或生成。最終以後端核驗為準。",
-    "en": "Selection only retains the local asset identity. It does not upload or generate anything. Final verification is performed by the backend.",
-    "ja": "選択ではローカル素材の識別情報のみ保持し、アップロードや生成は行いません。最終的にはバックエンドの検証結果に従います。"
+    "zh-Hans": "选择只保留本地素材身份，不会上传或生成。最终以后端核验为准",
+    "zh-Hant": "選擇僅保留本機素材身分，不會上傳或生成。最終以後端核驗為準",
+    "en": "Selection only retains the local asset identity. It does not upload or generate anything. Final verification is performed by the backend",
+    "ja": "選択ではローカル素材の識別情報のみ保持し、アップロードや生成は行いません。最終的にはバックエンドの検証結果に従います"
   },
   "image.studio.editingSupport": {
     "zh-Hans": "支持范围与编辑效果",
@@ -2281,16 +2301,16 @@ export const creationUiMessages = {
     "ja": "対応範囲と編集の効果"
   },
   "image.studio.editingLimits": {
-    "zh-Hans": "仅支持当前项目的单张受管理 PNG，最多 8 MiB，每边最多 1024 像素，总计最多 1,048,576 像素；必须不透明、8 位、非交错。不支持 JPEG、WebP、透明 PNG、蒙版或裁剪，也不支持自定义及 ComfyUI 编辑。",
-    "zh-Hant": "僅支援目前專案中單張受管理的 PNG，最多 8 MiB，每邊最多 1024 像素，總計最多 1,048,576 像素；必須不透明、8 位元、非交錯。不支援 JPEG、WebP、透明 PNG、遮罩或裁切，也不支援自訂連線及 ComfyUI 編輯。",
-    "en": "Only one managed PNG from the current project is supported: up to 8 MiB, 1024 pixels per side, and 1,048,576 pixels in total. It must be opaque, 8-bit, and non-interlaced. JPEG, WebP, transparent PNG, masks, and cropping are unsupported, as are custom-connection and ComfyUI editing.",
-    "ja": "現在のプロジェクトで管理されている PNG 1 枚のみ対応しています。上限は 8 MiB、各辺 1024 ピクセル、合計 1,048,576 ピクセルで、不透明、8 ビット、非インターレースである必要があります。JPEG、WebP、透明 PNG、マスク、トリミングには対応していません。カスタム接続と ComfyUI による編集にも対応していません。"
+    "zh-Hans": "仅支持当前项目的单张受管理 PNG，最多 8 MiB，每边最多 1024 像素，总计最多 1,048,576 像素；必须不透明、8 位、非交错。不支持 JPEG、WebP、透明 PNG、蒙版或裁剪，也不支持自定义及 ComfyUI 编辑",
+    "zh-Hant": "僅支援目前專案中單張受管理的 PNG，最多 8 MiB，每邊最多 1024 像素，總計最多 1,048,576 像素；必須不透明、8 位元、非交錯。不支援 JPEG、WebP、透明 PNG、遮罩或裁切，也不支援自訂連線及 ComfyUI 編輯",
+    "en": "Only one managed PNG from the current project is supported: up to 8 MiB, 1024 pixels per side, and 1,048,576 pixels in total. It must be opaque, 8-bit, and non-interlaced. JPEG, WebP, transparent PNG, masks, and cropping are unsupported, as are custom-connection and ComfyUI editing",
+    "ja": "現在のプロジェクトで管理されている PNG 1 枚のみ対応しています。上限は 8 MiB、各辺 1024 ピクセル、合計 1,048,576 ピクセルで、不透明、8 ビット、非インターレースである必要があります。JPEG、WebP、透明 PNG、マスク、トリミングには対応していません。カスタム接続と ComfyUI による編集にも対応していません"
   },
   "image.studio.editingEffects": {
-    "zh-Hans": "AI 会重新绘制图像，其他部位也可能改变；不保证人物身份或像素精确保持。源图不会被覆盖，结果保存为新素材和版本。",
-    "zh-Hant": "AI 會重新繪製圖像，其他部位也可能改變；不保證人物身分或像素精確保持。來源圖像不會被覆寫，結果會儲存為新素材與版本。",
-    "en": "AI redraws the image, so other areas may also change. Exact identity or pixel preservation is not guaranteed. The source image is not overwritten; results are saved as new assets and versions.",
-    "ja": "AI が画像を描き直すため、他の部分も変わる可能性があります。人物の同一性やピクセル単位の正確な保持は保証しません。元画像は上書きせず、結果を新しい素材とバージョンとして保存します。"
+    "zh-Hans": "AI 会重新绘制图像，其他部位也可能改变；不保证人物身份或像素精确保持。源图不会被覆盖，结果保存为新素材和版本",
+    "zh-Hant": "AI 會重新繪製圖像，其他部位也可能改變；不保證人物身分或像素精確保持。來源圖像不會被覆寫，結果會儲存為新素材與版本",
+    "en": "AI redraws the image, so other areas may also change. Exact identity or pixel preservation is not guaranteed. The source image is not overwritten; results are saved as new assets and versions",
+    "ja": "AI が画像を描き直すため、他の部分も変わる可能性があります。人物の同一性やピクセル単位の正確な保持は保証しません。元画像は上書きせず、結果を新しい素材とバージョンとして保存します"
   },
   "image.studio.imageName": {
     "zh-Hans": "图像名称",
@@ -2353,16 +2373,16 @@ export const creationUiMessages = {
     "ja": "画像プロバイダー"
   },
   "image.studio.mockEditScope": {
-    "zh-Hans": "Mock 编辑只生成静态测试卡片，不会实际编辑源图，也不会连接外部服务。",
-    "zh-Hant": "Mock 編輯僅生成靜態測試卡片，不會實際編輯來源圖像，也不會連接外部服務。",
-    "en": "Mock editing only generates a static test card. It does not actually edit the source image or connect to external services.",
-    "ja": "Mock 編集では静止テストカードのみ生成します。元画像を実際に編集したり、外部サービスに接続したりすることはありません。"
+    "zh-Hans": "Mock 编辑只生成静态测试卡片，不会实际编辑源图，也不会连接外部服务",
+    "zh-Hant": "Mock 編輯僅生成靜態測試卡片，不會實際編輯來源圖像，也不會連接外部服務",
+    "en": "Mock editing only generates a static test card. It does not actually edit the source image or connect to external services",
+    "ja": "Mock 編集では静止テストカードのみ生成します。元画像を実際に編集したり、外部サービスに接続したりすることはありません"
   },
   "image.studio.mockGenerationScope": {
-    "zh-Hans": "确定性测试图案，不会按描述绘制 AI 图像，也不会连接外部服务。",
-    "zh-Hant": "固定的測試圖案，不會依描述繪製 AI 圖像，也不會連接外部服務。",
-    "en": "A deterministic test pattern, not an AI image drawn from the prompt. It does not connect to external services.",
-    "ja": "決定的なテストパターンです。プロンプトに沿った AI 画像は描かず、外部サービスにも接続しません。"
+    "zh-Hans": "确定性测试图案，不会按描述绘制 AI 图像，也不会连接外部服务",
+    "zh-Hant": "固定的測試圖案，不會依描述繪製 AI 圖像，也不會連接外部服務",
+    "en": "A deterministic test pattern, not an AI image drawn from the prompt. It does not connect to external services",
+    "ja": "決定的なテストパターンです。プロンプトに沿った AI 画像は描かず、外部サービスにも接続しません"
   },
   "image.studio.comfyConfiguration": {
     "zh-Hans": "本地 ComfyUI · {value}",
@@ -2419,16 +2439,16 @@ export const creationUiMessages = {
     "ja": "ローカル ComfyUI 設定で接続先を入力し、明示的に接続を確認してください"
   },
   "image.studio.comfyExecutionScope": {
-    "zh-Hans": "{value}固定支持 v0.39.0。使用已安装并运行的服务，不会安装、启动或下载。准备后先查看后端生成的种子和完整冻结工作流，再单独批准。仅发送上方原始描述，不会改写。",
-    "zh-Hant": "{value}固定支援 v0.39.0。使用已安裝並執行的服務，不會安裝、啟動或下載。準備完成後，請先查看後端生成的種子與完整固定工作流程，再單獨批准。僅傳送上方原始描述，不會改寫。",
-    "en": "{value}Supports v0.39.0 only. Uses an already installed, running service; it does not install, start, or download anything. After preparation, review the backend-generated seed and complete frozen workflow before approving separately. Only the original prompt above is sent, without rewriting.",
-    "ja": "{value}対応バージョンは v0.39.0 に固定されています。インストールして起動済みのサービスを使用し、インストール、起動、ダウンロードは行いません。準備後にバックエンドで生成したシードと固定されたワークフロー全体を確認し、別途承認してください。上記の元のプロンプトのみを、書き換えずに送信します。"
+    "zh-Hans": "{value}固定支持 v0.39.0。使用已安装并运行的服务，不会安装、启动或下载。准备后先查看后端生成的种子和完整冻结工作流，再单独批准。仅发送上方原始描述，不会改写",
+    "zh-Hant": "{value}固定支援 v0.39.0。使用已安裝並執行的服務，不會安裝、啟動或下載。準備完成後，請先查看後端生成的種子與完整固定工作流程，再單獨批准。僅傳送上方原始描述，不會改寫",
+    "en": "{value}Supports v0.39.0 only. Uses an already installed, running service; it does not install, start, or download anything. After preparation, review the backend-generated seed and complete frozen workflow before approving separately. Only the original prompt above is sent, without rewriting",
+    "ja": "{value}対応バージョンは v0.39.0 に固定されています。インストールして起動済みのサービスを使用し、インストール、起動、ダウンロードは行いません。準備後にバックエンドで生成したシードと固定されたワークフロー全体を確認し、別途承認してください。上記の元のプロンプトのみを、書き換えずに送信します"
   },
   "image.studio.comfyCheckRequired": {
-    "zh-Hans": "当前后端尚未核验此配置，请在设置中明确检查连接。",
-    "zh-Hant": "目前後端尚未核驗此設定，請在設定中明確檢查連線。",
-    "en": "The current backend has not verified this configuration. Explicitly check the connection in settings.",
-    "ja": "現在のバックエンドではこの設定を検証していません。設定で明示的に接続を確認してください。"
+    "zh-Hans": "当前后端尚未核验此配置，请在设置中明确检查连接",
+    "zh-Hant": "目前後端尚未核驗此設定，請在設定中明確檢查連線",
+    "en": "The current backend has not verified this configuration. Explicitly check the connection in settings",
+    "ja": "現在のバックエンドではこの設定を検証していません。設定で明示的に接続を確認してください"
   },
   "image.studio.customCompatible": {
     "zh-Hans": "自定义兼容",
@@ -2473,28 +2493,28 @@ export const creationUiMessages = {
     "ja": "現在の設定 r{revision}。{value}"
   },
   "image.studio.editPreparationScope": {
-    "zh-Hans": "准备时在本地核验源图，单独批准后才发送完整 PNG 与原始编辑要求。",
-    "zh-Hant": "準備時會在本機核驗來源圖像，單獨批准後才會傳送完整 PNG 與原始編輯要求。",
-    "en": "Preparation verifies the source image locally. The complete PNG and original edit instructions are sent only after separate approval.",
-    "ja": "準備時にローカルで元画像を検証します。完全な PNG と元の編集指示を送信するのは、別途承認した後だけです。"
+    "zh-Hans": "准备时在本地核验源图，单独批准后才发送完整 PNG 与原始编辑要求",
+    "zh-Hant": "準備時會在本機核驗來源圖像，單獨批准後才會傳送完整 PNG 與原始編輯要求",
+    "en": "Preparation verifies the source image locally. The complete PNG and original edit instructions are sent only after separate approval",
+    "ja": "準備時にローカルで元画像を検証します。完全な PNG と元の編集指示を送信するのは、別途承認した後だけです"
   },
   "image.studio.originalPromptOnly": {
-    "zh-Hans": "只发送上方原始描述，不会改写或优化。",
-    "zh-Hant": "僅傳送上方原始描述，不會改寫或最佳化。",
-    "en": "Only the original prompt above is sent. It is not rewritten or optimized.",
-    "ja": "上記の元のプロンプトのみ送信します。書き換えや最適化は行いません。"
+    "zh-Hans": "只发送上方原始描述，不会改写或优化",
+    "zh-Hant": "僅傳送上方原始描述，不會改寫或最佳化",
+    "en": "Only the original prompt above is sent. It is not rewritten or optimized",
+    "ja": "上記の元のプロンプトのみ送信します。書き換えや最適化は行いません"
   },
   "image.studio.configureDedicatedKey": {
-    "zh-Hans": "请在图像设置中启用并配置此连接的专用密钥。",
-    "zh-Hant": "請在圖像設定中啟用此連線，並設定其專用密鑰。",
-    "en": "Enable this connection and configure its dedicated key in image settings.",
-    "ja": "画像設定でこの接続を有効にし、専用のキーを設定してください。"
+    "zh-Hans": "请在图像设置中启用并配置此连接的专用密钥",
+    "zh-Hant": "請在圖像設定中啟用此連線，並設定其專用密鑰",
+    "en": "Enable this connection and configure its dedicated key in image settings",
+    "ja": "画像設定でこの接続を有効にし、専用のキーを設定してください"
   },
   "image.studio.customCompatibilityScope": {
-    "zh-Hans": " 仅兼容固定 JSON 请求与 base64 单张 PNG 响应，不支持所有兼容服务；不探测、不回退、不下载结果 URL。",
-    "zh-Hant": " 僅相容固定 JSON 請求與 base64 單張 PNG 回應，並非所有相容服務皆受支援；不會探測、回退或下載結果 URL。",
-    "en": " Only fixed JSON requests and a single base64 PNG response are supported, not all compatible services. There is no probing, fallback, or result-URL download.",
-    "ja": " 固定 JSON リクエストと base64 の単一 PNG レスポンスのみ対応し、すべての互換サービスが使えるわけではありません。調査、フォールバック、結果 URL からのダウンロードは行いません。"
+    "zh-Hans": " 仅兼容固定 JSON 请求与 base64 单张 PNG 响应，不支持所有兼容服务；不探测、不回退、不下载结果 URL",
+    "zh-Hant": " 僅相容固定 JSON 請求與 base64 單張 PNG 回應，並非所有相容服務皆受支援；不會探測、回退或下載結果 URL",
+    "en": " Only fixed JSON requests and a single base64 PNG response are supported, not all compatible services. There is no probing, fallback, or result-URL download",
+    "ja": " 固定 JSON リクエストと base64 の単一 PNG レスポンスのみ対応し、すべての互換サービスが使えるわけではありません。調査、フォールバック、結果 URL からのダウンロードは行いません"
   },
   "image.studio.comfyFixedOutput": {
     "zh-Hans": "512 × 512 · PNG · 1 张 · 20 steps · CFG 8 · euler / normal",
@@ -2509,22 +2529,22 @@ export const creationUiMessages = {
     "ja": "1024 × 1024 · PNG · 不透明 · low · 1 枚"
   },
   "image.studio.localStorageDisclosure": {
-    "zh-Hans": "描述、审批与已接受任务保存在本地数据库中，未加密；未确认请求的本页凭据暂存在页面会话中。重启后仍可读取已保存的审批与任务，不会自动发送。请勿在描述中输入密钥或其他秘密。",
-    "zh-Hant": "描述、批准記錄與已接受工作會以未加密方式儲存在本機資料庫中；未確認請求的本頁憑據暫存於頁面工作階段。重新啟動後仍可讀取已儲存的批准記錄與工作，不會自動傳送。請勿在描述中輸入密鑰或其他秘密。",
-    "en": "Prompts, approvals, and accepted tasks are stored unencrypted in the local database. This page’s records for unconfirmed requests remain temporarily in the page session. Saved approvals and tasks can still be read after restart and will not be sent automatically. Do not enter keys or other secrets in prompts.",
-    "ja": "プロンプト、承認記録、受け付けられたタスクは、ローカルデータベースに暗号化せず保存されます。未確認リクエストに関するこのページの記録は、ページセッション中に一時保持されます。再起動後も保存済みの承認記録とタスクを読み取れますが、自動送信はしません。プロンプトにキーやその他の秘密情報を入力しないでください。"
+    "zh-Hans": "描述、审批与已接受任务保存在本地数据库中，未加密；未确认请求的本页凭据暂存在页面会话中。重启后仍可读取已保存的审批与任务，不会自动发送。请勿在描述中输入密钥或其他秘密",
+    "zh-Hant": "描述、批准記錄與已接受工作會以未加密方式儲存在本機資料庫中；未確認請求的本頁憑據暫存於頁面工作階段。重新啟動後仍可讀取已儲存的批准記錄與工作，不會自動傳送。請勿在描述中輸入密鑰或其他秘密",
+    "en": "Prompts, approvals, and accepted tasks are stored unencrypted in the local database. This page’s records for unconfirmed requests remain temporarily in the page session. Saved approvals and tasks can still be read after restart and will not be sent automatically. Do not enter keys or other secrets in prompts",
+    "ja": "プロンプト、承認記録、受け付けられたタスクは、ローカルデータベースに暗号化せず保存されます。未確認リクエストに関するこのページの記録は、ページセッション中に一時保持されます。再起動後も保存済みの承認記録とタスクを読み取れますが、自動送信はしません。プロンプトにキーやその他の秘密情報を入力しないでください"
   },
   "image.studio.groupTargetStale": {
-    "zh-Hans": "此组仍有待处理任务，或基准版本已变化。请读取最新记录，再明确选择生成目标。",
-    "zh-Hant": "此組仍有待處理工作，或基準版本已變更。請讀取最新記錄，再明確選擇生成目標。",
-    "en": "This group still has pending tasks, or its base revision changed. Read the latest records, then explicitly select the generation target.",
-    "ja": "このグループには未処理のタスクがあるか、基準リビジョンが変更されています。最新の記録を読み込み、生成先を明示的に選択してください。"
+    "zh-Hans": "此组仍有待处理任务，或基准版本已变化。请读取最新记录，再明确选择生成目标",
+    "zh-Hant": "此組仍有待處理工作，或基準版本已變更。請讀取最新記錄，再明確選擇生成目標",
+    "en": "This group still has pending tasks, or its base revision changed. Read the latest records, then explicitly select the generation target",
+    "ja": "このグループには未処理のタスクがあるか、基準リビジョンが変更されています。最新の記録を読み込み、生成先を明示的に選択してください"
   },
   "image.studio.directPaidApproval": {
-    "zh-Hans": "点击即批准向{value}发送当前项目的这份原始描述与上列模型、固定选项和配置版本，最多 1 次生成 POST。费用按用量计，无法预先确定金额；不会自动重试。",
-    "zh-Hant": "點選即批准向{value}傳送目前專案的這份原始描述，以及上列模型、固定選項與設定版本，最多發出 1 次生成 POST。費用按用量計算，無法預先確定金額；不會自動重試。",
-    "en": "Clicking approves sending this project’s original prompt, the model above, fixed options, and configuration revision to {value}, with at most one generation POST. Billing is usage-based and the amount cannot be determined in advance. It will not be retried automatically.",
-    "ja": "クリックすると、現在のプロジェクトの元のプロンプトと、上記のモデル、固定オプション、設定リビジョンを {value} に送信することを承認します。生成 POST は最大 1 回です。従量課金で、金額を事前に確定することはできません。自動で再試行することはありません。"
+    "zh-Hans": "点击即批准向{value}发送当前项目的这份原始描述与上列模型、固定选项和配置版本，最多 1 次生成 POST。费用按用量计，无法预先确定金额；不会自动重试",
+    "zh-Hant": "點選即批准向{value}傳送目前專案的這份原始描述，以及上列模型、固定選項與設定版本，最多發出 1 次生成 POST。費用按用量計算，無法預先確定金額；不會自動重試",
+    "en": "Clicking approves sending this project’s original prompt, the model above, fixed options, and configuration revision to {value}, with at most one generation POST. Billing is usage-based and the amount cannot be determined in advance. It will not be retried automatically",
+    "ja": "クリックすると、現在のプロジェクトの元のプロンプトと、上記のモデル、固定オプション、設定リビジョンを {value} に送信することを承認します。生成 POST は最大 1 回です。従量課金で、金額を事前に確定することはできません。自動で再試行することはありません"
   },
   "image.studio.completeCustomEndpoint": {
     "zh-Hans": "上方完整自定义地址",
@@ -2533,10 +2553,10 @@ export const creationUiMessages = {
     "ja": "上記の完全なカスタム接続先"
   },
   "image.studio.editApprovalDisclosure": {
-    "zh-Hans": "先在本地准备审批。批准时会向 OpenAI 官方发送所选源图的完整 PNG 字节（包括文件内元数据）和原始编辑要求。按用量计费，金额未知；最多发送 1 次，不会自动重试。",
-    "zh-Hant": "先在本機準備批准請求。批准時會向 OpenAI 官方傳送所選來源圖像的完整 PNG 位元組（包含檔案內的中繼資料）與原始編輯要求。按用量計費，金額未知；最多傳送 1 次，不會自動重試。",
-    "en": "First prepare approval locally. Approval sends the selected source image’s complete PNG bytes, including file metadata, and the original edit instructions to official OpenAI. Billing is usage-based and the amount is unknown. It sends at most once, with no automatic retry.",
-    "ja": "まずローカルで承認用のリクエストを準備します。承認すると、選択した元画像の完全な PNG バイト列（ファイル内のメタデータを含む）と元の編集指示を OpenAI 公式サービスに送信します。従量課金で金額は不明です。送信は最大 1 回で、自動再試行は行いません。"
+    "zh-Hans": "先在本地准备审批。批准时会向 OpenAI 官方发送所选源图的完整 PNG 字节（包括文件内元数据）和原始编辑要求。按用量计费，金额未知；最多发送 1 次，不会自动重试",
+    "zh-Hant": "先在本機準備批准請求。批准時會向 OpenAI 官方傳送所選來源圖像的完整 PNG 位元組（包含檔案內的中繼資料）與原始編輯要求。按用量計費，金額未知；最多傳送 1 次，不會自動重試",
+    "en": "First prepare approval locally. Approval sends the selected source image’s complete PNG bytes, including file metadata, and the original edit instructions to official OpenAI. Billing is usage-based and the amount is unknown. It sends at most once, with no automatic retry",
+    "ja": "まずローカルで承認用のリクエストを準備します。承認すると、選択した元画像の完全な PNG バイト列（ファイル内のメタデータを含む）と元の編集指示を OpenAI 公式サービスに送信します。従量課金で金額は不明です。送信は最大 1 回で、自動再試行は行いません"
   },
   "image.studio.confirmingRequest": {
     "zh-Hans": "正在确认请求…",
@@ -2587,16 +2607,16 @@ export const creationUiMessages = {
     "ja": "元のリクエストの確認待ち"
   },
   "image.studio.sourceNotSent": {
-    "zh-Hans": "尚未发送源图。请核对下方固定请求后，明确批准或拒绝。",
-    "zh-Hant": "尚未傳送來源圖像。請核對下方固定請求後，明確批准或拒絕。",
-    "en": "The source image has not been sent. Review the fixed request below, then explicitly approve or reject it.",
-    "ja": "元画像はまだ送信していません。以下の固定リクエストを確認し、明示的に承認または拒否してください。"
+    "zh-Hans": "尚未发送源图。请核对下方固定请求后，明确批准或拒绝",
+    "zh-Hant": "尚未傳送來源圖像。請核對下方固定請求後，明確批准或拒絕",
+    "en": "The source image has not been sent. Review the fixed request below, then explicitly approve or reject it",
+    "ja": "元画像はまだ送信していません。以下の固定リクエストを確認し、明示的に承認または拒否してください"
   },
   "image.studio.reconcileOnly": {
-    "zh-Hans": "只核对已保存的请求，不会自动重新生成。切换页签或重开面板也不会重发。",
-    "zh-Hant": "僅核對已儲存的請求，不會自動重新生成。切換分頁或重新開啟面板也不會重新傳送。",
-    "en": "Only saved requests are checked; generation is not repeated automatically. Switching tabs or reopening the panel will not resend them.",
-    "ja": "保存済みリクエストを確認するだけで、自動で再生成することはありません。タブを切り替えたりパネルを開き直したりしても再送しません。"
+    "zh-Hans": "只核对已保存的请求，不会自动重新生成。切换页签或重开面板也不会重发",
+    "zh-Hant": "僅核對已儲存的請求，不會自動重新生成。切換分頁或重新開啟面板也不會重新傳送",
+    "en": "Only saved requests are checked; generation is not repeated automatically. Switching tabs or reopening the panel will not resend them",
+    "ja": "保存済みリクエストを確認するだけで、自動で再生成することはありません。タブを切り替えたりパネルを開き直したりしても再送しません"
   },
   "image.studio.abandonUnapproved": {
     "zh-Hans": "放弃此未批准请求",
@@ -2605,10 +2625,10 @@ export const creationUiMessages = {
     "ja": "この未承認リクエストを破棄"
   },
   "image.studio.remoteQueryUnconfirmed": {
-    "zh-Hans": "原远端查询待确认。不会自动重试查询或生成；可重新读取本地记录，或明确核对同一查询标识。",
-    "zh-Hant": "原遠端查詢待確認。不會自動重試查詢或生成；可重新讀取本機記錄，或明確核對同一查詢識別碼。",
-    "en": "The original remote query is unconfirmed. Neither querying nor generation will be retried automatically. Read local records again or explicitly reconcile the same query ID.",
-    "ja": "元のリモート照会は未確認です。照会や生成を自動で再試行することはありません。ローカル記録を再読み込みするか、同じ照会 ID を明示的に確認してください。"
+    "zh-Hans": "原远端查询待确认。不会自动重试查询或生成；可重新读取本地记录，或明确核对同一查询标识",
+    "zh-Hant": "原遠端查詢待確認。不會自動重試查詢或生成；可重新讀取本機記錄，或明確核對同一查詢識別碼",
+    "en": "The original remote query is unconfirmed. Neither querying nor generation will be retried automatically. Read local records again or explicitly reconcile the same query ID",
+    "ja": "元のリモート照会は未確認です。照会や生成を自動で再試行することはありません。ローカル記録を再読み込みするか、同じ照会 ID を明示的に確認してください"
   },
   "image.studio.reconcileQuery": {
     "zh-Hans": "核对原查询（同一标识）",
@@ -2617,10 +2637,10 @@ export const creationUiMessages = {
     "ja": "元の照会を確認（同じ ID）"
   },
   "image.studio.pollingPaused": {
-    "zh-Hans": "已暂停定时读取。任务保留，可手动读取最新状态。",
-    "zh-Hant": "已暫停定時讀取。工作仍保留，可手動讀取最新狀態。",
-    "en": "Scheduled reads are paused. Tasks remain, and you can read their latest state manually.",
-    "ja": "定期読み込みを一時停止しました。タスクは保持されており、最新の状態を手動で読み込めます。"
+    "zh-Hans": "已暂停定时读取。任务保留，可手动读取最新状态",
+    "zh-Hant": "已暫停定時讀取。工作仍保留，可手動讀取最新狀態",
+    "en": "Scheduled reads are paused. Tasks remain, and you can read their latest state manually",
+    "ja": "定期読み込みを一時停止しました。タスクは保持されており、最新の状態を手動で読み込めます"
   },
   "image.studio.generationApprovals": {
     "zh-Hans": "生成请求审批",
@@ -2695,10 +2715,10 @@ export const creationUiMessages = {
     "ja": "画像グループ {groupId} · 基準 r{expectedRevision}"
   },
   "image.studio.editSendDisclosure": {
-    "zh-Hans": "向 OpenAI 发送此固定源图和原始编辑要求。按用量收费，金额未知；批准后最多发送 1 次，不会自动重试。",
-    "zh-Hant": "向 OpenAI 傳送此固定來源圖像與原始編輯要求。按用量計費，金額未知；批准後最多傳送 1 次，不會自動重試。",
-    "en": "Send this fixed source image and the original edit instructions to OpenAI. Billing is usage-based and the amount is unknown. At most one send follows approval, with no automatic retry.",
-    "ja": "この固定した元画像と元の編集指示を OpenAI に送信します。従量課金で金額は不明です。承認後の送信は最大 1 回で、自動再試行は行いません。"
+    "zh-Hans": "向 OpenAI 发送此固定源图和原始编辑要求。按用量收费，金额未知；批准后最多发送 1 次，不会自动重试",
+    "zh-Hant": "向 OpenAI 傳送此固定來源圖像與原始編輯要求。按用量計費，金額未知；批准後最多傳送 1 次，不會自動重試",
+    "en": "Send this fixed source image and the original edit instructions to OpenAI. Billing is usage-based and the amount is unknown. At most one send follows approval, with no automatic retry",
+    "ja": "この固定した元画像と元の編集指示を OpenAI に送信します。従量課金で金額は不明です。承認後の送信は最大 1 回で、自動再試行は行いません"
   },
   "image.studio.completePayloadAndLimits": {
     "zh-Hans": "完整发送内容与编辑限制",
@@ -2707,22 +2727,22 @@ export const creationUiMessages = {
     "ja": "送信内容の全体と編集の制限"
   },
   "image.studio.editPayloadDisclosure": {
-    "zh-Hans": "发送到 {destination}：完整 PNG 字节，包括 PNG 文件内元数据、原始编辑要求、上列模型和固定输出选项。素材名称、来源和哈希用于本地审批核验；不会把它们当作额外指令。",
-    "zh-Hant": "傳送至 {destination}：完整 PNG 位元組，包含 PNG 檔案內的中繼資料、原始編輯要求、上列模型與固定輸出選項。素材名稱、來源與雜湊值用於本機批准核驗；不會將其視為額外指令。",
-    "en": "Sent to {destination}: complete PNG bytes including PNG file metadata, the original edit instructions, the model above, and fixed output options. Asset names, provenance, and hashes are used for local approval verification, not as additional instructions.",
-    "ja": "{destination} に送信する内容：PNG ファイル内のメタデータを含む完全な PNG バイト列、元の編集指示、上記のモデル、固定の出力オプション。素材名、出所、ハッシュはローカルで承認を検証するために使用し、追加の指示としては扱いません。"
+    "zh-Hans": "发送到 {destination}：完整 PNG 字节，包括 PNG 文件内元数据、原始编辑要求、上列模型和固定输出选项。素材名称、来源和哈希用于本地审批核验；不会把它们当作额外指令",
+    "zh-Hant": "傳送至 {destination}：完整 PNG 位元組，包含 PNG 檔案內的中繼資料、原始編輯要求、上列模型與固定輸出選項。素材名稱、來源與雜湊值用於本機批准核驗；不會將其視為額外指令",
+    "en": "Sent to {destination}: complete PNG bytes including PNG file metadata, the original edit instructions, the model above, and fixed output options. Asset names, provenance, and hashes are used for local approval verification, not as additional instructions",
+    "ja": "{destination} に送信する内容：PNG ファイル内のメタデータを含む完全な PNG バイト列、元の編集指示、上記のモデル、固定の出力オプション。素材名、出所、ハッシュはローカルで承認を検証するために使用し、追加の指示としては扱いません"
   },
   "image.studio.editRiskDisclosure": {
-    "zh-Hans": "AI 会重新绘制，未要求修改的部分也可能改变；不保证人物身份或像素精确保持。结果保存为新素材，不覆盖源图。断开连接后可能已产生费用；结果未知时只核对原请求，绝不自动重发。",
-    "zh-Hant": "AI 會重新繪製，未要求修改的部分也可能改變；不保證人物身分或像素精確保持。結果儲存為新素材，不覆寫來源圖像。連線中斷後可能已產生費用；結果未知時僅核對原請求，絕不自動重新傳送。",
-    "en": "AI redraws the image, and areas you did not ask to change may also change. Exact identity or pixel preservation is not guaranteed. Results are saved as new assets without overwriting the source. Charges may already have occurred after disconnection. If the outcome is unknown, only the original request is checked; it is never resent automatically.",
-    "ja": "AI が描き直すため、変更を指示していない部分も変わる可能性があります。人物の同一性やピクセル単位の正確な保持は保証しません。結果は新しい素材として保存し、元画像は上書きしません。接続が切れた後でも料金が発生している可能性があります。結果が不明な場合は元のリクエストのみ確認し、自動で再送することは決してありません。"
+    "zh-Hans": "AI 会重新绘制，未要求修改的部分也可能改变；不保证人物身份或像素精确保持。结果保存为新素材，不覆盖源图。断开连接后可能已产生费用；结果未知时只核对原请求，绝不自动重发",
+    "zh-Hant": "AI 會重新繪製，未要求修改的部分也可能改變；不保證人物身分或像素精確保持。結果儲存為新素材，不覆寫來源圖像。連線中斷後可能已產生費用；結果未知時僅核對原請求，絕不自動重新傳送",
+    "en": "AI redraws the image, and areas you did not ask to change may also change. Exact identity or pixel preservation is not guaranteed. Results are saved as new assets without overwriting the source. Charges may already have occurred after disconnection. If the outcome is unknown, only the original request is checked; it is never resent automatically",
+    "ja": "AI が描き直すため、変更を指示していない部分も変わる可能性があります。人物の同一性やピクセル単位の正確な保持は保証しません。結果は新しい素材として保存し、元画像は上書きしません。接続が切れた後でも料金が発生している可能性があります。結果が不明な場合は元のリクエストのみ確認し、自動で再送することは決してありません"
   },
   "image.studio.generationChargeDisclosure": {
-    "zh-Hans": "按用量收费，金额未知；批准后最多发送 1 次。保留原始描述，不会自动重试。",
-    "zh-Hant": "按用量計費，金額未知；批准後最多傳送 1 次。保留原始描述，不會自動重試。",
-    "en": "Usage-based billing; the amount is unknown. At most one send follows approval. The original prompt is preserved, and there is no automatic retry.",
-    "ja": "従量課金で、金額は不明です。承認後の送信は最大 1 回です。元のプロンプトを保持し、自動再試行は行いません。"
+    "zh-Hans": "按用量收费，金额未知；批准后最多发送 1 次。保留原始描述，不会自动重试",
+    "zh-Hant": "按用量計費，金額未知；批准後最多傳送 1 次。保留原始描述，不會自動重試",
+    "en": "Usage-based billing; the amount is unknown. At most one send follows approval. The original prompt is preserved, and there is no automatic retry",
+    "ja": "従量課金で、金額は不明です。承認後の送信は最大 1 回です。元のプロンプトを保持し、自動再試行は行いません"
   },
   "image.studio.originalRequestIdentity": {
     "zh-Hans": "原始请求标识",
@@ -2731,10 +2751,10 @@ export const creationUiMessages = {
     "ja": "元のリクエストの識別情報"
   },
   "image.studio.approvalInputMismatch": {
-    "zh-Hans": "当前描述、提供方或源图与此审批不同。先明确载入此固定请求，再核对批准。",
-    "zh-Hant": "目前描述、提供方或來源圖像與此批准記錄不同。請先明確載入此固定請求，再核對並批准。",
-    "en": "The current prompt, provider, or source image differs from this approval. Explicitly load this fixed request first, then review and approve.",
-    "ja": "現在のプロンプト、プロバイダー、または元画像が、この承認内容と異なります。まずこの固定リクエストを明示的に読み込み、確認して承認してください。"
+    "zh-Hans": "当前描述、提供方或源图与此审批不同。先明确载入此固定请求，再核对批准",
+    "zh-Hant": "目前描述、提供方或來源圖像與此批准記錄不同。請先明確載入此固定請求，再核對並批准",
+    "en": "The current prompt, provider, or source image differs from this approval. Explicitly load this fixed request first, then review and approve",
+    "ja": "現在のプロンプト、プロバイダー、または元画像が、この承認内容と異なります。まずこの固定リクエストを明示的に読み込み、確認して承認してください"
   },
   "image.studio.loadEditRequest": {
     "zh-Hans": "载入此编辑请求",
@@ -2743,16 +2763,16 @@ export const creationUiMessages = {
     "ja": "この編集リクエストを読み込む"
   },
   "image.studio.approvalCheckRequired": {
-    "zh-Hans": "当前配置尚未检查。请到本地 ComfyUI 设置明确检查连接后，再核对本审批。",
-    "zh-Hant": "目前設定尚未檢查。請至本機 ComfyUI 設定明確檢查連線，再核對此批准請求。",
-    "en": "The current configuration has not been checked. Explicitly check the connection in local ComfyUI settings, then review this approval.",
-    "ja": "現在の設定は未確認です。ローカル ComfyUI 設定で明示的に接続を確認してから、この承認内容を確認してください。"
+    "zh-Hans": "当前配置尚未检查。请到本地 ComfyUI 设置明确检查连接后，再核对本审批",
+    "zh-Hant": "目前設定尚未檢查。請至本機 ComfyUI 設定明確檢查連線，再核對此批准請求",
+    "en": "The current configuration has not been checked. Explicitly check the connection in local ComfyUI settings, then review this approval",
+    "ja": "現在の設定は未確認です。ローカル ComfyUI 設定で明示的に接続を確認してから、この承認内容を確認してください"
   },
   "image.studio.approvalConfigurationChanged": {
-    "zh-Hans": "配置已变化，此审批不能发送。请拒绝并根据新配置准备新的请求。",
-    "zh-Hant": "設定已變更，此批准請求無法傳送。請拒絕此請求，並依新設定準備新的請求。",
-    "en": "The configuration changed, so this approval cannot be sent. Reject it and prepare a new request using the new configuration.",
-    "ja": "設定が変更されたため、この承認リクエストは送信できません。拒否し、新しい設定で新たなリクエストを準備してください。"
+    "zh-Hans": "配置已变化，此审批不能发送。请拒绝并根据新配置准备新的请求",
+    "zh-Hant": "設定已變更，此批准請求無法傳送。請拒絕此請求，並依新設定準備新的請求",
+    "en": "The configuration changed, so this approval cannot be sent. Reject it and prepare a new request using the new configuration",
+    "ja": "設定が変更されたため、この承認リクエストは送信できません。拒否し、新しい設定で新たなリクエストを準備してください"
   },
   "image.studio.approveFrozenWorkflow": {
     "zh-Hans": "批准此冻结工作流并运行",
@@ -2815,10 +2835,10 @@ export const creationUiMessages = {
     "ja": "現在の画像履歴を読み込み中…"
   },
   "image.studio.historyReadFailed": {
-    "zh-Hans": "暂时无法读取当前图像历史，请重新读取。",
-    "zh-Hant": "暫時無法讀取目前圖像歷史，請重新讀取。",
-    "en": "Current image history cannot be read right now. Read it again.",
-    "ja": "現在の画像履歴を読み取れません。再読み込みしてください。"
+    "zh-Hans": "暂时无法读取当前图像历史，请重新读取",
+    "zh-Hant": "暫時無法讀取目前圖像歷史，請重新讀取",
+    "en": "Current image history cannot be read right now. Read it again",
+    "ja": "現在の画像履歴を読み取れません。再読み込みしてください"
   },
   "image.studio.viewGroup": {
     "zh-Hans": "查看图像组",
@@ -2845,10 +2865,10 @@ export const creationUiMessages = {
     "ja": "ローカル記録を読み込み中…"
   },
   "image.studio.historyEmpty": {
-    "zh-Hans": "生成后会在这里保留原始结果与版本。",
-    "zh-Hant": "生成後，原始結果與版本會保留在此處。",
-    "en": "Original results and versions will remain here after generation.",
-    "ja": "生成後は、元の結果とバージョンがここに保存されます。"
+    "zh-Hans": "生成后会在这里保留原始结果与版本",
+    "zh-Hant": "生成後，原始結果與版本會保留在此處",
+    "en": "Original results and versions will remain here after generation",
+    "ja": "生成後は、元の結果とバージョンがここに保存されます"
   },
   "image.studio.newerGroups": {
     "zh-Hans": "较新图像组",
@@ -2875,10 +2895,10 @@ export const creationUiMessages = {
     "ja": "Mock テストパターン"
   },
   "image.studio.remoteOutcomeUnknown": {
-    "zh-Hans": "远端结果仍未知。可明确查询同一远端任务并核验取回；也可单独恢复已经落盘的本地结果。不会重新提交生成。",
-    "zh-Hant": "遠端結果仍未知。可明確查詢同一遠端工作並核驗取回結果；也可單獨還原已寫入磁碟的本機結果。不會重新提交生成。",
-    "en": "The remote outcome is still unknown. Explicitly query the same remote task and verify retrieved results, or separately recover a local result already written to disk. Generation will not be resubmitted.",
-    "ja": "リモートの結果はまだ不明です。同じリモートタスクを明示的に照会して取得結果を検証するか、ディスクに保存済みのローカル結果を別途復元できます。生成を再送信することはありません。"
+    "zh-Hans": "远端结果仍未知。可明确查询同一远端任务并核验取回；也可单独恢复已经落盘的本地结果。不会重新提交生成",
+    "zh-Hant": "遠端結果仍未知。可明確查詢同一遠端工作並核驗取回結果；也可單獨還原已寫入磁碟的本機結果。不會重新提交生成",
+    "en": "The remote outcome is still unknown. Explicitly query the same remote task and verify retrieved results, or separately recover a local result already written to disk. Generation will not be resubmitted",
+    "ja": "リモートの結果はまだ不明です。同じリモートタスクを明示的に照会して取得結果を検証するか、ディスクに保存済みのローカル結果を別途復元できます。生成を再送信することはありません"
   },
   "image.studio.originalPromptAndTask": {
     "zh-Hans": "原始描述与任务",
@@ -2911,10 +2931,10 @@ export const creationUiMessages = {
     "ja": "元の承認設定 r{settingsRevision} · {profileId}"
   },
   "image.studio.originalApprovalMissing": {
-    "zh-Hans": "此页未载入任务关联的原始审批，无法展示当时的地址。当前设置不代表此任务。",
-    "zh-Hant": "此頁尚未載入與工作關聯的原始批准記錄，無法顯示當時的位址。目前設定不代表此工作的設定。",
-    "en": "This page has not loaded the task’s original approval, so the endpoint used then cannot be displayed. Current settings do not represent this task.",
-    "ja": "このページではタスクに紐づく元の承認記録を読み込んでいないため、当時の接続先を表示できません。現在の設定はこのタスクの設定を示すものではありません。"
+    "zh-Hans": "此页未载入任务关联的原始审批，无法展示当时的地址。当前设置不代表此任务",
+    "zh-Hant": "此頁尚未載入與工作關聯的原始批准記錄，無法顯示當時的位址。目前設定不代表此工作的設定",
+    "en": "This page has not loaded the task’s original approval, so the endpoint used then cannot be displayed. Current settings do not represent this task",
+    "ja": "このページではタスクに紐づく元の承認記録を読み込んでいないため、当時の接続先を表示できません。現在の設定はこのタスクの設定を示すものではありません"
   },
   "image.studio.cancelUnsentTask": {
     "zh-Hans": "取消未发送任务",
@@ -3013,10 +3033,10 @@ export const creationUiMessages = {
     "ja": "古いバージョン"
   },
   "image.studio.libraryResultScope": {
-    "zh-Hans": "结果已进入项目素材库。可沿用素材库的时间线、首帧与主体参考入口；这里不会自动创建或连接节点。",
-    "zh-Hant": "結果已加入專案素材庫。可使用素材庫既有的時間軸、首影格與主體參考入口；此處不會自動建立或連接節點。",
-    "en": "The result is now in the project’s asset library. Use the library’s existing timeline, first-frame, and subject-reference controls. This view does not automatically create or connect nodes.",
-    "ja": "結果はプロジェクトの素材ライブラリに追加されています。ライブラリの既存のタイムライン、最初のフレーム、被写体参照の操作を利用できます。この画面ではノードを自動で作成したり接続したりしません。"
+    "zh-Hans": "结果已进入项目素材库。可沿用素材库的时间线、首帧与主体参考入口；这里不会自动创建或连接节点",
+    "zh-Hant": "結果已加入專案素材庫。可使用素材庫既有的時間軸、首影格與主體參考入口；此處不會自動建立或連接節點",
+    "en": "The result is now in the project’s asset library. Use the library’s existing timeline, first-frame, and subject-reference controls. This view does not automatically create or connect nodes",
+    "ja": "結果はプロジェクトの素材ライブラリに追加されています。ライブラリの既存のタイムライン、最初のフレーム、被写体参照の操作を利用できます。この画面ではノードを自動で作成したり接続したりしません"
   },
   "image.studio.savedHistory": {
     "zh-Hans": "已保存的图像历史",
@@ -3043,28 +3063,28 @@ export const creationUiMessages = {
     "ja": "リクエスト結果の確認待ち"
   },
   "tasks.pending.sameRequestDisclosure": {
-    "zh-Hans": "原编号与完整参数保留在当前会话。恢复时由服务器去重；不会自动重试或创建新的请求编号。",
-    "zh-Hant": "原編號與完整參數保留在目前會話中。還原時由伺服器去除重複；不會自動重試或建立新的請求編號。",
-    "en": "The original ID and full parameters are retained in this session. The server deduplicates during recovery. There is no automatic retry or new request ID.",
-    "ja": "元のIDと完全なパラメーターは現在のセッションに保持されています。復元時にはサーバーが重複を排除します。自動再試行や新しいリクエストIDの作成は行いません。"
+    "zh-Hans": "原编号与完整参数保留在当前会话。恢复时由服务器去重；不会自动重试或创建新的请求编号",
+    "zh-Hant": "原編號與完整參數保留在目前會話中。還原時由伺服器去除重複；不會自動重試或建立新的請求編號",
+    "en": "The original ID and full parameters are retained in this session. The server deduplicates during recovery. There is no automatic retry or new request ID",
+    "ja": "元のIDと完全なパラメーターは現在のセッションに保持されています。復元時にはサーバーが重複を排除します。自動再試行や新しいリクエストIDの作成は行いません"
   },
   "tasks.pending.mutationStorage": {
-    "zh-Hans": "恢复记录仅存于当前浏览器会话，未经保险库加密。关闭窗口或重建应用会话可能丢失记录，请先恢复待确认请求。服务器会为保留的原编号保存去重结果。",
-    "zh-Hant": "還原記錄僅存於目前瀏覽器會話，未經保管庫加密。關閉視窗或重建應用程式會話可能遺失記錄，請先還原待確認請求。伺服器會保存原編號對應的去重結果。",
-    "en": "Recovery records exist only in this browser session, without vault encryption. Closing the window or recreating the app session may lose them; recover unconfirmed requests first. The server retains deduplication results for the original IDs.",
-    "ja": "復元記録は現在のブラウザーセッションだけに保存され、保管庫の暗号化は適用されません。ウィンドウを閉じたりアプリセッションを作り直したりすると失われる可能性があるため、先に確認待ちのリクエストを復元してください。サーバーは元のIDに対する重複排除の結果を保持します。"
+    "zh-Hans": "恢复记录仅存于当前浏览器会话，未经保险库加密。关闭窗口或重建应用会话可能丢失记录，请先恢复待确认请求。服务器会为保留的原编号保存去重结果",
+    "zh-Hant": "還原記錄僅存於目前瀏覽器會話，未經保管庫加密。關閉視窗或重建應用程式會話可能遺失記錄，請先還原待確認請求。伺服器會保存原編號對應的去重結果",
+    "en": "Recovery records exist only in this browser session, without vault encryption. Closing the window or recreating the app session may lose them; recover unconfirmed requests first. The server retains deduplication results for the original IDs",
+    "ja": "復元記録は現在のブラウザーセッションだけに保存され、保管庫の暗号化は適用されません。ウィンドウを閉じたりアプリセッションを作り直したりすると失われる可能性があるため、先に確認待ちのリクエストを復元してください。サーバーは元のIDに対する重複排除の結果を保持します"
   },
   "tasks.pending.submissionStorage": {
-    "zh-Hans": "此待确认提交的恢复参数仍依赖当前浏览器会话。已被服务器接受的生成任务或导出记录会另行持久保存；未知提交不会自动重试。",
-    "zh-Hant": "此次待確認提交的還原參數仍依賴目前瀏覽器會話。伺服器已接受的生成工作或匯出記錄會另行持久儲存；結果未知的提交不會自動重試。",
-    "en": "Recovery parameters for this unconfirmed submission still depend on the current browser session. Generation tasks or export records accepted by the server are persisted separately. Unknown submissions are not retried automatically.",
-    "ja": "この確認待ちの送信を復元するパラメーターは、現在のブラウザーセッションに依存します。サーバーが受け付けた生成タスクや書き出し記録は別途永続保存されます。結果不明の送信を自動再試行することはありません。"
+    "zh-Hans": "此待确认提交的恢复参数仍依赖当前浏览器会话。已被服务器接受的生成任务或导出记录会另行持久保存；未知提交不会自动重试",
+    "zh-Hant": "此次待確認提交的還原參數仍依賴目前瀏覽器會話。伺服器已接受的生成工作或匯出記錄會另行持久儲存；結果未知的提交不會自動重試",
+    "en": "Recovery parameters for this unconfirmed submission still depend on the current browser session. Generation tasks or export records accepted by the server are persisted separately. Unknown submissions are not retried automatically",
+    "ja": "この確認待ちの送信を復元するパラメーターは、現在のブラウザーセッションに依存します。サーバーが受け付けた生成タスクや書き出し記録は別途永続保存されます。結果不明の送信を自動再試行することはありません"
   },
   "tasks.pending.duplicateLocalRecord": {
-    "zh-Hans": "本地数据库已有此原编号。旧会话记录尚未清除，请明确转存并核对；不会静默隐藏任一记录。",
-    "zh-Hant": "本機資料庫已有此原編號。舊會話記錄尚未清除，請明確轉存並核對；不會默默隱藏任一記錄。",
-    "en": "The local database already contains this original ID. The old session record remains. Explicitly transfer and verify it; neither record is hidden silently.",
-    "ja": "ローカルデータベースに同じ元のIDが存在します。古いセッション記録はまだ残っています。明示的に移管して確認してください。どちらの記録も無断で非表示にしません。"
+    "zh-Hans": "本地数据库已有此原编号。旧会话记录尚未清除，请明确转存并核对；不会静默隐藏任一记录",
+    "zh-Hant": "本機資料庫已有此原編號。舊會話記錄尚未清除，請明確轉存並核對；不會默默隱藏任一記錄",
+    "en": "The local database already contains this original ID. The old session record remains. Explicitly transfer and verify it; neither record is hidden silently",
+    "ja": "ローカルデータベースに同じ元のIDが存在します。古いセッション記録はまだ残っています。明示的に移管して確認してください。どちらの記録も無断で非表示にしません"
   },
   "tasks.pending.adoptOriginal": {
     "zh-Hans": "转存原请求以便重启恢复",
@@ -3145,16 +3165,16 @@ export const creationUiMessages = {
     "ja": "リクエストID：{requestId}"
   },
   "tasks.center.legacyAdopted": {
-    "zh-Hans": "此请求由旧会话明确转存，保留原始完整参数。",
-    "zh-Hant": "此請求由舊會話明確轉存，保留原始完整參數。",
-    "en": "This request was explicitly transferred from an old session with all original parameters retained.",
-    "ja": "このリクエストは古いセッションから明示的に移管され、元の完全なパラメーターを保持しています。"
+    "zh-Hans": "此请求由旧会话明确转存，保留原始完整参数",
+    "zh-Hant": "此請求由舊會話明確轉存，保留原始完整參數",
+    "en": "This request was explicitly transferred from an old session with all original parameters retained",
+    "ja": "このリクエストは古いセッションから明示的に移管され、元の完全なパラメーターを保持しています"
   },
   "tasks.center.recoveryScope": {
-    "zh-Hans": "恢复前先核对服务器中的同一任务；需要执行时使用保存的参数，不使用当前草稿。",
-    "zh-Hant": "還原前先核對伺服器中的同一工作；需要執行時使用已儲存參數，不使用目前草稿。",
-    "en": "Check the same server task before recovery. Any execution uses saved parameters, not the current draft.",
-    "ja": "復元前にサーバー上の同じタスクを確認します。実行が必要な場合は保存済みのパラメーターを使用し、現在の下書きは使用しません。"
+    "zh-Hans": "恢复前先核对服务器中的同一任务；需要执行时使用保存的参数，不使用当前草稿",
+    "zh-Hant": "還原前先核對伺服器中的同一工作；需要執行時使用已儲存參數，不使用目前草稿",
+    "en": "Check the same server task before recovery. Any execution uses saved parameters, not the current draft",
+    "ja": "復元前にサーバー上の同じタスクを確認します。実行が必要な場合は保存済みのパラメーターを使用し、現在の下書きは使用しません"
   },
   "tasks.center.acknowledgeClose": {
     "zh-Hans": "确认并关闭记录",
@@ -3181,22 +3201,22 @@ export const creationUiMessages = {
     "ja": "ローカル編集リクエスト"
   },
   "tasks.center.durableStorage": {
-    "zh-Hans": "{length} 类时间线元数据（含输出规格）、首帧连接与主体编辑请求：本机明文 SQLite 保存，未经保险库加密；不会自动执行。",
-    "zh-Hant": "{length} 類時間軸中繼資料（含輸出規格）、首影格連線與主體編輯請求：以本機明文 SQLite 儲存，未經保管庫加密；不會自動執行。",
-    "en": "{length} types of timeline metadata (including output format), first-frame connection, and subject edit requests are stored locally in plaintext SQLite, without vault encryption. They do not execute automatically.",
-    "ja": "タイムラインのメタデータ（出力形式を含む）、開始フレーム接続、被写体編集の{length}種類のリクエストは、ローカルの平文 SQLite に保存され、保管庫の暗号化は適用されません。自動実行はしません。"
+    "zh-Hans": "{length} 类时间线元数据（含输出规格）、首帧连接与主体编辑请求：本机明文 SQLite 保存，未经保险库加密；不会自动执行",
+    "zh-Hant": "{length} 類時間軸中繼資料（含輸出規格）、首影格連線與主體編輯請求：以本機明文 SQLite 儲存，未經保管庫加密；不會自動執行",
+    "en": "{length} types of timeline metadata (including output format), first-frame connection, and subject edit requests are stored locally in plaintext SQLite, without vault encryption. They do not execute automatically",
+    "ja": "タイムラインのメタデータ（出力形式を含む）、開始フレーム接続、被写体編集の{length}種類のリクエストは、ローカルの平文 SQLite に保存され、保管庫の暗号化は適用されません。自動実行はしません"
   },
   "tasks.center.loadingRecoveryRecords": {
-    "zh-Hans": "正在核对全部恢复记录，此类编辑暂不可用。",
-    "zh-Hant": "正在核對全部還原記錄，此類編輯暫時無法使用。",
-    "en": "Checking all recovery records; these edits are temporarily unavailable.",
-    "ja": "すべての復元記録を確認しています。この種類の編集は一時的に利用できません。"
+    "zh-Hans": "正在核对全部恢复记录，此类编辑暂不可用",
+    "zh-Hant": "正在核對全部還原記錄，此類編輯暫時無法使用",
+    "en": "Checking all recovery records; these edits are temporarily unavailable",
+    "ja": "すべての復元記録を確認しています。この種類の編集は一時的に利用できません"
   },
   "tasks.center.recoveryListUnavailable": {
-    "zh-Hans": "任务恢复列表暂不可用，此类编辑仍被阻止。",
-    "zh-Hant": "工作還原清單暫時無法使用，此類編輯仍被阻止。",
-    "en": "The task recovery list is unavailable; these edits remain blocked.",
-    "ja": "タスクの復元一覧を利用できないため、この種類の編集は引き続き停止しています。"
+    "zh-Hans": "任务恢复列表暂不可用，此类编辑仍被阻止",
+    "zh-Hant": "工作還原清單暫時無法使用，此類編輯仍被阻止",
+    "en": "The task recovery list is unavailable; these edits remain blocked",
+    "ja": "タスクの復元一覧を利用できないため、この種類の編集は引き続き停止しています"
   },
   "tasks.center.reloadTasks": {
     "zh-Hans": "重新载入任务",
@@ -3205,10 +3225,10 @@ export const creationUiMessages = {
     "ja": "タスクを再読み込み"
   },
   "tasks.center.noLocalPending": {
-    "zh-Hans": "没有待确认的本地编辑请求。",
-    "zh-Hant": "沒有待確認的本機編輯請求。",
-    "en": "No unconfirmed local edit requests.",
-    "ja": "確認待ちのローカル編集リクエストはありません。"
+    "zh-Hans": "没有待确认的本地编辑请求",
+    "zh-Hant": "沒有待確認的本機編輯請求",
+    "en": "No unconfirmed local edit requests",
+    "ja": "確認待ちのローカル編集リクエストはありません"
   },
   "tasks.center.sessionPending": {
     "zh-Hans": "当前会话的待确认请求",
@@ -3247,10 +3267,10 @@ export const creationUiMessages = {
     "ja": "生成で問題が発生しました"
   },
   "tasks.center.unknownSubmissionWarning": {
-    "zh-Hans": "服务商可能已接受任务并计费。请在服务商核实，系统不会盲目重新提交。",
-    "zh-Hant": "服務商可能已接受工作並計費。請向服務商核實，系統不會貿然重新提交。",
-    "en": "The provider may have accepted the task and charged for it. Verify with the provider; the system will not blindly resubmit.",
-    "ja": "プロバイダーがタスクを受け付け、課金している可能性があります。プロバイダー側で確認してください。システムが確認せずに再送信することはありません。"
+    "zh-Hans": "服务商可能已接受任务并计费。请在服务商核实，系统不会盲目重新提交",
+    "zh-Hant": "服務商可能已接受工作並計費。請向服務商核實，系統不會貿然重新提交",
+    "en": "The provider may have accepted the task and charged for it. Verify with the provider; the system will not blindly resubmit",
+    "ja": "プロバイダーがタスクを受け付け、課金している可能性があります。プロバイダー側で確認してください。システムが確認せずに再送信することはありません"
   },
   "tasks.center.providerTaskId": {
     "zh-Hans": "已有服务商任务 ID",
@@ -3283,10 +3303,10 @@ export const creationUiMessages = {
     "ja": "既存タスクの状態を確認しました。生成は再送信していません"
   },
   "tasks.center.stopScope": {
-    "zh-Hans": "停止范围：{value}。",
-    "zh-Hant": "停止範圍：{value}。",
-    "en": "Stop scope: {value}.",
-    "ja": "停止範囲：{value}。"
+    "zh-Hans": "停止范围：{value}",
+    "zh-Hant": "停止範圍：{value}",
+    "en": "Stop scope: {value}",
+    "ja": "停止範囲：{value}"
   },
   "tasks.center.remoteCancellationConfirmed": {
     "zh-Hans": "远端任务已确认取消",
@@ -3349,10 +3369,10 @@ export const creationUiMessages = {
     "ja": "ローカルでの待機を停止しても、プロバイダーのタスクがキャンセルされるとは限らず、課金が止まる保証もありません。続けますか？"
   },
   "tasks.center.stopRequested": {
-    "zh-Hans": "已请求停止。请查看任务记录中的实际取消范围。",
-    "zh-Hant": "已請求停止。請查看工作記錄中的實際取消範圍。",
-    "en": "Stop requested. Check the task record for the actual cancellation scope.",
-    "ja": "停止を要求しました。実際のキャンセル範囲はタスク記録で確認してください。"
+    "zh-Hans": "已请求停止。请查看任务记录中的实际取消范围",
+    "zh-Hant": "已請求停止。請查看工作記錄中的實際取消範圍",
+    "en": "Stop requested. Check the task record for the actual cancellation scope",
+    "ja": "停止を要求しました。実際のキャンセル範囲はタスク記録で確認してください"
   },
   "tasks.center.noGenerationTasks": {
     "zh-Hans": "还没有生成任务",
@@ -3361,10 +3381,10 @@ export const creationUiMessages = {
     "ja": "生成タスクはまだありません"
   },
   "tasks.center.generationEmptyHint": {
-    "zh-Hans": "选择镜头并点击生成，这里会显示实时进度和结果。",
-    "zh-Hant": "選擇鏡頭並按下生成，即可在此查看即時進度與結果。",
-    "en": "Select a shot and generate to see live progress and results here.",
-    "ja": "ショットを選んで生成すると、ここに進捗と結果が表示されます。"
+    "zh-Hans": "选择镜头并点击生成，这里会显示实时进度和结果",
+    "zh-Hant": "選擇鏡頭並按下生成，即可在此查看即時進度與結果",
+    "en": "Select a shot and generate to see live progress and results here",
+    "ja": "ショットを選んで生成すると、ここに進捗と結果が表示されます"
   },
   "tasks.workspace.heading": {
     "zh-Hans": "任务中心",
@@ -3391,9 +3411,9 @@ export const creationUiMessages = {
     "ja": "タスク記録"
   },
   "tasks.workspace.durableState": {
-    "zh-Hans": "生成任务状态持久保存；刷新或重启不会重复提交。",
-    "zh-Hant": "生成工作狀態會持久儲存；重新整理或重啟不會重複提交。",
-    "en": "Generation task state is saved persistently. Refreshing or restarting does not resubmit.",
-    "ja": "生成タスクの状態は永続保存されます。更新や再起動で再送信されることはありません。"
+    "zh-Hans": "生成任务状态持久保存；刷新或重启不会重复提交",
+    "zh-Hant": "生成工作狀態會持久儲存；重新整理或重啟不會重複提交",
+    "en": "Generation task state is saved persistently. Refreshing or restarting does not resubmit",
+    "ja": "生成タスクの状態は永続保存されます。更新や再起動で再送信されることはありません"
   }
 } as const satisfies MessageCatalog;

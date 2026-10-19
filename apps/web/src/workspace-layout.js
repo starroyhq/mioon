@@ -1,9 +1,9 @@
 // Preferred panel dimensions are durable. Effective dimensions are derived from
 // the current viewport and must never be written back during a window resize.
 export const PANEL_BOUNDS = Object.freeze({
-  assetsWidth: Object.freeze({ default: 242, min: 180, max: 480 }),
-  inspectorWidth: Object.freeze({ default: 310, min: 240, max: 560 }),
-  timelineHeight: Object.freeze({ default: 320, min: 160, max: 800 }),
+  assetsWidth: Object.freeze({ default: 260, min: 180, max: 480 }),
+  inspectorWidth: Object.freeze({ default: 320, min: 240, max: 560 }),
+  timelineHeight: Object.freeze({ default: 300, min: 160, max: 800 }),
 });
 
 export function clampPanelSize(key, value) {
@@ -23,13 +23,18 @@ export function defaultWorkspaceLayout(shared = {}) {
 
 export function normalizeWorkspaceLayout(value, shared = {}) {
   if (value === undefined) return defaultWorkspaceLayout(shared);
+  // Only the exact former default pair is migrated; customized dimensions keep
+  // their saved meaning. A viewport resize still never changes preferred sizes.
+  const legacyDefaults = source => source?.assetsWidth === 242 && source?.inspectorWidth === 310;
   const mode = source => ({
-    assetsWidth: clampPanelSize('assetsWidth', source?.assetsWidth),
-    inspectorWidth: clampPanelSize('inspectorWidth', source?.inspectorWidth),
+    assetsWidth: legacyDefaults(source) ? PANEL_BOUNDS.assetsWidth.default : clampPanelSize('assetsWidth', source?.assetsWidth),
+    inspectorWidth: legacyDefaults(source) ? PANEL_BOUNDS.inspectorWidth.default : clampPanelSize('inspectorWidth', source?.inspectorWidth),
     assetsCollapsed: source?.assetsCollapsed === true,
     inspectorCollapsed: source?.inspectorCollapsed === true,
   });
-  return { canvas: mode(value?.canvas), editing: { ...mode(value?.editing), timelineHeight: clampPanelSize('timelineHeight', value?.editing?.timelineHeight) } };
+  const timelineHeight = legacyDefaults(value?.editing) && value?.editing?.timelineHeight === 320
+    ? PANEL_BOUNDS.timelineHeight.default : clampPanelSize('timelineHeight', value?.editing?.timelineHeight);
+  return { canvas: mode(value?.canvas), editing: { ...mode(value?.editing), timelineHeight } };
 }
 
 // Used at cache/transport boundaries. Only the entire layout may be omitted by a

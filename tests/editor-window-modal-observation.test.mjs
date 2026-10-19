@@ -6,6 +6,7 @@ import { createEditorSettingsScope } from '../apps/web/src/editor-settings-scope
 import { createNativeCloseAdmission, createNativeCloseRegistry } from '../apps/web/src/native-close-state.ts';
 import { createAgentChatCloseReporter, createImageGenerationCloseReporter } from '../apps/web/src/native-close-sources.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
+import { createAgentAuthorizationUiMock } from './helpers/agent-authorization-ui.mjs';
 
 // These tests join the actual sessions and close reporters to the actual scope
 // and admission. A fake boolean source cannot reproduce focus starting a load.
@@ -47,8 +48,11 @@ async function agentFixture(t, { accepted = false, additional } = {}) {
   const calls = [], changes = [], streams = [], receipts = new Map(), initial = snapshot(accepted ? [running()] : []);
   let nextRead = null;
   const forbidden = operation => async () => { calls.push(operation); throw new Error(`Unexpected business operation: ${operation}`); };
+  const authorization = createAgentAuthorizationUiMock(async () => { calls.push('read'); return nextRead ? nextRead.promise : structuredClone(initial); });
+  const authorizationCalls = [];
   const client = {
-    read: async () => { calls.push('read'); return nextRead ? nextRead.promise : structuredClone(initial); },
+    ...authorization,
+    authorize: (...args) => { authorizationCalls.push(args); return authorization.authorize(...args); },
     lookup: forbidden('lookup'), history: forbidden('history'), start: forbidden('start'), stop: forbidden('stop'), run: forbidden('run'),
     stream: (_project, _run, _instance, _last, options) => {
       calls.push('stream'); streams.push(options);
@@ -63,15 +67,18 @@ async function agentFixture(t, { accepted = false, additional } = {}) {
   const scope = createEditorSettingsScope(async () => true);
   const unsubscribe = scope.subscribe(active => session.setVisible(active));
   const admission = closeFixture(registry, scope, additional);
-  t.after(() => { scope.dispose(); admission.dispose(); unsubscribe(); session.dispose(); reporter.release(); });
+  t.after(() => {
+    scope.dispose(); admission.dispose(); unsubscribe(); session.dispose(); reporter.release();
+    assert.equal(authorizationCalls.length, accepted ? 0 : 1, 'modal observation never grants authorization again');
+  });
   await session.load();
   assert.equal(session.getState().phase, accepted ? 'streaming' : 'ready');
   if (!accepted) {
     assert.equal(session.edit('Keep this exact unsent draft'), true);
-    session.approve(true);
+    assert.equal(await session.approve(true), true);
     assert.equal(agentChatCanSend(session.getState()), true);
   }
-  return { registry, reporter, session, scope, admission, calls, changes, streams, receipts,
+  return { registry, reporter, session, scope, admission, calls, changes, streams, receipts, authorizationKey: session.getState().consent,
     holdNextRead() { nextRead = deferred(); return { resolve: () => nextRead.resolve(structuredClone(initial)) }; },
   };
 }
@@ -115,7 +122,7 @@ test('unknown-result risk close with dirty Agent keeps the exact unknown owner a
   assert.deepEqual(f.calls, ['read']);
 });
 
-test('only the current cancellation resumes one Agent read and never restores old send consent', async t => {
+test('only the current cancellation resumes one Agent read and reuses retained authorization without sending', async t => {
   const f = await agentFixture(t), held = f.holdNextRead(), draft = f.session.getState().draft;
   const inspection = f.admission.inspect();
   f.scope.blur(); f.scope.focus();
@@ -126,14 +133,16 @@ test('only the current cancellation resumes one Agent read and never restores ol
   assert.deepEqual(f.calls, ['read', 'read']);
   assert.equal(f.session.getState().phase, 'loading');
   assert.equal(f.reporter.getState().busy, true);
-  assert.equal(f.session.getState().consent, null);
+  assert.equal(f.session.getState().consent, f.authorizationKey);
+  assert.equal(agentChatCanSend(f.session.getState()), false, 'retained authorization cannot send while the resumed read is loading');
   f.scope.focus();
   assert.equal(f.admission.cancel(inspection.token), false);
   assert.equal(f.admission.commit(inspection.token, commitOptions()), false);
   held.resolve(); await settle();
   assert.equal(f.session.getState().phase, 'ready');
   assert.equal(f.session.getState().draft, draft);
-  assert.equal(agentChatCanSend(f.session.getState()), false);
+  assert.equal(f.session.getState().consent, f.authorizationKey);
+  assert.equal(agentChatCanSend(f.session.getState()), true);
   assert.equal(f.reporter.getState().busy, false);
   assert.deepEqual(f.calls, ['read', 'read']);
 });
@@ -143,11 +152,13 @@ test('cancelling while still blurred waits for actual focus rather than reviving
   f.scope.blur();
   assert.equal(f.admission.cancel(inspection.token), true);
   assert.equal(f.scope.active, false);
+  assert.equal(f.session.getState().consent, null);
   assert.deepEqual(f.calls, ['read']);
   f.scope.focus(); f.scope.focus();
   assert.deepEqual(f.calls, ['read', 'read']);
   held.resolve(); await settle();
-  assert.equal(f.session.getState().consent, null);
+  assert.equal(f.session.getState().consent, f.authorizationKey);
+  assert.equal(agentChatCanSend(f.session.getState()), true);
 });
 
 test('new inspection replaces pause ownership; late old cancel and commit cannot resume or authorize the new attempt', async t => {
@@ -159,12 +170,14 @@ test('new inspection replaces pause ownership; late old cancel and commit cannot
   assert.equal(f.admission.cancel(first.token), false);
   assert.equal(f.admission.commit(first.token, commitOptions()), false);
   assert.equal(f.scope.active, false);
+  assert.equal(f.session.getState().consent, null);
   assert.deepEqual(f.calls, ['read']);
   assert.equal(f.admission.cancel(second.token), true);
   assert.deepEqual(f.calls, ['read', 'read']);
   held.resolve(); await settle();
   assert.equal(f.admission.commit(second.token, commitOptions()), false);
-  assert.equal(f.session.getState().consent, null);
+  assert.equal(f.session.getState().consent, f.authorizationKey);
+  assert.equal(agentChatCanSend(f.session.getState()), true);
 });
 
 test('final unload veto never resumes reads inline; exact main cancellation resumes after consumed ticket', async t => {
@@ -180,7 +193,8 @@ test('final unload veto never resumes reads inline; exact main cancellation resu
   assert.equal(f.admission.cancel(inspection.token), true);
   assert.deepEqual(f.calls, ['read', 'read']);
   held.resolve(); await settle();
-  assert.equal(f.session.getState().consent, null);
+  assert.equal(f.session.getState().consent, f.authorizationKey);
+  assert.equal(agentChatCanSend(f.session.getState()), true);
   assert.equal(f.admission.commit(inspection.token, commitOptions()), false);
 });
 

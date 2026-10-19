@@ -167,8 +167,8 @@ test('Tailwind scans both workspace components and renderer sources and maps Bas
   for (const state of ['open', 'closed', 'checked', 'unchecked', 'disabled', 'active']) {
     assert.ok(css.includes(`@custom-variant data-${state} `));
   }
-  assert.match(css, /--primary: #d7e6aa;/);
-  assert.match(css, /--primary-foreground: #24291a;/);
+  assert.match(css, /--primary: var\(--wb-accent\);/);
+  assert.match(css, /--primary-foreground: var\(--wb-accent-foreground\);/);
   assert.match(css, /prefers-reduced-motion: reduce/);
 });
 
@@ -264,8 +264,10 @@ test('renderer uses shared components for ordinary controls and modal confirmati
   assert.match(taskWorkspace, /<h2 id="task-workspace-heading">\{t\('tasks.workspace.heading'\)\}<\/h2>/);
   assert.equal(translate('zh-Hans', 'tasks.workspace.heading'), '任务中心');
   assert.match(app, /<DropdownMenuContent/);
-  assert.match(app, /data-testid="workspace-canvas"/);
-  assert.match(app, /data-testid="workspace-editing"/);
+  const shell = readFileSync(resolve(renderer, 'WorkbenchShell.tsx'), 'utf8');
+  assert.match(app + shell, /data-testid="workspace-canvas"/);
+  assert.match(app + shell, /data-testid="workspace-editing"/);
+  assert.match(app, /onValueChange=\{changeMode\}/);
   assert.match(app, /workspaceMode === 'canvas'/);
   assert.match(app, /workspaceMode === 'editing'/);
   assert.doesNotMatch(app, /<TabsContent value="(?:canvas|preview|editing)" keepMounted/);
@@ -286,10 +288,12 @@ test('confirmation dismissal and concurrent requests never imply approval', () =
 
 test('timeline retains specialized positioning and accessible Base UI controls', () => {
   const source = readFileSync(resolve(root, 'apps/web/src/Timeline.jsx'), 'utf8');
-  assert.match(source, /value=\{\[pixelsPerSecond\]\}/);
-  assert.match(source, /aria-labelledby="timeline-zoom-label"/);
-  assert.match(source, /<Switch[^>]+checked=\{!track\.hidden\}/);
-  assert.match(source, /<Switch[^>]+checked=\{track\.muted\}/);
+  const toolbar = readFileSync(resolve(root, 'apps/web/src/TimelineToolbar.tsx'), 'utf8');
+  assert.match(source, /<TimelineToolbar[\s\S]*?pixelsPerSecond=\{pixelsPerSecond\}/);
+  assert.match(toolbar, /<Slider[^>]*value=\{\[props\.pixelsPerSecond\]\}/);
+  assert.match(toolbar, /<Slider[^>]*aria-label=\{t\('timeline\.view\.zoom'\)\}/);
+  assert.match(source, /<Button[^>]+aria-pressed=\{!track\.hidden\}[^>]+onClick=\{[^}]*onTrackUpdate\(track\.id,\{hidden: !track\.hidden\}/);
+  assert.match(source, /<Button[^>]+aria-pressed=\{track\.muted\}[^>]+onClick=\{[^}]*onTrackUpdate\(track\.id,\{muted: !track\.muted\}/);
   assert.match(source, /left: clip\.startFrame \* pxFrame/);
   assert.match(source, /width: Math\.max\(8, clip\.durationFrames \* pxFrame\)/);
   assert.match(source, /setData\(CLIP_DRAG, JSON\.stringify\(\{ id: clip\.id, grabFrame \}\)\)/);
