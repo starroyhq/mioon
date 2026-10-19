@@ -3,19 +3,23 @@ import assert from 'node:assert/strict';
 import {captureOpacityApplicationPrepare,isOpacityApplicationMutationResponse,isOpacityApplicationTask,captureOpacityTimelinePrepare} from '../packages/contracts/src/timeline-opacity-persistence.ts';
 import {isTimelineMutationResponse,isEditTask} from '../packages/contracts/src/index.ts';
 
-const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+const id=(n: number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const stamp='2026-10-16T00:00:00.000Z';
 const curve=()=>({profileId:'mioon-clip-linear-opacity-v1',points:[{frame:0,opacity:0},{frame:20,opacity:1}]});
-const base=()=>({projectId:id(1),requestId:'application-task-fixture',expectedRevision:1});
-const add=()=>({...base(),assetId:id(5),trackId:id(3),startFrame:0,durationFrames:20,name:'Synthetic clip'});
-function record(){return {id:id(2),projectId:id(1),revision:2,fps:30,width:720,height:1280,
+type ApplicationInput = Record<string, unknown> & {projectId:string;requestId:string;expectedRevision:number};
+const base=(): ApplicationInput=>({projectId:id(1),requestId:'application-task-fixture',expectedRevision:1});
+const add=(): Record<string, unknown>=> ({...base(),assetId:id(5),trackId:id(3),startFrame:0,durationFrames:20,name:'Synthetic clip'});
+interface TaskClip {id:string;assetId:string;trackId:string;name:string;startFrame:number;durationFrames:number;sourceInFrame:number;rect:Record<string,number>;gain:number;opacityEnvelope?:unknown; [key:string]:unknown}
+interface TaskTrack {id:string;name:string;kind:string;orderIndex:number;hidden:boolean;muted:boolean;opacityEnvelope?:unknown; [key:string]:unknown}
+interface TaskRecord {id:string;projectId:string;revision:number;fps:number;width:number;height:number;tracks:TaskTrack[];clips:TaskClip[];durationFrames:number;createdAt:string;updatedAt:string; [key:string]:unknown}
+function record(): TaskRecord{return {id:id(2),projectId:id(1),revision:2,fps:30,width:720,height:1280,
  tracks:[{id:id(3),name:'Video',kind:'video',orderIndex:0,hidden:false,muted:false}],
  clips:[{id:id(4),assetId:id(5),trackId:id(3),name:'Synthetic clip',startFrame:0,durationFrames:20,sourceInFrame:0,rect:{x:0,y:0,width:720,height:1280},gain:1,opacityEnvelope:curve()}],
  durationFrames:20,createdAt:stamp,updatedAt:stamp};}
-const task=(operation,input)=>({id:id(6),projectId:id(1),operation,input,requestId:input.requestId,digest:'a'.repeat(64),lane:'timeline:mutation',status:'prepared',revision:1,createdAt:stamp,updatedAt:stamp,acknowledged:false,origin:'new'});
+const task=(operation: string,input: Record<string,unknown>)=>({id:id(6),projectId:id(1),operation,input,requestId:input.requestId,digest:'a'.repeat(64),lane:'timeline:mutation',status:'prepared',revision:1,createdAt:stamp,updatedAt:stamp,acknowledged:false,origin:'new'});
 
 test('fresh application prepare has a fixed seven-operation data grammar without broadening ordinary42/43',()=>{
- const inputs=[
+ const inputs: Array<[string, Record<string,unknown>]>=[
   ['timeline.track.add',{...base(),kind:'video',name:'Overlay'}],
   ['timeline.track.update',{...base(),trackId:id(3),patch:{name:'Renamed',muted:true}}],
   ['timeline.clip.add',{...add(),opacityEnvelope:curve()}],
@@ -37,12 +41,12 @@ test('fresh application prepare has a fixed seven-operation data grammar without
 
 test('application add ACK requires exact opacity presence, null or points on the clip matching legacy fields',()=>{
  for(const state of ['absent','null','curve']){
-  const input=add(),response=record();delete response.clips[0].opacityEnvelope;
-  if(state!=='absent'){input.opacityEnvelope=state==='null'?null:curve();response.clips[0].opacityEnvelope=structuredClone(input.opacityEnvelope);}
+  const input=add(),response=record();delete response.clips[0]!.opacityEnvelope;
+  if(state!=='absent'){input.opacityEnvelope=state==='null'?null:curve();response.clips[0]!.opacityEnvelope=structuredClone(input.opacityEnvelope);}
   assert.equal(isOpacityApplicationMutationResponse('timeline.clip.add',input,response),true,state);
   const corrupt=structuredClone(response);
-  if(state==='absent')corrupt.clips[0].opacityEnvelope=null;
-  else delete corrupt.clips[0].opacityEnvelope;
+  if(state==='absent')corrupt.clips[0]!.opacityEnvelope=null;
+  else delete corrupt.clips[0]!.opacityEnvelope;
   assert.equal(isOpacityApplicationMutationResponse('timeline.clip.add',input,corrupt),false,state);
  }
  const input={...add(),opacityEnvelope:curve()},response=record();
@@ -76,7 +80,7 @@ test('application task projection retains original opacity fields and rejects un
  assert.deepEqual(value,before);
  assert.equal(isOpacityApplicationTask({...value,unknown:true}),false);
  assert.equal(isOpacityApplicationTask({...value,input:{...input,unknown:true}}),false);
- assert.equal(isOpacityApplicationTask({...value,input:{...input,opacityEnvelope:{...curve(),points:[...curve().points,...Array.from({length:6},(_,n)=>({frame:n+2,opacity:.5}))]}}}),false);
+ assert.equal(isOpacityApplicationTask({...value,input:{...input,opacityEnvelope:{...curve(),points:[...curve().points,...Array.from({length:6},(_, n: number)=>({frame:n+2,opacity:.5}))]}}}),false);
  let calls=0;const hostile={...value};Object.defineProperty(hostile,'input',{enumerable:true,get(){calls++;throw Error('getter');}});
  assert.equal(isOpacityApplicationTask(hostile),false);assert.equal(calls,0);
 });

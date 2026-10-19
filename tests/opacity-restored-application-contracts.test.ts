@@ -13,7 +13,7 @@ test('restored application disclosure has one exact pair, provenance, original p
  assert.equal(view.draftPolicy,'excluded');assert.equal(view.workspaceOrigin,info.workspaceOrigin);assert.equal(view.source.backupId,info.sourceBackupId);
  assert.deepEqual(OPACITY_RESTORED_APPLICATION_LOCAL_OPERATIONS,['timeline.clip.update','timeline.undo','timeline.redo','timeline.render']);
  for(const operation of ['project.create','asset.import','timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.remove','workspace.preferences.put','generation.submit'])
-  assert.equal(view.operationPolicy.find(row=>row.operation===operation).available,false);
+  assert.equal(view.operationPolicy.find(row=>row.operation===operation)!.available,false);
 });
 test('wrong pair, incomplete provenance, duplicated evidence and forged operation availability fail closed',()=>{
  const view=create(metadata());

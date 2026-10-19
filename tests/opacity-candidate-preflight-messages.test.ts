@@ -1,18 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {preflightErrorMessage, preflightIssueMessage, createExportPreflightController} from '../apps/web/src/export-preflight-state.ts';
-import {translate} from '../packages/i18n/src/index.ts';
+import {translate, type Locale} from '../packages/i18n/src/index.ts';
 import {OPACITY_CANDIDATE_PREFLIGHT_MESSAGES} from '../packages/business/src/opacity-candidate-preflight.ts';
 import {TIMELINE_COLOUR_PREFLIGHT_CODES} from '../packages/contracts/src/timeline-colour.ts';
 
-const locales = ['zh-Hans', 'zh-Hant', 'en', 'ja'];
+const locales: readonly Locale[] = ['zh-Hans', 'zh-Hant', 'en', 'ja'];
 const codes = [...TIMELINE_COLOUR_PREFLIGHT_CODES, ...Object.keys(OPACITY_CANDIDATE_PREFLIGHT_MESSAGES)];
 const secret = '/private/source.mp4 token=private-synthetic-never-display';
 
 test('candidate source/LUT refusal codes have precise safe explanations in all four locales', () => {
   assert.equal(new Set(codes).size, 14);
   for (const locale of locales) for (const code of codes) {
-    const expected = translate(locale, `export.preflight.issue.${code}`);
+    const expected = translate(locale, `export.preflight.issue.${code}` as never);
     assert.equal(preflightIssueMessage({code, severity: 'error', message: secret}, locale), expected);
     assert.equal(preflightErrorMessage({code, message: secret, details: {path: secret}}, locale), expected);
     assert.notEqual(expected, translate(locale, 'export.preflight.issue.unknownError'));

@@ -1,4 +1,5 @@
 import test from 'node:test';
+import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
 import path from 'node:path';
@@ -10,11 +11,11 @@ import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {mkdtempPortable} from './helpers/temp-root.ts';
 
 const stamp='2026-10-16T00:00:00.000Z';
-const bytes=value=>Buffer.byteLength(JSON.stringify(value));
+const bytes=(value: unknown)=>Buffer.byteLength(JSON.stringify(value));
 
-test('actual42 accepts revision digit growth from 262143 to the complete 262144-byte record limit',async t=>{
+test('actual42 accepts revision digit growth from 262143 to the complete 262144-byte record limit',async (t: TestContext)=>{
   const root=mkdtempPortable('mioon-opacity-record-limit-');
-  const store=openOpacityCandidateStore(root),media=[];
+  const store=openOpacityCandidateStore(root),media: unknown[]=[];
   let providerTouches=0;
   const off=onMediaProcess(event=>media.push(event));
   const services=createServices(store,new Proxy(new Map(),{get(){providerTouches++;throw Error('No provider is needed for metadata edits');}}));
@@ -42,14 +43,14 @@ test('actual42 accepts revision digit growth from 262143 to the complete 262144-
     sha256:'a'.repeat(64),relativePath:'media/never-opened.mp4',createdAt:stamp});
   store.put('timelines',timeline);
   const input={projectId,clipId:timeline.clips[0].id,patch:{opacityEnvelope:structuredClone(opacityEnvelope)},expectedRevision:9,requestId:randomUUID()};
-  const saved=await services.call('timeline.clip.update',input);
+  const saved=await services.call('timeline.clip.update',input) as typeof timeline & {revision: number};
   assert.equal(saved.revision,10);assert.equal(bytes(saved),262144);
   assert.deepEqual(captureOpacityTimelineRecord(saved,{projectId}).record,saved);
   assert.deepEqual(saved.clips,timeline.clips);
   assert.deepEqual(store.get('timelines',timeline.id),saved);
-  const receipt=store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId);
+  const receipt=store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId) as {response: string};
   assert.equal(Buffer.byteLength(receipt.response),262144);assert.equal(receipt.response,JSON.stringify(saved));
-  assert.equal(store.db.prepare('SELECT count(*) AS n FROM timeline_history').get().n,1);
-  assert.equal(store.db.prepare('SELECT position FROM timeline_history_cursors WHERE projectId=?').get(projectId).position,1);
+  assert.equal((store.db.prepare('SELECT count(*) AS n FROM timeline_history').get() as {n: number}).n,1);
+  assert.equal((store.db.prepare('SELECT position FROM timeline_history_cursors WHERE projectId=?').get(projectId) as {position: number}).position,1);
   assert.deepEqual(await services.call('timeline.clip.update',input),saved);
 });

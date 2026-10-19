@@ -20,12 +20,12 @@ for (const locale of LOCALES) test(`synthetic ${locale} composition uses the exa
 
 test('synthetic43 late GET/PUT/DELETE responses retain a later Chinese/Japanese composition and fresh raw owner', async t => {
   for (const method of ['GET', 'PUT', 'DELETE']) {
-    const gate = deferred(), h = fixture(t, {restored: true, restoredPersistence: true, [method === 'GET' ? 'getGate' : method === 'PUT' ? 'putGate' : 'deleteGate']: gate});
+    const gate = deferred(), h = fixture(t, {restored: true, restoredPersistence: true, [method === 'GET' ? 'getGate' : method === 'PUT' ? 'putGate' : 'deleteGate']: gate} as never);
     let flight;
     if (method === 'GET') {flight = h.controller.load();await turn();}
     else {await h.ready();h.event('onChange', '.5');h.render();const writing = h.controller.flush();await turn();
       if (method === 'PUT') flight = writing;else {await writing;flight = h.controller.discard(h.controller.capture());await turn();}}
-    h.event('onCompositionStart', '.5');h.render();h.event('onCompositionUpdate', '新しい');h.render();gate.resolve();await flight;h.render();
+    h.event('onCompositionStart', '.5');h.render();h.event('onCompositionUpdate', '新しい');h.render();gate.resolve(undefined as never);await flight;h.render();
     assert.equal(h.controller.hasPendingComposition(), true);assert.equal(h.input().props.value, '新しい');assert.equal(await h.controller.flushForClose(), false);
     h.event('onCompositionEnd', '.7');h.render();await h.controller.flush();
     assert.equal(h.state.raw.opacityEnvelope.points[0].opacity, '.7');assert.equal(h.row().draft.raw.opacityEnvelope.points[0].opacity, '.7');assert.equal(h.saves.length, 0);
@@ -33,9 +33,9 @@ test('synthetic43 late GET/PUT/DELETE responses retain a later Chinese/Japanese 
 });
 
 test('synthetic43 repeated Save cannot race an active Cancel waiting for PUT/DELETE', async t => {
-  const putGate = deferred(), deleteGate = deferred(), h = fixture(t, {restored: true, restoredPersistence: true, putGate, deleteGate});await h.ready();
+  const putGate = deferred(), deleteGate = deferred(), h = fixture(t, {restored: true, restoredPersistence: true, putGate, deleteGate} as never);await h.ready();
   h.event('onChange', '.5');h.render();const writing = h.controller.flush();await turn();const cancelling = h.controller.discard(h.controller.capture());await turn();
-  await h.submit();await h.submit();putGate.resolve();await writing;await turn();h.render();
+  await h.submit();await h.submit();putGate.resolve(undefined as never);await writing;await turn();h.render();
   assert.equal(h.button('save-clip').props.disabled, true);assert.equal(h.cancel().props.disabled, true);assert.equal(h.saves.length, 0);
-  deleteGate.resolve();await cancelling;assert.equal(h.state.dirty, false);assert.equal(h.row().draft, null);
+  deleteGate.resolve(undefined as never);await cancelling;assert.equal(h.state.dirty, false);assert.equal(h.row().draft, null);
 });

@@ -28,7 +28,7 @@ test('fixed42 archive DTO inherits format1 paths, roles, inventory and strict fi
 });
 
 test('fixed42 manifest retains unique sorted paths, one database and aggregate payload bound',()=>{
- const media=index=>({path:`payload/media/00000000-0000-4000-8000-${String(index).padStart(12,'0')}.png`,role:'asset',bytes:1,sha256:hash});
+ const media=(index: number)=>({path:`payload/media/00000000-0000-4000-8000-${String(index).padStart(12,'0')}.png`,role:'asset',bytes:1,sha256:hash});
  const sorted=[media(1),media(2),entry];
  assert.equal(manifestSchema.safeParse({...manifest(),entries:sorted}).success,true);
  for(const entries of [[entry,entry],sorted.toReversed(),[media(1),media(1),entry],[media(1)],
