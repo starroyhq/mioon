@@ -6,17 +6,18 @@ import {fileURLToPath} from 'node:url';
 import {LOCALES, translate, catalogs, validateCatalogs} from '../packages/i18n/src/index.ts';
 import {parseBackupArguments} from '../apps/cli/src/backup.ts';
 import {backupDiagnostic} from '../apps/cli/src/backup-presentation.ts';
+import {errorView} from './helpers/test-error.ts';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const secret = 'synthetic-PRIVATE-path-token-error-must-not-appear';
-function run(entry, args, hook) {
+function run(entry: string, args: string[], hook?: string) {
   const prefix = hook ? ['--import', `data:text/javascript,${encodeURIComponent(hook)}`] : [];
   const result = spawnSync(process.execPath, [...prefix, entry, ...args], {cwd:root, encoding:'utf8', timeout:30000, maxBuffer:1024*1024, env:{...process.env, LANG:'ja_JP.UTF-8', MIOON_LOCALE:'ja'}});
   assert.ifError(result.error);
   assert.equal(result.signal,null);
   return result;
 }
-const backup = (args, hook) => run('apps/cli/src/backup.ts', args, hook);
-const mcp = (args, hook) => run('apps/mcp/src/index.ts', args, hook);
+const backup = (args: string[], hook?: string) => run('apps/cli/src/backup.ts', args, hook);
+const mcp = (args: string[], hook?: string) => run('apps/mcp/src/index.ts', args, hook);
 
 test('backup explicit locale translates only help prose and preserves legacy help/version', {timeout:180000}, () => {
   assert.deepEqual(validateCatalogs(catalogs),[]);
@@ -29,10 +30,10 @@ test('backup explicit locale translates only help prose and preserves legacy hel
     const data=JSON.parse(localized.stdout).data;
     for (const section of ['requirements','privacy','safety']) {
       assert.equal(data[section].length,base[section].length);
-      for (let i=0;i<data[section].length;i++) assert.equal(data[section][i],translate(locale,`backup.${section}.${i}`));
+      for (let i=0;i<data[section].length;i++) assert.equal(data[section][i],translate(locale,`backup.${section}.${i}` as never, {} as never));
       delete data[section];
     }
-    assert.equal(data.output,translate(locale,'backup.output')); delete data.output;
+    assert.equal(data.output,translate(locale,'backup.output' as never, {} as never)); delete data.output;
     const {requirements,privacy,safety,output,...unchanged}=base;
     assert.deepEqual(data,unchanged);
     assert.equal(backup(['--version','--locale='+locale]).stdout,backup(['--version']).stdout);
@@ -42,8 +43,8 @@ test('backup explicit locale translates only help prose and preserves legacy hel
 
 test('backup parser does not forward locale; only a valid encountered locale affects safe stderr', {timeout:180000}, () => {
   for (const locale of LOCALES) {
-    let captured;
-    assert.deepEqual(parseBackupArguments(['verify','--locale',locale,'--directory','/absolute/backup'],value=>{captured=value;}),{command:'verify',directory:'/absolute/backup'});
+    let captured: string | undefined;
+    assert.deepEqual(parseBackupArguments(['verify','--locale',locale,'--directory','/absolute/backup'],(locale: string | undefined)=>{captured=locale;}),{command:'verify',directory:'/absolute/backup'});
     assert.equal(captured,locale);
     const invalid=backup(['--locale',locale,'--unknown',secret]);
     const legacy=backup(['--unknown',secret]);
@@ -69,7 +70,7 @@ test('MCP launch errors retain validated locale without touching stdout or legac
     for (const [tail,key] of [[['--unknown',secret],'launchOptions'],[['--locale','ja'],'launchOptions'],[['--workspace-origin'],'originRequired'],[['--workspace-origin','invalid'],'origin']]) {
       const result=mcp(['--locale',locale,...tail]);
       assert.equal(result.status,2); assert.equal(result.stdout,'');
-      assert.equal(result.stderr,`VALIDATION_ERROR: ${translate(locale,`mcp.error.${key}`)}\n`);
+      assert.equal(result.stderr,`VALIDATION_ERROR: ${translate(locale,`mcp.error.${key}` as never, {} as never)}\n`);
       assert.ok(!result.stderr.includes(secret));
     }
   }
@@ -93,7 +94,7 @@ test('MCP injected stdio startup failure is fixed safe copy in all locales, neve
 test('backup fixed code diagnostics are exhaustive and machine error, cleanup, provenance remain English', {timeout:180000}, () => {
   for(const key of Object.keys(catalogs).filter(key=>key.startsWith('backup.error.'))) {
     const code=key.slice('backup.error.'.length);
-    for(const locale of LOCALES)assert.equal(backupDiagnostic(code,secret,locale),translate(locale,key));
+    for(const locale of LOCALES)assert.equal(backupDiagnostic(code,secret,locale),translate(locale,key as never, {} as never));
     assert.equal(backupDiagnostic(code,secret),secret);
   }
   const failure = `import {registerHooks} from 'node:module'; registerHooks({load(url,context,next){if(url.endsWith('/packages/business/src/workspace-backup.ts'))return {format:'module',shortCircuit:true,source:${JSON.stringify(`export async function verifyWorkspaceBackup(options){if(Object.hasOwn(options,'locale'))throw Error('locale leaked'); throw Object.assign(new Error('${secret}'),{code:'WORKSPACE_BACKUP_IO',cleanupUnconfirmed:true});} export const createWorkspaceBackup=verifyWorkspaceBackup;`)}};return next(url,context);}});`;
@@ -120,7 +121,7 @@ test('backup restored publication provenance and unknown error fallback never de
     for(const locale of LOCALES) {
       const result=backup(['--locale',locale,...args],hook);
       assert.equal(result.status,1);assert.equal(result.stdout,legacy.stdout);
-      assert.equal(result.stderr,`${error.code}: ${translate(locale,`backup.error.${error.code}`)}\n`);
+      assert.equal(result.stderr,`${error.code}: ${translate(locale,`backup.error.${error.code}` as never, {} as never)}\n`);
       assert.ok(!result.stdout.includes(secret));assert.ok(!result.stderr.includes(secret));
     }
   }
@@ -140,7 +141,7 @@ test('locale never changes backup parser error precedence for mixed modes or mal
     ['verify','--unknown','relative','--directory','relative'],
     ['verify','--directory','/backup','--directory','relative'],
   ];
-  const codeFor=args=>{try{parseBackupArguments(args);assert.fail('Expected parser error');}catch(error){assert.ok(error.code);return {code:error.code,message:error.message};}};
+  const codeFor=(args: string[])=>{try{parseBackupArguments(args);assert.fail('Expected parser error');}catch(error: unknown){const failure=errorView(error);assert.ok(failure.code);return {code:failure.code,message:failure.message};}};
   for(const args of cases) for(const locale of LOCALES) {
     assert.deepEqual(codeFor(['--locale',locale,...args]),codeFor(args));
     assert.deepEqual(codeFor([...args,'--locale='+locale]),codeFor(args));
@@ -163,14 +164,14 @@ test('backup locale is rejected inside every business flag/value pair before dis
     const expected=parseBackupArguments(args);
     for (const option of [['--locale',locale],['--locale='+locale]]) {
       for (let index=2;index<args.length;index+=2) {
-        let captured;
-        assert.throws(()=>parseBackupArguments([...args.slice(0,index),...option,...args.slice(index)],value=>{captured=value;}),{code:'VALIDATION_ERROR'});
+        let captured: string | undefined;
+        assert.throws(()=>parseBackupArguments([...args.slice(0,index),...option,...args.slice(index)],(locale: string | undefined)=>{captured=locale;}),{code:'VALIDATION_ERROR'});
         assert.equal(captured,undefined,'An option in a value slot cannot establish locale');
       }
       // Leading, after command, between complete pairs, and trailing remain valid.
       for (const index of [0,1,...Array.from({length:(args.length-1)/2},(_,i)=>3+i*2)]) {
-        let captured;
-        assert.deepEqual(parseBackupArguments([...args.slice(0,index),...option,...args.slice(index)],value=>{captured=value;}),expected);
+        let captured: string | undefined;
+        assert.deepEqual(parseBackupArguments([...args.slice(0,index),...option,...args.slice(index)],(locale: string | undefined)=>{captured=locale;}),expected);
         assert.equal(captured,locale);
       }
     }

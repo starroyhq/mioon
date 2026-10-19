@@ -4,20 +4,25 @@ import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navig
 import { createSettingsWindowNavigation } from '../apps/web/src/settings-window-state.ts';
 import { createWebSettingsNavigation } from '../apps/web/src/web-settings-navigation.ts';
 import { LOCALES, renderMessage, translate } from '../packages/i18n/src/index.ts';
+import type {ProjectWindowContext, ProjectWindowSettingsSlot} from '../apps/web/src/desktop-window-client.ts';
+import type {SettingsNavigationState} from '../apps/web/src/settings-navigation-state.ts';
 
-const slots = ['agent', 'official', 'custom', 'comfy'];
-const uuid = n => `69000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const context = patch => ({ version: 2, role: 'settings', windowId: uuid(1), contextId: uuid(2), backendId: uuid(3),
+const slots: ProjectWindowSettingsSlot[] = ['agent', 'official', 'custom', 'comfy'];
+const uuid = (n: number) => `69000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const context = (patch: Record<string, unknown>): ProjectWindowContext => ({ version: 2, role: 'settings', windowId: uuid(1), contextId: uuid(2), backendId: uuid(3),
   initialProjectId: null, autoOpen: false, editorProjectId: null, editorPhase: 'none', editorCount: 1,
   entryMode: null, entryVersion: 0, entryReceipt: null, settingsSlot: 'agent', settingsVersion: 1,
-  selectionProjectId: null, selectionVersion: 0, locatorStatus: null, locatorIntent: null, quitting: false, ...patch });
-const state = (version, patch = {}) => ({ dirty: false, busy: false, blocked: false, version, ...patch });
+  selectionProjectId: null, selectionVersion: 0, locatorStatus: null, locatorIntent: null, quitting: false, ...patch } as ProjectWindowContext);
+const state = (version: number, patch: Record<string, unknown> = {}): SettingsNavigationState => ({ dirty: false, busy: false, blocked: false, version, ...patch } as SettingsNavigationState);
 const tick = () => new Promise(setImmediate);
-function fixture({ confirm = async () => true, initial = {} } = {}) {
-  const registry = createSettingsNavigationRegistry(), owners = new Map(), confirmations = [], changes = [];
-  for (const slot of slots) { const owner = registry.register(slot); owner.update(state(1)); owners.set(slot, owner); }
+type NavRegistry = ReturnType<typeof createSettingsNavigationRegistry>;
+type NavWindow = ReturnType<typeof createSettingsWindowNavigation>;
+interface NavFixture {registry: NavRegistry; owners: Map<string, ReturnType<NavRegistry['register']>>; confirmations: unknown[]; changes: {page: unknown; selected: unknown}[]; navigation: NavWindow}
+function fixture({ confirm = async () => true, initial = {} }: {confirm?: (value: unknown) => Promise<unknown>; initial?: Record<string, unknown>} = {}): NavFixture {
+  const registry = createSettingsNavigationRegistry(), owners = new Map<string, ReturnType<NavRegistry['register']>>(), confirmations: unknown[] = [], changes: {page: unknown; selected: unknown}[] = [];
+  for (const slot of slots) { const owner = registry.register(slot); owner.update(state(1) as never); owners.set(slot, owner); }
   const navigation = createSettingsWindowNavigation({ context: context(initial), registry,
-    confirm: value => { confirmations.push(value); return confirm(value); },
+    confirm: (message) => { confirmations.push(message); return confirm(message) as Promise<boolean>; },
     onChange: () => changes.push({ page: navigation.page, selected: navigation.selected }),
   });
   return { registry, owners, confirmations, changes, navigation };
@@ -46,7 +51,7 @@ test('cancelled dirty navigation into or out of General leaves page, connection 
   for (const startingPage of ['agent', 'general']) {
     const f = fixture({ confirm: async () => false });
     if (startingPage === 'general') await f.navigation.selectPage('general');
-    f.owners.get('custom').update(state(2, { dirty: true }));
+    f.owners.get('custom')!.update(state(2, { dirty: true }) as never);
     const captured = f.registry.capture(), changes = f.changes.length;
     assert.equal(await f.navigation.selectPage(startingPage === 'general' ? 'official' : 'general'), false);
     assert.equal(f.navigation.page, startingPage); assert.equal(f.navigation.selected, 'agent');
@@ -56,7 +61,7 @@ test('cancelled dirty navigation into or out of General leaves page, connection 
 });
 
 test('accepted dirty page changes retain the registry and dirty draft metadata without clearing or saving it', async () => {
-  const f = fixture(); f.owners.get('agent').update(state(2, { dirty: true }));
+  const f = fixture(); f.owners.get('agent')!.update(state(2, { dirty: true }) as never);
   const captured = f.registry.capture();
   assert.equal(await f.navigation.selectPage('general'), true);
   assert.equal(f.navigation.page, 'general'); assert.equal(f.navigation.selected, 'agent');
@@ -67,23 +72,23 @@ test('accepted dirty page changes retain the registry and dirty draft metadata w
 });
 
 test('a second dirty edit while General confirmation is open invalidates the exact captured version', async () => {
-  const answer = Promise.withResolvers(), f = fixture({ confirm: () => answer.promise });
-  f.owners.get('agent').update(state(2, { dirty: true }));
+  const answer = Promise.withResolvers<boolean>(), f = fixture({ confirm: () => answer.promise });
+  f.owners.get('agent')!.update(state(2, { dirty: true }));
   const pending = f.navigation.selectPage('general');
-  f.owners.get('agent').update(state(3, { dirty: true }));
+  f.owners.get('agent')!.update(state(3, { dirty: true }));
   answer.resolve(true);
   assert.equal(await pending, false); assert.equal(f.navigation.page, 'agent');
   assert.equal(f.navigation.selected, 'agent'); assert.equal(f.changes.length, 0);
-  assert.equal(f.registry.capture().find(entry => entry.slot === 'agent').version, 3);
+  assert.equal((f.registry.capture().find(entry => entry.slot === 'agent') as {version: number}).version, 3);
 });
 
 test('replacement or release of an owner during confirmation cannot authorize a stale page change', async () => {
   for (const change of ['replace', 'release']) {
-    const answer = Promise.withResolvers(), f = fixture({ confirm: () => answer.promise });
-    f.owners.get('custom').update(state(2, { dirty: true }));
+    const answer = Promise.withResolvers<boolean>(), f = fixture({ confirm: () => answer.promise });
+    f.owners.get('custom')!.update(state(2, { dirty: true }) as never);
     const pending = f.navigation.selectPage('general');
     if (change === 'replace') f.registry.register('custom').update(state(1, { dirty: true }));
-    else f.owners.get('custom').release();
+    else f.owners.get('custom')!.release();
     const captured = f.registry.capture(); answer.resolve(true);
     assert.equal(await pending, false); assert.equal(f.navigation.page, 'agent');
     assert.deepEqual(f.registry.capture(), captured);
@@ -92,20 +97,20 @@ test('replacement or release of an owner during confirmation cannot authorize a 
 
 test('newer page or connection intent wins even when older confirmation resolves last', async () => {
   for (const next of ['custom', 'general']) {
-    const answers = [], f = fixture({ confirm: () => { const answer = Promise.withResolvers(); answers.push(answer); return answer.promise; } });
-    f.owners.get('agent').update(state(2, { dirty: true }));
+    const answers: {promise: Promise<boolean>; resolve(value: boolean): void}[] = [], f = fixture({ confirm: () => { const answer = Promise.withResolvers<boolean>(); answers.push(answer); return answer.promise; } });
+    f.owners.get('agent')!.update(state(2, { dirty: true }));
     const older = f.navigation.selectPage(next === 'general' ? 'official' : 'general');
-    const newer = next === 'general' ? f.navigation.selectPage(next) : f.navigation.select(next);
-    assert.equal(answers.length, 2); answers[1].resolve(true); assert.equal(await newer, true);
-    answers[0].resolve(true); assert.equal(await older, false);
+    const newer = next === 'general' ? f.navigation.selectPage(next as never) : f.navigation.select(next as ProjectWindowSettingsSlot);
+    assert.equal(answers.length, 2); answers[1]!.resolve(true); assert.equal(await newer, true);
+    answers[0]!.resolve(true); assert.equal(await older, false);
     assert.equal(f.navigation.page, next); assert.equal(f.navigation.selected, next === 'general' ? 'agent' : next);
     assert.equal(f.changes.length, 1);
   }
 });
 
 test('a same-page local intent synchronously revokes older pending departure permission', async () => {
-  const answer = Promise.withResolvers(), f = fixture({ confirm: () => answer.promise });
-  await f.navigation.selectPage('general'); f.owners.get('agent').update(state(2, { dirty: true }));
+  const answer = Promise.withResolvers<boolean>(), f = fixture({ confirm: () => answer.promise });
+  await f.navigation.selectPage('general'); f.owners.get('agent')!.update(state(2, { dirty: true }));
   const pending = f.navigation.select('custom');
   assert.equal(await f.navigation.selectPage('general'), true);
   answer.resolve(true); assert.equal(await pending, false);
@@ -118,7 +123,7 @@ test('busy, blocked or unreported hidden owners prevent General changes before c
     const f = fixture({ confirm: () => assert.fail('Unsafe owners must not be offered discard confirmation') });
     if (startingPage === 'general') await f.navigation.selectPage('general');
     if (mode === 'unreported') f.registry.register('custom');
-    else f.owners.get('custom').update(state(2, { dirty: true, [mode]: true }));
+    else f.owners.get('custom')!.update(state(2, { dirty: true, [mode]: true }));
     const captured = f.registry.capture();
     assert.equal(await f.navigation.selectPage(startingPage === 'general' ? 'comfy' : 'general'), false);
     assert.equal(f.navigation.page, startingPage); assert.equal(f.navigation.selected, 'agent');
@@ -128,12 +133,12 @@ test('busy, blocked or unreported hidden owners prevent General changes before c
 });
 
 test('busy state arriving during confirmation invalidates permission and does not clear the form', async () => {
-  const answer = Promise.withResolvers(), f = fixture({ confirm: () => answer.promise });
-  f.owners.get('official').update(state(2, { dirty: true }));
+  const answer = Promise.withResolvers<boolean>(), f = fixture({ confirm: () => answer.promise });
+  f.owners.get('official')!.update(state(2, { dirty: true }));
   const pending = f.navigation.selectPage('general');
-  f.owners.get('official').update(state(3, { dirty: true, busy: true })); answer.resolve(true);
+  f.owners.get('official')!.update(state(3, { dirty: true, busy: true })); answer.resolve(true);
   assert.equal(await pending, false); assert.equal(f.navigation.page, 'agent');
-  const current = f.registry.capture().find(entry => entry.slot === 'official');
+  const current = f.registry.capture().find(entry => entry.slot === 'official')!;
   assert.equal(current.dirty, true); assert.equal(current.busy, true); assert.equal(current.version, 3);
 });
 
@@ -148,10 +153,10 @@ test('newer native same-slot requests leave General without changing the IPC con
 });
 
 test('native same-slot requests from General use the same dirty confirmation and stale-version guard', async () => {
-  const answer = Promise.withResolvers(), f = fixture({ confirm: () => answer.promise });
-  await f.navigation.selectPage('general'); f.owners.get('agent').update(state(2, { dirty: true }));
+  const answer = Promise.withResolvers<boolean>(), f = fixture({ confirm: () => answer.promise });
+  await f.navigation.selectPage('general'); f.owners.get('agent')!.update(state(2, { dirty: true }));
   f.navigation.receive(context({ settingsVersion: 2 })); assert.equal(f.confirmations.length, 1);
-  f.owners.get('agent').update(state(3, { dirty: true })); answer.resolve(true); await tick();
+  f.owners.get('agent')!.update(state(3, { dirty: true })); answer.resolve(true); await tick();
   assert.equal(f.navigation.page, 'general'); assert.equal(f.navigation.selected, 'agent');
   f.navigation.receive(context({ settingsVersion: 2 })); await tick();
   assert.equal(f.confirmations.length, 1, 'A replayed native intent must not ask again');
@@ -169,8 +174,8 @@ test('foreign, stale and equal-version native selection requests do not pull the
 });
 
 test('newer same-slot native intent supersedes a pending General transition synchronously', async () => {
-  const answer = Promise.withResolvers(), f = fixture({ confirm: () => answer.promise });
-  f.owners.get('agent').update(state(2, { dirty: true }));
+  const answer = Promise.withResolvers<boolean>(), f = fixture({ confirm: () => answer.promise });
+  f.owners.get('agent')!.update(state(2, { dirty: true }));
   const pending = f.navigation.selectPage('general');
   f.navigation.receive(context({ settingsSlot: 'agent', settingsVersion: 2 }));
   answer.resolve(true); assert.equal(await pending, false);
@@ -179,23 +184,23 @@ test('newer same-slot native intent supersedes a pending General transition sync
 });
 
 test('confirmation and busy notices remain immutable descriptors that can render in all four locales', async () => {
-  const answer = Promise.withResolvers(), f = fixture({ confirm: () => answer.promise });
-  f.owners.get('agent').update(state(2, { dirty: true }));
+  const answer = Promise.withResolvers<boolean>(), f = fixture({ confirm: () => answer.promise });
+  f.owners.get('agent')!.update(state(2, { dirty: true }));
   const pending = f.navigation.selectPage('general'), descriptor = f.confirmations[0];
   const version = f.navigation.version, captured = f.registry.capture();
   assert.deepEqual(descriptor, { key: 'shell.changeConnectionConfirm' }); assert.equal(Object.isFrozen(descriptor), true);
   for (const locale of LOCALES) assert.equal(renderMessage(locale, descriptor), translate(locale, 'shell.changeConnectionConfirm'));
   assert.equal(f.navigation.version, version); assert.deepEqual(f.registry.capture(), captured);
   answer.resolve(true); assert.equal(await pending, true, 'Language rendering is not a new navigation or form edit');
-  f.owners.get('agent').update(state(3, { busy: true })); assert.equal(await f.navigation.select('custom'), false);
+  f.owners.get('agent')!.update(state(3, { busy: true })); assert.equal(await f.navigation.select('custom'), false);
   const notice = f.navigation.notice; assert.equal(Object.isFrozen(notice), true);
   for (const locale of LOCALES) assert.equal(renderMessage(locale, notice), translate(locale, 'shell.settingsBusy'));
   assert.equal(f.navigation.notice, notice); assert.equal(f.navigation.page, 'general');
 });
 
 test('disposal denies page, slot and native navigation and revokes pending consent even after reactivation', async () => {
-  const answer = Promise.withResolvers(), f = fixture({ confirm: () => answer.promise });
-  f.owners.get('agent').update(state(2, { dirty: true }));
+  const answer = Promise.withResolvers<boolean>(), f = fixture({ confirm: () => answer.promise });
+  f.owners.get('agent')!.update(state(2, { dirty: true }));
   const captured = f.registry.capture(), pending = f.navigation.selectPage('general'); f.navigation.dispose();
   assert.equal(await f.navigation.selectPage('general'), false); assert.equal(await f.navigation.select('custom'), false);
   f.navigation.receive(context({ settingsSlot: 'official', settingsVersion: 2 }));
@@ -205,8 +210,8 @@ test('disposal denies page, slot and native navigation and revokes pending conse
 });
 
 test('live same-version quitting updates deny both page navigation and pending confirmation', async () => {
-  const answer = Promise.withResolvers(), f = fixture({ confirm: () => answer.promise });
-  f.owners.get('agent').update(state(2, { dirty: true }));
+  const answer = Promise.withResolvers<boolean>(), f = fixture({ confirm: () => answer.promise });
+  f.owners.get('agent')!.update(state(2, { dirty: true }));
   const pending = f.navigation.selectPage('general'); f.navigation.receive(context({ quitting: true }));
   answer.resolve(true); assert.equal(await pending, false);
   assert.equal(await f.navigation.selectPage('general'), false); assert.equal(await f.navigation.select('custom'), false);
@@ -214,10 +219,10 @@ test('live same-version quitting updates deny both page navigation and pending c
   assert.equal(f.confirmations.length, 1);
 });
 
-function webFixture(confirm = async () => true) {
-  const registry = createSettingsNavigationRegistry(), owner = registry.register('home:agent'), confirmations = [];
+function webFixture(confirm: (value: unknown) => Promise<unknown> = async () => true) {
+  const registry = createSettingsNavigationRegistry(), owner = registry.register('home:agent'), confirmations: unknown[] = [];
   owner.update(state(1));
-  const navigation = createWebSettingsNavigation({ registry, confirm: descriptor => { confirmations.push(descriptor); return confirm(descriptor); } });
+  const navigation = createWebSettingsNavigation({ registry, confirm: descriptor => { confirmations.push(descriptor); return confirm(descriptor) as Promise<boolean>; } });
   return { registry, owner, navigation, confirmations };
 }
 
@@ -225,23 +230,23 @@ test('web center opens General by default and close/reopen preserves selected sl
   const f = webFixture(), captured = f.registry.capture();
   assert.equal(f.navigation.opened, false); assert.equal(f.navigation.page, 'general'); assert.equal(f.navigation.selected, 'agent');
   assert.equal(await f.navigation.selectPage('custom'), false, 'A hidden UI cannot activate stale page handlers');
-  assert.equal(await f.navigation.open(), true); assert.equal(f.navigation.opened, true); assert.equal(f.navigation.page, 'general');
+  assert.equal(await (f.navigation.open as unknown as (slot?: string)=>Promise<boolean>)(), true); assert.equal(f.navigation.opened, true); assert.equal(f.navigation.page, 'general');
   assert.equal(await f.navigation.selectPage('custom'), true); assert.equal(f.navigation.selected, 'custom');
   assert.equal(await f.navigation.close(), true); assert.equal(f.navigation.opened, false); assert.equal(f.navigation.page, 'custom');
-  assert.equal(await f.navigation.open('custom'), true); assert.equal(f.navigation.opened, true); assert.equal(f.navigation.page, 'custom');
+  assert.equal(await (f.navigation.open as unknown as (slot?: string)=>Promise<boolean>)('custom'), true); assert.equal(f.navigation.opened, true); assert.equal(f.navigation.page, 'custom');
   assert.equal(await f.navigation.selectPage('general'), true); assert.equal(f.navigation.selected, 'custom');
   assert.deepEqual(f.registry.capture(), captured); assert.equal(f.confirmations.length, 0);
 });
 
 test('web dirty close cancellation leaves the page open and accepted close keeps dirty owners for reopening', async () => {
   for (const accepted of [false, true]) {
-    const f = webFixture(async () => accepted); await f.navigation.open('official');
+    const f = webFixture(async () => accepted); await (f.navigation.open as unknown as (slot?: string)=>Promise<boolean>)('official');
     f.owner.update(state(2, { dirty: true })); const captured = f.registry.capture();
     assert.equal(await f.navigation.close(), accepted); assert.equal(f.navigation.opened, !accepted);
     assert.equal(f.navigation.page, 'official'); assert.equal(f.navigation.selected, 'official');
     assert.deepEqual(f.registry.capture(), captured); assert.equal(f.confirmations.length, 1);
     if (accepted) {
-      assert.equal(await f.navigation.open('official'), true); assert.equal(f.navigation.opened, true);
+      assert.equal(await (f.navigation.open as unknown as (slot?: string)=>Promise<boolean>)('official'), true); assert.equal(f.navigation.opened, true);
       assert.deepEqual(f.registry.capture(), captured); assert.equal(f.registry.needsConfirmation(captured), true);
     }
   }
@@ -249,7 +254,7 @@ test('web dirty close cancellation leaves the page open and accepted close keeps
 
 test('web async close cannot use permission from a previous edit, owner or busy state', async () => {
   for (const transition of ['edit', 'replacement', 'busy']) {
-    const answer = Promise.withResolvers(), f = webFixture(() => answer.promise); await f.navigation.open('custom');
+    const answer = Promise.withResolvers<boolean>(), f = webFixture(() => answer.promise); await (f.navigation.open as unknown as (slot?: string)=>Promise<boolean>)('custom');
     f.owner.update(state(2, { dirty: true })); const pending = f.navigation.close();
     if (transition === 'replacement') f.registry.register('home:agent').update(state(1, { dirty: true }));
     else f.owner.update(state(3, { dirty: true, busy: transition === 'busy' }));
@@ -260,28 +265,28 @@ test('web async close cannot use permission from a previous edit, owner or busy 
 });
 
 test('web newer same-page open supersedes pending close without discarding or recreating owners', async () => {
-  const answer = Promise.withResolvers(), f = webFixture(() => answer.promise); await f.navigation.open('agent');
+  const answer = Promise.withResolvers<boolean>(), f = webFixture(() => answer.promise); await (f.navigation.open as unknown as (slot?: string)=>Promise<boolean>)('agent');
   f.owner.update(state(2, { dirty: true })); const captured = f.registry.capture(), pending = f.navigation.close();
-  assert.equal(await f.navigation.open('agent'), true); answer.resolve(true);
+  assert.equal(await (f.navigation.open as unknown as (slot?: string)=>Promise<boolean>)('agent'), true); answer.resolve(true);
   assert.equal(await pending, false); assert.equal(f.navigation.opened, true); assert.equal(f.navigation.page, 'agent');
   assert.deepEqual(f.registry.capture(), captured); assert.equal(f.confirmations.length, 1);
 });
 
 test('web newer close wins over older pending page selection even when the older confirmation resolves last', async () => {
-  const answers = [], f = webFixture(() => { const answer = Promise.withResolvers(); answers.push(answer); return answer.promise; });
-  await f.navigation.open('agent'); f.owner.update(state(2, { dirty: true }));
+  const answers: {promise: Promise<boolean>; resolve(value: boolean): void}[] = [], f = webFixture(() => { const answer = Promise.withResolvers<boolean>(); answers.push(answer); return answer.promise; });
+  await (f.navigation.open as unknown as (slot?: string)=>Promise<boolean>)('agent'); f.owner.update(state(2, { dirty: true }));
   const page = f.navigation.selectPage('general'), close = f.navigation.close();
-  assert.equal(answers.length, 2); answers[1].resolve(true); assert.equal(await close, true);
-  answers[0].resolve(true); assert.equal(await page, false);
+  assert.equal(answers.length, 2); answers[1]!.resolve(true); assert.equal(await close, true);
+  answers[0]!.resolve(true); assert.equal(await page, false);
   assert.equal(f.navigation.opened, false); assert.equal(f.navigation.page, 'agent'); assert.equal(f.navigation.selected, 'agent');
 });
 
 test('web busy or blocked owners deny closing, category changes and reopening before any confirmation', async () => {
   for (const opened of [false, true]) for (const flag of ['busy', 'blocked']) {
     const f = webFixture(() => assert.fail('Unsafe forms cannot be offered a discard prompt'));
-    if (opened) await f.navigation.open('agent');
+    if (opened) await (f.navigation.open as unknown as (slot?: string)=>Promise<boolean>)('agent');
     f.owner.update(state(2, { dirty: true, [flag]: true })); const captured = f.registry.capture();
-    assert.equal(await (opened ? f.navigation.close() : f.navigation.open('custom')), false);
+    assert.equal(await (opened ? f.navigation.close() : (f.navigation.open as unknown as (slot?: string)=>Promise<boolean>)('custom')), false);
     assert.equal(await f.navigation.selectPage('general'), false); assert.equal(f.navigation.opened, opened);
     assert.equal(f.navigation.page, opened ? 'agent' : 'general'); assert.deepEqual(f.registry.capture(), captured);
     assert.deepEqual(f.navigation.notice, { key: 'shell.settingsBusy' }); assert.equal(f.confirmations.length, 0);
@@ -289,9 +294,9 @@ test('web busy or blocked owners deny closing, category changes and reopening be
 });
 
 test('web disposal revokes pending close and denies stale open or page actions after teardown', async () => {
-  const answer = Promise.withResolvers(), f = webFixture(() => answer.promise); await f.navigation.open('custom');
+  const answer = Promise.withResolvers<boolean>(), f = webFixture(() => answer.promise); await (f.navigation.open as unknown as (slot?: string)=>Promise<boolean>)('custom');
   f.owner.update(state(2, { dirty: true })); const pending = f.navigation.close(); f.navigation.dispose();
-  assert.equal(await f.navigation.open(), false); assert.equal(await f.navigation.selectPage('general'), false);
+  assert.equal(await (f.navigation.open as unknown as (slot?: string)=>Promise<boolean>)(), false); assert.equal(await f.navigation.selectPage('general'), false);
   f.navigation.activate(); answer.resolve(true); assert.equal(await pending, false);
   assert.equal(f.navigation.opened, true); assert.equal(f.navigation.page, 'custom'); assert.equal(f.navigation.selected, 'custom');
 });

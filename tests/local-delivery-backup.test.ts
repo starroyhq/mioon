@@ -17,40 +17,40 @@ import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import {restoreFixture,tree,logical} from './helpers/workspace-restore-offline-fixture.ts';
 
-const authority=value=>({workspaceScope:value.workspaceScope,instanceId:value.instanceId,projectId:value.projectId});
-const action=value=>({...authority(value),intentId:value.intent.intentId,expectedIntentRevision:value.intentRevision});
-function deliveryFor(store,services){
+const authority=(value: {workspaceScope: string; instanceId: string; projectId: string})=>({workspaceScope:value.workspaceScope,instanceId:value.instanceId,projectId:value.projectId});
+const action=(value: {workspaceScope: string; instanceId: string; projectId: string; intent: {intentId: string}; intentRevision: number})=>({...authority(value),intentId:value.intent.intentId,expectedIntentRevision:value.intentRevision});
+function deliveryFor(store: ReturnType<typeof openStore>, services: ReturnType<typeof createServices>) {
  const calls={storage:0,ownsLock:0,readTimeline:0,readReceipt:0,render:0};
- const storage=Object.fromEntries(Object.entries({readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile}).map(([name,fn])=>[name,(...args)=>{calls.storage++;return fn(...args);}])) ;
+ const storage=Object.fromEntries(Object.entries({readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile}).map(([name,fn])=>[name,(...args: unknown[])=>{calls.storage++;return (fn as unknown as (...values: unknown[])=>unknown)(...args);}])) as never;
  const delivery=createLocalDelivery({root:store.root,storage,guards:{
   isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),ownsLock:()=>{calls.ownsLock++;return ownsStoreLock(store);},
-  readTimeline:projectId=>{calls.readTimeline++;return createTimelineRecoveryBoundary(store.db,{projectId}).read({sourceSemantics:false});},
-  isRenderInput:value=>schemas['timeline.render'].safeParse(value).success,
-  isRenderResponse:(input,value)=>isTimelineMutationResponse('timeline.render',input,value),
-  isNotApplied:(input,error)=>hasRequestNotAppliedProof(error,input,{operation:'timeline.render'}),
-  readReceipt:input=>{calls.readReceipt++;const saved=readTimelineReceipt(store.db,input,'timeline.render');if(!saved)return null;
-   assert.equal(saved.requestHash,hash({operation:'timeline.render',input}));return publicValue(createTimelineRecoveryBoundary(store.db,input).replay('timeline.render',saved.response));},
-  render:input=>{calls.render++;return services.call('timeline.render',input);},
+  readTimeline:(projectId: unknown)=>{calls.readTimeline++;return createTimelineRecoveryBoundary(store.db,{projectId: projectId as string}).read({sourceSemantics:false});},
+  isRenderInput:(value: unknown)=>schemas['timeline.render'].safeParse(value).success,
+  isRenderResponse:(input: unknown,value: unknown)=>isTimelineMutationResponse('timeline.render',input,value),
+  isNotApplied:(input: unknown,error: unknown)=>hasRequestNotAppliedProof(error,input,{operation:'timeline.render'}),
+  readReceipt:(input: unknown)=>{calls.readReceipt++;const saved=readTimelineReceipt(store.db,input as never,'timeline.render');if(!saved)return null;
+   assert.equal(saved.requestHash,hash({operation:'timeline.render',input}));return publicValue(createTimelineRecoveryBoundary(store.db,input as never).replay('timeline.render',saved.response as never));},
+  render:(input: unknown)=>{calls.render++;return services.call('timeline.render',input);},
  }});return {delivery,calls};
 }
 
 test('actual cold backup excludes delivery draft, immutable intent and atomic temp; actual restored profile cannot read or write them',{timeout:30000},async t=>{
  const f=await restoreFixture(t,{stages:false}),source=openStore(f.source),services=createServices(source,new Map());
- let prepared,putInput,prepareInput,project,timeline;
+ let prepared: {intent: {outcome: {status: string}; input: {requestId: string}; intentId: string} | null; draftRevision: number; draft: {draftId: string} | null} | undefined,putInput: Record<string, unknown> | undefined,prepareInput: Record<string, unknown> | undefined,project: {id: string} | undefined,timeline: {id: string; revision: number} | undefined;
  try{
-  project=await services.call('project.create',{name:'Synthetic local-only delivery backup boundary'});
-  timeline=await services.call('timeline.get',{projectId:project.id});
-  const {delivery,calls}=deliveryFor(source,services),empty=delivery.get({projectId:project.id}),before=logical(source.db);
-  putInput={...authority(empty),expectedDraftRevision:0,draftId:randomUUID(),timelineId:timeline.id,baseRevision:timeline.revision,raw:{deliveryName:'EXCLUDED_LOCAL_DELIVERY_TITLE_界_🙂'}};
-  const draft=delivery.put(putInput);
-  prepareInput={...authority(draft),expectedIntentRevision:0,expectedIntentId:null,intentId:randomUUID(),timelineId:timeline.id,baseRevision:timeline.revision,
+  project=await services.call('project.create',{name:'Synthetic local-only delivery backup boundary'}) as {id: string};
+  timeline=await services.call('timeline.get',{projectId:project.id}) as {id: string; revision: number};
+  const {delivery,calls}=deliveryFor(source,services),empty=delivery.get({projectId:project.id}) as {workspaceScope: string; instanceId: string; projectId: string},before=logical(source.db);
+  putInput={...authority(empty),expectedDraftRevision:0,draftId:randomUUID(),timelineId:timeline!.id,baseRevision:timeline!.revision,raw:{deliveryName:'EXCLUDED_LOCAL_DELIVERY_TITLE_界_🙂'}};
+  const draft=delivery.put(putInput!) as {workspaceScope: string; instanceId: string; projectId: string; draftRevision: number; draft: {draftId: string; raw: {deliveryName: string}}};
+  prepareInput={...authority(draft),expectedIntentRevision:0,expectedIntentId:null,intentId:randomUUID(),timelineId:timeline!.id,baseRevision:timeline!.revision,
    draft:{draftId:draft.draft.draftId,revision:draft.draftRevision,raw:draft.draft.raw},
-   input:{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',deliveryName:draft.draft.raw.deliveryName}};
-  prepared=delivery.prepare(prepareInput);assert.equal(prepared.intent.outcome.status,'pending');assert.equal(calls.render,0);
+   input:{projectId:project!.id,expectedRevision:timeline!.revision,requestId:randomUUID(),purpose:'export',deliveryName:draft.draft.raw.deliveryName}};
+  prepared=delivery.prepare(prepareInput!) as {intent: {outcome: {status: string}; input: {requestId: string}; intentId: string}; draftRevision: number; draft: {draftId: string}};assert.equal(prepared!.intent!.outcome.status,'pending');assert.equal(calls.render,0);
   assert.deepEqual(logical(source.db),before,'Draft and preparation must not modify any business SQL record');
  }finally{await services.drain();source.close();}
  const sidecar=path.join(f.source,LOCAL_DELIVERY_FILENAME),bytes=fs.readFileSync(sidecar);
- assert.equal(JSON.parse(bytes).entries[0].intent.input.requestId,prepared.intent.input.requestId);
+ assert.equal(JSON.parse(bytes.toString()).entries[0].intent.input.requestId,prepared!.intent!.input.requestId);
  assert.equal(fs.statSync(sidecar).mode&0o777,0o600);
  // Exact atomic companion spelling, containing only this fixture's own data.
  const temporary=`.${LOCAL_DELIVERY_FILENAME}.${randomBytes(16).toString('hex')}.tmp`;
@@ -59,9 +59,9 @@ test('actual cold backup excludes delivery draft, immutable intent and atomic te
  const created=await createWorkspaceBackup({source:f.source,destination:backup});
  assert.equal(created.integrity,'verified');assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),created);
  const manifest=JSON.parse(fs.readFileSync(path.join(backup,'manifest.json'),'utf8'));
- assert.ok(manifest.entries.some(entry=>entry.path==='payload/workbench.sqlite'));
- assert.equal(manifest.entries.some(entry=>entry.path.includes('local-delivery')),false);
- assert.equal(tree(backup).some(([relative])=>relative.includes('local-delivery')),false);
+ assert.ok(manifest.entries.some((entry: {path: string})=>entry.path==='payload/workbench.sqlite'));
+ assert.equal(manifest.entries.some((entry: {path: string})=>entry.path.includes('local-delivery')),false);
+ assert.equal(tree(backup).some(([relative]: [string, ...unknown[]])=>relative.includes('local-delivery')),false);
  assert.deepEqual(fs.readFileSync(path.join(backup,'payload/workbench.sqlite')),fs.readFileSync(path.join(f.source,'workbench.sqlite')));
  assert.deepEqual(tree(f.source),sourceBefore,'Backup and verify must preserve all source bytes and modes, including excluded files');
  assert.deepEqual(tree(f.backup),originalBackupBefore);
@@ -71,16 +71,16 @@ test('actual cold backup excludes delivery draft, immutable intent and atomic te
  assert.deepEqual(tree(f.source),sourceBefore);assert.deepEqual(tree(backup),backupBefore);
  const restoredStore=openStore(f.destination),restoredServices=createServices(restoredStore,new Map());
  try{
-  assert.equal(getWorkspaceRestoreContext(restoredStore).workspaceOrigin,restored.workspaceOrigin);
+  assert.equal(getWorkspaceRestoreContext(restoredStore)!.workspaceOrigin,restored.workspaceOrigin);
   const {delivery,calls}=deliveryFor(restoredStore,restoredServices),before=logical(restoredStore.db),destinationBefore=tree(f.destination);
   const unsupported={supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'};
-  assert.deepEqual(delivery.get({projectId:project.id}),unsupported);
+  assert.deepEqual(delivery.get({projectId:project!.id}),unsupported);
   // A restored companion is explicitly unsupported, not silently re-created or
   // dispatched. Retained ordinary-workspace authority cannot enable a write.
-  assert.deepEqual(delivery.put(putInput),unsupported);
-  assert.deepEqual(delivery.discard({...authority(prepared),expectedDraftRevision:prepared.draftRevision,draftId:prepared.draft.draftId}),unsupported);
-  assert.deepEqual(delivery.prepare(prepareInput),unsupported);
-  for(const method of ['execute','recover'])assert.deepEqual(await delivery[method](action(prepared)),{envelope:unsupported,response:null});
+  assert.deepEqual(delivery.put(putInput!),unsupported);
+  assert.deepEqual(delivery.discard({...authority(prepared as never),expectedDraftRevision:prepared!.draftRevision,draftId:prepared!.draft!.draftId}),unsupported);
+  assert.deepEqual(delivery.prepare(prepareInput!),unsupported);
+  for(const method of ['execute','recover'])assert.deepEqual(await (delivery as unknown as Record<string, (value: unknown)=>Promise<unknown>>)[method](action(prepared as never)),{envelope:unsupported,response:null});
   assert.deepEqual(calls,{storage:0,ownsLock:0,readTimeline:0,readReceipt:0,render:0});
   assert.deepEqual(logical(restoredStore.db),before);assert.deepEqual(tree(f.destination),destinationBefore);
   assert.equal(fs.existsSync(path.join(f.destination,LOCAL_DELIVERY_FILENAME)),false);

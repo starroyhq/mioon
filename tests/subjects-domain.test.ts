@@ -8,28 +8,41 @@ import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {migrateSubjectSchema} from '../packages/business/src/subject-schema.ts';
 import {schemas,LOCAL_MUTATION_OPERATIONS,isSubjectMutationResponse,isSubjectListResponse} from '@mioon/contracts';
+import {type TestContext} from 'node:test';
+import {errorView} from './helpers/test-error.ts';
+interface SubjectRecord {id: string; projectId: string; revision: number; kind: string; headVersionId: string; name: string; needsReview?: boolean;
+  subjectVersionId?: string | null; reviewedHeadVersionId?: string | null; items: SubjectRecord[]; nextCursor?: string | null;
+  headVersion: {assetId: string; provenance: Record<string, unknown>; id?: string; number?: number; [key: string]: unknown};
+  [key: string]: unknown}
+interface SubjectFixture {root: string; store: ReturnType<typeof openStore>; project: SubjectRecord; other: SubjectRecord;
+  call<T = SubjectRecord>(operation: string, input: unknown): Promise<T>;
+  restart(): void;
+  asset(projectId?: string, patch?: Record<string, unknown>): Record<string, unknown> & {id: string; projectId: string};
+  create(asset: Record<string, unknown>, patch?: Record<string, unknown>): Record<string, unknown> & {requestId: string; projectId: string; assetId: string};
+  add(subject: SubjectRecord, asset: {id: string}, patch?: Record<string, unknown>): Record<string, unknown> & {requestId: string};
+  bind(subject: SubjectRecord, shot: SubjectRecord, patch?: Record<string, unknown>): Record<string, unknown> & {requestId: string}}
 
-async function fixture(t){
- const root=await mkdtemp(path.join(tmpdir(),'mioon-subjects-'));let store,services;
- const start=()=>{store=openStore(root);store.tx(()=>migrateSubjectSchema(store.db));services=createServices(store,new Map());};start();
- const f={root,get store(){return store;},call:(op,input)=>services.call(op,input),restart(){store.close();start();},
-  asset(projectId=f.project.id,patch={}){return store.put('assets',{id:randomUUID(),projectId,name:'Owned reference',mimeType:'image/png',sha256:'a'.repeat(64),width:640,height:480,relativePath:'media/fixture',provenance:'user-import',...patch});},
-  create(asset,patch={}){return {projectId:asset.projectId,kind:'character',name:'Subject',assetId:asset.id,requestId:randomUUID(),...patch};},
-  add(subject,asset,patch={}){return {projectId:subject.projectId,subjectId:subject.id,expectedRevision:subject.revision,assetId:asset.id,requestId:randomUUID(),...patch};},
-  bind(subject,shot,patch={}){return {projectId:subject.projectId,subjectId:subject.id,shotId:shot.id,role:subject.kind==='look'?'style':'subject',subjectVersionId:subject.headVersionId,expectedRevision:0,expectedSubjectRevision:subject.revision,requestId:randomUUID(),...patch};},
+async function fixture(t: TestContext): Promise<SubjectFixture> {
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-subjects-'));let store: ReturnType<typeof openStore> | undefined,services: ReturnType<typeof createServices> | undefined;
+ const start=()=>{const opened=openStore(root);store=opened;opened.tx(()=>migrateSubjectSchema(opened.db));services=createServices(opened,new Map());};start();
+ const f: SubjectFixture = {project: undefined as unknown as SubjectRecord, other: undefined as unknown as SubjectRecord, root,get store(){return store!;},call:<T = SubjectRecord>(op: string,input: unknown)=>services!.call(op,input) as Promise<T>,restart(){store!.close();start();},
+  asset(projectId?: string,patch: Record<string, unknown>={}){return store!.put('assets',{id:randomUUID(),projectId:projectId ?? f.project.id,name:'Owned reference',mimeType:'image/png',sha256:'a'.repeat(64),width:640,height:480,relativePath:'media/fixture',provenance:'user-import',...patch});},
+  create(asset: Record<string, unknown>,patch: Record<string, unknown>={}){return {projectId:String(asset.projectId),kind:'character',name:'Subject',assetId:String(asset.id),requestId:randomUUID(),...patch};},
+  add(subject: SubjectRecord,asset: {id: string},patch: Record<string, unknown>={}){return {projectId:subject.projectId,subjectId:subject.id,expectedRevision:subject.revision,assetId:asset.id,requestId:randomUUID(),...patch};},
+  bind(subject: SubjectRecord,shot: SubjectRecord,patch: Record<string, unknown>={}){return {projectId:subject.projectId,subjectId:subject.id,shotId:shot.id,role:subject.kind==='look'?'style':'subject',subjectVersionId:subject.headVersionId,expectedRevision:0,expectedSubjectRevision:subject.revision,requestId:randomUUID(),...patch};},
  };
- f.project=await f.call('project.create',{name:'Subject domain'});f.other=await f.call('project.create',{name:'Foreign private project'});
- t.after(async()=>{store.close();await rm(root,{recursive:true,force:true});});return f;
+ f.project=await f.call<SubjectRecord>('project.create',{name:'Subject domain'});f.other=await f.call<SubjectRecord>('project.create',{name:'Foreign private project'});
+ t.after(async()=>{store!.close();await rm(root,{recursive:true,force:true});});return f;
 }
-const snapshot=(f,omit=[])=>Object.fromEntries(f.store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().filter(({name})=>!omit.includes(name)).map(({name})=>{const s=f.store.db.prepare(`SELECT * FROM ${name} ORDER BY rowid`);s.setReadBigInts(true);return [name,s.all()];}));
-const count=(f,table)=>f.store.db.prepare(`SELECT count(*) AS n FROM ${table}`).get().n;
-const missing=e=>e.code==='NOT_FOUND'&&e.status===404&&Object.keys(e.details).length===0;
-const subjectTables=['subjects','subject_versions','subject_bindings','subject_requests'];
+const snapshot=(f: SubjectFixture,omit: string[]=[])=>Object.fromEntries((f.store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as unknown as {name: string}[]).filter(({name})=>!omit.includes(name)).map(({name})=>{const s=f.store.db.prepare(`SELECT * FROM ${name} ORDER BY rowid`);s.setReadBigInts(true);return [name,s.all()];}));
+const count=(f: SubjectFixture,table: string)=>(f.store.db.prepare(`SELECT count(*) AS n FROM ${table}`).get() as {n: number}).n;
+const missing=(e: unknown)=>{const failure=e as {code?: string; status?: number; details?: Record<string, unknown>}; return failure.code==='NOT_FOUND'&&failure.status===404&&Object.keys(failure.details ?? {}).length===0;};
+const subjectTables: string[]=['subjects','subject_versions','subject_bindings','subject_requests'];
 
 test('strict schemas, twelve local operations, mandatory keys and bounded noncreating reads',async t=>{
  const f=await fixture(t),before=snapshot(f),projectId=f.project.id;
  assert.deepEqual([...LOCAL_MUTATION_OPERATIONS],['shot.create','shot.update','shot.reorder','node.create','node.update','version.select','asset.range.set','asset.disposition.set','asset.annotation.set','subject.create','subject.version.add','subject.binding.set']);
- for(const op of ['subject.create','subject.version.add','subject.binding.set'])assert.equal(schemas[op].safeParse({projectId}).success,false);
+ for(const op of ['subject.create','subject.version.add','subject.binding.set'])assert.equal((schemas as unknown as Record<string, {safeParse(value: unknown): {success: boolean}}>)[op].safeParse({projectId}).success,false);
  const result=await f.call('subject.list',{projectId});assert.deepEqual(result,{projectId,items:[],nextCursor:null});
  assert.equal(isSubjectListResponse('subject.list',{projectId},result),true);assert.deepEqual(snapshot(f),before);
  for(const input of [{projectId},{projectId,shotId:randomUUID(),subjectId:randomUUID()},{projectId,shotId:randomUUID(),limit:51}])await assert.rejects(f.call('subject.binding.list',input),{code:'VALIDATION_ERROR'});
@@ -47,7 +60,7 @@ test('frozen heads, independent binding revisions, review old selection and tomb
  const listed=await f.call('subject.binding.list',{projectId:f.project.id,subjectId:s1.id});assert.equal(listed.items.length,2);assert.ok(listed.items.every(i=>i.needsReview&&i.subjectVersionId===s1.headVersionId&&i.revision===1));
  const ackInput=f.bind(s2,shot1,{subjectVersionId:s1.headVersionId,expectedRevision:1}),ack=await f.call('subject.binding.set',ackInput);assert.equal(ack.needsReview,false);assert.equal(ack.subjectVersionId,s1.headVersionId);assert.equal(ack.reviewedHeadVersionId,s2.headVersionId);
  const detached=await f.call('subject.binding.set',f.bind(s2,shot1,{subjectVersionId:null,expectedRevision:2}));assert.equal(detached.revision,3);assert.equal(detached.id,binding1.id);
- const retained=(await f.call('subject.binding.list',{projectId:f.project.id,shotId:shot1.id})).items[0];assert.equal(retained.subjectVersionId,null);assert.equal(retained.revision,3);
+ const retained=(await f.call('subject.binding.list',{projectId:f.project.id,shotId:shot1.id})).items[0]!;assert.equal(retained.subjectVersionId,null);assert.equal(retained.revision,3);
  const restored=await f.call('subject.binding.set',f.bind(s2,shot1,{subjectVersionId:s1.headVersionId,expectedRevision:3}));assert.equal(restored.revision,4);assert.equal(restored.id,binding1.id);
  assert.deepEqual(snapshot(f,subjectTables),before);assert.deepEqual(await readFile(path.join(f.root,'media/fixture')),bytes);
  assert.equal(JSON.stringify(s2).includes('media/'),false);assert.equal(JSON.stringify(s2).includes('url'),false);
@@ -57,9 +70,9 @@ test('frozen heads, independent binding revisions, review old selection and tomb
 test('exact replay precedes fresh revisions, survives restart and never refreshes historic head fields',async t=>{
  const f=await fixture(t),a=f.asset(),b=f.asset(),c=f.asset(),shot=await f.call('shot.create',{projectId:f.project.id,title:'Pinned'}),create=f.create(a),s1=await f.call('subject.create',create),bind=f.bind(s1,shot),binding=await f.call('subject.binding.set',bind),add=f.add(s1,b),s2=await f.call('subject.version.add',add);
  await f.call('subject.version.add',f.add(s2,c));f.restart();const before=snapshot(f);
- for(const [op,input,response] of [['subject.create',create,s1],['subject.version.add',add,s2],['subject.binding.set',bind,binding]])assert.deepEqual(await f.call(op,input),response);
+ for(const [op,input,response] of [['subject.create',create,s1],['subject.version.add',add,s2],['subject.binding.set',bind,binding]])assert.deepEqual(await f.call(String(op),input),response);
  assert.deepEqual(snapshot(f),before);
- await assert.rejects(f.call('subject.version.add',{...add,requestId:randomUUID()}),e=>e.code==='REVISION_CONFLICT'&&e.details.operation==='subject.version.add'&&e.details.projectId===f.project.id&&e.details.mutationOutcome==='not_applied');
+ await assert.rejects(f.call('subject.version.add',{...add,requestId:randomUUID()}),(error: unknown)=>{const failure=errorView(error);const details=failure.details as {operation?: string; projectId?: string; mutationOutcome?: string};return failure.code==='REVISION_CONFLICT'&&details.operation==='subject.version.add'&&details.projectId===f.project.id&&details.mutationOutcome==='not_applied';});
  await assert.rejects(f.call('subject.create',{...create,name:'Changed'}),{code:'IDEMPOTENCY_CONFLICT'});
  await assert.rejects(f.call('subject.binding.set',{...bind,subjectVersionId:null}),{code:'IDEMPOTENCY_CONFLICT'});
 });
@@ -83,7 +96,7 @@ test('role gates, binding ceiling and absent unlink tombstones do not alter shot
  await assert.rejects(f.call('subject.binding.set',f.bind(subjects[8],shot,{role:'subject'})),{code:'SUBJECT_ROLE_MISMATCH'});
  await f.call('subject.binding.set',f.bind(subjects[0],shot,{subjectVersionId:null,expectedRevision:1}));await f.call('subject.binding.set',f.bind(subjects[8],shot));
  const otherShot=await f.call('shot.create',{projectId:f.project.id,title:'No prior binding'}),tombstone=await f.call('subject.binding.set',f.bind(subjects[0],otherShot,{subjectVersionId:null}));assert.equal(tombstone.revision,1);assert.equal(tombstone.needsReview,false);
- assert.equal(f.store.get('shots',shot.id).revision,shot.revision);assert.equal(count(f,'timelines'),0);
+ assert.equal((f.store.get('shots',shot.id) as {revision: number}).revision,shot.revision);assert.equal(count(f,'timelines'),0);
 });
 
 test('foreign and corrupt ownership fail closed before receipt or revision, including later replay',async t=>{
@@ -111,7 +124,7 @@ test('shared namespace collisions are reciprocal, immutable history resists dele
  await assert.rejects(f.call('subject.create',input),/receipt failure/);assert.deepEqual(snapshot(f),before);f.store.db.exec('DROP TRIGGER injected_subject_failure');
  const subject=await f.call('subject.create',input);
  await assert.rejects(f.call('shot.create',{projectId:f.project.id,title:'collision',requestId:input.requestId}),{code:'IDEMPOTENCY_CONFLICT'});
- const shot=await f.call('shot.create',{projectId:f.project.id,title:'Existing key',requestId:randomUUID()});const existing=f.store.db.prepare('SELECT requestId FROM mutation_requests').get();await assert.rejects(f.call('subject.create',{...f.create(a),requestId:existing.requestId}),{code:'IDEMPOTENCY_CONFLICT'});
+ const shot=await f.call('shot.create',{projectId:f.project.id,title:'Existing key',requestId:randomUUID()});const existing=f.store.db.prepare('SELECT requestId FROM mutation_requests').get() as {requestId: string};await assert.rejects(f.call('subject.create',{...f.create(a),requestId:existing!.requestId}),{code:'IDEMPOTENCY_CONFLICT'});
  for(const table of ['subject_versions','subject_requests']){
   assert.throws(()=>f.store.db.exec(`DELETE FROM ${table}`),/must be retained/);
   assert.throws(()=>f.store.db.exec(`UPDATE ${table} SET ${table==='subject_versions'?'data=data':'response=response'}`),/immutable/);
@@ -121,13 +134,13 @@ test('shared namespace collisions are reciprocal, immutable history resists dele
 });
 
 test('corrupt retained responses, oversized rows and post-write owner changes fail closed without leaking or partial writes',async t=>{
- const f=await fixture(t),asset=f.asset(),input=f.create(asset),subject=await f.call('subject.create',input),row=f.store.db.prepare('SELECT response FROM subject_requests WHERE requestId=?').get(input.requestId);
+ const f=await fixture(t),asset=f.asset(),input=f.create(asset),subject=await f.call('subject.create',input),row=f.store.db.prepare('SELECT response FROM subject_requests WHERE requestId=?').get(input.requestId) as {response: string};
  f.store.db.exec('DROP TRIGGER immutable_subject_requests; PRAGMA ignore_check_constraints=ON');
  for(const response of ['{private secret',JSON.stringify({...subject,extra:'private secret'}),JSON.stringify({...subject,headVersion:{...subject.headVersion,sha256:'b'.repeat(64)}}),JSON.stringify({...subject,padding:'x'.repeat(16384)})]){
   f.store.db.prepare('UPDATE subject_requests SET response=? WHERE requestId=?').run(response,input.requestId);const before=snapshot(f);
-  await assert.rejects(f.call('subject.create',input),error=>error.code==='INVALID_SUBJECT_RECORD'&&!error.details.mutationOutcome&&!JSON.stringify(error.details).includes('private secret'));assert.deepEqual(snapshot(f),before);
+  await assert.rejects(f.call('subject.create',input),(error: unknown)=>{const failure=errorView(error);return failure.code==='INVALID_SUBJECT_RECORD'&&!(failure.details as {mutationOutcome?: unknown}).mutationOutcome&&!JSON.stringify(failure.details).includes('private secret');});assert.deepEqual(snapshot(f),before);
  }
- f.store.db.prepare('UPDATE subject_requests SET response=? WHERE requestId=?').run(row.response,input.requestId);
+ f.store.db.prepare('UPDATE subject_requests SET response=? WHERE requestId=?').run(row!.response,input.requestId);
  f.store.db.prepare('UPDATE assets SET data=? WHERE id=?').run(JSON.stringify({...asset,padding:'x'.repeat(16384)}),asset.id);await assert.rejects(f.call('subject.list',{projectId:f.project.id}),{code:'INVALID_SUBJECT_RECORD'});
  f.store.db.prepare('UPDATE assets SET data=? WHERE id=?').run(JSON.stringify(asset),asset.id);f.store.db.exec('PRAGMA ignore_check_constraints=OFF');
  const next=f.asset(),fresh=f.create(next),before=snapshot(f);

@@ -21,7 +21,7 @@ import {createLocalDrafts} from '../packages/business/src/local-drafts.ts';
 import {createLocalDrafts as createFrozenV1Drafts} from './fixtures/local-drafts-v1-reader.ts';
 import {calculateWorkspaceScope} from '../packages/contracts/src/workspace-scope.ts';
 
-const opacity = (points=[]) => ({profileId:OPACITY_ENVELOPE_PROFILE,points});
+const opacity = (points: unknown[] = []) => ({profileId:OPACITY_ENVELOPE_PROFILE,points});
 function fixture(){
   const key={projectId:randomUUID(),timelineId:randomUUID(),clipId:randomUUID()};
   const authority={workspaceScope:'a'.repeat(64),instanceId:randomUUID()};
@@ -69,10 +69,11 @@ test('candidate value, slot, write and response retain existing v2 shapes withou
   const f=fixture(),raw={...f.raw,opacityEnvelope:opacity([{frame:'1e',opacity:'-.'}])};
   const value={...f.value,raw},slot={...f.slot,draft:value},write={...f.write,raw},response={...f.response,draft:value};
   for(const [schema,input] of [[clipDraftOpacityCandidateValueSchema,value],[clipDraftOpacityCandidateSlotSchema,slot],[clipDraftOpacityCandidateWriteSchema,write],[clipDraftOpacityCandidateEnvelopeSchema,response]]){
-    assert.deepEqual(schema.parse(input),input);
-    assert.equal(schema.safeParse({...input,extra:true}).success,false);
+    const typed=schema as unknown as {parse(value: unknown): unknown; safeParse(value: unknown): {success: boolean}};
+    assert.deepEqual(typed.parse(input),input);
+    assert.equal(typed.safeParse({...input as Record<string, unknown>,extra:true}).success,false);
   }
-  for(const [schema,input] of [[clipDraftValueSchema,value],[clipDraftSlotSchema,slot],[clipDraftWriteSchema,write],[clipDraftEnvelopeSchema,response]])assert.equal(schema.safeParse(input).success,false);
+  for(const [schema,input] of [[clipDraftValueSchema,value],[clipDraftSlotSchema,slot],[clipDraftWriteSchema,write],[clipDraftEnvelopeSchema,response]])assert.equal((schema as unknown as {safeParse(value: unknown): {success: boolean}}).safeParse(input).success,false);
   const unsupported={supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'};
   assert.deepEqual(clipDraftOpacityCandidateEnvelopeSchema.parse(unsupported),unsupported);
   assert.equal(clipDraftOpacityCandidateEnvelopeSchema.safeParse({...unsupported,draft:value}).success,false);
@@ -129,7 +130,7 @@ test('actual v1/v2 services reject v3 reads and opacity writes with in-memory st
   }};
   for(const create of [createFrozenV1Drafts,createLocalDrafts]){
     contents=Buffer.from(JSON.stringify(legacy));
-    const reader=create(options),base=reader.get(f.key);
+    const reader=create(options),base=reader.get(f.key) as unknown as {instanceId: string; revision: number};
     const write={...f.write,workspaceScope,instanceId:base.instanceId,expectedRevision:base.revision};
     const deletion={...f.key,workspaceScope,instanceId:base.instanceId,expectedRevision:base.revision};
     const raw={...f.raw,opacityEnvelope:opacity([{frame:'',opacity:'-.'}])};
@@ -149,9 +150,10 @@ test('actual v1/v2 services reject v3 reads and opacity writes with in-memory st
   assert.equal(publications,0);
 });
 
-const serializedBytes = value => Buffer.byteLength(JSON.stringify(value));
-function sizedSlot(slot,size){
-  const copy=structuredClone(slot),delta=size-serializedBytes(copy);
+const serializedBytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
+type SizedSlot = {[key: string]: unknown; draft: {updatedAt: string; raw: {opacityEnvelope: {points: unknown}; [key: string]: unknown}; [key: string]: unknown}};
+function sizedSlot(slot: Record<string, unknown>, size: number): SizedSlot {
+  const copy=structuredClone(slot) as unknown as SizedSlot,delta=size-serializedBytes(copy);
   assert.ok(delta>=0);
   copy.draft.updatedAt='2026-10-16T00:00:00.'+'0'.repeat(3+delta)+'Z';
   assert.equal(serializedBytes(copy),size);
@@ -163,7 +165,7 @@ for(const size of [8191,8192,8193])test(`candidate complete slot admission retai
   const f=fixture(),slot=sizedSlot({...f.slot,draft:{...f.value,raw:{...f.raw,opacityEnvelope:opacity([{frame:'',opacity:'-.'}])}}},size);
   const before=JSON.stringify(slot);
   if(size<=LOCAL_DRAFT_LIMITS.rowBytes){
-    const result=captureClipDraftOpacityCandidateSlot(slot);
+    const result=captureClipDraftOpacityCandidateSlot(slot as never) as unknown as {slot: {draft: {raw: {opacityEnvelope: {points: unknown}}}; [key: string]: unknown}; text: string; bytes: number};
     assert.deepEqual(result.slot,slot);assert.equal(result.text,before);assert.equal(result.bytes,size);
     assert.notEqual(result.slot,slot);assert.notEqual(result.slot.draft,slot.draft);assert.notEqual(result.slot.draft.raw,slot.draft.raw);
     assert.notEqual(result.slot.draft.raw.opacityEnvelope.points,slot.draft.raw.opacityEnvelope.points);
@@ -174,12 +176,12 @@ for(const size of [8191,8192,8193])test(`candidate complete slot admission retai
 test('candidate complete disk capture validates all rows, preserves tombstones and counts the final newline',()=>{
   const f=fixture(),maximum=sizedSlot({...f.slot,draft:{...f.value,raw:{...f.raw,opacityEnvelope:opacity([{frame:'',opacity:'-.'}])}}},8192);
   const entries=Array.from({length:LOCAL_DRAFT_LIMITS.slots},()=>({...structuredClone(maximum),clipId:randomUUID()}));
-  const disk={...f.disk,entries},before=JSON.stringify(disk),result=captureClipDraftOpacityCandidateDiskV3(disk);
+  const disk={...f.disk,entries},before=JSON.stringify(disk),result=captureClipDraftOpacityCandidateDiskV3(disk as never) as unknown as {disk: {entries: {draft: {raw: {opacityEnvelope: {points: unknown}}} | null}[]; [key: string]: unknown}; text: string; bytes: number};
   const maximumBytes=serializedBytes({...disk,entries:[]})+entries.length*LOCAL_DRAFT_LIMITS.rowBytes+entries.length-1+1;
   assert.deepEqual(result.disk,disk);assert.equal(result.text,before+'\n');assert.equal(result.bytes,maximumBytes);
   assert.ok(result.bytes<LOCAL_DRAFT_LIMITS.envelopeBytes,'128 maximum rows and fixed metadata cannot reach the retained 2 MiB disk cap');
   assert.equal(result.bytes,Buffer.byteLength(result.text));assert.notEqual(result.disk.entries,disk.entries);
-  assert.notEqual(result.disk.entries[0].draft.raw.opacityEnvelope,disk.entries[0].draft.raw.opacityEnvelope);
+  assert.notEqual((result.disk.entries[0].draft as {raw: {opacityEnvelope: unknown}} | null)!.raw.opacityEnvelope,(disk.entries[0].draft as {raw: {opacityEnvelope: unknown}} | null)!.raw.opacityEnvelope);
   assert.equal(JSON.stringify(disk),before);
   const tombstone={...f.key,clipId:randomUUID(),revision:2,draft:null},mixed={...f.disk,entries:[maximum,tombstone]};
   assert.deepEqual(captureClipDraftOpacityCandidateDiskV3(mixed).disk,mixed);

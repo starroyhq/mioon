@@ -10,35 +10,46 @@ import {createTimelineRecoveryBoundary} from '../packages/business/src/timeline-
 import {createLocalDrafts,LOCAL_DRAFT_FILENAME} from '../packages/business/src/local-drafts.ts';
 import {LOCAL_DRAFT_LIMITS,clipDraftEnvelopeSchema,clipDraftListSchema} from '@mioon/contracts/local-drafts';
 import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
+import {type TestContext} from 'node:test';
+import {errorView} from './helpers/test-error.ts';
+
+interface DraftKey {projectId: string; timelineId: string; clipId: string}
+interface DraftEnvelope {revision: number; draft: {raw: Record<string, unknown>; [key: string]: unknown} | null; workspaceScope?: string; instanceId?: string; [key: string]: unknown}
+interface DraftsHandle {get(key: DraftKey): DraftEnvelope; put(input: unknown): DraftEnvelope; list(input: unknown): {items: DraftEnvelope[]}; discard(input: unknown): DraftEnvelope}
+interface DraftFixture {root: string; file: string; key: DraftKey; project: {id: string}; asset: Record<string, unknown>; timeline: {id: string; revision: number; tracks: {id: string}[]; clips: {id: string; trackId: string}[]}; clip: {id: string; trackId: string}; raw: Record<string, unknown>; store: ReturnType<typeof openStore>; drafts: DraftsHandle;
+  start(channel?: string, extra?: Record<string, unknown>): DraftsHandle; setFault(fn: (point: string) => void): void;
+  input(response?: DraftEnvelope, patch?: Record<string, unknown>): Record<string, unknown> & {source: Record<string, unknown>};
+  deletion(response: DraftEnvelope): Record<string, unknown>;
+  restart(): void; snapshot(): string}
 
 const storage={readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile};
-const code=value=>error=>error.code===value&&!error.message.includes('PRIVATE');
-async function fixture(t){
-  const root=mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-local-draft-'));let store=openStore(root),service=createServices(store,new Map()),drafts,fault=()=>{};
-  const project=await service.call('project.create',{name:'Local draft'});
+const code=(value: string)=>(error: unknown)=>{const failure=errorView(error);return failure.code===value&&!failure.message!.includes('PRIVATE');};
+async function fixture(t: TestContext): Promise<DraftFixture> {
+  const root=mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-local-draft-'));let store=openStore(root),service=createServices(store,new Map()),drafts: DraftsHandle | undefined,fault: (point: string)=>void=()=>{};
+  const project=await service.call('project.create',{name:'Local draft'}) as {id: string};
   const assetId=randomUUID();const asset=store.put('assets',{id:assetId,projectId:project.id,name:'Synthetic',mimeType:'image/png',width:2,height:2,hasVideo:true,hasAudio:false,provenance:'user-import',sha256:'a'.repeat(64),relativePath:`media/${assetId}.png`,createdAt:new Date().toISOString()});
-  let timeline=await service.call('timeline.get',{projectId:project.id});
-  timeline=await service.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId,trackId:timeline.tracks[0].id,startFrame:0,durationFrames:90});
+  let timeline=await service.call('timeline.get',{projectId:project.id}) as {id: string; revision: number; tracks: {id: string}[]; clips: {id: string; trackId: string}[]};
+  timeline=await service.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId,trackId:timeline.tracks[0].id,startFrame:0,durationFrames:90}) as {id: string; revision: number; tracks: {id: string}[]; clips: {id: string; trackId: string}[]};
   const clip=timeline.clips[0],key={projectId:project.id,timelineId:timeline.id,clipId:clip.id};
   const raw={name:'Unsubmitted input',trackId:clip.trackId,startFrame:'',durationFrames:'9e',sourceInFrame:'0',rect:{x:'0',y:'',width:'-1',height:720},gain:'0.',fadeInFrames:''};
-  function start(channel='web',extra={}){drafts=createLocalDrafts({root,channel,storage,guards:{ownsLock:()=>ownsStoreLock(store),isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),readTimeline:id=>createTimelineRecoveryBoundary(store.db,{projectId:id}).read(),readClipAsset:(id,c)=>createTimelineRecoveryBoundary(store.db,{projectId:id}).clipSource(c)},fault:point=>fault(point),...extra});return drafts;}
+  function start(channel: string='web',extra: Record<string, unknown>={}): DraftsHandle {drafts=createLocalDrafts({root,channel: channel as 'web',storage,guards:{ownsLock:()=>ownsStoreLock(store),isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),readTimeline:(id: string)=>createTimelineRecoveryBoundary(store.db,{projectId:id}).read(),readClipAsset:(id: string,c: unknown)=>createTimelineRecoveryBoundary(store.db,{projectId:id}).clipSource(c as never)},fault:(point: string)=>fault(point),...extra} as never) as unknown as DraftsHandle;return drafts;}
   start();
-  t.after(()=>{store.close();rmSync(root,{recursive:true,force:true});});
-  return {root,file:path.join(root,LOCAL_DRAFT_FILENAME),key,project,asset,timeline,clip,raw,get store(){return store;},get drafts(){return drafts;},start,setFault(fn){fault=fn;},
-    input(response=drafts.get(key),patch={}){return {workspaceScope:response.workspaceScope,instanceId:response.instanceId,...key,expectedRevision:response.revision,baseRevision:timeline.revision,source:{assetId:asset.id,assetSha256:asset.sha256},raw,...patch};},
-    deletion(response){return {workspaceScope:response.workspaceScope,instanceId:response.instanceId,...key,expectedRevision:response.revision};},
-    restart(){store.close();store=openStore(root);service=createServices(store,new Map());start();},
-    snapshot(){return JSON.stringify(store.db.prepare('SELECT name,sql FROM sqlite_schema ORDER BY name').all())+'\n'+JSON.stringify(['projects','assets','timelines','timeline_requests','timeline_history','edit_tasks'].map(table=>store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()));},
-  };
+  t.after(()=>{store!.close();rmSync(root,{recursive:true,force:true});});
+  return {root,file:path.join(root,LOCAL_DRAFT_FILENAME),key,project,asset,timeline,clip,raw,get store(){return store!;},get drafts(){return drafts!;},start,setFault(fn: (point: string)=>void){fault=fn;},
+    input(response: DraftEnvelope = drafts!.get(key), patch: Record<string, unknown>={}): Record<string, unknown> & {source: Record<string, unknown>} {return {workspaceScope:response.workspaceScope,instanceId:response.instanceId,...key,expectedRevision:response.revision,baseRevision:timeline.revision,source:{assetId:(asset as {id: string}).id,assetSha256:(asset as {sha256: string}).sha256},raw,...patch};},
+    deletion(response: DraftEnvelope){return {workspaceScope:response.workspaceScope,instanceId:response.instanceId,...key,expectedRevision:response.revision};},
+    restart(){store!.close();store=openStore(root);service=createServices(store,new Map());start();},
+    snapshot(){return JSON.stringify(store!.db.prepare('SELECT name,sql FROM sqlite_schema ORDER BY name').all())+'\n'+JSON.stringify(['projects','assets','timelines','timeline_requests','timeline_history','edit_tasks'].map(table=>store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()));},
+  } as unknown as DraftFixture;
 }
 
 test('GET/list are noncreating and draft writes retain raw text without changing business schemas or records',async t=>{
-  const f=await fixture(t),before=f.snapshot(),changes=f.store.db.prepare('SELECT total_changes() n').get().n;
+  const f=await fixture(t),before=f.snapshot(),changes=(f.store.db.prepare('SELECT total_changes() n').get() as {n: number}).n;
   const empty=f.drafts.get(f.key);assert.equal(empty.revision,0);assert.equal(empty.draft,null);assert.equal(existsSync(f.file),false);assert.ok(clipDraftEnvelopeSchema.safeParse(empty).success);
   assert.deepEqual(f.drafts.list({projectId:f.project.id}).items,[]);assert.equal(existsSync(f.file),false);
-  const put=f.drafts.put(f.input(empty));assert.equal(put.revision,1);assert.deepEqual(put.draft.raw,f.raw);assert.equal(Object.hasOwn(put.draft.raw,'fadeOutFrames'),false);
+  const put=f.drafts.put(f.input(empty));assert.equal(put.revision,1);assert.deepEqual(put.draft!.raw,f.raw);assert.equal(Object.hasOwn(put.draft!.raw,'fadeOutFrames'),false);
   assert.ok(clipDraftListSchema.safeParse(f.drafts.list({projectId:f.project.id})).success);assert.equal(f.drafts.list({projectId:f.project.id}).items[0].name,f.raw.name);
-  assert.equal(statSync(f.file).mode&0o777,0o600);assert.equal(f.snapshot(),before);assert.equal(f.store.db.prepare('SELECT total_changes() n').get().n,changes);
+  assert.equal(statSync(f.file).mode&0o777,0o600);assert.equal(f.snapshot(),before);assert.equal((f.store.db.prepare('SELECT total_changes() n').get() as {n: number}).n,changes);
 });
 
 test('exact latest PUT/DELETE retries, two-window CAS and tombstones prevent ABA',async t=>{
@@ -65,7 +76,7 @@ test('persisted baseline/source never rebase; deleted target draft stays discove
   const next={...f.timeline,revision:f.timeline.revision+1};f.store.put('timelines',next);
   assert.equal(f.drafts.get(f.key).targetStatus,'changed');
   assert.throws(()=>f.drafts.put(f.input(saved,{baseRevision:next.revision})),code('LOCAL_DRAFT_CONFLICT'));
-  const retained=f.drafts.put(f.input(saved,{raw:{...f.raw,name:'Still editing'}}));assert.equal(retained.draft.baseRevision,f.timeline.revision);assert.equal(retained.targetStatus,'changed');
+  const retained=f.drafts.put(f.input(saved,{raw:{...f.raw,name:'Still editing'}}));assert.equal(retained.draft!.baseRevision,f.timeline.revision);assert.equal(retained.targetStatus,'changed');
   f.store.put('timelines',{...next,clips:[],durationFrames:0});
   const missing=f.drafts.get(f.key);assert.equal(missing.targetStatus,'missing');assert.equal(f.drafts.list({projectId:f.project.id}).items[0].targetStatus,'missing');
   assert.equal(f.drafts.discard(f.deletion(missing)).draft,null);
@@ -81,9 +92,9 @@ test('unreadable/corrupt/unknown-format storage never means empty and never gets
 
 test('historical source ownership is required after clip removal before draft/name/revision disclosure or mutation',async t=>{
   const f=await fixture(t),saved=f.drafts.put(f.input()),before=readFileSync(f.file);
-  f.store.put('timelines',{...f.timeline,revision:f.timeline.revision+1,clips:[],durationFrames:0});
+  f.store.put('timelines',{...f.timeline,revision:f.timeline.revision+1,clips:[],durationFrames:0} as never);
   const foreign=randomUUID();f.store.put('projects',{...f.project,id:foreign});
-  f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(foreign,JSON.stringify({...f.asset,projectId:foreign}),f.asset.id);
+  f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(foreign,JSON.stringify({...f.asset,projectId:foreign}),(f.asset as {id: string}).id);
   for(const call of [()=>f.drafts.get(f.key),()=>f.drafts.list({projectId:f.project.id}),()=>f.drafts.put(f.input(saved)),()=>f.drafts.discard(f.deletion(saved))])assert.throws(call,code('LOCAL_DRAFT_STORAGE_UNAVAILABLE'));
   assert.deepEqual(readFileSync(f.file),before);
 });
@@ -97,7 +108,7 @@ test('strict fields reject credentials, paths, getters, proxies, malformed raw a
 
 test('existing 200-character clip names remain exact while another raw field changes',async t=>{
   const f=await fixture(t),name='长'.repeat(200),raw={...f.raw,name,startFrame:'30'};
-  const saved=f.drafts.put(f.input(undefined,{raw}));assert.equal(saved.draft.raw.name,name);assert.equal(f.drafts.list({projectId:f.project.id}).items[0].name,name);
+  const saved=f.drafts.put(f.input(undefined,{raw}));assert.equal(saved.draft!.raw.name,name);assert.equal(f.drafts.list({projectId:f.project.id}).items[0].name,name);
 });
 
 test('unsafe sidecar files and unavailable storage refuse without repairing permissions or replacing links',async t=>{
@@ -123,7 +134,7 @@ test('duplicate slot identities and oversized companion files remain intact and 
 });
 
 test('malformed UTF-8 in an otherwise valid draft envelope is preserved as corrupt evidence',async t=>{
-  const f=await fixture(t),saved=f.drafts.put(f.input()),text=readFileSync(f.file,'utf8'),at=text.indexOf(f.raw.name);
+  const f=await fixture(t),saved=f.drafts.put(f.input()),text=readFileSync(f.file,'utf8'),at=text.indexOf(String(f.raw.name));
   const corrupt=Buffer.concat([Buffer.from(text.slice(0,at)),Buffer.from([0xff]),Buffer.from(text.slice(at+1))]);writeFileSync(f.file,corrupt);
   assert.throws(()=>f.drafts.get(f.key),code('LOCAL_DRAFT_STORAGE_UNAVAILABLE'));assert.throws(()=>f.drafts.put(f.input(saved)),code('LOCAL_DRAFT_STORAGE_UNAVAILABLE'));assert.deepEqual(readFileSync(f.file),corrupt);
 });
@@ -131,7 +142,7 @@ test('malformed UTF-8 in an otherwise valid draft envelope is preserved as corru
 test('restored profile is explicit unsupported without filesystem/project/provider access',()=>{
   const never=()=>{throw Error('PRIVATE should not run');};
   const drafts=createLocalDrafts({root:'/unread',storage:{validatePrivateDirectory:never,validateManagedFile:never,readPrivateFile:never,writePrivateFileAtomic:never},guards:{ownsLock:never,isRestored:()=>true,readTimeline:never,readClipAsset:never}});
-  for(const method of ['get','list','put','discard'])assert.deepEqual(drafts[method]({}),{supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'});
+  for(const method of ['get','list','put','discard'])assert.deepEqual((drafts as unknown as Record<string, (value: unknown)=>unknown>)[method]({}),{supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'});
 });
 
 for(const point of ['beforePersist','afterPersist','afterDirectorySync'])test(`failure at ${point} preserves either old or exact newly-published bytes without domain work`,async t=>{
@@ -165,10 +176,10 @@ test('SDR colour drafts survive actual sidecar reopen without normalizing omitte
   for (const fields of [{}, { colour }, { colour: { ...colour, source: null } }, { colour: null }]) {
     const raw = { ...f.raw, ...fields }, before = f.snapshot();
     const saved = f.drafts.put(f.input(undefined, { raw }));
-    assert.deepEqual(saved.draft.raw, raw); assert.equal(f.snapshot(), before, 'A sidecar draft never mutates the business timeline');
+    assert.deepEqual(saved.draft!.raw, raw); assert.equal(f.snapshot(), before, 'A sidecar draft never mutates the business timeline');
     f.restart();
     const reloaded = f.drafts.get(f.key);
-    assert.deepEqual(reloaded.draft.raw, raw); assert.equal(Object.hasOwn(reloaded.draft.raw, 'colour'), Object.hasOwn(fields, 'colour'));
+    assert.deepEqual(reloaded.draft!.raw, raw); assert.equal(Object.hasOwn(reloaded.draft!.raw, 'colour'), Object.hasOwn(fields, 'colour'));
     f.drafts.discard(f.deletion(reloaded));
   }
 });
