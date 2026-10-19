@@ -5,7 +5,7 @@ export const loudnessInput = {projectId:'11111111-1111-4111-8111-111111111111',e
 export const loudnessToken = 'synthetic-export-loudness-test-token';
 export const loudnessTarget = {integratedLufs:-16,truePeakCeilingDbtp:-1};
 export type ExportLoudnessReasonCode = Parameters<typeof exportLoudnessReason>[0];
-export interface LoudnessFixtureInput {readonly projectId: string; readonly exportId: string; readonly expectedArtifactSha256: string; readonly measurementProfile: string; readonly target: {readonly integratedLufs: number; readonly truePeakCeilingDbtp: number}}
+export interface LoudnessFixtureInput {readonly projectId: string; readonly exportId: string; readonly expectedArtifactSha256: string; readonly measurementProfile: string; readonly target?: {readonly integratedLufs: number; readonly truePeakCeilingDbtp: number}}
 export function readyLoudness(input: LoudnessFixtureInput = {...loudnessInput, target: loudnessTarget}) {
   const measurement = {sampleRate:48000 as const,channels:2 as const,sampleFrames:48000,decodedDurationSeconds:1,state:'valid' as const,
     integratedLufs:-20,samplePeakLinear:0.5,samplePeakDbfs:20*Math.log10(0.5),truePeakLinear:0.6,truePeakDbtp:20*Math.log10(0.6),

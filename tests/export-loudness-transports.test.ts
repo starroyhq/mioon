@@ -118,7 +118,7 @@ test('actual HTTP, CLI and official MCP carry identical ephemeral reports, valid
   const callMcp=()=>mcp.call('timeline_export_loudness',input);
   const callHttp=async()=>{const response=await fetch(f.url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input})});return response.json();};
   for(const mode of ['ready','busy']){
-    f.mode(mode);const expected=mode==='ready'?readyLoudness():incompleteLoudness();
+    f.mode(mode);const expected=mode==='ready'?readyLoudness(input):incompleteLoudness('BUSY',input);
     for(const call of [callHttp,callCli,callMcp]){const before=f.calls.length;const result=await call();assert.deepEqual(result,{ok:true,data:expected});assert.equal(isExportLoudnessResponse(result.data,input),true);assert.equal(f.calls.length,before+1);}
   }
   f.mode('malformed');const before=f.calls.length;

@@ -27,8 +27,8 @@ const unreadyOf = unready as unknown as (file: unknown, status?: string, code?: 
 const rowOf = row as unknown as (value?: unknown) => Record<string, unknown>;
 const assetOf = asset as unknown as (value?: unknown) => Record<string, unknown>;
 const fixtureOf = fixture as unknown as (patch?: Record<string, unknown>) => UiFixture;
-const targetsOf=(value: unknown, guard: unknown): unknown[]=>targetsOf(value as never, guard as never);
-const viewStateOf=(state: unknown, value: unknown, guard: unknown): {report: unknown; draft: Record<string, unknown>}=>viewStateOf(state as never, value as never, guard as never);
+const targetsOf=(value: unknown, guard: unknown): readonly unknown[]=>exportLoudnessTargets(value as never, guard as never);
+const viewStateOf=(state: unknown, value: unknown, guard: unknown): {report: unknown; draft: Record<string, unknown>}=>exportLoudnessViewState(state as never, value as never, guard as never) as unknown as {report: unknown; draft: Record<string, unknown>};
 
 
 const blank = { integratedLufs: '', truePeakCeilingDbtp: '' }, custom = { integratedLufs: '-14', truePeakCeilingDbtp: '-1' };

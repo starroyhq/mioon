@@ -17,7 +17,7 @@ test('loudness defaults to 125 seconds; other defaults and explicit caller deadl
   const deadlines: number[]=[];t.mock.method(AbortSignal,'timeout',(ms: number)=>{deadlines.push(ms);return new AbortController().signal;});
   const deadlineCases: Array<[Record<string, unknown>, Record<string, unknown> | undefined, number]> = [[{},undefined,125000],[{requestTimeoutMs:8000},undefined,8000],[{},{timeoutMs:7000},7000],[{requestTimeoutMs:8000},{timeoutMs:7000},7000]];
   for(const [clientOptions,options,expected] of deadlineCases){
-    const calls: Array<Record<string, unknown>>=[],report=readyLoudness() as unknown as MutableLoudness;
+    const calls: Array<Record<string, unknown>>=[],report=readyLoudness(input) as unknown as MutableLoudness;
     const client=createClient({env,...clientOptions,fetchImpl:asFetch(async (url: string, request?: {body?: string})=>{calls.push({url,...request,body:JSON.parse(request?.body ?? '{}')});return success(report);})});
     assert.deepEqual(await client.rpc(operation,input,options as never),report);assert.equal(deadlines.at(-1),expected);
     assert.equal(calls.length,1);assert.deepEqual(calls[0].body,{operation,input});assert.equal(calls[0].method,'POST');assert.equal(new URL(calls[0].url as string).pathname,'/api/rpc');
@@ -30,7 +30,7 @@ test('loudness defaults to 125 seconds; other defaults and explicit caller deadl
 });
 test('client carries workspace and caller cancellation outside strict input without new request ID',async()=>{
   const controller=new AbortController(),origin='44444444-4444-4444-8444-444444444444';let seen: {body: string; signal: AbortSignal} | undefined;
-  const client=createClient({env,fetchImpl:asFetch(async (_url: string, request?: {body?: string; signal?: AbortSignal})=>{seen=request as {body: string; signal: AbortSignal};return success(readyLoudness());})});
+  const client=createClient({env,fetchImpl:asFetch(async (_url: string, request?: {body?: string; signal?: AbortSignal})=>{seen=request as {body: string; signal: AbortSignal};return success(readyLoudness(input));})});
   await client.rpc(operation,input,{signal:controller.signal,expectedWorkspaceOrigin:origin});
   assert.deepEqual(JSON.parse(seen!.body),{operation,input,expectedWorkspaceOrigin:origin});
   assert.equal(seen!.signal.aborted,false);controller.abort();assert.equal(seen!.signal.aborted,true);
