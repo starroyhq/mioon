@@ -163,7 +163,7 @@ async function subjectCloseFixture(t) {
     save: () => { counts.save++; return new Promise(() => {}); }, hasPending: () => { counts.pending++; return pending; }, onChange: () => counts.change++ });
   const context = { scope: 'subject:1', projectId, assets: [{ id: assetId, projectId, mimeType: 'image/png' }], shotIds: [shotId, otherShotId] };
   subject.setContext(context); await settleSubjectReads(); subject.selectSubject(subjectId); await subject.readBindings(shotId); await settleSubjectReads();
-  const refreshMatch = subjectHookSource.match(/const refresh = \(\) => \{[^\n]+\};/); assert.ok(refreshMatch, 'Use the real focus/visibility refresh callback');
+  const refreshMatch = subjectHookSource.match(/const refresh = \(\)(?:: [^=]+)? => \{[^\n]+\};/); assert.ok(refreshMatch, 'Use the real focus/visibility refresh callback');
   const focus = Function('controller', 'document', `${refreshMatch[0]} return refresh;`)({ current: subject }, { visibilityState: 'visible' });
   const read = () => readNativeLegacyClose({ inspectorDirty: subjectDraftDirty(subject.getState()), subject });
   const url = 'http://127.0.0.1:4317/?project=test';

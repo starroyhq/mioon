@@ -59,7 +59,7 @@ export function createRestoredReadServices(store: RestoreReadStore,{signal}: Res
  const inspection=createInspectionServices(store as never);
  const projectHome=createProjectHomeServices(store as never);
  const ranges=createSourceRangeServices(store as never,{canonical,readOnly:true});
- const annotations=createAssetAnnotationServices(store as never,{mutate:createMutationReplay(store as never,{canonical,readOnly:true}),error:(...args: [string,string])=>new AppError(args[0],args[1]),restoredSchema:()=>getWorkspaceRestoreContext(store)?.schemaVersion??null});
+ const annotations=createAssetAnnotationServices(store as never,{mutate:createMutationReplay(store as never,{canonical,readOnly:true}),error:(...args: [string,string,number?,unknown?])=>new AppError(args[0],args[1],args[2],args[3]),restoredSchema:()=>getWorkspaceRestoreContext(store)?.schemaVersion??null});
  const dispositions=createAssetDispositionServices(store as never,{canonical,readOnly:true});
  const subjects=createSubjectServices(store as never,{canonical,now,readOnly:true});
  const references=createReferenceServices(store as never,{check:denied,hash,now});

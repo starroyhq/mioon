@@ -1,5 +1,14 @@
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
+import fs from 'node:fs';
+import path from 'node:path';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
+import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
+import {initializeWorkspaceSchema28} from '../packages/business/src/workspace-schema-v28.ts';
+import {initializeWorkspaceSchema30} from '../packages/business/src/workspace-schema-v30.ts';
+import {initializeWorkspaceSchema32} from '../packages/business/src/workspace-schema-v32.ts';
+import {initializeWorkspaceSchema34} from '../packages/business/src/workspace-schema-v34.ts';
+import {initializeWorkspaceSchema36} from '../packages/business/src/workspace-schema-v36.ts';
 import {readFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 
@@ -176,4 +185,23 @@ export function assertBoundedSequenceProjection(initialize) {
       assert.equal(db.prepare('SELECT max(version) AS version FROM schema_version').get().version,24);
     } finally { db.close(); }
   }
+}
+
+// Genuine historical workspace files for cold backup/restore tests. Tests used
+// to openStore(current) and delete marker rows to fake a historical source; the
+// current schema has advanced, so construct the exact historical schema chain
+// instead. Returns an open DatabaseSync; caller seeds and closes it.
+export function createHistoricalDatabase(root, version) {
+  fs.mkdirSync(root, {mode: 0o700});
+  fs.mkdirSync(path.join(root, 'media'), {mode: 0o700});
+  const db = open(path.join(root, 'workbench.sqlite'));
+  initializeWorkspaceSchemaThrough24(db);
+  if (version >= 26) initializeWorkspaceSchema26(db);
+  if (version >= 28) initializeWorkspaceSchema28(db);
+  if (version >= 30) initializeWorkspaceSchema30(db);
+  if (version >= 32) initializeWorkspaceSchema32(db);
+  if (version >= 34) initializeWorkspaceSchema34(db);
+  if (version >= 36) initializeWorkspaceSchema36(db);
+  fs.chmodSync(path.join(root, 'workbench.sqlite'), 0o600);
+  return db;
 }

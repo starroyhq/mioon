@@ -31,7 +31,7 @@ const isRecord=(value: unknown): value is Record<string, unknown>=>value!==null&
 const property=(value: unknown,key: string): unknown=>isRecord(value)?value[key]:undefined;
 function invalid(): never {throw Object.assign(new Error('Invalid saved timeline move metadata.'), { code: 'INVALID_RESPONSE' });}
 function freeze<T>(value: T): Readonly<T> {
-  if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
+  if (value !== null && typeof value === 'object') {
     for (const child of Object.values(value as Record<string, unknown>)) if (child !== null && typeof child === 'object') freeze(child);
   }
   return Object.freeze(value);

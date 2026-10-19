@@ -150,6 +150,17 @@ export function readCurrentWorkspaceRole(db: WorkspaceSchemaReader): CurrentWork
   return ordinary44 ? 'ordinary-44' : restored45 ? 'restored-45-evidence' : ordinary40 ? 'ordinary-40' : restored41 ? 'restored-41-evidence' : ordinary38 ? 'ordinary-38' : restored39 ? 'restored-39-evidence' : ordinary36 ? 'ordinary-36' : restored37 ? 'restored-37-evidence' : ordinary34 ? 'ordinary-34' : restored35 ? 'restored-35-evidence' : ordinary32 ? 'ordinary-32' : restored33 ? 'restored-33-evidence' : ordinary30 ? 'ordinary-30' : restored31 ? 'restored-31-evidence' : ordinary26 ? 'ordinary-26' : ordinary28 ? 'ordinary-28' : restored29 ? 'restored-29-evidence' : 'restored-27-evidence';
 }
 
+function preEnvelopeHistoricalRole(role:CurrentWorkspaceRole): boolean {
+  return role==='ordinary-26'||role==='ordinary-28'||role==='ordinary-30'||role==='ordinary-32'||role==='ordinary-34'||role==='ordinary-36'||role==='ordinary-38';
+}
+function volumeEnvelopeAdmission(role:CurrentWorkspaceRole) {
+  return {allowVolumeEnvelopes:role==='ordinary-40'||role==='restored-41-evidence'||role==='ordinary-44'||role==='restored-45-evidence'||role==='ordinary-48'||role==='restored-49-evidence',
+    // Historical ordinary schemas predate envelopes: opaque retained cells are
+    // preserved history and cannot grant envelope capability, so read-only
+    // classification tolerates them. Restored profiles and current admission
+    // keep the strict default and still fail closed.
+    allowOpaqueCells:preEnvelopeHistoricalRole(role)};
+}
 function frozenAdmission(role:CurrentWorkspaceRole) {
   return role==='ordinary-40'||role==='restored-41-evidence'||role==='ordinary-44'||role==='restored-45-evidence'||role==='ordinary-48'||role==='restored-49-evidence'?{frozenEvidenceProfile:'workspace40-restored41' as const}:{};
 }
@@ -166,7 +177,7 @@ function colourAdmission(role:CurrentWorkspaceRole) {
  * claiming fixed-catalog restoration capability or mutating the source. */
 export function validateCurrentWorkspaceColourProfile(db: DatabaseSync): void {
   const role=readCurrentWorkspaceRole(db);
-  validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:role==='ordinary-40'||role==='restored-41-evidence'||role==='ordinary-44'||role==='restored-45-evidence'||role==='ordinary-48'||role==='restored-49-evidence'});
+  validateWorkspaceVolumeEnvelopeRows(db,volumeEnvelopeAdmission(role));
   validateWorkspaceAudioRoleRows(db,audioRoleAdmission(role));
   validateWorkspaceColourRows(db, colourAdmission(role));
 }
@@ -191,7 +202,7 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
   };
   const classify = (db: DatabaseSync): Classification => {
     const role = readCurrentWorkspaceRole(db);
-    validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:role==='ordinary-40'||role==='restored-41-evidence'||role==='ordinary-44'||role==='restored-45-evidence'||role==='ordinary-48'||role==='restored-49-evidence'});
+    validateWorkspaceVolumeEnvelopeRows(db,volumeEnvelopeAdmission(role));
     validateWorkspaceAudioRoleRows(db,audioRoleAdmission(role));
     validateWorkspaceColourRows(db, colourAdmission(role));
     if (role === 'ordinary-48' || role === 'restored-49-evidence') return restored49.classifyWorkspaceSchemaV48V49(db);

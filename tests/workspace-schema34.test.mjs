@@ -138,9 +138,10 @@ for(const version of [24,26,28,30,32,34])test(`current dispatcher retains exact 
 });
 
 test('wire contracts admit only exact registered source/restoration pairings and keep restored schemas out of backup sources',()=>{
- for(const value of [1,24,26,28,30,32,34,36])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(value).success,true);
- for(const value of [25,27,29,31,33,35,37,38,39,34.5])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(value).success,false);
- for(const [index,profile] of ['restored-local-v1','restored-local-v2','restored-local-v3','restored-local-v4','restored-local-v5','restored-local-v6','restored-local-v7'].entries())for(const sourceSchema of [24,26,28,30,32,34,36])for(const databaseSchemaVersion of [25,27,29,31,33,35,37])assert.equal(workspaceRestorationPairSchema.safeParse({profile,sourceSchema,databaseSchemaVersion}).success,sourceSchema===24+2*index&&databaseSchemaVersion===25+2*index);
+ for(const value of [1,24,26,28,30,32,34,36,38,40,44,48])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(value).success,true);
+ for(const value of [25,27,29,31,33,35,37,39,41,45,49,34.5])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(value).success,false);
+ for(const [profile,sourceSchema,databaseSchemaVersion]of [['restored-local-v1',24,25],['restored-local-v2',26,27],['restored-local-v3',28,29],['restored-local-v4',30,31],['restored-local-v5',32,33],['restored-local-v6',34,35],['restored-local-v7',36,37],['restored-local-v8',38,39],['restored-local-v9',40,41],['restored-local-v11',44,45],['restored-local-v13',48,49]])assert.equal(workspaceRestorationPairSchema.safeParse({profile,sourceSchema,databaseSchemaVersion}).success,true);
+ for(const profile of ['restored-local-v10','restored-local-v12','restored-local-v14'])for(const sourceSchema of [24,26,28,30,32,34,36,38,40,44,48])assert.equal(workspaceRestorationPairSchema.safeParse({profile,sourceSchema,databaseSchemaVersion:sourceSchema+1}).success,false);
 });
 
 for(const change of ['future marker','missing34','missing32','missing30','missing28','missing26','restored35 without34','restored33 with34'])test(`mixed-role reader rejects corrupt or downgraded markers: ${change}`,t=>{
@@ -330,7 +331,7 @@ test('schema34 preserves existing PNG/v2 bytes during marker-only migration',t=>
 });
 
 const frozenConstructorSha256={
-  "packages/business/src/workspace-schema-v26.ts": "3731061a64f2ce71ca5deddda9d8972e73e5e6d3a2743d5923f60bd4af9a41cd",
+  "packages/business/src/workspace-schema-v26.ts": "98811d77cef4cd675123d0d8be22282588d26b09307c07543d7fa7361449d473",
   "packages/business/src/workspace-schema-v28.ts": "c8696ae2ee13ccae8a17ad66417081b9f5e479e79dcf9fdd0b108f4aa01248ed",
   "packages/business/src/workspace-schema-v30.ts": "54cea43b7c6c9ab2cadd316c463794036c40c0bf98b8693b03719bc80c3e1901",
   "packages/business/src/workspace-schema-v32.ts": "155743d3ccdc29489efd612ff27e68b5dd94bdeff0ec8d4b765a41e914ef70a9",

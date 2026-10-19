@@ -102,7 +102,7 @@ test('cold backup verify and offline restore preserve v2 queued failed succeeded
     assert.deepEqual(select(db), frozenRows);
     const after = logical(db);
     for (const [table, values] of Object.entries(originalTables)) {
-      const actual = after[table].filter(value => table !== 'schema_version' || value.version !== 27).map(value => {
+      const actual = after[table].filter(value => table !== 'schema_version' || value.version !== 49).map(value => {
         const next = Object.assign(Object.create(Object.getPrototypeOf(value)), value);
         if (table === 'edit_tasks') delete next.executionEpoch; return next;
       });

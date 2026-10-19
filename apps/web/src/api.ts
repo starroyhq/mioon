@@ -31,14 +31,13 @@ const isRecord = (value: unknown): value is Record<string, unknown> => value !==
 const protocolError = (): ApiError => new ApiError('服务暂时没有返回有效数据，请检查服务后重试。', 'NETWORK');
 
 export class ApiError extends Error {
-  code: string;
+  code?: string;
   details: unknown;
   definitive: boolean;
   declare status?: number;
   constructor(message: string, code?: string, details?: unknown, definitive = false, status?: number) {
     super(message);
-    this.name = 'ApiError';
-    this.code = code ?? 'UNKNOWN';
+    this.code = code;
     this.details = details;
     this.definitive = definitive;
     if (status !== undefined && Number.isInteger(status)) this.status = status;
@@ -52,7 +51,7 @@ export async function rpc<T = unknown>(operation: string, input: unknown = {}, {
   let body: unknown;
   try { body = mix ? mix.body : await response.json(); } catch { throw protocolError(); }
   if (!isRecord(body) || typeof body.ok !== 'boolean' ||
-    (body.ok ? !Object.hasOwn(body, 'data') || !response.ok : typeof property(body,'error') !== 'undefined' && (!isRecord(body.error) || typeof body.error.code !== 'string' || typeof body.error.message !== 'string')))
+    (body.ok ? !Object.hasOwn(body, 'data') || !response.ok : !isRecord(body.error) || typeof body.error.code !== 'string' || typeof body.error.message !== 'string'))
     throw new ApiError('服务暂时没有返回有效数据，请检查服务后重试。', 'BACKEND_PROTOCOL_ERROR');
   if (!response.ok || !body.ok) {
     const errorBody: RpcErrorBody = isRecord(body.error) ? body.error : {};
