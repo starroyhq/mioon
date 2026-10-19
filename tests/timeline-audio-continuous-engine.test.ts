@@ -2,47 +2,59 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createContinuousTimelineAudioTransport } from '../apps/web/src/timeline-audio-continuous-engine.ts';
 
-const tick = () => new Promise(resolve => setImmediate(resolve));
-const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
+type Transport = ReturnType<typeof createContinuousTimelineAudioTransport>;
+type TransportState = ReturnType<Transport['getState']>;
+type TransportOptions = Parameters<typeof createContinuousTimelineAudioTransport>[0];
+interface Deferred<T = void> {promise: Promise<T>; resolve: (value?: T | PromiseLike<T>) => void; reject: (error: unknown) => void}
+interface Block {startFrame: number; endFrame: number; buffer: PcmBuffer}
+const tick = (): Promise<void> => new Promise<void>(resolve => setImmediate(resolve));
+const deferred = <T = void>(): Deferred<T> => { let resolve!: (value: T | PromiseLike<T>) => void, reject!: (error: unknown) => void; const promise = new Promise<T>((a, b) => { resolve = a; reject = b; }); return { promise, resolve: (value?: T | PromiseLike<T>) => resolve(value as T | PromiseLike<T>), reject }; };
 class Buffer {
-  constructor(channels, length, sampleRate) { this.numberOfChannels = channels; this.length = length; this.sampleRate = sampleRate; }
-  getChannelData() { throw Error('Already mixed PCM must never be reacquired or rewritten by the engine'); }
+  numberOfChannels: number; length: number; sampleRate: number;
+  constructor(channels: number, length: number, sampleRate: number) { this.numberOfChannels = channels; this.length = length; this.sampleRate = sampleRate; }
+  getChannelData(): never { throw Error('Already mixed PCM must never be reacquired or rewritten by the engine'); }
 }
+type PcmBuffer = Buffer;
 class Source {
-  constructor(context) { this.context = context; this.buffer = null; this.onended = null; this.starts = []; this.stops = []; this.disconnected = false; this.ended = false; }
-  connect() {}
-  disconnect() { this.disconnected = true; }
-  start(when, offset, duration) {
+  context: Context; buffer: PcmBuffer | null; onended: (() => void) | null; starts: Array<[number, number, number]>; stops: number[]; disconnected: boolean; ended: boolean; scheduledBuffer?: PcmBuffer | null;
+  constructor(context: Context) { this.context = context; this.buffer = null; this.onended = null; this.starts = []; this.stops = []; this.disconnected = false; this.ended = false; }
+  connect(): void {}
+  disconnect(): void { this.disconnected = true; }
+  start(when: number, offset: number, duration: number): void {
     if (this.context.failStart) throw Error('Failed source start');
     this.starts.push([when, offset, duration]); this.scheduledBuffer = this.buffer;
   }
-  stop() { this.stops.push(this.context.currentTime); }
-  end() { if (this.ended) return; this.ended = true; this.onended?.(); }
+  stop(): void { this.stops.push(this.context.currentTime); }
+  end(): void { if (this.ended) return; this.ended = true; this.onended?.(); }
 }
 class Context {
-  constructor(state = 'running') { this.state = state; this.sampleRate = 48000; this.currentTime = 3; this.destination = {}; this.sources = []; this.events = new Map(); this.resumes = []; this.closeCalls = 0; this.resumeCalls = 0; }
-  createBufferSource() { const source = new Source(this); this.sources.push(source); return source; }
-  createBuffer(channels, length, sampleRate) { return new Buffer(channels, length, sampleRate); }
-  addEventListener(type, listener) { if (!this.events.has(type)) this.events.set(type, new Set()); this.events.get(type).add(listener); }
-  removeEventListener(type, listener) { this.events.get(type)?.delete(listener); }
-  event(type) { for (const listener of this.events.get(type) ?? []) listener(); }
-  setState(state) { this.state = state; this.event('statechange'); }
-  resume() { this.resumeCalls++; const pending = this.resumes.shift(); if (pending) return pending.promise; this.state = 'running'; return Promise.resolve(); }
-  close() { this.closeCalls++; this.state = 'closed'; return Promise.resolve(); }
+  state: string; sampleRate: number; currentTime: number; destination: Record<string, unknown>; sources: Source[]; events: Map<string, Set<() => void>>;
+  resumes: Deferred[]; closeCalls: number; resumeCalls: number; failStart?: boolean; close: () => Promise<void> | void;
+  constructor(state = 'running') { this.state = state; this.sampleRate = 48000; this.currentTime = 3; this.destination = {}; this.sources = []; this.events = new Map(); this.resumes = []; this.closeCalls = 0; this.resumeCalls = 0;
+    this.close = () => { this.closeCalls++; this.state = 'closed'; return Promise.resolve(); }; }
+  createBufferSource(): Source { const source = new Source(this); this.sources.push(source); return source; }
+  createBuffer(channels: number, length: number, sampleRate: number): Buffer { return new Buffer(channels, length, sampleRate); }
+  addEventListener(type: string, listener: () => void): void { if (!this.events.has(type)) this.events.set(type, new Set()); this.events.get(type)!.add(listener); }
+  removeEventListener(type: string, listener: () => void): void { this.events.get(type)?.delete(listener); }
+  event(type: string): void { for (const listener of this.events.get(type) ?? []) listener(); }
+  setState(state: string): void { this.state = state; this.event('statechange'); }
+  resume(): Promise<void> { this.resumeCalls++; const pending = this.resumes.shift(); if (pending) return pending.promise; this.state = 'running'; return Promise.resolve(); }
 }
-function setup({ duration = 750, start = 0, load, reset, context = new Context(), onChange } = {}) {
-  const loads = [], resets = [], changes = [], frames = new Map(); let frameId = 0;
-  const block = frame => ({ startFrame: frame, endFrame: Math.min(frame + 60, duration), buffer: new Buffer(2, Math.min(60, duration - frame) * 1600, 48000) });
-  const transport = createContinuousTimelineAudioTransport({ context,
-    plan: { startFrame: start, durationFrames: duration, blockFrames: 60, sampleRate: 48000, channels: 2 }, initialBlock: block(start),
-    loadBlock: (frame, signal) => { loads.push({ frame, signal }); return load ? load(frame, signal, block) : Promise.resolve(block(frame)); },
-    onReset: async (frame, signal) => { resets.push({ frame, signal }); await reset?.(frame, signal); },
-    onChange: state => { changes.push(state); onChange?.(state); },
-    requestAnimationFrame: callback => { frames.set(++frameId, callback); return frameId; }, cancelAnimationFrame: handle => frames.delete(handle),
-  });
+interface SetupOptions {duration?: number; start?: number; load?: (frame: number, signal: AbortSignal, block: (frame: number) => Block) => Promise<Block>; reset?: (frame: number, signal: AbortSignal) => Promise<void> | void; context?: Context; onChange?: (state: TransportState) => void}
+interface Setup {transport: Transport; context: Context; block: (frame: number) => Block; loads: Array<{frame: number; signal: AbortSignal}>; resets: Array<{frame: number; signal: AbortSignal}>; changes: TransportState[]; frames: Map<number, (time: number) => void>; paint(): void}
+function setup({ duration = 750, start = 0, load, reset, context = new Context(), onChange }: SetupOptions = {}): Setup {
+  const loads: Setup['loads'] = [], resets: Setup['resets'] = [], changes: TransportState[] = [], frames = new Map<number, (time: number) => void>(); let frameId = 0;
+  const block = (frame: number): Block => ({ startFrame: frame, endFrame: Math.min(frame + 60, duration), buffer: new Buffer(2, Math.min(60, duration - frame) * 1600, 48000) });
+  const transport = createContinuousTimelineAudioTransport({ context: context as never,
+    plan: { startFrame: start, durationFrames: duration, blockFrames: 60, sampleRate: 48000, channels: 2 }, initialBlock: block(start) as never,
+    loadBlock: (frame: number, signal: AbortSignal) => { loads.push({ frame, signal }); return load ? load(frame, signal, block) : Promise.resolve(block(frame)); },
+    onReset: async (frame: number, signal: AbortSignal) => { resets.push({ frame, signal }); await reset?.(frame, signal); },
+    onChange: (state: TransportState) => { changes.push(state); onChange?.(state); },
+    requestAnimationFrame: (callback: (time: number) => void) => { frames.set(++frameId, callback); return frameId; }, cancelAnimationFrame: (handle: number) => frames.delete(handle),
+  } as never);
   return { transport, context, block, loads, resets, changes, frames, paint() { const callbacks = [...frames.values()]; frames.clear(); for (const callback of callbacks) callback(0); } };
 }
-const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} != ${b}`);
+const near = (a: number, b: number): void => assert.ok(Math.abs(a - b) < 1e-9, `${a} != ${b}`);
 
 test('continuous engine requires the exact fixed clock and a complete mixed initial block', () => {
   const context = new Context(), initialBlock = { startFrame: 0, endFrame: 60, buffer: new Buffer(2, 96000, 48000) };
@@ -50,7 +62,7 @@ test('continuous engine requires the exact fixed clock and a complete mixed init
   for (const patch of [{ plan: { ...options.plan, blockFrames: 600 } }, { plan: { ...options.plan, durationFrames: 18001 } },
     { initialBlock: { ...initialBlock, endFrame: 59 } }, { initialBlock: { ...initialBlock, buffer: new Buffer(1, 96000, 48000) } },
     { initialBlock: { ...initialBlock, buffer: new Buffer(2, 96000, 44100) } }, { initialBlock: { ...initialBlock, buffer: new Buffer(2, 95999, 48000) } }]) {
-    assert.throws(() => createContinuousTimelineAudioTransport({ ...options, ...patch }), { code: 'AUDIO_PREVIEW_INVALID_GRAPH' });
+    assert.throws(() => createContinuousTimelineAudioTransport({ ...options, ...patch } as never), { code: 'AUDIO_PREVIEW_INVALID_GRAPH' });
   }
   assert.equal(context.sources.length, 0);
 });
@@ -75,7 +87,7 @@ for (const duration of [750, 3600, 18000]) {
     for (let frame = 0, index = 0; frame < duration; frame += 60, index++) {
       const source = f.context.sources[index], [when, offset, seconds] = source.starts[0];
       near(when, initialTime + frame / 30); assert.equal(offset, 0); near(seconds, Math.min(60, duration - frame) / 30);
-      assert.equal(source.scheduledBuffer.length, Math.min(60, duration - frame) * 1600);
+      assert.equal(source.scheduledBuffer!.length, Math.min(60, duration - frame) * 1600);
       f.context.currentTime = when + seconds; source.end(); await tick();
       assert.equal(source.buffer, null);
       assert.ok(f.transport.getState().heldBytes <= 3_072_000);
@@ -102,7 +114,7 @@ test('a late load before a delayed end notification cannot schedule in the past 
   await f.transport.play(); await tick(); const oldEnded = f.context.sources[0].onended;
   f.context.currentTime = 6; wait.resolve(); await tick();
   assert.equal(f.transport.getState().underruns, 1); assert.equal(f.transport.getState().status, 'playing');
-  near(f.context.sources[1].starts[0][0], 6.02); oldEnded(); assert.equal(f.transport.getState().status, 'playing');
+  near(f.context.sources[1].starts[0][0], 6.02); oldEnded!(); assert.equal(f.transport.getState().status, 'playing');
   await f.transport.dispose();
 });
 
@@ -120,7 +132,7 @@ test('buffered playing and paused seek use retained blocks, while a stale source
   const f = setup(); await f.transport.play(); await tick(); const staleEnded = f.context.sources[0].onended;
   assert.equal(await f.transport.seek(80), true); assert.equal(f.transport.getState().status, 'playing');
   assert.equal(f.transport.getState().frame, 80); near(f.context.sources[2].starts[0][1], 20 / 30);
-  staleEnded(); assert.equal(f.transport.getState().status, 'playing');
+  staleEnded!(); assert.equal(f.transport.getState().status, 'playing');
   await tick(); f.transport.pause(); const count = f.loads.length;
   assert.equal(await f.transport.seek(90), true); assert.equal(f.transport.getState().status, 'paused'); assert.equal(f.loads.length, count);
   await f.transport.dispose();
@@ -158,7 +170,7 @@ test('late resume acknowledgments cannot revive a paused, stopped or replaced ge
   for (const action of ['pause', 'stop', 'seek']) {
     const context = new Context('suspended'), wait = deferred(); context.resumes.push(wait); const f = setup({ context });
     const played = f.transport.play();
-    if (action === 'seek') await f.transport.seek(300); else f.transport[action]();
+    if (action === 'seek') await f.transport.seek(300); else if (action === 'pause') f.transport.pause(); else f.transport.stop();
     if (action !== 'stop') context.state = 'running'; wait.resolve(); assert.equal(await played, false);
     if (action !== 'seek') assert.equal(context.sources.length, 0);
     await f.transport.dispose();
@@ -213,7 +225,7 @@ test('50 pause/resume rounds do not accumulate retained buffers, listeners or ac
   for (let i = 0; i < 50; i++) { f.context.currentTime += 0.01; f.transport.pause(); assert.equal(f.frames.size, 0); await f.transport.play(); }
   assert.equal(f.transport.getState().heldBytes, 3_072_000); assert.equal(f.loads.length, 1);
   assert.equal(f.context.sources.filter(source => source.buffer !== null).length, 2);
-  await f.transport.dispose(); assert.equal(f.context.events.get('statechange').size, 0);
+  await f.transport.dispose(); assert.equal(f.context.events.get('statechange')!.size, 0);
 });
 
 test('RAF paints only and never drives a boundary or pretends that an exhausted block completed the timeline', async () => {
@@ -246,7 +258,7 @@ test('block failures, schedule failure, context suspension and output failure st
 
 test('synchronous starting and playing observers can revoke before further work is admitted', async () => {
   for (const phase of ['starting', 'playing']) {
-    let owned; const f = setup({ onChange: state => { if (state.status === phase) owned.stop('revoked'); } }); owned = f.transport;
+    let owned!: Transport; const f = setup({ onChange: state => { if (state.status === phase) owned.stop('revoked'); } }); owned = f.transport;
     assert.equal(await owned.play(), false); assert.equal(f.loads.length, 0); assert.equal(f.context.resumeCalls, phase === 'starting' ? 0 : 1);
     assert.equal(owned.getState().status, 'stopped'); await owned.dispose();
   }

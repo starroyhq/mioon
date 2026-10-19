@@ -16,12 +16,12 @@ test('1398 frozen fade implementation retains exact bytes and all valid legacy f
         if((fadeInFrames??0)+(fadeOutFrames??0)>durationFrames)continue;
         const clip={startFrame,durationFrames,...(fadeInFrames===undefined?{}:{fadeInFrames}),...(fadeOutFrames===undefined?{}:{fadeOutFrames})};
         for(const offset of [...new Set([0,Math.floor(durationFrames/2),durationFrames])]){
-          assert.equal(current(clip,startFrame+offset),before(clip,startFrame+offset));cases++;
+          assert.equal(current(clip as never,startFrame+offset),before(clip as never,startFrame+offset));cases++;
         }
       }
   }
   assert.ok(cases>500);
-  assert.equal(current({startFrame:undefined},0),'','omitted fades retain the old zero-effect fast path');
+  assert.equal(current({startFrame:undefined} as never,0),'','omitted fades retain the old zero-effect fast path');
 });
 
 
@@ -37,11 +37,11 @@ test('1398 frozen export segmentation and argument strings remain byte-identical
     const inner=Math.floor(durationFrames/3),length=Math.max(1,Math.floor(durationFrames/4));
     const clips=[{startFrame:0,durationFrames},...(inner+length<=durationFrames?[{startFrame:inner,durationFrames:length,muted:true}]:[])];
     const timeline={fps:30,durationFrames,clips};
-    const snapshots=[{timeline}];
+    const snapshots: Array<Record<string, unknown>>=[{timeline}];
     for(const startFrame of [...new Set([0,Math.floor(durationFrames/2),durationFrames-1])])
       for(const endFrame of [...new Set([startFrame+1,durationFrames])])
         snapshots.push({timeline,exportRange:{startFrame,endFrame}});
-    for(const snapshot of snapshots){assert.equal(JSON.stringify(currentRange(snapshot)),JSON.stringify(oldRange(snapshot)));cases++;}
+    for(const snapshot of snapshots){assert.equal(JSON.stringify(currentRange(snapshot as never)),JSON.stringify(oldRange(snapshot as never)));cases++;}
   }
   assert.ok(cases>=20);
 });

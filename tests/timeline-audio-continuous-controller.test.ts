@@ -2,13 +2,24 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createContinuousAudioPreviewController} from '../apps/web/src/timeline-audio-continuous-controller.ts';
 
-const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const tick = () => new Promise(resolve => setImmediate(resolve));
-const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return {promise, resolve, reject}; };
-function fixture({pendingPrepare, pendingResume, pendingClose, pendingResources, pendingSessionClose, failClose = false, overrides = {}, onChange} = {}) {
-  let context = {scope: 'project:workspace:epoch-1', executionScope: 'editing:timeline', projectId: id(1), timelineId: id(2), revision: 1,
+type Controller = ReturnType<typeof createContinuousAudioPreviewController>;
+interface Deferred<T = void> {promise: Promise<T>; resolve: (value?: T) => void; reject: (error: unknown) => void}
+interface FixtureContext {scope: string; executionScope: string; projectId: string; timelineId: string; revision: number; durationFrames: number; sourceIdentity: string; connected: boolean; visible: boolean; restored: boolean; hasUnsavedDrafts: boolean; [key: string]: unknown}
+interface PrepareCall {input: {projectId: string; timelineId: string; expectedRevision: number; startFrame: number}; options: {signal: AbortSignal; expectedWorkspaceOrigin?: string; onResourceSettlement?(value: Promise<unknown>): void}}
+interface FixtureAudioContext {sampleRate: number; state: string; closes: number; resumes: number; resume(): Promise<void>; close(): Promise<void>}
+interface FixtureSession {plan: Record<string, unknown>; closes: number; takes: number; takeInitialBlock(): {startFrame: number; endFrame: number; buffer: unknown}; loadBlock(...args: never[]): Promise<never>; reset(...args: never[]): Promise<void>; dispose(): Promise<void> | undefined}
+interface TransportState {status: string; frame: number; sample: number; reason: string | null; errorCode: string; underruns: number; heldBytes: number; peakHeldBytes: number}
+interface FixtureTransport {seeks: number[]; plays: number; pauses: number; disposals: number; disposed: boolean; play(): Promise<boolean>; pause(): void; seek(frame: number): Promise<boolean>; stop(): void; dispose(): Promise<unknown>; getState(): TransportState; tick(frame: number): void; buffer(frame: number): void; fail(code: string): void}
+interface FixtureCalls {prepare: PrepareCall[]; contexts: FixtureAudioContext[]; transports: FixtureTransport[]; sessions: FixtureSession[]; positions: number[]; beforePlay: number; unauthorized: number; changes: Array<Record<string, unknown>>}
+interface FixtureOptions {pendingPrepare?: Deferred; pendingResume?: Deferred; pendingClose?: Deferred; pendingResources?: Deferred; pendingSessionClose?: Deferred; failClose?: boolean; overrides?: Record<string, unknown>; onChange?: (state: Record<string, unknown>) => void}
+interface Fixture {controller: Controller; calls: FixtureCalls; readonly context: FixtureContext; setContext(patch: Record<string, unknown>): void; changeWithoutEffect(patch: Record<string, unknown>): void}
+const id = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const tick = (): Promise<void> => new Promise<void>(resolve => setImmediate(resolve));
+const deferred = <T = void>(): Deferred<T> => { let resolve!: (value: T | PromiseLike<T>) => void, reject!: (error: unknown) => void; const promise = new Promise<T>((a, b) => { resolve = a; reject = b; }); return {promise, resolve: (value?: T) => resolve(value as T), reject}; };
+function fixture({pendingPrepare, pendingResume, pendingClose, pendingResources, pendingSessionClose, failClose = false, overrides = {}, onChange}: FixtureOptions = {}): Fixture {
+  let context: FixtureContext = {scope: 'project:workspace:epoch-1', executionScope: 'editing:timeline', projectId: id(1), timelineId: id(2), revision: 1,
     durationFrames: 18000, sourceIdentity: 'saved-source-identity', connected: true, visible: true, restored: false, hasUnsavedDrafts: false, ...overrides};
-  const calls = {prepare: [], contexts: [], transports: [], sessions: [], positions: [], beforePlay: 0, unauthorized: 0, changes: []};
+  const calls: FixtureCalls = {prepare: [], contexts: [], transports: [], sessions: [], positions: [], beforePlay: 0, unauthorized: 0, changes: []};
   const controller = createContinuousAudioPreviewController({getContext: () => context,
     readPlan: async () => { throw Error('Legacy twenty-second plan must not be invoked'); },
     readContinuousPlan: async () => { throw Error('Injected preparation owns plan requests'); },
@@ -17,12 +28,12 @@ function fixture({pendingPrepare, pendingResume, pendingClose, pendingResources,
       const audio = {sampleRate: 48000, state: 'running', closes: 0, resumes: 0,
         resume() { this.resumes++; return Promise.resolve(); },
         close() { this.closes++; if (failClose) return Promise.reject(Error('Close failed')); if (pendingClose) return pendingClose.promise.then(() => { this.state = 'closed'; }); this.state = 'closed'; return Promise.resolve(); }};
-      calls.contexts.push(audio); return audio;
+      calls.contexts.push(audio); return audio as never;
     },
     prepareContinuous: async (input, options) => {
       calls.prepare.push({input, options}); if (pendingResources) options.onResourceSettlement?.(pendingResources.promise);
       if (pendingPrepare) await pendingPrepare.promise;
-      let closed = null, first = true;
+      let closed: Promise<void> | null = null; let first = true;
       const session = {plan: {schemaVersion: 2, status: 'planned', profileId: 'saved-timeline-audio-continuous-f32le-48k-stereo-v2',
         projectId: input.projectId, timelineId: input.timelineId, timelineRevision: input.expectedRevision,
         startFrame: input.startFrame, durationFrames: 18000, blockFrames: 60, sampleRate: 48000, channels: 2,
@@ -30,29 +41,29 @@ function fixture({pendingPrepare, pendingResume, pendingClose, pendingResources,
         takeInitialBlock() { assert.equal(first, true); first = false; this.takes++; return {startFrame: input.startFrame, endFrame: Math.min(input.startFrame + 60, 18000), buffer: {}}; },
         loadBlock: async () => { throw Error('Fake transport owns loading'); }, reset: async () => {},
         dispose() { if (!closed) { this.closes++; closed = pendingSessionClose ? pendingSessionClose.promise : Promise.resolve(); } return closed; }};
-      calls.sessions.push(session); return session;
+      calls.sessions.push(session); return session as never;
     },
     createContinuousTransport: options => {
       let disposed = false, generation = 0;
       let state = {status: 'ready', frame: options.initialBlock.startFrame, sample: options.initialBlock.startFrame * 1600,
         reason: null, errorCode: '', underruns: 0, heldBytes: 1536000, peakHeldBytes: 1536000};
-      const emit = patch => { state = {...state, ...patch}; options.onChange(state); };
-      const transport = {seeks: [], plays: 0, pauses: 0, disposals: 0,
+      const emit = (patch: Record<string, unknown>): void => { state = {...state, ...patch} as never; options.onChange!(state as never); };
+      const transport = {seeks: [] as number[], plays: 0, pauses: 0, disposals: 0,
         async play() { const token = ++generation; this.plays++; emit({status: 'starting'}); if (pendingResume) await pendingResume.promise;
           if (disposed || token !== generation) return false; emit({status: 'playing'}); return true; },
         pause() { generation++; this.pauses++; emit({status: 'paused'}); },
-        async seek(frame) { generation++; this.seeks.push(frame); emit({frame, sample: frame * 1600, status: frame === 18000 ? 'ended' : state.status}); return true; },
+        async seek(frame: number) { generation++; this.seeks.push(frame); emit({frame, sample: frame * 1600, status: frame === 18000 ? 'ended' : state.status}); return true; },
         stop() { generation++; emit({status: 'stopped'}); },
         dispose() { generation++; disposed = true; this.disposals++; return options.context.close(); },
         getState: () => state,
-        tick(frame) { emit({frame, sample: frame * 1600, status: 'playing'}); },
-        buffer(frame) { emit({frame, sample: frame * 1600, status: 'buffering', underruns: 1, heldBytes: 0}); },
-        fail(code) { emit({status: 'stopped', errorCode: code, reason: 'load-failed'}); },
+        tick(frame: number) { emit({frame, sample: frame * 1600, status: 'playing'}); },
+        buffer(frame: number) { emit({frame, sample: frame * 1600, status: 'buffering', underruns: 1, heldBytes: 0}); },
+        fail(code: string) { emit({status: 'stopped', errorCode: code, reason: 'load-failed'}); },
         get disposed() { return disposed; },
       };
-      calls.transports.push(transport); return transport;
-    }, onExplicitPosition: frame => calls.positions.push(frame), onBeforePlay: () => { calls.beforePlay++; },
-    onUnauthorized: () => { calls.unauthorized++; }, onChange: state => { calls.changes.push(state); onChange?.(state); },
+      calls.transports.push(transport as never); return transport as never;
+    }, onExplicitPosition: (frame: number) => calls.positions.push(frame), onBeforePlay: () => { calls.beforePlay++; },
+    onUnauthorized: () => { calls.unauthorized++; }, onChange: state => { calls.changes.push(state as unknown as Record<string, unknown>); onChange?.(state as unknown as Record<string, unknown>); },
   });
   controller.attach(context);
   return {controller, calls, get context() { return context; }, setContext(patch) { context = {...context, ...patch}; controller.setContext(context); },
@@ -117,7 +128,7 @@ test('retained controls recheck the latest binding before prepare, play, seek or
 test('pause, revoke and project changes reject late resume acknowledgments without reviving audio', async () => {
   for (const action of ['pause', 'revoke', 'project']) {
     const pending = deferred(), f = fixture({pendingResume: pending}); await f.controller.prepare(0); const play = f.controller.play();
-    if (action === 'project') f.setContext({projectId: id(9)}); else f.controller[action]();
+    if (action === 'project') f.setContext({projectId: id(9)}); else if (action === 'pause') f.controller.pause(); else f.controller.revoke();
     pending.resolve(); assert.equal(await play, false); assert.notEqual(f.controller.getState().phase, 'playing');
     assert.deepEqual(f.calls.positions, []); f.controller.dispose(); await tick();
   }
@@ -127,14 +138,14 @@ test('cancel, unmount and A to B to A generation changes cannot publish an ignor
   for (const action of ['cancel', 'dispose', 'aba']) {
     const pending = deferred(), f = fixture({pendingPrepare: pending}); const preparation = f.controller.prepare(0);
     if (action === 'aba') { f.setContext({scope: 'B'}); f.setContext({scope: 'project:workspace:epoch-1'}); }
-    else f.controller[action]();
+    else if (action === 'cancel') f.controller.cancel(); else f.controller.dispose();
     pending.resolve(); assert.equal(await preparation, false); await tick();
     assert.equal(f.calls.transports.length, 0); assert.equal(f.calls.contexts[0].closes, 1); assert.deepEqual(f.calls.positions, []);
   }
 });
 
 test('a synchronous preparing observer revokes before any new context or request is allocated', async () => {
-  let f; f = fixture({onChange: state => { if (state.phase === 'preparing') f.controller.revoke(); }});
+  let f: Fixture; f = fixture({onChange: (state: Record<string, unknown>) => { if (state.phase === 'preparing') f.controller.revoke(); }});
   assert.equal(await f.controller.prepare(0), false); await tick();
   assert.equal(f.calls.contexts.length, 0); assert.equal(f.calls.prepare.length, 0);
   assert.equal(f.controller.getState().phase, 'cancelled');
@@ -166,7 +177,7 @@ for (const action of ['cancel', 'stop', 'revoke', 'dispose', 'revision']) {
   test(`${action} invalidates a queued initial seek so ignored late PCM cannot restart it`, async () => {
     const pending = deferred(), f = fixture({pendingPrepare: pending}); const original = f.controller.start(0);
     f.controller.seek(100); f.controller.seek(200);
-    if (action === 'revision') f.setContext({revision: 2}); else f.controller[action]();
+    if (action === 'revision') f.setContext({revision: 2}); else if (action === 'cancel') f.controller.cancel(); else if (action === 'stop') f.controller.stop(); else if (action === 'revoke') f.controller.revoke(); else f.controller.dispose();
     pending.resolve(); assert.equal(await original, false); await tick();
     assert.equal(f.calls.prepare.length, 1); assert.equal(f.calls.transports.length, 0); assert.equal(f.calls.beforePlay, 0);
     assert.equal(f.calls.sessions[0].closes, 1); assert.notEqual(f.controller.getState().phase, 'playing');
