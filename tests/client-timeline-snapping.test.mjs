@@ -368,11 +368,11 @@ test('Timeline commits the displayed frame once, with unchanged, invalid, payloa
   const drop = timelineSource.slice(timelineSource.indexOf('async function drop('), timelineSource.indexOf('const stepSeconds'));
   assert.match(drop, /const value = previewRef\.current, session = gesture\.current, drag = activeDrag/);
   assert.match(drop, /value\?\.valid && value\.trackId === track\.id/);
-  assert.match(drop, /session\?\.drag === drag && session\.projectId === timeline\.projectId && session\.revision === timeline\.revision/);
-  assert.match(drop, /if \(!allowed \|\| !payloadMatches \|\| value\.unchanged\) return/);
-  assert.match(drop, /expectedRevision: session\.revision, durationFrames: value\.durationFrames/);
-  assert.match(drop, /onMoveClip\(drag\.id, track\.id, value\.startFrame, snapshot\)/);
-  assert.match(drop, /onAddAsset\(drag\.id, track\.id, value\.startFrame, snapshot\)/);
+  assert.match(drop, /session\?\.drag === drag && session\.projectId === timeline!\.projectId && session\.revision === timeline!\.revision/);
+  assert.match(drop, /if \(!allowed \|\| !payloadMatches \|\| value!\.unchanged\) return/);
+  assert.match(drop, /expectedRevision: session!\.revision, durationFrames: value!\.durationFrames/);
+  assert.match(drop, /onMoveClip\(drag!\.id, track\.id, value!\.startFrame, snapshot\)/);
+  assert.match(drop, /onAddAsset\(drag!\.id, track\.id, value!\.startFrame, snapshot\)/);
   assert.doesNotMatch(drop, /timelineDropPreview\(|snapTimelinePosition\(|frameAt\(/);
   assert.match(timelineSource, /data-start-frame=\{preview\.startFrame\}/);
   assert.match(timelineSource, /data-snap-frame=\{preview\.snap\.frame\}/);

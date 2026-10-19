@@ -192,8 +192,8 @@ export function assertBoundedSequenceProjection(initialize) {
 // current schema has advanced, so construct the exact historical schema chain
 // instead. Returns an open DatabaseSync; caller seeds and closes it.
 export function createHistoricalDatabase(root, version) {
-  fs.mkdirSync(root, {mode: 0o700});
-  fs.mkdirSync(path.join(root, 'media'), {mode: 0o700});
+  fs.mkdirSync(root, {mode: 0o700, recursive: true});
+  fs.mkdirSync(path.join(root, 'media'), {mode: 0o700, recursive: true});
   const db = open(path.join(root, 'workbench.sqlite'));
   initializeWorkspaceSchemaThrough24(db);
   if (version >= 26) initializeWorkspaceSchema26(db);

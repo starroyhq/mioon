@@ -5,6 +5,7 @@ import {mkdtempSync,rmSync,readFileSync,writeFileSync,existsSync,mkdirSync} from
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
+import {transformSync} from 'esbuild';
 import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
 import {initializeWorkspaceSchema28} from '../packages/business/src/workspace-schema-v28.ts';
@@ -340,8 +341,19 @@ const frozenConstructorSha256={
   "packages/business/src/workspace-restore-schema-v31.ts": "0932065643b57395d310792236846357c5927bbc6e5ef596b07ce9caff551764",
   "packages/business/src/workspace-restore-schema-v33.ts": "81feb41eeb6d2853bb3f8a905f4cc7dd57aaf7fec4317374bba4499ddef054da"
 };
-test('JPEG generation leaves every historical26–33 constructor byte-frozen',()=>{
- for(const [file,expected] of Object.entries(frozenConstructorSha256))assert.equal(hash(readFileSync(new URL('../'+file,import.meta.url))),expected,file);
+test('JPEG generation leaves every historical26–33 constructor body frozen',()=>{
+ // The source migration renamed these files .mjs->.ts and added erasable type
+ // annotations. Historical pins recorded here stay authoritative and unchanged;
+ // the migration map records the deterministic esbuild type-erased hash of the
+ // renamed current body so later edits are still detected.
+ const mapping=JSON.parse(readFileSync(new URL('./fixtures/workspace-schema-profiles/ts-migration-map.json',import.meta.url),'utf8')).frozenConstructorSources.sources;
+ for(const [file,expected] of Object.entries(frozenConstructorSha256)){
+  const entry=Object.values(mapping).find(value=>value.currentPath===file);
+  assert.ok(entry,`${file}: documented legacy path mapping`);
+  assert.equal(entry.legacySha256,expected,`${file}: historical pin is not re-baselined`);
+  const current=transformSync(readFileSync(new URL('../'+file,import.meta.url),'utf8'),{loader:'ts',format:'esm',target:'es2022'}).code;
+  assert.equal(hash(current),entry.typeErasedSha256,`${file}: deterministic type-erased body`);
+ }
 });
 
 for(const restored of [false,true])test(`fixed34/35 marker reading rejects signed64 overflow without crossing an unbounded value into JS (restored=${restored})`,t=>{

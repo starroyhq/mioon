@@ -25,7 +25,7 @@ test('every workspace package uses @mioon and CLI publishes no old command alias
       assert.equal(Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }).some(name => name.startsWith('@video-workbench/')), false);
     }
   }
-  assert.deepEqual(JSON.parse(await read('apps/cli/package.json')).bin, { mioon: './src/index.mjs' });
+  assert.deepEqual(JSON.parse(await read('apps/cli/package.json')).bin, { mioon: './src/index.ts' });
 });
 
 test('login, loading, header and browser title display Mioon rather than prior branding', async () => {
