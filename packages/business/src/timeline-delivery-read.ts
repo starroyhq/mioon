@@ -194,7 +194,7 @@ export function timelineExportPreviewIdentity(url: URL): {assetId: string; expor
   return {assetId, exportId};
 }
 
-export type TimelineExportPreviewMedia = Pick<TimelineExportOutput, 'exportId' | 'assetId' | 'projectId' | 'relativePath' | 'identityDigest'>;
+export type TimelineExportPreviewMedia = Pick<TimelineExportOutput, 'exportId' | 'assetId' | 'projectId' | 'relativePath' | 'identityDigest'> & {readonly mimeType: 'video/mp4'};
 
 /** Both named and unnamed exports require the same exact receipt/output proof. */
 export function readTimelineExportPreviewMedia(db: DatabaseSync, url: URL, guards: TimelineDeliveryReadGuards): TimelineExportPreviewMedia | null {
@@ -203,7 +203,7 @@ export function readTimelineExportPreviewMedia(db: DatabaseSync, url: URL, guard
   const output = readTimelineExportOutputCore(db, requested, guards, false, true);
   if (!output) return null;
   return Object.freeze({exportId: output.exportId, assetId: output.assetId, projectId: output.projectId,
-    relativePath: output.relativePath, identityDigest: output.identityDigest});
+    relativePath: output.relativePath, mimeType: 'video/mp4' as const, identityDigest: output.identityDigest});
 }
 
 /** Check the retained owner again after open/stat and before any output bytes. */

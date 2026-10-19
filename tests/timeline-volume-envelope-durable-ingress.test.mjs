@@ -7,7 +7,7 @@ import {openStore} from '../packages/business/src/db.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 import {validateWorkspaceSchema48} from '../packages/business/src/workspace-schema-v48.ts';
 import {assertTimelineVolumeEnvelopeWorkspace} from '../packages/business/src/timeline-volume-envelope-admission.ts';
-import {initializeFrozenUpgradeFixtureSchema} from './helpers/opacity-upgrade-fixture.mjs';
+import {initializeFrozenUpgradeFixtureSchema} from './helpers/opacity-upgrade-fixture.ts';
 import {hash} from '../packages/business/src/services.ts';
 import {VOLUME_ENVELOPE_PROFILE as profileId} from '../packages/contracts/src/timeline-volume-envelope.ts';
 const id='11111111-1111-4111-8111-111111111111';

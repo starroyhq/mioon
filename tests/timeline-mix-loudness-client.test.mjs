@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createClient,prepareTimelineMixLoudness,errorEnvelope} from '@mioon/client';
 import {TIMELINE_MIX_LOUDNESS_LIMITS,isTimelineMixLoudnessResponse} from '@mioon/contracts/timeline-mix-loudness';
 import {readTimelineMixLoudnessEnvelope} from '../packages/client/src/timeline-mix-loudness.ts';
-import {mixLoudnessOperation as operation,mixLoudnessInput as input,mixLoudnessToken as token,readyMixLoudness,silentMixLoudness} from './fixtures/timeline-mix-loudness-fixtures.mjs';
+import {mixLoudnessOperation as operation,mixLoudnessInput as input,mixLoudnessToken as token,readyMixLoudness,silentMixLoudness} from './fixtures/timeline-mix-loudness-fixtures.ts';
 const env={MIOON_TOKEN:token};
 const success=data=>Response.json({ok:true,data});
 const clientFor=report=>createClient({env,fetchImpl:async()=>success(report)});

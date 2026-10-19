@@ -9,8 +9,8 @@ import {createServices} from '../packages/business/src/services.ts';
 import {LOCAL_SHOT_TEXT_FILENAME} from '../packages/business/src/local-shot-text.ts';
 import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
-import {restoreFixture,tree,logical} from './helpers/workspace-restore-offline-fixture.mjs';
-import {shotTextForStore} from './fixtures/local-shot-text-process-worker.mjs';
+import {restoreFixture,tree,logical} from './helpers/workspace-restore-offline-fixture.ts';
+import {shotTextForStore} from './fixtures/local-shot-text-process-worker.ts';
 const authority=value=>({workspaceScope:value.workspaceScope,instanceId:value.instanceId,projectId:value.projectId,shotId:value.shotId});
 const action=value=>({...authority(value),intentId:value.intent.intentId,expectedIntentRevision:value.intentRevision});
 test('cold backup excludes shot draft, intent and atomic temp; restored profile rejects them before all I/O',{timeout:30000},async t=>{

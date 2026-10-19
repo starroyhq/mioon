@@ -22,7 +22,7 @@ import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-po
 import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import {TIMELINE_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-edit-tool-policy.ts';
 import {TIMELINE_GAIN_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-gain-tool-policy.ts';
-import {loudnessApplyFixture} from './fixtures/timeline-loudness-apply.mjs';
+import {loudnessApplyFixture} from './fixtures/timeline-loudness-apply.ts';
 
 const repo=fileURLToPath(new URL('..',import.meta.url));
 const operation='timeline.loudness.apply',toolName='timeline_loudness_apply';

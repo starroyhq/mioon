@@ -1,4 +1,4 @@
-import {authorizeHttpSnapshot} from './helpers/agent-authorizations.mjs';
+import {authorizeHttpSnapshot} from './helpers/agent-authorizations.ts';
 import {deriveAgentEndpoint} from '@mioon/contracts';
 import {responsesFixture, frameResponsesEvent} from './agent-responses-fixture.mjs';
 import test from 'node:test';

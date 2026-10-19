@@ -12,12 +12,13 @@ import {createTimelineExportAdmissionServices} from '../packages/business/src/ti
 import {isOpacityRenderRecord} from '../packages/contracts/src/timeline-opacity-render-candidate.ts';
 import {resolveTimelineExportDelivery} from '../packages/contracts/src/index.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
+import {mkdtempPortable} from './helpers/temp-root.ts';
 
 const stamp='2026-10-16T00:00:00.000Z';
 const curve=()=>({profileId:'mioon-clip-linear-opacity-v1',points:[{frame:0,opacity:0},{frame:30,opacity:1}]});
 const hash=value=>createHash('sha256').update(JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b))):item)).digest('hex');
 function fixture(t, fields={opacityEnvelope:curve()}) {
-  const root=mkdtempSync(path.join('/private/tmp','mioon-opacity-render-admission-'));
+  const root=mkdtempPortable('mioon-opacity-render-admission-');
   const ids=Object.fromEntries(['project','asset','timeline','track','clip'].map(key=>[key,randomUUID()]));
   const data={project:{id:ids.project,name:'Synthetic candidate render',revision:1,createdAt:stamp,updatedAt:stamp},
     asset:{id:ids.asset,projectId:ids.project,name:'Synthetic metadata only',mimeType:'video/mp4',duration:1,width:720,height:1280,hasVideo:true,hasAudio:true,sha256:'a'.repeat(64),relativePath:'media/never-opened.mp4',createdAt:stamp}};

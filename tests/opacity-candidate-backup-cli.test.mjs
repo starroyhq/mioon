@@ -5,7 +5,7 @@ import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
-import {opacityBackupFixture, tree} from './helpers/opacity-backup-fixture.mjs';
+import {opacityBackupFixture, tree} from './helpers/opacity-backup-fixture.ts';
 import {opacityWorkspaceBackupResultSchema, opacityWorkspaceRestoreResultSchema, opacityWorkspaceRestoreStatusSchema} from '../packages/contracts/src/opacity-candidate-backup.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -141,7 +141,7 @@ test('candidate CLI preserves original parser validation and identifies its own 
     ['restore-status', '--destination', absent, '--restoration-id', 'invalid'],
   ]) {
     const result = await run(t, f, args), error = failure(result, 'VALIDATION_ERROR', 2);
-    assert.match(error.message, /apps\/cli\/src\/opacity-backup\.ts --help/); assert.ok(!error.message.includes('backup.ts'));
+    assert.match(error.message, /apps\/cli\/src\/opacity-backup\.ts --help/); assert.ok(!/apps\/cli\/src\/backup\.(?:ts|mjs)/u.test(error.message));
   }
   for (const bad of ['relative', `${f.base}/../source`, `${f.source}/`]) failure(await run(t, f, ['verify', '--directory', bad]), 'WORKSPACE_BACKUP_INVALID_PATH', 2);
   assert.equal(fs.existsSync(absent), false);

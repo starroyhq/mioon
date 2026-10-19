@@ -7,7 +7,7 @@ import {randomUUID} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {isEditTaskEnvelope} from '@mioon/contracts';
-import {taskFixture,taskPath,listPath,database,snapshot,REPO,TASK_TOKEN} from './helpers/edit-tasks-http-fixture.mjs';
+import {taskFixture,taskPath,listPath,database,snapshot,REPO,TASK_TOKEN} from './helpers/edit-tasks-http-fixture.ts';
 const subjectTables=['subjects','subject_versions','subject_bindings','subject_requests','edit_tasks'];
 const saved=f=>snapshot(f.root,subjectTables);
 const inputFor=f=>({projectId:f.project.id,kind:'character',name:'Synthetic subject',assetId:f.source.id,requestId:randomUUID()});

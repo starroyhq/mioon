@@ -25,7 +25,7 @@ const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const env=extra=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',...extra});
 const serverSource=`
-import {installWireGuard} from './tests/helpers/inspection-wire-fixture.mjs';
+import {installWireGuard} from './tests/helpers/inspection-wire-fixture.ts';
 installWireGuard({auditPath:process.env.MIOON_WIRE_AUDIT});
 const {startServer}=await import('./apps/server/src/index.ts');
 const server=await startServer({dataDir:process.env.MIOON_DATA_DIR,port:0,token:process.env.MIOON_TOKEN});

@@ -1,4 +1,4 @@
-import {createAgentAuthorizationUiMock} from './helpers/agent-authorization-ui.mjs';
+import {createAgentAuthorizationUiMock} from './helpers/agent-authorization-ui.ts';
 import { creationUiMessages } from '../packages/i18n/src/catalogs/creation-ui.ts';
 import { createLanguageStore } from '../apps/web/src/i18n/language-store.ts';
 import { createI18nTestContext, message } from './helpers/i18n.ts';
@@ -9,7 +9,7 @@ import * as gainContext from '../apps/web/src/agent-timeline-gain-context.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { stripSourceTypes } from './helpers/eval-source.mjs';
+import { stripSourceTypes } from './helpers/eval-source.ts';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
@@ -547,7 +547,7 @@ test('actual nested dock page combines ancestor visibility, keeps children and m
 });
 
 test('App right-dock tabs preserve existing layout, resize and Inspector subtree and ordinary selection never changes tabs', () => {
-  assert.match(appSource, /rightDockTab, setRightDockTabState\] = useState\('properties'\)/); assert.match(appSource, /const setRightDockTab = \(value: string\) => \{ if \(!clipDraftRef\.current\?\.hasPendingComposition\(\)\) setRightDockTabState\(value\); \}/);
+  assert.match(appSource, /rightDockTab, setRightDockTabState\] = useState\('properties'\)/); assert.match(appSource, /const setRightDockTab = \(value: string(?: \| \(\(previous: string\) => string\))?\) => \{ if \(!clipDraftRef\.current\?\.hasPendingComposition\(\)\) setRightDockTabState\(value\); \}/);
   for (const id of ['right-dock-tab-properties', 'right-dock-tab-agent', 'right-dock-tab-image']) assert.ok((appSource + readFileSync(new URL('../apps/web/src/WorkbenchShell.tsx', import.meta.url), 'utf8') + readFileSync(new URL('../apps/web/src/CanvasToolbar.tsx', import.meta.url), 'utf8')).includes(`data-testid="${id}"`));
   assert.match(appSource, /<AgentDockPane id="right-dock-properties"[^>]+visible={rightDockTab === 'properties'}/);
   assert.match(appSource, /<AgentDockPane id="right-dock-agent"[^>]+visible={rightDockTab === 'agent'}/);

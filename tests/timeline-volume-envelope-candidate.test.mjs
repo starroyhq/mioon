@@ -5,14 +5,14 @@ import {readFileSync} from 'node:fs';
 import {isTimelineRecord, TIMELINE_RESPONSE_BYTES} from '../packages/contracts/src/timeline-replacement.ts';
 import {isTimelineMutationResponse, hasRequestNotAppliedProof} from '../packages/contracts/src/timeline-acknowledgement.ts';
 import {VOLUME_ENVELOPE_PROFILE as profileId, splitVolumeEnvelopeFields} from '../packages/contracts/src/timeline-volume-envelope.ts';
-import {volumeEnvelopeCandidateIntentDigest} from './helpers/timeline-volume-envelope-candidate-intent.mjs';
+import {volumeEnvelopeCandidateIntentDigest} from './helpers/timeline-volume-envelope-candidate-intent.ts';
 import {
   captureTimelineVolumeEnvelopeCandidateRecord as capture,
   isTimelineVolumeEnvelopeCandidateRecord as record,
   isTimelineVolumeEnvelopeCandidateSnapshot as snapshot,
   isTimelineVolumeEnvelopeCandidateMutationResponse as ack,
   isTimelineVolumeEnvelopeCandidateMutationReceipt as receipt,
-} from './helpers/timeline-volume-envelope-candidate.mjs';
+} from './helpers/timeline-volume-envelope-candidate.ts';
 
 const clone = value => structuredClone(value);
 const bytes = value => Buffer.byteLength(JSON.stringify(value));

@@ -1,11 +1,11 @@
 import { message as msg } from '../packages/i18n/src/index.ts';
-import { actualAppCloseWarning } from './fixtures/native-close-app-warning.mjs';
+import { actualAppCloseWarning } from './fixtures/native-close-app-warning.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createClipDraftController } from '../apps/web/src/clip-draft-state.ts';
 
-import { lenientFunction, stripSourceTypes } from './helpers/eval-source.mjs';
+import { lenientFunction, stripSourceTypes } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 // Execute the actual App callbacks with the real local-draft controller. Only
 // the persistence transport and React state setters are synthetic boundaries.

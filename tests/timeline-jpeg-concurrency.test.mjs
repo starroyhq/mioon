@@ -20,9 +20,9 @@ import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {createTimelinePreflightServices} from '../packages/business/src/timeline-preflight.ts';
 import {openStore} from '../packages/business/src/db.ts';
 import {snapshot as databaseSnapshot} from './workspace-schema26-fixtures.mjs';
-import {png, sha, imageColour, stamp, timelineFixture} from './helpers/timeline-image-fixtures.mjs';
-import {pillowJfifFixture} from './helpers/timeline-jpeg-fixtures.mjs';
-import {jpegColour} from './helpers/timeline-jpeg-workflow-fixtures.mjs';
+import {png, sha, imageColour, stamp, timelineFixture} from './helpers/timeline-image-fixtures.ts';
+import {pillowJfifFixture} from './helpers/timeline-jpeg-fixtures.ts';
+import {jpegColour} from './helpers/timeline-jpeg-workflow-fixtures.ts';
 
 const code = 'TIMELINE_IMAGE_COMPOSITOR_BUDGET';
 const budgetError = {code, message: TIMELINE_COLOUR_PREFLIGHT_MESSAGES[code]};

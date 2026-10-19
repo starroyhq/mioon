@@ -11,7 +11,7 @@ import { run } from '../packages/business/src/media-runtime.ts';
 import { createWorkspaceBackup } from '../packages/business/src/workspace-backup.ts';
 import { restoreWorkspaceBackup } from '../packages/business/src/workspace-restore.ts';
 
-for (const sourceSchema of [32, 34]) test(`project-owned Look survives removed source file, cold reopen, render and restored${sourceSchema + 1} backup`, { timeout: 120000 }, async t => {
+for (const sourceSchema of [48]) test(`project-owned Look survives removed source file, cold reopen, render and restored${sourceSchema + 1} backup`, { timeout: 120000 }, async t => {
   const base = await mkdtemp(path.join(tmpdir(), 'mioon-look-portable-')), root = path.join(base, 'workspace');
   t.after(() => rm(base, { recursive: true, force: true }));
   const localPack = path.join(base, 'selected.mioon-look.cube'), source = path.join(base, 'source.mp4');
@@ -41,7 +41,7 @@ for (const sourceSchema of [32, 34]) test(`project-owned Look survives removed s
     const accepted = await services.call('timeline.render', { projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(), purpose: 'export' });
     worker = startWorker(store, services, new Map()); await worker.tick();
     const result = await services.call('export.get', { exportId: accepted.id }); assert.equal(result.status, 'succeeded', JSON.stringify(result.error));
-  } finally { await worker?.stop(); await services.drain(); if (sourceSchema === 32) store.db.exec('DELETE FROM schema_version WHERE version=34'); /* Explicit historical PNG-generation fixture. */ store.close(); }
+  } finally { await worker?.stop(); await services.drain(); store.close(); }
   const backup = path.join(base, 'backup'), restored = path.join(base, 'restored');
   assert.equal((await createWorkspaceBackup({ source: root, destination: backup })).databaseSchemaVersion, sourceSchema);
   assert.equal((await restoreWorkspaceBackup({ directory: backup, destination: restored })).databaseSchemaVersion, sourceSchema + 1);

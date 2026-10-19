@@ -238,10 +238,26 @@ test('pristine 140fa882 omitted and v1 golden receipts, snapshots, histories and
   await mkdir(path.dirname(path.join(root, baseline.media.relativePath)), {recursive: true, mode: 0o700});
   await writeFile(path.join(root, baseline.media.relativePath), Buffer.from(baseline.media.base64, 'base64'));
   const before = rows(db); db.close(); store = openStore(root);
-  // The frozen24 rows remain byte-exact; startup contributes only marker26.
-  const expected = {...before, schema_version: [...before.schema_version, {__rowid__: 26, version: 26}]};
+  // The frozen legacy business rows remain byte-exact. Startup legitimately
+  // upgrades the schema lineage and creates newer empty tables, so freeze the
+  // golden profile's tables and columns and assert the additive artifacts
+  // separately. The golden can never be refreshed by a live full-database diff.
+  const frozenTables = Object.keys(before).filter(table => table !== 'schema_version');
+  const frozenVersions = before.schema_version.map(row => row.version);
+  function assertFrozenGolden(actual) {
+    const projected = Object.fromEntries(frozenTables.map(table => [table, actual[table].map(row => {
+      const template = before[table][0];
+      return template ? Object.fromEntries(Object.keys(template).map(key => [key, row[key]])) : row;
+    })]));
+    assert.deepEqual(projected, Object.fromEntries(frozenTables.map(table => [table, before[table]])), 'frozen legacy rows stay byte-exact');
+    assert.deepEqual(actual.schema_version.map(row => row.version), [...frozenVersions, 26, 28, 30, 32, 34, 36, 38, 40, 44, 48], 'startup adds only the documented additive lineage');
+    for (const [table, values] of Object.entries(actual)) {
+      if (table === 'schema_version' || Object.hasOwn(before, table)) continue;
+      assert.deepEqual(values, [], `additive table ${table} must stay empty`);
+    }
+  }
   services = createServices(store, new Map(), {exportOptions: {inspect: async () => {throw Error('Old replay must not probe');}}});
-  assert.deepEqual(rows(store.db), expected);
+  assertFrozenGolden(rows(store.db));
   for (const render of baseline.renders) {
     const input = JSON.parse(render.inputJson), expected = JSON.parse(render.responseJson);
     assert.equal(JSON.stringify(await services.call('timeline.render', input)), render.responseJson);
@@ -251,7 +267,7 @@ test('pristine 140fa882 omitted and v1 golden receipts, snapshots, histories and
     assert.equal(store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(render.requestId).response,
       baseline.tables.timeline_requests.find(value => value.requestId === render.requestId).response);
   }
-  await services.call('project.get', {projectId: baseline.projectId}); assert.deepEqual(rows(store.db), expected);
+  await services.call('project.get', {projectId: baseline.projectId}); assertFrozenGolden(rows(store.db));
 });
 
 test('failed v2 current report never enters immutable ACK; exact replay precedes changed capability/revision after restart', async t => {

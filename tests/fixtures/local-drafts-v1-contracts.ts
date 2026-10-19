@@ -11,12 +11,14 @@ const unicode=z.string().regex(/^(?:[^\uD800-\uDFFF]|[\uD800-\uDBFF][\uDC00-\uDF
 const rawNumber=z.union([z.number().finite(),unicode.max(48)]);
 export const clipDraftKeySchema=z.object({projectId:id,timelineId:id,clipId:id}).strict();
 export const clipDraftSourceSchema=z.object({assetId:id,assetSha256:hash,versionId:id.optional(),shotId:id.optional(),jobId:id.optional()}).strict();
+const draftColour = clipColourSchema.nullable().optional();
+const draftAudioRole = clipAudioRoleSchema.optional();
 export const clipDraftRawSchema=z.object({
   name:unicode.max(200),trackId:id,startFrame:rawNumber,durationFrames:rawNumber,sourceInFrame:rawNumber,
   rect:z.object({x:rawNumber,y:rawNumber,width:rawNumber,height:rawNumber}).strict(),gain:rawNumber,
   fadeInFrames:rawNumber.optional(),fadeOutFrames:rawNumber.optional(),
-  colour:clipColourSchema.nullable().optional(),
-  audioRole:clipAudioRoleSchema.optional(),
+  colour:draftColour,
+  audioRole:draftAudioRole,
 }).strict();
 export const clipDraftValueSchema=z.object({baseRevision:revision.min(1),source:clipDraftSourceSchema,raw:clipDraftRawSchema,updatedAt:z.string().datetime()}).strict();
 export const clipDraftProjectSchema=z.object({projectId:id}).strict();

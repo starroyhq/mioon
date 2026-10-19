@@ -2,7 +2,7 @@ import { createDesktopLutRecoveryHost } from './lut-recovery-host.ts';
 import { createDesktopLutRecoveryStore } from './lut-recovery-store.ts';
 import { CLIP_LUT_RECOVERY_CHANNEL } from '../../../packages/contracts/src/clip-lut-recovery.ts';
 import { calculateWorkspaceScope } from '../../../packages/contracts/src/workspace-scope.ts';
-import { validatePrivateDirectory, validateManagedFile, readPrivateFile, removePrivateFile, writePrivateFileAtomic } from '@mioon/contracts/private-storage';
+import { ensurePrivateDirectory, validatePrivateDirectory, validateManagedFile, readPrivateFile, removePrivateFile, writePrivateFileAtomic } from '@mioon/contracts/private-storage';
 import type {ReadPrivateFileOptions} from '@mioon/contracts/private-storage';
 import { createAppLanguageHost } from './app-language-host.ts';
 import { APP_LANGUAGE_CHANNEL } from '../../../packages/i18n/src/preference.ts';
@@ -39,6 +39,8 @@ import { confirmOwnedWindowRestart } from './project-window-confirmation.ts';
 import { PROJECT_WINDOW_CHANNEL } from './project-window-protocol.ts';
 import { installNativeCloseAdmission } from './native-close.ts';
 import { secureWebPreferences, sessionCookie, installSessionPolicy, installWindowPolicy, isAllowedNavigation } from './security.ts';
+import { createRendererDiagnostics, installRendererHealthDiagnostics } from './renderer-diagnostics.ts';
+import type { RendererHealthContents } from './renderer-diagnostics.ts';
 import { windowChromeOptions } from './window-chrome.ts';
 import { createDesktopWindowAppearance } from './window-appearance.ts';
 import type {DesktopStartReport} from './smoke-checks.ts';
@@ -102,6 +104,19 @@ let paths!: DesktopPaths;
 let startupStorageError: unknown;
 try { paths = prepareDesktopStorage(app, process.env.MIOON_DESKTOP_USER_DATA, identity.channel); }
 catch (error) { startupStorageError = error; }
+// Renderer health evidence for issue #4: bounded local records for unresponsive,
+// responsive and render-process-gone transitions. The factory is feature-detected
+// because VM lifecycle harnesses execute this module with imports stripped; a
+// missing factory is treated as diagnostics being unavailable and never changes
+// recovery behavior. All writes are best-effort and never throw into Electron.
+const rendererDiagnostics = !startupStorageError && typeof createRendererDiagnostics === 'function'
+  ? (() => {
+      try {
+        return createRendererDiagnostics({ dataDir: paths.dataDir, modulePath: path.join(app.getAppPath(), 'package.json'),
+          directoryPolicy: { ensurePrivateDirectory, validatePrivateDirectory } });
+      } catch { return null; }
+    })()
+  : null;
 let win: BrowserWindow | null = null, backend: BackendSupervisor | null = null, activeSession: Session | null = null, ready: BackendReady | null = null, restarting = false, quitting = false;
 let agentSettings: DesktopAgentSettings | null = null;
 let startupOperation: DesktopStartup | null = null;
@@ -334,6 +349,11 @@ function prepareOwnedWindow(window: BrowserWindow, context: DesktopWindowContext
   };
   window.webContents.on('render-process-gone', onRendererFailure);
   window.webContents.on('unresponsive', onRendererFailure);
+  // Recording is additive: it does not replace, delay or gate the existing
+  // recovery dialog/reload path above. Only fixed health fields are persisted.
+  // VM lifecycle harnesses strip imports; the packaged main always has it.
+  if (typeof installRendererHealthDiagnostics === 'function')
+    installRendererHealthDiagnostics(window.webContents as unknown as RendererHealthContents, rendererDiagnostics);
 }
 
 async function stop() {

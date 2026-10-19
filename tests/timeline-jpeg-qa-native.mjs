@@ -21,7 +21,7 @@ import {inspectStaticSrgbPng} from '../packages/business/src/timeline-image-admi
 import {inspectStaticSrgbJfif} from '../packages/business/src/timeline-jpeg-admission.ts';
 import {JFIF_INPUT_ARGS, JFIF_RGB24_FILTER} from '../packages/business/src/timeline-jpeg-decode.ts';
 import {timelineColourInputFilter} from '../packages/business/src/timeline-colour-lut.ts';
-import {png} from './helpers/timeline-image-fixtures.mjs';
+import {png} from './helpers/timeline-image-fixtures.ts';
 
 const repo = fileURLToPath(new URL('../', import.meta.url));
 const root = path.join(repo, 'evidence/jfif-images/native');

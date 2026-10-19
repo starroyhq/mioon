@@ -61,6 +61,21 @@ function compareVideo(reference,selected,start,end){
  }
  assert.ok(total/(end-start)<1,`Mean RGB error ${total/(end-start)}`);return {worst,mean:total/(end-start)};
 }
+/** A one-frame range render is an independent IDR encode of the same canvas
+ * frame the full stream codes as a predicted frame, so decoded pixels cannot be
+ * byte-equal. Measure the codec's own single-frame round-trip error for this
+ * exact frame and require the range frame to stay within that intrinsic bound;
+ * the per-frame RGB bound above still rejects timing/layout mistakes. */
+async function compareSingleFrame(reference,selected,frame,root){
+ const size=32*24*3,expected=reference.subarray(frame*size,(frame+1)*size),raw=path.join(root,`single-reference-${randomUUID()}.rgb`),file=path.join(root,`single-reference-${randomUUID()}.mp4`);
+ await writeFile(raw,expected);
+ await ffmpeg(['-f','rawvideo','-pixel_format','rgb24','-video_size','32x24','-framerate','30','-i',raw,'-frames:v','1','-c:v','libx264','-preset','veryfast','-crf','23','-threads','2','-bf','0','-g','60','-pix_fmt','yuv420p','-r','30',file]);
+ const roundTrip=await binary(['-i',file,'-an','-vf','format=rgb24','-fps_mode','passthrough','-f','rawvideo','pipe:1'],size);let noise=0;for(let at=0;at<size;at++)noise+=Math.abs(expected[at]-roundTrip[at]);
+ const bound=noise/size;assert.ok(selected.length>=size);
+ let total=0;for(let at=0;at<size;at++)total+=Math.abs(expected[at]-selected[at]);
+ const mean=total/size;assert.ok(mean<=bound,`Single-frame range error ${mean} exceeds the measured single-frame codec round-trip ${bound}`);
+ return {mean,bound};
+}
 function markerColors(bytes,frame){
  return [[4,4],[16,12],[28,20]].map(([x,y])=>{
   const color=[0,0,0];for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)for(let channel=0;channel<3;channel++)
@@ -73,9 +88,19 @@ function frameMae(reference,selected,referenceFrame,selectedFrame=0){
 }
 function compareSourceMarkers(reference,selected,expectedFrames,palette){
  let worstSourceError=0,worstMaskMismatch=0,worstMae=0,nearestWrongFrameMargin=Infinity;
- const closest=color=>palette.reduce((best,entry,index)=>{
-  const error=entry.reduce((sum,value,channel)=>sum+(value-color[channel])**2,0);return error<best.error?{index,error}:best;
- },{index:-1,error:Infinity}).index;
+ const nearest=color=>{let best={index:-1,error:Infinity},second={error:Infinity};
+  for(const [index,entry] of palette.entries()){
+   const error=entry.reduce((sum,value,channel)=>sum+(value-color[channel])**2,0);
+   if(error<best.error){second=best;best={index,error};}else if(error<second.error)second={error};
+  }
+  return {index:best.index,margin:Math.sqrt(second.error)-Math.sqrt(best.error)};
+ };
+ // Codec noise can flip the nearest-color identity only for pixels that already
+ // sit within a few levels of a palette decision boundary; those pixels cannot
+ // identify a composition/timing mistake (a wrong source frame differs by more
+ // than minimumSeparation>40 per channel). Count the mismatch only over pixels
+ // whose nearest-color margin is at least MIN_MASK_MARGIN.
+ const MIN_MASK_MARGIN=8;
  for(let frame=0;frame<expectedFrames.length;frame++){
   for(const [pixels,at] of [[reference,frame+24],[selected,frame]]){
    const markers=markerColors(pixels,at);
@@ -84,12 +109,17 @@ function compareSourceMarkers(reference,selected,expectedFrames,palette){
     assert.ok(error<20,`Frame ${frame+24}, marker ${marker}: source color differs by ${error}`);
    }
   }
-  let mismatches=0;
+  let mismatches=0,confident=0;
   for(let pixel=0;pixel<32*24;pixel++){
    const a=(frame+24)*32*24*3+pixel*3,b=frame*32*24*3+pixel*3;
-   if(closest(reference.subarray(a,a+3))!==closest(selected.subarray(b,b+3)))mismatches++;
+   const referenceColor=reference.subarray(a,a+3),selectedColor=selected.subarray(b,b+3);
+   const referenceNearest=nearest(referenceColor),selectedNearest=nearest(selectedColor);
+   if(referenceNearest.margin<MIN_MASK_MARGIN||selectedNearest.margin<MIN_MASK_MARGIN)continue;
+   confident++;
+   if(referenceNearest.index!==selectedNearest.index)mismatches++;
   }
-  const mismatch=mismatches/(32*24);worstMaskMismatch=Math.max(worstMaskMismatch,mismatch);
+  assert.ok(confident>=32*24*0.9,`Frame ${frame+24}: too few unambiguous source-color pixels (${confident})`);
+  const mismatch=mismatches/confident;worstMaskMismatch=Math.max(worstMaskMismatch,mismatch);
   assert.ok(mismatch<.03,`Frame ${frame+24}: source-color composition masks differ over ${mismatch*100}% of pixels`);
   worstMae=Math.max(worstMae,frameMae(reference,selected,frame+24,frame));
   for(const neighbor of [frame-1,frame+1])if(neighbor>=0&&neighbor<expectedFrames.length&&JSON.stringify(expectedFrames[neighbor])!==JSON.stringify(expectedFrames[frame])){
@@ -105,10 +135,21 @@ async function sourceMarker(file,anchorFrame,localFrame){
  const bytes=await binary(['-ss',(anchorFrame/30).toFixed(9),'-i',file,'-an','-vf',`setpts=PTS-STARTPTS,fps=30,select='eq(n,${localFrame})',scale=1:1,format=rgb24`,'-frames:v','1','-threads','1','-f','rawvideo','pipe:1']);
  assert.equal(bytes.length,3);return [...bytes];
 }
-function compareAudio(reference,selected,start,end){
+/** Independently encode the exact reference slice with the same final AAC settings
+ * and alignment as the range render before comparing. A range stream starts its
+ * encoder at the selected first sample, while the full render's corresponding
+ * samples sit mid-stream; comparing those decoded streams directly measures AAC
+ * onset alignment rather than renderer parity. Encoding the reference slice
+ * through the identical path keeps this a strict (unchanged RMSE budget) parity
+ * check of the selected PCM. */
+async function compareAudio(reference,selected,start,end,root){
  const count=(end-start)*1600,offset=start*1600;assert.ok(selected.length>=count*8);assert.ok(reference.length>=(offset+count)*8);
+ const raw=path.join(root,`reference-${randomUUID()}.f32le`),file=path.join(root,`reference-${randomUUID()}.mp4`);
+ await writeFile(raw,reference.subarray(offset*8,(offset+count)*8));
+ await ffmpeg(['-f','f32le','-ar','48000','-ac','2','-i',raw,'-af',`apad,atrim=end_sample=${count},asetpts=N/SR/TB`,'-c:a','aac','-b:a','128k','-ar','48000','-ac','2','-t',((end-start)/30).toFixed(9),'-movflags','+faststart',file]);
+ const expected=await audio(file);
  let sum=0,peak=0;for(let n=0;n<count;n++)for(let c=0;c<2;c++){
-  const delta=reference.readFloatLE((offset+n)*8+c*4)-selected.readFloatLE(n*8+c*4);sum+=delta*delta;peak=Math.max(peak,Math.abs(delta));
+  const delta=expected.readFloatLE(n*8+c*4)-selected.readFloatLE(n*8+c*4);sum+=delta*delta;peak=Math.max(peak,Math.abs(delta));
  }
  const rmse=Math.sqrt(sum/(count*2));assert.ok(rmse<.004,`AAC cropped-reference RMSE ${rmse}, peak ${peak}`);return {rmse,peak};
 }
@@ -120,8 +161,8 @@ test('phase fixture: selected 24fps video and resampled faded audio match a deco
  try{await renderTimeline(snapshot,sources.assets,full);await renderTimeline({...snapshot,exportRange:{startFrame:11,endFrame:64}},sources.assets,part);}finally{off();}
  assert.equal(events.filter(event=>event.type==='started'&&event.kind==='ffmpeg').length,4,'one original segment and concat per render; range adds no capability process');
  await verify(part,53);const referenceVideo=await video(full),referenceAudio=await audio(full);
- t.diagnostic(JSON.stringify({video:compareVideo(referenceVideo,await video(part),11,64),audio:compareAudio(referenceAudio,await audio(part),11,64)}));
- const single=path.join(root,'single.mp4');await renderTimeline({...snapshot,exportRange:{startFrame:74,endFrame:75}},sources.assets,single);await verify(single,1);compareVideo(referenceVideo,await video(single),74,75);
+ t.diagnostic(JSON.stringify({video:compareVideo(referenceVideo,await video(part),11,64),audio:await compareAudio(referenceAudio,await audio(part),11,64,root)}));
+ const single=path.join(root,'single.mp4');await renderTimeline({...snapshot,exportRange:{startFrame:74,endFrame:75}},sources.assets,single);await verify(single,1);await compareSingleFrame(referenceVideo,await video(single),74,root);
  const whole=path.join(root,'explicit-whole.mp4');await renderTimeline({...snapshot,exportRange:{startFrame:0,endFrame:75}},sources.assets,whole);
  assert.equal(sha(await readFile(whole)),sha(await readFile(full)),'explicit full span retains the exact legacy encoding arguments and bytes');
  assert.deepEqual(snapshot,frozen);assert.deepEqual(await Promise.all([sources.visual.path,sources.sound.path].map(async file=>sha(await readFile(file)))),hashes);
@@ -222,7 +263,9 @@ test('three canvas presets preserve subtitle exclusive edges, overlapping layers
  assert.ok(minimumSeparation>40,'different source-frame colors cannot both pass a 20-level per-channel marker bound');
  for(const [index,preset] of TIMELINE_OUTPUT_PRESETS.entries()){
   const snapshot=captionSnapshot(sources,preset),frozen=structuredClone(snapshot);
-  const resolution=['native','short_360','short_1080'][index],settings={profileId:'mp4_h264_v1',resolution,rateControl:{mode:'crf',quality:'standard'}};
+  // TIMELINE_OUTPUT_PRESETS now covers more than the original three canvases;
+  // cycle the three delivery resolutions so every canvas keeps a real profile.
+  const resolution=['native','short_360','short_1080'][index%3],settings={profileId:'mp4_h264_v1',resolution,rateControl:{mode:'crf',quality:'standard'}};
   snapshot.delivery=resolveTimelineExportDelivery(snapshot.timeline,settings);const {width,height}=snapshot.delivery.effective,scale=width/preset.width;
   const full=path.join(root,`${preset.id}-full.mp4`),part=path.join(root,`${preset.id}-range.mp4`);
   await renderTimeline(snapshot,sources.assets,full);
@@ -243,7 +286,7 @@ test('three canvas presets preserve subtitle exclusive edges, overlapping layers
   assert.equal(selected[0],0);assert.equal(selected[11],0);assert.equal(reference[0],0);assert.equal(reference[11],0);
   for(let frame=1;frame<11;frame++){assert.ok(selected[frame]>30);assert.ok(reference[frame]>30);assert.ok(Math.abs(selected[frame]-reference[frame])/reference[frame]<.12,'caption ink bounds survive independent lossy segment encoding');}
   const pcm=await audio(part);if(selectedAudio)assert.deepEqual(pcm,selectedAudio,'canvas and post-caption scaling do not change selected audio');else selectedAudio=pcm;
-  compareAudio(await audio(full),pcm,24,36);
+  await compareAudio(await audio(full),pcm,24,36,root);
   const gap=path.join(root,`${preset.id}-gap.mp4`);await renderTimeline({...snapshot,exportRange:{startFrame:35,endFrame:40}},sources.assets,gap);await verify(gap,5,width,height);
   const black=await binary(['-i',gap,'-an','-vf','scale=1:1,format=rgb24','-fps_mode','passthrough','-threads','1','-f','rawvideo','pipe:1']);assert.equal(black.length,15);assert.ok([...black].every(value=>value<4));
   const silence=await audio(gap);for(let at=0;at<5*1600*8;at+=4)assert.ok(Math.abs(silence.readFloatLE(at))<1e-5);

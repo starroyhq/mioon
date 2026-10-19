@@ -7,8 +7,8 @@ import {createTimelineMixLoudnessServices} from '../packages/business/src/timeli
 import {createTimelineClipLoudnessServices} from '../packages/business/src/timeline-clip-loudness.ts';
 import {isTimelineMixLoudnessResponse} from '../packages/contracts/src/timeline-mix-loudness.ts';
 import {isTimelineClipLoudnessResponse} from '../packages/contracts/src/timeline-clip-loudness.ts';
-import {readyMixLoudness, mixLoudnessInput} from './fixtures/timeline-mix-loudness-fixtures.mjs';
-import {readyClipLoudness, clipLoudnessInput} from './fixtures/timeline-clip-loudness-fixtures.mjs';
+import {readyMixLoudness, mixLoudnessInput} from './fixtures/timeline-mix-loudness-fixtures.ts';
+import {readyClipLoudness, clipLoudnessInput} from './fixtures/timeline-clip-loudness-fixtures.ts';
 const profile='mioon-clip-linear-attenuation-v1';
 const envelope=()=>({profileId:profile,points:[{frame:0,multiplier:0},{frame:3,multiplier:1}]});
 const id=n=>`${n}`.repeat(8)+'-'+`${n}`.repeat(4)+'-4'+`${n}`.repeat(3)+'-8'+`${n}`.repeat(3)+'-'+`${n}`.repeat(12);

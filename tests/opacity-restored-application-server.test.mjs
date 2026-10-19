@@ -11,8 +11,8 @@ import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {isOpacityRestoredApplicationInspection} from '../packages/contracts/src/opacity-restored-application.ts';
 import {publicValue} from '../packages/contracts/src/index.ts';
 import {defaultWorkspaceState} from '../apps/web/src/workspace-state.ts';
-import {hash} from './helpers/opacity-backup-fixture.mjs';
-import {restoredApplicationFixture, request, rpc, prepareTask, applyTask} from './helpers/opacity-restored-application-fixture.mjs';
+import {hash} from './helpers/opacity-backup-fixture.ts';
+import {restoredApplicationFixture, request, rpc, prepareTask, applyTask} from './helpers/opacity-restored-application-fixture.ts';
 
 // Actual SQLite/cold archive/restore/launch/shared handler. Synthetic asset
 // bytes never enter a decoder, worker, provider or listening socket.

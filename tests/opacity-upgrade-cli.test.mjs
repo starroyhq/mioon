@@ -8,8 +8,8 @@ import {fileURLToPath} from 'node:url';
 import {parseOpacityUpgradeArguments, opacityUpgradeHelp, safeOpacityUpgradeError} from '../apps/cli/src/opacity-upgrade.ts';
 import {OPACITY_UPGRADE_ERROR_CODES, opacityWorkspaceUpgradeInputSchema, opacityWorkspaceUpgradeResultSchema} from '../packages/contracts/src/opacity-upgrade.ts';
 import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
-import {opacityUpgradeFixture, upgradeFixtureHash} from './helpers/opacity-upgrade-fixture.mjs';
-import {tree} from './helpers/opacity-backup-fixture.mjs';
+import {opacityUpgradeFixture, upgradeFixtureHash} from './helpers/opacity-upgrade-fixture.ts';
+import {tree} from './helpers/opacity-backup-fixture.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url)), entry = path.join(repo, 'apps/cli/src/opacity-upgrade.ts');
 const languages = ['zh-Hans', 'zh-Hant', 'en', 'ja'];

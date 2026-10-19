@@ -9,7 +9,7 @@ import {inspectWorkspaceSchemaMarkerRole} from '../packages/business/src/workspa
 import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import {withOrdinaryMigrationSource} from '../apps/desktop/scripts/migration-restore-guard.ts';
-import {restoreFixture,tree,logical,refreshDatabaseManifest} from './helpers/workspace-restore-offline-fixture.mjs';
+import {restoreFixture,tree,logical,refreshDatabaseManifest} from './helpers/workspace-restore-offline-fixture.ts';
 function database(t, versions, ddl='CREATE TABLE schema_version(version INTEGER PRIMARY KEY)') {
   const db=new DatabaseSync(':memory:');t.after(()=>db.close());db.exec(ddl);
   for(const version of versions)db.prepare('INSERT INTO schema_version VALUES(?)').run(version);

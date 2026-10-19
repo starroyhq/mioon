@@ -9,7 +9,7 @@ import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/
 import {openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
 import {installWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.ts';
 import {workspaceRestoreOfflineResultSchema,workspaceRestorePublicationStatusSchema} from '../packages/contracts/src/workspace-restore-offline.ts';
-import {restoreFixture,tree,logical,secret,refreshDatabaseManifest,runRestoreChild,repo} from './helpers/workspace-restore-offline-fixture.mjs';
+import {restoreFixture,tree,logical,secret,refreshDatabaseManifest,runRestoreChild,repo} from './helpers/workspace-restore-offline-fixture.ts';
 const restore=f=>restoreWorkspaceBackup({directory:f.backup,destination:f.destination});
 
 test('offline restore preserves every original SQL value, source/backup byte and mode, stage file and held unknown outcome',async t=>{

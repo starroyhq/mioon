@@ -115,7 +115,7 @@ export function parseArguments(args: readonly string[]): ParsedArguments {
     else if (key === '--compile-cache' && flag === key && command === 'test') result.compileCache = true;
     else if (key === '--concurrency' && command === 'test' && /^[1-4]$/.test(value)) result.concurrency = Number(value);
     else if (key === '--suite' && command === 'test' && ['portable', 'full'].includes(value)) result.suite = value as 'portable' | 'full';
-    else if (key === '--file' && command === 'test' && /^[a-zA-Z0-9][a-zA-Z0-9._-]*\.test\.mjs$/.test(value) && !result.files.includes(value)) result.files.push(value);
+    else if (key === '--file' && command === 'test' && /^[a-zA-Z0-9][a-zA-Z0-9._-]*\.test\.(?:mjs|ts)$/.test(value) && !result.files.includes(value)) result.files.push(value);
     else throw fail('TOOLING_USAGE', 'Unknown or invalid tooling option. See docs/PORTABLE-TOOLING.md.');
   }
   return result;
@@ -209,7 +209,7 @@ export async function installedTypeScript(root: string): Promise<{readonly versi
 export async function typecheckCommands(root: string, execPath: string = process.execPath): Promise<CommandSpec[]> {
   await verifySourceLanguages(root);
   const compiler = await installedTypeScript(root);
-  return ['tests/typecheck/tsconfig.foundation.json', 'tests/typecheck/tsconfig.browser.json'].map(project => ({
+  return ['tests/typecheck/tsconfig.foundation.json', 'tests/typecheck/tsconfig.browser.json', 'tests/tsconfig.tests.json'].map(project => ({
     command: execPath, args: [compiler.entry, '--project', project, '--noEmit', '--pretty', 'false'], cwd: root,
   }));
 }
@@ -366,12 +366,22 @@ export async function preflight(root: string, {channel = 'development', media = 
 export async function discoverTests(root: string, {suite = 'portable', files = [], platform = process.platform}: DiscoverTestsOptions = {}): Promise<string[]> {
   if (!['portable', 'full'].includes(suite)) throw fail('TOOLING_USAGE', 'Unknown test suite.');
   if (suite === 'full' && platform !== 'linux') throw fail('NATIVE_TEST_LANE_BLOCKED', 'The full suite contains Linux/native storage assumptions. Run the reviewed portable lane; native platform validation remains required.');
+  // Transitional dual discovery: `.test.mjs` files are migrated to `.test.ts`
+  // wave by wave. A reviewed portable or explicit name is resolved to the file
+  // that currently exists; an unknown or duplicated selection still fails.
   const available = (await readdir(path.join(root, 'tests'), {withFileTypes: true}))
-    .filter(item => item.isFile() && /^[a-zA-Z0-9][a-zA-Z0-9._-]*\.test\.mjs$/.test(item.name)).map(item => item.name).sort();
+    .filter(item => item.isFile() && /^[a-zA-Z0-9][a-zA-Z0-9._-]*\.test\.(?:mjs|ts)$/.test(item.name)).map(item => item.name).sort();
+  const resolve = (file: string): string | null => {
+    if (available.includes(file)) return file;
+    const migrated = file.replace(/\.mjs$/, '.ts');
+    return available.includes(migrated) ? migrated : null;
+  };
   const allowed: readonly string[] = suite === 'portable' ? PORTABLE_TEST_FILES : available;
   const selected = files.length ? files : allowed;
-  if (!selected.length || selected.length > 2048 || new Set(selected).size !== selected.length || selected.some(file => !allowed.includes(file) || !available.includes(file))) throw fail('TEST_SELECTION_INVALID', 'Test selection is missing, duplicated, or outside the chosen reviewed suite.');
-  const result = [...selected].sort().map(file => `tests/${file}`);
+  const resolved = selected.map(resolve);
+  if (!selected.length || selected.length > 2048 || new Set(resolved).size !== resolved.length ||
+      selected.some((file, index) => !allowed.includes(file) || resolved[index] === null)) throw fail('TEST_SELECTION_INVALID', 'Test selection is missing, duplicated, or outside the chosen reviewed suite.');
+  const result = (resolved as string[]).sort().map(file => `tests/${file}`);
   if (result.join(' ').length > 131072) throw fail('TEST_SELECTION_LIMIT', 'Test command exceeds the reviewed argument budget; select a smaller explicit file group.');
   return result;
 }

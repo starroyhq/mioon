@@ -7,9 +7,9 @@ import {randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {writeFile, access} from 'node:fs/promises';
 import {deriveAgentEndpoint} from '@mioon/contracts';
-import {startEditBackend, EDIT_WIRE_TOKEN, chatRoute, editRoute, savedShot, savedProposal, until} from './helpers/agent-edit-wire-fixture.mjs';
+import {startEditBackend, EDIT_WIRE_TOKEN, chatRoute, editRoute, savedShot, savedProposal, until} from './helpers/agent-edit-wire-fixture.ts';
 import {prepareEditQaFixture, assertNativeFixtureClosed, clearEditQaEnvironment, seedEditQaSettings,
-  startEditQaModel, editQaAudit, jsonFile} from './helpers/agent-edits-qa-support.mjs';
+  startEditQaModel, editQaAudit, jsonFile} from './helpers/agent-edits-qa-support.ts';
 
 export async function prepareEditsQaUnknown({protocol = 'responses'} = {}) {
   clearEditQaEnvironment(process.env);

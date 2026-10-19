@@ -4,7 +4,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {AppError,isAgentTimelineMoveProposal,TIMELINE_RESPONSE_BYTES} from '@mioon/contracts';
 import {canonical} from '../packages/business/src/services.ts';
 import {editToolPolicy} from '../packages/business/src/agent/edit-tool-policy.ts';
-import {agentTimelineMoveFixture} from './helpers/agent-timeline-move-fixture.mjs';
+import {agentTimelineMoveFixture} from './helpers/agent-timeline-move-fixture.ts';
 const code=expected=>error=>error.code===expected;
 const fields=(f,extra={})=>({projectId:f.project.id,expectedRevision:f.current().revision,requestId:randomUUID(),...extra});
 const domain=f=>JSON.stringify(['projects','assets','shots','jobs','versions','timelines','timeline_history','timeline_history_cursors','timeline_requests'].map(table=>f.store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()));

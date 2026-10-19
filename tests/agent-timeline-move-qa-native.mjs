@@ -12,7 +12,7 @@ import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {createAgentSettingsFile} from '../packages/business/src/agent/settings-file.ts';
-import {seedEditQaSettings,startEditQaModel,startEditQaMailbox,jsonFile,assertNativeFixtureClosed} from './helpers/agent-edits-qa-support.mjs';
+import {seedEditQaSettings,startEditQaModel,startEditQaMailbox,jsonFile,assertNativeFixtureClosed} from './helpers/agent-edits-qa-support.ts';
 
 const repo=fileURLToPath(new URL('../',import.meta.url));
 const root=path.join(repo,'evidence/agent-timeline-move'),runtime=path.join(root,'native');

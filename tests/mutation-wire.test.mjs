@@ -10,11 +10,11 @@ import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {IDS, TOKEN, snapshot, uuid} from './helpers/mutation-wire-fixture.mjs';
-import {optionalRequestIdOperations} from './helpers/catalog-input-branches.mjs';
+import {IDS, TOKEN, snapshot, uuid} from './helpers/mutation-wire-fixture.ts';
+import {optionalRequestIdOperations} from './helpers/catalog-input-branches.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
-const helper = path.join(repo, 'tests/helpers/mutation-wire-fixture.mjs');
+const helper = path.join(repo, 'tests/helpers/mutation-wire-fixture.ts');
 const operations = ['shot.create', 'shot.update', 'shot.reorder', 'node.create', 'node.update', 'version.select'];
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const toolName = operation => operation.replaceAll('.', '_');

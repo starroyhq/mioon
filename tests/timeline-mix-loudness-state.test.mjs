@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { isTimelineMixLoudnessResponse } from '@mioon/contracts/timeline-mix-loudness';
 import { createTimelineMixLoudnessController, parseTimelineMixLoudnessTarget, timelineMixLoudnessAvailable, timelineMixLoudnessErrorMessage, timelineMixLoudnessViewState } from '../apps/web/src/timeline-mix-loudness-state.ts';
-import { fixture, context, input, report, draft, id } from './helpers/timeline-mix-loudness-ui-fixture.mjs';
+import { fixture, context, input, report, draft, id } from './helpers/timeline-mix-loudness-ui-fixture.ts';
 
 test('blank explicit target cannot measure; accepted finite target ranges have no preset or fallback', () => {
   for (const value of [{ integratedLufs: '', truePeakCeilingDbtp: '' }, { ...draft, integratedLufs: '' }, { ...draft, truePeakCeilingDbtp: '' },

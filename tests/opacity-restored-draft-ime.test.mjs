@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {LOCALES} from '../packages/i18n/src/index.ts';
-import {opacityInspectorImeFixture as fixture, deferred, turn} from './helpers/opacity-inspector-ime-fixture.mjs';
+import {opacityInspectorImeFixture as fixture, deferred, turn} from './helpers/opacity-inspector-ime-fixture.ts';
 
 for (const locale of LOCALES) test(`synthetic ${locale} composition uses the exact43 new-origin client without persisting partial composition or implicit Save`, async t => {
   const h = fixture(t, {locale, restored: true, restoredPersistence: true});await h.ready();

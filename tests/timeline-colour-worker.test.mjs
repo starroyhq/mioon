@@ -15,6 +15,7 @@ import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.t
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import {prepareTimelineInputs,probeTimelineSource,readOwnedTimelineAsset} from '../packages/business/src/timeline-sources.ts';
 import {createTimelineColourLutReader} from '../packages/business/src/timeline-colour-lut.ts';
+import {materializeHistoricalWorkspace} from './helpers/historical-workspace.ts';
 const text='LUT_3D_SIZE 2\n0 0 0\n0 1 0\n1 0 0\n1 1 0\n0 0 1\n0 1 1\n1 0 1\n1 1 1\n';
 async function fixture(t){
  const base=await mkdtemp(path.join(tmpdir(),'mioon-colour-worker-')),root=path.join(base,'workspace'),source=path.join(base,'source.mp4');
@@ -72,9 +73,11 @@ for(const phase of ['capability','prepublication'])test(`physical source replace
  else{assert.equal(after.ino,before.ino);assert.equal(after.size,before.size);assert.equal(after.mtimeMs,before.mtimeMs);assert.notEqual(after.ctimeMs,before.ctimeMs);assert.equal((await readFile(source))[0],original[0]^1,'changed source is preserved, never repaired');}
 });
 test('cold backup32 restore33 retains exact LUT and source interpretation and explicitly rerenders',{timeout:120000},async t=>{
- const f=await fixture(t);f.store.db.exec('DELETE FROM schema_version WHERE version=34'); // Explicit historical PNG-generation fixture.
- await f.close();const backup=path.join(f.base,'backup'),restored=path.join(f.base,'restored');
- await createWorkspaceBackup({source:f.root,destination:backup});const installed=await restoreWorkspaceBackup({directory:backup,destination:restored});assert.equal(installed.databaseSchemaVersion,33);
+ const f=await fixture(t);
+ await f.close();// Reviewed historical PNG-generation fixture; never relabel or downgrade the current workspace.
+ const frozen=materializeHistoricalWorkspace({root:f.root},path.join(f.base,'source32'),{version:32});
+ const backup=path.join(f.base,'backup'),restored=path.join(f.base,'restored');
+ await createWorkspaceBackup({source:frozen.root,destination:backup});const installed=await restoreWorkspaceBackup({directory:backup,destination:restored});assert.equal(installed.databaseSchemaVersion,33);
  const store=openStore(restored),services=createServices(store,new Map()),context={expectedWorkspaceOrigin:getWorkspaceRestoreContext(store).workspaceOrigin};let worker;
  try{
   const timeline=await services.call('timeline.get',{projectId:f.project.id});assert.deepEqual(timeline.clips[0].colour,f.timeline.clips[0].colour);

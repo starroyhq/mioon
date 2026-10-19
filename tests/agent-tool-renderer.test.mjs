@@ -1,4 +1,4 @@
-import {createAgentAuthorizationUiMock} from './helpers/agent-authorization-ui.mjs';
+import {createAgentAuthorizationUiMock} from './helpers/agent-authorization-ui.ts';
 import {creationTestDependency} from './helpers/creation-i18n.ts';
 import * as nativeCloseSources from '../apps/web/src/native-close-sources.ts';
 import * as timing from '../apps/web/src/agent-timeline-context.ts';

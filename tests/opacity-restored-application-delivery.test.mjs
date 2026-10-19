@@ -19,7 +19,7 @@ import {readTimelineExportPreviewMedia, timelineExportPreviewResponseHeaders, re
   timelineDeliveryResponseHeaders} from '../packages/business/src/timeline-delivery-read.ts';
 import {createFileResponses} from '../apps/server/src/file-response.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
-import {opacityBackupFixture, hash, opacityBackupStamp as stamp} from './helpers/opacity-backup-fixture.mjs';
+import {opacityBackupFixture, hash, opacityBackupStamp as stamp} from './helpers/opacity-backup-fixture.ts';
 
 // Real cold archives, SQLite stores and shared descriptor/range responder;
 // outputs remain synthetic bytes. No native codec, provider, GUI or listener.

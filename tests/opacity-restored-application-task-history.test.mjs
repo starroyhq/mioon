@@ -13,7 +13,7 @@ import {createOpacityCandidateDomain} from '../packages/business/src/opacity-can
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 import {createOpacityCandidateWorkspaceBackup, restoreOpacityCandidateWorkspaceBackup} from '../packages/business/src/opacity-candidate-backup.ts';
 import {validateWorkspaceRestoreSchemaV43} from '../packages/business/src/workspace-restore-schema-v43.ts';
-import {canonical, logicalTables, tree} from './helpers/opacity-backup-fixture.mjs';
+import {canonical, logicalTables, tree} from './helpers/opacity-backup-fixture.ts';
 
 let effectAttempts = 0;
 const forbidden = () => {effectAttempts++; throw Error('No process, listener or network in captured task history regression');};

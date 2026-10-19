@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createClient,measureTimelineClipLoudness,errorEnvelope} from '@mioon/client';
 import {TIMELINE_CLIP_LOUDNESS_LIMITS,isTimelineClipLoudnessResponse} from '@mioon/contracts/timeline-clip-loudness';
 import {readTimelineClipLoudnessEnvelope} from '../packages/client/src/timeline-clip-loudness.ts';
-import {clipLoudnessOperation as operation,clipLoudnessInput as input,clipLoudnessToken as token,readyClipLoudness,silentClipLoudness} from './fixtures/timeline-clip-loudness-fixtures.mjs';
+import {clipLoudnessOperation as operation,clipLoudnessInput as input,clipLoudnessToken as token,readyClipLoudness,silentClipLoudness} from './fixtures/timeline-clip-loudness-fixtures.ts';
 const env={MIOON_TOKEN:token};
 const success=data=>Response.json({ok:true,data});
 const clientFor=report=>createClient({env,fetchImpl:async()=>success(report)});

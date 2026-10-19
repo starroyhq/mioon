@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp, readFile, readdir, rm, writeFile} from 'node:fs/promises';
+import {existsSync, readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {pathToFileURL} from 'node:url';
+import {pathToFileURL, fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import {resolveTimelineExportDelivery} from '@mioon/contracts';
 import {createTimelineMixLoudnessDecoder, planTimelineMixLoudnessDecode} from '../packages/business/src/timeline-mix-loudness-decoder.ts';
@@ -134,17 +135,20 @@ test('real stored video audio-presence parity rejects both mismatches and verifi
   assets.get('source').hasAudio=false;const result=await collect(timeline,assets);assert.equal(result.receipt.decodeWorkFrames,0);assert.equal(result.pcm.length,6*1600*8);assert.ok(result.pcm.every(byte=>byte===0));
 });
 
-function originalRendererSource(current){
-  let source=current;
-  for(const [replacement,original] of [
-    ["import {timelineAudioSilenceFilter,timelineClipAudioFilter,timelineMixedAudioFilter} from './timeline-audio-filter-graph.ts';","import {timelineAudioFadeFilters} from './timeline-audio.ts';"],
-    ['timelineAudioSilenceFilter(samples)','`anullsrc=r=48000:cl=stereo,atrim=end_sample=${samples},asetpts=N/SR/TB[silence]`'],
-    ['timelineClipAudioFilter(clip,begin,samples,input,asset.audioStreamIndex)','`[${input}:${asset.audioStreamIndex??\'a:0\'}]asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=${clip.gain},apad,atrim=end_sample=${samples},${timelineAudioFadeFilters(clip,begin)}asetpts=N/SR/TB[${label}]`'],
-    ['timelineMixedAudioFilter(sounds,samples,selected.audioOutputTrim)','`${sounds.map(s=>`[${s}]`).join(\'\')}amix=inputs=${sounds.length}:duration=first:dropout_transition=0:normalize=0,atrim=end_sample=${samples},${selected.audioOutputTrim}asetpts=N/SR/TB[outa]`'],
-  ]){assert.equal(source.split(replacement).length,2);source=source.replace(replacement,original);}
-  assert.equal(sha(Buffer.from(source)),'c1586a7dc67f2e0c44ff5a4cc97262e71181f258a0fc66646fc5bac83e25fa95','reconstructed renderer is the exact b9e7d1e source, without invoking git');
-  return source;
-}
+// Re-baseline for issue #5: the live renderer gained accepted SDR LUT/PNG/JPEG
+// features after b9e7d1e, so reconstructing the accepted old renderer from the
+// live file is no longer possible. This test now pins a reviewed fixture copy of
+// the accepted b9e7d1e renderer as the explicit old baseline; historical hashes
+// in the extraction fixture and the decoder test stay unchanged. Byte/argv
+// equality between this frozen renderer and the live renderer is the baseline.
+const legacyRendererFixture=JSON.parse(readFileSync(new URL('./fixtures/timeline-mix-loudness/renderer-b9e7d1e.json',import.meta.url),'utf8'));
+const acceptedLegacyRenderer=()=>{
+ assert.equal(legacyRendererFixture.sourceCommit,'b9e7d1e57a687010407ae284cb55c0d4eed23abb');
+ assert.equal(legacyRendererFixture.sourcePath,'packages/business/src/timeline-media.mjs');
+ assert.equal(legacyRendererFixture.sourceSha256,'c1586a7dc67f2e0c44ff5a4cc97262e71181f258a0fc66646fc5bac83e25fa95');
+ assert.equal(sha(Buffer.from(legacyRendererFixture.source)),legacyRendererFixture.sourceSha256);
+ return legacyRendererFixture.source;
+};
 
 /** Only test-owned temporary modules are written. Apart from import URLs,
  * module bodies stay untouched. The shared runtime wrapper records argv and
@@ -154,19 +158,24 @@ async function instrumentedRenderers(root){
   const business=new URL('../packages/business/src/',import.meta.url),runtimeURL=new URL('media-runtime.ts',business).href;
   const captureURL=pathToFileURL(path.join(root,'capture-runtime.mjs')).href;
   await writeFile(new URL(captureURL),`import * as actual from ${JSON.stringify(runtimeURL)};\nexport const calls=[];\nexport {checkMediaEffect,isMediaEffectRestriction} from ${JSON.stringify(runtimeURL)};\nexport const run=(command,args,options)=>{calls.push({lane:'run',command,args:[...args]});return actual.run(command,args,options);};\nexport const runStreaming=(command,args,options)=>{calls.push({lane:'streaming',command,args:[...args]});return actual.runStreaming(command,args,options);};\n`,{flag:'wx',mode:0o600});
-  const copiedMediaURL=pathToFileURL(path.join(root,'captured-media.ts')).href,copiedCapabilityURL=pathToFileURL(path.join(root,'captured-capability.mjs')).href;
+  const copiedMediaURL=pathToFileURL(path.join(root,'captured-media.ts')).href,copiedCapabilityURL=pathToFileURL(path.join(root,'captured-capability.ts')).href;
   const redirect=new Map([[runtimeURL,captureURL],[new URL('media.ts',business).href,copiedMediaURL],[new URL('timeline-export-capabilities.ts',business).href,copiedCapabilityURL]]);
   const resolveImports=(source,origin)=>source.replace(/\bfrom\s+(['"])([^'"]+)\1/gu,(_match,_quote,specifier)=>{
-    const resolved=specifier.startsWith('.')?new URL(specifier,origin).href:import.meta.resolve(specifier);
+    let resolved=specifier.startsWith('.')?new URL(specifier,origin).href:import.meta.resolve(specifier);
+    // The frozen legacy renderer imports the pre-migration .mjs modules; execute
+    // the same graph against the current typed modules.
+    if(resolved.endsWith('.mjs')){const typed=resolved.slice(0,-4)+'.ts';if(existsSync(fileURLToPath(typed)))resolved=typed;}
     return `from ${JSON.stringify(redirect.get(resolved)??resolved)}`;
   });
   for(const [file,target] of [['media.ts',copiedMediaURL],['timeline-export-capabilities.ts',copiedCapabilityURL]]){
     const origin=new URL(file,business);await writeFile(new URL(target),resolveImports(await readFile(origin,'utf8'),origin),{flag:'wx',mode:0o600});
   }
-  const rendererURL=new URL('timeline-media.ts',business),current=await readFile(rendererURL,'utf8'),old=originalRendererSource(current);
+  const rendererURL=new URL('timeline-media.ts',business),current=await readFile(rendererURL,'utf8'),old=acceptedLegacyRenderer();
   const modules=[];
-  for(const [name,source] of [['old',old],['new',current]]){
-    const file=pathToFileURL(path.join(root,`${name}-renderer.mjs`));await writeFile(file,resolveImports(source,rendererURL),{flag:'wx',mode:0o600});modules.push(await import(file.href));
+  // The accepted legacy renderer is plain JavaScript; the live typed renderer
+  // keeps its TypeScript syntax and is loaded through Node's type stripping.
+  for(const [name,source,extension] of [['old',old,'mjs'],['new',current,'ts']]){
+    const file=pathToFileURL(path.join(root,`${name}-renderer.${extension}`));await writeFile(file,resolveImports(source,rendererURL),{flag:'wx',mode:0o600});modules.push(await import(file.href));
   }
   const {calls}=await import(captureURL);return {old:modules[0].renderTimeline,current:modules[1].renderTimeline,calls};
 }

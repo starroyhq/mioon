@@ -385,7 +385,7 @@ export function createAgentEditService({store, services, fault = () => {}, limit
     hasNotAppliedProof: hasRequestNotAppliedProof as unknown as GainProposalsOptions['hasNotAppliedProof'],
     readById: ((projectId: string, proposalId: string) => byId(projectId, proposalId)) as unknown as GainProposalsOptions['readById'],
     dto: ((value: EditProposalValue) => dto(value)) as unknown as GainProposalsOptions['dto'],
-    invalid, corrupt, conflict, storageLimit: invalid as unknown as GainProposalsOptions['storageLimit'],
+    invalid, corrupt, conflict, storageLimit: (() => { throw error('AGENT_EDIT_STORAGE_LIMIT'); }) as unknown as GainProposalsOptions['storageLimit'],
   } as GainProposalsOptions);
   return Object.freeze({
     pinTimelineGainTarget(projectId: string, input: unknown) { return readAgentTimelineSnapshot(db, () => structuredClone(pinAgentTimelineGainTarget(db, projectId, input))); },

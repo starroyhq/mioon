@@ -12,6 +12,7 @@ import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navig
 import { createWebSettingsNavigation } from '../apps/web/src/web-settings-navigation.ts';
 import { hasOpenWorkbenchModal } from '../apps/web/src/workbench-modal-state.ts';
 import { timelineSplitActionForKey, timelineHistoryActionForKey } from '../apps/web/src/timeline-keyboard.ts';
+import {stripSourceTypes} from './helpers/eval-source.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const source = name => readFileSync(join(root, 'apps/web/src', name), 'utf8');
@@ -180,7 +181,7 @@ test('shared native center receives page routing and visibility without replacin
   assert.match(native, /page:\s*navigation\.page/u); assert.match(native, /window\.close\(\); return false/u);
   assert.match(main, /<ProjectHomeConnections\b/u); assert.match(main, /selected=\{selected\} page=\{page\}/u); assert.match(main, /slot="home:video-tools"/u);
   for (const slot of slots) assert.ok(main.includes(`page === '${slot}'`));
-  assert.equal((main.match(/onRequestSelectSlot=\{onSelect\}/gu) || []).length, 3);
+  assert.equal((main.match(/onRequestSelectSlot=\{onSelect(?: as[^}]*)?\}/gu) || []).length, 3);
   const recovery = native.indexOf('<details className="settings-workspace-status settings-workspace-status-global"');
   assert.ok(recovery >= 0 && recovery < native.indexOf("workspace === 'ready' ? renderSettings"), 'Native recovery status must remain outside category selection');
   assert.match(native, /<NativeLocatorStatus context=\{context\} bridge=\{bridge\} recovery/u);
@@ -330,14 +331,14 @@ test('only reachable modals block shortcuts, including hidden/inert/closed/aria-
 
 test('actual App Ctrl+B and undo handlers work before settings opens and after close, but not with an open confirmation', () => {
   const app = source('App.tsx'), guards = app.indexOf('const guards = { modalOpen: hasOpenWorkbenchModal(document) }');
-  assert.ok(guards >= 0); const start = app.lastIndexOf('    const onKeyDown = event => {', guards), end = app.indexOf("    window.addEventListener('keydown', onKeyDown);", guards);
+  assert.ok(guards >= 0); const start = app.lastIndexOf('    const onKeyDown = (event: KeyboardEvent) => {', guards), end = app.indexOf("    window.addEventListener('keydown', onKeyDown);", guards);
   assert.ok(start >= 0 && end > start);
   const settings = modalElement({ role: 'dialog', hidden: '' }), confirmation = modalElement({ role: 'alertdialog', 'data-closed': '' });
   const calls = [], env = { application:null, viewRef: { current: { activeMode: 'editing' } }, document: modalDocument([settings, confirmation]),
     hasOpenWorkbenchModal, timelineSplitActionForKey, timelineHistoryActionForKey, splitState: { canSplit: true }, historyState: { canUndo: true, canRedo: true },
     splitTimelineClip: () => calls.push('split'), changeTimelineHistory: direction => calls.push(direction),
   };
-  const onKeyDown = Function('env', `with (env) { ${app.slice(start, end)}; return onKeyDown; }`)(env);
+  const onKeyDown = Function('env', `with (env) { ${stripSourceTypes(app.slice(start, end))}; return onKeyDown; }`)(env);
   const press = key => { let prevented = false; onKeyDown({ key, ctrlKey: true, metaKey: false, target: { closest: () => null }, preventDefault() { prevented = true; } }); return prevented; };
   assert.equal(press('b'), true); assert.equal(press('z'), true); assert.deepEqual(calls, ['split', 'undo']);
   delete settings.attributes.hidden; assert.equal(press('b'), false); assert.equal(press('z'), false);
@@ -369,13 +370,13 @@ function composerSettingsHandler(kind, callback) {
   if (kind === 'agent') {
     const code = source('AgentPanel.tsx'), start = code.indexOf('  const usable ='), end = code.indexOf('  const { snapshot, phase } = state;', start);
     assert.ok(start >= 0 && end > start);
-    click = Function('env', `with (env) { ${code.slice(start, end)}; return () => dismiss(true); }`)(env);
+    click = Function('env', `with (env) { ${stripSourceTypes(code.slice(start, end))}; return () => dismiss(true); }`)(env);
   } else {
     const code = source('ImageGeneration.tsx'), button = code.indexOf('data-testid="image-settings-open"');
     const start = code.indexOf('onClick={', button) + 'onClick={'.length, end = code.indexOf('})}><Icon name="settings"', start) + 2;
     assert.ok(button >= 0 && start > button && end > start);
     env.run = action => action(env.session.current);
-    click = Function('env', `with (env) { return (${code.slice(start, end)}); }`)(env);
+    click = Function('env', `with (env) { return (${stripSourceTypes(code.slice(start, end)).replace(/;\s*$/u, '')}); }`)(env);
   }
   return { env, current, visibility, requests, click, get reads() { return reads; } };
 }

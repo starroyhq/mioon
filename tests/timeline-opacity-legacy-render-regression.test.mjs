@@ -72,7 +72,7 @@ const [currentRenderer, oldRenderer, contracts, colour, inputs, dbModule, schema
   import('../packages/business/src/workspace-schema-v40.ts'),
   import('../packages/business/src/workspace-restore-schema-v41.ts'),
   import('./workspace-schema26-fixtures.mjs'),
-  import('./helpers/timeline-image-fixtures.mjs'),
+  import('./helpers/timeline-image-fixtures.ts'),
   import('../packages/business/src/timeline-image-admission.ts'),
 ]);
 void dbModule; // Installs the unchanged fixed envelope runtime before schema use.

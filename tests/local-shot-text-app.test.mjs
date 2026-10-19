@@ -1,8 +1,8 @@
-import { actualAppCloseWarning } from './fixtures/native-close-app-warning.mjs';
+import { actualAppCloseWarning } from './fixtures/native-close-app-warning.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {stripSourceTypes} from './helpers/eval-source.mjs';
+import {lenientFunction,stripSourceTypes} from './helpers/eval-source.ts';
 import {message as messageKey, renderMessage} from './helpers/i18n.ts';
 
 const app=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');
@@ -65,7 +65,7 @@ test('actual App beforeunload reads synchronous shot state independently of lega
 test('actual App lifecycle drain waits on local shot persistence only, no business replay',async()=>{
   const from=app.indexOf('const drain = async () =>'),to=app.indexOf('\n    globalThis.__mioonFlushWorkspacePreferences = drain;',from);assert.ok(from>=0&&to>from);
   let saved=false,calls=0;
-  const drain=Function('controller','workspaceRef','locator','localDeliveryRef','shotTextRef','clipDraftRef','nativeWindow',`return (${app.slice(from+'const drain = '.length,to).trim().replace(/;$/,'')});`)({flush:async()=>{},hasUnsaved:()=>false},{current:{restored:false}},{flush:async()=>true},{current:null},{current:{hasUnpersisted:()=>true,flush:async()=>{calls++;return saved;}}},{current:null},null);
+  const drain=lenientFunction('controller','workspaceRef','locator','localDeliveryRef','shotTextRef','clipDraftRef','nativeWindow',`return (${app.slice(from+'const drain = '.length,to).trim().replace(/;$/,'')});`)({flush:async()=>{},hasUnsaved:()=>false},{current:{restored:false}},{flush:async()=>true},{current:null},{current:{hasUnpersisted:()=>true,flush:async()=>{calls++;return saved;}}},{current:null},null);
   assert.equal(await drain(),false);saved=true;assert.equal(await drain(),true);assert.equal(calls,2);
   assert.doesNotMatch(app.slice(from,to),/execute|recover|prepare|rpc\(/);
 });
@@ -80,7 +80,7 @@ function rebaseCallback({externalDuration=false}={}){
   const source=inspector.slice(start+'onRebase: '.length,end).trim().replace(/,$/,'');
   const env={mounted:{current:true},shotText:{controller:{isCurrent:token=>live&&token===capture}},editable:value=>Object.fromEntries(Object.keys(before).map(key=>[key,value[key]])),shot,baseline,draftRef,baseRevisionRef,dirtyRef,editSerial,textVersion,
     same:(a,b)=>JSON.stringify(a)===JSON.stringify(b),setBaseRevision:value=>values.revision=value,setConflict:value=>values.conflict=value,setDirty:value=>values.dirty=value};
-  return{run:Function(...Object.keys(env),`return (${source});`)(...Object.values(env)),capture,values,baseline,draftRef,baseRevisionRef,dirtyRef,stale:()=>live=false};
+  return{run:lenientFunction(...Object.keys(env),`return (${source});`)(...Object.values(env)),capture,values,baseline,draftRef,baseRevisionRef,dirtyRef,stale:()=>live=false};
 }
 test('actual Inspector explicit text baseline alignment preserves local duration and original nontext fields',()=>{
   const f=rebaseCallback();assert.equal(f.run(f.capture),true);assert.equal(f.draftRef.current.duration,9);assert.equal(f.baseline.current.duration,7);assert.equal(f.baseRevisionRef.current,4);assert.equal(f.values.conflict,false);assert.equal(f.dirtyRef.current,true);assert.equal(f.values.dirty,true);

@@ -13,8 +13,8 @@ import {
   TIMELINE_IMAGE_TRANSFORM_PROFILE, TIMELINE_IMAGE_RESIZE_PROFILE,
 } from '../packages/contracts/src/timeline-colour.ts';
 import {inspectStaticSrgbJfif} from '../packages/business/src/timeline-jpeg-admission.ts';
-import {pillowJfifFixture} from './helpers/timeline-jpeg-fixtures.mjs';
-import {jpegEvidenceOnly, jpegColour} from './helpers/timeline-jpeg-workflow-fixtures.mjs';
+import {pillowJfifFixture} from './helpers/timeline-jpeg-fixtures.ts';
+import {jpegEvidenceOnly, jpegColour} from './helpers/timeline-jpeg-workflow-fixtures.ts';
 
 const stamp = '2026-10-15T00:00:00.000Z';
 const evidenceBySampling = new Map();

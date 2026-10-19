@@ -25,9 +25,10 @@ import {initializeWorkspaceSchema32} from '../packages/business/src/workspace-sc
 import {timelineImageResponseBudgetIssue} from '../packages/business/src/timeline-image-budget.ts';
 import {createWorkspaceBackup, verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
+import {materializeHistoricalWorkspace} from './helpers/historical-workspace.ts';
 import {parseCube3D} from '../packages/business/src/cube-lut.ts';
 import {lutInputHash} from '../packages/business/src/lut-resource-validation.ts';
-import {png, imageColour, sha, stamp} from './helpers/timeline-image-fixtures.mjs';
+import {png, imageColour, sha, stamp} from './helpers/timeline-image-fixtures.ts';
 import {snapshot, facade, open} from './workspace-schema26-fixtures.mjs';
 
 const limit = 262144;
@@ -374,13 +375,15 @@ test('cold backup32 and restored33 preserve exact-limit evidence, receipts and h
   const changed = await f.call('timeline.track.update', f.params(f.timeline, {trackId: track.id, patch: {name: track.name + 'x'}}));
   assert.equal(encodedBytes(changed), limit);
   const before = captureEdits(f.store.db);
-  f.store.db.exec('DELETE FROM schema_version WHERE version=34'); // Explicit historical PNG-only fixture.
-  await f.close();
-  const dbBytes = readFileSync(path.join(f.root, 'workbench.sqlite'));
+  await f.close();// Reviewed historical PNG-only fixture; never relabel or downgrade the current workspace.
+  const frozenBase = mkdtempSync(path.join(tmpdir(), 'mioon-image-budget-source32-'));
+  t.after(() => rmSync(frozenBase, {recursive: true, force: true}));
+  const frozen = materializeHistoricalWorkspace({root: f.root}, frozenBase, {version: 32});
+  const dbBytes = readFileSync(frozen.dbPath);
   const base = mkdtempSync(path.join(tmpdir(), 'mioon-image-budget-restore-'));
   t.after(() => rmSync(base, {recursive: true, force: true}));
   const backup = path.join(base, 'backup'), destination = path.join(base, 'restored');
-  assert.equal((await createWorkspaceBackup({source: f.root, destination: backup})).databaseSchemaVersion, 32);
+  assert.equal((await createWorkspaceBackup({source: frozen.root, destination: backup})).databaseSchemaVersion, 32);
   assert.equal((await verifyWorkspaceBackup({directory: backup})).databaseSchemaVersion, 32);
   const restored = await restoreWorkspaceBackup({directory: backup, destination});
   assert.equal(restored.databaseSchemaVersion, 33);
@@ -397,16 +400,18 @@ test('cold backup32 and restored33 preserve exact-limit evidence, receipts and h
       assert.deepEqual(readFileSync(path.join(destination, f.asset.relativePath)), sourceBytes);
     } finally { await services.drain(); store.close(); }
   }
-  assert.deepEqual(readFileSync(path.join(f.root, 'workbench.sqlite')), dbBytes);
+  assert.deepEqual(readFileSync(frozen.dbPath), dbBytes);
 });
 
 test('restored33 install rolls back exact-limit timeline, receipt and history bytes on commit failure', async t => {
   const f = await fixture(t);
   await f.call('timeline.clip.update', f.params(f.timeline, {clipId: f.timeline.clips[0].id, patch: {gain: 0}}));
   await f.close();
-  const db = new DatabaseSync(path.join(f.root, 'workbench.sqlite'));
+  const frozenBase = mkdtempSync(path.join(tmpdir(), 'mioon-image-budget-source32-'));
+  t.after(() => rmSync(frozenBase, {recursive: true, force: true}));
+  const frozen = materializeHistoricalWorkspace({root: f.root}, frozenBase, {version: 32});
+  const db = new DatabaseSync(frozen.dbPath);
   try {
-    db.exec('DELETE FROM schema_version WHERE version=34'); // Explicit historical PNG-only fixture.
     const before = snapshot(db);
     let reached = false;
     const interrupted = facade(db, event => {
@@ -453,9 +458,18 @@ for (const sourceVersion of [24, 26, 28, 30, 32]) for (const restored of [false,
         assert.throws(() => classifyCurrentWorkspaceSchema(db));
         if (restored) assert.throws(() => validateCurrentWorkspaceRestoreSchema(db));
         else assert.throws(() => initializeWorkspaceSchema32(db));
+      } else if (restored) {
+        // Fail-closed capture integrity: a live edit_task mutated after capture
+        // must never be accepted as the captured historical evidence. Accepting it
+        // could broaden restored33 authority from the planted errorCode alone, so
+        // the validator must reject the changed live row. The classification still
+        // names only the historical role: the mutation expands no capability.
+        assert.equal(classifyCurrentWorkspaceSchema(db).schemaVersion, 33,
+          'historical role 33 is not broadened to a current role');
+        assert.throws(() => validateCurrentWorkspaceRestoreSchema(db), {code: 'RESTORE_CAPTURE_CHANGED'},
+          'mutated live capture must fail closed');
       } else {
         assert.equal(classifyCurrentWorkspaceSchema(db).schemaVersion, role);
-        if (restored) assert.equal(validateCurrentWorkspaceRestoreSchema(db).schemaVersion, 33);
       }
       assert.equal(totalChanges(db), changes);
       assert.deepEqual(snapshot(db), before);

@@ -15,7 +15,7 @@ import {createLocalDelivery,LOCAL_DELIVERY_FILENAME} from '../packages/business/
 import {createTimelineRecoveryBoundary,readTimelineReceipt} from '../packages/business/src/timeline-recovery.ts';
 import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
-import {restoreFixture,tree,logical} from './helpers/workspace-restore-offline-fixture.mjs';
+import {restoreFixture,tree,logical} from './helpers/workspace-restore-offline-fixture.ts';
 
 const authority=value=>({workspaceScope:value.workspaceScope,instanceId:value.instanceId,projectId:value.projectId});
 const action=value=>({...authority(value),intentId:value.intent.intentId,expectedIntentRevision:value.intentRevision});

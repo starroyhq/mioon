@@ -4,8 +4,8 @@ import {randomUUID} from 'node:crypto';
 import path from 'node:path';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {PROPOSAL_FUNCTION, PROPOSED_TITLE, PROPOSED_PROMPT} from './helpers/agent-edit-wire-model.mjs';
-import {editWireFixture, editRoute, chatRoute, database, savedProposal, savedShot, tableSnapshot, until, REPO, EDIT_WIRE_TOKEN, DOMAIN_TABLES} from './helpers/agent-edit-wire-fixture.mjs';
+import {PROPOSAL_FUNCTION, PROPOSED_TITLE, PROPOSED_PROMPT} from './helpers/agent-edit-wire-model.ts';
+import {editWireFixture, editRoute, chatRoute, database, savedProposal, savedShot, tableSnapshot, until, REPO, EDIT_WIRE_TOKEN, DOMAIN_TABLES} from './helpers/agent-edit-wire-fixture.ts';
 
 const unchangedTables = DOMAIN_TABLES.filter(table => table !== 'shots');
 const bodyItems = capture => capture.protocol === 'responses' ? capture.body.input : capture.body.messages;

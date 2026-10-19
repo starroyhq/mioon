@@ -18,7 +18,7 @@ import {createWorkspacePreferences} from '../packages/business/src/workspace-pre
 import {defaultWorkspaceState} from '../apps/web/src/workspace-state.ts';
 import {inspectStaticSrgbPng} from '../packages/business/src/timeline-image-admission.ts';
 import {timelineColourInputFilter} from '../packages/business/src/timeline-colour-lut.ts';
-import {png} from './helpers/timeline-image-fixtures.mjs';
+import {png} from './helpers/timeline-image-fixtures.ts';
 
 const repo = fileURLToPath(new URL('../', import.meta.url));
 const root = path.join(repo, 'evidence/mixed-images/native');

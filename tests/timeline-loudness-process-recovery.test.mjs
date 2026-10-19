@@ -10,7 +10,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {timelineLoudnessCandidateDigest} from '../packages/contracts/src/timeline-loudness-apply.ts';
-const repo=fileURLToPath(new URL('../',import.meta.url)),workerPath=fileURLToPath(new URL('./helpers/timeline-loudness-process-worker.mjs',import.meta.url));
+const repo=fileURLToPath(new URL('../',import.meta.url)),workerPath=fileURLToPath(new URL('./helpers/timeline-loudness-process-worker.ts',import.meta.url));
 function deadline(promise,label,ms=10000){let timer;return Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(`Timed out: ${label}`)),ms);})]).finally(()=>clearTimeout(timer));}
 function startWorker(root,{missingTools=false}={}){
   const child=spawn(process.execPath,[workerPath,root],{cwd:repo,stdio:['ignore','pipe','pipe','ipc'],

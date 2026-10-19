@@ -1,4 +1,6 @@
 import test from 'node:test';
+import {currentMarkerChain} from './helpers/current-schema-delta.ts';
+import {currentOrdinary48Delta,reviewedObjectSql} from './helpers/current-schema-delta.ts';
 import assert from 'node:assert/strict';
 import {normalizeAgentEditProposalObject,legacyAgentEditProposalRows,assertAgentEditTargetTrigger} from './agent-edit-migration-preservation.mjs';
 import {DatabaseSync} from 'node:sqlite';
@@ -70,7 +72,8 @@ function preserved(db,before){
  for(const object of before.objects.filter(row=>!(row.type==='table'&&row.name==='edit_tasks'))){
   const current=after.objects.find(row=>row.type===object.type&&row.name===object.name);
   const normalized=object.type==='table'&&object.name==='image_reviews'&&db.prepare('SELECT 1 FROM schema_version WHERE version=23').get()?normalizeImageReviewObject(current):agentTargets&&object.type==='table'&&object.name==='agent_edit_proposals'?normalizeAgentEditProposalObject(current):current;
-  assert.deepEqual(normalized,object,`${object.type} ${object.name}: exact SQL retained outside the pinned schema23/24 additions`);
+  const reviewed=!db.prepare('SELECT 1 FROM schema_version WHERE version=48').get()||currentOrdinary48Delta.objectSql[object.name]===undefined?object:Object.assign(Object.create(Object.getPrototypeOf(object)),object,{sql:reviewedObjectSql(object.name,object.sql)});
+  assert.deepEqual(normalized,reviewed,`${object.type} ${object.name}: exact SQL retained outside the pinned schema23/24 additions`);
  }
  assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check,'ok');
  assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
@@ -162,7 +165,7 @@ function seed(db){
  assert.ok(rows.every(row=>row.input.includes('\\u754c')));
 }
 function assertTaskSqlExpansion(current,previous,{startup=false}={}){
- const additions=['timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove',...(startup?['timeline.loudness.apply']:[])];
+ const additions=['timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove',...(startup?['timeline.loudness.apply']:[]),...(current.includes(",'timeline.clip.rippleRemove'")?['timeline.clip.rippleRemove']:[])];
  const operationList=sql=>sql.match(/CHECK\(operation IN \(([^)]+)\)\)/)[1].split(',').map(value=>value.trim().slice(1,-1));
  assert.deepEqual(operationList(current).sort(),[...LEGACY_OPERATIONS,...additions].sort(),'only the exact named task operations are admitted, once each');
  let retained=current;
@@ -178,7 +181,7 @@ function assertNarrowExpansion(db,before,{startup=false}={}){
  const current=db.prepare("SELECT sql FROM sqlite_schema WHERE name='edit_tasks'").get().sql;
  assertTaskSqlExpansion(current,previous,{startup});
  assert.deepEqual(db.prepare('PRAGMA table_info(edit_tasks)').all().map(row=>row.name),COLUMNS);
- assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),startup?[...Array.from({length:24},(_,index)=>index+1),26]:Array.from({length:22},(_,index)=>index+1));
+ assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),startup?[...currentMarkerChain]:Array.from({length:22},(_,index)=>index+1));
  assert.equal(db.prepare("SELECT count(*) AS n FROM sqlite_schema WHERE type='table' AND name LIKE 'edit_tasks_%'").get().n,0);
  assert.deepEqual(db.prepare('SELECT * FROM timeline_format_requests').all(),[],'migration invents no requests or specifications');
 }

@@ -4,7 +4,7 @@ import {parse, operationEffect, schemas, isTimelineClipLoudnessResponse} from '@
 import {discoverSchema} from '@mioon/client';
 import {timelineClipLoudnessResponseSchema} from '@mioon/contracts/timeline-clip-loudness';
 import {translate} from '../packages/i18n/src/index.ts';
-import {clipLoudnessInput as input, readyClipLoudness, silentClipLoudness, clipLoudnessOperation as operation} from './fixtures/timeline-clip-loudness-fixtures.mjs';
+import {clipLoudnessInput as input, readyClipLoudness, silentClipLoudness, clipLoudnessOperation as operation} from './fixtures/timeline-clip-loudness-fixtures.ts';
 
 test('strict catalog operation is observation only with no persisted request or scope-changing options', () => {
   assert.deepEqual(parse(operation, input), input); assert.ok(Object.hasOwn(schemas, operation));

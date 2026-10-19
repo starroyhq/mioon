@@ -1,4 +1,4 @@
-import {createTestAuthorizations,authorizeTestScope} from './helpers/agent-authorizations.mjs';
+import {createTestAuthorizations,authorizeTestScope} from './helpers/agent-authorizations.ts';
 import {deriveAgentEndpoint} from '@mioon/contracts';
 import test from 'node:test';
 import assert from 'node:assert/strict';

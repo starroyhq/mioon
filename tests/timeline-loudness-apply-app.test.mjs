@@ -8,9 +8,9 @@ import { createTimelineLoudnessApplyController } from '../apps/web/src/timeline-
 import { timelineMixLoudnessViewState } from '../apps/web/src/timeline-mix-loudness-state.ts';
 import { submitTimelineLoudnessApply } from '../apps/web/src/timeline-loudness-apply-submit.ts';
 import { timelineLoudnessCandidateDigest } from '@mioon/contracts/timeline-loudness-apply';
-import { id, input, report, context as mixContext, projectId, timelineId, fixture } from './helpers/timeline-mix-loudness-ui-fixture.mjs';
+import { id, input, report, context as mixContext, projectId, timelineId, fixture } from './helpers/timeline-mix-loudness-ui-fixture.ts';
 import { message as messageKey, renderMessage } from './helpers/i18n.ts';
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const part = (start, end) => app.slice(app.indexOf(start), app.indexOf(end, app.indexOf(start)));

@@ -20,7 +20,7 @@ import {reopenOpacityCandidateApplicationStore, reopenRestoredOpacityCandidateAp
 import {createRestoredOpacityCandidateLocalDrafts} from '../packages/business/src/opacity-candidate-local-drafts.ts';
 import {createOpacityCandidateApplicationServices} from '../packages/business/src/opacity-candidate-services.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
-import {opacityBackupFixture} from './helpers/opacity-backup-fixture.mjs';
+import {opacityBackupFixture} from './helpers/opacity-backup-fixture.ts';
 import {createOpacityCandidateApplication, readOpacityCandidateApplication} from '../apps/web/src/opacity-candidate-application.ts';
 import {createEditTaskClient} from '../apps/web/src/edit-task-client.ts';
 import {createEditTaskController} from '../apps/web/src/edit-task-controller.ts';
@@ -31,7 +31,7 @@ import {rawOpacityEnvelopeFields} from '../apps/web/src/clip-opacity-envelope-st
 import {pinNewWorkspaceIntent} from '../apps/web/src/workspace-origin.ts';
 import {LOCALES, translate, validateCatalogs} from '../packages/i18n/src/index.ts';
 
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const root = fileURLToPath(new URL('../', import.meta.url));
 const appSource = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');

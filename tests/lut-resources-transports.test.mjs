@@ -12,10 +12,10 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 
 const repo = fileURLToPath(new URL('../', import.meta.url));
-const guard = path.join(repo, 'tests/helpers/inspection-wire-fixture.mjs');
+const guard = path.join(repo, 'tests/helpers/inspection-wire-fixture.ts');
 // This existing owned fixture starts the real HTTP server and forbids outbound
 // provider traffic, model calls, and all media/subprocess work in that server.
-const backendFixture = path.join(repo, 'tests/fixtures/local-drafts-process.mjs');
+const backendFixture = path.join(repo, 'tests/fixtures/local-drafts-process.ts');
 const token = 'synthetic-lut-wire-token-not-a-real-credential';
 const source = Buffer.from('# preserve exact CRLF and missing final newline\r\nTITLE "Wire resource"\r\nLUT_3D_SIZE 2\r\n0 0 0\r\n1 0 0\r\n0 1 0\r\n1 1 0\r\n0 0 1\r\n1 0 1\r\n0 1 1\r\n1 1 1');
 const expectedHash = createHash('sha256').update(source).digest('hex');

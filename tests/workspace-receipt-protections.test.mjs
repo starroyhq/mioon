@@ -20,6 +20,10 @@ const test=(name,run)=>nodeTest(`fixed26 historical receipt repair: ${name}`,run
 const names=['immutable_timeline_responses','immutable_reference_responses','reject_reference_request_replacement','retain_reference_requests'];
 const tables=['timeline_requests','reference_requests'];
 const fixed=Object.values(golden.definitions).filter(object=>names.includes(object.name));
+// Current ordinary48 retention guards are lifecycle-aware; the reviewed current
+// delta fixture pins their exact SQL independently of the implementation.
+const currentDelta=JSON.parse(readFileSync(new URL('./fixtures/workspace-schema-profiles/current-ordinary-48-delta.json',import.meta.url),'utf8'));
+const currentFixed=fixed.map(object=>({...object,sql:currentDelta.objectSql[object.name]??object.sql}));
 const unsupported=error=>error.code==='RESTORE_SCHEMA_UNSUPPORTED';
 const markers=[...Array.from({length:24},(_,index)=>index+1),26];
 function dispatch(onLegacy=()=>{}){
@@ -67,16 +71,18 @@ function assertRecords(db,before,{migrated=false}={}){
 }
 
 test('fresh real through24 constructor still boots ordinary26 with all fixed receipt protections',t=>{
- const db=open(':memory:');t.after(()=>db.close());let legacyCalls=0;
- assert.equal(dispatch(()=>legacyCalls++).initialize(db),null);assert.equal(legacyCalls,1);
+ const db=open(':memory:');t.after(()=>db.close());let legacyCalls=0,realCalls=0;
+ // Reference profile construction runs the closure on disposable in-memory
+ // databases; only the real database call is a bootstrap write.
+ assert.equal(dispatch(target=>{legacyCalls++;if(target===db)realCalls++;}).initialize(db),null);assert.equal(realCalls,1);
  assert.equal(readCurrentWorkspaceRole(db),'ordinary-26');assertFixed(db);
  assert.ok(db.prepare("SELECT 1 FROM main.sqlite_schema WHERE name='timeline_requests_project'").get());
 });
 
 nodeTest('current default dispatcher independently boots ordinary40 with the same receipt protections',t=>{
- const db=open(':memory:');t.after(()=>db.close());let legacyCalls=0;
- assert.equal(currentDispatch(()=>legacyCalls++).initialize(db),null);assert.equal(legacyCalls,1);
- assert.equal(readCurrentWorkspaceRole(db),'ordinary-40');assertFixed(db);
+ const db=open(':memory:');t.after(()=>db.close());let legacyCalls=0,realCalls=0;
+ assert.equal(currentDispatch(target=>{legacyCalls++;if(target===db)realCalls++;}).initialize(db),null);assert.equal(realCalls,1);
+ assert.equal(readCurrentWorkspaceRole(db),'ordinary-48');assert.deepEqual(protections(db),currentFixed.toSorted((a,b)=>a.name.localeCompare(b.name)));
 });
 
 nodeTest('current feature admission refuses the intentionally raw historical receipt fixture without changing it',t=>{

@@ -7,7 +7,7 @@ import * as stateModule from '../apps/web/src/timeline-loudness-apply-state.ts';
 import * as floatModule from '@mioon/contracts/timeline-export-float';
 import { TIMELINE_EXPORT_DEFAULT_SETTINGS } from '@mioon/contracts';
 import { createExportSettingsController, exportSettingsKey, freezeExportSettings } from '../apps/web/src/export-settings-state.ts';
-import { fixture, context, draft, report, input } from './helpers/timeline-mix-loudness-ui-fixture.mjs';
+import { fixture, context, draft, report, input } from './helpers/timeline-mix-loudness-ui-fixture.ts';
 const source = name => readFileSync(new URL(`../apps/web/src/${name}`, import.meta.url), 'utf8');
 const flatten = value => Array.isArray(value) ? value.flatMap(flatten) : value && typeof value === 'object' ? [value, ...flatten(value.props?.children)] : [];
 const byTest = (tree, id) => flatten(tree).find(value => value.props?.['data-testid'] === id);

@@ -6,7 +6,7 @@ import {spawn} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {mkdir, appendFile, readFile} from 'node:fs/promises';
 import {EDIT_QA_REPO, prepareEditQaFixture, clearEditQaEnvironment, seedEditQaSettings, startEditQaModel,
-  startEditQaMailbox, assertNativeFixtureClosed, jsonFile, editQaAudit} from './helpers/agent-edits-qa-support.mjs';
+  startEditQaMailbox, assertNativeFixtureClosed, jsonFile, editQaAudit} from './helpers/agent-edits-qa-support.ts';
 
 export async function startEditsQaNative({protocol = 'responses'} = {}) {
   await assertNativeFixtureClosed();

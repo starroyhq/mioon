@@ -6,7 +6,7 @@ import { createEditorSettingsScope } from '../apps/web/src/editor-settings-scope
 import { createNativeCloseAdmission, createNativeCloseRegistry } from '../apps/web/src/native-close-state.ts';
 import { createAgentChatCloseReporter, createImageGenerationCloseReporter } from '../apps/web/src/native-close-sources.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
-import { createAgentAuthorizationUiMock } from './helpers/agent-authorization-ui.mjs';
+import { createAgentAuthorizationUiMock } from './helpers/agent-authorization-ui.ts';
 
 // These tests join the actual sessions and close reporters to the actual scope
 // and admission. A fake boolean source cannot reproduce focus starting a load.

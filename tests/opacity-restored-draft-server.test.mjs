@@ -21,8 +21,8 @@ import {createEditTaskClient} from '../apps/web/src/edit-task-client.ts';
 import {createEditTaskController} from '../apps/web/src/edit-task-controller.ts';
 import {pinNewWorkspaceIntent} from '../apps/web/src/workspace-origin.ts';
 import {rpc} from '../apps/web/src/api.ts';
-import {restoredApplicationFixture, request, restoredApplicationToken} from './helpers/opacity-restored-application-fixture.mjs';
-import {logicalTables} from './helpers/opacity-backup-fixture.mjs';
+import {restoredApplicationFixture, request, restoredApplicationToken} from './helpers/opacity-restored-application-fixture.ts';
+import {logicalTables} from './helpers/opacity-backup-fixture.ts';
 
 // Actual cold42 archive and independent43 publication, exact application launch,
 // shared HTTP handler and frontend clients/controllers. No listener, native

@@ -19,7 +19,7 @@ async function fixture(t) {
   return {root, store, services, project, other, shot};
 }
 async function reassignWhileLocked(t, f, corrupt = false) {
-  const child = fork(fileURLToPath(new URL('./helpers/agent-edit-scope-writer.mjs', import.meta.url)),
+  const child = fork(fileURLToPath(new URL('./helpers/agent-edit-scope-writer.ts', import.meta.url)),
     [path.join(f.root, 'workbench.sqlite'), f.shot.id, f.other.id, corrupt ? 'yes' : 'no'],
     {stdio: ['ignore', 'ignore', 'pipe', 'ipc']});
   let stderr = '';

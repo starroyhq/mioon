@@ -8,6 +8,7 @@ import {createTimelineAudioContinuousDecoder} from '../packages/business/src/tim
 import {run, runStreamingWithBackpressure, checkMediaEffect} from '../packages/business/src/media-runtime.ts';
 import {withProbePermit} from '../packages/business/src/media-probe.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
+import {mkdtempPortable} from './helpers/temp-root.ts';
 
 function wav() {
   const samples = 9600, bytes = Buffer.alloc(44 + samples * 4);
@@ -19,7 +20,7 @@ function wav() {
 }
 
 test('a short FFmpeg segment keeps its paused tail readable across the next transport block', {timeout: 15000}, async t => {
-  const root = await mkdtemp(path.join(process.platform === 'darwin' ? '/private/tmp' : tmpdir(), 'mioon-continuous-tail-'));
+  const root = mkdtempPortable('mioon-continuous-tail-');
   t.after(() => rm(root, {recursive: true, force: true}));
   const file = path.join(root, 'controlled.wav'); await writeFile(file, wav());
   const decoder = createTimelineAudioContinuousDecoder({run, runStreamingWithBackpressure, checkMediaEffect, withProbePermit});

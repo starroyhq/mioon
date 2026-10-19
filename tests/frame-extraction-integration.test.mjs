@@ -4,6 +4,9 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as frame from '../apps/web/src/frame-extraction.ts';
 import * as ranges from '../apps/web/src/source-range-state.ts';
+import { lenientFunction } from './helpers/eval-source.ts';
+import { translate } from '../packages/i18n/src/index.ts';
+const Function = lenientFunction;
 
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), sourceId = id(2), taskId = id(3), resultId = id(4), sha256 = 'a'.repeat(64);
@@ -89,7 +92,7 @@ test('actual App hook connects capture/rpc/reveal with source or narrow Properti
   const app = text('App.tsx'), start = app.indexOf('  const frameExtraction = useFrameExtraction('), end = app.indexOf('\n\n', start);
   assert.ok(start > 0 && end > start);
   const calls = [], controller = { capture: () => {} }, state = { visible: true }, refreshes = [];
-  const env = { workbenchReady: true, data: { project: { id: projectId }, assets: [sourceAsset] }, sourceRangeScope: sourceScope, rangeAsset: sourceAsset, workspaceMode: 'editing', rightDockTab: 'agent', panelVisible: name => name === 'canvas', quickAssetId: sourceId, restored: false, sourceRangeBlocked: false, busy: {}, rpc: () => {}, requestId: () => 'stable-request-key', currentProject: { current: projectId }, refresh: pid => refreshes.push(pid), revealImageAsset: () => {}, useFrameExtraction: input => { calls.push(input); return { controller, state }; } };
+  const env = { workbenchReady: true, application: null, data: { project: { id: projectId }, assets: [sourceAsset] }, sourceRangeScope: sourceScope, rangeAsset: sourceAsset, workspaceMode: 'editing', rightDockTab: 'agent', panelVisible: name => name === 'canvas', quickAssetId: sourceId, restored: false, sourceRangeBlocked: false, busy: {}, rpc: () => {}, requestId: () => 'stable-request-key', currentProject: { current: projectId }, refresh: pid => refreshes.push(pid), revealImageAsset: () => {}, useFrameExtraction: input => { calls.push(input); return { controller, state }; } };
   const evaluate = () => Function(...Object.keys(env), `${app.slice(start, end)}; return frameExtraction;`)(...Object.values(env));
   assert.equal(evaluate().controller, controller); const configured = calls.at(-1);
   assert.equal(configured.visible, true); assert.equal(configured.blocked, false); assert.equal(configured.rpc, env.rpc); assert.equal(configured.sourceScope, sourceScope); assert.equal(configured.revealAsset, env.revealImageAsset);
@@ -115,8 +118,8 @@ test('actual App hook connects capture/rpc/reveal with source or narrow Properti
   assert.equal(await h.value.controller.recoverResult(task({ state: 'interrupted' })), null);
   assert.deepEqual(rpcCalls, [], 'restored mode neither reads live frame history nor starts or controls a task');
   assert.equal(h.value.controller.getSnapshot().pending, null); h.unmount();
-  assert.match(app, /onCaptureFrame=\{frameExtraction\.controller\.capture\} captureBusy=\{frameCaptureBusy\(frameExtraction\.state\)\}/);
-  assert.match(app, /quickAssetId && sourceAsset \? <SourceRangeInspector[^>]+>\{restored \? <RestoredUnavailable[^>]+\/> : <FrameExtractionPanel controller=\{frameExtraction\.controller\} \/>\}<\/SourceRangeInspector>/);
+  assert.match(app, /onCaptureFrame=\{application \? undefined :/); assert.match(app, /frameExtraction\.controller as unknown as \{capture\(\): unknown\}\)\.capture\(\)/); assert.match(app, /captureBusy=\{frameCaptureBusy\(frameExtraction\.state\)\}/);
+  assert.match(app, /quickAssetId && sourceAsset \? application \?/); assert.match(app, /<SourceRangeInspector[^>]+>\{restored \? <RestoredUnavailable[^>]+\/> : <FrameExtractionPanel controller=\{frameExtraction\.controller(?: as never)?\} \/>\}<\/SourceRangeInspector>/);
 });
 
 test('actual App source inspector keeps the normal frame panel and replaces it with the restored hold notice', () => {
@@ -125,7 +128,7 @@ test('actual App source inspector keeps the normal frame panel and replaces it w
   const controller = {}, rangeState = { dirty: true, draft: { inFrame: 12, outFrame: 88 } }, rangeController = {};
   for (const restored of [false, true]) {
     const h = hooksHarness(`import React from 'react'; export default function Fixture() { return (${app.slice(start, end)}); }`, {}, 'default', {
-      SourceRangeInspector: 'SourceRangeInspector', FrameExtractionPanel: 'FrameExtractionPanel', RestoredUnavailable: 'RestoredUnavailable',
+      SourceRangeInspector: 'SourceRangeInspector', FrameExtractionPanel: 'FrameExtractionPanel', RestoredUnavailable: 'RestoredUnavailable', t: key => translate('zh-Hans', key),
       restored, sourceAsset, sourceRanges: { state: rangeState, controller: rangeController }, timeline: { projectId }, sourceRangeBlocked: false,
       addSavedSourceRange() {}, frameExtraction: { controller },
     });

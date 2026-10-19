@@ -5,7 +5,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createOpacityRenderSnapshotPlan} from '../packages/contracts/src/timeline-opacity-render-candidate.ts';
 import {resolveTimelineExportDelivery, TIMELINE_EXPORT_DEFAULT_SETTINGS} from '@mioon/contracts';
-import {row, id, projectId} from './helpers/export-sample-peak-ui-fixture.mjs';
+import {row, id, projectId} from './helpers/export-sample-peak-ui-fixture.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 function candidate(purpose = 'export', fields = {}) {

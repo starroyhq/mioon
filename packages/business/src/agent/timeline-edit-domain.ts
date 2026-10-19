@@ -109,7 +109,12 @@ export function readAgentTimelineSnapshot<T>(db: DatabaseSync, read: () => T): T
 type GainDomainOptions = Parameters<typeof createAgentTimelineGainDomain>[0];
 export const {pinAgentTimelineGainTarget, assertAgentTimelineGainOwnership, assertAgentTimelineGainTarget, createAgentTimelineGainBoundary, readAgentTimelineGainReceipt} = createAgentTimelineGainDomain({
   createBoundary(db: DatabaseSync, input: {projectId: string}) {
-    return createTimelineRecoveryBoundary(db, {projectId: input.projectId, requestId: ''}) as unknown as ReturnType<GainDomainOptions['createBoundary']>;
+    // Read-only pinning passes only the project scope; a real gain transaction
+    // passes the complete mutation input, which the shared recovery boundary
+    // needs for its exact response verification and idempotent replay. Passing
+    // the narrowed shape would make verify() reject a valid timeline response.
+    const recoveryInput = Object.hasOwn(input, 'requestId') ? input : {projectId: input.projectId, requestId: ''};
+    return createTimelineRecoveryBoundary(db, recoveryInput as never) as unknown as ReturnType<GainDomainOptions['createBoundary']>;
   },
   readReceipt(db: DatabaseSync, input: Parameters<GainDomainOptions['readReceipt']>[1], operationName: string) {
     const row = readTimelineReceipt(db, {projectId: input.projectId, clipId: input.clipId, expectedRevision: input.expectedRevision, patch: input.patch, requestId: input.requestId}, operationName);

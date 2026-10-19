@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as stateModule from '../apps/web/src/timeline-clip-loudness-state.ts';
-import { context, report, deferred } from './helpers/timeline-clip-loudness-ui-fixture.mjs';
+import { context, report, deferred } from './helpers/timeline-clip-loudness-ui-fixture.ts';
 
 function hookHarness() {
   const refs = [], effects = [], pending = []; let cursor = 0;

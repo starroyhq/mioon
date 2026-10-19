@@ -26,9 +26,9 @@ const count=(f,table)=>f.store.db.prepare(`SELECT count(*) AS n FROM ${table}`).
 const missing=e=>e.code==='NOT_FOUND'&&e.status===404&&Object.keys(e.details).length===0;
 const subjectTables=['subjects','subject_versions','subject_bindings','subject_requests'];
 
-test('strict schemas, eleven local operations, mandatory keys and bounded noncreating reads',async t=>{
+test('strict schemas, twelve local operations, mandatory keys and bounded noncreating reads',async t=>{
  const f=await fixture(t),before=snapshot(f),projectId=f.project.id;
- assert.equal(LOCAL_MUTATION_OPERATIONS.length,11);
+ assert.deepEqual([...LOCAL_MUTATION_OPERATIONS],['shot.create','shot.update','shot.reorder','node.create','node.update','version.select','asset.range.set','asset.disposition.set','asset.annotation.set','subject.create','subject.version.add','subject.binding.set']);
  for(const op of ['subject.create','subject.version.add','subject.binding.set'])assert.equal(schemas[op].safeParse({projectId}).success,false);
  const result=await f.call('subject.list',{projectId});assert.deepEqual(result,{projectId,items:[],nextCursor:null});
  assert.equal(isSubjectListResponse('subject.list',{projectId},result),true);assert.deepEqual(snapshot(f),before);

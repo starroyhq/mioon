@@ -11,7 +11,7 @@ import { mediaEnvironment, mediaExecutable } from '../packages/business/src/medi
 import { run, MEDIA_RUNTIME_LIMITS } from '../packages/business/src/media-runtime.ts';
 import { spawnMedia, onMediaProcess, terminateMediaProcess, terminateMediaProcesses, waitForMediaProcesses, hasUnconfirmedMediaProcesses, MEDIA_TERMINATION_POLICY } from '../packages/business/src/media-processes.ts';
 
-const fixture = fileURLToPath(new URL('./helpers/media-child-fixture.mjs', import.meta.url));
+const fixture = fileURLToPath(new URL('./helpers/media-child-fixture.ts', import.meta.url));
 const exec = promisify(execFile), pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const forbidden = ['RUNWAYML_API_SECRET', 'MIOON_AGENT_API_KEY', 'MIOON_TOKEN', 'OPENAI_API_KEY', 'NODE_OPTIONS', 'NODE_PATH', 'LD_PRELOAD', 'LD_LIBRARY_PATH', 'DYLD_INSERT_LIBRARIES', 'DYLD_LIBRARY_PATH', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'FFREPORT', 'MIOON_FFMPEG_PATH', 'UNRELATED_SECRET'];
 async function sandbox(t) { const root = await mkdtemp(path.join(tmpdir(), 'media-bounds-')); t.after(() => rm(root, { recursive: true, force: true })); return root; }

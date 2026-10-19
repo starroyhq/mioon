@@ -351,7 +351,7 @@ test('a second lock:false process sees active state but cannot reconcile, steal,
  const gate=deferred();let entered=false;
  const f=await fixture(t,{decode:async()=>{entered=true;await gate.promise;return decoded();}}),asset=await f.asset();
  const initial=f.request(asset);await waitFor(()=>({status:entered?'started':'queued'}));const before=rows(f);
- const helper=fileURLToPath(new URL('./helpers/waveform-readonly-owner.mjs',import.meta.url));
+ const helper=fileURLToPath(new URL('./helpers/waveform-readonly-owner.ts',import.meta.url));
  const {stdout}=await promisify(execFile)(process.execPath,[helper,f.root,JSON.stringify(f.input(asset))],{timeout:10000,maxBuffer:128*1024});
  const result=JSON.parse(stdout);assert.equal(result.owner,false);assert.equal(result.txCalls,0);assert.equal(result.spawns,0);assert.equal(result.changes,0);assert.equal(result.exclusiveDenied,true);
  assert.equal(result.read.status,'running');assert.equal(result.after.status,'running');assert.equal(result.read.attemptId,initial.attemptId);assert.equal(result.request.reason.code,'WAVEFORM_OWNER_REQUIRED');assert.deepEqual(rows(f),before);

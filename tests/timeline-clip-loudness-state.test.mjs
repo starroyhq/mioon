@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fixture, context, input, report, id } from './helpers/timeline-clip-loudness-ui-fixture.mjs';
+import { fixture, context, input, report, id } from './helpers/timeline-clip-loudness-ui-fixture.ts';
 import { timelineClipLoudnessAvailable, timelineClipLoudnessViewState } from '../apps/web/src/timeline-clip-loudness-state.ts';
 import { savedClipLoudnessFields, clipLoudnessDraftContext } from '../apps/web/src/timeline-clip-loudness-context.ts';
 import { TIMELINE_CLIP_LOUDNESS_LIMITS } from '@mioon/contracts/timeline-clip-loudness';

@@ -7,12 +7,13 @@ import {openOpacityCandidateStore} from '../packages/business/src/opacity-candid
 import {createServices} from '../packages/business/src/services.ts';
 import {captureOpacityTimelineRecord} from '../packages/contracts/src/timeline-opacity-persistence.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
+import {mkdtempPortable} from './helpers/temp-root.ts';
 
 const stamp='2026-10-16T00:00:00.000Z';
 const bytes=value=>Buffer.byteLength(JSON.stringify(value));
 
 test('actual42 accepts revision digit growth from 262143 to the complete 262144-byte record limit',async t=>{
-  const root=mkdtempSync(path.join('/private/tmp','mioon-opacity-record-limit-'));
+  const root=mkdtempPortable('mioon-opacity-record-limit-');
   const store=openOpacityCandidateStore(root),media=[];
   let providerTouches=0;
   const off=onMediaProcess(event=>media.push(event));

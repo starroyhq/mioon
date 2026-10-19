@@ -6,7 +6,7 @@ import { projectOpenAttempt, canPublishProjectOpen } from '../apps/web/src/proje
 import { deriveTimelineAssetUsage } from '../apps/web/src/timeline-asset-usage.ts';
 import { locateTimelineAssetUse, matchesTimelineAssetUse, revealTimelineAssetUse } from '../apps/web/src/timeline-asset-navigation.ts';
 
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const id = n => `ce100000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 function fixture() {

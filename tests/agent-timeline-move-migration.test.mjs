@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {currentMarkerChain} from './helpers/current-schema-delta.ts';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {randomUUID} from 'node:crypto';
@@ -6,7 +7,7 @@ import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {openStore} from '../packages/business/src/db.ts';
-import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.mjs';
+import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.ts';
 import {migrateAgentEditProposalSchema} from '../packages/business/src/agent/edit-proposal-schema.ts';
 const legacy=readFileSync(new URL('./fixtures/agent-edit-legacy-schema10.sql',import.meta.url),'utf8');
 const columns=['position','id','projectId','runId','shotId','digest','definition','status','approval','outcome','createdAt','updatedAt','bytes'];
@@ -68,7 +69,7 @@ test('fresh startup and upgraded startup converge and reopen never rewrites lega
  const fresh=current.db.prepare("SELECT type,name,sql FROM sqlite_schema WHERE tbl_name='agent_edit_proposals' ORDER BY type,name").all();current.close();
  let store=openLegacyWorkspaceStore(root);
  store.db.exec('DROP TABLE agent_edit_proposals;DELETE FROM schema_version WHERE version=24;');store.db.exec(legacy);store.close();
- store=openStore(root);assert.deepEqual(store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...Array.from({length:24},(_,index)=>index+1),26]);
+ store=openStore(root);assert.deepEqual(store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...currentMarkerChain]);
  assert.deepEqual(store.db.prepare("SELECT type,name,sql FROM sqlite_schema WHERE tbl_name='agent_edit_proposals' ORDER BY type,name").all(),fresh);const after=snapshot(store.db);store.close();
  store=openStore(root);assert.deepEqual(snapshot(store.db),after);store.close();
 });

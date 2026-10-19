@@ -15,10 +15,10 @@ import * as applyContracts from '@mioon/contracts/timeline-loudness-apply';
 import * as mixState from '../apps/web/src/timeline-mix-loudness-state.ts';
 import { timelineMixLoudnessViewState } from '../apps/web/src/timeline-mix-loudness-state.ts';
 import { submitTimelineLoudnessApply } from '../apps/web/src/timeline-loudness-apply-submit.ts';
-import { fixture, deferred, id, projectId, timelineId } from './helpers/timeline-mix-loudness-ui-fixture.mjs';
+import { fixture, deferred, id, projectId, timelineId } from './helpers/timeline-mix-loudness-ui-fixture.ts';
 import { message as messageKey, renderMessage } from './helpers/i18n.ts';
 
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 // Frozen pre-fix sources exercise the identical causal test without changing
 // the worktree. Only these four non-secret renderer files are substituted.

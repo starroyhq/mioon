@@ -13,7 +13,7 @@ import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.t
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
-import {tree} from './helpers/workspace-restore-offline-fixture.mjs';
+import {tree} from './helpers/workspace-restore-offline-fixture.ts';
 
 const info=()=>({restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:'2026-10-12T05:00:00.000Z'});
 const mockNames=['mock_provider_submissions','mock_provider_submissions_request','mock_provider_tasks','sqlite_autoindex_mock_provider_tasks_1','sqlite_autoindex_mock_provider_tasks_2'];

@@ -21,7 +21,7 @@ import {validateWorkspaceAudioRoleRows} from '../packages/business/src/workspace
 import {readCurrentWorkspaceRole,assertTimelineAudioRoleWorkspace} from '../packages/business/src/workspace-schema-dispatch.ts';
 import {openStore,classifyCurrentWorkspaceSchema,installCurrentWorkspaceRestoreSchema,validateCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.ts';
 import {open,snapshot} from './workspace-schema26-fixtures.mjs';
-import {copyFrozenUpgradeFixtureDatabase} from './helpers/opacity-upgrade-fixture.mjs';
+import {copyFrozenUpgradeFixtureDatabase} from './helpers/opacity-upgrade-fixture.ts';
 const old=db=>{initializeWorkspaceSchemaThrough24(db);for(const init of [initializeWorkspaceSchema26,initializeWorkspaceSchema28,initializeWorkspaceSchema30,initializeWorkspaceSchema32,initializeWorkspaceSchema34,initializeWorkspaceSchema36])init(db);};
 const metadata=()=>({restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:new Date().toISOString()});
 

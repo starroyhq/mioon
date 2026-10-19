@@ -6,7 +6,7 @@ import {syncBuiltinESMExports} from 'node:module';
 import {tmpdir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
 import {withDisposableDatabase} from '../packages/business/src/workspace-backup.ts';
-import {restoreFixture} from './helpers/workspace-restore-offline-fixture.mjs';
+import {restoreFixture} from './helpers/workspace-restore-offline-fixture.ts';
 
 function realWalFixture(t){
  const base=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'mioon-real-wal-cleanup-'));

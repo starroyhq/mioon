@@ -10,11 +10,11 @@ import {DatabaseSync} from 'node:sqlite';
 import {createHash} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {HOSTILE, PRIVATE, TOKEN, IDS, NOW, uuid} from './helpers/inspection-wire-fixture.mjs';
-import {runInspectionProcess} from './helpers/inspection-wire-lifecycle.mjs';
+import {HOSTILE, PRIVATE, TOKEN, IDS, NOW, uuid} from './helpers/inspection-wire-fixture.ts';
+import {runInspectionProcess} from './helpers/inspection-wire-lifecycle.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
-const helper = path.join(repo, 'tests/helpers/inspection-wire-fixture.mjs');
+const helper = path.join(repo, 'tests/helpers/inspection-wire-fixture.ts');
 const operations = ['project.inspect', 'asset.inspect', 'shot.inspect', 'timeline.inspect'];
 const paged = new Set(['asset.inspect', 'shot.inspect']);
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -25,7 +25,7 @@ const sourceFiles = [
   'packages/business/src/db.ts', 'packages/business/src/services.ts', 'packages/business/src/inspection.ts',
   'packages/business/src/inspection-query.ts', 'packages/contracts/src/index.ts',
   'packages/contracts/src/inspection.ts', 'packages/contracts/src/operation-effects.ts', 'packages/client/src/index.ts',
-  'tests/inspection-wire.test.mjs', 'tests/helpers/inspection-wire-fixture.mjs', 'tests/helpers/inspection-wire-lifecycle.mjs',
+  'tests/inspection-wire.test.mjs', 'tests/helpers/inspection-wire-fixture.ts', 'tests/helpers/inspection-wire-lifecycle.ts',
 ];
 const sourceSnapshot = async () => Object.fromEntries(await Promise.all(sourceFiles.map(async file =>
   [file, createHash('sha256').update(await readFile(path.join(repo, file))).digest('hex')])));

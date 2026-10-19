@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {isTimelineRecord} from '../packages/contracts/src/timeline-replacement.ts';
 import {isTimelineVolumeEnvelopeRecord} from '../packages/contracts/src/timeline-volume-envelope-record.ts';
-import {isTimelineVolumeEnvelopeCandidateRecord as historical} from './helpers/timeline-volume-envelope-candidate.mjs';
+import {isTimelineVolumeEnvelopeCandidateRecord as historical} from './helpers/timeline-volume-envelope-candidate.ts';
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const profileId = 'mioon-clip-linear-attenuation-v1';
 function fixture(field = {}) {

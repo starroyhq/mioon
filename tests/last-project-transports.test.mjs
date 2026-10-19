@@ -16,7 +16,7 @@ import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 
 const repo=fileURLToPath(new URL('../',import.meta.url));
-const workerPath=fileURLToPath(new URL('./fixtures/local-drafts-process.mjs',import.meta.url));
+const workerPath=fileURLToPath(new URL('./fixtures/local-drafts-process.ts',import.meta.url));
 const token='synthetic-last-project-http-process-token';
 const route='/api/last-project';
 const write=(envelope,projectId)=>({workspaceScope:envelope.workspaceScope,instanceId:envelope.instanceId,expectedRevision:envelope.revision,projectId});

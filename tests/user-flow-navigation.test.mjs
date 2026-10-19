@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { createClipDraftController } from '../apps/web/src/clip-draft-state.ts';
 import { workspaceOriginScope } from '../apps/web/src/workspace-origin.ts';
 
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 // Run the actual selection callbacks, navigation guard, and clip draft controller.
 // Only React state setters, confirmation, and the local-draft transport are fixtures.

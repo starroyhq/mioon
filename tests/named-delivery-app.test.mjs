@@ -8,7 +8,7 @@ import {createExportRangeController} from '../apps/web/src/export-range-state.ts
 import {readNativeLegacyClose} from '../apps/web/src/native-close-legacy.ts';
 import {message as msg} from '../packages/i18n/src/index.ts';
 
-import { lenientFunction, stripSourceTypes } from './helpers/eval-source.mjs';
+import { lenientFunction, stripSourceTypes } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const source=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');
 function actual(start,end,environment){

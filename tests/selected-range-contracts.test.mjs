@@ -16,7 +16,7 @@ import {
 } from '@mioon/contracts/timeline-delivery';
 import {createLocalDeliverySchemas} from '@mioon/contracts/local-delivery';
 import {discoverSchema} from '@mioon/client';
-import {assertOperationInputBranches} from './helpers/catalog-input-branches.mjs';
+import {assertOperationInputBranches} from './helpers/catalog-input-branches.ts';
 
 const clone = value => structuredClone(value);
 const stamp = '2026-10-13T00:00:00.000Z';

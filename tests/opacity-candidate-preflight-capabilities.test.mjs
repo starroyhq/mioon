@@ -12,6 +12,7 @@ import {OPACITY_CANDIDATE_PREFLIGHT_MESSAGES} from '../packages/business/src/opa
 import {installWorkspaceRestoreSchemaV43} from '../packages/business/src/workspace-restore-schema-v43.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {isTimelineExportCapabilitiesResponse} from '../packages/contracts/src/index.ts';
+import {mkdtempPortable} from './helpers/temp-root.ts';
 
 const stamp='2026-10-16T00:00:00.000Z';
 const operation='timeline.export.capabilities';
@@ -22,7 +23,7 @@ const contents=store=>JSON.stringify(store.db.prepare("SELECT name FROM sqlite_s
   .map(({name})=>[name,store.db.prepare(`SELECT * FROM ${name} ORDER BY rowid`).all()]));
 const denied=error=>['RESTORE_OPERATION_UNAVAILABLE','RESTORE_STORE_UNVERIFIED'].includes(error?.code);
 function fixture(t,{empty=false}={}) {
-  const root=mkdtempSync('/private/tmp/mioon-opacity-preflight-capabilities-');
+  const root=mkdtempPortable('mioon-opacity-preflight-capabilities-');
   const ids=Object.fromEntries(['project','otherProject','asset','timeline','track','clip'].map(key=>[key,randomUUID()]));
   const data={project:{id:ids.project,name:'Synthetic capability',revision:1,createdAt:stamp,updatedAt:stamp},
     asset:{id:ids.asset,projectId:ids.project,name:'Synthetic metadata only',mimeType:'video/mp4',duration:1,width:720,height:1280,hasVideo:true,hasAudio:false,

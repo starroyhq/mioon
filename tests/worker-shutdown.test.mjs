@@ -13,7 +13,7 @@ import {createJsonRequest,downloadMp4} from '../packages/business/src/providers/
 import {assertMediaTerminated} from '../packages/business/src/operation-lifecycle.ts';
 import {probe} from '../packages/business/src/media.ts';
 import {MEDIA_PROBE_LIMITS,withProbePermit} from '../packages/business/src/media-probe.ts';
-import {deferred,settle,shutdownFixture} from './helpers/worker-shutdown-fixture.mjs';
+import {deferred,settle,shutdownFixture} from './helpers/worker-shutdown-fixture.ts';
 
 const post=(fetchImpl)=>createJsonRequest({api:'https://synthetic.invalid',headers:{},fetchImpl,ensureEnabled(){},name:'Synthetic'});
 const MP4=Buffer.from([0,0,0,20,102,116,121,112,105,115,111,109]);

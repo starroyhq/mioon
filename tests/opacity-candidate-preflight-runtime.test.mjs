@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {mkdtempSync, rmSync, writeFileSync, renameSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
+import {mkdtempPortable} from './helpers/temp-root.ts';
 
 if (!process.execArgv.includes('--experimental-test-module-mocks')) {
   test('candidate preflight uses actual owned SQL/source/hash lifecycle with only codec transport mocked', () => {
@@ -37,7 +38,7 @@ if (!process.execArgv.includes('--experimental-test-module-mocks')) {
   const deferred=()=>{let resolve;return {promise:new Promise(r=>{resolve=r;}),resolve};};
   const tick=()=>new Promise(resolve=>setImmediate(resolve));
   function fixture(t){
-    const root=mkdtempSync('/private/tmp/mioon-opacity-preflight-'),ids=Object.fromEntries(['project','asset','timeline','track','clip'].map(key=>[key,randomUUID()]));
+    const root=mkdtempPortable('mioon-opacity-preflight-'),ids=Object.fromEntries(['project','asset','timeline','track','clip'].map(key=>[key,randomUUID()]));
     const bytes=Buffer.from('synthetic private source; actual hash and inode'),events=[],off=onMediaProcess(event=>events.push(event));
     let store,services;behavior=async()=>{};const open=()=>{store=openOpacityCandidateStore(root);services=createServices(store,new Proxy(new Map(),{get(){throw Error('No provider access');}}));};open();
     writeFileSync(path.join(root,'media/source.mp4'),bytes,{mode:0o600});

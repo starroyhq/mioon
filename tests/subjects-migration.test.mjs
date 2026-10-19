@@ -1,5 +1,7 @@
 import test from 'node:test';
-import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.mjs';
+import {currentMarkerChain} from './helpers/current-schema-delta.ts';
+import {currentOrdinary48Delta,reviewedObjectSql} from './helpers/current-schema-delta.ts';
+import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.ts';
 import assert from 'node:assert/strict';
 import {normalizeAgentEditProposalObject,legacyAgentEditProposalRows,assertAgentEditTargetTrigger} from './agent-edit-migration-preservation.mjs';
 import {randomUUID} from 'node:crypto';
@@ -82,7 +84,8 @@ const rows = (db,table) => db.prepare(`SELECT * FROM ${quote(table)} ORDER BY ro
 const schema = db => db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name').all();
 const editObjects = db => schema(db).filter(row => row.tbl_name==='edit_tasks' && row.type!=='table');
 const sequence = db => db.prepare("SELECT * FROM sqlite_sequence WHERE name='edit_tasks'").all();
-const allRecords = db => Object.fromEntries(schema(db).filter(row=>row.type==='table' && row.name!=='schema_version' && !SUBJECT_TABLES.includes(row.name) && !LATER_IMAGE_TABLES.includes(row.name) && !LATER_FRAME_TABLES.includes(row.name) && row.name!=='timeline_format_requests').map(row=>[row.name,rows(db,row.name)]));
+const current48Tables = new Set([...Object.keys(currentOrdinary48Delta.lifecycleTables),'asset_annotations','asset_annotation_requests','lut_import_requests','project_lut_resources']);
+const allRecords = db => Object.fromEntries(schema(db).filter(row=>row.type==='table' && row.name!=='schema_version' && !SUBJECT_TABLES.includes(row.name) && !LATER_IMAGE_TABLES.includes(row.name) && !LATER_FRAME_TABLES.includes(row.name) && row.name!=='timeline_format_requests' && !current48Tables.has(row.name)).map(row=>[row.name,rows(db,row.name)]));
 export const snapshotSchema14 = db => ({records:allRecords(db),schema:schema(db),editTasks:rows(db,'edit_tasks'),
  inputBytes:db.prepare('SELECT position,hex(CAST(input AS BLOB)) AS raw FROM edit_tasks ORDER BY position').all(),
  editObjects:editObjects(db),sequence:sequence(db),versions:rows(db,'schema_version')});
@@ -213,11 +216,13 @@ function assertLegacyPreserved(db,before) {
  assert.deepEqual(after.editTasks,before.editTasks,'all task columns and positions survive without normalization or recovery');
  assert.deepEqual(after.inputBytes,before.inputBytes,'raw UTF-8 input bytes survive unchanged');
  assert.deepEqual(after.sequence,before.sequence,'AUTOINCREMENT high-water and row absence survive');
- assert.deepEqual(after.editObjects,before.editObjects,'all legacy indexes and triggers retain exact definitions');
+ const reviewedObjects=values=>values.map(row=>{const reviewed=currentOrdinary48Delta.objectSql[row.name];return reviewed===undefined?row:Object.assign(Object.create(Object.getPrototypeOf(row)),row,{sql:reviewed});});
+ assert.deepEqual(reviewedObjects(after.editObjects),reviewedObjects(before.editObjects),'all legacy indexes and triggers retain exact definitions');
  for(const object of before.schema.filter(row=>!(row.type==='table'&&row.name==='edit_tasks'))){
   const current=after.schema.find(row=>row.type===object.type&&row.name===object.name);
   const normalized=object.type==='table'&&object.name==='agent_edit_proposals'?normalizeAgentEditProposalObject(current):current;
-  assert.deepEqual(normalized,object,`preexisting schema object ${object.name} remains unchanged outside the pinned schema24 additions`);
+  const reviewed=!db.prepare('SELECT 1 FROM schema_version WHERE version=48').get()||currentOrdinary48Delta.objectSql[object.name]===undefined?object:Object.assign(Object.create(Object.getPrototypeOf(object)),object,{sql:reviewedObjectSql(object.name,object.sql)});
+  assert.deepEqual(normalized,reviewed,`preexisting schema object ${object.name} remains unchanged outside the pinned schema24 additions`);
  }
  assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check,'ok');
  assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
@@ -225,7 +230,7 @@ function assertLegacyPreserved(db,before) {
 function assertNewSchema(db) {
  assert.deepEqual(SUBJECT_TABLES.filter(name=>db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name)),SUBJECT_TABLES);
  assert.equal(db.prepare('SELECT count(*) n FROM schema_version WHERE version=15').get().n,1);
- assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...Array.from({length:24},(_,index)=>index+1),26]);
+ assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...currentMarkerChain]);
  for(const table of LATER_IMAGE_TABLES)assert.deepEqual(rows(db,table),[],'later image migration never manufactures image records');
  for(const table of LATER_FRAME_TABLES)assert.deepEqual(rows(db,table),[],'later frame migration never manufactures extraction records');
  assert.deepEqual(rows(db,'timeline_format_requests'),[],'later format migration never manufactures request provenance');
@@ -345,7 +350,7 @@ test('fresh and upgraded stores expose identical v15 schema and retain original 
  upgraded.close();upgraded=openStore(root);
  const fresh=openForTest(t,temporaryRoot(t));assertNewSchema(upgraded.db);assertNewSchema(fresh.db);
  assert.deepEqual(schema(upgraded.db),schema(fresh.db));
- assert.deepEqual(DURABLE_EDIT_OPERATIONS,[...LEGACY_OPERATIONS.slice(0,7),'timeline.seed','timeline.undo','timeline.redo','reference.attach','reference.detach','subject.create','subject.version.add','subject.binding.set','timeline.format.set','timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove','timeline.loudness.apply']);
+ assert.deepEqual(DURABLE_EDIT_OPERATIONS,['timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.replaceSource','timeline.clip.remove','timeline.clip.rippleRemove','timeline.clip.split','timeline.seed','timeline.undo','timeline.redo','reference.attach','reference.detach','subject.create','subject.version.add','subject.binding.set','timeline.format.set','timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove','timeline.loudness.apply']);
  for(const operation of LEGACY_OPERATIONS)assert.equal(editTaskLane(operation),operation.startsWith('timeline.')?'timeline:mutation':'reference:mutation');
  for(const store of [upgraded,fresh]) {
   assertConstraintAndTriggerBehavior(store.db,{expanded:true});

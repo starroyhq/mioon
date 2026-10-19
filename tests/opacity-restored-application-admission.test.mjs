@@ -7,7 +7,7 @@ import cp from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
 import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
-import {opacityBackupFixture, hash, tree} from './helpers/opacity-backup-fixture.mjs';
+import {opacityBackupFixture, hash, tree} from './helpers/opacity-backup-fixture.ts';
 import {createOpacityCandidateWorkspaceBackup, restoreOpacityCandidateWorkspaceBackup} from '../packages/business/src/opacity-candidate-backup.ts';
 import {openOpacityCandidateStore, reopenOpacityCandidateApplicationStore, reopenRestoredOpacityCandidateApplicationStore,
   isOpacityCandidateApplicationStore, isRestoredOpacityCandidateApplicationStore, getOpacityCandidateAssembly} from '../packages/business/src/opacity-candidate-store.ts';

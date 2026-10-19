@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {currentOrdinary48Delta} from './helpers/current-schema-delta.ts';
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
@@ -61,7 +62,7 @@ test('failed restored25 validation cannot fall back to ordinary initializer',t=>
 
 function ordinaryDispatch(onLegacy=()=>{}) {
  const unused=()=>{throw Error('unexpected restored profile path');};
- return createWorkspaceSchemaDispatch({initializeThrough24(db){onLegacy();initializeWorkspaceSchemaThrough24(db);},detectRestoreEvidence:()=>false,classify:unused,install:unused,validate:unused});
+ return createWorkspaceSchemaDispatch({initializeThrough24(db){onLegacy(db);initializeWorkspaceSchemaThrough24(db);},detectRestoreEvidence:()=>false,classify:unused,install:unused,validate:unused});
 }
 function ordinaryDatabase(t,profile='ordinary-24'){
  const db=open(':memory:');t.after(()=>db.close());if(profile)ordinaryFixture(db,profile);return db;
@@ -69,25 +70,33 @@ function ordinaryDatabase(t,profile='ordinary-24'){
 function preservedCurrent(db,before) {
  const after=snapshot(db),expected=structuredClone(before),lutTables=new Set(['project_lut_resources','lut_import_requests']);
  const additions=after.objects.filter(object=>lutTables.has(object.tbl_name));
- assert.equal(additions.length,15);
- assert.equal(createHash('sha256').update(JSON.stringify(additions)).digest('hex'),'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00');
+ assert.equal(additions.length,currentOrdinary48Delta.lutCatalog.count);
+ assert.equal(createHash('sha256').update(JSON.stringify(additions)).digest('hex'),currentOrdinary48Delta.lutCatalog.sha256);
  after.objects=after.objects.filter(object=>!lutTables.has(object.tbl_name));
  for(const table of lutTables){assert.deepEqual(after.tables[table].rows,[]);delete after.tables[table];}
  const annotations=after.objects.filter(object=>/annotation/.test(object.name));
- assert.equal(annotations.length,20);
- assert.equal(createHash('sha256').update(JSON.stringify(annotations)).digest('hex'),'36eab4635ff3ef13ae1fd9fd11e0467ac6890cb5bb9175342ff02748d5bf5ede');
+ assert.equal(annotations.length,currentOrdinary48Delta.annotationCatalog.count);
+ assert.equal(createHash('sha256').update(JSON.stringify(annotations)).digest('hex'),currentOrdinary48Delta.annotationCatalog.sha256);
  after.objects=after.objects.filter(object=>!/annotation/.test(object.name));
  for(const table of ['asset_annotations','asset_annotation_requests']){assert.deepEqual(after.tables[table].rows,[]);delete after.tables[table];}
- const tasks=expected.objects.find(object=>object.name==='edit_tasks');
- tasks.sql=tasks.sql.replace("'timeline.subtitle.remove'))","'timeline.subtitle.remove','timeline.loudness.apply'))");
- expected.tables.schema_version.rows.push(['26','integer','3236'],['28','integer','3238'],['30','integer','3330'],['32','integer','3332'],['34','integer','3334'],['36','integer','3336'],['38','integer','3338'],['40','integer','3430']);
- assert.deepEqual(after,expected,'exact legacy catalog/raw rows plus the reviewed26 CHECK,28 resources and36 annotations');
+ const lifecycleNames=new Set(currentOrdinary48Delta.lifecycleObjects.map(object=>object.name));
+ const lifecycle=after.objects.filter(object=>lifecycleNames.has(object.name));
+ assert.equal(lifecycle.length,currentOrdinary48Delta.lifecycleCatalog.count);
+ assert.equal(createHash('sha256').update(JSON.stringify(lifecycle)).digest('hex'),currentOrdinary48Delta.lifecycleCatalog.sha256);
+ assert.deepEqual(lifecycle,currentOrdinary48Delta.lifecycleObjects);
+ after.objects=after.objects.filter(object=>!lifecycleNames.has(object.name));
+ for(const [name,value] of Object.entries(currentOrdinary48Delta.lifecycleTables)){assert.deepEqual(after.tables[name],{fields:value.fields,rows:[]});delete after.tables[name];}
+ for(const object of expected.objects){const reviewed=currentOrdinary48Delta.objectSql[object.name];if(reviewed!==undefined)object.sql=reviewed;}
+ expected.tables.schema_version.rows.push(['26','integer','3236'],['28','integer','3238'],['30','integer','3330'],['32','integer','3332'],['34','integer','3334'],['36','integer','3336'],['38','integer','3338'],['40','integer','3430'],...currentOrdinary48Delta.schemaVersionRows);
+ assert.deepEqual(after,expected,'exact legacy catalog/raw rows plus the reviewed26/28/36/44/48 additions');
  assert.equal(db.prepare('PRAGMA quick_check(1)').get().quick_check,'ok');assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
 }
 test('completed24 enters explicit26,28,30,32,34,36,38 and40 migrations without legacy bootstrap writes',t=>{
- const db=ordinaryDatabase(t),before=snapshot(db);let calls=0;
- assert.equal(ordinaryDispatch(()=>calls++).initialize(db),null);
- assert.equal(calls,0);preservedCurrent(db,before);
+ const db=ordinaryDatabase(t),before=snapshot(db);let calls=0,realCalls=0;
+ // Reference profile construction invokes the same closure on disposable
+ // in-memory databases; only calls against the real database are bootstrap writes.
+ assert.equal(ordinaryDispatch(target=>{calls++;if(target===db)realCalls++;}).initialize(db),null);
+ assert.equal(realCalls,0);preservedCurrent(db,before);
 });
 test('completed24 rejects imported marker trigger before its real audit side effect can execute',t=>{
  const db=ordinaryDatabase(t);let calls=0;
@@ -103,17 +112,17 @@ test('completed24 missing known protection is refused instead of silently repair
  assert.equal(calls,0);assert.deepEqual(snapshot(db),before);
 });
 test('genuinely missing known markers keep the old ordinary repair path before26',t=>{
- const db=ordinaryDatabase(t);db.exec('DELETE FROM schema_version WHERE version IN(12,22)');const before=snapshot(db);let calls=0;
- assert.equal(ordinaryDispatch(()=>calls++).initialize(db),null);assert.equal(calls,1);
+ const db=ordinaryDatabase(t);db.exec('DELETE FROM schema_version WHERE version IN(12,22)');const before=snapshot(db);let calls=0,realCalls=0;
+ assert.equal(ordinaryDispatch(target=>{calls++;if(target===db)realCalls++;}).initialize(db),null);assert.equal(realCalls,1);
  const after=snapshot(db);
  for(const [name,table]of Object.entries(before.tables))if(name!=='schema_version')assert.deepEqual(after.tables[name],table,`${name}: legacy gap repair preserves raw records`);
- assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...old,26,28,30,32,34,36,38,40]);
+ assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...old,26,28,30,32,34,36,38,40,44,48]);
 });
 for(const profile of [null,'ordinary-1','ordinary-14','ordinary-21','ordinary-23'])test(`real ${profile??'missing marker table'} retains historical bootstrap/upgrade qualification`,t=>{
- const db=ordinaryDatabase(t,profile);let calls=0;
- assert.equal(ordinaryDispatch(()=>calls++).initialize(db),null);assert.equal(calls,1);
- assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...old,26,28,30,32,34,36,38,40]);
- assert.equal(readCurrentWorkspaceRole(db),'ordinary-40');
+ const db=ordinaryDatabase(t,profile);let calls=0,realCalls=0;
+ assert.equal(ordinaryDispatch(target=>{calls++;if(target===db)realCalls++;}).initialize(db),null);assert.equal(realCalls,1);
+ assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...old,26,28,30,32,34,36,38,40,44,48]);
+ assert.equal(readCurrentWorkspaceRole(db),'ordinary-48');
 });
 
 for(const [name,sql]of [
@@ -123,11 +132,11 @@ for(const [name,sql]of [
  ['all marker rows removed','DELETE FROM schema_version'],
  ['marker table removed','DROP TABLE schema_version'],
 ])test(`actual current schema ${name} is refused unchanged before historical repair`,t=>{
- const db=ordinaryDatabase(t);let legacyCalls=0;const dispatch=ordinaryDispatch(()=>legacyCalls++);
- dispatch.initialize(db);assert.equal(legacyCalls,0);db.exec(sql);const before=snapshot(db);
+ const db=ordinaryDatabase(t);let legacyCalls=0,realLegacyCalls=0;const dispatch=ordinaryDispatch(target=>{legacyCalls++;if(target===db)realLegacyCalls++;});
+ dispatch.initialize(db);assert.equal(realLegacyCalls,0);db.exec(sql);const before=snapshot(db);
  assert.throws(()=>readCurrentWorkspaceRole(db),unsupported);
  assert.throws(()=>dispatch.initialize(db),unsupported);
- assert.equal(legacyCalls,0);assert.deepEqual(snapshot(db),before);
+ assert.equal(realLegacyCalls,0);assert.deepEqual(snapshot(db),before);
 });
 test('new operation evidence in a commented/quoted operation CHECK is fail-closed and never authorizes a profile',t=>{
  const db=fixture(t,old);

@@ -5,8 +5,8 @@ import { savedClipLoudnessFields } from '../apps/web/src/timeline-clip-loudness-
 import { createTimelineClipLoudnessController, timelineClipLoudnessAvailable } from '../apps/web/src/timeline-clip-loudness-state.ts';
 import { timelineAudioPreviewSourceIdentity } from '../apps/web/src/use-timeline-audio-preview.ts';
 import { workspaceOriginScope } from '../apps/web/src/workspace-origin.ts';
-import { input, report, id, deferred } from './helpers/timeline-clip-loudness-ui-fixture.mjs';
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { input, report, id, deferred } from './helpers/timeline-clip-loudness-ui-fixture.ts';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const segment = app.slice(app.indexOf('  function clipLoudnessContext()'), app.indexOf('  function timelineMixLoudnessContext()'));

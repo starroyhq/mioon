@@ -8,7 +8,7 @@ import {isTimelineMutationResponse, publicValue} from '@mioon/contracts';
 import {installCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.ts';
 import {hash} from '../packages/business/src/services.ts';
 import {matchesRestoredExport, restoreExportIdentity} from '../packages/business/src/workspace-restore-exports.ts';
-import {selectedRangeFixture, RANGE, SETTINGS, authority, action} from './fixtures/selected-range-http-fixture.mjs';
+import {selectedRangeFixture, RANGE, SETTINGS, authority, action} from './fixtures/selected-range-http-fixture.ts';
 
 async function prepared(f, {settings = false} = {}) {
   const initial = await f.local();
