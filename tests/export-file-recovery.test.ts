@@ -9,14 +9,14 @@ import {createServices,hash} from '../packages/business/src/services.ts';
 import {startServer} from '../apps/server/src/index.ts';
 test('missing export recovery verifies original bytes, never overwrites and preserves frozen rows', {timeout:60000},async t=>{
  const root=await mkdtemp(path.join(tmpdir(),'mioon-export-recovery-')),token='synthetic-export-file-recovery-token',bytes=Buffer.from('synthetic immutable export fixture');
- let store=openStore(root);const services=createServices(store,new Map()),project=await services.call('project.create',{name:'Output recovery'}),id=randomUUID(),assetId=randomUUID(),requestId=randomUUID(),versionId=randomUUID(),sourceId=randomUUID(),shotId=randomUUID(),relativePath=`media/export-${id}-${randomUUID()}.mp4`,stamp='2026-10-19T00:00:00.000Z';
+ let store=openStore(root);const services=createServices(store,new Map()),project=await services.call('project.create',{name:'Output recovery'}) as {id:string},id=randomUUID(),assetId=randomUUID(),requestId=randomUUID(),versionId=randomUUID(),sourceId=randomUUID(),shotId=randomUUID(),relativePath=`media/export-${id}-${randomUUID()}.mp4`,stamp='2026-10-19T00:00:00.000Z';
  const asset={id:assetId,projectId:project.id,name:'film.mp4',mimeType:'video/mp4',provenance:'export',relativePath,sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length,width:1080,height:1920,duration:1,hasVideo:true,hasAudio:true,url:`/media/${assetId}`,createdAt:stamp};
  const record={id,projectId:project.id,requestId,status:'succeeded',orderedVersionIds:[versionId],snapshot:[{versionId,shotId,assetId:sourceId,sha256:'b'.repeat(64)}],assetId,url:asset.url,error:null,createdAt:stamp,updatedAt:stamp};
  store.put('assets',asset);store.put('exports',record);store.db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run('export',requestId,hash({projectId:project.id,requestId}),id);await services.drain();store.close();
  let server=await startServer({dataDir:root,port:0,token});t.after(async()=>{await server.close();await rm(root,{recursive:true,force:true});});
  const route=()=>`${server.url}/api/export-files?projectId=${project.id}&exportId=${id}`;
  const get=async()=>{const response=await fetch(route(),{headers:{authorization:`Bearer ${token}`}});const value=await response.json();assert.equal(response.status,200,JSON.stringify(value));return value.data;};
- const post=async body=>fetch(route(),{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/octet-stream'},body});
+ const post=async (body: Buffer)=>fetch(route(),{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/octet-stream'},body: body as BodyInit});
  assert.equal((await fetch(route())).status,401);assert.equal((await get()).status,'missing');
  let response=await post(Buffer.alloc(bytes.length,'z'));assert.equal(response.status,400);assert.equal((await response.json()).error.code,'EXPORT_FILE_HASH_MISMATCH');assert.equal((await get()).status,'missing');
  response=await post(bytes);assert.equal(response.status,200);assert.equal((await response.json()).data.status,'present');assert.deepEqual(await readFile(path.join(root,relativePath)),bytes);

@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {mkdtemp, mkdir, writeFile, rm} from 'node:fs/promises';
 import {syncBuiltinESMExports} from 'node:module';
+import type {TestContext} from 'node:test';
 import {createHash} from 'node:crypto';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {verifiedManagedHash} from '../packages/business/src/managed-media.ts';
 
-async function fixture(t) {
+async function fixture(t: TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-peak-hash-fences-'));
   await mkdir(path.join(root, 'media'), {mode: 0o700});
   const bytes = Buffer.alloc(96 * 1024, 3), relativePath = 'media/owned.mp4';
@@ -19,19 +20,20 @@ async function fixture(t) {
 
 // The wrapper observes actual opened descriptors and real read/stat/close
 // promises. It never fabricates bytes, inode identity, or successful cleanup.
-function instrument(t, hook) {
+type Counts = {open: number; stat: number; read: number; close: number};
+function instrument(t: TestContext, hook: (stage: string, seen: Counts) => void): Counts {
   const original = fs.promises.open;
-  const calls = {open: 0, stat: 0, read: 0, close: 0};
-  fs.promises.open = async (...args) => {
+  const calls: Counts = {open: 0, stat: 0, read: 0, close: 0};
+  fs.promises.open = (async (...args: Parameters<typeof original>) => {
     calls.open++;
     const handle = await original(...args);
     hook('open', calls);
     return {
-      stat: async (...args) => {calls.stat++; const value = await handle.stat(...args); hook('stat', calls); return value;},
-      read: async (...args) => {calls.read++; const value = await handle.read(...args); hook('read', calls); return value;},
-      close: async (...args) => {calls.close++; const value = await handle.close(...args); hook('close', calls); return value;},
-    };
-  };
+      stat: async (...args: Parameters<typeof handle.stat>) => {calls.stat++; const value = await handle.stat(...args); hook('stat', calls); return value;},
+      read: async (...args: Parameters<typeof handle.read>) => {calls.read++; const value = await handle.read(...args); hook('read', calls); return value;},
+      close: async (...args: Parameters<typeof handle.close>) => {calls.close++; const value = await handle.close(...args); hook('close', calls); return value;},
+    } as unknown as fs.promises.FileHandle;
+  }) as unknown as typeof fs.promises.open;
   syncBuiltinESMExports();
   t.after(() => {fs.promises.open = original; syncBuiltinESMExports();});
   return calls;
