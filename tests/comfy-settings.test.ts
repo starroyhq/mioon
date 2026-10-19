@@ -9,40 +9,42 @@ import {createComfySettings, createComfySettingsFile, parseComfyConfiguration, p
   sanitizeComfySettingsResult, validateComfySettingsEnvelope, comfySettingsError, sanitizeComfySettingsError,
   COMFY_SETTINGS_READ_CURRENT, COMFY_SETTINGS_ASSERT_CURRENT} from '../packages/business/src/comfy/settings.ts';
 import {IMAGE_SETTINGS_READ_CURRENT, IMAGE_SETTINGS_ASSERT_CURRENT} from '../packages/business/src/images/settings.ts';
+import {type TestContext} from 'node:test';
+import {errorView} from './helpers/test-error.ts';
+
+type ConfigurationView = ReturnType<typeof config> & {options: Record<string, unknown> & {n?: number}};
+type Envelope = Record<string, unknown> & {revision: number; configuration: ConfigurationView; readiness?: {checked: boolean; checkedAt: string | null}};
+type Deferred = {promise: Promise<unknown>; resolve: (value?: unknown) => void; reject: (error?: unknown) => void};
+type ComfySettingsEngine = Awaited<ReturnType<typeof createComfySettings>>;
 
 const SENTINEL = 'synthetic-private-value-never-an-actual-key';
 const reservedPorts = () => [4318, 4319];
-const config = (changes = {}) => ({...structuredClone(DEFAULT_COMFY_IMAGE_CONFIGURATION), enabled: true,
+const config = (changes: Record<string, unknown> = {}) => ({...structuredClone(DEFAULT_COMFY_IMAGE_CONFIGURATION), enabled: true,
   baseUrl: 'http://127.0.0.1:8188', model: 'checkpoints/synthetic.safetensors', ...changes});
-const update = (revision = 0, configuration = config()) => ({expectedRevision: revision, configuration});
-const expected = value => ({expectedRevision: value.revision, configuration: value.configuration});
-const envelope = (revision = 1, configuration = config()) => ({version: 1, namespace: COMFY_SETTINGS_NAMESPACE, revision, configuration});
-const check = (changes = {}) => ({ok: true, baseUrl: config().baseUrl, comfyVersion: '0.39.0',
+const update = (revision = 0, configuration: Record<string, unknown> = config()) => ({expectedRevision: revision, configuration});
+const expected = (value: {revision: number; configuration: unknown}) => ({expectedRevision: value.revision, configuration: value.configuration});
+const envelope = (revision = 1, configuration: Record<string, unknown> = config()): Envelope => ({version: 1, namespace: COMFY_SETTINGS_NAMESPACE, revision, configuration} as unknown as Envelope);
+const check = (changes: Record<string, unknown> = {}) => ({ok: true, baseUrl: config().baseUrl, comfyVersion: '0.39.0',
   checkpoints: [config().model, 'second.safetensors'], selectedCheckpointAvailable: true,
   nodeClasses: ['CheckpointLoaderSimple', 'EmptyLatentImage', 'CLIPTextEncode', 'KSampler', 'VAEDecode', 'SaveImage'], ...changes});
-function memory(initial = null) {
+function memory(initial: Envelope | null = null) {
   let value = structuredClone(initial), saves = 0;
-  return {load: async () => structuredClone(value), save: async next => { saves++; value = structuredClone(next); },
+  return {load: async () => structuredClone(value), save: async (next: Envelope) => { saves++; value = structuredClone(next); },
     get value() { return structuredClone(value); }, get saves() { return saves; }};
 }
-const recordCheck = (settings, value) => settings.recordCheck(value, settings.clearCheck(value.baseUrl));
-function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return {promise, resolve, reject}; }
-async function engine(t, options = {}) {
+const recordCheck = (settings: ComfySettingsEngine, value: {baseUrl: string}) => settings.recordCheck(value, settings.clearCheck(value.baseUrl));
+function deferred(): Deferred { let resolve: Deferred['resolve'] = () => {}, reject: Deferred['reject'] = () => {}; const promise = new Promise<unknown>((yes, no) => { resolve = yes; reject = no; }); return {promise, resolve, reject}; }
+async function engine(t: TestContext, options: Record<string, unknown> = {}): Promise<ComfySettingsEngine> {
   const settings = await createComfySettings({persistence: memory(), reservedPorts, ...options});
   t.after(() => settings.close()); return settings;
 }
-async function fixture(t) {
+async function fixture(t: TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-comfy-settings-'));
   t.after(() => rm(root, {recursive: true, force: true}));
   const directory = path.join(root, 'comfy-settings'), file = path.join(directory, 'settings.json');
   return {root, directory, file, persistence: createComfySettingsFile({directory, privateRoot: root})};
 }
-const safeError = error => {
-  assert.ok(/^COMFY_SETTINGS_[A-Z_]+$/.test(error.code));
-  assert.equal(error.message.includes(SENTINEL), false);
-  assert.equal(error.message.includes('/tmp/'), false);
-  return true;
-};
+const safeError = (error: unknown) => {const failure = errorView(error); assert.ok(/^COMFY_SETTINGS_[A-Z_]+$/.test(failure.code ?? '')); assert.equal(failure.message!.includes(SENTINEL), false); assert.equal(failure.message!.includes('/tmp/'), false); return true;};
 
 test('defaults are disabled and independent; getters and saves never probe the network or adopt secrets', async t => {
   const original = globalThis.fetch;
@@ -117,7 +119,7 @@ test('trusted own-port policy is checked on save and rechecked synchronously at 
   recordCheck(settings, check()); assert.equal(settings.assertCurrent(expected(saved)), true);
   for (const policy of [undefined, [], [0], [65536], ['4318'], Promise.resolve([4318]), () => { throw Error(SENTINEL); }]) {
     const value = await engine(t, {reservedPorts: policy});
-    await assert.rejects(value.put(update()), error => error.code === 'COMFY_SETTINGS_DESTINATION_DENIED' && safeError(error));
+    await assert.rejects(value.put(update()), (error: unknown) => errorView(error).code === 'COMFY_SETTINGS_DESTINATION_DENIED' && safeError(error));
     assert.equal((await value.put(update(0, DEFAULT_COMFY_IMAGE_CONFIGURATION))).revision, 1);
   }
 });
@@ -127,9 +129,9 @@ test('trusted checks are bounded in-memory evidence, permit catalog selection an
   const checked = check({selectedCheckpointAvailable: false}); recordCheck(settings, checked);
   checked.checkpoints.length = 0;
   const saved = await settings.put(update());
-  assert.equal(saved.readiness.checked, true); assert.match(saved.readiness.checkedAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(saved.readiness.checked, true); assert.match(saved.readiness.checkedAt!, /^\d{4}-\d{2}-\d{2}T/);
   assert.equal(settings.isReady(), true); assert.equal(settings.assertCurrent(expected(saved)), true);
-  assert.equal(Object.hasOwn(persistence.value, 'readiness'), false);
+  assert.equal(Object.hasOwn(persistence.value as object, 'readiness'), false);
   const otherModel = await settings.put(update(1, config({model: 'second.safetensors'})));
   assert.equal(otherModel.readiness.checked, true);
   const unlisted = await settings.put(update(2, config({model: 'unlisted.safetensors'})));
@@ -191,11 +193,11 @@ test('explicit rechecks revoke readiness before I/O and superseded or rejected c
 test('CAS serializes concurrent puts, copies caller data and fences every older revision or changed binding', async t => {
   const persistence = memory(), settings = await engine(t, {persistence}); recordCheck(settings, check());
   const input = update(), first = settings.put(input);
-  input.configuration.model = 'mutated.safetensors'; input.configuration.options.n = 9;
+  input.configuration.model = 'mutated.safetensors'; (input.configuration.options as {n?: number}).n = 9;
   assert.throws(() => settings.readCurrent(), {code: 'COMFY_SETTINGS_CONFLICT'});
   assert.equal(settings.isReady(config()), false);
   const results = await Promise.allSettled([first, settings.put(update())]);
-  assert.equal(results[0].status, 'fulfilled'); assert.equal(results[1].reason.code, 'COMFY_SETTINGS_CONFLICT');
+  assert.equal(results[0].status, 'fulfilled'); assert.equal((results[1] as PromiseRejectedResult).reason.code, 'COMFY_SETTINGS_CONFLICT');
   const old = await settings.get(); assert.deepEqual(old.configuration, config());
   assert.equal(settings.assertCurrent(expected(old)), true);
   const sameConfiguration = await settings.put(update(1));
@@ -215,7 +217,7 @@ test('admitted writes block synchronous read, recording and final fence before a
   await entered.promise;
   assert.throws(() => settings[COMFY_SETTINGS_READ_CURRENT](), {code: 'COMFY_SETTINGS_CONFLICT'});
   assert.throws(() => settings.clearCheck(config().baseUrl), {code: 'COMFY_SETTINGS_CONFLICT'});
-  assert.throws(() => settings.recordCheck(check()), {code: 'COMFY_SETTINGS_CONFLICT'});
+  assert.throws(() => (settings.recordCheck as unknown as (value: unknown) => void)(check()), {code: 'COMFY_SETTINGS_CONFLICT'});
   gate.resolve(); const saved = await pending;
   assert.equal(settings[COMFY_SETTINGS_ASSERT_CURRENT](expected(saved)), true);
   assert.throws(() => settings.assertCurrent(expected(old)), {code: 'COMFY_SETTINGS_CONFLICT'});
@@ -230,7 +232,7 @@ test('known failed saves prove the exact prior durable envelope before reopening
     persistence.load = async () => { reading.resolve(); await gate.promise; return load(); };
     const pending = settings.put(update(old.revision)); await reading.promise;
     assert.throws(() => settings.readCurrent(), {code: 'COMFY_SETTINGS_CONFLICT'});
-    gate.resolve(); await assert.rejects(pending, error => error.code === 'COMFY_SETTINGS_SAVE_FAILED' && safeError(error));
+    gate.resolve(); await assert.rejects(pending, (error: unknown) => errorView(error).code === 'COMFY_SETTINGS_SAVE_FAILED' && safeError(error));
     assert.equal(attempts, 1); assert.deepEqual(await settings.get(), old); assert.deepEqual(persistence.value, durable);
     if (existing) assert.equal(settings.assertCurrent(expected(old)), true);
   }
@@ -311,7 +313,7 @@ test('close immediately blocks all new access while an in-flight save reaches on
   const closing = settings.close();
   assert.throws(() => settings.readCurrent(), {code: 'COMFY_SETTINGS_CLOSED'});
   assert.throws(() => settings.assertCurrent(update()), {code: 'COMFY_SETTINGS_CLOSED'});
-  assert.throws(() => settings.recordCheck(check()), {code: 'COMFY_SETTINGS_CLOSED'});
+  assert.throws(() => (settings.recordCheck as unknown as (value: unknown) => void)(check()), {code: 'COMFY_SETTINGS_CLOSED'});
   assert.equal(settings.isReady(config()), false);
   await assert.rejects(settings.get(), {code: 'COMFY_SETTINGS_CLOSED'});
   await assert.rejects(settings.put(update()), {code: 'COMFY_SETTINGS_CLOSED'});
@@ -333,7 +335,7 @@ test('default file reads never create directories; writes create only one privat
   assert.equal((await stat(f.directory)).mode & 0o777, 0o700);
   assert.equal((await stat(f.file)).mode & 0o777, 0o600);
   await settings.put(update(1));
-  assert.equal((await f.persistence.load()).revision, 2);
+  assert.equal((await f.persistence.load())!.revision, 2);
   assert.deepEqual(await readdir(f.directory), ['settings.json']);
   const restarted = await createComfySettings({directory: f.directory, privateRoot: f.root, reservedPorts});
   t.after(() => restarted.close());
@@ -368,7 +370,7 @@ test('invalid, credential-bearing and oversized envelopes never create or overwr
     JSON.stringify({...envelope(), secret: SENTINEL}), JSON.stringify({...envelope(), namespace: 'agent'})]) {
     await writeFile(f.file, content, {mode: 0o600});
     const settings = await engine(t, {persistence: f.persistence});
-    await assert.rejects(settings.get(), error => error.code === 'COMFY_SETTINGS_CORRUPT' && safeError(error));
+    await assert.rejects(settings.get(), (error: unknown) => errorView(error).code === 'COMFY_SETTINGS_CORRUPT' && safeError(error));
     await assert.rejects(settings.put(update()), {code: 'COMFY_SETTINGS_CORRUPT'});
     assert.equal(await readFile(f.file, 'utf8'), content);
   }
@@ -398,7 +400,7 @@ test('symlinked roots, managed parents, directories and files plus hard links fa
 
 test('unsafe existing permissions and nonregular files are rejected without repair or truncation', {skip: process.platform === 'win32'}, async t => {
   const f = await fixture(t); await f.persistence.save(envelope());
-  for (const [target, mode] of [[f.file, 0o644], [f.directory, 0o755], [f.root, 0o755]]) {
+  for (const [target, mode] of [[f.file, 0o644], [f.directory, 0o755], [f.root, 0o755]] as const) {
     await chmod(target, mode);
     await assert.rejects(f.persistence.load(), {code: 'COMFY_SETTINGS_CORRUPT'});
     await assert.rejects(f.persistence.save(envelope(2)), {code: 'COMFY_SETTINGS_SAVE_FAILED'});
@@ -418,7 +420,7 @@ test('path boundaries are absolute and private; raw concurrent readers see only 
     assert.throws(() => createComfySettingsFile(options), {code: 'COMFY_SETTINGS_CORRUPT'});
   }
   const f = await fixture(t); await f.persistence.save(envelope());
-  const observed = [], reader = (async () => { for (let i = 0; i < 30; i++) observed.push(JSON.parse(await readFile(f.file, 'utf8'))); })();
+  const observed: {revision: number}[] = [], reader = (async () => { for (let i = 0; i < 30; i++) observed.push(JSON.parse(await readFile(f.file, 'utf8'))); })();
   for (let revision = 2; revision < 12; revision++) await f.persistence.save(envelope(revision));
   await reader;
   for (const value of observed) assert.deepEqual(value, envelope(value.revision));

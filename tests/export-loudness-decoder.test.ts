@@ -2,22 +2,29 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createExportLoudnessDecoder, parseExportLoudnessProbe} from '../packages/business/src/export-loudness-decoder.ts';
 import {createExportSamplePeakDecoder} from '../packages/business/src/export-sample-peak-decoder.ts';
+type LoudnessRuntime = Parameters<typeof createExportLoudnessDecoder>[0];
+type DecodeOptions = NonNullable<Parameters<ReturnType<typeof createExportLoudnessDecoder>>[2]>;
+type PeakRuntime = Parameters<typeof createExportSamplePeakDecoder>[0];
+const findCommand = (calls: Array<Record<string, unknown> | string>, command: string): {command?: unknown; args?: unknown; options?: Record<string, unknown>} => calls.filter((call): call is Record<string, unknown> => typeof call === 'object').find(call => call.command === command) as {command?: unknown; args?: unknown; options?: Record<string, unknown>};
+interface ProbeStream {index?: unknown; codec_type?: unknown; codec_name?: unknown; sample_rate?: unknown; channels?: unknown; channel_layout?: unknown; duration?: unknown; [key: string]: unknown}
+interface ProbeMetadata {streams: ProbeStream[]; format: {format_name?: unknown; duration?: unknown; [key: string]: unknown}}
+interface Deferred<T = void> {promise: Promise<T>; resolve: (value: T) => void}
 
-function pcm(frames = 24000, sample = (frame, channel) => (channel ? -1 : 1) * 0.1 * Math.sin(2 * Math.PI * 1000 * frame / 48000)) {
+function pcm(frames = 24000, sample: (frame: number, channel: number) => number = (frame, channel) => (channel ? -1 : 1) * 0.1 * Math.sin(2 * Math.PI * 1000 * frame / 48000)) {
   const bytes = Buffer.alloc(frames * 8);
   for (let frame = 0; frame < frames; frame++) for (let channel = 0; channel < 2; channel++) bytes.writeFloatLE(sample(frame, channel), frame * 8 + channel * 4);
   return bytes;
 }
-const metadata = (change = {}) => ({streams: [{index: 0, codec_type: 'video', codec_name: 'h264'},
+const metadata = (change: Record<string, unknown> = {}): ProbeMetadata => ({streams: [{index: 0, codec_type: 'video', codec_name: 'h264'},
   {index: 3, codec_type: 'audio', codec_name: 'aac', sample_rate: '48000', channels: 2, channel_layout: 'stereo', duration: '0.500000', ...change}],
   format: {format_name: 'mov,mp4,m4a,3gp,3g2,mj2', duration: '0.500000'}});
-const deferred = () => {let resolve; return {promise: new Promise(r => {resolve = r;}), resolve};};
-const options = (overrides = {}) => ({beforeEffect() {}, remainingMs: () => 1000, ...overrides});
-function runtime(overrides = {}) {
-  const calls = [];
+const deferred = <T = void>(): Deferred<T> => {let resolve!: (value: T) => void; return {promise: new Promise<T>(r => {resolve = r;}), resolve};};
+const options = (overrides: Partial<DecodeOptions> & Record<string, unknown> = {}): DecodeOptions => ({beforeEffect() {}, remainingMs: () => 1000, ...overrides} as DecodeOptions);
+function runtime(overrides: Partial<LoudnessRuntime & PeakRuntime> = {}): LoudnessRuntime & PeakRuntime & {calls: Array<Record<string, unknown> | string>} {
+  const calls: Array<Record<string, unknown> | string> = [];
   return {calls,
-    checkMediaEffect(fn, signal) {if (signal?.aborted) throw Object.assign(Error('Cancelled'), {code: 'MEDIA_CANCELLED'}); const value = fn?.();
-      if (value?.then) {value.catch(() => {}); throw Object.assign(Error('Invalid callback'), {code: 'MEDIA_INVALID_CONFIGURATION'});}},
+    checkMediaEffect(fn, signal) {if (signal?.aborted) throw Object.assign(Error('Cancelled'), {code: 'MEDIA_CANCELLED'}); const value = fn?.() as {then?: unknown} | undefined;
+      if (value?.then) {(value as Promise<unknown>).catch(() => {}); throw Object.assign(Error('Invalid callback'), {code: 'MEDIA_INVALID_CONFIGURATION'});}},
     async withProbePermit(signal, work) {calls.push('permit'); return await work();},
     async run(command, args, options) {calls.push({command, args, options}); options.beforeSpawn(); options.beforeEffect(); return JSON.stringify(metadata());},
     async runStreaming(command, args, options) {calls.push({command, args, options}); options.beforeSpawn(); options.beforeEffect(); const bytes = pcm(); options.onStdout(bytes); return {stdoutBytes: bytes.length};},
@@ -27,28 +34,29 @@ function runtime(overrides = {}) {
 test('loudness reuses exact samplePeak probe/decode argument bytes without transforms or file output', async () => {
   const loud = runtime(), peak = runtime();
   const measurement = await createExportLoudnessDecoder(loud)('/private/managed.mp4', 0.5, options());
-  await createExportSamplePeakDecoder(peak)('/private/managed.mp4', 0.5, options());
+  await createExportSamplePeakDecoder(peak as unknown as PeakRuntime)('/private/managed.mp4', 0.5, options() as never);
   assert.equal(measurement.state, 'valid');
-  assert.deepEqual(loud.calls.filter(c => typeof c === 'object').map(({command, args}) => ({command, args})),
-    peak.calls.filter(c => typeof c === 'object').map(({command, args}) => ({command, args})));
+  const commandCalls = (calls: Array<Record<string, unknown> | string>): Array<{command?: unknown; args?: unknown}> => calls.filter((call): call is Record<string, unknown> => typeof call === 'object').map(({command, args}) => ({command, args}));
+  assert.deepEqual(commandCalls(loud.calls), commandCalls(peak.calls));
   const inputArgs = ['-protocol_whitelist', 'file', '-format_whitelist', 'mov', '-enable_drefs', '0', '-use_absolute_path', '0', '-f', 'mov', '-i', '/private/managed.mp4'];
-  assert.deepEqual(peak.calls.find(c => c.command === 'ffprobe').args, ['-v', 'error', '-show_entries',
+  assert.deepEqual(findCommand(peak.calls, 'ffprobe').args, ['-v', 'error', '-show_entries',
     'format=format_name,duration:stream=index,codec_type,codec_name,sample_rate,channels,channel_layout,duration', '-of', 'json', ...inputArgs]);
-  assert.deepEqual(peak.calls.find(c => c.command === 'ffmpeg').args, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-xerror',
+  assert.deepEqual(findCommand(peak.calls, 'ffmpeg').args, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-xerror',
     '-threads', '1', '-filter_threads', '1', '-reinit_filter', '0', ...inputArgs, '-map', '0:3', '-vn', '-sn', '-dn', '-threads', '1',
     '-c:a', 'pcm_f32le', '-f', 'f32le', 'pipe:1']);
-  const ffmpeg = loud.calls.find(c => c.command === 'ffmpeg');
-  assert.equal(ffmpeg.args[ffmpeg.args.indexOf('-map') + 1], '0:3'); assert.equal(ffmpeg.args.at(-1), 'pipe:1');
-  for (const forbidden of ['-t', '-ss', '-frames:a', '-ac', '-ar', '-af', '-filter_complex', '-y', 'loudnorm', 'ebur128']) assert.ok(!ffmpeg.args.includes(forbidden), forbidden);
-  assert.equal(ffmpeg.options.maxStdoutBytes, 230400000); assert.equal(ffmpeg.options.maxStderrBytes, 65536);
+  const ffmpeg = findCommand(loud.calls, 'ffmpeg');
+  assert.equal((ffmpeg.args as string[])[(ffmpeg.args as string[]).indexOf('-map') + 1], '0:3'); assert.equal((ffmpeg.args as string[]).at(-1), 'pipe:1');
+  for (const forbidden of ['-t', '-ss', '-frames:a', '-ac', '-ar', '-af', '-filter_complex', '-y', 'loudnorm', 'ebur128']) assert.ok(!(ffmpeg.args as string[]).includes(forbidden), forbidden);
+  assert.equal((ffmpeg.options as Record<string, unknown>).maxStdoutBytes, 230400000); assert.equal((ffmpeg.options as Record<string, unknown>).maxStderrBytes, 65536);
 });
 
 test('strict probe distinguishes no audio from unsupported or malformed MP4', () => {
   assert.equal(parseExportLoudnessProbe(JSON.stringify(metadata()), 0.5).streamIndex, 3);
   const noAudio = metadata(); noAudio.streams.pop();
   assert.throws(() => parseExportLoudnessProbe(JSON.stringify(noAudio), 0.5), {code: 'LOUDNESS_NO_AUDIO'});
-  for (const modify of [p => p.streams = [], p => p.streams[0].index = undefined, p => p.streams[0].codec_type = undefined,
-    p => p.streams.push({...p.streams[0]}), p => p.format.format_name = 'matroska', p => p.format.duration = 'N/A']) {
+  const probeMutations: Array<(p: ProbeMetadata) => void> = [p => p.streams = [], p => p.streams[0].index = undefined, p => p.streams[0].codec_type = undefined,
+    p => p.streams.push({...p.streams[0]}), p => p.format.format_name = 'matroska', p => p.format.duration = 'N/A'];
+  for (const modify of probeMutations) {
     const value = structuredClone(noAudio); modify(value);
     assert.throws(() => parseExportLoudnessProbe(JSON.stringify(value), 0.5), {code: 'LOUDNESS_UNSUPPORTED_FORMAT'});
   }
@@ -112,8 +120,8 @@ test('probe subdeadline is capped within a decreasing one-operation deadline', a
   const r = runtime(); const run = r.run.bind(r);
   r.run = async (...args) => {const result = await run(...args); remaining = 2345; return result;};
   await createExportLoudnessDecoder(r)('/private/a.mp4', 0.5, options({remainingMs: () => remaining}));
-  const probe = r.calls.find(c => c.command === 'ffprobe'), decode = r.calls.find(c => c.command === 'ffmpeg');
-  assert.equal(probe.options.timeout, 10000); assert.equal(decode.options.timeout, 2345); assert.equal(probe.options.maxStdoutBytes, 131072);
+  const probe = findCommand(r.calls, 'ffprobe'), decode = findCommand(r.calls, 'ffmpeg');
+  assert.equal((probe.options as Record<string, unknown>).timeout, 10000); assert.equal((decode.options as Record<string, unknown>).timeout, 2345); assert.equal((probe.options as Record<string, unknown>).maxStdoutBytes, 131072);
 });
 
 test('after-permit fence and callback failures retain exact cause and termination uncertainty', async () => {
@@ -124,5 +132,5 @@ test('after-permit fence and callback failures retain exact cause and terminatio
   const poisoned = runtime({async runStreaming(_command, _args, options) {
     try {options.onStdout(pcm(1, () => NaN));} catch {throw Object.assign(Error('Wrapped'), {code: 'MEDIA_STREAM_FAILED', terminationUnconfirmed: true});}
   }});
-  await assert.rejects(createExportLoudnessDecoder(poisoned)('/private/a.mp4', 0.5, options()), error => error.code === 'LOUDNESS_INVALID_PCM' && error.terminationUnconfirmed === true);
+  await assert.rejects(createExportLoudnessDecoder(poisoned)('/private/a.mp4', 0.5, options()), (error: unknown) => {const failure = error as {code?: string; terminationUnconfirmed?: boolean}; return failure.code === 'LOUDNESS_INVALID_PCM' && failure.terminationUnconfirmed === true;});
 });

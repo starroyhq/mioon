@@ -5,49 +5,50 @@ import {createExportLoudnessAccumulator, EXPORT_LOUDNESS_SAMPLE_RATE, EXPORT_LOU
   EXPORT_LOUDNESS_DURATION_TOLERANCE_SECONDS} from '../packages/business/src/export-loudness-meter.ts';
 
 const RATE = 48000;
-function pcm(frames, sample) {
+function pcm(frames: number, sample: (frame: number, channel: number) => number): Buffer {
   const bytes = Buffer.alloc(frames * 8);
   for (let frame = 0; frame < frames; frame++) for (let channel = 0; channel < 2; channel++)
     bytes.writeFloatLE(sample(frame, channel), frame * 8 + channel * 4);
   return bytes;
 }
-function measure(bytes, chunkSize = bytes.length, duration = bytes.length / 8 / RATE) {
+function measure(bytes: Buffer, chunkSize: number = bytes.length, duration: number = bytes.length / 8 / RATE) {
   const meter = createExportLoudnessAccumulator(duration);
   for (let offset = 0; offset < bytes.length; offset += chunkSize) meter.write(bytes.subarray(offset, offset + chunkSize));
   return meter.finish();
 }
-function near(actual, expected, tolerance = 1e-10) {
+function near(actual: number, expected: number, tolerance = 1e-10): void {
   assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} differs from ${expected} by ${actual - expected}`);
 }
 
 // Independent direct-form-I reference, retaining the signal and summing each
 // complete block from scratch. Production uses transposed direct form II and
 // compensated hop sums. Coefficients/equations: BS.1770-5 Annex 1, Tables 1/2.
-function referenceLoudness(bytes) {
-  const channels = [];
+function referenceLoudness(bytes: Buffer): {integratedLufs: number | null; gatingBlockCount: number; absoluteGatedBlockCount: number; relativeGatedBlockCount: number; relativeGateLufs: number | null} {
+  const channels: number[][] = [];
   for (let channel = 0; channel < 2; channel++) {
-    let signal = Array.from({length: bytes.length / 8}, (_, i) => bytes.readFloatLE(i * 8 + channel * 4));
-    for (const [b0, b1, b2, a1, a2] of [
+    let signal: number[] = Array.from({length: bytes.length / 8}, (_, i) => bytes.readFloatLE(i * 8 + channel * 4));
+    const coefficients: Array<[number, number, number, number, number]> = [
       [1.53512485958697, -2.69169618940638, 1.19839281085285, -1.69065929318241, 0.73248077421585],
       [1, -2, 1, -1.99004745483398, 0.99007225036621],
-    ]) {
-      const filtered = [];
+    ];
+    for (const [b0, b1, b2, a1, a2] of coefficients) {
+      const filtered: number[] = [];
       for (let i = 0; i < signal.length; i++) filtered.push(b0 * signal[i] + b1 * (signal[i - 1] ?? 0) +
         b2 * (signal[i - 2] ?? 0) - a1 * (filtered[i - 1] ?? 0) - a2 * (filtered[i - 2] ?? 0));
       signal = filtered;
     }
     channels.push(signal);
   }
-  const energy = [];
+  const energy: number[] = [];
   for (let start = 0; start + 19200 <= bytes.length / 8; start += 4800) {
     let sum = 0;
     for (let frame = start; frame < start + 19200; frame++) sum += channels[0][frame] ** 2 + channels[1][frame] ** 2;
     energy.push(sum / 19200);
   }
-  const db = e => -0.691 + 10 * Math.log10(e);
+  const db = (e: number): number => -0.691 + 10 * Math.log10(e);
   const absolute = energy.filter(e => db(e) > -70);
   const relativeThreshold = absolute.length ? db(absolute.reduce((a, b) => a + b, 0) / absolute.length) - 10 : null;
-  const relative = absolute.filter(e => db(e) > relativeThreshold);
+  const relative = relativeThreshold === null ? [] : absolute.filter(e => db(e) > relativeThreshold);
   return {integratedLufs: relative.length ? db(relative.reduce((a, b) => a + b, 0) / relative.length) : null,
     gatingBlockCount: energy.length, absoluteGatedBlockCount: absolute.length,
     relativeGatedBlockCount: relative.length, relativeGateLufs: relativeThreshold};
@@ -69,7 +70,7 @@ const FIR = [
   [0.0148925781250, 0.0330810546875, 0.0292968750000, 0.0109863281250],
   [-0.0083007812500, -0.0189208984375, -0.0291748046875, 0.0017089843750],
 ].flat();
-function referenceTruePeak(bytes) {
+function referenceTruePeak(bytes: Buffer): number {
   let peak = 0;
   for (let channel = 0; channel < 2; channel++) {
     const frames = bytes.length / 8, output = new Float64Array((frames - 1) * 4 + FIR.length);
@@ -88,7 +89,7 @@ test('loudness fixed profile is stereo f32le48k, 600 seconds and 100ms duration 
   assert.equal(EXPORT_LOUDNESS_MAX_SECONDS, 600); assert.equal(EXPORT_LOUDNESS_MAX_PCM_BYTES, 230400000);
   assert.equal(EXPORT_LOUDNESS_DURATION_TOLERANCE_SECONDS, 0.1);
   for (const duration of [NaN, Infinity, -Infinity, 0, -1, '1', undefined])
-    assert.throws(() => createExportLoudnessAccumulator(duration), {code: 'LOUDNESS_INVALID_PCM'});
+    assert.throws(() => createExportLoudnessAccumulator(duration as number), {code: 'LOUDNESS_INVALID_PCM'});
   assert.throws(() => createExportLoudnessAccumulator(600.00001), {code: 'LOUDNESS_DURATION_LIMIT'});
 });
 
@@ -109,7 +110,7 @@ test('19199/19200/19201 frames respect complete block boundary without padded lo
   assert.deepEqual(results.map(r => r.gatingBlockCount), [0, 1, 1]);
   assert.deepEqual(results.map(r => r.state), ['too_short', 'valid', 'valid']);
   assert.equal(results[0].integratedLufs, null);
-  near(results[1].integratedLufs, -19.999035330961945);
+  near(results[1].integratedLufs as number, -19.999035330961945);
   assert.equal(results[1].integratedLufs, results[2].integratedLufs);
   for (const n of [23999, 24000, 24001]) assert.equal(measure(pcm(n, () => 0.01)).gatingBlockCount, n < 24000 ? 1 : 2);
 });
@@ -118,9 +119,10 @@ test('independent causal filter/block oracle verifies absolute and relative gate
   for (const levels of [[-90, -40, -90, -90], [-40, -10, -40, -40]]) {
     const bytes = pcm(96000, i => 10 ** (levels[Math.floor(i / 24000)] / 20) * Math.sin(2 * Math.PI * 1000 * i / RATE));
     const actual = measure(bytes), expected = referenceLoudness(bytes);
-    for (const key of ['gatingBlockCount', 'absoluteGatedBlockCount', 'relativeGatedBlockCount']) assert.equal(actual[key], expected[key]);
-    near(actual.integratedLufs, expected.integratedLufs, 1e-9);
-    near(actual.relativeGateLufs, expected.relativeGateLufs, 1e-9);
+    const keys = ['gatingBlockCount', 'absoluteGatedBlockCount', 'relativeGatedBlockCount'] as const;
+    for (const key of keys) assert.equal(actual[key], expected[key]);
+    near(actual.integratedLufs as number, expected.integratedLufs as number, 1e-9);
+    near(actual.relativeGateLufs as number, expected.relativeGateLufs as number, 1e-9);
     assert.ok(actual.relativeGatedBlockCount < actual.gatingBlockCount);
     if (levels[0] === -90) assert.ok(actual.absoluteGatedBlockCount < actual.gatingBlockCount);
     else assert.equal(actual.absoluteGatedBlockCount, actual.gatingBlockCount);
@@ -139,7 +141,7 @@ test('silence, short programme and below-absolute-gate signals remain distinct',
     const result = measure(pcm(48000, i => 10 ** (level / 20) * Math.sin(2 * Math.PI * 1000 * i / RATE)));
     assert.equal(result.state, level < -70 ? 'below_gate' : 'valid');
     if (level < -70) {assert.equal(result.integratedLufs, null); assert.equal(result.relativeGateLufs, null);}
-    else near(result.integratedLufs, level, 0.02);
+    else near(result.integratedLufs as number, level, 0.02);
     assert.ok(result.samplePeakLinear > 0);
   }
   assert.equal(measure(pcm(19199, () => 0.01)).state, 'too_short');
@@ -152,7 +154,7 @@ test('channel energy is summed with independent K filters, never phase cancellat
   const mono = measure(pcm(48000, (i, c) => c ? 0 : 0.1 * Math.sin(2 * Math.PI * 997 * i / RATE)));
   const same = measure(pcm(48000, i => 0.1 * Math.sin(2 * Math.PI * 997 * i / RATE)));
   const opposite = measure(pcm(48000, (i, c) => (c ? -1 : 1) * 0.1 * Math.sin(2 * Math.PI * 997 * i / RATE)));
-  near(same.integratedLufs - mono.integratedLufs, 10 * Math.log10(2));
+  near((same.integratedLufs as number) - (mono.integratedLufs as number), 10 * Math.log10(2));
   assert.deepEqual(same, opposite);
 });
 
@@ -164,8 +166,9 @@ test('all polyphase coefficients and EOF delay match full causal convolution', (
   }
   // These exact binary-rational goldens require the FIR delayed peak; the
   // original-sample floor alone cannot satisfy them.
-  for (const [signal, peak] of [[[1, 1], 1.244873046875], [[1, -1], 1.074462890625],
-    [[0.75, -0.75, -0.75, 0.75], 1.208770751953125]]) {
+  const golden: Array<[number[], number]> = [[[1, 1], 1.244873046875], [[1, -1], 1.074462890625],
+    [[0.75, -0.75, -0.75, 0.75], 1.208770751953125]];
+  for (const [signal, peak] of golden) {
     const bytes = pcm(signal.length, (i, c) => c ? 0 : signal[i]);
     assert.equal(referenceTruePeak(bytes), peak); assert.equal(measure(bytes).truePeakLinear, peak);
   }
@@ -188,10 +191,10 @@ test('4x interpolation resolves phased intersample peaks without clipping float 
     [0.5, 8, 3 * Math.PI / 8], [1.41, 4, Math.PI / 4]]) {
     const bytes = pcm(4096, i => amplitude * Math.sin(2 * Math.PI / period * i + phase) * Math.min(1, i / 480, (4095 - i) / 480));
     const result = measure(bytes, 4093), target = amplitude > 1 ? 3 : -6;
-    assert.ok(result.truePeakDbtp >= target - 0.4 && result.truePeakDbtp <= target + 0.2);
+    assert.ok((result.truePeakDbtp as number) >= target - 0.4 && (result.truePeakDbtp as number) <= target + 0.2);
     near(result.truePeakLinear, referenceTruePeak(bytes), 1e-13);
-    if (phase === Math.PI / 4) assert.ok(result.truePeakDbtp - result.samplePeakDbfs > 2.5);
-    if (amplitude > 1) assert.ok(result.truePeakDbtp > 2.5);
+    if (phase === Math.PI / 4) assert.ok((result.truePeakDbtp as number) - (result.samplePeakDbfs as number) > 2.5);
+    if (amplitude > 1) assert.ok((result.truePeakDbtp as number) > 2.5);
   }
 });
 
@@ -210,12 +213,12 @@ test('nonfinite samples in either channel poison all later writes and finish', (
   for (const value of [NaN, Infinity, -Infinity]) for (const channel of [0, 1]) {
     const meter = createExportLoudnessAccumulator(19200 / RATE);
     meter.write(pcm(19199, () => 0.25));
-    let failure;
-    assert.throws(() => meter.write(pcm(1, (_, c) => c === channel ? value : 0.25)), error => {
-      failure = error; return error.code === 'LOUDNESS_INVALID_PCM';
+    let failure: unknown;
+    assert.throws(() => meter.write(pcm(1, (_, c) => c === channel ? value : 0.25)), (error: unknown) => {
+      failure = error; return (error as {code?: string}).code === 'LOUDNESS_INVALID_PCM';
     });
-    assert.throws(() => meter.finish(), error => error === failure);
-    assert.throws(() => meter.write(Buffer.alloc(8)), error => error === failure);
+    assert.throws(() => meter.finish(), (error: unknown) => error === failure);
+    assert.throws(() => meter.write(Buffer.alloc(8)), (error: unknown) => error === failure);
   }
 });
 
@@ -228,7 +231,7 @@ test('empty, incomplete byteframes and invalid write values never yield partial 
   }
   for (const value of [new Uint8Array(8), null, 'pcm']) {
     const meter = createExportLoudnessAccumulator(0.4);
-    assert.throws(() => meter.write(value), {code: 'LOUDNESS_INVALID_PCM'});
+    assert.throws(() => meter.write(value as never), {code: 'LOUDNESS_INVALID_PCM'});
     assert.throws(() => meter.finish(), {code: 'LOUDNESS_INVALID_PCM'});
   }
 });

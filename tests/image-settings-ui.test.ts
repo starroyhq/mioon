@@ -2,28 +2,36 @@ import * as i18n from '../packages/i18n/src/index.ts';
 import { createI18nTestContext as localeDisplay } from './helpers/i18n.ts';
 import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
-const localizedSource = source => source + JSON.stringify(Object.entries(i18n.catalogs).filter(([key]) => source.includes(key)).map(([, entry]) => entry['zh-Hans']));
+const localizedSource = (source: string) => source + JSON.stringify(Object.entries(i18n.catalogs).filter(([key]) => source.includes(key)).map(([, entry]) => entry['zh-Hans']));
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as navigation from '../apps/web/src/settings-navigation-state.ts';
 import * as logic from '../apps/web/src/image-settings.ts';
+import type { ImageSettingsResult, ImageSettingsSlot, ImageSettingsClient, ImageSettingsSession, ImageSettingsSessionOptions, ImageSettingsState } from '../apps/web/src/image-settings.ts';
 import { createImageReviewClient } from '../apps/web/src/image-review.ts';
 import { IMAGE_REVIEW_DESTINATION, IMAGE_REVIEW_POLICY, isImageReviewResponse } from '../packages/contracts/src/image-reviews.ts';
+import { errorView } from './helpers/test-error.ts';
 import { createHash } from 'node:crypto';
 import { canonicalImageInput } from '../packages/contracts/src/images.ts';
 
 const { DEFAULT_IMAGE_CONFIGURATION, DEFAULT_CUSTOM_IMAGE_CONFIGURATION, createImageSettingsClient, createImageSettingsSession, imageKeyIssue, imageSettingsCanSave, safeImageSettings } = logic;
-const snapshot = (patch = {}) => ({ revision: 0, configuration: structuredClone(DEFAULT_IMAGE_CONFIGURATION), secret: { configured: false, storage: 'none' }, storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY' }, ...patch });
+const snapshot = (patch: Record<string, unknown> = {}): ImageSettingsResult => ({ revision: 0, configuration: structuredClone(DEFAULT_IMAGE_CONFIGURATION), secret: { configured: false, storage: 'none' }, storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY' }, ...patch }) as ImageSettingsResult;
 const vault = { persistentAvailable: true, sessionScope: 'server', reasonCode: null };
-const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
+interface Deferred<T> { promise: Promise<T>; resolve: (value: T) => void; reject: (reason?: unknown) => void }
+const deferred = <T = ImageSettingsResult>(): Deferred<T> => { let resolve: (value: T) => void = () => undefined, reject: (reason?: unknown) => void = () => undefined; const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const flush = async () => { for (let n = 0; n < 30; n++) await Promise.resolve(); };
-const codeError = code => Object.assign(new Error('never-reflect-synthetic-secret'), { code });
-function fixture({ initial = snapshot(), read, write, slot = 'official' } = {}) {
-  const calls = [], changes = [], snapshots = []; let current = initial;
-  const client = { read: read || (async () => current), write: input => { calls.push(structuredClone(input)); if (write) return write(input); current = snapshot({ revision: input.expectedRevision + 1, configuration: input.configuration, storage: current.storage, secret: input.secret.action === 'replace' ? { configured: true, storage: input.secret.storage } : input.secret.action === 'remove' ? { configured: false, storage: 'none' } : current.secret }); return Promise.resolve(current); } };
-  const session = createImageSettingsSession({ client, slot, onChange: state => changes.push(state), onSnapshot: value => snapshots.push(value) }); return { session, client, calls, changes, snapshots, slot };
+const codeError = (code: string) => Object.assign(new Error('never-reflect-synthetic-secret'), { code });
+type ImageSettingsWrite = Parameters<ImageSettingsClient['write']>[0];
+interface FixtureOptions { initial?: ImageSettingsResult; read?: () => Promise<ImageSettingsResult>; write?: (input: ImageSettingsWrite) => Promise<ImageSettingsResult>; slot?: ImageSettingsSlot }
+type SnapshotArg = Parameters<NonNullable<ImageSettingsSessionOptions['onSnapshot']>>[0];
+type StateArg = Parameters<NonNullable<ImageSettingsSessionOptions['onChange']>>[0];
+interface Fixture { session: ImageSettingsSession; client: ImageSettingsClient; calls: ImageSettingsWrite[]; changes: ImageSettingsState[]; snapshots: ImageSettingsResult[]; slot: ImageSettingsSlot }
+function fixture({ initial = snapshot(), read, write, slot = 'official' }: FixtureOptions = {}): Fixture {
+  const calls: ImageSettingsWrite[] = [], changes: ImageSettingsState[] = [], snapshots: ImageSettingsResult[] = []; let current = initial;
+  const client: ImageSettingsClient = { read: read || (async () => current), write: (input: ImageSettingsWrite) => { calls.push(structuredClone(input) as ImageSettingsWrite); if (write) return write(input); current = snapshot({ revision: input.expectedRevision + 1, configuration: input.configuration, storage: current.storage, secret: input.secret.action === 'replace' ? { configured: true, storage: input.secret.storage } : input.secret.action === 'remove' ? { configured: false, storage: 'none' } : current.secret }); return Promise.resolve(current); } };
+  const session = createImageSettingsSession({ client, slot, onChange: (state: StateArg) => {changes.push(state as ImageSettingsState);}, onSnapshot: (value: SnapshotArg) => {snapshots.push(value as ImageSettingsResult);} }); return { session, client, calls, changes, snapshots, slot };
 }
 
 test('image settings expose only a fixed redacted contract and reject echoed secrets or destination edits', () => {
@@ -33,20 +41,20 @@ test('image settings expose only a fixed redacted contract and reject echoed sec
 });
 
 test('image settings client uses dedicated authenticated no-store GET/PUT, never RPC or provider HTTP', async () => {
-  const calls = [], client = createImageSettingsClient({ fetchImpl: async (url, options) => { calls.push({ url, ...options }); return { ok: true, json: async () => ({ ok: true, data: snapshot() }) }; } });
+  const calls: Array<Record<string, unknown>> = [], client = createImageSettingsClient({ fetchImpl: (async (url: RequestInfo | URL, options: RequestInit = {}) => { calls.push({ url, ...options }); return { ok: true, json: async () => ({ ok: true, data: snapshot() }) }; }) as unknown as typeof fetch });
   await client.read(); await client.write({ expectedRevision: 0, configuration: DEFAULT_IMAGE_CONFIGURATION, secret: { action: 'replace', storage: 'session', value: 'synthetic-only' } });
-  assert.deepEqual(calls.map(call => [call.url, call.method, call.credentials, call.cache]), [['/api/images/settings', 'GET', 'same-origin', 'no-store'], ['/api/images/settings', 'PUT', 'same-origin', 'no-store']]); assert.equal(calls[0].body, undefined); assert.equal(JSON.parse(calls[1].body).secret.value, 'synthetic-only');
+  assert.deepEqual(calls.map(call => [call.url, call.method, call.credentials, call.cache]), [['/api/images/settings', 'GET', 'same-origin', 'no-store'], ['/api/images/settings', 'PUT', 'same-origin', 'no-store']]); assert.equal(calls[0].body, undefined); assert.equal(JSON.parse(String(calls[1].body)).secret.value, 'synthetic-only');
 });
 
 test('settings transport strips raw errors and timeout makes exactly one aborted call', async () => {
-  for (const fetchImpl of [async () => ({ ok: false, status: 409, json: async () => ({ ok: false, error: { code: 'IMAGE_SETTINGS_CONFLICT', message: 'synthetic-secret', details: 'synthetic-secret' } }) }), () => { throw Error('synthetic-secret'); }]) await assert.rejects(createImageSettingsClient({ fetchImpl }).read(), error => !JSON.stringify(error).includes('synthetic-secret') && !error.message.includes('synthetic-secret'));
-  let calls = 0, signal; const held = deferred(), client = createImageSettingsClient({ timeoutMs: 5, fetchImpl: (_, options) => { calls++; signal = options.signal; return held.promise; } });
-  await assert.rejects(client.write({}), error => error.code === 'NETWORK'); assert.equal(calls, 1); assert.equal(signal.aborted, true); held.resolve({ ok: true, json: async () => ({ ok: true, data: snapshot() }) }); await flush(); assert.equal(calls, 1);
+  for (const fetchImpl of [(async () => ({ ok: false, status: 409, json: async () => ({ ok: false, error: { code: 'IMAGE_SETTINGS_CONFLICT', message: 'synthetic-secret', details: 'synthetic-secret' } }) })) as unknown as typeof fetch, (() => { throw Error('synthetic-secret'); }) as unknown as typeof fetch]) await assert.rejects(createImageSettingsClient({ fetchImpl }).read(), (error: unknown) => { const failure = errorView(error); const text = JSON.stringify(error); return !text.includes('synthetic-secret') && !String(failure.message).includes('synthetic-secret'); });
+  let calls = 0, signal: AbortSignal | undefined; const held = deferred(), client = createImageSettingsClient({ timeoutMs: 5, fetchImpl: ((_input: RequestInfo | URL, options: RequestInit = {}) => { calls++; signal = options.signal ?? undefined; return held.promise; }) as unknown as typeof fetch });
+  await assert.rejects(client.write({} as unknown as ImageSettingsWrite), (error: unknown) => errorView(error).code === 'NETWORK'); assert.equal(calls, 1); assert.equal(signal?.aborted, true); held.resolve({ ok: true, json: async () => ({ ok: true, data: snapshot() }) } as unknown as ImageSettingsResult); await flush(); assert.equal(calls, 1);
 });
 
 test('first credential requires an explicit storage choice and unavailable vault never falls back', async () => {
   const f = fixture(); await f.session.load(); assert.equal(f.session.getState().storage, ''); assert.equal(await f.session.save('synthetic-only'), false); assert.equal(f.calls.length, 0); assert.equal(f.session.setStorage('persistent'), false); f.session.setStorage('session'); assert.equal(await f.session.save('synthetic-only'), true); assert.deepEqual(f.calls[0].secret, { action: 'replace', storage: 'session', value: 'synthetic-only' }); assert.doesNotMatch(JSON.stringify(f.changes) + JSON.stringify(f.snapshots), /synthetic-only/); f.session.dispose();
-  const g = fixture({ initial: snapshot({ storage: vault }) }); await g.session.load(); assert.equal(g.session.setStorage('persistent'), true); await g.session.save('synthetic-vault-only'); assert.equal(g.session.getState().snapshot.secret.storage, 'persistent'); assert.doesNotMatch(JSON.stringify(g.changes), /synthetic-vault-only/); g.session.dispose();
+  const g = fixture({ initial: snapshot({ storage: vault }) }); await g.session.load(); assert.equal(g.session.setStorage('persistent'), true); await g.session.save('synthetic-vault-only'); assert.equal(g.session.getState().snapshot?.secret.storage, 'persistent'); assert.doesNotMatch(JSON.stringify(g.changes), /synthetic-vault-only/); g.session.dispose();
 });
 
 test('save changes enabled only, keeps independent key by default and supports explicit removal', async () => {
@@ -56,7 +64,7 @@ test('save changes enabled only, keeps independent key by default and supports e
 test('unknown save and CAS conflict read back once, retain drafts and never retry or infer confirmation', async () => {
   for (const code of ['NETWORK', 'IMAGE_SETTINGS_CONFLICT']) {
     let reads = 0; const latest = snapshot({ revision: 2 }); const f = fixture({ read: async () => ++reads === 1 ? snapshot({ storage: vault }) : latest, write: () => Promise.reject(codeError(code)) }); await f.session.load(); f.session.setEnabled(true); f.session.setStorage('persistent'); await f.session.save('synthetic-only');
-    assert.equal(reads, 2); assert.equal(f.calls.length, 1); assert.equal(f.session.getState().phase, 'review'); assert.equal(f.session.getState().draft.enabled, true); assert.equal(f.session.getState().storage, ''); assert.equal(imageSettingsCanSave(f.session.getState()), false); assert.equal(await f.session.save('retry-forbidden'), false); assert.doesNotMatch(JSON.stringify(f.changes), /synthetic-only|never-reflect/); f.session.acknowledge(); assert.equal(imageSettingsCanSave(f.session.getState()), true); f.session.dispose();
+    assert.equal(reads, 2); assert.equal(f.calls.length, 1); assert.equal(f.session.getState().phase, 'review'); assert.equal(f.session.getState().draft?.enabled, true); assert.equal(f.session.getState().storage, ''); assert.equal(imageSettingsCanSave(f.session.getState()), false); assert.equal(await f.session.save('retry-forbidden'), false); assert.doesNotMatch(JSON.stringify(f.changes), /synthetic-only|never-reflect/); f.session.acknowledge(); assert.equal(imageSettingsCanSave(f.session.getState()), true); f.session.dispose();
   }
 });
 
@@ -66,25 +74,102 @@ test('double save, hidden edits and disposed completions cannot write again or l
 });
 
 const source = readFileSync(new URL('../apps/web/src/ImageSettings.tsx', import.meta.url), 'utf8');
-const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
-const equalDeps = (a, b) => a && b && a.length === b.length && a.every((value, index) => Object.is(value, b[index]));
-function renderer(f) {
-  let index = 0, effects = [], active = true, contextKey = 'project-one', ancestor = true, tree, dirty = false, locale = 'zh-Hans'; const slots = [];
-  const react = { createElement(type, props = {}, ...children) { if (props?.ref && !props.ref.current) props.ref.current = { value: '' }; return { type, props: { ...props, children } }; }, useState(initial) { const slot = index++; slots[slot] ||= { value: typeof initial === 'function' ? initial() : initial }; return [slots[slot].value, value => { slots[slot].value = typeof value === 'function' ? value(slots[slot].value) : value; }]; }, useRef(initial) { return slots[index++] ||= { current: initial }; }, useMemo(callback, deps) { const slot = index++; if (!slots[slot] || !equalDeps(slots[slot].deps, deps)) slots[slot] = { value: callback(), deps }; return slots[slot].value; }, useLayoutEffect(callback, deps) { const slot = index++, old = slots[slot]; if (old && equalDeps(old.deps, deps)) return; slots[slot] = { callback, deps, cleanup: old?.cleanup }; effects.push(slot); } }; react.default = react;
-  const primitive = new Proxy({}, { get: (_, key) => String(key) }), module = { exports: {} };
-  const require = name => { if (name === './i18n/I18nProvider.tsx') return { useI18n: () => localeDisplay(locale) }; if (name === '../../../packages/i18n/src/index.ts') return i18n; if (name === 'react') return react; if (name === './settings-navigation-state.ts') return navigation; if (name === './image-settings.ts') return logic; if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => ancestor }; if (name === './icons.tsx') return { default: 'Icon' }; if (name.endsWith('.css')) return {}; if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return primitive; throw Error(name); };
-  Function('module', 'exports', 'require', transformSync(source, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, require);
-  const ui = { render() { index = 0; effects = []; tree = module.exports.default({ active, contextKey, client: f.client, slot: f.slot, onSelectSlot: () => { active = false; }, onClose: () => { active = false; }, onDirtyChange: value => { dirty = value; } }); for (const slot of effects) { slots[slot].cleanup?.(); slots[slot].cleanup = slots[slot].callback(); } return tree; }, find(id) { return nodes(tree).find(node => node.props['data-testid'] === id); }, form() { return nodes(tree).find(node => node.type === 'form'); }, key(value) { const field = ui.find(f.slot === 'custom' ? 'custom-image-settings-key' : 'image-settings-key'); field.props.ref.current.value = value; field.props.onChange({ target: { value } }); ui.render(); }, show(value) { active = value; ui.render(); }, collapse(value) { ancestor = !value; ui.render(); }, project(value) { contextKey = value; ui.render(); }, change(id, value) { ui.find(id).props.onChange({ target: { value, checked: value } }); ui.render(); }, click(id) { ui.find(id).props.onClick(); ui.render(); }, get dirty() { return dirty; }, setLocale(value) { locale = value; return ui.render(); }, unmount() { for (const slot of slots) slot.cleanup?.(); } }; return ui;
+type EventHandler = (...args: unknown[]) => unknown;
+type UiNode = {type?: unknown; props: Record<string, unknown> & {
+  children?: unknown; ref: {current: {value: string}}; onChange: EventHandler; onClick: EventHandler; onSubmit: EventHandler;
+}};
+const nodes = (value: unknown): UiNode[] => Array.isArray(value) ? value.flatMap((item: unknown) => nodes(item))
+  : value !== null && typeof value === 'object' && 'props' in value ? [value as UiNode, ...nodes((value as UiNode).props.children)] : [];
+const equalDeps = (a: unknown, b: unknown): boolean => Array.isArray(a) && Array.isArray(b) && a.length === b.length &&
+  a.every((value: unknown, index: number) => Object.is(value, b[index]));
+interface RenderSlot { [key: string]: unknown; value?: unknown; deps?: unknown; callback?: () => unknown; cleanup?: unknown }
+interface RenderState { [key: string]: unknown }
+interface UiControl {
+  render(): UiNode; find(id: string): UiNode; form(): UiNode; key(value: string): void;
+  show(value: boolean): void; collapse(value: boolean): void; project(value: string): void;
+  change(id: string, value: unknown): void; click(id: string): void; readonly dirty: boolean;
+  setLocale(value: string): UiNode; unmount(): void;
+}
+function renderer(f: Fixture): UiControl {
+  let index = 0; let effects: number[] = []; let active = true; let contextKey = 'project-one'; let ancestor = true;
+  let tree: UiNode; let dirty = false; let locale = 'zh-Hans'; const slots: RenderSlot[] = [];
+  const react: RenderState & {default?: RenderState} = {
+    createElement(type: unknown, props: Record<string, unknown> | null = {}, ...children: unknown[]): UiNode {
+      const safe = props ?? {};
+      const ref = safe.ref as {current?: {value: string}} | undefined;
+      if (ref && !ref.current) ref.current = {value: ''};
+      return {type, props: {...safe, children}} as UiNode;
+    },
+    useState(initial: unknown) {
+      const slot = index++; slots[slot] ||= {value: typeof initial === 'function' ? (initial as () => unknown)() : initial};
+      const state = slots[slot];
+      return [state.value, (value: unknown) => {state.value = typeof value === 'function' ? (value as (current: unknown) => unknown)(state.value) : value;}] as const;
+    },
+    useRef(initial: unknown) { return slots[index++] ||= {current: initial}; },
+    useMemo(callback: () => unknown, deps?: unknown) {
+      const slot = index++, existing = slots[slot];
+      if (!existing || !equalDeps(existing.deps, deps)) slots[slot] = {value: callback(), deps};
+      return slots[slot].value;
+    },
+    useLayoutEffect(callback: () => unknown, deps?: unknown) {
+      const slot = index++, old = slots[slot];
+      if (old && equalDeps(old.deps, deps)) return;
+      slots[slot] = {callback, deps, cleanup: old?.cleanup}; effects.push(slot);
+    },
+  };
+  react.default = react;
+  const primitive = new Proxy<Record<string, unknown>>({}, {get: (_target, key) => String(key)}), module: {exports: RenderState} = {exports: {}};
+  const require = (name: string): unknown => {
+    if (name === './i18n/I18nProvider.tsx') return {useI18n: () => localeDisplay(locale as Parameters<typeof localeDisplay>[0])};
+    if (name === '../../../packages/i18n/src/index.ts') return i18n;
+    if (name === 'react') return react;
+    if (name === './settings-navigation-state.ts') return navigation;
+    if (name === './image-settings.ts') return logic;
+    if (name === './workspace-visibility.tsx') return {useWorkspaceVisibility: () => ancestor};
+    if (name === './icons.tsx') return {default: 'Icon'};
+    if (name.endsWith('.css')) return {};
+    if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return primitive;
+    throw Error(name);
+  };
+  Function('module', 'exports', 'require', transformSync(source, {loader: 'tsx', format: 'cjs'}).code)(module, module.exports, require);
+  const renderComponent = module.exports.default as (props: Record<string, unknown>) => UiNode;
+  const ui: UiControl = {
+    render(): UiNode {
+      index = 0; effects = [];
+      tree = renderComponent({active, contextKey, client: f.client, slot: f.slot,
+        onSelectSlot: () => {active = false;}, onClose: () => {active = false;}, onDirtyChange: (value: unknown) => {dirty = value === true;}});
+      for (const slot of effects) {slots[slot].cleanup = (slots[slot].callback as () => unknown)();}
+      return tree;
+    },
+    find(id: string): UiNode {
+      const value = nodes(tree).find(node => node.props['data-testid'] === id); assert.ok(value, id); return value;
+    },
+    form(): UiNode { const value = nodes(tree).find(node => node.type === 'form'); assert.ok(value, 'form'); return value; },
+    key(value: string): void {
+      const field = ui.find(f.slot === 'custom' ? 'custom-image-settings-key' : 'image-settings-key');
+      const ref = field.props.ref; assert.ok(ref); ref.current.value = value;
+      (field.props.onChange as EventHandler)({target: {value}}); ui.render();
+    },
+    show(value: boolean): void {active = value; ui.render();},
+    collapse(value: boolean): void {ancestor = !value; ui.render();},
+    project(value: string): void {contextKey = value; ui.render();},
+    change(id: string, value: unknown): void {(ui.find(id).props.onChange as EventHandler)({target: {value, checked: value}}); ui.render();},
+    click(id: string): void {(ui.find(id).props.onClick as EventHandler)(); ui.render();},
+    get dirty(): boolean {return dirty;},
+    setLocale(value: string): UiNode {locale = value; return ui.render();},
+    unmount(): void {for (const slot of slots) if (typeof slot.cleanup === 'function') (slot.cleanup as () => void)();},
+  };
+  return ui;
 }
 
 test('actual password input clears before save dispatch and remains outside rendered/session state', async () => {
-  const held = deferred(); let clearedAtDispatch = false, ui;
+  const held = deferred(); let clearedAtDispatch = false; let ui: UiControl;
   const f = fixture({ write: () => { clearedAtDispatch = ui.find('image-settings-key').props.ref.current.value === ''; return held.promise; } }); ui = renderer(f); ui.render(); await flush(); ui.render(); ui.change('image-settings-storage', 'session'); ui.key('synthetic-dom-only'); assert.equal(ui.dirty, true); assert.equal(ui.find('image-settings-key').props.value, undefined); const submit = ui.form().props.onSubmit; submit({ preventDefault() {} }); ui.render(); assert.equal(clearedAtDispatch, true); assert.equal(ui.find('image-settings-key').props.ref.current.value, ''); submit({ preventDefault() {} }); assert.equal(f.calls.length, 1); held.resolve(snapshot({ revision: 1, secret: { configured: true, storage: 'session' } })); await flush(); ui.unmount(); f.session.dispose();
 });
 
 test('image enable uses shared Input and associated Label, preserving native checkbox keyboard and checked events', async () => {
   const f = fixture(), ui = renderer(f); ui.render(); await flush(); let tree = ui.render();
-  const checkbox = ui.find('image-settings-enable'), label = nodes(tree).find(node => node.props.htmlFor === checkbox.props.id);
+  const checkbox = ui.find('image-settings-enable'), label = nodes(tree).find(node => node.props.htmlFor === checkbox.props.id) as UiNode;
   assert.equal(checkbox.type, 'Input'); assert.equal(label.type, 'Label'); assert.equal(label.props.className, 'image-settings-enable'); assert.ok(nodes(label).includes(checkbox));
   assert.equal(checkbox.props.type, 'checkbox'); assert.equal(checkbox.props.checked, false); assert.equal(checkbox.props.disabled, false);
   // Do not replace native Space/Tab behavior with a custom role or key handler.
@@ -116,35 +201,35 @@ test('settings remains a natural dock with no modal, secret cache or arbitrary p
 });
 
 test('private review client binds exact receipt and posts once only to authenticated approval route', async () => {
-  const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`, at = '2026-10-10T10:00:00.000Z';
+  const id = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`, at = '2026-10-10T10:00:00.000Z';
   const input = { projectId: id(1), requestId: 'synthetic-request', name: 'Exact', prompt: '  Exact prompt  ', providerId: 'openai', model: DEFAULT_IMAGE_CONFIGURATION.model, options: DEFAULT_IMAGE_CONFIGURATION.options };
   const review = { id: id(2), projectId: id(1), requestId: input.requestId, input, inputHash: createHash('sha256').update(canonicalImageInput(input)).digest('hex'), settingsRevision: 1, destination: IMAGE_REVIEW_DESTINATION, policy: IMAGE_REVIEW_POLICY, state: 'pending', revision: 1, taskId: null, postAttempts: 0, createdAt: at, updatedAt: at, approvedAt: null, rejectedAt: null, dispatchedAt: null };
   const task = { ...input, id: id(3), groupId: id(4), state: 'queued', revision: 1, dispatched: false, versionId: null, errorCode: null, createdAt: at, updatedAt: at };
-  const calls = [], client = createImageReviewClient({ fetchImpl: async (url, options) => { calls.push({ url, ...options }); return { ok: true, json: async () => ({ ok: true, data: task }) }; } });
-  assert.deepEqual(await client.approve(review), task); assert.equal(calls.length, 1); assert.equal(calls[0].url, '/api/images/reviews/approve'); assert.equal(calls[0].credentials, 'same-origin'); assert.equal(calls[0].cache, 'no-store'); assert.deepEqual(JSON.parse(calls[0].body), { projectId: id(1), reviewId: id(2), expectedRevision: 1 });
-  await assert.rejects(createImageReviewClient({ fetchImpl: async () => ({ ok: true, json: async () => ({ ok: true, data: { ...task, prompt: 'silently changed' } }) }) }).approve(review));
+  const calls: Array<Record<string, unknown>> = [], client = createImageReviewClient({ fetchImpl: (async (url: RequestInfo | URL, options: RequestInit = {}) => { calls.push({ url, ...options }); return { ok: true, json: async () => ({ ok: true, data: task }) }; }) as unknown as typeof fetch });
+  assert.deepEqual(await client.approve(review), task); assert.equal(calls.length, 1); assert.equal(calls[0].url, '/api/images/reviews/approve'); assert.equal(calls[0].credentials, 'same-origin'); assert.equal(calls[0].cache, 'no-store'); assert.deepEqual(JSON.parse(String(calls[0].body)), { projectId: id(1), reviewId: id(2), expectedRevision: 1 });
+  await assert.rejects(createImageReviewClient({ fetchImpl: (async () => ({ ok: true, json: async () => ({ ok: true, data: { ...task, prompt: 'silently changed' } }) })) as unknown as typeof fetch }).approve(review));
   for (const field of ['projectId', 'prompt', 'requestId', 'settingsRevision', 'createdAt']) {
-    const altered = structuredClone(review); altered.state = 'rejected'; altered.revision = 2; altered.rejectedAt = at;
-    if (field === 'projectId') { altered.projectId = id(90); altered.input.projectId = id(90); }
-    if (field === 'prompt') altered.input.prompt = 'Changed immutable text';
-    if (field === 'requestId') { altered.requestId = 'changed-request'; altered.input.requestId = 'changed-request'; }
+    const altered = structuredClone(review) as Record<string, unknown>; altered.state = 'rejected'; altered.revision = 2; altered.rejectedAt = at;
+    if (field === 'projectId') { altered.projectId = id(90); (altered.input as Record<string, unknown>).projectId = id(90); }
+    if (field === 'prompt') (altered.input as Record<string, unknown>).prompt = 'Changed immutable text';
+    if (field === 'requestId') { altered.requestId = 'changed-request'; (altered.input as Record<string, unknown>).requestId = 'changed-request'; }
     if (field === 'settingsRevision') altered.settingsRevision = 2;
     if (field === 'createdAt') altered.createdAt = '2026-10-10T11:00:00.000Z';
-    altered.inputHash = createHash('sha256').update(canonicalImageInput(altered.input)).digest('hex');
+    altered.inputHash = createHash('sha256').update(canonicalImageInput(altered.input as never)).digest('hex');
     assert.equal(isImageReviewResponse(altered), true, field);
-    await assert.rejects(createImageReviewClient({ fetchImpl: async () => ({ ok: true, json: async () => ({ ok: true, data: altered }) }) }).reject(review), undefined, field);
+    await assert.rejects(createImageReviewClient({ fetchImpl: (async () => ({ ok: true, json: async () => ({ ok: true, data: altered }) })) as unknown as typeof fetch }).reject(review));
   }
-  let attempts = 0; const held = deferred(); await assert.rejects(createImageReviewClient({ timeoutMs: 5, fetchImpl: () => { attempts++; return held.promise; } }).approve(review)); assert.equal(attempts, 1); held.resolve({ ok: true, json: async () => ({ ok: true, data: task }) }); await flush(); assert.equal(attempts, 1);
+  let attempts = 0; const held = deferred<ImageSettingsResult>(); await assert.rejects(createImageReviewClient({ timeoutMs: 5, fetchImpl: (() => { attempts++; return held.promise; }) as unknown as typeof fetch }).approve(review)); assert.equal(attempts, 1); held.resolve({ ok: true, json: async () => ({ ok: true, data: task }) } as unknown as ImageSettingsResult); await flush(); assert.equal(attempts, 1);
 });
 
-const customConfiguration = (patch = {}) => ({ ...DEFAULT_CUSTOM_IMAGE_CONFIGURATION, enabled: true, baseUrl: 'https://images.example.com/v1', model: 'custom-image-model', ...patch });
-const customSnapshot = (patch = {}) => snapshot({ configuration: customConfiguration(), ...patch });
+const customConfiguration = (patch: Record<string, unknown> = {}) => ({ ...DEFAULT_CUSTOM_IMAGE_CONFIGURATION, enabled: true, baseUrl: 'https://images.example.com/v1', model: 'custom-image-model', ...patch });
+const customSnapshot = (patch: Record<string, unknown> = {}) => snapshot({ configuration: customConfiguration(), ...patch });
 
 test('fixed custom settings slot uses its own private route and rejects official, unknown and unnormalized receipts', async () => {
-  const calls = [], client = createImageSettingsClient({ slot: 'custom', fetchImpl: async (url, options) => { calls.push({ url, ...options }); return { ok: true, json: async () => ({ ok: true, data: customSnapshot() }) }; } });
+  const calls: Array<Record<string, unknown>> = [], client = createImageSettingsClient({ slot: 'custom', fetchImpl: (async (url: RequestInfo | URL, options: RequestInit = {}) => { calls.push({ url, ...options }); return { ok: true, json: async () => ({ ok: true, data: customSnapshot() }) }; }) as unknown as typeof fetch });
   await client.read(); await client.write({ expectedRevision: 0, configuration: customConfiguration(), secret: { action: 'keep' } });
   assert.deepEqual(calls.map(call => [call.url, call.method, call.credentials, call.cache]), [['/api/images/custom-settings', 'GET', 'same-origin', 'no-store'], ['/api/images/custom-settings', 'PUT', 'same-origin', 'no-store']]);
-  assert.throws(() => createImageSettingsClient({ slot: 'typo' })); assert.throws(() => createImageSettingsSession({ slot: 'typo' }));
+  assert.throws(() => createImageSettingsClient({ slot: 'typo' as unknown as ImageSettingsSlot })); assert.throws(() => createImageSettingsSession({ slot: 'typo' as unknown as ImageSettingsSlot }));
   assert.throws(() => safeImageSettings(snapshot(), 'custom')); assert.throws(() => safeImageSettings(customSnapshot()));
   assert.throws(() => safeImageSettings(customSnapshot({ configuration: customConfiguration({ baseUrl: 'https://IMAGES.example.com:443/v1/' }) }), 'custom'));
   assert.throws(() => safeImageSettings(customSnapshot({ secret: { configured: false, storage: 'none', value: 'not-allowed' } }), 'custom'));
@@ -171,7 +256,7 @@ test('custom unknown save preserves complete nonsecret draft and requires explic
   let reads = 0;
   const f = fixture({ slot: 'custom', read: async () => { reads++; return customSnapshot({ revision: reads, secret: { configured: true, storage: 'session' } }); }, write: () => Promise.reject(codeError('NETWORK')) });
   await f.session.load(); f.session.setConfigurationField('baseUrl', 'https://other.example.com/edge'); f.session.setConfigurationField('model', 'other-model'); await f.session.save('custom-synthetic-key');
-  assert.equal(f.session.getState().phase, 'review'); assert.equal(f.session.getState().draft.baseUrl, 'https://other.example.com/edge'); assert.equal(f.session.getState().draft.model, 'other-model');
+  assert.equal(f.session.getState().phase, 'review'); assert.equal(f.session.getState().draft?.baseUrl, 'https://other.example.com/edge'); assert.equal(f.session.getState().draft?.model, 'other-model');
   assert.equal(await f.session.save(), false); f.session.acknowledge(); assert.equal(await f.session.save(), false); assert.equal(f.calls.length, 1); assert.doesNotMatch(JSON.stringify(f.changes), /custom-synthetic-key/); f.session.dispose();
 });
 
