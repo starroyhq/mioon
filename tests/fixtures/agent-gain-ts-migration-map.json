@@ -42,8 +42,8 @@
       "legacyPath": "packages/business/src/agent/edit-proposals.mjs",
       "currentPath": "packages/business/src/agent/edit-proposals.ts",
       "legacySha256": "f00310483fa3a475e443d5513234b45691266fd33c2d4cb8ef7ebb4e4167d4e6",
-      "currentSha256": "e0152afd1b7ec27c6549bf6a5fb60a8e934ca970761950237083ed5141fef9c8",
-      "typeErasedSha256": "88eba68238f6a656c466dfb4ca71100fb1fdb032af0b2c583c1cc9484c58493e"
+      "currentSha256": "f06d2478c38941aba633da0713c47a1e30dc47bfbf609b5aa9a42a046ce37963",
+      "typeErasedSha256": "dcbceafc7c683b254c0717e8626f08bc7e39fb2fa31c654d9b3a70bed315858a"
     },
     "packages/business/src/agent/edit-tool-policy.mjs": {
       "legacyPath": "packages/business/src/agent/edit-tool-policy.mjs",
