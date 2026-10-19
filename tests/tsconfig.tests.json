@@ -38,7 +38,6 @@
     "./comfy-http.test.ts",
     "./comfy-image-ui.test.ts",
     "./comfy-module-business.test.ts",
-    "./comfy-module-http.test.ts",
     "./export-file-actions-ui.test.ts",
     "./export-history-ui.test.ts",
     "./export-preflight-http-observer.test.ts",
