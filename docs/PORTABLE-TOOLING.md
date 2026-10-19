@@ -8,18 +8,18 @@ Status: implementation, affected/portable checks, fresh builds and artifact comp
 Doctor can run before dependency installation using Node.js ≥24. Build/test require the reviewed lockfile dependencies; doctor reports missing dependencies and unavailable FFmpeg/ffprobe separately. These direct Node commands do not invoke a package manager, shell scripts, `.cmd` shims, installers or remote CI.
 
 ```text
-node scripts/tooling.mjs doctor
-node scripts/tooling.mjs typecheck
-node scripts/tooling.mjs doctor --native-ready
-node scripts/tooling.mjs build --channel=development
-node scripts/tooling.mjs build --channel=production
-node scripts/tooling.mjs test
-node scripts/tooling.mjs test --suite=portable --concurrency=1
-node scripts/tooling.mjs test --suite=full --concurrency=1
-node scripts/tooling.mjs test --suite=portable --file=agent-protocol.test.mjs
+node scripts/tooling.ts doctor
+node scripts/tooling.ts typecheck
+node scripts/tooling.ts doctor --native-ready
+node scripts/tooling.ts build --channel=development
+node scripts/tooling.ts build --channel=production
+node scripts/tooling.ts test
+node scripts/tooling.ts test --suite=portable --concurrency=1
+node scripts/tooling.ts test --suite=full --concurrency=1
+node scripts/tooling.ts test --suite=portable --file=agent-protocol.test.mjs
 ```
 
-`check:local`, `build:local`, `test:local` are optional root package aliases. Existing `pnpm build`, package scripts and test scripts remain available; they have not all been made cross-platform. `node scripts/doctor.mjs` / `pnpm run doctor` now delegates to the same doctor and prints its structured report.
+`check:local`, `build:local`, `test:local` are optional root package aliases. Existing `pnpm build`, package scripts and test scripts remain available; they have not all been made cross-platform. `node scripts/doctor.ts` / `pnpm run doctor` now delegates to the same doctor and prints its structured report.
 
 - **Doctor:** checks Node, root/desktop metadata, exact installed dependency versions, in-memory SQLite and bounded FFmpeg/ffprobe version responses. It also reports a separate, advisory static pnpm version observation. It does not open a workspace, read credentials/user settings, initialize a token, install, repair permissions or call a provider. Explicit `MIOON_FFMPEG_PATH` / `MIOON_FFPROBE_PATH` overrides are honored by the existing media runner; otherwise its ordinary executable lookup applies. Version probes do not verify codecs, render correctness or native Electron runtime availability.
 - **Build:** validates prerequisites before invoking the verified local Vite JavaScript entrypoint, then the existing desktop staging build, strictly serially. The Vite heap budget is passed as a Node argument (768 MiB), not an inline shell environment assignment. Failure or interruption stops the sequence; there is no retry, automatic installation, signing or packaging. Ordinary staging output is still replaced as before after preflight passes.
@@ -27,7 +27,7 @@ node scripts/tooling.mjs test --suite=portable --file=agent-protocol.test.mjs
 
 ### First-run diagnostics
 
-Use `node scripts/tooling.mjs doctor` (or `node scripts/doctor.mjs`) for diagnostics without invoking pnpm. Running `pnpm run doctor`, or even using pnpm itself to inspect its version, can let a version-managing installation download/switch to the project's pin before this script runs. Doctor does not do that.
+Use `node scripts/tooling.ts doctor` (or `node scripts/doctor.ts`) for diagnostics without invoking pnpm. Running `pnpm run doctor`, or even using pnpm itself to inspect its version, can let a version-managing installation download/switch to the project's pin before this script runs. Doctor does not do that.
 
 The JSON keeps these independent meanings:
 
@@ -63,7 +63,8 @@ Children use `process.execPath` with argument arrays, `shell:false`, `windowsHid
 
 ## One application/channel identity
 
-- `apps/desktop/identity.cjs` remains the channel authority. Build arguments choose the channel; runtime environment variables do not.
+- `apps/desktop/identity.ts` remains the channel authority. Build arguments choose the channel; runtime environment variables do not.
+- The checked foundation project now also includes the desktop build-config surface (`apps/desktop/{identity,build-metadata,subtitle-resources,runtime-notices,builder-config,subtitle-package}.ts`) and `apps/desktop/scripts/**/*.ts`. electron-builder entrypoints are generated from typed `apps/desktop/builder-config.ts` into the ignored `apps/desktop/.generated/` directory by the typed prepare script, not maintained as hand-written CJS.
 - Root `package.json` version is the application/staging authority. Desktop manifest must match it before staging cleanup. No manifest is automatically rewritten.
 - Root's exact Electron dependency pin supplies builder configuration. Application and dependency checks share one strict SemVer validator.
 - `beforePack` now rejects stale version, any mismatched identity field, unexpected package name/main/private/desktopName or nonempty/invalid runtime dependencies. Existing fuses and disabled publication remain unchanged. No package was created in this increment.
@@ -71,7 +72,7 @@ Children use `process.execPath` with argument arrays, `shell:false`, `windowsHid
 
 ## Reviewed lanes and native gates
 
-The portable manifest initially contains seven files: `agent-protocol`, `mutation-contracts`, `workspace-layout`, `workspace-state`, `workspace-panel-intent`, `desktop-build-metadata`, `local-tooling` (all `.test.mjs`). The first five are pure state/contract/source checks. New tooling cases deliberately create disposable synthetic files using canonical `realpath(tmpdir())`, inspect SQLite only in memory and run synthetic Node children. They do not use app workspaces, real credentials, sockets, browsers, native vaults or FFmpeg. Canonicalizing these newly owned test paths does not change the runtime refusal policy for user-selected symlinked/aliased data paths.
+The portable manifest currently contains nine files: `agent-protocol`, `mutation-contracts`, `workspace-layout`, `workspace-state`, `workspace-panel-intent`, `desktop-build-metadata`, `local-tooling`, `typecheck-contract`, `typecheck-tooling` (all `.test.mjs`). The first five are pure state/contract/source checks. New tooling cases deliberately create disposable synthetic files using canonical `realpath(tmpdir())`, inspect SQLite only in memory and run synthetic Node children. They do not use app workspaces, real credentials, sockets, browsers, native vaults or FFmpeg. Canonicalizing these newly owned test paths does not change the runtime refusal policy for user-selected symlinked/aliased data paths.
 
 Full-suite selection currently remains Linux-only because existing tests include POSIX paths, private-storage operations and Linux-specific subprocess/packaging assumptions. Native symlink containment tests are in that full lane, not the portable manifest. Cross-platform simulated paths/environment dictionaries and a portable lane passing on Linux do not prove a Mac/Windows run.
 
@@ -86,7 +87,7 @@ Full-suite selection currently remains Linux-only because existing tests include
 
 Baseline: `4e66a9621babc4b1b8aed4d03685bbf15eb747d3`. On macOS arm64 with Node 26.9.0, the direct command `node --test --test-concurrency=1 tests/local-tooling.test.mjs tests/local-tooling-links.test.mjs` passed **32/32**, with no skips. The explicit POSIX link/FIFO tests use disposable synthetic fixtures (including the system `/usr/bin/mkfifo`), not application data. This is not the full portable/full suite or native application acceptance.
 
-Actual `node scripts/tooling.mjs doctor` exited **1**: Node, build identity and in-memory SQLite passed; repository dependencies were missing; FFmpeg and ffprobe could not start. Static pnpm metadata reported **10.8.1**, mismatching required **11.25.0**. No pnpm invocation, installation or repair occurred. Native release readiness remained unverified. Build, UI, Electron launch, signing and Windows execution were not performed in this follow-up. Existing Windows fail-closed storage and dependency-containment policies remain unchanged.
+Actual `node scripts/tooling.ts doctor` exited **1**: Node, build identity and in-memory SQLite passed; repository dependencies were missing; FFmpeg and ffprobe could not start. Static pnpm metadata reported **10.8.1**, mismatching required **11.25.0**. No pnpm invocation, installation or repair occurred. Native release readiness remained unverified. Build, UI, Electron launch, signing and Windows execution were not performed in this follow-up. Existing Windows fail-closed storage and dependency-containment policies remain unchanged.
 
 ## Historical Q6 acceptance
 
@@ -107,7 +108,7 @@ The dedicated `typecheck` command checks the two fixed projects with the exact l
 
 ## Opt-in private test compile cache
 
-`node scripts/tooling.mjs test --suite=full --concurrency=1 --compile-cache --reporter=tap` enables Node's standard module compile cache for this test invocation only. The default command remains cache-disabled by the sanitized environment. The flag creates a fresh private temporary directory, verifies the same Node runtime reports an active cache, and injects only the generated cache path and an ownership marker into the existing test environment. No loader, transformed application fixture, prewarming, provider access, assertion change or deadline change is involved. Node keys entries by source content and runtime; changed source is checked by a real-child regression. Wire backend/CLI/MCP helpers explicitly forward only this active, private owned cache.
+`node scripts/tooling.ts test --suite=full --concurrency=1 --compile-cache --reporter=tap` enables Node's standard module compile cache for this test invocation only. The default command remains cache-disabled by the sanitized environment. The flag creates a fresh private temporary directory, verifies the same Node runtime reports an active cache, and injects only the generated cache path and an ownership marker into the existing test environment. No loader, transformed application fixture, prewarming, provider access, assertion change or deadline change is involved. Node keys entries by source content and runtime; changed source is checked by a real-child regression. Wire backend/CLI/MCP helpers explicitly forward only this active, private owned cache.
 
 The opt-in cache refuses Windows until private-directory ACL verification exists; the default portable lane is unchanged. A nonempty `NODE_DISABLE_COMPILE_CACHE` remains authoritative even with the flag. An inherited caller-selected `NODE_COMPILE_CACHE`, `NODE_OPTIONS`, proxy or credential is never forwarded by the runner. Cache directories are removed after normal success, test failure, and handled SIGINT/SIGTERM completion; SIGKILL or machine loss cannot guarantee cleanup. The runner checks the original directory identity before recursive cleanup and refuses to delete a substituted object. Cache bytes must not be archived as evidence. Structured active/disabled/removed status includes only the generated cache identifier and runtime, never arbitrary environment values.
 

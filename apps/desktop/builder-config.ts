@@ -1,3 +1,4 @@
+// Unsigned production build. Publishing, updates and signing are disabled.
 // electron-builder configuration source. This ESM module is bundled by
 // scripts/prepare-builder-config.ts into the ignored .generated/ CJS entrypoints
 // electron-builder actually loads. No packaging state is written here.

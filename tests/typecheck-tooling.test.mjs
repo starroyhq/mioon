@@ -176,7 +176,7 @@ test('runtime TSX outside the browser and unchecked alternate TypeScript extensi
 test('fixed compiler projects cover all runtime TypeScript without legacy browser exclusions', async () => {
   const foundation = JSON.parse(await readFile(path.join(root, projects[0]), 'utf8'));
   const browser = JSON.parse(await readFile(path.join(root, projects[1]), 'utf8'));
-  assert.deepEqual(foundation.include, ['../../packages/*/src/**/*.ts', '../../apps/*/src/**/*.ts', '../../server/**/*.ts', '../../scripts/**/*.ts']);
+  assert.deepEqual(foundation.include, ['../../packages/*/src/**/*.ts', '../../apps/*/src/**/*.ts', '../../apps/desktop/*.ts', '../../apps/desktop/scripts/**/*.ts', '../../server/**/*.ts', '../../scripts/**/*.ts']);
   assert.deepEqual(foundation.exclude, ['../../packages/ui/**', '../../apps/web/**']);
   assert.deepEqual(browser.include, ['../../packages/ui/src/**/*.ts', '../../packages/ui/src/**/*.tsx', '../../apps/web/src/**/*.ts', '../../apps/web/src/**/*.tsx', 'browser.consumer.tsx', 'export-sample-peak.consumer.tsx', 'desktop-launcher.consumer.tsx', 'timeline-audio-preview.consumer.tsx', 'export-loudness.consumer.tsx', 'timeline-mix-loudness.consumer.tsx', 'timeline-clip-loudness.consumer.tsx', 'timeline-loudness-apply.consumer.tsx']);
   assert.deepEqual(browser.exclude, []);

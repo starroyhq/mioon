@@ -6,7 +6,7 @@ import { Label } from '@mioon/ui/components/label';
 import { WorkbenchSelect } from './WorkspaceControls.tsx';
 import { useWorkspaceVisibility } from './workspace-visibility.tsx';
 import { clipReplacementBlockedReason, clipReplacementBlockedMessage, clipReplacementCandidates, clipReplacementReviewIssue, clipReplacementReviewMessage, clipSelectedVersionCandidate, createClipReplacementController } from './clip-source-replacement.ts';
-import type { ClipReplacementState, ReplacementChoice, ReplacementContext, ReplacementReview } from './clip-source-replacement.ts';
+import type { ClipReplacementState, ClipReplacementSubmitResult, ReplacementChoice, ReplacementContext, ReplacementReview } from './clip-source-replacement.ts';
 
 export interface ClipSourceReplacementProps {
   context: ReplacementContext;
@@ -28,7 +28,7 @@ export default function ClipSourceReplacement({ context, getDirty, onReplace, on
   const getContext = (): ReplacementContext => ({ ...(callbacks.current as ClipSourceReplacementCallbacks).context, dirty: (callbacks.current as ClipSourceReplacementCallbacks).getDirty() });
   const [state, setState] = useState<ClipReplacementState | null>(null), controllerRef = useRef<ClipReplacementController | null>(null);
   if (!controllerRef.current) controllerRef.current = createClipReplacementController({
-    getContext, submit: review => (callbacks.current as ClipSourceReplacementCallbacks).onReplace(review), onChange: setState,
+    getContext, submit: review => Promise.resolve((callbacks.current as ClipSourceReplacementCallbacks).onReplace(review)) as Promise<ClipReplacementSubmitResult | null | undefined>, onChange: setState,
   });
   const controller = controllerRef.current;
   useLayoutEffect(() => { controller.activate(); controller.setContext(getContext()); return () => controller.dispose(); }, []);

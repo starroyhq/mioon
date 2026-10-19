@@ -2,7 +2,7 @@
   "version": 1,
   "exceptions": [
     {
-      "file": "apps/web/src/ExportHistoryList.jsx",
+      "file": "apps/web/src/ExportHistoryList.tsx",
       "category": "visible-jsx",
       "hash": "e2a8570b70a7e1d2f0345ae90de5e8b9a90b99fbc5a0e56176269412ec01c871",
       "owner": "delivery",
@@ -23,35 +23,35 @@
       "reason": "SHA-256 is the standard technical checksum algorithm label; the following digest is original report evidence. Surrounding explanation is localized. Reviewed original literal: \"SHA-256：\"."
     },
     {
-      "file": "apps/web/src/TimelineExportPreflight.jsx",
+      "file": "apps/web/src/TimelineExportPreflight.tsx",
       "category": "visible-jsx",
       "hash": "af09eb60a1a56d2daa60f608d2304b2e214cd905f8c9f9d29a2424d4fe551143",
       "owner": "delivery",
       "reason": "Fixed media unit/codec notation (fps, Mb/s, AAC, kb/s), preserving exact supported output settings. The surrounding labels and explanatory sentences use export catalog keys. Reviewed original literal: \"fps\"."
     },
     {
-      "file": "apps/web/src/TimelineExportSettings.jsx",
+      "file": "apps/web/src/TimelineExportSettings.tsx",
       "category": "visible-jsx",
       "hash": "dd118fdd342f0d8eca7753979d646797e9e81079b382b44f086b05ed6c72e392",
       "owner": "delivery",
       "reason": "Fixed media unit/codec notation (fps, Mb/s, AAC, kb/s), preserving exact supported output settings. The surrounding labels and explanatory sentences use export catalog keys. Reviewed original literal: \"2 Mb/s\"."
     },
     {
-      "file": "apps/web/src/TimelineExportSettings.jsx",
+      "file": "apps/web/src/TimelineExportSettings.tsx",
       "category": "visible-jsx",
       "hash": "c325ff08e02c72dc2dd8f69a18a9dc1b09bb607644a377f4a77eb17bc2c5d976",
       "owner": "delivery",
       "reason": "Fixed media unit/codec notation (fps, Mb/s, AAC, kb/s), preserving exact supported output settings. The surrounding labels and explanatory sentences use export catalog keys. Reviewed original literal: \"4 Mb/s\"."
     },
     {
-      "file": "apps/web/src/TimelineExportSettings.jsx",
+      "file": "apps/web/src/TimelineExportSettings.tsx",
       "category": "visible-jsx",
       "hash": "dc787b5ec86aabdcff984b98cd845f9b3ae15a60c003601c8da0cd517d61c098",
       "owner": "delivery",
       "reason": "Fixed media unit/codec notation (fps, Mb/s, AAC, kb/s), preserving exact supported output settings. The surrounding labels and explanatory sentences use export catalog keys. Reviewed original literal: \"8 Mb/s\"."
     },
     {
-      "file": "apps/web/src/TimelineExportSettings.jsx",
+      "file": "apps/web/src/TimelineExportSettings.tsx",
       "category": "visible-jsx",
       "hash": "f25e33c7d2eb8bbd856350b61b1caf337fc531ef3ccbc0a4cce63e612188635f",
       "owner": "delivery",
@@ -268,7 +268,7 @@
       "reason": "Exported legacy presentation constant retained for compatible callers/tests. ExportLoudness uses audio.loudness catalog keys for label/disclosure/restored status; error/status helpers resolve stable codes with the active locale. Reviewed original literal: \"恢复分支暂不支持已导出文件响度与真峰值测量。\"."
     },
     {
-      "file": "apps/web/src/export-preflight-state.js",
+      "file": "apps/web/src/export-preflight-state.ts",
       "category": "cjk-source",
       "hash": "023ec81a9de0db68a3f509ed472169ce41b6e22304415c3126c8575240c50dec",
       "owner": "delivery",
@@ -296,28 +296,28 @@
       "reason": "Exported legacy presentation constant retained for compatible callers/tests. ExportSamplePeak uses audio.loudness catalog keys for label/disclosure/restored status; error/status helpers resolve stable codes with the active locale. Reviewed original literal: \"恢复分支暂不支持已导出文件解码样本峰值检查。\"."
     },
     {
-      "file": "apps/web/src/export-settings-state.js",
+      "file": "apps/web/src/export-settings-state.ts",
       "category": "cjk-source",
       "hash": "66c569a6fa01d0199f9d32f8859debca2e4c86a803492b7a41e31c6a52f7888f",
       "owner": "delivery",
       "reason": "exportRateLabel retains its legacy rate projection for old consumers/validators. exportRateMessage derives semantic descriptors directly from rateControl mode/quality/targetKbps; ExportHistoryList, TimelineDeliveryHistory and Preview render that descriptor instead. Reviewed original literal: \"平均目标\"."
     },
     {
-      "file": "apps/web/src/export-settings-state.js",
+      "file": "apps/web/src/export-settings-state.ts",
       "category": "cjk-source",
       "hash": "c354361b69f042d17750cc89e94f8089c2baf567519521abec026f0d00f3d883",
       "owner": "delivery",
       "reason": "exportRateLabel retains its legacy rate projection for old consumers/validators. exportRateMessage derives semantic descriptors directly from rateControl mode/quality/targetKbps; ExportHistoryList, TimelineDeliveryHistory and Preview render that descriptor instead. Reviewed original literal: \"紧凑\"."
     },
     {
-      "file": "apps/web/src/export-settings-state.js",
+      "file": "apps/web/src/export-settings-state.ts",
       "category": "cjk-source",
       "hash": "e77c69601b1feea59047f3c8d45236e58172277b64884f3708acb24474170543",
       "owner": "delivery",
       "reason": "exportRateLabel retains its legacy rate projection for old consumers/validators. exportRateMessage derives semantic descriptors directly from rateControl mode/quality/targetKbps; ExportHistoryList, TimelineDeliveryHistory and Preview render that descriptor instead. Reviewed original literal: \"标准\"."
     },
     {
-      "file": "apps/web/src/export-settings-state.js",
+      "file": "apps/web/src/export-settings-state.ts",
       "category": "cjk-source",
       "hash": "f287544c434463572af6cc95d2008e36e4cceda7e0aab4c0a6d995ac28295f9b",
       "owner": "delivery",
@@ -492,42 +492,42 @@
       "reason": "Original draft/intent diagnostic retained without changing recovery state or replay data; ShotTextDraftRecovery renders draftErrorDisplay/intentErrorDisplay from recovery.text.invalidSave, never this diagnostic string. Dynamic backend outcome codes remain verbatim protocol evidence. Reviewed original literal: \"请填写有效的镜头名称与提示词后，再保存标题和提示词。\"."
     },
     {
-      "file": "apps/web/src/restored-workspace.js",
+      "file": "apps/web/src/restored-workspace.ts",
       "category": "cjk-source",
       "hash": "80c5ead33ced57139682fd13335a776e98b60f705c5186346e902a7584719d88",
       "owner": "delivery",
       "reason": "Original diagnostic/reason string retained for compatibility and operation gating. App maps RESTORE_OPERATION_UNAVAILABLE, RESTORE_WORKSPACE_ORIGIN_MISMATCH and BACKEND_PROTOCOL_ERROR to display descriptors; disabled/backup UI uses RESTORE_DISABLED_MESSAGE/RESTORE_BACKUP_MESSAGE. No original reason is primary UI copy. Reviewed original literal: \"恢复分支第一版暂不支持新生成、Agent、Comfy、抽帧或波形解码。历史任务保持原状态并暂停执行。\"."
     },
     {
-      "file": "apps/web/src/restored-workspace.js",
+      "file": "apps/web/src/restored-workspace.ts",
       "category": "cjk-source",
       "hash": "4888d303fbbd73ae1e36f884d247efec3effe57239d350e95d72935742d2a283",
       "owner": "delivery",
       "reason": "Original diagnostic/reason string retained for compatibility and operation gating. App maps RESTORE_OPERATION_UNAVAILABLE, RESTORE_WORKSPACE_ORIGIN_MISMATCH and BACKEND_PROTOCOL_ERROR to display descriptors; disabled/backup UI uses RESTORE_DISABLED_MESSAGE/RESTORE_BACKUP_MESSAGE. No original reason is primary UI copy. Reviewed original literal: \"此恢复分支暂不能再次创建可恢复备份；请保留原始备份。新成片可本地导出。\"."
     },
     {
-      "file": "apps/web/src/restored-workspace.js",
+      "file": "apps/web/src/restored-workspace.ts",
       "category": "cjk-source",
       "hash": "57cc85e31e28ab9ceec8ee6c5c94bf44ad9f45238c36809d766c24d7b489b213",
       "owner": "delivery",
       "reason": "Original diagnostic/reason string retained for compatibility and operation gating. App maps RESTORE_OPERATION_UNAVAILABLE, RESTORE_WORKSPACE_ORIGIN_MISMATCH and BACKEND_PROTOCOL_ERROR to display descriptors; disabled/backup UI uses RESTORE_DISABLED_MESSAGE/RESTORE_BACKUP_MESSAGE. No original reason is primary UI copy. Reviewed original literal: \"工作区身份尚未核对，暂不能提交。\"."
     },
     {
-      "file": "apps/web/src/restored-workspace.js",
+      "file": "apps/web/src/restored-workspace.ts",
       "category": "cjk-source",
       "hash": "68cd84dc65f8116838ca8c55a15ae086498d94ce2b01c95670dd649c2c79cbce",
       "owner": "delivery",
       "reason": "Original diagnostic/reason string retained for compatibility and operation gating. App maps RESTORE_OPERATION_UNAVAILABLE, RESTORE_WORKSPACE_ORIGIN_MISMATCH and BACKEND_PROTOCOL_ERROR to display descriptors; disabled/backup UI uses RESTORE_DISABLED_MESSAGE/RESTORE_BACKUP_MESSAGE. No original reason is primary UI copy. Reviewed original literal: \"恢复分支的此项操作尚未开放，历史记录仍保留。\"."
     },
     {
-      "file": "apps/web/src/restored-workspace.js",
+      "file": "apps/web/src/restored-workspace.ts",
       "category": "cjk-source",
       "hash": "f6f6d9609d72b92e145ca7bfe9a009fec5fd6a190c5e13e709049c6631ce9c02",
       "owner": "delivery",
       "reason": "Original diagnostic/reason string retained for compatibility and operation gating. App maps RESTORE_OPERATION_UNAVAILABLE, RESTORE_WORKSPACE_ORIGIN_MISMATCH and BACKEND_PROTOCOL_ERROR to display descriptors; disabled/backup UI uses RESTORE_DISABLED_MESSAGE/RESTORE_BACKUP_MESSAGE. No original reason is primary UI copy. Reviewed original literal: \"工作区已变化，请重新载入；原请求仍保留。\"."
     },
     {
-      "file": "apps/web/src/restored-workspace.js",
+      "file": "apps/web/src/restored-workspace.ts",
       "category": "cjk-source",
       "hash": "46aea5d825b3a8db3226d7004e05b94625a70c52d8b889a037d2aa255efcbc4c",
       "owner": "delivery",
@@ -569,147 +569,147 @@
       "reason": "Exported legacy presentation constant retained for compatible callers/tests. TimelineMixLoudness uses audio.loudness catalog keys for label/disclosure/restored status; error/status helpers resolve stable codes with the active locale. Reviewed original literal: \"仅测量当前已保存时间线的编码前浮点混音，不是已导出文件。准备测量不会修改音量或创建导出任务，应用须另行确认；不代表已实现逐段响度统一，也不保证 AAC 编码后的峰值。\"."
     },
     {
-      "file": "apps/web/src/workspace-backup-ui.js",
+      "file": "apps/web/src/workspace-backup-ui.ts",
       "category": "cjk-source",
       "hash": "5651862c7df109ebd5b2e519ab1f51d1eb62f79591fc7b59a35611bee5c97832",
       "owner": "delivery",
       "reason": "Exported old count/issue label retained for caller compatibility. WorkspaceBackupPanel maps count names and structured issue codes to recovery.backup catalog keys rather than rendering this label; only stable keys/counts enter report logic. Reviewed original literal: \"项目\"."
     },
     {
-      "file": "apps/web/src/workspace-backup-ui.js",
+      "file": "apps/web/src/workspace-backup-ui.ts",
       "category": "cjk-source",
       "hash": "7e429ddb30122cd1d554e51d8f91d99ad3cb6a6e81cd9fe8dc4c4808cbcdd3af",
       "owner": "delivery",
       "reason": "Exported old count/issue label retained for caller compatibility. WorkspaceBackupPanel maps count names and structured issue codes to recovery.backup catalog keys rather than rendering this label; only stable keys/counts enter report logic. Reviewed original literal: \"素材记录\"."
     },
     {
-      "file": "apps/web/src/workspace-backup-ui.js",
+      "file": "apps/web/src/workspace-backup-ui.ts",
       "category": "cjk-source",
       "hash": "e8721107895b851dd34cf00167f6b3527c6048ff40762383292e388bb66752f6",
       "owner": "delivery",
       "reason": "Exported old count/issue label retained for caller compatibility. WorkspaceBackupPanel maps count names and structured issue codes to recovery.backup catalog keys rather than rendering this label; only stable keys/counts enter report logic. Reviewed original literal: \"视频任务\"."
     },
     {
-      "file": "apps/web/src/workspace-backup-ui.js",
+      "file": "apps/web/src/workspace-backup-ui.ts",
       "category": "cjk-source",
       "hash": "5ef59b025828c9c43b6a801d86c202e4c226bd102cc44a76636f5f39dd7bc31d",
       "owner": "delivery",
       "reason": "Exported old count/issue label retained for caller compatibility. WorkspaceBackupPanel maps count names and structured issue codes to recovery.backup catalog keys rather than rendering this label; only stable keys/counts enter report logic. Reviewed original literal: \"图像任务\"."
     },
     {
-      "file": "apps/web/src/workspace-backup-ui.js",
+      "file": "apps/web/src/workspace-backup-ui.ts",
       "category": "cjk-source",
       "hash": "6df9be1a7c6982da8294b58125e4107c677bb6e1f2b3d6f6b14c4ef1143e09cd",
       "owner": "delivery",
       "reason": "Exported old count/issue label retained for caller compatibility. WorkspaceBackupPanel maps count names and structured issue codes to recovery.backup catalog keys rather than rendering this label; only stable keys/counts enter report logic. Reviewed original literal: \"抽帧任务\"."
     },
     {
-      "file": "apps/web/src/workspace-backup-ui.js",
+      "file": "apps/web/src/workspace-backup-ui.ts",
       "category": "cjk-source",
       "hash": "7be74edf43177582a0d0ac63c5fe92e3be1bf17f6bbceeb829ac62969491cf38",
       "owner": "delivery",
       "reason": "Exported old count/issue label retained for caller compatibility. WorkspaceBackupPanel maps count names and structured issue codes to recovery.backup catalog keys rather than rendering this label; only stable keys/counts enter report logic. Reviewed original literal: \"导出记录\"."
     },
     {
-      "file": "apps/web/src/workspace-backup-ui.js",
+      "file": "apps/web/src/workspace-backup-ui.ts",
       "category": "cjk-source",
       "hash": "fd5061b4ef8e15ca5c25ccc9ccf4fc3b7e2283a5135056d4197d681185cb95e8",
       "owner": "delivery",
       "reason": "Exported old count/issue label retained for caller compatibility. WorkspaceBackupPanel maps count names and structured issue codes to recovery.backup catalog keys rather than rendering this label; only stable keys/counts enter report logic. Reviewed original literal: \"导出任务\"."
     },
     {
-      "file": "apps/web/src/workspace-backup-ui.js",
+      "file": "apps/web/src/workspace-backup-ui.ts",
       "category": "cjk-source",
       "hash": "0c722b8df0778029ae5b6ca66be20d94780253843ee9495901160690b01d129d",
       "owner": "delivery",
       "reason": "Exported old count/issue label retained for caller compatibility. WorkspaceBackupPanel maps count names and structured issue codes to recovery.backup catalog keys rather than rendering this label; only stable keys/counts enter report logic. Reviewed original literal: \"Agent 运行\"."
     },
     {
-      "file": "apps/web/src/workspace-backup-ui.js",
+      "file": "apps/web/src/workspace-backup-ui.ts",
       "category": "cjk-source",
       "hash": "7a699682c347fc692ea4bb1a852e9a8260048085fb515cf7cbb2d074235c5537",
       "owner": "delivery",
       "reason": "Exported old count/issue label retained for caller compatibility. WorkspaceBackupPanel maps count names and structured issue codes to recovery.backup catalog keys rather than rendering this label; only stable keys/counts enter report logic. Reviewed original literal: \"Agent 提案\"."
     },
     {
-      "file": "apps/web/src/workspace-backup-ui.js",
+      "file": "apps/web/src/workspace-backup-ui.ts",
       "category": "cjk-source",
       "hash": "c65feb8634e270b7738bbefe88dd8b22ff7e32f1e94071427542625d28c4ebbd",
       "owner": "delivery",
       "reason": "Exported old count/issue label retained for caller compatibility. WorkspaceBackupPanel maps count names and structured issue codes to recovery.backup catalog keys rather than rendering this label; only stable keys/counts enter report logic. Reviewed original literal: \"编辑请求\"."
     },
     {
-      "file": "apps/web/src/workspace-backup-ui.js",
+      "file": "apps/web/src/workspace-backup-ui.ts",
       "category": "cjk-source",
       "hash": "012bfb7a7aa05654e018b243ef704717f11321e24185bf728bec3e5710e0676b",
       "owner": "delivery",
       "reason": "Exported old count/issue label retained for caller compatibility. WorkspaceBackupPanel maps count names and structured issue codes to recovery.backup catalog keys rather than rendering this label; only stable keys/counts enter report logic. Reviewed original literal: \"记录数量超过本次核对上限，部分数量未知。\"."
     },
     {
-      "file": "apps/web/src/workspace-backup-ui.js",
+      "file": "apps/web/src/workspace-backup-ui.ts",
       "category": "cjk-source",
       "hash": "4c177cff25a22c1d0ce1b1ba697d50efe7d66dbf04ddf67b25bd2a554fcfed42",
       "owner": "delivery",
       "reason": "Exported old count/issue label retained for caller compatibility. WorkspaceBackupPanel maps count names and structured issue codes to recovery.backup catalog keys rather than rendering this label; only stable keys/counts enter report logic. Reviewed original literal: \"部分记录超过检查容量，计数未知。\"."
     },
     {
-      "file": "apps/web/src/workspace-backup-ui.js",
+      "file": "apps/web/src/workspace-backup-ui.ts",
       "category": "cjk-source",
       "hash": "70e88ecee8781d3cb7d4688b8b9b105f08bc92dfbdfb3fbbabb17f1a36e6eaf7",
       "owner": "delivery",
       "reason": "Exported old count/issue label retained for caller compatibility. WorkspaceBackupPanel maps count names and structured issue codes to recovery.backup catalog keys rather than rendering this label; only stable keys/counts enter report logic. Reviewed original literal: \"存在无法识别的数据库记录，部分数量未知。\"."
     },
     {
-      "file": "apps/web/src/workspace-backup-ui.js",
+      "file": "apps/web/src/workspace-backup-ui.ts",
       "category": "cjk-source",
       "hash": "f69248cc243627270434cd4d8b714fabe683d382f044a8a0931becbadbde65b6",
       "owner": "delivery",
       "reason": "Exported old count/issue label retained for caller compatibility. WorkspaceBackupPanel maps count names and structured issue codes to recovery.backup catalog keys rather than rendering this label; only stable keys/counts enter report logic. Reviewed original literal: \"数据库版本不在支持范围内，无法完成核对。\"."
     },
     {
-      "file": "apps/web/src/workspace-backup-ui.js",
+      "file": "apps/web/src/workspace-backup-ui.ts",
       "category": "cjk-source",
       "hash": "28e6f38c8f6d61d979d6d9789786830633e51784deac321c8816eb4a51a4303c",
       "owner": "delivery",
       "reason": "Exported old count/issue label retained for caller compatibility. WorkspaceBackupPanel maps count names and structured issue codes to recovery.backup catalog keys rather than rendering this label; only stable keys/counts enter report logic. Reviewed original literal: \"数据库暂不可读取，无法完成核对。\"."
     },
     {
-      "file": "apps/web/src/workspace-origin.js",
+      "file": "apps/web/src/workspace-origin.ts",
       "category": "cjk-source",
       "hash": "a1fa95383723417a1f0725d8b9eabea4954dfe47751a2ea28d13c0ed77fd4bd4",
       "owner": "delivery",
       "reason": "Original workspace-safety Error.message/reason retained alongside unchanged stable code. App maps workspace-origin codes to descriptors; PendingSubmission uses heldCode to render tasks.unverifiedWorkspace/tasks.heldReason instead of heldReason. Identity/replay rules and original request bytes are unchanged. Reviewed original literal: \"此请求属于原工作区或另一个恢复分支，原编号和参数已保留；不能在当前分支恢复、确认或转存。\"."
     },
     {
-      "file": "apps/web/src/workspace-origin.js",
+      "file": "apps/web/src/workspace-origin.ts",
       "category": "cjk-source",
       "hash": "3bd2f2b3c3728a4e3f83da8ad302907611080b7409a01ace22d54b271ed1f37f",
       "owner": "delivery",
       "reason": "Original workspace-safety Error.message/reason retained alongside unchanged stable code. App maps workspace-origin codes to descriptors; PendingSubmission uses heldCode to render tasks.unverifiedWorkspace/tasks.heldReason instead of heldReason. Identity/replay rules and original request bytes are unchanged. Reviewed original literal: \"工作区身份尚未核对，已阻止提交。请重新载入后从当前分支明确发起新操作。\"."
     },
     {
-      "file": "apps/web/src/workspace-origin.js",
+      "file": "apps/web/src/workspace-origin.ts",
       "category": "cjk-source",
       "hash": "56c717750c77f3bd4649ac9c42ec34d4d124344d525d67e60031fb77eff434e7",
       "owner": "delivery",
       "reason": "Original workspace-safety Error.message/reason retained alongside unchanged stable code. App maps workspace-origin codes to descriptors; PendingSubmission uses heldCode to render tasks.unverifiedWorkspace/tasks.heldReason instead of heldReason. Identity/replay rules and original request bytes are unchanged. Reviewed original literal: \"工作区来源必须是完整 UUID，不能省略或替换已保存的来源。\"."
     },
     {
-      "file": "apps/web/src/workspace-origin.js",
+      "file": "apps/web/src/workspace-origin.ts",
       "category": "cjk-source",
       "hash": "3498ab79b7c0df563cf57ed8aa1d9da81a30a37e4be535255925b45948d64855",
       "owner": "delivery",
       "reason": "Original workspace-safety Error.message/reason retained alongside unchanged stable code. App maps workspace-origin codes to descriptors; PendingSubmission uses heldCode to render tasks.unverifiedWorkspace/tasks.heldReason instead of heldReason. Identity/replay rules and original request bytes are unchanged. Reviewed original literal: \"连接的工作区已变化，请重新载入页面。原请求和分支来源仍被保留。\"."
     },
     {
-      "file": "apps/web/src/workspace-origin.js",
+      "file": "apps/web/src/workspace-origin.ts",
       "category": "cjk-source",
       "hash": "021cf711f1a7e421257809ca60709e38b096eb7084af8af51598fdc291d81129",
       "owner": "delivery",
       "reason": "Original workspace-safety Error.message/reason retained alongside unchanged stable code. App maps workspace-origin codes to descriptors; PendingSubmission uses heldCode to render tasks.unverifiedWorkspace/tasks.heldReason instead of heldReason. Identity/replay rules and original request bytes are unchanged. Reviewed original literal: \"已有请求不能重新指定工作区来源。\"."
     },
     {
-      "file": "apps/web/src/workspace-origin.js",
+      "file": "apps/web/src/workspace-origin.ts",
       "category": "cjk-source",
       "hash": "af62f666c988f23d30fa2a85ed91223c0b497653441d1b2791780aab05bf204b",
       "owner": "delivery",
@@ -751,7 +751,7 @@
       "reason": "Original bounded read-only RPC fault retains its stable code. TimelineMixLoudness uses timelineMixLoudnessErrorMessage: timeout states the 120-second budget and no partial result, protocol states mismatched/incomplete response and reprepare, cancellation requires explicit reprepare, network/validation states incomplete measurement and connection check/reprepare. No raw diagnostic is displayed. Reviewed original literal: \"整片混音只读测量未完成，请明确重新准备。\"."
     },
     {
-      "file": "apps/web/src/workspace-task-origin.js",
+      "file": "apps/web/src/workspace-task-origin.ts",
       "category": "cjk-source",
       "hash": "1210be2361f15b914d2fdfa36ba1951872eb8be1ce5a0a92283ccb207e0af2fc",
       "owner": "delivery",

@@ -17,7 +17,7 @@ const CONFIG_MAX_BYTES = 64 * 1024;
 const CONNECTION_MAX_BYTES = 16 * 1024;
 const TOKEN_MAX_BYTES = 4096;
 export type DesktopChannel = 'production' | 'development';
-/** The reviewed build identity; values come from identity.cjs, never the environment. */
+/** The reviewed build identity; values come from identity.ts, never the environment. */
 export interface DesktopIdentity {
   readonly channel: DesktopChannel;
   readonly appId: string;

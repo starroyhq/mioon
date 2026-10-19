@@ -40,7 +40,7 @@ export function AgentDockPane({ visible, children, id, labelledBy, fallbackFocus
     if (wasVisible.current && !shown && hadFocus.current) {
       hadFocus.current = false;
       const document = root.current?.ownerDocument, active = document?.activeElement;
-      if (fallbackFocus && (active === document?.body || root.current?.contains(active))) document?.querySelector<HTMLElement>(fallbackFocus)?.focus({ preventScroll: true });
+      if (fallbackFocus && (active === document?.body || (active ? root.current?.contains(active) : false))) document?.querySelector<HTMLElement>(fallbackFocus)?.focus({ preventScroll: true });
     }
     wasVisible.current = shown;
   }, [shown, fallbackFocus]);

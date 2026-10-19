@@ -6,14 +6,16 @@
 
 | 桌面 workspace 脚本 | 先执行的完整构建 | builder 后续参数 |
 | --- | --- | --- |
-| `package:linux` | `node ../../scripts/tooling.mjs build --channel=production` | `--config electron-builder.cjs --linux --publish never` |
-| `package:dir` | 同上 | `--config electron-builder.cjs --linux --dir --publish never` |
-| `package:mac` | 同上，原有入口未改 | `--config electron-builder.cjs --mac --publish never` |
-| `package:linux:dev` | `node ../../scripts/tooling.mjs build --channel=development` | `--config electron-builder.dev.cjs --linux --publish never` |
-| `package:dir:dev` | 同上 | `--config electron-builder.dev.cjs --linux --dir --publish never` |
-| `package:mac:dev` | 同上，原有入口未改 | `--config electron-builder.dev.cjs --mac --publish never` |
+| `package:linux` | `node ../../scripts/tooling.ts build --channel=production` | `--config .generated/electron-builder.cjs --linux --publish never` |
+| `package:dir` | 同上 | `--config .generated/electron-builder.cjs --linux --dir --publish never` |
+| `package:mac` | 同上 | `--config .generated/electron-builder.cjs --mac --publish never` |
+| `package:linux:dev` | `node ../../scripts/tooling.ts build --channel=development` | `--config .generated/electron-builder.dev.cjs --linux --publish never` |
+| `package:dir:dev` | 同上 | `--config .generated/electron-builder.dev.cjs --linux --dir --publish never` |
+| `package:mac:dev` | 同上 | `--config .generated/electron-builder.dev.cjs --mac --publish never` |
 
-完整流程先核验已安装的本地工具和严格类型，再运行 Vite 生成当前 Web，随后构建同渠道桌面暂存；最后才由既有 `&&` 执行 electron-builder。生产渠道仍为 `app.starroy.mioon` / `mioon`，开发渠道仍为 `app.starroy.mioon.dev` / `mioon-dev`，输出分别在 `release/desktop/production` 与 `release/desktop/development`。Linux 目标仍为 x64 的 tar.gz 或解包目录，本片不新增安装器、更新器、签名或发布。
+完整流程先核验已安装的本地工具和严格类型，再运行 Vite 生成当前 Web，随后构建同渠道桌面暂存；最后才由既有 `&&` 执行 electron-builder。
+
+桌面 builder 配置已迁移为 typed ESM `apps/desktop/builder-config.ts`（依赖 `identity.ts`、`build-metadata.ts`、`subtitle-resources.ts`、`runtime-notices.ts`）。`apps/desktop/scripts/prepare-builder-config.ts` 把它打包成忽略目录中的 `.generated/electron-builder.cjs` / `.generated/electron-builder.dev.cjs`，只有固定渠道字面量可进入生成入口；`apps/desktop/scripts/build.ts` 在暂存构建时自动重新生成，也可单独运行 `node apps/desktop/scripts/prepare-builder-config.ts`。`apps/desktop` 不再保留手写 builder CJS 入口。生产渠道仍为 `app.starroy.mioon` / `mioon`，开发渠道仍为 `app.starroy.mioon.dev` / `mioon-dev`，输出分别在 `release/desktop/production` 与 `release/desktop/development`。Linux 目标仍为 x64 的 tar.gz 或解包目录，本片不新增安装器、更新器、签名或发布。
 
 从仓库根目录，四条当前 Linux 命令可独立使用，不需要先手动构建 Web：
 
@@ -49,22 +51,22 @@ pnpm --filter @mioon/desktop package:dir:dev
 
 ---
 
-以下为历史记录；“本次”“其他平台保持原状”等叙述仅指当时的 macOS 两入口修复，不描述上方当前 Linux 增量。
+以下为历史记录；“本次”“其他平台保持原状”等叙述仅指当时的 macOS 两入口修复，不描述上方当前 Linux 增量。历史名称已按当前 TypeScript 迁移后的路径书写（当时为 `.mjs` / 手写 `.cjs`）。
 
 # 历史 macOS 单独修复记录
 
 本次范围：发布审查 R4，源码基线 `8c694d191e6c90379c32c9f8db0a778c35c31e14`。只调整两个 macOS 打包入口，不是原生发布验收。
 
-原入口直接运行 `apps/desktop/scripts/build.mjs`。该脚本只检查 `apps/web/dist/index.html` 存在，随后复制现有 Web dist；源码更新后，旧 dist 仍可能被打入新桌面包。
+原入口直接运行 `apps/desktop/scripts/build.ts`。该脚本只检查 `apps/web/dist/index.html` 存在，随后复制现有 Web dist；源码更新后，旧 dist 仍可能被打入新桌面包。
 
 两个入口现改为从桌面 workspace 调用仓库已有的完整构建流程：
 
 | 桌面 workspace 脚本 | 构建前置命令 | builder 配置 | appId |
 | --- | --- | --- | --- |
-| `package:mac` | `node ../../scripts/tooling.mjs build --channel=production` | `electron-builder.cjs` | `app.starroy.mioon` |
-| `package:mac:dev` | `node ../../scripts/tooling.mjs build --channel=development` | `electron-builder.dev.cjs` | `app.starroy.mioon.dev` |
+| `package:mac` | `node ../../scripts/tooling.ts build --channel=production` | `.generated/electron-builder.cjs` | `app.starroy.mioon` |
+| `package:mac:dev` | `node ../../scripts/tooling.ts build --channel=development` | `.generated/electron-builder.dev.cjs` | `app.starroy.mioon.dev` |
 
-脚本工作目录是 `apps/desktop`，所以 `../../scripts/tooling.mjs` 指向仓库根目录下的工具。tooling 根据自身模块路径定位仓库，先检查本地构建前提，再串行运行 Web workspace 的 Vite build 和所选渠道的桌面暂存构建。后者将本次 Web 输出复制进 `apps/desktop/build/web`。只有前置命令成功，`&&` 才会继续执行原有 `electron-builder --config … --mac --publish never`。
+脚本工作目录是 `apps/desktop`，所以 `../../scripts/tooling.ts` 指向仓库根目录下的工具。tooling 根据自身模块路径定位仓库，先检查本地构建前提，再串行运行 Web workspace 的 Vite build 和所选渠道的桌面暂存构建。后者将本次 Web 输出复制进 `apps/desktop/build/web`。只有前置命令成功，`&&` 才会继续执行原有 `electron-builder --config … --mac --publish never`。
 
 生产与开发渠道仍使用各自 appId 和输出目录；Web 构建由两渠道共用，桌面身份由显式 `--channel` 决定。builder 的 `publish: null`、macOS `identity: null` 和目标配置均未修改。其他平台、直接桌面 build/start 脚本保持原状；直接调用桌面暂存脚本仍要求调用方先准备 Web 输出。
 
@@ -84,6 +86,6 @@ env -u NODE_OPTIONS -u NODE_PATH node --test --test-concurrency=1 tests/desktop-
 
 ## 父级集成验证
 
-`tests/desktop-identity.test.mjs` 中的 `package commands explicitly rebuild the correct channel before electron-builder` 测试（基线第 78–85 行，断言在第 81–82 行）硬编码 `build.mjs --channel=… && electron-builder`。这两条旧正则会拒绝新的正确 Mac 入口，需父级同步调整为入口及渠道契约验证；该已有文件不在本次允许修改范围，因此保留原样。Mac 子任务未运行该整套测试。父级集成已将该处改为逐平台、逐渠道的完整命令等值断言；最终运行结果另行记录，不据新增静态测试通过宣称全量回归通过。
+`tests/desktop-identity.test.mjs` 中的 `package commands explicitly rebuild the correct channel before electron-builder` 测试（基线第 78–85 行，断言在第 81–82 行）硬编码 `build.ts --channel=… && electron-builder`。这两条旧正则会拒绝新的正确 Mac 入口，需父级同步调整为入口及渠道契约验证；该已有文件不在本次允许修改范围，因此保留原样。Mac 子任务未运行该整套测试。父级集成已将该处改为逐平台、逐渠道的完整命令等值断言；最终运行结果另行记录，不据新增静态测试通过宣称全量回归通过。
 
 本轮未安装依赖，未执行真实 Web/desktop 构建、打包、签名或任何 native 验收。真实环境验证仍需另行完成；本次未改变相关发布门槛。

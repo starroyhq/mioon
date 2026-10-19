@@ -15,13 +15,13 @@
 
 | 行为 | 源码证据 |
 | --- | --- |
-| 精确回执优先于当前 revision 检查；同 key 改输入/operation 冲突 | `packages/business/src/timeline.mjs:41–54` |
-| Undo/Redo 共用 travel，原子更新 timeline、cursor、回执；revision 单调加一 | `packages/business/src/timeline.mjs:103–118` |
-| 历史只保存 tracks、clips、durationFrames，不恢复 aggregate ID、createdAt 或 revision | `packages/business/src/timeline.mjs:76–80`；`timeline-recovery.mjs:99–104` |
-| 新编辑裁剪 redo 分支；失败事务不能留下分支删除或游标移动 | `packages/business/src/timeline.mjs:94–101,120–131` |
-| `not_applied` 仅用于已回滚、原 key 无回执、未开始写入的白名单拒绝 | `packages/business/src/timeline-recovery.mjs:14–23` |
-| 精确重放仍核验当前所属项目和素材，返回历史响应而非当前 timeline | `packages/business/src/timeline-recovery.mjs:143–153` |
-| 事务回调必须同步，禁止嵌套；异常回滚 | `packages/business/src/db.mjs:405–416` |
+| 精确回执优先于当前 revision 检查；同 key 改输入/operation 冲突 | `packages/business/src/timeline.ts:41–54` |
+| Undo/Redo 共用 travel，原子更新 timeline、cursor、回执；revision 单调加一 | `packages/business/src/timeline.ts:103–118` |
+| 历史只保存 tracks、clips、durationFrames，不恢复 aggregate ID、createdAt 或 revision | `packages/business/src/timeline.ts:76–80`；`timeline-recovery.ts:99–104` |
+| 新编辑裁剪 redo 分支；失败事务不能留下分支删除或游标移动 | `packages/business/src/timeline.ts:94–101,120–131` |
+| `not_applied` 仅用于已回滚、原 key 无回执、未开始写入的白名单拒绝 | `packages/business/src/timeline-recovery.ts:14–23` |
+| 精确重放仍核验当前所属项目和素材，返回历史响应而非当前 timeline | `packages/business/src/timeline-recovery.ts:143–153` |
+| 事务回调必须同步，禁止嵌套；异常回滚 | `packages/business/src/db.ts:405–416` |
 
 因此，丢失响应不能直接视为撤销失败。保留原 operation、projectId、expectedRevision、requestId；恢复历史回执后，重新读取当前 timeline/history，再形成新的编辑意图。普通 4xx、冲突字样或连接错误不能单独证明此前未提交。
 
@@ -54,7 +54,7 @@
 
 ## 当前 durable 入口与旧 runSession 的差异
 
-当前 UI 顺序是 `changeTimelineHistory` → `mutateTimeline` → `run` → `runDurable`。触发前检查编辑模式、项目、history 同步、busy/pending/dirty/online；mutation 还检查任务 lane（`apps/web/src/App.jsx:728–753`）。Undo/Redo 属于 durable allowlist，render 不属于（`packages/contracts/src/edit-tasks.mjs:7–10,21–24`）。
+当前 UI 顺序是 `changeTimelineHistory` → `mutateTimeline` → `run` → `runDurable`。触发前检查编辑模式、项目、history 同步、busy/pending/dirty/online；mutation 还检查任务 lane（`apps/web/src/App.jsx:728–753`）。Undo/Redo 属于 durable allowlist，render 不属于（`packages/contracts/src/edit-tasks.ts:7–10,21–24`）。
 
 `run()` 对新 durable 意图调用任务控制器，只有 excluded 操作或 `options.replay` 走 `runSession`（`App.jsx:354–356`）。`runDurable` 经 prepare/execute/acknowledge，失效 history、保留未知结果、按当前项目刷新；不会直接调用 RPC 或以 sessionStorage 作为新任务的事实来源（`:358–409`）。
 
@@ -71,7 +71,7 @@
 | 纯 Node 导入真实模块 | history 状态、busy/pending/dirty/offline、快照不一致；键盘/输入控件/弹窗屏蔽 | 实际 `timeline-history.js:13–38`、`timeline-keyboard.js:12–25`，无 React/SQLite |
 | 当前 App 普通 JS 函数 | 精确提取 run/runDurable、history 触发与 mutation 包装；注入任务服务验证成功/拒绝/未知/导航/重复点击 | 执行真实函数体，任务服务端口由合成替身提供；未执行 controller、HTTP、SQLite，不称端到端 |
 | 真实业务恢复 | undo/redo × 回执插入失败、COMMIT 后抛错 × store 重开/原 key 重放 | 需实际 contracts/Zod；缺依赖显式 skip，不改用重写的内存业务模型冒充 |
-| durable 针对性扩展 | undo/redo × afterClaim、beforeDispatch、afterBusinessCommit、beforeOutcomePersist、afterOutcomePersist × 重开 | 实际 `edit-tasks.mjs:228–260`、`:284–297`；覆盖 startup 不派发、旧 instance 拒绝、原 key 最多应用一次 |
+| durable 针对性扩展 | undo/redo × afterClaim、beforeDispatch、afterBusinessCommit、beforeOutcomePersist、afterOutcomePersist × 重开 | 实际 `edit-tasks.ts:228–260`、`:284–297`；覆盖 startup 不派发、旧 instance 拒绝、原 key 最多应用一次 |
 | 历史来源边界 | 两方向历史目标 owner 失效、恢复后原 key 重放 | 仅列明具体后续用例；本轮新增测试未纳入这一项，也未执行 |
 
 durable 五阶段不是完全未测：旧矩阵已有 track.add；这里要求补充 Undo/Redo 与历史 cursor 的交叉断言。缺依赖时应保留明确 skip 原因，不能将未执行的真实路径计入纯 Node 通过数。

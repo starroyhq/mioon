@@ -118,17 +118,17 @@ export default function AgentSettings({ onClose, beforeClose, closeLabel, onNavi
               <div className="agent-settings-section-title"><h3 id="agent-connection-heading">{t('agent.settings.modelService')}</h3><span>{t('agent.settings.presetHelp')}</span></div>
               <div className="agent-settings-grid">
                 <div className="agent-settings-field"><Label htmlFor="agent-preset">{t('agent.settings.preset')}</Label>
-                  <WorkbenchSelect id="agent-preset" data-testid="agent-settings-preset" value={draft.presetId} disabled={!editable} onChange={(event: ChangeEvent<HTMLSelectElement>) => withClearKey(() => session.current?.selectPreset(event.target.value))}>
+                  <WorkbenchSelect id="agent-preset" data-testid="agent-settings-preset" value={draft.presetId} disabled={!editable} onChange={(event: {target: {value: string}}) => withClearKey(() => session.current?.selectPreset(event.target.value))}>
                     {snapshot.presets.map(item => <option key={item.id} value={item.id}>{agentPresetLabel(item, t)}</option>)}
                   </WorkbenchSelect>
                 </div>
                 <div className="agent-settings-field"><Label htmlFor="agent-platform">{t('agent.settings.platform')}</Label>
-                  <WorkbenchSelect id="agent-platform" data-testid="agent-settings-platform" value={draft.platformId} disabled={!editable} onChange={(event: ChangeEvent<HTMLSelectElement>) => withClearKey(() => session.current?.selectPlatform(event.target.value))}>
+                  <WorkbenchSelect id="agent-platform" data-testid="agent-settings-platform" value={draft.platformId} disabled={!editable} onChange={(event: {target: {value: string}}) => withClearKey(() => session.current?.selectPlatform(event.target.value))}>
                     {(preset?.platforms || []).map(item => <option key={item.id} value={item.id}>{agentPlatformLabel(preset!.id, item, t)}</option>)}
                   </WorkbenchSelect>
                 </div>
                 <div className="agent-settings-field agent-settings-full"><Label htmlFor="agent-protocol">{t('agent.settings.protocol')}</Label>
-                  <WorkbenchSelect id="agent-protocol" data-testid="agent-settings-protocol" value={draft.protocol} disabled={!editable} onChange={(event: ChangeEvent<HTMLSelectElement>) => { if (usable()) session.current?.edit({ protocol: event.target.value }); }}>
+                  <WorkbenchSelect id="agent-protocol" data-testid="agent-settings-protocol" value={draft.protocol} disabled={!editable} onChange={(event: {target: {value: string}}) => { if (usable()) session.current?.edit({ protocol: event.target.value }); }}>
                     {(platform?.availableProtocols || []).map(protocol => <option key={protocol} value={protocol}>{AGENT_PROTOCOLS[protocol].label}</option>)}
                   </WorkbenchSelect>
                   <p className="agent-settings-help">{t('agent.settings.protocolHelp')}</p>
@@ -154,7 +154,7 @@ export default function AgentSettings({ onClose, beforeClose, closeLabel, onNavi
               {keyNotice && <p className="agent-settings-binding-warning" role="status" data-testid="agent-settings-key-cleared">{renderMessage(keyNotice)}</p>}
               {changedBinding && <div className="agent-settings-binding-warning" data-testid="agent-settings-binding-warning"><Icon name="info" size={14} /><span>{t('agent.settings.bindingWarning')}</span></div>}
               <div className="agent-settings-key-actions"><div className="agent-settings-field"><Label htmlFor="agent-storage">{t('agent.settings.keyStorage')}</Label>
-                <WorkbenchSelect id="agent-storage" data-testid="agent-settings-storage" value={state.storage} disabled={!editable || state.secretAction === 'remove'} onChange={(event: ChangeEvent<HTMLSelectElement>) => { if (usable()) session.current?.setStorage(event.target.value as 'session' | 'persistent'); }}>
+                <WorkbenchSelect id="agent-storage" data-testid="agent-settings-storage" value={state.storage} disabled={!editable || state.secretAction === 'remove'} onChange={(event: {target: {value: string}}) => { if (usable()) session.current?.setStorage(event.target.value as 'session' | 'persistent'); }}>
                   <option value="session">{t(snapshot.storage.sessionScope === 'app' ? 'connections.storage.appSession' : 'connections.storage.serverSession')}</option><option value="persistent" disabled={!snapshot.storage.persistentAvailable}>{t(snapshot.storage.persistentAvailable ? 'connections.storage.persistent' : 'connections.storage.persistentUnavailable')}</option>
                 </WorkbenchSelect>
               </div>{snapshot.secret.configured && <WorkbenchTooltip content={state.secretAction === 'remove' ? t('agent.settings.undoRemoveHint') : t('agent.settings.removeHint')}><Button type="button" variant="ghost" className={`button small ${state.secretAction === 'remove' ? '' : 'danger-text'}`} data-testid="agent-settings-remove-key" aria-pressed={state.secretAction === 'remove'} disabled={!editable} onClick={() => withClearKey(() => session.current?.removeKey(state.secretAction !== 'remove'))}>{state.secretAction === 'remove' ? t('connections.undoRemove') : t('connections.removeKey')}</Button></WorkbenchTooltip>}</div>

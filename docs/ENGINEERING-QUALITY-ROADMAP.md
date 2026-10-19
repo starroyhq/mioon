@@ -15,14 +15,14 @@ This is a source-backed audit and delivery plan, not a security certification or
 
 The code already has meaningful boundaries. Keep them during cleanup:
 
-- Renderer sandbox, context isolation, no Node/preload bridge, same-origin network/navigation restrictions, denied permissions and guarded downloads: `apps/desktop/src/security.mjs:41–98`.
-- Loopback-only server, Host/Origin checks, timing-safe token comparison and CSP: `apps/server/src/index.mjs:13–17,74–89,157–165`.
-- Shell-free generated media argument arrays: `packages/business/src/media-processes.mjs:5–12`.
-- OS-encrypted Agent credentials, channel binding and fail-closed Linux `basic_text` rejection: `apps/desktop/src/secret-store.mjs:15–59`. Do not replace this with portable plaintext storage.
-- Bounded private Agent-settings envelopes, no-follow/inode checks and atomic replacement: `packages/business/src/agent/settings-file.mjs:15–85`.
+- Renderer sandbox, context isolation, no Node/preload bridge, same-origin network/navigation restrictions, denied permissions and guarded downloads: `apps/desktop/src/security.ts:41–98`.
+- Loopback-only server, Host/Origin checks, timing-safe token comparison and CSP: `apps/server/src/index.ts:13–17,74–89,157–165`.
+- Shell-free generated media argument arrays: `packages/business/src/media-processes.ts:5–12`.
+- OS-encrypted Agent credentials, channel binding and fail-closed Linux `basic_text` rejection: `apps/desktop/src/secret-store.ts:15–59`. Do not replace this with portable plaintext storage.
+- Bounded private Agent-settings envelopes, no-follow/inode checks and atomic replacement: `packages/business/src/agent/settings-file.ts:15–85`.
 - Immutable version/render snapshots, exact timeline/reference replay, and unknown-submission recovery. Refactors must retain the existing public contracts and historical responses.
-- Explicitly selected external media binaries and no automatic FFmpeg download: `apps/desktop/src/config.mjs:37–59`; `apps/desktop/src/main.mjs:31–49`.
-- Explicit channel identity, staged-identity check and hardened Electron fuses: `apps/desktop/builder-config.cjs:7–30`. Packaged contents exclude workspace data and runtime dependencies.
+- Explicitly selected external media binaries and no automatic FFmpeg download: `apps/desktop/src/config.ts:37–59`; `apps/desktop/src/main.ts:31–49`.
+- Explicit channel identity, staged-identity check and hardened Electron fuses: `apps/desktop/builder-config.ts:7–30`. Packaged contents exclude workspace data and runtime dependencies.
 
 ## Prioritized findings
 
@@ -44,9 +44,9 @@ Priority is delivery order: P1 before extending paid-generation/native distribut
 
 Type: actual behavioral divergence in a safety boundary; no live billing incident observed.
 
-`providers/runway.mjs:49–56` marks only POST 5xx, 408 and 3xx as uncertain. A POST 409, for example, becomes an ordinary failure. The newer `providers/live-common.mjs:57–69` instead allows only `[400,401,402,403,404,405,413,415,422,429]` as definite rejection and treats all other non-success statuses as unknown acceptance. `jobs.mjs:50–53` turns the former into `failed`; `services.mjs:92` allows a new-request-ID retry only for that state. This is an unsafe difference even though the worker does not automatically resend the POST.
+`providers/runway.ts:49–56` marks only POST 5xx, 408 and 3xx as uncertain. A POST 409, for example, becomes an ordinary failure. The newer `providers/live-common.ts:57–69` instead allows only `[400,401,402,403,404,405,413,415,422,429]` as definite rejection and treats all other non-success statuses as unknown acceptance. `jobs.ts:50–53` turns the former into `failed`; `services.ts:92` allows a new-request-ID retry only for that state. This is an unsafe difference even though the worker does not automatically resend the POST.
 
-Runway additionally calls unbounded `response.json()` at `runway.mjs:55`; the shared reader bounds JSON to 1 MiB, validates object shape and cancels oversized bodies at `live-common.mjs:10–26,64–69`.
+Runway additionally calls unbounded `response.json()` at `runway.ts:55`; the shared reader bounds JSON to 1 MiB, validates object shape and cancels oversized bodies at `live-common.ts:10–26,64–69`.
 
 Bounded fix: route Runway JSON requests through `createJsonRequest`; preserve API origin, `X-Runway-Version`, auth header, ratios, durations, approved-reference behavior and task-ID validation. Keep a documented explicit rejection-code set. Do not broaden it without provider-specific evidence that acceptance cannot have occurred.
 
@@ -62,9 +62,9 @@ Required regressions:
 
 Type: actual local-filesystem side-effect bug in the adapter helper, conditional on an escaping output-directory symlink. Normal worker destinations are generated managed paths; this is not a public arbitrary-path API.
 
-`providers/runway.mjs:144–148` recursively creates the output directory before checking its real path. A destination under `root/escape/new-directory/out.mp4`, with `escape` pointing outside root, can create `new-directory` outside managed storage before rejection. The shared helper checks the nearest existing ancestor first at `live-common.mjs:158–180`.
+`providers/runway.ts:144–148` recursively creates the output directory before checking its real path. A destination under `root/escape/new-directory/out.mp4`, with `escape` pointing outside root, can create `new-directory` outside managed storage before rejection. The shared helper checks the nearest existing ancestor first at `live-common.ts:158–180`.
 
-The duplicate downloader also opens its temporary file before entering its cleanup `try` (`runway.mjs:162–165`), whereas the common helper includes open/fetch/read in the cleanup scope (`live-common.mjs:183–231`). This can leave an acquired response body uncancelled when file creation fails.
+The duplicate downloader also opens its temporary file before entering its cleanup `try` (`runway.ts:162–165`), whereas the common helper includes open/fetch/read in the cleanup scope (`live-common.ts:183–231`). This can leave an acquired response body uncancelled when file creation fails.
 
 Bounded fix: use shared `outputUrl`/`downloadMp4` with Runway's exact allowlist, no CDN Authorization header, no redirect permission and cache invalidation. Preserve its output size cap and MP4 verification. The common helper is an improvement, not a claim to eliminate same-user directory-swap TOCTOU races.
 
@@ -74,9 +74,9 @@ Required regressions: escaping existing symlink plus nonexistent child must leav
 
 Type: actual validation gap for an existing or user-overridden data directory; not a claim that a newly created default POSIX directory is public.
 
-`db.mjs:5–8` creates root with mode 0700 only if creation is needed; it does not validate an existing root, media directory or SQLite path. Imported media use default creation permissions at `services.mjs:71–72`. `apps/server/src/index.mjs:52–59` reads an existing access-token with ordinary `readFile`, without checking ownership, mode, type, symlinks or size. Desktop setup similarly uses creation modes without validating an existing `userData` directory (`main.mjs:23–25`; `config.mjs:22,63,81–89`).
+`db.ts:5–8` creates root with mode 0700 only if creation is needed; it does not validate an existing root, media directory or SQLite path. Imported media use default creation permissions at `services.ts:71–72`. `apps/server/src/index.ts:52–59` reads an existing access-token with ordinary `readFile`, without checking ownership, mode, type, symlinks or size. Desktop setup similarly uses creation modes without validating an existing `userData` directory (`main.ts:23–25`; `config.ts:22,63,81–89`).
 
-Consequences depend on filesystem permissions: a pre-existing broadly readable workspace can expose project/media contents, and a broadly readable token exposes full local API access. A token symlink or unexpectedly large token file is accepted/read rather than rejected. This is stricter in the client reader (`packages/client/src/connection.mjs:19–41`) and Agent settings file than in server startup.
+Consequences depend on filesystem permissions: a pre-existing broadly readable workspace can expose project/media contents, and a broadly readable token exposes full local API access. A token symlink or unexpectedly large token file is accepted/read rather than rejected. This is stricter in the client reader (`packages/client/src/connection.ts:19–41`) and Agent settings file than in server startup.
 
 Bounded fix: introduce an explicitly scoped private-storage verifier before opening the DB or accepting a token. Validate root/media/token metadata and bounded reads; define whether non-private existing roots produce an actionable startup error or an explicit repair workflow. Do not silently chmod, change ownership or rewrite a user's unrelated directory. Preserve supported deliberate path overrides and channel separation.
 
@@ -86,7 +86,7 @@ Tests: existing 0755/0777 roots, broad token modes, token symlink/non-regular/ov
 
 Type: concrete least-privilege/resource-hardening gap; no FFmpeg exploit demonstrated.
 
-Desktop `utilityEnvironment` deliberately retains video-provider environment keys (`config.mjs:69–78`). `spawnMedia` does not supply a reduced child environment (`media-processes.mjs:6–7`), so media binaries inherit the backend environment, including provider secrets when configured. `media.mjs:6` bounds stderr but accumulates stdout without a byte cap. Imported bytes are capped, but decoded dimensions/stream metadata and concurrent probing have no centralized resource policy (`services.mjs:55–78`; `media.mjs:7–10`).
+Desktop `utilityEnvironment` deliberately retains video-provider environment keys (`config.ts:69–78`). `spawnMedia` does not supply a reduced child environment (`media-processes.ts:6–7`), so media binaries inherit the backend environment, including provider secrets when configured. `media.ts:6` bounds stderr but accumulates stdout without a byte cap. Imported bytes are capped, but decoded dimensions/stream metadata and concurrent probing have no centralized resource policy (`services.ts:55–78`; `media.ts:7–10`).
 
 Bounded fix: a media runtime module owns executable selection, required OS/temp/locale environment, `shell:false`, `windowsHide`, timeout, stdout/stderr byte limits and cancellation. Exclude provider/Agent credentials and Node injection variables. Preserve intentional binary-support variables only through an explicit platform policy. Add input/probe limits based on accepted product capabilities, rather than a guessed blanket codec ban.
 
@@ -96,7 +96,7 @@ Tests: fake secret sentinels absent in child environment; executable paths with 
 
 Type: actual reliability gap, with a race-triggered crash risk rather than an established remote exploit.
 
-`apps/server/src/index.mjs:126–140,145–151` stats files and later pipes a new `createReadStream` without an error handler. An asynchronous open/read error after headers are written is not caught by the surrounding async `try/catch`; the source stream's unhandled error can terminate the backend. Missing-media recovery, external file changes and rebuilds make this worth covering.
+`apps/server/src/index.ts:126–140,145–151` stats files and later pipes a new `createReadStream` without an error handler. An asynchronous open/read error after headers are written is not caught by the surrounding async `try/catch`; the source stream's unhandled error can terminate the backend. Missing-media recovery, external file changes and rebuilds make this worth covering.
 
 Bounded fix: use one guarded stream/pipeline helper, preferably opening the file once and using its metadata, and cancel the source on client disconnect. Send an appropriate error only before headers; otherwise close the response safely. Do not change auth/range semantics.
 
@@ -106,9 +106,9 @@ Tests: deletion/change between metadata and read, injected read error, client ab
 
 Type: existing lifecycle mismatch plus native-platform verification gap.
 
-`jobs.mjs:13` constructs provider context without a cancellation signal. Worker stop sets `stopped`, interrupts the currently known media set, then waits for `busy` (`jobs.mjs:87–88`). An in-flight provider await can subsequently reach another media spawn; the stopped flag is not checked between all phases. Meanwhile desktop supervision requests graceful stop, kills at 10 seconds and forces again after two seconds (`supervisor.mjs:87–103`), while individual provider requests can last 30–60 seconds and media runs longer. Forced shutdown and later unknown-submission recovery are therefore plausible even for a routine quit.
+`jobs.ts:13` constructs provider context without a cancellation signal. Worker stop sets `stopped`, interrupts the currently known media set, then waits for `busy` (`jobs.ts:87–88`). An in-flight provider await can subsequently reach another media spawn; the stopped flag is not checked between all phases. Meanwhile desktop supervision requests graceful stop, kills at 10 seconds and forces again after two seconds (`supervisor.ts:87–103`), while individual provider requests can last 30–60 seconds and media runs longer. Forced shutdown and later unknown-submission recovery are therefore plausible even for a routine quit.
 
-Media cleanup tracks direct child PIDs only (`media-processes.mjs:3–24`; `supervisor.mjs:50–55,75–79`). This is not proof that descendant processes or native Windows termination behave correctly. Avoid casually adding process-group signals, which are platform-specific and can kill unrelated processes if ownership is wrong.
+Media cleanup tracks direct child PIDs only (`media-processes.ts:3–24`; `supervisor.ts:50–55,75–79`). This is not proof that descendant processes or native Windows termination behave correctly. Avoid casually adding process-group signals, which are platform-specific and can kill unrelated processes if ownership is wrong.
 
 Bounded fix: give each worker operation an AbortController; prevent any new media operation after stop; define safe checkpoints and the preservation of `submission_unknown` when aborting a possibly accepted POST. Place platform termination behind a small owned-child adapter with explicit graceful/hard-stop outcomes. The active Agent stage must independently close its SSE connections before the server drain finishes.
 
@@ -118,7 +118,7 @@ Tests: stop during POST, polling, download, between await and spawn, probe, mult
 
 Type: deferred platform capability, backed by explicit code gaps.
 
-`agent/settings-file.mjs:9` unconditionally accepts Windows ownership/privacy, and `packages/client/src/connection.mjs:29–32` skips credential owner/mode validation on Windows. Passing 0600/0700 to file APIs does not establish that this application's Windows ACL requirement has been checked. `desktopSecretStorage` allows non-Linux platforms based on encryption availability (`secret-store.mjs:15–25`); existing tests pass fake `darwin`/`win32` values (`tests/desktop-agent-secrets.test.mjs:72`), not a native account/keychain.
+`agent/settings-file.ts:9` unconditionally accepts Windows ownership/privacy, and `packages/client/src/connection.ts:29–32` skips credential owner/mode validation on Windows. Passing 0600/0700 to file APIs does not establish that this application's Windows ACL requirement has been checked. `desktopSecretStorage` allows non-Linux platforms based on encryption availability (`secret-store.ts:15–25`); existing tests pass fake `darwin`/`win32` values (`tests/desktop-agent-secrets.test.mjs:72`), not a native account/keychain.
 
 Required hook: platform-private-storage operations to create/check current-user-only directories and credential/discovery files, reject dangerous inherited grants or offer explicit repair, and report a safe unavailable reason. Validate encrypted secret storage and plaintext MCP token protection separately. Treat network/UNC, removable/FAT-style, redirected-profile and junction/reparse-point storage as explicit supported/unsupported cases; do not silently certify them.
 
@@ -128,11 +128,11 @@ Native gate: another local user cannot read token/config/DB/media; invalid ACL s
 
 Type: deferred capability, not a regression in an advertised tested installer.
 
-- macOS has DMG arm64/x64 configuration with `identity:null` and `gatekeeperAssess:false`, but no completed signing/notarization path (`builder-config.cjs:40–48`). Hardened-runtime configuration alone is not a signed/notarized release.
-- No Windows target or package script exists (`builder-config.cjs:32–48`; `apps/desktop/package.json:8–18`). Define per-user install behavior, app/channel identity, executable name, x64/arm64 support decision and native signing before claiming readiness.
-- Packaged QA assumes `linux-unpacked` (`scripts/packaged-qa.mjs:17`; `scripts/inspect-package.mjs:20–22`; `scripts/identity-packaged-qa.mjs:47–59`). Some tests assume `/tmp`, `/bin/sh` and Unix symlinks (`tests/media-runtime-paths.test.mjs:11–16`), and desktop smoke asserts numeric POSIX modes (`src/smoke-checks.mjs:98–99`). These need native equivalents, not unconditional skips.
-- FFmpeg concat files embed platform-native absolute paths (`timeline-media.mjs:77–83`). Drive letters, backslashes, apostrophes, Unicode and network locations need actual FFmpeg validation; Linux success does not prove either a Windows defect or Windows compatibility. Prefer a tested relative-entry/working-directory contract if portability is problematic.
-- Export publication uses a filesystem hardlink (`jobs.mjs:80–82`). State supported filesystem requirements or provide an equally non-overwriting fallback before advertising arbitrary external/network storage. Do not replace it with an overwriting rename.
+- macOS has DMG arm64/x64 configuration with `identity:null` and `gatekeeperAssess:false`, but no completed signing/notarization path (`builder-config.ts:40–48`). Hardened-runtime configuration alone is not a signed/notarized release.
+- No Windows target or package script exists (`builder-config.ts:32–48`; `apps/desktop/package.json:8–18`). Define per-user install behavior, app/channel identity, executable name, x64/arm64 support decision and native signing before claiming readiness.
+- Packaged QA assumes `linux-unpacked` (`scripts/packaged-qa.ts:17`; `scripts/inspect-package.ts:20–22`; `scripts/identity-packaged-qa.ts:47–59`). Some tests assume `/tmp`, `/bin/sh` and Unix symlinks (`tests/media-runtime-paths.test.mjs:11–16`), and desktop smoke asserts numeric POSIX modes (`src/smoke-checks.ts:98–99`). These need native equivalents, not unconditional skips.
+- FFmpeg concat files embed platform-native absolute paths (`timeline-media.ts:77–83`). Drive letters, backslashes, apostrophes, Unicode and network locations need actual FFmpeg validation; Linux success does not prove either a Windows defect or Windows compatibility. Prefer a tested relative-entry/working-directory contract if portability is problematic.
+- Export publication uses a filesystem hardlink (`jobs.ts:80–82`). State supported filesystem requirements or provide an equally non-overwriting fallback before advertising arbitrary external/network storage. Do not replace it with an overwriting rename.
 - `publish:null` and `--publish never` correctly leave update distribution disabled. There is no current updater implementation. Keep updates explicitly unsupported until signed-feed/channel verification, downgrade policy, migration compatibility and rollback tests exist.
 
 ### EQ-09 · P2 · High-coupling UI and duplicated semantics should be extracted incrementally
@@ -151,18 +151,18 @@ Suggested sequence, after the streamed-chat integrator releases the hot files:
 
 Other duplication boundaries:
 
-- Runway/common provider networking/download/caching is the first substantive consolidation because it already caused divergence (EQ-01/02). Shared poll caching also deduplicates pending/error GETs (`live-common.mjs:74–85`), while Runway caches only successful responses (`runway.mjs:58–65`). Preserve its documented minimum poll interval under transient failures.
-- Timeline constants occur in contracts (`packages/contracts/src/index.mjs:5–10`), service (`timeline.mjs:4–7,24`) and renderer (`timeline-media.mjs:5,12–32`). Centralize pure limits/timebase helpers; retain separate validation at public API and recovered-render boundaries as intentional defense in depth.
-- `services.mjs` is 16,676 bytes in 102 lines. Extract asset import and generation/job orchestration after characterization tests; retain transaction boundaries and public projections. Keep a narrow registration surface rather than introducing a new business layer alongside the existing one.
-- Health/client versions are literal `0.4.0` (`apps/server/src/index.mjs:81`; `packages/client/src/index.mjs:8`) while root/desktop manifests are `0.4.1`. Tests currently assert the former (`tests/server-lifecycle.test.mjs:23`). Decide whether this is protocol version or app version; name it explicitly and generate consistent app/build identity metadata instead of mechanically changing compatibility versions.
+- Runway/common provider networking/download/caching is the first substantive consolidation because it already caused divergence (EQ-01/02). Shared poll caching also deduplicates pending/error GETs (`live-common.ts:74–85`), while Runway caches only successful responses (`runway.ts:58–65`). Preserve its documented minimum poll interval under transient failures.
+- Timeline constants occur in contracts (`packages/contracts/src/index.ts:5–10`), service (`timeline.ts:4–7,24`) and renderer (`timeline-media.ts:5,12–32`). Centralize pure limits/timebase helpers; retain separate validation at public API and recovered-render boundaries as intentional defense in depth.
+- `services.ts` is 16,676 bytes in 102 lines. Extract asset import and generation/job orchestration after characterization tests; retain transaction boundaries and public projections. Keep a narrow registration surface rather than introducing a new business layer alongside the existing one.
+- Health/client versions are literal `0.4.0` (`apps/server/src/index.ts:81`; `packages/client/src/index.ts:8`) while root/desktop manifests are `0.4.1`. Tests currently assert the former (`tests/server-lifecycle.test.mjs:23`). Decide whether this is protocol version or app version; name it explicitly and generate consistent app/build identity metadata instead of mechanically changing compatibility versions.
 
 ### EQ-10 · P3 · Repository/release hygiene needs a small final gate
 
 Type: preventive packaging/credential hygiene.
 
-`.gitignore` ignores `access-token`, `desktop-token` and `mcp-connection.json`, but not the currently written `mcp-token` (`apps/desktop/src/config.mjs:82–87`). Default app-data locations are outside the repository and `/data*` is ignored, so this is not evidence that any real token is tracked. Add the exact current filename to exclusions and use synthetic-file packaging tests for custom repo-local userData. Never scan or print real secrets as part of QA.
+`.gitignore` ignores `access-token`, `desktop-token` and `mcp-connection.json`, but not the currently written `mcp-token` (`apps/desktop/src/config.ts:82–87`). Default app-data locations are outside the repository and `/data*` is ignored, so this is not evidence that any real token is tracked. Add the exact current filename to exclusions and use synthetic-file packaging tests for custom repo-local userData. Never scan or print real secrets as part of QA.
 
-The repository has a lockfile and license collection (`apps/desktop/scripts/build.mjs:26–58`), but no checked-in cross-platform CI directory was found in this audit. Introduce portable unit/contract lanes and separate native smoke/package lanes; record dependency/advisory review against the actual release lockfile. No dependency vulnerability assessment was executed here, so no vulnerability-free claim follows from this audit.
+The repository has a lockfile and license collection (`apps/desktop/scripts/build.ts:26–58`), but no checked-in cross-platform CI directory was found in this audit. Introduce portable unit/contract lanes and separate native smoke/package lanes; record dependency/advisory review against the actual release lockfile. No dependency vulnerability assessment was executed here, so no vulnerability-free claim follows from this audit.
 
 ## Native-platform verification matrix
 

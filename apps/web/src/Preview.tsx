@@ -18,15 +18,71 @@ import { useWorkspaceVisibility } from './workspace-visibility.tsx';
 import { exportHistoryDelivery } from './export-settings-state.ts';
 import { sourceFrameCount, sourcePositionFrame, sourceSeekMatchesTime, SOURCE_RANGE_FPS } from './source-range-state.ts';
 import { opacityCandidateRenderPresentation } from './opacity-candidate-render-presentation.ts';
+import type { AppAsset, AppTimeline, AppTimelineClip } from './App.tsx';
+import type { TimelineAudioPreviewView } from './use-timeline-audio-preview.ts';
+
+type Translate = ReturnType<typeof useI18n>['t'];
+export interface PreviewCaptureIntent {readonly sourceScope: string; readonly sourceAssetId: string; readonly sourceHash: string; readonly sourceFrame: number}
+export interface PreviewSeek {scope?: string | null; id: number | string; frame: number}
+export interface PreviewRenderJobView {
+  id?: string; status: string; url?: string | null; assetId?: string | null; timelineRevision?: number | null;
+  purpose?: string; progress?: number; error?: unknown; providerId?: string;
+  snapshot?: {timeline?: {durationFrames?: number; width?: number; height?: number} | null} | null;
+  [key: string]: unknown;
+}
+interface PreviewDeliveryView {dimensions: string; fps: string | number; rateMessage?: unknown; rate?: unknown; upscale?: boolean}
+interface SourceFrameCaptureControlProps {
+  captureKey: string; inspect: () => PreviewCaptureIntent | null; subscribe: (update: () => void) => () => void;
+  onCaptureFrame: (intent: PreviewCaptureIntent) => unknown; captureBusy: boolean;
+}
+interface CaptureToken {captureKey: string; inspect: () => PreviewCaptureIntent | null; onCaptureFrame: (intent: PreviewCaptureIntent) => unknown; captureBusy: boolean}
+interface ReadyCapture {key: string; intent: PreviewCaptureIntent | null}
+interface MediaBinding {
+  element: HTMLMediaElement; key: string; url: string; programmaticSeek: number | null; sourceSeekIntent: number | null;
+  pendingSourceSeek: {scope?: string | null; id: number | string} | null; lastSeekRequest: string | number | null;
+}
+interface CaptureContext {key: string; visible: boolean; busy: boolean; scope?: string | null}
+interface SourceState {scope?: string | null; position: number; request: PreviewSeek | null}
+export interface PreviewProps {
+  onBeforePlay?: () => unknown;
+  audioPreview?: TimelineAudioPreviewView | null;
+  onRegisterMediaPause?: (pause: () => void) => unknown;
+  visible?: boolean;
+  kind: string;
+  onKind: (kind: string) => unknown;
+  asset?: AppAsset | null;
+  clip?: AppTimelineClip | null;
+  timeline?: AppTimeline | null;
+  job?: PreviewRenderJobView | null;
+  pendingJob?: PreviewRenderJobView | null;
+  playhead: number;
+  onSeek: (frame: number) => unknown;
+  sourceScope?: string | null;
+  sourcePosition?: number;
+  sourceSeek?: PreviewSeek | null;
+  onSourcePosition?: (frame: number, scope?: string | null) => unknown;
+  onRender: (purpose: string) => unknown;
+  busy?: boolean;
+  onCanvas?: () => unknown;
+  onImport?: () => unknown;
+  onSeed?: () => unknown;
+  canSeed?: boolean;
+  seedBusy?: boolean;
+  onCaptureFrame?: (intent: PreviewCaptureIntent) => unknown;
+  captureBusy?: boolean;
+  opacityApplication?: unknown;
+  heldExportIds?: readonly string[];
+  candidateConnected?: boolean;
+}
 
 // Media readiness belongs to the rendered binding. A retained click handler
 // always asks the current player again; its displayed enabled state is advisory.
-export function SourceFrameCaptureControl({ captureKey, inspect, subscribe, onCaptureFrame, captureBusy }) {
+export function SourceFrameCaptureControl({ captureKey, inspect, subscribe, onCaptureFrame, captureBusy }: SourceFrameCaptureControlProps) {
   const { t } = useI18n();
-  const [ready, setReady] = useState(null), [submitting, setSubmitting] = useState(false);
-  const live = useRef(null), inFlight = useRef(false);
+  const [ready, setReady] = useState<ReadyCapture | null>(null), [submitting, setSubmitting] = useState(false);
+  const live = useRef<CaptureToken | null>(null), inFlight = useRef(false);
   useLayoutEffect(() => {
-    const token = { captureKey, inspect, onCaptureFrame, captureBusy };
+    const token: CaptureToken = { captureKey, inspect, onCaptureFrame, captureBusy };
     live.current = token;
     const update = () => {
       if (live.current !== token) return;
@@ -36,7 +92,7 @@ export function SourceFrameCaptureControl({ captureKey, inspect, subscribe, onCa
     const unsubscribe = subscribe(update); update();
     return () => { if (live.current === token) live.current = null; unsubscribe(); };
   }, [captureKey, inspect, subscribe, onCaptureFrame, captureBusy]);
-  async function capture() {
+  async function capture(): Promise<void> {
     const token = live.current;
     if (!token || token.captureKey !== captureKey || token.captureBusy || inFlight.current) return;
     const intent = token.inspect();
@@ -48,28 +104,28 @@ export function SourceFrameCaptureControl({ captureKey, inspect, subscribe, onCa
   return <div className="source-frame-capture"><Button type="button" variant="outline" size="sm" data-testid="source-frame-capture" disabled={captureBusy || submitting || ready?.key !== captureKey || !ready?.intent} onClick={capture}>{t('timeline.preview.capture')}</Button><span className="input-hint">{t('timeline.preview.captureHint')}</span></div>;
 }
 
-export default function Preview({ onBeforePlay, audioPreview, onRegisterMediaPause, visible = true, kind, onKind, asset, clip, timeline, job, pendingJob, playhead, onSeek, sourceScope, sourcePosition = 0, sourceSeek, onSourcePosition, onRender, busy, onCanvas, onImport, onSeed, canSeed = false, seedBusy = false, onCaptureFrame, captureBusy = false, opacityApplication = null, heldExportIds = [], candidateConnected = false }) {
+export default function Preview({ onBeforePlay, audioPreview, onRegisterMediaPause, visible = true, kind, onKind, asset, clip, timeline, job, pendingJob, playhead, onSeek, sourceScope, sourcePosition = 0, sourceSeek, onSourcePosition, onRender, busy, onCanvas, onImport, onSeed, canSeed = false, seedBusy = false, onCaptureFrame, captureBusy = false, opacityApplication = null, heldExportIds = [], candidateConnected = false }: PreviewProps): React.ReactElement {
   const { t, renderMessage } = useI18n();
   const {preferences} = useUiPreferences();
-  const media = useRef(null);
-  useLayoutEffect(() => onRegisterMediaPause?.(() => media.current?.pause()), [onRegisterMediaPause]);
+  const media = useRef<HTMLMediaElement | null>(null);
+  useLayoutEffect(() => { onRegisterMediaPause?.(() => media.current?.pause()); }, [onRegisterMediaPause]);
   const ancestorVisible = useWorkspaceVisibility();
   visible = visible && ancestorVisible;
-  const visibleRef = useRef(visible);
+  const visibleRef = useRef<boolean>(visible);
   const rendered = kind === 'timeline';
   const candidate = opacityApplication !== null;
-  const candidateOutput = candidate && rendered ? opacityCandidateRenderPresentation(opacityApplication, job, {projectId: timeline?.projectId, timelineId: timeline?.id, connected: candidateConnected, heldExportIds}) : null;
-  const ready = candidate ? Boolean(candidateOutput?.previewHref) : job && ['succeeded','completed','ready'].includes(job.status) && (job.url || job.assetId);
-  const stale = ready && job.timelineRevision !== timeline?.revision;
-  const url = rendered ? ready ? candidate ? candidateOutput.previewHref : (job.url || `/media/${job.assetId}`) : '' : assetUrl(asset);
-  const type = rendered ? 'video' : assetKind(asset);
+  const candidateOutput = candidate && rendered ? opacityCandidateRenderPresentation(opacityApplication, job, {projectId: timeline?.projectId, timelineId: timeline?.id, connected: candidateConnected, heldExportIds}) as {previewHref?: string; downloadHref?: string} | null : null;
+  const ready = candidate ? Boolean(candidateOutput?.previewHref) : Boolean(job && ['succeeded','completed','ready'].includes(job.status) && (job.url || job.assetId));
+  const stale = Boolean(ready && job!.timelineRevision !== timeline?.revision);
+  const url = rendered ? ready ? candidate ? candidateOutput?.previewHref ?? '' : (job!.url || `/media/${job!.assetId}`) : '' : assetUrl(asset);
+  const type: string = rendered ? 'video' : assetKind(asset);
   const mediaKey = `${kind}:${type}:${url}:${rendered ? job?.id || job?.timelineRevision : asset?.id || ''}:${clip?.id || ''}:${!rendered && !clip ? sourceScope || '' : ''}:${!rendered ? asset?.sha256 || '' : ''}`;
-  const activeMedia = useRef(null);
-  const appliedSourceSeek = useRef(null);
+  const activeMedia = useRef<MediaBinding | null>(null);
+  const appliedSourceSeek = useRef<{scope?: string | null; id: number | string} | null>(null);
   const sourceRequest = sourceSeek && sourceSeek.scope === sourceScope ? sourceSeek : null;
-  const currentSource = useRef(null);
+  const currentSource = useRef<SourceState>({ scope: sourceScope, position: sourcePosition, request: null });
   currentSource.current = { scope: sourceScope, position: sourcePosition, request: sourceRequest };
-  const captureObserver = useRef(null), captureContext = useRef(null);
+  const captureObserver = useRef<(() => void) | null>(null), captureContext = useRef<CaptureContext>({ key: '', visible, busy: captureBusy, scope: sourceScope });
   const captureKey = `${mediaKey}:${asset?.sha256 || ''}`;
   captureContext.current = { key: captureKey, visible, busy: captureBusy, scope: sourceScope };
   const sourceSeconds = rendered ? playhead / SOURCE_RANGE_FPS : clip ? ((clip.sourceInFrame || 0) + Math.max(0, Math.min(clip.durationFrames, playhead - clip.startFrame))) / SOURCE_RANGE_FPS : null;
@@ -92,40 +148,42 @@ export default function Preview({ onBeforePlay, audioPreview, onRegisterMediaPau
     if (!visible) media.current?.pause();
     captureObserver.current?.();
   }, [visible, mediaKey]);
-  function isCurrentMedia(element) {
+  function isCurrentMedia(element: HTMLMediaElement | null): boolean {
     const active = activeMedia.current;
-    return Boolean(visibleRef.current && element && element.isConnected && element === media.current && active?.element === element && active.key === mediaKey && active.url === url && element.getAttribute('src') === url);
+    return Boolean(visibleRef.current && element && element.isConnected && element === media.current && active !== null && active.element === element && active.key === mediaKey && active.url === url && element.getAttribute('src') === url);
   }
   function inspectCapture() {
     const element = media.current, binding = activeMedia.current, current = captureContext.current;
+    if (!element || !binding || !current) return null;
     if (kind !== 'source' || clip || type !== 'video' || !onCaptureFrame || !sourceScope || current?.key !== captureKey || current.scope !== sourceScope || !current.visible || current.busy || !isCurrentMedia(element) || !element.paused || element.seeking || element.readyState < 2 || !Number.isFinite(element.currentTime) || element.currentTime < 0 || binding.pendingSourceSeek || binding.programmaticSeek !== null) return null;
     const request = currentSource.current.request;
     const acknowledged = request && appliedSourceSeek.current?.scope === sourceScope && appliedSourceSeek.current?.id === request.id;
     if (request && !acknowledged) return null;
     const count = sourceFrameCount(asset?.duration);
-    if (count === null || !/^[a-f0-9]{64}$/.test(asset?.sha256 || '')) return null;
-    const intent = acknowledged && binding.sourceSeekIntent === request.frame && sourceSeekMatchesTime(element.currentTime, request.frame) ? request.frame : null;
+    if (count === null || !asset || !/^[a-f0-9]{64}$/.test(asset.sha256 || '')) return null;
+    const intent = acknowledged && binding.sourceSeekIntent === request?.frame && sourceSeekMatchesTime(element.currentTime, request!.frame) ? request!.frame : null;
     const sourceFrame = sourcePositionFrame(element.currentTime, count, intent);
     if (!Number.isSafeInteger(sourceFrame) || sourceFrame < 0 || sourceFrame >= count) return null;
-    return Object.freeze({ sourceScope, sourceAssetId: asset.id, sourceHash: asset.sha256, sourceFrame });
+    return Object.freeze({ sourceScope: sourceScope as string, sourceAssetId: asset.id, sourceHash: asset.sha256, sourceFrame });
   }
-  function subscribeCapture(update) {
+  function subscribeCapture(update: () => void): () => void {
     captureObserver.current = update;
     return () => { if (captureObserver.current === update) captureObserver.current = null; };
   }
-  function updateCapture(event) {
+  function updateCapture(event: React.SyntheticEvent<HTMLMediaElement>): void {
     if (isCurrentMedia(event.currentTarget)) captureObserver.current?.();
   }
-  function seekMedia(element, loadedMetadata = false) {
-    if (!isCurrentMedia(element)) return;
+  function seekMedia(element: HTMLMediaElement | null, loadedMetadata = false): void {
+    if (!isCurrentMedia(element) || !element) return;
     const standaloneSource = !rendered && !clip;
     if (standaloneSource && element.readyState < 1) return;
     const source = currentSource.current, request = source.request;
     const newSourceRequest = request && (appliedSourceSeek.current?.scope !== source.scope || appliedSourceSeek.current?.id !== request.id);
-    const sourceFrame = newSourceRequest ? request.frame : source.position;
+    const sourceFrame = newSourceRequest ? request!.frame : source.position;
     const targetSeconds = standaloneSource ? sourceFrame / SOURCE_RANGE_FPS : sourceSeconds;
     if (!Number.isFinite(targetSeconds)) return;
     const binding = activeMedia.current;
+    if (!binding) return;
     const currentSeekRequest = standaloneSource ? `${source.scope || ''}:${request?.id ?? 'initial'}` : seekRequest;
     // Reopening alone preserves native playback position. A changed playhead or
     // source while hidden still applies its deferred seek when shown again.
@@ -138,29 +196,30 @@ export default function Preview({ onBeforePlay, audioPreview, onRegisterMediaPau
       binding.sourceSeekIntent = sourceFrame;
       // A currentTime assignment is not confirmation: metadata or seeked may
       // still be pending across rerenders, tab changes, or a hidden player.
-      binding.pendingSourceSeek = newSourceRequest ? { scope: source.scope, id: request.id } : null;
+      binding.pendingSourceSeek = newSourceRequest ? { scope: source.scope, id: request!.id } : null;
     }
     const max = Number.isFinite(element.duration) ? Math.max(0, element.duration - (!rendered && !clip ? 0 : .001)) : targetSeconds;
     const seconds = Math.max(0, Math.min(targetSeconds, max));
     if (Math.abs(element.currentTime - seconds) > (!rendered && !clip ? 1e-7 : .02)) {
-      activeMedia.current.programmaticSeek = seconds;
+      activeMedia.current!.programmaticSeek = seconds;
       element.currentTime = seconds;
     } else if (!rendered && !clip) publishSourcePosition(element);
     captureObserver.current?.();
   }
   useEffect(() => { seekMedia(media.current); }, [playhead, mediaKey, visible, clip?.sourceInFrame, clip?.startFrame, clip?.durationFrames, seekRequest]);
-  function guardPlayback(event) {
+  function guardPlayback(event: React.SyntheticEvent<HTMLMediaElement>): void {
     const element = event.currentTarget;
     if (!isCurrentMedia(element)) { element.pause(); return; }
     onBeforePlay?.();
     audioPreview?.controller.revoke();
-    if (!element.seeking) activeMedia.current.programmaticSeek = null;
+    if (!element.seeking) activeMedia.current!.programmaticSeek = null;
     captureObserver.current?.();
   }
-  function finishSeek(event) {
+  function finishSeek(event: React.SyntheticEvent<HTMLMediaElement>): void {
     const element = event.currentTarget;
     if (!isCurrentMedia(element) || element.seeking) return;
     const binding = activeMedia.current;
+    if (!binding) return;
     const programmed = binding.programmaticSeek;
     binding.programmaticSeek = null;
     // Restoring the source's clamped display position must not rewrite the
@@ -169,9 +228,10 @@ export default function Preview({ onBeforePlay, audioPreview, onRegisterMediaPau
     updateTime(event, true);
     captureObserver.current?.();
   }
-  function publishSourcePosition(element) {
-    if (!isCurrentMedia(element) || element.seeking || element.readyState < 1) return;
+  function publishSourcePosition(element: HTMLMediaElement | null): void {
+    if (!isCurrentMedia(element) || !element || element.seeking || element.readyState < 1) return;
     const binding = activeMedia.current;
+    if (!binding) return;
     // A stable native position acknowledges the applied intent, including a
     // later native scrub that deliberately supersedes its target.
     if (binding.pendingSourceSeek) {
@@ -182,16 +242,16 @@ export default function Preview({ onBeforePlay, audioPreview, onRegisterMediaPau
     onSourcePosition?.(sourcePositionFrame(element.currentTime, sourceFrameCount(asset?.duration), binding.sourceSeekIntent), currentSource.current.scope);
     captureObserver.current?.();
   }
-  function pauseMedia(event) {
+  function pauseMedia(event: React.SyntheticEvent<HTMLMediaElement>): void {
     // Native pause may land between periodic timeupdate events. Mark controls
     // must see the paused source position, even when the last tick was older.
     if (!rendered && !clip) publishSourcePosition(event.currentTarget);
     updateCapture(event);
   }
-  function updateTime(event, nativeSeek = false) {
+  function updateTime(event: React.SyntheticEvent<HTMLMediaElement>, nativeSeek = false): void {
     const element = event.currentTarget;
     if (!isCurrentMedia(element)) { if (!visibleRef.current) element.pause(); return; }
-    if (!nativeSeek && (element.paused || element.seeking || activeMedia.current.programmaticSeek !== null)) return;
+    if (!nativeSeek && (element.paused || element.seeking || activeMedia.current!.programmaticSeek !== null)) return;
     if (rendered) onSeek(Math.round(element.currentTime * 30));
     else if (clip) {
       const frame = Math.round(element.currentTime * 30);
@@ -202,12 +262,12 @@ export default function Preview({ onBeforePlay, audioPreview, onRegisterMediaPau
     } else publishSourcePosition(element);
   }
   const deliveredArtifact = rendered && job?.purpose === 'export';
-  const delivery = exportHistoryDelivery(job);
+  const delivery = exportHistoryDelivery(job) as PreviewDeliveryView | null;
   const inProgress = pendingJob && ['queued','running','pending','submitting'].includes(pendingJob.status);
-  const displayFormat = rendered && ready ? job?.snapshot?.timeline : rendered ? timeline : asset;
+  const displayFormat = (rendered && ready ? job?.snapshot?.timeline : rendered ? timeline : asset) as {width?: number; height?: number; fps?: number; durationFrames?: number} | null | undefined;
   const formatLabel = displayFormat?.width && displayFormat?.height ? `${displayFormat.width} × ${displayFormat.height} · ${displayFormat.fps || timeline?.fps || 30} fps` : t('timeline.preview.formatUnavailable');
   const previewMetadata = rendered ? ready ? `${renderMessage(statusDescriptor(job.status))} · ${delivery ? `${delivery.dimensions} · ${delivery.fps} fps · ${renderMessage(delivery.rateMessage || delivery.rate)}` : formatLabel}` : t('timeline.preview.persistent') : clip ? t('timeline.preview.clipPosition',{start:clip.startFrame,source:clip.sourceInFrame??0,duration:clip.durationFrames}) : t('timeline.preview.independent');
-  function stepPreview(delta) {stepPreviewMedia({delta,media:media.current,current:isCurrentMedia(media.current),timelineMode:rendered || Boolean(clip),timelineDuration:timeline?.durationFrames || 0,playhead,sourcePosition,sourceCount:sourceFrameCount(asset?.duration),sourceFps:SOURCE_RANGE_FPS,binding:activeMedia.current,onSeek,notify:()=>captureObserver.current?.()});}
+  function stepPreview(delta: number): void {stepPreviewMedia({delta,media:media.current,current:isCurrentMedia(media.current),timelineMode:rendered || Boolean(clip),timelineDuration:timeline?.durationFrames || 0,playhead,sourcePosition,sourceCount:sourceFrameCount(asset?.duration),sourceFps:SOURCE_RANGE_FPS,binding:activeMedia.current,onSeek,notify:()=>captureObserver.current?.()});}
 
   return <Tabs value={kind} onValueChange={onKind} className={`central-preview edit-preview ${visible ? '' : 'workspace-hidden'}`} aria-label={t('timeline.preview.main')} data-testid="central-preview"><div className="preview-mode-bar"><h2 className="sr-only">{t('timeline.preview.title')}</h2><TabsList className="segmented" aria-label={t('timeline.preview.mode')}><TabsTrigger value="source" className={!rendered ? 'active' : ''} data-testid="preview-source-mode">{t('edit.preview.sourceTab')}</TabsTrigger><TabsTrigger value="timeline" className={rendered ? 'active' : ''} data-testid="preview-timeline-mode">{t('edit.preview.timelineTab')}</TabsTrigger></TabsList><span className="edit-preview-format" title={previewMetadata}>{formatLabel}</span></div>
     {rendered && stale && <div className="preview-notice stale" data-testid="preview-stale"><Icon name="info" size={15} /><span>{t('timeline.preview.stale', { rendered: job.timelineRevision, current: timeline?.revision ?? '—' })}</span><Button variant="ghost" disabled={busy || inProgress} onClick={() => onRender('preview')}>{t('timeline.preview.update')}</Button></div>}

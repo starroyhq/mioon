@@ -16,18 +16,18 @@
 
 ## 1. 已核实的脚本和配置引用
 
-根与桌面应用版本均为 `0.4.1`，根清单固定 Electron `44.7.0`、electron-builder `26.15.3`。`apps/desktop/build-metadata.cjs:20–42` 检查版本一致和精确 Electron 版本；这不校验目标平台实际二进制能否运行。
+根与桌面应用版本均为 `0.4.1`，根清单固定 Electron `44.7.0`、electron-builder `26.15.3`。`apps/desktop/build-metadata.ts` 检查版本一致和精确 Electron 版本；这不校验目标平台实际二进制能否运行。
 
 | 入口/引用 | 实际行为及证据 |
 | --- | --- |
-| `pnpm desktop:build` / `pnpm desktop:build:production` | 根 `package.json:28,36` 转发桌面 workspace；无参数默认 development，见 `apps/desktop/identity.cjs:13–18` |
-| `pnpm desktop` | 根 `package.json:29` → `apps/desktop/package.json:10` 的 `electron build`；运行最近一次 staging 的渠道，不固定为开发版 |
-| `pnpm --filter @mioon/desktop package:mac` | `apps/desktop/package.json:13`：production staging → `electron-builder.cjs --mac --publish never` |
-| `pnpm --filter @mioon/desktop package:mac:dev` | `apps/desktop/package.json:18`：development staging → `electron-builder.dev.cjs --mac --publish never` |
-| 两份 builder 入口 | `apps/desktop/electron-builder.cjs:1–2` / `electron-builder.dev.cjs:1–2` 均调用 `builder-config.cjs`，参数分别为 production/development |
-| macOS 架构和产物 | `apps/desktop/builder-config.cjs:40–47` 配置 `dmg`，架构数组为 `arm64`、`x64`，文件名包含 `${arch}`；没有配置 universal 目标 |
-| Windows 入口 | `apps/desktop/package.json:8–18` 没有 Windows 打包脚本；`builder-config.cjs:32–48` 只有 linux/mac 平台配置。不能把 builder 的潜在默认目标当作项目已支持的 Windows 发行格式 |
-| 完整源码构建入口 | `scripts/lib/local-tooling.mjs:134–139` 依次构建 Web 与桌面 staging；它没有调用 electron-builder，也不签名、公证或生成 DMG |
+| `pnpm desktop:build` / `pnpm desktop:build:production` | 根 `package.json` 转发桌面 workspace；无参数默认 development，见 `apps/desktop/identity.ts` |
+| `pnpm desktop` | 根 `package.json` → `apps/desktop/package.json` 的 `electron build`；运行最近一次 staging 的渠道，不固定为开发版 |
+| `pnpm --filter @mioon/desktop package:mac` | `apps/desktop/package.json`：production staging → `.generated/electron-builder.cjs --mac --publish never` |
+| `pnpm --filter @mioon/desktop package:mac:dev` | `apps/desktop/package.json`：development staging → `.generated/electron-builder.dev.cjs --mac --publish never` |
+| 两份 builder 入口 | typed `apps/desktop/builder-config.ts` 由 `apps/desktop/scripts/prepare-builder-config.ts` 打包为忽略目录中的 `apps/desktop/.generated/electron-builder.cjs` / `electron-builder.dev.cjs`（渠道固定为 production/development）；`apps/desktop/scripts/build.ts` 在暂存构建时自动重新生成 |
+| macOS 架构和产物 | `apps/desktop/builder-config.ts` 配置 `dmg`，架构数组为 `arm64`、`x64`，文件名包含 `${arch}`；没有配置 universal 目标 |
+| Windows 入口 | `apps/desktop/package.json` 没有 Windows 打包脚本；`builder-config.ts` 只有 linux/mac 平台配置。不能把 builder 的潜在默认目标当作项目已支持的 Windows 发行格式 |
+| 完整源码构建入口 | `scripts/lib/local-tooling.ts` 依次构建 Web 与桌面 staging；它没有调用 electron-builder，也不签名、公证或生成 DMG |
 
 以上命令用于定位已有入口，本次均未执行。根清单没有 Mac 打包 alias，不能将 `pnpm desktop:package:mac` 写作已存在命令。
 
@@ -35,7 +35,7 @@
 
 ### R1：正式 Mac 配置明确跳过签名，不能作为正式发布入口放行
 
-**证据：** `apps/desktop/builder-config.cjs:44–46` 对两个渠道都设置 `hardenedRuntime:true`、`gatekeeperAssess:false`、`identity:null`；正式入口 `apps/desktop/electron-builder.cjs:1` 也注明 unsigned production。全配置 `builder-config.cjs:8–48` 没有强制签名、公证成功或票据校验的发布门槛；相关桌面脚本没有项目自有的签名/公证 hook。
+**证据：** `apps/desktop/builder-config.ts:44–46` 对两个渠道都设置 `hardenedRuntime:true`、`gatekeeperAssess:false`、`identity:null`；typed `apps/desktop/builder-config.ts` 也注明 unsigned production，生成的 CJS 入口来自同一配置。全配置 `builder-config.ts` 没有强制签名、公证成功或票据校验的发布门槛；相关桌面脚本没有项目自有的签名/公证 hook。
 
 **影响：** 使用当前 `package:mac` 不能据其成功退出宣称 Developer ID 签名、公证或 Gatekeeper 已通过。electron-builder v26 明确将 `identity:null` 定义为跳过签名；`hardenedRuntime:true` 本身不构成有效签名。[electron-builder v26 macOS 配置](https://www.electron.build/v26/docs/mac/)
 
@@ -45,9 +45,9 @@
 
 ### R2：Windows 存储是明确的启动阻塞，新增安装包配置不能解除它
 
-**证据：** `packages/contracts/src/private-storage.mjs:33–55` 在 Windows 报告 `WINDOWS_ACL_UNIMPLEMENTED` / `STORAGE_PRIVACY_UNAVAILABLE`。预留的 `windowsAclVerifier` 即使返回成功，也不能授权文件操作；私有创建和 reparse-safe 访问尚未实现。
+**证据：** `packages/contracts/src/private-storage.ts:33–55` 在 Windows 报告 `WINDOWS_ACL_UNIMPLEMENTED` / `STORAGE_PRIVACY_UNAVAILABLE`。预留的 `windowsAclVerifier` 即使返回成功，也不能授权文件操作；私有创建和 reparse-safe 访问尚未实现。
 
-桌面调用链为 `apps/desktop/src/main.mjs:26` → `config.mjs:27–40` → 私有存储策略；失败后走 `main.mjs:241–243` 的错误分支，先于正常启动及单实例锁。本地 Web 同样在 `apps/server/src/index.mjs:69–83`、`packages/business/src/db.mjs:29–49` 验证工作区，不能用浏览器入口绕过。
+桌面调用链为 `apps/desktop/src/main.ts:26` → `config.ts:27–40` → 私有存储策略；失败后走 `main.ts:241–243` 的错误分支，先于正常启动及单实例锁。本地 Web 同样在 `apps/server/src/index.ts:69–83`、`packages/business/src/db.ts:29–49` 验证工作区，不能用浏览器入口绕过。
 
 **影响：** 这同时阻塞 Windows 日常本地试用和正式发布；POSIX `0600/0700`、更换目录或系统密钥加密不能代替 ACL 后端。没有 `win` 配置是另一个发行流程缺口，不代表 electron-builder 本身不支持 Windows。
 
@@ -55,19 +55,19 @@
 
 ### R3：现有包检查和测试通道不能认证 Mac/Windows 产物
 
-**证据：** `apps/desktop/scripts/inspect-package.mjs:20–22` 固定 `linux-unpacked/resources/app.asar` 和 Linux 可执行文件；`:46–63` 固定 `linux-x64`、`tar.gz`、`gzip`/`tar`。它对 ASAR、fuses、文件来源和哈希的检查值得保留，但路径及归档部分不是跨平台实现。
+**证据：** `apps/desktop/scripts/inspect-package.ts` 固定 `linux-unpacked/resources/app.asar` 和 Linux 可执行文件；`:46–63` 固定 `linux-x64`、`tar.gz`、`gzip`/`tar`。它对 ASAR、fuses、文件来源和哈希的检查值得保留，但路径及归档部分不是跨平台实现。
 
-`scripts/lib/local-tooling.mjs:17–21,25` 的默认 portable 清单仅七个文件；`:122–124` 在非 Linux 拒绝 full。`scripts/tooling.mjs:25` 将这一拒绝映射为退出码 2；更早的依赖前置检查失败可能先返回 1。`nativeReadiness`（`scripts/lib/local-tooling.mjs:41–46`）固定 `ready:false`，Mac 是 unverified，Windows 是 blocked。普通 doctor 返回 0 只说明其检查的前提成立，见 `scripts/tooling.mjs:9–12`。
+`scripts/lib/local-tooling.ts` 的默认 portable 清单为 `PORTABLE_TEST_FILES`（当前九个文件）；其 `discoverTests` 在非 Linux 拒绝 full。`scripts/tooling.ts` 将这一拒绝映射为退出码 2；更早的依赖前置检查失败可能先返回 1。`nativeReadiness`（`scripts/lib/local-tooling.ts`）固定 `ready:false`，Mac 是 unverified，Windows 是 blocked。普通 doctor 返回 0 只说明其检查的前提成立，见 `scripts/tooling.ts` 的 doctor 分支。
 
 **影响和方向：** 后续为 `.app/Contents/...`、DMG 以及明确选定的 Windows 安装格式提供各自检查器与原生测试通道。复用现有内容校验逻辑，单独处理包布局、架构、签名和安装行为。不能直接取消 full 的平台保护、将 skipped 记为 passed，或硬改 `nativeReadiness` 掩盖缺少证据。
 
 ### R4：打包入口不保证 Web 产物新鲜度，渠道共用 staging 需串行
 
-**证据：** `apps/desktop/package.json:13,18` 只调用 desktop build 和 builder；`apps/desktop/scripts/build.mjs:12–15,24` 只要求已有 `apps/web/dist/index.html`，然后删除并重建共用的 `apps/desktop/build`、复制现有 Web dist。`builder-config.cjs:19–21` 与 `build-metadata.cjs:45–56` 校验暂存版本/渠道/package 元数据，没有校验 Web dist 对应的源码哈希。
+**证据：** `apps/desktop/package.json` 只调用 desktop build 和 builder；`apps/desktop/scripts/build.ts` 只要求已有 `apps/web/dist/index.html`，然后删除并重建共用的 `apps/desktop/build`、复制现有 Web dist。`builder-config.ts` 与 `build-metadata.ts` 校验暂存版本/渠道/package 元数据，没有校验 Web dist 对应的源码哈希。
 
 **触发条件和影响：** 若修改 Web 源码后直接运行打包入口，旧 dist 仍存在时，可能把旧界面与新桌面/后端一同打包；这不是已观察到的坏包。若同一 checkout 并行构建两个渠道，共用 staging 可能被另一构建删除或改写。输出目录分开不能消除这一共享输入。
 
-**最小处理：** 后续流水线按同一源码快照串行完成 Web → desktop → 包检查，绑定 staging/ASAR/最终产物哈希；多渠道构建串行执行或使用独立 checkout。现有 `tooling.mjs build --channel=...` 已提供前两步顺序，无需引入新构建框架。完整性 gate 完成前，不把 `beforePack` 的元数据通过等同于整个产物来自同一源码。
+**最小处理：** 后续流水线按同一源码快照串行完成 Web → desktop → 包检查，绑定 staging/ASAR/最终产物哈希；多渠道构建串行执行或使用独立 checkout。现有 `tooling.ts build --channel=...` 已提供前两步顺序，无需引入新构建框架。完整性 gate 完成前，不把 `beforePack` 的元数据通过等同于整个产物来自同一源码。
 
 ## 3. 已有保护与分发边界
 
@@ -75,27 +75,27 @@
 
 | 项目 | production | development | 源码依据 |
 | --- | --- | --- | --- |
-| appId | `app.starroy.mioon` | `app.starroy.mioon.dev` | `apps/desktop/identity.cjs:4–7` |
+| appId | `app.starroy.mioon` | `app.starroy.mioon.dev` | `apps/desktop/identity.ts` |
 | 产品名 / executableName 配置 | `Mioon` / `mioon` | `Mioon Dev` / `mioon-dev` | 同上；最终平台内的文件名仍须检查实际包 |
-| 默认 userData | `appData/app.starroy.mioon` | `appData/app.starroy.mioon.dev` | `apps/desktop/src/config.mjs:18–22` |
+| 默认 userData | `appData/app.starroy.mioon` | `appData/app.starroy.mioon.dev` | `apps/desktop/src/config.ts:18–22` |
 | 默认业务目录 | 各自 userData 下的 `workspace` | 同左 | 同上 |
-| 包输出 | `release/desktop/production` | `release/desktop/development` | `apps/desktop/builder-config.cjs:13` |
+| 包输出 | `release/desktop/production` | `release/desktop/development` | `apps/desktop/builder-config.ts` |
 
 macOS 默认 appData 预期对应 `~/Library/Application Support`，Windows 通常对应 `%APPDATA%`；这是 Electron 路径约定及仓库说明，尚未在本次目标应用中观察。运行时应记录 `app.getPath` 的实际值，不只抄写预期字符串。
 
-渠道经 `apps/desktop/scripts/build.mjs:20,25–26` 固定到 bundle 和暂存元数据，`apps/desktop/src/main.mjs:17–26` 使用该身份；不会因 `app.isPackaged` 自动把开发包转成正式版。`config.mjs:20,111–144` 要求覆盖路径绝对，并以 `desktop-identity.json` 拒绝跨渠道复用。不能删除 marker 来完成试用；两个架构的同一渠道也不会自动得到不同 userData，跨架构试验必须自选新的隔离目录。
+渠道经 `apps/desktop/scripts/build.ts:20,25–26` 固定到 bundle 和暂存元数据，`apps/desktop/src/main.ts:17–26` 使用该身份；不会因 `app.isPackaged` 自动把开发包转成正式版。`config.ts:20,111–144` 要求覆盖路径绝对，并以 `desktop-identity.json` 拒绝跨渠道复用。不能删除 marker 来完成试用；两个架构的同一渠道也不会自动得到不同 userData，跨架构试验必须自选新的隔离目录。
 
-`builder-config.cjs:23–30` 已设置限制 Node 注入和调试的 fuses；`main.mjs:16` 启用 sandbox。这些是源码配置，不是已检查最终可执行文件的 fuse 结果。`secret-store.mjs:16–26,29–58` 使用可用性检查和 appId 绑定的加密封装，但不证明真实 Keychain/Windows 安全存储已通过，也不表示整个 SQLite/媒体目录已加密。
+`builder-config.ts` 已设置限制 Node 注入和调试的 fuses；`apps/desktop/src/main.ts` 启用 sandbox。这些是源码配置，不是已检查最终可执行文件的 fuse 结果。`apps/desktop/src/secret-store.ts` 使用可用性检查和 appId 绑定的加密封装，但不证明真实 Keychain/Windows 安全存储已通过，也不表示整个 SQLite/媒体目录已加密。
 
-Mac app menu、Dock activate、最后窗口关闭后保持运行、正常退出协调已有实现（`main.mjs:192,242–250`）；保留该语义并逐平台验收，不把它当新增设计需求。
+Mac app menu、Dock activate、最后窗口关闭后保持运行、正常退出协调已有实现（`main.ts:192,242–250`）；保留该语义并逐平台验收，不把它当新增设计需求。
 
 ### FFmpeg / ffprobe
 
-**当前边界已明确：** `apps/desktop/src/main.mjs:35–61` 从已保存配置/环境覆盖读取工具路径，失败时要求原生文件选择；`:48` 明示不捆绑 FFmpeg。`config.mjs:147–185` 检查绝对路径、实际文件、执行权限、版本前缀及 `libx264`/`aac`，`:188–190` 仅保存工具路径。通过后才启动后端（`main.mjs:70–84`）。
+**当前边界已明确：** `apps/desktop/src/main.ts:35–61` 从已保存配置/环境覆盖读取工具路径，失败时要求原生文件选择；`:48` 明示不捆绑 FFmpeg。`config.ts:147–185` 检查绝对路径、实际文件、执行权限、版本前缀及 `libx264`/`aac`，`:188–190` 仅保存工具路径。通过后才启动后端（`main.ts:70–84`）。
 
-`builder-config.cjs:14` 和 `apps/desktop/scripts/build.mjs:17–28` 未携带 FFmpeg/ffprobe CLI，且未配置额外媒体二进制资源。Electron 自带播放库不能视为导出所需 CLI，参见 [桌面说明](DESKTOP.md)。实际预览、解码、导出、取消与退出仍须在各目标架构验收；仅 `-version` 或编码器列表通过不够。模拟视频使用 `drawtext`（`packages/business/src/providers/mock.mjs:153`），其滤镜/字体能力也需真实本地验证。
+`builder-config.ts:14` 和 `apps/desktop/scripts/build.ts:17–28` 未携带 FFmpeg/ffprobe CLI，且未配置额外媒体二进制资源。Electron 自带播放库不能视为导出所需 CLI，参见 [桌面说明](DESKTOP.md)。实际预览、解码、导出、取消与退出仍须在各目标架构验收；仅 `-version` 或编码器列表通过不够。模拟视频使用 `drawtext`（`packages/business/src/providers/mock.ts:153`），其滤镜/字体能力也需真实本地验证。
 
-最小方案继续维持外部依赖，记录来源、版本、架构、构建选项与所需编码器。若后续另行决定捆绑，则必须独立处理可信来源/哈希、各平台布局、动态库依赖、签名、更新及许可证材料。现有 `apps/desktop/scripts/build.mjs:28–59` 收集 JS 依赖 notices，不能证明未来携带的 FFmpeg 已获分发许可或材料齐全。FFmpeg 官方说明许可证取决于构建选项，并特别列出 libx264 的 GPL 相关性；不能把当前编码器要求简化为所有构建都仅 LGPL，也不在此推断 Mioon 的整体许可归属。[FFmpeg 许可说明](https://ffmpeg.org/legal.html)
+最小方案继续维持外部依赖，记录来源、版本、架构、构建选项与所需编码器。若后续另行决定捆绑，则必须独立处理可信来源/哈希、各平台布局、动态库依赖、签名、更新及许可证材料。现有 `apps/desktop/scripts/build.ts:28–59` 收集 JS 依赖 notices，不能证明未来携带的 FFmpeg 已获分发许可或材料齐全。FFmpeg 官方说明许可证取决于构建选项，并特别列出 libx264 的 GPL 相关性；不能把当前编码器要求简化为所有构建都仅 LGPL，也不在此推断 Mioon 的整体许可归属。[FFmpeg 许可说明](https://ffmpeg.org/legal.html)
 
 ## 4. 开发试用验收表
 
@@ -151,14 +151,14 @@ R1 的最小实现可采用内置公证能力，不要求增加自定义 hook。
 | Node 内联配置断言 | 加载本地 CJS 配置/元数据；两渠道身份、Mac 两架构、签名字段、publish、无 win 配置、脚本引用均符合上述描述；合成 staging 正确元数据被接受，错误版本/跨渠道元数据被拒绝；退出 0 |
 | `node --check` | 对下列 11 个文件仅做语法解析，全部退出 0，不执行模块体 |
 
-语法检查文件：`apps/desktop/{builder-config,build-metadata,identity,electron-builder,electron-builder.dev}.cjs`、`apps/desktop/scripts/{build,inspect-package}.mjs`、`apps/desktop/src/{config,main}.mjs`、`scripts/lib/local-tooling.mjs`、`packages/contracts/src/private-storage.mjs`。
+语法检查文件：`apps/desktop/{builder-config,build-metadata,identity,electron-builder,electron-builder.dev}.cjs`、`apps/desktop/scripts/{build,inspect-package}.mjs`、`apps/desktop/src/{config,main}.mjs`、`scripts/lib/local-tooling.ts`、`packages/contracts/src/private-storage.ts`。
 
 可重复的最小只读配置检查（在该源码根目录执行，不调用 builder）：
 
 ```sh
 node <<'NODE'
 const assert = require('node:assert/strict');
-const makeConfig = require('./apps/desktop/builder-config.cjs');
+const makeConfig = require('./apps/desktop/builder-config.ts');
 for (const channel of ['production', 'development']) {
   const c = makeConfig(channel);
   assert.deepEqual(c.mac.target, [{target: 'dmg', arch: ['arm64', 'x64']}]);

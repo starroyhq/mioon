@@ -1,4 +1,13 @@
 import { agentChatErrorDescriptor, agentChatPromptIssueDescriptor } from './agent-chat.ts';
+import type { AgentChatRun, AgentChatState, AgentChatTimelineTarget } from './agent-chat.ts';
+import type { NativeCloseSourceRegistry } from './native-close-sources.ts';
+import type { EditorSettingsScope } from './editor-settings-scope.ts';
+import type { AgentTimelineMoveReviewTarget } from '../../../packages/contracts/src/agent-timeline-move.ts';
+import type { AgentTimelineGainReviewTarget } from '../../../packages/contracts/src/agent-timeline-gain.ts';
+import type { AgentTimelineGainPolicy } from './agent-timeline-gain-context.ts';
+import type { AgentEditProposal as AgentEditProposalRecord } from './agent-edits.ts';
+import type { AppShot } from './App.tsx';
+import type { DisplayMessage, MessageKey } from '../../../packages/i18n/src/index.ts';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import { creationParameter, agentTimelineFrameDisplay } from './creation-i18n.ts';
 import { useNativeSettingsActivity } from './editor-settings-scope.ts';
@@ -12,6 +21,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@mioon/ui/c
 import {Dialog,DialogContent,DialogTitle,DialogDescription,DialogFooter} from '@mioon/ui/components/dialog';
 import { agentTimelineFrameText } from './agent-tool-state.ts';
 import AgentRunActivity from './AgentRunActivity.tsx';
+import type { AgentRunView } from './AgentRunActivity.tsx';
 import AgentEditProposal from './AgentEditProposal.tsx';
 import { createAgentChatCloseReporter } from './native-close-sources.ts';
 import { AgentTimelineGainSelection, AGENT_GAIN_SEND_CONTEXT, AGENT_GAIN_SEND_CONSENT } from './AgentTimelineGain.tsx';
@@ -22,14 +32,43 @@ import { useWorkspaceVisibility } from './workspace-visibility.tsx';
 import { AGENT_PROTOCOLS, deriveAgentEndpoint, AGENT_TYPED_CONTEXT, AGENT_PROJECT_CONTEXT, AGENT_EDIT_CONTEXT, AGENT_TIMELINE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT, agentTimelineGainAvailable, agentTimelineAvailable, agentChatCurrentTarget, agentEditAvailable, agentInspectionAvailable, AGENT_CHAT_PROMPT_BYTES, activeAgentChatRun, agentChatCanSend, agentChatConsentKey, agentChatErrorText,
   agentChatPromptIssue, createAgentChatSession, initialAgentChatState } from './agent-chat.ts';
 
-const runLabel = (status, t) => ({ running: t('agent.chat.replyRunning'), completed: t('agent.chat.replyComplete'), stopped: t('agent.chat.replyStopped'), failed: t('agent.chat.replyFailed'), interrupted: t('agent.chat.replyInterrupted') }[status] || t('agent.chat.statusUnknown'));
-const phaseLabel = (phase, t) => ({ loading: t('agent.chat.loadingConversation'), submitting: t('agent.chat.confirmingSend'), streaming: t('agent.chat.receivingProgress'), stopping: t('agent.chat.requestingStop'), detached: t('agent.chat.displayDisconnected'), unknown: t('agent.chat.runUnconfirmed'), load_error: t('agent.chat.loadFailed'), ready: t('agent.chat.waitingForMessage') }[phase] || t('agent.chat.statusUnconfirmed'));
+type Translate = ReturnType<typeof useI18n>['t'];
+type RenderMessage = ReturnType<typeof useI18n>['renderMessage'];
+type AgentChatSession = ReturnType<typeof createAgentChatSession>;
+interface TimelineTargetView extends AgentChatTimelineTarget {readonly occupiedIntervals: ReadonlyArray<{readonly startFrame: number; readonly endFrame: number}>}
+interface PolicyView {readonly schemaVersion: number; readonly catalogHash: string}
+interface ActivityStepView {readonly id: string; readonly kind: string; readonly status: string}
+export interface AgentPanelProps {
+  nativeSettingsScope?: unknown;
+  nativeCloseRegistry?: unknown;
+  projectId: string;
+  projectName?: string;
+  selectedShot?: AppShot | null;
+  selectedTimelineClip?: AgentTimelineMoveReviewTarget | null;
+  selectedTimelineGainClip?: AgentTimelineGainReviewTarget | null;
+  timelineEditBlockedReason?: string;
+  timelineEditBlockedDescriptor?: DisplayMessage | null;
+  timelineGainBlockedReason?: string;
+  timelineGainBlockedDescriptor?: DisplayMessage | null;
+  onApplied?: (projectId: string, proposal: AgentEditProposalRecord) => unknown;
+  onClose: () => unknown;
+  onSettings: () => unknown;
+  onDraftChange?: (dirty: boolean) => unknown;
+}
+const runLabel = (status: string, t: Translate): string => {
+  const labels: Readonly<Record<string, string>> = { running: t('agent.chat.replyRunning'), completed: t('agent.chat.replyComplete'), stopped: t('agent.chat.replyStopped'), failed: t('agent.chat.replyFailed'), interrupted: t('agent.chat.replyInterrupted') };
+  return labels[status] || t('agent.chat.statusUnknown');
+};
+const phaseLabel = (phase: string, t: Translate): string => {
+  const labels: Readonly<Record<string, string>> = { loading: t('agent.chat.loadingConversation'), submitting: t('agent.chat.confirmingSend'), streaming: t('agent.chat.receivingProgress'), stopping: t('agent.chat.requestingStop'), detached: t('agent.chat.displayDisconnected'), unknown: t('agent.chat.runUnconfirmed'), load_error: t('agent.chat.loadFailed'), ready: t('agent.chat.waitingForMessage') };
+  return labels[phase] || t('agent.chat.statusUnconfirmed');
+};
 
-function renderRun(run, kind, visible, t, renderMessage) {
+function renderRun(run: AgentChatRun, kind: 'recent' | 'archive' | 'recovered', visible: boolean, t: Translate, renderMessage: RenderMessage): React.ReactElement {
   return <article className="agent-chat-turn" key={`${kind}-${run.id}`} data-run-id={run.id} data-history-kind={kind} data-status={run.status}>
           <div className="agent-chat-message is-user"><div className="agent-chat-speaker">{t('agent.chat.you')}</div><p>{run.userText}</p></div>
           <div className="agent-chat-message is-assistant"><div className="agent-chat-speaker"><Icon name="sparkle" size={12} />Agent<span>{runLabel(run.status, t)}</span></div>
-            <AgentRunActivity run={run} visible={visible} />
+            <AgentRunActivity run={run as unknown as AgentRunView} visible={visible} />
             <p data-testid={kind === 'recent' ? 'agent-chat-response' : 'agent-chat-history-response'}>{run.assistantText || (run.status === 'running' ? t('agent.chat.awaitingFirstText') : t('agent.chat.noReplyText'))}</p>
             {run.status === 'interrupted' && <div className="agent-chat-run-error" role="status" data-testid="agent-chat-interrupted">{t('agent.chat.interruptedDisclosure')}</div>}
             {run.error && <div className="agent-chat-run-error" role="status">{renderMessage(agentChatErrorDescriptor(run.error.code))}</div>}
@@ -38,24 +77,26 @@ function renderRun(run, kind, visible, t, renderMessage) {
         </article>;
 }
 
-export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, projectId, projectName, selectedShot = null, selectedTimelineClip = null, timelineEditBlockedReason = '', timelineEditBlockedDescriptor = null, selectedTimelineGainClip = null, timelineGainBlockedReason = '', timelineGainBlockedDescriptor = null, onApplied, onClose, onSettings, onDraftChange = () => {} }) {
+export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, projectId, projectName, selectedShot = null, selectedTimelineClip = null, timelineEditBlockedReason = '', timelineEditBlockedDescriptor = null, selectedTimelineGainClip = null, timelineGainBlockedReason = '', timelineGainBlockedDescriptor = null, onApplied, onClose, onSettings, onDraftChange = () => {} }: AgentPanelProps): React.ReactElement {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
-  const [state, setState] = useState(initialAgentChatState);
-  const [disclosure, setDisclosure] = useState({ key: null, expanded: true, reviewed: false });
-  const [composerDisclosure, setComposerDisclosure] = useState({ projectId: null, key: null, consented: false, expanded: false });
-  const [authorizationIntent,setAuthorizationIntent]=useState({key:null,checked:false,sendAfterApproval:false});
-  const disclosureIdentity = useRef(null);
+  const [state, setState] = useState<AgentChatState>(initialAgentChatState);
+  const [disclosure, setDisclosure] = useState<{key: string | null; expanded: boolean; reviewed: boolean}>({ key: null, expanded: true, reviewed: false });
+  const [composerDisclosure, setComposerDisclosure] = useState<{projectId: string | null; key: string | null; consented: boolean; expanded: boolean}>({ projectId: null, key: null, consented: false, expanded: false });
+  const [authorizationIntent,setAuthorizationIntent]=useState<{key: string | null; checked: boolean; sendAfterApproval: boolean}>({key:null,checked:false,sendAfterApproval:false});
+  const disclosureIdentity = useRef<string | null>(null);
   const paneVisible = useWorkspaceVisibility();
-  const nativeSession = useRef(null);
-  const nativeActive = useNativeSettingsActivity(nativeSettingsScope, active => nativeSession.current?.setVisible(active && paneVisible && document.visibilityState !== 'hidden'));
+  const nativeSession = useRef<AgentChatSession | null>(null);
+  const nativeActive = useNativeSettingsActivity(nativeSettingsScope as EditorSettingsScope | undefined, active => nativeSession.current?.setVisible(active && paneVisible && document.visibilityState !== 'hidden'));
   const visible = paneVisible && nativeActive;
   const selectedKey = JSON.stringify([selectedShot ? [selectedShot.id, selectedShot.revision, selectedShot.title, selectedShot.prompt] : null, selectedTimelineClip, timelineEditBlockedReason, selectedTimelineGainClip, timelineGainBlockedReason]);
   const policyKey = JSON.stringify([state.contextMode, state.snapshot?.instanceId, state.snapshot?.revision, state.snapshot?.settings, state.snapshot?.timelineEdit, state.snapshot?.timelineGainEdit]);
-  const interaction = useMemo(() => ({ visible, selectedKey, policyKey }), [visible, selectedKey, policyKey]), interactionRef = useRef(interaction), visibilityRef = useRef(visible);
-  const session = useRef(null), lifetime = useRef(null), composer = useRef(null), scroll = useRef(null), archiveScroll = useRef(null), follow = useRef(true);
+  const interaction = useMemo(() => ({ visible, selectedKey, policyKey }), [visible, selectedKey, policyKey]);
+  const interactionRef = useRef<typeof interaction | null>(interaction), visibilityRef = useRef<boolean>(visible);
+  type OwnedSession = {projectId: string; closed: boolean};
+  const session = useRef<AgentChatSession | null>(null), lifetime = useRef<OwnedSession | null>(null), composer = useRef<HTMLTextAreaElement | null>(null), scroll = useRef<HTMLDivElement | null>(null), archiveScroll = useRef<HTMLDivElement | null>(null), follow = useRef<boolean>(true);
   useLayoutEffect(() => {
-    const owner = { projectId, closed: false }; lifetime.current = owner;
-    const closeReport = createAgentChatCloseReporter(nativeCloseRegistry);
+    const owner: OwnedSession = { projectId, closed: false }; lifetime.current = owner;
+    const closeReport = createAgentChatCloseReporter(nativeCloseRegistry as NativeCloseSourceRegistry | undefined);
     setState(initialAgentChatState()); follow.current = true;
     const current = createAgentChatSession({ projectId, onChange: next => { if (lifetime.current === owner && !owner.closed) { closeReport.publish(next); setState(next); } } });
     session.current = current; nativeSession.current = current;
@@ -75,18 +116,18 @@ export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, p
   useLayoutEffect(() => { session.current?.setTimelineTarget(selectedTimelineClip, timelineEditBlockedReason); }, [projectId, selectedKey]);
   useLayoutEffect(() => { session.current?.setTimelineGainTarget(selectedTimelineGainClip, timelineGainBlockedReason); }, [projectId, selectedKey]);
   useLayoutEffect(() => { onDraftChange(Boolean(state.draft.trim()) && !state.pending); }, [state.draft, state.pending, onDraftChange]);
-  useLayoutEffect(() => () => onDraftChange(false), [projectId]);
+  useLayoutEffect(() => () => { onDraftChange(false); }, [projectId]);
   const owner = lifetime.current;
   // Every handler belongs to this render's immutable owner, including close.
   const usable = () => Boolean(visible && interactionRef.current === interaction && owner && !owner.closed && lifetime.current === owner && owner.projectId === projectId);
-  const dismiss = settings => {
+  const dismiss = (settings: boolean): void => {
     if (!usable()) return;
-    if (settings && nativeSettingsScope) { void nativeSettingsScope.open('agent'); return; }
+    if (settings && nativeSettingsScope) { void (nativeSettingsScope as EditorSettingsScope).open('agent'); return; }
     interactionRef.current = null; session.current?.setVisible(false);
     if (settings) {
       const current = session.current;
-      const restoreRejectedSettings = accepted => {
-        if (accepted === false && session.current === current && lifetime.current === owner && !owner.closed && visibilityRef.current && interactionRef.current === null) {
+      const restoreRejectedSettings = (accepted: unknown): void => {
+        if (accepted === false && session.current === current && lifetime.current === owner && owner !== null && !owner.closed && visibilityRef.current && interactionRef.current === null) {
           interactionRef.current = interaction; current?.setVisible(typeof document === 'undefined' || document.visibilityState !== 'hidden');
         }
       };
@@ -96,6 +137,8 @@ export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, p
   const { snapshot, phase } = state;
   const running = activeAgentChatRun(state), pending = Boolean(state.pending);
   const configuration = snapshot?.settings.configuration;
+  const inspectionPolicy = snapshot?.inspection as PolicyView | null | undefined, editPolicy = snapshot?.edit as PolicyView | null | undefined, timelineEditPolicy = snapshot?.timelineEdit as PolicyView | null | undefined;
+  const timelineTargetView = state.timelineTarget as TimelineTargetView | null;
   const inspectionAvailable = agentInspectionAvailable(snapshot), inspecting = state.contextMode === AGENT_PROJECT_CONTEXT;
   const editAvailable = agentEditAvailable(snapshot), editing = state.contextMode === AGENT_EDIT_CONTEXT;
   const timelineAvailable = agentTimelineAvailable(snapshot), moving = state.contextMode === AGENT_TIMELINE_CONTEXT, selectedTarget = agentChatCurrentTarget(state);
@@ -121,11 +164,11 @@ export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, p
       expanded: Boolean(previous.projectId === projectId && sendConsented && previous.consented && previous.key !== disclosureKey) }));
   }, [disclosureKey, sendConsented]);
   const optionsInteraction = useMemo(() => ({ disclosureKey, sendConsented, composerOptionsVisible, interaction }), [disclosureKey, sendConsented, composerOptionsVisible, interaction]);
-  const optionsInteractionRef = useRef(null);
+  const optionsInteractionRef = useRef<typeof optionsInteraction | null>(null);
   useLayoutEffect(() => { optionsInteractionRef.current = optionsInteraction; return () => { optionsInteractionRef.current = null; }; }, [optionsInteraction]);
   const optionsUsable = () => usable() && composerOptionsVisible && optionsInteractionRef.current === optionsInteraction;
 
-  const proposalRefresh = JSON.stringify(snapshot?.runs.map(run => [run.id, run.status, run.activity?.filter(step => step.kind === 'tool').map(step => [step.id, step.status])]) || []);
+  const proposalRefresh = JSON.stringify(snapshot?.runs.map(run => [run.id, run.status, (Array.isArray(run.activity) ? run.activity as ActivityStepView[] : []).filter(step => step.kind === 'tool').map(step => [step.id, step.status])]) || []);
   const blockedRunIds = snapshot?.runs.filter(run => run.status !== 'completed').map(run => run.id) || [];
   const ready = visible && phase === 'ready', canSend = visible && agentChatCanSend(state);
   const promptBytes = new TextEncoder().encode(state.draft).length;
@@ -151,11 +194,11 @@ export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, p
     if(!usable()||authorizationIntent.key!==disclosureKey||!authorizationIntent.checked||!authorizationReady)return;
     const current=session.current,key=disclosureKey,sendAfterApproval=authorizationIntent.sendAfterApproval;
     const approved=await current?.approve(true);
-    if(!approved||!owner||owner.closed||lifetime.current!==owner||session.current!==current||disclosureIdentity.current!==key)return;
+    if(!current||!approved||!owner||owner.closed||lifetime.current!==owner||session.current!==current||disclosureIdentity.current!==key)return;
     setAuthorizationIntent({key:null,checked:false,sendAfterApproval:false});
     if(sendAfterApproval)await current.send();
   }
-  function submit(event) { event.preventDefault(); void send(); }
+  function submit(event: React.FormEvent<HTMLFormElement>): void { event.preventDefault(); void send(); }
   return <section className="agent-chat-page" data-testid="agent-chat-page" data-project-id={projectId} data-phase={phase} aria-label={t('agent.chat.conversationAria')} hidden={!visible} inert={!visible}>
       <header className="modal-header agent-chat-header">
         <div className="agent-chat-heading"><span className="agent-chat-symbol"><Icon name="sparkle" size={21} /></span><div>
@@ -171,7 +214,7 @@ export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, p
         <CollapsibleContent className="agent-chat-details" data-testid="agent-chat-details">
           <p>{t('agent.chat.draftPersistence')}</p>
           <p>{t('agent.chat.contextLimits')}</p>
-          {snapshot?.inspection && <p data-testid="agent-chat-inspection-policy">{t('agent.chat.readOnlyToolVersion', { schemaVersion: creationParameter(snapshot.inspection.schemaVersion), catalogHash: creationParameter(snapshot.inspection.catalogHash.slice(0, 12)) })}</p>}
+          {inspectionPolicy && <p data-testid="agent-chat-inspection-policy">{t('agent.chat.readOnlyToolVersion', { schemaVersion: creationParameter(inspectionPolicy.schemaVersion), catalogHash: creationParameter(inspectionPolicy.catalogHash.slice(0, 12)) })}</p>}
           <p>{t('agent.chat.inspectionDisclosure')}</p>
           <p>{t('agent.chat.shotProposalDisclosure')}</p>
           <p>{t('agent.chat.moveProposalDisclosure')}</p>
@@ -201,12 +244,12 @@ export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, p
           {phase === 'unknown' && snapshot && <div className="agent-chat-archive-controls">
             {!state.abandonRequest ? <Button type="button" variant="ghost" className="button" data-testid="agent-chat-pending-reset" disabled={!visible} onClick={() => { if (usable()) session.current?.confirmAbandonPending(true); }}>{t('agent.chat.endPendingState')}</Button> : <>
               <p role="alert" data-testid="agent-chat-pending-reset-warning">{t('agent.chat.endPendingWarning')}</p>
-              <Button type="button" variant="ghost" className="button" data-testid="agent-chat-pending-reset-confirm" disabled={!visible} onClick={() => { if (usable()) session.current?.abandonPending(state.pending.requestId); }}>{t('agent.chat.acceptEndPending')}</Button>
+              <Button type="button" variant="ghost" className="button" data-testid="agent-chat-pending-reset-confirm" disabled={!visible} onClick={() => { if (usable()) session.current?.abandonPending(state.pending!.requestId); }}>{t('agent.chat.acceptEndPending')}</Button>
               <Button type="button" variant="ghost" className="button" data-testid="agent-chat-pending-reset-cancel" disabled={!visible} onClick={() => { if (usable()) session.current?.confirmAbandonPending(false); }}>{t('agent.chat.keepChecking')}</Button>
             </>}
           </div>}
         </div>}
-        <AgentEditProposal nativeCloseRegistry={nativeCloseRegistry} projectId={projectId} refreshKey={proposalRefresh} blockedRunIds={blockedRunIds} selectedTimelineClip={selectedTimelineClip} timelineEditBlockedReason={timelineEditBlockedReason} timelineEditBlockedDescriptor={timelineEditBlockedDescriptor} selectedTimelineGainClip={selectedTimelineGainClip} timelineGainBlockedReason={timelineGainBlockedReason} timelineGainBlockedDescriptor={timelineGainBlockedDescriptor} contextMode={state.contextMode} onApplied={onApplied} />
+        <AgentEditProposal nativeCloseRegistry={nativeCloseRegistry as NativeCloseSourceRegistry | undefined} projectId={projectId} refreshKey={proposalRefresh} blockedRunIds={blockedRunIds} selectedTimelineClip={selectedTimelineClip} timelineEditBlockedReason={timelineEditBlockedReason} timelineEditBlockedDescriptor={timelineEditBlockedDescriptor} selectedTimelineGainClip={selectedTimelineGainClip} timelineGainBlockedReason={timelineGainBlockedReason} timelineGainBlockedDescriptor={timelineGainBlockedDescriptor} contextMode={state.contextMode} onApplied={onApplied} />
         {state.message && <div className={`agent-chat-notice ${['unknown', 'load_error', 'detached'].includes(phase) ? 'is-warning' : ''}`} role="status" data-testid="agent-chat-notice">{renderMessage(state.displayMessage)}</div>}
       </div>
       <form className="agent-chat-composer" onSubmit={submit} noValidate>
@@ -215,7 +258,7 @@ export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, p
         }}>
         {sendConsented && <CollapsibleTrigger className="agent-chat-composer-summary" data-testid="agent-chat-options-toggle" disabled={!visible} render={<Button type="button" variant="ghost" />}>
           <span className="agent-chat-composer-summary-model">{t('agent.chat.destination')} · {configuration?.model || t('agent.chat.missingModel')}</span>
-          <span className="agent-chat-composer-summary-scope">{t(`agent.authorization.scope.${state.contextMode}`)}</span>
+          <span className="agent-chat-composer-summary-scope">{t(`agent.authorization.scope.${state.contextMode}` as MessageKey)}</span>
           <span className="agent-chat-composer-summary-target">{configuration?.baseUrl ? deriveAgentEndpoint(configuration) : t('agent.chat.missingEndpoint')}</span><Icon name="down" size={12} />
         </CollapsibleTrigger>}
         <CollapsibleContent keepMounted className="agent-chat-composer-options" data-testid="agent-chat-composer-options" hidden={!composerOptionsVisible} inert={!composerOptionsVisible} aria-hidden={!composerOptionsVisible}>
@@ -243,7 +286,7 @@ export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, p
               <CollapsibleContent keepMounted className="agent-edit-selected-details" data-testid="agent-edit-selected-details">
                 <p>{t('agent.chat.savedTextDisclosure')}</p>
                 <div className="agent-edit-selected-text"><span>{t('agent.chat.savedTitle')}</span><pre data-testid="agent-edit-selected-title">{state.editTarget.title}</pre><span>{t('agent.chat.savedDescription')}</span><pre data-testid="agent-edit-selected-prompt">{state.editTarget.prompt || t('agent.chat.emptyValue')}</pre></div>
-                {snapshot?.edit && <p data-testid="agent-edit-policy">{t('agent.chat.shotToolLimits', { schemaVersion: creationParameter(snapshot.edit.schemaVersion), catalogHash: creationParameter(snapshot.edit.catalogHash.slice(0, 12)) })}</p>}
+                {editPolicy && <p data-testid="agent-edit-policy">{t('agent.chat.shotToolLimits', { schemaVersion: creationParameter(editPolicy.schemaVersion), catalogHash: creationParameter(editPolicy.catalogHash.slice(0, 12)) })}</p>}
               </CollapsibleContent>
             </Collapsible>
           </> : <p role="status">{t('agent.chat.selectSavedShot')}</p>}
@@ -252,24 +295,24 @@ export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, p
           <strong>{t('agent.chat.moveOneSavedClip')}</strong>
           {state.timelineTarget ? <>
             <p data-testid="agent-timeline-target-summary">{t('agent.chat.clipTargetSummary', { clipName: creationParameter(state.timelineTarget.clipName), trackName: creationParameter(state.timelineTarget.trackName), value: creationParameter(state.timelineTarget.trackKind === 'audio' ? t('agent.chat.audioTrack') : t('agent.chat.videoTrack')), expectedRevision: creationParameter(state.timelineTarget.expectedRevision) })}</p>
-            <p data-testid="agent-timeline-selected-time">{t('agent.chat.clipTiming', { value: creationParameter(agentTimelineFrameDisplay(state.timelineTarget.startFrame, 30, t)), value2: creationParameter(agentTimelineFrameDisplay(state.timelineTarget.endFrame, 30, t)), value3: creationParameter(agentTimelineFrameDisplay(state.timelineTarget.durationFrames, 30, t)) })}</p>
+            <p data-testid="agent-timeline-selected-time">{t('agent.chat.clipTiming', { value: creationParameter(agentTimelineFrameDisplay(state.timelineTarget.startFrame ?? 0, 30, t)), value2: creationParameter(agentTimelineFrameDisplay(state.timelineTarget.endFrame ?? 0, 30, t)), value3: creationParameter(agentTimelineFrameDisplay(state.timelineTarget.durationFrames ?? 0, 30, t)) })}</p>
             <Collapsible className="agent-edit-selected-disclosure" data-testid="agent-timeline-selected-disclosure" open={disclosureOpen} onOpenChange={open => {
               if (optionsUsable() && disclosureIdentity.current === disclosureKey && (open || canCompactDisclosure)) setDisclosure({ key: disclosureKey, expanded: open, reviewed: disclosureReviewed || sendConsented });
             }}>
               <CollapsibleTrigger className="agent-chat-details-trigger" data-testid="agent-timeline-selected-details-toggle" disabled={!composerOptionsVisible || !canCompactDisclosure}>{disclosureOpen ? t('agent.chat.fullScopeLimits') : t('agent.chat.expandReviewedScope')}</CollapsibleTrigger>
               <CollapsibleContent keepMounted className="agent-edit-selected-details" data-testid="agent-timeline-selected-details">
                 <p>{t('agent.chat.moveDataDisclosure')}</p>
-                <div className="agent-timeline-intervals" data-testid="agent-timeline-occupied-intervals" tabIndex={composerOptionsVisible ? 0 : -1} aria-label={t('agent.chat.sentOccupiedIntervals')}>{state.timelineTarget.occupiedIntervals.length ? <ol>{state.timelineTarget.occupiedIntervals.map((interval, index) => <li key={index}>{t('agent.chat.frameInterval', { startFrame: creationParameter(interval.startFrame), endFrame: creationParameter(interval.endFrame) })}</li>)}</ol> : <p>{t('agent.chat.noOtherClips')}</p>}</div>
-                <p>{t('agent.chat.moveBounds', { count: state.timelineTarget.occupiedIntervals.length })}</p>
+                <div className="agent-timeline-intervals" data-testid="agent-timeline-occupied-intervals" tabIndex={composerOptionsVisible ? 0 : -1} aria-label={t('agent.chat.sentOccupiedIntervals')}>{timelineTargetView?.occupiedIntervals.length ? <ol>{timelineTargetView.occupiedIntervals.map((interval, index) => <li key={index}>{t('agent.chat.frameInterval', { startFrame: creationParameter(interval.startFrame), endFrame: creationParameter(interval.endFrame) })}</li>)}</ol> : <p>{t('agent.chat.noOtherClips')}</p>}</div>
+                <p>{t('agent.chat.moveBounds', { count: timelineTargetView?.occupiedIntervals.length ?? 0 })}</p>
                 <p>{t('agent.chat.movePreservedAndConflicts')}</p>
-                {snapshot?.timelineEdit && <p data-testid="agent-timeline-policy">{t('agent.chat.proposalToolLimits', { schemaVersion: creationParameter(snapshot.timelineEdit.schemaVersion), catalogHash: creationParameter(snapshot.timelineEdit.catalogHash.slice(0, 12)) })}</p>}
+                {timelineEditPolicy && <p data-testid="agent-timeline-policy">{t('agent.chat.proposalToolLimits', { schemaVersion: creationParameter(timelineEditPolicy.schemaVersion), catalogHash: creationParameter(timelineEditPolicy.catalogHash.slice(0, 12)) })}</p>}
                 <Collapsible><CollapsibleTrigger className="agent-chat-details-trigger" disabled={!composerOptionsVisible}>{t('agent.chat.localIdentity')}</CollapsibleTrigger><CollapsibleContent><p>{t('agent.chat.projectId', { projectId: creationParameter(projectId) })}</p><p>{t('agent.chat.timelineClipTrackIds', { timelineId: creationParameter(state.timelineTarget.timelineId), clipId: creationParameter(state.timelineTarget.clipId), trackId: creationParameter(state.timelineTarget.trackId) })}</p></CollapsibleContent></Collapsible>
               </CollapsibleContent>
             </Collapsible>
           </> : <p role="status">{t('agent.chat.selectSavedClip')}</p>}
           {timelineEditBlockedReason && <p role="status" data-testid="agent-timeline-context-blocked">{timelineEditBlockedDescriptor ? renderMessage(timelineEditBlockedDescriptor) : t('agent.gain.state.checkTimelineState')}</p>}
         </section>}
-        {gaining && <AgentTimelineGainSelection target={state.timelineGainTarget} policy={snapshot?.timelineGainEdit} blockedReason={timelineGainBlockedReason} blockedDescriptor={timelineGainBlockedDescriptor} visible={composerOptionsVisible} />}
+        {gaining && <AgentTimelineGainSelection target={state.timelineGainTarget as unknown as AgentTimelineGainReviewTarget | null} policy={snapshot?.timelineGainEdit as AgentTimelineGainPolicy | undefined} blockedReason={timelineGainBlockedReason} blockedDescriptor={timelineGainBlockedDescriptor} visible={composerOptionsVisible} />}
         {configuration && <div className="agent-chat-destination" data-testid="agent-chat-destination"><div><span>{t('agent.chat.destination')}</span><strong>{configuration.model || t('agent.chat.missingModel')}</strong><span data-testid="agent-chat-protocol">{AGENT_PROTOCOLS[configuration.protocol].label}</span></div><p>{configuration.baseUrl ? deriveAgentEndpoint(configuration) : t('agent.chat.missingEndpoint')}</p><p className="agent-chat-context" data-testid="agent-chat-context">{gaining ? renderMessage(AGENT_GAIN_SEND_CONTEXT) : moving ? t('agent.chat.moveSendDisclosure') : editing ? t('agent.chat.shotSendDisclosure') : inspecting ? t('agent.chat.inspectionSendDisclosure', { value: creationParameter(projectName || projectId) }) : t('agent.chat.chatSendDisclosure')}</p></div>}
         </CollapsibleContent>
         </Collapsible>

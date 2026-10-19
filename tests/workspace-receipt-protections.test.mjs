@@ -52,8 +52,9 @@ function protections(db){return db.prepare('SELECT type,name,tbl_name,sql FROM m
 function seedRaw(db){
  for(const table of tables){
   const put=db.prepare(`INSERT INTO ${table}(rowid,requestId,requestHash,response) VALUES(?,?,?,?)`);
+  put.setReadBigInts(true);
   for(const [index,response]of [' \n{"escaped":"\\u754c","n":2.00}\n ','null','false','0','[]','invalid JSON',Buffer.from([0,255,13,10]),' '.repeat(70000)].entries())
-   put.setReadBigInts(true);put.run(9007199254740993n+BigInt(index),`${table}-${index}`,index%2?Buffer.from([0,254,10]):'hash',response);
+   put.run(9007199254740993n+BigInt(index),`${table}-${index}`,index%2?Buffer.from([0,254,10]):'hash',response);
  }
 }
 function assertFixed(db){assert.deepEqual(protections(db),fixed.toSorted((a,b)=>a.name.localeCompare(b.name)));}
