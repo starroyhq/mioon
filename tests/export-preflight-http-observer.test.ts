@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {callObservedRpc} from '../apps/server/src/rpc-observation.ts';
 import {schemas, operationEffect} from '@mioon/contracts';
 import {readFile} from 'node:fs/promises';
+import {evaluateModule} from './helpers/eval-source.ts';
 
 const deferred = () => { let resolve; const promise = new Promise(r => {resolve = r;}); return {promise, resolve}; };
 async function fixture(t, operation) {
@@ -127,7 +128,11 @@ test('observer policy rejects every other file writer and future business/networ
   ];
   for (const {operation, patch} of cases) {
     const effects = {...operationEffect(operation), ...patch};
-    const module = await import('data:text/javascript;base64,' + Buffer.from(source.replace(importLine, `const operationEffect = () => (${JSON.stringify(effects)});`)).toString('base64'));
+    // rpc-observation.ts is typed source: execute the exact same observer function
+    // through the reviewed eval-source helper, which erases only TypeScript syntax
+    // with the pinned local esbuild and keeps the module's real CommonJS exports.
+    const module = evaluateModule<{callObservedRpc: (...args: unknown[]) => Promise<unknown>}>(
+      source.replace(importLine, `const operationEffect = () => (${JSON.stringify(effects)});`), {loader: 'ts'});
     const req = new EventEmitter(), res = new EventEmitter(); res.destroyed = true; let received;
     await module.callObservedRpc(req, res, {call:async (_, __, options) => {received=options.signal; return null;}}, operation, {});
     assert.equal(received, undefined, operation + JSON.stringify(patch));

@@ -119,7 +119,9 @@ test('presentation uses supplied order and never mutates frozen input rows', () 
 });
 test('App keeps history in the controlled export dialog with visibility, recovery and immutable identity inputs', () => {
   const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
-  assert.match(app, /const orderedExports = \[\.\.\.data\.exports\]\.sort\(\(a, b\) => b\.createdAt\.localeCompare\(a\.createdAt\)\);/);
+  // Typed App source spells the same frozen ordering formula with non-null assertions on the
+  // already-parsed createdAt fields; keep asserting the exact descending-createdAt comparator.
+  assert.match(app, /const orderedExports = \[\.\.\.data\.exports\]\.sort\(\(a, b\) => b\.createdAt!?\.localeCompare\(a\.createdAt!?\)\);/);
   assert.match(app, /<DeliveryWorkspace page=\{showExports \? 'history' : 'compose'\}/);
   assert.match(app, /<AgentDockPane id="delivery-history-pane" labelledBy="delivery-history-tab" visible=\{showExports\}/);
   const history = app.match(/<ExportHistoryList\s[\s\S]*?\/>/)?.[0];
@@ -127,7 +129,7 @@ test('App keeps history in the controlled export dialog with visibility, recover
   for (const expected of [
     'fileRecoveryEnabled={!restored && !application}', 'projectId={data.project?.id}',
     'candidateConnected={online && auth === true && workbenchReady && !loading}', 'opacityApplication={opacityApplication}',
-    'samplePeak={application ? undefined : exportSamplePeak}', 'loudness={application ? undefined : exportLoudness}',
+    'samplePeak={application ? undefined : exportSamplePeak as never}', 'loudness={application ? undefined : exportLoudness as never}',
     'heldExportIds={data.restore?.heldExportIds}', 'orderedExports={orderedExports}',
     'projectName={data.project?.name}', 'timelineRevision={timeline?.revision}',
   ]) assert.ok(history.includes(expected), expected);
