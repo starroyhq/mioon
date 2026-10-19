@@ -1,5 +1,5 @@
 import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage, translate } from './helpers/i18n.ts';
-import { rulerFrameForKey } from '../apps/web/src/timeline-keyboard.js';
+import { rulerFrameForKey } from '../apps/web/src/timeline-keyboard.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -287,7 +287,7 @@ test('confirmation dismissal and concurrent requests never imply approval', () =
 });
 
 test('timeline retains specialized positioning and accessible Base UI controls', () => {
-  const source = readFileSync(resolve(root, 'apps/web/src/Timeline.jsx'), 'utf8');
+  const source = readFileSync(resolve(root, 'apps/web/src/Timeline.tsx'), 'utf8');
   const toolbar = readFileSync(resolve(root, 'apps/web/src/TimelineToolbar.tsx'), 'utf8');
   assert.match(source, /<TimelineToolbar[\s\S]*?pixelsPerSecond=\{pixelsPerSecond\}/);
   assert.match(toolbar, /<Slider[^>]*value=\{\[props\.pixelsPerSecond\]\}/);
@@ -316,7 +316,7 @@ test('timeline ruler keyboard navigation stays inside integer-frame bounds', () 
 
 
 test('project menu labels are grouped for Base UI MenuGroupContext', () => {
-  const app = readFileSync(resolve(root, 'apps/web/src/App.jsx'), 'utf8');
+  const app = readFileSync(resolve(root, 'apps/web/src/App.tsx'), 'utf8');
   assert.match(app, /<DropdownMenuGroup><DropdownMenuLabel>\{t\('projects.yourProjects'\)\}<\/DropdownMenuLabel>/);
   assert.equal(translate('zh-Hans', 'projects.yourProjects'), '你的项目');
   assert.match(app, /<\/DropdownMenuGroup><DropdownMenuSeparator/);

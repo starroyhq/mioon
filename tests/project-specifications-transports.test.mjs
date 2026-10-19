@@ -9,14 +9,14 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient,discoverSchema} from '@mioon/client';
 import {isTimelineFormatReadResponse,operationEffects} from '@mioon/contracts';
-import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.mjs';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.mjs';
+import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
+import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
+import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import {taskFixture,database,snapshot,taskPath,REPO,TASK_TOKEN} from './helpers/edit-tasks-http-fixture.mjs';
 
 const env=url=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',MIOON_BASE_URL:url,MIOON_TOKEN:TASK_TOKEN});
 async function cli(url,args){
- const child=spawn(process.execPath,[path.join(REPO,'apps/cli/src/index.mjs'),...args],{cwd:REPO,env:env(url),stdio:['ignore','pipe','pipe']});
+ const child=spawn(process.execPath,[path.join(REPO,'apps/cli/src/index.ts'),...args],{cwd:REPO,env:env(url),stdio:['ignore','pipe','pipe']});
  let out='',err='';
  child.stdout.setEncoding('utf8').on('data',s=>{out+=s;if(out.length>512*1024)child.kill('SIGKILL');});
  child.stderr.setEncoding('utf8').on('data',s=>{err+=s;if(err.length>64*1024)child.kill('SIGKILL');});
@@ -38,7 +38,7 @@ async function wire(t){
  }catch{res.destroy();}});
  proxy.listen(0,'127.0.0.1');await once(proxy,'listening');const url=`http://127.0.0.1:${proxy.address().port}`;
  const mcp=new Client({name:'timeline-format-tests',version:'1.0.0'},{capabilities:{}});
- const transport=new StdioClientTransport({command:process.execPath,args:[path.join(REPO,'apps/mcp/src/index.mjs')],cwd:REPO,env:env(url),stderr:'pipe'});
+ const transport=new StdioClientTransport({command:process.execPath,args:[path.join(REPO,'apps/mcp/src/index.ts')],cwd:REPO,env:env(url),stderr:'pipe'});
  transport.stderr?.setEncoding('utf8');transport.stderr?.resume();await mcp.connect(transport);
  t.after(async()=>{await mcp.close();proxy.closeAllConnections();await new Promise(resolve=>proxy.close(resolve));});
  const raw=async(operation,input)=>{try{const r=await fetch(url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+TASK_TOKEN,'content-type':'application/json'},body:JSON.stringify({operation,input}),signal:AbortSignal.timeout(10000)});return await r.json();}catch{return {ok:false,error:{code:'LOST_TRANSPORT'}};}};

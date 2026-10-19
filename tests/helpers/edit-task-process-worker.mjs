@@ -1,8 +1,8 @@
 // Disposable IPC worker: real store ownership and services, synthetic metadata only.
 // Faults kill this worker before its reply, without closing SQLite or removing its lock.
-import {openStore} from '../../packages/business/src/db.mjs';
-import {createServices} from '../../packages/business/src/services.mjs';
-import {createEditTasks} from '../../packages/business/src/edit-tasks.mjs';
+import {openStore} from '../../packages/business/src/db.ts';
+import {createServices} from '../../packages/business/src/services.ts';
+import {createEditTasks} from '../../packages/business/src/edit-tasks.ts';
 
 const taskMethods = new Set(['prepare', 'get', 'list', 'execute', 'reconcile', 'acknowledge', 'reconcileStartup']);
 const localOperations = new Set(['subject.create', 'subject.version.add', 'subject.binding.set', 'subject.list',

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createWorkspacePreferences, durableWorkspaceState } from '../apps/web/src/workspace-preferences.js';
-import { defaultWorkspaceState, readStoredWorkspaceState, writeWorkspaceState } from '../apps/web/src/workspace-state.js';
+import { createWorkspacePreferences, durableWorkspaceState } from '../apps/web/src/workspace-preferences.ts';
+import { defaultWorkspaceState, readStoredWorkspaceState, writeWorkspaceState } from '../apps/web/src/workspace-state.ts';
 
 const A = '994d1f5d-b34d-494b-a3cb-fb0e6c5df761';
 const B = '297ac636-dd29-4eab-b8e5-a4514df7d3c2';

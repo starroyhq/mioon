@@ -4,8 +4,8 @@ import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {createTimelineMixLoudnessDecoder, planTimelineMixLoudnessDecode, TIMELINE_MIX_LOUDNESS_DECODE_LIMITS} from '../packages/business/src/timeline-mix-loudness-decoder.ts';
 import {timelineAudioSilenceFilter, timelineClipAudioFilter, timelineMixedAudioFilter} from '../packages/business/src/timeline-audio-filter-graph.ts';
-import {timelineAudioFadeFilters} from '../packages/business/src/timeline-audio.mjs';
-import {checkMediaEffect} from '../packages/business/src/media-runtime.mjs';
+import {timelineAudioFadeFilters} from '../packages/business/src/timeline-audio.ts';
+import {checkMediaEffect} from '../packages/business/src/media-runtime.ts';
 
 const clip = patch => ({id:'clip-a',trackId:'sound',assetId:'source',startFrame:0,durationFrames:6,sourceInFrame:3,gain:1,...patch});
 const fixture = () => ({timeline:{fps:30,durationFrames:6,tracks:[{id:'sound',kind:'audio',orderIndex:1,hidden:false,muted:false}],clips:[clip()]},
@@ -41,7 +41,7 @@ test('historical 0343ed3 audio extraction preserves frozen b9e7d1e renderer byte
   // renderer: accepted SDR LUT, PNG and JPEG features subsequently changed it.
   const fixture=JSON.parse(await readFile(new URL('./fixtures/timeline-mix-loudness/renderer-extraction-0343ed3.json',import.meta.url),'utf8'));
   assert.equal(fixture.sourceCommit,'0343ed390a85c319210b5f179180cf9c8c3985c2');
-  assert.equal(fixture.sourcePath,'packages/business/src/timeline-media.mjs');
+  assert.equal(fixture.sourcePath,'packages/business/src/timeline-media.ts');
   assert.equal(fixture.beforeExtractionCommit,'b9e7d1e57a687010407ae284cb55c0d4eed23abb');
   assert.equal(fixture.sourceSha256,'4b5f850dfc388d972ab42decfff5f76b5951315b16ab73902a7dcaec411fae37');
   assert.equal(createHash('sha256').update(fixture.source).digest('hex'),fixture.sourceSha256);
@@ -57,7 +57,7 @@ test('historical 0343ed3 audio extraction preserves frozen b9e7d1e renderer byte
 });
 
 test('current renderer retains exact shared audio helper wiring and unchanged trusted filter literals',async()=>{
-  const source=await readFile(new URL('../packages/business/src/timeline-media.mjs',import.meta.url),'utf8');
+  const source=await readFile(new URL('../packages/business/src/timeline-media.ts',import.meta.url),'utf8');
   for(const wiring of [
     "import {timelineAudioSilenceFilter,timelineClipAudioFilter,timelineMixedAudioFilter} from './timeline-audio-filter-graph.ts';",
     "`,timelineAudioSilenceFilter(samples)];\n   let visual='base';const sounds=['silence'];",
@@ -80,7 +80,7 @@ test('typed fade extraction preserves the old helper body byte-for-byte and its 
     .replace("export function timelineAudioFadeFilters(clip: Pick<TimelineAudioFilterClip, 'startFrame' | 'durationFrames' | 'fadeInFrames' | 'fadeOutFrames'>,\n  segmentStartFrame: number): string {",'export function timelineAudioFadeFilters(clip, segmentStartFrame) {').trimEnd()+'\n';
   const original="import {deriveTimelineAudioSamples} from '@mioon/contracts/timeline-audio-preview';\n"+body;
   assert.equal(createHash('sha256').update(original).digest('hex'),'1154c4fdbaefceeeb1bf6d9f7ccccbf004ce5e7262afa4a48ac10ae853f7dcbb');
-  const shim=await readFile(new URL('../packages/business/src/timeline-audio.mjs',import.meta.url),'utf8');
+  const shim=await readFile(new URL('../packages/business/src/timeline-audio.ts',import.meta.url),'utf8');
   assert.match(shim,/export \{timelineAudioFadeFilters\} from '\.\/timeline-audio-filter-graph\.ts';/u);
 });
 

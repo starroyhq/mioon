@@ -11,9 +11,9 @@ import path from 'node:path';
 import cp from 'node:child_process';
 import net from 'node:net';
 import {syncBuiltinESMExports} from 'node:module';
-import {openStore, getWorkspaceRestoreContext, classifyCurrentWorkspaceSchema} from '../packages/business/src/db.mjs';
-import {classifyWorkspaceSchema, installWorkspaceRestoreSchema, validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
+import {openStore, getWorkspaceRestoreContext, classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
+import {classifyWorkspaceSchema, installWorkspaceRestoreSchema, validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {open, fixture, snapshot, golden, quote} from './workspace-schema26-fixtures.mjs';
 
 let forbiddenEffects = 0;

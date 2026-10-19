@@ -1,9 +1,9 @@
 /** Copy-only synthetic fixture. Never opens or writes the original workspace. */
 import path from 'node:path';
 import {mkdir,writeFile,access} from 'node:fs/promises';
-import {migrateData} from '../apps/desktop/scripts/migrate-data.mjs';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
+import {migrateData} from '../apps/desktop/scripts/migrate-data.ts';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
 import {randomUUID} from 'node:crypto';
 const runtime=path.resolve('evidence/timeline-snapping/runtime'),dataDir=path.join(runtime,'workspace');
 await mkdir(runtime,{recursive:true});

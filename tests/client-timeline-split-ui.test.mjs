@@ -6,10 +6,10 @@ import {execFileSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
-import {timelineSplitState} from '../apps/web/src/timeline-split.js';
-import {timelineSplitActionForKey} from '../apps/web/src/timeline-keyboard.js';
-import {timelineHistoryState} from '../apps/web/src/timeline-history.js';
-import {prepareSubmission,readPending,reconcilePending} from '../apps/web/src/submissions.js';
+import {timelineSplitState} from '../apps/web/src/timeline-split.ts';
+import {timelineSplitActionForKey} from '../apps/web/src/timeline-keyboard.ts';
+import {timelineHistoryState} from '../apps/web/src/timeline-history.ts';
+import {prepareSubmission,readPending,reconcilePending} from '../apps/web/src/submissions.ts';
 const root=fileURLToPath(new URL('..',import.meta.url));
 const fixture=()=>({projectId:'project',timeline:{id:'timeline',revision:5,clips:[{id:'clip',name:'Frozen source',startFrame:10,durationFrames:50}]},history:{projectId:'project',timelineId:'timeline',revision:5,cursor:1,length:1,canUndo:true,canRedo:false,undoEntry:{id:'entry',operation:'timeline.clip.split'},redoEntry:null},selectedClipId:'clip',playhead:30,mode:'editing'});
 const event=patch=>({key:'b',ctrlKey:true,metaKey:false,altKey:false,shiftKey:false,repeat:false,isComposing:false,defaultPrevented:false,target:null,...patch});
@@ -63,12 +63,12 @@ test('shared split button renders accessible target, frame, shortcut and disable
  assert.match(execFileSync(process.execPath,['--input-type=module'],{input:script,cwd:root,encoding:'utf8',timeout:30000}),/verified/);
 });
 test('App rechecks current view and current aggregate before the shared durable mutation',()=>{
- const app=readFileSync(path.join(root,'apps/web/src/App.jsx'),'utf8');assert.match(app,/selectedClipId: propertiesPage === 'subtitle' \? null : viewRef\.current\.editing\.selectedClipId, playhead: timelineAudioPreviewPosition\(audioPreview, viewRef\.current\.editing\.playhead\), mode: viewRef\.current\.activeMode/);assert.match(app,/if \(!latest\.canSplit\) return null/);assert.match(app,/mutateTimeline\('timeline\.clip\.split', \{ clipId: latest\.clipId, atFrame: latest\.atFrame \}\)/);assert.match(app,/if \(viewRef\.current\.activeMode !== 'editing'\) return/);
+ const app=readFileSync(path.join(root,'apps/web/src/App.tsx'),'utf8');assert.match(app,/selectedClipId: propertiesPage === 'subtitle' \? null : viewRef\.current\.editing\.selectedClipId, playhead: timelineAudioPreviewPosition\(audioPreview, viewRef\.current\.editing\.playhead\), mode: viewRef\.current\.activeMode/);assert.match(app,/if \(!latest\.canSplit\) return null/);assert.match(app,/mutateTimeline\('timeline\.clip\.split', \{ clipId: latest\.clipId, atFrame: latest\.atFrame \}\)/);assert.match(app,/if \(viewRef\.current\.activeMode !== 'editing'\) return/);
 });
 
 
 test('actual App subtitle selection suppresses splitting a previously selected media clip',async()=>{
- const app=readFileSync(path.join(root,'apps/web/src/App.jsx'),'utf8');
+ const app=readFileSync(path.join(root,'apps/web/src/App.tsx'),'utf8');
  const source=app.slice(app.indexOf('  async function splitTimelineClip('),app.indexOf('  function changeTimelineHistory('));
  for(const propertiesPage of ['subtitle','inspector'])for(const sounding of [false,true]){
   const state=fixture(),calls=[],events=[];

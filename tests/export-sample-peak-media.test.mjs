@@ -8,9 +8,9 @@ import {createServer} from 'node:http';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {run, runStreaming, checkMediaEffect} from '../packages/business/src/media-runtime.mjs';
-import {withProbePermit, MEDIA_PROBE_LIMITS} from '../packages/business/src/media-probe.mjs';
-import {onMediaProcess, hasUnconfirmedMediaProcesses, terminateMediaProcesses} from '../packages/business/src/media-processes.mjs';
+import {run, runStreaming, checkMediaEffect} from '../packages/business/src/media-runtime.ts';
+import {withProbePermit, MEDIA_PROBE_LIMITS} from '../packages/business/src/media-probe.ts';
+import {onMediaProcess, hasUnconfirmedMediaProcesses, terminateMediaProcesses} from '../packages/business/src/media-processes.ts';
 import {createExportSamplePeakDecoder} from '../packages/business/src/export-sample-peak-decoder.ts';
 
 // Real local media tests are serialized by the parent test runner. Fixture

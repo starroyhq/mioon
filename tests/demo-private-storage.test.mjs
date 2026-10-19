@@ -16,7 +16,7 @@ async function fixture(t) {
   // No production env/hook or substitute business operation is introduced.
   await writeFile(guard, `import cp from 'node:child_process'; import fs from 'node:fs'; import {syncBuiltinESMExports} from 'node:module'; cp.spawn=()=>{fs.writeFileSync(${JSON.stringify(marker)},'unexpected backend spawn');throw Error('unexpected backend spawn');}; syncBuiltinESMExports();\n`, {mode: 0o600});
   return {root, marker, run(target) {
-    const result = spawnSync(process.execPath, ['--import', guard, 'scripts/create-timeline-demo.mjs'], {
+    const result = spawnSync(process.execPath, ['--import', guard, 'scripts/create-timeline-demo.ts'], {
       cwd: repo, encoding: 'utf8', timeout: 5000, maxBuffer: 65536,
       env: {PATH: process.env.PATH || '', HOME: root, TMPDIR: root, LANG: 'C.UTF-8', MIOON_V2_DEMO_DIR: target, MIOON_ENABLE_LIVE_PROVIDER: '0'},
     });

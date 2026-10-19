@@ -7,8 +7,8 @@ import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {openOpacityCandidateStore, getOpacityCandidateAssembly} from '../packages/business/src/opacity-candidate-store.ts';
 import {installWorkspaceRestoreSchemaV43} from '../packages/business/src/workspace-restore-schema-v43.ts';
-import {createServices} from '../packages/business/src/services.mjs';
-import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
+import {createServices} from '../packages/business/src/services.ts';
+import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 
 const stamp = '2026-10-16T00:00:00.000Z';
 const hash = value => createHash('sha256').update(JSON.stringify(value, (_key, part) => part && typeof part === 'object' && !Array.isArray(part)

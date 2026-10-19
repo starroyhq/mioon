@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, imageSchemas, imageSnapshotSchema, imageReceiptSchema, imageVersionResponseSchema, imageProfilesResponseSchema, canonicalImageInput} from '../packages/contracts/src/images.mjs';
-import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION, CUSTOM_IMAGE_PROFILE_ID, CUSTOM_IMAGE_SETTINGS_NAMESPACE, customImageConfigurationSchema, customImageSettingsUpdateSchema, customImageSettingsResultSchema, imageConfigurationSchema, normalizeCustomImageBaseUrl, getCustomImageDestination} from '../packages/contracts/src/image-settings.mjs';
-import {IMAGE_REVIEW_POLICY, IMAGE_REVIEW_DESTINATION, imageReviewIntentSchema, imageReviewResponseSchema, imageReviewSchemas} from '../packages/contracts/src/image-reviews.mjs';
+import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, imageSchemas, imageSnapshotSchema, imageReceiptSchema, imageVersionResponseSchema, imageProfilesResponseSchema, canonicalImageInput} from '../packages/contracts/src/images.ts';
+import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION, CUSTOM_IMAGE_PROFILE_ID, CUSTOM_IMAGE_SETTINGS_NAMESPACE, customImageConfigurationSchema, customImageSettingsUpdateSchema, customImageSettingsResultSchema, imageConfigurationSchema, normalizeCustomImageBaseUrl, getCustomImageDestination} from '../packages/contracts/src/image-settings.ts';
+import {IMAGE_REVIEW_POLICY, IMAGE_REVIEW_DESTINATION, imageReviewIntentSchema, imageReviewResponseSchema, imageReviewSchemas} from '../packages/contracts/src/image-reviews.ts';
 const config = () => ({...DEFAULT_CUSTOM_IMAGE_CONFIGURATION, enabled:true, baseUrl:'https://images.example.test/team/v1', model:'vendor/image-model:revision'});
 const generation = () => ({projectId:randomUUID(),requestId:randomUUID(),name:'Custom image',providerId:'openai-compatible',model:config().model,prompt:'Original exact prompt',options:{...IMAGE_FIXED_OPTIONS}});
 const intent = () => { const configuration=config();return {schemaVersion:2,reviewId:randomUUID(),input:generation(),settingsRevision:4,destination:getCustomImageDestination(configuration.baseUrl),policy:{...IMAGE_REVIEW_POLICY},configuration}; };

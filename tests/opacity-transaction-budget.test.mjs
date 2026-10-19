@@ -5,11 +5,11 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {Readable} from 'node:stream';
-import {openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
-import {createEditTasksHttp} from '../apps/server/src/edit-tasks-http.mjs';
-import {schemas,isTimelineRecord,isTimelineMutationResponse,isEditTaskEnvelope} from '../packages/contracts/src/index.mjs';
+import {openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
+import {createEditTasksHttp} from '../apps/server/src/edit-tasks-http.ts';
+import {schemas,isTimelineRecord,isTimelineMutationResponse,isEditTaskEnvelope} from '../packages/contracts/src/index.ts';
 import {createTimelineOpacityCandidateContracts} from '../packages/contracts/src/timeline-opacity-candidate.ts';
 import {OPACITY_ENVELOPE_PROFILE} from '../packages/contracts/src/timeline-opacity-envelope.ts';
 

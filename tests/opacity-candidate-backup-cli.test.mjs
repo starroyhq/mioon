@@ -10,7 +10,7 @@ import {opacityWorkspaceBackupResultSchema, opacityWorkspaceRestoreResultSchema,
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const entry = path.join(repo, 'apps/cli/src/opacity-backup.ts');
-const legacy = path.join(repo, 'apps/cli/src/backup.mjs');
+const legacy = path.join(repo, 'apps/cli/src/backup.ts');
 const secret = 'SYNTHETIC_CLI_CREDENTIAL_NEVER_LIVE';
 const guards = ['BOUNDARY', 'NETWORK', 'SUBPROCESS', 'CREDENTIAL_ENV', 'CREDENTIAL_FILE'];
 
@@ -18,7 +18,7 @@ const guards = ['BOUNDARY', 'NETWORK', 'SUBPROCESS', 'CREDENTIAL_ENV', 'CREDENTI
  * records evidence outside sanitized diagnostics, so a caught error cannot
  * disguise an attempted provider/media/network/credential operation. */
 function guardFor(base, extra = '') {
-  const guard = path.join(base, `guard-${fs.readdirSync(base).filter(name => name.startsWith('guard-')).length}.mjs`);
+  const guard = path.join(base, `guard-${fs.readdirSync(base).filter(name => name.startsWith('guard-')).length}.ts`);
   const violations = path.join(base, 'guard-violations.jsonl');
   fs.writeFileSync(guard, `
 import {registerHooks,syncBuiltinESMExports} from 'node:module';

@@ -321,7 +321,7 @@ componentTest('mac-inset home header preserves native-control space and interact
 
 
 test('actual App wires the scoped home stylesheet without weakening TypeScript module checks', () => {
-  assert.match(readFileSync(join(root, 'apps/web/src/App.jsx'), 'utf8'), /import ['"]\.\/project-home\.css['"]/);
+  assert.match(readFileSync(join(root, 'apps/web/src/App.tsx'), 'utf8'), /import ['"]\.\/project-home\.css['"]/);
 });
 
 componentTest('native create intent effect opens once and retained inputs survive later same-version renders', () => {

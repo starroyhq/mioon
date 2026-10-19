@@ -7,7 +7,7 @@ import {spawnSync} from 'node:child_process';
 import {build} from 'esbuild';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {toolingEnvironment, verifySourceLanguages} from '../scripts/lib/local-tooling.mjs';
+import {toolingEnvironment, verifySourceLanguages} from '../scripts/lib/local-tooling.ts';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const env=toolingEnvironment(process.env);
 function command(args){
@@ -16,20 +16,20 @@ function command(args){
 }
 test('repository source policy and genuine compiler check all current included runtime sources', {timeout:60000}, async()=>{
  await verifySourceLanguages(root);
- command(['scripts/tooling.mjs','typecheck']);
+ command(['scripts/tooling.ts','typecheck']);
 });
 test('real CLI resolves the pnpm workspace TS implementation and retains version and schema output', async()=>{
  const resolved=fileURLToPath(import.meta.resolve('@mioon/contracts'));
- assert.equal(await realpath(resolved),await realpath(path.join(root,'packages/contracts/src/index.mjs')));
+ assert.equal(await realpath(resolved),await realpath(path.join(root,'packages/contracts/src/index.ts')));
  assert.equal((await realpath(resolved)).split(path.sep).includes('node_modules'),false,'Node strips the actual workspace source, not TS physically installed under node_modules');
  const version=JSON.parse(await readFile(path.join(root,'package.json'),'utf8')).version;
- assert.match(command(['apps/cli/src/index.mjs','--version']),new RegExp(version.replaceAll('.','\\.')));
- const schema=JSON.parse(command(['apps/cli/src/index.mjs','schema','timeline.render']));
+ assert.match(command(['apps/cli/src/index.ts','--version']),new RegExp(version.replaceAll('.','\\.')));
+ const schema=JSON.parse(command(['apps/cli/src/index.ts','schema','timeline.render']));
  assert.equal(schema.ok,true);assert.equal(schema.data.operation,'timeline.render');
 });
 test('official MCP actually initializes and discovers shared operations through the typed workspace graph', {timeout:30000}, async t=>{
  const client=new Client({name:'mioon-typecheck-runtime',version:'1.0.0'},{capabilities:{}});
- const transport=new StdioClientTransport({command:process.execPath,args:[path.join(root,'apps/mcp/src/index.mjs')],cwd:root,env,stderr:'pipe'});
+ const transport=new StdioClientTransport({command:process.execPath,args:[path.join(root,'apps/mcp/src/index.ts')],cwd:root,env,stderr:'pipe'});
  let stderr='';transport.stderr.setEncoding('utf8').on('data',text=>{stderr=(stderr+text).slice(-16000);});
  t.after(()=>client.close());await client.connect(transport);
  const version=JSON.parse(await readFile(path.join(root,'package.json'),'utf8')).version;
@@ -50,9 +50,9 @@ test('real React TSX consumer bundles erased types and renders through the insta
 });
 test('ordinary Web and direct Desktop build entries cannot omit the compiler gate', async()=>{
  const web=JSON.parse(await readFile(path.join(root,'apps/web/package.json'),'utf8'));
- assert.equal(web.scripts.build,'node ../../scripts/tooling.mjs typecheck && vite build');
- const source=await readFile(path.join(root,'apps/desktop/scripts/build.mjs'),'utf8');
- assert.ok(source.includes("import {main as checkTypes} from '../../../scripts/tooling.mjs';"));
+ assert.equal(web.scripts.build,'node ../../scripts/tooling.ts typecheck && vite build');
+ const source=await readFile(path.join(root,'apps/desktop/scripts/build.ts'),'utf8');
+ assert.ok(source.includes("import {main as checkTypes} from '../../../scripts/tooling.ts';"));
  const checkIndex=source.indexOf("await checkTypes(['typecheck'])"), removeIndex=source.indexOf('await rm(output');
  assert.ok(checkIndex>=0);assert.ok(removeIndex>=0);assert.ok(checkIndex<removeIndex);
  assert.ok(source.includes("throw new Error('Type checking failed; desktop staging was not replaced.')"));

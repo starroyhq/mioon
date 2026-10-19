@@ -7,11 +7,11 @@ import path from 'node:path';
 import {Worker} from 'node:worker_threads';
 import {AppError,TIMELINE_MUTATION_OPERATIONS,hasRequestNotAppliedProof,isTimelineMutationResponse} from '@mioon/contracts';
 import {timelineLoudnessCandidateDigest} from '@mioon/contracts/timeline-loudness-apply';
-import {openStore,ownsStoreLock} from '../packages/business/src/db.mjs';
-import {createServices,hash} from '../packages/business/src/services.mjs';
-import {createTimelineServices} from '../packages/business/src/timeline.mjs';
+import {openStore,ownsStoreLock} from '../packages/business/src/db.ts';
+import {createServices,hash} from '../packages/business/src/services.ts';
+import {createTimelineServices} from '../packages/business/src/timeline.ts';
 import {createTimelineLoudnessApplyServices} from '../packages/business/src/timeline-loudness-apply.ts';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {readyMixLoudness,mixLoudnessInput} from './fixtures/timeline-mix-loudness-fixtures.mjs';
 
 const at='2026-10-10T00:00:00.000Z',clone=value=>JSON.parse(JSON.stringify(value));
@@ -290,7 +290,7 @@ test('independent writers share one retained response and competing fresh keys r
  const f=await fixture(t),timeline=await populated(f),input=params(f,timeline,{clipId:timeline.clips[0].id,atFrame:30});
  const source=`const {parentPort,workerData}=require('node:worker_threads');(async()=>{const {openStore}=await import(workerData.db);const {createServices}=await import(workerData.services);const store=openStore(workerData.root,{lock:false});parentPort.postMessage({ready:true});parentPort.once('message',async()=>{try{parentPort.postMessage({response:await createServices(store,new Map()).call('timeline.clip.split',workerData.input)});}catch(error){parentPort.postMessage({code:error.code,details:error.details});}finally{store.close();}});})();`;
  async function race(inputs){
-  const workers=inputs.map(input=>new Worker(source,{eval:true,workerData:{root:f.root,input,db:new URL('../packages/business/src/db.mjs',import.meta.url).href,services:new URL('../packages/business/src/services.mjs',import.meta.url).href}}));
+  const workers=inputs.map(input=>new Worker(source,{eval:true,workerData:{root:f.root,input,db:new URL('../packages/business/src/db.ts',import.meta.url).href,services:new URL('../packages/business/src/services.ts',import.meta.url).href}}));
   t.after(()=>Promise.all(workers.map(worker=>worker.terminate())));
   await Promise.all(workers.map(worker=>new Promise((resolve,reject)=>{worker.once('message',resolve);worker.once('error',reject);})));
   const results=workers.map(worker=>new Promise((resolve,reject)=>{worker.once('message',resolve);worker.once('error',reject);}));workers.forEach(worker=>worker.postMessage('go'));return Promise.all(results);

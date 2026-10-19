@@ -16,13 +16,13 @@ import {createOpacityCandidateApplicationEditorAssembly} from '../apps/server/sr
 import {createRestoredOpacityCandidateLaunch, consumeOpacityCandidateLaunch, closeUnusedOpacityCandidateLaunch} from '../apps/server/src/opacity-candidate-launch.ts';
 import {parseOpacityCandidateArguments} from '../apps/server/src/opacity-candidate-cli.ts';
 import {isOpacityRestoredApplicationInspection} from '../packages/contracts/src/opacity-restored-application.ts';
-import {isWorkspaceRestoreInspection} from '../packages/contracts/src/workspace-restore.mjs';
+import {isWorkspaceRestoreInspection} from '../packages/contracts/src/workspace-restore.ts';
 import {initializeOpacityLegacyThrough40} from '../packages/business/src/workspace-opacity-legacy.ts';
 import {initializeWorkspaceSchema42} from '../packages/business/src/workspace-schema-v42.ts';
 import {createWorkspaceRestoreProfileV41} from '../packages/business/src/workspace-restore-schema-v41.ts';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {matchesOpacityCandidateExport} from '../packages/business/src/opacity-candidate-render-authority.ts';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 
 let attempts = 0;
 const forbidden = () => {attempts++; throw Error('No listener, provider or native media in restored43 admission tests');};

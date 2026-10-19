@@ -5,9 +5,9 @@ import { transformSync } from 'esbuild';
 import * as i18n from '../packages/i18n/src/index.ts';
 import { timelineMessages } from '../packages/i18n/src/catalogs/timeline.ts';
 import { createLanguageStore } from '../apps/web/src/i18n/language-store.ts';
-import * as subtitles from '../apps/web/src/subtitle-state.js';
-import { createFrameExtractionController } from '../apps/web/src/frame-extraction.js';
-import { createTimelineFormatController } from '../apps/web/src/timeline-format-state.js';
+import * as subtitles from '../apps/web/src/subtitle-state.ts';
+import { createFrameExtractionController } from '../apps/web/src/frame-extraction.ts';
+import { createTimelineFormatController } from '../apps/web/src/timeline-format-state.ts';
 
 const id = n => `95000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), timelineId = id(2);
@@ -41,7 +41,7 @@ test('real language store relabels the mounted subtitle inspector without recrea
   const store = languageStore(); let slot = 0, layouts = 0; const slots = [];
   const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), useRef: current => slots[slot++] ||= { current }, useLayoutEffect: (fn, deps) => { const index = slot++, prior = slots[index]; if (prior && deps.every((value, index) => value === prior.deps[index])) return; slots[index] = { deps }; fn(); layouts++; } }; react.default = react;
   const context = () => { const { locale } = store.getSnapshot(); return { locale, t: (key, params) => i18n.translate(locale, key, params), renderMessage: value => i18n.renderMessage(locale, value) }; };
-  const module = { exports: {} }, source = readFileSync(new URL('../apps/web/src/SubtitleInspector.jsx', import.meta.url), 'utf8');
+  const module = { exports: {} }, source = readFileSync(new URL('../apps/web/src/SubtitleInspector.tsx', import.meta.url), 'utf8');
   Function('require', 'module', 'exports', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(name => name === 'react' ? react : name === './i18n/I18nProvider.tsx' ? { useI18n: context } : name.endsWith('packages/i18n/src/index.ts') ? i18n : name === './subtitle-state.js' ? subtitles : name === './workspace-visibility.jsx' ? { useWorkspaceVisibility: () => true } : name.endsWith('workbench-confirm') ? { useConfirmation: () => async () => false } : name.endsWith('.css') ? {} : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
   const seen = new Set(); let renders = 0;
   const render = () => { slot = 0; renders++; seen.add(textOf(module.exports.default({ state: controller.getState(), controller }))); };

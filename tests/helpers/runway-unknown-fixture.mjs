@@ -3,10 +3,10 @@
  */
 import assert from 'node:assert/strict';
 import { randomUUID, createHash } from 'node:crypto';
-import { openStore } from '../../packages/business/src/db.mjs';
-import { createServices } from '../../packages/business/src/services.mjs';
-import { startWorker } from '../../packages/business/src/jobs.mjs';
-import { createRunwayProvider } from '../../packages/business/src/providers/runway.mjs';
+import { openStore } from '../../packages/business/src/db.ts';
+import { createServices } from '../../packages/business/src/services.ts';
+import { startWorker } from '../../packages/business/src/jobs.ts';
+import { createRunwayProvider } from '../../packages/business/src/providers/runway.ts';
 
 export const syntheticPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/m1cAAAAASUVORK5CYII=', 'base64');
 export async function createRunwayUnknownFixture(root) {

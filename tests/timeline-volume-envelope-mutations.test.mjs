@@ -2,8 +2,8 @@ import test,{mock} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {mkdtempSync,rmSync} from 'node:fs';
-import {openStore} from '../packages/business/src/db.mjs';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
 import {initializeWorkspaceSchema28} from '../packages/business/src/workspace-schema-v28.ts';
 import {initializeWorkspaceSchema30} from '../packages/business/src/workspace-schema-v30.ts';
@@ -12,26 +12,26 @@ import {initializeWorkspaceSchema34} from '../packages/business/src/workspace-sc
 import {initializeWorkspaceSchema36} from '../packages/business/src/workspace-schema-v36.ts';
 import {initializeWorkspaceSchema38} from '../packages/business/src/workspace-schema-v38.ts';
 import {validateWorkspaceSchema40,initializeWorkspaceSchema40} from '../packages/business/src/workspace-schema-v40.ts';
-import {createTimelineServices as realTimelineServices} from '../packages/business/src/timeline.mjs';
-import * as realRestorePolicy from '../packages/business/src/workspace-restore-policy.mjs';
-import {hash} from '../packages/business/src/services.mjs';
-import {AppError,parse,hasRequestNotAppliedProof} from '../packages/contracts/src/index.mjs';
+import {createTimelineServices as realTimelineServices} from '../packages/business/src/timeline.ts';
+import * as realRestorePolicy from '../packages/business/src/workspace-restore-policy.ts';
+import {hash} from '../packages/business/src/services.ts';
+import {AppError,parse,hasRequestNotAppliedProof} from '../packages/contracts/src/index.ts';
 import {VOLUME_ENVELOPE_PROFILE,createVolumeEnvelopeEvaluator} from '../packages/contracts/src/timeline-volume-envelope.ts';
 import {admitTimelineVolumeEnvelopeWrite} from '../packages/business/src/timeline-volume-envelope-admission.ts';
-import {rejectTimelineMutation} from '../packages/business/src/timeline-recovery.mjs';
+import {rejectTimelineMutation} from '../packages/business/src/timeline-recovery.ts';
 import {open,snapshot,insert} from './workspace-schema26-fixtures.mjs';
 // Historical test-only seam retained for bounded synthetic transaction regressions.
 // Genuine activation evidence lives in timeline-volume-envelope-owned-startup.test.mjs.
 // No other permission check is mocked, and only full validated ordinary40
 // synthetic fixtures receive the exemption. Restored/forged profiles refuse.
 const fixtures=new WeakSet();
-mock.module('../packages/business/src/workspace-restore-policy.mjs',{namedExports:{...realRestorePolicy,
+mock.module('../packages/business/src/workspace-restore-policy.ts',{namedExports:{...realRestorePolicy,
  refuseRestoredOperation(store,operation,input){
   if(fixtures.has(store)){validateWorkspaceSchema40(store.db,{verifyBytes:false});return;}
   return realRestorePolicy.refuseRestoredOperation(store,operation,input);
  }
 }});
-const {createTimelineServices}=await import('../packages/business/src/timeline.mjs?synthetic40-tests');
+const {createTimelineServices}=await import('../packages/business/src/timeline.ts');
 const stamp='2026-10-15T00:00:00.000Z';
 const envelope=()=>({profileId:VOLUME_ENVELOPE_PROFILE,points:[{frame:0,multiplier:1},{frame:10,multiplier:.2},{frame:60,multiplier:.8}]});
 function fixture(t,{version=40,missing=false,realPolicy=false,owned=false}={}){

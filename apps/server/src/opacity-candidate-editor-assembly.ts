@@ -39,7 +39,7 @@ function createEditor(store: unknown, application: boolean, ownerSignal?: AbortS
   const services = application ? createOpacityCandidateApplicationServices(store, {signal}) : createOpacityCandidateServices(store, {signal});
   // A concrete existing legacy entrypoint, with a small checked boundary.
   // No ambient declaration pretends the coordinator is TypeScript.
-  const module: unknown = require('../../../packages/business/src/edit-tasks.mjs');
+  const module: unknown = require('../../../packages/business/src/edit-tasks.ts');
   if (!object(module) || typeof module.createEditTasks !== 'function') return unavailable();
   const made: unknown = Reflect.apply(module.createEditTasks, module, [{store, services}]);
   const names = ['prepare', 'get', 'list', 'execute', 'reconcile', 'acknowledge', 'reconcileStartup', 'drain'] as const;

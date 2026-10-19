@@ -186,7 +186,7 @@ function runOne(runtime: TimelineOpacityPixelProbeDependenciesCandidate, executa
 /** Resolve only the already installed tool selected by the existing trusted
  * locator. No shell, installer, environment overlay or downloaded binary. */
 export function resolveTimelineOpacityPixelProbeFfmpegCandidate(): string {
-  const environment: unknown = require('./media-environment.mjs');
+  const environment: unknown = require('./media-environment.ts');
   if (!environment || typeof environment !== 'object') throw failure('OPACITY_PROBE_FFMPEG_UNAVAILABLE');
   const locator: unknown = Reflect.get(environment, 'mediaExecutable');
   const reducedEnvironment: unknown = Reflect.get(environment, 'mediaEnvironment');
@@ -209,7 +209,7 @@ export function resolveTimelineOpacityPixelProbeFfmpegCandidate(): string {
 
 /** Exactly four serial synthetic cases, stopping after the first failure. */
 export async function runTimelineOpacityPixelProbeCandidate(): Promise<TimelineOpacityPixelProbeReportCandidate> {
-  const processRuntime: unknown = require('./media-processes.mjs');
+  const processRuntime: unknown = require('./media-processes.ts');
   if (!processRuntime || typeof processRuntime !== 'object') throw failure('OPACITY_PROBE_RUNTIME_UNAVAILABLE');
   const spawn: unknown = Reflect.get(processRuntime, 'spawnMedia'), stop: unknown = Reflect.get(processRuntime, 'terminateMediaProcess'),
     observe: unknown = Reflect.get(processRuntime, 'onMediaInterruption'), policy: unknown = Reflect.get(processRuntime, 'MEDIA_TERMINATION_POLICY');

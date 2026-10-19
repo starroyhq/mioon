@@ -5,8 +5,8 @@ import {randomUUID} from 'node:crypto';
 import {mkdtempSync,realpathSync,mkdirSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore,classifyCurrentWorkspaceSchema,getWorkspaceRestoreContext} from '../packages/business/src/db.mjs';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+import {openStore,classifyCurrentWorkspaceSchema,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
 import {initializeWorkspaceSchema28} from '../packages/business/src/workspace-schema-v28.ts';
 import {initializeWorkspaceSchema30} from '../packages/business/src/workspace-schema-v30.ts';
@@ -19,9 +19,9 @@ import {initializeWorkspaceSchema44} from '../packages/business/src/workspace-sc
 import {initializeWorkspaceSchema48,validateWorkspaceSchema48} from '../packages/business/src/workspace-schema-v48.ts';
 import {classifyWorkspaceSchemaV44V45} from '../packages/business/src/workspace-restore-schema-v45.ts';
 import {classifyWorkspaceSchemaV48V49} from '../packages/business/src/workspace-restore-schema-v49.ts';
-import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
+import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
+import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
+import {createServices} from '../packages/business/src/services.ts';
 import {readTimelineVolumeEnvelopeCapability} from '../packages/business/src/timeline-volume-envelope-capability.ts';
 import {readTimelineAudioRoleCapability} from '../packages/business/src/timeline-audio-role-business.ts';
 function source44(t){const db=new DatabaseSync(':memory:');db.exec('PRAGMA foreign_keys=ON; PRAGMA trusted_schema=OFF;');for(const init of [initializeWorkspaceSchemaThrough24,initializeWorkspaceSchema26,initializeWorkspaceSchema28,initializeWorkspaceSchema30,initializeWorkspaceSchema32,initializeWorkspaceSchema34,initializeWorkspaceSchema36,initializeWorkspaceSchema38,initializeWorkspaceSchema40])init(db);initializeWorkspaceSchema44(db,initializeWorkspaceSchemaThrough24);t.after(()=>db.close());return db;}

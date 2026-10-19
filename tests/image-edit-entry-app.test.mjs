@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {captureImageEditIntent,imageEditIntentSource} from '../apps/web/src/image-edit-intent.ts';
-const app=readFileSync(new URL('../apps/web/src/App.jsx',import.meta.url),'utf8');
+const app=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');
 const begin=app.indexOf('  function imageEditScope()'),end=app.indexOf('  if (auth === false && !retainWorkbenchForClip)',begin);
 assert.ok(begin>=0&&end>begin);const source=app.slice(begin,end);
 const id=n=>`f1000000-0000-4000-8000-${String(n).padStart(12,'0')}`;

@@ -8,10 +8,10 @@ import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile, writeFile, readdir, lstat, open } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
-import { ensurePrivateDirectory } from '../packages/contracts/src/private-storage.mjs';
-import { openStore, createServices } from '../packages/business/src/index.mjs';
-import { createWorkspacePreferences } from '../packages/business/src/workspace-preferences.mjs';
-import { defaultWorkspaceState } from '../apps/web/src/workspace-state.js';
+import { ensurePrivateDirectory } from '../packages/contracts/src/private-storage.ts';
+import { openStore, createServices } from '../packages/business/src/index.ts';
+import { createWorkspacePreferences } from '../packages/business/src/workspace-preferences.ts';
+import { defaultWorkspaceState } from '../apps/web/src/workspace-state.ts';
 
 const repo = fileURLToPath(new URL('../', import.meta.url));
 const root = path.join(repo, 'evidence/look-pack/native');

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createEditTaskClient, validateTaskEnvelope, isDurableEditOperation, taskInputKey } from '../apps/web/src/edit-task-client.js';
-import { createEditTaskController } from '../apps/web/src/edit-task-controller.js';
+import { createEditTaskClient, validateTaskEnvelope, isDurableEditOperation, taskInputKey } from '../apps/web/src/edit-task-client.ts';
+import { createEditTaskController } from '../apps/web/src/edit-task-controller.ts';
 import { DURABLE_EDIT_OPERATIONS, isEditTaskEnvelope } from '@mioon/contracts';
 
 const id = n => `91000000-0000-4000-8000-${String(n).padStart(12, '0')}`;

@@ -4,11 +4,11 @@ import {randomUUID, createHash} from 'node:crypto';
 import {mkdtempSync, rmSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createImageReviewServices, validateImageTaskReview, safeImageReviewError} from '../packages/business/src/images/reviews.mjs';
-import {migrateImageReviewSchema} from '../packages/business/src/images/review-schema.mjs';
-import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, canonicalImageInput as canonical} from '../packages/contracts/src/images.mjs';
-import {IMAGE_REVIEW_DESTINATION, IMAGE_REVIEW_LIMITS, isImageReviewResponse} from '../packages/contracts/src/image-reviews.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createImageReviewServices, validateImageTaskReview, safeImageReviewError} from '../packages/business/src/images/reviews.ts';
+import {migrateImageReviewSchema} from '../packages/business/src/images/review-schema.ts';
+import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, canonicalImageInput as canonical} from '../packages/contracts/src/images.ts';
+import {IMAGE_REVIEW_DESTINATION, IMAGE_REVIEW_LIMITS, isImageReviewResponse} from '../packages/contracts/src/image-reviews.ts';
 
 const hash = text => createHash('sha256').update(text).digest('hex');
 const code = expected => error => error.code === expected && !JSON.stringify(error).includes('SYNTHETIC_PRIVATE_SENTINEL');

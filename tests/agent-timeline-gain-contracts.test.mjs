@@ -11,7 +11,7 @@ import {
   agentTimelineGainDiff, isAgentTimelineGainProposal, createAgentTimelineGainContracts,
   isAgentTimelineMoveArguments, isAgentTimelineMoveTarget, isAgentTimelineMoveProposal,
   isTimelineRecord, hasRequestNotAppliedProof, timelineOutputPreset, schemas,
-} from '../packages/contracts/src/index.mjs';
+} from '../packages/contracts/src/index.ts';
 import * as leaf from '@mioon/contracts/agent-timeline-gain';
 
 const id = value => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
@@ -252,9 +252,9 @@ test('strict public proposal union distinguishes gain provenance and every appro
 
 test('gain additions preserve exact legacy move contract and shot/move policy module bytes', () => {
   const expected = {
-    '../packages/contracts/src/agent-timeline-move.mjs': '09823b6139f83e58062593d60069a5da81ab1ce272e5ec25e00323d6ffc025c2',
-    '../packages/business/src/agent/timeline-edit-tool-policy.mjs': 'a689cfb1d571dd907aafa5324b3901e1dbb76f01e24a0941bbeeb4a466eb949a',
-    '../packages/business/src/agent/edit-tool-policy.mjs': '3f70630c33fb000d8a6ab16da8f488ee8fb4dcb8d80e8b02d9aec782b822f661',
+    '../packages/contracts/src/agent-timeline-move.ts': '09823b6139f83e58062593d60069a5da81ab1ce272e5ec25e00323d6ffc025c2',
+    '../packages/business/src/agent/timeline-edit-tool-policy.ts': 'a689cfb1d571dd907aafa5324b3901e1dbb76f01e24a0941bbeeb4a466eb949a',
+    '../packages/business/src/agent/edit-tool-policy.ts': '3f70630c33fb000d8a6ab16da8f488ee8fb4dcb8d80e8b02d9aec782b822f661',
   };
   for (const [path, hash] of Object.entries(expected))
     assert.equal(createHash('sha256').update(readFileSync(new URL(path, import.meta.url))).digest('hex'), hash, path);

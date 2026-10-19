@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {DURABLE_EDIT_OPERATIONS, EDIT_TASK_LIMITS} from '../packages/contracts/src/edit-tasks.mjs';
-import {getStoragePrivacyCapability} from '../packages/contracts/src/private-storage.mjs';
-import {parseArguments, nativeReadiness} from '../scripts/lib/local-tooling.mjs';
+import {DURABLE_EDIT_OPERATIONS, EDIT_TASK_LIMITS} from '../packages/contracts/src/edit-tasks.ts';
+import {getStoragePrivacyCapability} from '../packages/contracts/src/private-storage.ts';
+import {parseArguments, nativeReadiness} from '../scripts/lib/local-tooling.ts';
 import identity from '../apps/desktop/identity.cjs';
 
 // Documentation/contract checks only: no documented command is executed, no
@@ -42,24 +42,24 @@ test('documented Node, pnpm, Electron and application versions match current man
     assert.ok(document.includes(application.version));
     assert.match(document, /\/health.*0\.4\.0/);
   }
-  assert.match(read('apps/server/src/index.mjs'), /version:\s*'0\.4\.0'/);
-  assert.match(read('packages/client/src/index.mjs'), /export const VERSION = applicationPackage\.version;/);
+  assert.match(read('apps/server/src/index.ts'), /version:\s*'0\.4\.0'/);
+  assert.match(read('packages/client/src/index.ts'), /export const VERSION = applicationPackage\.version;/);
 });
 
 test('Mac instructions use the real serialized Web-desktop build and existing start entrypoints', () => {
-  const lines = ['node scripts/tooling.mjs doctor',
-    'node scripts/tooling.mjs test --suite=portable --concurrency=1',
-    'node scripts/tooling.mjs build --channel=development'];
+  const lines = ['node scripts/tooling.ts doctor',
+    'node scripts/tooling.ts test --suite=portable --concurrency=1',
+    'node scripts/tooling.ts build --channel=development'];
   for (const line of lines) {
     assert.ok(guide.includes(line));
-    assert.doesNotThrow(() => parseArguments(line.slice('node scripts/tooling.mjs '.length).split(' ')));
+    assert.doesNotThrow(() => parseArguments(line.slice('node scripts/tooling.ts '.length).split(' ')));
   }
   assert.ok(guide.includes('MIOON_ENABLE_LIVE_PROVIDER=0 pnpm desktop'));
   assert.equal(application.scripts.desktop, 'pnpm --filter @mioon/desktop start');
   assert.equal(desktop.scripts.start, 'electron build');
   for (const [name, channel, config] of [['package:mac', 'production', 'electron-builder.cjs'],
     ['package:mac:dev', 'development', 'electron-builder.dev.cjs']]) {
-    assert.equal(desktop.scripts[name], `node ../../scripts/tooling.mjs build --channel=${channel} && electron-builder --config ${config} --mac --publish never`);
+    assert.equal(desktop.scripts[name], `node ../../scripts/tooling.ts build --channel=${channel} && electron-builder --config ${config} --mac --publish never`);
     assert.ok(desktopDoc.includes(name));
   }
   assert.equal(nativeReadiness('darwin', 'arm64').ready, false);
@@ -81,7 +81,7 @@ test('durable scope, capacity and staging identity are tied to shared contracts'
   assert.ok(guide.includes(EDIT_TASK_LIMITS.rows.toLocaleString('en-US')));
   assert.match(desktopDoc, /`mioonDesktop`/);
   assert.doesNotMatch(desktopDoc, /workbenchDesktop/);
-  assert.match(read('apps/desktop/scripts/build.mjs'), /mioonDesktop:\s*identity/);
+  assert.match(read('apps/desktop/scripts/build.ts'), /mioonDesktop:\s*identity/);
   for (const channel of ['production', 'development']) assert.ok(desktopDoc.includes(identity.identityForChannel(channel).appId));
 });
 
@@ -124,7 +124,7 @@ test('Mac follow-up reports retain their own title and implementation subject ra
     ['docs/KEYCHAIN-TIMEOUT-AUDIT.md', '# Electron 密钥库超时审查', ['image-secret-broker.mjs', 'secret-store.mjs', '2000', 'Atomics.wait']],
     ['docs/TIMELINE-RECOVERY-AUDIT.md', '# Timeline Undo/Redo 恢复审查', ['timeline-recovery-audit.test.mjs', 'undo', 'redo']],
     ['docs/KEYCHAIN-ASYNC-FEASIBILITY.md', '# Electron 44.7.0 Keychain 异步可行性', ['isAsyncEncryptionAvailable', 'encryptStringAsync', 'decryptStringAsync']],
-    ['docs/CLIENT-VERSION-SOURCE.md', '# CLI / MCP 客户端版本来源', ['packages/client/src/index.mjs', 'package.json', 'VERSION']],
+    ['docs/CLIENT-VERSION-SOURCE.md', '# CLI / MCP 客户端版本来源', ['packages/client/src/index.ts', 'package.json', 'VERSION']],
   ];
   const validate = (text, [, title, markers]) => {
     assert.equal(text.split('\n')[0], title);

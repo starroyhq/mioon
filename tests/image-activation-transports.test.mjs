@@ -12,12 +12,12 @@ import {randomUUID, createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.mjs';
-import {createClient} from '../packages/client/src/index.mjs';
-import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, isImageTaskResponse} from '../packages/contracts/src/images.mjs';
-import {DEFAULT_IMAGE_CONFIGURATION} from '../packages/contracts/src/image-settings.mjs';
-import {isImageReviewResponse} from '../packages/contracts/src/image-reviews.mjs';
-import {renderMockImagePng} from '../packages/business/src/images/png.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {createClient} from '../packages/client/src/index.ts';
+import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, isImageTaskResponse} from '../packages/contracts/src/images.ts';
+import {DEFAULT_IMAGE_CONFIGURATION} from '../packages/contracts/src/image-settings.ts';
+import {isImageReviewResponse} from '../packages/contracts/src/image-reviews.ts';
+import {renderMockImagePng} from '../packages/business/src/images/png.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const token = 'synthetic-image-activation-http-token';
@@ -37,7 +37,7 @@ function childEnvironment(extra = {}) {
   return {...env, MIOON_ENABLE_LIVE_PROVIDER: '0', ...extra};
 }
 async function cli(args, env) {
-  const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.mjs'), ...args], {cwd: repo,
+  const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.ts'), ...args], {cwd: repo,
     env: childEnvironment(env), stdio: ['ignore', 'pipe', 'pipe']});
   let stdout = '', stderr = '';
   child.stdout.setEncoding('utf8').on('data', chunk => {stdout += chunk; if (stdout.length > 1024 * 1024) child.kill('SIGKILL');});
@@ -194,7 +194,7 @@ test('reviewed live-image boundary through actual local HTTP, strict client, CLI
     assert.ok(catalog.operations.some(value => value.operation === 'image.review.prepare'));
     assert.ok(!catalog.operations.some(value => /image\.(?:review\.(?:approve|reject)|settings\.)/.test(value.operation)));
     const client = new Client({name: 'synthetic-image-review-acceptance', version: '1.0.0'}, {capabilities: {}});
-    const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.mjs')],
+    const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.ts')],
       cwd: repo, env: childEnvironment(f.env), stderr: 'pipe'});
     try {
       await client.connect(transport);

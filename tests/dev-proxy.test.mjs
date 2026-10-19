@@ -13,7 +13,7 @@ test('Vite dev proxy validates incoming origins before adapting to the strict ba
  const backend=await startServer({dataDir:await mkdtemp('/tmp/wb-proxy-'),port:4318,token});
  let vite;
  try{
-  vite=await createServer({root:fileURLToPath(new URL('../apps/web',import.meta.url)),configFile:fileURLToPath(new URL('../apps/web/vite.config.mjs',import.meta.url)),logLevel:'silent'});await vite.listen();
+  vite=await createServer({root:fileURLToPath(new URL('../apps/web',import.meta.url)),configFile:fileURLToPath(new URL('../apps/web/vite.config.ts',import.meta.url)),logLevel:'silent'});await vite.listen();
   const origin='http://127.0.0.1:5173';
   const login=await fetch(origin+'/api/login',{method:'POST',headers:{'content-type':'application/json',origin},body:JSON.stringify({token})});
   assert.equal(login.status,200);const cookie=login.headers.get('set-cookie').split(';')[0];

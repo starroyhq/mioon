@@ -5,7 +5,7 @@ import { realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { createMockProvider } from '../packages/business/src/providers/mock.mjs';
+import { createMockProvider } from '../packages/business/src/providers/mock.ts';
 
 const input = { prompt: 'Synthetic capability check', duration: 2, aspectRatio: '9:16', parameters: { scenario: 'success', delayMs: 0 }, referenceAssets: [] };
 const listing = names => ' Filters:\n  T.. = Timeline support\n' + names.map(name => ` ${name === 'overlay' ? 'TS' : '..'} ${name.padEnd(16)} V->V       Synthetic.\n`).join('');

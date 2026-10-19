@@ -9,11 +9,11 @@ import path from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {registerHooks} from 'node:module';
 import {DatabaseSync} from 'node:sqlite';
-import {openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.mjs';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
-import {installWorkspaceRestoreSchema,validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.mjs';
+import {openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
+import {installWorkspaceRestoreSchema,validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.ts';
 import {ensurePrivateDirectory} from '@mioon/contracts/private-storage';
-import {createMockProvider} from '../packages/business/src/providers/mock.mjs';
+import {createMockProvider} from '../packages/business/src/providers/mock.ts';
 
 const repo=fileURLToPath(new URL('../',import.meta.url));
 const evidence=path.join(repo,'evidence/workspace-restore/electron-final');

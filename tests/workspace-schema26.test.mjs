@@ -7,7 +7,7 @@ import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {fileURLToPath} from 'node:url';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {initializeWorkspaceSchema26, validateWorkspaceSchema26, validateWorkspaceSchema24For26Migration} from '../packages/business/src/workspace-schema-v26.ts';
 import {open, fixture, snapshot, preserved, populate, task, insert, probe, facade, operations24, columns, assertBoundedSequenceProjection} from './workspace-schema26-fixtures.mjs';
 

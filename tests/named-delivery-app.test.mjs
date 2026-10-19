@@ -8,7 +8,7 @@ import {createExportRangeController} from '../apps/web/src/export-range-state.ts
 import {readNativeLegacyClose} from '../apps/web/src/native-close-legacy.ts';
 import {message as msg} from '../packages/i18n/src/index.ts';
 
-const source=readFileSync(new URL('../apps/web/src/App.jsx',import.meta.url),'utf8');
+const source=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');
 function actual(start,end,environment){
  const first=source.indexOf(start),last=source.indexOf(end,first);
  assert.ok(first>=0&&last>first,'actual App function boundaries must remain present');

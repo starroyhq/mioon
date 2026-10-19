@@ -11,12 +11,12 @@ import {fileURLToPath, pathToFileURL} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
-import {openStore} from '../packages/business/src/db.mjs';
-import {discoverSchema} from '../packages/client/src/index.mjs';
-import {parse, operationEffect, isWaveformResponse, WAVEFORM_ALGORITHM, WAVEFORM_MAX_POINTS} from '../packages/contracts/src/index.mjs';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.mjs';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.mjs';
+import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
+import {openStore} from '../packages/business/src/db.ts';
+import {discoverSchema} from '../packages/client/src/index.ts';
+import {parse, operationEffect, isWaveformResponse, WAVEFORM_ALGORITHM, WAVEFORM_MAX_POINTS} from '../packages/contracts/src/index.ts';
+import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
+import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import {IDS, TOKEN, NOW, uuid, snapshot, seedMutationStore} from './helpers/mutation-wire-fixture.mjs';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -146,7 +146,7 @@ if(serverMode){
     return child;
   };
   syncBuiltinESMExports();
-  const {startServer} = await import(${JSON.stringify(pathToFileURL(path.join(repo, 'apps/server/src/index.mjs')).href)});
+  const {startServer} = await import(${JSON.stringify(pathToFileURL(path.join(repo, 'apps/server/src/index.ts')).href)});
   const server = await startServer({dataDir:process.env.MIOON_DATA_DIR,port:Number(process.env.PORT || 0),token:${JSON.stringify(TOKEN)},
     chatGateway:async function*(){deny('model gateway');}});
   process.stdout.write(JSON.stringify({ready:true,url:server.url,pid:process.pid})+'\\n');
@@ -184,7 +184,7 @@ if(serverMode){
     return {raw, envelope};
   }
   async function cliArgs(args, expectedError) {
-    const child = launch(t, ['--import', helper, path.join(repo, 'apps/cli/src/index.mjs'), ...args], env());
+    const child = launch(t, ['--import', helper, path.join(repo, 'apps/cli/src/index.ts'), ...args], env());
     const {code, signal} = await child.finish(); noPrivate(child.stdout); noPrivate(child.stderr);
     assert.equal(signal, null, child.stderr);
     const lines = child.lines(); assert.equal(lines.length, 1, 'real CLI returns one JSON envelope');
@@ -196,7 +196,7 @@ if(serverMode){
   const cli = (operation, input, error) => cliArgs([...operation.split('.'), '--input', JSON.stringify(input)], error);
   const client = new Client({name: 'waveform-wire-acceptance', version: '1.0.0'}, {capabilities: {}});
   const transport = new StdioClientTransport({command: process.execPath, cwd: repo, env: environment(env()), stderr: 'pipe',
-    args: ['--import', helper, path.join(repo, 'apps/mcp/src/index.mjs')]});
+    args: ['--import', helper, path.join(repo, 'apps/mcp/src/index.ts')]});
   let stderr = '';
   transport.stderr.setEncoding('utf8').on('data', chunk => { stderr = (stderr + chunk).slice(-64 * 1024); });
   cleanups.push(() => bounded(client.close(), 'Official MCP cleanup', 7_000));

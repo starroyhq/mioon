@@ -7,11 +7,11 @@ import {pathToFileURL} from 'node:url';
 import {createHash} from 'node:crypto';
 import {resolveTimelineExportDelivery} from '@mioon/contracts';
 import {createTimelineMixLoudnessDecoder, planTimelineMixLoudnessDecode} from '../packages/business/src/timeline-mix-loudness-decoder.ts';
-import {timelineAudioFadeFilters} from '../packages/business/src/timeline-audio.mjs';
+import {timelineAudioFadeFilters} from '../packages/business/src/timeline-audio.ts';
 import {timelineCompositionSegments} from '@mioon/contracts/timeline-segments';
-import {run, runStreaming, checkMediaEffect} from '../packages/business/src/media-runtime.mjs';
-import {withProbePermit, MEDIA_PROBE_LIMITS} from '../packages/business/src/media-probe.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
+import {run, runStreaming, checkMediaEffect} from '../packages/business/src/media-runtime.ts';
+import {withProbePermit, MEDIA_PROBE_LIMITS} from '../packages/business/src/media-probe.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {createExportLoudnessAccumulator} from '../packages/business/src/export-loudness-meter.ts';
 
 const actualRuntime={run,runStreaming,checkMediaEffect,withProbePermit},actualDecode=createTimelineMixLoudnessDecoder(actualRuntime);

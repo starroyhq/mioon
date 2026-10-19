@@ -4,8 +4,8 @@ import {randomUUID} from 'node:crypto';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
 import {TIMELINE_OUTPUT_PRESETS,hasRequestNotAppliedProof} from '@mioon/contracts';
 async function fixture(t){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-format-'));let store=openStore(root),services=createServices(store,new Map());

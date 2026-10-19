@@ -6,8 +6,8 @@ import {z} from 'zod';
 const require = createRequire(import.meta.url);
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 function unavailable(): never {throw new Error('The fixed offline archive contract is unavailable.');}
-function base(moduleName: './workspace-backup.mjs' | './workspace-restore-offline.mjs', name: string) {
-  const module: unknown = moduleName === './workspace-backup.mjs' ? require('./workspace-backup.mjs') : require('./workspace-restore-offline.mjs');
+function base(moduleName: './workspace-backup.ts' | './workspace-restore-offline.ts', name: string) {
+  const module: unknown = moduleName === './workspace-backup.ts' ? require('./workspace-backup.ts') : require('./workspace-restore-offline.ts');
   if (!object(module)) return unavailable();
   const schema: unknown = module[name];
   const inner: unknown = schema instanceof z.ZodEffects ? schema.innerType() : schema;
@@ -16,7 +16,7 @@ function base(moduleName: './workspace-backup.mjs' | './workspace-restore-offlin
 }
 export const OPACITY_RIPPLE_BACKUP_DRAFT_POLICY = 'excluded' as const;
 const draftPolicy = z.literal(OPACITY_RIPPLE_BACKUP_DRAFT_POLICY);
-export const rippleOpacityWorkspaceBackupManifestSchema = base('./workspace-backup.mjs', 'workspaceBackupManifestSchema')
+export const rippleOpacityWorkspaceBackupManifestSchema = base('./workspace-backup.ts', 'workspaceBackupManifestSchema')
   .extend({databaseSchemaVersion: z.literal(46), draftPolicy})
   .superRefine((value, context) => {
     // The base entry schemas already enforce roles, fixed paths and file caps.
@@ -34,8 +34,8 @@ export const rippleOpacityWorkspaceBackupManifestSchema = base('./workspace-back
     if (databases !== 1 || bytes > 64 * 1024 * 1024 * 1024)
       context.addIssue({code: z.ZodIssueCode.custom, message: 'Exactly one database and a bounded total payload are required.'});
   });
-export const rippleOpacityWorkspaceBackupResultSchema = base('./workspace-backup.mjs', 'workspaceBackupResultSchema')
+export const rippleOpacityWorkspaceBackupResultSchema = base('./workspace-backup.ts', 'workspaceBackupResultSchema')
   .extend({databaseSchemaVersion: z.literal(46), draftPolicy});
 const restoration = {profile: z.literal('restored-local-v12'), sourceSchema: z.literal(46), databaseSchemaVersion: z.literal(47), draftPolicy};
-export const rippleOpacityWorkspaceRestoreResultSchema = base('./workspace-restore-offline.mjs', 'workspaceRestoreOfflineResultSchema').extend(restoration);
-export const rippleOpacityWorkspaceRestoreStatusSchema = base('./workspace-restore-offline.mjs', 'workspaceRestorePublicationStatusSchema').extend(restoration);
+export const rippleOpacityWorkspaceRestoreResultSchema = base('./workspace-restore-offline.ts', 'workspaceRestoreOfflineResultSchema').extend(restoration);
+export const rippleOpacityWorkspaceRestoreStatusSchema = base('./workspace-restore-offline.ts', 'workspaceRestorePublicationStatusSchema').extend(restoration);

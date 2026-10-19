@@ -3,9 +3,9 @@ import {randomUUID} from 'node:crypto';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../../packages/business/src/db.mjs';
-import {createServices} from '../../packages/business/src/services.mjs';
-import {createAgentEditService} from '../../packages/business/src/agent/edit-proposals.mjs';
+import {openStore} from '../../packages/business/src/db.ts';
+import {createServices} from '../../packages/business/src/services.ts';
+import {createAgentEditService} from '../../packages/business/src/agent/edit-proposals.ts';
 import {agentTimelineGainReviewTarget} from '@mioon/contracts';
 import {timelineGainEditToolPolicy, timelineGainEditToolCapability} from '../../packages/business/src/agent/timeline-gain-tool-policy.ts';
 

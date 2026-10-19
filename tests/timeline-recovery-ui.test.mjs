@@ -3,19 +3,19 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, isTimelineRenderRecord, hasRequestNotAppliedProof, timelineOutputPreset } from '@mioon/contracts';
-import * as submissions from '../apps/web/src/submissions.js';
-import * as mutations from '../apps/web/src/mutation-submissions.js';
-import * as workspaceOrigin from '../apps/web/src/workspace-origin.js';
-import * as restoredWorkspace from '../apps/web/src/restored-workspace.js';
+import * as submissions from '../apps/web/src/submissions.ts';
+import * as mutations from '../apps/web/src/mutation-submissions.ts';
+import * as workspaceOrigin from '../apps/web/src/workspace-origin.ts';
+import * as restoredWorkspace from '../apps/web/src/restored-workspace.ts';
 import * as projectOpening from '../apps/web/src/project-open-state.ts';
-import { defaultWorkspaceState, reconcileWorkspaceState } from '../apps/web/src/workspace-state.js';
-import { isReferenceOperation } from '../apps/web/src/reference-connections.js';
+import { defaultWorkspaceState, reconcileWorkspaceState } from '../apps/web/src/workspace-state.ts';
+import { isReferenceOperation } from '../apps/web/src/reference-connections.ts';
 import { loudnessApplyFixture } from './fixtures/timeline-loudness-apply.mjs';
 
 const taskIntentModule = { exports: {} };
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
 const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
-const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const runSource = source.slice(source.indexOf('async function runSession('), source.indexOf('async function inspect(')).replace('async function runSession(', 'async function run(');
 const refreshSource = source.slice(source.indexOf('const refresh = useCallback('), source.indexOf('async function revealImageAsset('));
 const id = n => `82000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -460,7 +460,7 @@ test('actual App refresh discards a late same-project snapshot after restored or
 });
 
 test('pending timeline and reference cards disclose session-only recovery without broadening generation copy', () => {
-  const cardSource = readFileSync(new URL('../apps/web/src/PendingSubmission.jsx', import.meta.url), 'utf8');
+  const cardSource = readFileSync(new URL('../apps/web/src/PendingSubmission.tsx', import.meta.url), 'utf8');
   const code = transformSync(cardSource, { loader: 'jsx', format: 'cjs' }).code, module = { exports: {} };
   const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }) };
   const require = name => name === 'react' ? { ...react, default: react }

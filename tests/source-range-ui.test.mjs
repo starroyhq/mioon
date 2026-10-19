@@ -4,9 +4,9 @@ import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUT
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import { createSourceRangeController, sourceFrameCount, sourcePositionFrame, sourceRangeIssue, sourceRangeMessage, sourceRangeAddPlan } from '../apps/web/src/source-range-state.js';
-import { assertMutationOwner, prepareMutation, validateMutationResponse, isMutationOperation, mutationNotApplied } from '../apps/web/src/mutation-submissions.js';
-import { readPending, clearPending, prepareSubmission, pendingForProject } from '../apps/web/src/submissions.js';
+import { createSourceRangeController, sourceFrameCount, sourcePositionFrame, sourceRangeIssue, sourceRangeMessage, sourceRangeAddPlan } from '../apps/web/src/source-range-state.ts';
+import { assertMutationOwner, prepareMutation, validateMutationResponse, isMutationOperation, mutationNotApplied } from '../apps/web/src/mutation-submissions.ts';
+import { readPending, clearPending, prepareSubmission, pendingForProject } from '../apps/web/src/submissions.ts';
 
 const taskIntentModule = { exports: {} };
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
@@ -140,7 +140,7 @@ test('range receipts reuse the local mutation protocol with exact asset ownershi
 });
 
 test('App guards dirty clip before source selection, clears clip selection, and rereads after replay', async () => {
-  const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const source = app.slice(app.indexOf('async function previewSource('), app.indexOf('async function addSavedSourceRange('));
   const updates = [], calls = []; let accept = false;
   const scope = { msg: message, subtitlesRef: { current: { controller: { hasUnsaved: () => false } } }, setPropertiesPage: () => {}, viewRef: { current: { activeMode: 'editing', editing: { quickAssetId: null } } }, setPreviewAsset: () => {}, context: () => ({ projectId: 'project-a' }), guardNavigation: async () => { calls.push('guard'); return accept; }, isCurrent: () => true, dataRef: { current: { assets: [asset()] } }, navigationEpoch: { current: 0 }, updateView: (...args) => updates.push(args) };
@@ -155,7 +155,7 @@ test('App guards dirty clip before source selection, clears clip selection, and 
 });
 
 test('source range controls use full source bounds and retain timeline caps separately', () => {
-  const source = readFileSync(new URL('../apps/web/src/SourceRangeInspector.jsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../apps/web/src/SourceRangeInspector.tsx', import.meta.url), 'utf8');
   const code = transformSync(source, { loader: 'jsx', format: 'cjs' }).code;
   const createElement = (type, props, ...children) => ({ type, props: { ...props, children } });
   const module = { exports: {} };
@@ -168,14 +168,14 @@ test('source range controls use full source bounds and retain timeline caps sepa
   assert.equal(find('source-range-in').props.max, 35999); assert.equal(find('source-range-out').props.max, 36000);
   assert.equal(find('source-range-add').props.disabled, false);
   assert.match(source, /timeline.range.timebase/); assert.match(translate('zh-Hans', 'timeline.range.timebase', { fps: 30 }), /不是原生帧率或 VFR/); assert.match(source, /timeline.range.recovery/); assert.match(translate('zh-Hans', 'timeline.range.recovery'), /关闭并重建原生窗口可能丢失凭据/);
-  const inspector = readFileSync(new URL('../apps/web/src/TimelineInspector.jsx', import.meta.url), 'utf8');
+  const inspector = readFileSync(new URL('../apps/web/src/TimelineInspector.tsx', import.meta.url), 'utf8');
   assert.match(inspector, /data-testid="clip-source-in"[^>]*sourceFrameCount/);
   assert.match(inspector, /data-testid="clip-start"[^>]*max="17999"/);
   assert.match(inspector, /data-testid="clip-duration"[^>]*max="18000"/);
 });
 
 test('retained source inspector handlers reject another asset epoch, hidden panes and unmount', async () => {
-  const source = readFileSync(new URL('../apps/web/src/SourceRangeInspector.jsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../apps/web/src/SourceRangeInspector.tsx', import.meta.url), 'utf8');
   const code = transformSync(source, { loader: 'jsx', format: 'cjs' }).code;
   const slots = []; let cursor = 0, visible = true, scope = 'asset-a:1', cleanups = [], tree;
   const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), useRef: value => { const i = cursor++; return slots[i] ||= { current: value }; }, useLayoutEffect: (fn, deps) => { const i = cursor++, prior = slots[i]; if (!prior || deps.some((value, n) => value !== prior.deps[n])) { prior?.cleanup?.(); slots[i] = { deps, cleanup: fn() }; cleanups.push(slots[i]); } } };
@@ -195,7 +195,7 @@ test('retained source inspector handlers reject another asset epoch, hidden pane
 });
 
 test('exact snapshot comparison admits a clicked saved range before freezing, never a superseded callback', async () => {
-  const { sameSourceSnapshot } = await import('../apps/web/src/source-range-state.js');
+  const { sameSourceSnapshot } = await import('../apps/web/src/source-range-state.ts');
   const snapshot = { scope: 'source:1', projectId: 'project-a', assetId: 'asset-a', revision: 1, inFrame: 20, outFrame: 120 };
   assert.equal(sameSourceSnapshot(snapshot, { ...snapshot }), true);
   for (const patch of [{ scope: 'source:2' }, { assetId: 'asset-b' }, { projectId: 'project-b' }, { revision: 2 }, { inFrame: 30 }, { outFrame: 130 }]) assert.equal(sameSourceSnapshot(snapshot, { ...snapshot, ...patch }), false);
@@ -204,7 +204,7 @@ test('exact snapshot comparison admits a clicked saved range before freezing, ne
 
 test('actual App range replay uses its original request and triggers latest scoped reread without installing historical ACK', async t => {
   storage(t);
-  const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const code = app.slice(app.indexOf('async function runSession('), app.indexOf('async function inspect(')).replace('async function runSession(', 'async function run(');
   let remote = row(), historical, generation = {}, controller;
   const calls = [], busy = new Set(), notices = [];

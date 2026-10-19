@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const app = () => readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const app = () => readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 test('App wires one explicit historical-file observer with live project/workspace/navigation fences', () => {
   const source = app();
   assert.equal(source.includes('useExportSamplePeak'), true, 'App must wire the explicit history observer');
@@ -17,7 +17,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 import { isTimelineRenderRecord } from '@mioon/contracts';
-import { pinNewWorkspaceIntent, workspaceOriginScope } from '../apps/web/src/workspace-origin.js';
+import { pinNewWorkspaceIntent, workspaceOriginScope } from '../apps/web/src/workspace-origin.ts';
 import { createExportSamplePeakController, EXPORT_SAMPLE_PEAK_LABEL } from '../apps/web/src/export-sample-peak-state.ts';
 import { context, fixture, row, asset, report, unready, projectId, id } from './helpers/export-sample-peak-ui-fixture.mjs';
 

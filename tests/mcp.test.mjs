@@ -21,9 +21,9 @@ test('A3 official MCP SDK stdio initialize/list/call controls durable HTTP proje
   const persist = process.env.MIOON_MCP_PERSIST_DIR ? path.resolve(process.env.MIOON_MCP_PERSIST_DIR) : null;
   const root = persist || await mkdtemp(path.join(tmpdir(), 'mioon-mcp-'));
   await mkdir(root, { recursive: true }); const port = await freePort(), base = `http://127.0.0.1:${port}`;
-  const traffic = [], report = { startedAt: new Date().toISOString(), runtime: process.version, invocation: { executable: process.execPath, arguments: ['--test', 'tests/mcp.test.mjs'] }, implementation: 'Official @modelcontextprotocol/sdk Client and StdioClientTransport', protocolCapture: 'Transport.send and Transport.onmessage wrapper captures actual JSON-RPC handshake and tool calls', backend: { command: process.execPath, args: ['server/index.mjs'], port, dataDirectory: root, liveProviderEnabled: false }, calls: [], commands: [] };
+  const traffic = [], report = { startedAt: new Date().toISOString(), runtime: process.version, invocation: { executable: process.execPath, arguments: ['--test', 'tests/mcp.test.mjs'] }, implementation: 'Official @modelcontextprotocol/sdk Client and StdioClientTransport', protocolCapture: 'Transport.send and Transport.onmessage wrapper captures actual JSON-RPC handshake and tool calls', backend: { command: process.execPath, args: ['server/index.ts'], port, dataDirectory: root, liveProviderEnabled: false }, calls: [], commands: [] };
   let stdout = '', stderr = '', mcpStderr = '', client, transport;
-  const backend = spawn(process.execPath, ['server/index.mjs'], { cwd: repo, env: { ...process.env, PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const backend = spawn(process.execPath, ['server/index.ts'], { cwd: repo, env: { ...process.env, PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
   backend.stdout.setEncoding('utf8').on('data', bytes => stdout += bytes); backend.stderr.setEncoding('utf8').on('data', bytes => stderr += bytes);
   t.after(async () => {
     if (client) await client.close().catch(() => {}); else if (transport) await transport.close().catch(() => {});
@@ -35,7 +35,7 @@ test('A3 official MCP SDK stdio initialize/list/call controls durable HTTP proje
   });
   const deadline = Date.now() + 10_000;
   while (true) { if (backend.exitCode !== null) throw Error(`Backend exit ${backend.exitCode}: ${stderr}`); try { if ((await fetch(base + '/health')).ok) break; } catch {} if (Date.now() > deadline) throw Error(`Backend start timed out: ${stderr}`); await pause(40); }
-  transport = new StdioClientTransport({ command: process.execPath, args: ['server/mcp.mjs'], cwd: repo, env: { ...process.env, MIOON_BASE_URL: base, MIOON_TOKEN: token }, stderr: 'pipe' });
+  transport = new StdioClientTransport({ command: process.execPath, args: ['server/mcp.ts'], cwd: repo, env: { ...process.env, MIOON_BASE_URL: base, MIOON_TOKEN: token }, stderr: 'pipe' });
   transport.stderr.setEncoding('utf8').on('data', bytes => mcpStderr += bytes);
   // Preserve the official SDK transport as the wire implementation. This wrapper
   // records its real JSON-RPC messages, rather than calling the service directly.

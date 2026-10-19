@@ -10,7 +10,7 @@ export const PRIVATE = 'SOURCE_RANGE_PRIVATE_FIXTURE_MARKER';
 
 async function seed(root) {
   await seedMutationStore(root);
-  const {openStore} = await import('../../packages/business/src/db.mjs');
+  const {openStore} = await import('../../packages/business/src/db.ts');
   const store = openStore(root);
   try {
     // The shared mutation fixture's zero-track timeline is an intentionally
@@ -54,7 +54,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const root = process.env.MIOON_DATA_DIR;
   if (!root || process.argv[2] !== 'server') throw Error('An isolated range-wire server fixture is required');
   if (!fs.existsSync(path.join(root, 'workbench.sqlite'))) await seed(root);
-  const {startServer} = await import('../../apps/server/src/index.mjs');
+  const {startServer} = await import('../../apps/server/src/index.ts');
   const server = await startServer({dataDir: root, port: Number(process.env.PORT || 0), token: TOKEN,
     chatGateway: async function* () {
       fs.appendFileSync(process.env.MIOON_RANGE_WIRE_AUDIT, '{"kind":"model gateway"}\n');

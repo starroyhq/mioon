@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
 import { createProjectRendererRecovery } from '../apps/desktop/src/project-window-recovery.ts';
-import { installPreferencesCloseDrain, installUnsavedGuard, QuitCoordinator } from '../apps/desktop/src/lifecycle.mjs';
+import { installPreferencesCloseDrain, installUnsavedGuard, QuitCoordinator } from '../apps/desktop/src/lifecycle.ts';
 import { createNativeCloseAdmission, createNativeCloseRegistry } from '../apps/web/src/native-close-state.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 
@@ -143,7 +143,7 @@ test('legacy control reproduces the P0 generic-discard override recorded by the 
 });
 
 test('main uses typed admission instead of either unsafe legacy installer', async () => {
-  const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
+  const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
   assert.match(main, /import \{ installNativeCloseAdmission \} from '\.\/native-close\.ts'/);
   assert.match(main, /installNativeCloseAdmission\(window,/);
   assert.doesNotMatch(main, /installPreferencesCloseDrain\(window|installUnsavedGuard\(window/);
@@ -558,7 +558,7 @@ test('real renderer binds reload to the exact current document URL and action', 
 });
 
 test('main routes user reload through admission and only proved initial empty load failures remain recoverable', async () => {
-  const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
+  const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
   assert.match(main, /windowAdmissions\.get\(window\)\?\.captureRecoveryDecision\(\)\.reload\(\)\.catch\(fatal\)/);
   assert.match(main, /capture: window => windowAdmissions\.get\(window\)\?\.captureRecoveryDecision\(\)/);
   assert.match(main, /const rendererFailed = createProjectRendererRecovery\(/);
@@ -751,7 +751,7 @@ test('gone recovery ERR_ABORTED consumes proof without retrying the page or any 
 });
 
 test('main captures incident-bound recovery before asking and discloses possible crash loss', async () => {
-  const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
+  const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
   const from = main.indexOf('const rendererFailed = createProjectRendererRecovery('), to = main.indexOf('\nasync function fatal(', from);
   const recovery = main.slice(from, to);
   assert.match(recovery, /capture: window => windowAdmissions\.get\(window\)\?\.captureRecoveryDecision\(\)/);
@@ -845,7 +845,7 @@ test('late recovery Exit cannot close a replacement window, changed URL/document
 test('cancel/Escape in the actual recovery dialog retains window, backend and unconsumed proof', async t => {
   const f = fixture(t, { execute: () => { throw Error('Dead page must not be queried'); } });
   f.win.webContents.emit('render-process-gone', {}, { reason: 'crashed', exitCode: 1 });
-  const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
+  const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
   const from = main.indexOf('const rendererFailed = createProjectRendererRecovery('), to = main.indexOf('\nasync function fatal(', from);
   let dialogOptions;
   const context = vm.createContext({ nt: nativeText, createProjectRendererRecovery, quitRouter: {allowsWindows: true}, windowAdmissions: new WeakMap([[f.win, f.admission]]),
@@ -862,7 +862,7 @@ test('cancel/Escape in the actual recovery dialog retains window, backend and un
 test('the actual recovery dialog authorizes Exit only for explicit response one', async t => {
   const f = fixture(t, { execute: () => { throw Error('Dead page must not be queried'); } });
   f.win.webContents.emit('render-process-gone', {}, { reason: 'crashed', exitCode: 1 });
-  const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
+  const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
   const from = main.indexOf('const rendererFailed = createProjectRendererRecovery('), to = main.indexOf('\nasync function fatal(', from);
   const context = vm.createContext({ nt: nativeText, createProjectRendererRecovery, quitRouter: {allowsWindows: true}, windowAdmissions: new WeakMap([[f.win, f.admission]]),
     ownsWindow: () => true, dialog: { showMessageBox: async () => ({ response: 1 }) },
@@ -874,7 +874,7 @@ test('the actual recovery dialog authorizes Exit only for explicit response one'
 });
 
 async function recoveryDialogHarness(t, f, show, isCurrent = () => true) {
-  const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
+  const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
   const from = main.indexOf('const rendererFailed = createProjectRendererRecovery('), to = main.indexOf('\nasync function fatal(', from);
   const calls = [], pending = [], errors = [];
   const context = vm.createContext({ nt: nativeText, createProjectRendererRecovery, quitRouter: {allowsWindows: true}, windowAdmissions: new WeakMap([[f.win, f.admission]]),
@@ -940,7 +940,7 @@ test('a recovered live renderer can report a later hang without inheriting old d
 });
 
 async function reloadMenuHarness(f, isCurrent = () => true) {
-  const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
+  const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
   const from = main.indexOf('function installMenu()'), to = main.indexOf('\nconst quitCoordinator', from);
   let menu;
   const errors = [];
@@ -979,7 +979,7 @@ test('the explicit Reload menu cannot treat unresponsive or replaced owners as c
 });
 
 async function actualMainAdmissionCallbacks(dialog, window = {}, owner = () => true, bindings = {}) {
-  const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
+  const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
   const from = main.indexOf('windowAdmissions.set(window, installNativeCloseAdmission(window, {');
   const to = main.indexOf("\n  window.on('closed'", from);
   let callbacks;

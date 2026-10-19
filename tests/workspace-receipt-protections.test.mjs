@@ -8,11 +8,11 @@ import {randomUUID} from 'node:crypto';
 import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
 import {createWorkspaceSchemaDispatch,readCurrentWorkspaceRole} from '../packages/business/src/workspace-schema-dispatch.ts';
 import {createWorkspaceRestoreProfileV27} from '../packages/business/src/workspace-restore-schema-v27.ts';
-import {classifyWorkspaceSchema,detectWorkspaceRestoreEvidence,installWorkspaceRestoreSchema,validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.mjs';
+import {classifyWorkspaceSchema,detectWorkspaceRestoreEvidence,installWorkspaceRestoreSchema,validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.ts';
 import {open,fixture,snapshot,golden,facade} from './workspace-schema26-fixtures.mjs';
 
 const test=(name,run)=>nodeTest(`fixed26 historical receipt repair: ${name}`,run);
@@ -214,7 +214,7 @@ for(const version of [24,26])for(const missing of [mutationGuards,...mutationGua
 // Independent inventory from the immutable constructor, not the new repair's
 // implementation. Conditional15–24 migrations and the separately strict task
 // protections are intentionally outside this additive-startup repair.
-const additiveSource=readFileSync(new URL('../packages/business/src/workspace-fixed-schema.mjs',import.meta.url),'utf8').split('bootstrapEditTaskSchema(db);')[0];
+const additiveSource=readFileSync(new URL('../packages/business/src/workspace-fixed-schema.ts',import.meta.url),'utf8').split('bootstrapEditTaskSchema(db);')[0];
 const additiveTriggerNames=[...additiveSource.matchAll(/CREATE TRIGGER IF NOT EXISTS ([A-Za-z_][A-Za-z0-9_]*)/g)].map(match=>match[1]);
 const additiveTableNames=[...additiveSource.matchAll(/CREATE TABLE IF NOT EXISTS ([A-Za-z_][A-Za-z0-9_]*)/g)].map(match=>match[1]);
 const ordinaryObjects=golden.profiles['ordinary-24'].schema.map(id=>golden.definitions[id]);

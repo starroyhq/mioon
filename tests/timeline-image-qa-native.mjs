@@ -12,10 +12,10 @@ import {createHash, randomUUID} from 'node:crypto';
 import {constants} from 'node:fs';
 import {readFile, writeFile, readdir, lstat, open, mkdir} from 'node:fs/promises';
 import {DatabaseSync} from 'node:sqlite';
-import {ensurePrivateDirectory} from '../packages/contracts/src/private-storage.mjs';
-import {openStore, createServices} from '../packages/business/src/index.mjs';
-import {createWorkspacePreferences} from '../packages/business/src/workspace-preferences.mjs';
-import {defaultWorkspaceState} from '../apps/web/src/workspace-state.js';
+import {ensurePrivateDirectory} from '../packages/contracts/src/private-storage.ts';
+import {openStore, createServices} from '../packages/business/src/index.ts';
+import {createWorkspacePreferences} from '../packages/business/src/workspace-preferences.ts';
+import {defaultWorkspaceState} from '../apps/web/src/workspace-state.ts';
 import {inspectStaticSrgbPng} from '../packages/business/src/timeline-image-admission.ts';
 import {timelineColourInputFilter} from '../packages/business/src/timeline-colour-lut.ts';
 import {png} from './helpers/timeline-image-fixtures.mjs';
@@ -190,7 +190,7 @@ async function launch(label) {
   assert.deepEqual(await artifacts(), frozenArtifacts); await audit(label + '-exit', label === 'restored' ? 'restored' : 'original');
 }
 async function offline(commandName) {
-  const args = ['apps/cli/src/backup.mjs', commandName, ...(commandName === 'create' ? ['--source', workspace, '--destination', backup] : commandName === 'restore' ? ['--directory', backup, '--destination', restoredWorkspace] : ['--directory', backup])];
+  const args = ['apps/cli/src/backup.ts', commandName, ...(commandName === 'create' ? ['--source', workspace, '--destination', backup] : commandName === 'restore' ? ['--directory', backup, '--destination', restoredWorkspace] : ['--directory', backup])];
   await command(process.execPath, args, 'offline-' + commandName); const value = await readJson(path.join(runtime, 'offline-' + commandName + '.stdout')); assert.equal(value.ok, true); assert.equal(value.data.warnings, undefined);
   if (commandName === 'restore') { assert.equal(value.data.publication, 'confirmed'); assert.equal(value.data.databaseSchemaVersion, 33); }
   else { assert.equal(value.data.integrity, 'verified'); assert.equal(value.data.databaseSchemaVersion, 32); }

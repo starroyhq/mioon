@@ -1,7 +1,7 @@
 import React,{useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {WorkbenchButton} from '@mioon/ui/components/workbench-controls';
 import {Play,Pause} from '@mioon/ui/components/workbench-icons';
-import {useWorkspaceVisibility} from './workspace-visibility.jsx';
+import {useWorkspaceVisibility} from './workspace-visibility.tsx';
 import {useI18n} from './i18n/I18nProvider.tsx';
 type Events=Pick<React.VideoHTMLAttributes<HTMLVideoElement>,'onLoadedMetadata'|'onTimeUpdate'|'onPlay'|'onPause'|'onEnded'|'onError'>;
 interface Props{sourceKey:string;renderMedia(events:Events):React.ReactNode}

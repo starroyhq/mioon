@@ -6,12 +6,12 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { openStore } from '../packages/business/src/db.mjs';
-import { createServices } from '../packages/business/src/services.mjs';
-import { createMockProvider } from '../packages/business/src/providers/mock.mjs';
-import { startWorker } from '../packages/business/src/jobs.mjs';
-import { run, probe, stitch, fileHash } from '../packages/business/src/media.mjs';
-import { mediaExecutable, mediaEnvironment } from '../packages/business/src/media-environment.mjs';
+import { openStore } from '../packages/business/src/db.ts';
+import { createServices } from '../packages/business/src/services.ts';
+import { createMockProvider } from '../packages/business/src/providers/mock.ts';
+import { startWorker } from '../packages/business/src/jobs.ts';
+import { run, probe, stitch, fileHash } from '../packages/business/src/media.ts';
+import { mediaExecutable, mediaEnvironment } from '../packages/business/src/media-environment.ts';
 
 const exec = promisify(execFile);
 const encode = ['-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '1', '-pix_fmt', 'yuv420p'];

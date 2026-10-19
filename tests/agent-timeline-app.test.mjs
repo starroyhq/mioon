@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
-const source=readFileSync(new URL('../apps/web/src/App.jsx',import.meta.url),'utf8');
+const source=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');
 function expression(name){const value=source.match(new RegExp(`const ${name} = ([\\s\\S]*?);\\n`))?.[1];assert.ok(value,`actual App ${name} expression`);return value;}
 const selection=Function('workspaceMode','propertiesPage','quickAssetId','makeAgentTimelineClipSelection','timeline','selectedClipId','data',`return (${expression('agentTimelineSelection')});`);
 const reason=Function('online','auth','loading','inspectorDirty','timelineBusy',`return (${expression('agentTimelineBlockedReason')});`);

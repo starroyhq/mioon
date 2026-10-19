@@ -5,9 +5,9 @@ import {readFile, stat} from 'node:fs/promises';
 import {DatabaseSync} from 'node:sqlite';
 import path from 'node:path';
 import {isTimelineMutationResponse, publicValue} from '@mioon/contracts';
-import {installCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.mjs';
-import {hash} from '../packages/business/src/services.mjs';
-import {matchesRestoredExport, restoreExportIdentity} from '../packages/business/src/workspace-restore-exports.mjs';
+import {installCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.ts';
+import {hash} from '../packages/business/src/services.ts';
+import {matchesRestoredExport, restoreExportIdentity} from '../packages/business/src/workspace-restore-exports.ts';
 import {selectedRangeFixture, RANGE, SETTINGS, authority, action} from './fixtures/selected-range-http-fixture.mjs';
 
 async function prepared(f, {settings = false} = {}) {

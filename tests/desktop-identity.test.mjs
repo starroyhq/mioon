@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import desktopIdentity from '../apps/desktop/identity.cjs';
-import { dataPaths, ensureDataIdentity, writeConnection, removeConnection } from '../apps/desktop/src/config.mjs';
-import { migrateData } from '../apps/desktop/scripts/migrate-data.mjs';
+import { dataPaths, ensureDataIdentity, writeConnection, removeConnection } from '../apps/desktop/src/config.ts';
+import { migrateData } from '../apps/desktop/scripts/migrate-data.ts';
 import { openStore } from '@mioon/business';
 const { identityForChannel, buildChannel } = desktopIdentity;
 const require = createRequire(import.meta.url);
@@ -31,12 +31,12 @@ test('build defaults to development and selects production only by an explicit v
 });
 
 test('runtime identity is embedded and never selected from packaged state or a launch environment', async () => {
-  const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
+  const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
   assert.match(main, /identityForChannel\(__MIOON_DESKTOP_CHANNEL__\)/);
   assert.match(main, /app\.setAppUserModelId\(identity\.appId\)/);
   assert.match(main, /app\.setDesktopName\(`\$\{identity\.appId\}\.desktop`\)/);
   assert.doesNotMatch(main, /process\.env\.(?:NODE_ENV|MIOON_DESKTOP_CHANNEL|MIOON_APP_ID)/);
-  const build = await readFile(new URL('../apps/desktop/scripts/build.mjs', import.meta.url), 'utf8');
+  const build = await readFile(new URL('../apps/desktop/scripts/build.ts', import.meta.url), 'utf8');
   assert.match(build, /__MIOON_DESKTOP_CHANNEL__: JSON\.stringify\(identity\.channel\)/);
   assert.match(build, /mioonDesktop: identity/);
 });
@@ -79,7 +79,7 @@ test('packaging refuses missing or opposite-channel staging, including packaged 
 test('package commands explicitly rebuild the correct channel before electron-builder', async () => {
   const pkg = JSON.parse(await readFile(new URL('../apps/desktop/package.json', import.meta.url), 'utf8'));
   for (const target of ['linux', 'dir', 'mac']) {
-    const build = 'node ../../scripts/tooling.mjs build';
+    const build = 'node ../../scripts/tooling.ts build';
     const targetFlags = target === 'dir' ? '--linux --dir' : `--${target}`;
     for (const [suffix, channel, config] of [['', 'production', 'electron-builder.cjs'], [':dev', 'development', 'electron-builder.dev.cjs']]) {
       assert.equal(pkg.scripts[`package:${target}${suffix}`], `${build} --channel=${channel} && electron-builder --config ${config} ${targetFlags} --publish never`);

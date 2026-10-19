@@ -11,14 +11,14 @@ import {
   TIMELINE_IMAGE_COMPOSITOR_INPUTS, TIMELINE_COLOUR_PREFLIGHT_MESSAGES,
 } from '../packages/contracts/src/timeline-colour.ts';
 import {timelineCompositionSegments} from '../packages/contracts/src/timeline-segments.ts';
-import {freezeTimelineSnapshot, validateTimeline} from '../packages/business/src/timeline-inputs.mjs';
+import {freezeTimelineSnapshot, validateTimeline} from '../packages/business/src/timeline-inputs.ts';
 import {planTimelineExportRange} from '../packages/business/src/timeline-export-range-plan.ts';
-import {renderTimeline} from '../packages/business/src/timeline-media.mjs';
-import {probe} from '../packages/business/src/media.mjs';
-import {mediaExecutable} from '../packages/business/src/media-environment.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
-import {createTimelinePreflightServices} from '../packages/business/src/timeline-preflight.mjs';
-import {openStore} from '../packages/business/src/db.mjs';
+import {renderTimeline} from '../packages/business/src/timeline-media.ts';
+import {probe} from '../packages/business/src/media.ts';
+import {mediaExecutable} from '../packages/business/src/media-environment.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
+import {createTimelinePreflightServices} from '../packages/business/src/timeline-preflight.ts';
+import {openStore} from '../packages/business/src/db.ts';
 import {snapshot as databaseSnapshot} from './workspace-schema26-fixtures.mjs';
 import {png, sha, imageColour, stamp, timelineFixture} from './helpers/timeline-image-fixtures.mjs';
 import {pillowJfifFixture} from './helpers/timeline-jpeg-fixtures.mjs';

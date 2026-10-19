@@ -5,12 +5,12 @@ import { randomUUID, createCipheriv, createDecipheriv } from 'node:crypto';
 import { mkdtemp, readFile, readdir, rm, stat, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
-import { desktopSecretStorage, createDesktopSecretCodec, createDesktopAgentSettings } from '../apps/desktop/src/secret-store.mjs';
-import { createAgentSettingsBroker, createAgentSettingsClient, MAX_AGENT_SETTINGS_MESSAGE_BYTES } from '../apps/desktop/src/secret-broker.mjs';
-import { BackendSupervisor } from '../apps/desktop/src/supervisor.mjs';
-import { DEFAULT_AGENT_CONFIGURATION } from '../packages/business/src/agent/presets.mjs';
-import { AGENT_CREDENTIAL_ACQUIRE } from '../packages/business/src/agent/settings.mjs';
-import { agentCredentialBinding } from '../packages/business/src/agent/config.mjs';
+import { desktopSecretStorage, createDesktopSecretCodec, createDesktopAgentSettings } from '../apps/desktop/src/secret-store.ts';
+import { createAgentSettingsBroker, createAgentSettingsClient, MAX_AGENT_SETTINGS_MESSAGE_BYTES } from '../apps/desktop/src/secret-broker.ts';
+import { BackendSupervisor } from '../apps/desktop/src/supervisor.ts';
+import { DEFAULT_AGENT_CONFIGURATION } from '../packages/business/src/agent/presets.ts';
+import { AGENT_CREDENTIAL_ACQUIRE } from '../packages/business/src/agent/settings.ts';
+import { agentCredentialBinding } from '../packages/business/src/agent/config.ts';
 
 const DUMMY_KEY = 'dummy-desktop-only-credential-never-live';
 const nextTurn = () => new Promise(resolve => setImmediate(resolve));
@@ -254,9 +254,9 @@ test('supervisor binds each settings reply to its child across exit and replacem
 });
 
 test('desktop source keeps the renderer sandbox and native secret channel private', async () => {
-  const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
-  const backend = await readFile(new URL('../apps/desktop/src/backend.mjs', import.meta.url), 'utf8');
-  const broker = await readFile(new URL('../apps/desktop/src/secret-broker.mjs', import.meta.url), 'utf8');
+  const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
+  const backend = await readFile(new URL('../apps/desktop/src/backend.ts', import.meta.url), 'utf8');
+  const broker = await readFile(new URL('../apps/desktop/src/secret-broker.ts', import.meta.url), 'utf8');
   assert.match(main, /app\.enableSandbox\(\)/);
   assert.match(main, /app\.getPath\('userData'\)/);
   assert.match(backend, /createAgentSettingsClient\(\{ port: process\.parentPort \}\)/);

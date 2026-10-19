@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {Readable} from 'node:stream';
 import {deflateSync} from 'node:zlib';
-import {createComfyConnector} from '../packages/business/src/comfy/connector.mjs';
-import {buildComfyWorkflow, hashComfyWorkflow, comfyCorrelationMarker} from '../packages/business/src/comfy/workflow.mjs';
-import {COMFY_NODE_CLASSES} from '../packages/business/src/comfy/profile.mjs';
-import {COMFY_IMAGE_OPTIONS} from '../packages/contracts/src/comfy-images.mjs';
+import {createComfyConnector} from '../packages/business/src/comfy/connector.ts';
+import {buildComfyWorkflow, hashComfyWorkflow, comfyCorrelationMarker} from '../packages/business/src/comfy/workflow.ts';
+import {COMFY_NODE_CLASSES} from '../packages/business/src/comfy/profile.ts';
+import {COMFY_IMAGE_OPTIONS} from '../packages/contracts/src/comfy-images.ts';
 
 const baseUrl='http://127.0.0.1:8188', model='sd15/example.safetensors';
 const config={enabled:true,providerId:'comfy-local',connectionId:'comfy-local',profileId:'comfy-t2i-png-v1',baseUrl,model,options:COMFY_IMAGE_OPTIONS,comfyVersion:'0.39.0'};

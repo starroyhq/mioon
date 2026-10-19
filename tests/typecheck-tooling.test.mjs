@@ -6,7 +6,7 @@ import {mkdtemp, realpath, mkdir, writeFile, readFile, rm, rename, symlink} from
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
-import {parseArguments, installedTypeScript, typecheckCommands, verifySourceLanguages, executeCommand, toolingEnvironment} from '../scripts/lib/local-tooling.mjs';
+import {parseArguments, installedTypeScript, typecheckCommands, verifySourceLanguages, executeCommand, toolingEnvironment} from '../scripts/lib/local-tooling.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const version = '6.0.3';
@@ -35,13 +35,13 @@ async function fixture(t, compiler = "process.stdout.write(JSON.stringify(proces
 
 async function fixtureCli(t, compiler) {
   const state = await fixture(t, compiler);
-  await state.file('scripts/tooling.mjs', await readFile(path.join(root, 'scripts/tooling.mjs'), 'utf8'));
+  await state.file('scripts/tooling.ts', await readFile(path.join(root, 'scripts/tooling.ts'), 'utf8'));
   await directoryLink(path.join(root, 'scripts/lib'), path.join(state.directory, 'scripts/lib'));
   return state;
 }
 
 function runCli(directory, args) {
-  const result = spawnSync(process.execPath, ['scripts/tooling.mjs', ...args], {
+  const result = spawnSync(process.execPath, ['scripts/tooling.ts', ...args], {
     cwd: directory, env: toolingEnvironment(), encoding: 'utf8', timeout: 10000, shell: false, windowsHide: true,
   });
   assert.equal(result.error, undefined);
@@ -136,7 +136,7 @@ test('entry directory links to outside or alternative in-package locations fail 
 
 test('legacy runtime JavaScript remains accepted while new JS/JSX/MJS/CJS paths fail the language policy', async t => {
   const {directory, file, json} = await fixture(t);
-  const legacy = ['apps/server/src/index.mjs', 'packages/contracts/src/compat.mjs'];
+  const legacy = ['apps/server/src/index.ts', 'packages/contracts/src/compat.mjs'];
   for (const name of legacy) await file(name, '// Existing runtime source.\n');
   await json('config/typecheck-legacy-sources.json', legacy);
   await verifySourceLanguages(directory);
@@ -153,7 +153,7 @@ test('legacy runtime JavaScript remains accepted while new JS/JSX/MJS/CJS paths 
 
 test('missing, duplicate and escaping legacy allowlists cannot disable the language guard', async t => {
   const {directory, json} = await fixture(t);
-  for (const policy of [{}, ['apps/server/src/index.mjs', 'apps/server/src/index.mjs'], ['../outside.js'], ['apps/server/src/../outside.js']]) {
+  for (const policy of [{}, ['apps/server/src/index.ts', 'apps/server/src/index.ts'], ['../outside.js'], ['apps/server/src/../outside.js']]) {
     await json('config/typecheck-legacy-sources.json', policy);
     await assert.rejects(verifySourceLanguages(directory), {code: 'TYPECHECK_SOURCE_POLICY_INVALID'});
   }
@@ -249,7 +249,7 @@ test('typecheck reuses the shell-free reduced environment and existing interrupt
 });
 
 test('build command places both typechecks before the existing build command sequence', async () => {
-  const source = await readFile(path.join(root, 'scripts/tooling.mjs'), 'utf8');
+  const source = await readFile(path.join(root, 'scripts/tooling.ts'), 'utf8');
   assert.match(source, /\[\.\.\.await typecheckCommands\(root\), \.\.\.buildCommands\(root, entries, options\.channel\)\]/);
   assert.doesNotMatch(source, /npm install|pnpm install|npx |tsgo|electron-builder/);
 });

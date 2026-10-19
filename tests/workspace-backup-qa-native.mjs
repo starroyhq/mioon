@@ -5,7 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {spawn} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
 import {readFile,writeFile,readdir,lstat,open,mkdir} from 'node:fs/promises';
-import {ensurePrivateDirectory} from '../packages/contracts/src/private-storage.mjs';
+import {ensurePrivateDirectory} from '../packages/contracts/src/private-storage.ts';
 import {IMAGE_FIXED_OPTIONS,IMAGE_MODELS} from '@mioon/contracts';
 import {openStore,createServices} from '@mioon/business';
 import {ownQaChild} from './agent-timeline-move-qa-native.mjs';
@@ -56,7 +56,7 @@ export async function launchBackupNative(label){
 }
 export async function runBackupNativeCli(command){
  if(!['create','verify'].includes(command))throw Error('Only explicit backup capture/verify');await fixture();await closedSourceAudit('before-'+command);
- const args=['apps/cli/src/backup.mjs',command,...(command==='create'?['--source',paths.workspace,'--destination',paths.backup]:['--directory',paths.backup])],stdout=await open(path.join(runtime,command+'-stdout.json'),'w',0o600),stderr=await open(path.join(runtime,command+'-stderr.log'),'w',0o600);
+ const args=['apps/cli/src/backup.ts',command,...(command==='create'?['--source',paths.workspace,'--destination',paths.backup]:['--directory',paths.backup])],stdout=await open(path.join(runtime,command+'-stdout.json'),'w',0o600),stderr=await open(path.join(runtime,command+'-stderr.log'),'w',0o600);
  const owned=ownQaChild(spawn(process.execPath,args,{cwd:repo,env:environment(),stdio:['ignore',stdout.fd,stderr.fd]}));let timer;
  try{const end=await Promise.race([owned.done,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Native CLI fixture deadline')),30000);})]);if(end.code!==0||end.signal||end.error)throw Error('Backup CLI fixture failed');}
  catch(error){await owned.stop();throw error;}finally{clearTimeout(timer);await stdout.close();await stderr.close();}

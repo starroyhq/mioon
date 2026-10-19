@@ -9,10 +9,10 @@ import {fileURLToPath} from 'node:url';
 import {spawn} from 'node:child_process';
 import {DatabaseSync} from 'node:sqlite';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore, ownsStoreLock} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {renderMockImagePng} from '../packages/business/src/images/png.mjs';
-import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS} from '../packages/contracts/src/images.mjs';
+import {openStore, ownsStoreLock} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {renderMockImagePng} from '../packages/business/src/images/png.ts';
+import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS} from '../packages/contracts/src/images.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const code = expected => error => error.code === expected && !JSON.stringify(error).includes('PRIVATE_SENTINEL');
@@ -233,9 +233,9 @@ async function child(script, args, expectedCode = 0) {
   } finally {clearTimeout(timer);}
 }
 const childImports = `
-  import {openStore} from './packages/business/src/db.mjs';
-  import {createServices} from './packages/business/src/services.mjs';
-  import {renderMockImagePng} from './packages/business/src/images/png.mjs';
+  import {openStore} from './packages/business/src/db.ts';
+  import {createServices} from './packages/business/src/services.ts';
+  import {renderMockImagePng} from './packages/business/src/images/png.ts';
   import {appendFileSync,readFileSync,existsSync} from 'node:fs';
   import path from 'node:path';
   import {randomUUID} from 'node:crypto';

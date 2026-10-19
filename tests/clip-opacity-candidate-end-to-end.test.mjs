@@ -7,13 +7,13 @@ import {randomUUID} from 'node:crypto';
 import {Readable} from 'node:stream';
 import {DatabaseSync} from 'node:sqlite';
 import {createOpacityCandidateEditorAssembly} from '../apps/server/src/opacity-candidate-editor-assembly.ts';
-import {createEditTasksHttp} from '../apps/server/src/edit-tasks-http.mjs';
+import {createEditTasksHttp} from '../apps/server/src/edit-tasks-http.ts';
 import {openOpacityCandidateStore} from '../packages/business/src/opacity-candidate-store.ts';
-import {openStore} from '../packages/business/src/db.mjs';
+import {openStore} from '../packages/business/src/db.ts';
 import {installWorkspaceRestoreSchemaV43} from '../packages/business/src/workspace-restore-schema-v43.ts';
 import {OPACITY_CANDIDATE_LOCAL_DRAFT_FILENAME} from '../packages/business/src/opacity-candidate-local-drafts.ts';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
-import {isTimelineRecord} from '../packages/contracts/src/timeline-replacement.mjs';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
+import {isTimelineRecord} from '../packages/contracts/src/timeline-replacement.ts';
 import {captureClipDraftOpacityCandidateDiskV3} from '../packages/contracts/src/local-drafts-opacity-candidate.ts';
 import {createClipDraftController, clipDraftRaw, clipDraftSource} from '../apps/web/src/clip-draft-state.ts';
 import {createClipDraftClient, createOpacityCandidateClipDraftClient} from '../apps/web/src/clip-draft-client.ts';
@@ -21,9 +21,9 @@ import {rawOpacityEnvelopeFields} from '../apps/web/src/clip-opacity-envelope-st
 import {createOpacityCandidateInspectorBinding, readOpacityCandidateInspectorBinding, opacityCandidateTimelineProjection}
   from '../apps/web/src/clip-opacity-candidate-assembly.ts';
 import * as legacyContracts from '@mioon/contracts';
-import {rpc} from '../apps/web/src/api.js';
-import {createEditTaskClient} from '../apps/web/src/edit-task-client.js';
-import {createEditTaskController} from '../apps/web/src/edit-task-controller.js';
+import {rpc} from '../apps/web/src/api.ts';
+import {createEditTaskClient} from '../apps/web/src/edit-task-client.ts';
+import {createEditTaskController} from '../apps/web/src/edit-task-controller.ts';
 import {createOpacityCandidateApplication, readOpacityCandidateApplication} from '../apps/web/src/opacity-candidate-application.ts';
 
 const stamp = '2026-10-16T00:00:00.000Z';

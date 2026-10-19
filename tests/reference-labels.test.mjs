@@ -2,7 +2,7 @@ import { i18nTestModule, renderMessage as renderI18nMessage, message as msg } fr
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import * as references from '../apps/web/src/reference-connections.js';
+import * as references from '../apps/web/src/reference-connections.ts';
 
 const projectId = 'project-a';
 const asset = { id: 'asset-a', projectId, name: '花园首帧.png', mimeType: 'image/png' };
@@ -106,7 +106,7 @@ function harness(name) {
     useState: () => [selected, value => { selected = value; }],
   };
   react.default = react;
-  const code = transformSync(readFileSync(new URL('../apps/web/src/ReferenceConnections.jsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code;
+  const code = transformSync(readFileSync(new URL('../apps/web/src/ReferenceConnections.tsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code;
   const module = { exports: {} };
   Function('module', 'exports', 'require', code)(module, module.exports, id => {
     if (id === 'react') return react;

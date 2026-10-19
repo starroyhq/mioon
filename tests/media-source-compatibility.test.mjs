@@ -6,12 +6,12 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { openStore } from '../packages/business/src/db.mjs';
-import { run } from '../packages/business/src/media.mjs';
-import { mediaExecutable, mediaEnvironment } from '../packages/business/src/media-environment.mjs';
-import { createTimelinePreflightServices } from '../packages/business/src/timeline-preflight.mjs';
-import { readTimelinePreflightSnapshot, readOwnedTimelineAsset, prepareTimelineInputs, probeTimelineSource } from '../packages/business/src/timeline-sources.mjs';
-import { renderTimeline } from '../packages/business/src/timeline-media.mjs';
+import { openStore } from '../packages/business/src/db.ts';
+import { run } from '../packages/business/src/media.ts';
+import { mediaExecutable, mediaEnvironment } from '../packages/business/src/media-environment.ts';
+import { createTimelinePreflightServices } from '../packages/business/src/timeline-preflight.ts';
+import { readTimelinePreflightSnapshot, readOwnedTimelineAsset, prepareTimelineInputs, probeTimelineSource } from '../packages/business/src/timeline-sources.ts';
+import { renderTimeline } from '../packages/business/src/timeline-media.ts';
 
 const exec = promisify(execFile);
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');

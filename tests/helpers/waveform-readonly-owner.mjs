@@ -1,6 +1,6 @@
-import {openStore,ownsStoreLock} from '../../packages/business/src/db.mjs';
-import {createWaveformServices} from '../../packages/business/src/waveforms.mjs';
-import {onMediaProcess} from '../../packages/business/src/media-processes.mjs';
+import {openStore,ownsStoreLock} from '../../packages/business/src/db.ts';
+import {createWaveformServices} from '../../packages/business/src/waveforms.ts';
+import {onMediaProcess} from '../../packages/business/src/media-processes.ts';
 
 const [root,serialized]=process.argv.slice(2),input=JSON.parse(serialized),store=openStore(root,{lock:false});
 let txCalls=0,spawns=0;const tx=store.tx;

@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {mkdtemp, mkdir, readFile, writeFile, readdir, rm, chmod, stat, symlink, link} from 'node:fs/promises';
-import {createAgentSettingsFile} from '../packages/business/src/agent/settings-file.mjs';
-import {createAgentSettings} from '../packages/business/src/agent/settings.mjs';
-import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.mjs';
+import {createAgentSettingsFile} from '../packages/business/src/agent/settings-file.ts';
+import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
+import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
 
 const envelope = (revision = 1) => ({version: 2, revision, configuration: {...DEFAULT_AGENT_CONFIGURATION}, secret: null});
 async function fixture(t) {

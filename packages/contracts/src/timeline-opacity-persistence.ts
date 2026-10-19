@@ -7,7 +7,7 @@ import {createTimelineOpacityCandidateContracts, type OpacityCandidateContext, t
 type Value = Record<string, unknown>;
 type Predicate = (...args: unknown[]) => unknown;
 const require = createRequire(import.meta.url);
-const legacy: unknown = require('./index.mjs');
+const legacy: unknown = require('./index.ts');
 const object = (value: unknown): value is Value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const own = (value: object, key: PropertyKey): boolean => Object.hasOwn(value, key);
 const wellFormed = (value: string): boolean => /^(?:[^\uD800-\uDFFF]|[\uD800-\uDBFF][\uDC00-\uDFFF])*$/u.test(value);

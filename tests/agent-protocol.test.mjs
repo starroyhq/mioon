@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {AGENT_PROTOCOLS, deriveAgentEndpoint} from '@mioon/contracts';
-import {AGENT_PRESETS, DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.mjs';
-import {parseAgentConfiguration, parseAgentSettingsUpdate} from '../packages/business/src/agent/config.mjs';
+import {AGENT_PRESETS, DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
+import {parseAgentConfiguration, parseAgentSettingsUpdate} from '../packages/business/src/agent/config.ts';
 
 test('shared protocol labels and fixed suffixes are pure, closed and deeply frozen', async () => {
   assert.deepEqual(AGENT_PROTOCOLS, {

@@ -4,10 +4,10 @@ import {randomUUID} from 'node:crypto';
 import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices, canonical} from '../packages/business/src/services.mjs';
-import {createAgentEditService, AGENT_EDIT_LIMITS} from '../packages/business/src/agent/edit-proposals.mjs';
-import {editToolPolicy} from '../packages/business/src/agent/edit-tool-policy.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices, canonical} from '../packages/business/src/services.ts';
+import {createAgentEditService, AGENT_EDIT_LIMITS} from '../packages/business/src/agent/edit-proposals.ts';
+import {editToolPolicy} from '../packages/business/src/agent/edit-tool-policy.ts';
 
 const timestamp = () => new Date().toISOString();
 const code = expected => caught => caught.code === expected && !JSON.stringify(caught).includes('PRIVATE');

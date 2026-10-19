@@ -4,13 +4,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createEditorWindowInputs } from '../apps/web/src/editor-window-inputs.ts';
 import { TIMELINE_EXPORT_DEFAULT_SETTINGS, TIMELINE_MUTATION_OPERATIONS, REFERENCE_MUTATION_OPERATIONS } from '@mioon/contracts';
-import { isMutationOperation } from '../apps/web/src/mutation-submissions.js';
-import { schemas, workspaceRestoreInspectionSchema } from '../packages/contracts/src/index.mjs';
+import { isMutationOperation } from '../apps/web/src/mutation-submissions.ts';
+import { schemas, workspaceRestoreInspectionSchema } from '../packages/contracts/src/index.ts';
 import { createLauncherClient, LauncherCreateError } from '../apps/web/src/launcher-state.ts';
 import { createProjectEntryController } from '../apps/web/src/project-entry-state.ts';
-import { ApiError } from '../apps/web/src/api.js';
+import { ApiError } from '../apps/web/src/api.ts';
 
-const app = readFileSync(process.env.MIOON_EDITOR_CREATE_APP_SOURCE || new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const app = readFileSync(process.env.MIOON_EDITOR_CREATE_APP_SOURCE || new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const id = n => `76000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const name = 'Private project name', description = 'Private project description';
 const row = () => ({ id: id(2), name, description, revision: 1, createdAt: '2026-10-13T00:00:00.000Z', updatedAt: '2026-10-13T00:00:00.000Z' });
@@ -65,7 +65,7 @@ const nativeContext = () => ({ version: 2, role: 'editor', windowId: id(10), con
 const openResult = patch => ({ ok: true, reason: 'accepted', targetWindowId: id(20), targetPhase: 'opening', ...patch });
 // Execute the actual composition-root DI with the real transport error class
 // and contract schemas, rather than a test-only definitive-error predicate.
-const main = readFileSync(new URL('../apps/web/src/main.jsx', import.meta.url), 'utf8');
+const main = readFileSync(new URL('../apps/web/src/main.tsx', import.meta.url), 'utf8');
 const declaration = main.match(/^const launcherContracts = (.+);$/m);
 assert.ok(declaration, 'Main retains one narrow contract DI declaration');
 const checks = Function('ApiError', 'schemas', 'workspaceRestoreInspectionSchema', `return ${declaration[1]};`)(ApiError, schemas, workspaceRestoreInspectionSchema);

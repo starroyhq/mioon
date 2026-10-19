@@ -12,14 +12,14 @@ export type OpacityRestoreStatusOptions = Readonly<{destination: string; signal?
   {directory: string; restorationId?: never; sourceBackupId?: never; manifestHash?: never; sourceDbHash?: never} |
   {directory?: never; restorationId: string; sourceBackupId: string; manifestHash: string; sourceDbHash: string}
 )>;
-async function invoke(moduleName: './workspace-backup.mjs' | './workspace-restore.mjs', member: string, options: unknown, schema: {safeParse(value: unknown): {success: boolean; data?: unknown}}): Promise<unknown> {
-  const module: unknown = moduleName === './workspace-backup.mjs' ? require('./workspace-backup.mjs') : require('./workspace-restore.mjs');
+async function invoke(moduleName: './workspace-backup.ts' | './workspace-restore.ts', member: string, options: unknown, schema: {safeParse(value: unknown): {success: boolean; data?: unknown}}): Promise<unknown> {
+  const module: unknown = moduleName === './workspace-backup.ts' ? require('./workspace-backup.ts') : require('./workspace-restore.ts');
   if (!object(module) || typeof module[member] !== 'function') throw new Error('The fixed offline archive runtime is unavailable.');
   const result: unknown = await Reflect.apply(module[member], module, [options, profile]);
   if (!schema.safeParse(result).success) throw Object.assign(new Error('Invalid fixed candidate offline result.'), {code: 'WORKSPACE_BACKUP_IO'});
   return result;
 }
-export function createRippleOpacityCandidateWorkspaceBackup(options: SourceOptions): Promise<unknown> {return invoke('./workspace-backup.mjs', 'createWorkspaceBackup', options, profile.resultSchema);}
-export function verifyRippleOpacityCandidateWorkspaceBackup(options: VerifyOptions): Promise<unknown> {return invoke('./workspace-backup.mjs', 'verifyWorkspaceBackup', options, profile.resultSchema);}
-export function restoreRippleOpacityCandidateWorkspaceBackup(options: RestoreOptions): Promise<unknown> {return invoke('./workspace-restore.mjs', 'restoreWorkspaceBackup', options, profile.restoreResultSchema);}
-export function inspectRippleOpacityCandidateRestorePublication(options: OpacityRestoreStatusOptions): Promise<unknown> {return invoke('./workspace-restore.mjs', 'inspectWorkspaceRestorePublication', options, profile.restoreStatusSchema);}
+export function createRippleOpacityCandidateWorkspaceBackup(options: SourceOptions): Promise<unknown> {return invoke('./workspace-backup.ts', 'createWorkspaceBackup', options, profile.resultSchema);}
+export function verifyRippleOpacityCandidateWorkspaceBackup(options: VerifyOptions): Promise<unknown> {return invoke('./workspace-backup.ts', 'verifyWorkspaceBackup', options, profile.resultSchema);}
+export function restoreRippleOpacityCandidateWorkspaceBackup(options: RestoreOptions): Promise<unknown> {return invoke('./workspace-restore.ts', 'restoreWorkspaceBackup', options, profile.restoreResultSchema);}
+export function inspectRippleOpacityCandidateRestorePublication(options: OpacityRestoreStatusOptions): Promise<unknown> {return invoke('./workspace-restore.ts', 'inspectWorkspaceRestorePublication', options, profile.restoreStatusSchema);}

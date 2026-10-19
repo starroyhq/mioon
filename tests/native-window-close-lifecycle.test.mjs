@@ -5,7 +5,7 @@ import { createNativeCloseAdmission, createNativeCloseRegistry, installNativeClo
 import { combineNativeEntryClose } from '../apps/web/src/native-entry-close.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 
-const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const flushStart = app.indexOf('  useEffect(() => {\n    const controller = preferencesRef.current;');
 const flushEnd = app.indexOf('\n  }, []);', flushStart) + '\n  }, []);'.length;
 const admissionStart = app.indexOf('  useEffect(() => installNativeCloseAdmission(');

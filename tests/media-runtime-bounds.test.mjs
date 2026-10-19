@@ -7,9 +7,9 @@ import { mkdtemp, rm, stat, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mediaEnvironment, mediaExecutable } from '../packages/business/src/media-environment.mjs';
-import { run, MEDIA_RUNTIME_LIMITS } from '../packages/business/src/media-runtime.mjs';
-import { spawnMedia, onMediaProcess, terminateMediaProcess, terminateMediaProcesses, waitForMediaProcesses, hasUnconfirmedMediaProcesses, MEDIA_TERMINATION_POLICY } from '../packages/business/src/media-processes.mjs';
+import { mediaEnvironment, mediaExecutable } from '../packages/business/src/media-environment.ts';
+import { run, MEDIA_RUNTIME_LIMITS } from '../packages/business/src/media-runtime.ts';
+import { spawnMedia, onMediaProcess, terminateMediaProcess, terminateMediaProcesses, waitForMediaProcesses, hasUnconfirmedMediaProcesses, MEDIA_TERMINATION_POLICY } from '../packages/business/src/media-processes.ts';
 
 const fixture = fileURLToPath(new URL('./helpers/media-child-fixture.mjs', import.meta.url));
 const exec = promisify(execFile), pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -30,8 +30,8 @@ test('explicit environment policy only copies platform/locale keys from syntheti
 
 test('child environment omits synthetic credentials/injection settings and cannot be expanded by options.env', async t => {
   const root = await sandbox(t);
-  const runtime = new URL('../packages/business/src/media-runtime.mjs', import.meta.url).href;
-  const processes = new URL('../packages/business/src/media-processes.mjs', import.meta.url).href;
+  const runtime = new URL('../packages/business/src/media-runtime.ts', import.meta.url).href;
+  const processes = new URL('../packages/business/src/media-processes.ts', import.meta.url).href;
   // The outer helper starts with a synthetic dictionary only. Forbidden loader
   // values are inserted after Node starts, and are never used by a child.
   const script = `import {run} from ${JSON.stringify(runtime)}; import {spawnMedia} from ${JSON.stringify(processes)};

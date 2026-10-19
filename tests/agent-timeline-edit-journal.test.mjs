@@ -5,12 +5,12 @@ import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {deriveAgentEndpoint, AGENT_TIMELINE_MOVE_CONTEXT} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createChatJournal} from '../packages/business/src/agent/chat-journal.mjs';
-import {buildAgentRequest} from '../packages/business/src/agent/agent-gateway.mjs';
-import {selectChatContext} from '../packages/business/src/agent/chat-context.mjs';
-import {timelineEditToolPolicy, timelineEditToolCapability} from '../packages/business/src/agent/timeline-edit-tool-policy.mjs';
-import {editToolPolicy, editToolCapability} from '../packages/business/src/agent/edit-tool-policy.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createChatJournal} from '../packages/business/src/agent/chat-journal.ts';
+import {buildAgentRequest} from '../packages/business/src/agent/agent-gateway.ts';
+import {selectChatContext} from '../packages/business/src/agent/chat-context.ts';
+import {timelineEditToolPolicy, timelineEditToolCapability} from '../packages/business/src/agent/timeline-edit-tool-policy.ts';
+import {editToolPolicy, editToolCapability} from '../packages/business/src/agent/edit-tool-policy.ts';
 
 const unavailable = {code: 'AGENT_CHAT_STORAGE_UNAVAILABLE'}, mode = AGENT_TIMELINE_MOVE_CONTEXT;
 const config = protocol => ({presetId: 'ollama', platformId: 'local', baseUrl: 'http://127.0.0.1:11434/v1', model: 'qwen3:8b', protocol});

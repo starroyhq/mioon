@@ -7,8 +7,8 @@ import path from 'node:path';
 import { crc32, deflateSync } from 'node:zlib';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { createArkProvider } from '../packages/business/src/providers/ark.mjs';
-import { createVeoProvider } from '../packages/business/src/providers/veo.mjs';
+import { createArkProvider } from '../packages/business/src/providers/ark.ts';
+import { createVeoProvider } from '../packages/business/src/providers/veo.ts';
 
 const exec = promisify(execFile);
 const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });

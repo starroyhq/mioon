@@ -7,9 +7,9 @@ import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {createHash, randomUUID} from 'node:crypto';
-import {timelineAudioFadeFilters} from '../packages/business/src/timeline-audio.mjs';
-import {renderTimeline} from '../packages/business/src/timeline-media.mjs';
-import {startServer} from '../apps/server/src/index.mjs';
+import {timelineAudioFadeFilters} from '../packages/business/src/timeline-audio.ts';
+import {renderTimeline} from '../packages/business/src/timeline-media.ts';
+import {startServer} from '../apps/server/src/index.ts';
 
 // Local synthetic acceptance: exact float PCM first, then the shared production
 // renderer, a real HTTP queue/worker, and decoded lossy AAC. No provider calls.

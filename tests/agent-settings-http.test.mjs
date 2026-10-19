@@ -4,9 +4,9 @@ import http from 'node:http';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {mkdtemp, rm, readFile, writeFile, mkdir, readdir} from 'node:fs/promises';
-import {startServer} from '../apps/server/src/index.mjs';
-import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.mjs';
-import {createAgentSettings} from '../packages/business/src/agent/settings.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
+import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 
 const token = 'synthetic-agent-settings-http-token';
 const input = (expectedRevision = 0, secret = {action: 'keep'}, configuration = {...DEFAULT_AGENT_CONFIGURATION}) => ({expectedRevision, configuration, secret});

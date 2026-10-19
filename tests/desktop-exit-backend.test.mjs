@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
-const source = (await readFile(new URL('../apps/desktop/src/backend.mjs', import.meta.url), 'utf8'))
+const source = (await readFile(new URL('../apps/desktop/src/backend.ts', import.meta.url), 'utf8'))
   .replace(/^import .*;\n/gm, '');
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const privateData = 'private-key-request-body-media-/Users/private/project';

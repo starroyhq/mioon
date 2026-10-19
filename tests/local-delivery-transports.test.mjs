@@ -6,10 +6,10 @@ import {tmpdir} from 'node:os';
 import {randomUUID,createHash} from 'node:crypto';
 import {mkdtemp,realpath,readFile,stat,rm} from 'node:fs/promises';
 import {DatabaseSync} from 'node:sqlite';
-import {startServer} from '../apps/server/src/index.mjs';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {renderMockImagePng} from '../packages/business/src/images/png.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {renderMockImagePng} from '../packages/business/src/images/png.ts';
 import {schemas,isTimelineMutationResponse} from '@mioon/contracts';
 import {createLocalDeliverySchemas} from '@mioon/contracts/local-delivery';
 

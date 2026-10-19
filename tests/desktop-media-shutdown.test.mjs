@@ -13,17 +13,17 @@ import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
-import { BackendSupervisor, BACKEND_STOP_BUDGET } from '../apps/desktop/src/supervisor.mjs';
-import { stopBackendForQuit } from '../apps/desktop/src/shutdown.mjs';
-import { createDesktopStartup } from '../apps/desktop/src/startup.mjs';
-import { QuitCoordinator } from '../apps/desktop/src/lifecycle.mjs';
+import { BackendSupervisor, BACKEND_STOP_BUDGET } from '../apps/desktop/src/supervisor.ts';
+import { stopBackendForQuit } from '../apps/desktop/src/shutdown.ts';
+import { createDesktopStartup } from '../apps/desktop/src/startup.ts';
+import { QuitCoordinator } from '../apps/desktop/src/lifecycle.ts';
 import { MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjectWindowQuitRouter } from '../apps/desktop/src/project-window-quit.ts';
 import { PROJECT_WINDOW_CHANNEL } from '../apps/desktop/src/project-window-protocol.ts';
 import { createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity } from '../apps/desktop/src/native-audio-preview-host.ts';
 import { NATIVE_AUDIO_CHANNEL } from '../apps/desktop/src/native-audio-preview-protocol.ts';
 import { consumeNativeProjectEntry } from '../apps/desktop/src/project-entry-admission.ts';
 import { observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident } from '../apps/desktop/src/project-window-recovery.ts';
-import { validateTools } from '../apps/desktop/src/config.mjs';
+import { validateTools } from '../apps/desktop/src/config.ts';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const syntheticFailure = 'synthetic-private-body-/never-show-this-path';
@@ -314,7 +314,7 @@ test('native quit cleans only after confirmed failure and surfaces the failure w
   assert.equal(calls, 1);
   assert.equal(cleanups, 1);
   assert.equal(finishes, 0);
-  const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
+  const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
   assert.match(main, /function requestApplicationQuit\(source\) \{ return quitRouter\.request\(source\)\.catch\(quitFailed\); \}/);
   assert.match(main, /const focused = BrowserWindow\.getFocusedWindow\(\);/);
   assert.match(main, /void requestApplicationQuit\(ownsWindow\(focused, windowContext\) && windowHost\.isTrustedDocument\(focused\) \? focused : undefined\);/);
@@ -392,7 +392,7 @@ test('desktop real version and encoder children reject synthetic secrets and inj
     for (const [file, name] of [[ffmpeg, 'ffmpeg'], [ffprobe, 'ffprobe']]) {
       await writeFile(file, `#!${process.execPath}\nif (${JSON.stringify(forbidden)}.some(key => process.env[key] !== undefined)) process.exit(20);\nif (process.env.PATH !== '/synthetic/tools' || process.env.HOME !== '/synthetic/home' || process.env.LANG !== 'C') process.exit(21);\nprocess.stdout.write(process.argv.includes('-encoders') ? 'libx264 aac\\n' : '${name} version synthetic\\n');\n`, { mode: 0o700 });
     }
-    const url = new URL('../apps/desktop/src/config.mjs', import.meta.url).href;
+    const url = new URL('../apps/desktop/src/config.ts', import.meta.url).href;
     const source = `import {validateTools} from ${JSON.stringify(url)}; Object.assign(process.env,${JSON.stringify(env)}); await validateTools(${JSON.stringify({ ffmpeg, ffprobe })}); process.stdout.write('validated');`;
     const child = spawn(process.execPath, ['--input-type=module', '-e', source], { env: {}, stdio: ['ignore', 'pipe', 'pipe'], shell: false });
     let stdout = '', stderr = '';
@@ -449,7 +449,7 @@ test('startup abort drains only its signal and retains an unconfirmed owned vali
 });
 
 async function mainStartupHarness({ validate, settings } = {}) {
-  const source = (await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
+  const source = (await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
   const app = new EventEmitter();
   const counts = { forks: 0, settings: 0, quits: 0, cleanup: 0, exits: [], notices: [] };
   const expectedChannels = [APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL];
@@ -539,7 +539,7 @@ test('unconfirmed orphan media quit requires a fixed explicit exit warning and e
 });
 
 test('native smoke explicitly skips unsafe orphan-crash recovery without counting it as a pass', async () => {
-  const source = await readFile(new URL('../apps/desktop/src/smoke-checks.mjs', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../apps/desktop/src/smoke-checks.ts', import.meta.url), 'utf8');
   assert.match(source, /skippedChecks\.push\(\{ name: 'active-render-utility-crash-media-ownership-recovery'/);
   assert.match(source, /checks, skippedChecks, screenshot/);
   assert.doesNotMatch(source, /active-render-utility-crash-kills-owned-ffmpeg-and-recovers|process\.kill\(getReady\(\)\.runtime\.pid|process\.kill\(pid, 0\)/);
@@ -548,7 +548,7 @@ test('native smoke explicitly skips unsafe orphan-crash recovery without countin
 });
 
 async function backendHarness({ close = async () => {}, start, settingsClose = () => {}, imageClose = () => {}, imageRefresh = async () => {} } = {}) {
-  const source = (await readFile(new URL('../apps/desktop/src/backend.mjs', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
+  const source = (await readFile(new URL('../apps/desktop/src/backend.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
   const port = new EventEmitter(), processEvents = new EventEmitter(), messages = [], exits = [];
   const nativeConfig = {version:1,backendId:'11111111-1111-4111-8111-111111111111',
     publicKey:'302a300506032b6570032100d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a'};

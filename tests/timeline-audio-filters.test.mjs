@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { timelineAudioFadeFilters } from '../packages/business/src/timeline-audio.mjs';
+import { timelineAudioFadeFilters } from '../packages/business/src/timeline-audio.ts';
 
 test('legacy omitted and explicit zero fades preserve the old audio graph byte for byte', () => {
   const clip = { startFrame: 30, durationFrames: 120 };

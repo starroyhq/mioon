@@ -5,9 +5,9 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { transformSync } from 'esbuild';
 import { isTimelineMutationResponse } from '@mioon/contracts';
-import { createEditTaskClient, isDurableEditOperation } from '../apps/web/src/edit-task-client.js';
-import { workspaceOriginScope } from '../apps/web/src/workspace-origin.js';
-import { createEditTaskController } from '../apps/web/src/edit-task-controller.js';
+import { createEditTaskClient, isDurableEditOperation } from '../apps/web/src/edit-task-client.ts';
+import { workspaceOriginScope } from '../apps/web/src/workspace-origin.ts';
+import { createEditTaskController } from '../apps/web/src/edit-task-controller.ts';
 
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 import * as currentApplyState from '../apps/web/src/timeline-loudness-apply-state.ts';

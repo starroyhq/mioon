@@ -243,7 +243,7 @@ test('indexed reverse ownership and scoped pagination avoid unrelated-project sc
     f.store.put('jobs', {id: jobId, projectId: f.other.id, private: 'unrelated'});
     f.store.put('versions', {id: versionId, projectId: f.other.id, jobId, assetId: randomUUID(), snapshot: {private: 'x'.repeat(2000)}});
   }
-  const {INSPECTION_VERSION_ASSET_EXPRESSION} = await import('../packages/business/src/inspection-query.mjs');
+  const {INSPECTION_VERSION_ASSET_EXPRESSION} = await import('../packages/business/src/inspection-query.ts');
   const query = `SELECT id FROM versions WHERE ${INSPECTION_VERSION_ASSET_EXPRESSION}=? ORDER BY id LIMIT 2`;
   const reversePlan = f.store.db.prepare(`EXPLAIN QUERY PLAN ${query}`).all(a.id).map(row => row.detail).join('\n');
   assert.match(reversePlan, /SEARCH versions USING (?:COVERING )?INDEX inspection_versions_asset_id/);
@@ -276,7 +276,7 @@ test('additive inspection index migration tolerates malformed and huge legacy ve
   store.db.exec('DELETE FROM schema_version WHERE version=7');
   store.close(); store = openStore(root);
   assert.deepEqual(store.db.prepare('SELECT * FROM versions ORDER BY id').all(), before);
-  const {INSPECTION_VERSION_ASSET_EXPRESSION} = await import('../packages/business/src/inspection-query.mjs');
+  const {INSPECTION_VERSION_ASSET_EXPRESSION} = await import('../packages/business/src/inspection-query.ts');
   assert.ok(store.db.prepare(`SELECT ${INSPECTION_VERSION_ASSET_EXPRESSION} AS assetKey FROM versions`).all().every(row => row.assetKey === null));
   assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM schema_version WHERE version=7').get().n, 1);
   assert.equal(store.db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='index' AND name LIKE 'inspection_%'").get().n, 9);

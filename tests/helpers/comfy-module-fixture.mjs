@@ -6,10 +6,10 @@ import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore} from '../../packages/business/src/db.mjs';
-import {createServices} from '../../packages/business/src/services.mjs';
-import {createComfySettings} from '../../packages/business/src/comfy/settings.mjs';
-import {COMFY_IMAGE_OPTIONS, DEFAULT_COMFY_IMAGE_CONFIGURATION} from '../../packages/contracts/src/comfy-images.mjs';
+import {openStore} from '../../packages/business/src/db.ts';
+import {createServices} from '../../packages/business/src/services.ts';
+import {createComfySettings} from '../../packages/business/src/comfy/settings.ts';
+import {COMFY_IMAGE_OPTIONS, DEFAULT_COMFY_IMAGE_CONFIGURATION} from '../../packages/contracts/src/comfy-images.ts';
 import {createComfyFixturePng} from './comfy-http-fixture.mjs';
 
 export const configuration = {...DEFAULT_COMFY_IMAGE_CONFIGURATION, enabled: true,

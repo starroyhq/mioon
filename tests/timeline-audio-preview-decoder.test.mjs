@@ -5,9 +5,9 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {createTimelineAudioPreviewDecoder, parseTimelineAudioPreviewProbe, TIMELINE_AUDIO_PREVIEW_DECODE_LIMITS} from '../packages/business/src/timeline-audio-preview-decoder.ts';
-import {run, runStreaming, checkMediaEffect} from '../packages/business/src/media-runtime.mjs';
-import {withProbePermit, parseProbeOutput, MEDIA_PROBE_LIMITS} from '../packages/business/src/media-probe.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
+import {run, runStreaming, checkMediaEffect} from '../packages/business/src/media-runtime.ts';
+import {withProbePermit, parseProbeOutput, MEDIA_PROBE_LIMITS} from '../packages/business/src/media-probe.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 
 const pcm = (frames, sample = (_frame, channel) => channel ? -1.25 : 0.5) => {
   const data = Buffer.alloc(frames * 8);

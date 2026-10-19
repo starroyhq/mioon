@@ -5,12 +5,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as contracts from '@mioon/contracts';
-import * as api from '../apps/web/src/api.js';
-import * as submissions from '../apps/web/src/submissions.js';
-import * as mutations from '../apps/web/src/mutation-submissions.js';
-import * as editTasks from '../apps/web/src/edit-task-client.js';
-import * as workspaceOrigin from '../apps/web/src/workspace-origin.js';
-import * as references from '../apps/web/src/reference-connections.js';
+import * as api from '../apps/web/src/api.ts';
+import * as submissions from '../apps/web/src/submissions.ts';
+import * as mutations from '../apps/web/src/mutation-submissions.ts';
+import * as editTasks from '../apps/web/src/edit-task-client.ts';
+import * as workspaceOrigin from '../apps/web/src/workspace-origin.ts';
+import * as references from '../apps/web/src/reference-connections.ts';
 
 const read = file => readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8');
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];

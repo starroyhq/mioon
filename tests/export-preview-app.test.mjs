@@ -5,7 +5,7 @@ import { isTimelineRenderRecord } from '@mioon/contracts';
 import { message as msg } from '../packages/i18n/src/index.ts';
 import { isExportPreviewRange } from '../apps/web/src/export-preview-state.ts';
 import { row, projectId, id } from './helpers/export-sample-peak-ui-fixture.mjs';
-const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const extract = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start))).trim();
 const execute = (start, end, env) => Function(...Object.keys(env), `return (${extract(start, end)});`)(...Object.values(env));
 function fixture({ rejected = false, pending = false, gated = false } = {}) {

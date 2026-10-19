@@ -10,11 +10,11 @@ import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
-import {discoverSchema} from '../packages/client/src/index.mjs';
+import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
+import {discoverSchema} from '../packages/client/src/index.ts';
 import {optionalRequestIdOperations} from './helpers/catalog-input-branches.mjs';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.mjs';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.mjs';
+import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
+import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import {IDS, TOKEN, snapshot} from './helpers/mutation-wire-fixture.mjs';
 import {PRIVATE, DISPOSITION_IDS, BATCH_IDS, ORIGINAL_BYTES} from './helpers/asset-disposition-wire-fixture.mjs';
 
@@ -166,7 +166,7 @@ async function fixture(t) {
   async function cliArgs(args, expectedError) {
     const label = args.slice(0, args.indexOf('--input') < 0 ? args.length : args.indexOf('--input'))
       .filter(value => /^[a-z][a-z0-9.-]{0,80}$/.test(value)).slice(0, 4).join('.') || 'cli';
-    const child = launch(t, ['--import', helper, path.join(repo, 'apps/cli/src/index.mjs'), ...args],
+    const child = launch(t, ['--import', helper, path.join(repo, 'apps/cli/src/index.ts'), ...args],
       {...env(), MIOON_DISPOSITION_PHASE_TRACE: '1'}, label);
     const {code, signal} = await child.finish(); noPrivate(child.stdout); noPrivate(child.stderr);
     assert.equal(signal, null, child.stderr);
@@ -179,7 +179,7 @@ async function fixture(t) {
   const cli = (operation, input, error) => cliArgs([...operation.split('.'), '--input', JSON.stringify(input)], error);
   const client = new Client({name: 'asset-disposition-wire-acceptance', version: '1.0.0'}, {capabilities: {}});
   const transport = new StdioClientTransport({command: process.execPath, cwd: repo, env: environment(env()), stderr: 'pipe',
-    args: ['--import', helper, path.join(repo, 'apps/mcp/src/index.mjs')]});
+    args: ['--import', helper, path.join(repo, 'apps/mcp/src/index.ts')]});
   let stderr = '';
   transport.stderr.setEncoding('utf8').on('data', chunk => { stderr = (stderr + chunk).slice(-64 * 1024); });
   cleanups.push(() => bounded(client.close(), 'Official MCP cleanup', 7_000));

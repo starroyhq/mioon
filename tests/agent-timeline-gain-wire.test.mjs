@@ -5,7 +5,7 @@ import path from 'node:path';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {AGENT_TIMELINE_GAIN_CONTEXT, agentTimelineGainReviewTarget} from '@mioon/contracts';
-import {canonical} from '../packages/business/src/services.mjs';
+import {canonical} from '../packages/business/src/services.ts';
 import {editRoute, chatRoute, database, savedProposal, tableSnapshot, until, REPO, EDIT_WIRE_TOKEN, DOMAIN_TABLES} from './helpers/agent-edit-wire-fixture.mjs';
 import {timelineRows, savedTimeline} from './helpers/agent-timeline-wire-fixture.mjs';
 import {gainWireFixture, clipBytesExceptGain, GAIN_FUNCTION, GAIN_VALUE, GAIN_MESSAGE} from './helpers/agent-timeline-gain-wire-fixture.mjs';
@@ -362,7 +362,7 @@ test('actual CLI and MCP gain update/undo share the approved Agent timeline hist
   const {proposal} = await f.propose(project.id, selection); await f.action(project.id, proposal, 'approve');
   const approved = savedTimeline(f.root, project.id), originalProposal = savedProposal(f.root, proposal.id), baseline = timelineRows(f.root).length;
   const client = new Client({name: 'synthetic-agent-timeline-boundary-audit', version: '1.0.0'}, {capabilities: {}});
-  const transport = new StdioClientTransport({command: process.execPath, args: [path.join(REPO, 'apps/mcp/src/index.mjs')], cwd: REPO,
+  const transport = new StdioClientTransport({command: process.execPath, args: [path.join(REPO, 'apps/mcp/src/index.ts')], cwd: REPO,
     env: {...f.testRuntimeEnvironment, PATH: process.env.PATH || '', HOME: f.root, MIOON_BASE_URL: f.process.url, MIOON_TOKEN: EDIT_WIRE_TOKEN, MIOON_ENABLE_LIVE_PROVIDER: '0'}, stderr: 'ignore'});
   f.deferCleanup(() => client.close()); await client.connect(transport);
   const tools = (await client.listTools()).tools.map(value => value.name);

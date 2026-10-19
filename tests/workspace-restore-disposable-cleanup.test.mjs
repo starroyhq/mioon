@@ -5,7 +5,7 @@ import path from 'node:path';
 import {syncBuiltinESMExports} from 'node:module';
 import {tmpdir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
-import {withDisposableDatabase} from '../packages/business/src/workspace-backup.mjs';
+import {withDisposableDatabase} from '../packages/business/src/workspace-backup.ts';
 import {restoreFixture} from './helpers/workspace-restore-offline-fixture.mjs';
 
 function realWalFixture(t){

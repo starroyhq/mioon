@@ -22,11 +22,11 @@ import {DatabaseSync} from 'node:sqlite';
 import {deflateSync} from 'node:zlib';
 import {constants} from 'node:fs';
 import {readFile,writeFile,readdir,lstat,open,mkdir,realpath} from 'node:fs/promises';
-import {ensurePrivateDirectory} from '../packages/contracts/src/private-storage.mjs';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
-import {createMockProvider} from '../packages/business/src/providers/mock.mjs';
+import {ensurePrivateDirectory} from '../packages/contracts/src/private-storage.ts';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
+import {createMockProvider} from '../packages/business/src/providers/mock.ts';
 import {ownQaChild} from './agent-timeline-move-qa-native.mjs';
 
 const repo=fileURLToPath(new URL('../',import.meta.url));
@@ -115,7 +115,7 @@ async function ownedCommand(executable,args,label,{native=false,timeout=limit.co
  const completion=finish();completion.catch(()=>{});return native?{owned,finish:()=>completion}:completion;
 }
 async function offline(command){
- const args=['apps/cli/src/backup.mjs',command,...(command==='create'?['--source',paths.source,'--destination',paths.backup]:command==='restore'?['--directory',paths.backup,'--destination',paths.workspace]:['--directory',paths.backup])];
+ const args=['apps/cli/src/backup.ts',command,...(command==='create'?['--source',paths.source,'--destination',paths.backup]:command==='restore'?['--directory',paths.backup,'--destination',paths.workspace]:['--directory',paths.backup])];
  const {stdout}=await ownedCommand(process.execPath,args,'offline-'+command),result=JSON.parse(stdout.toString('utf8'));
  assert.equal(result.ok,true);if(command==='restore'){assert.equal(result.data.publication,'confirmed');assert.equal(result.data.databaseSchemaVersion,25);}else assert.equal(result.data.integrity,'verified');
  assert.equal(result.data.warnings,undefined);await save('offline-'+command+'.json',{synthetic:true,args,result});return result.data;

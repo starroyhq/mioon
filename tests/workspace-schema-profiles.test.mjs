@@ -7,10 +7,10 @@ import * as fixedInputs from '../packages/business/src/workspace-schema-v24-cons
 import {mkdtempSync, realpathSync, readFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore, getWorkspaceRestoreContext, classifyCurrentWorkspaceSchema} from '../packages/business/src/db.mjs';
-import {initializeLegacyWorkspaceSchema, initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
-import {createMockProvider} from '../packages/business/src/providers/mock.mjs';
-import {classifyWorkspaceSchema, installWorkspaceRestoreSchema, validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.mjs';
+import {openStore, getWorkspaceRestoreContext, classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
+import {initializeLegacyWorkspaceSchema, initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
+import {createMockProvider} from '../packages/business/src/providers/mock.ts';
+import {classifyWorkspaceSchema, installWorkspaceRestoreSchema, validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.ts';
 
 // Independent, committed outputs of fixed 0343 source, never regenerated from
 // the implementation under test. See the manifest for extraction provenance and
@@ -220,8 +220,8 @@ test('independent schema goldens pin fixed baseline provenance, exact bytes and 
   assert.equal(manifest.fixtures['golden.json'].profiles, 31);
   assert.equal(Object.keys(golden.profiles).length, 31);
   assert.equal(Object.keys(golden.definitions).length, manifest.fixtures['golden.json'].definitions);
-  assert.equal(manifest.constructorSources['packages/business/src/workspace-fixed-schema.mjs'], '9751e2f2d74b64c1cbd070d61e11941d1eba135ca8748bbdc20bd20ebab05bab');
-  assert.equal(manifest.constructorSources['packages/business/src/workspace-restore-schema.mjs'], '9b3861b3e0ec72b0ab1d1b676657205f5b3a934342abf308a4cc394307c3670b');
+  assert.equal(manifest.constructorSources['packages/business/src/workspace-fixed-schema.ts'], '9751e2f2d74b64c1cbd070d61e11941d1eba135ca8748bbdc20bd20ebab05bab');
+  assert.equal(manifest.constructorSources['packages/business/src/workspace-restore-schema.ts'], '9b3861b3e0ec72b0ab1d1b676657205f5b3a934342abf308a4cc394307c3670b');
   for (let version = 1; version <= 24; version++) assert.ok(golden.profiles[`ordinary-${version}`]);
   for (const profile of Object.values(golden.profiles)) for (const id of profile.schema) assert.ok(golden.definitions[id]);
 });

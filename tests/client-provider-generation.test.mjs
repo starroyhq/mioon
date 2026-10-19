@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generationSelection, generationInputIssue, providerAvailabilityIssue, providerStatus, providerStatusLabel, providerModels } from '../apps/web/src/generation-settings.js';
+import { generationSelection, generationInputIssue, providerAvailabilityIssue, providerStatus, providerStatusLabel, providerModels } from '../apps/web/src/generation-settings.ts';
 import { getGenerationIssue } from '@mioon/contracts';
 
 const image = { id: 'image-a', mimeType: 'image/png', width: 720, height: 1280 };
@@ -72,7 +72,7 @@ test('capabilities and shot parameters stay separate from the scalar selection m
 });
 
 test('output shape review is distinct from user cancellation and never suggests a retry', async () => {
-  const { outputReviewRequired, jobStatusText, outputReviewMessage } = await import('../apps/web/src/api.js');
+  const { outputReviewRequired, jobStatusText, outputReviewMessage } = await import('../apps/web/src/api.ts');
   const job = { status: 'cancelled', phase: 'output_review_required', cancelScope: 'local_only', error: { code: 'OUTPUT_ASPECT_RATIO_MISMATCH' } };
   assert.equal(outputReviewRequired(job), true);
   assert.equal(jobStatusText(job), '输出待核验');

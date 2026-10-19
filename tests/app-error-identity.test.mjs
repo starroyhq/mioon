@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {AppError as leaf} from '../packages/contracts/src/app-error.ts';
-import {AppError as barrel,parse} from '../packages/contracts/src/index.mjs';
+import {AppError as barrel,parse} from '../packages/contracts/src/index.ts';
 import {volumeEnvelopeMutationError} from '../packages/business/src/timeline-volume-envelope-admission.ts';
 // Exact prior constructor, kept only as a test oracle.
 class PriorAppError extends Error {constructor(code,message,status=400,details={}){super(message);this.code=code;this.status=status;this.details=details;}}

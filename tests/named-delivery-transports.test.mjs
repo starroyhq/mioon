@@ -14,12 +14,12 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient, discoverSchema, effectAnnotations} from '@mioon/client';
 import {isExportPreflightResponse, isTimelineMutationResponse, publicValue} from '@mioon/contracts';
-import {startServer} from '../apps/server/src/index.mjs';
-import {openStore} from '../packages/business/src/db.mjs';
-import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.mjs';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {openStore} from '../packages/business/src/db.ts';
+import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
+import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
+import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 const TOKEN = 'synthetic-named-delivery-transport-token';
@@ -46,7 +46,7 @@ async function bounded(promise, label, milliseconds = 30_000) {
 // stream decoder before attaching each data listener so split UTF-8 survives.
 // Official MCP stdout framing belongs to the SDK and remains binary Buffer data.
 async function cli(url, args) {
-  const child = spawn(process.execPath, [path.join(REPO, 'apps/cli/src/index.mjs'), ...args], {
+  const child = spawn(process.execPath, [path.join(REPO, 'apps/cli/src/index.ts'), ...args], {
     cwd: REPO, env: environment(url), stdio: ['ignore', 'pipe', 'pipe'], shell: false,
   });
   let stdout = '', stderr = '', bytes = 0, failure, timedOut = false, closed = false;
@@ -78,7 +78,7 @@ async function cli(url, args) {
 
 async function officialMcp(t, url) {
   const client = new Client({name: 'named-delivery-transport-acceptance', version: '1.0.0'}, {capabilities: {}});
-  const transport = new StdioClientTransport({command: process.execPath, args: [path.join(REPO, 'apps/mcp/src/index.mjs')],
+  const transport = new StdioClientTransport({command: process.execPath, args: [path.join(REPO, 'apps/mcp/src/index.ts')],
     cwd: REPO, env: environment(url), stderr: 'pipe', maxBufferSize: 4 * 1024 * 1024});
   let stderr = '', stderrBytes = 0, overflow = false, closing;
   const close = () => closing ??= bounded(client.close(), 'Owned official MCP close', 8_000);

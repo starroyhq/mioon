@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isAllowedRequest, isAllowedDownload, isAllowedNavigation } from '../apps/desktop/src/security.mjs';
+import { isAllowedRequest, isAllowedDownload, isAllowedNavigation } from '../apps/desktop/src/security.ts';
 import { captureComparison } from '../apps/web/src/version-comparison-state.ts';
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 test('exact comparison route inherits native same-origin media permission, not download/navigation/audio grants', () => {
@@ -18,7 +18,7 @@ test('exact comparison route inherits native same-origin media permission, not d
 
 import { readFileSync } from 'node:fs';
 import { comparisonCurrent } from '../apps/web/src/version-comparison-state.ts';
-const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 function execute(start, end, env) { const source = app.slice(app.indexOf(start), app.indexOf(end, app.indexOf(start))); assert.ok(source); return Function(...Object.keys(env), `${source}; return ${/function (\w+)/.exec(source)[1]};`)(...Object.values(env)); }
 test('actual App comparison opening and close synchronously fence context and pause owners', () => {
   const calls = [], comparisonIdRef = { current: null }, clipLoudnessEpoch = { current: 0 };

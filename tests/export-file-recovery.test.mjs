@@ -4,9 +4,9 @@ import {mkdtemp,writeFile,readFile,rm,symlink} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices,hash} from '../packages/business/src/services.mjs';
-import {startServer} from '../apps/server/src/index.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices,hash} from '../packages/business/src/services.ts';
+import {startServer} from '../apps/server/src/index.ts';
 test('missing export recovery verifies original bytes, never overwrites and preserves frozen rows', {timeout:60000},async t=>{
  const root=await mkdtemp(path.join(tmpdir(),'mioon-export-recovery-')),token='synthetic-export-file-recovery-token',bytes=Buffer.from('synthetic immutable export fixture');
  let store=openStore(root);const services=createServices(store,new Map()),project=await services.call('project.create',{name:'Output recovery'}),id=randomUUID(),assetId=randomUUID(),requestId=randomUUID(),versionId=randomUUID(),sourceId=randomUUID(),shotId=randomUUID(),relativePath=`media/export-${id}-${randomUUID()}.mp4`,stamp='2026-10-19T00:00:00.000Z';

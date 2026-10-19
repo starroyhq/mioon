@@ -6,10 +6,10 @@ import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import {createComfyHttp} from '../apps/server/src/comfy-http.mjs';
-import {startServer} from '../apps/server/src/index.mjs';
-import {createComfySettings} from '../packages/business/src/comfy/settings.mjs';
-import {DEFAULT_COMFY_IMAGE_CONFIGURATION} from '../packages/contracts/src/comfy-images.mjs';
+import {createComfyHttp} from '../apps/server/src/comfy-http.ts';
+import {startServer} from '../apps/server/src/index.ts';
+import {createComfySettings} from '../packages/business/src/comfy/settings.ts';
+import {DEFAULT_COMFY_IMAGE_CONFIGURATION} from '../packages/contracts/src/comfy-images.ts';
 
 const baseUrl='http://127.0.0.1:8188',model='example.safetensors';
 const configuration={...DEFAULT_COMFY_IMAGE_CONFIGURATION,enabled:true,baseUrl,model};

@@ -16,7 +16,7 @@ function environment(base, tokenFile) {
     MIOON_ENABLE_LIVE_PROVIDER: '0', MIOON_BASE_URL: base, MIOON_TOKEN_FILE: tokenFile};
 }
 async function cli(env, args = ['project', 'list']) {
-  const child = spawn(process.execPath, ['apps/cli/src/index.mjs', ...args], {cwd: repo, env, stdio: ['ignore', 'pipe', 'pipe']});
+  const child = spawn(process.execPath, ['apps/cli/src/index.ts', ...args], {cwd: repo, env, stdio: ['ignore', 'pipe', 'pipe']});
   let stdout = '', stderr = '';
   for (const [kind, stream] of [['stdout', child.stdout], ['stderr', child.stderr]]) stream.setEncoding('utf8').on('data', bytes => {
     if (kind === 'stdout') stdout += bytes; else stderr += bytes;
@@ -29,7 +29,7 @@ async function cli(env, args = ['project', 'list']) {
   } finally {clearTimeout(timer);}
 }
 async function mcp(t, env) {
-  const transport = new StdioClientTransport({command: process.execPath, args: ['apps/mcp/src/index.mjs'], cwd: repo, env, stderr: 'pipe'});
+  const transport = new StdioClientTransport({command: process.execPath, args: ['apps/mcp/src/index.ts'], cwd: repo, env, stderr: 'pipe'});
   let stderr = ''; transport.stderr?.setEncoding('utf8').on('data', bytes => {stderr += bytes;});
   const client = new Client({name: 'q2-private-storage-acceptance', version: '1.0.0'}, {capabilities: {}});
   t.after(() => client.close());

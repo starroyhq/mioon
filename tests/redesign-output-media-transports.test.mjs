@@ -10,9 +10,9 @@ import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.mjs';
-import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
-import {stitch} from '../packages/business/src/media.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
+import {stitch} from '../packages/business/src/media.ts';
 
 const exec=promisify(execFile),repo=fileURLToPath(new URL('..',import.meta.url));
 const token='synthetic-local-redesign-output-test';
@@ -30,9 +30,9 @@ test('three 1080 presets cross HTTP/CLI/MCP and produce native/downscaled/previe
   const mcp=new Client({name:'redesign-output-acceptance',version:'1.0.0'},{capabilities:{}});
   const env={...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',MIOON_BASE_URL:backend.url,MIOON_TOKEN:token};
   t.after(async()=>{await mcp.close();await backend.close();await rm(root,{recursive:true,force:true});});
-  await mcp.connect(new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.mjs')],cwd:repo,env,stderr:'ignore'}));
+  await mcp.connect(new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.ts')],cwd:repo,env,stderr:'ignore'}));
   const http=async(operation,input)=>{const response=await fetch(backend.url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input})});const body=await response.json();assert.equal(body.ok,true,JSON.stringify(body));return body.data;};
-  const cli=async(operation,input)=>{const result=await exec(process.execPath,['apps/cli/src/index.mjs',...operation.split('.'),'--input',JSON.stringify(input)],{cwd:repo,env,timeout:35000});const body=JSON.parse(result.stdout);assert.equal(body.ok,true);return body.data;};
+  const cli=async(operation,input)=>{const result=await exec(process.execPath,['apps/cli/src/index.ts',...operation.split('.'),'--input',JSON.stringify(input)],{cwd:repo,env,timeout:35000});const body=JSON.parse(result.stdout);assert.equal(body.ok,true);return body.data;};
   const tool=async(operation,input)=>{const result=await mcp.callTool({name:operation.replaceAll('.','_'),arguments:input},undefined,{timeout:35000});const body=JSON.parse(result.content.find(item=>item.type==='text').text);assert.equal(body.ok,true,JSON.stringify(body));return body.data;};
   const finish=async(id)=>{const end=Date.now()+60000;while(Date.now()<end){const result=await http('export.get',{exportId:id});if(result.status==='failed')assert.fail(JSON.stringify(result.error));if(result.status==='succeeded')return result;await new Promise(resolve=>setTimeout(resolve,30));}assert.fail('Local render timed out');};
   let firstFile;

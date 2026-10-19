@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {DURABLE_EDIT_OPERATIONS, EDIT_TASK_LIMITS, editTaskLane, isEditTaskEnvelope} from '@mioon/contracts';
-import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
+import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 import {subjectFixture} from './subject-recovery-fixture.mjs';
 const code=expected=>error=>error.code===expected&&!JSON.stringify(error).includes('PRIVATE');
 

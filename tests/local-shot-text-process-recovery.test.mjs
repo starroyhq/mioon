@@ -9,8 +9,8 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices,canonical} from '../packages/business/src/services.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices,canonical} from '../packages/business/src/services.ts';
 
 const repo=fileURLToPath(new URL('../',import.meta.url)),workerPath=fileURLToPath(new URL('./fixtures/local-shot-text-process-worker.mjs',import.meta.url));
 const authority=value=>({workspaceScope:value.workspaceScope,instanceId:value.instanceId,projectId:value.projectId,shotId:value.shotId});

@@ -1,14 +1,14 @@
 import {createAgentAuthorizationUiMock} from './helpers/agent-authorization-ui.mjs';
 import {creationTestDependency} from './helpers/creation-i18n.ts';
 import * as nativeCloseSources from '../apps/web/src/native-close-sources.ts';
-import * as timing from '../apps/web/src/agent-timeline-context.js';
+import * as timing from '../apps/web/src/agent-timeline-context.ts';
 import * as gainContext from '../apps/web/src/agent-timeline-gain-context.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import * as logic from '../apps/web/src/agent-chat.js';
-import * as tools from '../apps/web/src/agent-tool-state.js';
+import * as logic from '../apps/web/src/agent-chat.ts';
+import * as tools from '../apps/web/src/agent-tool-state.ts';
 
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), instanceId = id(2), threadId = id(3), runId = id(4), requestId = id(5);
@@ -208,8 +208,8 @@ test('inspection disclosures retain unencrypted storage, no secrets, bounded bil
 
 // These are pure policy/parser modules; this check cannot contact a provider.
 test('renderer consent matches the authoritative fixed catalog for both protocols and every public read operation', async () => {
-  const { readToolCapability, READ_TOOL_OPERATIONS } = await import('../packages/business/src/agent/read-tool-policy.mjs');
-  const { parseChatConsent } = await import('../packages/business/src/agent/chat-context.mjs');
+  const { readToolCapability, READ_TOOL_OPERATIONS } = await import('../packages/business/src/agent/read-tool-policy.ts');
+  const { parseChatConsent } = await import('../packages/business/src/agent/chat-context.ts');
   for (const protocol of ['chat_completions', 'responses']) {
     const current = logic.safeAgentChatSnapshot(snapshot({ settings: settings({ ...configuration, protocol }), inspection: readToolCapability(true) }), projectId);
     const consent = tools.agentChatOutboundConsent(current, 'project_inspection', logic.deriveAgentEndpoint(current.settings.configuration));

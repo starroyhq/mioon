@@ -5,9 +5,9 @@ import {randomUUID,createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
-import {initializeWorkspaceSchemaThrough24} from '../../packages/business/src/workspace-fixed-schema.mjs';
-import {createWorkspaceBackup} from '../../packages/business/src/workspace-backup.mjs';
-import {canonicalImageInput as canonical,IMAGE_FIXED_OPTIONS} from '../../packages/contracts/src/images.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../../packages/business/src/workspace-fixed-schema.ts';
+import {createWorkspaceBackup} from '../../packages/business/src/workspace-backup.ts';
+import {canonicalImageInput as canonical,IMAGE_FIXED_OPTIONS} from '../../packages/contracts/src/images.ts';
 export const repo=fileURLToPath(new URL('../..',import.meta.url));
 export const hash=value=>createHash('sha256').update(value).digest('hex');
 export const secret='SYNTHETIC_PRIVATE_TEXT_界_🙂_NOT_REDACTED';
@@ -75,7 +75,7 @@ export function rewriteManifest(backup,mutate){
 }
 export function refreshDatabaseManifest(backup){rewriteManifest(backup,manifest=>{const entry=manifest.entries.find(e=>e.role==='database'),bytes=fs.readFileSync(path.join(backup,entry.path));entry.bytes=bytes.length;entry.sha256=hash(bytes);});}
 export async function runRestoreChild(t,args,{preload,timeout=20000}={}){
- const child=spawn(process.execPath,[...(preload?['--import',preload]:[]),path.join(repo,'apps/cli/src/backup.mjs'),...args],{cwd:repo,stdio:['ignore','pipe','pipe']});
+ const child=spawn(process.execPath,[...(preload?['--import',preload]:[]),path.join(repo,'apps/cli/src/backup.ts'),...args],{cwd:repo,stdio:['ignore','pipe','pipe']});
  let stdout='',stderr='',failure,closed=false;
  // These are the only new child text collectors. Binary files stay bytes.
  child.stdout.setEncoding('utf8').on('data',text=>{stdout+=text;if(stdout.length>256*1024){failure=Error('bounded stdout exceeded');child.kill('SIGKILL');}});

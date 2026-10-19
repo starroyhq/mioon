@@ -17,7 +17,7 @@ export function snapshot(db) {
 }
 
 export async function seedMutationStore(root) {
-  const {openStore} = await import('../../packages/business/src/db.mjs');
+  const {openStore} = await import('../../packages/business/src/db.ts');
   const store = openStore(root), {put, db} = store;
   try {
     for (const id of [IDS.project, IDS.other]) put('projects', {id, name: `Synthetic mutation project ${id}`, description: '',
@@ -69,7 +69,7 @@ if (direct) {
   if (mode === 'delete-node') {
     // Test-only storage corruption/removal, after stopping the owned server:
     // retained receipts must never become a way to read a removed target.
-    const {openStore} = await import('../../packages/business/src/db.mjs');
+    const {openStore} = await import('../../packages/business/src/db.ts');
     const store = openStore(root);
     try {
       const result = store.db.prepare('DELETE FROM nodes WHERE id=?').run(process.env.MIOON_MUTATION_WIRE_NODE_ID);
@@ -78,7 +78,7 @@ if (direct) {
   }
   if (mode === 'server') {
     if (!fs.existsSync(path.join(root, 'workbench.sqlite'))) await seedMutationStore(root);
-    const {startServer} = await import('../../apps/server/src/index.mjs');
+    const {startServer} = await import('../../apps/server/src/index.ts');
     const server = await startServer({dataDir: root, port: Number(process.env.PORT || 0), token: TOKEN,
       chatGateway: async function* () {
         fs.appendFileSync(process.env.MIOON_MUTATION_WIRE_AUDIT, '{"kind":"model gateway"}\n');
@@ -90,8 +90,8 @@ if (direct) {
     process.on('SIGTERM', close); process.on('SIGINT', close);
   }
   if (mode === 'writer') {
-    const {openStore} = await import('../../packages/business/src/db.mjs');
-    const {createServices} = await import('../../packages/business/src/services.mjs');
+    const {openStore} = await import('../../packages/business/src/db.ts');
+    const {createServices} = await import('../../packages/business/src/services.ts');
     // This explicit, isolated test child alone bypasses the backend owner lock
     // to exercise SQLite's real cross-process BEGIN IMMEDIATE serialization.
     const competing = process.env.MIOON_MUTATION_WIRE_COMPETING_WRITER === '1';

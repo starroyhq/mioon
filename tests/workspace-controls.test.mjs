@@ -5,7 +5,7 @@ import { transformSync } from 'esbuild';
 
 // Exercise the app adapters' real callback/effect code. Actual portal rendering
 // and focus movement are verified separately in browser acceptance.
-const source = readFileSync(new URL('../apps/web/src/WorkspaceControls.jsx', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../apps/web/src/WorkspaceControls.tsx', import.meta.url), 'utf8');
 const code = transformSync(source, { loader: 'jsx', format: 'cjs' }).code;
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
 const element = (type, props = {}, ...children) => ({ type, props: { ...props, children: children.length === 1 ? children[0] : children } });

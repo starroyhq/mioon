@@ -9,12 +9,12 @@ import {randomUUID} from 'node:crypto';
 import {opacityUpgradeFixture, upgradeFixtureStamp} from './helpers/opacity-upgrade-fixture.mjs';
 import {request, restoredApplicationToken as token} from './helpers/opacity-restored-application-fixture.mjs';
 import {tree} from './helpers/opacity-backup-fixture.mjs';
-import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';
+import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {upgradeOpacityWorkspace40To42 as upgrade} from '../packages/business/src/opacity-upgrade.ts';
 import {calculateWorkspaceScope} from '../packages/contracts/src/workspace-scope.ts';
 import {createExistingOpacityCandidateLaunch} from '../apps/server/src/opacity-candidate-launch.ts';
-import {createOpacityCandidateRequestApplication} from '../apps/server/src/index.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
+import {createOpacityCandidateRequestApplication} from '../apps/server/src/index.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 
 // Actual server composition and stream requests, without a listener, provider,
 // media process, native child, real project or external fetch.

@@ -7,10 +7,10 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {deriveAgentEndpoint} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createChatJournal, CHAT_JOURNAL_LIMITS} from '../packages/business/src/agent/chat-journal.mjs';
-import {createChatRuntime, CHAT_SYSTEM_INSTRUCTION, CHAT_LIMITS} from '../packages/business/src/agent/chat-runtime.mjs';
-import {createAgentSettings, AGENT_CREDENTIAL_ACQUIRE} from '../packages/business/src/agent/settings.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createChatJournal, CHAT_JOURNAL_LIMITS} from '../packages/business/src/agent/chat-journal.ts';
+import {createChatRuntime, CHAT_SYSTEM_INSTRUCTION, CHAT_LIMITS} from '../packages/business/src/agent/chat-runtime.ts';
+import {createAgentSettings, AGENT_CREDENTIAL_ACQUIRE} from '../packages/business/src/agent/settings.ts';
 
 const SECRET = 'SYNTHETIC_JOURNAL_KEY_DO_NOT_PERSIST';
 const until = async check => { for (let n = 0; n < 300; n++) { const value = check(); if (value) return value; await delay(2); } assert.fail('Bounded synthetic condition was not reached'); };

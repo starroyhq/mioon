@@ -12,11 +12,11 @@ import {DatabaseSync} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.mjs';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {createClient} from '../packages/client/src/index.mjs';
-import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createClient} from '../packages/client/src/index.ts';
+import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 
 const repo=fileURLToPath(new URL('..',import.meta.url)),token='reference-recovery-public-synthetic-token';
 const environment=extra=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',...extra});
@@ -28,7 +28,7 @@ function png(color){
  return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',header),chunk('IDAT',deflateSync(pixels)),chunk('IEND',Buffer.alloc(0))]);
 }
 async function command(operation,input,env){
- const child=spawn(process.execPath,[path.join(repo,'apps/cli/src/index.mjs'),...operation.split('.'),'--input',JSON.stringify(input)],{cwd:repo,env:environment(env),stdio:['ignore','pipe','pipe']});
+ const child=spawn(process.execPath,[path.join(repo,'apps/cli/src/index.ts'),...operation.split('.'),'--input',JSON.stringify(input)],{cwd:repo,env:environment(env),stdio:['ignore','pipe','pipe']});
  let stdout='',stderr='';for(const [stream,append] of [[child.stdout,b=>stdout+=b],[child.stderr,b=>stderr+=b]])stream.setEncoding('utf8').on('data',b=>{append(b);if(stdout.length+stderr.length>1024*1024)child.kill('SIGKILL');});
  const timer=setTimeout(()=>child.kill('SIGKILL'),15000);let code,signal;try{[code,signal]=await once(child,'close');}finally{clearTimeout(timer);}
  assert.equal(signal,null,stderr);assert.ok(!stdout.includes(token)&&!stderr.includes(token));const body=JSON.parse(stdout);assert.equal(code===0,body.ok,stdout+stderr);return body;
@@ -47,7 +47,7 @@ async function fixture(t){
   res.writeHead(upstream.status,{'content-type':'application/json'});res.end(text);
  }catch{res.destroy();}});
  proxy.listen(0,'127.0.0.1');await once(proxy,'listening');const url=`http://127.0.0.1:${proxy.address().port}`,env={MIOON_BASE_URL:url,MIOON_TOKEN:token},client=createClient({env});
- mcp=new Client({name:'reference-recovery-tests',version:'1.0.0'},{capabilities:{}});const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.mjs')],cwd:repo,env:environment(env),stderr:'pipe'});transport.stderr?.resume();await mcp.connect(transport);
+ mcp=new Client({name:'reference-recovery-tests',version:'1.0.0'},{capabilities:{}});const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.ts')],cwd:repo,env:environment(env),stderr:'pipe'});transport.stderr?.resume();await mcp.connect(transport);
  const db=fn=>{const connection=new DatabaseSync(path.join(root,'workbench.sqlite'));try{return fn(connection);}finally{connection.close();}};
  const raw=async(operation,input)=>{try{const r=await fetch(url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input})});return await r.json();}catch{return {ok:false,error:{code:'LOST_TRANSPORT'}};}};
  return {project,foreign,sources,requests,observed,db,raw,client,fault:(operation,mode='drop')=>{fault={operation,mode};},restart:async()=>{await backend.close();backend=await startServer({dataDir:root,port:0,token});},transports:[

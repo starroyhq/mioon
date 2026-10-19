@@ -4,9 +4,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {setImmediate as pause} from 'node:timers/promises';
-import {openStore,ownsStoreLock} from '../packages/business/src/db.mjs';
-import {acquireWorkspaceLock} from '../packages/business/src/workspace-lock.mjs';
-import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';
+import {openStore,ownsStoreLock} from '../packages/business/src/db.ts';
+import {acquireWorkspaceLock} from '../packages/business/src/workspace-lock.ts';
+import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 function fixture(t){const base=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'mioon-backup-lock-')),source=path.join(base,'source'),destination=path.join(base,'backup');const store=openStore(source);store.close();t.after(()=>fs.rmSync(base,{recursive:true,force:true}));return {base,source,destination};}
 for(const value of [String(process.pid),'2147483647','invalid-lock-token',''])test(`backup refuses existing lock ${JSON.stringify(value)} without takeover`,async t=>{
  const f=fixture(t),lock=path.join(f.source,'server.lock');fs.writeFileSync(lock,value,{mode:0o600});const before=fs.statSync(lock);

@@ -11,15 +11,15 @@ import {createOpacityCandidateWorkspaceBackup as create, verifyOpacityCandidateW
 import {openOpacityCandidateStore, getOpacityCandidateAssembly, isOpacityCandidateApplicationStore} from '../packages/business/src/opacity-candidate-store.ts';
 import {createOpacityCandidateServices, createOpacityCandidateApplicationServices} from '../packages/business/src/opacity-candidate-services.ts';
 import {createOpacityCandidateLocalDrafts} from '../packages/business/src/opacity-candidate-local-drafts.ts';
-import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
+import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 import {validateWorkspaceRestoreSchemaV43} from '../packages/business/src/workspace-restore-schema-v43.ts';
 import {initializeOpacityLegacyThrough40} from '../packages/business/src/workspace-opacity-legacy.ts';
-import {createWorkspaceBackup, verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';
-import {restoreWorkspaceBackup, inspectWorkspaceRestorePublication} from '../packages/business/src/workspace-restore.mjs';
-import {classifyCurrentWorkspaceSchema, validateCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.mjs';
-import {workspaceBackupManifestSchema} from '../packages/contracts/src/workspace-backup.mjs';
-import {workspaceRestoreOfflineResultSchema} from '../packages/contracts/src/workspace-restore-offline.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
+import {createWorkspaceBackup, verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
+import {restoreWorkspaceBackup, inspectWorkspaceRestorePublication} from '../packages/business/src/workspace-restore.ts';
+import {classifyCurrentWorkspaceSchema, validateCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.ts';
+import {workspaceBackupManifestSchema} from '../packages/contracts/src/workspace-backup.ts';
+import {workspaceRestoreOfflineResultSchema} from '../packages/contracts/src/workspace-restore-offline.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {opacityBackupFixture, tree, originalRows, hash} from './helpers/opacity-backup-fixture.mjs';
 
 let childAttempts = 0;

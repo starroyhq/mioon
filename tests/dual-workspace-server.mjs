@@ -7,7 +7,7 @@
 import http from 'node:http';
 import path from 'node:path';
 import { readFile, writeFile, access, unlink } from 'node:fs/promises';
-import { startServer } from '../apps/server/src/index.mjs';
+import { startServer } from '../apps/server/src/index.ts';
 const runtime = path.resolve(process.env.MIOON_QA_RUNTIME || 'evidence/dual-workspace/runtime');
 if (!runtime.endsWith('/evidence/dual-workspace/runtime')) throw Error('Disposable dual-workspace runtime required');
 process.env.MIOON_ENABLE_LIVE_PROVIDER = '0';
@@ -69,13 +69,13 @@ const externalTimer=setInterval(async()=>{
   const env={...process.env,MIOON_BASE_URL:origin,MIOON_TOKEN_FILE:tokenFile,MIOON_ENABLE_LIVE_PROVIDER:'0'};
   let result;
   if(task.transport==='cli'){
-   const child=spawn(process.execPath,[path.resolve('apps/cli/src/index.mjs'),...task.operation.split('.'),'--input','-'],{cwd:path.resolve('.'),env,stdio:['pipe','pipe','pipe']});
+   const child=spawn(process.execPath,[path.resolve('apps/cli/src/index.ts'),...task.operation.split('.'),'--input','-'],{cwd:path.resolve('.'),env,stdio:['pipe','pipe','pipe']});
    let stdout='',stderr='';child.stdout.setEncoding('utf8').on('data',b=>stdout+=b);child.stderr.setEncoding('utf8').on('data',b=>stderr+=b);child.stdin.end(JSON.stringify(task.input));
    const code=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',resolve);});
    result=JSON.parse(stdout);if(code||!result.ok)throw Error(JSON.stringify({code,result,stderr}));result=result.data;
   }else{
    client=new Client({name:'dual-workspace-qa',version:'1.0.0'},{capabilities:{}});
-   const transport=new StdioClientTransport({command:process.execPath,args:[path.resolve('apps/mcp/src/index.mjs')],cwd:path.resolve('.'),env,stderr:'pipe'});transport.stderr?.resume();await client.connect(transport);
+   const transport=new StdioClientTransport({command:process.execPath,args:[path.resolve('apps/mcp/src/index.ts')],cwd:path.resolve('.'),env,stderr:'pipe'});transport.stderr?.resume();await client.connect(transport);
    const response=await client.callTool({name:task.operation.replaceAll('.','_'),arguments:task.input});if(response.isError)throw Error(JSON.stringify(response));result=response.structuredContent||JSON.parse(response.content.find(c=>c.type==='text').text);
   }
   await writeFile(path.join(runtime,'external-result.json'),JSON.stringify({id:task.id,transport:task.transport,operation:task.operation,ok:true,result},null,2));

@@ -7,7 +7,7 @@ import {createClipLutController, clipLutSourceIssue, clipLutSourceMessage} from 
 import {createClipLutRecovery} from '../apps/web/src/clip-lut-recovery.ts';
 import {clipDraftRaw, clipDraftPatch, createClipDraftController} from '../apps/web/src/clip-draft-state.ts';
 import {clipDraftDiskSchema} from '../packages/contracts/src/local-drafts.ts';
-import {clipReplacementAcknowledged} from '../apps/web/src/clip-source-replacement.js';
+import {clipReplacementAcknowledged} from '../apps/web/src/clip-source-replacement.ts';
 
 const id = n => `91000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), clipId = id(2), assetId = id(3), timelineId = id(4), trackId = id(5);
@@ -193,5 +193,5 @@ test('actual JPEG controls disclose format, interpretation limits, draft-only sa
   h.controller.declareSource(true); assert.equal(h.controller.confirmSource(), true);
   tree = renderControls(h.state(), h.live());
   assert.match(textOf(byId('clip-lut-source-confirmed')), /sRGB JFIF JPEG.*用户解释/);
-  assert.match(readFileSync(new URL('../apps/web/src/TimelineInspector.jsx', import.meta.url), 'utf8'), /mimeType: asset\?\.mimeType/);
+  assert.match(readFileSync(new URL('../apps/web/src/TimelineInspector.tsx', import.meta.url), 'utf8'), /mimeType: asset\?\.mimeType/);
 });

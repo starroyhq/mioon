@@ -7,14 +7,14 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as contracts from '@mioon/contracts';
 import { LOCAL_SHOT_TEXT_LIMITS } from '@mioon/contracts/local-shot-text';
-import * as subjectVideo from '../apps/web/src/subject-video.js';
-import * as settings from '../apps/web/src/generation-settings.js';
-import * as api from '../apps/web/src/api.js';
-import * as submissions from '../apps/web/src/submissions.js';
-import * as mutations from '../apps/web/src/mutation-submissions.js';
-import { RESTORE_DISABLED_REASON } from '../apps/web/src/restored-workspace.js';
-import { referenceForShot } from '../apps/web/src/reference-connections.js';
-import { imageEditSourceIssueDescriptor } from '../apps/web/src/image-generation.js';
+import * as subjectVideo from '../apps/web/src/subject-video.ts';
+import * as settings from '../apps/web/src/generation-settings.ts';
+import * as api from '../apps/web/src/api.ts';
+import * as submissions from '../apps/web/src/submissions.ts';
+import * as mutations from '../apps/web/src/mutation-submissions.ts';
+import { RESTORE_DISABLED_REASON } from '../apps/web/src/restored-workspace.ts';
+import { referenceForShot } from '../apps/web/src/reference-connections.ts';
+import { imageEditSourceIssueDescriptor } from '../apps/web/src/image-generation.ts';
 
 const taskIntentModule = { exports: {} };
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
@@ -272,7 +272,7 @@ test('history summary includes both frozen human labels/thumbnails with collapse
 });
 
 test('App paid review wires complete frames and count, frozen retries, asset-use and tab scope without new submission fields', () => {
-  const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   assert.match(app, /checkGeneration\(shot, provider, job.model, inputMode, true\)/);
   assert.match(app, /generationReferences\(realConfirm.shot, \{ frozen: Boolean\(realConfirm.retryJobId\), subjectReference: realConfirm.subjectReference \}\).references.length/);
   assert.match(app, /VideoFrameSummary shot=\{realConfirm.shot\} assets=\{realConfirm.referenceAssets\}/);
@@ -289,7 +289,7 @@ test('App paid review wires complete frames and count, frozen retries, asset-use
 });
 
 test('actual App confirmation sends once and rejects changed content, navigation, provider or stale view scope', () => {
-  const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const functions = source.slice(source.indexOf('  function reviewGeneration('), source.indexOf('  async function createProject('));
   function reviewHarness({ frozen = false } = {}) {
     const p = provider('ark'), current = shot({ lastFrameAssetId: tailId });
@@ -330,7 +330,7 @@ function mutationRunner(t, result) {
     setItem: (key, value) => values.set(key, String(value)), removeItem: key => values.delete(key),
   } });
   t.after(() => prior ? Object.defineProperty(globalThis, 'sessionStorage', prior) : delete globalThis.sessionStorage);
-  const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const code = app.slice(app.indexOf('  async function runSession('), app.indexOf('  async function inspect('));
   const state = { result, calls: [], notices: [], pending: [] }, locks = new Set();
   const scope = { msg, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), ...contracts, ...submissions, ...mutations, clipConnectionBlocked:{current:false},shotTextRef: { current: null }, dataRef: { current: { project: { id: projectId }, shots: [shot()], nodes: [] } }, currentProject: { current: projectId },

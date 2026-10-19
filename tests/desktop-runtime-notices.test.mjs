@@ -220,7 +220,7 @@ test('non-Mac runtime notices remain a no-op; external fonts verify with unchang
 });
 
 test('generated notice locates both runtime files outside ASAR without loading host Electron', async () => {
-  const build = await readFile(new URL('../apps/desktop/scripts/build.mjs', import.meta.url), 'utf8');
+  const build = await readFile(new URL('../apps/desktop/scripts/build.ts', import.meta.url), 'utf8');
   assert.match(build, /LICENSE\.electron\.txt and LICENSES\.chromium\.html/);
   assert.match(build, /Contents\/Resources\/licenses/);
   assert.match(build, /on Linux they are beside the executable/);

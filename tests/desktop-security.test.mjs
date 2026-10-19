@@ -4,7 +4,7 @@ import { EventEmitter } from 'node:events';
 import { createRequire } from 'node:module';
 import { readFile } from 'node:fs/promises';
 import { trustedOrigin, isAllowedNavigation, isAllowedRequest, isAllowedDownload, secureWebPreferences,
-  sessionCookie, installSessionPolicy, installWindowPolicy } from '../apps/desktop/src/security.mjs';
+  sessionCookie, installSessionPolicy, installWindowPolicy } from '../apps/desktop/src/security.ts';
 
 const origin = 'http://127.0.0.1:41923';
 const id = '12345678-1234-4234-8234-123456789abc';
@@ -110,7 +110,7 @@ test('package configuration disables runtime injection and cannot publish by def
   assert.equal(config.electronFuses.enableNodeCliInspectArguments, false);
   assert.equal(config.electronFuses.onlyLoadAppFromAsar, true);
   assert.equal(config.electronFuses.grantFileProtocolExtraPrivileges, false);
-  const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
+  const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
   assert.ok(main.includes('app.enableSandbox()'));
   assert.ok(!main.includes('no-sandbox'));
   assert.ok(!main.includes('shell.openExternal'));

@@ -6,13 +6,13 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
 import {TIMELINE_OUTPUT_PRESETS,resolveTimelineExportDelivery,TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256} from '@mioon/contracts';
-import {renderTimeline} from '../packages/business/src/timeline-media.mjs';
-import {run,runStreaming} from '../packages/business/src/media-runtime.mjs';
-import {probe} from '../packages/business/src/media.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {startWorker} from '../packages/business/src/jobs.mjs';
+import {renderTimeline} from '../packages/business/src/timeline-media.ts';
+import {run,runStreaming} from '../packages/business/src/media-runtime.ts';
+import {probe} from '../packages/business/src/media.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {startWorker} from '../packages/business/src/jobs.ts';
 
 // Synthetic local assets only. Production renderer, decoder and probe are all
 // the existing installed tools; tests are deliberately serial and resource-capped.

@@ -6,8 +6,8 @@ import {randomUUID} from 'node:crypto';
 import {mkdir, readFile, writeFile, appendFile, rename, readdir, unlink, stat} from 'node:fs/promises';
 import {prepareMutationQaFixture, mutationQaAudit} from '../mutation-qa-runtime.mjs';
 import {startEditWireModel} from './agent-edit-wire-model.mjs';
-import {createAgentSettings} from '../../packages/business/src/agent/settings.mjs';
-import {createAgentSettingsFile} from '../../packages/business/src/agent/settings-file.mjs';
+import {createAgentSettings} from '../../packages/business/src/agent/settings.ts';
+import {createAgentSettingsFile} from '../../packages/business/src/agent/settings-file.ts';
 
 export const EDIT_QA_REPO = fileURLToPath(new URL('../../', import.meta.url));
 export const EDIT_QA_ROOT = path.join(EDIT_QA_REPO, 'evidence/agent-edits');

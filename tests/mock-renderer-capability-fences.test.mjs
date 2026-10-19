@@ -6,11 +6,11 @@ import {once} from 'node:events';
 import {mkdtemp,writeFile,readFile,chmod,rename,rm,mkdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {createMockProvider} from '../packages/business/src/providers/mock.mjs';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {startWorker} from '../packages/business/src/jobs.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
+import {createMockProvider} from '../packages/business/src/providers/mock.ts';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {startWorker} from '../packages/business/src/jobs.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 
 const listing=names=>'Filters:\n  T.. = Timeline support\n'+names.map(name=>` ... ${name.padEnd(16)} V->V       Synthetic filter.\n`).join('');
 const missing=listing(['scale','drawbox']),supported=listing(['scale','drawbox','drawtext']);

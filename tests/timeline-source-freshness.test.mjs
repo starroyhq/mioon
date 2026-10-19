@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { staleClipSources, staleSourceSentence } from '../apps/web/src/timeline-source-freshness.ts';
-import { clipSelectedVersionCandidate } from '../apps/web/src/clip-source-replacement.js';
+import { clipSelectedVersionCandidate } from '../apps/web/src/clip-source-replacement.ts';
 
 const clip = (id, shotId, versionId) => ({ id, shotId, versionId });
 const seeded = (id, assetId) => ({ id, assetId });

@@ -15,10 +15,10 @@ if (!process.execArgv.includes('--experimental-test-module-mocks')) {
     assert.match(result.stdout,/pass 14\b/u);
   });
 } else {
-  const runtime=await import('../packages/business/src/media-runtime.mjs');
+  const runtime=await import('../packages/business/src/media-runtime.ts');
   const probeOutput=()=>JSON.stringify({streams:[{index:0,codec_type:'video',codec_name:'h264',width:720,height:1280,duration:'1'}],format:{duration:'1'}});
   let probeCalls=0,behavior=async()=>{};
-  mock.module('../packages/business/src/media-runtime.mjs',{namedExports:{...runtime,
+  mock.module('../packages/business/src/media-runtime.ts',{namedExports:{...runtime,
     run:async(binary,argv,options)=>{
       assert.equal(binary,'ffprobe');assert.ok(argv.includes('-show_streams'));options.beforeSpawn?.();options.beforeEffect?.();
       probeCalls++;await behavior();options.beforeEffect?.();return probeOutput();
@@ -26,12 +26,12 @@ if (!process.execArgv.includes('--experimental-test-module-mocks')) {
   }});
   const {openOpacityCandidateStore,getOpacityCandidateAssembly}=await import('../packages/business/src/opacity-candidate-store.ts');
   const {installWorkspaceRestoreSchemaV43}=await import('../packages/business/src/workspace-restore-schema-v43.ts');
-  const {createServices}=await import('../packages/business/src/services.mjs');
-  const {createTimelinePreflightServices,timelineSnapshotHash}=await import('../packages/business/src/timeline-preflight.mjs');
+  const {createServices}=await import('../packages/business/src/services.ts');
+  const {createTimelinePreflightServices,timelineSnapshotHash}=await import('../packages/business/src/timeline-preflight.ts');
   const {createOpacityCandidateDomain}=await import('../packages/business/src/opacity-candidate-domain.ts');
   const {createOpacityCandidatePreflightRuntime}=await import('../packages/business/src/opacity-candidate-preflight.ts');
-  const {isExportPreflightResponse,EXPORT_PREFLIGHT_LIMITS}=await import('../packages/contracts/src/index.mjs');
-  const {onMediaProcess}=await import('../packages/business/src/media-processes.mjs');
+  const {isExportPreflightResponse,EXPORT_PREFLIGHT_LIMITS}=await import('../packages/contracts/src/index.ts');
+  const {onMediaProcess}=await import('../packages/business/src/media-processes.ts');
   const stamp='2026-10-16T00:00:00.000Z';
   const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
   const deferred=()=>{let resolve;return {promise:new Promise(r=>{resolve=r;}),resolve};};

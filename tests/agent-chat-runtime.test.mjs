@@ -7,9 +7,9 @@ import {setImmediate as turn, setTimeout as delay} from 'node:timers/promises';
 import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createAgentSettings, AGENT_CREDENTIAL_ACQUIRE} from '../packages/business/src/agent/settings.mjs';
-import {createChatRuntime, CHAT_LIMITS, CHAT_SYSTEM_INSTRUCTION} from '../packages/business/src/agent/chat-runtime.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createAgentSettings, AGENT_CREDENTIAL_ACQUIRE} from '../packages/business/src/agent/settings.ts';
+import {createChatRuntime, CHAT_LIMITS, CHAT_SYSTEM_INSTRUCTION} from '../packages/business/src/agent/chat-runtime.ts';
 
 const SECRET = 'SYNTHETIC_CHAT_RUNTIME_KEY';
 const persistence = () => ({load: async () => null, save: async () => {}});

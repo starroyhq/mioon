@@ -4,10 +4,10 @@ import {randomUUID} from 'node:crypto';
 import {mkdtemp,rm,readFile,readdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore,ownsStoreLock} from '../packages/business/src/db.mjs';
+import {openStore,ownsStoreLock} from '../packages/business/src/db.ts';
 import {createUiPreferences,UI_PREFERENCES_FILENAME} from '../packages/business/src/ui-preferences.ts';
 import {DEFAULT_UI_PREFERENCES,uiPreferencesResponseSchema} from '../packages/contracts/src/ui-preferences.ts';
-import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '../packages/contracts/src/private-storage.mjs';
+import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '../packages/contracts/src/private-storage.ts';
 
 async function fixture(t){
   const root=await mkdtemp(path.join(tmpdir(),'mioon-ui-preferences-')),store=openStore(root),projectId=randomUUID();let readOnly=false;

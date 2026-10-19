@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import * as subjectState from '../apps/web/src/subject-state.js';
+import * as subjectState from '../apps/web/src/subject-state.ts';
 
 const { createSubjectController, subjectDraftDirty, filterSubjects, subjectImage } = subjectState;
 const id = (kind, n = 1) => `${kind}0000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -266,7 +266,7 @@ test('new binding displays the exact selected historical image rather than silen
 });
 
 test('library composition retains both panes and never changes source/range selection or imports images', () => {
-  const library = readFileSync(new URL('../apps/web/src/AssetLibrary.jsx', import.meta.url), 'utf8');
+  const library = readFileSync(new URL('../apps/web/src/AssetLibrary.tsx', import.meta.url), 'utf8');
   assert.match(library, /library-subjects-pane/); assert.match(library, /WorkspaceVisibilityProvider visible=\{libraryView === 'assets'\}/); assert.match(library, /hidden=\{libraryView !== 'subjects'\} inert=\{libraryView !== 'subjects'\}/);
   assert.doesNotMatch(library, /setQuickAssetId|setSelectedClipId|sourceRangeScope/);
   const componentSources = ['SubjectLibrary.jsx', 'ShotSubjectBindings.jsx'].map(file => readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'));

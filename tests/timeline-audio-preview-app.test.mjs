@@ -4,12 +4,12 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { transformSync } from 'esbuild';
 import { buildAudioPreviewPlan } from '../packages/contracts/src/timeline-audio-preview.ts';
-import { workspaceOriginScope, pinNewWorkspaceIntent } from '../apps/web/src/workspace-origin.js';
+import { workspaceOriginScope, pinNewWorkspaceIntent } from '../apps/web/src/workspace-origin.ts';
 import { createTimelineAudioPreviewController, timelineAudioPreviewSourceIdentity, timelineAudioPreviewPosition, seekTimelineAudioPreview } from '../apps/web/src/use-timeline-audio-preview.ts';
 import * as i18n from '../packages/i18n/src/index.ts';
 
-const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
-const preview = readFileSync(new URL('../apps/web/src/Preview.jsx', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
+const preview = readFileSync(new URL('../apps/web/src/Preview.tsx', import.meta.url), 'utf8');
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const start = app.indexOf('  function soundAuditionContext()');

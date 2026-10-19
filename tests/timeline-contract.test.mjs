@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
-import { openStore } from '../packages/business/src/db.mjs';
-import { createServices } from '../packages/business/src/services.mjs';
+import { openStore } from '../packages/business/src/db.ts';
+import { createServices } from '../packages/business/src/services.ts';
 
 // These deterministic service tests isolate schema/revision/state correctness from
 // FFmpeg. Real imported bytes and protocol/renderer tests live in the other v2 suites.

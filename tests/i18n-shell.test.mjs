@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { shellMessages } from '../packages/i18n/src/catalogs/shell.ts';
 import { LOCALES, validateCatalogs, translate, message, renderMessage } from '../packages/i18n/src/index.ts';
-import { referenceSourceDetails, referenceTargetOptions, referenceAttachIssueDescriptor, canvasEdge } from '../apps/web/src/reference-connections.js';
-import { importFeedback, renderImportFeedback } from '../apps/web/src/import-feedback.js';
+import { referenceSourceDetails, referenceTargetOptions, referenceAttachIssueDescriptor, canvasEdge } from '../apps/web/src/reference-connections.ts';
+import { importFeedback, renderImportFeedback } from '../apps/web/src/import-feedback.ts';
 
 test('shell catalog has all four locales, exact placeholders, and no missing-key fallback', () => {
   assert.deepEqual(validateCatalogs(shellMessages), []);
@@ -62,7 +62,7 @@ test('shell component controllers are not keyed or reconstructed by locale', () 
 });
 
 test('header actions and native settings remain reachable without locale or resize remount keys', () => {
-  const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const header = app.slice(app.indexOf('<WorkbenchTopbar'), app.indexOf('{showGuide && <section'));
   const shell = readFileSync(new URL('../apps/web/src/WorkbenchShell.tsx', import.meta.url), 'utf8');
   const task = readFileSync(new URL('../apps/web/src/TaskPopover.tsx', import.meta.url), 'utf8');
@@ -91,7 +91,7 @@ test('header actions and native settings remain reachable without locale or resi
 });
 
 test('known workspace/storage diagnostics retain actionable meaning without exposing raw server text', () => {
-  const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const source = app.slice(app.indexOf('function readableError(error)'), app.indexOf('function Modal('));
   const readableError = Function('msg', `${source}; return readableError;`)(message);
   const cases = {

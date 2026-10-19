@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {initializeWorkspaceSchema26,validateWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
 import {initializeWorkspaceSchema28,validateWorkspaceSchema28} from '../packages/business/src/workspace-schema-v28.ts';
 import {createWorkspaceRestoreProfileV27} from '../packages/business/src/workspace-restore-schema-v27.ts';
 import {createWorkspaceRestoreProfileV29} from '../packages/business/src/workspace-restore-schema-v29.ts';
-import {classifyWorkspaceSchema as classifyHistorical,installWorkspaceRestoreSchema as installHistorical,validateWorkspaceRestoreSchema as validateHistorical} from '../packages/business/src/workspace-restore-schema.mjs';
+import {classifyWorkspaceSchema as classifyHistorical,installWorkspaceRestoreSchema as installHistorical,validateWorkspaceRestoreSchema as validateHistorical} from '../packages/business/src/workspace-restore-schema.ts';
 import {readCurrentWorkspaceRole,createWorkspaceSchemaDispatch} from '../packages/business/src/workspace-schema-dispatch.ts';
 import {readWorkspaceBackupSchemaVersion} from '../packages/business/src/workspace-backup-schema-versions.ts';
 import {workspaceBackupSourceSchemaVersion,workspaceRestorationPairSchema} from '../packages/contracts/src/workspace-schema-profiles.ts';

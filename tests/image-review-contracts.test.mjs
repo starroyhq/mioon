@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, imageSchemas} from '../packages/contracts/src/images.mjs';
+import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, imageSchemas} from '../packages/contracts/src/images.ts';
 import {IMAGE_REVIEW_POLICY, IMAGE_REVIEW_DESTINATION, imageReviewSchemas, imageReviewApprovalSchema,
-  imageReviewResponseSchema, isImageReviewPreparationResponse, isImageReviewListResponse} from '../packages/contracts/src/image-reviews.mjs';
+  imageReviewResponseSchema, isImageReviewPreparationResponse, isImageReviewListResponse} from '../packages/contracts/src/image-reviews.ts';
 
 const generation = () => ({projectId: randomUUID(), requestId: randomUUID(), name: 'A reviewed image',
   providerId: 'openai', model: IMAGE_MODELS.openai, prompt: 'Synthetic fixture only.', options: {...IMAGE_FIXED_OPTIONS}});

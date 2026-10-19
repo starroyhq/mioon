@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {isTimelineRenderRecord, resolveTimelineExportDelivery} from '../packages/contracts/src/index.mjs';
+import {isTimelineRenderRecord, resolveTimelineExportDelivery} from '../packages/contracts/src/index.ts';
 import {createTimelineColourPlan} from '../packages/contracts/src/timeline-colour.ts';
 import {
   OPACITY_RENDER_CANDIDATE_PROFILE, captureOpacityRenderInput, createOpacityRenderSnapshotPlan,

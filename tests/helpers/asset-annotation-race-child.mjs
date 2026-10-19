@@ -1,5 +1,5 @@
-import {openStore} from '../../packages/business/src/db.mjs';
-import {createServices} from '../../packages/business/src/services.mjs';
+import {openStore} from '../../packages/business/src/db.ts';
+import {createServices} from '../../packages/business/src/services.ts';
 const store=openStore(process.argv[2],{lock:false}),services=createServices(store,new Map());
 process.send({ready:true});
 process.once('message',async input=>{

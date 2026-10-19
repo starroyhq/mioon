@@ -1,9 +1,9 @@
 // A real backend in a separately owned process. Only the settings-acquisition
 // counter is instrumented; requests use the production HTTP protocol gateways.
 import path from 'node:path';
-import {startServer} from '../../apps/server/src/index.mjs';
-import {createAgentSettings, AGENT_CREDENTIAL_ACQUIRE} from '../../packages/business/src/agent/settings.mjs';
-import {createAgentSettingsFile} from '../../packages/business/src/agent/settings-file.mjs';
+import {startServer} from '../../apps/server/src/index.ts';
+import {createAgentSettings, AGENT_CREDENTIAL_ACQUIRE} from '../../packages/business/src/agent/settings.ts';
+import {createAgentSettingsFile} from '../../packages/business/src/agent/settings-file.ts';
 
 let server, settings, closing, acquisitions = 0, started = false;
 const report = message => { if (process.connected) process.send(message); };

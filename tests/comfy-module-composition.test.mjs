@@ -4,8 +4,8 @@ import {readFileSync} from 'node:fs';
 import {composeOfficialComfyModule,comfyModuleModeFromEnvironment} from '../apps/server/src/comfy-module.ts';
 import {createComfyAdmission} from '../packages/business/src/comfy/admission.ts';
 import {comfyConnectorAvailability,comfyConnectorAvailabilitySchema} from '../packages/contracts/src/comfy-availability.ts';
-import {schemas} from '../packages/contracts/src/index.mjs';
-import {utilityEnvironment} from '../apps/desktop/src/config.mjs';
+import {schemas} from '../packages/contracts/src/index.ts';
+import {utilityEnvironment} from '../apps/desktop/src/config.ts';
 
 test('fixed composition constructs only the loaded reviewed factory and snapshots admission',()=>{
  let calls=0;const connector=Object.freeze({check(){},submit(){},observe(){}}),factory=()=>{calls++;return connector;};
@@ -35,11 +35,11 @@ test('launcher opt-out accepts only fixed load/skip values, not distribution cla
 test('module availability adds no RPC admin authority and existing remote discovery remains static',()=>{
  for(const name of ['image.generate','image.review.prepare','image.task.remote.get','image.task.observeRemote'])assert.ok(schemas[name]);
  for(const name of ['image.comfy.settings','image.comfy.check','image.comfy.module.set','comfy.module.load'])assert.equal(schemas[name],undefined);
- const index=readFileSync(new URL('../apps/server/src/index.mjs',import.meta.url),'utf8');
+ const index=readFileSync(new URL('../apps/server/src/index.ts',import.meta.url),'utf8');
  assert.ok(index.indexOf('if (!auth(req))')<index.indexOf('if (await comfyHttp(req,res,url))'));
- const config=readFileSync(new URL('../apps/desktop/src/config.mjs',import.meta.url),'utf8');
+ const config=readFileSync(new URL('../apps/desktop/src/config.ts',import.meta.url),'utf8');
  assert.ok(config.includes("'MIOON_COMFY_MODULE'"));
- assert.ok(readFileSync(new URL('../apps/desktop/src/backend.mjs',import.meta.url),'utf8').includes('comfyModuleModeFromEnvironment(process.env.MIOON_COMFY_MODULE)'));
+ assert.ok(readFileSync(new URL('../apps/desktop/src/backend.ts',import.meta.url),'utf8').includes('comfyModuleModeFromEnvironment(process.env.MIOON_COMFY_MODULE)'));
 });
 
 test('desktop forwards only the bounded launcher decision, not ambient code injection',()=>{

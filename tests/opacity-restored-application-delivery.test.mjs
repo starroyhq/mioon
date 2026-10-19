@@ -17,8 +17,8 @@ import {createOpacityCandidateTimelineDeliveryGuards, readOpacityCandidateApplic
   assertOpacityCandidateApplicationSource} from '../packages/business/src/opacity-candidate-delivery.ts';
 import {readTimelineExportPreviewMedia, timelineExportPreviewResponseHeaders, readTimelineDeliveryDownload,
   timelineDeliveryResponseHeaders} from '../packages/business/src/timeline-delivery-read.ts';
-import {createFileResponses} from '../apps/server/src/file-response.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
+import {createFileResponses} from '../apps/server/src/file-response.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {opacityBackupFixture, hash, opacityBackupStamp as stamp} from './helpers/opacity-backup-fixture.mjs';
 
 // Real cold archives, SQLite stores and shared descriptor/range responder;

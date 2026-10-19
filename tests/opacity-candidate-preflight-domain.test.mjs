@@ -8,10 +8,10 @@ import {openOpacityCandidateStore, getOpacityCandidateAssembly, OPACITY_CANDIDAT
 import {createOpacityCandidateDomain} from '../packages/business/src/opacity-candidate-domain.ts';
 import {captureOpacityPreflightInput, captureOpacityCapabilitiesInput} from '../packages/contracts/src/timeline-opacity-render-candidate.ts';
 import {installWorkspaceRestoreSchemaV43} from '../packages/business/src/workspace-restore-schema-v43.ts';
-import {createServices} from '../packages/business/src/services.mjs';
-import {timelineSnapshotHash} from '../packages/business/src/timeline-preflight.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
-import {schemas} from '../packages/contracts/src/index.mjs';
+import {createServices} from '../packages/business/src/services.ts';
+import {timelineSnapshotHash} from '../packages/business/src/timeline-preflight.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
+import {schemas} from '../packages/contracts/src/index.ts';
 
 const stamp='2026-10-16T00:00:00.000Z';
 const curve=()=>({profileId:'mioon-clip-linear-opacity-v1',points:[{frame:0,opacity:0},{frame:30,opacity:1}]});

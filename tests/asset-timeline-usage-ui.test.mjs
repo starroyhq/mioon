@@ -7,12 +7,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 import { deriveTimelineAssetUsage, retainTimelineAssetUsage } from '../apps/web/src/timeline-asset-usage.ts';
-import { dispositionCounts, dispositionFilters, filterLibraryAssets } from '../apps/web/src/asset-disposition-state.js';
+import { dispositionCounts, dispositionFilters, filterLibraryAssets } from '../apps/web/src/asset-disposition-state.ts';
 import * as annotations from '../apps/web/src/asset-annotation-state.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const source = readFileSync(path.join(root, 'apps/web/src/AssetTimelineUsage.tsx'), 'utf8');
-const librarySource = readFileSync(path.join(root, 'apps/web/src/AssetLibrary.jsx'), 'utf8');
+const librarySource = readFileSync(path.join(root, 'apps/web/src/AssetLibrary.tsx'), 'utf8');
 const id = n => `cb000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), otherProject = id(2), assetId = id(3);
 const assets = [3, 4, 5].map(n => ({ id: id(n), projectId, name: `素材 ${n}`, mimeType: 'video/mp4', sizeBytes: 1000 }));

@@ -27,7 +27,7 @@ function environment(extra = {}) {
 }
 
 async function cli(args, env = {}, expectedError) {
-  const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.mjs'), ...args], {
+  const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.ts'), ...args], {
     cwd: repo, env: environment(env), stdio: ['ignore', 'pipe', 'pipe'],
   });
   let stdout = '', stderr = '';
@@ -58,7 +58,7 @@ async function cli(args, env = {}, expectedError) {
 async function connectMcp(t, env = {}) {
   const client = new Client({name: 'timeline-history-transport-tests', version: '1.0.0'}, {capabilities: {}});
   const transport = new StdioClientTransport({
-    command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.mjs')],
+    command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.ts')],
     cwd: repo, env: environment(env), stderr: 'pipe',
   });
   transport.stderr?.resume();
@@ -148,7 +148,7 @@ async function backendFixture(t) {
   t.after(async () => { await stop(); await rm(root, {recursive: true, force: true}); });
   async function start() {
     let stdout = '', stderr = '';
-    backend = spawn(process.execPath, [path.join(repo, 'apps/server/src/cli.mjs')], {
+    backend = spawn(process.execPath, [path.join(repo, 'apps/server/src/cli.ts')], {
       cwd: repo, env: environment({MIOON_DATA_DIR: root, PORT: String(port), MIOON_TOKEN: token}), stdio: ['ignore', 'pipe', 'pipe'],
     });
     let spawnError;

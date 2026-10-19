@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "node ../../scripts/tooling.mjs typecheck && vite build"
+    "build": "node ../../scripts/tooling.ts typecheck && vite build"
   },
   "dependencies": {
     "@mioon/client": "workspace:*",

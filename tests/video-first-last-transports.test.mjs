@@ -12,11 +12,11 @@ import {crc32,deflateSync} from 'node:zlib';
 import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {createProviderRegistry} from '../packages/business/src/provider-registry.mjs';
-import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
-import {discoverSchema} from '../packages/client/src/index.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
+import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
+import {discoverSchema} from '../packages/client/src/index.ts';
 
 const repo=fileURLToPath(new URL('..',import.meta.url)),token='synthetic-frame-pair-transport-token';
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -25,7 +25,7 @@ const env=extra=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',...extra
 const serverSource=`
 import {installWireGuard} from './tests/helpers/inspection-wire-fixture.mjs';
 installWireGuard({auditPath:process.env.MIOON_WIRE_AUDIT});
-const {startServer}=await import('./apps/server/src/index.mjs');
+const {startServer}=await import('./apps/server/src/index.ts');
 const server=await startServer({dataDir:process.env.MIOON_DATA_DIR,port:0,token:process.env.MIOON_TOKEN});
 console.log('FRAME_PAIR_READY '+server.url);
 let closing; const close=()=>closing??=server.close().catch(()=>{process.exitCode=1});
@@ -45,7 +45,7 @@ function png(color){
  return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',header),chunk('IDAT',deflateSync(raw)),chunk('IEND',Buffer.alloc(0))]);
 }
 async function runCli(args,environment,error){
- const child=spawn(process.execPath,[path.join(repo,'apps/cli/src/index.mjs'),...args],{cwd:repo,env:env(environment),stdio:['ignore','pipe','pipe']});
+ const child=spawn(process.execPath,[path.join(repo,'apps/cli/src/index.ts'),...args],{cwd:repo,env:env(environment),stdio:['ignore','pipe','pipe']});
  let stdout='',stderr='';
  child.stdout.setEncoding('utf8').on('data',chunk=>{stdout+=chunk;if(Buffer.byteLength(stdout)>2*1024*1024&&child.exitCode===null&&!child.signalCode)child.kill('SIGKILL');});
  child.stderr.setEncoding('utf8').on('data',chunk=>{stderr=(stderr+chunk).slice(-20_000);});
@@ -89,7 +89,7 @@ async function fixture(t){
  };
 }
 async function mcp(t,f){
- const client=new Client({name:'frame-pair-wire',version:'1.0.0'},{capabilities:{}}),transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.mjs')],cwd:repo,env:env(f.env),stderr:'pipe'});let stderr='';
+ const client=new Client({name:'frame-pair-wire',version:'1.0.0'},{capabilities:{}}),transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.ts')],cwd:repo,env:env(f.env),stderr:'pipe'});let stderr='';
  transport.stderr?.setEncoding('utf8').on('data',chunk=>{stderr=(stderr+chunk).slice(-20_000);});
  t.after(async()=>{await bounded(client.close(),'MCP close');assert.ok(!stderr.includes(token));});await client.connect(transport);
  return {client,call:async(operation,input,error)=>{const response=await client.callTool({name:operation.replaceAll('.','_'),arguments:input});const value=response.structuredContent;assert.equal(value.ok,!error,JSON.stringify(response));if(error)assert.equal(value.error.code,error);assert.ok(!JSON.stringify(value).includes(token));return value.data??value.error;}};

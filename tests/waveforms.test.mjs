@@ -9,10 +9,10 @@ import {tmpdir} from 'node:os';
 import {createServer} from 'node:http';
 import path from 'node:path';
 import {parse,isWaveformResponse} from '@mioon/contracts';
-import {openStore,ownsStoreLock} from '../packages/business/src/db.mjs';
-import {withProbePermit} from '../packages/business/src/media-probe.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
-import {createWaveformServices,probeWaveform,WAVEFORM_ALGORITHM,WAVEFORM_CACHE_LIMITS} from '../packages/business/src/waveforms.mjs';
+import {openStore,ownsStoreLock} from '../packages/business/src/db.ts';
+import {withProbePermit} from '../packages/business/src/media-probe.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
+import {createWaveformServices,probeWaveform,WAVEFORM_ALGORITHM,WAVEFORM_CACHE_LIMITS} from '../packages/business/src/waveforms.ts';
 
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const metadata=(duration=1,channels=2,patch={})=>({duration,probe:{format:{duration:String(duration),start_time:'0',format_name:'wav'},streams:[{codec_type:'audio',duration:String(duration),channels,start_time:'0',...patch}]}});

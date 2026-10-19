@@ -3,7 +3,7 @@ import React, { useId, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Button } from '@mioon/ui/components/button';
 import LanguageControl from './LanguageControl.tsx';
-import { WorkspaceVisibilityProvider } from './workspace-visibility.jsx';
+import { WorkspaceVisibilityProvider } from './workspace-visibility.tsx';
 import { isSettingsConnectionPage } from './settings-window-state.ts';
 import type { SettingsPage } from './settings-window-state.ts';
 import { SettingsAbout, SettingsModelServices, SettingsShortcuts } from './SettingsExtraPages.tsx';

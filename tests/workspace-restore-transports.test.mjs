@@ -11,22 +11,22 @@ import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.mjs';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
-import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.mjs';
-import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
-import {createClient} from '../packages/client/src/index.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
+import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
+import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
+import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
+import {createClient} from '../packages/client/src/index.ts';
 
 const repo=fileURLToPath(new URL('..',import.meta.url)),token='synthetic-restored-http-cli-mcp-token';
 const digest=value=>createHash('sha256').update(value).digest('hex');
 function tree(root){return fs.readdirSync(root,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name)).flatMap(entry=>{const file=path.join(root,entry.name),info=fs.lstatSync(file);return [{name:file,mode:info.mode,...(entry.isFile()?{sha256:digest(fs.readFileSync(file))}:{})},...(entry.isDirectory()?tree(file):[])];});}
 const database=(root,read)=>{const db=new DatabaseSync(path.join(root,'workbench.sqlite'),{readOnly:true});try{return read(db);}finally{db.close();}};
 async function cli(t,args,env){
- const child=spawn(process.execPath,[path.join(repo,'apps/cli/src/index.mjs'),...args],{cwd:repo,env,stdio:['ignore','pipe','pipe']});
+ const child=spawn(process.execPath,[path.join(repo,'apps/cli/src/index.ts'),...args],{cwd:repo,env,stdio:['ignore','pipe','pipe']});
  let stdout='',stderr='',closed=false,failure;
  const completed=new Promise(resolve=>{child.once('error',error=>{failure=error;});child.once('close',(code,signal)=>{closed=true;resolve({code,signal});});});
  child.stdout.setEncoding('utf8').on('data',value=>{stdout+=value;if(stdout.length>1024*1024){failure=Error('CLI stdout limit');child.kill('SIGKILL');}});
@@ -73,7 +73,7 @@ async function fixture(t){
  const raw=async(route,input)=>{try{const response=await fetch(url+route,{method:input===undefined?'GET':'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},...(input===undefined?{}:{body:JSON.stringify(input)}),signal:AbortSignal.timeout(10000)});return await response.json();}catch{return {ok:false,error:{code:'LOST_TRANSPORT'}};}};
  const rpc=(operation,input,selected=origin)=>raw('/api/rpc',{operation,input,...(selected===undefined?{}:{expectedWorkspaceOrigin:selected})});
  mcp=new Client({name:'restore-real-transport',version:'1.0.0'},{capabilities:{}});
- const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.mjs'),'--workspace-origin',origin],cwd:repo,env,stderr:'pipe'});
+ const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.ts'),'--workspace-origin',origin],cwd:repo,env,stderr:'pipe'});
  await mcp.connect(transport);transport.stderr?.resume();
  const callMcp=async(operation,input)=>{const result=await mcp.callTool({name:operation.replaceAll('.','_'),arguments:input});const body=JSON.parse(result.content.find(item=>item.type==='text').text);assert.deepEqual(body,result.structuredContent);assert.equal(Boolean(result.isError),!body.ok);return body;};
  return {root,source,backup,project,shot,timeline,pending,oldInput,oldAck,origin,raw,rpc,requests,observed,client:createClient({env}),

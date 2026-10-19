@@ -11,15 +11,15 @@ import {DatabaseSync} from 'node:sqlite';
 import {createHash, randomUUID} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {createProviderRegistry} from '../packages/business/src/provider-registry.mjs';
-import {createClient} from '../packages/client/src/index.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
+import {createClient} from '../packages/client/src/index.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_LIMITS, IMAGE_MODELS, IMAGE_MUTATION_OPERATIONS, imageSchemas,
   isImageTaskResponse, isImageProfilesResponse, isImageRequestResponse,
-  isImageListResponse} from '../packages/contracts/src/images.mjs';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.mjs';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.mjs';
+  isImageListResponse} from '../packages/contracts/src/images.ts';
+import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
+import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const token = 'image-transport-synthetic-local-token';
@@ -63,7 +63,7 @@ function noPrivate(value, root) {
 }
 
 async function cli(args, env, expectedError) {
-  const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.mjs'), ...args], {
+  const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.ts'), ...args], {
     cwd: repo, env: environment(env), stdio: ['ignore', 'pipe', 'pipe'],
   });
   let stdout = '', stderr = '';
@@ -105,7 +105,7 @@ async function fixture(t) {
   const proxyRequests = [];
   async function start() {
     stdout = ''; stderr = '';
-    child = spawn(process.execPath, [path.join(repo, 'apps/server/src/cli.mjs')], {
+    child = spawn(process.execPath, [path.join(repo, 'apps/server/src/cli.ts')], {
       cwd: repo, env: environment({MIOON_DATA_DIR: root, MIOON_TOKEN: token, PORT: String(port)}),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -185,7 +185,7 @@ async function fixture(t) {
 async function mcpFixture(t, env) {
   const client = new Client({name: 'image-transport-acceptance', version: '1.0.0'}, {capabilities: {}});
   const transport = new StdioClientTransport({command: process.execPath,
-    args: [path.join(repo, 'apps/mcp/src/index.mjs')], cwd: repo, env: environment(env), stderr: 'pipe'});
+    args: [path.join(repo, 'apps/mcp/src/index.ts')], cwd: repo, env: environment(env), stderr: 'pipe'});
   let stderr = ''; transport.stderr?.setEncoding('utf8').on('data', chunk => { stderr = (stderr + chunk).slice(-20_000); });
   t.after(() => client.close());
   await client.connect(transport);

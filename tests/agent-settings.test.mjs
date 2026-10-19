@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCipheriv, createDecipheriv, randomBytes} from 'node:crypto';
-import {AGENT_PRESETS, DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.mjs';
-import {normalizeAgentBaseUrl, parseAgentConfiguration, parseAgentSettingsUpdate, agentSettingsError, safeAgentSettingsError} from '../packages/business/src/agent/config.mjs';
-import {createAgentSettings, sanitizeAgentSettingsResult} from '../packages/business/src/agent/settings.mjs';
+import {AGENT_PRESETS, DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
+import {normalizeAgentBaseUrl, parseAgentConfiguration, parseAgentSettingsUpdate, agentSettingsError, safeAgentSettingsError} from '../packages/business/src/agent/config.ts';
+import {createAgentSettings, sanitizeAgentSettingsResult} from '../packages/business/src/agent/settings.ts';
 
 const configuration = () => ({...DEFAULT_AGENT_CONFIGURATION});
 const input = (revision = 0, secret = {action: 'keep'}, config = configuration()) => ({expectedRevision: revision, configuration: config, secret});

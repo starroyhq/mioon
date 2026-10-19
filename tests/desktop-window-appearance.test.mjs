@@ -7,7 +7,7 @@ import path from 'node:path';
 import {createDesktopWindowAppearance,WINDOW_BACKGROUNDS} from '../apps/desktop/src/window-appearance.ts';
 import {calculateWorkspaceScope} from '../packages/contracts/src/workspace-scope.ts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
-import {readPrivateFile,validatePrivateDirectory,validateManagedFile} from '../packages/contracts/src/private-storage.mjs';
+import {readPrivateFile,validatePrivateDirectory,validateManagedFile} from '../packages/contracts/src/private-storage.ts';
 
 function fixture(t,{realWatch=false}={}) {
   const root=mkdtempSync(path.join(tmpdir(),'mioon-native-appearance-')),db=path.join(root,'workbench.sqlite'),file=path.join(root,'ui-preferences-v1.json');
@@ -93,7 +93,7 @@ test('actual directory watch survives repeated atomic sidecar replacement withou
 });
 
 test('native fills match the approved token surfaces and main keeps theme IPC and native overrides absent',()=>{
-  const root=new URL('../',import.meta.url),main=readFileSync(new URL('apps/desktop/src/main.mjs',root),'utf8');
+  const root=new URL('../',import.meta.url),main=readFileSync(new URL('apps/desktop/src/main.ts',root),'utf8');
   const dark=readFileSync(new URL('packages/ui/src/styles/globals.css',root),'utf8'),light=readFileSync(new URL('packages/ui/src/styles/light.css',root),'utf8');
   assert.ok(dark.includes(`--wb-bg: ${WINDOW_BACKGROUNDS.dark}`));assert.ok(light.includes(`--wb-bg: ${WINDOW_BACKGROUNDS.light}`));
   assert.match(main,/backgroundColor: context\.appearance\.backgroundColor\(\)/);

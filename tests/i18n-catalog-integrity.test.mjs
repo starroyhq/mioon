@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
 import { catalogs, validateCatalogs, translate, LOCALES } from '../packages/i18n/src/index.ts';
-import { compareUILedger, inspectUILiterals, readUILedger, visibleTemplateFragment } from '../scripts/audit-ui-localization.mjs';
+import { compareUILedger, inspectUILiterals, readUILedger, visibleTemplateFragment } from '../scripts/audit-ui-localization.ts';
 
 test('every composed UI and native catalog has exact four-locale and placeholder parity', () => {
   assert.deepEqual(validateCatalogs(catalogs), []);

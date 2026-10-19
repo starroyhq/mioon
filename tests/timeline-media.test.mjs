@@ -43,7 +43,7 @@ async function fixture(t) {
   let child;
   async function start() {
     const processRecord = { action: 'start', at: new Date().toISOString(), port, root, stdout: '', stderr: '' };
-    child = spawn(process.execPath, ['server/index.mjs'], { cwd: repo, env: { ...process.env, PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    child = spawn(process.execPath, ['server/index.ts'], { cwd: repo, env: { ...process.env, PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
     processRecord.pid = child.pid; records.processes.push(processRecord);
     child.stdout.setEncoding('utf8').on('data', bytes => processRecord.stdout += bytes); child.stderr.setEncoding('utf8').on('data', bytes => processRecord.stderr += bytes);
     child.on('close', (code, signal) => Object.assign(processRecord, { exitCode: code, signal }));

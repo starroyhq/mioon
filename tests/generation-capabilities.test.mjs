@@ -4,11 +4,11 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {createProviderRegistry,normalizedCapabilities,providerEnvironmentKeys} from '../packages/business/src/provider-registry.mjs';
-import {getGenerationIssue,findModelCapabilities} from '../packages/contracts/src/index.mjs';
-import {utilityEnvironment} from '../apps/desktop/src/config.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createProviderRegistry,normalizedCapabilities,providerEnvironmentKeys} from '../packages/business/src/provider-registry.ts';
+import {getGenerationIssue,findModelCapabilities} from '../packages/contracts/src/index.ts';
+import {utilityEnvironment} from '../apps/desktop/src/config.ts';
 
 async function fixture(t,env={}){
  const root=await mkdtemp(path.join(tmpdir(),'wb-v4-caps-')),store=openStore(root);

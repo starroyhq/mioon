@@ -11,16 +11,16 @@ import {DatabaseSync} from 'node:sqlite';
 import {createHash, randomUUID} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createFrameServices} from '../packages/business/src/frames.mjs';
-import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
-import {run} from '../packages/business/src/media-runtime.mjs';
-import {validatePng} from '../packages/business/src/images/png.mjs';
-import {createClient} from '../packages/client/src/index.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createFrameServices} from '../packages/business/src/frames.ts';
+import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
+import {run} from '../packages/business/src/media-runtime.ts';
+import {validatePng} from '../packages/business/src/images/png.ts';
+import {createClient} from '../packages/client/src/index.ts';
 import {FRAME_MUTATION_OPERATIONS, frameSchemas, isFrameTaskResponse, isFrameRequestResponse,
-  isFrameListResponse, canonicalFrameInput} from '../packages/contracts/src/frame-extraction.mjs';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.mjs';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.mjs';
+  isFrameListResponse, canonicalFrameInput} from '../packages/contracts/src/frame-extraction.ts';
+import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
+import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const token = 'frame-transport-synthetic-local-token';
@@ -64,7 +64,7 @@ function launch(args, env) {
     }};
 }
 async function cli(args, env, error) {
-  const proc = launch([path.join(repo, 'apps/cli/src/index.mjs'), ...args], env);
+  const proc = launch([path.join(repo, 'apps/cli/src/index.ts'), ...args], env);
   try {
     const {code, signal} = await proc.finish(); assert.equal(signal, null, proc.stderr);
     assert.equal(proc.stdout.trim().split('\n').length, 1, 'actual CLI prints one envelope');
@@ -76,7 +76,7 @@ async function cli(args, env, error) {
 }
 async function sdk(t, env) {
   const client = new Client({name:'frame-transport-acceptance', version:'1.0.0'}, {capabilities:{}});
-  const transport = new StdioClientTransport({command:process.execPath, args:[path.join(repo, 'apps/mcp/src/index.mjs')], cwd:repo, env:environment(env), stderr:'pipe'});
+  const transport = new StdioClientTransport({command:process.execPath, args:[path.join(repo, 'apps/mcp/src/index.ts')], cwd:repo, env:environment(env), stderr:'pipe'});
   let stderr = '', closed = false;
   transport.stderr?.setEncoding('utf8');
   transport.stderr?.setEncoding('utf8').on('data', chunk => { stderr = (stderr + chunk).slice(-64 * 1024); });
@@ -114,8 +114,8 @@ const log = event => fs.appendFileSync(process.env.MIOON_FRAME_AUDIT, JSON.strin
 const deny = () => { log({type:'forbidden-network'}); throw Error('Synthetic frame server forbids outbound network'); };
 globalThis.fetch = deny; http.request = deny; http.get = deny; https.request = deny; https.get = deny; net.Socket.prototype.connect = deny; tls.connect = deny;
 syncBuiltinESMExports();
-const {onMediaProcess} = await import('./packages/business/src/media-processes.mjs'); onMediaProcess(log);
-const {startServer} = await import('./apps/server/src/index.mjs');
+const {onMediaProcess} = await import('./packages/business/src/media-processes.ts'); onMediaProcess(log);
+const {startServer} = await import('./apps/server/src/index.ts');
 const service = await startServer({dataDir:process.env.MIOON_DATA_DIR, port:Number(process.env.PORT), token:process.env.MIOON_TOKEN});
 console.log('Mioon frame fixture ready ' + service.url);
 let closing; const close = () => closing ??= service.close().catch(() => {process.exitCode = 1;}); process.on('SIGTERM', close); process.on('SIGINT', close);

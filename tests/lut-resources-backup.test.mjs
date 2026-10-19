@@ -1,8 +1,8 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync,readFileSync,readdirSync,lstatSync,writeFileSync} from 'node:fs';import path from 'node:path';import os from 'node:os';import {createHash} from 'node:crypto';import {DatabaseSync} from 'node:sqlite';
-import {openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.mjs';import {createServices} from '../packages/business/src/services.mjs';
-import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.mjs';
-import {isWorkspaceBackupPayloadPath} from '../packages/contracts/src/workspace-backup.mjs';
+import {openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';import {createServices} from '../packages/business/src/services.ts';
+import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
+import {isWorkspaceBackupPayloadPath} from '../packages/contracts/src/workspace-backup.ts';
 const text='# retained lexical original\r\nTITLE "Resource portable"\r\nLUT_3D_SIZE 2\r\n0 0 0\r\n1 0 0\r\n0 1 0\r\n1 1 0\r\n0 0 1\r\n1 0 1\r\n0 1 1\r\n1 1 1';
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 async function source(t,sourceSchema=32){const base=mkdtempSync(path.join(os.tmpdir(),'mioon-lut-backup-'));t.after(()=>rmSync(base,{recursive:true,force:true}));const root=path.join(base,'source'),store=openStore(root),s=createServices(store,new Map());const project=await s.call('project.create',{name:'Portable LUT'}),input={projectId:project.id,requestId:'portable-resource-request',name:'look.cube',dataBase64:Buffer.from(text).toString('base64')},response=await s.call('lut.import',input);await s.drain();if(sourceSchema===32)store.db.exec('DELETE FROM schema_version WHERE version=34'); /* Explicit historical PNG-generation fixture. */ store.close();return {base,root,input,response,backup:path.join(base,'backup'),restored:path.join(base,'restored')};}

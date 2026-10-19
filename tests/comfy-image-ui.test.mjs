@@ -11,11 +11,11 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as navigation from '../apps/web/src/settings-navigation-state.ts';
 import { COMFY_IMAGE_OPTIONS, COMFY_IMAGE_POLICY, DEFAULT_COMFY_IMAGE_CONFIGURATION, canonicalImageInput, isImageReviewResponse } from '@mioon/contracts';
-import { buildComfyWorkflow, hashComfyWorkflow } from '../packages/business/src/comfy/workflow.mjs';
-import { createComfyImageSettingsSession, createComfyImageSettingsClient, comfyImageSettingsCanSave } from '../apps/web/src/comfy-image-settings.js';
-import { ApiError, rpc } from '../apps/web/src/api.js';
-import { createComfyObservationSession, comfyCanObserve } from '../apps/web/src/comfy-image-observation.js';
-import { createImageGenerationSession, imageCanGenerate, imageReviewCanApprove } from '../apps/web/src/image-generation.js';
+import { buildComfyWorkflow, hashComfyWorkflow } from '../packages/business/src/comfy/workflow.ts';
+import { createComfyImageSettingsSession, createComfyImageSettingsClient, comfyImageSettingsCanSave } from '../apps/web/src/comfy-image-settings.ts';
+import { ApiError, rpc } from '../apps/web/src/api.ts';
+import { createComfyObservationSession, comfyCanObserve } from '../apps/web/src/comfy-image-observation.ts';
+import { createImageGenerationSession, imageCanGenerate, imageReviewCanApprove } from '../apps/web/src/image-generation.ts';
 
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), groupId = id(2), taskId = id(3), at = '2026-10-10T14:00:00.000Z';
@@ -175,7 +175,7 @@ function componentHarness(filename, resolve, props) {
 }
 
 test('actual Comfy settings controls use shared components and stale project/hidden callbacks cannot check or save', async () => {
-  const logic = await import('../apps/web/src/comfy-image-settings.js'), f = settingsFixture();
+  const logic = await import('../apps/web/src/comfy-image-settings.ts'), f = settingsFixture();
   const ui = componentHarness('ComfyImageSettings.jsx', name => { if (name === './comfy-image-settings.js') return logic; throw Error(name); }, { active: true, contextKey: projectId, client: f.client }); ui.render(); await flush(); let tree = ui.render();
   const enable = ui.find('comfy-image-settings-enable'); assert.equal(enable.type, 'Input'); assert.equal(enable.props.type, 'checkbox'); assert.ok(nodes(tree).some(n => n.type === 'Label' && n.props.htmlFor === enable.props.id)); assert.equal(ui.find('comfy-image-settings-model').type, 'WorkbenchSelect');
   const oldCheck = ui.find('comfy-image-settings-check').props.onClick, oldSubmit = ui.form().props.onSubmit;
@@ -186,7 +186,7 @@ test('actual Comfy settings controls use shared components and stale project/hid
 });
 
 test('actual Comfy review shows exact graph, seed, independent status and no OpenAI option claims', () => {
-  const source = readFileSync(new URL('../apps/web/src/ComfyImageDetails.jsx', import.meta.url), 'utf8'); const module = { exports: {} }, react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }) }; react.default = react;
+  const source = readFileSync(new URL('../apps/web/src/ComfyImageDetails.tsx', import.meta.url), 'utf8'); const module = { exports: {} }, react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }) }; react.default = react;
   Function('module', 'exports', 'require', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, name => { if (name === './i18n/I18nProvider.tsx') return { useI18n: () => localeDisplay() }; if (name === '../../../packages/i18n/src/index.ts') return i18n; if (name === './creation-i18n.ts') return creationI18n; assert.equal(name, 'react'); return react; });
   const saved = review(), tree = module.exports.ComfyImageReviewDetails({ review: saved }); const graph = nodes(tree).find(n => n.props['data-testid'] === 'image-comfy-review-graph'); assert.deepEqual(JSON.parse(graph.props.children.join('')), saved.execution.graph); assert.match(JSON.stringify(tree), /87654/); assert.doesNotMatch(JSON.stringify(tree), /quality|moderation|1024|low/);
   const status = module.exports.ComfyImageTaskDetails({ task: task(), review: saved, remoteState: remoteResponse({ remote: remote({ state: 'running' }) }) }); const text = JSON.stringify(status); assert.match(text, /已找到相同任务 ID/); assert.match(text, /尚未核验；仅任务 ID/); assert.doesNotMatch(text, /已核验与冻结工作流一致/);
@@ -220,7 +220,7 @@ test('an unknown older observation can replay its receipt after another observer
 
 
 test('actual Comfy composer prepares first and stale hidden approval handlers never run', async () => {
-  const contracts = await import('@mioon/contracts'), logic = await import('../apps/web/src/image-generation.js'), settingsLogic = await import('../apps/web/src/comfy-image-settings.js'), f = generationFixture();
+  const contracts = await import('@mioon/contracts'), logic = await import('../apps/web/src/image-generation.ts'), settingsLogic = await import('../apps/web/src/comfy-image-settings.ts'), f = generationFixture();
   const localClient = { read: async () => settings(), readAvailability: async () => availability() }, legacyClient = { read: async () => null };
   const ui = componentHarness('ImageGeneration.jsx', name => {
     if (name === '@mioon/contracts') return contracts;
@@ -343,7 +343,7 @@ test('accepted generation receipt reconciliation survives module absence without
 });
 
 test('actual settings show independent module status and disabled network buttons while retained configuration is editable', async () => {
-  const logic = await import('../apps/web/src/comfy-image-settings.js');
+  const logic = await import('../apps/web/src/comfy-image-settings.ts');
   for (const status of [null, availability('not_provided'), availability('not_loaded')]) {
     const f = settingsFixture({ readAvailability: () => status });
     const ui = componentHarness('ComfyImageSettings.jsx', name => { if (name === './comfy-image-settings.js') return logic; throw Error(name); }, { active: true, contextKey: projectId, client: f.client });
@@ -355,7 +355,7 @@ test('actual settings show independent module status and disabled network button
 });
 
 test('actual unavailable-module composer retains old preview/details/recovery and disables new prepare, approval and query', async () => {
-  const contracts = await import('@mioon/contracts'), logic = await import('../apps/web/src/image-generation.js'), settingsLogic = await import('../apps/web/src/comfy-image-settings.js');
+  const contracts = await import('@mioon/contracts'), logic = await import('../apps/web/src/image-generation.ts'), settingsLogic = await import('../apps/web/src/comfy-image-settings.ts');
   for (const status of [null, availability('not_provided'), availability('not_loaded')]) {
     const f = generationFixture(); f.data.tasks = [task()]; f.data.groups = [historicalGroup()]; f.data.versions = [historicalVersion()]; f.data.reviews = [review()];
     const localClient = { read: async () => settings(), readAvailability: async () => status }, legacyClient = { read: async () => null };
@@ -378,7 +378,7 @@ test('actual unavailable-module composer retains old preview/details/recovery an
 });
 
 test('four-language rerenders preserve Comfy draft and never probe, save, or reload on locale changes', async () => {
-  const logic = await import('../apps/web/src/comfy-image-settings.js'), f = settingsFixture();
+  const logic = await import('../apps/web/src/comfy-image-settings.ts'), f = settingsFixture();
   const ui = componentHarness('ComfyImageSettings.jsx', name => { if (name === './comfy-image-settings.js') return logic; throw Error(name); }, { active: true, contextKey: projectId, client: f.client });
   ui.render(); await flush(); ui.render(); ui.change('comfy-image-settings-base-url', 'http://127.0.0.1:8288');
   const calls = structuredClone(f.calls);

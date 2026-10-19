@@ -8,9 +8,9 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {Worker} from 'node:worker_threads';
 import {openStore, createServices, createWorkspacePreferences} from '@mioon/business';
-import {parseWorkspacePreferencesState} from '../packages/business/src/workspace-preferences.mjs';
+import {parseWorkspacePreferencesState} from '../packages/business/src/workspace-preferences.ts';
 import {schemas} from '@mioon/contracts';
-import {defaultWorkspaceState, reconcileWorkspaceState} from '../apps/web/src/workspace-state.js';
+import {defaultWorkspaceState, reconcileWorkspaceState} from '../apps/web/src/workspace-state.ts';
 
 const copy = value => structuredClone(value);
 const state = () => {
@@ -294,7 +294,7 @@ async function race(t, f, states, expectedRevision) {
     } finally { store.close(); }
   })().catch(error => { throw error; });`;
   const workers = states.map(value => {
-    const worker = new Worker(script, {eval: true, workerData: {module: new URL('../packages/business/src/index.mjs', import.meta.url).href, root: f.root, projectId: f.projectId, state: value, expectedRevision, barrier}});
+    const worker = new Worker(script, {eval: true, workerData: {module: new URL('../packages/business/src/index.ts', import.meta.url).href, root: f.root, projectId: f.projectId, state: value, expectedRevision, barrier}});
     t.after(() => worker.terminate());
     let readyResolve, readyReject, resultResolve, resultReject;
     const ready = new Promise((resolve, reject) => { readyResolve = resolve; readyReject = reject; });

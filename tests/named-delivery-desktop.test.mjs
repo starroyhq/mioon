@@ -5,7 +5,7 @@ import {mkdtemp, readdir, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {timelineDeliveryBasename, timelineDeliveryContentDisposition} from '@mioon/contracts/timeline-delivery';
-import {installSessionPolicy, isAllowedDownload} from '../apps/desktop/src/security.mjs';
+import {installSessionPolicy, isAllowedDownload} from '../apps/desktop/src/security.ts';
 import {namedTimelineDownloadBasename} from '../apps/desktop/src/timeline-delivery-download.ts';
 
 const origin = 'http://127.0.0.1:41923';

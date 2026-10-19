@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import '../packages/business/src/db.mjs';
+import '../packages/business/src/db.ts';
 import {requireWorkspaceEnvelopeRuntime,installWorkspaceEnvelopeRuntime} from '../packages/business/src/workspace-envelope-runtime.ts';
-import {isTimelineRecord} from '../packages/contracts/src/timeline-replacement.mjs';
-import {isTimelineRenderRecord,TIMELINE_RENDER_RESPONSE_BYTES} from '../packages/contracts/src/timeline-acknowledgement.mjs';
-import {schemas} from '../packages/contracts/src/index.mjs';
+import {isTimelineRecord} from '../packages/contracts/src/timeline-replacement.ts';
+import {isTimelineRenderRecord,TIMELINE_RENDER_RESPONSE_BYTES} from '../packages/contracts/src/timeline-acknowledgement.ts';
+import {schemas} from '../packages/contracts/src/index.ts';
 test('actual database startup supplies exact production timeline and receipt predicates',()=>{
  const runtime=requireWorkspaceEnvelopeRuntime();
  assert.equal(runtime.isTimelineRecord,isTimelineRecord);
@@ -26,7 +26,7 @@ test('actual database startup supplies exact production timeline and receipt pre
 test('actual startup capability validates the complete catalog, not only markers',async t=>{
  const {DatabaseSync}=await import('node:sqlite');
  const {mkdtempSync,rmSync}=await import('node:fs');
- const {openStore}=await import('../packages/business/src/db.mjs');
+ const {openStore}=await import('../packages/business/src/db.ts');
  const {readTimelineVolumeEnvelopeCapability}=await import('../packages/business/src/timeline-volume-envelope-capability.ts');
  const fake=new DatabaseSync(':memory:');t.after(()=>fake.close());
  fake.exec('CREATE TABLE schema_version(version INTEGER PRIMARY KEY)');

@@ -5,8 +5,8 @@ import path from 'node:path';
 import {mkdir,readFile,writeFile,appendFile,unlink,access,readdir} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
-import {startServer} from '../apps/server/src/index.mjs';
-import {migrateData} from '../apps/desktop/scripts/migrate-data.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {migrateData} from '../apps/desktop/scripts/migrate-data.ts';
 export const qaRoot=path.resolve('evidence/agent-settings');
 export const runtime=path.join(qaRoot,'browser-runtime');
 export async function prepareAgentSettingsFixture(){

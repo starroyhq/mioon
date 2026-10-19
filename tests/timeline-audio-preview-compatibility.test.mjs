@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {timelineAudioFadeFilters as before} from './fixtures/timeline-audio-preview/legacy-timeline-audio-1398.mjs';
-import {timelineAudioFadeFilters as current} from '../packages/business/src/timeline-audio.mjs';
+import {timelineAudioFadeFilters as current} from '../packages/business/src/timeline-audio.ts';
 
 test('1398 frozen fade implementation retains exact bytes and all valid legacy filter strings',async()=>{
   const bytes=await readFile(new URL('./fixtures/timeline-audio-preview/legacy-timeline-audio-1398.mjs',import.meta.url));

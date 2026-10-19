@@ -4,21 +4,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import * as exportSettings from '../apps/web/src/export-settings-state.js';
-import * as ranges from '../apps/web/src/source-range-state.js';
-import { createFrameExtractionController, frameCaptureBusy } from '../apps/web/src/frame-extraction.js';
+import * as exportSettings from '../apps/web/src/export-settings-state.ts';
+import * as ranges from '../apps/web/src/source-range-state.ts';
+import { createFrameExtractionController, frameCaptureBusy } from '../apps/web/src/frame-extraction.ts';
 import * as candidatePresentation from '../apps/web/src/opacity-candidate-render-presentation.ts';
 import {createOpacityCandidateApplication} from '../apps/web/src/opacity-candidate-application.ts';
 import * as contracts from '@mioon/contracts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
-import {rpc} from '../apps/web/src/api.js';
-import {createEditTaskClient} from '../apps/web/src/edit-task-client.js';
+import {rpc} from '../apps/web/src/api.ts';
+import {createEditTaskClient} from '../apps/web/src/edit-task-client.ts';
 import {createOpacityRenderSnapshotPlan} from '../packages/contracts/src/timeline-opacity-render-candidate.ts';
 import {row as outputRow} from './helpers/export-sample-peak-ui-fixture.mjs';
 
 // Execute Preview and its real capture control with controlled media properties.
 // This tests component/event wiring, not browser decoder or native FFmpeg output.
-const code = transformSync(readFileSync(new URL('../apps/web/src/Preview.jsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code;
+const code = transformSync(readFileSync(new URL('../apps/web/src/Preview.tsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code;
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
 function harness() {
   const components = new Map(), elements = new Map(); let active, cursor = 0, layouts = [], effects = [], tree, control, dirty = false, props;

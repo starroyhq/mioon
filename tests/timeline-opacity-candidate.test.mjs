@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {schemas, isTimelineRecord} from '../packages/contracts/src/index.mjs';
-import {isEditTask} from '../packages/contracts/src/edit-tasks.mjs';
+import {schemas, isTimelineRecord} from '../packages/contracts/src/index.ts';
+import {isEditTask} from '../packages/contracts/src/edit-tasks.ts';
 import {createTimelineOpacityCandidateContracts, OPACITY_CANDIDATE_LIMITS} from '../packages/contracts/src/timeline-opacity-candidate.ts';
 import {OPACITY_ENVELOPE_PROFILE, OPACITY_ENVELOPE_LIMITS} from '../packages/contracts/src/timeline-opacity-envelope.ts';
 import {captureVolumeEnvelopeCandidateIntent as previousCapture} from './helpers/timeline-volume-envelope-candidate-intent.mjs';

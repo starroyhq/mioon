@@ -6,11 +6,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as navigation from '../apps/web/src/settings-navigation-state.ts';
-import * as logic from '../apps/web/src/image-settings.js';
-import { createImageReviewClient } from '../apps/web/src/image-review.js';
-import { IMAGE_REVIEW_DESTINATION, IMAGE_REVIEW_POLICY, isImageReviewResponse } from '../packages/contracts/src/image-reviews.mjs';
+import * as logic from '../apps/web/src/image-settings.ts';
+import { createImageReviewClient } from '../apps/web/src/image-review.ts';
+import { IMAGE_REVIEW_DESTINATION, IMAGE_REVIEW_POLICY, isImageReviewResponse } from '../packages/contracts/src/image-reviews.ts';
 import { createHash } from 'node:crypto';
-import { canonicalImageInput } from '../packages/contracts/src/images.mjs';
+import { canonicalImageInput } from '../packages/contracts/src/images.ts';
 
 const { DEFAULT_IMAGE_CONFIGURATION, DEFAULT_CUSTOM_IMAGE_CONFIGURATION, createImageSettingsClient, createImageSettingsSession, imageKeyIssue, imageSettingsCanSave, safeImageSettings } = logic;
 const snapshot = (patch = {}) => ({ revision: 0, configuration: structuredClone(DEFAULT_IMAGE_CONFIGURATION), secret: { configured: false, storage: 'none' }, storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY' }, ...patch });
@@ -63,7 +63,7 @@ test('double save, hidden edits and disposed completions cannot write again or l
   const g = fixture(); await g.session.load(); g.session.setVisible(false); assert.equal(g.session.setEnabled(true), false); assert.equal(g.session.setStorage('session'), false); assert.equal(await g.session.save('synthetic'), false); g.session.setVisible(true); assert.equal(g.session.setEnabled(true), true); g.session.dispose();
 });
 
-const source = readFileSync(new URL('../apps/web/src/ImageSettings.jsx', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../apps/web/src/ImageSettings.tsx', import.meta.url), 'utf8');
 const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
 const equalDeps = (a, b) => a && b && a.length === b.length && a.every((value, index) => Object.is(value, b[index]));
 function renderer(f) {

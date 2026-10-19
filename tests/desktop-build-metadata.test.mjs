@@ -187,7 +187,7 @@ test('beforePack rejects stale same-channel versions and names for both channels
 });
 
 test('staging build preflights metadata before cleanup and writes the root application version', async () => {
-  const source = await readFile(new URL('../apps/desktop/scripts/build.mjs', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../apps/desktop/scripts/build.ts', import.meta.url), 'utf8');
   const validation = source.indexOf('desktopBuildMetadata.readBuildMetadata(root)');
   const cleanup = source.indexOf('await rm(output,');
   assert.ok(validation >= 0 && cleanup > validation, 'Metadata validation must run before staging removal');

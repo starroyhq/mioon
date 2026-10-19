@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
-import {createClient} from '../packages/client/src/index.mjs';
-import {FRAME_MUTATION_OPERATIONS, FRAME_LIMITS, canonicalFrameInput} from '../packages/contracts/src/frame-extraction.mjs';
+import {createClient} from '../packages/client/src/index.ts';
+import {FRAME_MUTATION_OPERATIONS, FRAME_LIMITS, canonicalFrameInput} from '../packages/contracts/src/frame-extraction.ts';
 
 const env = {MIOON_BASE_URL:'http://127.0.0.1:4318', MIOON_TOKEN:'synthetic-frame-client-token'};
 const timestamp = '2026-10-11T00:00:00.000Z';

@@ -8,7 +8,7 @@ import {randomUUID} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {isEditTaskEnvelope, isEditTaskListEnvelope, DURABLE_EDIT_OPERATIONS} from '@mioon/contracts';
-import {EDIT_TASK_HTTP_LIMITS} from '../apps/server/src/edit-tasks-http.mjs';
+import {EDIT_TASK_HTTP_LIMITS} from '../apps/server/src/edit-tasks-http.ts';
 import {taskFixture, taskPath, listPath, database, snapshot, REPO, TASK_TOKEN} from './helpers/edit-tasks-http-fixture.mjs';
 
 const trackInput = (f, changes = {}) => ({projectId: f.project.id, expectedRevision: f.timeline.revision,
@@ -229,7 +229,7 @@ test('reference attach/detach task receipts remain historical and GET does not r
 });
 
 async function command(operation, input, url) {
-  const child = spawn(process.execPath, [path.join(REPO, 'apps/cli/src/index.mjs'), ...operation.split('.'), '--input', JSON.stringify(input)], {
+  const child = spawn(process.execPath, [path.join(REPO, 'apps/cli/src/index.ts'), ...operation.split('.'), '--input', JSON.stringify(input)], {
     cwd: REPO, env: {...process.env, MIOON_BASE_URL: url, MIOON_TOKEN: TASK_TOKEN, MIOON_ENABLE_LIVE_PROVIDER: '0'}, stdio: ['ignore', 'pipe', 'pipe'],
   });
   let stdout = '', stderr = '';
@@ -246,7 +246,7 @@ test('official CLI and MCP replay the same domain receipts after task execution 
   const f = await taskFixture(t);
   const mcp = new Client({name: 'durable-edit-http-tests', version: '1.0.0'}, {capabilities: {}});
   t.after(() => mcp.close());
-  const transport = new StdioClientTransport({command: process.execPath, args: [path.join(REPO, 'apps/mcp/src/index.mjs')], cwd: REPO,
+  const transport = new StdioClientTransport({command: process.execPath, args: [path.join(REPO, 'apps/mcp/src/index.ts')], cwd: REPO,
     env: {...process.env, MIOON_BASE_URL: f.backend.url, MIOON_TOKEN: TASK_TOKEN, MIOON_ENABLE_LIVE_PROVIDER: '0'}, stderr: 'pipe'});
   transport.stderr?.resume(); await mcp.connect(transport);
   const tools = await mcp.listTools();

@@ -1,8 +1,8 @@
 // Synthetic child process for the retained-task exclusive-owner regression.
 // It never signals another process or changes lock/security settings.
-import {openStore} from '../../packages/business/src/db.mjs';
-import {createServices} from '../../packages/business/src/services.mjs';
-import {createEditTasks} from '../../packages/business/src/edit-tasks.mjs';
+import {openStore} from '../../packages/business/src/db.ts';
+import {createServices} from '../../packages/business/src/services.ts';
+import {createEditTasks} from '../../packages/business/src/edit-tasks.ts';
 const [root,text]=process.argv.slice(2),request=JSON.parse(text);
 let ownerDenied=false,unexpectedOwner;
 try{unexpectedOwner=openStore(root);}catch(error){ownerDenied=/already has a running backend/.test(error.message);}finally{unexpectedOwner?.close();}

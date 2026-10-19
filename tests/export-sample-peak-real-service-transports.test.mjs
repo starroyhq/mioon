@@ -13,8 +13,8 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient} from '@mioon/client';
 import {isExportSamplePeakResponse,EXPORT_SAMPLE_PEAK_ALGORITHM} from '@mioon/contracts/export-sample-peak';
-import {startServer} from '../apps/server/src/index.mjs';
-import {mediaEnvironment,mediaExecutable} from '../packages/business/src/media-environment.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {mediaEnvironment,mediaExecutable} from '../packages/business/src/media-environment.ts';
 
 const execute=promisify(execFile),repo=fileURLToPath(new URL('..',import.meta.url));
 const operation='timeline.export.samplePeak',token='synthetic-real-export-sample-peak-token';
@@ -47,14 +47,14 @@ async function manifest(root,relative=''){
 }
 async function cli(url,input){
   // execFile owns continuous UTF-8 decoding, process reaping and bounded output.
-  const {stdout,stderr}=await execute(process.execPath,[path.join(repo,'apps/cli/src/index.mjs'),...operation.split('.'),'--input',JSON.stringify(input)],
+  const {stdout,stderr}=await execute(process.execPath,[path.join(repo,'apps/cli/src/index.ts'),...operation.split('.'),'--input',JSON.stringify(input)],
     {cwd:repo,env:environment(url),encoding:'utf8',timeout:20000,maxBuffer:1024*1024});
   assert.ok(!stdout.includes(token)&&!stderr.includes(token));assert.equal(stdout.trim().split('\n').length,1);
   const body=JSON.parse(stdout);assert.equal(body.ok,true,stdout);return body.data;
 }
 async function official(t,url){
   const client=new Client({name:'export-sample-peak-real-service',version:'1.0.0'},{capabilities:{}});
-  const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.mjs')],cwd:repo,env:environment(url),stderr:'ignore'});
+  const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.ts')],cwd:repo,env:environment(url),stderr:'ignore'});
   t.after(()=>bounded(client.close(),'MCP close'));
   await bounded(client.connect(transport),'MCP connect');
   return async input=>{const result=await client.callTool({name:'timeline_export_samplePeak',arguments:input},undefined,{timeout:20000});

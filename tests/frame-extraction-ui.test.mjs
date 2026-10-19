@@ -3,11 +3,11 @@ import * as i18n from '../packages/i18n/src/index.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { ApiError } from '../apps/web/src/api.js';
+import { ApiError } from '../apps/web/src/api.ts';
 import { canonicalFrameInput } from '@mioon/contracts';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import * as frame from '../apps/web/src/frame-extraction.js';
+import * as frame from '../apps/web/src/frame-extraction.ts';
 
 const project = '00000000-0000-4000-8000-000000000001', otherProject = '00000000-0000-4000-8000-000000000002';
 const sourceId = '00000000-0000-4000-8000-000000000003', taskId = '00000000-0000-4000-8000-000000000004', resultId = '00000000-0000-4000-8000-000000000005';
@@ -121,7 +121,7 @@ test('result reveal re-reads current task, preserves draft refusal, and rejects 
   assert.equal(await pending, false); assert.equal(reveals, 1);
 });
 
-const code = transformSync(readFileSync(new URL('../apps/web/src/FrameExtractionPanel.jsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code;
+const code = transformSync(readFileSync(new URL('../apps/web/src/FrameExtractionPanel.tsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code;
 const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
 function panelHarness(controller) {
   let cursor = 0, tree, visible = true, effects = [], layouts = []; const slots = [];

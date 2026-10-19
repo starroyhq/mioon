@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {createCipheriv, createDecipheriv, randomUUID} from 'node:crypto';
 import {setImmediate as nextTurn} from 'node:timers/promises';
-import {createDesktopImageSecretCodec} from '../apps/desktop/src/image-secret-store.mjs';
-import {createDesktopSecretCodec} from '../apps/desktop/src/secret-store.mjs';
-import {createImageSecretBroker, createImageSecretClient} from '../apps/desktop/src/image-secret-broker.mjs';
-import {createImageSettings, createCustomImageSettings, IMAGE_CREDENTIAL_ACQUIRE, validateImageSecretPlaintext} from '../packages/business/src/images/settings.mjs';
-import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION, DEFAULT_IMAGE_CONFIGURATION, CUSTOM_IMAGE_SETTINGS_NAMESPACE, IMAGE_SETTINGS_NAMESPACE} from '../packages/contracts/src/image-settings.mjs';
+import {createDesktopImageSecretCodec} from '../apps/desktop/src/image-secret-store.ts';
+import {createDesktopSecretCodec} from '../apps/desktop/src/secret-store.ts';
+import {createImageSecretBroker, createImageSecretClient} from '../apps/desktop/src/image-secret-broker.ts';
+import {createImageSettings, createCustomImageSettings, IMAGE_CREDENTIAL_ACQUIRE, validateImageSecretPlaintext} from '../packages/business/src/images/settings.ts';
+import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION, DEFAULT_IMAGE_CONFIGURATION, CUSTOM_IMAGE_SETTINGS_NAMESPACE, IMAGE_SETTINGS_NAMESPACE} from '../packages/contracts/src/image-settings.ts';
 
 const APP_ID = 'app.starroy.mioon.dev', SENTINEL = 'synthetic-custom-vault-key';
 const config = {...DEFAULT_CUSTOM_IMAGE_CONFIGURATION, enabled: true, baseUrl: 'https://images.example.com/v1', model: 'custom-image'};

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createExportRangeController, exportRangeContextFields, rangeFields } from '../apps/web/src/export-range-state.ts';
-import { createExportPreflightController } from '../apps/web/src/export-preflight-state.js';
+import { createExportPreflightController } from '../apps/web/src/export-preflight-state.ts';
 import { TIMELINE_EXPORT_DEFAULT_SETTINGS, resolveTimelineExportDelivery } from '@mioon/contracts';
 import { component, nodes, textOf } from './fixtures/export-range-ui-harness.mjs';
 
@@ -142,7 +142,7 @@ test('named and unnamed export history display immutable range while absent and 
   }
 });
 
-const appSource = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const appSource = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 function actualAppFunction(start, end, env) {
   const first = appSource.indexOf(start), last = appSource.indexOf(end, first);
   assert.ok(first >= 0 && last > first);

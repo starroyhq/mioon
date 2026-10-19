@@ -5,12 +5,12 @@ import {Readable} from 'node:stream';
 import {createServer} from 'node:http';
 import {setTimeout as delay} from 'node:timers/promises';
 import {agentTimelineMoveTargetFromTimeline, agentTimelineGainTargetFromTimeline} from '@mioon/contracts';
-import {selectChatContext} from '../packages/business/src/agent/chat-context.mjs';
-import {AGENT_PRESETS} from '../packages/business/src/agent/presets.mjs';
-import {AGENT_READ_TOOL_PROFILES} from '../packages/business/src/agent/tool-wire.mjs';
-import {buildAgentRequest, createAgentGateway} from '../packages/business/src/agent/agent-gateway.mjs';
+import {selectChatContext} from '../packages/business/src/agent/chat-context.ts';
+import {AGENT_PRESETS} from '../packages/business/src/agent/presets.ts';
+import {AGENT_READ_TOOL_PROFILES} from '../packages/business/src/agent/tool-wire.ts';
+import {buildAgentRequest, createAgentGateway} from '../packages/business/src/agent/agent-gateway.ts';
 import {TIMELINE_GAIN_EDIT_TOOL_SYSTEM_INSTRUCTION, TIMELINE_GAIN_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-gain-tool-policy.ts';
-import {CHAT_SYSTEM_INSTRUCTION} from '../packages/business/src/agent/chat-policy.mjs';
+import {CHAT_SYSTEM_INSTRUCTION} from '../packages/business/src/agent/chat-policy.ts';
 
 const callId = 'call_gain_fixture', itemId = 'fc_separate_gain', name = 'mioon_propose_timeline_clip_gain';
 const args = JSON.stringify({gain: 0.4});

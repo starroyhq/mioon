@@ -6,14 +6,14 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {TIMELINE_EXPORT_DEFAULT_SETTINGS,isTimelineRenderRecord,isExportPreflightResponse} from '@mioon/contracts';
-import {installCurrentWorkspaceRestoreSchema, openStore} from '../packages/business/src/db.mjs';
-import {createServices,hash} from '../packages/business/src/services.mjs';
-import {createTimelinePreflightServices,timelineSnapshotHash} from '../packages/business/src/timeline-preflight.mjs';
-import {readTimelinePreflightSnapshot} from '../packages/business/src/timeline-sources.mjs';
-import {startWorker} from '../packages/business/src/jobs.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
-import {matchesRestoredExport,restoreExportIdentity} from '../packages/business/src/workspace-restore-exports.mjs';
-import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
+import {installCurrentWorkspaceRestoreSchema, openStore} from '../packages/business/src/db.ts';
+import {createServices,hash} from '../packages/business/src/services.ts';
+import {createTimelinePreflightServices,timelineSnapshotHash} from '../packages/business/src/timeline-preflight.ts';
+import {readTimelinePreflightSnapshot} from '../packages/business/src/timeline-sources.ts';
+import {startWorker} from '../packages/business/src/jobs.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
+import {matchesRestoredExport,restoreExportIdentity} from '../packages/business/src/workspace-restore-exports.ts';
+import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 
 const clone=value=>structuredClone(value),settings=()=>clone(TIMELINE_EXPORT_DEFAULT_SETTINGS);
 async function fixture(t){

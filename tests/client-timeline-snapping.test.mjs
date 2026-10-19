@@ -7,7 +7,7 @@ import {
   assetTimelineDuration,
   snapTimelinePosition,
   timelineDropPreview,
-} from '../apps/web/src/timeline-snapping.js';
+} from '../apps/web/src/timeline-snapping.ts';
 
 const videoTrack = { id: 'video-track', kind: 'video' };
 const audioTrack = { id: 'audio-track', kind: 'audio' };
@@ -348,8 +348,8 @@ test('missing drop dependencies are invalid, and previewing never mutates suppli
   assert.deepEqual(state, before);
 });
 
-const timelineSource = readFileSync(new URL('../apps/web/src/Timeline.jsx', import.meta.url), 'utf8');
-const appSource = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const timelineSource = readFileSync(new URL('../apps/web/src/Timeline.tsx', import.meta.url), 'utf8');
+const appSource = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 
 test('Timeline integration uses lane-relative fractional coordinates, live Alt state and an accessible toggle', () => {
   assert.match(timelineSource, /const pointerFrame=timelinePointerFrameAtElement\(event.clientX,event.currentTarget,pxFrame\)/);

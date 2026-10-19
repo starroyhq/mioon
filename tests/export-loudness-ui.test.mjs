@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 import { isTimelineRenderRecord } from '@mioon/contracts';
-import { pinNewWorkspaceIntent, workspaceOriginScope } from '../apps/web/src/workspace-origin.js';
+import { pinNewWorkspaceIntent, workspaceOriginScope } from '../apps/web/src/workspace-origin.ts';
 import * as loudnessState from '../apps/web/src/export-loudness-state.ts';
 import { context, fixture, report, unready, row, asset, projectId } from './helpers/export-loudness-ui-fixture.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));

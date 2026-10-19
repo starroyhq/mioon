@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createClient,discoverSchema} from '../packages/client/src/index.mjs';
+import {createClient,discoverSchema} from '../packages/client/src/index.ts';
 const input={projectId:'11111111-1111-4111-8111-111111111111',assetId:'22222222-2222-4222-8222-222222222222'};
 const response={...input,assetSha256:'a'.repeat(64),streamIndex:0,evidence:{primaries:'bt709',transfer:'bt709',matrix:'bt709',range:'limited',pixelFormat:'yuv420p',bitDepth:8,hdrMetadata:false},status:'compatible',reason:null};
 function fixture(value){let calls=0;const requests=[];return {client:createClient({env:{MIOON_BASE_URL:'http://127.0.0.1:9999',MIOON_TOKEN:'a'.repeat(64)},fetchImpl:async(url,options)=>{

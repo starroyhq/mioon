@@ -21,10 +21,10 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const toolName = operation => operation.replaceAll('.', '_');
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const sourceFiles = [
-  'apps/server/src/index.mjs', 'apps/cli/src/index.mjs', 'apps/mcp/src/index.mjs',
-  'packages/business/src/db.mjs', 'packages/business/src/services.mjs', 'packages/business/src/inspection.mjs',
-  'packages/business/src/inspection-query.mjs', 'packages/contracts/src/index.mjs',
-  'packages/contracts/src/inspection.mjs', 'packages/contracts/src/operation-effects.mjs', 'packages/client/src/index.mjs',
+  'apps/server/src/index.ts', 'apps/cli/src/index.ts', 'apps/mcp/src/index.ts',
+  'packages/business/src/db.ts', 'packages/business/src/services.ts', 'packages/business/src/inspection.ts',
+  'packages/business/src/inspection-query.ts', 'packages/contracts/src/index.ts',
+  'packages/contracts/src/inspection.ts', 'packages/contracts/src/operation-effects.ts', 'packages/client/src/index.ts',
   'tests/inspection-wire.test.mjs', 'tests/helpers/inspection-wire-fixture.mjs', 'tests/helpers/inspection-wire-lifecycle.mjs',
 ];
 const sourceSnapshot = async () => Object.fromEntries(await Promise.all(sourceFiles.map(async file =>
@@ -41,7 +41,7 @@ function environment(extra = {}) {
 
 async function runCli(args, env, expectedError, testSignal) {
   const {stdout, stderr, code, signal} = await runInspectionProcess(
-    ['--import', helper, path.join(repo, 'apps/cli/src/index.mjs'), ...args], {
+    ['--import', helper, path.join(repo, 'apps/cli/src/index.ts'), ...args], {
       cwd: repo, env: environment({...env, MIOON_INSPECTION_WIRE_TRACE: '1'}), signal: testSignal,
     });
   assert.equal(signal, null, `CLI must terminate normally: ${stderr}`);
@@ -122,7 +122,7 @@ async function backendFixture(t) {
 async function mcpFixture(t, env) {
   const client = new Client({name: 'inspection-wire-acceptance', version: '1.0.0'}, {capabilities: {}});
   const transport = new StdioClientTransport({command: process.execPath,
-    args: ['--import', helper, path.join(repo, 'apps/mcp/src/index.mjs')], cwd: repo, env: environment(env), stderr: 'pipe'});
+    args: ['--import', helper, path.join(repo, 'apps/mcp/src/index.ts')], cwd: repo, env: environment(env), stderr: 'pipe'});
   let stderr = '';
   transport.stderr?.setEncoding('utf8').on('data', chunk => { stderr += chunk; });
   t.after(() => client.close());

@@ -5,9 +5,9 @@ import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUT
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import { createAssetDispositionController, dispositionCounts, dispositionRow, matchesDisposition, filterLibraryAssets, dispositionKey, dispositionFilters } from '../apps/web/src/asset-disposition-state.js';
-import { assertMutationOwner, prepareMutation, validateMutationResponse, isMutationOperation, mutationNotApplied } from '../apps/web/src/mutation-submissions.js';
-import { clearPending, prepareSubmission, pendingForProject, readPending } from '../apps/web/src/submissions.js';
+import { createAssetDispositionController, dispositionCounts, dispositionRow, matchesDisposition, filterLibraryAssets, dispositionKey, dispositionFilters } from '../apps/web/src/asset-disposition-state.ts';
+import { assertMutationOwner, prepareMutation, validateMutationResponse, isMutationOperation, mutationNotApplied } from '../apps/web/src/mutation-submissions.ts';
+import { clearPending, prepareSubmission, pendingForProject, readPending } from '../apps/web/src/submissions.ts';
 
 const taskIntentModule = { exports: {} };
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
@@ -181,7 +181,7 @@ test('disposition receipts use asset ownership and exact keyed mutation recovery
   assert.deepEqual(readPending(projectId, entry.key), stored);
 });
 
-const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 test('actual App recovery replays the exact key and refreshes current marks separately from historical ACK', async t => {
   storage(t); let lost = true, refreshes = 0, markRefreshes = 0; const calls = [], busy = new Set();
   const input = { projectId, assetId: assetId(1), expectedRevision: 0, disposition: 'favorite' };
@@ -226,7 +226,7 @@ test('actual App annotation recovery preserves the exact session intent and rere
 
 const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
 function controlHarness() {
-  const source = readFileSync(new URL('../apps/web/src/AssetDispositionControls.jsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../apps/web/src/AssetDispositionControls.tsx', import.meta.url), 'utf8');
   const code = transformSync(source, { loader: 'jsx', format: 'cjs' }).code, slots = [];
   let cursor = 0, effects = []; const h = { visible: true };
   const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
@@ -258,7 +258,7 @@ test('mark controls are accessible and reject retained hidden, re-shown, project
 });
 
 test('shared library keeps an excluded source editable and resets filters without touching source selection or range scope', () => {
-  const source = readFileSync(new URL('../apps/web/src/AssetLibrary.jsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../apps/web/src/AssetLibrary.tsx', import.meta.url), 'utf8');
   const code = transformSync(source, { loader: 'jsx', format: 'cjs' }).code, module = { exports: {} };
   let local = { scope: `${projectId}:1`, value: 'favorite' }; const changes = [], slots = [], effects = new Map();
   let cursor = 0;
@@ -303,6 +303,6 @@ test('shared library keeps an excluded source editable and resets filters withou
   assert.doesNotMatch(source, /setQuickAssetId|setSelectedClipId|guardNavigation|inspectorEpoch|sourceRangeScope/);
   assert.equal((app.match(/<AssetLibrary /g) || []).length, 1);
   assert.match(app, /isMutationOperation\(entry.operation\) \|\| entry.operation.startsWith\('timeline\.'\)/);
-  const preferences = readFileSync(new URL('../apps/web/src/workspace-state.js', import.meta.url), 'utf8');
+  const preferences = readFileSync(new URL('../apps/web/src/workspace-state.ts', import.meta.url), 'utf8');
   assert.doesNotMatch(preferences, /dispositionFilter|assetDisposition/);
 });

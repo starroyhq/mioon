@@ -15,7 +15,7 @@ import {startServer} from '@mioon/server';
 import {schemas} from '@mioon/contracts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
-const cliPath = path.join(repo, 'apps/cli/src/index.mjs');
+const cliPath = path.join(repo, 'apps/cli/src/index.ts');
 const exec = promisify(execFile);
 const token = 'synthetic-v4-cli-token-never-live';
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -101,7 +101,7 @@ async function proxyTo(service) {
 }
 async function connectMcp(t, env) {
   const client = new Client({name:'cli-v4-cross-transport-tests', version:'1.0.0'}, {capabilities:{}});
-  const transport = new StdioClientTransport({command:process.execPath, args:[path.join(repo, 'apps/mcp/src/index.mjs')], cwd:repo, env:environment(env), stderr:'pipe'});
+  const transport = new StdioClientTransport({command:process.execPath, args:[path.join(repo, 'apps/mcp/src/index.ts')], cwd:repo, env:environment(env), stderr:'pipe'});
   transport.stderr?.resume();
   t.after(() => client.close());
   await client.connect(transport);

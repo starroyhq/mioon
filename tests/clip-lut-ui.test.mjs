@@ -8,11 +8,11 @@ import { createClipLutController, clipLutSourceIssue, clipLutSourceMessage, clip
 import { createClipLutRecovery, clipLutRecoveryKey, clipLutRecoveryMetadata } from '../apps/web/src/clip-lut-recovery.ts';
 import { clipDraftRaw, clipDraftPatch, createClipDraftController } from '../apps/web/src/clip-draft-state.ts';
 import { clipDraftRawSchema, clipDraftDiskSchema } from '../packages/contracts/src/local-drafts.ts';
-import { clipReplacementAcknowledged } from '../apps/web/src/clip-source-replacement.js';
+import { clipReplacementAcknowledged } from '../apps/web/src/clip-source-replacement.ts';
 import { DEFAULT_UI_PREFERENCES } from '../packages/contracts/src/ui-preferences.ts';
 import * as creationI18n from '../apps/web/src/creation-i18n.ts';
-import * as exportSettings from '../apps/web/src/export-settings-state.js';
-import * as sourceRanges from '../apps/web/src/source-range-state.js';
+import * as exportSettings from '../apps/web/src/export-settings-state.ts';
+import * as sourceRanges from '../apps/web/src/source-range-state.ts';
 import { i18nTestModule } from './helpers/i18n.ts';
 
 const id = n => `90000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -197,12 +197,12 @@ test('actual controls disclose whole-timeline adoption, source-ungraded status a
   assert.match(textOf(byId('clip-lut-domain-disclosure')), /小于 0 或大于 1/); assert.match(textOf(byId('clip-lut-domain-disclosure')), /转换仍会执行/);
   assert.equal(byId('clip-lut-file').props.accept, '.cube'); assert.equal(byId('clip-lut-strength').props.min, 0); assert.equal(byId('clip-lut-strength').props.max, 100);
   assert.equal(nodes(tree).filter(node => String(node.type).includes('button')).every(node => node.props.type === 'button'), true);
-  assert.match(readFileSync(new URL('../apps/web/src/TimelineInspector.jsx', import.meta.url), 'utf8'), /<ClipLutControls/);
+  assert.match(readFileSync(new URL('../apps/web/src/TimelineInspector.tsx', import.meta.url), 'utf8'), /<ClipLutControls/);
   assert.match(translate('zh-Hans', 'timeline.preview.sourceUnprocessed'), /未调色，不应用片段 LUT/);
 });
 
 test('actual source Preview visibly discloses unprocessed audio and image while rendered timeline output does not', () => {
-  const code = transformSync(readFileSync(new URL('../apps/web/src/Preview.jsx', import.meta.url), 'utf8'), {loader:'jsx', format:'cjs'}).code;
+  const code = transformSync(readFileSync(new URL('../apps/web/src/Preview.tsx', import.meta.url), 'utf8'), {loader:'jsx', format:'cjs'}).code;
   for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) {
     const noop = () => {}, module = {exports:{}};
     // Only render-phase wiring is exercised here; the existing playback and

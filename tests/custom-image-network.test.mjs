@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {Readable} from 'node:stream';
-import {createCompatibleImageJsonTransport, createImageJsonTransport, resolveCompatibleImageDestination} from '../packages/business/src/images/network.mjs';
-import {IMAGE_NETWORK_LIMITS} from '../packages/business/src/images/profiles.mjs';
+import {createCompatibleImageJsonTransport, createImageJsonTransport, resolveCompatibleImageDestination} from '../packages/business/src/images/network.ts';
+import {IMAGE_NETWORK_LIMITS} from '../packages/business/src/images/profiles.ts';
 
 const baseUrl = 'https://images.example/gateway/v1';
 const key = 'synthetic-custom-images-network-key';

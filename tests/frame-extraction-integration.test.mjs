@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import * as frame from '../apps/web/src/frame-extraction.js';
-import * as ranges from '../apps/web/src/source-range-state.js';
+import * as frame from '../apps/web/src/frame-extraction.ts';
+import * as ranges from '../apps/web/src/source-range-state.ts';
 
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), sourceId = id(2), taskId = id(3), resultId = id(4), sha256 = 'a'.repeat(64);

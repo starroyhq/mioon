@@ -4,7 +4,7 @@ import { createLanguageStore } from '../apps/web/src/i18n/language-store.ts';
 import { createI18nTestContext, message } from './helpers/i18n.ts';
 import { creationTestDependency } from './helpers/creation-i18n.ts';
 import * as nativeCloseSources from '../apps/web/src/native-close-sources.ts';
-import * as timing from '../apps/web/src/agent-timeline-context.js';
+import * as timing from '../apps/web/src/agent-timeline-context.ts';
 import * as gainContext from '../apps/web/src/agent-timeline-gain-context.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -12,11 +12,11 @@ import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
-import { workspaceOriginScope } from '../apps/web/src/workspace-origin.js';
+import { workspaceOriginScope } from '../apps/web/src/workspace-origin.ts';
 import { projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind } from '../apps/web/src/project-open-state.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
-import * as logic from '../apps/web/src/agent-chat.js';
-import * as toolLogic from '../apps/web/src/agent-tool-state.js';
+import * as logic from '../apps/web/src/agent-chat.ts';
+import * as toolLogic from '../apps/web/src/agent-tool-state.ts';
 
 const { createAgentChatClient, createAgentChatSession, createAgentChatReceipts, safeAgentChatSnapshot, safeAgentChatRun, readAgentChatSSE, agentChatCanSend, agentChatPromptIssue, agentChatErrorText } = logic;
 const projectId = 'project-one', instanceId = '11111111-1111-4111-8111-111111111111', nextInstance = '99999999-9999-4999-8999-999999999999';
@@ -179,7 +179,7 @@ test('late load, acknowledgement and stop cannot publish into a disposed project
   }
 });
 
-const source = readFileSync(new URL('../apps/web/src/AgentPanel.jsx', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../apps/web/src/AgentPanel.tsx', import.meta.url), 'utf8');
 const transformed = transformSync(source, { loader: 'jsx', format: 'cjs' }).code;
 const element = (type, props = {}, ...children) => { const properties = { ...props, children: children.length === 1 ? children[0] : children }; return typeof type === 'function' && type.name === 'AgentRunActivity' ? type(properties) : { type, props: properties }; };
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
@@ -204,7 +204,7 @@ function uiHarness(client, receipts = memoryReceipts(), languageStore) {
     if (id === './agent-chat.js') return { ...logic, createAgentChatSession: options => componentSession = logic.createAgentChatSession({ ...options, client, receipts, requestId: () => requestId }) };
     if (id === './agent-tool-state.js') return toolLogic;
     if (id === './AgentEditProposal.jsx') return { __esModule: true, default: 'AgentEditProposal' };
-    if (id === './AgentRunActivity.jsx') { const child = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/AgentRunActivity.jsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code)(child, child.exports, resolve); return child.exports; }
+    if (id === './AgentRunActivity.jsx') { const child = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/AgentRunActivity.tsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code)(child, child.exports, resolve); return child.exports; }
     if (id === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
     if (id === './icons.jsx') return { default: 'Icon' };
     if (id === './agent-chat-history.css') return {};
@@ -249,7 +249,7 @@ test('actual project change makes all previous close, submit, edit and terminal 
 });
 
 test('integration preserves settings entry, the shared right dock, bounded history and app-local controls', () => {
-  const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   assert.match(app + readFileSync(new URL('../apps/web/src/WorkbenchShell.tsx', import.meta.url), 'utf8'), /data-testid="agent-chat-open"/); assert.match(app, /data-testid="agent-settings-open"/); assert.match(app, /<AgentWorkspace[^>]*nativeSettingsScope={nativeSettingsScope} nativeCloseRegistry={nativeCloseRegistry\.current} navigationRegistry={settingsNavigation\.current} projectId={data.project\?\.id}/);
   assert.match(source, /from '\.\/WorkspaceControls\.jsx'/); assert.match(source, /data-testid="agent-chat-authorization-dialog"/);
   assert.match(source, /inspecting \? t\('agent.chat.inspectionScope'\)/);
@@ -443,7 +443,7 @@ test('inline hidden POST acknowledgement preserves original response without att
   assert.equal(f.session.getState().phase, 'detached'); assert.equal(f.session.getState().snapshot.runs[0].configuration.protocol, 'responses'); assert.equal(f.calls.some(call => call[0] === 'stream'), false); assert.equal(f.calls.filter(call => call[0] === 'start').length, 1); f.session.dispose();
 });
 
-const appSource = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const appSource = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const actualFunction = (begin, end) => { const start = appSource.indexOf(begin), stop = appSource.indexOf(end, start); assert.ok(start >= 0 && stop > start); return appSource.slice(start, stop).trim(); };
 const guardSource = actualFunction('  async function guardNavigation(', '  async function guardProjectNavigation(');
 const projectGuardSource = actualFunction('  async function guardProjectNavigation(', '  async function prepareSettingsDeparture(');
@@ -517,7 +517,7 @@ test('actual App navigation rejects late discard confirmation after a newer proj
   const mode = actualFunction('  async function changeMode(', '  function revealCanvas('); assert.match(mode, /await guardNavigation\(\)/); assert.doesNotMatch(mode, /agentDraft|setRightDockTab|setAgentPage/);
 });
 
-const workspaceSource = readFileSync(new URL('../apps/web/src/AgentWorkspace.jsx', import.meta.url), 'utf8');
+const workspaceSource = readFileSync(new URL('../apps/web/src/AgentWorkspace.tsx', import.meta.url), 'utf8');
 function workspaceHarness(exportName = 'default') {
   const slots = []; let cursor = 0, effects = [], visible = true;
   const react = { createElement: (type, props, ...children) => type === 'SettingsNavigationSlot' ? children[0](() => {}) : element(type, props, ...children), useRef: value => slots[cursor++] ||= { current: value }, useLayoutEffect(callback, deps) { const i = cursor++, old = slots[i]; if (old && depsEqual(deps, old.deps)) return; slots[i] = { deps, callback }; effects.push(i); } }; react.default = react;

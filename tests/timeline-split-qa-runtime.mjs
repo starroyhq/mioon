@@ -1,10 +1,10 @@
 /** Disposable synthetic browser fixture, normal authenticated backend only. */
 import path from 'node:path';
 import {mkdir,writeFile,access} from 'node:fs/promises';
-import {migrateData} from '../apps/desktop/scripts/migrate-data.mjs';
-import {startServer} from '../apps/server/src/index.mjs';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
+import {migrateData} from '../apps/desktop/scripts/migrate-data.ts';
+import {startServer} from '../apps/server/src/index.ts';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
 const runtime=path.resolve('evidence/split-clips/runtime'),dataDir=path.join(runtime,'workspace');
 await mkdir(runtime,{recursive:true});
 try{await access(path.join(dataDir,'workbench.sqlite'));}catch{await migrateData(path.resolve('examples/multitrack-project'),dataDir);}

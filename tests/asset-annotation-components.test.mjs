@@ -75,7 +75,7 @@ test('discard-all confirmation survives an unrelated dialog rerender', async () 
   assert.deepEqual(h.discarded, [1]);
 });
 test('actual AssetLibrary composes saved tag, type, name, disposition and unused filters, retaining unknown rows', async () => {
-  const dispositions = await import('../apps/web/src/asset-disposition-state.js');
+  const dispositions = await import('../apps/web/src/asset-disposition-state.ts');
   const projectId = 'project', ids = ['match', 'wrongTag', 'unknown', 'used', 'rejected', 'wrongType', 'wrongName', 'foreign'];
   const assets = ids.map(id => ({ id, projectId: id === 'foreign' ? 'foreign' : projectId, name: id === 'wrongName' ? 'other' : `needle ${id}`, mimeType: id === 'wrongType' ? 'audio/wav' : 'image/png', sizeBytes: 100 }));
   const state = { scope: 's', entries: Object.fromEntries(ids.map(id => [id, { phase: 'ready', row: { disposition: id === 'rejected' ? 'rejected' : 'favorite' } }])) };
@@ -83,7 +83,7 @@ test('actual AssetLibrary composes saved tag, type, name, disposition and unused
   let stateIndex = 0, captured;
   const react = { createElement: (type, props, ...children) => ({ type, props: props || {}, children }), useState: () => [ [{ scope: projectId, value: 'assets' }, { scope: 's', value: 'favorite' }, { scope: 'owner', value: 'tag' }][stateIndex++], () => {} ] };
   const module = { exports: {} }, primitives = new Proxy({}, { get: (_, key) => String(key) });
-  const code = transformSync(readFileSync(new URL('../apps/web/src/AssetLibrary.jsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code;
+  const code = transformSync(readFileSync(new URL('../apps/web/src/AssetLibrary.tsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code;
   Function('module', 'exports', 'require', code)(module, module.exports, name => {
     if (name === 'react') return react;
     if (name.includes('I18nProvider')) return { useI18n: () => ({ t: (key, params) => translate('en', key, params), renderMessage: value => renderMessage('en', value), formatNumber: value => String(value) }) };

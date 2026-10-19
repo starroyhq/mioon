@@ -7,15 +7,15 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { buildSync, transformSync } from 'esbuild';
-import { createWorkspacePreferences, durableWorkspaceState } from '../apps/web/src/workspace-preferences.js';
-import { defaultWorkspaceState } from '../apps/web/src/workspace-state.js';
+import { createWorkspacePreferences, durableWorkspaceState } from '../apps/web/src/workspace-preferences.ts';
+import { defaultWorkspaceState } from '../apps/web/src/workspace-state.ts';
 import { projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind } from '../apps/web/src/project-open-state.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
-import { workspaceOriginScope } from '../apps/web/src/workspace-origin.js';
+import { workspaceOriginScope } from '../apps/web/src/workspace-origin.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const componentPath = path.join(root, 'apps/web/src/TopbarSaveStatus.tsx');
-const app = readFileSync(path.join(root, 'apps/web/src/App.jsx'), 'utf8');
+const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
 // Exact shipped markup, copied before extraction from c3c10316347d30ed50b365442e78738267ac288a.
 // This oracle is deliberately independent of the implementation under test.
 const baselineMarkup = "<div className=\"topbar-sync\" title={lastSync ? `最近同步：${lastSync.toLocaleTimeString('zh-CN')}` : ''}><span className={`status-dot ${!online ? 'red' : Object.values(busy).some(Boolean) ? 'orange' : 'green'}`} />{!online ? '连接中断' : Object.values(busy).some(Boolean) ? '正在同步' : inspectorDirty || formatDirty ? '有未保存修改' : '已保存'}</div><div className=\"workspace-save-status\" data-testid=\"workspace-save-status\" data-phase={preferenceStatus.phase} role=\"status\">{['local', 'conflict', 'error'].includes(preferenceStatus.phase) ? <><span>{preferenceStatus.phase === 'conflict' ? '视图已在其他窗口更新' : '视图位置未同步'}</span>{preferenceStatus.phase === 'error' && preferenceStatus.canRetry && <Button variant=\"ghost\" className=\"text-button\" data-testid=\"retry-workspace-save\" onClick={() => preferencesRef.current.flush({ projectId: currentProject.current })}>重试</Button>}<Button variant=\"ghost\" className=\"text-button\" data-testid=\"reload-workspace-preferences\" onClick={reloadPreferences}>载入已保存视图</Button></> : preferenceStatus.pending ? <span>保存视图…</span> : null}</div>";

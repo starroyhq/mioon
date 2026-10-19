@@ -5,7 +5,7 @@ import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {FILE_RESPONSE_LIMITS} from '../apps/server/src/file-response.mjs';
+import {FILE_RESPONSE_LIMITS} from '../apps/server/src/file-response.ts';
 
 const fixture = fileURLToPath(new URL('./helpers/http-file-shutdown-process.mjs', import.meta.url));
 async function isolated(t, mode) {

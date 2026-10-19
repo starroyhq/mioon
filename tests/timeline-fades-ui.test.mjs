@@ -9,8 +9,8 @@ import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import * as audio from '../apps/web/src/clip-audio-state.js';
-import * as timelineFormat from '../apps/web/src/timeline-format-state.js';
+import * as audio from '../apps/web/src/clip-audio-state.ts';
+import * as timelineFormat from '../apps/web/src/timeline-format-state.ts';
 import * as clipDraft from '../apps/web/src/clip-draft-state.ts';
 import * as clipLut from '../apps/web/src/clip-lut-state.ts';
 import { createClipLutRecovery } from '../apps/web/src/clip-lut-recovery.ts';
@@ -263,13 +263,13 @@ test('keyed project unmount fences late fade acknowledgments and retained form s
   await retained({ preventDefault() {} });
   assert.equal(calls.length, 1); assert.equal(old.dirtyEvents.length, oldDirtyCount); assert.equal(old.dirtyEvents.at(-1), false);
   assert.equal(next.find('clip-fade-out').props.value, '8'); assert.equal(next.dirtyEvents.at(-1), true);
-  const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   assert.match(source, /TimelineInspector key=\{displayedClipInspector.key\}/);
   assert.match(source, /key: `\$\{data\.project\?\.id\}:\$\{chosenClip\.id\}:\$\{inspectorEpoch\}`/);
 });
 
 test('source playback copy stays explicit about dry audio and the shared render path', () => {
-  const source = readFileSync(new URL('../apps/web/src/Preview.jsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../apps/web/src/Preview.tsx', import.meta.url), 'utf8');
   assert.match(source, /timeline.preview.sourceUnprocessed/); assert.match(i18nCore.translate('zh-Hans', 'timeline.preview.sourceUnprocessed'), /源素材原声 · 不应用片段音量或淡入\/淡出/);
   assert.match(source, /timeline.preview.renderDetail/); assert.match(i18nCore.translate('zh-Hans', 'timeline.preview.renderDetail'), /音频淡入\/淡出均使用与导出相同的本地渲染/);
 });

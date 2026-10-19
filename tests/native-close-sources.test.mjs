@@ -1,6 +1,6 @@
 import * as i18n from '../packages/i18n/src/index.ts';
 import * as creationI18n from '../apps/web/src/creation-i18n.ts';
-import * as comfySettings from '../apps/web/src/comfy-image-settings.js';
+import * as comfySettings from '../apps/web/src/comfy-image-settings.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -11,11 +11,11 @@ import { transformSync } from 'esbuild';
 import * as sources from '../apps/web/src/native-close-sources.ts';
 import * as imageEditIntent from '../apps/web/src/image-edit-intent.ts';
 import { createNativeCloseRegistry } from '../apps/web/src/native-close-state.ts';
-import * as chat from '../apps/web/src/agent-chat.js';
-import * as edits from '../apps/web/src/agent-edits.js';
-import * as image from '../apps/web/src/image-generation.js';
-import * as toolState from '../apps/web/src/agent-tool-state.js';
-import * as timing from '../apps/web/src/agent-timeline-context.js';
+import * as chat from '../apps/web/src/agent-chat.ts';
+import * as edits from '../apps/web/src/agent-edits.ts';
+import * as image from '../apps/web/src/image-generation.ts';
+import * as toolState from '../apps/web/src/agent-tool-state.ts';
+import * as timing from '../apps/web/src/agent-timeline-context.ts';
 import * as contracts from '@mioon/contracts';
 import { createAgentAuthorizationUiMock } from './helpers/agent-authorization-ui.mjs';
 

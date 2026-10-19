@@ -7,7 +7,7 @@ import {
  validateGenerationInput,buildAdapterPlan,getGenerationIssue,getGenerationProfileIssue,
  SUBJECT_GENERATION_KINDS,subjectReferenceSchema,isSubjectReference,getSubjectGenerationSnapshotIssue,isSubjectGenerationResponse,isSubjectGenerationRetryResponse,
  FRAME_PROFILE_ID,FRAME_SELECTION_RULE,
-} from '../packages/contracts/src/index.mjs';
+} from '../packages/contracts/src/index.ts';
 
 const id=()=>randomUUID(),hash='a'.repeat(64),date='2026-10-11T00:00:00Z';
 const projectId=id(),shotId=id(),subjectId=id(),subjectVersionId=id(),assetId=id();

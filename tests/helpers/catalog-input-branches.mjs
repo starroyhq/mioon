@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {schemas} from '@mioon/contracts';
-import {jsonSchema} from '../../packages/client/src/index.mjs';
+import {jsonSchema} from '../../packages/client/src/index.ts';
 
 // Keep the union tree: each branch must match its corresponding Zod object,
 // in order. Never merge properties or skip an unfamiliar input schema.

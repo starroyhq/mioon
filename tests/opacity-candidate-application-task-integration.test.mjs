@@ -14,7 +14,7 @@ let childAttempts=0,codecCalls=0;
 const forbidden=()=>{childAttempts++;throw Error('No native child is allowed in application task integration');};
 for(const name of ['spawn','spawnSync','exec','execSync','execFile','execFileSync','fork'])mock.method(cp,name,forbidden);
 syncBuiltinESMExports();
-const runtimeUrl=new URL('../packages/business/src/media-runtime.mjs',import.meta.url).href;
+const runtimeUrl=new URL('../packages/business/src/media-runtime.ts',import.meta.url).href;
 const actualUrl=runtimeUrl+'?opacity-application-tasks-actual';
 const hookKey=Symbol.for('mioon.test.opacity-application-tasks-codec');
 globalThis[hookKey]=async(command,argv,options={})=>{
@@ -25,9 +25,9 @@ const hooks=registerHooks({load(url,context,next){return url===runtimeUrl?{forma
  source:`export * from ${JSON.stringify(actualUrl)};export const run=(...args)=>globalThis[Symbol.for("mioon.test.opacity-application-tasks-codec")](...args);`}:next(url,context);}});
 const {openNewOpacityCandidateApplicationStore,openOpacityCandidateStore}=await import('../packages/business/src/opacity-candidate-store.ts');
 const {createOpacityCandidateApplicationServices,createOpacityCandidateServices}=await import('../packages/business/src/opacity-candidate-services.ts');
-const {createEditTasks}=await import('../packages/business/src/edit-tasks.mjs');
+const {createEditTasks}=await import('../packages/business/src/edit-tasks.ts');
 const {isOpacityApplicationMutationResponse,isOpacityApplicationTask}=await import('../packages/contracts/src/timeline-opacity-persistence.ts');
-const {onMediaProcess}=await import('../packages/business/src/media-processes.mjs');
+const {onMediaProcess}=await import('../packages/business/src/media-processes.ts');
 const media=[],off=onMediaProcess(event=>media.push(event));
 after(()=>{off();hooks.deregister();delete globalThis[hookKey];mock.restoreAll();syncBuiltinESMExports();assert.equal(childAttempts,0);assert.deepEqual(media,[]);});
 const curve=()=>({profileId:'mioon-clip-linear-opacity-v1',points:[{frame:0,opacity:.25},{frame:20,opacity:1}]});

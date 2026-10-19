@@ -10,16 +10,16 @@ import { buildSync, transformSync } from 'esbuild';
 import * as opening from '../apps/web/src/project-open-state.ts';
 import { editorInitialSelection, revealNativeProjects } from '../apps/web/src/editor-native-window.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
-import { workspaceOriginScope, retainWorkspaceIdentity } from '../apps/web/src/workspace-origin.js';
-import { validateProjectWorkspace } from '../apps/web/src/restored-workspace.js';
-import { defaultWorkspaceState } from '../apps/web/src/workspace-state.js';
+import { workspaceOriginScope, retainWorkspaceIdentity } from '../apps/web/src/workspace-origin.ts';
+import { validateProjectWorkspace } from '../apps/web/src/restored-workspace.ts';
+import { defaultWorkspaceState } from '../apps/web/src/workspace-state.ts';
 import { chooseInitialProject, retainLastProjectScope, createProjectBootGuard, assertLastProjectBootIdentity } from '../apps/web/src/last-project-navigation.ts';
 import {observeClipAudioRoleCapability} from '../apps/web/src/clip-audio-role-state.ts';
 import {canEditTimelineAudioRole, isWorkspaceRestoreInspection} from '@mioon/contracts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 // The same assertions can run against an independently extracted baseline App.
-const app = readFileSync(process.env.MIOON_HOME_APP_SOURCE || join(root, 'apps/web/src/App.jsx'), 'utf8');
+const app = readFileSync(process.env.MIOON_HOME_APP_SOURCE || join(root, 'apps/web/src/App.tsx'), 'utf8');
 const id = n => `77000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projects = [1, 2].map(n => ({ id: id(n), name: `项目 ${n}`, updatedAt: '2026-10-13T00:00:00.000Z' }));
 const snapshot = projectId => ({ project: { id: projectId, name: '已核对项目' }, shots: [], nodes: [], edges: [], assets: [], versions: [], jobs: [], exports: [] });

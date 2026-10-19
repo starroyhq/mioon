@@ -7,7 +7,7 @@ import { createClipDraftController } from '../apps/web/src/clip-draft-state.ts';
 
 // Execute the actual App callbacks with the real local-draft controller. Only
 // the persistence transport and React state setters are synthetic boundaries.
-const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 function section(start, end) {
   const at = app.indexOf(start), until = app.indexOf(end, at + start.length);
   assert.ok(at >= 0 && until > at, `Missing actual App extraction: ${start}`);

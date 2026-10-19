@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import builderConfig from '../apps/desktop/builder-config.cjs';
-import { secureWebPreferences } from '../apps/desktop/src/security.mjs';
+import { secureWebPreferences } from '../apps/desktop/src/security.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const bytes = name => readFile(path.join(root, name));
@@ -26,7 +26,7 @@ test('brand PNG dimensions and alpha intent match their fixed local consumers', 
   const component = await text('apps/web/src/BrandMark.tsx');
   assert.match(component, /new URL\('\.\/assets\/mioon-mark\.png', import\.meta\.url\)/);
   assert.match(component, /alt="" width=\{1254\} height=\{1254\} draggable=\{false\}/);
-  const app = await text('apps/web/src/App.jsx');
+  const app = await text('apps/web/src/App.tsx');
   assert.equal((app.match(/<span className="brand-mark"><BrandMark \/>/g) || []).length, 1, 'loading keeps the local PNG mark');
   assert.match(app, /className="boot-page"[\s\S]*?<span className="brand-mark"><BrandMark \/>/);
   assert.match(app, /<WorkbenchTopbar brand=\{<a[^>]+className="brand"[\s\S]*?<span className="brand-name">Mioon<\/span>/);
@@ -58,12 +58,12 @@ test('both desktop channels package brand assets without dropping preload or iso
     assert.ok(config.files.includes('preload.cjs')); assert.ok(config.files.includes('icons/**/*'));
     assert.ok(config.files.includes('!node_modules/**/*')); assert.equal(config.publish, null);
   }
-  const build = await text('apps/desktop/scripts/build.mjs');
+  const build = await text('apps/desktop/scripts/build.ts');
   assert.match(build, /await cp\(path\.join\(desktop, 'resources\/icon\.png'\), path\.join\(output, 'icons\/icon\.png'\)\)/);
 });
 
 test('actual shared window factory adds the local icon while retaining the secure preload and owned session', async () => {
-  const source = await text('apps/desktop/src/main.mjs');
+  const source = await text('apps/desktop/src/main.ts');
   const factory = source.match(/createWindow: (\(\) => new BrowserWindow\(\{[\s\S]+?\}\)),\n\s+prepareWindow:/)?.[1];
   assert.ok(factory);
   for (const platform of ['darwin', 'linux', 'win32']) {
@@ -91,7 +91,7 @@ test('actual shared window factory adds the local icon while retaining the secur
 });
 
 test('current package inspection accepts icons while frozen historical V3 still rejects them', async () => {
-  const source = await text('apps/desktop/scripts/inspect-package.mjs');
+  const source = await text('apps/desktop/scripts/inspect-package.ts');
   const selection = source.slice(source.indexOf('const allowed = new Set('), source.indexOf('for (const file of files)'));
   for (const historicalV3 of [false, true]) {
     const allowed = Function('historicalV3', `${selection}; return allowed;`)(historicalV3);

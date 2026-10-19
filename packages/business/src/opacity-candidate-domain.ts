@@ -19,11 +19,11 @@ interface Graph {asset(id: unknown): unknown; clipSource(clip: unknown): unknown
 interface Timeline extends Value {id: string; projectId: string; revision: number; createdAt: string; updatedAt: string; durationFrames: number; tracks: Value[]; clips: Value[]}
 const require = createRequire(import.meta.url);
 // Literal fixed dependencies, never selected by caller, RPC or stored data.
-const inspection: unknown = require('./inspection.mjs');
-const inputs: unknown = require('./timeline-inputs.mjs');
-const recovery: unknown = require('./timeline-recovery.mjs');
+const inspection: unknown = require('./inspection.ts');
+const inputs: unknown = require('./timeline-inputs.ts');
+const recovery: unknown = require('./timeline-recovery.ts');
 const colour: unknown = require('./timeline-colour-business.ts');
-const format: unknown = require('./timeline-format-receipts.mjs');
+const format: unknown = require('./timeline-format-receipts.ts');
 const object = (value: unknown): value is Value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const own = (value: object, key: PropertyKey): boolean => Object.hasOwn(value, key);
 const uuid = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);

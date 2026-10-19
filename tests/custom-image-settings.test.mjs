@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCipheriv, createDecipheriv, randomBytes} from 'node:crypto';
 import {DEFAULT_IMAGE_CONFIGURATION, DEFAULT_CUSTOM_IMAGE_CONFIGURATION, CUSTOM_IMAGE_SETTINGS_NAMESPACE, IMAGE_SETTINGS_NAMESPACE,
-  isCustomImageSettingsResult} from '../packages/contracts/src/image-settings.mjs';
+  isCustomImageSettingsResult} from '../packages/contracts/src/image-settings.ts';
 import {createImageSettings, createCustomImageSettings, parseCustomImageConfiguration, parseCustomImageSettingsUpdate,
   sanitizeCustomImageSettingsResult, sanitizeCustomImageCredentialResult, validateImageSettingsEnvelope,
   validateCustomImageSettingsEnvelope, validateImageSecretPlaintext, IMAGE_CREDENTIAL_ACQUIRE,
-  IMAGE_SETTINGS_ASSERT_CURRENT, IMAGE_SETTINGS_READ_CURRENT} from '../packages/business/src/images/settings.mjs';
+  IMAGE_SETTINGS_ASSERT_CURRENT, IMAGE_SETTINGS_READ_CURRENT} from '../packages/business/src/images/settings.ts';
 
 const SENTINEL = 'synthetic-custom-images-key';
 const config = (changes = {}) => ({...structuredClone(DEFAULT_CUSTOM_IMAGE_CONFIGURATION), enabled: true,

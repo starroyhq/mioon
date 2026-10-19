@@ -5,14 +5,14 @@ import {
   getCapabilityProfile, getGenerationProfileRegion, validateGenerationInput,
   buildAdapterPlan, encodedImageDataUriBytes, evaluateCapabilityLifecycle,
   getGenerationProfileIssue, getGenerationIssue, findModelCapabilities, schemas,
-} from '../packages/contracts/src/index.mjs';
-import {createMockProvider} from '../packages/business/src/providers/mock.mjs';
-import {createRunwayProvider} from '../packages/business/src/providers/runway.mjs';
-import {createArkProvider} from '../packages/business/src/providers/ark.mjs';
-import {createVeoProvider} from '../packages/business/src/providers/veo.mjs';
-import {createMinimaxProvider} from '../packages/business/src/providers/minimax.mjs';
-import {createViduProvider} from '../packages/business/src/providers/vidu.mjs';
-import {normalizedCapabilities} from '../packages/business/src/provider-registry.mjs';
+} from '../packages/contracts/src/index.ts';
+import {createMockProvider} from '../packages/business/src/providers/mock.ts';
+import {createRunwayProvider} from '../packages/business/src/providers/runway.ts';
+import {createArkProvider} from '../packages/business/src/providers/ark.ts';
+import {createVeoProvider} from '../packages/business/src/providers/veo.ts';
+import {createMinimaxProvider} from '../packages/business/src/providers/minimax.ts';
+import {createViduProvider} from '../packages/business/src/providers/vidu.ts';
+import {normalizedCapabilities} from '../packages/business/src/provider-registry.ts';
 
 const asOf='2026-10-10';
 const reference=(patch={})=>({role:'first_frame',assetId:'managed-image-a',mimeType:'image/png',sizeBytes:1024,sha256:'a'.repeat(64),width:720,height:1280,...patch});

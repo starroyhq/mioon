@@ -8,9 +8,9 @@ import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {openStore, createServices} from '@mioon/business';
 import {deriveAgentEndpoint} from '@mioon/contracts';
-import {createAgentSettings, AGENT_CREDENTIAL_ACQUIRE} from '../packages/business/src/agent/settings.mjs';
-import {createChatRuntime} from '../packages/business/src/agent/chat-runtime.mjs';
-import {parseReadToolArguments, READ_TOOL_CATALOG_HASH} from '../packages/business/src/agent/read-tool-policy.mjs';
+import {createAgentSettings, AGENT_CREDENTIAL_ACQUIRE} from '../packages/business/src/agent/settings.ts';
+import {createChatRuntime} from '../packages/business/src/agent/chat-runtime.ts';
+import {parseReadToolArguments, READ_TOOL_CATALOG_HASH} from '../packages/business/src/agent/read-tool-policy.ts';
 
 function toolDone(protocol, name = 'mioon_project_inspect', argumentsJson = '{}') {
   const id = 'call_synthetic_1', toolCall = {id, name, arguments: JSON.parse(argumentsJson), argumentsJson,

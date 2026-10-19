@@ -4,8 +4,8 @@ import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
-import { timelineHistoryState } from '../apps/web/src/timeline-history.js';
-import { timelineHistoryActionForKey } from '../apps/web/src/timeline-keyboard.js';
+import { timelineHistoryState } from '../apps/web/src/timeline-history.ts';
+import { timelineHistoryActionForKey } from '../apps/web/src/timeline-keyboard.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const entry = (id, operation = 'timeline.clip.update') => ({ id, operation, createdAt: '2026-10-09T12:00:00.000Z' });
@@ -133,7 +133,7 @@ test('history controls render shared Base UI buttons with disabled states, label
 });
 
 test('App invalidates history around mutation dispatch and uses the common refresh/recovery path', () => {
-  const source = readFileSync(resolve(root, 'apps/web/src/App.jsx'), 'utf8');
+  const source = readFileSync(resolve(root, 'apps/web/src/App.tsx'), 'utf8');
   assert.match(source, /invalidateHistory\(\);\s*dispatched = true;\s*const result = await rpc\(operation, input, invocation\);\s*invalidateHistory\(\);/);
   assert.match(source, /if \(dispatched\) invalidateHistory\(\);/);
   assert.match(source, /\+\+requestCounter\.current;\s*dataRef\.current = \{ \.\.\.dataRef\.current, timelineHistory: null \}/);

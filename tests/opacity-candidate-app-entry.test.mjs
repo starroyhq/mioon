@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
 import * as contracts from '@mioon/contracts';
-import {createEditTaskClient} from '../apps/web/src/edit-task-client.js';
+import {createEditTaskClient} from '../apps/web/src/edit-task-client.ts';
 import {createOpacityCandidateApplication, readOpacityCandidateApplication} from '../apps/web/src/opacity-candidate-application.ts';
 import {LOCALES, translate} from '../packages/i18n/src/index.ts';
 
-const source = readFileSync(new URL('../apps/web/src/main.jsx', import.meta.url), 'utf8');
-const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../apps/web/src/main.tsx', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const element = (type, props, ...children) => ({type, props: {...props, children}});
 const nodes = value => !value || typeof value !== 'object' ? [] : Array.isArray(value) ? value.flatMap(nodes) : [value, ...nodes(value.props?.children)];
 
@@ -95,7 +95,7 @@ test('candidate App binds the actual task lane, Inspector v3 client and render r
 });
 
 test('candidate Inspector describes saved preview/export behavior in all supported languages', () => {
-  const inspector = readFileSync(new URL('../apps/web/src/TimelineInspector.jsx', import.meta.url), 'utf8');
+  const inspector = readFileSync(new URL('../apps/web/src/TimelineInspector.tsx', import.meta.url), 'utf8');
   assert.match(inspector, /t\('opacity\.envelope\.renderSaved'\)/);
   assert.doesNotMatch(inspector, /t\('opacity\.envelope\.renderPending'\)/);
   for (const locale of LOCALES) {

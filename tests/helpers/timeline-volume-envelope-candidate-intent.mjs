@@ -1,8 +1,8 @@
 /** Dormant Node-only candidate admission. No package export, storage or dispatch. */
 import {isProxy} from 'node:util/types';
 import {createHash} from 'node:crypto';
-import {schemas} from '../../packages/contracts/src/index.mjs';
-import {isEditTask, EDIT_TASK_LIMITS} from '../../packages/contracts/src/edit-tasks.mjs';
+import {schemas} from '../../packages/contracts/src/index.ts';
+import {isEditTask, EDIT_TASK_LIMITS} from '../../packages/contracts/src/edit-tasks.ts';
 import {validateVolumeEnvelope} from '../../packages/contracts/src/timeline-volume-envelope.ts';
 
 const own = (v,k) => Object.hasOwn(v,k);

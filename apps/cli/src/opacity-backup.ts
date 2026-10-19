@@ -83,7 +83,7 @@ function help(topic: unknown, locale: Locale) {
 /** Import by runtime string: the legacy entry has top-level await, so require()
  * cannot load it. Unknown plus checked exports avoids widening the JS typecheck. */
 async function sharedHelpers() {
-  const moduleName: string = './backup.mjs';
+  const moduleName: string = './backup.ts';
   const module: unknown = await import(moduleName);
   if (!object(module)) throw new Error('Offline CLI helpers unavailable.');
   const parse: unknown = module.parseBackupArguments, safe: unknown = module.safeBackupCliError, write: unknown = module.writeBackupCliOutput;

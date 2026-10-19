@@ -5,9 +5,9 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {setTimeout as delay} from 'node:timers/promises';
 import {createTimelineAudioContinuousDecoder} from '../packages/business/src/timeline-audio-continuous-decoder.ts';
-import {run, runStreamingWithBackpressure, checkMediaEffect} from '../packages/business/src/media-runtime.mjs';
-import {withProbePermit} from '../packages/business/src/media-probe.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
+import {run, runStreamingWithBackpressure, checkMediaEffect} from '../packages/business/src/media-runtime.ts';
+import {withProbePermit} from '../packages/business/src/media-probe.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 
 function wav() {
   const samples = 9600, bytes = Buffer.alloc(44 + samples * 4);

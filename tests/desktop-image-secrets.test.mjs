@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {randomUUID, createCipheriv, createDecipheriv} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
-import {createDesktopSecretCodec} from '../apps/desktop/src/secret-store.mjs';
-import {createDesktopImageSecretCodec} from '../apps/desktop/src/image-secret-store.mjs';
-import {createImageSecretBroker, createImageSecretClient, MAX_IMAGE_SECRET_MESSAGE_BYTES} from '../apps/desktop/src/image-secret-broker.mjs';
-import {BackendSupervisor} from '../apps/desktop/src/supervisor.mjs';
-import {createImageSettings, IMAGE_CREDENTIAL_ACQUIRE} from '../packages/business/src/images/settings.mjs';
-import {DEFAULT_IMAGE_CONFIGURATION, IMAGE_SETTINGS_NAMESPACE} from '../packages/contracts/src/image-settings.mjs';
+import {createDesktopSecretCodec} from '../apps/desktop/src/secret-store.ts';
+import {createDesktopImageSecretCodec} from '../apps/desktop/src/image-secret-store.ts';
+import {createImageSecretBroker, createImageSecretClient, MAX_IMAGE_SECRET_MESSAGE_BYTES} from '../apps/desktop/src/image-secret-broker.ts';
+import {BackendSupervisor} from '../apps/desktop/src/supervisor.ts';
+import {createImageSettings, IMAGE_CREDENTIAL_ACQUIRE} from '../packages/business/src/images/settings.ts';
+import {DEFAULT_IMAGE_CONFIGURATION, IMAGE_SETTINGS_NAMESPACE} from '../packages/contracts/src/image-settings.ts';
 
 const SENTINEL = 'synthetic-images-key-never-live';
 const AGENT_SENTINEL = 'synthetic-agent-key-never-live';
@@ -296,9 +296,9 @@ for (const platform of ['linux', 'darwin']) test('utility engine persists only c
 });
 
 test('desktop wiring adds no renderer capability and leaves settings ownership in the utility', async () => {
-  const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
-  const backend = await readFile(new URL('../apps/desktop/src/backend.mjs', import.meta.url), 'utf8');
-  const broker = await readFile(new URL('../apps/desktop/src/image-secret-broker.mjs', import.meta.url), 'utf8');
+  const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
+  const backend = await readFile(new URL('../apps/desktop/src/backend.ts', import.meta.url), 'utf8');
+  const broker = await readFile(new URL('../apps/desktop/src/image-secret-broker.ts', import.meta.url), 'utf8');
   assert.match(main, /createDesktopImageSecretCodec\(\{ safeStorage, appId: identity\.appId \}\)/);
   assert.doesNotMatch(main, /createImageSettings\(/);
   assert.match(backend, /createImageSecretClient\(\{ port: process\.parentPort \}\)/);

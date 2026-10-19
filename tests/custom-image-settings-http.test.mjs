@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Readable} from 'node:stream';
-import {createImageHttp} from '../apps/server/src/image-http.mjs';
-import {createImageSettings, createCustomImageSettings} from '../packages/business/src/images/settings.mjs';
-import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION, DEFAULT_IMAGE_CONFIGURATION} from '../packages/contracts/src/image-settings.mjs';
+import {createImageHttp} from '../apps/server/src/image-http.ts';
+import {createImageSettings, createCustomImageSettings} from '../packages/business/src/images/settings.ts';
+import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION, DEFAULT_IMAGE_CONFIGURATION} from '../packages/contracts/src/image-settings.ts';
 const configuration = {...DEFAULT_CUSTOM_IMAGE_CONFIGURATION, enabled: true, baseUrl: 'https://images.example.com/v1', model: 'custom-image'};
 const SENTINEL = 'synthetic-http-private-key';
 const memory = () => { let stored = null; return {load: async () => structuredClone(stored), save: async value => { stored = structuredClone(value); }}; };

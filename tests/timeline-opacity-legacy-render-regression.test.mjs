@@ -13,7 +13,7 @@ import {createHash} from 'node:crypto';
 // Its baseline is application-owned local Git source with a pinned pre-seam hash.
 // Media is never spawned: all subprocess entry points fail closed after Git read.
 const baselineCommit = '812d18a9d493f01f94235bd4f424b4e17e742ad8';
-const rendererPath = 'packages/business/src/timeline-media.mjs';
+const rendererPath = 'packages/business/src/timeline-media.ts';
 const baselineHash = 'b89728d7508ea1ca0d2011c3fad710722411993bd8a0989553167733bf343dde';
 const repo = fileURLToPath(new URL('../', import.meta.url));
 const rendererUrl = new URL('../' + rendererPath, import.meta.url).href;
@@ -29,8 +29,8 @@ syncBuiltinESMExports();
 
 const runtimeKey = Symbol.for('mioon.test.opacity-legacy-render-regression');
 const runtimeExpression = 'globalThis[Symbol.for("mioon.test.opacity-legacy-render-regression")]';
-const mediaUrl = new URL('../packages/business/src/media.mjs', import.meta.url).href;
-const mediaRuntimeUrl = new URL('../packages/business/src/media-runtime.mjs', import.meta.url).href;
+const mediaUrl = new URL('../packages/business/src/media.ts', import.meta.url).href;
+const mediaRuntimeUrl = new URL('../packages/business/src/media-runtime.ts', import.meta.url).href;
 const imageStageUrl = new URL('../packages/business/src/timeline-image-staging.ts', import.meta.url).href;
 const actualRuntimeUrl = mediaRuntimeUrl + '?opacity-legacy-actual-runtime';
 const actualMediaUrl = mediaUrl + '?opacity-legacy-actual-media';
@@ -59,9 +59,9 @@ const [currentRenderer, oldRenderer, contracts, colour, inputs, dbModule, schema
   restore41, databaseHelpers, imageFixtures, imageAdmission] = await Promise.all([
   import(rendererUrl), import(baselineUrl), import('@mioon/contracts'),
   import('../packages/contracts/src/timeline-colour.ts'),
-  import('../packages/business/src/timeline-inputs.mjs'),
-  import('../packages/business/src/db.mjs'),
-  import('../packages/business/src/workspace-fixed-schema.mjs'),
+  import('../packages/business/src/timeline-inputs.ts'),
+  import('../packages/business/src/db.ts'),
+  import('../packages/business/src/workspace-fixed-schema.ts'),
   import('../packages/business/src/workspace-schema-v26.ts'),
   import('../packages/business/src/workspace-schema-v28.ts'),
   import('../packages/business/src/workspace-schema-v30.ts'),

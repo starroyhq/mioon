@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {randomUUID, randomBytes, createCipheriv, createDecipheriv} from 'node:crypto';
 import {setImmediate as turn} from 'node:timers/promises';
-import {createAgentSettings, AGENT_CREDENTIAL_ACQUIRE} from '../packages/business/src/agent/settings.mjs';
-import {createAgentSettingsBroker, createAgentSettingsClient} from '../apps/desktop/src/secret-broker.mjs';
+import {createAgentSettings, AGENT_CREDENTIAL_ACQUIRE} from '../packages/business/src/agent/settings.ts';
+import {createAgentSettingsBroker, createAgentSettingsClient} from '../apps/desktop/src/secret-broker.ts';
 
 const SECRET = 'SYNTHETIC_ACQUISITION_KEY';
 function codec() {

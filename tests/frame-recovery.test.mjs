@@ -9,11 +9,11 @@ import {fileURLToPath} from 'node:url';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createFrameServices,safeFrameServiceError} from '../packages/business/src/frames.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createFrameServices,safeFrameServiceError} from '../packages/business/src/frames.ts';
 import {AppError} from '@mioon/contracts';
-import {spawnMedia,hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.mjs';
-import {FRAME_PROFILE_ID,FRAME_SELECTION_RULE,FRAME_LIMITS,canonicalFrameInput} from '../packages/contracts/src/frame-extraction.mjs';
+import {spawnMedia,hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.ts';
+import {FRAME_PROFILE_ID,FRAME_SELECTION_RULE,FRAME_LIMITS,canonicalFrameInput} from '../packages/contracts/src/frame-extraction.ts';
 
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex'),error=code=>cause=>cause.code===code&&!JSON.stringify(cause).includes('PRIVATE_SENTINEL');
 const deferred=()=>{let resolve;const promise=new Promise(yes=>{resolve=yes;});return {promise,resolve};};

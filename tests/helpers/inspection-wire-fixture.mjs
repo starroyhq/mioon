@@ -93,7 +93,7 @@ const secretFields = () => ({relativePath: `/private/${PRIVATE}`, url: `https://
   dataBase64: PRIVATE, bytes: PRIVATE, providerJobId: PRIVATE, snapshot: {secret: PRIVATE}, secret: PRIVATE, apiKey: PRIVATE});
 
 export async function seedInspectionStore(root) {
-  const {openStore} = await import('../../packages/business/src/db.mjs');
+  const {openStore} = await import('../../packages/business/src/db.ts');
   const store = openStore(root), {put, db} = store;
   try {
     const project = id => ({id, name: id === IDS.project ? HOSTILE : `Synthetic project ${id.slice(-2)}`, description: HOSTILE,
@@ -167,7 +167,7 @@ export async function seedInspectionStore(root) {
     db.prepare('INSERT INTO workspace_preferences VALUES(?,?,?)').run(IDS.project, 1, JSON.stringify({privateFixture: PRIVATE}));
     // All chat journal tables contain terminal synthetic history; inspection
     // must neither read it into DTOs nor revise it or its quota accounting.
-    const {chatThreadId} = await import('../../packages/business/src/agent/chat-journal.mjs');
+    const {chatThreadId} = await import('../../packages/business/src/agent/chat-journal.ts');
     const threadId = chatThreadId(IDS.project), requestId = uuid(910), runId = uuid(911);
     const run = {id: runId, projectId: IDS.project, threadId, requestId, status: 'completed', userText: PRIVATE,
       assistantText: PRIVATE, lastEventId: 1, modelRequestId: uuid(912), modelRequestState: 'completed', modelRequestStartedAt: NOW,
@@ -195,7 +195,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const root = process.env.MIOON_DATA_DIR;
   if (!root) throw Error('Isolated fixture data directory is required');
   if (!fs.existsSync(path.join(root, 'workbench.sqlite'))) await seedInspectionStore(root);
-  const {startServer} = await import('../../apps/server/src/index.mjs');
+  const {startServer} = await import('../../apps/server/src/index.ts');
   const server = await startServer({dataDir: root, port: Number(process.env.PORT || 0), token: TOKEN,
     chatGateway: async function* () {
       fs.appendFileSync(process.env.MIOON_INSPECTION_WIRE_AUDIT, JSON.stringify({pid: process.pid, kind: 'model gateway'}) + '\n');

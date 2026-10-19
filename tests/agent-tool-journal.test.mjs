@@ -5,8 +5,8 @@ import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {deriveAgentEndpoint} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createChatJournal, CHAT_JOURNAL_LIMITS} from '../packages/business/src/agent/chat-journal.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createChatJournal, CHAT_JOURNAL_LIMITS} from '../packages/business/src/agent/chat-journal.ts';
 
 const unavailable = {code: 'AGENT_CHAT_STORAGE_UNAVAILABLE'};
 const catalog = ['project', 'asset', 'shot', 'timeline'].map(name => ({name: `${name}_inspect`, operation: `${name}.inspect`, parameters: {type: 'object', properties: {}, additionalProperties: false}}));

@@ -6,12 +6,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import { TIMELINE_EXPORT_DEFAULT_SETTINGS, resolveTimelineExportDelivery } from '@mioon/contracts';
-import * as settingsState from '../apps/web/src/export-settings-state.js';
+import * as settingsState from '../apps/web/src/export-settings-state.ts';
 import * as deliveryState from '../apps/web/src/export-delivery-state.ts';
 import * as rangeState from '../apps/web/src/export-range-state.ts';
-import * as preflightState from '../apps/web/src/export-preflight-state.js';
-import { prepareSubmission, prepareRequestReplay, readPending, reconcilePending } from '../apps/web/src/submissions.js';
-import { isDurableEditOperation } from '../apps/web/src/edit-task-client.js';
+import * as preflightState from '../apps/web/src/export-preflight-state.ts';
+import { prepareSubmission, prepareRequestReplay, readPending, reconcilePending } from '../apps/web/src/submissions.ts';
+import { isDurableEditOperation } from '../apps/web/src/edit-task-client.ts';
 
 const id = n => `79000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), timelineId = id(2), hash = 'a'.repeat(64);
@@ -163,7 +163,7 @@ test('equivalent settings objects do not invalidate a checked binding or issue a
   assert.equal(f.state().binding, binding); assert.equal(f.calls.length, 2);
 });
 
-const appSource = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const appSource = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 function appFunction(begin, end, scope) { const start = appSource.indexOf(begin), stop = appSource.indexOf(end, start); assert.ok(start >= 0 && stop > start); return Function(...Object.keys(scope), `return (${appSource.slice(start, stop).trim()});`)(...Object.values(scope)); }
 function appHarness(f, { restored = false, localState = { baselineConflict: false, candidate: null } } = {}) {
   const calls = [], panels = [], notices = [], pending = [], submitOptions = []; let ids = 0;

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { migrateBrowserStorage, migratePendingStorage } from '../apps/web/src/storage-migration.js';
-import { prepareSubmission, readPending, pendingForProject, reconcilePending } from '../apps/web/src/submissions.js';
+import { migrateBrowserStorage, migratePendingStorage } from '../apps/web/src/storage-migration.ts';
+import { prepareSubmission, readPending, pendingForProject, reconcilePending } from '../apps/web/src/submissions.ts';
 
 class Storage {
   constructor(entries = []) { this.values = new Map(entries); }

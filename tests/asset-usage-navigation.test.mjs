@@ -69,7 +69,7 @@ test('viewport reveal is bounded to its exact child and both layout callbacks re
   }
 });
 
-const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const section = (start, end) => { const a = source.indexOf(start), b = source.indexOf(end, a); assert.ok(a >= 0 && b > a); return source.slice(a, b); };
 const readySource = section('  function projectSessionReady()', '  const workbenchReady =');
 const bridge = section('  function readAssetUsageNavigation()', '  function timelineFormatContext()');

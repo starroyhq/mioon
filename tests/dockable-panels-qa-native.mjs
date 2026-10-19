@@ -4,7 +4,7 @@ import {spawn} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {mkdir,writeFile,access,appendFile} from 'node:fs/promises';
 import path from 'node:path';
-import {migrateData} from '../apps/desktop/scripts/migrate-data.mjs';
+import {migrateData} from '../apps/desktop/scripts/migrate-data.ts';
 const runtime=path.resolve('evidence/dockable-panels/native-runtime'),userData=path.join(runtime,'user-data'),workspace=path.join(userData,'workspace');await mkdir(runtime,{recursive:true});
 try{await access(path.join(workspace,'workbench.sqlite'));}catch{await migrateData(path.resolve('examples/multitrack-project'),workspace);}
 if(process.argv.includes('--prepare')){console.log(workspace);process.exit(0);}

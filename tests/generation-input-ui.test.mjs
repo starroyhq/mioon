@@ -1,4 +1,4 @@
-import { generationIssueDescriptor } from '../apps/web/src/generation-settings.js';
+import { generationIssueDescriptor } from '../apps/web/src/generation-settings.ts';
 import { creationTestDependency } from './helpers/creation-i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,7 +8,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 import { GENERATION_INPUT_PROFILES, INPUT_PROFILE_VERSION, evaluateCapabilityLifecycle, getGenerationIssue } from '@mioon/contracts';
-import { generationInputIssue, generationIssueMessage, generationProfileSelection, generationSelection } from '../apps/web/src/generation-settings.js';
+import { generationInputIssue, generationIssueMessage, generationProfileSelection, generationSelection } from '../apps/web/src/generation-settings.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const fixture = (id = 'mock', date = '2026-10-10', region) => {
@@ -57,8 +57,8 @@ test('lifecycle display and shared preflight use server evaluation date, never b
   assert.equal(generationInputIssue(shot, before, model, [], 'text'), '');
   assert.equal(generationInputIssue(shot, after, model, [], 'text'), generationIssueMessage(getGenerationIssue({ ...shot, model, referenceAssets: [] }, after)));
   assert.match(generationInputIssue(shot, after, model, [], 'text'), /服务器已阻止新提交/);
-  const helper = readFileSync(resolve(root, 'apps/web/src/generation-settings.js'), 'utf8');
-  const component = readFileSync(resolve(root, 'apps/web/src/GenerationInputSummary.jsx'), 'utf8');
+  const helper = readFileSync(resolve(root, 'apps/web/src/generation-settings.ts'), 'utf8');
+  const component = readFileSync(resolve(root, 'apps/web/src/GenerationInputSummary.tsx'), 'utf8');
   assert.doesNotMatch(helper + component, /Date\(|Date\.now|fetch\(|getCapabilityProfile\(/);
 });
 
@@ -160,7 +160,7 @@ test('wired ProviderSettings renders accessible compact summaries and all role d
 
 // Focused callback/effect checks; these are not a browser-layout claim.
 function disclosureHarness() {
-  const source = readFileSync(resolve(root, 'apps/web/src/GenerationInputSummary.jsx'), 'utf8');
+  const source = readFileSync(resolve(root, 'apps/web/src/GenerationInputSummary.tsx'), 'utf8');
   const code = transformSync(source, { loader: 'jsx', format: 'cjs' }).code;
   const slots = []; let cursor = 0, layouts = [], tree;
   const equal = (a, b) => a?.length === b?.length && a.every((value, i) => Object.is(value, b[i]));

@@ -8,13 +8,13 @@ import {
   isAgentTimelineMovePublicTarget, agentTimelineMovePublicTarget,
   isAgentTimelineMoveReviewTarget, agentTimelineMoveReviewTarget,
   agentTimelineMoveModelContext, agentTimelineMoveDiff, isAgentTimelineMoveProposal,
-} from '../packages/contracts/src/index.mjs';
+} from '../packages/contracts/src/index.ts';
 import {
   TIMELINE_EDIT_TOOL_DEFINITIONS, TIMELINE_EDIT_TOOL_LIMITS, TIMELINE_EDIT_TOOL_CATALOG_HASH,
   TIMELINE_EDIT_TOOL_SYSTEM_INSTRUCTION, timelineEditToolCapability, timelineEditToolPolicy,
   parseTimelineEditToolArguments, selectedTimelineClipMessage,
-} from '../packages/business/src/agent/timeline-edit-tool-policy.mjs';
-import {EDIT_TOOL_CATALOG_HASH, EDIT_TOOL_DEFINITIONS, editToolPolicy} from '../packages/business/src/agent/edit-tool-policy.mjs';
+} from '../packages/business/src/agent/timeline-edit-tool-policy.ts';
+import {EDIT_TOOL_CATALOG_HASH, EDIT_TOOL_DEFINITIONS, editToolPolicy} from '../packages/business/src/agent/edit-tool-policy.ts';
 
 const id = value => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 const timestamp = '2026-10-12T00:00:00.000Z';
@@ -44,7 +44,7 @@ function proposal(status = 'pending') {
 }
 
 test('closed timeline policy keeps the old shot policy and catalog bytes unchanged', () => {
-  const oldBytes = readFileSync(new URL('../packages/business/src/agent/edit-tool-policy.mjs', import.meta.url));
+  const oldBytes = readFileSync(new URL('../packages/business/src/agent/edit-tool-policy.ts', import.meta.url));
   assert.equal(createHash('sha256').update(oldBytes).digest('hex'), '3f70630c33fb000d8a6ab16da8f488ee8fb4dcb8d80e8b02d9aec782b822f661');
   assert.equal(EDIT_TOOL_CATALOG_HASH, createHash('sha256').update(JSON.stringify(EDIT_TOOL_DEFINITIONS)).digest('hex'));
   assert.equal(editToolPolicy(id(2)).context, 'selected_shot_edit');

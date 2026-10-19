@@ -18,7 +18,7 @@ for (const name of ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execF
 syncBuiltinESMExports();
 const runtimeKey = Symbol.for('mioon.test.opacity-preflight-codec');
 const expression = 'globalThis[Symbol.for("mioon.test.opacity-preflight-codec")]';
-const runtimeUrl = new URL('../packages/business/src/media-runtime.mjs', import.meta.url).href;
+const runtimeUrl = new URL('../packages/business/src/media-runtime.ts', import.meta.url).href;
 const actualUrl = runtimeUrl + '?opacity-preflight-actual-runtime';
 let activeCodec;
 globalThis[runtimeKey] = {
@@ -33,13 +33,13 @@ const hooks = registerHooks({load(url, context, next) {
 await import('@mioon/contracts');
 const runtime = await import(actualUrl);
 const {openOpacityCandidateStore} = await import('../packages/business/src/opacity-candidate-store.ts');
-const {createServices} = await import('../packages/business/src/services.mjs');
-const {startWorker} = await import('../packages/business/src/jobs.mjs');
+const {createServices} = await import('../packages/business/src/services.ts');
+const {startWorker} = await import('../packages/business/src/jobs.ts');
 const restore = await import('../packages/business/src/workspace-restore-schema-v43.ts');
 const {createOpacityCandidateDomain} = await import('../packages/business/src/opacity-candidate-domain.ts');
-const {timelineSnapshotHash} = await import('../packages/business/src/timeline-preflight.mjs');
-const {callObservedRpc} = await import('../apps/server/src/rpc-observation.mjs');
-const {onMediaProcess, waitForMediaProcesses} = await import('../packages/business/src/media-processes.mjs');
+const {timelineSnapshotHash} = await import('../packages/business/src/timeline-preflight.ts');
+const {callObservedRpc} = await import('../apps/server/src/rpc-observation.ts');
+const {onMediaProcess, waitForMediaProcesses} = await import('../packages/business/src/media-processes.ts');
 const mediaEvents = [];
 const unobserve = onMediaProcess(event => mediaEvents.push(event));
 after(async () => {unobserve();hooks.deregister();delete globalThis[runtimeKey];mock.restoreAll();syncBuiltinESMExports();assert.equal(childAttempts, 0);assert.deepEqual(mediaEvents, []);await bounded(waitForMediaProcesses());});

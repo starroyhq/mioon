@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {preflightErrorMessage, preflightIssueMessage, createExportPreflightController} from '../apps/web/src/export-preflight-state.js';
+import {preflightErrorMessage, preflightIssueMessage, createExportPreflightController} from '../apps/web/src/export-preflight-state.ts';
 import {translate} from '../packages/i18n/src/index.ts';
 import {OPACITY_CANDIDATE_PREFLIGHT_MESSAGES} from '../packages/business/src/opacity-candidate-preflight.ts';
 import {TIMELINE_COLOUR_PREFLIGHT_CODES} from '../packages/contracts/src/timeline-colour.ts';

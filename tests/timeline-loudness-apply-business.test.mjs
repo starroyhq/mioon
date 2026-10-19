@@ -6,7 +6,7 @@ import {createTimelineMixLoudnessServices} from '../packages/business/src/timeli
 import {createTimelineLoudnessApplyServices} from '../packages/business/src/timeline-loudness-apply.ts';
 import {planTimelineMixLoudnessDecode} from '../packages/business/src/timeline-mix-loudness-decoder.ts';
 import {timelineLoudnessCandidateDigest,createTimelineLoudnessApplyContracts} from '../packages/contracts/src/timeline-loudness-apply.ts';
-import {isTimelineRecord} from '../packages/contracts/src/timeline-replacement.mjs';
+import {isTimelineRecord} from '../packages/contracts/src/timeline-replacement.ts';
 const {isTimelineLoudnessApplyResponse}=createTimelineLoudnessApplyContracts({isTimelineRecord});
 const deferred=()=>{let resolve;const promise=new Promise(r=>{resolve=r;});return {promise,resolve};};
 const tick=()=>new Promise(r=>setImmediate(r));

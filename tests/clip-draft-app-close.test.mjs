@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const start = app.indexOf('  useEffect(() => {\n    const controller = preferencesRef.current;');
 const end = app.indexOf('\n  }, []);', start);
 assert.ok(start >= 0 && end > start, 'Actual App lifecycle effect must be uniquely extractable');
@@ -154,7 +154,7 @@ test('actual lifecycle cleanup retains a newer registered global close handler',
 });
 
 test('desktop close warning describes unconfirmed local drafts and view without promising cancellation', async () => {
-  const main = readFileSync(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
+  const main = readFileSync(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
   const at = main.indexOf("confirmClose: action => Boolean(smokeOutput) || dialog.showMessageBox");
   const until = main.indexOf('confirmUnknown:', at);
   assert.ok(at >= 0 && until > at);

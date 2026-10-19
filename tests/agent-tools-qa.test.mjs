@@ -8,8 +8,8 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {DatabaseSync} from 'node:sqlite';
 import {readToolsQaAudit} from './agent-tools-qa-audit.mjs';
 import {startToolsQaMock, TOOLS_QA_HOSTILE_MARKER} from './agent-tools-qa-mock.mjs';
-import {streamAgentResponse, buildAgentRequest} from '../packages/business/src/agent/agent-gateway.mjs';
-import {CHAT_SYSTEM_INSTRUCTION} from '../packages/business/src/agent/chat-policy.mjs';
+import {streamAgentResponse, buildAgentRequest} from '../packages/business/src/agent/agent-gateway.ts';
+import {CHAT_SYSTEM_INSTRUCTION} from '../packages/business/src/agent/chat-policy.ts';
 
 async function fixture(t, options = {}) {
   const directory = await mkdtemp(path.join(tmpdir(), 'mioon-tools-qa-')), mock = await startToolsQaMock({directory, delayMs: 0, ...options});

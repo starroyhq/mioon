@@ -12,8 +12,8 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import {publicValue} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices,hash} from '../packages/business/src/services.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices,hash} from '../packages/business/src/services.ts';
 
 const repo=fileURLToPath(new URL('../',import.meta.url)),workerPath=fileURLToPath(new URL('./fixtures/local-delivery-process-worker.mjs',import.meta.url));
 const authority=value=>({workspaceScope:value.workspaceScope,instanceId:value.instanceId,projectId:value.projectId});

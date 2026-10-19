@@ -11,7 +11,7 @@ import { createI18nTestContext } from './helpers/i18n.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 import { createWebSettingsNavigation } from '../apps/web/src/web-settings-navigation.ts';
 import { hasOpenWorkbenchModal } from '../apps/web/src/workbench-modal-state.ts';
-import { timelineSplitActionForKey, timelineHistoryActionForKey } from '../apps/web/src/timeline-keyboard.js';
+import { timelineSplitActionForKey, timelineHistoryActionForKey } from '../apps/web/src/timeline-keyboard.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const source = name => readFileSync(join(root, 'apps/web/src', name), 'utf8');

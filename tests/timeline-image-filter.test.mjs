@@ -6,13 +6,13 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {deflateSync} from 'node:zlib';
-import {run,runStreaming,checkMediaEffect} from '../packages/business/src/media-runtime.mjs';
+import {run,runStreaming,checkMediaEffect} from '../packages/business/src/media-runtime.ts';
 import {timelineImageDisplayTable,timelineImageFilterGraph,TIMELINE_IMAGE_DISPLAY_PROFILE,TIMELINE_IMAGE_DISPLAY_PROFILE_ID,TIMELINE_IMAGE_RESIZE_PROFILE_ID} from '../packages/business/src/timeline-image-filter.ts';
 import {TIMELINE_COLOUR_OUTPUT_FILTER,timelineColourInputFilter} from '../packages/business/src/timeline-colour-lut.ts';
 
-import {createPrivateTemporaryDirectory,validatePrivateDirectory} from '../packages/contracts/src/private-storage.mjs';
+import {createPrivateTemporaryDirectory,validatePrivateDirectory} from '../packages/contracts/src/private-storage.ts';
 import {prepareTimelineImageLayers,TIMELINE_IMAGE_LAYER_LIMITS} from '../packages/business/src/timeline-image-staging.ts';
-import {onMediaProcess,waitForMediaProcesses} from '../packages/business/src/media-processes.mjs';
+import {onMediaProcess,waitForMediaProcesses} from '../packages/business/src/media-processes.ts';
 
 const layerRuntime={checkMediaEffect,createPrivateTemporaryDirectory,validatePrivateDirectory,run,waitForMediaProcesses};
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -171,7 +171,7 @@ test('unconfirmed failed derivation retains its exact owned staging until runtim
 test('a FIFO source replacement rejects without blocking file open',{timeout:6000},async t=>{
  const f=await fixture(t),fifo=path.join(f.root,'fifo.png'),made=spawnSync('mkfifo',[fifo],{timeout:1000,encoding:'utf8'});
  if(made.error?.code==='ENOENT'){t.skip('mkfifo is unavailable');return;}assert.equal(made.status,0,made.stderr);
- const staging=new URL('../packages/business/src/timeline-image-staging.ts',import.meta.url).href,storage=new URL('../packages/contracts/src/private-storage.mjs',import.meta.url).href,runtime=new URL('../packages/business/src/media-runtime.mjs',import.meta.url).href;
+ const staging=new URL('../packages/business/src/timeline-image-staging.ts',import.meta.url).href,storage=new URL('../packages/contracts/src/private-storage.ts',import.meta.url).href,runtime=new URL('../packages/business/src/media-runtime.ts',import.meta.url).href;
  const code=`import {prepareTimelineImageLayers} from ${JSON.stringify(staging)};import {createPrivateTemporaryDirectory,validatePrivateDirectory} from ${JSON.stringify(storage)};import {checkMediaEffect} from ${JSON.stringify(runtime)};try {await prepareTimelineImageLayers([{clipId:'fifo',assetSha256:'${'0'.repeat(64)}',sourcePath:${JSON.stringify(fifo)},sourceWidth:1,sourceHeight:1,width:1,height:1}],${JSON.stringify(path.join(f.root,'out.mp4'))},{},{createPrivateTemporaryDirectory,validatePrivateDirectory,checkMediaEffect,run:async()=>{throw Error('must not spawn');},waitForMediaProcesses:async()=>{}});process.exitCode=2;}catch(error){if(error.code!=='TIMELINE_COLOUR_RESOURCE_CHANGED')throw error;}`;
  const child=spawnSync(process.execPath,['--input-type=module','-e',code],{timeout:3000,maxBuffer:65536,encoding:'utf8'});assert.equal(child.error,undefined,'nonblocking open must finish before bounded child timeout');assert.equal(child.status,0,child.stderr);
  assert.equal((await readdir(f.root)).some(name=>name.startsWith('.timeline-render-')),false);

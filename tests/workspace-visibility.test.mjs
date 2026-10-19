@@ -7,12 +7,12 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as contracts from '@mioon/contracts';
 import { LOCAL_SHOT_TEXT_LIMITS } from '@mioon/contracts/local-shot-text';
-import * as exportSettings from '../apps/web/src/export-settings-state.js';
-import * as sourceRanges from '../apps/web/src/source-range-state.js';
+import * as exportSettings from '../apps/web/src/export-settings-state.ts';
+import * as sourceRanges from '../apps/web/src/source-range-state.ts';
 import * as previewPlayback from '../apps/web/src/preview-playback.ts';
 import * as candidatePresentation from '../apps/web/src/opacity-candidate-render-presentation.ts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
-import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.js';
+import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.ts';
 
 // Exercise the real component functions with deterministic hook, ref, media,
 // and animation-frame boundaries. These tests intentionally do not claim DOM

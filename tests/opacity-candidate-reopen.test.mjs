@@ -13,7 +13,7 @@ import {initializeOpacityLegacyThrough40} from '../packages/business/src/workspa
 import {initializeWorkspaceSchema42} from '../packages/business/src/workspace-schema-v42.ts';
 import {installWorkspaceRestoreSchemaV43} from '../packages/business/src/workspace-restore-schema-v43.ts';
 import {createWorkspaceRestoreProfileV41} from '../packages/business/src/workspace-restore-schema-v41.ts';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {createExistingOpacityCandidateLaunch, consumeOpacityCandidateLaunch, closeUnusedOpacityCandidateLaunch} from '../apps/server/src/opacity-candidate-launch.ts';
 import {parseOpacityCandidateArguments} from '../apps/server/src/opacity-candidate-cli.ts';
 

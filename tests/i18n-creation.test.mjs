@@ -4,11 +4,11 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { LOCALES, translate, renderMessage, validateCatalogs } from '../packages/i18n/src/index.ts';
 import { creationMessages } from '../packages/i18n/src/catalogs/creation.ts';
-import { agentChatErrorDescriptor, agentChatPromptIssue, agentChatPromptIssueDescriptor } from '../apps/web/src/agent-chat.js';
-import { agentEditStatusDescriptor } from '../apps/web/src/agent-edits.js';
-import { imageTaskLabelDescriptor, imageTaskMessageDescriptor, imageInputIssue, imageInputIssueDescriptor } from '../apps/web/src/image-generation.js';
+import { agentChatErrorDescriptor, agentChatPromptIssue, agentChatPromptIssueDescriptor } from '../apps/web/src/agent-chat.ts';
+import { agentEditStatusDescriptor } from '../apps/web/src/agent-edits.ts';
+import { imageTaskLabelDescriptor, imageTaskMessageDescriptor, imageInputIssue, imageInputIssueDescriptor } from '../apps/web/src/image-generation.ts';
 import { jobStatusDescriptor, taskErrorDescriptor, safeTaskErrorCode, providerDisplayName } from '../apps/web/src/creation-i18n.ts';
-import { providerAvailabilityDescriptor, generationInputIssueDescriptor } from '../apps/web/src/generation-settings.js';
+import { providerAvailabilityDescriptor, generationInputIssueDescriptor } from '../apps/web/src/generation-settings.ts';
 
 test('creation catalog has complete four-language templates with exact placeholder parity', () => {
   assert.deepEqual(validateCatalogs(creationMessages), []);

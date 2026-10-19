@@ -4,8 +4,8 @@ import {randomUUID,createHash} from 'node:crypto';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
 import {createProjectHomeServices} from '../packages/business/src/project-home.ts';
 
 async function fixture(t){

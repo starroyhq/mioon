@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {IMAGE_MODELS,IMAGE_FIXED_OPTIONS,IMAGE_EDIT_LIMITS,imageSchemas,imageEditSourceSchema,imageAdapterInputSchema,imageSnapshotSchema,imageTaskResponseSchema,imageVersionResponseSchema,isImageTaskResponse,isImageVersionResponse,isImageMutationResponse,canonicalImageInput} from '../packages/contracts/src/images.mjs';
-import {IMAGE_REVIEW_POLICY,IMAGE_REVIEW_DESTINATION,IMAGE_EDIT_REVIEW_DESTINATION,imageReviewSchemas,imageReviewIntentSchema,imageReviewResponseSchema,isImageReviewResponse,isImageReviewPreparationResponse} from '../packages/contracts/src/image-reviews.mjs';
+import {IMAGE_MODELS,IMAGE_FIXED_OPTIONS,IMAGE_EDIT_LIMITS,imageSchemas,imageEditSourceSchema,imageAdapterInputSchema,imageSnapshotSchema,imageTaskResponseSchema,imageVersionResponseSchema,isImageTaskResponse,isImageVersionResponse,isImageMutationResponse,canonicalImageInput} from '../packages/contracts/src/images.ts';
+import {IMAGE_REVIEW_POLICY,IMAGE_REVIEW_DESTINATION,IMAGE_EDIT_REVIEW_DESTINATION,imageReviewSchemas,imageReviewIntentSchema,imageReviewResponseSchema,isImageReviewResponse,isImageReviewPreparationResponse} from '../packages/contracts/src/image-reviews.ts';
 const at='2026-10-11T00:00:00.000Z',hash='a'.repeat(64);
 const legacy=()=>({projectId:randomUUID(),requestId:randomUUID(),name:'Source edit',providerId:'mock',model:IMAGE_MODELS.mock,prompt:'Keep the framing and make it blue',options:{...IMAGE_FIXED_OPTIONS}});
 const source=()=>({assetId:randomUUID(),sha256:hash,mimeType:'image/png',byteLength:512,width:320,height:180,name:'Source.png',origin:{kind:'user-import'}});

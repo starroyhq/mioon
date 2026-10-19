@@ -2,8 +2,8 @@ import { clickWorkbenchAction } from './browser-workbench-actions.mjs';
 import assert from 'node:assert/strict';
 import {readFile,writeFile,unlink,mkdir} from 'node:fs/promises';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
 const equal=(a,b)=>assert.equal(JSON.stringify(a),JSON.stringify(b));
 export async function runLifecycleBrowserAcceptance({tab,fixture,outDir}){
  const runtime=fixture.runtime;assert.ok(runtime.endsWith('/evidence/dual-workspace/runtime'));

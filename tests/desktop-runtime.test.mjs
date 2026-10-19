@@ -4,10 +4,10 @@ import { EventEmitter } from 'node:events';
 import { mkdtemp, readFile, stat, rm, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
-import { BackendSupervisor } from '../apps/desktop/src/supervisor.mjs';
-import { QuitCoordinator, installUnsavedGuard } from '../apps/desktop/src/lifecycle.mjs';
+import { BackendSupervisor } from '../apps/desktop/src/supervisor.ts';
+import { QuitCoordinator, installUnsavedGuard } from '../apps/desktop/src/lifecycle.ts';
 import { dataPaths, utilityEnvironment, readToolConfig, saveToolConfig, validateTool,
-  writeConnection, removeConnection } from '../apps/desktop/src/config.mjs';
+  writeConnection, removeConnection } from '../apps/desktop/src/config.ts';
 
 test('desktop data location is stable and independent of working directory', () => {
   assert.deepEqual(dataPaths('/home/u/.config'), { userData: '/home/u/.config/app.starroy.mioon.dev',

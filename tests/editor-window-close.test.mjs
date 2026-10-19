@@ -6,7 +6,7 @@ import { LocalDeliveryRequestError } from '../apps/web/src/local-delivery-client
 import { createLocalShotTextController, createLocalShotTextRetention } from '../apps/web/src/local-shot-text-state.ts';
 import { LocalShotTextRequestError } from '../apps/web/src/local-shot-text-client.ts';
 import { createClipDraftController } from '../apps/web/src/clip-draft-state.ts';
-import { createExportSettingsController } from '../apps/web/src/export-settings-state.js';
+import { createExportSettingsController } from '../apps/web/src/export-settings-state.ts';
 import { createExportRangeController } from '../apps/web/src/export-range-state.ts';
 import { TIMELINE_EXPORT_DEFAULT_SETTINGS } from '@mioon/contracts';
 import { readEditorWindowClose } from '../apps/web/src/editor-window-close.ts';

@@ -2,11 +2,11 @@ import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { defaultWorkspaceState } from '../apps/web/src/workspace-state.js';
+import { defaultWorkspaceState } from '../apps/web/src/workspace-state.ts';
 
 // Execute the actual App bridge body with a held real-result boundary. Browser
 // acceptance separately holds the real HTTP acknowledgement after SQLite commit.
-const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const start = source.indexOf('  async function addTimelineAsset(');
 const end = source.indexOf('  async function returnToSource(', start);
 assert.ok(start > 0 && end > start);

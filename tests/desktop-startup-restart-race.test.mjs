@@ -14,9 +14,9 @@ import { readFile } from 'node:fs/promises';
 import { randomBytes, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import vm from 'node:vm';
-import { createDesktopStartup } from '../apps/desktop/src/startup.mjs';
-import { BackendSupervisor } from '../apps/desktop/src/supervisor.mjs';
-import { stopBackendForQuit } from '../apps/desktop/src/shutdown.mjs';
+import { createDesktopStartup } from '../apps/desktop/src/startup.ts';
+import { BackendSupervisor } from '../apps/desktop/src/supervisor.ts';
+import { stopBackendForQuit } from '../apps/desktop/src/shutdown.ts';
 import { createProjectWindowHost } from '../apps/desktop/src/project-window-host.ts';
 import { createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity } from '../apps/desktop/src/native-audio-preview-host.ts';
 import { NATIVE_AUDIO_CHANNEL } from '../apps/desktop/src/native-audio-preview-protocol.ts';
@@ -28,7 +28,7 @@ import { PROJECT_WINDOW_CHANNEL } from '../apps/desktop/src/project-window-proto
 import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
 import { createDesktopWindowAppearance } from '../apps/desktop/src/window-appearance.ts';
 
-const source = (await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
+const source = (await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
 const tools = { ffmpeg: '/synthetic/ffmpeg', ffprobe: '/synthetic/ffprobe', versions: { ffmpeg: 'synthetic' } };
 const deferred = () => {
   let resolve, reject;

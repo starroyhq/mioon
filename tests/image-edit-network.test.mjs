@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {Readable} from 'node:stream';
-import {createImageEditJsonTransport, createImageJsonTransport, createCompatibleImageJsonTransport, resolveImageEditDestination} from '../packages/business/src/images/network.mjs';
-import {IMAGE_EDIT_ENDPOINT, IMAGE_EDIT_NETWORK_LIMITS, IMAGE_NETWORK_LIMITS} from '../packages/business/src/images/profiles.mjs';
+import {createImageEditJsonTransport, createImageJsonTransport, createCompatibleImageJsonTransport, resolveImageEditDestination} from '../packages/business/src/images/network.ts';
+import {IMAGE_EDIT_ENDPOINT, IMAGE_EDIT_NETWORK_LIMITS, IMAGE_NETWORK_LIMITS} from '../packages/business/src/images/profiles.ts';
 
 const key = 'synthetic-edit-network-secret', answers = [{address: '8.8.8.8', family: 4}], args = {body: '{}', beforeDispatch: () => {}};
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return {promise, resolve}; };

@@ -10,7 +10,7 @@ import {randomBytes, randomUUID, createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.mjs';
+import {startServer} from '../apps/server/src/index.ts';
 import {canonicalImageInput, IMAGE_FIXED_OPTIONS, IMAGE_MODELS, DEFAULT_IMAGE_CONFIGURATION} from '@mioon/contracts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -87,7 +87,7 @@ async function fixture(t, label, {business = false} = {}) {
   const env = childEnv({MIOON_BASE_URL: `http://127.0.0.1:${proxy.address().port}`, MIOON_TOKEN: token, TMPDIR: root, TMP: root, TEMP: root});
   mcp = new Client({name: 'key-recovery-wire-acceptance', version: '1.0.0'}, {capabilities: {}});
   mcpClosed = new Promise(resolve => {mcp.onclose = () => {report.cleanup.mcpCloseEvent = true; resolve();};});
-  transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.mjs')], cwd: repo, env, stderr: 'pipe'});
+  transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.ts')], cwd: repo, env, stderr: 'pipe'});
   let mcpStderr = '';
   transport.stderr.setEncoding('utf8').on('data', chunk => {mcpStderr += chunk;});
   await mcp.connect(transport);
@@ -95,7 +95,7 @@ async function fixture(t, label, {business = false} = {}) {
     const before = requests.length;
     let envelope, output, exit;
     if (kind === 'CLI') {
-      const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.mjs'), ...operation.split('.'), '--input', JSON.stringify(input)], {cwd: repo, env, stdio: ['ignore', 'pipe', 'pipe']});
+      const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.ts'), ...operation.split('.'), '--input', JSON.stringify(input)], {cwd: repo, env, stdio: ['ignore', 'pipe', 'pipe']});
       children.push(child);
       let stdout = '', stderr = '';
       child.stdout.setEncoding('utf8').on('data', chunk => {stdout += chunk; if (stdout.length > 1048576) child.kill('SIGKILL');});

@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {openStore,createServices} from '@mioon/business';
-import {inspectWorkspaceBackup,BACKUP_INSPECTION_LIMITS} from '../packages/business/src/backup-readiness.mjs';
+import {inspectWorkspaceBackup,BACKUP_INSPECTION_LIMITS} from '../packages/business/src/backup-readiness.ts';
 function fixture(t){const root=mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-backup-readiness-')),store=openStore(root);t.after(()=>{store.close();rmSync(root,{recursive:true,force:true});});return store;}
 const changes=store=>store.db.prepare('SELECT total_changes() n').get().n;
 test('shared inspection reads empty workspace without constructing data, filesystem work or model authority',async t=>{

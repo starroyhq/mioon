@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {schemas,parse,INPUT_PROFILE_VERSION,FRAME_PAIR_PROFILE_VERSION,SUBJECT_REFERENCE_PROFILE_VERSION,GENERATION_INPUT_PROFILES,ARCHIVED_CAPABILITY_PROFILES,getCapabilityProfile,getLegacyCapabilityProfile,validateGenerationInput,buildAdapterPlan,getGenerationProfileIssue,getGenerationIssue,findModelCapabilities,isReferenceShotRecord,isReferenceMutationResponse,isLocalMutationResponse,getShotGenerationReferenceSelection} from '../packages/contracts/src/index.mjs';
+import {schemas,parse,INPUT_PROFILE_VERSION,FRAME_PAIR_PROFILE_VERSION,SUBJECT_REFERENCE_PROFILE_VERSION,GENERATION_INPUT_PROFILES,ARCHIVED_CAPABILITY_PROFILES,getCapabilityProfile,getLegacyCapabilityProfile,validateGenerationInput,buildAdapterPlan,getGenerationProfileIssue,getGenerationIssue,findModelCapabilities,isReferenceShotRecord,isReferenceMutationResponse,isLocalMutationResponse,getShotGenerationReferenceSelection} from '../packages/contracts/src/index.ts';
 const ids=Array.from({length:8},(_,index)=>`00000000-0000-4000-8000-${String(index+1).padStart(12,'0')}`);
 const asOf='2026-10-11';
 const asset=(id=ids[0],patch={})=>({id,mimeType:'image/png',sizeBytes:1024,sha256:(id===ids[0]?'a':'b').repeat(64),width:720,height:1280,...patch});

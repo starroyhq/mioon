@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
-const app=readFileSync(new URL('../apps/web/src/App.jsx',import.meta.url),'utf8');
+const app=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');
 function appFunction(start,end,env){
   const from=app.indexOf(start),to=app.indexOf(end,from+start.length);
   assert.ok(from>=0&&to>from,`actual App boundary ${start}`);
@@ -68,7 +68,7 @@ test('actual App lifecycle drain waits on local shot persistence only, no busine
   assert.doesNotMatch(app.slice(from,to),/execute|recover|prepare|rpc\(/);
 });
 
-const inspector=readFileSync(new URL('../apps/web/src/Inspector.jsx',import.meta.url),'utf8');
+const inspector=readFileSync(new URL('../apps/web/src/Inspector.tsx',import.meta.url),'utf8');
 function rebaseCallback({externalDuration=false}={}){
   const before={title:'Before',prompt:'Old prompt',duration:7,aspectRatio:'16:9',referenceAssetIds:[],parameters:{seed:42}};
   const shot={...before,title:'Confirmed text',revision:4,...(externalDuration?{duration:8}:{})};

@@ -15,7 +15,7 @@ export const ORIGINAL_BYTES = Buffer.from('immutable original fixture bytes\n');
 
 async function seed(root) {
   await seedMutationStore(root);
-  const {openStore} = await import('../../packages/business/src/db.mjs');
+  const {openStore} = await import('../../packages/business/src/db.ts');
   const store = openStore(root);
   try {
     // Keep inspection's generated-version relationship unambiguous.
@@ -67,7 +67,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   if (process.argv[2] === 'move-asset') {
     // Only after the owned backend has stopped: retained receipts must not reveal
     // an asset whose current ownership no longer matches the original request.
-    const {openStore} = await import('../../packages/business/src/db.mjs');
+    const {openStore} = await import('../../packages/business/src/db.ts');
     const store = openStore(root);
     try {
       const moved = store.db.prepare("UPDATE assets SET projectId=?,data=json_set(data,'$.projectId',?) WHERE id=?")
@@ -76,7 +76,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     } finally { store.close(); }
   } else if (process.argv[2] === 'server') {
     if (!fs.existsSync(path.join(root, 'workbench.sqlite'))) await seed(root);
-    const {startServer} = await import('../../apps/server/src/index.mjs');
+    const {startServer} = await import('../../apps/server/src/index.ts');
     const server = await startServer({dataDir: root, port: Number(process.env.PORT || 0), token: TOKEN,
       chatGateway: async function* () {
         fs.appendFileSync(process.env.MIOON_DISPOSITION_WIRE_AUDIT, '{"kind":"model gateway"}\n');

@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {randomUUID,createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {openStore,installCurrentWorkspaceRestoreSchema} from '@mioon/business/db';
-import {migrateData} from '../apps/desktop/scripts/migrate-data.mjs';
+import {migrateData} from '../apps/desktop/scripts/migrate-data.ts';
 
 const ordinaryVersions=[...Array.from({length:24},(_,index)=>index+1),26,28,30,32,34];
 const metadata=()=>({restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:'2026-10-14T00:00:00.000Z'});

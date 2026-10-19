@@ -4,10 +4,10 @@ import {randomUUID, createHash} from 'node:crypto';
 import {mkdtemp, writeFile, readFile, readdir, rm} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
-import {run, runStreaming} from '../packages/business/src/media-runtime.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
+import {run, runStreaming} from '../packages/business/src/media-runtime.ts';
 import {createExportLoudnessAccumulator} from '../packages/business/src/export-loudness-meter.ts';
 
 // Fixed generated local fixtures. Run only in the parent-owned serial media lane.

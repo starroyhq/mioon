@@ -18,7 +18,7 @@ const fixture = JSON.parse(raw);
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const expected = ['tests/keychain-timeout-audit.test.mjs', 'apps/desktop/identity.cjs',
   ...['secret-store', 'image-secret-store', 'image-secret-broker', 'secret-broker', 'security', 'shutdown', 'supervisor']
-    .map(name => `apps/desktop/src/${name}.mjs`)];
+    .map(name => `apps/desktop/src/${name}.ts`)];
 
 function verifyFixture() {
   assert.equal(digest(raw), 'db061a98ebd36429230efd92af12a2e053adb5a09cafc1e7ba18f82540012b6f');
@@ -71,11 +71,11 @@ test('historical Keychain fixture is outside production staging and package allo
   for (const channel of ['development', 'production']) {
     assert.deepEqual(builderConfig(channel).files, ['main.cjs', 'backend.cjs', 'preload.cjs', 'package.json', 'web/**/*', 'icons/**/*', 'licenses/**/*', '!node_modules/**/*']);
   }
-  const build = await readFile(path.join(root, 'apps/desktop/scripts/build.mjs'), 'utf8');
+  const build = await readFile(path.join(root, 'apps/desktop/scripts/build.ts'), 'utf8');
   assert.match(build, /for \(const name of \['main', 'backend'\]\)/);
   assert.doesNotMatch(build, /keychain-sync-9e9598d|tests\/fixtures/);
   for (const name of ['main', 'secret-store', 'image-secret-store', 'image-secret-broker', 'secret-broker']) {
-    const source = await readFile(path.join(root, `apps/desktop/src/${name}.mjs`), 'utf8');
+    const source = await readFile(path.join(root, `apps/desktop/src/${name}.ts`), 'utf8');
     assert.doesNotMatch(source, /keychain-sync-9e9598d|tests\/fixtures/);
   }
 });

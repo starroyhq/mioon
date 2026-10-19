@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {createOpacityRestoredApplicationInspection as create, isOpacityRestoredApplicationInspection as valid,
  OPACITY_RESTORED_APPLICATION_LOCAL_OPERATIONS} from '../packages/contracts/src/opacity-restored-application.ts';
-import {isWorkspaceRestoreInspection} from '../packages/contracts/src/workspace-restore.mjs';
+import {isWorkspaceRestoreInspection} from '../packages/contracts/src/workspace-restore.ts';
 
 const metadata=()=>({schemaVersion:43,sourceSchema:42,profile:'restored-local-v10',workspaceOrigin:randomUUID(),restorationId:randomUUID(),
  sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:'2026-10-16T00:00:00.000Z',heldCounts:{edit_tasks:1,exports:2}});

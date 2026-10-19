@@ -3,8 +3,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { TIMELINE_MUTATION_OPERATIONS, REFERENCE_MUTATION_OPERATIONS, hasRequestNotAppliedProof } from '@mioon/contracts';
-import { prepareMutation, isMutationOperation, mutationNotApplied, validateMutationResponse } from '../apps/web/src/mutation-submissions.js';
-import { readPending, clearPending, prepareSubmission, reconcilePending } from '../apps/web/src/submissions.js';
+import { prepareMutation, isMutationOperation, mutationNotApplied, validateMutationResponse } from '../apps/web/src/mutation-submissions.ts';
+import { readPending, clearPending, prepareSubmission, reconcilePending } from '../apps/web/src/submissions.ts';
 import { loudnessApplyFixture } from './fixtures/timeline-loudness-apply.mjs';
 
 class Storage {
@@ -101,10 +101,10 @@ test('historical responses must identify the original project and target before 
 });
 
 test('App opts every six-op path in, uses explicit drawer replay, and never resumes a partial structure', async () => {
-  const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   assert.match(app, /stored = mutation \? prepareMutation\(entry, \{ replay \}\) : prepareSubmission\(entry, \{ replay \}\)/);
   assert.match(app, /mutation && replay \? null : result/);
-  assert.match(readFileSync(new URL('../apps/web/src/TaskCenter.jsx', import.meta.url), 'utf8'), /entry\.input, message\('tasks\.center\.originalRecovered'\), restored \? \{ replay: true, pendingEntry: entry \} : \{ replay: true \}/);
+  assert.match(readFileSync(new URL('../apps/web/src/TaskCenter.tsx', import.meta.url), 'utf8'), /entry\.input, message\('tasks\.center\.originalRecovered'\), restored \? \{ replay: true, pendingEntry: entry \} : \{ replay: true \}/);
   assert.equal(translate('zh-Hans', 'tasks.center.originalRecovered'), '原请求已恢复并确认');
   // Evaluate the actual App classifier rather than require its former inline
   // `timeline || isReferenceOperation(...)` spelling. Reference proof handling
@@ -165,13 +165,13 @@ test('App opts every six-op path in, uses explicit drawer replay, and never resu
 });
 
 test('six-op recovery warns about session-only unencrypted receipts without changing generation guarantees', () => {
-  const card = readFileSync(new URL('../apps/web/src/PendingSubmission.jsx', import.meta.url), 'utf8');
+  const card = readFileSync(new URL('../apps/web/src/PendingSubmission.tsx', import.meta.url), 'utf8');
   assert.match(card, /mutation &&/);
   assert.match(card, /t\('tasks\.pending\.mutationStorage'\)/);
   const notice = translate('zh-Hans', 'tasks.pending.mutationStorage');
   assert.match(notice, /恢复记录仅存于当前浏览器会话，未经保险库加密/);
   assert.match(notice, /关闭窗口或重建应用会话可能丢失记录/);
-  const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   assert.match(readFileSync(new URL('../apps/web/src/TaskWorkspace.tsx', import.meta.url), 'utf8'), /t\('tasks\.workspace\.durableState'\)/);
   assert.match(translate('zh-Hans', 'tasks.workspace.durableState'), /生成任务状态持久保存/);
 });

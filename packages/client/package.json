@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.mjs",
-    "./connection": "./src/connection.mjs",
+    ".": "./src/index.ts",
+    "./connection": "./src/connection.ts",
     "./timeline-mix-loudness": "./src/timeline-mix-loudness.ts",
-    "./download": "./src/download.mjs",
+    "./download": "./src/download.ts",
     "./timeline-loudness-apply": "./src/timeline-loudness-apply.ts",
     "./timeline-clip-loudness": "./src/timeline-clip-loudness.ts"
   },

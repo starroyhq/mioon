@@ -5,8 +5,8 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createHash, randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
-import {startServer} from '../apps/server/src/index.mjs';
-import {run,runStreaming} from '../packages/business/src/media-runtime.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {run,runStreaming} from '../packages/business/src/media-runtime.ts';
 
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));

@@ -36,7 +36,7 @@ const canonical = (value: unknown): string => JSON.stringify(value, (_key, item:
 const same = (a: unknown, b: unknown): boolean => canonical(a) === canonical(b);
 const fail = (code: ConstructorParameters<typeof LocalDraftError>[0]): never => {throw new LocalDraftError(code);};
 const require = createRequire(import.meta.url);
-const storage: unknown = require('../../contracts/src/private-storage.mjs');
+const storage: unknown = require('../../contracts/src/private-storage.ts');
 function privateCall(name: string, args: unknown[]): unknown {
   if (!object(storage) || typeof storage[name] !== 'function') return fail('LOCAL_DRAFT_STORAGE_UNAVAILABLE');
   return Reflect.apply(storage[name], storage, args) as unknown;

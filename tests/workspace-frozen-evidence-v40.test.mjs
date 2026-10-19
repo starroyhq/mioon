@@ -1,10 +1,10 @@
-import '../packages/business/src/db.mjs';
+import '../packages/business/src/db.ts';
 import {createHash} from 'node:crypto';
 import {parseCube3D} from '../packages/business/src/cube-lut.ts';
 import {lutInputHash} from '../packages/business/src/lut-resource-validation.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
 import {initializeWorkspaceSchema28} from '../packages/business/src/workspace-schema-v28.ts';
 import {initializeWorkspaceSchema30} from '../packages/business/src/workspace-schema-v30.ts';

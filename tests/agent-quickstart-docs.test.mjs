@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync, statSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
-import {operationEffects} from '../packages/contracts/src/operation-effects.mjs';
+import {operationEffects} from '../packages/contracts/src/operation-effects.ts';
 
 // Static documentation checks only. Do not import transports/business services,
 // execute documented commands, resolve credentials, or open media/fixture files.
@@ -11,13 +11,13 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const read = name => readFileSync(path.join(root, name), 'utf8');
 const documentPath = 'docs/AGENT-QUICKSTART-AUDIT.md';
 const document = read(documentPath);
-const cli = read('apps/cli/src/index.mjs');
-const client = read('packages/client/src/index.mjs');
-const contracts = read('packages/contracts/src/index.mjs');
-const images = read('packages/contracts/src/images.mjs');
-const reviews = read('packages/contracts/src/image-reviews.mjs');
-const inspection = read('packages/contracts/src/inspection.mjs');
-const preflight = read('packages/contracts/src/export-preflight.mjs');
+const cli = read('apps/cli/src/index.ts');
+const client = read('packages/client/src/index.ts');
+const contracts = read('packages/contracts/src/index.ts');
+const images = read('packages/contracts/src/images.ts');
+const reviews = read('packages/contracts/src/image-reviews.ts');
+const inspection = read('packages/contracts/src/inspection.ts');
+const preflight = read('packages/contracts/src/export-preflight.ts');
 const quotedWords = source => [...source.matchAll(/'([^']+)'/gu)].map(match => match[1]);
 const valueOptions = new Set(quotedWords(cli.match(/const valueOptions = new Set\(\[([^\]]+)\]\)/u)[1]));
 const switches = new Set(quotedWords(cli.match(/const switches = new Set\(\[([^\]]+)\]\)/u)[1]));
@@ -26,7 +26,7 @@ const downloadOperations = quotedWords(cli.match(/download = \[([^\]]+)\]\.inclu
 const blocks = [...document.matchAll(/<!-- quickstart ([\w-]+) ([\w-]+) -->\n```sh\n([\s\S]*?)\n```/gu)];
 
 function parseExample(line, id, effect) {
-  const prefix = 'node apps/cli/src/index.mjs ';
+  const prefix = 'node apps/cli/src/index.ts ';
   assert.ok(line.startsWith(prefix), `${id}: expected a literal CLI draft`);
   const command = line.slice(prefix.length);
   // The drafts deliberately use literal single-quoted JSON/path arguments.
@@ -191,7 +191,7 @@ test('read/write labels agree with the actual effect catalog, including lazy rea
   assert.equal(example('timeline.get').effect, 'write');
   assert.equal(example('timeline.export.preflight').effect, 'read-local-process');
   assert.equal(example('export.download').effect, 'local-write');
-  assert.match(read('packages/client/src/download.mjs'), /open\(destination, 'wx', 0o600\)/u);
+  assert.match(read('packages/client/src/download.ts'), /open\(destination, 'wx', 0o600\)/u);
   assert.equal(operationEffects['image.review.prepare'].paidGeneration, false);
   assert.equal(operationEffects['image.review.prepare'].externalIO, false);
 });

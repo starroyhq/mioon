@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {opacityWorkspaceBackupManifestSchema as manifestSchema, opacityWorkspaceBackupResultSchema as backupSchema,
  opacityWorkspaceRestoreResultSchema as restoreSchema, opacityWorkspaceRestoreStatusSchema as statusSchema} from '../packages/contracts/src/opacity-candidate-backup.ts';
-import {workspaceBackupManifestSchema, workspaceBackupResultSchema} from '../packages/contracts/src/workspace-backup.mjs';
-import {workspaceRestoreOfflineResultSchema} from '../packages/contracts/src/workspace-restore-offline.mjs';
+import {workspaceBackupManifestSchema, workspaceBackupResultSchema} from '../packages/contracts/src/workspace-backup.ts';
+import {workspaceRestoreOfflineResultSchema} from '../packages/contracts/src/workspace-restore-offline.ts';
 
 const hash='a'.repeat(64),stamp='2026-10-16T00:00:00.000Z';
 const inventory={complete:true,totalIssues:0,issues:[],truncated:false};

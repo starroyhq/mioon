@@ -4,8 +4,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import * as subtitles from '../apps/web/src/subtitle-state.js';
-import { timelineHistoryState } from '../apps/web/src/timeline-history.js';
+import * as subtitles from '../apps/web/src/subtitle-state.ts';
+import { timelineHistoryState } from '../apps/web/src/timeline-history.ts';
 
 const id = n => `95000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), timelineId = id(2), cueId = id(3), secondId = id(4);
@@ -174,7 +174,7 @@ test('actual lane buttons select and add once, reject hidden/unmounted and super
   ui.render(props); const last = ui.find('subtitle-add').props.onClick; ui.unmount(); last(); assert.deepEqual(calls, []);
 });
 
-const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const section = (start, end) => app.slice(app.indexOf(start), app.indexOf(end));
 const compile = (source, name, scope) => { const env = { msg: message, ...scope }; return Function(...Object.keys(env), `${source}; return ${name};`)(...Object.values(env)); };
 

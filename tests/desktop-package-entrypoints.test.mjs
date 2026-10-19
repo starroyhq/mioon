@@ -4,7 +4,7 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseArguments, buildCommands } from '../scripts/lib/local-tooling.mjs';
+import { parseArguments, buildCommands } from '../scripts/lib/local-tooling.ts';
 import desktopIdentity from '../apps/desktop/identity.cjs';
 
 const require = createRequire(import.meta.url);
@@ -29,7 +29,7 @@ function packagingPlan(script, expected) {
   for (const argv of steps) for (const token of argv) assert.match(token, /^[A-Za-z0-9_./=-]+$/, 'Only literal arguments are permitted');
   const [build, builder] = steps;
   assert.equal(build[0], 'node', 'Run the shared build before electron-builder');
-  assert.equal(realpathSync(path.resolve(desktop, build[1])), realpathSync(path.join(root, 'scripts/tooling.mjs')), 'Use the shared Web→desktop entrypoint from the desktop workspace');
+  assert.equal(realpathSync(path.resolve(desktop, build[1])), realpathSync(path.join(root, 'scripts/tooling.ts')), 'Use the shared Web→desktop entrypoint from the desktop workspace');
   assert.equal(build.length, 4, 'Build requires only the tooling path, build command and explicit channel');
   const options = parseArguments(build.slice(2));
   assert.equal(options.command, 'build');
@@ -75,7 +75,7 @@ test('entrypoint checks reject the old staging-only path and channel or publicat
     // Start mutations from the required contract so an existing legacy script
     // cannot make an unrelated negative assertion pass for the wrong reason.
     const builder = `electron-builder --config ${expected.config} ${expected.targetArgs.join(' ')} --publish never`;
-    const script = `node ../../scripts/tooling.mjs build --channel=${expected.channel} && ${builder}`;
+    const script = `node ../../scripts/tooling.ts build --channel=${expected.channel} && ${builder}`;
     const old = `node scripts/build.mjs --channel=${expected.channel} && ${builder}`;
     assert.throws(() => packagingPlan(old, expected), /shared Web→desktop entrypoint/);
     assert.throws(() => packagingPlan(script.replace('&&', ';'), expected), /Build must succeed before electron-builder; no extra stages/);
@@ -90,7 +90,7 @@ test('entrypoint checks reject the old staging-only path and channel or publicat
 
 test('entrypoint checks reject missing, reversed or extra stages and misrouted builder arguments', () => {
   for (const expected of channels) {
-    const build = `node ../../scripts/tooling.mjs build --channel=${expected.channel}`;
+    const build = `node ../../scripts/tooling.ts build --channel=${expected.channel}`;
     const builder = `electron-builder --config ${expected.config} ${expected.targetArgs.join(' ')} --publish never`;
     const script = `${build} && ${builder}`;
     for (const missing of [build, builder]) {
@@ -116,7 +116,7 @@ test('other desktop entrypoints retain their existing behavior', () => {
   assert.deepEqual(otherScripts, {
     build: 'node scripts/build.mjs',
     start: 'electron build',
-    smoke: 'node scripts/smoke.mjs',
+    smoke: 'node scripts/smoke.ts',
     'build:production': 'node scripts/build.mjs --channel=production',
   });
 });

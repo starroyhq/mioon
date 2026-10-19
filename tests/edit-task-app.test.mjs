@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import { DURABLE_EDIT_OPERATIONS, editTaskLane } from '@mioon/contracts';
-import { createEditTaskController } from '../apps/web/src/edit-task-controller.js';
-import { isDurableEditOperation, taskInputKey } from '../apps/web/src/edit-task-client.js';
-import * as submissions from '../apps/web/src/submissions.js';
-import { isMutationOperation } from '../apps/web/src/mutation-submissions.js';
+import { createEditTaskController } from '../apps/web/src/edit-task-controller.ts';
+import { isDurableEditOperation, taskInputKey } from '../apps/web/src/edit-task-client.ts';
+import * as submissions from '../apps/web/src/submissions.ts';
+import { isMutationOperation } from '../apps/web/src/mutation-submissions.ts';
 const taskIntentModule = { exports: {} };
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
 const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
-const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const actual = (start, end) => app.slice(app.indexOf(start), app.indexOf(end));
 const source = actual('  async function run(', '  async function runSession(');
 const id = n => `92000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -224,8 +224,8 @@ test('actual App malformed adoption and race with a newer receipt never clear or
 });
 
 test('TaskCenter separates durable, legacy and generation details, retains generation recovery/cancel/retry controls', () => {
-  const source = readFileSync(new URL('../apps/web/src/TaskCenter.jsx', import.meta.url), 'utf8');
-  const pending = readFileSync(new URL('../apps/web/src/PendingSubmission.jsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../apps/web/src/TaskCenter.tsx', import.meta.url), 'utf8');
+  const pending = readFileSync(new URL('../apps/web/src/PendingSubmission.tsx', import.meta.url), 'utf8');
   assert.match(source, /<TaskWorkspace activeCount=\{activeCount\}>/);
   assert.doesNotMatch(source, /Dialog(?:Content|Title|Description)?|aria-modal|关闭任务中心/);
   assert.match(readFileSync(new URL('../apps/web/src/TaskWorkspace.tsx', import.meta.url), 'utf8'), /<h2 id="task-workspace-heading">任务中心<\/h2>/); assert.match(source, /本地编辑请求/); assert.match(source, /<h3>生成任务<\/h3>/);
@@ -240,7 +240,7 @@ test('TaskCenter separates durable, legacy and generation details, retains gener
 });
 
 test('actual TaskCenter does not render an empty-list claim when loading or error and keeps unknown card visible', () => {
-  const source = readFileSync(new URL('../apps/web/src/TaskCenter.jsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../apps/web/src/TaskCenter.tsx', import.meta.url), 'utf8');
   const module = { exports: {} }, react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
     useMemo: factory => factory(), useRef: current => ({ current }), useLayoutEffect: callback => callback() };
   const workspace = { exports: {} };

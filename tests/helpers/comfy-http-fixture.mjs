@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import {deflateSync} from 'node:zlib';
-import {COMFY_NODE_CLASSES} from '../../packages/business/src/comfy/profile.mjs';
+import {COMFY_NODE_CLASSES} from '../../packages/business/src/comfy/profile.ts';
 export const COMFY_FIXTURE_MODEL='synthetic/example.safetensors';
 const model=COMFY_FIXTURE_MODEL;
 export function createComfyFixturePng(){

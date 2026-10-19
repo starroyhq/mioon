@@ -6,10 +6,10 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {isExportPreflightResponse,TIMELINE_SUBTITLE_PROFILE_ID} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createTimelinePreflightServices} from '../packages/business/src/timeline-preflight.mjs';
-import {initializeSubtitleResources,SUBTITLE_FONT_FILE} from '../packages/business/src/subtitle-resources.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createTimelinePreflightServices} from '../packages/business/src/timeline-preflight.ts';
+import {initializeSubtitleResources,SUBTITLE_FONT_FILE} from '../packages/business/src/subtitle-resources.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 const bundle=fileURLToPath(new URL('../packages/business/resources/subtitles/',import.meta.url));
 
 test('subtitle preflight only verifies static font/profile read-only; old reports stay unchanged with missing font',async t=>{

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { subjectsMessages } from '../packages/i18n/src/catalogs/subjects.ts';
 import { LOCALES, catalogs, validateCatalogs, translate, renderMessage } from '../packages/i18n/src/index.ts';
-import { subjectKinds, subjectKindLabel, subjectKindDescriptor } from '../apps/web/src/subject-state.js';
+import { subjectKinds, subjectKindLabel, subjectKindDescriptor } from '../apps/web/src/subject-state.ts';
 
 test('subject catalog has exact locale and placeholder parity and is integrated without overrides', () => {
   assert.deepEqual(validateCatalogs(subjectsMessages), []);

@@ -4,12 +4,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {restoreFixture,tree,runRestoreChild} from './helpers/workspace-restore-offline-fixture.mjs';
-import {validateWorkspaceStorage} from '../packages/business/src/db.mjs';
-import {validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.mjs';
-import {inspectWorkspaceRestorePublication} from '../packages/business/src/workspace-restore.mjs';
+import {validateWorkspaceStorage} from '../packages/business/src/db.ts';
+import {validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.ts';
+import {inspectWorkspaceRestorePublication} from '../packages/business/src/workspace-restore.ts';
 const crashPoints=['raw_copy','schema_ddl','identity','schema_commit','checkpoint','candidate_sync','media_sync','before_activation','between_link_unlink','after_activation','directory_sync','ack_loss'];
 async function inject(t,f,point){
- const file=path.join(f.base,`fault-${point}.mjs`),helper=new URL('./helpers/workspace-restore-fault-preload.mjs',import.meta.url).href;
+ const file=path.join(f.base,`fault-${point}.ts`),helper=new URL('./helpers/workspace-restore-fault-preload.mjs',import.meta.url).href;
  fs.writeFileSync(file,`globalThis.__restoreFault=${JSON.stringify({point,destination:f.destination,backup:f.backup,payload:f.relativePath})};await import(${JSON.stringify(helper)});`,{mode:0o600});
  return runRestoreChild(t,['restore','--directory',f.backup,'--destination',f.destination],{preload:file});
 }

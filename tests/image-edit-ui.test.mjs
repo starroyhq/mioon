@@ -1,4 +1,4 @@
-import { comfyConnectorAvailabilityDescriptor } from '../apps/web/src/comfy-image-settings.js';
+import { comfyConnectorAvailabilityDescriptor } from '../apps/web/src/comfy-image-settings.ts';
 import { creationTestDependency } from './helpers/creation-i18n.ts';
 import * as nativeCloseSources from '../apps/web/src/native-close-sources.ts';
 import * as imageEditIntent from '../apps/web/src/image-edit-intent.ts';
@@ -7,10 +7,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { transformSync } from 'esbuild';
-import * as contracts from '../packages/contracts/src/index.mjs';
-import * as logic from '../apps/web/src/image-generation.js';
-import { createImageReviewClient, imageReviewIdentity } from '../apps/web/src/image-review.js';
-import { ApiError } from '../apps/web/src/api.js';
+import * as contracts from '../packages/contracts/src/index.ts';
+import * as logic from '../apps/web/src/image-generation.ts';
+import { createImageReviewClient, imageReviewIdentity } from '../apps/web/src/image-review.ts';
+import { ApiError } from '../apps/web/src/api.ts';
 const { canonicalImageInput: canonical, IMAGE_FIXED_OPTIONS: options, IMAGE_MODELS: models, DEFAULT_IMAGE_CONFIGURATION, IMAGE_REVIEW_POLICY, IMAGE_EDIT_REVIEW_DESTINATION } = contracts;
 const id = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), groupId = id(2), assetId = id(3), taskId = id(4), requestId = id(5), at = '2026-10-11T12:00:00.000Z';
@@ -124,7 +124,7 @@ test('private edit approval body contains only bound review identity and verifie
 
 // Execute the real component and handlers with deterministic hook slots. No DOM
 // string/source matching substitutes for these stale-callback assertions.
-const component = readFileSync(new URL('../apps/web/src/ImageGeneration.jsx', import.meta.url), 'utf8');
+const component = readFileSync(new URL('../apps/web/src/ImageGeneration.tsx', import.meta.url), 'utf8');
 const element = (type, props = {}, ...children) => ({ type, props: { ...props, children } });
 // This legacy consumer does not supply a navigation registry. The actual Slot
 // transparency/handler contract is exercised in settings-navigation-slot.test.

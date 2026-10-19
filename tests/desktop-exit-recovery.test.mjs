@@ -8,9 +8,9 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
-import {BackendSupervisor} from '../apps/desktop/src/supervisor.mjs';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
+import {BackendSupervisor} from '../apps/desktop/src/supervisor.ts';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
 import {shotTextForStore} from './fixtures/local-shot-text-process-worker.mjs';
 
 const repo = fileURLToPath(new URL('../', import.meta.url));

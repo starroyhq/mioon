@@ -41,7 +41,7 @@ test('git ignores exact runtime credential/discovery/settings fixtures at custom
   execFileSync('git', ['init', '--quiet', '--template='], options);
   const secretFiles = ['', 'local-profile/', 'apps/desktop/custom-user-data/'].flatMap(prefix => runtimeNames.map(name => prefix + name));
   const sourceFiles = [
-    '.env.example', 'apps/server/.env.example', 'docs/mcp-token.md', 'packages/client/src/connection.mjs',
+    '.env.example', 'apps/server/.env.example', 'docs/mcp-token.md', 'packages/client/src/connection.ts',
     'tests/client-storage.test.mjs', 'tests/fixtures/mcp-connection.example.json', 'tests/fixtures/settings.json',
     'tests/fixtures/agent-settings/settings.example.json', 'tests/fixtures/source.tmp', 'apps/web/src/settings.js',
   ];

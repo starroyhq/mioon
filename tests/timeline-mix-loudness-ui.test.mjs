@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 import * as stateModule from '../apps/web/src/timeline-mix-loudness-state.ts';
 import { timelineAudioPreviewSourceIdentity } from '../apps/web/src/use-timeline-audio-preview.ts';
-import { workspaceOriginScope, pinNewWorkspaceIntent } from '../apps/web/src/workspace-origin.js';
+import { workspaceOriginScope, pinNewWorkspaceIntent } from '../apps/web/src/workspace-origin.ts';
 import { fixture, context, input, report, draft, id, projectId, timelineId, sourceId } from './helpers/timeline-mix-loudness-ui-fixture.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const source = name => readFileSync(new URL(`../apps/web/src/${name}`, import.meta.url), 'utf8');

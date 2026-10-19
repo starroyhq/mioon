@@ -3,7 +3,7 @@ import {mkdirSync} from 'node:fs';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {isAsyncFunction,isPromise} from 'node:util/types';
-import {initializeLegacyWorkspaceSchema} from '../../packages/business/src/workspace-fixed-schema.mjs';
+import {initializeLegacyWorkspaceSchema} from '../../packages/business/src/workspace-fixed-schema.ts';
 
 // Test-only adapter for isolated, application-owned historical fixtures. Seed
 // with the immutable through24 constructor; the production openStore remains

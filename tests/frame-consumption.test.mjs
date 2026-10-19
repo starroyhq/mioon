@@ -5,12 +5,12 @@ import {mkdtemp,readFile,realpath,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {startWorker} from '../packages/business/src/jobs.mjs';
-import {run,runStreaming} from '../packages/business/src/media-runtime.mjs';
-import {fileHash,probe} from '../packages/business/src/media.mjs';
-import {validatePng} from '../packages/business/src/images/png.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {startWorker} from '../packages/business/src/jobs.ts';
+import {run,runStreaming} from '../packages/business/src/media-runtime.ts';
+import {fileHash,probe} from '../packages/business/src/media.ts';
+import {validatePng} from '../packages/business/src/images/png.ts';
 import {isFrameTaskResponse,isFrameMutationResponse,isReferenceMutationResponse,isSubjectMutationResponse,isTimelineMutationResponse,schemas} from '@mioon/contracts';
 
 // Local acceptance, not a mocked decoder/renderer. Every media input is a tiny

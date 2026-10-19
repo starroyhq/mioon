@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { isTimelineRenderRecord } from '@mioon/contracts';
-import {prepareSubmission,readPending,clearPending,pendingForProject,reconcilePending} from '../apps/web/src/submissions.js';
+import {prepareSubmission,readPending,clearPending,pendingForProject,reconcilePending} from '../apps/web/src/submissions.ts';
 class SessionStore{
  values=new Map();get length(){return this.values.size;}key(n){return [...this.values.keys()][n]??null;}getItem(k){return this.values.get(k)??null;}setItem(k,v){this.values.set(k,String(v));}removeItem(k){this.values.delete(k);}
 }

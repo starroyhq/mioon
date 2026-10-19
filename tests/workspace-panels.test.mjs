@@ -6,11 +6,11 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import * as layout from '../apps/web/src/workspace-layout.js';
+import * as layout from '../apps/web/src/workspace-layout.ts';
 
 // Deterministic component-level lifecycle tests, not a substitute for browser
 // keyboard, pointer-capture, or real Base UI portal acceptance.
-const code = transformSync(readFileSync(new URL('../apps/web/src/WorkspacePanels.jsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code;
+const code = transformSync(readFileSync(new URL('../apps/web/src/WorkspacePanels.tsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code;
 const noop = () => {};
 class Element {
   constructor() { this.isConnected = true; this.scrollLeft = 0; this.scrollTop = 0; this.focuses = 0; this.children = new Set(); this.captures = new Set(); this.dataset = {}; this.selectors = new Map(); }
@@ -275,7 +275,7 @@ test('viewport resize cancels an active gesture through the changed measured-siz
   f.start(); f.fire('onPointerMove', { clientX: 180 });
   f.render({ scope: 'project-one:canvas:1000:700' });
   f.fire('onPointerUp'); assert.deepEqual(f.commits, []); assert.deepEqual(f.previews.at(-1), ['assetsWidth', null]);
-  const appSource = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const appSource = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   assert.match(appSource, /scope=\{`\$\{panelScope\}:\$\{geometry\.size\.width\}:\$\{geometry\.size\.height\}`\}/);
 });
 
@@ -455,7 +455,7 @@ test('compact pinning is transient, survives panel intents, and restores the ori
 });
 
 test('actual App rail overlay and pin callbacks use presentation state without persisting an automatic collapse', () => {
-  const source=readFileSync(new URL('../apps/web/src/App.jsx',import.meta.url),'utf8'),css=readFileSync(new URL('../apps/web/src/styles.css',import.meta.url),'utf8');
+  const source=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8'),css=readFileSync(new URL('../apps/web/src/styles.css',import.meta.url),'utf8');
   const start=source.indexOf('  function setPanelOpen('),end=source.indexOf('  const setSelectedId =',start);assert.ok(start>=0&&end>start);
   const h=harness('usePanelGeometry'),preferred=layout.defaultWorkspaceLayout().canvas,before=structuredClone(preferred),surface={current:{clientWidth:1050,clientHeight:636}},props={surface,preferred,mode:'canvas',scope:'p:canvas:0',presentationScope:'p:canvas'};
   h.render(props);let geometry=h.render(props),overlay=null,marks=0;const persisted=[];
@@ -474,7 +474,7 @@ test('actual App rail overlay and pin callbacks use presentation state without p
 });
 
 test('actual App desktop collapse retains the toolbar container, hides body and resize, and restores the current timeline view', () => {
-  const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const start = source.indexOf('  function setPanelOpen('), end = source.indexOf('  const setSelectedId =', start);
   assert.ok(start >= 0 && end > start);
   const viewRef = {current:{activeMode:'editing',editing:{timelineCollapsed:true,selectedClipId:'clip-one'}}};

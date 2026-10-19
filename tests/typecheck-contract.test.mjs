@@ -7,11 +7,11 @@ import {cp, mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile} from 'no
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {transformSync} from 'esbuild';
-import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
+import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const sourceName = 'packages/contracts/src/agent-protocol.ts';
-const shimName = 'packages/contracts/src/agent-protocol.mjs';
+const shimName = 'packages/contracts/src/agent-protocol.ts';
 const consumerName = 'tests/typecheck/agent-protocol.consumer.mts';
 const configName = 'tests/typecheck/tsconfig.foundation.json';
 
@@ -59,13 +59,13 @@ test('typed protocol preserves the frozen baseline executable and explicit compa
   assert.equal(executableSource(shim, 'js'), executableSource(
     "export {AGENT_PROTOCOLS, deriveAgentEndpoint} from './agent-protocol.ts';", 'js'));
   assert.doesNotMatch(source, /@ts-(?:ignore|nocheck|expect-error)\b|\bany\b/);
-  const barrel = await readFile(path.join(root, 'packages/contracts/src/index.mjs'), 'utf8');
+  const barrel = await readFile(path.join(root, 'packages/contracts/src/index.ts'), 'utf8');
   assert.ok(barrel.includes("export {AGENT_PROTOCOLS, deriveAgentEndpoint} from './agent-protocol.mjs';"));
 });
 
 test('native Node package barrel, compatibility module and real TS implementation share identity', async () => {
   const direct = await import('../packages/contracts/src/agent-protocol.ts');
-  const compatibility = await import('../packages/contracts/src/agent-protocol.mjs');
+  const compatibility = await import('../packages/contracts/src/agent-protocol.ts');
   const barrel = await import('@mioon/contracts');
   assert.deepEqual(Object.keys(direct).sort(), ['AGENT_PROTOCOLS', 'deriveAgentEndpoint']);
   assert.deepEqual(Object.keys(compatibility).sort(), Object.keys(direct).sort());
@@ -94,7 +94,7 @@ test('foundation configuration strictly checks the real contract and automatical
     '../helpers/agent-edit-wire-lifecycle-cases.ts',
     '../helpers/test-compile-cache-cases.ts',
     '../../packages/contracts/src/agent-protocol.ts',
-    '../../packages/contracts/src/agent-protocol.mjs',
+    '../../packages/contracts/src/agent-protocol.ts',
     './agent-protocol.consumer.mts',
     './agent-timeline-gain.consumer.mts',
     './export-sample-peak.consumer.mts',

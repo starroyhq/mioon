@@ -8,8 +8,8 @@ import {WORKSPACE_LUT_SCHEMA_SQL} from '../packages/business/src/workspace-schem
 import {createLutResourceServices} from '../packages/business/src/lut-resources.ts';
 import {validateLutResourceRows} from '../packages/business/src/lut-resource-validation.ts';
 import {LUT_RESOURCE_LIMITS} from '../packages/contracts/src/lut-resources.ts';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
 const text='# exact original comment\r\nTITLE "Original"\r\nLUT_3D_SIZE 2\r\n0 0 0\r\n1 0 0\r\n0 1 0\r\n1 1 0\r\n0 0 1\r\n1 0 1\r\n0 1 1\r\n1 1 1';
 function fixture(t){
  const db=new DatabaseSync(':memory:');db.exec('PRAGMA trusted_schema=OFF;PRAGMA foreign_keys=ON;CREATE TABLE projects(id TEXT PRIMARY KEY,data TEXT NOT NULL);'+WORKSPACE_LUT_SCHEMA_SQL);

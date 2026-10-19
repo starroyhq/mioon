@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { prepareSubmission, readPending, writePending, clearPending, pendingForProject, reconcilePending } from '../apps/web/src/submissions.js';
+import { prepareSubmission, readPending, writePending, clearPending, pendingForProject, reconcilePending } from '../apps/web/src/submissions.ts';
 
 class MemorySessionStorage {
   values = new Map();

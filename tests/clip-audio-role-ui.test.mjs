@@ -6,11 +6,11 @@ import { i18nTestModule } from './helpers/i18n.ts';
 import { validateCatalogs } from '../packages/i18n/src/index.ts';
 import { audioRoleMessages } from '../packages/i18n/src/catalogs/audio-role.ts';
 import * as roleContract from '../packages/contracts/src/timeline-audio-role.ts';
-import { canEditTimelineAudioRole, isWorkspaceRestoreInspection } from '../packages/contracts/src/workspace-restore.mjs';
+import { canEditTimelineAudioRole, isWorkspaceRestoreInspection } from '../packages/contracts/src/workspace-restore.ts';
 import { clipAudioRoleChanged, clipAudioRoleCapabilityMatches, readClipAudioRoleCapability, observeClipAudioRoleCapability } from '../apps/web/src/clip-audio-role-state.ts';
 import { clipDraftRawSchema } from '../packages/contracts/src/local-drafts.ts';
 import { clipDraftRaw, clipDraftPatch, createClipDraftController } from '../apps/web/src/clip-draft-state.ts';
-import { isTimelineRecord } from '../packages/contracts/src/timeline-replacement.mjs';
+import { isTimelineRecord } from '../packages/contracts/src/timeline-replacement.ts';
 const id = n => `d2000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const stamp = '2026-10-15T00:00:00.000Z';
 const raw = { name:'Clip', trackId:id(4), startFrame:0,durationFrames:120,sourceInFrame:0,gain:1,rect:{x:0,y:0,width:720,height:1280} };
@@ -105,7 +105,7 @@ test('optional capability observation never delays ordinary load and fences late
  current=false;complete({restored:false,audioRoleCapability:capability});await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(observed,[]);
  observeClipAudioRoleCapability({restored:false},async()=>({restored:false,audioRoleCapability:capability}),isWorkspaceRestoreInspection,canEditTimelineAudioRole,()=>true,value=>observed.push(value));
  await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(observed,['editable']);
- const app=readFileSync(new URL('../apps/web/src/App.jsx',import.meta.url),'utf8');assert.match(app,/observeClipAudioRoleCapability\(verifiedWorkspace/);assert.doesNotMatch(app,/await observeClipAudioRoleCapability/);assert.match(app,/audioRoleProbeEpoch\.current === roleEpoch && importSession\.current\.active && workspaceRef\.current === verifiedWorkspace/);
+ const app=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');assert.match(app,/observeClipAudioRoleCapability\(verifiedWorkspace/);assert.doesNotMatch(app,/await observeClipAudioRoleCapability/);assert.match(app,/audioRoleProbeEpoch\.current === roleEpoch && importSession\.current\.active && workspaceRef\.current === verifiedWorkspace/);
 });
 
 

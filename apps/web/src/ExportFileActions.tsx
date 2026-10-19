@@ -3,7 +3,7 @@ import {WorkbenchAlert, WorkbenchButton} from '@mioon/ui/components/workbench-co
 import {exportFileStatusSchema} from '../../../packages/contracts/src/export-file-recovery.ts';
 import type {ExportFileStatus} from '../../../packages/contracts/src/export-file-recovery.ts';
 import {useI18n} from './i18n/I18nProvider.tsx';
-import {useWorkspaceVisibility} from './workspace-visibility.jsx';
+import {useWorkspaceVisibility} from './workspace-visibility.tsx';
 
 interface Props {projectId: string; exportId: string; downloadHref: string; disabled?: boolean}
 interface Owner {projectId: string; exportId: string; url: string; downloadHref: string; disabled: boolean; visible: boolean}

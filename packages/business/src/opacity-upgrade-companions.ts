@@ -57,7 +57,7 @@ export class OpacityUpgradeCompanionError extends Error {
 function fail(code: OpacityUpgradeCompanionErrorCode = 'OPACITY_UPGRADE_COMPANION_INVALID'): never {throw new OpacityUpgradeCompanionError(code);}
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const require = createRequire(import.meta.url);
-const storage: unknown = require('../../contracts/src/private-storage.mjs');
+const storage: unknown = require('../../contracts/src/private-storage.ts');
 function storageCall(name: string, args: unknown[]): unknown {
   if (!object(storage) || typeof storage[name] !== 'function') return fail();
   return Reflect.apply(storage[name], storage, args) as unknown;

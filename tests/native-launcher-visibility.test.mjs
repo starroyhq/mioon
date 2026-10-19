@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import { schemas, workspaceRestoreInspectionSchema } from '../packages/contracts/src/index.mjs';
+import { schemas, workspaceRestoreInspectionSchema } from '../packages/contracts/src/index.ts';
 import { createLauncherClient } from '../apps/web/src/launcher-state.ts';
 import { createProjectEntryController } from '../apps/web/src/project-entry-state.ts';
 

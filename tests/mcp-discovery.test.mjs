@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,chmod,symlink} from 'node:fs/promises';
 import path from 'node:path';
-import {resolveConnection,validateLocalUrl} from '../apps/mcp/src/connection.mjs';
+import {resolveConnection,validateLocalUrl} from '../apps/mcp/src/connection.ts';
 const token='synthetic-desktop-mcp-token-for-tests';
 test('MCP explicit credentials preserve existing loopback config',async()=>{
  assert.deepEqual(await resolveConnection({MIOON_TOKEN:token}),{base:'http://127.0.0.1:4318',token});

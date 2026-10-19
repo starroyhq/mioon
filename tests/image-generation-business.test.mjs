@@ -5,11 +5,11 @@ import {mkdtempSync, rmSync, readdirSync, readFileSync, statSync} from 'node:fs'
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore, ownsStoreLock} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {renderMockImagePng, validatePng} from '../packages/business/src/images/png.mjs';
+import {openStore, ownsStoreLock} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {renderMockImagePng, validatePng} from '../packages/business/src/images/png.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, IMAGE_LIMITS, canonicalImageInput,
-  isImageTaskResponse, isImageRequestResponse, isImageListResponse} from '../packages/contracts/src/images.mjs';
+  isImageTaskResponse, isImageRequestResponse, isImageListResponse} from '../packages/contracts/src/images.ts';
 
 const code = expected => error => error.code === expected && !JSON.stringify(error).includes('PRIVATE_SENTINEL');
 const inputFor = (projectId, patch = {}) => ({projectId, name: 'Frozen image name', providerId: 'mock',

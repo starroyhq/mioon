@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {Readable} from 'node:stream';
-import {createMockImageAdapter, createOpenAIImageAdapter, decodeImageBase64, decodeImageJsonResponse} from '../packages/business/src/images/adapter.mjs';
-import {createImageJsonTransport, resolveImageDestination} from '../packages/business/src/images/network.mjs';
-import {IMAGE_GENERATION_ENDPOINT, IMAGE_NETWORK_LIMITS, IMAGE_PROFILES, createImageGenerationBody, imageAdapterError} from '../packages/business/src/images/profiles.mjs';
-import {renderMockImagePng} from '../packages/business/src/images/png.mjs';
-import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS} from '../packages/contracts/src/images.mjs';
+import {createMockImageAdapter, createOpenAIImageAdapter, decodeImageBase64, decodeImageJsonResponse} from '../packages/business/src/images/adapter.ts';
+import {createImageJsonTransport, resolveImageDestination} from '../packages/business/src/images/network.ts';
+import {IMAGE_GENERATION_ENDPOINT, IMAGE_NETWORK_LIMITS, IMAGE_PROFILES, createImageGenerationBody, imageAdapterError} from '../packages/business/src/images/profiles.ts';
+import {renderMockImagePng} from '../packages/business/src/images/png.ts';
+import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS} from '../packages/contracts/src/images.ts';
 
 const snapshot = (providerId='openai',prompt='Synthetic offline adapter test') => ({providerId,model:IMAGE_MODELS[providerId],prompt,options:{...IMAGE_FIXED_OPTIONS}});
 const answers = async () => [{address:'8.8.8.8',family:4}];

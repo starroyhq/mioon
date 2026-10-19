@@ -4,9 +4,9 @@ import {randomUUID} from 'node:crypto';
 import {mkdtemp,realpath,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {parse,isTimelineMutationResponse,operationEffect} from '../packages/contracts/src/index.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {parse,isTimelineMutationResponse,operationEffect} from '../packages/contracts/src/index.ts';
 
 const operation='timeline.clip.rippleRemove';
 const input=(timeline,fields={})=>({projectId:timeline.projectId,expectedRevision:timeline.revision,requestId:randomUUID(),...fields});

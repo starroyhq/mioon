@@ -7,8 +7,8 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {LOCAL_MUTATION_OPERATIONS} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices,canonical} from '../packages/business/src/services.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices,canonical} from '../packages/business/src/services.ts';
 
 async function fixture(t,{open=openStore}={}){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-asset-dispositions-'));
@@ -293,8 +293,8 @@ test('v12 upgrade preserves all old records and response bytes and has identical
 // helper performs the global receipt lookup only after the winner commits.
 const childCode=`
  import {existsSync} from 'node:fs';
- import {openStore} from './packages/business/src/db.mjs';
- import {createServices} from './packages/business/src/services.mjs';
+ import {openStore} from './packages/business/src/db.ts';
+ import {createServices} from './packages/business/src/services.ts';
  const [root,operation,json,release]=process.argv.slice(1),store=openStore(root,{lock:false});
  const tx=store.tx,signal=new Int32Array(new SharedArrayBuffer(4));
  const wrapped={...store,tx:callback=>{process.send({phase:'attempt'});return tx(()=>{

@@ -4,8 +4,8 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
 import {createTimelineColourPlan} from '../packages/contracts/src/timeline-colour.ts';
 import {png,pngChunk,imageColour} from './helpers/timeline-image-fixtures.mjs';
 async function fixture(t){const root=await mkdtemp(path.join(tmpdir(),'mioon-image-business-'));let store=openStore(root),services=createServices(store,new Map());t.after(async()=>{await services.drain();store.close();await rm(root,{recursive:true,force:true});});const call=(op,input)=>services.call(op,input),projectId=(await call('project.create',{name:'PNG mixed colour'})).id;return{root,projectId,call,get store(){return store;},async reopen(){await services.drain();store.close();store=openStore(root);services=createServices(store,new Map());},params:(timeline,extra={})=>({projectId,requestId:randomUUID(),expectedRevision:timeline.revision,...extra}),import:bytes=>call('asset.import',{projectId,name:'source.png',mimeType:'image/png',dataBase64:bytes.toString('base64')})};}

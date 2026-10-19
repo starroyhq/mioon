@@ -3,7 +3,7 @@ import {spawn} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {access, appendFile, mkdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
-import {migrateData} from '../apps/desktop/scripts/migrate-data.mjs';
+import {migrateData} from '../apps/desktop/scripts/migrate-data.ts';
 
 const root = path.resolve('evidence/agent-inspection/native-runtime');
 const userData = path.join(root, 'user-data'), workspace = path.join(userData, 'workspace');

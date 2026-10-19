@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, readFile, realpath, writeFile, rm } from 'node:fs/promi
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
-import { BackendSupervisor } from '../apps/desktop/src/supervisor.mjs';
+import { BackendSupervisor } from '../apps/desktop/src/supervisor.ts';
 
 const sensitive = 'private-token-request-body-/Users/private/movie.mp4';
 const tick = () => new Promise(resolve => setImmediate(resolve));

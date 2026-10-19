@@ -9,12 +9,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 import * as contracts from '@mioon/contracts';
-import * as api from '../apps/web/src/api.js';
-import * as submissions from '../apps/web/src/submissions.js';
-import * as mutations from '../apps/web/src/mutation-submissions.js';
-import * as editTasks from '../apps/web/src/edit-task-client.js';
-import * as workspaceOrigin from '../apps/web/src/workspace-origin.js';
-import * as references from '../apps/web/src/reference-connections.js';
+import * as api from '../apps/web/src/api.ts';
+import * as submissions from '../apps/web/src/submissions.ts';
+import * as mutations from '../apps/web/src/mutation-submissions.ts';
+import * as editTasks from '../apps/web/src/edit-task-client.ts';
+import * as workspaceOrigin from '../apps/web/src/workspace-origin.ts';
+import * as references from '../apps/web/src/reference-connections.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const read = file => readFileSync(path.join(root, 'apps/web/src', file), 'utf8');

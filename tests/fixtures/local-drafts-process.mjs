@@ -3,7 +3,7 @@
 import {installWireGuard} from '../helpers/inspection-wire-fixture.mjs';
 
 const guard = installWireGuard({auditPath: process.argv[2]});
-const {startServer} = await import('../../apps/server/src/index.mjs');
+const {startServer} = await import('../../apps/server/src/index.ts');
 const crashPhases = new Set(['afterPreparePersist', 'afterClaim', 'afterBusinessCommit', 'afterOutcomePersist']);
 let server, armed, started = false, closing;
 const phases = [];

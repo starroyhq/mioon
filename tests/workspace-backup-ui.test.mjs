@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import { WORKSPACE_BACKUP_LIMITS, isWorkspaceBackupInspection } from '@mioon/contracts';
-import * as backup from '../apps/web/src/workspace-backup-ui.js';
+import * as backup from '../apps/web/src/workspace-backup-ui.ts';
 
 const inspection = patch => ({ formatVersion: 1, scope: 'whole_workspace', captureReady: false, reason: 'BACKEND_RUNNING', databaseSchemaVersion: 24,
   counts: { projects: 2, assets: 5, videoTasks: 3, imageTasks: 4, frameTasks: 1, exports: 2 },

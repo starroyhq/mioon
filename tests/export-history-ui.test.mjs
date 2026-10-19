@@ -114,11 +114,11 @@ test('presentation uses supplied order and never mutates frozen input rows', () 
   assert.deepEqual(actions.order.map(action => action.downloadHref), ['/media/order-first', '/media/order-second']);
   assert.ok(rendered.order.indexOf('data-export-id="first"') < rendered.order.indexOf('data-export-id="second"'));
   assert.ok(Object.values(unchanged).every(Boolean));
-  const source = readFileSync(path.join(root, 'apps/web/src/ExportHistoryList.jsx'), 'utf8');
+  const source = readFileSync(path.join(root, 'apps/web/src/ExportHistoryList.tsx'), 'utf8');
   assert.doesNotMatch(source, /useState|useEffect|useRef|\bfetch\s*\(|\brpc\s*\(|\.sort\s*\(|navigationEpoch|requestId/);
 });
 test('App keeps history in the controlled export dialog with visibility, recovery and immutable identity inputs', () => {
-  const app = readFileSync(path.join(root, 'apps/web/src/App.jsx'), 'utf8');
+  const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
   assert.match(app, /const orderedExports = \[\.\.\.data\.exports\]\.sort\(\(a, b\) => b\.createdAt\.localeCompare\(a\.createdAt\)\);/);
   assert.match(app, /<DeliveryWorkspace page=\{showExports \? 'history' : 'compose'\}/);
   assert.match(app, /<AgentDockPane id="delivery-history-pane" labelledBy="delivery-history-tab" visible=\{showExports\}/);

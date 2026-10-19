@@ -10,7 +10,7 @@ import {randomUUID} from 'node:crypto';
 import {openStore} from '@mioon/business';
 import {startServer} from '@mioon/server';
 import {deriveAgentEndpoint} from '@mioon/contracts';
-import {createFileResponses, FILE_RESPONSE_LIMITS} from '../apps/server/src/file-response.mjs';
+import {createFileResponses, FILE_RESPONSE_LIMITS} from '../apps/server/src/file-response.ts';
 import {authorizeHttpSnapshot} from './helpers/agent-authorizations.mjs';
 
 const token = 'synthetic-q4-file-response-token';

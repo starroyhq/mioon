@@ -14,8 +14,8 @@ import assert from 'node:assert/strict';
 import {mkdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
 const equal=(actual,expected,message)=>assert.equal(JSON.stringify(actual),JSON.stringify(expected),message);
 const domain=timeline=>({tracks:timeline.tracks,clips:timeline.clips,durationFrames:timeline.durationFrames});
 export async function runHistoryBrowserAcceptance({tab,projectId,dataDir,outDir}) {

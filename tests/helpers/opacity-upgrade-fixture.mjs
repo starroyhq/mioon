@@ -4,8 +4,8 @@ import {tmpdir} from 'node:os';
 import {randomUUID, createHash} from 'node:crypto';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
-import {openStore, classifyCurrentWorkspaceSchema} from '../../packages/business/src/db.mjs';
-import {initializeWorkspaceSchemaThrough24} from '../../packages/business/src/workspace-fixed-schema.mjs';
+import {openStore, classifyCurrentWorkspaceSchema} from '../../packages/business/src/db.ts';
+import {initializeWorkspaceSchemaThrough24} from '../../packages/business/src/workspace-fixed-schema.ts';
 import {initializeWorkspaceSchema26} from '../../packages/business/src/workspace-schema-v26.ts';
 import {initializeWorkspaceSchema28} from '../../packages/business/src/workspace-schema-v28.ts';
 import {initializeWorkspaceSchema30} from '../../packages/business/src/workspace-schema-v30.ts';
@@ -14,10 +14,10 @@ import {initializeWorkspaceSchema34} from '../../packages/business/src/workspace
 import {initializeWorkspaceSchema36} from '../../packages/business/src/workspace-schema-v36.ts';
 import {initializeWorkspaceSchema38} from '../../packages/business/src/workspace-schema-v38.ts';
 import {initializeWorkspaceSchema40} from '../../packages/business/src/workspace-schema-v40.ts';
-import {createServices} from '../../packages/business/src/services.mjs';
-import {createEditTasks} from '../../packages/business/src/edit-tasks.mjs';
-import {createWorkspacePreferences} from '../../packages/business/src/workspace-preferences.mjs';
-import {defaultWorkspaceState} from '../../apps/web/src/workspace-state.js';
+import {createServices} from '../../packages/business/src/services.ts';
+import {createEditTasks} from '../../packages/business/src/edit-tasks.ts';
+import {createWorkspacePreferences} from '../../packages/business/src/workspace-preferences.ts';
+import {defaultWorkspaceState} from '../../apps/web/src/workspace-state.ts';
 import {logicalTables, raw} from './opacity-backup-fixture.mjs';
 
 export const upgradeFixtureHash = value => createHash('sha256').update(value).digest('hex');

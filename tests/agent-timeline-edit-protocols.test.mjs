@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {Readable} from 'node:stream';
-import {AGENT_PRESETS} from '../packages/business/src/agent/presets.mjs';
-import {AGENT_READ_TOOL_PROFILES} from '../packages/business/src/agent/tool-wire.mjs';
-import {buildAgentRequest, createAgentGateway} from '../packages/business/src/agent/agent-gateway.mjs';
-import {TIMELINE_EDIT_TOOL_SYSTEM_INSTRUCTION, TIMELINE_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-edit-tool-policy.mjs';
-import {CHAT_SYSTEM_INSTRUCTION} from '../packages/business/src/agent/chat-policy.mjs';
+import {AGENT_PRESETS} from '../packages/business/src/agent/presets.ts';
+import {AGENT_READ_TOOL_PROFILES} from '../packages/business/src/agent/tool-wire.ts';
+import {buildAgentRequest, createAgentGateway} from '../packages/business/src/agent/agent-gateway.ts';
+import {TIMELINE_EDIT_TOOL_SYSTEM_INSTRUCTION, TIMELINE_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-edit-tool-policy.ts';
+import {CHAT_SYSTEM_INSTRUCTION} from '../packages/business/src/agent/chat-policy.ts';
 
 const callId = 'call_edit_fixture', itemId = 'fc_separate_edit', name = 'mioon_propose_timeline_clip_move';
 const args = JSON.stringify({startFrame: 90});

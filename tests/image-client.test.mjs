@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {createClient} from '../packages/client/src/index.mjs';
-import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, IMAGE_MUTATION_OPERATIONS} from '../packages/contracts/src/images.mjs';
+import {createClient} from '../packages/client/src/index.ts';
+import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, IMAGE_MUTATION_OPERATIONS} from '../packages/contracts/src/images.ts';
 
 const env = {MIOON_BASE_URL: 'http://127.0.0.1:4318', MIOON_TOKEN: 'synthetic-image-client-token'};
 const timestamp = '2026-10-10T12:00:00.000Z';

@@ -12,13 +12,13 @@ import {createHash, randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.mjs';
-import {createClient} from '../packages/client/src/index.mjs';
-import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, isImageTaskResponse} from '../packages/contracts/src/images.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {createClient} from '../packages/client/src/index.ts';
+import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, isImageTaskResponse} from '../packages/contracts/src/images.ts';
 import {DEFAULT_IMAGE_CONFIGURATION, DEFAULT_CUSTOM_IMAGE_CONFIGURATION,
-  CUSTOM_IMAGE_SETTINGS_NAMESPACE, IMAGE_SETTINGS_NAMESPACE} from '../packages/contracts/src/image-settings.mjs';
-import {isImageReviewResponse} from '../packages/contracts/src/image-reviews.mjs';
-import {renderMockImagePng} from '../packages/business/src/images/png.mjs';
+  CUSTOM_IMAGE_SETTINGS_NAMESPACE, IMAGE_SETTINGS_NAMESPACE} from '../packages/contracts/src/image-settings.ts';
+import {isImageReviewResponse} from '../packages/contracts/src/image-reviews.ts';
+import {renderMockImagePng} from '../packages/business/src/images/png.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const token = 'synthetic-custom-images-local-http-token';
@@ -50,7 +50,7 @@ function childEnvironment(env) {
   return {...clean, TZ: 'UTC', MIOON_ENABLE_LIVE_PROVIDER: '0', ...env};
 }
 async function cli(args, env, expectedCode) {
-  const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.mjs'), ...args],
+  const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.ts'), ...args],
     {cwd: repo, env: childEnvironment(env), stdio: ['ignore', 'pipe', 'pipe']});
   let stdout = '', stderr = '';
   child.stdout.setEncoding('utf8').on('data', chunk => {stdout += chunk; if (stdout.length > 1024 * 1024) child.kill('SIGKILL');});
@@ -317,7 +317,7 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
     assert.ok(!catalog.operations.some(value => /image\.(?:review\.(?:approve|reject)|(?:custom)?settings\.)/i.test(value.operation)));
     for (const verb of ['approve', 'reject']) await cli(['image', 'review', verb, '--input', JSON.stringify(approvalFor(customReview))], f.env, 'UNKNOWN_OPERATION');
     const client = new Client({name: 'synthetic-custom-images-acceptance', version: '1.0.0'}, {capabilities: {}});
-    const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.mjs')],
+    const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.ts')],
       cwd: repo, env: childEnvironment(f.env), stderr: 'pipe'});
     try {
       await client.connect(transport);

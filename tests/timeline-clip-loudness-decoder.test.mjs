@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createTimelineClipLoudnessDecoder, planTimelineClipLoudnessDecode} from '../packages/business/src/timeline-clip-loudness-decoder.ts';
 import {timelineClipAudioFilter} from '../packages/business/src/timeline-audio-filter-graph.ts';
-import {checkMediaEffect} from '../packages/business/src/media-runtime.mjs';
+import {checkMediaEffect} from '../packages/business/src/media-runtime.ts';
 const fixture = () => ({clip: {id: 'clip', trackId: 'track', assetId: 'source', startFrame: 91,
   durationFrames: 30, sourceInFrame: 17, gain: .75, fadeInFrames: 3, fadeOutFrames: 5},
   track: {id: 'track', kind: 'audio', orderIndex: 1, muted: false, hidden: false},

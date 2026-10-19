@@ -4,7 +4,7 @@ import {WorkbenchPopover,WorkbenchPopoverTrigger,WorkbenchPopoverTitle,Workbench
 import {Plus,Type,Image,Video,Sparkles,Link} from '@mioon/ui/components/workbench-icons';
 import {useI18n} from './i18n/I18nProvider.tsx';
 import {WorkbenchTooltip} from '@mioon/ui/components/workbench-tooltip';
-import {useWorkspaceVisibility} from './workspace-visibility.jsx';
+import {useWorkspaceVisibility} from './workspace-visibility.tsx';
 import './board-redesign.css';
 interface Props{scope:string;visible?:boolean;addingShot?:boolean;imageDisabled?:boolean;onAddShot():void;onAddText():void;onAddImage():void;onAddVideo():void;onGenerateImage():void}
 export default function CanvasToolbar({scope,visible:requestedVisible=true,addingShot=false,imageDisabled=false,onAddShot,onAddText,onAddImage,onAddVideo,onGenerateImage}:Props){

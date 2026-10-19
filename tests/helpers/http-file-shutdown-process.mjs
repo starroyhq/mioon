@@ -7,8 +7,8 @@ import {syncBuiltinESMExports} from 'node:module';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {openStore} from '@mioon/business';
-import {startServer} from '../../apps/server/src/index.mjs';
-import {FILE_RESPONSE_LIMITS} from '../../apps/server/src/file-response.mjs';
+import {startServer} from '../../apps/server/src/index.ts';
+import {FILE_RESPONSE_LIMITS} from '../../apps/server/src/file-response.ts';
 
 const [mode, root] = process.argv.slice(2);
 if (!['open', 'stat', 'headers', 'headers-prearm-delay'].includes(mode) || !path.isAbsolute(root)) throw Error('Invalid synthetic shutdown fixture');

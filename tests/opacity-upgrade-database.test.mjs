@@ -7,10 +7,10 @@ import {DatabaseSync} from 'node:sqlite';
 import {opacityUpgradeFixture, upgradeFixtureHash} from './helpers/opacity-upgrade-fixture.mjs';
 import {logicalTables, raw} from './helpers/opacity-backup-fixture.mjs';
 import {requireEligibleOrdinary40, upgradeCopiedDatabase40To42, captureOrdinaryUpgradePreservation} from '../packages/business/src/opacity-upgrade-database.ts';
-import {classifyCurrentWorkspaceSchema, installCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.mjs';
+import {classifyCurrentWorkspaceSchema, installCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.ts';
 import {classifyWorkspaceSchema42} from '../packages/business/src/workspace-schema-v42.ts';
-import {hash} from '../packages/business/src/services.mjs';
-import {freezeTimelineSnapshot} from '../packages/business/src/timeline-inputs.mjs';
+import {hash} from '../packages/business/src/services.ts';
+import {freezeTimelineSnapshot} from '../packages/business/src/timeline-inputs.ts';
 
 async function copied(t, options) {
   const f = await opacityUpgradeFixture(t, options), file = path.join(f.base, 'unpublished.sqlite');

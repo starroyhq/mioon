@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {captureOpacityTimelineIntent,captureOpacityTimelinePrepare,captureOpacityTimelineRecord,isOpacityTimelineMutationResponse,isOpacityTimelineTask} from '../packages/contracts/src/timeline-opacity-persistence.ts';
-import {schemas,isTimelineRecord,isTimelineMutationResponse,isEditTask} from '../packages/contracts/src/index.mjs';
+import {schemas,isTimelineRecord,isTimelineMutationResponse,isEditTask} from '../packages/contracts/src/index.ts';
 import {loudnessApplyFixture} from './fixtures/timeline-loudness-apply.mjs';
 import {OPACITY_ENVELOPE_PROFILE} from '../packages/contracts/src/timeline-opacity-envelope.ts';
 

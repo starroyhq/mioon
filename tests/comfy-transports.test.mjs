@@ -9,11 +9,11 @@ import {fileURLToPath} from 'node:url';
 import {createHash, randomUUID} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.mjs';
-import {createClient, operationDefinition} from '../packages/client/src/index.mjs';
-import {COMFY_IMAGE_OPTIONS, DEFAULT_COMFY_IMAGE_CONFIGURATION} from '../packages/contracts/src/comfy-images.mjs';
-import {COMFY_NODE_CLASSES} from '../packages/business/src/comfy/profile.mjs';
-import {hashComfyWorkflow} from '../packages/business/src/comfy/workflow.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {createClient, operationDefinition} from '../packages/client/src/index.ts';
+import {COMFY_IMAGE_OPTIONS, DEFAULT_COMFY_IMAGE_CONFIGURATION} from '../packages/contracts/src/comfy-images.ts';
+import {COMFY_NODE_CLASSES} from '../packages/business/src/comfy/profile.ts';
+import {hashComfyWorkflow} from '../packages/business/src/comfy/workflow.ts';
 import {startComfyFixture,COMFY_FIXTURE_MODEL} from './helpers/comfy-http-fixture.mjs';
 
 const repo=fileURLToPath(new URL('..',import.meta.url)),token='synthetic-comfy-local-transport-token',model=COMFY_FIXTURE_MODEL;
@@ -28,7 +28,7 @@ function publicOnly(value,root){
   assert.ok(!/"(?:apiKey|authorization|dataBase64|b64_json|relativePath|rawGraph|canonicalInput|stagedReceipt)"\s*:/i.test(text));
 }
 async function cli(operation,input,env){
-  const child=spawn(process.execPath,[path.join(repo,'apps/cli/src/index.mjs'),'rpc',operation,'--input',JSON.stringify(input)],{cwd:repo,env:childEnvironment(env),stdio:['ignore','pipe','pipe']});
+  const child=spawn(process.execPath,[path.join(repo,'apps/cli/src/index.ts'),'rpc',operation,'--input',JSON.stringify(input)],{cwd:repo,env:childEnvironment(env),stdio:['ignore','pipe','pipe']});
   let stdout='',stderr='';
   child.stdout.setEncoding('utf8').on('data',chunk=>{stdout+=chunk;if(stdout.length>1024*1024)child.kill('SIGKILL');});
   child.stderr.setEncoding('utf8').on('data',chunk=>{stderr=(stderr+chunk).slice(-20000);});
@@ -39,7 +39,7 @@ async function cli(operation,input,env){
 }
 async function withMcp(f,run){
   const client=new Client({name:'synthetic-comfy-transport-acceptance',version:'1.0.0'},{capabilities:{}});
-  const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.mjs')],cwd:repo,env:childEnvironment(f.env),stderr:'pipe'});
+  const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.ts')],cwd:repo,env:childEnvironment(f.env),stderr:'pipe'});
   try{
     await client.connect(transport);
     const tools=(await client.listTools()).tools;

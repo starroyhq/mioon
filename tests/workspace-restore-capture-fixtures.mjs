@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
 import {initializeWorkspaceSchema28} from '../packages/business/src/workspace-schema-v28.ts';
 import {initializeWorkspaceSchema30} from '../packages/business/src/workspace-schema-v30.ts';
@@ -18,7 +18,7 @@ import {createWorkspaceRestoreProfileV33} from '../packages/business/src/workspa
 import {createWorkspaceRestoreProfileV35} from '../packages/business/src/workspace-restore-schema-v35.ts';
 import {createWorkspaceRestoreProfileV37} from '../packages/business/src/workspace-restore-schema-v37.ts';
 import {createWorkspaceRestoreProfileV39} from '../packages/business/src/workspace-restore-schema-v39.ts';
-import {classifyWorkspaceSchema,detectWorkspaceRestoreEvidence,installWorkspaceRestoreSchema,validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.mjs';
+import {classifyWorkspaceSchema,detectWorkspaceRestoreEvidence,installWorkspaceRestoreSchema,validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.ts';
 import {createWorkspaceSchemaDispatch} from '../packages/business/src/workspace-schema-dispatch.ts';
 import {parseCube3D} from '../packages/business/src/cube-lut.ts';
 import {lutInputHash} from '../packages/business/src/lut-resource-validation.ts';

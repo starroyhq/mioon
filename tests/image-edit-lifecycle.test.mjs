@@ -5,20 +5,20 @@ import {mkdtempSync,rmSync,writeFileSync,readFileSync,unlinkSync,symlinkSync} fr
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {deflateSync} from 'node:zlib';
-import {createFrameServices} from '../packages/business/src/frames.mjs';
-import {FRAME_PROFILE_ID,FRAME_SELECTION_RULE} from '../packages/contracts/src/frame-extraction.mjs';
-import {createComfySettings} from '../packages/business/src/comfy/settings.mjs';
-import {DEFAULT_COMFY_IMAGE_CONFIGURATION,COMFY_IMAGE_OPTIONS} from '../packages/contracts/src/comfy-images.mjs';
+import {createFrameServices} from '../packages/business/src/frames.ts';
+import {FRAME_PROFILE_ID,FRAME_SELECTION_RULE} from '../packages/contracts/src/frame-extraction.ts';
+import {createComfySettings} from '../packages/business/src/comfy/settings.ts';
+import {DEFAULT_COMFY_IMAGE_CONFIGURATION,COMFY_IMAGE_OPTIONS} from '../packages/contracts/src/comfy-images.ts';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore} from '../packages/business/src/db.mjs';
-import {validateImageTaskReview} from '../packages/business/src/images/reviews.mjs';
-import {createImageServices} from '../packages/business/src/images.mjs';
-import {createOwnedMediaGraphReader} from '../packages/business/src/inspection.mjs';
-import {createImageEditSourceResolver} from '../packages/business/src/images/edit-source.mjs';
-import {IMAGE_FIXED_OPTIONS,IMAGE_MODELS,canonicalImageInput as canonical} from '../packages/contracts/src/images.mjs';
-import {IMAGE_SETTINGS_READ_CURRENT,IMAGE_SETTINGS_ASSERT_CURRENT} from '../packages/business/src/images/settings.mjs';
-import {DEFAULT_IMAGE_CONFIGURATION} from '../packages/contracts/src/image-settings.mjs';
-import {renderMockImagePng} from '../packages/business/src/images/png.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {validateImageTaskReview} from '../packages/business/src/images/reviews.ts';
+import {createImageServices} from '../packages/business/src/images.ts';
+import {createOwnedMediaGraphReader} from '../packages/business/src/inspection.ts';
+import {createImageEditSourceResolver} from '../packages/business/src/images/edit-source.ts';
+import {IMAGE_FIXED_OPTIONS,IMAGE_MODELS,canonicalImageInput as canonical} from '../packages/contracts/src/images.ts';
+import {IMAGE_SETTINGS_READ_CURRENT,IMAGE_SETTINGS_ASSERT_CURRENT} from '../packages/business/src/images/settings.ts';
+import {DEFAULT_IMAGE_CONFIGURATION} from '../packages/contracts/src/image-settings.ts';
+import {renderMockImagePng} from '../packages/business/src/images/png.ts';
 
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 let pngPromise;const png=()=>pngPromise??=renderMockImagePng();
@@ -198,7 +198,7 @@ test('edit source ancestry is bounded at 32 source tasks',async t=>{
 });
 
 for(const variant of ['sql-owner-reassigned','version-deleted','foreign-extra-receipt'])test(`reverse ${variant} cannot hide an edited output behind an import label`,async t=>{
- const {validateImageConsumption}=await import('../packages/business/src/image-consumption.mjs');
+ const {validateImageConsumption}=await import('../packages/business/src/image-consumption.ts');
  const f=await fixture(t,{autoRun:false}),edited=injectEdit(f,importedDescriptor(f));removeIdentityTriggers(f.store.db);f.store.db.exec('PRAGMA foreign_keys=OFF');
  const asset={...f.store.get('assets',edited.assetId),provenance:'user-import'};f.store.put('assets',asset);
  if(variant==='sql-owner-reassigned')f.store.db.prepare('UPDATE image_versions SET assetId=? WHERE id=?').run(randomUUID(),edited.versionId);

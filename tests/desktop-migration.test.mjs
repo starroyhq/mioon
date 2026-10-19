@@ -5,7 +5,7 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { openStore } from '@mioon/business';
-import { migrateData } from '../apps/desktop/scripts/migrate-data.mjs';
+import { migrateData } from '../apps/desktop/scripts/migrate-data.ts';
 
 async function fixture() {
   const root = await mkdtemp(path.join(tmpdir(), 'wb-migration-test-'));

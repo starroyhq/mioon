@@ -2,7 +2,7 @@ import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { PANEL_BOUNDS } from '../apps/web/src/workspace-layout.js';
+import { PANEL_BOUNDS } from '../apps/web/src/workspace-layout.ts';
 import { timelineVisibleTracks } from '../apps/web/src/timeline-view-geometry.ts';
 
 const read = name => readFileSync(new URL(`../apps/web/src/${name}`, import.meta.url), 'utf8');

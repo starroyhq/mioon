@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {mkdtemp, mkdir, readFile, writeFile, readdir, rm, chmod, stat, symlink, link} from 'node:fs/promises';
-import {createImageSettingsFile} from '../packages/business/src/images/settings-file.mjs';
-import {createImageSettings} from '../packages/business/src/images/settings.mjs';
-import {DEFAULT_IMAGE_CONFIGURATION, IMAGE_SETTINGS_NAMESPACE} from '../packages/contracts/src/image-settings.mjs';
-import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.mjs';
+import {createImageSettingsFile} from '../packages/business/src/images/settings-file.ts';
+import {createImageSettings} from '../packages/business/src/images/settings.ts';
+import {DEFAULT_IMAGE_CONFIGURATION, IMAGE_SETTINGS_NAMESPACE} from '../packages/contracts/src/image-settings.ts';
+import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
 
 const envelope = (revision = 1) => ({version: 1, namespace: IMAGE_SETTINGS_NAMESPACE, revision, configuration: structuredClone(DEFAULT_IMAGE_CONFIGURATION), secret: null});
 async function fixture(t) {

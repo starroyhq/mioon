@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {runStreaming} from '../packages/business/src/media-runtime.mjs';
+import {runStreaming} from '../packages/business/src/media-runtime.ts';
 
 test('real FFmpeg reads simple and complex filter files without putting graph bytes in argv', async t => {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-filter-files-'));

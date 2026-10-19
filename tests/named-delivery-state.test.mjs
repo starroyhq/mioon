@@ -3,8 +3,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TIMELINE_EXPORT_DEFAULT_SETTINGS, resolveTimelineExportDelivery } from '@mioon/contracts';
 import { createTimelineDeliveryNameController, deliveryNameContextFields, deliveryNameRequestFields, namedTimelineDeliveryHistory } from '../apps/web/src/export-delivery-state.ts';
-import { createExportPreflightController } from '../apps/web/src/export-preflight-state.js';
-import { prepareSubmission, prepareRequestReplay, readPending } from '../apps/web/src/submissions.js';
+import { createExportPreflightController } from '../apps/web/src/export-preflight-state.ts';
+import { prepareSubmission, prepareRequestReplay, readPending } from '../apps/web/src/submissions.ts';
 
 const id = n => `ab000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), timelineId = id(2), hash = 'a'.repeat(64);

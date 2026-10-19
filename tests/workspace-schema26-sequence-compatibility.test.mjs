@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {initializeWorkspaceSchema26, validateWorkspaceSchema26, validateWorkspaceSchema24For26Migration} from '../packages/business/src/workspace-schema-v26.ts';
-import {migrateComfyImageReviewSchema} from '../packages/business/src/images/review-schema.mjs';
-import {migrateComfyImageSchema} from '../packages/business/src/comfy-image-schema.mjs';
-import {migrateFrameSchema} from '../packages/business/src/frame-schema.mjs';
-import {migrateTimelineFormatSchema} from '../packages/business/src/timeline-format-schema.mjs';
-import {migrateTimelineFormatEditTasks, migrateTimelineSubtitleEditTasks} from '../packages/business/src/edit-task-schema.mjs';
+import {migrateComfyImageReviewSchema} from '../packages/business/src/images/review-schema.ts';
+import {migrateComfyImageSchema} from '../packages/business/src/comfy-image-schema.ts';
+import {migrateFrameSchema} from '../packages/business/src/frame-schema.ts';
+import {migrateTimelineFormatSchema} from '../packages/business/src/timeline-format-schema.ts';
+import {migrateTimelineFormatEditTasks, migrateTimelineSubtitleEditTasks} from '../packages/business/src/edit-task-schema.ts';
 import {open, fixture, snapshot, preserved, task, insert, probe, facade, assertBoundedSequenceProjection} from './workspace-schema26-fixtures.mjs';
 
 function database(t) {

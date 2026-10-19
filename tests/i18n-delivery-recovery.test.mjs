@@ -8,7 +8,7 @@ import { createLanguageStore } from '../apps/web/src/i18n/language-store.ts';
 import * as range from '../apps/web/src/export-range-state.ts';
 import * as delivery from '../apps/web/src/export-delivery-state.ts';
 import * as deliveryContracts from '@mioon/contracts/timeline-delivery';
-import * as restored from '../apps/web/src/restored-workspace.js';
+import * as restored from '../apps/web/src/restored-workspace.ts';
 import { createLocalDeliveryController } from '../apps/web/src/local-delivery-state.ts';
 import { createLocalShotTextController } from '../apps/web/src/local-shot-text-state.ts';
 import { LocalDeliveryRequestError } from '../apps/web/src/local-delivery-client.ts';

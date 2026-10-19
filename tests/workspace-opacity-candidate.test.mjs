@@ -80,11 +80,11 @@ test('historical25–41 pins survive only finite reviewed integration deltas and
   assert.equal(deltas.baseline, manifest.baseline);
   assert.equal(deltas.baselineManifestSha256, sha256(manifestBytes));
   const reviewedPaths = [
-    'packages/business/src/local-drafts.ts', 'packages/business/src/timeline-inputs.mjs',
-    'packages/business/src/timeline-media.mjs', 'packages/business/src/workspace-backup-schema-versions.ts',
-    'packages/business/src/workspace-restore-invocation.mjs', 'packages/business/src/workspace-restore-policy.mjs',
-    'packages/business/src/workspace-schema-dispatch.ts', 'packages/contracts/src/index.mjs',
-    'packages/contracts/src/timeline-acknowledgement.mjs', 'packages/contracts/src/workspace-schema-profiles.ts',
+    'packages/business/src/local-drafts.ts', 'packages/business/src/timeline-inputs.ts',
+    'packages/business/src/timeline-media.ts', 'packages/business/src/workspace-backup-schema-versions.ts',
+    'packages/business/src/workspace-restore-invocation.ts', 'packages/business/src/workspace-restore-policy.ts',
+    'packages/business/src/workspace-schema-dispatch.ts', 'packages/contracts/src/index.ts',
+    'packages/contracts/src/timeline-acknowledgement.ts', 'packages/contracts/src/workspace-schema-profiles.ts',
   ];
   assert.deepEqual(deltas.files.map(item => item.path).sort(), reviewedPaths.sort());
   function reverseReviewed(file, bytes, expected) {
@@ -110,7 +110,7 @@ test('historical25–41 pins survive only finite reviewed integration deltas and
   assert.equal(manifest.baseline, '812d18a9d493f01f94235bd4f424b4e17e742ad8');
   assert.equal(exception.baseline, manifest.baseline);
   assert.equal(exception.baselineManifestSha256, '7381ed3486563b84cf4f4912dfde81ae07b0369cde4e479ad2b1bcfd88633f0d');
-  assert.equal(exception.path, 'packages/business/src/timeline-media.mjs');
+  assert.equal(exception.path, 'packages/business/src/timeline-media.ts');
   assert.equal(exception.beforeSha256, 'b89728d7508ea1ca0d2011c3fad710722411993bd8a0989553167733bf343dde');
   assert.equal(manifest.sha256[exception.path], exception.beforeSha256);
   assert.match(exception.afterSha256, /^[a-f0-9]{64}$/u, 'approved renderer result has a recorded final hash');
@@ -134,13 +134,13 @@ test('historical25–41 pins survive only finite reviewed integration deltas and
 });
 
 test('candidate modules remain absent from production exports, startup, operations and permissions', () => {
-  for (const path of ['packages/contracts/package.json', 'packages/contracts/src/index.mjs', 'packages/business/src/db.mjs',
-    'packages/business/src/workspace-schema-dispatch.ts', 'packages/business/src/workspace-restore-policy.mjs',
-    'packages/business/src/timeline-inputs.mjs']) {
+  for (const path of ['packages/contracts/package.json', 'packages/contracts/src/index.ts', 'packages/business/src/db.ts',
+    'packages/business/src/workspace-schema-dispatch.ts', 'packages/business/src/workspace-restore-policy.ts',
+    'packages/business/src/timeline-inputs.ts']) {
     const source = readFileSync(new URL(path, root), 'utf8');
     assert.equal(/(?:timeline-opacity|workspace-opacity|local-drafts-opacity|opacityEnvelope)/u.test(source), false, path);
   }
-  const renderer = readFileSync(new URL('packages/business/src/timeline-media.mjs', root), 'utf8');
+  const renderer = readFileSync(new URL('packages/business/src/timeline-media.ts', root), 'utf8');
   assert.match(renderer, /import\s*\{getTimelineOpacityRenderBinding\}\s*from\s*'\.\/timeline-opacity-render-binding\.ts'/u, 'the renderer exception uses only a fixed internal binding getter');
   assert.equal(/workspace-opacity|local-drafts-opacity/u.test(renderer), false, 'renderer does not select workspace/draft capabilities');
 });

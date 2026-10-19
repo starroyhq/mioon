@@ -5,7 +5,7 @@ import {initializeWorkspaceSchema42, classifyWorkspaceSchema42} from '../package
 import {initializeOpacityLegacyThrough40} from '../packages/business/src/workspace-opacity-legacy.ts';
 import {classifyWorkspaceSchemaV42V43, installWorkspaceRestoreSchemaV43, validateWorkspaceRestoreSchemaV43} from '../packages/business/src/workspace-restore-schema-v43.ts';
 import {createWorkspaceRestoreProfileV41} from '../packages/business/src/workspace-restore-schema-v41.ts';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const stamp = '2026-10-16T00:00:00.000Z';

@@ -2,7 +2,7 @@ import React, { useLayoutEffect, useMemo, useRef } from 'react';
 import { Button } from '@mioon/ui/components/button';
 import { Input } from '@mioon/ui/components/input';
 import { useI18n } from './i18n/I18nProvider.tsx';
-import { useWorkspaceVisibility } from './workspace-visibility.jsx';
+import { useWorkspaceVisibility } from './workspace-visibility.tsx';
 import type { AnnotationState, AssetAnnotationController } from './asset-annotation-state.ts';
 interface Props {
   asset?: { id: string; projectId: string; name: string } | null; state: AnnotationState | null;

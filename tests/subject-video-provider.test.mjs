@@ -7,8 +7,8 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {crc32,deflateSync} from 'node:zlib';
 import {SUBJECT_REFERENCE_PROFILE_VERSION} from '@mioon/contracts';
-import {createArkProvider} from '../packages/business/src/providers/ark.mjs';
-import {createMockProvider} from '../packages/business/src/providers/mock.mjs';
+import {createArkProvider} from '../packages/business/src/providers/ark.ts';
+import {createMockProvider} from '../packages/business/src/providers/mock.ts';
 
 // Entirely synthetic parser/byte fixtures. No renderer, credentials, or live HTTP.
 function png(width=480,height=480){

@@ -7,14 +7,14 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as contracts from '@mioon/contracts';
 import { LOCAL_SHOT_TEXT_LIMITS } from '@mioon/contracts/local-shot-text';
-import * as settings from '../apps/web/src/generation-settings.js';
-import * as subjectVideo from '../apps/web/src/subject-video.js';
-import * as subjectState from '../apps/web/src/subject-state.js';
-import * as submissions from '../apps/web/src/submissions.js';
-import * as workspaceOrigin from '../apps/web/src/workspace-origin.js';
-import * as api from '../apps/web/src/api.js';
-import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.js';
-import { referenceForShot } from '../apps/web/src/reference-connections.js';
+import * as settings from '../apps/web/src/generation-settings.ts';
+import * as subjectVideo from '../apps/web/src/subject-video.ts';
+import * as subjectState from '../apps/web/src/subject-state.ts';
+import * as submissions from '../apps/web/src/submissions.ts';
+import * as workspaceOrigin from '../apps/web/src/workspace-origin.ts';
+import * as api from '../apps/web/src/api.ts';
+import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.ts';
+import { referenceForShot } from '../apps/web/src/reference-connections.ts';
 
 const taskIntentModule = { exports: {} };
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
@@ -209,7 +209,7 @@ function reviewHarness({ retry = false } = {}) {
     context: () => ({ epoch: state.epoch }), isCurrent: value => value.epoch === state.epoch,
     setRealConfirm: value => { state.review = value; }, notify: message => state.notices.push(message), submitGeneration: args => state.sent.push(args),
   };
-  const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const code = source.slice(source.indexOf('  function reviewGeneration('), source.indexOf('  async function createProject('));
   const app = Function(...Object.keys(scope), `${code}; return { reviewGeneration, confirmGeneration };`)(...Object.values(scope));
   app.reviewGeneration({ shot: retry ? { ...snapshot, id: shotId } : shot(), providerId: p.id, model: p.models[0], inputMode: 'subject', ...(retry ? { retryJobId: job.id, expectedRetrySnapshot: snapshot } : { subjectReference: original }) });
@@ -280,21 +280,21 @@ test('Inspector saves only shot fields then generates explicit pinned option, an
 });
 
 test('App uses subjectVersionId only on wire, exact expected reference beside pending input, and disclosures in review/history/tasks', () => {
-  const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const submit = app.slice(app.indexOf('const submitGeneration ='), app.indexOf('function generate('));
   assert.match(submit, /subjectVersionId: subjectReference.subjectVersionId/);
   assert.match(submit, /expectedSubjectReference: subjectReference/);
   assert.doesNotMatch(submit, /subjectBinding|headVersion|referenceAssetIds|referenceBindings|lastFrameAssetId/);
   assert.match(app, /isSubjectGenerationResponse\(operation, input, result, \{ projectId, subjectReference: stored.expectedSubjectReference \}\)/);
   assert.match(app, /paid-subject-face-warning/);
-  const inspector = readFileSync(new URL('../apps/web/src/Inspector.jsx', import.meta.url), 'utf8');
-  const tasks = readFileSync(new URL('../apps/web/src/TaskCenter.jsx', import.meta.url), 'utf8');
+  const inspector = readFileSync(new URL('../apps/web/src/Inspector.tsx', import.meta.url), 'utf8');
+  const tasks = readFileSync(new URL('../apps/web/src/TaskCenter.tsx', import.meta.url), 'utf8');
   assert.match(inspector, /SubjectVideoSummary reference=\{v.snapshot.subjectReference\}/);
   assert.match(tasks, /SubjectVideoSummary reference=\{job.snapshot\?\.subjectReference\}/);
 });
 
 test('actual App subject retry captures original public snapshot beside unchanged wire input; legacy retries remain unchanged', async () => {
-  const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const code = source.slice(source.indexOf('  const submitGeneration ='), source.indexOf('  function reviewGeneration('));
   const p = provider('mock'), calls = [], notices = [];
   const original = { ...subjectVideo.subjectVideoSnapshot(shot(), reference(), assets), providerId: p.id, model: p.models[0], shotId, shotRevision: 1 }; delete original.id;

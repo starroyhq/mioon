@@ -2,10 +2,10 @@
 // afterBusinessCommit boundary; it never deletes a lock or signals a neighbor.
 import path from 'node:path';
 import {writeFileSync} from 'node:fs';
-import {openStore} from '../../packages/business/src/db.mjs';
-import {createServices} from '../../packages/business/src/services.mjs';
-import {createEditTasks} from '../../packages/business/src/edit-tasks.mjs';
-import {onMediaProcess} from '../../packages/business/src/media-processes.mjs';
+import {openStore} from '../../packages/business/src/db.ts';
+import {createServices} from '../../packages/business/src/services.ts';
+import {createEditTasks} from '../../packages/business/src/edit-tasks.ts';
+import {onMediaProcess} from '../../packages/business/src/media-processes.ts';
 const root=process.argv[2],taskMethods=new Set(['prepare','get','list','execute','reconcile','reconcileStartup']);
 const operations=new Set(['timeline.loudness.prepare','timeline.loudness.apply','timeline.undo','timeline.get','timeline.history.get']);
 const dispatches=[],media=[],liveMedia=new Set();let armed=false,store,services,tasks,closing;

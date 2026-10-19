@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {createClient} from '@mioon/client';
 import {isSubjectMutationResponse,hasRequestNotAppliedProof,isEditTaskEnvelope} from '@mioon/contracts';
-import {createEditTaskController} from '../apps/web/src/edit-task-controller.js';
-import {createEditTaskClient,validateTaskEnvelope} from '../apps/web/src/edit-task-client.js';
+import {createEditTaskController} from '../apps/web/src/edit-task-controller.ts';
+import {createEditTaskClient,validateTaskEnvelope} from '../apps/web/src/edit-task-client.ts';
 const stamp='2026-10-10T00:00:00.000Z';
 function fixture(operation='subject.create'){
  const projectId=randomUUID(),subjectId=randomUUID(),assetId=randomUUID(),headVersionId=randomUUID(),shotId=randomUUID();
