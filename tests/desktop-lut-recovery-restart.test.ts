@@ -1,4 +1,5 @@
 import test from 'node:test';
+import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
@@ -22,14 +23,14 @@ const cube = 'LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 
 const file = () => new File([cube], 'restart.cube');
 const token = 'synthetic-desktop-lut-restart-token';
 const channel = 'development';
-function scope(dataDir) {
+function scope(dataDir: string) {
   const directory = storage.validatePrivateDirectory(dataDir);
   const db = storage.validateManagedFile(path.join(dataDir, 'workbench.sqlite'), { root: dataDir });
   assert.ok(directory && db);
   return calculateWorkspaceScope({ channel, root: dataDir, directory, db });
 }
 
-async function startBackend(t, dataDir) {
+async function startBackend(t: TestContext, dataDir: string) {
   const child = spawn(process.execPath, ['--input-type=module', '-e', `
     import { startServer } from '@mioon/server';
     const service = await startServer({dataDir:process.env.LUT_TEST_DATA,
@@ -45,8 +46,8 @@ async function startBackend(t, dataDir) {
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   });
   let diagnostics = '';
-  child.stdout.setEncoding('utf8').on('data', chunk => { diagnostics += chunk; });
-  child.stderr.setEncoding('utf8').on('data', chunk => { diagnostics += chunk; });
+  child.stdout!.setEncoding('utf8').on('data', (chunk: Buffer) => { diagnostics += chunk; });
+  child.stderr!.setEncoding('utf8').on('data', (chunk: Buffer) => { diagnostics += chunk; });
   // Register the exit promise immediately, including before readiness failures.
   const exited = once(child, 'exit');
   let stopped = false;
@@ -74,7 +75,7 @@ async function startBackend(t, dataDir) {
     client: createClient({ env: { MIOON_BASE_URL: ready.url, MIOON_TOKEN: token } }) };
 }
 
-async function verifyBackendScope(backend, projectId, expectedScope) {
+async function verifyBackendScope(backend: {url: string}, projectId: string, expectedScope: string) {
   const response = await fetch(`${backend.url}/api/local-drafts?projectId=${projectId}`, {
     headers: { authorization: `Bearer ${token}` },
   });
@@ -85,7 +86,7 @@ async function verifyBackendScope(backend, projectId, expectedScope) {
 }
 
 // Inspect only after graceful backend exit. Never open a second writer.
-function snapshot(dataDir) {
+function snapshot(dataDir: string) {
   const db = new DatabaseSync(path.join(dataDir, 'workbench.sqlite'), { readOnly: true });
   try {
     return {
@@ -95,23 +96,25 @@ function snapshot(dataDir) {
   } finally { db.close(); }
 }
 
-function rendererSession({ userData, dataDir, projectId, backend, fault }) {
+interface RendererSessionOptions {userData: string; dataDir: string; projectId: string; backend: {url: string; pid: number | undefined; close: () => Promise<void>; client: BackendClient}; fault?: unknown}
+interface BackendClient {rpc(operation: string, input?: unknown): Promise<Record<string, unknown>>}
+function rendererSession({ userData, dataDir, projectId, backend, fault }: RendererSessionOptions) {
   let alive = true;
   const workspaceScope = scope(dataDir), instanceId = randomUUID();
-  const calls = [], replies = [], edits = [], writes = [];
+  const calls: Array<Record<string, unknown>> = [], replies: unknown[] = [], edits: unknown[] = [], writes: unknown[] = [];
   let dispatchedImports = 0, generatedIds = 0;
   const event = { url: backend.url, partition: randomUUID() };
   const host = createDesktopLutRecoveryHost({
-    ownerForEvent: input => input === event ? { projectId, isCurrent: () => alive } : null,
+    ownerForEvent: (input: unknown) => input === event ? { projectId, isCurrent: () => alive } : null,
     currentWorkspaceScope: () => { assert.ok(alive); return scope(dataDir); },
-    createStore: guard => {
-      const store = createDesktopLutRecoveryStore({ userData, storage, guard });
-      return { read: identity => store.read(identity), verify: value => store.verify(value),
-        reserve: value => { writes.push('reserve'); store.reserve(value); },
-        complete: value => { writes.push('complete'); store.complete(value); } };
+    createStore: (guard: () => void) => {
+      const store = createDesktopLutRecoveryStore({ userData, storage: storage as unknown as Parameters<typeof createDesktopLutRecoveryStore>[0]['storage'], guard });
+      return { read: (identity: unknown) => store.read(identity as never), verify: (value: unknown) => store.verify(value as never),
+        reserve: (value: unknown) => { writes.push('reserve'); store.reserve(value as never); },
+        complete: (value: unknown) => { writes.push('complete'); store.complete(value as never); } };
     },
-  });
-  const bridge = createDesktopLutRecoveryBridge({ invoke: (_channel, input) => host.dispatch(event, input) });
+  } as unknown as Parameters<typeof createDesktopLutRecoveryHost>[0]);
+  const bridge = createDesktopLutRecoveryBridge({ invoke: (_channel: string, input: unknown) => host.dispatch(event, input) } as unknown as Parameters<typeof createDesktopLutRecoveryBridge>[0]);
   const recovery = createDesktopOrBrowserLutRecovery({ __mioonDesktop: true, __mioonLutRecovery: bridge });
   const assetId = randomUUID(), timelineId = randomUUID(), clipId = randomUUID(), assetSha256 = 'a'.repeat(64);
   const controller = createClipLutController({
@@ -148,24 +151,24 @@ for (const fault of ['lost-ack', 'before-dispatch']) {
     mkdirSync(userData, { mode: 0o700 });
     // The finally block below closes both backends before this cleanup hook.
     t.after(() => rmSync(root, { recursive: true, force: true }));
-    let firstBackend, secondBackend;
+    let firstBackend: Awaited<ReturnType<typeof startBackend>> | undefined, secondBackend: Awaited<ReturnType<typeof startBackend>> | undefined;
     try {
       firstBackend = await startBackend(t, dataDir);
-      const project = await firstBackend.client.rpc('project.create', { name: 'Synthetic restart recovery' });
+      const project = await firstBackend.client.rpc('project.create', { name: 'Synthetic restart recovery' }) as {id: string};
       const first = rendererSession({ userData, dataDir, projectId: project.id, backend: firstBackend, fault });
       t.after(() => first.close());
       await verifyBackendScope(firstBackend, project.id, first.workspaceScope);
       first.controller.open();
       await first.controller.checkRecovery();
       assert.equal(await first.controller.importFile(file()), false);
-      assert.equal(first.controller.getState().importRecord.phase, 'unknown');
+      assert.equal(first.controller.getState().importRecord!.phase, 'unknown');
       assert.equal(first.calls.length, 1);
       assert.equal(first.dispatchedImports, fault === 'lost-ack' ? 1 : 0);
       const original = first.calls[0], originalReply = first.replies[0];
       const pendingPath = path.join(userData, 'lut-import-pending-v1.json');
       const pending = readFileSync(pendingPath, 'utf8');
       const pendingInode = statSync(pendingPath).ino;
-      assert.ok(!pending.includes(original.dataBase64));
+      assert.ok(!pending.includes(String(original.dataBase64)));
       assert.equal(JSON.parse(pending).records[0].requestId, original.requestId);
       assert.deepEqual(first.edits, []);
       first.close();
@@ -173,7 +176,7 @@ for (const fault of ['lost-ack', 'before-dispatch']) {
       const before = snapshot(dataDir);
       assert.equal(before.resources.length, fault === 'lost-ack' ? 1 : 0);
       assert.equal(before.receipts.length, fault === 'lost-ack' ? 1 : 0);
-      if (originalReply) assert.equal(before.resources[0].id, originalReply.resource.id);
+      if (originalReply) assert.equal(before.resources[0]?.id, (originalReply as {resource: {id: string}}).resource.id);
 
       secondBackend = await startBackend(t, dataDir);
       assert.notEqual(secondBackend.pid, firstBackend.pid, 'A genuinely new backend process');
@@ -184,7 +187,7 @@ for (const fault of ['lost-ack', 'before-dispatch']) {
       assert.notEqual(second.event.partition, first.event.partition);
       second.controller.open();
       await second.controller.checkRecovery();
-      assert.equal(second.controller.getState().recovery.requestId, original.requestId);
+      assert.equal(second.controller.getState().recovery!.requestId, original.requestId);
       assert.equal(await second.controller.retryImport(), false, 'Metadata alone is not authority to retry');
       assert.equal(await second.controller.reselectImportFile(new File([cube.replace('0 0 0', '0 0 1')], 'restart.cube')), false);
       assert.equal(await second.controller.reselectImportFile(file()), true);
@@ -200,7 +203,7 @@ for (const fault of ['lost-ack', 'before-dispatch']) {
       assert.deepEqual(second.writes, ['complete']);
       assert.deepEqual(JSON.parse(readFileSync(pendingPath, 'utf8')).records, []);
       assert.deepEqual(second.edits, []);
-      assert.deepEqual((await secondBackend.client.rpc('lut.list', { projectId: project.id })).items, [second.replies[0].resource]);
+      assert.deepEqual(((await secondBackend.client.rpc('lut.list', { projectId: project.id })) as {items: unknown[]}).items, [(second.replies[0] as {resource: unknown}).resource]);
       assert.deepEqual(await secondBackend.client.rpc('asset.list', { projectId: project.id }), []);
       second.close();
       await secondBackend.close();
@@ -208,7 +211,7 @@ for (const fault of ['lost-ack', 'before-dispatch']) {
       assert.equal(after.resources.length, 1);
       assert.equal(after.receipts.length, 1);
       assert.equal(after.receipts[0].requestId, original.requestId);
-      assert.equal(after.resources[0].id, second.replies[0].resource.id);
+      assert.equal(after.resources[0]?.id, (second.replies[0] as {resource: {id: string}}).resource.id);
       if (fault === 'lost-ack') assert.deepEqual(after, before, 'Persisted resource and receipt rows remain byte-for-byte unchanged');
     } finally {
       await secondBackend?.close();

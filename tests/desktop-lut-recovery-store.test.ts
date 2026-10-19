@@ -1,5 +1,6 @@
 import * as storage from '@mioon/contracts/private-storage';
 import test from 'node:test';
+import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -7,17 +8,18 @@ import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { createDesktopLutRecoveryStore, DESKTOP_LUT_RECOVERY_LIMITS } from '../apps/desktop/src/lut-recovery-store.ts';
 
-const record = (change = {}) => ({ version: 1, workspaceScope: 'a'.repeat(64), projectId: '11111111-1111-4111-8111-111111111111',
+const record = (change: Record<string, unknown> = {}) => ({ version: 1, workspaceScope: 'a'.repeat(64), projectId: '11111111-1111-4111-8111-111111111111',
   requestId: '22222222-2222-4222-8222-222222222222', name: 'look.cube', sizeBytes: 30, sha256: 'b'.repeat(64), ...change });
-const code = value => error => error.code === `LUT_RECOVERY_${value}`;
-function fixture(t) {
+const code = (value: string) => (error: unknown) => (error as {code?: string}).code === `LUT_RECOVERY_${value}`;
+type LooseStore = {read(value: unknown): unknown; reserve(value: unknown): void; verify(value: unknown): void; complete(value: unknown): void};
+function fixture(t: TestContext) {
   const root = fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()), 'mioon-lut-store-'));
   const userData = path.join(root, 'userData'); fs.mkdirSync(userData, { mode: 0o700 });
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const file = path.join(userData, 'lut-import-pending-v1.json');
-  return { root, userData, file, create: options => createDesktopLutRecoveryStore({ userData, storage, guard() {}, ...options }) };
+  return { root, userData, file, create: (options: Record<string, unknown> = {}): LooseStore => createDesktopLutRecoveryStore({ userData, storage: storage as unknown as Parameters<typeof createDesktopLutRecoveryStore>[0]['storage'], guard() {}, ...options }) as unknown as LooseStore };
 }
-const bytes = file => fs.readFileSync(file, 'utf8');
+const bytes = (file: string) => fs.readFileSync(file, 'utf8');
 
 test('private desktop LUT metadata survives store recreation without touching missing storage on read', t => {
   const f = fixture(t), value = record(), store = f.create();
@@ -40,7 +42,7 @@ test('CAS reservation and completion compare the complete metadata and preserve 
   store.reserve(a); store.reserve(b);
   const original = bytes(f.file);
   for (const change of [{requestId: randomUUID()}, {name:'other.cube'}, {sha256:'d'.repeat(64)}, {sizeBytes:31}]) {
-    for (const method of ['reserve', 'verify', 'complete']) assert.throws(() => store[method]({...a, ...change}), code('CONFLICT'));
+    for (const method of ['reserve', 'verify', 'complete'] as const) assert.throws(() => store[method]({...a, ...change}), code('CONFLICT'));
     assert.equal(bytes(f.file), original);
   }
   store.reserve(a); assert.equal(bytes(f.file), original);
@@ -56,7 +58,7 @@ test('each operation rereads disk and invalid data is never repaired or evicted'
   for (const corrupt of ['{', '{}', bytes(f.file)+'\n', '{"version":1,"version":1,"records":[]}',
     JSON.stringify({version:1, records:[a,a]}), JSON.stringify({version:1, records:[{...a, cubeText:'secret'}]})]) {
     fs.writeFileSync(f.file, corrupt);
-    for (const method of ['read','reserve','verify','complete']) assert.throws(() => store[method](a), code('CORRUPT'));
+    for (const method of ['read','reserve','verify','complete'] as const) assert.throws(() => store[method](a), code('CORRUPT'));
     assert.equal(bytes(f.file), corrupt);
   }
 });
@@ -91,7 +93,7 @@ for (const kind of ['symlink', 'hardlink', 'mode', 'directory']) {
     if (kind === 'hardlink') fs.linkSync(other, f.file);
     if (kind === 'mode') fs.writeFileSync(f.file, 'untouched', {mode:0o644});
     if (kind === 'directory') fs.mkdirSync(f.file);
-    for (const method of ['read','reserve','verify','complete']) assert.throws(() => store[method](record()), code('UNAVAILABLE'));
+    for (const method of ['read','reserve','verify','complete'] as const) assert.throws(() => store[method](record()), code('UNAVAILABLE'));
     assert.equal(bytes(other), 'untouched');
     if (kind === 'mode') assert.equal(fs.statSync(f.file).mode & 0o777, 0o644);
     if (kind === 'symlink') assert.ok(fs.lstatSync(f.file).isSymbolicLink());
