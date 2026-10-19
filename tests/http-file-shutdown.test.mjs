@@ -45,7 +45,7 @@ function assertHeaderDrain(result) {
   const forceTimers = result.timers.filter(timer => timer.delayMs === 3000);
   assert.equal(forceTimers.length, 1, 'one unchanged three-second force-drain timer');
   const timer = forceTimers[0], call = result.clock.forceCalls[0];
-  assert.match(timer.callsite, /apps\/server\/src\/index\.mjs/);
+  assert.match(timer.callsite, /apps\/server\/src\/index\.ts/);
   assert.equal(result.clock.forceCalls.length, 1, 'one force-drain invocation, no retry');
   assert.equal(call.timerId, timer.id, 'the production 3000ms callback caused socket destruction');
   assert.ok(timer.firedAt - timer.armedAt >= 2990, 'force-drain never fires early');
@@ -59,7 +59,7 @@ function assertHeaderDrain(result) {
   const serverDeadline = result.timers.filter(timer => {
     const stack = timer.callsite.split('\n'), index = stack.findIndex(frame => /at boundedShutdown /.test(frame));
     const owner = index >= 0 ? stack[index + 1] || '' : '';
-    return timer.delayMs === 5000 && /at file:.*apps\/server\/src\/index\.mjs/.test(owner);
+    return timer.delayMs === 5000 && /at file:.*apps\/server\/src\/index\.ts/.test(owner);
   });
   assert.equal(serverDeadline.length, 1, 'the outer server deadline is distinct from service and worker deadlines');
   assert.equal(serverDeadline[0].firedAt, null, 'successful closure did not fire the server timeout');
