@@ -17,7 +17,8 @@ const ids = {
   'shot-text': 'shot-text-draft-disclosure',
   'task-center': 'recovery-task-storage-disclosure',
 };
-let rendered;
+type RenderResult = {domains: Record<string, string>; repeated: string[]; injected: string[]; hosts: Record<string, string>};
+let rendered: RenderResult;
 
 before(() => {
   const fixture = `
@@ -184,7 +185,7 @@ test('last-project remains one overwritten location, separate from all three bou
 
 test('all three actual recovery panels mount their domain disclosure once and preserve existing status regions', () => {
   for (const [domain, html] of Object.entries(rendered.hosts)) {
-    assert.equal(html.split(`data-testid="${ids[domain]}"`).length - 1, 1, domain);
+    assert.equal(html.split(`data-testid="${(ids as Record<string, string>)[domain]}"`).length - 1, 1, domain);
     assert.match(html, /role="status"/);
     assert.doesNotMatch(html, /<details[^>]*\sopen(?:[\s=>])/);
   }

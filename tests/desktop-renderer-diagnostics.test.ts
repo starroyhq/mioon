@@ -1,6 +1,7 @@
 import { ensurePrivateDirectory, validatePrivateDirectory } from '@mioon/contracts/private-storage';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
+import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import { chmod, link, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -9,7 +10,7 @@ import { classifyRendererEvent, createRendererDiagnostics, installRendererHealth
 
 const metadata = { version: '2.3.4-rc.1+build.01', mioonDesktop: { channel: 'production' } };
 
-async function fixture(t, manifest = metadata) {
+async function fixture(t: TestContext, manifest: Record<string, unknown> | null = metadata) {
   const directory = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-renderer-diagnostics-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const modulePath = path.join(directory, 'build/backend.cjs');
@@ -19,12 +20,13 @@ async function fixture(t, manifest = metadata) {
   await mkdir(dataDir, { mode: 0o700 });
   const logDirectory = path.join(dataDir, 'diagnostics');
   const file = path.join(logDirectory, 'renderer-health.jsonl');
-  const create = options => createRendererDiagnostics({ dataDir, modulePath,
-    directoryPolicy: { ensurePrivateDirectory, validatePrivateDirectory }, ...options });
+  const create = (options: Record<string, unknown> = {}) => createRendererDiagnostics({ dataDir, modulePath,
+    directoryPolicy: { ensurePrivateDirectory, validatePrivateDirectory }, ...options } as Parameters<typeof createRendererDiagnostics>[0]);
   return { directory, modulePath, dataDir, logDirectory, file, create };
 }
 
-async function records(file) {
+type RendererRecord = {at: string; [key: string]: unknown};
+async function records(file: string): Promise<RendererRecord[]> {
   return (await readFile(file, 'utf8')).trim().split('\n').map(line => JSON.parse(line));
 }
 
@@ -150,12 +152,12 @@ test('write, rotation and permission failures are tolerated and never throw', as
 });
 
 test('installation is additive: existing recovery handlers still run and diagnostics never leak', () => {
-  const contents = new EventEmitter(), recovery = [], recorded = [];
+  const contents = new EventEmitter(), recovery: string[] = [], recorded: Array<{event: unknown; details: unknown}> = [];
   // The real main registers recovery first; diagnostics are attached afterwards
   // and must not reorder, replace, await or suppress those handlers.
   contents.on('unresponsive', () => recovery.push('unresponsive'));
   contents.on('render-process-gone', (_event, details) => recovery.push(details.reason));
-  installRendererHealthDiagnostics(contents, { record: (event, details) => recorded.push({ event, details }) });
+  installRendererHealthDiagnostics(contents, { record: (event: unknown, details: unknown) => { recorded.push({event, details}); return true; } });
   contents.emit('unresponsive');
   contents.emit('responsive');
   contents.emit('render-process-gone', { private: 'event-object' }, { reason: 'crashed', exitCode: 139, url: 'https://private.invalid', token: 'sk-private', content: 'document body' });

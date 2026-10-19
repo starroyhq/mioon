@@ -17,7 +17,7 @@ async function fixture() {
   await writeFile(path.join(source, 'access-token'), 'credential-must-not-copy');
   return { root, source, destination: path.join(root, 'desktop/workspace') };
 }
-const hash = async file => createHash('sha256').update(await readFile(file)).digest('hex');
+const hash = async (file: string): Promise<string> => createHash('sha256').update(await readFile(file)).digest('hex');
 
 test('migration copies closed data, leaves original bytes unchanged, excludes credentials', async () => {
   const { root, source, destination } = await fixture();

@@ -1,4 +1,5 @@
 import test from 'node:test';
+import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -11,13 +12,13 @@ import {migrateData} from '../apps/desktop/scripts/migrate-data.ts';
 const ordinaryVersions=[...Array.from({length:24},(_,index)=>index+1),26,28,30,32,34,36,38,40,44,48];
 const metadata=()=>({restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:'2026-10-14T00:00:00.000Z'});
 
-function fixture(t){
+function fixture(t: TestContext) {
  const base=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'mioon-migration-schema26-'));
  t.after(()=>fs.rmSync(base,{recursive:true,force:true}));
  const source=path.join(base,'source'),destination=path.join(base,'absent-parent','destination');
  const store=openStore(source),projectId=randomUUID();
  try{
-  assert.deepEqual(store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),ordinaryVersions);
+  assert.deepEqual(store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row => Number(row.version)),ordinaryVersions);
   store.put('projects',{id:projectId,name:'Current ordinary workspace',revision:1});
  }finally{store.close();}
  fs.writeFileSync(path.join(source,'media','preserved.bin'),'unchanged current workspace media');
@@ -28,8 +29,8 @@ function fixture(t){
  return {base,source,destination,file,projectId};
 }
 
-function snapshot(root){
- const walk=(file,relative)=>{
+function snapshot(root: string) {
+ const walk = (file: string, relative: string): Array<[string, Record<string, unknown>]> => {
   const info=fs.lstatSync(file);
   return [[relative,{dev:info.dev,ino:info.ino,mode:info.mode,size:info.isFile()?info.size:null,
    hash:info.isFile()?createHash('sha256').update(fs.readFileSync(file)).digest('hex'):null}],
@@ -38,7 +39,7 @@ function snapshot(root){
  return walk(root,'');
 }
 
-function mutate(file,change){
+function mutate(file: string, change: (db: DatabaseSync) => void): void {
  const db=new DatabaseSync(file);
  try{db.exec('PRAGMA trusted_schema=OFF; PRAGMA foreign_keys=ON;');change(db);}finally{db.close();}
 }
@@ -54,17 +55,17 @@ test('desktop migration accepts current ordinary workspace from current openStor
  for(const name of ['access-token','server.lock'])assert.equal(fs.existsSync(path.join(f.destination,name)),false);
  const db=new DatabaseSync(path.join(f.destination,'workbench.sqlite'),{readOnly:true});
  try{
-  assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),ordinaryVersions);
-  assert.deepEqual(JSON.parse(db.prepare('SELECT data FROM projects WHERE id=?').get(f.projectId).data),{id:f.projectId,name:'Current ordinary workspace',revision:1});
+  assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row => Number(row.version)),ordinaryVersions);
+  assert.deepEqual(JSON.parse(String(db.prepare('SELECT data FROM projects WHERE id=?').get(f.projectId)?.data)),{id:f.projectId,name:'Current ordinary workspace',revision:1});
  }finally{db.close();}
  assert.deepEqual(snapshot(f.source),before);
 });
 
-for(const [label,change,code] of [
+for(const [label,change,code] of ([
  ['complete restored49',db=>{
   const restored=installCurrentWorkspaceRestoreSchema(db,metadata());
   assert.equal(restored.schemaVersion,49);assert.equal(restored.sourceSchema,48);
-  assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...ordinaryVersions,49]);
+  assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row => Number(row.version)),[...ordinaryVersions,49]);
  },'RESTORE_MIGRATION_UNAVAILABLE'],
  ['partial restoration metadata on ordinary34',db=>db.exec('CREATE TABLE workspace_restoration(id TEXT)'),'RESTORE_SCHEMA_UNSUPPORTED'],
  ['partial restoration evidence on ordinary34',db=>db.exec('CREATE TABLE workspace_restore_evidence(id TEXT)'),'RESTORE_SCHEMA_UNSUPPORTED'],
@@ -73,7 +74,7 @@ for(const [label,change,code] of [
  ['mixed historical restore25 and ordinary34 markers',db=>db.exec('INSERT INTO schema_version VALUES(25)'),'RESTORE_SCHEMA_UNSUPPORTED'],
  ['future50 marker on ordinary48',db=>db.exec('INSERT INTO schema_version VALUES(50)'),'RESTORE_SCHEMA_UNSUPPORTED'],
  ['mixed historical restore27 and ordinary34 markers',db=>db.exec('INSERT INTO schema_version VALUES(27)'),'RESTORE_SCHEMA_UNSUPPORTED'],
-])test(`desktop migration rejects ${label} before destination creation without changing source`,async t=>{
+] as Array<[string, (db: DatabaseSync) => void, string]>))test(`desktop migration rejects ${label} before destination creation without changing source`,async t=>{
  const f=fixture(t);mutate(f.file,change);
  const before=snapshot(f.source),siblings=fs.readdirSync(f.base).sort();
  await assert.rejects(migrateData(f.source,f.destination),{code});

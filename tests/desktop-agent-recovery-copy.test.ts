@@ -5,10 +5,10 @@ import { nativeText, setNativeLanguageReader } from '../apps/desktop/src/app-lan
 
 const source = readFileSync(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
 
-function recoveryDetail(key) {
+function recoveryDetail(key: 'native.restartDetail' | 'native.serviceStoppedDetail'): string {
   assert.ok(source.includes(`detail: nt('${key}')`), 'The native recovery dialog must use the translated safety detail.');
   setNativeLanguageReader(() => 'zh-Hans');
-  return nativeText(key);
+  return (nativeText as (key: string, params?: Record<string, unknown>) => string)(key, {});
 }
 
 const dialogs = [
@@ -16,7 +16,7 @@ const dialogs = [
   ['backend crash recovery', 'native.serviceStoppedDetail'],
 ];
 
-for (const [name, pattern] of dialogs) {
+for (const [name, pattern] of dialogs as Array<[string, 'native.restartDetail' | 'native.serviceStoppedDetail']>) {
   test(`desktop ${name} distinguishes saved generation status recovery from unknown submission recreation`, () => {
     const detail = recoveryDetail(pattern);
     if (name === 'restart confirmation') assert.match(detail, /已保存的数据保留/);

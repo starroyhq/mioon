@@ -9,31 +9,31 @@ import vm from 'node:vm';
 
 const source = stripTypeScriptTypes((await readFile(new URL('../apps/desktop/src/backend.ts', import.meta.url), 'utf8'))
   .replace(/^import .*;\n/gm, ''), { mode: 'strip' });
-const tick = () => new Promise(resolve => setImmediate(resolve));
+const tick = (): Promise<void> => new Promise(resolve => { setImmediate(resolve); });
 const privateData = 'private-key-request-body-media-/Users/private/project';
 
-function backendHarness({ close = async () => {}, start, diagnosticFailure = false,
-  settingsClose = () => {}, imageClose = () => {} } = {}) {
-  const port = new EventEmitter(), events = new EventEmitter();
-  const messages = [], exits = [], intervals = [];
+function backendHarness({ close = async () => {}, start = undefined, diagnosticFailure = false,
+  settingsClose = () => {}, imageClose = () => {} }: {close?: () => Promise<void>; start?: (options: Record<string, unknown>) => Promise<unknown>; diagnosticFailure?: boolean; settingsClose?: () => void; imageClose?: () => void} = {}) {
+  const port = new EventEmitter() as EventEmitter & {postMessage(message: unknown): void}, events = new EventEmitter();
+  const messages: Array<Record<string, unknown>> = [], exits: unknown[] = [], intervals: Array<() => void> = [];
   let now = 100000;
-  port.postMessage = message => {
+  port.postMessage = (message: Record<string, unknown>) => {
     if (diagnosticFailure && message.type === 'exit-diagnostic') throw new Error(privateData);
     messages.push(JSON.parse(JSON.stringify(message)));
   };
   const sandbox = {
     comfyModuleModeFromEnvironment,
     process: { env: {}, parentPort: port, versions: { electron: '44.7.0', node: '24.19.0', sqlite: '3' },
-      pid: 23456, on: events.on.bind(events), exit: code => exits.push(code) },
+      pid: 23456, on: events.on.bind(events), exit: (code: number) => exits.push(code) },
     __MIOON_DESKTOP_CHANNEL__: 'development',
     DatabaseSync: function () {},
-    startServer: options => { assert.equal(options.comfyModule, 'load'); return (start ?? (async () => ({ close, url: 'http://127.0.0.1:43210' })))(options); },
+    startServer: (options: Record<string, unknown>) => { assert.equal(options.comfyModule, 'load'); return (start ?? (async () => ({ close, url: 'http://127.0.0.1:43210' })))(options); },
     initializeSubtitleResources: () => {}, onMediaProcess: () => {},
     createAgentSettingsClient: () => ({ close: settingsClose }),
     createImageSecretClient: () => ({ close: imageClose, refreshStorage: async () => {} }),
     createNativeAudioPreviewAuthority: () => ({}),
     Date: class extends Date { static now() { return now; } },
-    setInterval: callback => { intervals.push(callback); return intervals.length; },
+    setInterval: (callback: () => void) => { intervals.push(callback); return intervals.length; },
     clearInterval: () => {}, setImmediate
   };
   vm.runInNewContext(source, sandbox, { filename: 'backend-exit-fixture.mjs' });
@@ -44,12 +44,12 @@ function backendHarness({ close = async () => {}, start, diagnosticFailure = fal
       dataDir: privateData, distDir: privateData, subtitleResourcesDir: privateData } }),
     stop: () => port.emit('message', { data: { type: 'stop', reason: privateData } }),
     ping: () => port.emit('message', { data: { type: 'ping' } }),
-    advance: milliseconds => { now += milliseconds; },
+    advance: (milliseconds: number) => { now += milliseconds; },
     checkLease: () => intervals[0]()
   };
 }
 
-const notice = reason => ({ type: 'exit-diagnostic', reason });
+const notice = (reason: string) => ({ type: 'exit-diagnostic', reason });
 
 test('backend stop reports its first fixed exit intent once and preserves normal cleanup', async () => {
   let closes = 0;
@@ -132,7 +132,7 @@ test('unavailable diagnostic IPC cannot cause a new failure or turn a clean stop
   assert.doesNotThrow(() => runtime.events.emit('uncaughtExceptionMonitor', new Error(privateData), 'uncaughtException'));
   runtime.start(); await tick(); runtime.stop(); await tick();
   assert.deepEqual(runtime.exits, [0]);
-  assert.equal(runtime.messages.at(-1).type, 'stopped');
+  assert.equal(runtime.messages.at(-1)?.type, 'stopped');
 });
 
 for (const [origin, trigger] of [
@@ -159,7 +159,7 @@ for (const [origin, trigger] of [
     const child = spawn(process.execPath, ['--unhandled-rejections=throw', '--input-type=module', '-e', script],
       { stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, NODE_OPTIONS: '' } });
     t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill(); });
-    const chunks = [];
+    const chunks: Buffer[] = [];
     child.stdout.on('data', chunk => chunks.push(chunk));
     const [code, signal] = await once(child, 'close');
     assert.equal(signal, null);

@@ -2,6 +2,7 @@ import { ensurePrivateDirectory, validatePrivateDirectory } from '@mioon/contrac
 import fs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import test from 'node:test';
+import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import { chmod, link, mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -12,7 +13,7 @@ const runtime = { node: '24.14.0', electron: '44.7.0', sqlite: '3.52.0' };
 const validEvent = { event: 'exit', classification: 'normal', reason: 'stop-requested', state: 'stopped',
   expected: true, forced: false, exitConfirmed: true, shutdownFailed: false, mediaExitConfirmed: true, code: 0 };
 
-async function fixture(t, metadata = { version: '2.3.4-rc.1+build.01', mioonDesktop: { channel: 'production' } }) {
+async function fixture(t: TestContext, metadata: Record<string, unknown> | null = { version: '2.3.4-rc.1+build.01', mioonDesktop: { channel: 'production' } }) {
   const directory = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-private-exit-diagnostics-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const modulePath = path.join(directory, 'build/backend.cjs');
@@ -23,22 +24,23 @@ async function fixture(t, metadata = { version: '2.3.4-rc.1+build.01', mioonDesk
   const logDirectory = path.join(dataDir, 'diagnostics');
   const file = path.join(logDirectory, 'backend-exit.jsonl');
   return { directory, modulePath, dataDir, logDirectory, file,
-    create: options => createExitDiagnostics({ dataDir, modulePath, versions: runtime, directoryPolicy: { ensurePrivateDirectory, validatePrivateDirectory }, ...options }) };
+    create: (options: Record<string, unknown> = {}) => createExitDiagnostics({ dataDir, modulePath, versions: runtime, directoryPolicy: { ensurePrivateDirectory, validatePrivateDirectory }, ...options } as Parameters<typeof createExitDiagnostics>[0]) };
 }
 
-async function records(file) {
+type ExitRecord = Record<string, unknown> & {runId: string; time: string; appVersion: unknown; channel: unknown; code: unknown; expected: unknown; forced: unknown; termination: unknown; runtime: Record<string, unknown>};
+async function records(file: string): Promise<ExitRecord[]> {
   return (await readFile(file, 'utf8')).trim().split('\n').map(line => JSON.parse(line));
 }
 
 test('exit classification preserves the triggering fault and requires confirmed successful shutdown for normal', () => {
   const normal = { reason: 'stop-requested', shutdownFailed: false, forced: false, expected: true, code: 0, mediaExitConfirmed: true };
-  for (const [change, expected] of [
+  for (const [change, expected] of ([
     [{}, 'normal'], [{ reason: null }, 'normal'], [{ expected: false }, 'abnormal'], [{ code: 1 }, 'abnormal'],
     [{ code: '0' }, 'abnormal'], [{ mediaExitConfirmed: false }, 'abnormal'], [{ forced: true, code: 1 }, 'terminated'],
     [{ reason: 'signal-term' }, 'terminated'], [{ reason: 'signal-int' }, 'terminated'],
     [{ reason: 'startup-failed', forced: true }, 'abnormal'], [{ shutdownFailed: true, forced: true }, 'abnormal'],
     [{ reason: 'communication-lost', forced: true }, 'connection-lost'], [{ reason: 'lease-expired' }, 'connection-lost']
-  ]) assert.equal(classifyBackendExit({ ...normal, ...change }), expected, JSON.stringify(change));
+  ] as Array<[Record<string, unknown>, string]>)) assert.equal(classifyBackendExit({ ...normal, ...change }), expected, JSON.stringify(change));
 });
 
 test('exit diagnostics persist only fixed lifecycle fields with generated run and version metadata', async t => {
@@ -47,7 +49,7 @@ test('exit diagnostics persist only fixed lifecycle fields with generated run an
   const before = Date.now();
   assert.equal(diagnostics.record(validEvent), true);
   const after = Date.now();
-  const [record] = await records(f.file);
+  const recordsList = await records(f.file); const record = recordsList[0]!;
   assert.deepEqual(record, { ...validEvent, signal: null, termination: null,
     runId: record.runId, time: record.time, appVersion: '2.3.4-rc.1+build.01', channel: 'production', runtime });
   assert.match(record.runId, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
@@ -78,7 +80,7 @@ test('unknown and invalid fields never persist private strings or caller supplie
   assert.ok(!content.includes(privateValue));
   assert.ok(!content.includes(f.dataDir));
   assert.doesNotMatch(content, /SIGKILL|API_KEY|"config"|"error"|"env"|"request"|"material"|"path"/);
-  const [record] = await records(f.file);
+  const recordsList = await records(f.file); const record = recordsList[0]!;
   for (const key of [...Object.keys(validEvent), 'termination', 'signal']) assert.equal(record[key], null, key);
 });
 
@@ -93,14 +95,14 @@ test('metadata is optional and only bounded exact versions and known channels ar
     await writeFile(metadataFile, JSON.stringify({ version, mioonDesktop: { channel: '/Users/private/secret' } }));
     assert.equal(f.create({ versions: { node: '24.0.0\n', electron: '44.7.0-token', sqlite: '/Users/private/secret' } })
       .record({ event: 'start' }), true);
-    const record = (await records(f.file)).at(-1);
+    const record = (await records(f.file)).at(-1)!;
     assert.equal(record.appVersion, null, version);
     assert.equal(record.channel, null);
     assert.deepEqual(record.runtime, { node: null, electron: null, sqlite: null });
   }
   await writeFile(metadataFile, '{malformed');
   assert.equal(f.create().record({ event: 'start' }), true);
-  assert.equal((await records(f.file)).at(-1).appVersion, null);
+  assert.equal((await records(f.file)).at(-1)!.appVersion, null);
 });
 
 test('rotation bounds every file and total retained bytes across repeated factories', async t => {
@@ -124,7 +126,7 @@ test('rotation bounds every file and total retained bytes across repeated factor
   }
   assert.equal((await readdir(f.logDirectory)).length, 3);
   assert.ok(runIds.size > 1);
-  assert.equal((await records(f.file)).at(-1).code, 11);
+  assert.equal((await records(f.file)).at(-1)!.code, 11);
 });
 
 test('an oversized preexisting diagnostic is removed before bounded append', async t => {
@@ -170,7 +172,7 @@ test('only safe integer exit codes and true booleans are retained', async t => {
   const diagnostics = f.create();
   for (const code of [0, 1, -1, Number.MAX_SAFE_INTEGER, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, '1']) {
     assert.equal(diagnostics.record({ event: 'exit', code, expected: 1, forced: 'false', termination: 'utility-kill' }), true);
-    const record = (await records(f.file)).at(-1);
+    const record = (await records(f.file)).at(-1)!;
     assert.equal(record.code, Number.isSafeInteger(code) ? code : null);
     assert.equal(record.expected, null);
     assert.equal(record.forced, null);
@@ -189,7 +191,7 @@ test('diagnostics inspect only explicit fields and snapshot each exit code once'
   assert.equal((await records(f.file))[0].code, 1);
   for (const node of ['24.0.0\r', '24.0.0\u2028', '24.0.0\u2029']) {
     assert.equal(f.create({ versions: { node } }).record({ event: 'start' }), true);
-    assert.equal((await records(f.file)).at(-1).runtime.node, null);
+    assert.equal((await records(f.file)).at(-1)!.runtime.node, null);
   }
 });
 

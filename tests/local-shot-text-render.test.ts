@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { message as messageKey, renderMessage } from './helpers/i18n.ts';
 const root = fileURLToPath(new URL('../', import.meta.url));
-const id = n => `da000000-0000-4000-8000-${String(n).padStart(12, '0')}`, projectId = id(1), shotId = id(2);
+const id = (n: number) => `da000000-0000-4000-8000-${String(n).padStart(12, '0')}`, projectId = id(1), shotId = id(2);
 const stamp = '2026-10-12T00:00:00.000Z', baseText = { title: 'Original', prompt: 'Original prompt' };
 const base = { scope: 'project:1', projectId, shotId, phase: 'ready', raw: baseText, dirty: false, baseline: null, baselineConflict: false, candidate: null, savedAt: null, draftFailure: null, draftError: '', autosavePaused: false, leaveWithoutSaving: false, draftRetry: null, retainedDraftWrite: null, retainedDeletion: null, retainedPreparation: null, intent: null, intentPhase: 'idle', intentUncertain: false, intentFailure: null, intentError: '', busy: false, pending: false, projectPendingIntent: null };
 const draft = { draftId: id(4), baseRevision: 2, baseText, raw: { title: '  <script>raw title  ', prompt: '' }, updatedAt: stamp };
@@ -22,7 +22,7 @@ const fixtures = {
   notApplied: { ...base, intent: { ...intent, outcome: { status: 'not_applied', code: 'REVISION_CONFLICT', resolvedAt: stamp } }, intentPhase: 'not_applied' },
   unsupported: { ...base, phase: 'unsupported' }, busy: { ...base, candidate: draft, busy: true, intent, intentPhase: 'executing', pending: true },
 };
-let rendered;
+let rendered: Record<string, string>;
 before(() => {
   const fixture = `import React from 'react'; import { renderToStaticMarkup } from 'react-dom/server.browser'; import ShotTextDraftRecovery from './src/ShotTextDraftRecovery.tsx';
     const fixtures = ${JSON.stringify(fixtures)}; const controller = new Proxy({}, { get() { return () => { throw Error('Passive view invoked an action'); }; } });
@@ -55,7 +55,7 @@ test('pending original recovery is explicit and terminal outcomes never offer re
 
 test('pending other shot is visible and all busy controls are disabled type buttons', () => {
   assert.match(rendered.other, /本项目另一个镜头的文字保存结果待确认/); assert.match(rendered.other, /查看原镜头/);
-  for (const button of rendered.busy.match(/<button[^>]*>/g)) { assert.match(button, /type="button"/); assert.match(button, /disabled/); }
+  for (const button of rendered.busy.match(/<button[^>]*>/g) ?? []) { assert.match(button, /type="button"/); assert.match(button, /disabled/); }
   assert.match(rendered.unsupported, /现有镜头编辑与保存仍可使用/); assert.doesNotMatch(rendered.unsupported, /data-testid="save-shot-text"/);
 });
 
