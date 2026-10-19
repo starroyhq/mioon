@@ -1,0 +1,41 @@
+TAP version 13
+# Subtest: real read-only WAL close metadata changes are cleaned only for captured sidecar inodes
+ok 1 - real read-only WAL close metadata changes are cleaned only for captured sidecar inodes
+  ---
+  duration_ms: 13.160583
+  type: 'test'
+  ...
+# SQLite close sidecar observation: [{"suffix":"-wal","removed":false,"sameInode":true,"changedMetadata":[]},{"suffix":"-shm","removed":false,"sameInode":true,"changedMetadata":["ctimeMs"]}]
+# Subtest: real WAL close never authorizes cleanup of a post-close replacement
+ok 2 - real WAL close never authorizes cleanup of a post-close replacement
+  ---
+  duration_ms: 9.995458
+  type: 'test'
+  ...
+# Subtest: real WAL close never authorizes cleanup of a post-close unknown-file
+ok 3 - real WAL close never authorizes cleanup of a post-close unknown-file
+  ---
+  duration_ms: 9.695792
+  type: 'test'
+  ...
+# Subtest: disposable cleanup allows metadata evolution of its original sidecar inode
+ok 4 - disposable cleanup allows metadata evolution of its original sidecar inode
+  ---
+  duration_ms: 171.694375
+  type: 'test'
+  ...
+# Subtest: disposable cleanup preserves a replacement sidecar inode
+ok 5 - disposable cleanup preserves a replacement sidecar inode
+  ---
+  duration_ms: 181.979125
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 660.653708

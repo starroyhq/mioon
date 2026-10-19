@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: subject catalog has exact locale and placeholder parity and is integrated without overrides
+ok 1 - subject catalog has exact locale and placeholder parity and is integrated without overrides
+  ---
+  duration_ms: 13.563417
+  type: 'test'
+  ...
+# Subtest: legacy subject labels stay stable while descriptor labels follow presentation locale
+ok 2 - legacy subject labels stay stable while descriptor labels follow presentation locale
+  ---
+  duration_ms: 0.237333
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 258.390292

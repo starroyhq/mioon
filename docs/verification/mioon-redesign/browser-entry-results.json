@@ -1,0 +1,11 @@
+{
+  "scope": "UI entry navigation only; no generation, export, track addition or preflight dispatched",
+  "checks": [
+    "tasks: topbar -> summary popover -> full dialog -> close",
+    "project menu: output format entry",
+    "timeline: track dropdown reveals video/audio/preview entries without dispatch",
+    "export: compose dialog and separate history entry",
+    "library: filter popover -> image tab -> close"
+  ],
+  "pageErrors": []
+}

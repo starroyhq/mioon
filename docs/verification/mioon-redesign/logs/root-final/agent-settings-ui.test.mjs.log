@@ -1,0 +1,202 @@
+TAP version 13
+# Subtest: safe snapshot allowlists settings and strips secrets, server internals and unsafe source URLs
+ok 1 - safe snapshot allowlists settings and strips secrets, server internals and unsafe source URLs
+  ---
+  duration_ms: 1.506458
+  type: 'test'
+  ...
+# Subtest: binding includes preset/platform/normalized base but excludes the model
+ok 2 - binding includes preset/platform/normalized base but excludes the model
+  ---
+  duration_ms: 0.1455
+  type: 'test'
+  ...
+# Subtest: local validation admits editable model and Ollama but rejects missing values, URL credentials and invalid key input
+ok 3 - local validation admits editable model and Ollama but rejects missing values, URL credentials and invalid key input
+  ---
+  duration_ms: 0.21175
+  type: 'test'
+  ...
+# Subtest: client uses only authenticated local GET/PUT, no cache, and safe serialized request body
+ok 4 - client uses only authenticated local GET/PUT, no cache, and safe serialized request body
+  ---
+  duration_ms: 0.452125
+  type: 'test'
+  ...
+# Subtest: client never reflects raw error message, details, unexpected error codes or thrown credential text
+ok 5 - client never reflects raw error message, details, unexpected error codes or thrown credential text
+  ---
+  duration_ms: 0.265375
+  type: 'test'
+  ...
+# Subtest: client timeout aborts once, makes no retry and ignores late transport results
+ok 6 - client timeout aborts once, makes no retry and ignores late transport results
+  ---
+  duration_ms: 6.726709
+  type: 'test'
+  ...
+# Subtest: saving no key stores nonsecret configuration without pretending to configure a secret
+ok 7 - saving no key stores nonsecret configuration without pretending to configure a secret
+  ---
+  duration_ms: 0.898459
+  type: 'test'
+  ...
+# Subtest: replace uses explicitly selected storage while no emitted snapshot retains the dummy secret
+ok 8 - replace uses explicitly selected storage while no emitted snapshot retains the dummy secret
+  ---
+  duration_ms: 0.296666
+  type: 'test'
+  ...
+# Subtest: unavailable persistence cannot be selected and storage-only change does not silently migrate a key
+ok 9 - unavailable persistence cannot be selected and storage-only change does not silently migrate a key
+  ---
+  duration_ms: 0.325416
+  type: 'test'
+  ...
+# Subtest: changing destination removes old key unless a new key is explicitly supplied; model-only change retains it
+ok 10 - changing destination removes old key unless a new key is explicitly supplied; model-only change retains it
+  ---
+  duration_ms: 0.684584
+  type: 'test'
+  ...
+# Subtest: preset/platform switch fills only current defaults and custom endpoint/model remain editable
+ok 11 - preset/platform switch fills only current defaults and custom endpoint/model remain editable
+  ---
+  duration_ms: 0.289042
+  type: 'test'
+  ...
+# Subtest: remove can be undone before save and confirmed status changes only after acknowledgement
+ok 12 - remove can be undone before save and confirmed status changes only after acknowledgement
+  ---
+  duration_ms: 0.247125
+  type: 'test'
+  ...
+# Subtest: double save, editing and selector changes are rejected while the real first write is outstanding
+ok 13 - double save, editing and selector changes are rejected while the real first write is outstanding
+  ---
+  duration_ms: 0.208667
+  type: 'test'
+  ...
+# Subtest: CAS conflict reads current state once, preserves draft and blocks blind overwrite until explicit review
+ok 14 - CAS conflict reads current state once, preserves draft and blocks blind overwrite until explicit review
+  ---
+  duration_ms: 0.478459
+  type: 'test'
+  ...
+# Subtest: unknown save result rereads but never infers success or retries even when returned settings match
+ok 15 - unknown save result rereads but never infers success or retries even when returned settings match
+  ---
+  duration_ms: 0.251417
+  type: 'test'
+  ...
+# Subtest: wrong successful secret acknowledgement is reconciled without claiming success or retrying
+ok 16 - wrong successful secret acknowledgement is reconciled without claiming success or retrying
+  ---
+  duration_ms: 0.869666
+  type: 'test'
+  ...
+# Subtest: failed reconciliation keeps save blocked; retry performs only GET, then requires explicit review
+ok 17 - failed reconciliation keeps save blocked; retry performs only GET, then requires explicit review
+  ---
+  duration_ms: 0.301666
+  type: 'test'
+  ...
+# Subtest: definitive validation/authentication failure never echoes errors or automatically resubmits
+ok 18 - definitive validation/authentication failure never echoes errors or automatically resubmits
+  ---
+  duration_ms: 0.266625
+  type: 'test'
+  ...
+# Subtest: late initial read, late save and late reconciliation cannot publish or write after dispose
+ok 19 - late initial read, late save and late reconciliation cannot publish or write after dispose
+  ---
+  duration_ms: 0.298917
+  type: 'test'
+  ...
+# Subtest: actual UI callback clears masked DOM key synchronously before request acknowledgement and never refills it
+ok 20 - actual UI callback clears masked DOM key synchronously before request acknowledgement and never refills it
+  ---
+  duration_ms: 3.761625
+  type: 'test'
+  ...
+# Subtest: actual UI clears entered keys on endpoint/platform/preset edits, reset and dismiss
+ok 21 - actual UI clears entered keys on endpoint/platform/preset edits, reset and dismiss
+  ---
+  duration_ms: 7.290041
+  type: 'test'
+  ...
+# Subtest: actual UI leaves the settings page during a pending save and old callbacks remain inert
+ok 22 - actual UI leaves the settings page during a pending save and old callbacks remain inert
+  ---
+  duration_ms: 1.728208
+  type: 'test'
+  ...
+# Subtest: settings integration stays in the shared dock, uses local controls and has no modal or provider probe
+ok 23 - settings integration stays in the shared dock, uses local controls and has no modal or provider probe
+  ---
+  duration_ms: 53.571417
+  type: 'test'
+  ...
+# Subtest: protocol is required and strict in settings DTOs and catalog choices; missing legacy UI fields fail closed
+ok 24 - protocol is required and strict in settings DTOs and catalog choices; missing legacy UI fields fail closed
+  ---
+  duration_ms: 0.481709
+  type: 'test'
+  ...
+# Subtest: protocol-only edit is dirty, increments revision and keeps same authenticated key without changing model
+ok 25 - protocol-only edit is dirty, increments revision and keeps same authenticated key without changing model
+  ---
+  duration_ms: 0.305417
+  type: 'test'
+  ...
+# Subtest: wrong protocol acknowledgement and protocol-only two-window conflict reconcile without overwriting draft or retry
+ok 26 - wrong protocol acknowledgement and protocol-only two-window conflict reconcile without overwriting draft or retry
+  ---
+  duration_ms: 0.346833
+  type: 'test'
+  ...
+# Subtest: shared protocol selector exposes fixed endpoint, preserves arbitrary model, and explicit reset returns CC
+ok 27 - shared protocol selector exposes fixed endpoint, preserves arbitrary model, and explicit reset returns CC
+  ---
+  duration_ms: 0.686666
+  type: 'test'
+  ...
+# Subtest: Qwen Responses guidance keeps qwen-plus until the user types the documented exact model
+ok 28 - Qwen Responses guidance keeps qwen-plus until the user types the documented exact model
+  ---
+  duration_ms: 0.395958
+  type: 'test'
+  ...
+# Subtest: actual selected Responses guidance describes consented read tools and separately reviewed shot edits without promising reasoning or generation
+ok 29 - actual selected Responses guidance describes consented read tools and separately reviewed shot edits without promising reasoning or generation
+  ---
+  duration_ms: 0.9115
+  type: 'test'
+  ...
+# Subtest: hidden settings retain nonsecret draft, clear transient key immediately, and reject all old actions after reveal
+ok 30 - hidden settings retain nonsecret draft, clear transient key immediately, and reject all old actions after reveal
+  ---
+  duration_ms: 2.285792
+  type: 'test'
+  ...
+# Subtest: settings save accepted while hidden stays attached without retry and reports the result when shown
+ok 31 - settings save accepted while hidden stays attached without retry and reports the result when shown
+  ---
+  duration_ms: 1.5035
+  type: 'test'
+  ...
+# Subtest: four-language rerenders preserve Agent draft, password DOM, pending save and request identity
+ok 32 - four-language rerenders preserve Agent draft, password DOM, pending save and request identity
+  ---
+  duration_ms: 3.960625
+  type: 'test'
+  ...
+1..32
+# tests 32
+# suites 0
+# pass 32
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 688.523292

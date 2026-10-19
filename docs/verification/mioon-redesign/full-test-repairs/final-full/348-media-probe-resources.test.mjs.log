@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: metadata accepts portrait/landscape 4K and 8K plus audio/image inputs without a codec or duration upper ban
+ok 1 - metadata accepts portrait/landscape 4K and 8K plus audio/image inputs without a codec or duration upper ban
+  ---
+  duration_ms: 0.77025
+  type: 'test'
+  ...
+# Subtest: stream selection skips unidentified codecs without adding a codec allowlist
+ok 2 - stream selection skips unidentified codecs without adding a codec allowlist
+  ---
+  duration_ms: 0.426834
+  type: 'test'
+  ...
+# Subtest: unidentified optional audio is absent and duration fallback remains bounded metadata only
+ok 3 - unidentified optional audio is absent and duration fallback remains bounded metadata only
+  ---
+  duration_ms: 0.144416
+  type: 'test'
+  ...
+# Subtest: corrupt, excessive, nonfinite and negative metadata fails safely
+ok 4 - corrupt, excessive, nonfinite and negative metadata fails safely
+  ---
+  duration_ms: 0.451709
+  type: 'test'
+  ...
+# Subtest: probe concurrency queues twelve inputs and an aborted queued operation never starts
+ok 5 - probe concurrency queues twelve inputs and an aborted queued operation never starts
+  ---
+  duration_ms: 2.292333
+  type: 'test'
+  ...
+# Subtest: actual probe timeout and in-flight abort reap the selected synthetic executable
+ok 6 - actual probe timeout and in-flight abort reap the selected synthetic executable
+  ---
+  duration_ms: 210.840541
+  type: 'test'
+  ...
+# Subtest: pre-aborted media APIs do not spawn or write and hashing aborts while streaming
+ok 7 - pre-aborted media APIs do not spawn or write and hashing aborts while streaming
+  ---
+  duration_ms: 5.198042
+  type: 'test'
+  ...
+# Subtest: mixed settled media failures preserve the exact unconfirmed error before ordinary failures or cancellation
+ok 8 - mixed settled media failures preserve the exact unconfirmed error before ordinary failures or cancellation
+  ---
+  duration_ms: 128.801542
+  type: 'test'
+  ...
+# Subtest: mock abort checkpoints preserve ledger counts and prevent any later DB use
+ok 9 - mock abort checkpoints preserve ledger counts and prevent any later DB use
+  ---
+  duration_ms: 8.745209
+  type: 'test'
+  ...
+# Subtest: real synthetic portrait, landscape, 4K and audio-only files retain probe/hash behavior
+ok 10 - real synthetic portrait, landscape, 4K and audio-only files retain probe/hash behavior
+  ---
+  duration_ms: 403.494667
+  type: 'test'
+  ...
+# Subtest: mock cancellation at renderer completion never renames or publishes a partial output
+ok 11 - mock cancellation at renderer completion never renames or publishes a partial output
+  ---
+  duration_ms: 34.932042
+  type: 'test'
+  ...
+# Subtest: timeline cancellation between segments prevents another spawn and removes segment files
+ok 12 - timeline cancellation between segments prevents another spawn and removes segment files
+  ---
+  duration_ms: 112.14675
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1188.805708

@@ -1,0 +1,136 @@
+TAP version 13
+# Subtest: actual App causal counterexample: disabling only suppression writes before validation
+ok 1 - actual App causal counterexample: disabling only suppression writes before validation
+  ---
+  duration_ms: 3.600917
+  type: 'test'
+  ...
+# Subtest: actual App risk close skips earlier flush then all exit lifecycle writes and controller synchronization
+ok 2 - actual App risk close skips earlier flush then all exit lifecycle writes and controller synchronization
+  ---
+  duration_ms: 0.374042
+  type: 'test'
+  ...
+# Subtest: actual late ACK after prepare vetoes without a final write and restores subsequent lifecycle behavior
+ok 3 - actual late ACK after prepare vetoes without a final write and restores subsequent lifecycle behavior
+  ---
+  duration_ms: 0.233292
+  type: 'test'
+  ...
+# Subtest: actual new owner after prepare vetoes without a final write and restores subsequent lifecycle behavior
+ok 4 - actual new owner after prepare vetoes without a final write and restores subsequent lifecycle behavior
+  ---
+  duration_ms: 0.141542
+  type: 'test'
+  ...
+# Subtest: actual new input after prepare vetoes without a final write and restores subsequent lifecycle behavior
+ok 5 - actual new input after prepare vetoes without a final write and restores subsequent lifecycle behavior
+  ---
+  duration_ms: 0.133417
+  type: 'test'
+  ...
+# Subtest: actual new busy after prepare vetoes without a final write and restores subsequent lifecycle behavior
+ok 6 - actual new busy after prepare vetoes without a final write and restores subsequent lifecycle behavior
+  ---
+  duration_ms: 0.12
+  type: 'test'
+  ...
+# Subtest: actual late ACK after flush vetoes without a final write and restores subsequent lifecycle behavior
+ok 7 - actual late ACK after flush vetoes without a final write and restores subsequent lifecycle behavior
+  ---
+  duration_ms: 0.141791
+  type: 'test'
+  ...
+# Subtest: actual new owner after flush vetoes without a final write and restores subsequent lifecycle behavior
+ok 8 - actual new owner after flush vetoes without a final write and restores subsequent lifecycle behavior
+  ---
+  duration_ms: 0.152083
+  type: 'test'
+  ...
+# Subtest: actual new input after flush vetoes without a final write and restores subsequent lifecycle behavior
+ok 9 - actual new input after flush vetoes without a final write and restores subsequent lifecycle behavior
+  ---
+  duration_ms: 0.135
+  type: 'test'
+  ...
+# Subtest: actual new busy after flush vetoes without a final write and restores subsequent lifecycle behavior
+ok 10 - actual new busy after flush vetoes without a final write and restores subsequent lifecycle behavior
+  ---
+  duration_ms: 0.191292
+  type: 'test'
+  ...
+# Subtest: expired risk admission reaches the final veto without flushing and does not suppress later pagehide
+ok 11 - expired risk admission reaches the final veto without flushing and does not suppress later pagehide
+  ---
+  duration_ms: 0.291708
+  type: 'test'
+  ...
+# Subtest: hidden/pagehide alone cannot consume an armed risk ticket or suppress existing lifecycle writes
+ok 12 - hidden/pagehide alone cannot consume an armed risk ticket or suppress existing lifecycle writes
+  ---
+  duration_ms: 0.133375
+  type: 'test'
+  ...
+# Subtest: a cancelled risk dialog preserves ordinary cleanup and explicit save behavior
+ok 13 - a cancelled risk dialog preserves ordinary cleanup and explicit save behavior
+  ---
+  duration_ms: 0.141333
+  type: 'test'
+  ...
+# Subtest: successful risk lifecycle suppression is revoked by exact cancel, new inspection, input or pageshow
+ok 14 - successful risk lifecycle suppression is revoked by exact cancel, new inspection, input or pageshow
+  ---
+  duration_ms: 0.250083
+  type: 'test'
+  ...
+# Subtest: actual ordinary Web and native normal-close lifecycle paths retain their flushes
+ok 15 - actual ordinary Web and native normal-close lifecycle paths retain their flushes
+  ---
+  duration_ms: 0.146292
+  type: 'test'
+  ...
+# Subtest: ordinary native reload still flushes and cannot borrow risk suppression
+ok 16 - ordinary native reload still flushes and cannot borrow risk suppression
+  ---
+  duration_ms: 0.061708
+  type: 'test'
+  ...
+# Subtest: observation pauses before capture, allowing synchronous visibility changes to become the captured owner
+ok 17 - observation pauses before capture, allowing synchronous visibility changes to become the captured owner
+  ---
+  duration_ms: 0.173708
+  type: 'test'
+  ...
+# Subtest: final veto is read-only; the exact later cancel resumes even after ticket consumption
+ok 18 - final veto is read-only; the exact later cancel resumes even after ticket consumption
+  ---
+  duration_ms: 0.084333
+  type: 'test'
+  ...
+# Subtest: old cancellation cannot resume a newer inspection and disposal never resumes a destroyed owner
+ok 19 - old cancellation cannot resume a newer inspection and disposal never resumes a destroyed owner
+  ---
+  duration_ms: 0.072167
+  type: 'test'
+  ...
+# Subtest: throwing capture retains an exact cancellation handle for observation recovery
+ok 20 - throwing capture retains an exact cancellation handle for observation recovery
+  ---
+  duration_ms: 0.070291
+  type: 'test'
+  ...
+# Subtest: cancelled armed risk ticket cannot suppress a later beforeunload flush
+ok 21 - cancelled armed risk ticket cannot suppress a later beforeunload flush
+  ---
+  duration_ms: 0.073042
+  type: 'test'
+  ...
+1..21
+# tests 21
+# suites 0
+# pass 21
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 166.962833

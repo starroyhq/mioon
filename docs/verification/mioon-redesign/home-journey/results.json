@@ -1,0 +1,10 @@
+{
+  "checks": [
+    "empty-home-and-default-portrait-two-sizes",
+    "ui-create-portrait_1080",
+    "ui-create-landscape_1080",
+    "ui-create-square_1080",
+    "real-home-list-grid-persistence"
+  ],
+  "errors": []
+}

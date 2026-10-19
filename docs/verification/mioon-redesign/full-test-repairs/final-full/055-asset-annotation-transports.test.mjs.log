@@ -1,0 +1,16 @@
+TAP version 13
+# Subtest: annotations share authenticated HTTP, CLI and official MCP, with replay after restart and no external work
+ok 1 - annotations share authenticated HTTP, CLI and official MCP, with replay after restart and no external work
+  ---
+  duration_ms: 3643.402542
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4007.250041

@@ -1,0 +1,145 @@
+TAP version 13
+# Subtest: actual App callback routes scalar request through real task client prepare/execute/ACK; no direct RPC or gain array
+not ok 1 - actual App callback routes scalar request through real task client prepare/execute/ACK; no direct RPC or gain array
+  ---
+  duration_ms: 17.895416
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-app.test.mjs:75:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'unknown'
+    - 'applied'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'applied'
+  actual: 'unknown'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-app.test.mjs:77:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: actual App unknown prepare survives controller/server restart and recovers original key without a new prepare
+not ok 2 - actual App unknown prepare survives controller/server restart and recovers original key without a new prepare
+  ---
+  duration_ms: 1.3185
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-app.test.mjs:83:43'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    false !== true
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-app.test.mjs:85:79)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App unknown execute survives controller/server restart and recovers original key without a new prepare
+not ok 3 - actual App unknown execute survives controller/server restart and recovers original key without a new prepare
+  ---
+  duration_ms: 0.796792
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-app.test.mjs:83:43'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    false !== true
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-app.test.mjs:85:79)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: late navigation after persisted prepare leaves original durable task recoverable without execute
+not ok 4 - late navigation after persisted prepare leaves original durable task recoverable without execute
+  ---
+  duration_ms: 1.829916
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-app.test.mjs:94:1'
+  failureType: 'testCodeFailure'
+  error: "Cannot read properties of null (reading 'status')"
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-app.test.mjs:98:26)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: malformed application ACK cannot release durable lane or become UI success
+not ok 5 - malformed application ACK cannot release durable lane or become UI success
+  ---
+  duration_ms: 1.997708
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-app.test.mjs:101:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    false !== true
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-app.test.mjs:103:79)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: apply is nested in the existing delivery card and recovers through existing TaskCenter only
+ok 6 - apply is nested in the existing delivery card and recovers through existing TaskCenter only
+  ---
+  duration_ms: 0.578625
+  type: 'test'
+  ...
+# Subtest: actual review and App durable path tolerate only their own validated prepared-task pending fence
+not ok 7 - actual review and App durable path tolerate only their own validated prepared-task pending fence
+  ---
+  duration_ms: 3.073417
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-app.test.mjs:113:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'unknown'
+    - 'applied'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'applied'
+  actual: 'unknown'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-app.test.mjs:118:72)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 1
+# fail 6
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 300.12375

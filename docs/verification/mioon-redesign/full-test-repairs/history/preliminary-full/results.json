@@ -1,0 +1,1292 @@
+[
+  {
+    "file": "tests/agent-authorization-transports.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 2.82,
+    "tapSummary": {
+      "tests": 1,
+      "suites": 0,
+      "pass": 1,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/001-agent-authorization-transports.test.mjs.log",
+    "sha256": "15b5f2416b0dd5f61102f505c2a0965ca53fc47abad0b382f40671df801382d1",
+    "sourceSha256": "2c828b3e7887749c8f174ed74b76e57d8e2b8696ca35efe3beb5f10fff324599",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-authorizations.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 3.74,
+    "tapSummary": {
+      "tests": 5,
+      "suites": 0,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/002-agent-authorizations.test.mjs.log",
+    "sha256": "69dbba2e0783ffa352d340a77a6cf7baacb4f378c4ed40a8ce040d5e868a90f8",
+    "sourceSha256": "7f657aed83e932f4570988368d641be8323713cfac2631a5aa4289f8bcc45ed6",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-chat-durable-crash.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 14.48,
+    "tapSummary": {
+      "tests": 5,
+      "suites": 0,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/003-agent-chat-durable-crash.test.mjs.log",
+    "sha256": "a3e6628962611d4186701253702ff45fe60be39ccac8bf54097e93c272fd3e82",
+    "sourceSha256": "a7b9c9ad7d3c58e817029efa1da85b968fff2b84a2a3db0f25894115f0523ece",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-chat-http.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 11.81,
+    "tapSummary": {
+      "tests": 12,
+      "suites": 0,
+      "pass": 12,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/004-agent-chat-http.test.mjs.log",
+    "sha256": "36e4fca3d0d479e2748fc535356a65009666c1e676b2b9839025123f09a860ac",
+    "sourceSha256": "b00ba35ecd1ff1f98bcb39ca6a5a7aad1cbbd7a340ee9836430bf3c4291f979f",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-chat-journal.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 23.02,
+    "tapSummary": {
+      "tests": 21,
+      "suites": 0,
+      "pass": 21,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/005-agent-chat-journal.test.mjs.log",
+    "sha256": "c31394c2bb129458c08773320cf3728ae81968dcefaede5a05546443c019ecaa",
+    "sourceSha256": "424a795c464dee29b33ed782fc2860cf52aec296509195f2cd17ca60390913ed",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-chat-protocol.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.59,
+    "tapSummary": {
+      "tests": 15,
+      "suites": 0,
+      "pass": 15,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/006-agent-chat-protocol.test.mjs.log",
+    "sha256": "355f7e803cb8d208ac5e9c81e3acec74db0f002ed7302d0d82d8beb1019c3064",
+    "sourceSha256": "684f5cfa191bafd9d721bcf7dea9ac0ccb387f85183ca47e78317e0d20414805",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-chat-runtime.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 16.62,
+    "tapSummary": {
+      "tests": 18,
+      "suites": 0,
+      "pass": 18,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/007-agent-chat-runtime.test.mjs.log",
+    "sha256": "5765e1192f17422c9d522f430b7753eabd61982ba22298fe4a41d12d10fb85f6",
+    "sourceSha256": "bb337b8e9ecdc4153721a962a2a79246a263037b4529357c1b64b511abb583a4",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-chat-ui.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.95,
+    "tapSummary": {
+      "tests": 74,
+      "suites": 0,
+      "pass": 74,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/008-agent-chat-ui.test.mjs.log",
+    "sha256": "41896672583829748d2ae19deaf8c85a816db70ed3b154153f61aff2a15b8158",
+    "sourceSha256": "519bcb5cd4e07d10df0b8db023731a1022899d9bca76fd2203bb739c832dd3f6",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-credentials.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.44,
+    "tapSummary": {
+      "tests": 7,
+      "suites": 0,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/009-agent-credentials.test.mjs.log",
+    "sha256": "9dca5824df6b34c5ced12a2d55074bcbf7164e0a199a9a6d135ed1c7c96dc5fd",
+    "sourceSha256": "abc1371ade3458dd0ae806e9f3e22cc70c70a923e62a218e60f5b8ce227b5b1b",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-edit-proposals.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 29.38,
+    "tapSummary": {
+      "tests": 43,
+      "suites": 0,
+      "pass": 43,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/010-agent-edit-proposals.test.mjs.log",
+    "sha256": "3cd3265f38b0f2fe46f756b163e3af50f1667affff8188e59ef28e7ef6f40ca2",
+    "sourceSha256": "6f1af9fc7d8fe1985750eafc8e1291003e72636a0a77eb30d87ae340937a04b9",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-edit-protocols.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.43,
+    "tapSummary": {
+      "tests": 20,
+      "suites": 0,
+      "pass": 20,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/011-agent-edit-protocols.test.mjs.log",
+    "sha256": "d7dafa57e5f98969c3668325e87262f25dcc95e10f526460b540dcf5bcacbc91",
+    "sourceSha256": "5d097f8edc0c625febd48009b2d7a5671ad7fa7140b827eb7322a511bf133a5f",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-edit-renderer.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.59,
+    "tapSummary": {
+      "tests": 37,
+      "suites": 0,
+      "pass": 37,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/012-agent-edit-renderer.test.mjs.log",
+    "sha256": "a10d9708b44c452e9e2c8c3c7c47b4f260c4b6476525aa886006285021808c6b",
+    "sourceSha256": "e0d6b74b82fb06dfd47dde96650a1b58f379a574f6dcedc1f1d4b708734ae7ad",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-edit-runtime.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 14.38,
+    "tapSummary": {
+      "tests": 13,
+      "suites": 0,
+      "pass": 13,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/013-agent-edit-runtime.test.mjs.log",
+    "sha256": "4aa44375e2414d16dddc5fd23cbe5db98cb0b57f5bf74a53f6b8be72053598f9",
+    "sourceSha256": "23f78b11cfb6e6b85f85b4dab7bef01542207ec3f00915f0f73a16e43e6a5b25",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-edit-scope.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 4.32,
+    "tapSummary": {
+      "tests": 4,
+      "suites": 0,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/014-agent-edit-scope.test.mjs.log",
+    "sha256": "f072b318fb647bbbc1aa2a7ece6a22a3d5ecb48d0447929b2714d37fad1f1cff",
+    "sourceSha256": "3613285d20d5320a7ab00d968a2a5a730d0ac8991c4d3c587e1a7f027008a159",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-edit-wire-lifecycle.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 1.84,
+    "tapSummary": {
+      "tests": 11,
+      "suites": 0,
+      "pass": 11,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/015-agent-edit-wire-lifecycle.test.mjs.log",
+    "sha256": "866a9876d43054d2f6b6069d022c77d8799d5568a35a21730bfddbe30896af0e",
+    "sourceSha256": "73582b92c5214db1337af7ae7569c52b9e49bb8e790dde0c9c72ad51931a503d",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-edit-wire.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 76.43,
+    "tapSummary": {
+      "tests": 37,
+      "suites": 0,
+      "pass": 37,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/016-agent-edit-wire.test.mjs.log",
+    "sha256": "6d52052d4be3f5c2e0640e3c5f7a665cac425ab7d1016774f5fab96729be89c4",
+    "sourceSha256": "841ae7cb104a9609a182062102892d3bccb4f1e7619768ef82679f8694954de0",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-gain-context-fence.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.45,
+    "tapSummary": {
+      "tests": 4,
+      "suites": 0,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/017-agent-gain-context-fence.test.mjs.log",
+    "sha256": "453e6f5bf5043199ce55b173864d4e03a68b813ca0068f599fad77226199c219",
+    "sourceSha256": "87b8bf0581ef2d020968c86f753f6b7b1a39136b0bbaa3b349ac4415503acaed",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-network.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.45,
+    "tapSummary": {
+      "tests": 16,
+      "suites": 0,
+      "pass": 16,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/018-agent-network.test.mjs.log",
+    "sha256": "89e1f189f7ff8d6833947bae53f518c2e739d1b079f3a2096bade47fe909b45b",
+    "sourceSha256": "fda3961709fe02299cc5d46bbdf31b23f728fc03595e57213e44ca6b94c6ddb7",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-protocol.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.38,
+    "tapSummary": {
+      "tests": 4,
+      "suites": 0,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/019-agent-protocol.test.mjs.log",
+    "sha256": "9cfd11f3d190d79c1871b7dcb441a12d3b273411568533cea54b84a2235265bf",
+    "sourceSha256": "160f0ee47a0010bbb10cbe260b7ce2a75101aaf9d8e63fd37f688acf76cfd343",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-quickstart-docs.test.mjs",
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 0.33,
+    "tapSummary": {
+      "tests": 1,
+      "suites": 0,
+      "pass": 0,
+      "fail": 1,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/020-agent-quickstart-docs.test.mjs.log",
+    "sha256": "995c6411d23a11224f2e9a285950969a0d8c08962fd57671ef7ada2ce76240de",
+    "sourceSha256": "d00e50e9c66313893b385e170b3b79122ed653750809f3c0ba49b8f9d34a59f1",
+    "failedSubtests": [
+      "tests/agent-quickstart-docs.test.mjs"
+    ]
+  },
+  {
+    "file": "tests/agent-responses-protocol.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.68,
+    "tapSummary": {
+      "tests": 18,
+      "suites": 0,
+      "pass": 18,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/021-agent-responses-protocol.test.mjs.log",
+    "sha256": "595c02589ea7ccac90de74e29104f0c8ab3edf0f6dadd9301881a28de183df5e",
+    "sourceSha256": "3e8843add6513fb3b4e2933aa6ba63270c5200fe8659af3f36c3c1c664cc6623",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-responses-qa.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 1.75,
+    "tapSummary": {
+      "tests": 1,
+      "suites": 0,
+      "pass": 1,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/022-agent-responses-qa.test.mjs.log",
+    "sha256": "fb73e427fbae702849fa8b031b9c7d1cfd6356c64e8f06c15b1c879ea0997941",
+    "sourceSha256": "478095b18247ad1fdf64b1131cf7bfc97b2360cef827ca71869bef64a8fbaae6",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-settings-file.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.54,
+    "tapSummary": {
+      "tests": 5,
+      "suites": 0,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/023-agent-settings-file.test.mjs.log",
+    "sha256": "563ed4c27605ebdc7e723425a869121ca5c92560d758f7fdaa10a95d4d4b42b9",
+    "sourceSha256": "d3f219185b52eb105f6c21ccc600c86e6c12ff58256452d944002aee8546dfe3",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-settings-http.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 5.77,
+    "tapSummary": {
+      "tests": 7,
+      "suites": 0,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/024-agent-settings-http.test.mjs.log",
+    "sha256": "5d1d7e82b8755ca5e71e4be526e2b8667168b88ff24fb12a30312418dacbb556",
+    "sourceSha256": "a2d3e65ff8c50457b7b49af239796dbbde4f49bafcf4333c86c0b90874714a55",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-settings-migration.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.42,
+    "tapSummary": {
+      "tests": 10,
+      "suites": 0,
+      "pass": 10,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/025-agent-settings-migration.test.mjs.log",
+    "sha256": "973314d44b2a1e8442ddf780b7f247ba9fa24664a588dfc3e6634f8d86f56671",
+    "sourceSha256": "9a02211425a255779d2cff4cf8b47152770bb16b2ebf2d0cce37807e6a85d53e",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-settings-ui.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.54,
+    "tapSummary": {
+      "tests": 32,
+      "suites": 0,
+      "pass": 32,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/026-agent-settings-ui.test.mjs.log",
+    "sha256": "bae5002bc2a8f84bb7868c31d62410fc75916039fb564d739b9cc7038197612f",
+    "sourceSha256": "06c7cb5a0bd248294b3bfe0da3fbac638ddca9581f3c7a98608e11c1063b3e50",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-settings.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.43,
+    "tapSummary": {
+      "tests": 11,
+      "suites": 0,
+      "pass": 11,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/027-agent-settings.test.mjs.log",
+    "sha256": "a92584b255a6aa2963c5ae9c0cf060855e61d2318efd1256ec408568d08b0a9b",
+    "sourceSha256": "3ba9f10239f3a400f4c243fc8d7c0f96278a0747d0a3c64f8b3bbcff263319cc",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-sse-transport.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.66,
+    "tapSummary": {
+      "tests": 18,
+      "suites": 0,
+      "pass": 18,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/028-agent-sse-transport.test.mjs.log",
+    "sha256": "e94051e12921ff2ed538e4631475bf2601bfd89057f3fe5f9d44986dce4ad1e4",
+    "sourceSha256": "a75306ba3e9a2db85daf1a79d00f0bfebf2c9ef69cc62b4558776c5502fef1f1",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-sse.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.33,
+    "tapSummary": {
+      "tests": 6,
+      "suites": 0,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/029-agent-sse.test.mjs.log",
+    "sha256": "3d5d6df773354e91e5fea0428a5196c9e9ba4fed552d494050a07d68ed6c9aa5",
+    "sourceSha256": "31861d6e174f9cbe7c40fb0d899d34d7d52dd8531a9361c961a229e20d8bb413",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-timeline-app.test.mjs",
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 0.33,
+    "tapSummary": {
+      "tests": 3,
+      "suites": 0,
+      "pass": 1,
+      "fail": 2,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/030-agent-timeline-app.test.mjs.log",
+    "sha256": "7236b14017232836adc82479b5a1edf63b5798c9da32dfdc516dc266de0fcac7",
+    "sourceSha256": "49cabe4367857516b7e1672d2075930442733abce8c84e4d4eb427c1afb2ab4f",
+    "failedSubtests": [
+      "actual App blocks timeline proposals on every draft, offline/loading or unresolved timeline state",
+      "actual applied receipt callback rereads only current project and never applies historical timeline or clears drafts"
+    ]
+  },
+  {
+    "file": "tests/agent-timeline-edit-journal.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 22.21,
+    "tapSummary": {
+      "tests": 24,
+      "suites": 0,
+      "pass": 24,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/031-agent-timeline-edit-journal.test.mjs.log",
+    "sha256": "08b0e0454563eabda0af7eb71426f25f026e5ab9c1cd02001ba1e7a98415a887",
+    "sourceSha256": "56afc78eb0ff77f8fa8fce92cf68e83bd28fcbed8e48ed6f76646867d55a71f3",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-timeline-edit-protocols.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.44,
+    "tapSummary": {
+      "tests": 22,
+      "suites": 0,
+      "pass": 22,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/032-agent-timeline-edit-protocols.test.mjs.log",
+    "sha256": "070ec9343ff1149aa2dc249440beee104c26509db29b5e114643b88809c14edb",
+    "sourceSha256": "cede0f9f1a58d6dcc0d2c6ed85e46b332c678a357fd0e12c09d222cce2509daf",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-timeline-edit-runtime.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 15.69,
+    "tapSummary": {
+      "tests": 13,
+      "suites": 0,
+      "pass": 13,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/033-agent-timeline-edit-runtime.test.mjs.log",
+    "sha256": "f67988c597465ebd3d37a16d0fd3d934bc1e52a3e9857fd72b6dec5143ded7a5",
+    "sourceSha256": "cf406d9190cc6bf2ae5f3b4ac676b15f1f23c8b2a1f30e26d514e0777f02de65",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-timeline-gain-business.test.mjs",
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 10.82,
+    "tapSummary": {
+      "tests": 15,
+      "suites": 0,
+      "pass": 1,
+      "fail": 14,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/034-agent-timeline-gain-business.test.mjs.log",
+    "sha256": "352399225dbe417f05df533be6ce874ffc490ceb5a8ab48b90bf481379b8fce3",
+    "sourceSha256": "d1b3b892c42903c8bb17bf69321f7ce9d6d1da903773ebcd538ffeaffd33313e",
+    "failedSubtests": [
+      "gain review freezes exact owned audio and applies one patch through the timeline journal only after approval",
+      "gain rejects no-op, injected authority, non-number and invalid source eligibility without effects",
+      "gain fresh source identity and metadata tamper fail closed in shared mutation transaction",
+      "gain stale revision records exact rollback proof and never rebase or write history",
+      "gain uncertain dispatch recovery retains original input, approval, and idempotent history",
+      "historical gain ACK survives later gain, mute, undo, clip removal, metadata discovery and restart",
+      "gain applied receipt source reassignment cannot disclose historical ACK",
+      "gain supports exact 0 and 2, muted audio and hidden video without changing track state",
+      "gain two approval windows, rejection and stop cannot multiply or authorize dispatch",
+      "gain lost ACK and approval-before-dispatch recovery never infer or mint a fresh key",
+      "gain receipt hash, historical target and oversized response corruption fail closed without replay writes",
+      "gain same-revision frozen clip, muted track, and format tampering cannot pass fresh mutation scope",
+      "gain rejected no-op preserves redo branch and a fresh approved gain clears it once",
+      "gain proposal quota retains existing unknown work and never creates a second request key"
+    ]
+  },
+  {
+    "file": "tests/agent-timeline-gain-contracts.test.mjs",
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 0.44,
+    "tapSummary": {
+      "tests": 10,
+      "suites": 0,
+      "pass": 9,
+      "fail": 1,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/035-agent-timeline-gain-contracts.test.mjs.log",
+    "sha256": "019b8df3f405f236d55ee9408aae09a8ad8f4bb1b854507b5fd6e917f75e84d2",
+    "sourceSha256": "71b1db6ba30a4604e3aa122855e8f461ed08c48138ad21d2bc056f651e5d1918",
+    "failedSubtests": [
+      "new typed leaf and real barrel expose a closed gain contract without changing public operations"
+    ]
+  },
+  {
+    "file": "tests/agent-timeline-gain-media.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 19.22,
+    "tapSummary": {
+      "tests": 1,
+      "suites": 0,
+      "pass": 1,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/036-agent-timeline-gain-media.test.mjs.log",
+    "sha256": "b73f587a52885be5f3c8c3c186c531e375b89ec06a7a6b332c84a54063480971",
+    "sourceSha256": "0a10751a0f53ff05616a2623ecb1cd861c1c6ec17eee1beeb48237b9c82b6fc0",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-timeline-gain-preservation.test.mjs",
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 4.11,
+    "tapSummary": {
+      "tests": 11,
+      "suites": 0,
+      "pass": 2,
+      "fail": 9,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/037-agent-timeline-gain-preservation.test.mjs.log",
+    "sha256": "9104f826575e11d1e127ccb01f0b490f8036fc02e55691fadc160cea404f04db",
+    "sourceSha256": "3f9d170ba796e41e15ff57997e837306ae35b25c916a4e8a37b5c18b38e4b612",
+    "failedSubtests": [
+      "frozen validator loader rejects changed historical source before import",
+      "frozen validator loader rejects live direct-dependency drift before import",
+      "frozen validator loader refuses unpinned imports instead of broadening its dependency allowlist",
+      "frozen c3a0a57 restore policy and effects use the exact old catalog despite current operation additions",
+      "fixed real v1/v2 records survive startup, read, pagination and recovery with every raw byte and sequence intact",
+      "v3 uses existing SQL only and the frozen old validator rejects or holds new JSON without inference or payload rewrites",
+      "frozen old definition version gate rejects v3 even when a valid old move mode and target precede it",
+      "actual offline backup CLI retains mixed legacy and v3 gain bytes; schema27 holds inherited authority while fresh manual gain stays local",
+      "fresh gain rereads same-revision saved audio identity inside shared dispatch; historical replay tolerates metadata discovery only"
+    ]
+  },
+  {
+    "file": "tests/agent-timeline-gain-protocols.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.49,
+    "tapSummary": {
+      "tests": 35,
+      "suites": 0,
+      "pass": 35,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/038-agent-timeline-gain-protocols.test.mjs.log",
+    "sha256": "7081e8e0f11cef173e39a77c61a0b71dab51fa000e487df952064f4e25abec7a",
+    "sourceSha256": "38d5df53b3a3e341151a2b84ebbd1c264c1349e3a35191bde7e8fe7736337156",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-timeline-gain-renderer.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.59,
+    "tapSummary": {
+      "tests": 23,
+      "suites": 0,
+      "pass": 23,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/039-agent-timeline-gain-renderer.test.mjs.log",
+    "sha256": "209779bfa904e542277c5b561b16e49ee91427b28afff33c50a842398c42eacf",
+    "sourceSha256": "2990bbed10a9ebe587e2ba0523dd96a6436b521c64d37957d1f602e2b92dbe45",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-timeline-gain-wire.test.mjs",
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 50.86,
+    "tapSummary": {
+      "tests": 37,
+      "suites": 0,
+      "pass": 2,
+      "fail": 35,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/040-agent-timeline-gain-wire.test.mjs.log",
+    "sha256": "5ba2833b811fa099bc747a63d31c0b6b42f17681dd85ade4dae3d90f6dd9270a",
+    "sourceSha256": "d50fd5641b20c6cd047cf1c8ebfca6d8f16fbc59e979e486191697a5b22ec4fa",
+    "failedSubtests": [
+      "chat_completions: actual fragmented HTTP/SSE gain freezes a gain-only review and authenticated approval shares the timeline transaction",
+      "chat_completions: gain pending restart and lost approval ACK retain one exact key with no automatic model or mutation POST",
+      "chat_completions: applied gain historical replay remains exact after undo, redo, selected clip removal and process restart",
+      "chat_completions: stale gain timeline CAS records a request-bound rejection without rebase, receipt or second dispatch",
+      "chat_completions: forged authority, invalid gain, no-op and incomplete SSE fail before proposal capture",
+      "chat_completions: Stop during gain request closes the provider socket and blocks later approval",
+      "chat_completions: Stop during gain answer closes the provider socket and blocks later approval",
+      "chat_completions: tools-off answer failure and backend interruption leave captured gain proposals unapprovable",
+      "responses: actual fragmented HTTP/SSE gain freezes a gain-only review and authenticated approval shares the timeline transaction",
+      "responses: gain pending restart and lost approval ACK retain one exact key with no automatic model or mutation POST",
+      "responses: applied gain historical replay remains exact after undo, redo, selected clip removal and process restart",
+      "responses: stale gain timeline CAS records a request-bound rejection without rebase, receipt or second dispatch",
+      "responses: forged authority, invalid gain, no-op and incomplete SSE fail before proposal capture",
+      "responses: Stop during gain request closes the provider socket and blocks later approval",
+      "responses: Stop during gain answer closes the provider socket and blocks later approval",
+      "responses: tools-off answer failure and backend interruption leave captured gain proposals unapprovable",
+      "gain HTTP routes fence authentication, project, epoch, digest and outbound consent before any authority is acquired",
+      "two authenticated windows racing gain approve/reject retain one decision and at most one exact timeline receipt",
+      "pending gain HTTP review refuses a source that now belongs to a foreign project",
+      "historical gain HTTP review refuses a source that now belongs to a foreign project",
+      "chat_completions: owned SIGKILL at gain beforeApproval never auto-repeats inference or approval and recovery retains the exact key",
+      "chat_completions: owned SIGKILL at gain afterApproval never auto-repeats inference or approval and recovery retains the exact key",
+      "chat_completions: owned SIGKILL at gain afterDispatchStarted never auto-repeats inference or approval and recovery retains the exact key",
+      "chat_completions: owned SIGKILL at gain afterDispatch never auto-repeats inference or approval and recovery retains the exact key",
+      "chat_completions: owned SIGKILL at gain beforeAcknowledgement never auto-repeats inference or approval and recovery retains the exact key",
+      "responses: owned SIGKILL at gain beforeApproval never auto-repeats inference or approval and recovery retains the exact key",
+      "responses: owned SIGKILL at gain afterApproval never auto-repeats inference or approval and recovery retains the exact key",
+      "responses: owned SIGKILL at gain afterDispatchStarted never auto-repeats inference or approval and recovery retains the exact key",
+      "responses: owned SIGKILL at gain afterDispatch never auto-repeats inference or approval and recovery retains the exact key",
+      "responses: owned SIGKILL at gain beforeAcknowledgement never auto-repeats inference or approval and recovery retains the exact key",
+      "actual CLI and MCP gain update/undo share the approved Agent timeline history while exposing no Agent approval tools",
+      "chat_completions: gain history branches once and historical recovery never restores a discarded redo branch",
+      "responses: gain history branches once and historical recovery never restores a discarded redo branch",
+      "chat_completions: changed target after first POST prevents continuation POST and cannot authorize captured gain",
+      "responses: changed target after first POST prevents continuation POST and cannot authorize captured gain"
+    ]
+  },
+  {
+    "file": "tests/agent-timeline-move-business.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 12.68,
+    "tapSummary": {
+      "tests": 15,
+      "suites": 0,
+      "pass": 15,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/041-agent-timeline-move-business.test.mjs.log",
+    "sha256": "73fce935dd0cff172801d1694693a521790991ac1325b9c09e1e815f13595f6c",
+    "sourceSha256": "844fad7b54746ce9a98475f588bfe7ca776f0263cb8e02ab617c7d7404fd68bc",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-timeline-move-contracts.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.43,
+    "tapSummary": {
+      "tests": 9,
+      "suites": 0,
+      "pass": 9,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/042-agent-timeline-move-contracts.test.mjs.log",
+    "sha256": "9e975e0cda43a129b0012549350ae1fa71479d869df973197f40c4727131d859",
+    "sourceSha256": "7b893058bfd950c7fc059b52eb4ad013f53288cb245eff5746cd1e06f2529954",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-timeline-move-migration.test.mjs",
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 1.74,
+    "tapSummary": {
+      "tests": 4,
+      "suites": 0,
+      "pass": 3,
+      "fail": 1,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/043-agent-timeline-move-migration.test.mjs.log",
+    "sha256": "d9ccc2352b9d4596e2e5698fd04f79abd26d3d4ab3fdcabf1b5bd4216ae5401f",
+    "sourceSha256": "6dd92d1d8ae33dc3818aaeafb18b2f06eacc05a148e04a37bc139253f78aa9f2",
+    "failedSubtests": [
+      "fresh startup and upgraded startup converge and reopen never rewrites legacy data"
+    ]
+  },
+  {
+    "file": "tests/agent-timeline-move-renderer.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.55,
+    "tapSummary": {
+      "tests": 18,
+      "suites": 0,
+      "pass": 18,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/044-agent-timeline-move-renderer.test.mjs.log",
+    "sha256": "f4485de706429187bdaab454fce9b8344ab40a82a6a218e78e553decd2bed6d3",
+    "sourceSha256": "23e688cb9d60b24ae187992d52d98944286b8cf6eed77ba0c014f9fea7ae96fa",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-timeline-qa-lifecycle.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.7,
+    "tapSummary": {
+      "tests": 3,
+      "suites": 0,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/046-agent-timeline-qa-lifecycle.test.mjs.log",
+    "sha256": "5903500757f1156fa5370cdaf7b13fba1ba09a36bde505297807595ed614faa0",
+    "sourceSha256": "094f16a5c8b0678e53d340ac7db2719226dc0553cdcd93df65409b0fa0f36529",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-tool-journal-crash.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 7.48,
+    "tapSummary": {
+      "tests": 6,
+      "suites": 0,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/047-agent-tool-journal-crash.test.mjs.log",
+    "sha256": "6fc852e67e815f24085ca2bfc4bae8bf77867f8569b09370385b49852b492b47",
+    "sourceSha256": "42f688724c7f3bee6401af2b91cbf9ebf19f4deca602476d17ebf4fd9c4a432f",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-tool-journal.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 26.35,
+    "tapSummary": {
+      "tests": 25,
+      "suites": 0,
+      "pass": 25,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/048-agent-tool-journal.test.mjs.log",
+    "sha256": "4c60c27b873376e0167d6ae31ac0220ebcfd97f978483c63c18d64ec3756778c",
+    "sourceSha256": "9d871431bd19c77ae984890ffb1b03fd5b1cfa34235510274c912cbd0fd82cfd",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-tool-protocols.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.75,
+    "tapSummary": {
+      "tests": 37,
+      "suites": 0,
+      "pass": 37,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/049-agent-tool-protocols.test.mjs.log",
+    "sha256": "d93123ad3241e9a1254b5a7bf8f901600d6c8614584bd0e4748d2c99ab3c3d87",
+    "sourceSha256": "f4704ad909d7cf38ea9e8d0ecc8cd3ba2491e708c6e2e6a7fe2a6facfda2f142",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-tool-renderer.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.64,
+    "tapSummary": {
+      "tests": 17,
+      "suites": 0,
+      "pass": 17,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/050-agent-tool-renderer.test.mjs.log",
+    "sha256": "5e446ec96db23339d3b0204af6690c3de3002a88e29694de550eeb5326439456",
+    "sourceSha256": "b777db116f42507a2463a5c524df29ebbc840670059d75d3648c01dea6452fe5",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-tool-runtime.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 11.14,
+    "tapSummary": {
+      "tests": 12,
+      "suites": 0,
+      "pass": 12,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/051-agent-tool-runtime.test.mjs.log",
+    "sha256": "94960147a04af0d030b5f358225e4cb0425d5d80b3c31f05dc3211cb1439600c",
+    "sourceSha256": "05059791cc83a5cf222fe05ac9b2378203252323d18f8c7189622ddc7b4ef232",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-tools-qa.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.88,
+    "tapSummary": {
+      "tests": 13,
+      "suites": 0,
+      "pass": 13,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/052-agent-tools-qa.test.mjs.log",
+    "sha256": "e0ffd099ffb6fad4bae315e20d16a28b1c28a271b0b553731fca757ebf57368d",
+    "sourceSha256": "b337e074de775c40b56e7c511fab56bd568e834aa7873c5960770e816ec85f92",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/app-error-identity.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.58,
+    "tapSummary": {
+      "tests": 2,
+      "suites": 0,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/053-app-error-identity.test.mjs.log",
+    "sha256": "370bbac9e9d971c3497eb87d0998eb72b43b518cddeab84e900aca6a1853ad90",
+    "sourceSha256": "88538d09338b16c5340779ea13db02ca6c317643bd4c07169961af204cb5b5d2",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/asset-annotation-components.test.mjs",
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 0.67,
+    "tapSummary": {
+      "tests": 7,
+      "suites": 0,
+      "pass": 6,
+      "fail": 1,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/054-asset-annotation-components.test.mjs.log",
+    "sha256": "238e2afc9920443608b2490df7f230136e7aa1e724e21781c47842850db09b4d",
+    "sourceSha256": "aab6dd8b69731c32f1b43f04634dbb74b34d8f548a20cb27ae7bbbd87b6600c1",
+    "failedSubtests": [
+      "actual AssetLibrary composes saved tag, type, name, disposition and unused filters, retaining unknown rows"
+    ]
+  },
+  {
+    "file": "tests/asset-annotation-transports.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 4.58,
+    "tapSummary": {
+      "tests": 1,
+      "suites": 0,
+      "pass": 1,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/055-asset-annotation-transports.test.mjs.log",
+    "sha256": "7373a12b80a621f8dce0873e083f920d442c178aef492a2fd414c0aceaa9e990",
+    "sourceSha256": "75182d696c458c90be0107839a521aa87cb5b4ef7cdbe86ce8d0a063d607d628",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/asset-annotation-ui-state.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.44,
+    "tapSummary": {
+      "tests": 13,
+      "suites": 0,
+      "pass": 13,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/056-asset-annotation-ui-state.test.mjs.log",
+    "sha256": "2bd3a9bf40c8cfe16eb15cde0455aa88af351edc7b8b0993692cdfbb23fd1178",
+    "sourceSha256": "ddd3836cd27cde27493489d6c15b4f435a2173b08ff0e53f6f2697b7ef780eac",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/asset-annotations.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 9.25,
+    "tapSummary": {
+      "tests": 9,
+      "suites": 0,
+      "pass": 9,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/057-asset-annotations.test.mjs.log",
+    "sha256": "6a56a858197162b5fccc51e204f2c390f7f9e6ba235758b1faafea08c1716e8e",
+    "sourceSha256": "6879d63697a4327d6d9bfe687b64ee1e0d7928b51778d623395a3e34243a9496",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/asset-disposition-contract.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.39,
+    "tapSummary": {
+      "tests": 4,
+      "suites": 0,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/058-asset-disposition-contract.test.mjs.log",
+    "sha256": "b0d82ea755eb511c659e11e26f1a7ba6518bfd6604f2d0d873ef108409273b00",
+    "sourceSha256": "1c2e9bc1d3cfb637d876c0121a36ebc44771b52dff4b817721c5d07d5e497276",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/asset-disposition-ui.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.65,
+    "tapSummary": {
+      "tests": 18,
+      "suites": 0,
+      "pass": 18,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/060-asset-disposition-ui.test.mjs.log",
+    "sha256": "3a1920197f1c50daa0f2643ee02f660e5e23d6238f5a434ed0c3d31aced4150a",
+    "sourceSha256": "d4f67f563cfe0c8e95d09b29f50336e4c6e95ed5d70ae3b2d5465913d44cff85",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/asset-timeline-usage-ui.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 1.79,
+    "tapSummary": {
+      "tests": 13,
+      "suites": 0,
+      "pass": 13,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/062-asset-timeline-usage-ui.test.mjs.log",
+    "sha256": "f85703e6c4296bd0c14e5d615c0ef7c1d466288d4a0aa475f03d8cbe0b4bc17b",
+    "sourceSha256": "194e7e74ad6e2013a66d8953e5305fd4d5548a4bb2a5390edcecfff0781ae955",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/asset-usage-navigation.test.mjs",
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 0.49,
+    "tapSummary": {
+      "tests": 25,
+      "suites": 0,
+      "pass": 24,
+      "fail": 1,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/063-asset-usage-navigation.test.mjs.log",
+    "sha256": "7e908f86bc0bfaa4f5a7a4ad1aadee08bfb725c8d751b18242206334b7800c7f",
+    "sourceSha256": "493e48711670ea731e4cd5ee62df958d37d172606b1501ef1d3388c61d73d775",
+    "failedSubtests": [
+      "App passes the target fence through the actual clip discard boundary"
+    ]
+  },
+  {
+    "file": "tests/browser-rpc.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.38,
+    "tapSummary": {
+      "tests": 3,
+      "suites": 0,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/064-browser-rpc.test.mjs.log",
+    "sha256": "92c7f254a2b5ce8d072aff9cb74e003b01170d46e1360ba1ff59eafe45942fe0",
+    "sourceSha256": "81129914b4c7dfac12d6f05ceb024493f63218cb076643ae720118e554786a56",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/canvas-fit.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.39,
+    "tapSummary": {
+      "tests": 3,
+      "suites": 0,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/065-canvas-fit.test.mjs.log",
+    "sha256": "4b2e0ba7785cc3feee499da4d636a5503decac6b10de87ae98a6b20e2be82834",
+    "sourceSha256": "0e855f30277363c4ae0670f227fb9f48d02c1e38a85173430fa754aee63e76a9",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/canvas-position.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.44,
+    "tapSummary": {
+      "tests": 2,
+      "suites": 0,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/066-canvas-position.test.mjs.log",
+    "sha256": "2c0dd17b5da4074eb626ff83689fd52eb450dd5a1350a55bb849d6258036aa68",
+    "sourceSha256": "72e3966d36f582ac875f82df65affff6e6a282287921c2d900d526655f4ca793",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/cli-client-security.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.71,
+    "tapSummary": {
+      "tests": 4,
+      "suites": 0,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "full/067-cli-client-security.test.mjs.log",
+    "sha256": "ffc54f1655fc33ac62ffc672382971fdc1a48b14fc4afe9e9523f0655cc9a625",
+    "sourceSha256": "82adace159382bd7d9f4b5e11e47cff17dbc30cb63d668c457d4d9742793d208",
+    "failedSubtests": []
+  }
+]

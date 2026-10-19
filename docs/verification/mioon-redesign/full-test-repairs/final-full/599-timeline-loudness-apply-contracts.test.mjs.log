@@ -1,0 +1,148 @@
+TAP version 13
+# Subtest: apply input is exactly bounded scalar intent; gains, paths, timing and permission are not input
+ok 1 - apply input is exactly bounded scalar intent; gains, paths, timing and permission are not input
+  ---
+  duration_ms: 4.171792
+  type: 'test'
+  ...
+# Subtest: canonical versioned digest binds full report, excludes checkedAt and ignores object key order
+ok 2 - canonical versioned digest binds full report, excludes checkedAt and ignores object key order
+  ---
+  duration_ms: 9.131375
+  type: 'test'
+  ...
+# Subtest: read-only reports stay read-only; only separately measured passing actual changes are applicable
+ok 3 - read-only reports stay read-only; only separately measured passing actual changes are applicable
+  ---
+  duration_ms: 0.5265
+  type: 'test'
+  ...
+# Subtest: typed ACK binds full established timeline, reviewed intent and measured application proof
+ok 4 - typed ACK binds full established timeline, reviewed intent and measured application proof
+  ---
+  duration_ms: 1.497958
+  type: 'test'
+  ...
+# Subtest: typed ACK rejects operation
+ok 5 - typed ACK rejects operation
+  ---
+  duration_ms: 0.36175
+  type: 'test'
+  ...
+# Subtest: typed ACK rejects request
+ok 6 - typed ACK rejects request
+  ---
+  duration_ms: 0.252917
+  type: 'test'
+  ...
+# Subtest: typed ACK rejects extra
+ok 7 - typed ACK rejects extra
+  ---
+  duration_ms: 0.224375
+  type: 'test'
+  ...
+# Subtest: typed ACK rejects before revision
+ok 8 - typed ACK rejects before revision
+  ---
+  duration_ms: 0.273125
+  type: 'test'
+  ...
+# Subtest: typed ACK rejects after revision
+ok 9 - typed ACK rejects after revision
+  ---
+  duration_ms: 0.300417
+  type: 'test'
+  ...
+# Subtest: typed ACK rejects target
+ok 10 - typed ACK rejects target
+  ---
+  duration_ms: 0.32725
+  type: 'test'
+  ...
+# Subtest: typed ACK rejects hash
+ok 11 - typed ACK rejects hash
+  ---
+  duration_ms: 0.297583
+  type: 'test'
+  ...
+# Subtest: typed ACK rejects source
+ok 12 - typed ACK rejects source
+  ---
+  duration_ms: 0.218791
+  type: 'test'
+  ...
+# Subtest: typed ACK rejects gain
+ok 13 - typed ACK rejects gain
+  ---
+  duration_ms: 0.221459
+  type: 'test'
+  ...
+# Subtest: typed ACK rejects gain order
+ok 14 - typed ACK rejects gain order
+  ---
+  duration_ms: 0.846083
+  type: 'test'
+  ...
+# Subtest: typed ACK rejects target claim
+ok 15 - typed ACK rejects target claim
+  ---
+  duration_ms: 0.361375
+  type: 'test'
+  ...
+# Subtest: typed ACK rejects reserve
+ok 16 - typed ACK rejects reserve
+  ---
+  duration_ms: 0.226084
+  type: 'test'
+  ...
+# Subtest: typed ACK rejects muted
+ok 17 - typed ACK rejects muted
+  ---
+  duration_ms: 0.1755
+  type: 'test'
+  ...
+# Subtest: typed ACK rejects candidate duration
+ok 18 - typed ACK rejects candidate duration
+  ---
+  duration_ms: 0.176583
+  type: 'test'
+  ...
+# Subtest: typed ACK rejects current timeline extra
+ok 19 - typed ACK rejects current timeline extra
+  ---
+  duration_ms: 0.132292
+  type: 'test'
+  ...
+# Subtest: typed ACK rejects clipping
+ok 20 - typed ACK rejects clipping
+  ---
+  duration_ms: 0.193833
+  type: 'test'
+  ...
+# Subtest: hostile ACK getters cannot run through legacy DTO validation
+ok 21 - hostile ACK getters cannot run through legacy DTO validation
+  ---
+  duration_ms: 0.144666
+  type: 'test'
+  ...
+# Subtest: new envelope retains existing timeline DTO string and optional-field semantics
+ok 22 - new envelope retains existing timeline DTO string and optional-field semantics
+  ---
+  duration_ms: 0.268042
+  type: 'test'
+  ...
+# Subtest: not-applied proof never inherits legacy optional owner fields or generic media errors
+ok 23 - not-applied proof never inherits legacy optional owner fields or generic media errors
+  ---
+  duration_ms: 0.449417
+  type: 'test'
+  ...
+1..23
+# tests 23
+# suites 0
+# pass 23
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 205.43325

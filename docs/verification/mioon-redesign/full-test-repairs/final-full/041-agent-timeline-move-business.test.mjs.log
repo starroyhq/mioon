@@ -1,0 +1,100 @@
+TAP version 13
+# Subtest: timeline proposal is a private pinned, startFrame-only durable review and never writes before approval
+ok 1 - timeline proposal is a private pinned, startFrame-only durable review and never writes before approval
+  ---
+  duration_ms: 658.744125
+  type: 'test'
+  ...
+# Subtest: review rejects same start, injected authority, range overflow and same-track overlap
+ok 2 - review rejects same start, injected authority, range overflow and same-track overlap
+  ---
+  duration_ms: 604.669125
+  type: 'test'
+  ...
+# Subtest: stale approval produces only exact request-bound not_applied proof, with no rebase or history write
+ok 3 - stale approval produces only exact request-bound not_applied proof, with no rebase or history write
+  ---
+  duration_ms: 626.470416
+  type: 'test'
+  ...
+# Subtest: generic errors stay unknown; explicit recovery retains exact input and approval bytes
+ok 4 - generic errors stay unknown; explicit recovery retains exact input and approval bytes
+  ---
+  duration_ms: 726.546375
+  type: 'test'
+  ...
+# Subtest: lost ACK/restart reconciles through the existing timeline receipt without a dispatch
+ok 5 - lost ACK/restart reconciles through the existing timeline receipt without a dispatch
+  ---
+  duration_ms: 1074.8935
+  type: 'test'
+  ...
+# Subtest: durable approval interrupted before dispatch requires explicit recovery after restart
+ok 6 - durable approval interrupted before dispatch requires explicit recovery after restart
+  ---
+  duration_ms: 647.36225
+  type: 'test'
+  ...
+# Subtest: applied historical ACK survives later move, undo, removal, restart and exact domain replay
+ok 7 - applied historical ACK survives later move, undo, removal, restart and exact domain replay
+  ---
+  duration_ms: 650.702
+  type: 'test'
+  ...
+# Subtest: two approval windows share one journal and rejected/stopped proposals never dispatch
+ok 8 - two approval windows share one journal and rejected/stopped proposals never dispatch
+  ---
+  duration_ms: 634.687208
+  type: 'test'
+  ...
+# Subtest: current ownership and historical source ownership gate ACKs; foreign project cannot disclose
+ok 9 - current ownership and historical source ownership gate ACKs; foreign project cannot disclose
+  ---
+  duration_ms: 601.946458
+  type: 'test'
+  ...
+# Subtest: receipt operation/input hash and bounded response corruption never acknowledge or redispatch
+ok 10 - receipt operation/input hash and bounded response corruption never acknowledge or redispatch
+  ---
+  duration_ms: 1200.434667
+  type: 'test'
+  ...
+# Subtest: same-revision private clip identity tamper cannot slip through reviewed dispatch
+ok 11 - same-revision private clip identity tamper cannot slip through reviewed dispatch
+  ---
+  duration_ms: 590.0035
+  type: 'test'
+  ...
+# Subtest: frozen timing projection detects same-revision extra clip changes inside the shared transaction
+ok 12 - frozen timing projection detects same-revision extra clip changes inside the shared transaction
+  ---
+  duration_ms: 593.395083
+  type: 'test'
+  ...
+# Subtest: subtitle end bounds are reviewed and shared mutation validation remains authoritative
+ok 13 - subtitle end bounds are reviewed and shared mutation validation remains authoritative
+  ---
+  duration_ms: 607.688542
+  type: 'test'
+  ...
+# Subtest: shared proposal row budget includes legacy shot rows and never evicts an unresolved row
+ok 14 - shared proposal row budget includes legacy shot rows and never evicts an unresolved row
+  ---
+  duration_ms: 1189.393792
+  type: 'test'
+  ...
+# Subtest: retained version1 unusual-whitespace approval bytes survive explicit recovery and historical reads
+ok 15 - retained version1 unusual-whitespace approval bytes survive explicit recovery and historical reads
+  ---
+  duration_ms: 666.336792
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 11406.412583

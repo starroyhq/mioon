@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: custom gateway sends only custom slot key to immutable reviewed destination and model with synchronous assertion→durable fence→POST
+ok 1 - custom gateway sends only custom slot key to immutable reviewed destination and model with synchronous assertion→durable fence→POST
+  ---
+  duration_ms: 151.181625
+  type: 'test'
+  ...
+# Subtest: caller mutations during credential acquisition cannot change reviewed config, model, prompt or options
+ok 2 - caller mutations during credential acquisition cannot change reviewed config, model, prompt or options
+  ---
+  duration_ms: 38.828625
+  type: 'test'
+  ...
+# Subtest: custom gateway rejects missing, disabled, incomplete or nonmatching reviewed configuration before credential/DNS
+ok 3 - custom gateway rejects missing, disabled, incomplete or nonmatching reviewed configuration before credential/DNS
+  ---
+  duration_ms: 0.836666
+  type: 'test'
+  ...
+# Subtest: an official engine/key cannot be used by custom gateway and custom engine cannot be used by official gateway
+ok 4 - an official engine/key cannot be used by custom gateway and custom engine cannot be used by official gateway
+  ---
+  duration_ms: 0.808
+  type: 'test'
+  ...
+# Subtest: credential result namespace, revision and full binding are revalidated before any DNS
+ok 5 - credential result namespace, revision and full binding are revalidated before any DNS
+  ---
+  duration_ms: 0.801333
+  type: 'test'
+  ...
+# Subtest: config/revision changed while DNS resolves blocks final durable fence and POST without redirecting to new config
+ok 6 - config/revision changed while DNS resolves blocks final durable fence and POST without redirecting to new config
+  ---
+  duration_ms: 0.759541
+  type: 'test'
+  ...
+# Subtest: pending persistence blocks custom dispatch even before revision changes
+ok 7 - pending persistence blocks custom dispatch even before revision changes
+  ---
+  duration_ms: 1.049
+  type: 'test'
+  ...
+# Subtest: custom gateway abort before-acquire preserves unknown-after-POST and does not retry
+ok 8 - custom gateway abort before-acquire preserves unknown-after-POST and does not retry
+  ---
+  duration_ms: 0.362209
+  type: 'test'
+  ...
+# Subtest: custom gateway abort during-dns preserves unknown-after-POST and does not retry
+ok 9 - custom gateway abort during-dns preserves unknown-after-POST and does not retry
+  ---
+  duration_ms: 0.480833
+  type: 'test'
+  ...
+# Subtest: custom gateway abort after-post preserves unknown-after-POST and does not retry
+ok 10 - custom gateway abort after-post preserves unknown-after-POST and does not retry
+  ---
+  duration_ms: 0.9315
+  type: 'test'
+  ...
+# Subtest: custom settings assertion must return synchronous true; caller durable fence must also be synchronous
+ok 11 - custom settings assertion must return synchronous true; caller durable fence must also be synchronous
+  ---
+  duration_ms: 1.652459
+  type: 'test'
+  ...
+# Subtest: removed or closed custom credentials cannot start DNS or adopt another slot/environment key
+ok 12 - removed or closed custom credentials cannot start DNS or adopt another slot/environment key
+  ---
+  duration_ms: 0.403708
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 667.301208

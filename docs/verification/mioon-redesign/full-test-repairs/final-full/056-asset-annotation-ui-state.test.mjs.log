@@ -1,0 +1,88 @@
+TAP version 13
+# Subtest: bounded canonical tags, literal plain text, clear stages draft and independent revision save
+ok 1 - bounded canonical tags, literal plain text, clear stages draft and independent revision save
+  ---
+  duration_ms: 4.762542
+  type: 'test'
+  ...
+# Subtest: draft survives asset filtering, project navigation, stale reads, and explicit refresh never merges
+ok 2 - draft survives asset filtering, project navigation, stale reads, and explicit refresh never merges
+  ---
+  duration_ms: 0.698542
+  type: 'test'
+  ...
+# Subtest: delayed historical ACK never regresses newer read and cannot silently overwrite it
+ok 3 - delayed historical ACK never regresses newer read and cannot silently overwrite it
+  ---
+  duration_ms: 0.769083
+  type: 'test'
+  ...
+# Subtest: uncertain request blocks rekey, clear and discard until exact session receipt resolves
+ok 4 - uncertain request blocks rekey, clear and discard until exact session receipt resolves
+  ---
+  duration_ms: 3.984542
+  type: 'test'
+  ...
+# Subtest: old-workspace uncertainty uses its original owner after navigation
+ok 5 - old-workspace uncertainty uses its original owner after navigation
+  ---
+  duration_ms: 1.110541
+  type: 'test'
+  ...
+# Subtest: 32 dirty owner cap blocks new drafts without evicting old ones
+ok 6 - 32 dirty owner cap blocks new drafts without evicting old ones
+  ---
+  duration_ms: 3.36575
+  type: 'test'
+  ...
+# Subtest: unknown tags stay visible, validation error does not erase verified tags
+ok 7 - unknown tags stay visible, validation error does not erase verified tags
+  ---
+  duration_ms: 1.231667
+  type: 'test'
+  ...
+# Subtest: StrictMode cleanup/setup keeps controller usable and does not lose dirty draft
+ok 8 - StrictMode cleanup/setup keeps controller usable and does not lose dirty draft
+  ---
+  duration_ms: 0.831458
+  type: 'test'
+  ...
+# Subtest: unchanged pending scan does not emit and stale close tickets fail after draft changes
+ok 9 - unchanged pending scan does not emit and stale close tickets fail after draft changes
+  ---
+  duration_ms: 1.151959
+  type: 'test'
+  ...
+# Subtest: cap includes unloaded pending owners and never evicts preexisting overflow receipts
+ok 10 - cap includes unloaded pending owners and never evicts preexisting overflow receipts
+  ---
+  duration_ms: 2.678917
+  type: 'test'
+  ...
+# Subtest: unchanged metadata refresh does not invalidate native-close draft identity
+ok 11 - unchanged metadata refresh does not invalidate native-close draft identity
+  ---
+  duration_ms: 0.659042
+  type: 'test'
+  ...
+# Subtest: UI reads every loaded asset in bounded batches and rejects a whole malformed batch
+ok 12 - UI reads every loaded asset in bounded batches and rejects a whole malformed batch
+  ---
+  duration_ms: 5.211167
+  type: 'test'
+  ...
+# Subtest: repeated save cannot dispatch twice and exact immutable request survives draft identity
+ok 13 - repeated save cannot dispatch twice and exact immutable request survives draft identity
+  ---
+  duration_ms: 1.1705
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 253.8565

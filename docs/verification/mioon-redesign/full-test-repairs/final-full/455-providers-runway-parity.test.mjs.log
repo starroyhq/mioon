@@ -1,0 +1,322 @@
+TAP version 13
+# Subtest: Runway parity: POST 400 is a definite rejection, exactly once
+ok 1 - Runway parity: POST 400 is a definite rejection, exactly once
+  ---
+  duration_ms: 13.4975
+  type: 'test'
+  ...
+# Subtest: Runway parity: POST 401 is a definite rejection, exactly once
+ok 2 - Runway parity: POST 401 is a definite rejection, exactly once
+  ---
+  duration_ms: 5.94575
+  type: 'test'
+  ...
+# Subtest: Runway parity: POST 402 is a definite rejection, exactly once
+ok 3 - Runway parity: POST 402 is a definite rejection, exactly once
+  ---
+  duration_ms: 1.253708
+  type: 'test'
+  ...
+# Subtest: Runway parity: POST 403 is a definite rejection, exactly once
+ok 4 - Runway parity: POST 403 is a definite rejection, exactly once
+  ---
+  duration_ms: 1.037
+  type: 'test'
+  ...
+# Subtest: Runway parity: POST 404 is a definite rejection, exactly once
+ok 5 - Runway parity: POST 404 is a definite rejection, exactly once
+  ---
+  duration_ms: 1.323958
+  type: 'test'
+  ...
+# Subtest: Runway parity: POST 405 is a definite rejection, exactly once
+ok 6 - Runway parity: POST 405 is a definite rejection, exactly once
+  ---
+  duration_ms: 1.192833
+  type: 'test'
+  ...
+# Subtest: Runway parity: POST 413 is a definite rejection, exactly once
+ok 7 - Runway parity: POST 413 is a definite rejection, exactly once
+  ---
+  duration_ms: 1.162083
+  type: 'test'
+  ...
+# Subtest: Runway parity: POST 415 is a definite rejection, exactly once
+ok 8 - Runway parity: POST 415 is a definite rejection, exactly once
+  ---
+  duration_ms: 1.042917
+  type: 'test'
+  ...
+# Subtest: Runway parity: POST 422 is a definite rejection, exactly once
+ok 9 - Runway parity: POST 422 is a definite rejection, exactly once
+  ---
+  duration_ms: 1.737708
+  type: 'test'
+  ...
+# Subtest: Runway parity: POST 429 is a definite rejection, exactly once
+ok 10 - Runway parity: POST 429 is a definite rejection, exactly once
+  ---
+  duration_ms: 1.209542
+  type: 'test'
+  ...
+# Subtest: Runway parity: POST 302 preserves unknown acceptance, exactly once
+ok 11 - Runway parity: POST 302 preserves unknown acceptance, exactly once
+  ---
+  duration_ms: 0.933541
+  type: 'test'
+  ...
+# Subtest: Runway parity: POST 408 preserves unknown acceptance, exactly once
+ok 12 - Runway parity: POST 408 preserves unknown acceptance, exactly once
+  ---
+  duration_ms: 0.971333
+  type: 'test'
+  ...
+# Subtest: Runway parity: POST 409 preserves unknown acceptance, exactly once
+ok 13 - Runway parity: POST 409 preserves unknown acceptance, exactly once
+  ---
+  duration_ms: 1.027
+  type: 'test'
+  ...
+# Subtest: Runway parity: POST 410 preserves unknown acceptance, exactly once
+ok 14 - Runway parity: POST 410 preserves unknown acceptance, exactly once
+  ---
+  duration_ms: 1.039334
+  type: 'test'
+  ...
+# Subtest: Runway parity: POST 418 preserves unknown acceptance, exactly once
+ok 15 - Runway parity: POST 418 preserves unknown acceptance, exactly once
+  ---
+  duration_ms: 0.901125
+  type: 'test'
+  ...
+# Subtest: Runway parity: POST 425 preserves unknown acceptance, exactly once
+ok 16 - Runway parity: POST 425 preserves unknown acceptance, exactly once
+  ---
+  duration_ms: 0.848083
+  type: 'test'
+  ...
+# Subtest: Runway parity: POST 499 preserves unknown acceptance, exactly once
+ok 17 - Runway parity: POST 499 preserves unknown acceptance, exactly once
+  ---
+  duration_ms: 1.265458
+  type: 'test'
+  ...
+# Subtest: Runway parity: POST 500 preserves unknown acceptance, exactly once
+ok 18 - Runway parity: POST 500 preserves unknown acceptance, exactly once
+  ---
+  duration_ms: 0.941292
+  type: 'test'
+  ...
+# Subtest: Runway parity: POST 599 preserves unknown acceptance, exactly once
+ok 19 - Runway parity: POST 599 preserves unknown acceptance, exactly once
+  ---
+  duration_ms: 0.933792
+  type: 'test'
+  ...
+# Subtest: Runway parity: fetch rejects redirect cannot become a safely retryable submission
+ok 20 - Runway parity: fetch rejects redirect cannot become a safely retryable submission
+  ---
+  duration_ms: 0.967417
+  type: 'test'
+  ...
+# Subtest: Runway parity: abort after dispatch cannot become a safely retryable submission
+ok 21 - Runway parity: abort after dispatch cannot become a safely retryable submission
+  ---
+  duration_ms: 0.893166
+  type: 'test'
+  ...
+# Subtest: Runway parity: malformed JSON cannot become a safely retryable submission
+ok 22 - Runway parity: malformed JSON cannot become a safely retryable submission
+  ---
+  duration_ms: 2.379458
+  type: 'test'
+  ...
+# Subtest: Runway parity: array cannot become a safely retryable submission
+ok 23 - Runway parity: array cannot become a safely retryable submission
+  ---
+  duration_ms: 1.003417
+  type: 'test'
+  ...
+# Subtest: Runway parity: scalar cannot become a safely retryable submission
+ok 24 - Runway parity: scalar cannot become a safely retryable submission
+  ---
+  duration_ms: 0.957
+  type: 'test'
+  ...
+# Subtest: Runway parity: null cannot become a safely retryable submission
+ok 25 - Runway parity: null cannot become a safely retryable submission
+  ---
+  duration_ms: 0.830083
+  type: 'test'
+  ...
+# Subtest: Runway parity: missing ID cannot become a safely retryable submission
+ok 26 - Runway parity: missing ID cannot become a safely retryable submission
+  ---
+  duration_ms: 0.893833
+  type: 'test'
+  ...
+# Subtest: Runway parity: invalid ID cannot become a safely retryable submission
+ok 27 - Runway parity: invalid ID cannot become a safely retryable submission
+  ---
+  duration_ms: 0.978917
+  type: 'test'
+  ...
+# Subtest: Runway parity: array-coerced ID cannot become a safely retryable submission
+ok 28 - Runway parity: array-coerced ID cannot become a safely retryable submission
+  ---
+  duration_ms: 0.826792
+  type: 'test'
+  ...
+# Subtest: Runway parity: non-v4 UUID cannot become a safely retryable submission
+ok 29 - Runway parity: non-v4 UUID cannot become a safely retryable submission
+  ---
+  duration_ms: 1.081583
+  type: 'test'
+  ...
+# Subtest: Runway parity: empty response cannot become a safely retryable submission
+ok 30 - Runway parity: empty response cannot become a safely retryable submission
+  ---
+  duration_ms: 0.885166
+  type: 'test'
+  ...
+# Subtest: Runway parity: JSON above 1 MiB without Content-Length cancels the stream
+ok 31 - Runway parity: JSON above 1 MiB without Content-Length cancels the stream
+  ---
+  duration_ms: 1.830791
+  type: 'test'
+  ...
+# Subtest: Runway parity: JSON above 1 MiB with Content-Length cancels the stream
+ok 32 - Runway parity: JSON above 1 MiB with Content-Length cancels the stream
+  ---
+  duration_ms: 1.02325
+  type: 'test'
+  ...
+# Subtest: Runway parity: exactly 1 MiB valid JSON remains accepted
+ok 33 - Runway parity: exactly 1 MiB valid JSON remains accepted
+  ---
+  duration_ms: 2.181458
+  type: 'test'
+  ...
+# Subtest: Runway parity: GET 400 preserves existing retryability and caches the error
+ok 34 - Runway parity: GET 400 preserves existing retryability and caches the error
+  ---
+  duration_ms: 1.187125
+  type: 'test'
+  ...
+# Subtest: Runway parity: GET 401 preserves existing retryability and caches the error
+ok 35 - Runway parity: GET 401 preserves existing retryability and caches the error
+  ---
+  duration_ms: 0.883666
+  type: 'test'
+  ...
+# Subtest: Runway parity: GET 409 preserves existing retryability and caches the error
+ok 36 - Runway parity: GET 409 preserves existing retryability and caches the error
+  ---
+  duration_ms: 0.784667
+  type: 'test'
+  ...
+# Subtest: Runway parity: GET 408 preserves existing retryability and caches the error
+ok 37 - Runway parity: GET 408 preserves existing retryability and caches the error
+  ---
+  duration_ms: 0.679
+  type: 'test'
+  ...
+# Subtest: Runway parity: GET 429 preserves existing retryability and caches the error
+ok 38 - Runway parity: GET 429 preserves existing retryability and caches the error
+  ---
+  duration_ms: 0.809875
+  type: 'test'
+  ...
+# Subtest: Runway parity: GET 500 preserves existing retryability and caches the error
+ok 39 - Runway parity: GET 500 preserves existing retryability and caches the error
+  ---
+  duration_ms: 0.815333
+  type: 'test'
+  ...
+# Subtest: Runway parity: malformed GET is cached, then retries the same ID only
+ok 40 - Runway parity: malformed GET is cached, then retries the same ID only
+  ---
+  duration_ms: 1.069833
+  type: 'test'
+  ...
+# Subtest: Runway parity: slow concurrent GET success stays deduplicated through settlement cooldown
+ok 41 - Runway parity: slow concurrent GET success stays deduplicated through settlement cooldown
+  ---
+  duration_ms: 0.780833
+  type: 'test'
+  ...
+# Subtest: Runway parity: slow concurrent GET failure stays deduplicated through settlement cooldown
+ok 42 - Runway parity: slow concurrent GET failure stays deduplicated through settlement cooldown
+  ---
+  duration_ms: 0.647209
+  type: 'test'
+  ...
+# Subtest: Shared cache: an invalidated in-flight entry cannot overwrite a newer result
+ok 43 - Shared cache: an invalidated in-flight entry cannot overwrite a newer result
+  ---
+  duration_ms: 0.151375
+  type: 'test'
+  ...
+# Subtest: Runway parity: escaping symlink with nonexistent child creates nothing outside root
+ok 44 - Runway parity: escaping symlink with nonexistent child creates nothing outside root
+  ---
+  duration_ms: 1.976792
+  type: 'test'
+  ...
+# Subtest: Runway parity: acquired response stream is cancelled when opening output fails
+ok 45 - Runway parity: acquired response stream is cancelled when opening output fails
+  ---
+  duration_ms: 1.920667
+  type: 'test'
+  ...
+# Subtest: Runway parity: declared-oversize cleans partial output, cancels when possible and refreshes only GET
+ok 46 - Runway parity: declared-oversize cleans partial output, cancels when possible and refreshes only GET
+  ---
+  duration_ms: 7.363625
+  type: 'test'
+  ...
+# Subtest: Runway parity: stream-oversize cleans partial output, cancels when possible and refreshes only GET
+ok 47 - Runway parity: stream-oversize cleans partial output, cancels when possible and refreshes only GET
+  ---
+  duration_ms: 61.633167
+  type: 'test'
+  ...
+# Subtest: Runway parity: stream-error cleans partial output, cancels when possible and refreshes only GET
+ok 48 - Runway parity: stream-error cleans partial output, cancels when possible and refreshes only GET
+  ---
+  duration_ms: 7.543125
+  type: 'test'
+  ...
+# Subtest: Runway parity: invalid-media cleans partial output, cancels when possible and refreshes only GET
+ok 49 - Runway parity: invalid-media cleans partial output, cancels when possible and refreshes only GET
+  ---
+  duration_ms: 6.692666
+  type: 'test'
+  ...
+# Subtest: Runway parity: redirect cleans partial output, cancels when possible and refreshes only GET
+ok 50 - Runway parity: redirect cleans partial output, cancels when possible and refreshes only GET
+  ---
+  duration_ms: 7.517084
+  type: 'test'
+  ...
+# Subtest: Runway parity: configured exact CDN allowlist is preserved without auth
+ok 51 - Runway parity: configured exact CDN allowlist is preserved without auth
+  ---
+  duration_ms: 6.141667
+  type: 'test'
+  ...
+# Subtest: Runway parity: actual worker persists HTTP 409 unknown, refuses job.retry and never resubmits on reconciliation or restart
+ok 52 - Runway parity: actual worker persists HTTP 409 unknown, refuses job.retry and never resubmits on reconciliation or restart
+  ---
+  duration_ms: 1438.226209
+  type: 'test'
+  ...
+1..52
+# tests 52
+# suites 0
+# pass 52
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1966.883375

@@ -1,0 +1,106 @@
+TAP version 13
+# Subtest: environment credentials keep current names, source reporting and loopback-origin validation
+ok 1 - environment credentials keep current names, source reporting and loopback-origin validation
+  ---
+  duration_ms: 1.423542
+  type: 'test'
+  ...
+# Subtest: private file and descriptor modes preserve rotation on every request without a live backend
+ok 2 - private file and descriptor modes preserve rotation on every request without a live backend
+  ---
+  duration_ms: 9.869333
+  type: 'test'
+  ...
+# Subtest: descriptor shape, sibling token binding, process liveness and mixed modes stay enforced
+ok 3 - descriptor shape, sibling token binding, process liveness and mixed modes stay enforced
+  ---
+  duration_ms: 3.562
+  type: 'test'
+  ...
+# Subtest: missing and malformed private files return sanitized connection errors
+ok 4 - missing and malformed private files return sanitized connection errors
+  ---
+  duration_ms: 1.887708
+  type: 'test'
+  ...
+# Subtest: token and descriptor reads retain byte caps, including trailing whitespace
+ok 5 - token and descriptor reads retain byte caps, including trailing whitespace
+  ---
+  duration_ms: 2.031
+  type: 'test'
+  ...
+# Subtest: client refuses broad credential permission mode 640 without repair
+ok 6 - client refuses broad credential permission mode 640 without repair
+  ---
+  duration_ms: 2.250459
+  type: 'test'
+  ...
+# Subtest: client refuses broad credential permission mode 604 without repair
+ok 7 - client refuses broad credential permission mode 604 without repair
+  ---
+  duration_ms: 1.321333
+  type: 'test'
+  ...
+# Subtest: client refuses broad credential permission mode 666 without repair
+ok 8 - client refuses broad credential permission mode 666 without repair
+  ---
+  duration_ms: 1.271417
+  type: 'test'
+  ...
+# Subtest: client refuses non-private parent mode 755 without repair
+ok 9 - client refuses non-private parent mode 755 without repair
+  ---
+  duration_ms: 1.144
+  type: 'test'
+  ...
+# Subtest: client refuses non-private parent mode 777 without repair
+ok 10 - client refuses non-private parent mode 777 without repair
+  ---
+  duration_ms: 1.049916
+  type: 'test'
+  ...
+# Subtest: client refuses token/descriptor symbolic links and multiply linked files
+ok 11 - client refuses token/descriptor symbolic links and multiply linked files
+  ---
+  duration_ms: 2.550167
+  type: 'test'
+  ...
+# Subtest: client refuses non-regular credential entries
+ok 12 - client refuses non-regular credential entries
+  ---
+  duration_ms: 1.326583
+  type: 'test'
+  ...
+# Subtest: client refuses symbolic-link ancestors even when final credentials are private
+ok 13 - client refuses symbolic-link ancestors even when final credentials are private
+  ---
+  duration_ms: 1.056958
+  type: 'test'
+  ...
+# Subtest: client refuses a non-sticky writable ancestor of a private parent
+ok 14 - client refuses a non-sticky writable ancestor of a private parent
+  ---
+  duration_ms: 1.530667
+  type: 'test'
+  ...
+# Subtest: client refuses foreign-owner credentials and parents where ownership changes are available
+ok 15 - client refuses foreign-owner credentials and parents where ownership changes are available # SKIP Requires POSIX ownership-change capability
+  ---
+  duration_ms: 0.060167
+  type: 'test'
+  ...
+# Subtest: native Windows file credentials fail closed while environment-token mode remains available
+ok 16 - native Windows file credentials fail closed while environment-token mode remains available # SKIP Must execute on native Windows; a fake platform is not ACL evidence
+  ---
+  duration_ms: 0.020375
+  type: 'test'
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 14
+# fail 0
+# cancelled 0
+# skipped 2
+# todo 0
+# duration_ms 250.258125

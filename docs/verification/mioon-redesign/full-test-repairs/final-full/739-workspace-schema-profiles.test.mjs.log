@@ -1,0 +1,1260 @@
+TAP version 13
+# Subtest: independent schema goldens pin fixed baseline provenance, exact bytes and every supported profile
+ok 1 - independent schema goldens pin fixed baseline provenance, exact bytes and every supported profile
+  ---
+  duration_ms: 1.783041
+  type: 'test'
+  ...
+# Subtest: through24 schema-only dependency bodies stay byte-frozen independently of constructor output
+ok 2 - through24 schema-only dependency bodies stay byte-frozen independently of constructor output
+  ---
+  duration_ms: 23.269042
+  type: 'test'
+  ...
+# Subtest: fixed schema dependency imports and re-exports cannot reconnect to active runtime constants
+ok 3 - fixed schema dependency imports and re-exports cannot reconnect to active runtime constants
+  ---
+  duration_ms: 12.097625
+  type: 'test'
+  ...
+# Subtest: through24 interpolation values remain the independent fixed-baseline values
+ok 4 - through24 interpolation values remain the independent fixed-baseline values
+  ---
+  duration_ms: 0.252667
+  type: 'test'
+  ...
+# Subtest: through24 constructor keeps every ordinary1–24 trusted SQL/default-row checkpoint and the legacy alias
+ok 5 - through24 constructor keeps every ordinary1–24 trusted SQL/default-row checkpoint and the legacy alias
+  ---
+  duration_ms: 94.536584
+  type: 'test'
+  ...
+# Subtest: frozen ordinary1 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+not ok 6 - frozen ordinary1 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 753.077625
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:315:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:325:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary2 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+not ok 7 - frozen ordinary2 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 592.016167
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:315:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:325:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary3 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+not ok 8 - frozen ordinary3 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 579.602041
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:315:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:325:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary4 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+not ok 9 - frozen ordinary4 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 576.264208
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:315:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:325:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary5 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+not ok 10 - frozen ordinary5 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 572.20575
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:315:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:325:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary6 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+not ok 11 - frozen ordinary6 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 575.199042
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:315:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:325:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary7 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+not ok 12 - frozen ordinary7 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 572.595375
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:315:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:325:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary8 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+not ok 13 - frozen ordinary8 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 581.95525
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:315:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:325:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary9 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+not ok 14 - frozen ordinary9 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 583.170708
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:315:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:325:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary10 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+not ok 15 - frozen ordinary10 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 566.657666
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:315:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:325:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary11 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+not ok 16 - frozen ordinary11 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 566.869666
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:315:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:325:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary12 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+not ok 17 - frozen ordinary12 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 567.6555
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:315:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:325:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary13 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+not ok 18 - frozen ordinary13 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 569.539542
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:315:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:325:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary14 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+not ok 19 - frozen ordinary14 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 594.992583
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:315:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:325:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary15 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+not ok 20 - frozen ordinary15 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 606.326291
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:315:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:325:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary16 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+not ok 21 - frozen ordinary16 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 585.871834
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:315:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:325:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary17 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+not ok 22 - frozen ordinary17 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 577.1775
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:315:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:325:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary18 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+not ok 23 - frozen ordinary18 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 562.33125
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:315:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:325:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary19 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+not ok 24 - frozen ordinary19 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 565.374375
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:315:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:325:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary20 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+not ok 25 - frozen ordinary20 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 564.143792
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:315:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:325:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary21 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+not ok 26 - frozen ordinary21 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 555.170834
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:315:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:325:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary22 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+not ok 27 - frozen ordinary22 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 549.197541
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:315:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:325:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary23 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+not ok 28 - frozen ordinary23 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 546.856917
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:315:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:325:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary24 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+not ok 29 - frozen ordinary24 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 534.822334
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:315:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:325:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: fresh runtime construction has only the reviewed ordinary40 delta and no restoration authority
+not ok 30 - fresh runtime construction has only the reviewed ordinary40 delta and no restoration authority
+  ---
+  duration_ms: 585.570333
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:332:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:335:22)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: real Mock ledger constructor keeps the frozen optional ordinary24 table/index SQL and empty sequence absence
+ok 31 - real Mock ledger constructor keeps the frozen optional ordinary24 table/index SQL and empty sequence absence
+  ---
+  duration_ms: 43.261459
+  type: 'test'
+  ...
+# Subtest: frozen ordinary24 reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+not ok 32 - frozen ordinary24 reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+  ---
+  duration_ms: 536.6775
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:350:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:354:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restore25 construction from independent ordinary24 matches frozen SQL and capture evidence
+ok 33 - restore25 construction from independent ordinary24 matches frozen SQL and capture evidence
+  ---
+  duration_ms: 56.035292
+  type: 'test'
+  ...
+# Subtest: independent frozen restored25 opens and validates without ordinary bootstrap or evidence rewrites
+ok 34 - independent frozen restored25 opens and validates without ordinary bootstrap or evidence rewrites
+  ---
+  duration_ms: 72.696958
+  type: 'test'
+  ...
+# Subtest: frozen ordinary24-seeded reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+not ok 35 - frozen ordinary24-seeded reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+  ---
+  duration_ms: 5.698542
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:350:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:352:29)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restore25 construction from independent ordinary24-seeded matches frozen SQL and capture evidence
+not ok 36 - restore25 construction from independent ordinary24-seeded matches frozen SQL and capture evidence
+  ---
+  duration_ms: 4.292584
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:362:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:112:41)
+    inMemory (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:135:13)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:363:16)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: independent frozen restored25-seeded opens and validates without ordinary bootstrap or evidence rewrites
+not ok 37 - independent frozen restored25-seeded opens and validates without ordinary bootstrap or evidence rewrites
+  ---
+  duration_ms: 4.524459
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:375:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:377:29)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary24-mock reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+not ok 38 - frozen ordinary24-mock reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+  ---
+  duration_ms: 559.940916
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:350:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:354:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restore25 construction from independent ordinary24-mock matches frozen SQL and capture evidence
+ok 39 - restore25 construction from independent ordinary24-mock matches frozen SQL and capture evidence
+  ---
+  duration_ms: 53.80075
+  type: 'test'
+  ...
+# Subtest: independent frozen restored25-mock opens and validates without ordinary bootstrap or evidence rewrites
+ok 40 - independent frozen restored25-mock opens and validates without ordinary bootstrap or evidence rewrites
+  ---
+  duration_ms: 72.939459
+  type: 'test'
+  ...
+# Subtest: frozen ordinary24-mock-seeded reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+not ok 41 - frozen ordinary24-mock-seeded reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+  ---
+  duration_ms: 4.984083
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:350:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:352:29)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restore25 construction from independent ordinary24-mock-seeded matches frozen SQL and capture evidence
+not ok 42 - restore25 construction from independent ordinary24-mock-seeded matches frozen SQL and capture evidence
+  ---
+  duration_ms: 3.78325
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:362:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:112:41)
+    inMemory (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:135:13)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:363:16)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: independent frozen restored25-mock-seeded opens and validates without ordinary bootstrap or evidence rewrites
+not ok 43 - independent frozen restored25-mock-seeded opens and validates without ordinary bootstrap or evidence rewrites
+  ---
+  duration_ms: 4.807875
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:375:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:377:29)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary runtime retains baseline repair eligibility for known-marker-gap; offline classification stays strict
+not ok 44 - ordinary runtime retains baseline repair eligibility for known-marker-gap; offline classification stays strict
+  ---
+  duration_ms: 4.41925
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:390:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:392:18)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary runtime retains baseline repair eligibility for initial-markers-absent; offline classification stays strict
+not ok 45 - ordinary runtime retains baseline repair eligibility for initial-markers-absent; offline classification stays strict
+  ---
+  duration_ms: 3.921625
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:390:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:392:18)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary runtime retains baseline repair eligibility for marker-table-absent; offline classification stays strict
+not ok 46 - ordinary runtime retains baseline repair eligibility for marker-table-absent; offline classification stays strict
+  ---
+  duration_ms: 615.281708
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:390:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    exact reviewed LUT table/index/protection catalog
+    + actual - expected
+    
+    + '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+    - 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00'
+  actual: '99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e'
+  operator: 'strictEqual'
+  stack: |-
+    currentOrdinarySnapshot (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:404:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: unsupported marker-only profile26 is refused before ordinary bootstrap can execute imported SQL
+not ok 47 - unsupported marker-only profile26 is refused before ordinary bootstrap can execute imported SQL
+  ---
+  duration_ms: 7.579584
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:411:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:412:18)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: unsupported marker-only profile27 is refused before ordinary bootstrap can execute imported SQL
+not ok 48 - unsupported marker-only profile27 is refused before ordinary bootstrap can execute imported SQL
+  ---
+  duration_ms: 4.003542
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:411:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:412:18)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: unsupported marker-only profile28 is refused before ordinary bootstrap can execute imported SQL
+not ok 49 - unsupported marker-only profile28 is refused before ordinary bootstrap can execute imported SQL
+  ---
+  duration_ms: 4.961959
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:411:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:412:18)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: unsupported marker-only profile29 is refused before ordinary bootstrap can execute imported SQL
+not ok 50 - unsupported marker-only profile29 is refused before ordinary bootstrap can execute imported SQL
+  ---
+  duration_ms: 3.993583
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:411:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:412:18)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: marker25 only cannot enter ordinary bootstrap or mutate frozen captured bytes
+not ok 51 - marker25 only cannot enter ordinary bootstrap or mutate frozen captured bytes
+  ---
+  duration_ms: 4.525917
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:432:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:433:18)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restore metadata only cannot enter ordinary bootstrap or mutate frozen captured bytes
+not ok 52 - restore metadata only cannot enter ordinary bootstrap or mutate frozen captured bytes
+  ---
+  duration_ms: 3.895667
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:432:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:433:18)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: execution epoch only cannot enter ordinary bootstrap or mutate frozen captured bytes
+not ok 53 - execution epoch only cannot enter ordinary bootstrap or mutate frozen captured bytes
+  ---
+  duration_ms: 3.8295
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:432:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:433:18)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restore guard missing cannot enter ordinary bootstrap or mutate frozen captured bytes
+not ok 54 - restore guard missing cannot enter ordinary bootstrap or mutate frozen captured bytes
+  ---
+  duration_ms: 3.981333
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:432:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:433:18)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restore marker missing cannot enter ordinary bootstrap or mutate frozen captured bytes
+not ok 55 - restore marker missing cannot enter ordinary bootstrap or mutate frozen captured bytes
+  ---
+  duration_ms: 5.519959
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:432:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:433:18)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restore Mock evidence missing cannot enter ordinary bootstrap or mutate frozen captured bytes
+not ok 56 - restore Mock evidence missing cannot enter ordinary bootstrap or mutate frozen captured bytes
+  ---
+  duration_ms: 10.880375
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:432:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-profiles.test.mjs:433:18)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..56
+# tests 56
+# suites 0
+# pass 10
+# fail 46
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 17144.809791

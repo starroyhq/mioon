@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: reference acknowledgement allowlist is exact and immutable
+ok 1 - reference acknowledgement allowlist is exact and immutable
+  ---
+  duration_ms: 1.012667
+  type: 'test'
+  ...
+# Subtest: complete legacy, existing-binding no-op and historical reference results remain exact and read-only
+ok 2 - complete legacy, existing-binding no-op and historical reference results remain exact and read-only
+  ---
+  duration_ms: 2.197709
+  type: 'test'
+  ...
+# Subtest: every known optional parameter and selected version remains valid without normalization
+ok 3 - every known optional parameter and selected version remains valid without normalization
+  ---
+  duration_ms: 2.157125
+  type: 'test'
+  ...
+# Subtest: reference acknowledgement input identity is complete, strict and safe-integer bounded
+ok 4 - reference acknowledgement input identity is complete, strict and safe-integer bounded
+  ---
+  duration_ms: 0.255375
+  type: 'test'
+  ...
+# Subtest: malformed reference 200s preserve caller operation and request key and never auto-resubmit
+ok 5 - malformed reference 200s preserve caller operation and request key and never auto-resubmit
+  ---
+  duration_ms: 12.300375
+  type: 'test'
+  ...
+# Subtest: maximum escaped historical fields fit the reference byte bound without discarding valid data
+ok 6 - maximum escaped historical fields fit the reference byte bound without discarding valid data
+  ---
+  duration_ms: 0.735542
+  type: 'test'
+  ...
+# Subtest: maximum revision still acknowledges an existing binding but cannot acknowledge a new increment
+ok 7 - maximum revision still acknowledges an existing binding but cannot acknowledge a new increment
+  ---
+  duration_ms: 0.100541
+  type: 'test'
+  ...
+# Subtest: reference rejection proof requires its own exact operation, project, request and reference-only safe code
+ok 8 - reference rejection proof requires its own exact operation, project, request and reference-only safe code
+  ---
+  duration_ms: 0.518834
+  type: 'test'
+  ...
+# Subtest: shared client releases only exact reference prewrite proofs and leaves ambiguous errors replayable
+ok 9 - shared client releases only exact reference prewrite proofs and leaves ambiguous errors replayable
+  ---
+  duration_ms: 2.37225
+  type: 'test'
+  ...
+# Subtest: legacy timeline optional proof identity and timeline safe-code acceptance are unchanged
+ok 10 - legacy timeline optional proof identity and timeline safe-code acceptance are unchanged
+  ---
+  duration_ms: 0.146334
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 237.220958

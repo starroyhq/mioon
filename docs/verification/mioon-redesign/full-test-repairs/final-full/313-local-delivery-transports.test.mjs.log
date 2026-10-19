@@ -1,0 +1,28 @@
+TAP version 13
+# Subtest: actual authenticated HTTP persists only title and exact export input; GET is noncreating
+ok 1 - actual authenticated HTTP persists only title and exact export input; GET is noncreating
+  ---
+  duration_ms: 1118.841708
+  type: 'test'
+  ...
+# Subtest: real HTTP lost execution ACK plus backend recreation discovers the same immutable intent and one export
+ok 2 - real HTTP lost execution ACK plus backend recreation discovers the same immutable intent and one export
+  ---
+  duration_ms: 839.606083
+  type: 'test'
+  ...
+# Subtest: two real HTTP windows share one fixed export dispatch and cannot replace pending identity
+ok 3 - two real HTTP windows share one fixed export dispatch and cannot replace pending identity
+  ---
+  duration_ms: 752.883042
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3070.168334

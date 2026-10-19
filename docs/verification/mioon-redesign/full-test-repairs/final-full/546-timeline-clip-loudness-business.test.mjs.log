@@ -1,0 +1,157 @@
+TAP version 13
+# Subtest: missing or corrupt owned timeline graph never initializes or reaches media
+ok 1 - missing or corrupt owned timeline graph never initializes or reaches media
+  ---
+  duration_ms: 749.535625
+  type: 'test'
+  ...
+# Subtest: same-revision metadata, source bytes, ownership and revision drift discard the observation
+    # Subtest: metadata
+    ok 1 - metadata
+      ---
+      duration_ms: 802.501834
+      type: 'test'
+      ...
+    # Subtest: revision
+    ok 2 - revision
+      ---
+      duration_ms: 860.910125
+      type: 'test'
+      ...
+    # Subtest: bytes
+    ok 3 - bytes
+      ---
+      duration_ms: 737.091292
+      type: 'test'
+      ...
+    # Subtest: foreign
+    ok 4 - foreign
+      ---
+      duration_ms: 780.623917
+      type: 'test'
+      ...
+    # Subtest: lock
+    ok 5 - lock
+      ---
+      duration_ms: 751.225958
+      type: 'test'
+      ...
+    1..5
+ok 2 - same-revision metadata, source bytes, ownership and revision drift discard the observation
+  ---
+  duration_ms: 3933.895167
+  type: 'test'
+  ...
+# Subtest: native-db audio observation admission is shared and retains noncooperative reads through cancellation
+ok 3 - native-db audio observation admission is shared and retains noncooperative reads through cancellation
+  ---
+  duration_ms: 620.471208
+  type: 'test'
+  ...
+# Subtest: late timeout results cannot decode or publish and a live permit remains held
+ok 4 - late timeout results cannot decode or publish and a live permit remains held
+  ---
+  duration_ms: 766.647292
+  type: 'test'
+  ...
+# Subtest: unconfirmed exact child cleanup keeps shared admission sticky even after late close
+ok 5 - unconfirmed exact child cleanup keeps shared admission sticky even after late close
+  ---
+  duration_ms: 901.996
+  type: 'test'
+  ...
+# Subtest: restored direct and composed boundaries refuse before any payload getters or media
+ok 6 - restored direct and composed boundaries refuse before any payload getters or media
+  ---
+  duration_ms: 1578.710458
+  type: 'test'
+  ...
+# Subtest: a second source hash failure discards the measured clip
+ok 7 - a second source hash failure discards the measured clip
+  ---
+  duration_ms: 849.958625
+  type: 'test'
+  ...
+# Subtest: decoder stderr, private paths and unrecognized code strings never enter safe public failures
+    # Subtest: FFMPEG_ERROR
+    ok 1 - FFMPEG_ERROR
+      ---
+      duration_ms: 692.684792
+      type: 'test'
+      ...
+    # Subtest: TIMELINE_CLIP_LOUDNESS_/private/source.wav
+    ok 2 - TIMELINE_CLIP_LOUDNESS_/private/source.wav
+      ---
+      duration_ms: 695.088042
+      type: 'test'
+      ...
+    1..2
+ok 8 - decoder stderr, private paths and unrecognized code strings never enter safe public failures
+  ---
+  duration_ms: 1388.3025
+  type: 'test'
+  ...
+# Subtest: one selected saved signal is double-hashed, bound and measured without any durable effects
+ok 9 - one selected saved signal is double-hashed, bound and measured without any durable effects
+  ---
+  duration_ms: 794.614875
+  type: 'test'
+  ...
+# Subtest: wrong selection, source hash, timeline identity and extra authority refuse before media
+ok 10 - wrong selection, source hash, timeline identity and extra authority refuse before media
+  ---
+  duration_ms: 651.640708
+  type: 'test'
+  ...
+# Subtest: muted and zero gain selections are explicit rejections, never source-only substitutes
+ok 11 - muted and zero gain selections are explicit rejections, never source-only substitutes
+  ---
+  duration_ms: 727.655125
+  type: 'test'
+  ...
+# Subtest: unrelated edges and overlapping tracks change snapshot identity but not selected signal or measurement
+ok 12 - unrelated edges and overlapping tracks change snapshot identity but not selected signal or measurement
+  ---
+  duration_ms: 1005.818291
+  type: 'test'
+  ...
+# Subtest: selected exact sample count rejects one missing or extra sample frame
+    # Subtest: -1
+    ok 1 - -1
+      ---
+      duration_ms: 732.70175
+      type: 'test'
+      ...
+    # Subtest: 1
+    ok 2 - 1
+      ---
+      duration_ms: 775.282625
+      type: 'test'
+      ...
+    1..2
+ok 13 - selected exact sample count rejects one missing or extra sample frame
+  ---
+  duration_ms: 1508.428917
+  type: 'test'
+  ...
+# Subtest: source resource admission refuses over 512 MiB before file access
+ok 14 - source resource admission refuses over 512 MiB before file access
+  ---
+  duration_ms: 610.746875
+  type: 'test'
+  ...
+# Subtest: complete clip longer than 1800 frames is explicitly refused before hash, file or process work, never auto-trimmed
+ok 15 - complete clip longer than 1800 frames is explicitly refused before hash, file or process work, never auto-trimmed
+  ---
+  duration_ms: 635.359792
+  type: 'test'
+  ...
+1..15
+# tests 24
+# suites 0
+# pass 24
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 17158.6395

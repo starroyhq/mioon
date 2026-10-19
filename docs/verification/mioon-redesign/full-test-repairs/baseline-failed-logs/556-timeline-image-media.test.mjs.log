@@ -1,0 +1,56 @@
+TAP version 13
+# Subtest: production mixed PNG/video/subtitle preview and export share exact decoded output
+not ok 1 - production mixed PNG/video/subtitle preview and export share exact decoded output
+  ---
+  duration_ms: 153.359333
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-image-media.test.mjs:29:1'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    ChildProcess._handle.onexit (node:internal/child_process:305:5)
+  ...
+# Subtest: creative LUT on straight image RGB leaves alpha/padding/background/subtitle independent
+not ok 2 - creative LUT on straight image RGB leaves alpha/padding/background/subtitle independent
+  ---
+  duration_ms: 143.431833
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-image-media.test.mjs:36:1'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    ChildProcess._handle.onexit (node:internal/child_process:305:5)
+  ...
+# Subtest: mixed snapshots cannot downgrade, falsify evidence or bypass required PNG interpretation
+ok 3 - mixed snapshots cannot downgrade, falsify evidence or bypass required PNG interpretation
+  ---
+  duration_ms: 102.545958
+  type: 'test'
+  ...
+# Subtest: cancelled managed render joins owned children before removing private image staging
+ok 4 - cancelled managed render joins owned children before removing private image staging
+  ---
+  duration_ms: 110.077125
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 2
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 783.381542

@@ -1,0 +1,25 @@
+{
+  "verifiedAt": "2026-10-19T00:42:48.327771+00:00",
+  "removedOwnedDirectories": [
+    "/private/tmp/mioon-light-v3-uf1kv1gy/verify",
+    "/private/tmp/mioon-light-v3-uf1kv1gy/preview-workspace"
+  ],
+  "previewServer": {
+    "pid": 37549,
+    "exitCode": 0,
+    "stoppedBy": "SIGINT with exact command ownership check"
+  },
+  "activeOwnedProcessesAfterCleanup": [],
+  "nativeCleanup": "native/final/README.md",
+  "retained": [
+    "managed worktree",
+    "ignored development build",
+    "durable screenshots, logs, hashes and reports",
+    "private raw harness scripts and logs"
+  ],
+  "originalWorkspaceTrackedChanges": [],
+  "commitsCreated": 0,
+  "pushes": 0,
+  "providerCalls": 0,
+  "dependencyChanges": []
+}

@@ -1,0 +1,24 @@
+{
+  "verifiedAt": "2026-10-19T00:59:09.303484+00:00",
+  "removedOwnedDirectories": [
+    "/private/tmp/mioon-copy-punctuation-qg9xp0pw/verify",
+    "/private/tmp/mioon-copy-punctuation-qg9xp0pw/preview-workspace",
+    "/private/tmp/mioon-copy-punctuation-qg9xp0pw/after-i18n"
+  ],
+  "previewServer": {
+    "pid": 16974,
+    "signal": "SIGINT",
+    "exitCode": 0
+  },
+  "activeOwnedProcesses": 0,
+  "retained": [
+    "managed worktree",
+    "development build",
+    "durable evidence",
+    "private raw scripts/logs and minimal pre-edit i18n snapshot"
+  ],
+  "originalWorkspaceTrackedChanges": [],
+  "dependencyManifestChanges": [],
+  "commits": 0,
+  "pushes": 0
+}

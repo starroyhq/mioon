@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: add/update persist exact colour, replay preserves it and ordinary edits do not drop it
+ok 1 - add/update persist exact colour, replay preserves it and ordinary edits do not drop it
+  ---
+  duration_ms: 1087.19925
+  type: 'test'
+  ...
+# Subtest: replacement invalidates source only, undo restores exact source and redo retains independent creative look
+ok 2 - replacement invalidates source only, undo restores exact source and redo retains independent creative look
+  ---
+  duration_ms: 671.310584
+  type: 'test'
+  ...
+# Subtest: split copies complete source and look exactly, history restores every field
+ok 3 - split copies complete source and look exactly, history restores every field
+  ---
+  duration_ms: 649.520042
+  type: 'test'
+  ...
+# Subtest: wrong source SHA and wrong owned LUT SHA/owner reject atomically before commit
+ok 4 - wrong source SHA and wrong owned LUT SHA/owner reject atomically before commit
+  ---
+  duration_ms: 751.775792
+  type: 'test'
+  ...
+# Subtest: audio and images cannot receive a managed declaration but legacy/null remains accepted
+ok 5 - audio and images cannot receive a managed declaration but legacy/null remains accepted
+  ---
+  duration_ms: 631.685291
+  type: 'test'
+  ...
+# Subtest: corrupt historical colour cannot be applied by undo, and no saved colour is silently removed
+ok 6 - corrupt historical colour cannot be applied by undo, and no saved colour is silently removed
+  ---
+  duration_ms: 659.7215
+  type: 'test'
+  ...
+# Subtest: real service inspection observes tagged SDR and refuses HDR without changing saved media or SQLite
+ok 7 - real service inspection observes tagged SDR and refuses HDR without changing saved media or SQLite
+  ---
+  duration_ms: 1012.652833
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5826.51175

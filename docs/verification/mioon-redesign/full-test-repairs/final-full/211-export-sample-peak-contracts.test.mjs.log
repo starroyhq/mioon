@@ -1,0 +1,490 @@
+TAP version 13
+# Subtest: 已导出文件解码样本峰值 has exact shared input, bounds, truthful effects and no Agent read authority
+ok 1 - 已导出文件解码样本峰值 has exact shared input, bounds, truthful effects and no Agent read authority
+  ---
+  duration_ms: 2.434125
+  type: 'test'
+  ...
+# Subtest: strict input rejects null
+ok 2 - strict input rejects null
+  ---
+  duration_ms: 0.105834
+  type: 'test'
+  ...
+# Subtest: strict input rejects {}
+ok 3 - strict input rejects {}
+  ---
+  duration_ms: 0.138
+  type: 'test'
+  ...
+# Subtest: strict input rejects []
+ok 4 - strict input rejects []
+  ---
+  duration_ms: 0.098584
+  type: 'test'
+  ...
+# Subtest: strict input rejects {"projectId":"11111111-1111-4111-8111-111111111111"}
+ok 5 - strict input rejects {"projectId":"11111111-1111-4111-8111-111111111111"}
+  ---
+  duration_ms: 0.078375
+  type: 'test'
+  ...
+# Subtest: strict input rejects {"projectId":"wrong","exportId":"22222222-2222-4222-8222-222222222222"}
+ok 6 - strict input rejects {"projectId":"wrong","exportId":"22222222-2222-4222-8222-222222222222"}
+  ---
+  duration_ms: 0.13525
+  type: 'test'
+  ...
+# Subtest: strict input rejects {"projectId":"11111111-1111-4111-8111-111111111111","exportId":"22222222-2222-4222-8222-222222222222","requestId":"forbidden"}
+ok 7 - strict input rejects {"projectId":"11111111-1111-4111-8111-111111111111","exportId":"22222222-2222-4222-8222-222222222222","requestId":"forbidden"}
+  ---
+  duration_ms: 0.150083
+  type: 'test'
+  ...
+# Subtest: strict input rejects {"projectId":"11111111-1111-4111-8111-111111111111","exportId":"22222222-2222-4222-8222-222222222222","path":"forbidden"}
+ok 8 - strict input rejects {"projectId":"11111111-1111-4111-8111-111111111111","exportId":"22222222-2222-4222-8222-222222222222","path":"forbidden"}
+  ---
+  duration_ms: 0.081583
+  type: 'test'
+  ...
+# Subtest: strict input rejects {"projectId":"11111111-1111-4111-8111-111111111111","exportId":"22222222-2222-4222-8222-222222222222","url":"forbidden"}
+ok 9 - strict input rejects {"projectId":"11111111-1111-4111-8111-111111111111","exportId":"22222222-2222-4222-8222-222222222222","url":"forbidden"}
+  ---
+  duration_ms: 0.0675
+  type: 'test'
+  ...
+# Subtest: strict input rejects {"projectId":"11111111-1111-4111-8111-111111111111","exportId":"22222222-2222-4222-8222-222222222222","dataBase64":"forbidden"}
+ok 10 - strict input rejects {"projectId":"11111111-1111-4111-8111-111111111111","exportId":"22222222-2222-4222-8222-222222222222","dataBase64":"forbidden"}
+  ---
+  duration_ms: 0.102667
+  type: 'test'
+  ...
+# Subtest: strict input rejects {"projectId":"11111111-1111-4111-8111-111111111111","exportId":"22222222-2222-4222-8222-222222222222","assetId":"forbidden"}
+ok 11 - strict input rejects {"projectId":"11111111-1111-4111-8111-111111111111","exportId":"22222222-2222-4222-8222-222222222222","assetId":"forbidden"}
+  ---
+  duration_ms: 0.0535
+  type: 'test'
+  ...
+# Subtest: strict input rejects {"projectId":"11111111-1111-4111-8111-111111111111","exportId":"22222222-2222-4222-8222-222222222222","sha256":"forbidden"}
+ok 12 - strict input rejects {"projectId":"11111111-1111-4111-8111-111111111111","exportId":"22222222-2222-4222-8222-222222222222","sha256":"forbidden"}
+  ---
+  duration_ms: 0.040042
+  type: 'test'
+  ...
+# Subtest: strict input rejects {"projectId":"11111111-1111-4111-8111-111111111111","exportId":"22222222-2222-4222-8222-222222222222","timeoutMs":"forbidden"}
+ok 13 - strict input rejects {"projectId":"11111111-1111-4111-8111-111111111111","exportId":"22222222-2222-4222-8222-222222222222","timeoutMs":"forbidden"}
+  ---
+  duration_ms: 0.035667
+  type: 'test'
+  ...
+# Subtest: strict input rejects {"projectId":"11111111-1111-4111-8111-111111111111","exportId":"22222222-2222-4222-8222-222222222222","exportSettings":"forbidden"}
+ok 14 - strict input rejects {"projectId":"11111111-1111-4111-8111-111111111111","exportId":"22222222-2222-4222-8222-222222222222","exportSettings":"forbidden"}
+  ---
+  duration_ms: 0.031708
+  type: 'test'
+  ...
+# Subtest: strict input rejects {"projectId":"11111111-1111-4111-8111-111111111111","exportId":"22222222-2222-4222-8222-222222222222","extraArgs":"forbidden"}
+ok 15 - strict input rejects {"projectId":"11111111-1111-4111-8111-111111111111","exportId":"22222222-2222-4222-8222-222222222222","extraArgs":"forbidden"}
+  ---
+  duration_ms: 0.03
+  type: 'test'
+  ...
+# Subtest: strict input rejects {"projectId":"11111111-1111-4111-8111-111111111111","exportId":"22222222-2222-4222-8222-222222222222","expectedWorkspaceOrigin":"forbidden"}
+ok 16 - strict input rejects {"projectId":"11111111-1111-4111-8111-111111111111","exportId":"22222222-2222-4222-8222-222222222222","expectedWorkspaceOrigin":"forbidden"}
+  ---
+  duration_ms: 0.0355
+  type: 'test'
+  ...
+# Subtest: complete sample peak accepts exact finite stereo maximum 0/0
+ok 17 - complete sample peak accepts exact finite stereo maximum 0/0
+  ---
+  duration_ms: 1.2535
+  type: 'test'
+  ...
+# Subtest: complete sample peak accepts exact finite stereo maximum 0/0
+ok 18 - complete sample peak accepts exact finite stereo maximum 0/0
+  ---
+  duration_ms: 0.175917
+  type: 'test'
+  ...
+# Subtest: complete sample peak accepts exact finite stereo maximum 0/0.25
+ok 19 - complete sample peak accepts exact finite stereo maximum 0/0.25
+  ---
+  duration_ms: 0.174542
+  type: 'test'
+  ...
+# Subtest: complete sample peak accepts exact finite stereo maximum 1/1
+ok 20 - complete sample peak accepts exact finite stereo maximum 1/1
+  ---
+  duration_ms: 0.12825
+  type: 'test'
+  ...
+# Subtest: complete sample peak accepts exact finite stereo maximum 1.25/0.5
+ok 21 - complete sample peak accepts exact finite stereo maximum 1.25/0.5
+  ---
+  duration_ms: 0.209417
+  type: 'test'
+  ...
+# Subtest: complete sample peak accepts exact finite stereo maximum 3.4028234663852886e+38/1
+ok 22 - complete sample peak accepts exact finite stereo maximum 3.4028234663852886e+38/1
+  ---
+  duration_ms: 0.12875
+  type: 'test'
+  ...
+# Subtest: complete sample peak accepts exact finite stereo maximum 1.401298464324817e-45/0
+ok 23 - complete sample peak accepts exact finite stereo maximum 1.401298464324817e-45/0
+  ---
+  duration_ms: 0.1145
+  type: 'test'
+  ...
+# Subtest: frozen named and ranged fields preserve exact presence and measured interval
+ok 24 - frozen named and ranged fields preserve exact presence and measured interval
+  ---
+  duration_ms: 0.92025
+  type: 'test'
+  ...
+# Subtest: response rejects wrong project
+ok 25 - response rejects wrong project
+  ---
+  duration_ms: 0.268542
+  type: 'test'
+  ...
+# Subtest: response rejects wrong export
+ok 26 - response rejects wrong export
+  ---
+  duration_ms: 0.124834
+  type: 'test'
+  ...
+# Subtest: response rejects wrong algorithm
+ok 27 - response rejects wrong algorithm
+  ---
+  duration_ms: 0.661709
+  type: 'test'
+  ...
+# Subtest: response rejects wrong timestamp
+ok 28 - response rejects wrong timestamp
+  ---
+  duration_ms: 0.281166
+  type: 'test'
+  ...
+# Subtest: response rejects unexpected path
+ok 29 - response rejects unexpected path
+  ---
+  duration_ms: 0.133166
+  type: 'test'
+  ...
+# Subtest: response rejects requestId
+ok 30 - response rejects requestId
+  ---
+  duration_ms: 0.10025
+  type: 'test'
+  ...
+# Subtest: response rejects missing verified artifact
+ok 31 - response rejects missing verified artifact
+  ---
+  duration_ms: 0.090959
+  type: 'test'
+  ...
+# Subtest: response rejects bad digest
+ok 32 - response rejects bad digest
+  ---
+  duration_ms: 0.094333
+  type: 'test'
+  ...
+# Subtest: response rejects oversize input
+ok 33 - response rejects oversize input
+  ---
+  duration_ms: 0.147666
+  type: 'test'
+  ...
+# Subtest: response rejects missing measurement
+ok 34 - response rejects missing measurement
+  ---
+  duration_ms: 0.210833
+  type: 'test'
+  ...
+# Subtest: response rejects half hash
+ok 35 - response rejects half hash
+  ---
+  duration_ms: 0.09675
+  type: 'test'
+  ...
+# Subtest: response rejects fractional hash
+ok 36 - response rejects fractional hash
+  ---
+  duration_ms: 0.098083
+  type: 'test'
+  ...
+# Subtest: response rejects over hash cap
+ok 37 - response rejects over hash cap
+  ---
+  duration_ms: 0.097041
+  type: 'test'
+  ...
+# Subtest: response rejects incomplete decode
+ok 38 - response rejects incomplete decode
+  ---
+  duration_ms: 0.110166
+  type: 'test'
+  ...
+# Subtest: response rejects empty PCM
+ok 39 - response rejects empty PCM
+  ---
+  duration_ms: 0.1185
+  type: 'test'
+  ...
+# Subtest: response rejects frame cap
+ok 40 - response rejects frame cap
+  ---
+  duration_ms: 0.098791
+  type: 'test'
+  ...
+# Subtest: response rejects fractional frame
+ok 41 - response rejects fractional frame
+  ---
+  duration_ms: 1.9445
+  type: 'test'
+  ...
+# Subtest: response rejects duration mismatch
+ok 42 - response rejects duration mismatch
+  ---
+  duration_ms: 0.09025
+  type: 'test'
+  ...
+# Subtest: response rejects rate mismatch
+ok 43 - response rejects rate mismatch
+  ---
+  duration_ms: 0.07225
+  type: 'test'
+  ...
+# Subtest: response rejects channels mismatch
+ok 44 - response rejects channels mismatch
+  ---
+  duration_ms: 0.064625
+  type: 'test'
+  ...
+# Subtest: response rejects summed peak
+ok 45 - response rejects summed peak
+  ---
+  duration_ms: 0.070667
+  type: 'test'
+  ...
+# Subtest: response rejects average peak
+ok 46 - response rejects average peak
+  ---
+  duration_ms: 0.072125
+  type: 'test'
+  ...
+# Subtest: response rejects wrong db
+ok 47 - response rejects wrong db
+  ---
+  duration_ms: 0.065625
+  type: 'test'
+  ...
+# Subtest: response rejects wrong silence
+ok 48 - response rejects wrong silence
+  ---
+  duration_ms: 0.068875
+  type: 'test'
+  ...
+# Subtest: response rejects false null db
+ok 49 - response rejects false null db
+  ---
+  duration_ms: 0.060292
+  type: 'test'
+  ...
+# Subtest: response rejects false fullscale
+ok 50 - response rejects false fullscale
+  ---
+  duration_ms: 0.060208
+  type: 'test'
+  ...
+# Subtest: response rejects NaN
+ok 51 - response rejects NaN
+  ---
+  duration_ms: 0.025709
+  type: 'test'
+  ...
+# Subtest: response rejects infinite
+ok 52 - response rejects infinite
+  ---
+  duration_ms: 0.023792
+  type: 'test'
+  ...
+# Subtest: response rejects negative
+ok 53 - response rejects negative
+  ---
+  duration_ms: 0.069041
+  type: 'test'
+  ...
+# Subtest: response rejects wrong channel order
+ok 54 - response rejects wrong channel order
+  ---
+  duration_ms: 0.0605
+  type: 'test'
+  ...
+# Subtest: response rejects extra channel
+ok 55 - response rejects extra channel
+  ---
+  duration_ms: 0.025959
+  type: 'test'
+  ...
+# Subtest: response rejects wrong channel label
+ok 56 - response rejects wrong channel label
+  ---
+  duration_ms: 0.069792
+  type: 'test'
+  ...
+# Subtest: response rejects channel db mismatch
+ok 57 - response rejects channel db mismatch
+  ---
+  duration_ms: 0.055584
+  type: 'test'
+  ...
+# Subtest: response rejects channel silent mismatch
+ok 58 - response rejects channel silent mismatch
+  ---
+  duration_ms: 0.054541
+  type: 'test'
+  ...
+# Subtest: response rejects false over advisory
+ok 59 - response rejects false over advisory
+  ---
+  duration_ms: 0.069291
+  type: 'test'
+  ...
+# Subtest: response rejects arbitrary message
+ok 60 - response rejects arbitrary message
+  ---
+  duration_ms: 0.063708
+  type: 'test'
+  ...
+# Subtest: response rejects private probe
+ok 61 - response rejects private probe
+  ---
+  duration_ms: 0.060333
+  type: 'test'
+  ...
+# Subtest: response rejects overlarge response
+ok 62 - response rejects overlarge response
+  ---
+  duration_ms: 0.040958
+  type: 'test'
+  ...
+# Subtest: silence, exact full scale and over-full-scale advice are mutually consistent
+ok 63 - silence, exact full scale and over-full-scale advice are mutually consistent
+  ---
+  duration_ms: 0.30775
+  type: 'test'
+  ...
+# Subtest: safe unmeasured unsupported/UNSUPPORTED_FORMAT is closed and has no artifact
+ok 64 - safe unmeasured unsupported/UNSUPPORTED_FORMAT is closed and has no artifact
+  ---
+  duration_ms: 0.346875
+  type: 'test'
+  ...
+# Subtest: safe unmeasured unsupported/INPUT_TOO_LARGE is closed and has no artifact
+ok 65 - safe unmeasured unsupported/INPUT_TOO_LARGE is closed and has no artifact
+  ---
+  duration_ms: 0.187459
+  type: 'test'
+  ...
+# Subtest: safe unmeasured unsupported/DURATION_LIMIT is closed and has no artifact
+ok 66 - safe unmeasured unsupported/DURATION_LIMIT is closed and has no artifact
+  ---
+  duration_ms: 0.17175
+  type: 'test'
+  ...
+# Subtest: safe unmeasured incomplete/BUSY is closed and has no artifact
+ok 67 - safe unmeasured incomplete/BUSY is closed and has no artifact
+  ---
+  duration_ms: 0.1595
+  type: 'test'
+  ...
+# Subtest: safe unmeasured incomplete/TIMEOUT is closed and has no artifact
+ok 68 - safe unmeasured incomplete/TIMEOUT is closed and has no artifact
+  ---
+  duration_ms: 0.222833
+  type: 'test'
+  ...
+# Subtest: safe unmeasured incomplete/RESOURCE_LIMIT is closed and has no artifact
+ok 69 - safe unmeasured incomplete/RESOURCE_LIMIT is closed and has no artifact
+  ---
+  duration_ms: 0.216333
+  type: 'test'
+  ...
+# Subtest: safe unmeasured incomplete/DECODER_UNAVAILABLE is closed and has no artifact
+ok 70 - safe unmeasured incomplete/DECODER_UNAVAILABLE is closed and has no artifact
+  ---
+  duration_ms: 0.182459
+  type: 'test'
+  ...
+# Subtest: safe unmeasured incomplete/INVALID_PCM is closed and has no artifact
+ok 71 - safe unmeasured incomplete/INVALID_PCM is closed and has no artifact
+  ---
+  duration_ms: 0.135875
+  type: 'test'
+  ...
+# Subtest: safe unmeasured incomplete/DECODE_FAILED is closed and has no artifact
+ok 72 - safe unmeasured incomplete/DECODE_FAILED is closed and has no artifact
+  ---
+  duration_ms: 0.202584
+  type: 'test'
+  ...
+# Subtest: safe unmeasured incomplete/CANCELLED is closed and has no artifact
+ok 73 - safe unmeasured incomplete/CANCELLED is closed and has no artifact
+  ---
+  duration_ms: 0.143584
+  type: 'test'
+  ...
+# Subtest: safe unmeasured incomplete/SHUTDOWN is closed and has no artifact
+ok 74 - safe unmeasured incomplete/SHUTDOWN is closed and has no artifact
+  ---
+  duration_ms: 0.14025
+  type: 'test'
+  ...
+# Subtest: safe unmeasured stale/ARTIFACT_CHANGED is closed and has no artifact
+ok 75 - safe unmeasured stale/ARTIFACT_CHANGED is closed and has no artifact
+  ---
+  duration_ms: 0.135375
+  type: 'test'
+  ...
+# Subtest: direct guard rejects getters, toJSON, inherited data, cycles and mismatched input without throwing
+ok 76 - direct guard rejects getters, toJSON, inherited data, cycles and mismatched input without throwing
+  ---
+  duration_ms: 0.224542
+  type: 'test'
+  ...
+# Subtest: safe reason helper rejects unknown and prototype keys from JavaScript callers
+ok 77 - safe reason helper rejects unknown and prototype keys from JavaScript callers
+  ---
+  duration_ms: 0.197584
+  type: 'test'
+  ...
+# Subtest: frozen duration tolerance includes exactly 4800 PCM frames without floating-point widening
+ok 78 - frozen duration tolerance includes exactly 4800 PCM frames without floating-point widening
+  ---
+  duration_ms: 0.258
+  type: 'test'
+  ...
+# Subtest: every supported 30fps interval recovers the exact integer PCM target from decoder seconds
+ok 79 - every supported 30fps interval recovers the exact integer PCM target from decoder seconds
+  ---
+  duration_ms: 1.830166
+  type: 'test'
+  ...
+# Subtest: direct guard rejects huge sparse and small sparse arrays before JSON serialization
+ok 80 - direct guard rejects huge sparse and small sparse arrays before JSON serialization
+  ---
+  duration_ms: 0.27025
+  type: 'test'
+  ...
+1..80
+# tests 80
+# suites 0
+# pass 80
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 244.058959

@@ -1,0 +1,640 @@
+TAP version 13
+# Subtest: legacy control reproduces the P0 generic-discard override recorded by the red baseline
+ok 1 - legacy control reproduces the P0 generic-discard override recorded by the red baseline
+  ---
+  duration_ms: 5.431333
+  type: 'test'
+  ...
+# Subtest: main uses typed admission instead of either unsafe legacy installer
+ok 2 - main uses typed admission instead of either unsafe legacy installer
+  ---
+  duration_ms: 0.65875
+  type: 'test'
+  ...
+# Subtest: clean close drains then arms and closes once before stopping backend
+ok 3 - clean close drains then arms and closes once before stopping backend
+  ---
+  duration_ms: 2.245209
+  type: 'test'
+  ...
+# Subtest: busy owner cancels before drain or generic discard and keeps backend alive
+ok 4 - busy owner cancels before drain or generic discard and keeps backend alive
+  ---
+  duration_ms: 0.613292
+  type: 'test'
+  ...
+# Subtest: unknown owner cancels before drain or generic discard and keeps backend alive
+ok 5 - unknown owner cancels before drain or generic discard and keeps backend alive
+  ---
+  duration_ms: 0.465292
+  type: 'test'
+  ...
+# Subtest: malformed admission is never treated as discardable: true
+ok 6 - malformed admission is never treated as discardable: true
+  ---
+  duration_ms: 0.445166
+  type: 'test'
+  ...
+# Subtest: malformed admission is never treated as discardable: null
+ok 7 - malformed admission is never treated as discardable: null
+  ---
+  duration_ms: 0.390416
+  type: 'test'
+  ...
+# Subtest: malformed admission is never treated as discardable: {}
+ok 8 - malformed admission is never treated as discardable: {}
+  ---
+  duration_ms: 0.394584
+  type: 'test'
+  ...
+# Subtest: malformed admission is never treated as discardable: []
+ok 9 - malformed admission is never treated as discardable: []
+  ---
+  duration_ms: 0.344417
+  type: 'test'
+  ...
+# Subtest: malformed admission is never treated as discardable: {"version":2,"token":"x","disposition":"clean"}
+ok 10 - malformed admission is never treated as discardable: {"version":2,"token":"x","disposition":"clean"}
+  ---
+  duration_ms: 0.327459
+  type: 'test'
+  ...
+# Subtest: malformed admission is never treated as discardable: {"version":1,"token":"","disposition":"clean"}
+ok 11 - malformed admission is never treated as discardable: {"version":1,"token":"","disposition":"clean"}
+  ---
+  duration_ms: 0.354042
+  type: 'test'
+  ...
+# Subtest: malformed admission is never treated as discardable: {"version":1,"token":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ok 12 - malformed admission is never treated as discardable: {"version":1,"token":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  ---
+  duration_ms: 0.328
+  type: 'test'
+  ...
+# Subtest: malformed admission is never treated as discardable: {"version":1,"token":"x');globalThis.bypass=true;//","disposition":"clean"}
+ok 13 - malformed admission is never treated as discardable: {"version":1,"token":"x');globalThis.bypass=true;//","disposition":"clean"}
+  ---
+  duration_ms: 0.294208
+  type: 'test'
+  ...
+# Subtest: malformed admission is never treated as discardable: {"version":1,"token":"x","disposition":"unknown"}
+ok 14 - malformed admission is never treated as discardable: {"version":1,"token":"x","disposition":"unknown"}
+  ---
+  duration_ms: 0.325166
+  type: 'test'
+  ...
+# Subtest: malformed admission is never treated as discardable: {"version":1,"token":"x","disposition":"clean","privateDraft":"secret"}
+ok 15 - malformed admission is never treated as discardable: {"version":1,"token":"x","disposition":"clean","privateDraft":"secret"}
+  ---
+  duration_ms: 0.282916
+  type: 'test'
+  ...
+# Subtest: missing and throwing page admission fail closed
+ok 16 - missing and throwing page admission fail closed
+  ---
+  duration_ms: 0.66825
+  type: 'test'
+  ...
+# Subtest: dirty confirmation can cancel without clearing input and a fresh request can later succeed
+ok 17 - dirty confirmation can cancel without clearing input and a fresh request can later succeed
+  ---
+  duration_ms: 1.4965
+  type: 'test'
+  ...
+# Subtest: new input during a dirty dialog invalidates its exact confirmation
+ok 18 - new input during a dirty dialog invalidates its exact confirmation
+  ---
+  duration_ms: 2.095416
+  type: 'test'
+  ...
+# Subtest: state becoming clean still invalidates the exact old discard confirmation
+ok 19 - state becoming clean still invalidates the exact old discard confirmation
+  ---
+  duration_ms: 0.729958
+  type: 'test'
+  ...
+# Subtest: new input after commit reply is rejected by final beforeunload, never overridden
+ok 20 - new input after commit reply is rejected by final beforeunload, never overridden
+  ---
+  duration_ms: 0.8365
+  type: 'test'
+  ...
+# Subtest: an unexpected renderer veto is final even after clean successful preflight
+ok 21 - an unexpected renderer veto is final even after clean successful preflight
+  ---
+  duration_ms: 0.703125
+  type: 'test'
+  ...
+# Subtest: old and latest preference drains complete before confirmation, close and backend stop
+ok 22 - old and latest preference drains complete before confirmation, close and backend stop
+  ---
+  duration_ms: 2.589166
+  type: 'test'
+  ...
+# Subtest: drain failure has its own explicit decision before dirty confirmation
+ok 23 - drain failure has its own explicit decision before dirty confirmation
+  ---
+  duration_ms: 0.588541
+  type: 'test'
+  ...
+# Subtest: declining failed drain never reaches dirty confirmation or stops backend
+ok 24 - declining failed drain never reaches dirty confirmation or stops backend
+  ---
+  duration_ms: 0.4185
+  type: 'test'
+  ...
+# Subtest: input changed during failed-drain dialog cancels after the decision
+ok 25 - input changed during failed-drain dialog cancels after the decision
+  ---
+  duration_ms: 0.62
+  type: 'test'
+  ...
+# Subtest: timed-out inspect cannot resume close when it eventually resolves
+ok 26 - timed-out inspect cannot resume close when it eventually resolves
+  ---
+  duration_ms: 23.60175
+  type: 'test'
+  ...
+# Subtest: timed-out drain preserves the original explicit close decision and ignores its late result
+ok 27 - timed-out drain preserves the original explicit close decision and ignores its late result
+  ---
+  duration_ms: 22.094375
+  type: 'test'
+  ...
+# Subtest: late commit execution cannot arm after deadline even if cancel transport fails
+ok 28 - late commit execution cannot arm after deadline even if cancel transport fails
+  ---
+  duration_ms: 21.813791
+  type: 'test'
+  ...
+# Subtest: late commit reply leaves no usable ticket after its absolute expiry
+ok 29 - late commit reply leaves no usable ticket after its absolute expiry
+  ---
+  duration_ms: 21.413417
+  type: 'test'
+  ...
+# Subtest: expiry during the final IPC gap cancels without a business retry
+ok 30 - expiry during the final IPC gap cancels without a business retry
+  ---
+  duration_ms: 26.897167
+  type: 'test'
+  ...
+# Subtest: replacement window ownership prevents old continuation, cancellation and dialogs
+ok 31 - replacement window ownership prevents old continuation, cancellation and dialogs
+  ---
+  duration_ms: 0.878625
+  type: 'test'
+  ...
+# Subtest: same-URL document replacement cancels the old attempt and admits a fresh one
+ok 32 - same-URL document replacement cancels the old attempt and admits a fresh one
+  ---
+  duration_ms: 0.861208
+  type: 'test'
+  ...
+# Subtest: renderer loss cancels a pending probe and keeps backend alive
+ok 33 - renderer loss cancels a pending probe and keeps backend alive
+  ---
+  duration_ms: 0.654791
+  type: 'test'
+  ...
+# Subtest: throwing dialogs or commit probes cannot close or create unhandled rejections
+ok 34 - throwing dialogs or commit probes cannot close or create unhandled rejections
+  ---
+  duration_ms: 1.161291
+  type: 'test'
+  ...
+# Subtest: production desktop scripts and real renderer admission enforce exact one-shot input approval
+ok 35 - production desktop scripts and real renderer admission enforce exact one-shot input approval
+  ---
+  duration_ms: 3.429792
+  type: 'test'
+  ...
+# Subtest: fixed-current-URL reload uses its own action-bound ticket without closing or stopping backend
+ok 36 - fixed-current-URL reload uses its own action-bound ticket without closing or stopping backend
+  ---
+  duration_ms: 0.754542
+  type: 'test'
+  ...
+# Subtest: dirty reload confirms the capture and retains backend lifetime
+ok 37 - dirty reload confirms the capture and retains backend lifetime
+  ---
+  duration_ms: 0.496958
+  type: 'test'
+  ...
+# Subtest: cancelled dirty reload never begins navigation
+ok 38 - cancelled dirty reload never begins navigation
+  ---
+  duration_ms: 0.509625
+  type: 'test'
+  ...
+# Subtest: blocked reload has no dirty or drain-failure override
+ok 39 - blocked reload has no dirty or drain-failure override
+  ---
+  duration_ms: 0.346875
+  type: 'test'
+  ...
+# Subtest: new input during reload confirmation invalidates navigation
+ok 40 - new input during reload confirmation invalidates navigation
+  ---
+  duration_ms: 0.957333
+  type: 'test'
+  ...
+# Subtest: new input after reload commit is vetoed at beforeunload and ERR_ABORTED resolves false
+ok 41 - new input after reload commit is vetoed at beforeunload and ERR_ABORTED resolves false
+  ---
+  duration_ms: 0.697625
+  type: 'test'
+  ...
+# Subtest: same-URL replacement document during reload confirmation invalidates that approval
+ok 42 - same-URL replacement document during reload confirmation invalidates that approval
+  ---
+  duration_ms: 0.697917
+  type: 'test'
+  ...
+# Subtest: a second same-URL navigation cannot borrow the reload attempt
+ok 43 - a second same-URL navigation cannot borrow the reload attempt
+  ---
+  duration_ms: 0.597916
+  type: 'test'
+  ...
+# Subtest: close cannot borrow a pending reload approval or leave quit waiting
+ok 44 - close cannot borrow a pending reload approval or leave quit waiting
+  ---
+  duration_ms: 0.567584
+  type: 'test'
+  ...
+# Subtest: reload cannot borrow close approval, and repeated reloads share one attempt
+ok 45 - reload cannot borrow close approval, and repeated reloads share one attempt
+  ---
+  duration_ms: 0.861041
+  type: 'test'
+  ...
+# Subtest: a committed reload does not block a fresh close while loadURL waits forever
+ok 46 - a committed reload does not block a fresh close while loadURL waits forever
+  ---
+  duration_ms: 26.591125
+  type: 'test'
+  ...
+# Subtest: ERR_ABORTED is an ordinary cancelled reload; other owned load errors stay observable
+ok 47 - ERR_ABORTED is an ordinary cancelled reload; other owned load errors stay observable
+  ---
+  duration_ms: 1.167
+  type: 'test'
+  ...
+# Subtest: source URL changes cancel close and reload without hanging the quit coordinator
+ok 48 - source URL changes cancel close and reload without hanging the quit coordinator
+  ---
+  duration_ms: 2.117833
+  type: 'test'
+  ...
+# Subtest: real renderer binds reload to the exact current document URL and action
+ok 49 - real renderer binds reload to the exact current document URL and action
+  ---
+  duration_ms: 1.148041
+  type: 'test'
+  ...
+# Subtest: main routes user reload through admission and only proved initial empty load failures remain recoverable
+ok 50 - main routes user reload through admission and only proved initial empty load failures remain recoverable
+  ---
+  duration_ms: 0.760375
+  type: 'test'
+  ...
+# Subtest: both native dialogs receive the typed close or reload action for precise wording
+ok 51 - both native dialogs receive the typed close or reload action for precise wording
+  ---
+  duration_ms: 0.84075
+  type: 'test'
+  ...
+# Subtest: quit during initial about:blank navigation settles cancelled and can succeed after app load
+ok 52 - quit during initial about:blank navigation settles cancelled and can succeed after app load
+  ---
+  duration_ms: 0.607625
+  type: 'test'
+  ...
+# Subtest: fresh dirty close after document commit needs its own approval and stale load errors are inert
+ok 53 - fresh dirty close after document commit needs its own approval and stale load errors are inert
+  ---
+  duration_ms: 1.0445
+  type: 'test'
+  ...
+# Subtest: new input during fresh close after reload commit invalidates only the new close approval
+ok 54 - new input during fresh close after reload commit invalidates only the new close approval
+  ---
+  duration_ms: 0.943084
+  type: 'test'
+  ...
+# Subtest: close before reload document commit remains fail-closed and cannot take its unload ticket
+ok 55 - close before reload document commit remains fail-closed and cannot take its unload ticket
+  ---
+  duration_ms: 0.643375
+  type: 'test'
+  ...
+# Subtest: confirmed renderer-gone explicit recovery reloads without executing the dead page
+ok 56 - confirmed renderer-gone explicit recovery reloads without executing the dead page
+  ---
+  duration_ms: 0.433834
+  type: 'test'
+  ...
+# Subtest: gone recovery skips old dirty/busy metadata but never sends or retries business work
+ok 57 - gone recovery skips old dirty/busy metadata but never sends or retries business work
+  ---
+  duration_ms: 0.948083
+  type: 'test'
+  ...
+# Subtest: unresponsive recovery stays ordinary admission and cannot override unknown owner
+ok 58 - unresponsive recovery stays ordinary admission and cannot override unknown owner
+  ---
+  duration_ms: 0.597583
+  type: 'test'
+  ...
+# Subtest: live recovery still needs exact dirty confirmation
+ok 59 - live recovery still needs exact dirty confirmation
+  ---
+  duration_ms: 0.481542
+  type: 'test'
+  ...
+# Subtest: ordinary menu reload cannot use a confirmed-gone proof
+ok 60 - ordinary menu reload cannot use a confirmed-gone proof
+  ---
+  duration_ms: 0.379417
+  type: 'test'
+  ...
+# Subtest: one gone proof and one captured recovery decision can be consumed only once
+ok 61 - one gone proof and one captured recovery decision can be consumed only once
+  ---
+  duration_ms: 0.33225
+  type: 'test'
+  ...
+# Subtest: late recovery dialog cannot consume a newer gone incident
+ok 62 - late recovery dialog cannot consume a newer gone incident
+  ---
+  duration_ms: 0.30825
+  type: 'test'
+  ...
+# Subtest: unresponsive dialog cannot become a gone bypass after its captured generation changes
+ok 63 - unresponsive dialog cannot become a gone bypass after its captured generation changes
+  ---
+  duration_ms: 0.294375
+  type: 'test'
+  ...
+# Subtest: gone recovery is invalidated by exact URL, document or window ownership changes
+ok 64 - gone recovery is invalidated by exact URL, document or window ownership changes
+  ---
+  duration_ms: 0.903333
+  type: 'test'
+  ...
+# Subtest: late gone events from a replaced window cannot authorize recovery or cancel its replacement
+ok 65 - late gone events from a replaced window cannot authorize recovery or cancel its replacement
+  ---
+  duration_ms: 0.375958
+  type: 'test'
+  ...
+# Subtest: late recovery load error after a newer window or close is inert
+ok 66 - late recovery load error after a newer window or close is inert
+  ---
+  duration_ms: 3.241959
+  type: 'test'
+  ...
+# Subtest: gone recovery ERR_ABORTED consumes proof without retrying the page or any task
+ok 67 - gone recovery ERR_ABORTED consumes proof without retrying the page or any task
+  ---
+  duration_ms: 0.492125
+  type: 'test'
+  ...
+# Subtest: main captures incident-bound recovery before asking and discloses possible crash loss
+ok 68 - main captures incident-bound recovery before asking and discloses possible crash loss
+  ---
+  duration_ms: 0.412458
+  type: 'test'
+  ...
+# Subtest: explicit confirmed-gone Exit closes once before stopping backend, without dead-page calls
+ok 69 - explicit confirmed-gone Exit closes once before stopping backend, without dead-page calls
+  ---
+  duration_ms: 0.690166
+  type: 'test'
+  ...
+# Subtest: unresponsive or live recovery Exit retains ordinary dirty and blocked admission
+ok 70 - unresponsive or live recovery Exit retains ordinary dirty and blocked admission
+  ---
+  duration_ms: 0.802417
+  type: 'test'
+  ...
+# Subtest: gone Exit cannot override an unexpected renderer veto and leaves backend alive
+ok 71 - gone Exit cannot override an unexpected renderer veto and leaves backend alive
+  ---
+  duration_ms: 0.330792
+  type: 'test'
+  ...
+# Subtest: unused gone Exit allowance cannot leak to a later unrelated quit
+ok 72 - unused gone Exit allowance cannot leak to a later unrelated quit
+  ---
+  duration_ms: 0.347292
+  type: 'test'
+  ...
+# Subtest: asynchronously scheduled quit cannot consume the synchronous gone allowance
+ok 73 - asynchronously scheduled quit cannot consume the synchronous gone allowance
+  ---
+  duration_ms: 0.581291
+  type: 'test'
+  ...
+# Subtest: reload and Exit share exactly one confirmed-gone recovery decision
+ok 74 - reload and Exit share exactly one confirmed-gone recovery decision
+  ---
+  duration_ms: 0.319958
+  type: 'test'
+  ...
+# Subtest: late recovery Exit cannot close a replacement window, changed URL/document or newer incident
+ok 75 - late recovery Exit cannot close a replacement window, changed URL/document or newer incident
+  ---
+  duration_ms: 1.254375
+  type: 'test'
+  ...
+# Subtest: cancel/Escape in the actual recovery dialog retains window, backend and unconsumed proof
+ok 76 - cancel/Escape in the actual recovery dialog retains window, backend and unconsumed proof
+  ---
+  duration_ms: 1.0935
+  type: 'test'
+  ...
+# Subtest: the actual recovery dialog authorizes Exit only for explicit response one
+ok 77 - the actual recovery dialog authorizes Exit only for explicit response one
+  ---
+  duration_ms: 0.802125
+  type: 'test'
+  ...
+# Subtest: pending live recovery response 0 cannot consume gone proof and a fresh explicit prompt remains reachable
+ok 78 - pending live recovery response 0 cannot consume gone proof and a fresh explicit prompt remains reachable
+  ---
+  duration_ms: 1.051208
+  type: 'test'
+  ...
+# Subtest: pending live recovery response 1 cannot consume gone proof and a fresh explicit prompt remains reachable
+ok 79 - pending live recovery response 1 cannot consume gone proof and a fresh explicit prompt remains reachable
+  ---
+  duration_ms: 0.756375
+  type: 'test'
+  ...
+# Subtest: pending live recovery response 2 cannot consume gone proof and a fresh explicit prompt remains reachable
+ok 80 - pending live recovery response 2 cannot consume gone proof and a fresh explicit prompt remains reachable
+  ---
+  duration_ms: 0.681042
+  type: 'test'
+  ...
+# Subtest: duplicate notifications of one unchanged renderer incident do not reopen a kept dialog
+ok 81 - duplicate notifications of one unchanged renderer incident do not reopen a kept dialog
+  ---
+  duration_ms: 1.474042
+  type: 'test'
+  ...
+# Subtest: a queued newer renderer incident cannot prompt after owner, document, URL or action replacement
+ok 82 - a queued newer renderer incident cannot prompt after owner, document, URL or action replacement
+  ---
+  duration_ms: 3.110334
+  type: 'test'
+  ...
+# Subtest: a recovered live renderer can report a later hang without inheriting old dialog permission
+ok 83 - a recovered live renderer can report a later hang without inheriting old dialog permission
+  ---
+  duration_ms: 0.750042
+  type: 'test'
+  ...
+# Subtest: the explicit Reload menu can recover a kept confirmed-gone incident exactly once
+ok 84 - the explicit Reload menu can recover a kept confirmed-gone incident exactly once
+  ---
+  duration_ms: 1.343625
+  type: 'test'
+  ...
+# Subtest: the explicit Reload menu cannot treat unresponsive or replaced owners as confirmed gone
+ok 85 - the explicit Reload menu cannot treat unresponsive or replaced owners as confirmed gone
+  ---
+  duration_ms: 1.322708
+  type: 'test'
+  ...
+# Subtest: actual main confirmClose leaves utility heartbeat schedulable while the native dialog awaits its response
+ok 86 - actual main confirmClose leaves utility heartbeat schedulable while the native dialog awaits its response
+  ---
+  duration_ms: 0.551833
+  type: 'test'
+  ...
+# Subtest: actual main confirmDiscard leaves utility heartbeat schedulable while the native dialog awaits its response
+ok 87 - actual main confirmDiscard leaves utility heartbeat schedulable while the native dialog awaits its response
+  ---
+  duration_ms: 0.356208
+  type: 'test'
+  ...
+# Subtest: actual main confirmUnknown leaves utility heartbeat schedulable while the native dialog awaits its response
+ok 88 - actual main confirmUnknown leaves utility heartbeat schedulable while the native dialog awaits its response
+  ---
+  duration_ms: 0.332625
+  type: 'test'
+  ...
+# Subtest: actual main onBlocked leaves utility heartbeat schedulable while the native dialog awaits its response
+ok 89 - actual main onBlocked leaves utility heartbeat schedulable while the native dialog awaits its response
+  ---
+  duration_ms: 0.3205
+  type: 'test'
+  ...
+# Subtest: actual async confirmClose preserves decline and cannot authorize a replaced owner
+ok 90 - actual async confirmClose preserves decline and cannot authorize a replaced owner
+  ---
+  duration_ms: 1.57525
+  type: 'test'
+  ...
+# Subtest: actual async confirmDiscard preserves decline and cannot authorize a replaced owner
+ok 91 - actual async confirmDiscard preserves decline and cannot authorize a replaced owner
+  ---
+  duration_ms: 1.574958
+  type: 'test'
+  ...
+# Subtest: native close completion and disposal never reacquire destroyed BrowserWindow contents
+ok 92 - native close completion and disposal never reacquire destroyed BrowserWindow contents
+  ---
+  duration_ms: 0.923583
+  type: 'test'
+  ...
+# Subtest: pre-reload retirement is shared and finishes before any fresh P0 inspection
+ok 93 - pre-reload retirement is shared and finishes before any fresh P0 inspection
+  ---
+  duration_ms: 0.612083
+  type: 'test'
+  ...
+# Subtest: pre-reload retirement denied leaves the page and P0 untouched
+ok 94 - pre-reload retirement denied leaves the page and P0 untouched
+  ---
+  duration_ms: 0.514375
+  type: 'test'
+  ...
+# Subtest: pre-reload retirement rejected leaves the page and P0 untouched
+ok 95 - pre-reload retirement rejected leaves the page and P0 untouched
+  ---
+  duration_ms: 0.500417
+  type: 'test'
+  ...
+# Subtest: pre-reload retirement captures later input afresh and cancelled consent never resumes playback
+ok 96 - pre-reload retirement captures later input afresh and cancelled consent never resumes playback
+  ---
+  duration_ms: 0.490375
+  type: 'test'
+  ...
+# Subtest: pre-reload retirement late success cannot reload a replaced owner
+ok 97 - pre-reload retirement late success cannot reload a replaced owner
+  ---
+  duration_ms: 0.465209
+  type: 'test'
+  ...
+# Subtest: pre-reload retirement late success cannot reload a replaced document
+ok 98 - pre-reload retirement late success cannot reload a replaced document
+  ---
+  duration_ms: 0.496667
+  type: 'test'
+  ...
+# Subtest: pre-reload retirement late success cannot reload a replaced url
+ok 99 - pre-reload retirement late success cannot reload a replaced url
+  ---
+  duration_ms: 0.482666
+  type: 'test'
+  ...
+# Subtest: pre-reload retirement late success cannot reload a replaced closed
+ok 100 - pre-reload retirement late success cannot reload a replaced closed
+  ---
+  duration_ms: 0.429833
+  type: 'test'
+  ...
+# Subtest: pre-reload retirement late success cannot reload a replaced disposed
+ok 101 - pre-reload retirement late success cannot reload a replaced disposed
+  ---
+  duration_ms: 0.468709
+  type: 'test'
+  ...
+# Subtest: pre-reload retirement old completion cannot release or advance a newer reload attempt
+ok 102 - pre-reload retirement old completion cannot release or advance a newer reload attempt
+  ---
+  duration_ms: 0.81675
+  type: 'test'
+  ...
+# Subtest: pre-reload retirement is not requested for ordinary close or confirmed-gone recovery
+ok 103 - pre-reload retirement is not requested for ordinary close or confirmed-gone recovery
+  ---
+  duration_ms: 0.811666
+  type: 'test'
+  ...
+# Subtest: pre-reload retirement timeout abandons observation without lending the P0 ticket lease
+ok 104 - pre-reload retirement timeout abandons observation without lending the P0 ticket lease
+  ---
+  duration_ms: 6.122958
+  type: 'test'
+  ...
+# Subtest: actual main pre-reload hook binds the original audio host and captured exact editor contents
+ok 105 - actual main pre-reload hook binds the original audio host and captured exact editor contents
+  ---
+  duration_ms: 0.668875
+  type: 'test'
+  ...
+1..105
+# tests 105
+# suites 0
+# pass 105
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 408.958375

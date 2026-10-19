@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: HTTP response cancellation initiates destroy but actual admission stays occupied until consumer close
+ok 1 - HTTP response cancellation initiates destroy but actual admission stays occupied until consumer close
+  ---
+  duration_ms: 31.104875
+  type: 'test'
+  ...
+# Subtest: response error also retains the consumer and permit until actual close rather than destroy return
+ok 2 - response error also retains the consumer and permit until actual close rather than destroy return
+  ---
+  duration_ms: 11.772042
+  type: 'test'
+  ...
+# Subtest: the last synchronous saved-revision fence runs immediately before headers and revokes publication
+ok 3 - the last synchronous saved-revision fence runs immediately before headers and revokes publication
+  ---
+  duration_ms: 9.402708
+  type: 'test'
+  ...
+# Subtest: normal response completion releases admission only after finish and cleans request/response listeners
+ok 4 - normal response completion releases admission only after finish and cleans request/response listeners
+  ---
+  duration_ms: 5.736792
+  type: 'test'
+  ...
+# Subtest: an interrupted partial HTTP PCM body never resolves a playable prepared interval
+ok 5 - an interrupted partial HTTP PCM body never resolves a playable prepared interval
+  ---
+  duration_ms: 19.333291
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 280.71

@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: task reveal uses a separate overlay and keeps project, view and composition admission
+ok 1 - task reveal uses a separate overlay and keeps project, view and composition admission
+  ---
+  duration_ms: 0.907417
+  type: 'test'
+  ...
+# Subtest: export opening is passive and closing its retained overlay does not cancel or resubmit
+ok 2 - export opening is passive and closing its retained overlay does not cancel or resubmit
+  ---
+  duration_ms: 0.537167
+  type: 'test'
+  ...
+# Subtest: project view and help keep the moved function entrances and the inspector owns only mode tabs
+ok 3 - project view and help keep the moved function entrances and the inspector owns only mode tabs
+  ---
+  duration_ms: 4.802917
+  type: 'test'
+  ...
+# Subtest: retained closed confirmations do not raise ordinary settings or export backdrops above their popup
+ok 4 - retained closed confirmations do not raise ordinary settings or export backdrops above their popup
+  ---
+  duration_ms: 0.239334
+  type: 'test'
+  ...
+# Subtest: zoomed full-window surfaces and modal bounds share the inverse logical viewport
+ok 5 - zoomed full-window surfaces and modal bounds share the inverse logical viewport
+  ---
+  duration_ms: 0.187458
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 131.833042

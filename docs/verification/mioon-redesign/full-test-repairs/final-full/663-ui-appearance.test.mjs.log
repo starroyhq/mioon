@@ -1,0 +1,160 @@
+TAP version 13
+# Subtest: saved dark applies mutually exclusive root classes without an OS subscription
+ok 1 - saved dark applies mutually exclusive root classes without an OS subscription
+  ---
+  duration_ms: 2.189833
+  type: 'test'
+  ...
+# Subtest: saved light applies mutually exclusive root classes without an OS subscription
+ok 2 - saved light applies mutually exclusive root classes without an OS subscription
+  ---
+  duration_ms: 0.68325
+  type: 'test'
+  ...
+# Subtest: system follows both initial and live OS states without writes or project/layout changes
+ok 3 - system follows both initial and live OS states without writes or project/layout changes
+  ---
+  duration_ms: 0.346834
+  type: 'test'
+  ...
+# Subtest: a theme draft previews immediately and discard restores the saved system subscription
+ok 4 - a theme draft previews immediately and discard restores the saved system subscription
+  ---
+  duration_ms: 0.67575
+  type: 'test'
+  ...
+# Subtest: retired system callbacks cannot revive after system to manual to system transitions
+ok 5 - retired system callbacks cannot revive after system to manual to system transitions
+  ---
+  duration_ms: 0.335417
+  type: 'test'
+  ...
+# Subtest: cleanup removes the media listener and queued callbacks cannot mutate the unmounted root
+ok 6 - cleanup removes the media listener and queued callbacks cannot mutate the unmounted root
+  ---
+  duration_ms: 0.224708
+  type: 'test'
+  ...
+# Subtest: a late initial preference read after unmount cannot activate light or subscribe
+ok 7 - a late initial preference read after unmount cannot activate light or subscribe
+  ---
+  duration_ms: 0.146625
+  type: 'test'
+  ...
+# Subtest: saving a light draft retains the same CAS request after an unknown result and admits no intervening edits
+ok 8 - saving a light draft retains the same CAS request after an unknown result and admits no intervening edits
+  ---
+  duration_ms: 1.443125
+  type: 'test'
+  ...
+# Subtest: readonly preferences cannot be edited or saved but system still follows the OS
+ok 9 - readonly preferences cannot be edited or saved but system still follows the OS
+  ---
+  duration_ms: 0.254625
+  type: 'test'
+  ...
+# Subtest: a draft survives reloading a newer saved theme until explicit discard
+ok 10 - a draft survives reloading a newer saved theme until explicit discard
+  ---
+  duration_ms: 0.296333
+  type: 'test'
+  ...
+# Subtest: an authoritative light reload wins over an older in-flight dark response
+ok 11 - an authoritative light reload wins over an older in-flight dark response
+  ---
+  duration_ms: 0.219584
+  type: 'test'
+  ...
+# Subtest: without matchMedia manual light works while system retains the deterministic dark fallback
+ok 12 - without matchMedia manual light works while system retains the deterministic dark fallback
+  ---
+  duration_ms: 0.15575
+  type: 'test'
+  ...
+# Subtest: two mounted Providers synchronize an accepted save using only a revision hint and no echo loop
+ok 13 - two mounted Providers synchronize an accepted save using only a revision hint and no echo loop
+  ---
+  duration_ms: 1.966708
+  type: 'test'
+  ...
+# Subtest: cross-window hints preserve a different window draft and its original CAS base until discard
+ok 14 - cross-window hints preserve a different window draft and its original CAS base until discard
+  ---
+  duration_ms: 0.412459
+  type: 'test'
+  ...
+# Subtest: invalid, stale and replayed channel payloads never replace preferences or issue repeated reads
+ok 15 - invalid, stale and replayed channel payloads never replace preferences or issue repeated reads
+  ---
+  duration_ms: 0.336
+  type: 'test'
+  ...
+# Subtest: a revision arriving during an in-flight read is drained once after that read releases ownership
+ok 16 - a revision arriving during an in-flight read is drained once after that read releases ownership
+  ---
+  duration_ms: 0.159
+  type: 'test'
+  ...
+# Subtest: an unknown accepted save keeps its frozen request despite notifications and drains after explicit same-request retry
+ok 17 - an unknown accepted save keeps its frozen request despite notifications and drains after explicit same-request retry
+  ---
+  duration_ms: 0.254125
+  type: 'test'
+  ...
+# Subtest: unmount closes the channel and focus listener and rejects captured late messages
+ok 18 - unmount closes the channel and focus listener and rejects captured late messages
+  ---
+  duration_ms: 0.126916
+  type: 'test'
+  ...
+# Subtest: focus fallback defers for a draft and coalesces requests while an authority read is pending
+ok 19 - focus fallback defers for a draft and coalesces requests while an authority read is pending
+  ---
+  duration_ms: 0.15475
+  type: 'test'
+  ...
+# Subtest: OS changes never broadcast, and optional channel failure cannot turn an accepted save into an error
+ok 20 - OS changes never broadcast, and optional channel failure cannot turn an accepted save into an error
+  ---
+  duration_ms: 0.129417
+  type: 'test'
+  ...
+# Subtest: a dirty receiver saves against its original revision and exposes a real conflict instead of overwriting another window
+ok 21 - a dirty receiver saves against its original revision and exposes a real conflict instead of overwriting another window
+  ---
+  duration_ms: 0.310125
+  type: 'test'
+  ...
+# Subtest: a clean navigation acknowledgement atomically applies a newer theme before the same-revision message arrives
+ok 22 - a clean navigation acknowledgement atomically applies a newer theme before the same-revision message arrives
+  ---
+  duration_ms: 0.204333
+  type: 'test'
+  ...
+# Subtest: a navigation acknowledgement defers newer preferences when a draft was edited before its request
+ok 23 - a navigation acknowledgement defers newer preferences when a draft was edited before its request
+  ---
+  duration_ms: 0.160917
+  type: 'test'
+  ...
+# Subtest: a navigation acknowledgement defers newer preferences when a draft was edited during its request
+ok 24 - a navigation acknowledgement defers newer preferences when a draft was edited during its request
+  ---
+  duration_ms: 0.094667
+  type: 'test'
+  ...
+# Subtest: a restricted BroadcastChannel constructor still permits a guarded focus reread
+ok 25 - a restricted BroadcastChannel constructor still permits a guarded focus reread
+  ---
+  duration_ms: 0.130291
+  type: 'test'
+  ...
+1..25
+# tests 25
+# suites 0
+# pass 25
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 214.3565

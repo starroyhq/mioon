@@ -1,0 +1,94 @@
+TAP version 13
+# Subtest: capability is explicit and fail-closed, with no generic operation inference
+ok 1 - capability is explicit and fail-closed, with no generic operation inference
+  ---
+  duration_ms: 3.007375
+  type: 'test'
+  ...
+# Subtest: restored capability binds exact verified origin and profile; old generic update support is insufficient
+ok 2 - restored capability binds exact verified origin and profile; old generic update support is insufficient
+  ---
+  duration_ms: 17.791583
+  type: 'test'
+  ...
+# Subtest: raw and patch preserve absent/null roles and reject invalid values without coercion
+ok 3 - raw and patch preserve absent/null roles and reject invalid values without coercion
+  ---
+  duration_ms: 1.129542
+  type: 'test'
+  ...
+# Subtest: role state saves through draft CAS and business save; role ACK mismatch retains input
+ok 4 - role state saves through draft CAS and business save; role ACK mismatch retains input
+  ---
+  duration_ms: 12.003458
+  type: 'test'
+  ...
+# Subtest: unknown business ACK preserves exact role input and sidecar, with no automatic resubmit
+ok 5 - unknown business ACK preserves exact role input and sidecar, with no automatic resubmit
+  ---
+  duration_ms: 0.584333
+  type: 'test'
+  ...
+# Subtest: capability loss blocks role changes but omits unchanged role for unrelated edits
+ok 6 - capability loss blocks role changes but omits unchanged role for unrelated edits
+  ---
+  duration_ms: 0.874041
+  type: 'test'
+  ...
+# Subtest: role draft restore and discard preserve ownership and reset absence
+ok 7 - role draft restore and discard preserve ownership and reset absence
+  ---
+  duration_ms: 0.408834
+  type: 'test'
+  ...
+# Subtest: late role ACK cannot clear a changed owner; role capability is rechecked at dispatch
+ok 8 - late role ACK cannot clear a changed owner; role capability is rechecked at dispatch
+  ---
+  duration_ms: 1.114
+  type: 'test'
+  ...
+# Subtest: TSX control labels and handlers cover four locales, explicit clear, invalid events and disabled states
+ok 9 - TSX control labels and handlers cover four locales, explicit clear, invalid events and disabled states
+  ---
+  duration_ms: 48.416416
+  type: 'test'
+  ...
+# Subtest: optional capability observation never delays ordinary load and fences late boot completions
+ok 10 - optional capability observation never delays ordinary load and fences late boot completions
+  ---
+  duration_ms: 1.586417
+  type: 'test'
+  ...
+# Subtest: unrelated save ACK cannot drop, alter or normalize a captured role, even when omitted from patch
+ok 11 - unrelated save ACK cannot drop, alter or normalize a captured role, even when omitted from patch
+  ---
+  duration_ms: 2.351334
+  type: 'test'
+  ...
+# Subtest: recovered role change without capability remains blocked and retained
+ok 12 - recovered role change without capability remains blocked and retained
+  ---
+  duration_ms: 0.253417
+  type: 'test'
+  ...
+# Subtest: hung probe aborts and reports unavailable once; ignored abort cannot publish a late success
+ok 13 - hung probe aborts and reports unavailable once; ignored abort cannot publish a late success
+  ---
+  duration_ms: 21.002166
+  type: 'test'
+  ...
+# Subtest: reconnect cancels old read; unreadable and confirmed unsupported have distinct results
+ok 14 - reconnect cancels old read; unreadable and confirmed unsupported have distinct results
+  ---
+  duration_ms: 0.919167
+  type: 'test'
+  ...
+1..14
+# tests 14
+# suites 0
+# pass 14
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 361.403167

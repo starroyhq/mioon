@@ -1,0 +1,41 @@
+TAP version 13
+# Subtest: explicit subject video input shares strict HTTP/CLI/MCP, historical recovery and backend restart
+    # Subtest: schema has optional UUID only and stays identical across actual CLI and official MCP
+    ok 1 - schema has optional UUID only and stays identical across actual CLI and official MCP
+      ---
+      duration_ms: 319.898292
+      type: 'test'
+      ...
+    # Subtest: lost ACK and exact MCP replay create one original subject task without reference binding inference
+    ok 2 - lost ACK and exact MCP replay create one original subject task without reference binding inference
+      ---
+      duration_ms: 162.635875
+      type: 'test'
+      ...
+    # Subtest: head and shot changes never replace the selected historical version or original key
+    ok 3 - head and shot changes never replace the selected historical version or original key
+      ---
+      duration_ms: 278.639625
+      type: 'test'
+      ...
+    # Subtest: backend recreation rediscovers original pinned input and one submission, without changing original files
+    ok 4 - backend recreation rediscovers original pinned input and one submission, without changing original files
+      ---
+      duration_ms: 1024.031666
+      type: 'test'
+      ...
+    1..4
+ok 1 - explicit subject video input shares strict HTTP/CLI/MCP, historical recovery and backend restart
+  ---
+  duration_ms: 3509.6715
+  type: 'test'
+  ...
+1..1
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3898.96175

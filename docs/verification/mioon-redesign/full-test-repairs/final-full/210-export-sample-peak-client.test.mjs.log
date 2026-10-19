@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: only sample peak defaults to 125 seconds; explicit client and call deadlines always win
+ok 1 - only sample peak defaults to 125 seconds; explicit client and call deadlines always win
+  ---
+  duration_ms: 3.967375
+  type: 'test'
+  ...
+# Subtest: client carries workspace and caller cancellation outside strict input without new request ID
+ok 2 - client carries workspace and caller cancellation outside strict input without new request ID
+  ---
+  duration_ms: 0.602083
+  type: 'test'
+  ...
+# Subtest: strict invalid inputs and unknown operation reject before connection or dispatch
+ok 3 - strict invalid inputs and unknown operation reject before connection or dispatch
+  ---
+  duration_ms: 0.845
+  type: 'test'
+  ...
+# Subtest: strict responses bind export identity, amplitude semantics and ephemeral failure shape without retry
+ok 4 - strict responses bind export identity, amplitude semantics and ephemeral failure shape without retry
+  ---
+  duration_ms: 3.308667
+  type: 'test'
+  ...
+# Subtest: transport loss, malformed JSON and local cancellation do not create receipt uncertainty or retries
+ok 5 - transport loss, malformed JSON and local cancellation do not create receipt uncertainty or retries
+  ---
+  duration_ms: 1.138542
+  type: 'test'
+  ...
+# Subtest: an explicit sample-peak deadline interrupts one request without automatic retry or mutation guidance
+ok 6 - an explicit sample-peak deadline interrupts one request without automatic retry or mutation guidance
+  ---
+  duration_ms: 6.589708
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 232.508708

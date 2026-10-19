@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: timeline migration is additive, stable, empty, and does not change v1 project revision
+ok 1 - timeline migration is additive, stable, empty, and does not change v1 project revision
+  ---
+  duration_ms: 1035.207708
+  type: 'test'
+  ...
+# Subtest: every timeline mutation replays the exact original response after later edits and restart
+ok 2 - every timeline mutation replays the exact original response after later edits and restart
+  ---
+  duration_ms: 694.276625
+  type: 'test'
+  ...
+# Subtest: concurrent duplicate requests apply once; competing fresh requests serialize by revision
+ok 3 - concurrent duplicate requests apply once; competing fresh requests serialize by revision
+  ---
+  duration_ms: 659.433834
+  type: 'test'
+  ...
+# Subtest: seed copies only selected versions in shot order once and freezes refs independently of selection
+ok 4 - seed copies only selected versions in shot order once and freezes refs independently of selection
+  ---
+  duration_ms: 700.102375
+  type: 'test'
+  ...
+# Subtest: seed missing selections rejects atomically and allows a corrected retry
+ok 5 - seed missing selections rejects atomically and allows a corrected retry
+  ---
+  duration_ms: 620.846709
+  type: 'test'
+  ...
+# Subtest: clip validation rejects invalid frames, rectangles, media kinds, cross-project refs and unsupported edits atomically
+ok 6 - clip validation rejects invalid frames, rectangles, media kinds, cross-project refs and unsupported edits atomically
+  ---
+  duration_ms: 671.888166
+  type: 'test'
+  ...
+# Subtest: source bound tolerance accepts exact fractional frame durations and rejects fractional tails
+ok 7 - source bound tolerance accepts exact fractional frame durations and rejects fractional tails
+  ---
+  duration_ms: 639.860875
+  type: 'test'
+  ...
+# Subtest: same-track overlap is refused; edge-touching, cross-track overlap, exact trims and moves work
+ok 8 - same-track overlap is refused; edge-touching, cross-track overlap, exact trims and moves work
+  ---
+  duration_ms: 633.706458
+  type: 'test'
+  ...
+# Subtest: track and clip limits are enforced without invalidating full-length empty/gap edits
+ok 9 - track and clip limits are enforced without invalidating full-length empty/gap edits
+  ---
+  duration_ms: 1133.617625
+  type: 'test'
+  ...
+# Subtest: timeline render snapshots revision/assets once and shares mutation idempotency namespace
+ok 10 - timeline render snapshots revision/assets once and shares mutation idempotency namespace
+  ---
+  duration_ms: 646.03375
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 7910.299958

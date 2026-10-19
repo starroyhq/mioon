@@ -1,0 +1,53 @@
+TAP version 13
+# Subtest: frames share strict real HTTP, actual CLI and official MCP extraction/recovery contracts
+    # Subtest: six strict schema/effect definitions agree without broadening built-in Agent authority
+    ok 1 - six strict schema/effect definitions agree without broadening built-in Agent authority
+      ---
+      duration_ms: 1835.863875
+      type: 'test'
+      ...
+    # Subtest: restart discovery never starts retained work; cancellation and missing-result refusal are explicit
+    ok 2 - restart discovery never starts retained work; cancellation and missing-result refusal are explicit
+      ---
+      duration_ms: 2291.984875
+      type: 'test'
+      ...
+    # Subtest: explicit recovery publishes the same complete staged PNG with no re-decode
+    ok 3 - explicit recovery publishes the same complete staged PNG with no re-decode
+      ---
+      duration_ms: 1131.1525
+      type: 'test'
+      ...
+    # Subtest: lost acknowledgement retains identity and explicit cross-transport replay never extracts twice
+    ok 4 - lost acknowledgement retains identity and explicit cross-transport replay never extracts twice
+      ---
+      duration_ms: 2085.975208
+      type: 'test'
+      ...
+    # Subtest: malformed 200 CLI/MCP acknowledgements preserve exact keys and accepted durable receipts
+    ok 5 - malformed 200 CLI/MCP acknowledgements preserve exact keys and accepted durable receipts
+      ---
+      duration_ms: 1711.901291
+      type: 'test'
+      ...
+    # Subtest: bounded pagination and server recreation are read-only and retain immutable original acknowledgements
+    ok 6 - bounded pagination and server recreation are read-only and retain immutable original acknowledgements
+      ---
+      duration_ms: 4136.501917
+      type: 'test'
+      ...
+    1..6
+ok 1 - frames share strict real HTTP, actual CLI and official MCP extraction/recovery contracts
+  ---
+  duration_ms: 15547.320458
+  type: 'test'
+  ...
+1..1
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 15885.324167

@@ -1,0 +1,152 @@
+TAP version 13
+# Subtest: startup SQL normalization rejects missing, duplicate, extra and isolated loudness expansion
+ok 1 - startup SQL normalization rejects missing, duplicate, extra and isolated loudness expansion
+  ---
+  duration_ms: 24.877667
+  type: 'test'
+  ...
+# Subtest: schema21 preserves independently frozen schema20 rows, raw task inputs, all states, every index and trigger
+ok 2 - schema21 preserves independently frozen schema20 rows, raw task inputs, all states, every index and trigger
+  ---
+  duration_ms: 65.733334
+  type: 'test'
+  ...
+# Subtest: actual schema20 startup migration matches fresh schema26 and is byte-stable across repeated restarts
+not ok 3 - actual schema20 startup migration matches fresh schema26 and is byte-stable across repeated restarts
+  ---
+  duration_ms: 1642.846167
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/project-specifications-migration.test.mjs:206:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    trigger retain_agent_chat_events: exact SQL retained outside the pinned schema23/24 additions
+    + actual - expected
+    
+      [Object: null prototype] {
+        name: 'retain_agent_chat_events',
+        sql: 'CREATE TRIGGER retain_agent_chat_events BEFORE DELETE ON agent_chat_events\n' +
+    +     " WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='agent_chat_events' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'chat events must be retained');END",
+    -     " BEGIN SELECT RAISE(ABORT,'chat events must be retained');END",
+        tbl_name: 'agent_chat_events',
+        type: 'trigger'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    type: 'trigger'
+    name: 'retain_agent_chat_events'
+    tbl_name: 'agent_chat_events'
+    sql: |-
+      CREATE TRIGGER retain_agent_chat_events BEFORE DELETE ON agent_chat_events
+       BEGIN SELECT RAISE(ABORT,'chat events must be retained');END
+  actual:
+    type: 'trigger'
+    name: 'retain_agent_chat_events'
+    tbl_name: 'agent_chat_events'
+    sql: |-
+      CREATE TRIGGER retain_agent_chat_events BEFORE DELETE ON agent_chat_events
+       WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='agent_chat_events' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'chat events must be retained');END
+  operator: 'deepStrictEqual'
+  stack: |-
+    preserved (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/project-specifications-migration.test.mjs:72:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/project-specifications-migration.test.mjs:209:2)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: schema21 keeps an empty v20 edit-task sequence absent
+ok 4 - schema21 keeps an empty v20 edit-task sequence absent
+  ---
+  duration_ms: 20.121541
+  type: 'test'
+  ...
+# Subtest: schema21 keeps an empty v20 edit-task sequence 0
+ok 5 - schema21 keeps an empty v20 edit-task sequence 0
+  ---
+  duration_ms: 20.345333
+  type: 'test'
+  ...
+# Subtest: schema21 keeps an empty v20 edit-task sequence 8123
+ok 6 - schema21 keeps an empty v20 edit-task sequence 8123
+  ---
+  duration_ms: 21.01775
+  type: 'test'
+  ...
+# Subtest: failed schema21 marker rolls back both new objects and raw-column task rebuild, then startup succeeds
+not ok 7 - failed schema21 marker rolls back both new objects and raw-column task rebuild, then startup succeeds
+  ---
+  duration_ms: 1230.151125
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/project-specifications-migration.test.mjs:223:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    trigger retain_agent_chat_events: exact SQL retained outside the pinned schema23/24 additions
+    + actual - expected
+    
+      [Object: null prototype] {
+        name: 'retain_agent_chat_events',
+        sql: 'CREATE TRIGGER retain_agent_chat_events BEFORE DELETE ON agent_chat_events\n' +
+    +     " WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='agent_chat_events' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'chat events must be retained');END",
+    -     " BEGIN SELECT RAISE(ABORT,'chat events must be retained');END",
+        tbl_name: 'agent_chat_events',
+        type: 'trigger'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    type: 'trigger'
+    name: 'retain_agent_chat_events'
+    tbl_name: 'agent_chat_events'
+    sql: |-
+      CREATE TRIGGER retain_agent_chat_events BEFORE DELETE ON agent_chat_events
+       BEGIN SELECT RAISE(ABORT,'chat events must be retained');END
+  actual:
+    type: 'trigger'
+    name: 'retain_agent_chat_events'
+    tbl_name: 'agent_chat_events'
+    sql: |-
+      CREATE TRIGGER retain_agent_chat_events BEFORE DELETE ON agent_chat_events
+       WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='agent_chat_events' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'chat events must be retained');END
+  operator: 'deepStrictEqual'
+  stack: |-
+    preserved (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/project-specifications-migration.test.mjs:72:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/project-specifications-migration.test.mjs:229:61)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: migration transaction preconditions and inconsistent task sequence fail without partial rebuild
+ok 8 - migration transaction preconditions and inconsistent task sequence fail without partial rebuild
+  ---
+  duration_ms: 15.121083
+  type: 'test'
+  ...
+# Subtest: expanded edit-task allowlist keeps all original lane, identity, transition and retained-capacity constraints
+ok 9 - expanded edit-task allowlist keeps all original lane, identity, transition and retained-capacity constraints
+  ---
+  duration_ms: 23.518458
+  type: 'test'
+  ...
+# Subtest: format companion binds a retained timeline request and preserves immutable canonical input bytes
+ok 10 - format companion binds a retained timeline request and preserves immutable canonical input bytes
+  ---
+  duration_ms: 16.709167
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 8
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3347.708208

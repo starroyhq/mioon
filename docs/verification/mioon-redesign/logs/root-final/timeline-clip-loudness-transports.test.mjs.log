@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: actual CLI and official MCP discover the exact strict loudness input and unchanged annotations offline
+ok 1 - actual CLI and official MCP discover the exact strict loudness input and unchanged annotations offline
+  ---
+  duration_ms: 861.796125
+  type: 'test'
+  ...
+# Subtest: actual HTTP, CLI and official MCP carry identical ephemeral reports, validate identity and never retry
+ok 2 - actual HTTP, CLI and official MCP carry identical ephemeral reports, validate identity and never retry
+  ---
+  duration_ms: 1200.610334
+  type: 'test'
+  ...
+# Subtest: actual HTTP cancellation disconnects only loudness observation and leaves server healthy
+ok 3 - actual HTTP cancellation disconnects only loudness observation and leaves server healthy
+  ---
+  duration_ms: 5.285292
+  type: 'test'
+  ...
+# Subtest: actual CLI cancellation disconnects only loudness observation and leaves server healthy
+ok 4 - actual CLI cancellation disconnects only loudness observation and leaves server healthy
+  ---
+  duration_ms: 276.444958
+  type: 'test'
+  ...
+# Subtest: actual MCP cancellation disconnects only loudness observation and leaves server healthy
+ok 5 - actual MCP cancellation disconnects only loudness observation and leaves server healthy
+  ---
+  duration_ms: 335.959542
+  type: 'test'
+  ...
+# Subtest: HTTP rejects extra paths and authority while CLI/MCP reject before dispatch, including arbitrary filename flags
+ok 6 - HTTP rejects extra paths and authority while CLI/MCP reject before dispatch, including arbitrary filename flags
+  ---
+  duration_ms: 3344.845
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 6311.089125

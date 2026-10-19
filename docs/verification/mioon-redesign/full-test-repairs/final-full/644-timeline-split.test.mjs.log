@@ -1,0 +1,155 @@
+TAP version 13
+# Subtest: split preserves image/png trim, properties, muted track, adjacent neighbors and timeline length
+ok 1 - split preserves image/png trim, properties, muted track, adjacent neighbors and timeline length
+  ---
+  duration_ms: 1131.35175
+  type: 'test'
+  ...
+# Subtest: split preserves image/jpeg trim, properties, muted track, adjacent neighbors and timeline length
+ok 2 - split preserves image/jpeg trim, properties, muted track, adjacent neighbors and timeline length
+  ---
+  duration_ms: 702.523917
+  type: 'test'
+  ...
+# Subtest: split preserves image/webp trim, properties, muted track, adjacent neighbors and timeline length
+ok 3 - split preserves image/webp trim, properties, muted track, adjacent neighbors and timeline length
+  ---
+  duration_ms: 888.4545
+  type: 'test'
+  ...
+# Subtest: split preserves video/mp4 trim, properties, muted track, adjacent neighbors and timeline length
+ok 4 - split preserves video/mp4 trim, properties, muted track, adjacent neighbors and timeline length
+  ---
+  duration_ms: 684.617041
+  type: 'test'
+  ...
+# Subtest: split preserves video/webm trim, properties, muted track, adjacent neighbors and timeline length
+ok 5 - split preserves video/webm trim, properties, muted track, adjacent neighbors and timeline length
+  ---
+  duration_ms: 694.32075
+  type: 'test'
+  ...
+# Subtest: split preserves audio/wav trim, properties, muted track, adjacent neighbors and timeline length
+ok 6 - split preserves audio/wav trim, properties, muted track, adjacent neighbors and timeline length
+  ---
+  duration_ms: 645.828875
+  type: 'test'
+  ...
+# Subtest: split preserves audio/mpeg trim, properties, muted track, adjacent neighbors and timeline length
+ok 7 - split preserves audio/mpeg trim, properties, muted track, adjacent neighbors and timeline length
+  ---
+  duration_ms: 780.1385
+  type: 'test'
+  ...
+# Subtest: split preserves audio/mp4 trim, properties, muted track, adjacent neighbors and timeline length
+ok 8 - split preserves audio/mp4 trim, properties, muted track, adjacent neighbors and timeline length
+  ---
+  duration_ms: 739.162083
+  type: 'test'
+  ...
+# Subtest: split accepts one-frame halves and the final interior frame of a full-length timeline
+    # Subtest: 0+2 at 1
+    ok 1 - 0+2 at 1
+      ---
+      duration_ms: 645.274625
+      type: 'test'
+      ...
+    # Subtest: 0+18000 at 1
+    ok 2 - 0+18000 at 1
+      ---
+      duration_ms: 615.178458
+      type: 'test'
+      ...
+    # Subtest: 0+18000 at 17999
+    ok 3 - 0+18000 at 17999
+      ---
+      duration_ms: 597.174292
+      type: 'test'
+      ...
+    # Subtest: 17998+2 at 17999
+    ok 4 - 17998+2 at 17999
+      ---
+      duration_ms: 627.529083
+      type: 'test'
+      ...
+    1..4
+ok 9 - split accepts one-frame halves and the final interior frame of a full-length timeline
+  ---
+  duration_ms: 2486.193041
+  type: 'test'
+  ...
+# Subtest: split uses absolute timeline frames and rejects both endpoints, outside positions and one-frame clips atomically
+ok 10 - split uses absolute timeline frames and rejects both endpoints, outside positions and one-frame clips atomically
+  ---
+  duration_ms: 715.447667
+  type: 'test'
+  ...
+# Subtest: split has an exact strict schema with integer absolute-frame bounds and no caller-selected IDs or source fields
+ok 11 - split has an exact strict schema with integer absolute-frame bounds and no caller-selected IDs or source fields
+  ---
+  duration_ms: 657.555417
+  type: 'test'
+  ...
+# Subtest: split cannot find missing or foreign clips and cannot initialize state on a failed request
+ok 12 - split cannot find missing or foreign clips and cannot initialize state on a failed request
+  ---
+  duration_ms: 642.47325
+  type: 'test'
+  ...
+# Subtest: split allows clip 99 to become 100, then rejects clip 101 without losing a pending redo branch
+ok 13 - split allows clip 99 to become 100, then rejects clip 101 without losing a pending redo branch
+  ---
+  duration_ms: 1622.122667
+  type: 'test'
+  ...
+# Subtest: split retains seeded frozen assets after selection changes and leaves prior render snapshots untouched
+ok 14 - split retains seeded frozen assets after selection changes and leaves prior render snapshots untouched
+  ---
+  duration_ms: 685.348041
+  type: 'test'
+  ...
+# Subtest: split replays its exact durable response after later edits, clip removal and restart; changed request contents conflict
+ok 15 - split replays its exact durable response after later edits, clip removal and restart; changed request contents conflict
+  ---
+  duration_ms: 711.14275
+  type: 'test'
+  ...
+# Subtest: one undo removes both halves atomically; redo restores IDs; new split branches retain old responses after restart
+ok 16 - one undo removes both halves atomically; redo restores IDs; new split branches retain old responses after restart
+  ---
+  duration_ms: 676.427416
+  type: 'test'
+  ...
+# Subtest: independent connections split identical concurrent requests exactly once with one persisted right ID
+ok 17 - independent connections split identical concurrent requests exactly once with one persisted right ID
+  ---
+  duration_ms: 3179.471125
+  type: 'test'
+  ...
+# Subtest: independent connections reject competing split frames with REVISION_CONFLICT for distinct request identities
+ok 18 - independent connections reject competing split frames with REVISION_CONFLICT for distinct request identities
+  ---
+  duration_ms: 2781.348083
+  type: 'test'
+  ...
+# Subtest: independent connections reject competing split frames with IDEMPOTENCY_CONFLICT for one request identity
+ok 19 - independent connections reject competing split frames with IDEMPOTENCY_CONFLICT for one request identity
+  ---
+  duration_ms: 2755.058208
+  type: 'test'
+  ...
+# Subtest: split rolls back timeline, history insertion, redo deletion, cursor and response failures as one transaction
+ok 20 - split rolls back timeline, history insertion, redo deletion, cursor and response failures as one transaction
+  ---
+  duration_ms: 764.514
+  type: 'test'
+  ...
+1..20
+# tests 24
+# suites 0
+# pass 24
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 24697.522416

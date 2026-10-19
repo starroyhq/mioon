@@ -1,0 +1,94 @@
+TAP version 13
+# Subtest: legacy migration rejects complete schema25 before creating destination or source SQL sidecars
+ok 1 - legacy migration rejects complete schema25 before creating destination or source SQL sidecars
+  ---
+  duration_ms: 244.008833
+  type: 'test'
+  ...
+# Subtest: legacy migration rejects partial metadata table before creating destination or source SQL sidecars
+ok 2 - legacy migration rejects partial metadata table before creating destination or source SQL sidecars
+  ---
+  duration_ms: 75.765583
+  type: 'test'
+  ...
+# Subtest: legacy migration rejects partial evidence table before creating destination or source SQL sidecars
+ok 3 - legacy migration rejects partial evidence table before creating destination or source SQL sidecars
+  ---
+  duration_ms: 77.001708
+  type: 'test'
+  ...
+# Subtest: legacy migration rejects marker without other restored objects before creating destination or source SQL sidecars
+ok 4 - legacy migration rejects marker without other restored objects before creating destination or source SQL sidecars
+  ---
+  duration_ms: 72.234959
+  type: 'test'
+  ...
+# Subtest: legacy migration rejects guard without metadata before creating destination or source SQL sidecars
+ok 5 - legacy migration rejects guard without metadata before creating destination or source SQL sidecars
+  ---
+  duration_ms: 72.416167
+  type: 'test'
+  ...
+# Subtest: legacy migration rejects execution epoch without marker before creating destination or source SQL sidecars
+ok 6 - legacy migration rejects execution epoch without marker before creating destination or source SQL sidecars
+  ---
+  duration_ms: 75.921916
+  type: 'test'
+  ...
+# Subtest: ordinary legacy migration accepts readable owned roots and preserves bytes, modes, media and response fields
+ok 7 - ordinary legacy migration accepts readable owned roots and preserves bytes, modes, media and response fields
+  ---
+  duration_ms: 645.701292
+  type: 'test'
+  ...
+# Subtest: checked-copy callback receives only verified private bytes and source replacement fences subsequent work
+ok 8 - checked-copy callback receives only verified private bytes and source replacement fences subsequent work
+  ---
+  duration_ms: 77.28
+  type: 'test'
+  ...
+# Subtest: checked-copy rejects a replacement inode and never removes that unrecognized temporary file
+ok 9 - checked-copy rejects a replacement inode and never removes that unrecognized temporary file
+  ---
+  duration_ms: 75.268333
+  type: 'test'
+  ...
+# Subtest: restored eligibility refusal never invokes the ordinary migration consumer
+ok 10 - restored eligibility refusal never invokes the ordinary migration consumer
+  ---
+  duration_ms: 102.758917
+  type: 'test'
+  ...
+# Subtest: checked-copy detects a newly active source server.lock before ordinary migration work
+ok 11 - checked-copy detects a newly active source server.lock before ordinary migration work
+  ---
+  duration_ms: 72.606833
+  type: 'test'
+  ...
+# Subtest: checked-copy detects a newly active source -wal before ordinary migration work
+ok 12 - checked-copy detects a newly active source -wal before ordinary migration work
+  ---
+  duration_ms: 72.748292
+  type: 'test'
+  ...
+# Subtest: checked-copy detects a newly active source -journal before ordinary migration work
+ok 13 - checked-copy detects a newly active source -journal before ordinary migration work
+  ---
+  duration_ms: 75.48475
+  type: 'test'
+  ...
+# Subtest: checked-copy detects same-inode source content changes after eligibility read
+ok 14 - checked-copy detects same-inode source content changes after eligibility read
+  ---
+  duration_ms: 71.593417
+  type: 'test'
+  ...
+1..14
+# tests 14
+# suites 0
+# pass 14
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2148.503875

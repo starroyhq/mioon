@@ -1,0 +1,106 @@
+TAP version 13
+# Subtest: unset GET is noncreating; private fixed sidecar never mutates DB, schema, history or project/timeline
+ok 1 - unset GET is noncreating; private fixed sidecar never mutates DB, schema, history or project/timeline
+  ---
+  duration_ms: 648.057208
+  type: 'test'
+  ...
+# Subtest: CAS, immediate exact replay, two locator instances, restart and stale authority all fail closed
+ok 2 - CAS, immediate exact replay, two locator instances, restart and stale authority all fail closed
+  ---
+  duration_ms: 939.186209
+  type: 'test'
+  ...
+# Subtest: missing remembered project is discoverable without reset; PUT missing target refuses even on replay
+ok 3 - missing remembered project is discoverable without reset; PUT missing target refuses even on replay
+  ---
+  duration_ms: 603.733459
+  type: 'test'
+  ...
+# Subtest: bounded SQL rejects relational/JSON identity disagreement, malformed and oversized target rows
+ok 4 - bounded SQL rejects relational/JSON identity disagreement, malformed and oversized target rows
+  ---
+  duration_ms: 588.526708
+  type: 'test'
+  ...
+# Subtest: strict direct input refuses unknown keys, getters, proxies and nonplain nested values without evaluation
+ok 5 - strict direct input refuses unknown keys, getters, proxies and nonplain nested values without evaluation
+  ---
+  duration_ms: 591.432584
+  type: 'test'
+  ...
+# Subtest: corrupt, future, extra-field, oversized and invalid UTF-8 sidecars never reset or overwrite
+ok 6 - corrupt, future, extra-field, oversized and invalid UTF-8 sidecars never reset or overwrite
+  ---
+  duration_ms: 604.094583
+  type: 'test'
+  ...
+# Subtest: foreign root and trusted build channel remain distinct and preserve copied evidence
+ok 7 - foreign root and trusted build channel remain distinct and preserve copied evidence
+  ---
+  duration_ms: 1162.224625
+  type: 'test'
+  ...
+# Subtest: symlinks, hardlinks, foreign modes and directories fail closed without repairing files
+ok 8 - symlinks, hardlinks, foreign modes and directories fail closed without repairing files
+  ---
+  duration_ms: 579.362458
+  type: 'test'
+  ...
+# Subtest: actual exclusive lock ownership is required, including before exact replay
+ok 9 - actual exclusive lock ownership is required, including before exact replay
+  ---
+  duration_ms: 608.205375
+  type: 'test'
+  ...
+# Subtest: restored profile returns exact unsupported before all storage, ownership and target access
+ok 10 - restored profile returns exact unsupported before all storage, ownership and target access
+  ---
+  duration_ms: 0.17175
+  type: 'test'
+  ...
+# Subtest: fault at beforePersist preserves old or exact published bytes and never changes the database
+ok 11 - fault at beforePersist preserves old or exact published bytes and never changes the database
+  ---
+  duration_ms: 588.643625
+  type: 'test'
+  ...
+# Subtest: fault at afterPersist preserves old or exact published bytes and never changes the database
+ok 12 - fault at afterPersist preserves old or exact published bytes and never changes the database
+  ---
+  duration_ms: 617.651917
+  type: 'test'
+  ...
+# Subtest: fault at beforeDirectorySync preserves old or exact published bytes and never changes the database
+ok 13 - fault at beforeDirectorySync preserves old or exact published bytes and never changes the database
+  ---
+  duration_ms: 594.407167
+  type: 'test'
+  ...
+# Subtest: fault at afterDirectorySync preserves old or exact published bytes and never changes the database
+ok 14 - fault at afterDirectorySync preserves old or exact published bytes and never changes the database
+  ---
+  duration_ms: 598.110459
+  type: 'test'
+  ...
+# Subtest: abort fence blocks read, fresh publication and exact replay without changing stored evidence
+ok 15 - abort fence blocks read, fresh publication and exact replay without changing stored evidence
+  ---
+  duration_ms: 592.095459
+  type: 'test'
+  ...
+# Subtest: envelope contract rejects inconsistent unset/null combinations and unknown fields
+ok 16 - envelope contract rejects inconsistent unset/null combinations and unknown fields
+  ---
+  duration_ms: 0.55825
+  type: 'test'
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 9652.606875

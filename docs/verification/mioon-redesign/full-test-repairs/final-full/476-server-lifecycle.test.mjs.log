@@ -1,0 +1,76 @@
+TAP version 13
+# Subtest: exported server supports ephemeral loopback port, independent lifecycle and durable data
+not ok 1 - exported server supports ephemeral loopback port, independent lifecycle and durable data
+  ---
+  duration_ms: 4.914
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/server-lifecycle.test.mjs:14:1'
+  failureType: 'testCodeFailure'
+  error: 'Private storage cannot traverse symbolic links. Select a canonical directory path.'
+  code: 'STORAGE_PRIVATE_REQUIRED'
+  name: 'PrivateStorageError'
+  stack: |-
+    fail (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:21:43)
+    directoryType (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:71:32)
+    ancestor (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:81:5)
+    walkAncestors (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:110:12)
+    file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:117:65
+    safe (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:23:16)
+    ensurePrivateDirectory (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:117:12)
+    validatePrivateDirectory (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:120:12)
+    validateWorkspaceStorage (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/db.mjs:60:6)
+    composeServer (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/apps/server/src/index.mjs:143:5)
+  ...
+# Subtest: refactored transport retains authorization, origin and host checks, without exposing token
+not ok 2 - refactored transport retains authorization, origin and host checks, without exposing token
+  ---
+  duration_ms: 0.779709
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/server-lifecycle.test.mjs:35:1'
+  failureType: 'testCodeFailure'
+  error: 'Private storage cannot traverse symbolic links. Select a canonical directory path.'
+  code: 'STORAGE_PRIVATE_REQUIRED'
+  name: 'PrivateStorageError'
+  stack: |-
+    fail (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:21:43)
+    directoryType (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:71:32)
+    ancestor (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:81:5)
+    walkAncestors (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:110:12)
+    file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:117:65
+    safe (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:23:16)
+    ensurePrivateDirectory (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:117:12)
+    validatePrivateDirectory (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:120:12)
+    validateWorkspaceStorage (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/db.mjs:60:6)
+    composeServer (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/apps/server/src/index.mjs:143:5)
+  ...
+# Subtest: token remains private at rest, invalid startup releases lock for a corrected retry
+not ok 3 - token remains private at rest, invalid startup releases lock for a corrected retry
+  ---
+  duration_ms: 0.383834
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/server-lifecycle.test.mjs:53:1'
+  failureType: 'testCodeFailure'
+  error: 'Private storage cannot traverse symbolic links. Select a canonical directory path.'
+  code: 'STORAGE_PRIVATE_REQUIRED'
+  name: 'PrivateStorageError'
+  stack: |-
+    fail (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:21:43)
+    directoryType (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:71:32)
+    ancestor (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:81:5)
+    walkAncestors (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:110:12)
+    file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:117:65
+    safe (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:23:16)
+    ensurePrivateDirectory (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:117:12)
+    validatePrivateDirectory (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/contracts/src/private-storage.mjs:120:12)
+    validateWorkspaceStorage (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/db.mjs:60:6)
+    composeServer (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/apps/server/src/index.mjs:143:5)
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 0
+# fail 3
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 414.813334

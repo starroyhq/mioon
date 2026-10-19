@@ -1,0 +1,262 @@
+TAP version 13
+# Subtest: exact comparison route inherits native same-origin media permission, not download/navigation/audio grants
+ok 1 - exact comparison route inherits native same-origin media permission, not download/navigation/audio grants
+  ---
+  duration_ms: 0.881917
+  type: 'test'
+  ...
+# Subtest: actual App comparison opening and close synchronously fence context and pause owners
+ok 2 - actual App comparison opening and close synchronously fence context and pause owners
+  ---
+  duration_ms: 0.612209
+  type: 'test'
+  ...
+# Subtest: actual App context binds live project/epoch/workspace and synchronous comparison identity
+ok 3 - actual App context binds live project/epoch/workspace and synchronous comparison identity
+  ---
+  duration_ms: 0.282917
+  type: 'test'
+  ...
+# Subtest: actual App before-play callbacks deny background playback while comparison owns the surface
+ok 4 - actual App before-play callbacks deny background playback while comparison owns the surface
+  ---
+  duration_ms: 0.308458
+  type: 'test'
+  ...
+# Subtest: actual explicit Use revalidates binding before existing revision-aware selection, never timeline replacement
+ok 5 - actual explicit Use revalidates binding before existing revision-aware selection, never timeline replacement
+  ---
+  duration_ms: 0.470291
+  type: 'test'
+  ...
+# Subtest: background visibility, exact comparison ownership and four-locale catalog are wired without duplicate UI
+not ok 6 - background visibility, exact comparison ownership and four-locale catalog are wired without duplicate UI
+  ---
+  duration_ms: 1.722125
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/version-comparison-app.test.mjs:51:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /assertNoDuplicateMessageKeys\(comparisonMessages, annotationMessages/. Input:
+    
+    "import { opacityEnvelopeMessages } from './catalogs/opacity-envelope.ts';\n" +
+      "import { opacityRestoredApplicationMessages } from './catalogs/opacity-restored-application.ts';\n" +
+      "import { volumeEnvelopeMessages } from './catalogs/volume-envelope.ts';\n" +
+      "import { audioRoleMessages } from './catalogs/audio-role.ts';\n" +
+      "import { clipLoudnessMessages } from './catalogs/clip-loudness.ts';\n" +
+      "import { comparisonMessages } from './catalogs/comparison.ts';\n" +
+      "import { annotationMessages } from './catalogs/annotations.ts';\n" +
+      "import { commandMessages } from './catalogs/command.ts';\n" +
+      "import { operationMessages } from './catalogs/operations.ts';\n" +
+      "import { foundationMessages } from './catalogs/foundation.ts';\n" +
+      "import { nativeMessages } from './catalogs/native.ts';\n" +
+      "import { shellMessages } from './catalogs/shell.ts';\n" +
+      "import { creationMessages } from './catalogs/creation.ts';\n" +
+      "import { timelineMessages } from './catalogs/timeline.ts';\n" +
+      "import { isLocale, LOCALES } from './locale.ts';\n" +
+      "import type { DisplayMessage, Locale, MessageCatalog, MessageParameters, MessageTemplate } from './types.ts';\n" +
+      "export * from './types.ts';\n" +
+      "export * from './locale.ts';\n" +
+      "import { assertNoDuplicateMessageKeys } from './catalog-integrity.ts';\n" +
+      "export { assertNoDuplicateMessageKeys } from './catalog-integrity.ts';\n" +
+      'assertNoDuplicateMessageKeys(opacityRestoredApplicationMessages, opacityEnvelopeMessages, volumeEnvelopeMessages, audioRoleMessages, comparisonMessages, annotationMessages, clipLoudnessMessages, commandMessages, operationMessages, foundationMessages, nativeMessages, shellMessages, creationMessages, timelineMessages);\n' +
+      'export const catalogs = Object.freeze({ ...opacityRestoredApplicationMessages, ...opacityEnvelopeMessages, ...volumeEnvelopeMessages, ...audioRoleMessages, ...clipLoudnessMessages, ...comparisonMessages, ...annotationMessages, ...commandMessages, ...operationMessages, ...foundationMessages, ...nativeMessages, ...shellMessages, ...creationMessages, ...timelineMessages });\n' +
+      'export type MessageKey = keyof typeof catalogs;\n' +
+      'type TemplateText<T> = T extends string ? T : T extends { one: infer O extends string; other: infer R extends string } ? O | R : never;\n' +
+      'type Placeholders<T extends string> = T extends `${string}{${infer P}}${infer Rest}` ? P | Placeholders<Rest> : never;\n' +
+      "type Parameters<K extends MessageKey> = { readonly [P in Placeholders<TemplateText<(typeof catalogs)[K]['zh-Hans']>>]: P extends 'count' ? number : string | number };\n" +
+      'export type MessageArguments<K extends MessageKey> = keyof Parameters<K> extends never ? [params?: never] : [params: Parameters<K>];\n' +
+      'export type MessageDescriptor<K extends MessageKey = MessageKey> = Readonly<{ key: K; params?: MessageParameters }>;\n' +
+      'export function message<K extends MessageKey>(key: K, ...args: MessageArguments<K>): MessageDescriptor<K> {\n' +
+      '  const params = args[0] as MessageParameters | undefined;\n' +
+      '  return Object.freeze({ key, ...(params ? { params: Object.freeze({ ...params }) } : {}) });\n' +
+      '}\n' +
+      "const missing: Readonly<Record<Locale, string>> = Object.freeze({ 'zh-Hans': '此提示暂时无法显示。', 'zh-Hant': '此提示暫時無法顯示。', en: 'This message cannot be displayed right now.', ja: '現在、このメッセージを表示できません。' });\n" +
+      'function formatTemplate(locale: Locale, template: MessageTemplate, params: MessageParameters = {}): string {\n' +
+      '  let value: string;\n' +
+      "  if (typeof template === 'string') value = template;\n" +
+      '  else {\n' +
+      "    const count = Object.getOwnPropertyDescriptor(params, 'count');\n" +
+      "    if (!count || !Object.hasOwn(count, 'value') || typeof count.value !== 'number' || !Number.isFinite(count.value)) throw new TypeError('A plural message requires a finite count.');\n" +
+      "    value = new Intl.PluralRules(locale).select(count.value) === 'one' ? template.one : template.other;\n" +
+      '  }\n' +
+      '  return value.replace(/\\{([A-Za-z][A-Za-z0-9_]*)\\}/gu, (_match, name: string) => {\n' +
+      '    const descriptor = Object.getOwnPropertyDescriptor(params, name);\n' +
+      "    if (!descriptor || !Object.hasOwn(descriptor, 'value') || (typeof descriptor.value !== 'string' && typeof descriptor.value !== 'number') ||\n" +
+      "      typeof descriptor.value === 'number' && !Number.isFinite(descriptor.value)) throw new TypeError(`Invalid message parameter: ${name}`);\n" +
+      '    // Count selection uses the raw numeric value; its human-readable form is\n' +
+      '    // locale-aware. IDs, frame/revision parameters and wire data are untouched.\n' +
+      "    return name === 'count' && typeof descriptor.value === 'number'\n" +
+      '      ? new Intl.NumberFormat(locale, { maximumFractionDigits: 20 }).format(descriptor.value)\n' +
+      '      : String(descriptor.value);\n' +
+      '  });\n' +
+      '}\n' +
+      '/** Strict for app calls: a missing key/parameter is a bug, never silent Chinese fallback. */\n' +
+      'export function translate<K extends MessageKey>(locale: Locale, key: K, ...args: MessageArguments<K>): string {\n' +
+      "  if (!isLocale(locale) || !Object.hasOwn(catalogs, key)) throw new TypeError('Unknown locale or message key.');\n" +
+      '  const entry = (catalogs as MessageCatalog)[key];\n' +
+      '  return formatTemplate(locale, entry[locale], args[0] as MessageParameters | undefined);\n' +
+      '}\n' +
+      '/** Presentation boundary for persisted-in-memory descriptors, not arbitrary server messages. */\n' +
+      'export function renderMessage(locale: Locale, value: DisplayMessage | string | null | undefined): string {\n' +
+      "  if (value == null) return '';\n" +
+      "  if (typeof value === 'string') return value; // Staged migration and user content remain unchanged.\n" +
+      '  try {\n' +
+      "    if (!isLocale(locale) || !Object.hasOwn(catalogs, value.key)) return missing[isLocale(locale) ? locale : 'en'];\n" +
+      '    return formatTemplate(locale, (catalogs as MessageCatalog)[value.key][locale], value.params);\n' +
+      "  } catch { return missing[isLocale(locale) ? locale : 'en']; }\n" +
+      '}\n' +
+      'export function formatNumber(locale: Locale, value: number, options?: Intl.NumberFormatOptions): string { return new Intl.NumberFormat(locale, options).format(value); }\n' +
+      'export function formatDate(locale: Locale, value: string | number | Date, options?: Intl.DateTimeFormatOptions): string {\n' +
+      '  const date = value instanceof Date ? value : new Date(value);\n' +
+      "  return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat(locale, options).format(date) : translate(locale, 'common.unknownTime');\n" +
+      '}\n' +
+      '/** Used by tests and authoring checks; not a runtime translation service. */\n' +
+      'export function validateCatalogs(catalog: MessageCatalog = catalogs): readonly string[] {\n' +
+      '  const errors: string[] = [];\n' +
+      "  const placeholders = (text: string) => [...new Set([...text.matchAll(/\\{([A-Za-z][A-Za-z0-9_]*)\\}/gu)].map(match => match[1]))].sort().join(',');\n" +
+      '  for (const [key, entry] of Object.entries(catalog)) {\n' +
+      "    if (Object.keys(entry).sort().join(',') !== [...LOCALES].sort().join(',')) errors.push(`${key}: locales differ`);\n" +
+      "    const source = entry['zh-Hans'];\n" +
+      '    for (const locale of LOCALES) {\n' +
+      '      const target = entry[locale];\n' +
+      '      if (typeof target !== typeof source || !target) { errors.push(`${key}/${locale}: missing or different template kind`); continue; }\n' +
+      "      if (typeof source === 'string' && typeof target === 'string') {\n" +
+      '        if (!target.trim() || placeholders(source) !== placeholders(target)) errors.push(`${key}/${locale}: empty or different placeholders`);\n' +
+      "      } else if (typeof source === 'object' && typeof target === 'object') {\n" +
+      "        if (Object.keys(target).sort().join(',') !== 'one,other') errors.push(`${key}/${locale}: plural branches differ`);\n" +
+      "        for (const branch of ['one', 'other'] as const) if (!target[branch]?.trim() || placeholders(source[branch]) !== placeholders(target[branch]) || !placeholders(target[branch]).split(',').includes('count')) errors.push(`${key}/${locale}/${branch}: invalid plural parameters`);\n" +
+      '      }\n' +
+      '    }\n' +
+      '  }\n' +
+      '  return errors;\n' +
+      '}\n'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: |-
+    import { opacityEnvelopeMessages } from './catalogs/opacity-envelope.ts';
+    import { opacityRestoredApplicationMessages } from './catalogs/opacity-restored-application.ts';
+    import { volumeEnvelopeMessages } from './catalogs/volume-envelope.ts';
+    import { audioRoleMessages } from './catalogs/audio-role.ts';
+    import { clipLoudnessMessages } from './catalogs/clip-loudness.ts';
+    import { comparisonMessages } from './catalogs/comparison.ts';
+    import { annotationMessages } from './catalogs/annotations.ts';
+    import { commandMessages } from './catalogs/command.ts';
+    import { operationMessages } from './catalogs/operations.ts';
+    import { foundationMessages } from './catalogs/foundation.ts';
+    import { nativeMessages } from './catalogs/native.ts';
+    import { shellMessages } from './catalogs/shell.ts';
+    import { creationMessages } from './catalogs/creation.ts';
+    import { timelineMessages } from './catalogs/timeline.ts';
+    import { isLocale, LOCALES } from './locale.ts';
+    import type { DisplayMessage, Locale, MessageCatalog, MessageParameters, MessageTemplate } from './types.ts';
+    export * from './types.ts';
+    export * from './locale.ts';
+    import { assertNoDuplicateMessageKeys } from './catalog-integrity.ts';
+    export { assertNoDuplicateMessageKeys } from './catalog-integrity.ts';
+    assertNoDuplicateMessageKeys(opacityRestoredApplicationMessages, opacityEnvelopeMessages, volumeEnvelopeMessages, audioRoleMessages, comparisonMessages, annotationMessages, clipLoudnessMessages, commandMessages, operationMessages, foundationMessages, nativeMessages, shellMessages, creationMessages, timelineMessages);
+    export const catalogs = Object.freeze({ ...opacityRestoredApplicationMessages, ...opacityEnvelopeMessages, ...volumeEnvelopeMessages, ...audioRoleMessages, ...clipLoudnessMessages, ...comparisonMessages, ...annotationMessages, ...commandMessages, ...operationMessages, ...foundationMessages, ...nativeMessages, ...shellMessages, ...creationMessages, ...timelineMessages });
+    export type MessageKey = keyof typeof catalogs;
+    type TemplateText<T> = T extends string ? T : T extends { one: infer O extends string; other: infer R extends string } ? O | R : never;
+    type Placeholders<T extends string> = T extends `${string}{${infer P}}${infer Rest}` ? P | Placeholders<Rest> : never;
+    type Parameters<K extends MessageKey> = { readonly [P in Placeholders<TemplateText<(typeof catalogs)[K]['zh-Hans']>>]: P extends 'count' ? number : string | number };
+    export type MessageArguments<K extends MessageKey> = keyof Parameters<K> extends never ? [params?: never] : [params: Parameters<K>];
+    export type MessageDescriptor<K extends MessageKey = MessageKey> = Readonly<{ key: K; params?: MessageParameters }>;
+    export function message<K extends MessageKey>(key: K, ...args: MessageArguments<K>): MessageDescriptor<K> {
+      const params = args[0] as MessageParameters | undefined;
+      return Object.freeze({ key, ...(params ? { params: Object.freeze({ ...params }) } : {}) });
+    }
+    const missing: Readonly<Record<Locale, string>> = Object.freeze({ 'zh-Hans': '此提示暂时无法显示。', 'zh-Hant': '此提示暫時無法顯示。', en: 'This message cannot be displayed right now.', ja: '現在、このメッセージを表示できません。' });
+    function formatTemplate(locale: Locale, template: MessageTemplate, params: MessageParameters = {}): string {
+      let value: string;
+      if (typeof template === 'string') value = template;
+      else {
+        const count = Object.getOwnPropertyDescriptor(params, 'count');
+        if (!count || !Object.hasOwn(count, 'value') || typeof count.value !== 'number' || !Number.isFinite(count.value)) throw new TypeError('A plural message requires a finite count.');
+        value = new Intl.PluralRules(locale).select(count.value) === 'one' ? template.one : template.other;
+      }
+      return value.replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/gu, (_match, name: string) => {
+        const descriptor = Object.getOwnPropertyDescriptor(params, name);
+        if (!descriptor || !Object.hasOwn(descriptor, 'value') || (typeof descriptor.value !== 'string' && typeof descriptor.value !== 'number') ||
+          typeof descriptor.value === 'number' && !Number.isFinite(descriptor.value)) throw new TypeError(`Invalid message parameter: ${name}`);
+        // Count selection uses the raw numeric value; its human-readable form is
+        // locale-aware. IDs, frame/revision parameters and wire data are untouched.
+        return name === 'count' && typeof descriptor.value === 'number'
+          ? new Intl.NumberFormat(locale, { maximumFractionDigits: 20 }).format(descriptor.value)
+          : String(descriptor.value);
+      });
+    }
+    /** Strict for app calls: a missing key/parameter is a bug, never silent Chinese fallback. */
+    export function translate<K extends MessageKey>(locale: Locale, key: K, ...args: MessageArguments<K>): string {
+      if (!isLocale(locale) || !Object.hasOwn(catalogs, key)) throw new TypeError('Unknown locale or message key.');
+      const entry = (catalogs as MessageCatalog)[key];
+      return formatTemplate(locale, entry[locale], args[0] as MessageParameters | undefined);
+    }
+    /** Presentation boundary for persisted-in-memory descriptors, not arbitrary server messages. */
+    export function renderMessage(locale: Locale, value: DisplayMessage | string | null | undefined): string {
+      if (value == null) return '';
+      if (typeof value === 'string') return value; // Staged migration and user content remain unchanged.
+      try {
+        if (!isLocale(locale) || !Object.hasOwn(catalogs, value.key)) return missing[isLocale(locale) ? locale : 'en'];
+        return formatTemplate(locale, (catalogs as MessageCatalog)[value.key][locale], value.params);
+      } catch { return missing[isLocale(locale) ? locale : 'en']; }
+    }
+    export function formatNumber(locale: Locale, value: number, options?: Intl.NumberFormatOptions): string { return new Intl.NumberFormat(locale, options).format(value); }
+    export function formatDate(locale: Locale, value: string | number | Date, options?: Intl.DateTimeFormatOptions): string {
+      const date = value instanceof Date ? value : new Date(value);
+      return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat(locale, options).format(date) : translate(locale, 'common.unknownTime');
+    }
+    /** Used by tests and authoring checks; not a runtime translation service. */
+    export function validateCatalogs(catalog: MessageCatalog = catalogs): readonly string[] {
+      const errors: string[] = [];
+      const placeholders = (text: string) => [...new Set([...text.matchAll(/\{([A-Za-z][A-Za-z0-9_]*)\}/gu)].map(match => match[1]))].sort().join(',');
+      for (const [key, entry] of Object.entries(catalog)) {
+        if (Object.keys(entry).sort().join(',') !== [...LOCALES].sort().join(',')) errors.push(`${key}: locales differ`);
+        const source = entry['zh-Hans'];
+        for (const locale of LOCALES) {
+          const target = entry[locale];
+          if (typeof target !== typeof source || !target) { errors.push(`${key}/${locale}: missing or different template kind`); continue; }
+          if (typeof source === 'string' && typeof target === 'string') {
+            if (!target.trim() || placeholders(source) !== placeholders(target)) errors.push(`${key}/${locale}: empty or different placeholders`);
+          } else if (typeof source === 'object' && typeof target === 'object') {
+            if (Object.keys(target).sort().join(',') !== 'one,other') errors.push(`${key}/${locale}: plural branches differ`);
+            for (const branch of ['one', 'other'] as const) if (!target[branch]?.trim() || placeholders(source[branch]) !== placeholders(target[branch]) || !placeholders(target[branch]).split(',').includes('count')) errors.push(`${key}/${locale}/${branch}: invalid plural parameters`);
+          }
+        }
+      }
+      return errors;
+    }
+    
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/version-comparison-app.test.mjs:58:104)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: retained invalid Compare opener has no state or media effects; null always closes
+ok 7 - retained invalid Compare opener has no state or media effects; null always closes
+  ---
+  duration_ms: 0.405917
+  type: 'test'
+  ...
+# Subtest: actual App conditional retains comparison after its shot disappears, leaving a close path
+ok 8 - actual App conditional retains comparison after its shot disappears, leaving a close path
+  ---
+  duration_ms: 24.674292
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 7
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 213.603625

@@ -1,0 +1,100 @@
+TAP version 13
+# Subtest: expired synchronous fences preserve all restriction identities and spawn zero
+ok 1 - expired synchronous fences preserve all restriction identities and spawn zero
+  ---
+  duration_ms: 6.14325
+  type: 'test'
+  ...
+# Subtest: runtime supports synchronous beforeSpawn plus beforeEffect and rejects async guards before spawn
+ok 2 - runtime supports synchronous beforeSpawn plus beforeEffect and rejects async guards before spawn
+  ---
+  duration_ms: 221.994916
+  type: 'test'
+  ...
+# Subtest: queued probe checks a revoked caller after permit dequeue and spawns zero
+ok 3 - queued probe checks a revoked caller after permit dequeue and spawns zero
+  ---
+  duration_ms: 486.485959
+  type: 'test'
+  ...
+# Subtest: queued probeTimelineSource checks a revoked caller after permit dequeue and spawns zero
+ok 4 - queued probeTimelineSource checks a revoked caller after permit dequeue and spawns zero
+  ---
+  duration_ms: 212.739625
+  type: 'test'
+  ...
+# Subtest: timeline source revocation during hash await preserves its exact rejection and never probes
+ok 5 - timeline source revocation during hash await preserves its exact rejection and never probes
+  ---
+  duration_ms: 216.32625
+  type: 'test'
+  ...
+# Subtest: fileInfo and stitch reject expiry after input ffprobe without output or later ffmpeg
+ok 6 - fileInfo and stitch reject expiry after input ffprobe without output or later ffmpeg
+  ---
+  duration_ms: 321.8605
+  type: 'test'
+  ...
+# Subtest: capability expiry after listing does not launch proof or remap restriction into a result
+ok 7 - capability expiry after listing does not launch proof or remap restriction into a result
+  ---
+  duration_ms: 559.126333
+  type: 'test'
+  ...
+# Subtest: timeline expiry after child 1 prevents every later segment/concat/probe
+ok 8 - timeline expiry after child 1 prevents every later segment/concat/probe
+  ---
+  duration_ms: 219.072625
+  type: 'test'
+  ...
+# Subtest: timeline expiry after child 2 prevents every later segment/concat/probe
+ok 9 - timeline expiry after child 2 prevents every later segment/concat/probe
+  ---
+  duration_ms: 324.611166
+  type: 'test'
+  ...
+# Subtest: timeline expiry after child 3 prevents every later segment/concat/probe
+ok 10 - timeline expiry after child 3 prevents every later segment/concat/probe
+  ---
+  duration_ms: 433.427417
+  type: 'test'
+  ...
+# Subtest: revoked timeline cleanup preserves replaced output inode and unknown nested children
+ok 11 - revoked timeline cleanup preserves replaced output inode and unknown nested children
+  ---
+  duration_ms: 220.754208
+  type: 'test'
+  ...
+# Subtest: timeline cleanup never follows a replaced work directory
+ok 12 - timeline cleanup never follows a replaced work directory
+  ---
+  duration_ms: 202.463917
+  type: 'test'
+  ...
+# Subtest: subtitle font copy rechecks before each write and removes only its owned partial file on expiry
+ok 13 - subtitle font copy rechecks before each write and removes only its owned partial file on expiry
+  ---
+  duration_ms: 4.058917
+  type: 'test'
+  ...
+# Subtest: subtitle measurement expiry never starts a media segment and cleans all known subtitle files
+ok 14 - subtitle measurement expiry never starts a media segment and cleans all known subtitle files
+  ---
+  duration_ms: 259.734541
+  type: 'test'
+  ...
+# Subtest: valid guarded subtitle render and omitted-callback legacy paths preserve their normal results
+ok 15 - valid guarded subtitle render and omitted-callback legacy paths preserve their normal results
+  ---
+  duration_ms: 1814.062583
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5778.045834

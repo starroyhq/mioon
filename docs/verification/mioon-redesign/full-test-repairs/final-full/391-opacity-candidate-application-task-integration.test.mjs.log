@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: new42 actual application creates project, imports source and durably adds/removes clips with exact opacity history
+ok 1 - new42 actual application creates project, imports source and durably adds/removes clips with exact opacity history
+  ---
+  duration_ms: 5087.446292
+  type: 'test'
+  ...
+# Subtest: application task binding refuses service copies and cannot broaden an ordinary42 store
+ok 2 - application task binding refuses service copies and cannot broaden an ordinary42 store
+  ---
+  duration_ms: 362.836291
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5786.04325

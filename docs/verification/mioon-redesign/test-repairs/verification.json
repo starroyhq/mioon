@@ -1,0 +1,68 @@
+{
+  "repairedTargetFiles": [
+    "tests/export-history-ui.test.mjs",
+    "tests/i18n-backup-mcp-diagnostics.test.mjs",
+    "tests/i18n-catalog-integrity.test.mjs",
+    "tests/i18n-command-presentation.test.mjs",
+    "tests/i18n-command-unit.test.mjs",
+    "tests/named-delivery-ui.test.mjs",
+    "tests/desktop-media-shutdown.test.mjs"
+  ],
+  "additionalAdjacentFixture": "tests/desktop-startup-restart-race.test.mjs",
+  "testSummary": {
+    "files": 36,
+    "passedFiles": 36,
+    "failedFiles": [],
+    "tests": 418,
+    "pass": 418,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "productionChanges": [
+    "Seven fixed four-language operation descriptions in packages/i18n/src/catalogs/operations.ts"
+  ],
+  "schemaAndMachineDescriptionChanges": false,
+  "runtimeFallbackChanges": false,
+  "scannerRuleChanges": false,
+  "legacyHelpFixture": {
+    "path": "tests/fixtures/cli-help-legacy.json",
+    "unchangedFromHead": true,
+    "sha256": "44bb1c590cff92500e38e1f20f4404f6b46c2955bbdc8d676f0865ba9218912b"
+  },
+  "literalLedger": {
+    "removedStale": 10,
+    "reviewedExactCurrent": 16,
+    "unreviewed": 0,
+    "stale": 0,
+    "records": 668
+  },
+  "commands": [
+    {
+      "command": "CI=true pnpm install --frozen-lockfile",
+      "exitCode": 0,
+      "log": "logs/install.log"
+    },
+    {
+      "command": "node scripts/tooling.mjs typecheck",
+      "exitCode": 0,
+      "log": "logs/typecheck.log"
+    },
+    {
+      "command": "node scripts/tooling.mjs build --channel=development",
+      "exitCode": 0,
+      "log": "logs/build.log"
+    }
+  ],
+  "independentReview": {
+    "exportContracts": "No definite issue; identity, URL, escaping, ordering, immutability and real asynchronous file checks retained",
+    "operationLocalization": "No definite issue; exact four-language keys, explicit help additions, stable machine definitions and no model self-authorization",
+    "literalLedger": "Exact identities match reviewed before/after inventory; no broad exceptions"
+  },
+  "sourceFilesVerified": 10,
+  "buildFilesVerified": 61,
+  "commits": 0,
+  "pushes": 0,
+  "providerCalls": 0,
+  "dependencyChanges": []
+}

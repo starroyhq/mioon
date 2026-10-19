@@ -1,0 +1,62 @@
+[
+  {
+    "file": "tests/export-file-actions-ui.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.66,
+    "tapSummary": {
+      "tests": 9,
+      "suites": 0,
+      "pass": 9,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-export-extra/003-export-file-actions-ui.test.mjs.log",
+    "sha256": "917b1807dafe8fb9a2ac24e500de71fddaaa7a2a1af3930e1061986630020c47",
+    "sourceSha256": "ab4d3a9577a12448414404e205875e12bc6541c3f808b6edd48022e6d41bdc2c",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/export-range-ui.test.mjs",
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 0.6,
+    "tapSummary": {
+      "tests": 16,
+      "suites": 0,
+      "pass": 14,
+      "fail": 2,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-export-extra/001-export-range-ui.test.mjs.log",
+    "sha256": "24507067d06bcf34694da09afd988e6b73d68579d9743465c23cda9d8e1ca8ee",
+    "sourceSha256": "233168b646b3e83379bfebf12abc4f107bf0eb5baac506949079b682d0d28155",
+    "failedSubtests": [
+      "named and unnamed export history display immutable range while absent and preview rows remain unchanged",
+      "only malformed range-present rows suppress file actions; valid selected and absent history retain exact inspection inputs"
+    ]
+  },
+  {
+    "file": "tests/export-sample-peak-ui.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 1.37,
+    "tapSummary": {
+      "tests": 10,
+      "suites": 0,
+      "pass": 10,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-export-extra/002-export-sample-peak-ui.test.mjs.log",
+    "sha256": "87006c90ab4422bbb9ff4db23108767803b9ce05b69b6316e884d64ab9b355aa",
+    "sourceSha256": "e6eb93f1e602a663140fe215924dae319864a1c926014909533710514c7e651d",
+    "failedSubtests": []
+  }
+]

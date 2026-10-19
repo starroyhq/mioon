@@ -1,0 +1,32 @@
+TAP version 13
+# Subtest: shutdown interrupts a real long FFmpeg export, reaps its process and preserves queued recovery
+not ok 1 - shutdown interrupts a real long FFmpeg export, reaps its process and preserves queued recovery
+  ---
+  duration_ms: 2.247459
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/media-shutdown.test.mjs:11:1'
+  failureType: 'testCodeFailure'
+  error: 'Private storage cannot traverse symbolic links. Select a canonical directory path.'
+  code: 'STORAGE_PRIVATE_REQUIRED'
+  name: 'PrivateStorageError'
+  stack: |-
+    fail (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/contracts/src/private-storage.mjs:21:43)
+    directoryType (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/contracts/src/private-storage.mjs:71:32)
+    ancestor (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/contracts/src/private-storage.mjs:81:5)
+    walkAncestors (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/contracts/src/private-storage.mjs:110:12)
+    file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/contracts/src/private-storage.mjs:117:65
+    safe (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/contracts/src/private-storage.mjs:23:16)
+    ensurePrivateDirectory (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/contracts/src/private-storage.mjs:117:12)
+    validatePrivateDirectory (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/contracts/src/private-storage.mjs:120:12)
+    validateWorkspaceStorage (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/db.mjs:60:6)
+    composeServer (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/apps/server/src/index.mjs:133:5)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 440.38625

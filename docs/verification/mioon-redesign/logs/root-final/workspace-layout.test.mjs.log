@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: panel defaults and bounds agree across renderer and strict server parsing
+ok 1 - panel defaults and bounds agree across renderer and strict server parsing
+  ---
+  duration_ms: 5.438333
+  type: 'test'
+  ...
+# Subtest: preferred dimensions clamp only explicit state normalization and defaults never share objects
+ok 2 - preferred dimensions clamp only explicit state normalization and defaults never share objects
+  ---
+  duration_ms: 0.132542
+  type: 'test'
+  ...
+# Subtest: effective geometry preserves center space and never changes durable preferred dimensions
+ok 3 - effective geometry preserves center space and never changes durable preferred dimensions
+  ---
+  duration_ms: 0.326542
+  type: 'test'
+  ...
+# Subtest: the center keeps a comfortable height while the timeline can still keep its floor, then yields to the hard minimum
+ok 4 - the center keeps a comfortable height while the timeline can still keep its floor, then yields to the hard minimum
+  ---
+  duration_ms: 0.184291
+  type: 'test'
+  ...
+# Subtest: effective collapsed and extremely narrow layouts stay finite and preserve saved visibility
+ok 5 - effective collapsed and extremely narrow layouts stay finite and preserve saved visibility
+  ---
+  duration_ms: 0.17225
+  type: 'test'
+  ...
+# Subtest: layout validation rejects extra, missing, malformed and symbolic fields at every boundary
+ok 6 - layout validation rejects extra, missing, malformed and symbolic fields at every boundary
+  ---
+  duration_ms: 0.133333
+  type: 'test'
+  ...
+# Subtest: old default sizes migrate without changing custom sizes, visibility or the source object
+ok 7 - old default sizes migrate without changing custom sizes, visibility or the source object
+  ---
+  duration_ms: 0.09425
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 301.293916

@@ -1,0 +1,124 @@
+TAP version 13
+# Subtest: real delivery A-to-B edits and owner replacement invalidate an unchanged dirty decision
+ok 1 - real delivery A-to-B edits and owner replacement invalidate an unchanged dirty decision
+  ---
+  duration_ms: 1.421084
+  type: 'test'
+  ...
+# Subtest: shot close snapshot is read-only: no getContext, timer, change callback or transport
+ok 2 - shot close snapshot is read-only: no getContext, timer, change callback or transport
+  ---
+  duration_ms: 10.703875
+  type: 'test'
+  ...
+# Subtest: shot pure predicate preserves matching persisted draft, abandoned input, and retained deletion semantics
+ok 3 - shot pure predicate preserves matching persisted draft, abandoned input, and retained deletion semantics
+  ---
+  duration_ms: 2.14875
+  type: 'test'
+  ...
+# Subtest: shot local save/saved ACK changes no semantic close identity and performs no business request
+ok 4 - shot local save/saved ACK changes no semantic close identity and performs no business request
+  ---
+  duration_ms: 0.596167
+  type: 'test'
+  ...
+# Subtest: real clip sidecar ACK keeps raw/base/source identity while edit and owner changes invalidate
+ok 5 - real clip sidecar ACK keeps raw/base/source identity while edit and owner changes invalidate
+  ---
+  duration_ms: 1.29075
+  type: 'test'
+  ...
+# Subtest: real format draft/base inputs are read-only and independent of loading or copied saved metadata
+ok 6 - real format draft/base inputs are read-only and independent of loading or copied saved metadata
+  ---
+  duration_ms: 0.70225
+  type: 'test'
+  ...
+# Subtest: adapter preserves exactly legacy dirty/submitting predicates and optional inspector input identity only
+ok 7 - adapter preserves exactly legacy dirty/submitting predicates and optional inspector input identity only
+  ---
+  duration_ms: 0.135125
+  type: 'test'
+  ...
+# Subtest: real subject focus refresh preserves clean reload commit without input changes
+ok 8 - real subject focus refresh preserves clean reload commit without input changes
+  ---
+  duration_ms: 3.771667
+  type: 'test'
+  ...
+# Subtest: real subject focus refresh preserves clean reload unload without input changes
+ok 9 - real subject focus refresh preserves clean reload unload without input changes
+  ---
+  duration_ms: 0.682541
+  type: 'test'
+  ...
+# Subtest: real subject focus refresh preserves dirty reload commit without input changes
+ok 10 - real subject focus refresh preserves dirty reload commit without input changes
+  ---
+  duration_ms: 0.652667
+  type: 'test'
+  ...
+# Subtest: real subject focus refresh preserves dirty reload unload without input changes
+ok 11 - real subject focus refresh preserves dirty reload unload without input changes
+  ---
+  duration_ms: 0.475583
+  type: 'test'
+  ...
+# Subtest: real subject draft, owner and target changes still invalidate captured reload decisions
+ok 12 - real subject draft, owner and target changes still invalidate captured reload decisions
+  ---
+  duration_ms: 1.685333
+  type: 'test'
+  ...
+# Subtest: subject refresh cannot hide a new saving or uncertain state from close identity
+ok 13 - subject refresh cannot hide a new saving or uncertain state from close identity
+  ---
+  duration_ms: 0.763292
+  type: 'test'
+  ...
+# Subtest: real subtitle equal-revision refresh already preserves identity while selection and edits invalidate
+ok 14 - real subtitle equal-revision refresh already preserves identity while selection and edits invalidate
+  ---
+  duration_ms: 0.319
+  type: 'test'
+  ...
+# Subtest: deferred Inspector input-mode continuation invalidates commit before layout, without final-reader effects
+ok 15 - deferred Inspector input-mode continuation invalidates commit before layout, without final-reader effects
+  ---
+  duration_ms: 1.027417
+  type: 'test'
+  ...
+# Subtest: deferred Inspector input-mode continuation invalidates unload before layout, without final-reader effects
+ok 16 - deferred Inspector input-mode continuation invalidates unload before layout, without final-reader effects
+  ---
+  duration_ms: 0.39275
+  type: 'test'
+  ...
+# Subtest: Inspector clearLastFrame control already synchronizes through edit; final close still reads purely
+ok 17 - Inspector clearLastFrame control already synchronizes through edit; final close still reads purely
+  ---
+  duration_ms: 0.419666
+  type: 'test'
+  ...
+# Subtest: equal/older local dirty references do not revive controller-abandoned input
+ok 18 - equal/older local dirty references do not revive controller-abandoned input
+  ---
+  duration_ms: 0.361917
+  type: 'test'
+  ...
+# Subtest: actual App same-controller replacement owns its close reader and ignores stale unregister
+ok 19 - actual App same-controller replacement owns its close reader and ignores stale unregister
+  ---
+  duration_ms: 0.304125
+  type: 'test'
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 320.174459

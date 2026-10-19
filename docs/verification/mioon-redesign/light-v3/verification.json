@@ -1,0 +1,63 @@
+{
+  "scope": "Reference-driven light candidate and visible settings slider composition; no layout, business, dependency, production theme or system-theme activation changes.",
+  "applicationSourceChanges": [
+    "packages/ui/src/styles/light-preview.css",
+    "apps/web/src/SettingsAppearance.tsx",
+    "apps/web/src/settings-center.css"
+  ],
+  "candidateApproval": "pending; v2 rejected, Codex reference supplied",
+  "commands": [
+    {
+      "command": "CI=true pnpm install --frozen-lockfile",
+      "exitCode": 0,
+      "log": "logs/install.log"
+    },
+    {
+      "command": "node scripts/tooling.mjs typecheck",
+      "exitCode": 0,
+      "log": "logs/typecheck-final.log"
+    },
+    {
+      "command": "node scripts/tooling.mjs build --channel=development",
+      "exitCode": 0,
+      "log": "logs/build-final.log"
+    },
+    {
+      "command": "node --test --test-reporter=tap tests/design-tokens.test.mjs",
+      "exitCode": 0,
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "skipped": 0,
+      "log": "logs/design-tokens.log"
+    }
+  ],
+  "browser": {
+    "states": 4,
+    "viewportSizes": [
+      "1440x900",
+      "1050x680"
+    ],
+    "runtimeStyleInjection": false,
+    "pageErrors": 0,
+    "externalRequests": 0,
+    "results": "results.json"
+  },
+  "candidateAggregateNote": "183 unique files and2390 cases; settings-center-navigation is one additional existing24-case regression file, settings-center-ui21 and token5 replace previous records. Other files were not rerun for this theme correction.",
+  "settingsRegression": "settings-results.json",
+  "slider": {
+    "beforeFix": "Thumb/range remained visibility:hidden with unresolved inset geometry; original DOM retained in slider-dom.txt.",
+    "fix": "Use existing public thumbAlignment=center at SettingsAppearance call site; official source unchanged. Candidate thumb keyboard focus uses parent :has(input:focus-visible).",
+    "result": "slider-results.json",
+    "keyboardValues": [
+      100,
+      101,
+      100
+    ],
+    "focusOutline": "visible solid outline",
+    "log": "logs/slider-verified.log",
+    "darkResult": "slider-dark-results.json",
+    "darkFocusOutline": "visible white solid outline"
+  },
+  "diagnosticNote": "Initial implicit-role CSS selector and unscoped thumb diagnostic queries were corrected; final scoped native input keyboard check passes. Diagnostic logs are not counted as acceptance."
+}

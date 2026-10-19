@@ -1,0 +1,143 @@
+TAP version 13
+# Subtest: independently frozen schema15 upgrades additively; every old row/schema/hash is unchanged across repeated migration
+ok 1 - independently frozen schema15 upgrades additively; every old row/schema/hash is unchanged across repeated migration
+  ---
+  duration_ms: 15.217792
+  type: 'test'
+  ...
+# Subtest: schema16 failure rolls back every added object and preserves exact legacy bytes
+ok 2 - schema16 failure rolls back every added object and preserves exact legacy bytes
+  ---
+  duration_ms: 8.123917
+  type: 'test'
+  ...
+# Subtest: new image identities resist updates, delete and INSERT OR REPLACE and dispatch fence never resets
+ok 3 - new image identities resist updates, delete and INSERT OR REPLACE and dispatch fence never resets
+  ---
+  duration_ms: 13.758875
+  type: 'test'
+  ...
+# Subtest: normal startup preserves schema15 rows through later migrations and the explicit format allowlist rebuild
+not ok 4 - normal startup preserves schema15 rows through later migrations and the explicit format allowlist rebuild
+  ---
+  duration_ms: 679.383417
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/images-migration.test.mjs:74:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    ... Skipped lines
+    
+      [
+        1,
+        2,
+        3,
+        4,
+    ...
+        26,
+    +   28,
+    +   30,
+    +   32,
+    +   34,
+    +   36,
+    +   38,
+    +   40,
+    +   44,
+    +   48
+      ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: 1
+    1: 2
+    2: 3
+    3: 4
+    4: 5
+    5: 6
+    6: 7
+    7: 8
+    8: 9
+    9: 10
+    10: 11
+    11: 12
+    12: 13
+    13: 14
+    14: 15
+    15: 16
+    16: 17
+    17: 18
+    18: 19
+    19: 20
+    20: 21
+    21: 22
+    22: 23
+    23: 24
+    24: 26
+  actual:
+    0: 1
+    1: 2
+    2: 3
+    3: 4
+    4: 5
+    5: 6
+    6: 7
+    7: 8
+    8: 9
+    9: 10
+    10: 11
+    11: 12
+    12: 13
+    13: 14
+    14: 15
+    15: 16
+    16: 17
+    17: 18
+    18: 19
+    19: 20
+    20: 21
+    21: 22
+    22: 23
+    23: 24
+    24: 26
+    25: 28
+    26: 30
+    27: 32
+    28: 34
+    29: 36
+    30: 38
+    31: 40
+    32: 44
+    33: 48
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/images-migration.test.mjs:76:88)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: interruption and unknown results keep fences and permit only explicit local-result recovery
+ok 5 - interruption and unknown results keep fences and permit only explicit local-result recovery
+  ---
+  duration_ms: 11.034667
+  type: 'test'
+  ...
+# Subtest: one unresolved task occupies its group and published head cannot be erased
+ok 6 - one unresolved task occupies its group and published head cannot be erased
+  ---
+  duration_ms: 4.794375
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 5
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 989.755583

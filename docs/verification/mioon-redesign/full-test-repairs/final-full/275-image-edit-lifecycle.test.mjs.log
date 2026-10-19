@@ -1,0 +1,238 @@
+TAP version 13
+# Subtest: managed PNG edit retains one safe descriptor in ACK, snapshot and version while bytes remain private
+ok 1 - managed PNG edit retains one safe descriptor in ACK, snapshot and version while bytes remain private
+  ---
+  duration_ms: 977.260375
+  type: 'test'
+  ...
+# Subtest: same-group older version is a valid edit source for multiple later versions
+ok 2 - same-group older version is a valid edit source for multiple later versions
+  ---
+  duration_ms: 1182.745875
+  type: 'test'
+  ...
+# Subtest: private review freezes edit endpoint/source and approval binds exactly the retained descriptor
+ok 3 - private review freezes edit endpoint/source and approval binds exactly the retained descriptor
+  ---
+  duration_ms: 668.217333
+  type: 'test'
+  ...
+# Subtest: changed safe metadata cannot replace source identity between review and approval
+ok 4 - changed safe metadata cannot replace source identity between review and approval
+  ---
+  duration_ms: 615.745542
+  type: 'test'
+  ...
+# Subtest: settings changed during asynchronous PNG verification prevent review preparation
+ok 5 - settings changed during asynchronous PNG verification prevent review preparation
+  ---
+  duration_ms: 631.421916
+  type: 'test'
+  ...
+# Subtest: concurrent edit admissions recheck group CAS after asynchronous PNG validation
+ok 6 - concurrent edit admissions recheck group CAS after asynchronous PNG validation
+  ---
+  duration_ms: 697.614041
+  type: 'test'
+  ...
+# Subtest: source changed in async gateway gap fails before the durable POST fence
+ok 7 - source changed in async gateway gap fails before the durable POST fence
+  ---
+  duration_ms: 700.785166
+  type: 'test'
+  ...
+# Subtest: valid received result with changed source is retained locally and recovery never regenerates
+ok 8 - valid received result with changed source is retained locally and recovery never regenerates
+  ---
+  duration_ms: 830.756458
+  type: 'test'
+  ...
+# Subtest: source changed after media publication prevents DB commit and preserves local result
+ok 9 - source changed after media publication prevents DB commit and preserves local result
+  ---
+  duration_ms: 874.480583
+  type: 'test'
+  ...
+# Subtest: queued edit cancellation stays pre-dispatch and no startup/replay resumes it
+ok 10 - queued edit cancellation stays pre-dispatch and no startup/replay resumes it
+  ---
+  duration_ms: 637.971625
+  type: 'test'
+  ...
+# Subtest: edit source foreign is rejected without acceptance or disclosure
+ok 11 - edit source foreign is rejected without acceptance or disclosure
+  ---
+  duration_ms: 582.956417
+  type: 'test'
+  ...
+# Subtest: edit source wrong-hash is rejected without acceptance or disclosure
+ok 12 - edit source wrong-hash is rejected without acceptance or disclosure
+  ---
+  duration_ms: 571.808917
+  type: 'test'
+  ...
+# Subtest: edit source wrong-size is rejected without acceptance or disclosure
+ok 13 - edit source wrong-size is rejected without acceptance or disclosure
+  ---
+  duration_ms: 603.945292
+  type: 'test'
+  ...
+# Subtest: edit source wrong-dimensions is rejected without acceptance or disclosure
+ok 14 - edit source wrong-dimensions is rejected without acceptance or disclosure
+  ---
+  duration_ms: 596.059958
+  type: 'test'
+  ...
+# Subtest: edit source non-png is rejected without acceptance or disclosure
+ok 15 - edit source non-png is rejected without acceptance or disclosure
+  ---
+  duration_ms: 577.314709
+  type: 'test'
+  ...
+# Subtest: edit source bad-png is rejected without acceptance or disclosure
+ok 16 - edit source bad-png is rejected without acceptance or disclosure
+  ---
+  duration_ms: 581.016208
+  type: 'test'
+  ...
+# Subtest: edit source symlink is rejected without acceptance or disclosure
+ok 17 - edit source symlink is rejected without acceptance or disclosure
+  ---
+  duration_ms: 584.349708
+  type: 'test'
+  ...
+# Subtest: edit source oversized is rejected without acceptance or disclosure
+ok 18 - edit source oversized is rejected without acceptance or disclosure
+  ---
+  duration_ms: 571.059458
+  type: 'test'
+  ...
+# Subtest: public task, version and asset roots reject mutated edit source ownership without repair
+ok 19 - public task, version and asset roots reject mutated edit source ownership without repair
+  ---
+  duration_ms: 777.398334
+  type: 'test'
+  ...
+# Subtest: resolver never runs asynchronous PNG work inside a SQLite transaction
+ok 20 - resolver never runs asynchronous PNG work inside a SQLite transaction
+  ---
+  duration_ms: 573.731792
+  type: 'test'
+  ...
+# Subtest: actual edit-source cycle is rejected rather than hidden by pending caches
+ok 21 - actual edit-source cycle is rejected rather than hidden by pending caches
+  ---
+  duration_ms: 595.708541
+  type: 'test'
+  ...
+# Subtest: edit source ancestry is bounded at 32 source tasks
+ok 22 - edit source ancestry is bounded at 32 source tasks
+  ---
+  duration_ms: 672.016333
+  type: 'test'
+  ...
+# Subtest: reverse sql-owner-reassigned cannot hide an edited output behind an import label
+ok 23 - reverse sql-owner-reassigned cannot hide an edited output behind an import label
+  ---
+  duration_ms: 715.772584
+  type: 'test'
+  ...
+# Subtest: reverse version-deleted cannot hide an edited output behind an import label
+ok 24 - reverse version-deleted cannot hide an edited output behind an import label
+  ---
+  duration_ms: 687.891959
+  type: 'test'
+  ...
+# Subtest: reverse foreign-extra-receipt cannot hide an edited output behind an import label
+ok 25 - reverse foreign-extra-receipt cannot hide an edited output behind an import label
+  ---
+  duration_ms: 664.199208
+  type: 'test'
+  ...
+# Subtest: pending review reads reject foreign source ownership without filesystem checks
+ok 26 - pending review reads reject foreign source ownership without filesystem checks
+  ---
+  duration_ms: 656.156708
+  type: 'test'
+  ...
+# Subtest: approved review reads reject foreign source ownership without filesystem checks
+ok 27 - approved review reads reject foreign source ownership without filesystem checks
+  ---
+  duration_ms: 865.872875
+  type: 'test'
+  ...
+# Subtest: source rejections retain the request key without unsafe absence proof
+ok 28 - source rejections retain the request key without unsafe absence proof
+  ---
+  duration_ms: 883.77825
+  type: 'test'
+  ...
+# Subtest: source damage cannot prevent rejection of pending review or pre-dispatch cancellation
+ok 29 - source damage cannot prevent rejection of pending review or pre-dispatch cancellation
+  ---
+  duration_ms: 868.335
+  type: 'test'
+  ...
+# Subtest: two-window generation source rejection cannot claim an in-flight same key was not accepted
+ok 30 - two-window generation source rejection cannot claim an in-flight same key was not accepted
+  ---
+  duration_ms: 808.342
+  type: 'test'
+  ...
+# Subtest: two-window preparation source rejection cannot claim an in-flight same key was not accepted
+ok 31 - two-window preparation source rejection cannot claim an in-flight same key was not accepted
+  ---
+  duration_ms: 663.630709
+  type: 'test'
+  ...
+# Subtest: opaque 8-bit sources support nonsquare dimensions but reject real alpha without conversion
+ok 32 - opaque 8-bit sources support nonsquare dimensions but reject real alpha without conversion
+  ---
+  duration_ms: 596.166541
+  type: 'test'
+  ...
+# Subtest: a fully owned extracted frame is admitted with bounded typed frame provenance
+ok 33 - a fully owned extracted frame is admitted with bounded typed frame provenance
+  ---
+  duration_ms: 812.077667
+  type: 'test'
+  ...
+# Subtest: a completed Comfy image is a valid edit source only through its full remote lineage
+ok 34 - a completed Comfy image is a valid edit source only through its full remote lineage
+  ---
+  duration_ms: 979.701667
+  type: 'test'
+  ...
+# Subtest: source verification memory admission is shared across wrappers and released only after verification settles
+ok 35 - source verification memory admission is shared across wrappers and released only after verification settles
+  ---
+  duration_ms: 791.265875
+  type: 'test'
+  ...
+# Subtest: source verification memory admission bounds all projects sharing a DB handle
+ok 36 - source verification memory admission bounds all projects sharing a DB handle
+  ---
+  duration_ms: 812.6395
+  type: 'test'
+  ...
+# Subtest: verification admission releases its captured project bucket after caller input mutation
+ok 37 - verification admission releases its captured project bucket after caller input mutation
+  ---
+  duration_ms: 744.824875
+  type: 'test'
+  ...
+# Subtest: graph review accounting includes bounded raw intent and direct task bytes before decoding
+ok 38 - graph review accounting includes bounded raw intent and direct task bytes before decoding
+  ---
+  duration_ms: 843.318666
+  type: 'test'
+  ...
+1..38
+# tests 38
+# suites 0
+# pass 38
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 27776.492667

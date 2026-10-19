@@ -1,0 +1,269 @@
+TAP version 13
+# Subtest: actual App navigation sees synchronous shot text edits before generic dirty effect and preserves stored intent
+not ok 1 - actual App navigation sees synchronous shot text edits before generic dirty effect and preserves stored intent
+  ---
+  duration_ms: 1.80675
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:25:1'
+  failureType: 'testCodeFailure'
+  error: 'msg is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.guardNavigation [as guard] (eval at appFunction (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:10:10), <anonymous>:3:39)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:26:34)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.start (node:internal/test_runner/test:1262:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+  ...
+# Subtest: actual App late confirmation cannot discard newer edit shot draft
+not ok 2 - actual App late confirmation cannot discard newer edit shot draft
+  ---
+  duration_ms: 0.12625
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:30:53'
+  failureType: 'testCodeFailure'
+  error: 'msg is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.guardNavigation [as guard] (eval at appFunction (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:10:10), <anonymous>:3:39)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:31:34)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: actual App late confirmation cannot discard newer controller shot draft
+not ok 3 - actual App late confirmation cannot discard newer controller shot draft
+  ---
+  duration_ms: 0.076458
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:30:53'
+  failureType: 'testCodeFailure'
+  error: 'msg is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.guardNavigation [as guard] (eval at appFunction (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:10:10), <anonymous>:3:39)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:31:34)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App late confirmation cannot discard newer project shot draft
+not ok 4 - actual App late confirmation cannot discard newer project shot draft
+  ---
+  duration_ms: 0.074542
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:30:53'
+  failureType: 'testCodeFailure'
+  error: 'msg is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.guardNavigation [as guard] (eval at appFunction (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:10:10), <anonymous>:3:39)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:31:34)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App cancelled navigation leaves shot draft untouched
+not ok 5 - actual App cancelled navigation leaves shot draft untouched
+  ---
+  duration_ms: 0.086667
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:34:1'
+  failureType: 'testCodeFailure'
+  error: 'msg is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.guardNavigation [as guard] (eval at appFunction (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:10:10), <anonymous>:3:39)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:34:109)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App live context preserves nontext pending fences and does not clear receipts
+ok 6 - actual App live context preserves nontext pending fences and does not clear receipts
+  ---
+  duration_ms: 0.37625
+  type: 'test'
+  ...
+# Subtest: actual App shot fence blocks reference/generation work before touching legacy receipts
+not ok 7 - actual App shot fence blocks reference/generation work before touching legacy receipts
+  ---
+  duration_ms: 0.143333
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:49:1'
+  failureType: 'testCodeFailure'
+  error: 'msg is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    referenceWorkBlocked (eval at appFunction (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:10:10), <anonymous>:4:48)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:54:16)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App beforeunload reads synchronous shot state independently of legacy dirty flag
+ok 8 - actual App beforeunload reads synchronous shot state independently of legacy dirty flag
+  ---
+  duration_ms: 0.496875
+  type: 'test'
+  ...
+# Subtest: actual App lifecycle drain waits on local shot persistence only, no business replay
+ok 9 - actual App lifecycle drain waits on local shot persistence only, no business replay
+  ---
+  duration_ms: 0.28225
+  type: 'test'
+  ...
+# Subtest: actual Inspector explicit text baseline alignment preserves local duration and original nontext fields
+ok 10 - actual Inspector explicit text baseline alignment preserves local duration and original nontext fields
+  ---
+  duration_ms: 0.981084
+  type: 'test'
+  ...
+# Subtest: actual Inspector changed saved nontext forbids silently refreshing full-form revision
+ok 11 - actual Inspector changed saved nontext forbids silently refreshing full-form revision
+  ---
+  duration_ms: 0.550375
+  type: 'test'
+  ...
+# Subtest: actual Inspector stale baseline callback cannot mutate any local form identity
+ok 12 - actual Inspector stale baseline callback cannot mutate any local form identity
+  ---
+  duration_ms: 0.324791
+  type: 'test'
+  ...
+# Subtest: actual fresh generation waits for its selected target registration/GET: {"target":"shot-a"}
+not ok 13 - actual fresh generation waits for its selected target registration/GET: {"target":"shot-a"}
+  ---
+  duration_ms: 0.201334
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:102:123'
+  failureType: 'testCodeFailure'
+  error: 'msg is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    checkGeneration (eval at appFunction (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:10:10), <anonymous>:5:126)
+    Object.guard (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:100:44)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:103:55)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual fresh generation waits for its selected target registration/GET: {"controller":false}
+not ok 14 - actual fresh generation waits for its selected target registration/GET: {"controller":false}
+  ---
+  duration_ms: 0.257666
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:102:123'
+  failureType: 'testCodeFailure'
+  error: 'msg is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    checkGeneration (eval at appFunction (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:10:10), <anonymous>:5:126)
+    Object.guard (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:100:44)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:103:55)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual fresh generation waits for its selected target registration/GET: {"target":"shot-b","loading":true}
+not ok 15 - actual fresh generation waits for its selected target registration/GET: {"target":"shot-b","loading":true}
+  ---
+  duration_ms: 0.0915
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:102:123'
+  failureType: 'testCodeFailure'
+  error: 'msg is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    checkGeneration (eval at appFunction (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:10:10), <anonymous>:5:126)
+    Object.guard (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:100:44)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:103:55)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual fresh generation waits for its selected target registration/GET: {"target":"shot-b","pending":true}
+not ok 16 - actual fresh generation waits for its selected target registration/GET: {"target":"shot-b","pending":true}
+  ---
+  duration_ms: 0.071209
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:102:123'
+  failureType: 'testCodeFailure'
+  error: 'msg is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    checkGeneration (eval at appFunction (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:10:10), <anonymous>:5:126)
+    Object.guard (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:100:44)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:103:55)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual fresh generation succeeds only after matching loaded target; frozen retry and restored fallback retain old admission
+not ok 17 - actual fresh generation succeeds only after matching loaded target; frozen retry and restored fallback retain old admission
+  ---
+  duration_ms: 0.073125
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:105:1'
+  failureType: 'testCodeFailure'
+  error: 'generationInputIssueDescriptor is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    checkGeneration (eval at appFunction (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:10:10), <anonymous>:7:19)
+    Object.guard (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:100:44)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/local-shot-text-app.test.mjs:106:55)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 6
+# fail 11
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 169.920875

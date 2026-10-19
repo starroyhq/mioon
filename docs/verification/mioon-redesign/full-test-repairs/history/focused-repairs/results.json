@@ -1,0 +1,116 @@
+[
+  {
+    "file": "tests/local-drafts-transports.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 17.57,
+    "tapSummary": {
+      "tests": 7,
+      "suites": 0,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-repairs/001-local-drafts-transports.test.mjs.log",
+    "sha256": "21124a77ac258ef25c4742d77ec8b13af4f4ff8dedb3424b527ec7f7b156d421",
+    "sourceSha256": "a00a206bd4da65b9836d799ccbfa9fb98338b10e434e4ed6241801f3112b4cac",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/mock-renderer-capability-fences.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 40.61,
+    "tapSummary": {
+      "tests": 22,
+      "suites": 0,
+      "pass": 22,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-repairs/006-mock-renderer-capability-fences.test.mjs.log",
+    "sha256": "377248a7abe4ac2522f2488698a09dbb8f1e9ad2c0c3c4e35f48663f92dbf5b3",
+    "sourceSha256": "e65b1eed985f66ce0ad4a2df75bd89ad1992dbf241ba223383bfc0643df5fc4e",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/mock-renderer-capability.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 2.01,
+    "tapSummary": {
+      "tests": 3,
+      "suites": 0,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-repairs/005-mock-renderer-capability.test.mjs.log",
+    "sha256": "b400f1c2bf7183299e1c8b0bd346862baf4b880658648504a28c90e56a8f0a1b",
+    "sourceSha256": "37d1b9e86685bd00e2a6967b39245c83c32b0b256f8756d370b82a847f420afd",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/reference-recovery-transports.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 7.87,
+    "tapSummary": {
+      "tests": 2,
+      "suites": 0,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-repairs/002-reference-recovery-transports.test.mjs.log",
+    "sha256": "31b48afbc8fa36fa91db334b5e1ffcc1e9caa53118002d517f660e235f0906b4",
+    "sourceSha256": "fbdb600dc7d4d1d96223f5ce244a48d8d8363f92ba131a9d45cac54ec375a34c",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/timeline-image-transports.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 4.97,
+    "tapSummary": {
+      "tests": 5,
+      "suites": 0,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-repairs/004-timeline-image-transports.test.mjs.log",
+    "sha256": "5114e9231ca849e8556d89855444749a52cd51806f1b2e6c56ebe79ff95fe961",
+    "sourceSha256": "463b4042dc19ad8eaed8ab10af47233a1890a5b2f7cc44686013e3df37804bb8",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/timeline-recovery-transports.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 5.23,
+    "tapSummary": {
+      "tests": 2,
+      "suites": 0,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-repairs/003-timeline-recovery-transports.test.mjs.log",
+    "sha256": "a43c7bc8e256ffb41cdcd8f88b750300aad56e90b3aaccc818800b8cb110af4f",
+    "sourceSha256": "564d715e1853101b75ac5e703505aeff897d9424ead39fc8c84936398af31889",
+    "failedSubtests": []
+  }
+]

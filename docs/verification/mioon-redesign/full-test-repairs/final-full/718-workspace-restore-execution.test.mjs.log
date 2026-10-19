@@ -1,0 +1,83 @@
+TAP version 13
+# Subtest: restored profile has fixed catalogue coverage with no hint-based or suffix-based authority
+ok 1 - restored profile has fixed catalogue coverage with no hint-based or suffix-based authority
+  ---
+  duration_ms: 1.051667
+  type: 'test'
+  ...
+# Subtest: restored catalogue reports exact disabled media and redesign operations and refuses calls without writes
+ok 2 - restored catalogue reports exact disabled media and redesign operations and refuses calls without writes
+  ---
+  duration_ms: 1010.455875
+  type: 'test'
+  ...
+# Subtest: restored summary reads saved metadata in current49 and historical25/41 without writes or recent-opened access
+    # Subtest: source24 restored25
+    ok 1 - source24 restored25
+      ---
+      duration_ms: 262.784417
+      type: 'test'
+      ...
+    # Subtest: source40 restored41
+    ok 2 - source40 restored41
+      ---
+      duration_ms: 360.713209
+      type: 'test'
+      ...
+    # Subtest: source48 restored49
+    ok 3 - source48 restored49
+      ---
+      duration_ms: 693.224417
+      type: 'test'
+      ...
+    1..3
+ok 3 - restored summary reads saved metadata in current49 and historical25/41 without writes or recent-opened access
+  ---
+  duration_ms: 1317.282042
+  type: 'test'
+  ...
+# Subtest: restored composition and automatic/manual workers leave all captured rows exact
+ok 4 - restored composition and automatic/manual workers leave all captured rows exact
+  ---
+  duration_ms: 704.334875
+  type: 'test'
+  ...
+# Subtest: captured task reads stay exact, pending lanes exclude holds, all state-changing entries refuse
+ok 5 - captured task reads stay exact, pending lanes exclude holds, all state-changing entries refuse
+  ---
+  duration_ms: 690.134541
+  type: 'test'
+  ...
+# Subtest: exact saved timeline acknowledgement is read without origin, mutation, or worker dispatch
+ok 6 - exact saved timeline acknowledgement is read without origin, mutation, or worker dispatch
+  ---
+  duration_ms: 671.904417
+  type: 'test'
+  ...
+# Subtest: restored server skips settings/runtime constructors and special routes share safe refusal
+ok 7 - restored server skips settings/runtime constructors and special routes share safe refusal
+  ---
+  duration_ms: 771.524291
+  type: 'test'
+  ...
+# Subtest: RPC carries the caller origin separately and never stamps an origin on ordinary requests
+ok 8 - RPC carries the caller origin separately and never stamps an origin on ordinary requests
+  ---
+  duration_ms: 0.242625
+  type: 'test'
+  ...
+# Subtest: direct shared local mutation and export-compute boundaries cannot bypass pinned admission
+ok 9 - direct shared local mutation and export-compute boundaries cannot bypass pinned admission
+  ---
+  duration_ms: 708.397875
+  type: 'test'
+  ...
+1..9
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 6239.73825

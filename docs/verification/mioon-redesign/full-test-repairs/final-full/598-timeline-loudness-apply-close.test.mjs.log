@@ -1,0 +1,306 @@
+TAP version 13
+# Subtest: actual App timeout clears generic busy, but apply unknown remains a native hard block through exact recovery
+not ok 1 - actual App timeout clears generic busy, but apply unknown remains a native hard block through exact recovery
+  ---
+  duration_ms: 43.157917
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:121:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+    + []
+    - [
+    -   true,
+    -   false
+    - ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: true
+    1: false
+  actual:
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:126:40)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: only the exact original acknowledged terminal task can release close; stale or malformed recovery is passive
+not ok 2 - only the exact original acknowledged terminal task can release close; stale or malformed recovery is passive
+  ---
+  duration_ms: 4.533625
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:140:1'
+  failureType: 'testCodeFailure'
+  error: "Cannot read properties of undefined (reading 'revision')"
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:142:110)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: lost prepare retains original scalar binding and clears only after explicit terminal recovery without another prepare
+not ok 3 - lost prepare retains original scalar binding and clears only after explicit terminal recovery without another prepare
+  ---
+  duration_ms: 2.938167
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:163:1'
+  failureType: 'testCodeFailure'
+  error: "Cannot read properties of undefined (reading 'input')"
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:168:69)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: hiding, navigation and a late old-project ACK retain the new owner and its hard block
+not ok 4 - hiding, navigation and a late old-project ACK retain the new owner and its hard block
+  ---
+  duration_ms: 2.441459
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:177:1'
+  failureType: 'unhandledRejection'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.recoverTask (eval at execute (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:102:25), <anonymous>:67:5)
+    Object.recover (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:109:35)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:183:56)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: unknown survives owner navigation and back, effect cleanup/reattach, and exact old recovery
+not ok 5 - unknown survives owner navigation and back, effect cleanup/reattach, and exact old recovery
+  ---
+  duration_ms: 2.663167
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:195:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.recoverTask (eval at execute (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:102:25), <anonymous>:67:5)
+    Object.recover (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:109:35)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:202:11)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: dirty discard and import-unknown risk permission cannot bypass an apply hard block
+ok 6 - dirty discard and import-unknown risk permission cannot bypass an apply hard block
+  ---
+  duration_ms: 2.935917
+  type: 'test'
+  ...
+# Subtest: close inspection and final beforeunload are pure cached reads with no context, timers, writes or RPC
+ok 7 - close inspection and final beforeunload are pure cached reads with no context, timers, writes or RPC
+  ---
+  duration_ms: 2.555042
+  type: 'test'
+  ...
+# Subtest: actual App recovery scope rejects copied tasks in another normal workspace or blocked identity, but permits original workspace after UI epoch change
+not ok 8 - actual App recovery scope rejects copied tasks in another normal workspace or blocked identity, but permits original workspace after UI epoch change
+  ---
+  duration_ms: 2.462083
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:241:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.recoverTask (eval at execute (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:102:25), <anonymous>:67:5)
+    Object.recover (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:109:35)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:244:43)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: retired hook listeners and cleanup cannot publish into or release a newer fixed-slot owner
+ok 9 - retired hook listeners and cleanup cannot publish into or release a newer fixed-slot owner
+  ---
+  duration_ms: 2.438084
+  type: 'test'
+  ...
+# Subtest: actual App missing recovery identity cannot confirm, mint a request or create a pending apply
+not ok 10 - actual App missing recovery identity cannot confirm, mint a request or create a pending apply
+  ---
+  duration_ms: 2.765292
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:265:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    0 !== 1
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:275:12)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App malformed recovery identity cannot confirm, mint a request or create a pending apply
+not ok 11 - actual App malformed recovery identity cannot confirm, mint a request or create a pending apply
+  ---
+  duration_ms: 2.316333
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:265:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    0 !== 1
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:275:12)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App blocked recovery identity cannot confirm, mint a request or create a pending apply
+not ok 12 - actual App blocked recovery identity cannot confirm, mint a request or create a pending apply
+  ---
+  duration_ms: 3.222916
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:265:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    0 !== 1
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:275:12)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App changed recovery identity during confirmation exits busy without POST, without render
+not ok 13 - actual App changed recovery identity during confirmation exits busy without POST, without render
+  ---
+  duration_ms: 2.975833
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:281:3'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.recoverTask (eval at execute (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:102:25), <anonymous>:67:5)
+    Object.recover (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:109:35)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:290:111)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App unverified recovery identity during confirmation exits busy without POST, without render
+not ok 14 - actual App unverified recovery identity during confirmation exits busy without POST, without render
+  ---
+  duration_ms: 2.39975
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:281:3'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.recoverTask (eval at execute (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:102:25), <anonymous>:67:5)
+    Object.recover (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:109:35)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:290:111)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App blocked recovery identity during confirmation exits busy without POST, without render
+not ok 15 - actual App blocked recovery identity during confirmation exits busy without POST, without render
+  ---
+  duration_ms: 2.735
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:281:3'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.recoverTask (eval at execute (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:102:25), <anonymous>:67:5)
+    Object.recover (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:109:35)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:290:111)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App changed recovery identity during confirmation exits busy without POST, with render
+not ok 16 - actual App changed recovery identity during confirmation exits busy without POST, with render
+  ---
+  duration_ms: 2.404042
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:281:3'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.recoverTask (eval at execute (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:102:25), <anonymous>:67:5)
+    Object.recover (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:109:35)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:290:111)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App unverified recovery identity during confirmation exits busy without POST, with render
+not ok 17 - actual App unverified recovery identity during confirmation exits busy without POST, with render
+  ---
+  duration_ms: 3.119042
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:281:3'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.recoverTask (eval at execute (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:102:25), <anonymous>:67:5)
+    Object.recover (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:109:35)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:290:111)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App blocked recovery identity during confirmation exits busy without POST, with render
+not ok 18 - actual App blocked recovery identity during confirmation exits busy without POST, with render
+  ---
+  duration_ms: 2.290875
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:281:3'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.recoverTask (eval at execute (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:102:25), <anonymous>:67:5)
+    Object.recover (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:109:35)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-loudness-apply-close.test.mjs:290:111)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..18
+# tests 18
+# suites 0
+# pass 3
+# fail 15
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 552.173417

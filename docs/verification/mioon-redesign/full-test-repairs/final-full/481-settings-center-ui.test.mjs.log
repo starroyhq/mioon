@@ -1,0 +1,136 @@
+TAP version 13
+# Subtest: settings shell has eight stable categories while connection owners retain four IPC slots
+ok 1 - settings shell has eight stable categories while connection owners retain four IPC slots
+  ---
+  duration_ms: 26.230417
+  type: 'test'
+  ...
+# Subtest: category and connection navigation delegates once without selecting a page locally
+ok 2 - category and connection navigation delegates once without selecting a page locally
+  ---
+  duration_ms: 1.8145
+  type: 'test'
+  ...
+# Subtest: legacy consumers can select connection slots but internal categories never become IPC slots
+ok 3 - legacy consumers can select connection slots but internal categories never become IPC slots
+  ---
+  duration_ms: 1.026542
+  type: 'test'
+  ...
+# Subtest: General does not mount unvisited connections and hiding visited forms retains exact keyed owners
+ok 4 - General does not mount unvisited connections and hiding visited forms retains exact keyed owners
+  ---
+  duration_ms: 1.347
+  type: 'test'
+  ...
+# Subtest: visibility composition hides descendants without dropping children or creating new form owners
+ok 5 - visibility composition hides descendants without dropping children or creating new form owners
+  ---
+  duration_ms: 1.414959
+  type: 'test'
+  ...
+# Subtest: General language controls and category copy change in four locales without changing page or owner identity
+ok 6 - General language controls and category copy change in four locales without changing page or owner identity
+  ---
+  duration_ms: 1.362042
+  type: 'test'
+  ...
+# Subtest: actual shared controls render accessible four-language settings and one complete General language selector
+ok 7 - actual shared controls render accessible four-language settings and one complete General language selector
+  ---
+  duration_ms: 130.466708
+  type: 'test'
+  ...
+# Subtest: new settings copy has complete locale coverage and category identity remains outside native IPC
+ok 8 - new settings copy has complete locale coverage and category identity remains outside native IPC
+  ---
+  duration_ms: 3.937416
+  type: 'test'
+  ...
+# Subtest: shared native center receives page routing and visibility without replacing existing close admission
+ok 9 - shared native center receives page routing and visibility without replacing existing close admission
+  ---
+  duration_ms: 8.805542
+  type: 'test'
+  ...
+# Subtest: unavailable connections leave General usable while disabled categories and stale handlers cannot mount providers
+ok 10 - unavailable connections leave General usable while disabled categories and stale handlers cannot mount providers
+  ---
+  duration_ms: 2.025291
+  type: 'test'
+  ...
+# Subtest: web dialog retains its guarded controller and form shell while closed, reopened and relocalized
+ok 11 - web dialog retains its guarded controller and form shell while closed, reopened and relocalized
+  ---
+  duration_ms: 2.240625
+  type: 'test'
+  ...
+# Subtest: web close button, dismissal and form Back all use the same exact dirty guard without clearing owners
+ok 12 - web close button, dismissal and form Back all use the same exact dirty guard without clearing owners
+  ---
+  duration_ms: 7.030125
+  type: 'test'
+  ...
+# Subtest: web open request reports guarded acceptance to its caller rather than treating a cancelled transition as open
+ok 13 - web open request reports guarded acceptance to its caller rather than treating a cancelled transition as open
+  ---
+  duration_ms: 1.598875
+  type: 'test'
+  ...
+# Subtest: restored web requests normalize to General and cannot activate model pages through stale form callbacks
+ok 14 - restored web requests normalize to General and cannot activate model pages through stale form callbacks
+  ---
+  duration_ms: 1.203833
+  type: 'test'
+  ...
+# Subtest: web center stays first keyed sibling across home and workbench rather than replacing the editor tree
+ok 15 - web center stays first keyed sibling across home and workbench rather than replacing the editor tree
+  ---
+  duration_ms: 0.514875
+  type: 'test'
+  ...
+# Subtest: only reachable modals block shortcuts, including hidden/inert/closed/aria-hidden ancestors
+ok 16 - only reachable modals block shortcuts, including hidden/inert/closed/aria-hidden ancestors
+  ---
+  duration_ms: 0.382334
+  type: 'test'
+  ...
+# Subtest: actual App Ctrl+B and undo handlers work before settings opens and after close, but not with an open confirmation
+ok 17 - actual App Ctrl+B and undo handlers work before settings opens and after close, but not with an open confirmation
+  ---
+  duration_ms: 0.413958
+  type: 'test'
+  ...
+# Subtest: agent rejected settings restores only current visibility, including hidden-document denial and thrown callbacks
+ok 18 - agent rejected settings restores only current visibility, including hidden-document denial and thrown callbacks
+  ---
+  duration_ms: 1.639791
+  type: 'test'
+  ...
+# Subtest: agent late rejected settings cannot revive a superseded session, owner, interaction or hidden pane
+ok 19 - agent late rejected settings cannot revive a superseded session, owner, interaction or hidden pane
+  ---
+  duration_ms: 0.930625
+  type: 'test'
+  ...
+# Subtest: image rejected settings restores only current visibility, including hidden-document denial and thrown callbacks
+ok 20 - image rejected settings restores only current visibility, including hidden-document denial and thrown callbacks
+  ---
+  duration_ms: 1.6525
+  type: 'test'
+  ...
+# Subtest: image late rejected settings cannot revive a superseded session, owner, interaction or hidden pane
+ok 21 - image late rejected settings cannot revive a superseded session, owner, interaction or hidden pane
+  ---
+  duration_ms: 0.511958
+  type: 'test'
+  ...
+1..21
+# tests 21
+# suites 0
+# pass 21
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 401.276958

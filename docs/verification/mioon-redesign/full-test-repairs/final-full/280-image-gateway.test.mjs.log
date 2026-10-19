@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: gateway uses dedicated credential, exact visible request and synchronous settings→durable fence→POST ordering
+ok 1 - gateway uses dedicated credential, exact visible request and synchronous settings→durable fence→POST ordering
+  ---
+  duration_ms: 108.438916
+  type: 'test'
+  ...
+# Subtest: settings changed during DNS wait are rejected at actual POST fence, with no durable dispatch or POST
+ok 2 - settings changed during DNS wait are rejected at actual POST fence, with no durable dispatch or POST
+  ---
+  duration_ms: 1.079541
+  type: 'test'
+  ...
+# Subtest: pending settings persistence blocks dispatch before its revision is committed
+ok 3 - pending settings persistence blocks dispatch before its revision is committed
+  ---
+  duration_ms: 0.6705
+  type: 'test'
+  ...
+# Subtest: gateway abort before-acquire preserves dispatch uncertainty and never retries
+ok 4 - gateway abort before-acquire preserves dispatch uncertainty and never retries
+  ---
+  duration_ms: 0.520792
+  type: 'test'
+  ...
+# Subtest: gateway abort during-dns preserves dispatch uncertainty and never retries
+ok 5 - gateway abort during-dns preserves dispatch uncertainty and never retries
+  ---
+  duration_ms: 0.589375
+  type: 'test'
+  ...
+# Subtest: gateway abort after-post preserves dispatch uncertainty and never retries
+ok 6 - gateway abort after-post preserves dispatch uncertainty and never retries
+  ---
+  duration_ms: 0.733625
+  type: 'test'
+  ...
+# Subtest: async or false injected assertions and async durable fence cannot be hidden by gateway wrapper
+ok 7 - async or false injected assertions and async durable fence cannot be hidden by gateway wrapper
+  ---
+  duration_ms: 1.625458
+  type: 'test'
+  ...
+# Subtest: closed or missing dedicated credentials cannot initiate DNS or reuse Agent/video secrets
+ok 8 - closed or missing dedicated credentials cannot initiate DNS or reuse Agent/video secrets
+  ---
+  duration_ms: 0.231291
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 351.93225

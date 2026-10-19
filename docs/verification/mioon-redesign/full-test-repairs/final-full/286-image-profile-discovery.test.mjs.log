@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: profile discovery input is an explicit strict optional boolean, with no parsed default
+ok 1 - profile discovery input is an explicit strict optional boolean, with no parsed default
+  ---
+  duration_ms: 2.484667
+  type: 'test'
+  ...
+# Subtest: strict profile response permits only opt-in positive safe revisions on non-Mock profiles
+ok 2 - strict profile response permits only opt-in positive safe revisions on non-Mock profiles
+  ---
+  duration_ms: 7.147458
+  type: 'test'
+  ...
+# Subtest: default and explicit false preserve old strict response bytes, property order and provider order exactly
+ok 3 - default and explicit false preserve old strict response bytes, property order and provider order exactly
+  ---
+  duration_ms: 793.549625
+  type: 'test'
+  ...
+# Subtest: each opt-in revision and metadata come from exactly one isolated safe snapshot, with zero mutations or probes
+ok 4 - each opt-in revision and metadata come from exactly one isolated safe snapshot, with zero mutations or probes
+  ---
+  duration_ms: 665.247
+  type: 'test'
+  ...
+# Subtest: missing, zero, noninteger and unsafe revisions are omitted without guessing or borrowing another slot
+ok 5 - missing, zero, noninteger and unsafe revisions are omitted without guessing or borrowing another slot
+  ---
+  duration_ms: 774.060541
+  type: 'test'
+  ...
+# Subtest: disabled and unready configured profiles can expose revision independently of generation readiness
+ok 6 - disabled and unready configured profiles can expose revision independently of generation readiness
+  ---
+  duration_ms: 639.991792
+  type: 'test'
+  ...
+# Subtest: unconfigured or unreadable slots stay isolated and never create revision-only profiles
+ok 7 - unconfigured or unreadable slots stay isolated and never create revision-only profiles
+  ---
+  duration_ms: 1290.6755
+  type: 'test'
+  ...
+# Subtest: real disabled, incomplete, zero-revision, closed and corrupt settings never refresh or decrypt on discovery
+ok 8 - real disabled, incomplete, zero-revision, closed and corrupt settings never refresh or decrypt on discovery
+  ---
+  duration_ms: 1139.581583
+  type: 'test'
+  ...
+# Subtest: discovered revision follows configuration changes while stale preparation, approval and settings CAS stay closed
+ok 9 - discovered revision follows configuration changes while stale preparation, approval and settings CAS stay closed
+  ---
+  duration_ms: 837.992666
+  type: 'test'
+  ...
+# Subtest: actual client keeps omitted request bytes and validates opt-in response against the exact call
+ok 10 - actual client keeps omitted request bytes and validates opt-in response against the exact call
+  ---
+  duration_ms: 2.584792
+  type: 'test'
+  ...
+# Subtest: new client remains compatible by default with an old strict server and never retries or guesses an opt-in revision
+ok 11 - new client remains compatible by default with an old strict server and never retries or guesses an opt-in revision
+  ---
+  duration_ms: 7.564709
+  type: 'test'
+  ...
+# Subtest: real HTTP, CLI and official MCP discover the same revisions without provider I/O, writes or added mutation authority
+ok 12 - real HTTP, CLI and official MCP discover the same revisions without provider I/O, writes or added mutation authority
+  ---
+  duration_ms: 2246.304084
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 8893.470833

@@ -1,0 +1,661 @@
+TAP version 13
+# Subtest: presentation catalog is exhaustive in four locales, with unchanged operation identities
+not ok 1 - presentation catalog is exhaustive in four locales, with unchanged operation identities
+  ---
+  duration_ms: 15.513083
+  type: 'test'
+  location: '/private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/i18n-command-presentation.test.mjs:31:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    ... Skipped lines
+    
+      [
+    -   'operation.agent.authorization.grant',
+    -   'operation.agent.authorization.list',
+    -   'operation.agent.authorization.revoke',
+        'operation.asset.annotation.list',
+        'operation.asset.annotation.set',
+        'operation.asset.disposition.list',
+        'operation.asset.disposition.set',
+        'operation.asset.import',
+    ...
+        'operation.project.create',
+    -   'operation.project.delete',
+        'operation.project.get',
+        'operation.project.inspect',
+        'operation.project.list',
+    -   'operation.project.rename',
+    -   'operation.project.summary.list',
+        'operation.provider.list',
+        'operation.reference.attach',
+        'operation.reference.detach',
+        'operation.shot.create',
+        'operation.shot.inspect',
+    ...
+        'operation.timeline.clip.replaceSource',
+    -   'operation.timeline.clip.rippleRemove',
+        'operation.timeline.clip.split',
+        'operation.timeline.clip.update',
+        'operation.timeline.colour.image.inspect',
+        'operation.timeline.colour.jpeg.inspect',
+        'operation.timeline.colour.source.inspect',
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: 'operation.agent.authorization.grant'
+    1: 'operation.agent.authorization.list'
+    2: 'operation.agent.authorization.revoke'
+    3: 'operation.asset.annotation.list'
+    4: 'operation.asset.annotation.set'
+    5: 'operation.asset.disposition.list'
+    6: 'operation.asset.disposition.set'
+    7: 'operation.asset.import'
+    8: 'operation.asset.inspect'
+    9: 'operation.asset.list'
+    10: 'operation.asset.range.get'
+    11: 'operation.asset.range.set'
+    12: 'operation.asset.waveform.get'
+    13: 'operation.asset.waveform.request'
+    14: 'operation.edge.create'
+    15: 'operation.edge.delete'
+    16: 'operation.export.create'
+    17: 'operation.export.get'
+    18: 'operation.frame.extract'
+    19: 'operation.frame.request.get'
+    20: 'operation.frame.task.cancelQueued'
+    21: 'operation.frame.task.get'
+    22: 'operation.frame.task.list'
+    23: 'operation.frame.task.recoverResult'
+    24: 'operation.generation.submit'
+    25: 'operation.image.generate'
+    26: 'operation.image.group.get'
+    27: 'operation.image.group.list'
+    28: 'operation.image.profile.list'
+    29: 'operation.image.request.get'
+    30: 'operation.image.review.get'
+    31: 'operation.image.review.list'
+    32: 'operation.image.review.prepare'
+    33: 'operation.image.task.cancelQueued'
+    34: 'operation.image.task.get'
+    35: 'operation.image.task.list'
+    36: 'operation.image.task.observeRemote'
+    37: 'operation.image.task.recoverResult'
+    38: 'operation.image.task.remote.get'
+    39: 'operation.image.version.list'
+    40: 'operation.job.cancel'
+    41: 'operation.job.get'
+    42: 'operation.job.list'
+    43: 'operation.job.reconcile'
+    44: 'operation.job.retry'
+    45: 'operation.lut.import'
+    46: 'operation.lut.inspect'
+    47: 'operation.lut.list'
+    48: 'operation.lut.look.inspect'
+    49: 'operation.node.create'
+    50: 'operation.node.update'
+    51: 'operation.project.create'
+    52: 'operation.project.delete'
+    53: 'operation.project.get'
+    54: 'operation.project.inspect'
+    55: 'operation.project.list'
+    56: 'operation.project.rename'
+    57: 'operation.project.summary.list'
+    58: 'operation.provider.list'
+    59: 'operation.reference.attach'
+    60: 'operation.reference.detach'
+    61: 'operation.shot.create'
+    62: 'operation.shot.inspect'
+    63: 'operation.shot.reorder'
+    64: 'operation.shot.update'
+    65: 'operation.subject.binding.list'
+    66: 'operation.subject.binding.set'
+    67: 'operation.subject.create'
+    68: 'operation.subject.list'
+    69: 'operation.subject.version.add'
+    70: 'operation.subject.version.list'
+    71: 'operation.timeline.audioPreview.continuousPlan'
+    72: 'operation.timeline.audioPreview.plan'
+    73: 'operation.timeline.clip.add'
+    74: 'operation.timeline.clip.loudness'
+    75: 'operation.timeline.clip.remove'
+    76: 'operation.timeline.clip.replaceSource'
+    77: 'operation.timeline.clip.rippleRemove'
+    78: 'operation.timeline.clip.split'
+    79: 'operation.timeline.clip.update'
+    80: 'operation.timeline.colour.image.inspect'
+    81: 'operation.timeline.colour.jpeg.inspect'
+    82: 'operation.timeline.colour.source.inspect'
+    83: 'operation.timeline.export.capabilities'
+    84: 'operation.timeline.export.loudness'
+    85: 'operation.timeline.export.preflight'
+    86: 'operation.timeline.export.samplePeak'
+    87: 'operation.timeline.format.get'
+    88: 'operation.timeline.format.set'
+    89: 'operation.timeline.get'
+    90: 'operation.timeline.history.get'
+    91: 'operation.timeline.inspect'
+    92: 'operation.timeline.loudness.apply'
+    93: 'operation.timeline.loudness.prepare'
+    94: 'operation.timeline.redo'
+    95: 'operation.timeline.render'
+    96: 'operation.timeline.seed'
+    97: 'operation.timeline.subtitle.add'
+    98: 'operation.timeline.subtitle.remove'
+    99: 'operation.timeline.subtitle.update'
+    100: 'operation.timeline.track.add'
+    101: 'operation.timeline.track.update'
+    102: 'operation.timeline.undo'
+    103: 'operation.version.list'
+    104: 'operation.version.select'
+    105: 'operation.workspace.backup.inspect'
+    106: 'operation.workspace.restore.inspect'
+  actual:
+    0: 'operation.asset.annotation.list'
+    1: 'operation.asset.annotation.set'
+    2: 'operation.asset.disposition.list'
+    3: 'operation.asset.disposition.set'
+    4: 'operation.asset.import'
+    5: 'operation.asset.inspect'
+    6: 'operation.asset.list'
+    7: 'operation.asset.range.get'
+    8: 'operation.asset.range.set'
+    9: 'operation.asset.waveform.get'
+    10: 'operation.asset.waveform.request'
+    11: 'operation.edge.create'
+    12: 'operation.edge.delete'
+    13: 'operation.export.create'
+    14: 'operation.export.get'
+    15: 'operation.frame.extract'
+    16: 'operation.frame.request.get'
+    17: 'operation.frame.task.cancelQueued'
+    18: 'operation.frame.task.get'
+    19: 'operation.frame.task.list'
+    20: 'operation.frame.task.recoverResult'
+    21: 'operation.generation.submit'
+    22: 'operation.image.generate'
+    23: 'operation.image.group.get'
+    24: 'operation.image.group.list'
+    25: 'operation.image.profile.list'
+    26: 'operation.image.request.get'
+    27: 'operation.image.review.get'
+    28: 'operation.image.review.list'
+    29: 'operation.image.review.prepare'
+    30: 'operation.image.task.cancelQueued'
+    31: 'operation.image.task.get'
+    32: 'operation.image.task.list'
+    33: 'operation.image.task.observeRemote'
+    34: 'operation.image.task.recoverResult'
+    35: 'operation.image.task.remote.get'
+    36: 'operation.image.version.list'
+    37: 'operation.job.cancel'
+    38: 'operation.job.get'
+    39: 'operation.job.list'
+    40: 'operation.job.reconcile'
+    41: 'operation.job.retry'
+    42: 'operation.lut.import'
+    43: 'operation.lut.inspect'
+    44: 'operation.lut.list'
+    45: 'operation.lut.look.inspect'
+    46: 'operation.node.create'
+    47: 'operation.node.update'
+    48: 'operation.project.create'
+    49: 'operation.project.get'
+    50: 'operation.project.inspect'
+    51: 'operation.project.list'
+    52: 'operation.provider.list'
+    53: 'operation.reference.attach'
+    54: 'operation.reference.detach'
+    55: 'operation.shot.create'
+    56: 'operation.shot.inspect'
+    57: 'operation.shot.reorder'
+    58: 'operation.shot.update'
+    59: 'operation.subject.binding.list'
+    60: 'operation.subject.binding.set'
+    61: 'operation.subject.create'
+    62: 'operation.subject.list'
+    63: 'operation.subject.version.add'
+    64: 'operation.subject.version.list'
+    65: 'operation.timeline.audioPreview.continuousPlan'
+    66: 'operation.timeline.audioPreview.plan'
+    67: 'operation.timeline.clip.add'
+    68: 'operation.timeline.clip.loudness'
+    69: 'operation.timeline.clip.remove'
+    70: 'operation.timeline.clip.replaceSource'
+    71: 'operation.timeline.clip.split'
+    72: 'operation.timeline.clip.update'
+    73: 'operation.timeline.colour.image.inspect'
+    74: 'operation.timeline.colour.jpeg.inspect'
+    75: 'operation.timeline.colour.source.inspect'
+    76: 'operation.timeline.export.capabilities'
+    77: 'operation.timeline.export.loudness'
+    78: 'operation.timeline.export.preflight'
+    79: 'operation.timeline.export.samplePeak'
+    80: 'operation.timeline.format.get'
+    81: 'operation.timeline.format.set'
+    82: 'operation.timeline.get'
+    83: 'operation.timeline.history.get'
+    84: 'operation.timeline.inspect'
+    85: 'operation.timeline.loudness.apply'
+    86: 'operation.timeline.loudness.prepare'
+    87: 'operation.timeline.redo'
+    88: 'operation.timeline.render'
+    89: 'operation.timeline.seed'
+    90: 'operation.timeline.subtitle.add'
+    91: 'operation.timeline.subtitle.remove'
+    92: 'operation.timeline.subtitle.update'
+    93: 'operation.timeline.track.add'
+    94: 'operation.timeline.track.update'
+    95: 'operation.timeline.undo'
+    96: 'operation.version.list'
+    97: 'operation.version.select'
+    98: 'operation.workspace.backup.inspect'
+    99: 'operation.workspace.restore.inspect'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/i18n-command-presentation.test.mjs:33:10)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.start (node:internal/test_runner/test:1262:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+  ...
+# Subtest: continuous plan discovery has four explicit locales without changing machine definitions
+not ok 2 - continuous plan discovery has four explicit locales without changing machine definitions
+  ---
+  duration_ms: 1.737958
+  type: 'test'
+  location: '/private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/i18n-command-presentation.test.mjs:40:1'
+  failureType: 'testCodeFailure'
+  error: 'Unknown presentation message key.'
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    text (file:///private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/packages/i18n/src/presentation.ts:13:44)
+    localizeToolDescription (file:///private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/packages/i18n/src/presentation.ts:26:44)
+    TestContext.<anonymous> (file:///private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/i18n-command-presentation.test.mjs:47:21)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: CLI localizes only prose; default help snapshot, schema, version and error JSON stay exact
+not ok 3 - CLI localizes only prose; default help snapshot, schema, version and error JSON stay exact
+  ---
+  duration_ms: 250.563041
+  type: 'test'
+  location: '/private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/i18n-command-presentation.test.mjs:60:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    ... Skipped lines
+    
+      {
+        data: {
+          connection: [
+            'MIOON_CONNECTION_FILE: Electron descriptor, reread for every request',
+            'MIOON_BASE_URL + MIOON_TOKEN_FILE: local Web backend and private token file',
+    ...
+          operations: [
+    +       'project.rename',
+    +       'project.delete',
+    +       'project.summary.list',
+    +       'agent.authorization.list',
+    +       'agent.authorization.grant',
+    +       'agent.authorization.revoke',
+            'lut.import',
+            'lut.list',
+            'lut.inspect',
+            'lut.look.inspect',
+            'timeline.colour.source.inspect',
+    ...
+            'timeline.clip.remove',
+    +       'timeline.clip.rippleRemove',
+            'timeline.clip.split',
+            'timeline.seed',
+            'timeline.render'
+          ],
+          options: {
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    ok: true
+    data:
+      name: 'mioon'
+      version: '0.4.1'
+      usage:
+        0: 'mioon <operation words> --input <JSON>'
+        1: 'mioon rpc <dot.operation> --input <JSON>'
+        2: 'mioon schema [dot.operation]'
+        3: 'mioon doctor'
+        4: 'mioon capabilities'
+        5: 'mioon asset import --file <local-file> --input <JSON>'
+        6: 'mioon lut import --file <local-file.cube> --input <JSON>'
+        7: 'mioon job watch --input <JSON> [--timeout-ms 60000] [--interval-ms 500]'
+        8: 'mioon export watch --input <JSON> [--timeout-ms 60000] [--interval-ms 500]'
+        9: 'mioon asset download --input <JSON> --output <new-local-file>'
+        10: 'mioon export download --input <JSON> --output <new-local-file>'
+      options:
+        --input: 'JSON object; use - to read stdin'
+        --input-file: 'Explicit local JSON file; exclusive with --input'
+        --request-id: 'Stable caller-owned requestId; never generated by the client'
+        --workspace-origin: 'Explicit restored workspace UUID, kept outside input and pinned for this invocation; inspect with workspace restore inspect. Never substitute a new origin when recovering an old request.'
+        --file: 'asset/lut import only: reads local bytes, never sends a path; LUT .cube files are limited to 7 MiB'
+        --output: 'download only: exclusive new local file, never sent to backend'
+        --max-bytes: 'download only: default 536870912; maximum 2147483648'
+        --timeout-ms: 'Watch/download deadline; default 60000, maximum 86400000'
+        --interval-ms: 'Watch polling interval; default 500, minimum 20'
+        --json: 'Explicit JSON output (already the default)'
+        --help: 'JSON usage or a command schema'
+        --version: 'JSON version'
+      connection:
+        0: 'MIOON_CONNECTION_FILE: Electron descriptor, reread for every request'
+        1: 'MIOON_BASE_URL + MIOON_TOKEN_FILE: local Web backend and private token file'
+        2: 'MIOON_TOKEN: explicit environment token; no --token option'
+      exitCodes:
+        success: 0
+        unexpected: 1
+        validation: 2
+        conflict: 3
+        unavailable: 4
+        timeout: 5
+        operationFailed: 6
+        interrupted: 130
+      operations:
+        0: 'lut.import'
+        1: 'lut.list'
+        2: 'lut.inspect'
+        3: 'lut.look.inspect'
+        4: 'timeline.colour.source.inspect'
+        5: 'timeline.colour.image.inspect'
+        6: 'timeline.colour.jpeg.inspect'
+        7: 'workspace.backup.inspect'
+        8: 'workspace.restore.inspect'
+        9: 'timeline.format.get'
+        10: 'timeline.format.set'
+        11: 'timeline.subtitle.add'
+        12: 'timeline.subtitle.update'
+        13: 'timeline.subtitle.remove'
+        14: 'frame.extract'
+        15: 'frame.request.get'
+        16: 'frame.task.get'
+        17: 'frame.task.list'
+        18: 'frame.task.cancelQueued'
+        19: 'frame.task.recoverResult'
+        20: 'image.profile.list'
+        21: 'image.generate'
+        22: 'image.request.get'
+        23: 'image.task.get'
+        24: 'image.task.list'
+        25: 'image.group.list'
+        26: 'image.group.get'
+        27: 'image.version.list'
+        28: 'image.task.cancelQueued'
+        29: 'image.task.recoverResult'
+        30: 'image.review.prepare'
+        31: 'image.review.get'
+        32: 'image.review.list'
+        33: 'image.task.remote.get'
+        34: 'image.task.observeRemote'
+        35: 'project.inspect'
+        36: 'asset.inspect'
+        37: 'shot.inspect'
+        38: 'timeline.inspect'
+        39: 'subject.create'
+        40: 'subject.version.add'
+        41: 'subject.binding.set'
+        42: 'subject.list'
+        43: 'subject.version.list'
+        44: 'subject.binding.list'
+        45: 'asset.range.get'
+        46: 'asset.range.set'
+        47: 'asset.disposition.list'
+        48: 'asset.disposition.set'
+        49: 'asset.annotation.list'
+        50: 'asset.annotation.set'
+        51: 'asset.waveform.request'
+        52: 'asset.waveform.get'
+        53: 'timeline.export.preflight'
+        54: 'timeline.export.samplePeak'
+        55: 'timeline.export.loudness'
+        56: 'timeline.loudness.prepare'
+        57: 'timeline.clip.loudness'
+        58: 'timeline.loudness.apply'
+        59: 'timeline.audioPreview.plan'
+        60: 'timeline.audioPreview.continuousPlan'
+        61: 'timeline.export.capabilities'
+        62: 'project.create'
+        63: 'project.list'
+        64: 'project.get'
+        65: 'asset.import'
+        66: 'asset.list'
+        67: 'shot.create'
+        68: 'shot.update'
+        69: 'shot.reorder'
+        70: 'node.create'
+        71: 'node.update'
+        72: 'edge.create'
+        73: 'edge.delete'
+        74: 'reference.attach'
+        75: 'reference.detach'
+        76: 'provider.list'
+        77: 'generation.submit'
+        78: 'job.get'
+        79: 'job.list'
+        80: 'job.retry'
+        81: 'job.cancel'
+        82: 'job.reconcile'
+        83: 'version.list'
+        84: 'version.select'
+        85: 'export.create'
+        86: 'export.get'
+        87: 'timeline.get'
+        88: 'timeline.history.get'
+        89: 'timeline.undo'
+        90: 'timeline.redo'
+        91: 'timeline.track.add'
+        92: 'timeline.track.update'
+        93: 'timeline.clip.add'
+        94: 'timeline.clip.update'
+        95: 'timeline.clip.replaceSource'
+        96: 'timeline.clip.remove'
+        97: 'timeline.clip.split'
+        98: 'timeline.seed'
+        99: 'timeline.render'
+      safety: 'No automatic submit/retry, no invented request IDs, no remote cancellation on Ctrl+C or timeout. Replay exact idempotent requests after an uncertain response.'
+  actual:
+    ok: true
+    data:
+      name: 'mioon'
+      version: '0.4.1'
+      usage:
+        0: 'mioon <operation words> --input <JSON>'
+        1: 'mioon rpc <dot.operation> --input <JSON>'
+        2: 'mioon schema [dot.operation]'
+        3: 'mioon doctor'
+        4: 'mioon capabilities'
+        5: 'mioon asset import --file <local-file> --input <JSON>'
+        6: 'mioon lut import --file <local-file.cube> --input <JSON>'
+        7: 'mioon job watch --input <JSON> [--timeout-ms 60000] [--interval-ms 500]'
+        8: 'mioon export watch --input <JSON> [--timeout-ms 60000] [--interval-ms 500]'
+        9: 'mioon asset download --input <JSON> --output <new-local-file>'
+        10: 'mioon export download --input <JSON> --output <new-local-file>'
+      options:
+        --input: 'JSON object; use - to read stdin'
+        --input-file: 'Explicit local JSON file; exclusive with --input'
+        --request-id: 'Stable caller-owned requestId; never generated by the client'
+        --workspace-origin: 'Explicit restored workspace UUID, kept outside input and pinned for this invocation; inspect with workspace restore inspect. Never substitute a new origin when recovering an old request.'
+        --file: 'asset/lut import only: reads local bytes, never sends a path; LUT .cube files are limited to 7 MiB'
+        --output: 'download only: exclusive new local file, never sent to backend'
+        --max-bytes: 'download only: default 536870912; maximum 2147483648'
+        --timeout-ms: 'Watch/download deadline; default 60000, maximum 86400000'
+        --interval-ms: 'Watch polling interval; default 500, minimum 20'
+        --json: 'Explicit JSON output (already the default)'
+        --help: 'JSON usage or a command schema'
+        --version: 'JSON version'
+      connection:
+        0: 'MIOON_CONNECTION_FILE: Electron descriptor, reread for every request'
+        1: 'MIOON_BASE_URL + MIOON_TOKEN_FILE: local Web backend and private token file'
+        2: 'MIOON_TOKEN: explicit environment token; no --token option'
+      exitCodes:
+        success: 0
+        unexpected: 1
+        validation: 2
+        conflict: 3
+        unavailable: 4
+        timeout: 5
+        operationFailed: 6
+        interrupted: 130
+      operations:
+        0: 'project.rename'
+        1: 'project.delete'
+        2: 'project.summary.list'
+        3: 'agent.authorization.list'
+        4: 'agent.authorization.grant'
+        5: 'agent.authorization.revoke'
+        6: 'lut.import'
+        7: 'lut.list'
+        8: 'lut.inspect'
+        9: 'lut.look.inspect'
+        10: 'timeline.colour.source.inspect'
+        11: 'timeline.colour.image.inspect'
+        12: 'timeline.colour.jpeg.inspect'
+        13: 'workspace.backup.inspect'
+        14: 'workspace.restore.inspect'
+        15: 'timeline.format.get'
+        16: 'timeline.format.set'
+        17: 'timeline.subtitle.add'
+        18: 'timeline.subtitle.update'
+        19: 'timeline.subtitle.remove'
+        20: 'frame.extract'
+        21: 'frame.request.get'
+        22: 'frame.task.get'
+        23: 'frame.task.list'
+        24: 'frame.task.cancelQueued'
+        25: 'frame.task.recoverResult'
+        26: 'image.profile.list'
+        27: 'image.generate'
+        28: 'image.request.get'
+        29: 'image.task.get'
+        30: 'image.task.list'
+        31: 'image.group.list'
+        32: 'image.group.get'
+        33: 'image.version.list'
+        34: 'image.task.cancelQueued'
+        35: 'image.task.recoverResult'
+        36: 'image.review.prepare'
+        37: 'image.review.get'
+        38: 'image.review.list'
+        39: 'image.task.remote.get'
+        40: 'image.task.observeRemote'
+        41: 'project.inspect'
+        42: 'asset.inspect'
+        43: 'shot.inspect'
+        44: 'timeline.inspect'
+        45: 'subject.create'
+        46: 'subject.version.add'
+        47: 'subject.binding.set'
+        48: 'subject.list'
+        49: 'subject.version.list'
+        50: 'subject.binding.list'
+        51: 'asset.range.get'
+        52: 'asset.range.set'
+        53: 'asset.disposition.list'
+        54: 'asset.disposition.set'
+        55: 'asset.annotation.list'
+        56: 'asset.annotation.set'
+        57: 'asset.waveform.request'
+        58: 'asset.waveform.get'
+        59: 'timeline.export.preflight'
+        60: 'timeline.export.samplePeak'
+        61: 'timeline.export.loudness'
+        62: 'timeline.loudness.prepare'
+        63: 'timeline.clip.loudness'
+        64: 'timeline.loudness.apply'
+        65: 'timeline.audioPreview.plan'
+        66: 'timeline.audioPreview.continuousPlan'
+        67: 'timeline.export.capabilities'
+        68: 'project.create'
+        69: 'project.list'
+        70: 'project.get'
+        71: 'asset.import'
+        72: 'asset.list'
+        73: 'shot.create'
+        74: 'shot.update'
+        75: 'shot.reorder'
+        76: 'node.create'
+        77: 'node.update'
+        78: 'edge.create'
+        79: 'edge.delete'
+        80: 'reference.attach'
+        81: 'reference.detach'
+        82: 'provider.list'
+        83: 'generation.submit'
+        84: 'job.get'
+        85: 'job.list'
+        86: 'job.retry'
+        87: 'job.cancel'
+        88: 'job.reconcile'
+        89: 'version.list'
+        90: 'version.select'
+        91: 'export.create'
+        92: 'export.get'
+        93: 'timeline.get'
+        94: 'timeline.history.get'
+        95: 'timeline.undo'
+        96: 'timeline.redo'
+        97: 'timeline.track.add'
+        98: 'timeline.track.update'
+        99: 'timeline.clip.add'
+        100: 'timeline.clip.update'
+        101: 'timeline.clip.replaceSource'
+        102: 'timeline.clip.remove'
+        103: 'timeline.clip.rippleRemove'
+        104: 'timeline.clip.split'
+        105: 'timeline.seed'
+        106: 'timeline.render'
+      safety: 'No automatic submit/retry, no invented request IDs, no remote cancellation on Ctrl+C or timeout. Replay exact idempotent requests after an uncertain response.'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/i18n-command-presentation.test.mjs:70:10)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: MCP offline list/instructions translate while schemas, effects and call envelopes stay exact
+not ok 4 - MCP offline list/instructions translate while schemas, effects and call envelopes stay exact
+  ---
+  duration_ms: 30300.19625
+  type: 'test'
+  location: '/private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/i18n-command-presentation.test.mjs:89:1'
+  failureType: 'testCodeFailure'
+  error: 'MCP initialize exceeded 30 seconds'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    Timeout._onTimeout (file:///private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/i18n-command-presentation.test.mjs:26:173)
+    listOnTimeout (node:internal/timers:685:17)
+    process.processTimers (node:internal/timers:618:7)
+  ...
+# Subtest: launch locale is stripped before RPC and never causes submission replay
+ok 5 - launch locale is stripped before RPC and never causes submission replay
+  ---
+  duration_ms: 1110.648958
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 1
+# fail 4
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 31956.5735

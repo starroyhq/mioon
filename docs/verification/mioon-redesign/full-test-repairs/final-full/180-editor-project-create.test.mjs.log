@@ -1,0 +1,202 @@
+TAP version 13
+# Subtest: native entry lost create ACK latches unknown and prevents immediate or refreshed duplicate POST
+ok 1 - native entry lost create ACK latches unknown and prevents immediate or refreshed duplicate POST
+  ---
+  duration_ms: 3.912584
+  type: 'test'
+  ...
+# Subtest: native real canonical malformed/mismatched create ACK remains unknown: 1:shape
+ok 2 - native real canonical malformed/mismatched create ACK remains unknown: 1:shape
+  ---
+  duration_ms: 0.578833
+  type: 'test'
+  ...
+# Subtest: native real canonical malformed/mismatched create ACK remains unknown: 6:Another name
+ok 3 - native real canonical malformed/mismatched create ACK remains unknown: 6:Another name
+  ---
+  duration_ms: 0.464708
+  type: 'test'
+  ...
+# Subtest: native real canonical malformed/mismatched create ACK remains unknown: 6:Private project name
+ok 4 - native real canonical malformed/mismatched create ACK remains unknown: 6:Private project name
+  ---
+  duration_ms: 0.306583
+  type: 'test'
+  ...
+# Subtest: valid native create ACK stays confirmed after inspect refresh failure
+ok 5 - valid native create ACK stays confirmed after inspect refresh failure
+  ---
+  duration_ms: 0.578291
+  type: 'test'
+  ...
+# Subtest: valid native create ACK stays confirmed after list refresh failure
+ok 6 - valid native create ACK stays confirmed after list refresh failure
+  ---
+  duration_ms: 0.324584
+  type: 'test'
+  ...
+# Subtest: native acknowledged creation opens once, keeps the latch through the exact open receipt, and never replaces its source
+ok 7 - native acknowledged creation opens once, keeps the latch through the exact open receipt, and never replaces its source
+  ---
+  duration_ms: 0.722542
+  type: 'test'
+  ...
+# Subtest: known native create ACK is not downgraded or replayed when opening is refused
+ok 8 - known native create ACK is not downgraded or replayed when opening is refused
+  ---
+  duration_ms: 0.350458
+  type: 'test'
+  ...
+# Subtest: native predispatch identity failure releases the create latch without RPC or uncertainty
+ok 9 - native predispatch identity failure releases the create latch without RPC or uncertainty
+  ---
+  duration_ms: 1.733917
+  type: 'test'
+  ...
+# Subtest: native local canonical input rejection makes no POST and remains safely editable
+ok 10 - native local canonical input rejection makes no POST and remains safely editable
+  ---
+  duration_ms: 0.651542
+  type: 'test'
+  ...
+# Subtest: native definitive create rejection releases only the rejected flight without uncertainty
+ok 11 - native definitive create rejection releases only the rejected flight without uncertainty
+  ---
+  duration_ms: 0.29925
+  type: 'test'
+  ...
+# Subtest: native network loss has no transport rejection proof and keeps unknown without replay
+ok 12 - native network loss has no transport rejection proof and keeps unknown without replay
+  ---
+  duration_ms: 0.264667
+  type: 'test'
+  ...
+# Subtest: native server 500 has no transport rejection proof and keeps unknown without replay
+ok 13 - native server 500 has no transport rejection proof and keeps unknown without replay
+  ---
+  duration_ms: 0.227917
+  type: 'test'
+  ...
+# Subtest: native protocol error has no transport rejection proof and keeps unknown without replay
+ok 14 - native protocol error has no transport rejection proof and keeps unknown without replay
+  ---
+  duration_ms: 0.154209
+  type: 'test'
+  ...
+# Subtest: native plain definitive lookalike has no transport rejection proof and keeps unknown without replay
+ok 15 - native plain definitive lookalike has no transport rejection proof and keeps unknown without replay
+  ---
+  duration_ms: 0.17725
+  type: 'test'
+  ...
+# Subtest: native plain outcome lookalike has no transport rejection proof and keeps unknown without replay
+ok 16 - native plain outcome lookalike has no transport rejection proof and keeps unknown without replay
+  ---
+  duration_ms: 0.211042
+  type: 'test'
+  ...
+# Subtest: native known rejection permits only a new explicit submission after the user corrects input
+ok 17 - native known rejection permits only a new explicit submission after the user corrects input
+  ---
+  duration_ms: 0.357791
+  type: 'test'
+  ...
+# Subtest: create client defaults to unknown without trusted transport classification and never classifies an invalid ACK as rejection
+ok 18 - create client defaults to unknown without trusted transport classification and never classifies an invalid ACK as rejection
+  ---
+  duration_ms: 0.392209
+  type: 'test'
+  ...
+# Subtest: native early-busy duplicate cannot dispatch or release the original pending create
+ok 19 - native early-busy duplicate cannot dispatch or release the original pending create
+  ---
+  duration_ms: 0.345625
+  type: 'test'
+  ...
+# Subtest: late acknowledged native create after disposal cannot open or settle a replacement owner
+ok 20 - late acknowledged native create after disposal cannot open or settle a replacement owner
+  ---
+  duration_ms: 0.388625
+  type: 'test'
+  ...
+# Subtest: late lost native create after disposal cannot open or settle a replacement owner
+ok 21 - late lost native create after disposal cannot open or settle a replacement owner
+  ---
+  duration_ms: 0.348083
+  type: 'test'
+  ...
+# Subtest: legacy native App create only requests scoped New and performs zero business actions (entry true)
+not ok 22 - legacy native App create only requests scoped New and performs zero business actions (entry true)
+  ---
+  duration_ms: 0.837042
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/editor-project-create.test.mjs:238:38'
+  failureType: 'testCodeFailure'
+  error: 'application is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.createProject (eval at appFixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/editor-project-create.test.mjs:56:15), <anonymous>:97:5)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/editor-project-create.test.mjs:240:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: legacy native App create only requests scoped New and performs zero business actions (entry false)
+not ok 23 - legacy native App create only requests scoped New and performs zero business actions (entry false)
+  ---
+  duration_ms: 0.192709
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/editor-project-create.test.mjs:238:38'
+  failureType: 'testCodeFailure'
+  error: 'application is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.createProject (eval at appFixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/editor-project-create.test.mjs:56:15), <anonymous>:97:5)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/editor-project-create.test.mjs:240:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: stale observer finalization/failure cannot clear a newer create or a latched unknown
+ok 24 - stale observer finalization/failure cannot clear a newer create or a latched unknown
+  ---
+  duration_ms: 0.308917
+  type: 'test'
+  ...
+# Subtest: Web real create/runSession preserves legacy retry and response semantics without a native observer
+not ok 25 - Web real create/runSession preserves legacy retry and response semantics without a native observer
+  ---
+  duration_ms: 0.247042
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/editor-project-create.test.mjs:256:1'
+  failureType: 'testCodeFailure'
+  error: 'application is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.createProject (eval at appFixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/editor-project-create.test.mjs:56:15), <anonymous>:97:5)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/editor-project-create.test.mjs:258:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..25
+# tests 25
+# suites 0
+# pass 22
+# fail 3
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 268.165375

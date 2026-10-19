@@ -1,0 +1,112 @@
+TAP version 13
+# Subtest: new projects open Canvas with storyboard collapsed and independent Editing defaults
+ok 1 - new projects open Canvas with storyboard collapsed and independent Editing defaults
+  ---
+  duration_ms: 0.755917
+  type: 'test'
+  ...
+# Subtest: legacy v1 cache defaults only the new magnet preference without a read mutation
+ok 2 - legacy v1 cache defaults only the new magnet preference without a read mutation
+  ---
+  duration_ms: 0.896125
+  type: 'test'
+  ...
+# Subtest: project-local view state survives reload without sharing mode, selection or geometry
+ok 3 - project-local view state survives reload without sharing mode, selection or geometry
+  ---
+  duration_ms: 0.324667
+  type: 'test'
+  ...
+# Subtest: changing active mode preserves the inactive mode state byte-for-byte
+ok 4 - changing active mode preserves the inactive mode state byte-for-byte
+  ---
+  duration_ms: 0.124416
+  type: 'test'
+  ...
+# Subtest: malformed, obsolete and unavailable preference storage fall back safely
+ok 5 - malformed, obsolete and unavailable preference storage fall back safely
+  ---
+  duration_ms: 0.190958
+  type: 'test'
+  ...
+# Subtest: preference normalization bounds viewport, timeline geometry, frames and text
+ok 6 - preference normalization bounds viewport, timeline geometry, frames and text
+  ---
+  duration_ms: 0.121542
+  type: 'test'
+  ...
+# Subtest: normalization ignores unexpected fields rather than persisting domain data or secrets
+ok 7 - normalization ignores unexpected fields rather than persisting domain data or secrets
+  ---
+  duration_ms: 0.0925
+  type: 'test'
+  ...
+# Subtest: refresh reconciliation keeps valid independent selections, viewport and local mode
+ok 8 - refresh reconciliation keeps valid independent selections, viewport and local mode
+  ---
+  duration_ms: 0.2145
+  type: 'test'
+  ...
+# Subtest: external removals prune dangling IDs without switching modes or resetting geometry
+ok 9 - external removals prune dangling IDs without switching modes or resetting geometry
+  ---
+  duration_ms: 0.099334
+  type: 'test'
+  ...
+# Subtest: external CLI/MCP edits and late generated versions never select a local mode
+ok 10 - external CLI/MCP edits and late generated versions never select a local mode
+  ---
+  duration_ms: 0.13475
+  type: 'test'
+  ...
+# Subtest: return-to-source resolves the immutable clip asset version instead of the shot current version
+ok 11 - return-to-source resolves the immutable clip asset version instead of the shot current version
+  ---
+  duration_ms: 0.135125
+  type: 'test'
+  ...
+# Subtest: imported source resolves one canvas node and absent sources fail safely
+ok 12 - imported source resolves one canvas node and absent sources fail safely
+  ---
+  duration_ms: 0.073708
+  type: 'test'
+  ...
+# Subtest: workspace switching/reload leaves exact pending generation, reference and timeline recovery identities intact
+ok 13 - workspace switching/reload leaves exact pending generation, reference and timeline recovery identities intact
+  ---
+  duration_ms: 0.948125
+  type: 'test'
+  ...
+# Subtest: a denied global localStorage getter is caught before reading or writing preferences
+ok 14 - a denied global localStorage getter is caught before reading or writing preferences
+  ---
+  duration_ms: 0.143041
+  type: 'test'
+  ...
+# Subtest: legacy cache seeds independent mode layouts from shared flags without rewriting its bytes
+ok 15 - legacy cache seeds independent mode layouts from shared flags without rewriting its bytes
+  ---
+  duration_ms: 0.135417
+  type: 'test'
+  ...
+# Subtest: supplied malformed cache layouts are rejected instead of imported as repaired preferences
+ok 16 - supplied malformed cache layouts are rejected instead of imported as repaired preferences
+  ---
+  duration_ms: 0.468
+  type: 'test'
+  ...
+# Subtest: mode layouts survive project switching, reconciliation and reload independently of shared flags
+ok 17 - mode layouts survive project switching, reconciliation and reload independently of shared flags
+  ---
+  duration_ms: 0.118209
+  type: 'test'
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 250.252666

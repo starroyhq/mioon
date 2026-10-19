@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: strict bounded values, ordering and non-normalization
+ok 1 - strict bounded values, ordering and non-normalization
+  ---
+  duration_ms: 1.085542
+  type: 'test'
+  ...
+# Subtest: legacy absent, explicit null, constants and closed endpoint versus half-open samples
+ok 2 - legacy absent, explicit null, constants and closed endpoint versus half-open samples
+  ---
+  duration_ms: 0.264459
+  type: 'test'
+  ...
+# Subtest: immutable evaluator and edit fields preserve presence without aliasing
+ok 3 - immutable evaluator and edit fields preserve presence without aliasing
+  ---
+  duration_ms: 0.960667
+  type: 'test'
+  ...
+# Subtest: all interior frame cuts preserve exact anchors and numerical curve including held regions
+ok 4 - all interior frame cuts preserve exact anchors and numerical curve including held regions
+  ---
+  duration_ms: 7.087
+  type: 'test'
+  ...
+# Subtest: fade times automation is quadratic, not a combined endpoint ramp
+ok 5 - fade times automation is quadratic, not a combined endpoint ramp
+  ---
+  duration_ms: 0.292042
+  type: 'test'
+  ...
+# Subtest: serialized budget proof: 16 numeric points fit per-edit, but raw draft and aggregate need explicit admission
+ok 6 - serialized budget proof: 16 numeric points fit per-edit, but raw draft and aggregate need explicit admission
+  ---
+  duration_ms: 0.186958
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 170.831083

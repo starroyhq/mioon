@@ -1,0 +1,62 @@
+TAP version 13
+# Subtest: dedicated preferences HTTP survives a real killed/restarted backend and leaves project/history unchanged
+ok 1 - dedicated preferences HTTP survives a real killed/restarted backend and leaves project/history unchanged
+  ---
+  duration_ms: 1012.365458
+  type: 'test'
+  ...
+# Subtest: preferences endpoint retains token/cookie authentication, strict origin/host validation and the 16 KiB body cap
+ok 2 - preferences endpoint retains token/cookie authentication, strict origin/host validation and the 16 KiB body cap
+  ---
+  duration_ms: 553.541417
+  type: 'test'
+  ...
+# Subtest: official MCP discovery and calls cannot reach renderer workspace preferences
+not ok 3 - official MCP discovery and calls cannot reach renderer workspace preferences
+  ---
+  duration_ms: 305.005666
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-preferences-http.test.mjs:164:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+    + {
+    +   includeAudioRoleCapability: {
+    +     const: true,
+    +     type: 'boolean'
+    +   },
+    +   includeVolumeEnvelopeCapability: {
+    +     const: true,
+    +     type: 'boolean'
+    +   }
+    + }
+    - {}
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual:
+    includeAudioRoleCapability:
+      type: 'boolean'
+      const: true
+    includeVolumeEnvelopeCapability:
+      type: 'boolean'
+      const: true
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-preferences-http.test.mjs:174:10)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 2
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2068.065667

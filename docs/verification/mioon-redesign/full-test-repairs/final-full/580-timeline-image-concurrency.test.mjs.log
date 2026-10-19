@@ -1,0 +1,110 @@
+TAP version 13
+# Subtest: managed PNG compositor admits two overlapping inputs and rejects the third with actionable guidance
+ok 1 - managed PNG compositor admits two overlapping inputs and rejects the third with actionable guidance
+  ---
+  duration_ms: 6.22125
+  type: 'test'
+  ...
+# Subtest: PNG concurrency uses end-exclusive boundaries regardless of clip order
+ok 2 - PNG concurrency uses end-exclusive boundaries regardless of clip order
+  ---
+  duration_ms: 1.384583
+  type: 'test'
+  ...
+# Subtest: hidden PNG tracks are omitted while legacy images and twelve video inputs retain their historical path
+ok 3 - hidden PNG tracks are omitted while legacy images and twelve video inputs retain their historical path
+  ---
+  duration_ms: 1.851917
+  type: 'test'
+  ...
+# Subtest: production render opens only active PNG inputs: twelve sequential
+not ok 4 - production render opens only active PNG inputs: twelve sequential
+  ---
+  duration_ms: 766.250041
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-image-concurrency.test.mjs:172:3'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    ChildProcess._handle.onexit (node:internal/child_process:305:5)
+  ...
+# Subtest: production render opens only active PNG inputs: two visible plus hidden
+not ok 5 - production render opens only active PNG inputs: two visible plus hidden
+  ---
+  duration_ms: 444.082875
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-image-concurrency.test.mjs:172:3'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    Socket.<anonymous> (node:internal/child_process:497:11)
+    Socket.emit (node:events:514:20)
+    Pipe.<anonymous> (node:net:362:12)
+  ...
+# Subtest: preflight reports the shared PNG cap before probing or writing, including a safe selected range
+ok 6 - preflight reports the shared PNG cap before probing or writing, including a safe selected range
+  ---
+  duration_ms: 880.412208
+  type: 'test'
+  ...
+# Subtest: a safe export range cannot bypass an over-budget whole frozen mixed plan
+ok 7 - a safe export range cannot bypass an over-budget whole frozen mixed plan
+  ---
+  duration_ms: 6.104417
+  type: 'test'
+  ...
+# Subtest: restored33 rejects an over-budget frozen export consistently without changing retained evidence
+not ok 8 - restored33 rejects an over-budget frozen export consistently without changing retained evidence
+  ---
+  duration_ms: 698.752833
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-image-concurrency.test.mjs:256:3'
+  failureType: 'testCodeFailure'
+  error: 'Workspace schema role is unsupported'
+  code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  stack: |-
+    unsupported (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/workspace-schema-dispatch.ts:38:55)
+    readCurrentWorkspaceRole (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/workspace-schema-dispatch.ts:125:30)
+    classify (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/workspace-schema-dispatch.ts:193:18)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-image-concurrency.test.mjs:270:18)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restored33 rejects an over-budget frozen receipt consistently without changing retained evidence
+not ok 9 - restored33 rejects an over-budget frozen receipt consistently without changing retained evidence
+  ---
+  duration_ms: 663.486333
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-image-concurrency.test.mjs:256:3'
+  failureType: 'testCodeFailure'
+  error: 'Workspace schema role is unsupported'
+  code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  stack: |-
+    unsupported (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/workspace-schema-dispatch.ts:38:55)
+    readCurrentWorkspaceRole (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/workspace-schema-dispatch.ts:125:30)
+    classify (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/workspace-schema-dispatch.ts:193:18)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-image-concurrency.test.mjs:270:18)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 5
+# fail 4
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3775.485833

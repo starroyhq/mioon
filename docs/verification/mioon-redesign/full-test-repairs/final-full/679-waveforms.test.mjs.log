@@ -1,0 +1,326 @@
+TAP version 13
+# Subtest: GET is noncreating and read-only; ready windows reduce source-aligned maxima without changing media or business rows
+ok 1 - GET is noncreating and read-only; ready windows reduce source-aligned maxima without changing media or business rows
+  ---
+  duration_ms: 704.344375
+  type: 'test'
+  ...
+# Subtest: actual PCM coverage is explicit and codec tails remain null rather than fabricated silence
+ok 2 - actual PCM coverage is explicit and codec tails remain null rather than fabricated silence
+  ---
+  duration_ms: 607.964
+  type: 'test'
+  ...
+# Subtest: same project/source requests and duplicate service wrappers share one owned decode; projects never share cache state
+ok 3 - same project/source requests and duplicate service wrappers share one owned decode; projects never share cache state
+  ---
+  duration_ms: 599.282833
+  type: 'test'
+  ...
+# Subtest: bounded owner checks reject missing, foreign, malformed and contradictory ownership before cache lookup or probing
+ok 4 - bounded owner checks reject missing, foreign, malformed and contradictory ownership before cache lookup or probing
+  ---
+  duration_ms: 580.682667
+  type: 'test'
+  ...
+# Subtest: hash mismatch is terminal and sanitized until explicit retry; no probe or decoder sees unverified bytes
+ok 5 - hash mismatch is terminal and sanitized until explicit retry; no probe or decoder sees unverified bytes
+  ---
+  duration_ms: 591.663
+  type: 'test'
+  ...
+# Subtest: managed source validation rejects traversal, symlinks, hardlinks, FIFOs and oversized files before probing
+ok 6 - managed source validation rejects traversal, symlinks, hardlinks, FIFOs and oversized files before probing
+  ---
+  duration_ms: 649.822458
+  type: 'test'
+  ...
+# Subtest: probe restrictions reject no audio, extra channels, long or unknown duration and unaligned/unknown origins
+    # Subtest: 0
+    ok 1 - 0
+      ---
+      duration_ms: 650.118083
+      type: 'test'
+      ...
+    # Subtest: 1
+    ok 2 - 1
+      ---
+      duration_ms: 613.784083
+      type: 'test'
+      ...
+    # Subtest: 2
+    ok 3 - 2
+      ---
+      duration_ms: 641.478541
+      type: 'test'
+      ...
+    # Subtest: 3
+    ok 4 - 3
+      ---
+      duration_ms: 584.203291
+      type: 'test'
+      ...
+    # Subtest: 4
+    ok 5 - 4
+      ---
+      duration_ms: 597.281292
+      type: 'test'
+      ...
+    # Subtest: 5
+    ok 6 - 5
+      ---
+      duration_ms: 581.7535
+      type: 'test'
+      ...
+    # Subtest: 6
+    ok 7 - 6
+      ---
+      duration_ms: 584.441917
+      type: 'test'
+      ...
+    # Subtest: 7
+    ok 8 - 7
+      ---
+      duration_ms: 660.921458
+      type: 'test'
+      ...
+    # Subtest: untimed WAV sample zero is the documented safe absence
+    ok 9 - untimed WAV sample zero is the documented safe absence
+      ---
+      duration_ms: 726.947208
+      type: 'test'
+      ...
+    # Subtest: matching absolute nonzero origins preserve relative zero
+    ok 10 - matching absolute nonzero origins preserve relative zero
+      ---
+      duration_ms: 696.53325
+      type: 'test'
+      ...
+    1..10
+ok 7 - probe restrictions reject no audio, extra channels, long or unknown duration and unaligned/unknown origins
+  ---
+  duration_ms: 6339.428834
+  type: 'test'
+  ...
+# Subtest: file mutation/replacement and current owned metadata changes fence ready publication
+    # Subtest: bytes
+    ok 1 - bytes
+      ---
+      duration_ms: 585.60025
+      type: 'test'
+      ...
+    # Subtest: replacement
+    ok 2 - replacement
+      ---
+      duration_ms: 614.794958
+      type: 'test'
+      ...
+    # Subtest: sha256
+    ok 3 - sha256
+      ---
+      duration_ms: 580.131167
+      type: 'test'
+      ...
+    # Subtest: relativePath
+    ok 4 - relativePath
+      ---
+      duration_ms: 582.972709
+      type: 'test'
+      ...
+    # Subtest: duration
+    ok 5 - duration
+      ---
+      duration_ms: 728.054542
+      type: 'test'
+      ...
+    # Subtest: sizeBytes
+    ok 6 - sizeBytes
+      ---
+      duration_ms: 767.805417
+      type: 'test'
+      ...
+    # Subtest: hasAudio
+    ok 7 - hasAudio
+      ---
+      duration_ms: 797.209958
+      type: 'test'
+      ...
+    # Subtest: owner
+    ok 8 - owner
+      ---
+      duration_ms: 614.866291
+      type: 'test'
+      ...
+    1..8
+ok 8 - file mutation/replacement and current owned metadata changes fence ready publication
+  ---
+  duration_ms: 5272.575833
+  type: 'test'
+  ...
+# Subtest: late attempt callbacks cannot replace newer durable state
+ok 9 - late attempt callbacks cannot replace newer durable state
+  ---
+  duration_ms: 582.072083
+  type: 'test'
+  ...
+# Subtest: ready cache corruption is read-only error until explicit retry; clear removes only disposable derivations
+ok 10 - ready cache corruption is read-only error until explicit retry; clear removes only disposable derivations
+  ---
+  duration_ms: 598.602042
+  type: 'test'
+  ...
+# Subtest: one active plus four queued operations are bounded; overflow has no persistent entry
+ok 11 - one active plus four queued operations are bounded; overflow has no persistent entry
+  ---
+  duration_ms: 621.43
+  type: 'test'
+  ...
+# Subtest: owned drain interrupts queued work, joins a late callback, and restart requires explicit fresh attempt
+ok 12 - owned drain interrupts queued work, joins a late callback, and restart requires explicit fresh attempt
+  ---
+  duration_ms: 891.147209
+  type: 'test'
+  ...
+# Subtest: startup marks only unfinished rows interrupted and never probes; completed rows persist byte-for-byte
+ok 13 - startup marks only unfinished rows interrupted and never probes; completed rows persist byte-for-byte
+  ---
+  duration_ms: 625.383
+  type: 'test'
+  ...
+# Subtest: explicit admission deterministically evicts oldest terminal entries; GET never refreshes ordering
+ok 14 - explicit admission deterministically evicts oldest terminal entries; GET never refreshes ordering
+  ---
+  duration_ms: 882.462833
+  type: 'test'
+  ...
+# Subtest: serialized peak payload plus in-flight maximum reservation respects the 16 MiB aggregate limit
+ok 15 - serialized peak payload plus in-flight maximum reservation respects the 16 MiB aggregate limit
+  ---
+  duration_ms: 1523.693416
+  type: 'test'
+  ...
+# Subtest: unconfirmed decoder termination remains a shutdown failure with no ready partial cache
+ok 16 - unconfirmed decoder termination remains a shutdown failure with no ready partial cache
+  ---
+  duration_ms: 556.938833
+  type: 'test'
+  ...
+# Subtest: a partial final PCM bin never fills a wholly uncovered exact requested interval
+ok 17 - a partial final PCM bin never fills a wholly uncovered exact requested interval
+  ---
+  duration_ms: 609.0055
+  type: 'test'
+  ...
+# Subtest: unknown non-WAV origins and matching negative origins are conservatively unsupported
+    # Subtest: unknown
+    ok 1 - unknown
+      ---
+      duration_ms: 588.901666
+      type: 'test'
+      ...
+    # Subtest: negative
+    ok 2 - negative
+      ---
+      duration_ms: 568.67925
+      type: 'test'
+      ...
+    1..2
+ok 18 - unknown non-WAV origins and matching negative origins are conservatively unsupported
+  ---
+  duration_ms: 1158.0585
+  type: 'test'
+  ...
+# Subtest: ownership reassignment as a publication trigger rolls back both ready data and reassignment
+ok 19 - ownership reassignment as a publication trigger rolls back both ready data and reassignment
+  ---
+  duration_ms: 605.311
+  type: 'test'
+  ...
+# Subtest: malformed budget columns and oversized cache identities fail closed without damaging an explicit retry target
+ok 20 - malformed budget columns and oversized cache identities fail closed without damaging an explicit retry target
+  ---
+  duration_ms: 618.36375
+  type: 'test'
+  ...
+# Subtest: excess cache row corruption does not block startup or original editing and is never silently repaired
+ok 21 - excess cache row corruption does not block startup or original editing and is never silently repaired
+  ---
+  duration_ms: 609.193333
+  type: 'test'
+  ...
+# Subtest: whole-attempt timeout aborts owned work and reports a sanitized terminal reason
+ok 22 - whole-attempt timeout aborts owned work and reports a sanitized terminal reason
+  ---
+  duration_ms: 617.821333
+  type: 'test'
+  ...
+# Subtest: waveform-specific real ffprobe denies playlist/network references before any outbound request
+ok 23 - waveform-specific real ffprobe denies playlist/network references before any outbound request
+  ---
+  duration_ms: 618.766792
+  type: 'test'
+  ...
+# Subtest: waveform-specific real ffprobe accepts sample-zero WAV without inventing a missing timestamp
+ok 24 - waveform-specific real ffprobe accepts sample-zero WAV without inventing a missing timestamp
+  ---
+  duration_ms: 626.459459
+  type: 'test'
+  ...
+# Subtest: empty and ready-only construction performs zero transactions or writes; unfinished recovery uses one synchronous transaction
+ok 25 - empty and ready-only construction performs zero transactions or writes; unfinished recovery uses one synchronous transaction
+  ---
+  duration_ms: 608.10375
+  type: 'test'
+  ...
+# Subtest: oversized foreign relational ownership is filtered in SQL before any foreign row reaches the service
+ok 26 - oversized foreign relational ownership is filtered in SQL before any foreign row reaches the service
+  ---
+  duration_ms: 657.757791
+  type: 'test'
+  ...
+# Subtest: a second lock:false process sees active state but cannot reconcile, steal, queue or decode
+ok 27 - a second lock:false process sees active state but cannot reconcile, steal, queue or decode
+  ---
+  duration_ms: 1179.740208
+  type: 'test'
+  ...
+# Subtest: replaced or deleted workspace lock permanently fences admission, callbacks and shutdown error saves
+    # Subtest: replaced
+    ok 1 - replaced
+      ---
+      duration_ms: 581.414125
+      type: 'test'
+      ...
+    # Subtest: deleted
+    ok 2 - deleted
+      ---
+      duration_ms: 574.703292
+      type: 'test'
+      ...
+    1..2
+ok 28 - replaced or deleted workspace lock permanently fences admission, callbacks and shutdown error saves
+  ---
+  duration_ms: 1156.611542
+  type: 'test'
+  ...
+# Subtest: exclusive close revokes old callbacks before a new owner reconciles and publishes a fresh attempt
+ok 29 - exclusive close revokes old callbacks before a new owner reconciles and publishes a fresh attempt
+  ---
+  duration_ms: 595.287583
+  type: 'test'
+  ...
+# Subtest: ownership is rechecked after a saturated global probe permit before any late ffprobe spawn
+ok 30 - ownership is rechecked after a saturated global probe permit before any late ffprobe spawn
+  ---
+  duration_ms: 626.766791
+  type: 'test'
+  ...
+1..30
+# tests 52
+# suites 0
+# pass 52
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 32180.146958

@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: ordinary compiled entry creates no opacity capability and retains the desktop/web entry
+ok 1 - ordinary compiled entry creates no opacity capability and retains the desktop/web entry
+  ---
+  duration_ms: 22.902542
+  type: 'test'
+  ...
+# Subtest: isolated compiled entry mounts the same App with its exact private application and no launcher owner
+ok 2 - isolated compiled entry mounts the same App with its exact private application and no launcher owner
+  ---
+  duration_ms: 2.188125
+  type: 'test'
+  ...
+# Subtest: actual App pins its original entry capability and defaults reject copied metadata
+ok 3 - actual App pins its original entry capability and defaults reject copied metadata
+  ---
+  duration_ms: 1.297875
+  type: 'test'
+  ...
+# Subtest: candidate App binds the actual task lane, Inspector v3 client and render readers while unsupported editors remain unavailable
+ok 4 - candidate App binds the actual task lane, Inspector v3 client and render readers while unsupported editors remain unavailable
+  ---
+  duration_ms: 0.656958
+  type: 'test'
+  ...
+# Subtest: candidate Inspector describes saved preview/export behavior in all supported languages
+ok 5 - candidate Inspector describes saved preview/export behavior in all supported languages
+  ---
+  duration_ms: 0.6485
+  type: 'test'
+  ...
+# Subtest: actual candidate Return to source keeps editing and uses the shared source-preview navigation guard
+ok 6 - actual candidate Return to source keeps editing and uses the shared source-preview navigation guard
+  ---
+  duration_ms: 0.556083
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 287.287833

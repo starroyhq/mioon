@@ -1,0 +1,141 @@
+TAP version 13
+# Subtest: explicit subject submission persists the complete reviewed source before dispatch and preserves original identity
+ok 1 - explicit subject submission persists the complete reviewed source before dispatch and preserves original identity
+  ---
+  duration_ms: 2.516833
+  type: 'test'
+  ...
+# Subtest: missing, foreign or changed subject pin stops before dispatch and never destroys the existing record
+ok 2 - missing, foreign or changed subject pin stops before dispatch and never destroys the existing record
+  ---
+  duration_ms: 0.683125
+  type: 'test'
+  ...
+# Subtest: reconciliation needs a unique exact subject acknowledgement, not matching key alone or newer current head
+ok 3 - reconciliation needs a unique exact subject acknowledgement, not matching key alone or newer current head
+  ---
+  duration_ms: 9.771625
+  type: 'test'
+  ...
+# Subtest: corrupt stored subject pin cannot be replaced from read data, while omitted legacy behaviour stays compatible
+ok 4 - corrupt stored subject pin cannot be replaced from read data, while omitted legacy behaviour stays compatible
+  ---
+  duration_ms: 0.258458
+  type: 'test'
+  ...
+# Subtest: shared client rejects malformed subject success as unknown with original key and never retries
+ok 5 - shared client rejects malformed subject success as unknown with original key and never retries
+  ---
+  duration_ms: 14.694625
+  type: 'test'
+  ...
+# Subtest: actual session runner retains lost ACK and every unbound 4xx, then accepts only exact original subject replay
+not ok 6 - actual session runner retains lost ACK and every unbound 4xx, then accepts only exact original subject replay
+  ---
+  duration_ms: 2.688292
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subject-video-recovery-ui.test.mjs:117:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.runSession [as run] (eval at appHarness (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subject-video-recovery-ui.test.mjs:113:12), <anonymous>:4:5)
+    send (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subject-video-recovery-ui.test.mjs:120:47)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subject-video-recovery-ui.test.mjs:121:21)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual late subject ACK cannot refresh or notify a replacement project, while preserving its confirmed original key outcome
+not ok 7 - actual late subject ACK cannot refresh or notify a replacement project, while preserving its confirmed original key outcome
+  ---
+  duration_ms: 1.143041
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subject-video-recovery-ui.test.mjs:131:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    0 !== 1
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subject-video-recovery-ui.test.mjs:134:9)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: subject retry reconciliation requires original full snapshot, including when every local marker is lost
+ok 8 - subject retry reconciliation requires original full snapshot, including when every local marker is lost
+  ---
+  duration_ms: 1.979917
+  type: 'test'
+  ...
+# Subtest: actual subject retry holds lost, malformed and rejected outcomes until exact original snapshot ACK
+not ok 9 - actual subject retry holds lost, malformed and rejected outcomes until exact original snapshot ACK
+  ---
+  duration_ms: 0.701667
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subject-video-recovery-ui.test.mjs:159:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.runSession [as run] (eval at appHarness (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subject-video-recovery-ui.test.mjs:113:12), <anonymous>:4:5)
+    send (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subject-video-recovery-ui.test.mjs:162:47)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subject-video-recovery-ui.test.mjs:163:8)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual known-subject retry cannot use stripped metadata or an absent receipt as legacy authority
+not ok 10 - actual known-subject retry cannot use stripped metadata or an absent receipt as legacy authority
+  ---
+  duration_ms: 0.624083
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subject-video-recovery-ui.test.mjs:175:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.runSession [as run] (eval at appHarness (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subject-video-recovery-ui.test.mjs:113:12), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subject-video-recovery-ui.test.mjs:178:10)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: shared client validates subject-bearing retry ACK without broadening the legacy wire
+ok 11 - shared client validates subject-bearing retry ACK without broadening the legacy wire
+  ---
+  duration_ms: 1.490084
+  type: 'test'
+  ...
+# Error: Test "actual late subject ACK cannot refresh or notify a replacement project, while preserving its confirmed original key outcome" at tests/subject-video-recovery-ui.test.mjs:131:1 generated asynchronous activity after the test ended. This activity created the error "ReferenceError: clipConnectionBlocked is not defined" and would have caused the test to fail, but instead triggered an unhandledRejection event.
+1..11
+# tests 11
+# suites 0
+# pass 7
+# fail 4
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 328.90875

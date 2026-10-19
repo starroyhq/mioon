@@ -1,0 +1,110 @@
+TAP version 13
+# Subtest: managed PNG compositor admits two overlapping inputs and rejects the third with actionable guidance
+ok 1 - managed PNG compositor admits two overlapping inputs and rejects the third with actionable guidance
+  ---
+  duration_ms: 5.404042
+  type: 'test'
+  ...
+# Subtest: PNG concurrency uses end-exclusive boundaries regardless of clip order
+ok 2 - PNG concurrency uses end-exclusive boundaries regardless of clip order
+  ---
+  duration_ms: 1.214958
+  type: 'test'
+  ...
+# Subtest: hidden PNG tracks are omitted while legacy images and twelve video inputs retain their historical path
+ok 3 - hidden PNG tracks are omitted while legacy images and twelve video inputs retain their historical path
+  ---
+  duration_ms: 1.660792
+  type: 'test'
+  ...
+# Subtest: production render opens only active PNG inputs: twelve sequential
+not ok 4 - production render opens only active PNG inputs: twelve sequential
+  ---
+  duration_ms: 748.314375
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-image-concurrency.test.mjs:172:3'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    Socket.<anonymous> (node:internal/child_process:497:11)
+    Socket.emit (node:events:514:20)
+    Pipe.<anonymous> (node:net:362:12)
+  ...
+# Subtest: production render opens only active PNG inputs: two visible plus hidden
+not ok 5 - production render opens only active PNG inputs: two visible plus hidden
+  ---
+  duration_ms: 404.112917
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-image-concurrency.test.mjs:172:3'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    ChildProcess._handle.onexit (node:internal/child_process:305:5)
+  ...
+# Subtest: preflight reports the shared PNG cap before probing or writing, including a safe selected range
+ok 6 - preflight reports the shared PNG cap before probing or writing, including a safe selected range
+  ---
+  duration_ms: 173.417292
+  type: 'test'
+  ...
+# Subtest: a safe export range cannot bypass an over-budget whole frozen mixed plan
+ok 7 - a safe export range cannot bypass an over-budget whole frozen mixed plan
+  ---
+  duration_ms: 2.523125
+  type: 'test'
+  ...
+# Subtest: restored33 rejects an over-budget frozen export consistently without changing retained evidence
+not ok 8 - restored33 rejects an over-budget frozen export consistently without changing retained evidence
+  ---
+  duration_ms: 134.512334
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-image-concurrency.test.mjs:256:3'
+  failureType: 'testCodeFailure'
+  error: 'Workspace schema role is unsupported'
+  code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  stack: |-
+    unsupported (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-schema-dispatch.ts:34:55)
+    readCurrentWorkspaceRole (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-schema-dispatch.ts:125:123)
+    classify (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-schema-dispatch.ts:172:18)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-image-concurrency.test.mjs:270:18)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restored33 rejects an over-budget frozen receipt consistently without changing retained evidence
+not ok 9 - restored33 rejects an over-budget frozen receipt consistently without changing retained evidence
+  ---
+  duration_ms: 133.82525
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-image-concurrency.test.mjs:256:3'
+  failureType: 'testCodeFailure'
+  error: 'Workspace schema role is unsupported'
+  code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  stack: |-
+    unsupported (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-schema-dispatch.ts:34:55)
+    readCurrentWorkspaceRole (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-schema-dispatch.ts:125:123)
+    classify (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-schema-dispatch.ts:172:18)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-image-concurrency.test.mjs:270:18)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 5
+# fail 4
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1874.52025

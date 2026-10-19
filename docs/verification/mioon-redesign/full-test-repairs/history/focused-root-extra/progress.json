@@ -1,0 +1,9 @@
+{
+  "completedFiles": 6,
+  "totalFiles": 6,
+  "passedFiles": 4,
+  "failedFiles": 2,
+  "timeoutFiles": 0,
+  "seconds": 38.64,
+  "last": "tests/timeline-preflight-business.test.mjs"
+}

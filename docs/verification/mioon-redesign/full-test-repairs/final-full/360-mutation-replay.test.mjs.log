@@ -1,0 +1,208 @@
+TAP version 13
+# Subtest: shot.create: immutable exact response replays before current revision checks without writes, including restart
+ok 1 - shot.create: immutable exact response replays before current revision checks without writes, including restart
+  ---
+  duration_ms: 1143.481958
+  type: 'test'
+  ...
+# Subtest: shot.update: immutable exact response replays before current revision checks without writes, including restart
+ok 2 - shot.update: immutable exact response replays before current revision checks without writes, including restart
+  ---
+  duration_ms: 645.846917
+  type: 'test'
+  ...
+# Subtest: shot.reorder: immutable exact response replays before current revision checks without writes, including restart
+ok 3 - shot.reorder: immutable exact response replays before current revision checks without writes, including restart
+  ---
+  duration_ms: 647.940792
+  type: 'test'
+  ...
+# Subtest: node.create: immutable exact response replays before current revision checks without writes, including restart
+ok 4 - node.create: immutable exact response replays before current revision checks without writes, including restart
+  ---
+  duration_ms: 629.241583
+  type: 'test'
+  ...
+# Subtest: node.update: immutable exact response replays before current revision checks without writes, including restart
+ok 5 - node.update: immutable exact response replays before current revision checks without writes, including restart
+  ---
+  duration_ms: 623.236292
+  type: 'test'
+  ...
+# Subtest: version.select: immutable exact response replays before current revision checks without writes, including restart
+ok 6 - version.select: immutable exact response replays before current revision checks without writes, including restart
+  ---
+  duration_ms: 630.739291
+  type: 'test'
+  ...
+# Subtest: shot.create: journal insertion failure rolls the business mutation back atomically
+ok 7 - shot.create: journal insertion failure rolls the business mutation back atomically
+  ---
+  duration_ms: 587.813084
+  type: 'test'
+  ...
+# Subtest: shot.update: journal insertion failure rolls the business mutation back atomically
+ok 8 - shot.update: journal insertion failure rolls the business mutation back atomically
+  ---
+  duration_ms: 595.549041
+  type: 'test'
+  ...
+# Subtest: shot.reorder: journal insertion failure rolls the business mutation back atomically
+ok 9 - shot.reorder: journal insertion failure rolls the business mutation back atomically
+  ---
+  duration_ms: 596.908542
+  type: 'test'
+  ...
+# Subtest: node.create: journal insertion failure rolls the business mutation back atomically
+ok 10 - node.create: journal insertion failure rolls the business mutation back atomically
+  ---
+  duration_ms: 585.334708
+  type: 'test'
+  ...
+# Subtest: node.update: journal insertion failure rolls the business mutation back atomically
+ok 11 - node.update: journal insertion failure rolls the business mutation back atomically
+  ---
+  duration_ms: 587.714125
+  type: 'test'
+  ...
+# Subtest: version.select: journal insertion failure rolls the business mutation back atomically
+ok 12 - version.select: journal insertion failure rolls the business mutation back atomically
+  ---
+  duration_ms: 594.2475
+  type: 'test'
+  ...
+# Subtest: key binding rejects changed operation, project, optional fields, revision, and payload without leaking the prior response
+ok 13 - key binding rejects changed operation, project, optional fields, revision, and payload without leaking the prior response
+  ---
+  duration_ms: 595.834958
+  type: 'test'
+  ...
+# Subtest: keyless legacy calls create distinct IDs, retain original fields, and require fresh revisions
+ok 14 - keyless legacy calls create distinct IDs, retain original fields, and require fresh revisions
+  ---
+  duration_ms: 596.859375
+  type: 'test'
+  ...
+# Subtest: requestId is never persisted on a node, and text-node asset IDs still require same-project ownership
+ok 15 - requestId is never persisted on a node, and text-node asset IDs still require same-project ownership
+  ---
+  duration_ms: 580.925875
+  type: 'test'
+  ...
+# Subtest: fresh-key definite rollback proof is bound to the request; receipt conflicts and replay failures never carry it
+ok 16 - fresh-key definite rollback proof is bound to the request; receipt conflicts and replay failures never carry it
+  ---
+  duration_ms: 582.890375
+  type: 'test'
+  ...
+# Subtest: shot.create: a retained receipt does not return a deleted or reassigned target
+ok 17 - shot.create: a retained receipt does not return a deleted or reassigned target
+  ---
+  duration_ms: 579.788458
+  type: 'test'
+  ...
+# Subtest: shot.update: a retained receipt does not return a deleted or reassigned target
+ok 18 - shot.update: a retained receipt does not return a deleted or reassigned target
+  ---
+  duration_ms: 584.304584
+  type: 'test'
+  ...
+# Subtest: node.create: a retained receipt does not return a deleted or reassigned target
+ok 19 - node.create: a retained receipt does not return a deleted or reassigned target
+  ---
+  duration_ms: 581.846125
+  type: 'test'
+  ...
+# Subtest: node.update: a retained receipt does not return a deleted or reassigned target
+ok 20 - node.update: a retained receipt does not return a deleted or reassigned target
+  ---
+  duration_ms: 582.663583
+  type: 'test'
+  ...
+# Subtest: version.select: a retained receipt does not return a deleted or reassigned target
+ok 21 - version.select: a retained receipt does not return a deleted or reassigned target
+  ---
+  duration_ms: 576.560208
+  type: 'test'
+  ...
+# Subtest: shot.reorder: a retained receipt does not return a deleted or reassigned target
+ok 22 - shot.reorder: a retained receipt does not return a deleted or reassigned target
+  ---
+  duration_ms: 584.582125
+  type: 'test'
+  ...
+# Subtest: missing projects and records fail without creating receipts or leaking saved data
+ok 23 - missing projects and records fail without creating receipts or leaking saved data
+  ---
+  duration_ms: 583.854084
+  type: 'test'
+  ...
+# Subtest: foreign and corrupt asset, shot, version and job relations fail before current record disclosure
+ok 24 - foreign and corrupt asset, shot, version and job relations fail before current record disclosure
+  ---
+  duration_ms: 661.618709
+  type: 'test'
+  ...
+# Subtest: shared reference guard still rejects direct reference edits and leaves every existing journal untouched
+ok 25 - shared reference guard still rejects direct reference edits and leaves every existing journal untouched
+  ---
+  duration_ms: 676.032292
+  type: 'test'
+  ...
+# Subtest: journal entries cannot be updated, deleted or replaced and retain exact response bytes
+ok 26 - journal entries cannot be updated, deleted or replaced and retain exact response bytes
+  ---
+  duration_ms: 614.276916
+  type: 'test'
+  ...
+# Subtest: additive first migration and repeated startup preserve old rows and journal response bytes
+ok 27 - additive first migration and repeated startup preserve old rows and journal response bytes
+  ---
+  duration_ms: 674.45525
+  type: 'test'
+  ...
+# Subtest: transactions reject async work and nesting, roll back thenables and remain usable afterward
+ok 28 - transactions reject async work and nesting, roll back thenables and remain usable afterward
+  ---
+  duration_ms: 574.205292
+  type: 'test'
+  ...
+# Subtest: rollback proof never upgrades an unknown/internal error or an authorization-style AppError
+ok 29 - rollback proof never upgrades an unknown/internal error or an authorization-style AppError
+  ---
+  duration_ms: 576.1145
+  type: 'test'
+  ...
+# Subtest: missing indirect version, asset or job records reject fresh writes and retained replies atomically
+ok 30 - missing indirect version, asset or job records reject fresh writes and retained replies atomically
+  ---
+  duration_ms: 1722.274875
+  type: 'test'
+  ...
+# Subtest: retained responses require the original project still to exist and to retain consistent identity
+ok 31 - retained responses require the original project still to exist and to retain consistent identity
+  ---
+  duration_ms: 576.091459
+  type: 'test'
+  ...
+# Subtest: mutation replay helper and durable operation constraint cannot expand the six-operation allowlist
+ok 32 - mutation replay helper and durable operation constraint cannot expand the six-operation allowlist
+  ---
+  duration_ms: 579.605084
+  type: 'test'
+  ...
+# Subtest: foreign version selection preserves legacy INVALID_VERSION without exposing or decoding foreign data
+ok 33 - foreign version selection preserves legacy INVALID_VERSION without exposing or decoding foreign data
+  ---
+  duration_ms: 582.744833
+  type: 'test'
+  ...
+1..33
+# tests 33
+# suites 0
+# pass 33
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 21939.013708

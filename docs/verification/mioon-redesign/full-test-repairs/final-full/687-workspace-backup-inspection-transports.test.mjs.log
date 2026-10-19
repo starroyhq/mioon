@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: actual authenticated HTTP, CLI and official MCP share exact non-path inspection and perform no DB writes
+ok 1 - actual authenticated HTTP, CLI and official MCP share exact non-path inspection and perform no DB writes
+  ---
+  duration_ms: 2076.832791
+  type: 'test'
+  ...
+# Subtest: shared client refuses malformed inspection ACK without implying an uncertain mutation
+ok 2 - shared client refuses malformed inspection ACK without implying an uncertain mutation
+  ---
+  duration_ms: 1.357375
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2496.88575

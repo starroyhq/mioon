@@ -1,0 +1,154 @@
+TAP version 13
+# Subtest: General is a presentation page and preserves the last connection slot and every mounted owner
+ok 1 - General is a presentation page and preserves the last connection slot and every mounted owner
+  ---
+  duration_ms: 1.323708
+  type: 'test'
+  ...
+# Subtest: missing initial slot retains the existing agent default rather than creating an IPC General slot
+ok 2 - missing initial slot retains the existing agent default rather than creating an IPC General slot
+  ---
+  duration_ms: 0.0755
+  type: 'test'
+  ...
+# Subtest: cancelled dirty navigation into or out of General leaves page, connection and ownership unchanged
+ok 3 - cancelled dirty navigation into or out of General leaves page, connection and ownership unchanged
+  ---
+  duration_ms: 0.181791
+  type: 'test'
+  ...
+# Subtest: accepted dirty page changes retain the registry and dirty draft metadata without clearing or saving it
+ok 4 - accepted dirty page changes retain the registry and dirty draft metadata without clearing or saving it
+  ---
+  duration_ms: 0.116917
+  type: 'test'
+  ...
+# Subtest: a second dirty edit while General confirmation is open invalidates the exact captured version
+ok 5 - a second dirty edit while General confirmation is open invalidates the exact captured version
+  ---
+  duration_ms: 0.110334
+  type: 'test'
+  ...
+# Subtest: replacement or release of an owner during confirmation cannot authorize a stale page change
+ok 6 - replacement or release of an owner during confirmation cannot authorize a stale page change
+  ---
+  duration_ms: 0.126375
+  type: 'test'
+  ...
+# Subtest: newer page or connection intent wins even when older confirmation resolves last
+ok 7 - newer page or connection intent wins even when older confirmation resolves last
+  ---
+  duration_ms: 0.116458
+  type: 'test'
+  ...
+# Subtest: a same-page local intent synchronously revokes older pending departure permission
+ok 8 - a same-page local intent synchronously revokes older pending departure permission
+  ---
+  duration_ms: 0.078083
+  type: 'test'
+  ...
+# Subtest: busy, blocked or unreported hidden owners prevent General changes before confirmation
+ok 9 - busy, blocked or unreported hidden owners prevent General changes before confirmation
+  ---
+  duration_ms: 0.232917
+  type: 'test'
+  ...
+# Subtest: busy state arriving during confirmation invalidates permission and does not clear the form
+ok 10 - busy state arriving during confirmation invalidates permission and does not clear the form
+  ---
+  duration_ms: 0.150292
+  type: 'test'
+  ...
+# Subtest: newer native same-slot requests leave General without changing the IPC connection slot
+ok 11 - newer native same-slot requests leave General without changing the IPC connection slot
+  ---
+  duration_ms: 2.727583
+  type: 'test'
+  ...
+# Subtest: native same-slot requests from General use the same dirty confirmation and stale-version guard
+ok 12 - native same-slot requests from General use the same dirty confirmation and stale-version guard
+  ---
+  duration_ms: 0.342
+  type: 'test'
+  ...
+# Subtest: foreign, stale and equal-version native selection requests do not pull the user out of General
+ok 13 - foreign, stale and equal-version native selection requests do not pull the user out of General
+  ---
+  duration_ms: 0.248875
+  type: 'test'
+  ...
+# Subtest: newer same-slot native intent supersedes a pending General transition synchronously
+ok 14 - newer same-slot native intent supersedes a pending General transition synchronously
+  ---
+  duration_ms: 0.089667
+  type: 'test'
+  ...
+# Subtest: confirmation and busy notices remain immutable descriptors that can render in all four locales
+ok 15 - confirmation and busy notices remain immutable descriptors that can render in all four locales
+  ---
+  duration_ms: 0.268458
+  type: 'test'
+  ...
+# Subtest: disposal denies page, slot and native navigation and revokes pending consent even after reactivation
+ok 16 - disposal denies page, slot and native navigation and revokes pending consent even after reactivation
+  ---
+  duration_ms: 0.096209
+  type: 'test'
+  ...
+# Subtest: live same-version quitting updates deny both page navigation and pending confirmation
+ok 17 - live same-version quitting updates deny both page navigation and pending confirmation
+  ---
+  duration_ms: 0.063583
+  type: 'test'
+  ...
+# Subtest: web center opens General by default and close/reopen preserves selected slot, page and mounted owners
+ok 18 - web center opens General by default and close/reopen preserves selected slot, page and mounted owners
+  ---
+  duration_ms: 0.184709
+  type: 'test'
+  ...
+# Subtest: web dirty close cancellation leaves the page open and accepted close keeps dirty owners for reopening
+ok 19 - web dirty close cancellation leaves the page open and accepted close keeps dirty owners for reopening
+  ---
+  duration_ms: 0.121
+  type: 'test'
+  ...
+# Subtest: web async close cannot use permission from a previous edit, owner or busy state
+ok 20 - web async close cannot use permission from a previous edit, owner or busy state
+  ---
+  duration_ms: 0.129416
+  type: 'test'
+  ...
+# Subtest: web newer same-page open supersedes pending close without discarding or recreating owners
+ok 21 - web newer same-page open supersedes pending close without discarding or recreating owners
+  ---
+  duration_ms: 0.060084
+  type: 'test'
+  ...
+# Subtest: web newer close wins over older pending page selection even when the older confirmation resolves last
+ok 22 - web newer close wins over older pending page selection even when the older confirmation resolves last
+  ---
+  duration_ms: 0.061209
+  type: 'test'
+  ...
+# Subtest: web busy or blocked owners deny closing, category changes and reopening before any confirmation
+ok 23 - web busy or blocked owners deny closing, category changes and reopening before any confirmation
+  ---
+  duration_ms: 0.142
+  type: 'test'
+  ...
+# Subtest: web disposal revokes pending close and denies stale open or page actions after teardown
+ok 24 - web disposal revokes pending close and denies stale open or page actions after teardown
+  ---
+  duration_ms: 0.078125
+  type: 'test'
+  ...
+1..24
+# tests 24
+# suites 0
+# pass 24
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 205.681875

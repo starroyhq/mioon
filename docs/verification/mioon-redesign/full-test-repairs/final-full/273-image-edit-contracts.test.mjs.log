@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: edit input is one strict paired source reference on mock or official OpenAI only
+ok 1 - edit input is one strict paired source reference on mock or official OpenAI only
+  ---
+  duration_ms: 12.041583
+  type: 'test'
+  ...
+# Subtest: edit source descriptor is bounded and has exactly one typed origin, never file/transport data
+ok 2 - edit source descriptor is bounded and has exactly one typed origin, never file/transport data
+  ---
+  duration_ms: 0.713166
+  type: 'test'
+  ...
+# Subtest: edit snapshot, adapter and safe task/version DTO freeze identity and keep historical omissions
+ok 3 - edit snapshot, adapter and safe task/version DTO freeze identity and keep historical omissions
+  ---
+  duration_ms: 2.272125
+  type: 'test'
+  ...
+# Subtest: edit approval binds review intent v4 to one source and edits URL; public prepare never accepts a descriptor
+ok 4 - edit approval binds review intent v4 to one source and edits URL; public prepare never accepts a descriptor
+  ---
+  duration_ms: 3.420166
+  type: 'test'
+  ...
+# Subtest: every edit parser rejects malformed source combinations without throwing from a dirty union branch
+ok 5 - every edit parser rejects malformed source combinations without throwing from a dirty union branch
+  ---
+  duration_ms: 108.730583
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 267.234375

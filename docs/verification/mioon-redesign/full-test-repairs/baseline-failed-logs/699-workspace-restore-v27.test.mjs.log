@@ -1,0 +1,222 @@
+TAP version 13
+# Subtest: source26→restored27 holds every durable apply state with raw preservation, mock=false
+not ok 1 - source26→restored27 holds every durable apply state with raw preservation, mock=false
+  ---
+  duration_ms: 58.252291
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-restore-v27.test.mjs:100:32'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    seedApplyStates (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-restore-v27.test.mjs:84:100)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-restore-v27.test.mjs:101:33)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.start (node:internal/test_runner/test:1262:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+  ...
+# Subtest: source26→restored27 holds every durable apply state with raw preservation, mock=true
+not ok 2 - source26→restored27 holds every durable apply state with raw preservation, mock=true
+  ---
+  duration_ms: 54.386958
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-restore-v27.test.mjs:100:32'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fresh (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-restore-v27.test.mjs:66:215)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-restore-v27.test.mjs:101:11)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: new source fixed catalog refuses INSERT INTO schema_version VALUES(25)
+ok 3 - new source fixed catalog refuses INSERT INTO schema_version VALUES(25)
+  ---
+  duration_ms: 145.543792
+  type: 'test'
+  ...
+# Subtest: new source fixed catalog refuses DELETE FROM schema_version WHERE version=26
+ok 4 - new source fixed catalog refuses DELETE FROM schema_version WHERE version=26
+  ---
+  duration_ms: 59.80925
+  type: 'test'
+  ...
+# Subtest: new source fixed catalog refuses INSERT INTO schema_version VALUES(28)
+ok 5 - new source fixed catalog refuses INSERT INTO schema_version VALUES(28)
+  ---
+  duration_ms: 57.573458
+  type: 'test'
+  ...
+# Subtest: new source fixed catalog refuses CREATE TABLE workspace_restoration_partial(x)
+ok 6 - new source fixed catalog refuses CREATE TABLE workspace_restoration_partial(x)
+  ---
+  duration_ms: 56.4565
+  type: 'test'
+  ...
+# Subtest: new source fixed catalog refuses CREATE TEMP TABLE edit_tasks(x)
+ok 7 - new source fixed catalog refuses CREATE TEMP TABLE edit_tasks(x)
+  ---
+  duration_ms: 52.639875
+  type: 'test'
+  ...
+# Subtest: new source fixed catalog refuses CREATE TRIGGER unexpected BEFORE INSERT ON projects BEGIN SELECT 1;END;
+ok 8 - new source fixed catalog refuses CREATE TRIGGER unexpected BEFORE INSERT ON projects BEGIN SELECT 1;END;
+  ---
+  duration_ms: 54.795208
+  type: 'test'
+  ...
+# Subtest: restored27 construction rolls back all logical bytes at CREATE TABLE workspace_restoration
+not ok 9 - restored27 construction rolls back all logical bytes at CREATE TABLE workspace_restoration
+  ---
+  duration_ms: 50.207333
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-restore-v27.test.mjs:133:2'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    seedApplyStates (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-restore-v27.test.mjs:84:100)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-restore-v27.test.mjs:134:21)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restored27 construction rolls back all logical bytes at INSERT INTO workspace_restore_timeline_history
+not ok 10 - restored27 construction rolls back all logical bytes at INSERT INTO workspace_restore_timeline_history
+  ---
+  duration_ms: 48.634541
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-restore-v27.test.mjs:133:2'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    seedApplyStates (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-restore-v27.test.mjs:84:100)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-restore-v27.test.mjs:134:21)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restored27 construction rolls back all logical bytes at CREATE TRIGGER restore_legacy_schema_gate
+not ok 11 - restored27 construction rolls back all logical bytes at CREATE TRIGGER restore_legacy_schema_gate
+  ---
+  duration_ms: 48.79
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-restore-v27.test.mjs:133:2'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    seedApplyStates (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-restore-v27.test.mjs:84:100)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-restore-v27.test.mjs:134:21)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restored27 construction rolls back all logical bytes at COMMIT
+not ok 12 - restored27 construction rolls back all logical bytes at COMMIT
+  ---
+  duration_ms: 48.274792
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-restore-v27.test.mjs:133:2'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    seedApplyStates (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-restore-v27.test.mjs:84:100)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-restore-v27.test.mjs:134:21)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: offline create→verify→restore→status→reopen fixed pair source24
+ok 13 - offline create→verify→restore→status→reopen fixed pair source24
+  ---
+  duration_ms: 545.142333
+  type: 'test'
+  ...
+# Subtest: offline create→verify→restore→status→reopen fixed pair source26
+not ok 14 - offline create→verify→restore→status→reopen fixed pair source26
+  ---
+  duration_ms: 76.343458
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-restore-v27.test.mjs:143:36'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    seedApplyStates (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-restore-v27.test.mjs:84:100)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-restore-v27.test.mjs:147:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: schema32 live backup inspection is read-only and current contract pairs never accept a cross-product
+not ok 15 - schema32 live backup inspection is read-only and current contract pairs never accept a cross-product
+  ---
+  duration_ms: 147.978916
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-restore-v27.test.mjs:171:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    40 !== 32
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 32
+  actual: 40
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-restore-v27.test.mjs:174:9)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: historical wire validator sources are byte-pinned to the accepted baseline
+ok 16 - historical wire validator sources are byte-pinned to the accepted baseline
+  ---
+  duration_ms: 0.355416
+  type: 'test'
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 8
+# fail 8
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1837.358875

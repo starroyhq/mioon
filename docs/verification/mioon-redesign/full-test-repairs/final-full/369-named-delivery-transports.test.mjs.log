@@ -1,0 +1,47 @@
+TAP version 13
+# Subtest: named delivery discovery stays identical in offline CLI and official MCP and does not expand unrelated operations
+ok 1 - named delivery discovery stays identical in offline CLI and official MCP and does not expand unrelated operations
+  ---
+  duration_ms: 568.1965
+  type: 'test'
+  ...
+# Subtest: actual HTTP CLI and official MCP preserve named and omitted delivery identities through preflight, lost ACK, restart and historical download
+    # Subtest: preflight binds exact Unicode name presence and refuses unrelated fields without writes
+    ok 1 - preflight binds exact Unicode name presence and refuses unrelated fields without writes
+      ---
+      duration_ms: 6300.9825
+      type: 'test'
+      ...
+    # Subtest: all three transports can lose the same committed named ACK without creating more than one render
+    ok 2 - all three transports can lose the same committed named ACK without creating more than one render
+      ---
+      duration_ms: 297.913416
+      type: 'test'
+      ...
+    # Subtest: exact named and omitted ACKs win over stale revisions and changed project metadata after restart
+    ok 3 - exact named and omitted ACKs win over stale revisions and changed project metadata after restart
+      ---
+      duration_ms: 1667.424959
+      type: 'test'
+      ...
+    # Subtest: authenticated historical download keeps exact server-derived filename and bytes while forged identities fail closed
+    ok 4 - authenticated historical download keeps exact server-derived filename and bytes while forged identities fail closed
+      ---
+      duration_ms: 9.879375
+      type: 'test'
+      ...
+    1..4
+ok 2 - actual HTTP CLI and official MCP preserve named and omitted delivery identities through preflight, lost ACK, restart and historical download
+  ---
+  duration_ms: 10368.842625
+  type: 'test'
+  ...
+1..2
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 11353.293

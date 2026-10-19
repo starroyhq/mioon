@@ -1,0 +1,20 @@
+[
+  {
+    "file": "tests/workspace-restore-local-execution.test.mjs",
+    "beforeSha256": "5e7163940a89ce88ff8e74e27ef60b1b30002c7f147907b95bfaa9661742d748",
+    "afterSha256": "b1318c8833f099c8dcdea52896bc3914ade9c73ac4381b68e2615f7506881daf",
+    "synchronizedAt": "2026-10-19T03:01:14.814277+00:00",
+    "testWasDispatched": false,
+    "otherTestImports": [],
+    "reason": "Standalone synthetic probe output still used 720 dimensions for the new saved 1080 timeline; source probe remains720; no production or shared helper changed",
+    "progressAtSynchronization": {
+      "completedFiles": 241,
+      "totalFiles": 755,
+      "passedFiles": 214,
+      "failedFiles": 27,
+      "timeoutFiles": 0,
+      "seconds": 260.65,
+      "last": "tests/float-checked-export-transports.test.mjs"
+    }
+  }
+]

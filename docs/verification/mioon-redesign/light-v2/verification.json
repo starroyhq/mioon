@@ -1,0 +1,55 @@
+{
+  "scope": "CSS-only review correction; U11 remains gated by user screenshot approval.",
+  "applicationSourceChanges": [
+    "packages/ui/src/styles/light-preview.css"
+  ],
+  "candidateApproval": "pending; v1 rejected as resembling high contrast",
+  "commands": [
+    {
+      "command": "CI=true pnpm install --frozen-lockfile",
+      "cwd": "isolated verify",
+      "exitCode": 0,
+      "log": "logs/install-verify.log"
+    },
+    {
+      "command": "node scripts/tooling.mjs typecheck",
+      "exitCode": 0,
+      "log": "logs/typecheck.log"
+    },
+    {
+      "command": "node scripts/tooling.mjs build --channel=development",
+      "exitCode": 0,
+      "log": "logs/build.log"
+    },
+    {
+      "command": "node --test --test-reporter=tap tests/design-tokens.test.mjs",
+      "exitCode": 0,
+      "tests": 5,
+      "pass": 5,
+      "log": "logs/design-tokens-final.tap"
+    }
+  ],
+  "browser": {
+    "states": 4,
+    "viewportSizes": [
+      "1440x900",
+      "1050x680"
+    ],
+    "pageErrors": 0,
+    "externalRequests": 0,
+    "runtimeStyleInjection": false,
+    "results": "results.json"
+  },
+  "buildNote": "Candidate CSS is compiled via globals.css but all rules are scoped to the isolated preview class. Production dark/system behavior is unchanged; compiled CSS, JS content hash references and HTML therefore change.",
+  "harnessAdjustments": [
+    {
+      "observation": "Initial frozen install was invoked in the private parent with no package manifest.",
+      "change": "Install executed in the copied verify project; initial failure retained in logs/install.log."
+    },
+    {
+      "observation": "Programmatic focus after a mouse click did not activate :focus-visible.",
+      "change": "Use real Tab and Shift+Tab keyboard input before checking the focus ring; initial assertion log retained, final compiled run passes."
+    }
+  ],
+  "candidateAggregateNote": "Newest design-tokens run has 5 cases, replacing the old 4-case foundation record; unique file count remains182, total cases now2366. Groups must not be added twice."
+}

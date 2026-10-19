@@ -1,0 +1,117 @@
+[
+  {
+    "file": "agent-authorization-transports.test.mjs",
+    "code": 0,
+    "seconds": 3.69
+  },
+  {
+    "file": "clip-draft-ui.test.mjs",
+    "code": 0,
+    "seconds": 1.0
+  },
+  {
+    "file": "desktop-project-window-recovery.test.mjs",
+    "code": 0,
+    "seconds": 0.39
+  },
+  {
+    "file": "desktop-runtime.test.mjs",
+    "code": 0,
+    "seconds": 0.64
+  },
+  {
+    "file": "i18n-clip-lut-recovery.test.mjs",
+    "code": 0,
+    "seconds": 0.39
+  },
+  {
+    "file": "i18n-connections.test.mjs",
+    "code": 0,
+    "seconds": 0.7
+  },
+  {
+    "file": "i18n-creation.test.mjs",
+    "code": 0,
+    "seconds": 1.17
+  },
+  {
+    "file": "i18n-delivery-recovery.test.mjs",
+    "code": 0,
+    "seconds": 0.59
+  },
+  {
+    "file": "i18n-foundation.test.mjs",
+    "code": 0,
+    "seconds": 0.39
+  },
+  {
+    "file": "i18n-native-preferences.test.mjs",
+    "code": 0,
+    "seconds": 0.81
+  },
+  {
+    "file": "i18n-shell.test.mjs",
+    "code": 0,
+    "seconds": 0.8
+  },
+  {
+    "file": "i18n-task-errors.test.mjs",
+    "code": 0,
+    "seconds": 0.55
+  },
+  {
+    "file": "i18n-timeline.test.mjs",
+    "code": 0,
+    "seconds": 0.66
+  },
+  {
+    "file": "native-audio-preview-host.test.mjs",
+    "code": 0,
+    "seconds": 0.61
+  },
+  {
+    "file": "project-home-transports.test.mjs",
+    "code": 0,
+    "seconds": 2.56
+  },
+  {
+    "file": "provider-settings-ui.test.mjs",
+    "code": 0,
+    "seconds": 0.94
+  },
+  {
+    "file": "right-dock-layout.test.mjs",
+    "code": 0,
+    "seconds": 0.4
+  },
+  {
+    "file": "settings-appearance.test.mjs",
+    "code": 0,
+    "seconds": 0.43
+  },
+  {
+    "file": "settings-center-ui.test.mjs",
+    "code": 0,
+    "seconds": 0.53
+  },
+  {
+    "file": "subjects-i18n.test.mjs",
+    "code": 0,
+    "seconds": 0.44
+  },
+  {
+    "file": "timeline-recovery-audit.test.mjs",
+    "code": 0,
+    "seconds": 10.9
+  },
+  {
+    "file": "timeline-ripple-transports.test.mjs",
+    "code": 0,
+    "seconds": 3.8
+  },
+  {
+    "file": "timeline-source-freshness.test.mjs",
+    "code": 0,
+    "seconds": 0.39
+  }
+]

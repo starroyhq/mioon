@@ -1,0 +1,29 @@
+{
+  "timestampUtc": "2026-10-19T03:16:33.925076+00:00",
+  "finalRunnerExited": true,
+  "finalRunnerExitCode": 1,
+  "reason": "755 files finished with107 nonzero files; no timeout",
+  "noNodeProcessesWithOwnedWorkingDirectories": true,
+  "removedOwnedDirectories": [
+    "/private/tmp/mioon-full-recheck-_m5c6umh/verify",
+    "/private/tmp/mioon-full-recheck-_m5c6umh/focus",
+    "/private/tmp/mioon-full-recheck-_m5c6umh/preliminary-full/test-xr51fxp1",
+    "/private/tmp/mioon-full-recheck-_m5c6umh/preliminary-full/test-3t48ujv4",
+    "/private/tmp/mioon-full-recheck-_m5c6umh/preliminary-full/test-btsa2wfd",
+    "/private/tmp/mioon-full-recheck-_m5c6umh/preliminary-full/test-hgz1hzuj",
+    "/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/mock-workspace",
+    "/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/subtitle-work-after",
+    "/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/subtitle-work",
+    "/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/mock-workspace-after"
+  ],
+  "remainingOwnedTestTmpdirs": [],
+  "preserved": [
+    "Managed redesign worktree and61 development build artifacts",
+    "Original workspace and its dependencies",
+    "Final/discovery/focused/baseline comparison logs and source manifests in verification report",
+    "Private raw metadata and scripts retained; disposable installs and synthetic workspaces removed"
+  ],
+  "originalDependenciesCleared": false,
+  "worktreeDependenciesCleared": false,
+  "noProcessesWithOwnedWorkingDirectories": true
+}

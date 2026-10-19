@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: strict legacy metadata projects CC only in memory, with no read-time revision or disk write
+ok 1 - strict legacy metadata projects CC only in memory, with no read-time revision or disk write
+  ---
+  duration_ms: 7.239541
+  type: 'test'
+  ...
+# Subtest: actual v1 settings file stays byte-identical until first authorized atomic v2 save
+ok 2 - actual v1 settings file stays byte-identical until first authorized atomic v2 save
+  ---
+  duration_ms: 31.016709
+  type: 'test'
+  ...
+# Subtest: unknown versions and malformed legacy/v2 shapes fail closed without overwriting existing data
+ok 3 - unknown versions and malformed legacy/v2 shapes fail closed without overwriting existing data
+  ---
+  duration_ms: 2.28825
+  type: 'test'
+  ...
+# Subtest: locked legacy vault preserves ciphertext and exact binding across protocol-only keep and v2 restart
+ok 4 - locked legacy vault preserves ciphertext and exact binding across protocol-only keep and v2 restart
+  ---
+  duration_ms: 1.184667
+  type: 'test'
+  ...
+# Subtest: unreadable legacy vault remains visible but unusable; protocol keep never decrypts or re-encrypts
+ok 5 - unreadable legacy vault remains visible but unusable; protocol keep never decrypts or re-encrypts
+  ---
+  duration_ms: 0.42225
+  type: 'test'
+  ...
+# Subtest: valid legacy ciphertext uses unchanged payload v1 and protocol-aware acquisition without re-encryption
+ok 6 - valid legacy ciphertext uses unchanged payload v1 and protocol-aware acquisition without re-encryption
+  ---
+  duration_ms: 0.372125
+  type: 'test'
+  ...
+# Subtest: protocol/model-only session edits keep the key, but full configuration and revision still gate acquisition
+ok 7 - protocol/model-only session edits keep the key, but full configuration and revision still gate acquisition
+  ---
+  duration_ms: 0.403792
+  type: 'test'
+  ...
+# Subtest: preset/platform/base-path edits invalidate legacy stored keys even when a locked vault cannot decrypt
+ok 8 - preset/platform/base-path edits invalidate legacy stored keys even when a locked vault cannot decrypt
+  ---
+  duration_ms: 0.513375
+  type: 'test'
+  ...
+# Subtest: failed first migration saves and stale CAS preserve v1 bytes, ciphertext and old in-memory protocol
+ok 9 - failed first migration saves and stale CAS preserve v1 bytes, ciphertext and old in-memory protocol
+  ---
+  duration_ms: 0.524833
+  type: 'test'
+  ...
+# Subtest: a web engine cannot adopt encrypted desktop v1 or v2 envelopes
+ok 10 - a web engine cannot adopt encrypted desktop v1 or v2 envelopes
+  ---
+  duration_ms: 0.228417
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 254.833875

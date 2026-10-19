@@ -1,0 +1,168 @@
+TAP version 13
+# Subtest: plan and source bind actual owned saved revision, clipped interval, exact hashes and zero writes
+ok 1 - plan and source bind actual owned saved revision, clipped interval, exact hashes and zero writes
+  ---
+  duration_ms: 1275.020041
+  type: 'test'
+  ...
+# Subtest: strict public and fixed-source identity rejects paths, filters, streams, source substitutions and stale plans before bytes
+ok 2 - strict public and fixed-source identity rejects paths, filters, streams, source substitutions and stale plans before bytes
+  ---
+  duration_ms: 757.346458
+  type: 'test'
+  ...
+# Subtest: missing timeline never initializes; corrupt/foreign graph rejects before file access
+ok 3 - missing timeline never initializes; corrupt/foreign graph rejects before file access
+  ---
+  duration_ms: 790.080167
+  type: 'test'
+  ...
+# Subtest: actual native owner proof denies unlocked reader; copied store cannot create another decoder permit
+ok 4 - actual native owner proof denies unlocked reader; copied store cannot create another decoder permit
+  ---
+  duration_ms: 1328.545042
+  type: 'test'
+  ...
+# Subtest: permit covers binary consumption and does not free on caller cancellation until consumer settles
+ok 5 - permit covers binary consumption and does not free on caller cancellation until consumer settles
+  ---
+  duration_ms: 1009.636083
+  type: 'test'
+  ...
+# Subtest: cancelled non-cooperative hash retains admission and bounded drain fails until underlying read settles
+ok 6 - cancelled non-cooperative hash retains admission and bounded drain fails until underlying read settles
+  ---
+  duration_ms: 828.787459
+  type: 'test'
+  ...
+# Subtest: deadline revokes late hash results without decode, write, or automatic retry
+ok 7 - deadline revokes late hash results without decode, write, or automatic retry
+  ---
+  duration_ms: 749.514375
+  type: 'test'
+  ...
+# Subtest: same-revision metadata, revision, owned hash, bytes and owner revocation fence every decoder return
+    # Subtest: metadata
+    ok 1 - metadata
+      ---
+      duration_ms: 744.797833
+      type: 'test'
+      ...
+    # Subtest: revision
+    ok 2 - revision
+      ---
+      duration_ms: 764.076208
+      type: 'test'
+      ...
+    # Subtest: hash
+    ok 3 - hash
+      ---
+      duration_ms: 778.5775
+      type: 'test'
+      ...
+    # Subtest: bytes
+    ok 4 - bytes
+      ---
+      duration_ms: 709.939417
+      type: 'test'
+      ...
+    # Subtest: foreign
+    ok 5 - foreign
+      ---
+      duration_ms: 701.186375
+      type: 'test'
+      ...
+    # Subtest: lock
+    ok 6 - lock
+      ---
+      duration_ms: 767.076583
+      type: 'test'
+      ...
+    1..6
+ok 8 - same-revision metadata, revision, owned hash, bytes and owner revocation fence every decoder return
+  ---
+  duration_ms: 4466.982041
+  type: 'test'
+  ...
+# Subtest: source bytes, symlinks and independently invalid PCM never reach publication
+    # Subtest: bytes
+    ok 1 - bytes
+      ---
+      duration_ms: 744.764
+      type: 'test'
+      ...
+    # Subtest: symlink
+    ok 2 - symlink
+      ---
+      duration_ms: 660.269792
+      type: 'test'
+      ...
+    # Subtest: nan
+    ok 3 - nan
+      ---
+      duration_ms: 802.359833
+      type: 'test'
+      ...
+    # Subtest: short
+    ok 4 - short
+      ---
+      duration_ms: 682.755791
+      type: 'test'
+      ...
+    # Subtest: extra
+    ok 5 - extra
+      ---
+      duration_ms: 664.87975
+      type: 'test'
+      ...
+    # Subtest: rate
+    ok 6 - rate
+      ---
+      duration_ms: 689.539834
+      type: 'test'
+      ...
+    # Subtest: source-size
+    ok 7 - source-size
+      ---
+      duration_ms: 668.960542
+      type: 'test'
+      ...
+    1..7
+ok 9 - source bytes, symlinks and independently invalid PCM never reach publication
+  ---
+  duration_ms: 4914.54
+  type: 'test'
+  ...
+# Subtest: unknown child termination pins shared failure and permit until actual close; no unrelated signal cleanup
+ok 10 - unknown child termination pins shared failure and permit until actual close; no unrelated signal cleanup
+  ---
+  duration_ms: 635.339291
+  type: 'test'
+  ...
+# Subtest: all source memory/hash admissions are counted before any byte read, even with fewer than twelve tracks
+ok 11 - all source memory/hash admissions are counted before any byte read, even with fewer than twelve tracks
+  ---
+  duration_ms: 728.436209
+  type: 'test'
+  ...
+# Subtest: restored workspace rejects hostile payload before getters, ownership readers or source effects
+ok 12 - restored workspace rejects hostile payload before getters, ownership readers or source effects
+  ---
+  duration_ms: 737.979042
+  type: 'test'
+  ...
+# Subtest: real restored schema remains zero-write and denies source payload access
+ok 13 - real restored schema remains zero-write and denies source payload access
+  ---
+  duration_ms: 696.701708
+  type: 'test'
+  ...
+1..13
+# tests 26
+# suites 0
+# pass 26
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 19359.004875

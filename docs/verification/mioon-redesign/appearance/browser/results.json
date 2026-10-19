@@ -1,0 +1,122 @@
+{
+  "checks": [
+    "saved-system-resolves-real-light-os-and-flow",
+    "explicit-light-ignores-dark-os",
+    "saved-light-survives-reload",
+    "live-system-light-dark-without-writes",
+    "explicit-dark-ignores-light-os",
+    "draft-theme-previews-and-discard-restores-without-write",
+    "production-light-editing-and-settings",
+    "saved-system-survives-reload"
+  ],
+  "pageErrors": [],
+  "externalRequests": [],
+  "preferenceWrites": 5,
+  "states": [
+    {
+      "theme": "light",
+      "appearance": "system",
+      "dark": false,
+      "light": true,
+      "flow": [],
+      "mediaOverlay": "#000000a3"
+    },
+    {
+      "theme": "light",
+      "appearance": "light",
+      "dark": false,
+      "light": true,
+      "flow": [],
+      "mediaOverlay": "#000000a3"
+    },
+    {
+      "theme": "light",
+      "appearance": "light",
+      "dark": false,
+      "light": true,
+      "flow": [],
+      "mediaOverlay": "#000000a3"
+    },
+    {
+      "theme": "light",
+      "appearance": "light",
+      "dark": false,
+      "light": true,
+      "flow": [],
+      "mediaOverlay": "#000000a3"
+    },
+    {
+      "theme": "dark",
+      "appearance": "system",
+      "dark": true,
+      "light": false,
+      "flow": [],
+      "mediaOverlay": "#000000a3"
+    },
+    {
+      "theme": "light",
+      "appearance": "system",
+      "dark": false,
+      "light": true,
+      "flow": [],
+      "mediaOverlay": "#000000a3"
+    },
+    {
+      "theme": "dark",
+      "appearance": "system",
+      "dark": true,
+      "light": false,
+      "flow": [],
+      "mediaOverlay": "#000000a3"
+    },
+    {
+      "theme": "dark",
+      "appearance": "dark",
+      "dark": true,
+      "light": false,
+      "flow": [],
+      "mediaOverlay": "#000000a3"
+    },
+    {
+      "theme": "light",
+      "appearance": "light",
+      "dark": false,
+      "light": true,
+      "flow": [],
+      "mediaOverlay": "#000000a3"
+    },
+    {
+      "theme": "dark",
+      "appearance": "dark",
+      "dark": true,
+      "light": false,
+      "flow": [],
+      "mediaOverlay": "#000000a3"
+    },
+    {
+      "theme": "light",
+      "appearance": "light",
+      "dark": false,
+      "light": true,
+      "flow": [],
+      "mediaOverlay": "#000000a3"
+    },
+    {
+      "theme": "light",
+      "appearance": "system",
+      "dark": false,
+      "light": true,
+      "flow": [],
+      "mediaOverlay": "#000000a3"
+    },
+    {
+      "theme": "light",
+      "appearance": "system",
+      "dark": false,
+      "light": true,
+      "flow": [],
+      "mediaOverlay": "#000000a3"
+    }
+  ],
+  "runtimeStyleInjection": false
+}

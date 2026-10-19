@@ -1,0 +1,124 @@
+TAP version 13
+# Subtest: LUT file intake preserves exact bytes, accepts .CUBE and safe 0755 Downloads, and sends no local path or MIME
+ok 1 - LUT file intake preserves exact bytes, accepts .CUBE and safe 0755 Downloads, and sends no local path or MIME
+  ---
+  duration_ms: 2.628
+  type: 'test'
+  ...
+# Subtest: LUT file intake preserves an explicit name without normalizing input or mutating it
+ok 2 - LUT file intake preserves an explicit name without normalizing input or mutating it
+  ---
+  duration_ms: 1.413125
+  type: 'test'
+  ...
+# Subtest: LUT --file never overwrites supplied dataBase64, including explicitly undefined
+ok 3 - LUT --file never overwrites supplied dataBase64, including explicitly undefined
+  ---
+  duration_ms: 0.357541
+  type: 'test'
+  ...
+# Subtest: LUT source rejects non-Cube extensions, invalid paths and parent traversal before file access
+ok 4 - LUT source rejects non-Cube extensions, invalid paths and parent traversal before file access
+  ---
+  duration_ms: 0.18125
+  type: 'test'
+  ...
+# Subtest: LUT source rejects symbolic-link leaves and ancestors without modifying targets
+ok 5 - LUT source rejects symbolic-link leaves and ancestors without modifying targets
+  ---
+  duration_ms: 1.52275
+  type: 'test'
+  ...
+# Subtest: LUT source rejects nonregular files, multiple links and other-account writable files
+ok 6 - LUT source rejects nonregular files, multiple links and other-account writable files
+  ---
+  duration_ms: 1.65675
+  type: 'test'
+  ...
+# Subtest: LUT ancestor policy rejects writable directories but allows trusted sticky directories
+ok 7 - LUT ancestor policy rejects writable directories but allows trusted sticky directories
+  ---
+  duration_ms: 0.786042
+  type: 'test'
+  ...
+# Subtest: LUT source and ancestors reject foreign owners, including foreign sticky ancestors
+ok 8 - LUT source and ancestors reject foreign owners, including foreign sticky ancestors
+  ---
+  duration_ms: 1.371083
+  type: 'test'
+  ...
+# Subtest: LUT source cap is shared, inclusive, and enforced before opening or reading an oversized file
+ok 9 - LUT source cap is shared, inclusive, and enforced before opening or reading an oversized file
+  ---
+  duration_ms: 6.47225
+  type: 'test'
+  ...
+# Subtest: LUT source handles partial reads and uses read-only, no-follow, nonblocking open flags
+ok 10 - LUT source handles partial reads and uses read-only, no-follow, nonblocking open flags
+  ---
+  duration_ms: 1.210708
+  type: 'test'
+  ...
+# Subtest: LUT source rejects a replaced or changed opened inode and closes its descriptor
+ok 11 - LUT source rejects a replaced or changed opened inode and closes its descriptor
+  ---
+  duration_ms: 1.710209
+  type: 'test'
+  ...
+# Subtest: LUT source rejects same-size timestamp changes while reading
+ok 12 - LUT source rejects same-size timestamp changes while reading
+  ---
+  duration_ms: 0.973458
+  type: 'test'
+  ...
+# Subtest: LUT source rejects growth, reads at most the observed size plus one, and never grows its buffer
+ok 13 - LUT source rejects growth, reads at most the observed size plus one, and never grows its buffer
+  ---
+  duration_ms: 2.338917
+  type: 'test'
+  ...
+# Subtest: LUT source rejects shrinking files and premature EOF
+ok 14 - LUT source rejects shrinking files and premature EOF
+  ---
+  duration_ms: 1.2905
+  type: 'test'
+  ...
+# Subtest: LUT source rejects leaf replacement after reading even when the opened file remains unchanged
+ok 15 - LUT source rejects leaf replacement after reading even when the opened file remains unchanged
+  ---
+  duration_ms: 0.889375
+  type: 'test'
+  ...
+# Subtest: LUT source rejects ancestor replacement after reading
+ok 16 - LUT source rejects ancestor replacement after reading
+  ---
+  duration_ms: 1.144833
+  type: 'test'
+  ...
+# Subtest: LUT source rejects unsafe permissions observed after opening
+ok 17 - LUT source rejects unsafe permissions observed after opening
+  ---
+  duration_ms: 1.3
+  type: 'test'
+  ...
+# Subtest: LUT source sanitizes filesystem failures and closes failed reads
+ok 18 - LUT source sanitizes filesystem failures and closes failed reads
+  ---
+  duration_ms: 1.011917
+  type: 'test'
+  ...
+# Subtest: LUT source fails closed for an unsupported platform, without claiming native ACL coverage
+ok 19 - LUT source fails closed for an unsupported platform, without claiming native ACL coverage
+  ---
+  duration_ms: 0.063333
+  type: 'test'
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 198.109625

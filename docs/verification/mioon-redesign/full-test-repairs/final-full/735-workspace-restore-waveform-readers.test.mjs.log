@@ -1,0 +1,76 @@
+TAP version 13
+# Subtest: saved ready waveform GET reduces exact source-aligned peaks without runtime construction, writes, files or media work
+ok 1 - saved ready waveform GET reduces exact source-aligned peaks without runtime construction, writes, files or media work
+  ---
+  duration_ms: 206.374875
+  type: 'test'
+  ...
+# Subtest: captured waveform queued remains exact and cannot initiate recovery or cache work
+ok 2 - captured waveform queued remains exact and cannot initiate recovery or cache work
+  ---
+  duration_ms: 73.220834
+  type: 'test'
+  ...
+# Subtest: captured waveform running remains exact and cannot initiate recovery or cache work
+ok 3 - captured waveform running remains exact and cannot initiate recovery or cache work
+  ---
+  duration_ms: 74.5655
+  type: 'test'
+  ...
+# Subtest: captured waveform interrupted remains exact and cannot initiate recovery or cache work
+ok 4 - captured waveform interrupted remains exact and cannot initiate recovery or cache work
+  ---
+  duration_ms: 77.909542
+  type: 'test'
+  ...
+# Subtest: captured waveform missing remains exact and cannot initiate recovery or cache work
+ok 5 - captured waveform missing remains exact and cannot initiate recovery or cache work
+  ---
+  duration_ms: 75.068708
+  type: 'test'
+  ...
+# Subtest: normal and pure waveform readers return identical bytes and do not touch caller transactions
+ok 6 - normal and pure waveform readers return identical bytes and do not touch caller transactions
+  ---
+  duration_ms: 73.930166
+  type: 'test'
+  ...
+# Subtest: waveform ownership, syntax and source bounds preserve safe refusal without writes
+ok 7 - waveform ownership, syntax and source bounds preserve safe refusal without writes
+  ---
+  duration_ms: 71.106541
+  type: 'test'
+  ...
+# Subtest: corrupt saved waveform digest returns original safe error without repair or private disclosure
+ok 8 - corrupt saved waveform digest returns original safe error without repair or private disclosure
+  ---
+  duration_ms: 71.573292
+  type: 'test'
+  ...
+# Subtest: corrupt saved waveform oversized-cache returns original safe error without repair or private disclosure
+ok 9 - corrupt saved waveform oversized-cache returns original safe error without repair or private disclosure
+  ---
+  duration_ms: 65.689125
+  type: 'test'
+  ...
+# Subtest: corrupt saved waveform source-metadata returns original safe error without repair or private disclosure
+ok 10 - corrupt saved waveform source-metadata returns original safe error without repair or private disclosure
+  ---
+  duration_ms: 70.918833
+  type: 'test'
+  ...
+# Subtest: over-capacity captured waveform cache returns unavailable without LRU eviction
+ok 11 - over-capacity captured waveform cache returns unavailable without LRU eviction
+  ---
+  duration_ms: 104.053709
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1232.801

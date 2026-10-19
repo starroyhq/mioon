@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: passive right-dock disclosure uses a labelled region with explicit draft and request storage scope
+ok 1 - passive right-dock disclosure uses a labelled region with explicit draft and request storage scope
+  ---
+  duration_ms: 0.56675
+  type: 'test'
+  ...
+# Subtest: candidate controls show exact escaped raw name, original baseline, and explicit replace wording
+ok 2 - candidate controls show exact escaped raw name, original baseline, and explicit replace wording
+  ---
+  duration_ms: 0.296875
+  type: 'test'
+  ...
+# Subtest: baseline mismatch requires explicit current timeline adoption
+ok 3 - baseline mismatch requires explicit current timeline adoption
+  ---
+  duration_ms: 0.078708
+  type: 'test'
+  ...
+# Subtest: capacity refusal and unknown write have distinct safe choices and inline alerts
+ok 4 - capacity refusal and unknown write have distinct safe choices and inline alerts
+  ---
+  duration_ms: 0.071833
+  type: 'test'
+  ...
+# Subtest: saved and unacknowledged original intents disclose execution authority and exact original request
+ok 5 - saved and unacknowledged original intents disclose execution authority and exact original request
+  ---
+  duration_ms: 0.096875
+  type: 'test'
+  ...
+# Subtest: restored mode preserves old explicit export scope and busy controls cannot submit forms
+ok 6 - restored mode preserves old explicit export scope and busy controls cannot submit forms
+  ---
+  duration_ms: 0.072875
+  type: 'test'
+  ...
+# Subtest: typed UI/controller avoid untyped contract barrel, arbitrary RPC, renderer storage and dialog graph
+ok 7 - typed UI/controller avoid untyped contract barrel, arbitrary RPC, renderer storage and dialog graph
+  ---
+  duration_ms: 0.482
+  type: 'test'
+  ...
+# Subtest: explicit title retry is separate from export and distinguishes local validation from server refusal
+ok 8 - explicit title retry is separate from export and distinguishes local validation from server refusal
+  ---
+  duration_ms: 0.080084
+  type: 'test'
+  ...
+# Subtest: long provenance is collapsed while frozen output settings remain visible in original-request summary
+ok 9 - long provenance is collapsed while frozen output settings remain visible in original-request summary
+  ---
+  duration_ms: 0.123584
+  type: 'test'
+  ...
+# Subtest: terminal request copy does not imply another execution and keeps provenance collapsed
+ok 10 - terminal request copy does not imply another execution and keeps provenance collapsed
+  ---
+  duration_ms: 0.109667
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 464.926666

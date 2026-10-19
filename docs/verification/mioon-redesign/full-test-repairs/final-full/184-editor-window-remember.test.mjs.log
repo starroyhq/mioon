@@ -1,0 +1,71 @@
+TAP version 13
+# Subtest: v2 native open requires exact explicit entry token and no business payload
+ok 1 - v2 native open requires exact explicit entry token and no business payload
+  ---
+  duration_ms: 0.624709
+  type: 'test'
+  ...
+# Subtest: automatic native startup is read-only; editors never call their locator callback
+ok 2 - automatic native startup is read-only; editors never call their locator callback
+  ---
+  duration_ms: 5.68175
+  type: 'test'
+  ...
+# Subtest: out-of-order A/B readiness remembers only newest explicit target through one launcher queue
+ok 3 - out-of-order A/B readiness remembers only newest explicit target through one launcher queue
+  ---
+  duration_ms: 4.184541
+  type: 'test'
+  ...
+# Subtest: one launcher serializes already-dispatched A then B with exact CAS revision
+ok 4 - one launcher serializes already-dispatched A then B with exact CAS revision
+  ---
+  duration_ms: 1.791084
+  type: 'test'
+  ...
+# Subtest: unknown locator PUT retains exact old body and blocks the next editor selection
+ok 5 - unknown locator PUT retains exact old body and blocks the next editor selection
+  ---
+  duration_ms: 1.235459
+  type: 'test'
+  ...
+# Subtest: failed/reloaded/closed target cannot supply late remember eligibility
+    # Subtest: failed
+    ok 1 - failed
+      ---
+      duration_ms: 0.7265
+      type: 'test'
+      ...
+    # Subtest: reload
+    ok 2 - reload
+      ---
+      duration_ms: 0.769
+      type: 'test'
+      ...
+    # Subtest: close
+    ok 3 - close
+      ---
+      duration_ms: 0.576125
+      type: 'test'
+      ...
+    1..3
+ok 6 - failed/reloaded/closed target cannot supply late remember eligibility
+  ---
+  duration_ms: 2.461459
+  type: 'test'
+  ...
+# Subtest: wrong project and disposed editor cannot even report readiness
+ok 7 - wrong project and disposed editor cannot even report readiness
+  ---
+  duration_ms: 0.419375
+  type: 'test'
+  ...
+1..7
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 239.247542

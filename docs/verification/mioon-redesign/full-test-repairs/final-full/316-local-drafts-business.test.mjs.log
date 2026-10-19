@@ -1,0 +1,124 @@
+TAP version 13
+# Subtest: GET/list are noncreating and draft writes retain raw text without changing business schemas or records
+ok 1 - GET/list are noncreating and draft writes retain raw text without changing business schemas or records
+  ---
+  duration_ms: 673.172625
+  type: 'test'
+  ...
+# Subtest: exact latest PUT/DELETE retries, two-window CAS and tombstones prevent ABA
+ok 2 - exact latest PUT/DELETE retries, two-window CAS and tombstones prevent ABA
+  ---
+  duration_ms: 702.91825
+  type: 'test'
+  ...
+# Subtest: scope survives store reopen but old instance requests cannot write; copied sidecars and other channels fail closed
+ok 3 - scope survives store reopen but old instance requests cannot write; copied sidecars and other channels fail closed
+  ---
+  duration_ms: 1519.286417
+  type: 'test'
+  ...
+# Subtest: persisted baseline/source never rebase; deleted target draft stays discoverable and explicitly discardable
+ok 4 - persisted baseline/source never rebase; deleted target draft stays discoverable and explicitly discardable
+  ---
+  duration_ms: 657.73925
+  type: 'test'
+  ...
+# Subtest: unreadable/corrupt/unknown-format storage never means empty and never gets overwritten
+ok 5 - unreadable/corrupt/unknown-format storage never means empty and never gets overwritten
+  ---
+  duration_ms: 590.451042
+  type: 'test'
+  ...
+# Subtest: historical source ownership is required after clip removal before draft/name/revision disclosure or mutation
+ok 6 - historical source ownership is required after clip removal before draft/name/revision disclosure or mutation
+  ---
+  duration_ms: 627.18325
+  type: 'test'
+  ...
+# Subtest: strict fields reject credentials, paths, getters, proxies, malformed raw and oversized text without writing
+ok 7 - strict fields reject credentials, paths, getters, proxies, malformed raw and oversized text without writing
+  ---
+  duration_ms: 584.464083
+  type: 'test'
+  ...
+# Subtest: existing 200-character clip names remain exact while another raw field changes
+ok 8 - existing 200-character clip names remain exact while another raw field changes
+  ---
+  duration_ms: 586.137792
+  type: 'test'
+  ...
+# Subtest: unsafe sidecar files and unavailable storage refuse without repairing permissions or replacing links
+ok 9 - unsafe sidecar files and unavailable storage refuse without repairing permissions or replacing links
+  ---
+  duration_ms: 585.25375
+  type: 'test'
+  ...
+# Subtest: lock:false stores cannot write companion files
+ok 10 - lock:false stores cannot write companion files
+  ---
+  duration_ms: 580.931917
+  type: 'test'
+  ...
+# Subtest: duplicate slot identities and oversized companion files remain intact and unavailable
+ok 11 - duplicate slot identities and oversized companion files remain intact and unavailable
+  ---
+  duration_ms: 636.147083
+  type: 'test'
+  ...
+# Subtest: malformed UTF-8 in an otherwise valid draft envelope is preserved as corrupt evidence
+ok 12 - malformed UTF-8 in an otherwise valid draft envelope is preserved as corrupt evidence
+  ---
+  duration_ms: 615.962375
+  type: 'test'
+  ...
+# Subtest: restored profile is explicit unsupported without filesystem/project/provider access
+ok 13 - restored profile is explicit unsupported without filesystem/project/provider access
+  ---
+  duration_ms: 0.23675
+  type: 'test'
+  ...
+# Subtest: failure at beforePersist preserves either old or exact newly-published bytes without domain work
+ok 14 - failure at beforePersist preserves either old or exact newly-published bytes without domain work
+  ---
+  duration_ms: 609.617916
+  type: 'test'
+  ...
+# Subtest: failure at afterPersist preserves either old or exact newly-published bytes without domain work
+ok 15 - failure at afterPersist preserves either old or exact newly-published bytes without domain work
+  ---
+  duration_ms: 634.6
+  type: 'test'
+  ...
+# Subtest: failure at afterDirectorySync preserves either old or exact newly-published bytes without domain work
+ok 16 - failure at afterDirectorySync preserves either old or exact newly-published bytes without domain work
+  ---
+  duration_ms: 628.212959
+  type: 'test'
+  ...
+# Subtest: logical slot capacity includes tombstones, refuses new slot without eviction
+ok 17 - logical slot capacity includes tombstones, refuses new slot without eviction
+  ---
+  duration_ms: 617.767209
+  type: 'test'
+  ...
+# Subtest: exact PUT and DELETE retries require a successful durability checkpoint after an uncertain publication
+ok 18 - exact PUT and DELETE retries require a successful durability checkpoint after an uncertain publication
+  ---
+  duration_ms: 680.665042
+  type: 'test'
+  ...
+# Subtest: SDR colour drafts survive actual sidecar reopen without normalizing omitted, null or source-invalidated looks
+ok 19 - SDR colour drafts survive actual sidecar reopen without normalizing omitted, null or source-invalidated looks
+  ---
+  duration_ms: 991.493666
+  type: 'test'
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 12856.381584

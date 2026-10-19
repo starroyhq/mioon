@@ -1,0 +1,352 @@
+TAP version 13
+# Subtest: fixed Mock intent is persisted and verified before one explicit dispatch
+ok 1 - fixed Mock intent is persisted and verified before one explicit dispatch
+  ---
+  duration_ms: 13.611917
+  type: 'test'
+  ...
+# Subtest: storage failure and silent storage discard fail before dispatch
+ok 2 - storage failure and silent storage discard fail before dispatch
+  ---
+  duration_ms: 1.079375
+  type: 'test'
+  ...
+# Subtest: lost acknowledgement remains unknown across renderer recreation and null lookup never resends
+ok 3 - lost acknowledgement remains unknown across renderer recreation and null lookup never resends
+  ---
+  duration_ms: 1.440667
+  type: 'test'
+  ...
+# Subtest: historical receipt is followed by authoritative task get and never downgrades current success
+ok 4 - historical receipt is followed by authoritative task get and never downgrades current success
+  ---
+  duration_ms: 1.560292
+  type: 'test'
+  ...
+# Subtest: forged receipt operation, scope, payload or regressed task cannot clear pending
+ok 5 - forged receipt operation, scope, payload or regressed task cannot clear pending
+  ---
+  duration_ms: 1.861625
+  type: 'test'
+  ...
+# Subtest: only an exact operation, project, request and input-hash rejection proof releases the intent
+ok 6 - only an exact operation, project, request and input-hash rejection proof releases the intent
+  ---
+  duration_ms: 7.233458
+  type: 'test'
+  ...
+# Subtest: timed out submission retains exact request and never automatically retries
+ok 7 - timed out submission retains exact request and never automatically retries
+  ---
+  duration_ms: 11.4445
+  type: 'test'
+  ...
+# Subtest: 507 capacity proof clears a rejected intent while arbitrary server errors stay unknown
+ok 8 - 507 capacity proof clears a rejected intent while arbitrary server errors stay unknown
+  ---
+  duration_ms: 0.972792
+  type: 'test'
+  ...
+# Subtest: late read and acknowledgement from disposed project cannot change state, receipt or callbacks
+ok 9 - late read and acknowledgement from disposed project cannot change state, receipt or callbacks
+  ---
+  duration_ms: 0.43375
+  type: 'test'
+  ...
+# Subtest: double click dispatches once, hidden panels keep draft and only visible reads poll with bounded budget
+ok 10 - double click dispatches once, hidden panels keep draft and only visible reads poll with bounded budget
+  ---
+  duration_ms: 1.484542
+  type: 'test'
+  ...
+# Subtest: interrupted and queued tasks cancel explicitly; local-result recovery never calls generate
+ok 11 - interrupted and queued tasks cancel explicitly; local-result recovery never calls generate
+  ---
+  duration_ms: 2.187166
+  type: 'test'
+  ...
+# Subtest: new-version target requires explicit draft discard, preserves immutable name and binds base revision
+ok 12 - new-version target requires explicit draft discard, preserves immutable name and binds base revision
+  ---
+  duration_ms: 1.137417
+  type: 'test'
+  ...
+# Subtest: accepted group omitted from first page is resolved by identity and remains selected with its task
+ok 13 - accepted group omitted from first page is resolved by identity and remains selected with its task
+  ---
+  duration_ms: 0.532333
+  type: 'test'
+  ...
+# Subtest: same-project stale list cannot downgrade a newer mutation acknowledgement
+ok 14 - same-project stale list cannot downgrade a newer mutation acknowledgement
+  ---
+  duration_ms: 0.697167
+  type: 'test'
+  ...
+# Subtest: completion is observed before rereading current group and immutable result page
+ok 15 - completion is observed before rereading current group and immutable result page
+  ---
+  duration_ms: 0.293667
+  type: 'test'
+  ...
+# Subtest: actual library reveal respects newer project, navigation and panel choices while refresh is pending
+ok 16 - actual library reveal respects newer project, navigation and panel choices while refresh is pending
+  ---
+  duration_ms: 34.8885
+  type: 'test'
+  ...
+# Subtest: input limits match contract and state copy distinguishes unknown, failure, cancellation and local failure
+ok 17 - input limits match contract and state copy distinguishes unknown, failure, cancellation and local failure
+  ---
+  duration_ms: 0.183292
+  type: 'test'
+  ...
+# Subtest: renderer remains an extracted dock with explicit providers, fixed paid disclosure and local previews
+ok 18 - renderer remains an extracted dock with explicit providers, fixed paid disclosure and local previews
+  ---
+  duration_ms: 9.033584
+  type: 'test'
+  ...
+# Subtest: actual composer keeps draft across hidden tabs and invalidates old edit/submit handlers after reveal
+ok 19 - actual composer keeps draft across hidden tabs and invalidates old edit/submit handlers after reveal
+  ---
+  duration_ms: 9.049917
+  type: 'test'
+  ...
+# Subtest: actual composer fences project navigation and current submit uses only typed image fields
+ok 20 - actual composer fences project navigation and current submit uses only typed image fields
+  ---
+  duration_ms: 12.63375
+  type: 'test'
+  ...
+# Subtest: paid generation saves the exact visible prompt before preparation and sends only one private approval
+ok 21 - paid generation saves the exact visible prompt before preparation and sends only one private approval
+  ---
+  duration_ms: 4.530959
+  type: 'test'
+  ...
+# Subtest: hide and reveal during preparation never auto-approves; explicit approval uses the original review
+ok 22 - hide and reveal during preparation never auto-approves; explicit approval uses the original review
+  ---
+  duration_ms: 2.593791
+  type: 'test'
+  ...
+# Subtest: configuration changes during preparation keep original review stale and cannot authorize a new configuration
+ok 23 - configuration changes during preparation keep original review stale and cannot authorize a new configuration
+  ---
+  duration_ms: 1.703166
+  type: 'test'
+  ...
+# Subtest: a changed prepared prompt, provider, destination or settings revision is never privately approved
+ok 24 - a changed prepared prompt, provider, destination or settings revision is never privately approved
+  ---
+  duration_ms: 1.511417
+  type: 'test'
+  ...
+# Subtest: lost paid acknowledgement recovers original task receipt without another approval or generation
+ok 25 - lost paid acknowledgement recovers original task receipt without another approval or generation
+  ---
+  duration_ms: 2.106375
+  type: 'test'
+  ...
+# Subtest: lost approval with no receipt is retained across restart and never repeated by reads
+ok 26 - lost approval with no receipt is retained across restart and never repeated by reads
+  ---
+  duration_ms: 3.060625
+  type: 'test'
+  ...
+# Subtest: external review approval preserves separate composer draft and rejection never generates
+ok 27 - external review approval preserves separate composer draft and rejection never generates
+  ---
+  duration_ms: 1.6475
+  type: 'test'
+  ...
+# Subtest: double approval, late project completion and settings-read outage remain safe
+ok 28 - double approval, late project completion and settings-read outage remain safe
+  ---
+  duration_ms: 0.907958
+  type: 'test'
+  ...
+# Subtest: actual paid button is the only composer action authorizing payment; settings navigation retains draft
+ok 29 - actual paid button is the only composer action authorizing payment; settings navigation retains draft
+  ---
+  duration_ms: 7.717541
+  type: 'test'
+  ...
+# Subtest: exact pending review stays visible when omitted from the current review page
+ok 30 - exact pending review stays visible when omitted from the current review page
+  ---
+  duration_ms: 1.069959
+  type: 'test'
+  ...
+# Subtest: valid-shaped altered rejection acknowledgement cannot release an uncertain original request
+ok 31 - valid-shaped altered rejection acknowledgement cannot release an uncertain original request
+  ---
+  duration_ms: 2.777459
+  type: 'test'
+  ...
+# Subtest: custom paid click binds full immutable configuration and resolved destination with no endpoint in typed input
+ok 32 - custom paid click binds full immutable configuration and resolved destination with no endpoint in typed input
+  ---
+  duration_ms: 2.379459
+  type: 'test'
+  ...
+# Subtest: custom paid preparation refuses valid-shaped destination/configuration substitution and never normalizes receipts
+ok 33 - custom paid preparation refuses valid-shaped destination/configuration substitution and never normalizes receipts
+  ---
+  duration_ms: 1.171875
+  type: 'test'
+  ...
+# Subtest: custom preparation hide, slot switch and changed configuration never auto-approve on return
+ok 34 - custom preparation hide, slot switch and changed configuration never auto-approve on return
+  ---
+  duration_ms: 4.240833
+  type: 'test'
+  ...
+# Subtest: custom unknown approval survives restart as exact v2 intent and is not reapproved by reads
+ok 35 - custom unknown approval survives restart as exact v2 intent and is not reapproved by reads
+  ---
+  duration_ms: 3.791291
+  type: 'test'
+  ...
+# Subtest: custom lost approval ACK resolves only the retained request without a second paid dispatch
+ok 36 - custom lost approval ACK resolves only the retained request without a second paid dispatch
+  ---
+  duration_ms: 3.356125
+  type: 'test'
+  ...
+# Subtest: historical custom review authority survives advanced task states and current settings outages
+ok 37 - historical custom review authority survives advanced task states and current settings outages
+  ---
+  duration_ms: 1.198667
+  type: 'test'
+  ...
+# Subtest: actual custom paid button is explicit, settings slots stay mounted and history never invents a recipient
+ok 38 - actual custom paid button is explicit, settings slots stay mounted and history never invents a recipient
+  ---
+  duration_ms: 10.678292
+  type: 'test'
+  ...
+# Subtest: a paid button authorization snapshot cannot authorize later draft or same-revision custom destination changes
+ok 39 - a paid button authorization snapshot cannot authorize later draft or same-revision custom destination changes
+  ---
+  duration_ms: 0.602333
+  type: 'test'
+  ...
+# Subtest: only allowlisted custom failures proven before dispatch show safe actionable connection explanations
+ok 40 - only allowlisted custom failures proven before dispatch show safe actionable connection explanations
+  ---
+  duration_ms: 0.222125
+  type: 'test'
+  ...
+# Subtest: actual custom failed task shows fixed pre-dispatch guidance without reflecting raw provider text
+ok 41 - actual custom failed task shows fixed pre-dispatch guidance without reflecting raw provider text
+  ---
+  duration_ms: 13.354541
+  type: 'test'
+  ...
+# Subtest: history selection clears wrong-group versions and cursors during delayed failure, then retries without losing draft or recovery
+ok 42 - history selection clears wrong-group versions and cursors during delayed failure, then retries without losing draft or recovery
+  ---
+  duration_ms: 1.035375
+  type: 'test'
+  ...
+# Subtest: history selection preserves the current group’s versions, page and draft through failed refresh
+ok 43 - history selection preserves the current group’s versions, page and draft through failed refresh
+  ---
+  duration_ms: 0.477042
+  type: 'test'
+  ...
+# Subtest: history selection version pagination clears the prior page on failure and can return to the retained page identity
+ok 44 - history selection version pagination clears the prior page on failure and can return to the retained page identity
+  ---
+  duration_ms: 0.695042
+  type: 'test'
+  ...
+# Subtest: history selection group pagination removes old versions before its new group page is readable
+ok 45 - history selection group pagination removes old versions before its new group page is readable
+  ---
+  duration_ms: 0.560125
+  type: 'test'
+  ...
+# Subtest: history selection after explicit target confirmation reloads its own versions without replacing a newer draft
+ok 46 - history selection after explicit target confirmation reloads its own versions without replacing a newer draft
+  ---
+  duration_ms: 1.287542
+  type: 'test'
+  ...
+# Subtest: actual history selection never labels or reveals A’s saved asset as B during a failed read
+ok 47 - actual history selection never labels or reveals A’s saved asset as B during a failed read
+  ---
+  duration_ms: 10.209917
+  type: 'test'
+  ...
+# Subtest: history selection from accepted or recovered generation clears another group’s versions even when follow-up reads fail
+ok 48 - history selection from accepted or recovered generation clears another group’s versions even when follow-up reads fail
+  ---
+  duration_ms: 1.231417
+  type: 'test'
+  ...
+# Subtest: history selection from saved paid approval clears the old group while keeping the unrelated composer draft
+ok 49 - history selection from saved paid approval clears the old group while keeping the unrelated composer draft
+  ---
+  duration_ms: 0.852875
+  type: 'test'
+  ...
+# Subtest: history selection same-group accepted generation or approval clears an older version page until the first page is confirmed
+ok 50 - history selection same-group accepted generation or approval clears an older version page until the first page is confirmed
+  ---
+  duration_ms: 2.615916
+  type: 'test'
+  ...
+# Subtest: history selection accepted generation or approval invalidates an older group cursor before a failed first-page refresh
+ok 51 - history selection accepted generation or approval invalidates an older group cursor before a failed first-page refresh
+  ---
+  duration_ms: 2.226625
+  type: 'test'
+  ...
+# Subtest: four-language changes preserve mounted image drafts and the same pending paid review without automatic approval
+ok 52 - four-language changes preserve mounted image drafts and the same pending paid review without automatic approval
+  ---
+  duration_ms: 7.851042
+  type: 'test'
+  ...
+# Subtest: external image edit intent prefills one exact source without generating or approving
+ok 53 - external image edit intent prefills one exact source without generating or approving
+  ---
+  duration_ms: 0.678625
+  type: 'test'
+  ...
+# Subtest: image edit intent uses the existing discard guard and stale form/source confirmations preserve the draft
+ok 54 - image edit intent uses the existing discard guard and stale form/source confirmations preserve the draft
+  ---
+  duration_ms: 0.4605
+  type: 'test'
+  ...
+# Subtest: hiding or retiring an image edit intent rejects old confirmation even after showing the same project
+ok 55 - hiding or retiring an image edit intent rejects old confirmation even after showing the same project
+  ---
+  duration_ms: 0.226959
+  type: 'test'
+  ...
+# Subtest: actual image composer waits for its reads before applying a fresh edit intent and never submits it
+ok 56 - actual image composer waits for its reads before applying a fresh edit intent and never submits it
+  ---
+  duration_ms: 5.034375
+  type: 'test'
+  ...
+# Subtest: image edit intent capture rejects foreign, duplicate and unsupported source identities
+ok 57 - image edit intent capture rejects foreign, duplicate and unsupported source identities
+  ---
+  duration_ms: 0.079791
+  type: 'test'
+  ...
+1..57
+# tests 57
+# suites 0
+# pass 57
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 490.43375

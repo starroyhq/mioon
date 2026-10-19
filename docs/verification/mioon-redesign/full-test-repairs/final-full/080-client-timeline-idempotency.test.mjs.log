@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: timeline mutations retain exact frame, rect, revision and request identity across a lost response
+ok 1 - timeline mutations retain exact frame, rect, revision and request identity across a lost response
+  ---
+  duration_ms: 1.372833
+  type: 'test'
+  ...
+# Subtest: fetching a newer timeline cannot prove an uncertain mutation succeeded; only explicit replay clears it
+ok 2 - fetching a newer timeline cannot prove an uncertain mutation succeeded; only explicit replay clears it
+  ---
+  duration_ms: 0.414541
+  type: 'test'
+  ...
+# Subtest: all supported timeline mutation operations and render accept durable recovery records
+ok 3 - all supported timeline mutation operations and render accept durable recovery records
+  ---
+  duration_ms: 1.815417
+  type: 'test'
+  ...
+# Subtest: preview and export recovery identities stay separate and public render records never release either key
+ok 4 - preview and export recovery identities stay separate and public render records never release either key
+  ---
+  duration_ms: 1.557709
+  type: 'test'
+  ...
+# Subtest: every valid public render lifecycle record preserves the original receipt after same-session reload
+ok 5 - every valid public render lifecycle record preserves the original receipt after same-session reload
+  ---
+  duration_ms: 0.603292
+  type: 'test'
+  ...
+# Subtest: digest-bound render receipts require exact replay because public records cannot prove their private-path digest
+ok 6 - digest-bound render receipts require exact replay because public records cannot prove their private-path digest
+  ---
+  duration_ms: 0.248792
+  type: 'test'
+  ...
+# Subtest: undo and redo replay the exact original request even after a changed history cursor
+ok 7 - undo and redo replay the exact original request even after a changed history cursor
+  ---
+  duration_ms: 0.163583
+  type: 'test'
+  ...
+# Subtest: read-only history requests are never accepted as durable mutations
+ok 8 - read-only history requests are never accepted as durable mutations
+  ---
+  duration_ms: 0.263209
+  type: 'test'
+  ...
+# Subtest: lost replacement keeps the exact fixed source and optional version despite newer state or matching unrelated receipts
+ok 9 - lost replacement keeps the exact fixed source and optional version despite newer state or matching unrelated receipts
+  ---
+  duration_ms: 0.208667
+  type: 'test'
+  ...
+# Subtest: replacement cannot dispatch without a persisted exact recovery receipt
+ok 10 - replacement cannot dispatch without a persisted exact recovery receipt
+  ---
+  duration_ms: 0.208375
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 252.172291

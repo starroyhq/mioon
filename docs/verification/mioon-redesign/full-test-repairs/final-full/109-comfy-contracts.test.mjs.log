@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: local endpoint syntax is exact loopback, explicit port, root, no authentication
+ok 1 - local endpoint syntax is exact loopback, explicit port, root, no authentication
+  ---
+  duration_ms: 1.137792
+  type: 'test'
+  ...
+# Subtest: checkpoint selection is a bounded relative name and settings contain no credential or model execution authority
+ok 2 - checkpoint selection is a bounded relative name and settings contain no credential or model execution authority
+  ---
+  duration_ms: 8.677042
+  type: 'test'
+  ...
+# Subtest: Comfy is a disjoint image generation branch; seed and graph can only appear in returned review execution
+ok 3 - Comfy is a disjoint image generation branch; seed and graph can only appear in returned review execution
+  ---
+  duration_ms: 5.773708
+  type: 'test'
+  ...
+# Subtest: exact seven-node graph rejects arbitrary nodes, links, inputs and unknown fields
+ok 4 - exact seven-node graph rejects arbitrary nodes, links, inputs and unknown fields
+  ---
+  duration_ms: 0.906209
+  type: 'test'
+  ...
+# Subtest: Comfy PNG receipt is explicit schema2; legacy receipts retain exact schema1 shape
+ok 5 - Comfy PNG receipt is explicit schema2; legacy receipts retain exact schema1 shape
+  ---
+  duration_ms: 0.978375
+  type: 'test'
+  ...
+# Subtest: remote observation has its own stable acknowledgement and remote-revision CAS
+ok 6 - remote observation has its own stable acknowledgement and remote-revision CAS
+  ---
+  duration_ms: 0.218
+  type: 'test'
+  ...
+# Subtest: catalog preserves strict image union branches and reports the common required replay key
+ok 7 - catalog preserves strict image union branches and reports the common required replay key
+  ---
+  duration_ms: 3.657333
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 238.149125

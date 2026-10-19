@@ -1,0 +1,88 @@
+TAP version 13
+# Subtest: explicit 709 opaque YUV has real evidence, selected playable stream and compatible status
+ok 1 - explicit 709 opaque YUV has real evidence, selected playable stream and compatible status
+  ---
+  duration_ms: 2.134125
+  type: 'test'
+  ...
+# Subtest: missing and unspecified tags need explicit interpretation without pretending it is evidence
+ok 2 - missing and unspecified tags need explicit interpretation without pretending it is evidence
+  ---
+  duration_ms: 0.6495
+  type: 'test'
+  ...
+# Subtest: known non709, Log, HDR, RGB, alpha, depth contradictions and unsupported ranges cannot be overridden
+ok 3 - known non709, Log, HDR, RGB, alpha, depth contradictions and unsupported ranges cannot be overridden
+  ---
+  duration_ms: 0.973875
+  type: 'test'
+  ...
+# Subtest: asset hashes, selected stream and known ranges are actual-byte bound
+ok 4 - asset hashes, selected stream and known ranges are actual-byte bound
+  ---
+  duration_ms: 0.320292
+  type: 'test'
+  ...
+# Subtest: malformed probe is bounded and a missing video is unsupported rather than inferred
+ok 5 - malformed probe is bounded and a missing video is unsupported rather than inferred
+  ---
+  duration_ms: 0.296416
+  type: 'test'
+  ...
+# Subtest: owned inspection hashes before/after probe, exposes only DTO and has no SQLite writes
+ok 6 - owned inspection hashes before/after probe, exposes only DTO and has no SQLite writes
+  ---
+  duration_ms: 2.608083
+  type: 'test'
+  ...
+# Subtest: owner/restored/foreign/source limits reject before hashing and probing
+ok 7 - owner/restored/foreign/source limits reject before hashing and probing
+  ---
+  duration_ms: 0.372417
+  type: 'test'
+  ...
+# Subtest: hostile accessors and caller file paths never execute or reach runtime
+ok 8 - hostile accessors and caller file paths never execute or reach runtime
+  ---
+  duration_ms: 0.263041
+  type: 'test'
+  ...
+# Subtest: SHA/row/path changes and ownership loss across await invalidate rather than publish
+ok 9 - SHA/row/path changes and ownership loss across await invalidate rather than publish
+  ---
+  duration_ms: 1.867
+  type: 'test'
+  ...
+# Subtest: single active operation survives public cancellation until noncooperative work actually settles
+ok 10 - single active operation survives public cancellation until noncooperative work actually settles
+  ---
+  duration_ms: 0.369292
+  type: 'test'
+  ...
+# Subtest: read-only inspection never starts file/process work from inside a SQLite write
+ok 11 - read-only inspection never starts file/process work from inside a SQLite write
+  ---
+  duration_ms: 0.147209
+  type: 'test'
+  ...
+# Subtest: unconfirmed process shutdown permanently poisons the local inspection owner
+ok 12 - unconfirmed process shutdown permanently poisons the local inspection owner
+  ---
+  duration_ms: 0.303083
+  type: 'test'
+  ...
+# Subtest: fixed metadata probe is file-only, bounded, selected-field and lifetime-fenced
+ok 13 - fixed metadata probe is file-only, bounded, selected-field and lifetime-fenced
+  ---
+  duration_ms: 0.210833
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 197.155375

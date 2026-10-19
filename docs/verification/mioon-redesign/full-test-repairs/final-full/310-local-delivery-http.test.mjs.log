@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: narrow local routes use fixed methods and GET never invokes execution
+ok 1 - narrow local routes use fixed methods and GET never invokes execution
+  ---
+  duration_ms: 3.671709
+  type: 'test'
+  ...
+# Subtest: bounded query and body rejection occurs before service invocation
+ok 2 - bounded query and body rejection occurs before service invocation
+  ---
+  duration_ms: 1.365
+  type: 'test'
+  ...
+# Subtest: opaque errors do not disclose raw storage messages or fabricate not-applied proof
+ok 3 - opaque errors do not disclose raw storage messages or fabricate not-applied proof
+  ---
+  duration_ms: 0.942958
+  type: 'test'
+  ...
+# Subtest: execution response cap preserves the existing 4 MiB render boundary and rejects oversized transport payloads
+ok 4 - execution response cap preserves the existing 4 MiB render boundary and rejects oversized transport payloads
+  ---
+  duration_ms: 5.070958
+  type: 'test'
+  ...
+# Subtest: production route is placed behind existing Host/Origin and authentication checks, absent from RPC and Agent declarations
+ok 5 - production route is placed behind existing Host/Origin and authentication checks, absent from RPC and Agent declarations
+  ---
+  duration_ms: 0.522
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 179.116875

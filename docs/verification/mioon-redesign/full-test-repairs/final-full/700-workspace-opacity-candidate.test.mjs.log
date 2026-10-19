@@ -1,0 +1,47 @@
+TAP version 13
+# Subtest: only explicit dormant42/43 descriptors are accepted, with no numeric inheritance
+ok 1 - only explicit dormant42/43 descriptors are accepted, with no numeric inheritance
+  ---
+  duration_ms: 1.192208
+  type: 'test'
+  ...
+# Subtest: marker evidence has exact chains, excludes historical restored markers, and grants no authority
+ok 2 - marker evidence has exact chains, excludes historical restored markers, and grants no authority
+  ---
+  duration_ms: 1.168959
+  type: 'test'
+  ...
+# Subtest: hostile candidate descriptors and marker arrays execute no getter or proxy trap
+ok 3 - hostile candidate descriptors and marker arrays execute no getter or proxy trap
+  ---
+  duration_ms: 0.131375
+  type: 'test'
+  ...
+# Subtest: production dispatcher continues refusing42/43 marker evidence without writing
+ok 4 - production dispatcher continues refusing42/43 marker evidence without writing
+  ---
+  duration_ms: 1.759416
+  type: 'test'
+  ...
+# Subtest: historical25–41 pins survive only finite reviewed integration deltas and the approved renderer seam
+ok 5 - historical25–41 pins survive only finite reviewed integration deltas and the approved renderer seam
+  ---
+  duration_ms: 10.237208
+  type: 'test'
+  ...
+# 54 original files retain raw SHA-256 bytes; ten finite reviewed deltas recover all63 original dependency pins and the separately approved renderer seam; original64-file manifest unchanged
+# Subtest: candidate modules remain absent from production exports, startup, operations and permissions
+ok 6 - candidate modules remain absent from production exports, startup, operations and permissions
+  ---
+  duration_ms: 0.892625
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 240.326333

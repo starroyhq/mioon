@@ -1,0 +1,167 @@
+TAP version 13
+# Subtest: fade schema preserves absence and explicit zero, accepts only bounded integer frames, and adds no operations
+ok 1 - fade schema preserves absence and explicit zero, accepts only bounded integer frames, and adds no operations
+  ---
+  duration_ms: 3.7865
+  type: 'test'
+  ...
+# Subtest: pure shared validator requires confirmed audio only for positive fades and never normalizes clips
+ok 2 - pure shared validator requires confirmed audio only for positive fades and never normalizes clips
+  ---
+  duration_ms: 0.574208
+  type: 'test'
+  ...
+# Subtest: add stores exactly the provided fade keys, including zero on images or unknown-audio legacy assets
+ok 3 - add stores exactly the provided fade keys, including zero on images or unknown-audio legacy assets
+  ---
+  duration_ms: 1142.599875
+  type: 'test'
+  ...
+# Subtest: positive fades require confirmed audio and rejected adds never initialize a fresh timeline
+ok 4 - positive fades require confirmed audio and rejected adds never initialize a fresh timeline
+  ---
+  duration_ms: 679.857917
+  type: 'test'
+  ...
+# Subtest: fade duration bounds and trims are atomic, never clamp, and may be fixed in the same patch
+ok 5 - fade duration bounds and trims are atomic, never clamp, and may be fixed in the same patch
+  ---
+  duration_ms: 687.957791
+  type: 'test'
+  ...
+# Subtest: gain, mute and hidden controls preserve fades and all source metadata
+ok 6 - gain, mute and hidden controls preserve fades and all source metadata
+  ---
+  duration_ms: 620.729083
+  type: 'test'
+  ...
+# Subtest: split preserves the original outer fades and only zeros previously present inner fields at both boundaries
+    # Subtest: {} at 1
+    ok 1 - {} at 1
+      ---
+      duration_ms: 709.654792
+      type: 'test'
+      ...
+    # Subtest: {} at 59
+    ok 2 - {} at 59
+      ---
+      duration_ms: 654.375041
+      type: 'test'
+      ...
+    # Subtest: {"fadeInFrames":0} at 1
+    ok 3 - {"fadeInFrames":0} at 1
+      ---
+      duration_ms: 667.310584
+      type: 'test'
+      ...
+    # Subtest: {"fadeInFrames":0} at 59
+    ok 4 - {"fadeInFrames":0} at 59
+      ---
+      duration_ms: 720.034917
+      type: 'test'
+      ...
+    # Subtest: {"fadeOutFrames":0} at 1
+    ok 5 - {"fadeOutFrames":0} at 1
+      ---
+      duration_ms: 682.529458
+      type: 'test'
+      ...
+    # Subtest: {"fadeOutFrames":0} at 59
+    ok 6 - {"fadeOutFrames":0} at 59
+      ---
+      duration_ms: 704.122166
+      type: 'test'
+      ...
+    # Subtest: {"fadeInFrames":0,"fadeOutFrames":0} at 1
+    ok 7 - {"fadeInFrames":0,"fadeOutFrames":0} at 1
+      ---
+      duration_ms: 772.473834
+      type: 'test'
+      ...
+    # Subtest: {"fadeInFrames":0,"fadeOutFrames":0} at 59
+    ok 8 - {"fadeInFrames":0,"fadeOutFrames":0} at 59
+      ---
+      duration_ms: 1714.210125
+      type: 'test'
+      ...
+    # Subtest: {"fadeInFrames":10} at 10
+    ok 9 - {"fadeInFrames":10} at 10
+      ---
+      duration_ms: 691.015541
+      type: 'test'
+      ...
+    # Subtest: {"fadeInFrames":10} at 59
+    ok 10 - {"fadeInFrames":10} at 59
+      ---
+      duration_ms: 680.697125
+      type: 'test'
+      ...
+    # Subtest: {"fadeOutFrames":20} at 1
+    ok 11 - {"fadeOutFrames":20} at 1
+      ---
+      duration_ms: 985.541959
+      type: 'test'
+      ...
+    # Subtest: {"fadeOutFrames":20} at 40
+    ok 12 - {"fadeOutFrames":20} at 40
+      ---
+      duration_ms: 763.09825
+      type: 'test'
+      ...
+    # Subtest: {"fadeInFrames":10,"fadeOutFrames":20} at 10
+    ok 13 - {"fadeInFrames":10,"fadeOutFrames":20} at 10
+      ---
+      duration_ms: 687.489833
+      type: 'test'
+      ...
+    # Subtest: {"fadeInFrames":10,"fadeOutFrames":20} at 40
+    ok 14 - {"fadeInFrames":10,"fadeOutFrames":20} at 40
+      ---
+      duration_ms: 756.537708
+      type: 'test'
+      ...
+    # Subtest: {"fadeInFrames":10,"fadeOutFrames":50} at 10
+    ok 15 - {"fadeInFrames":10,"fadeOutFrames":50} at 10
+      ---
+      duration_ms: 725.378625
+      type: 'test'
+      ...
+    1..15
+ok 7 - split preserves the original outer fades and only zeros previously present inner fields at both boundaries
+  ---
+  duration_ms: 11920.027625
+  type: 'test'
+  ...
+# Subtest: split inside either fade preserves exact state and a pending redo branch
+ok 8 - split inside either fade preserves exact state and a pending redo branch
+  ---
+  duration_ms: 857.736167
+  type: 'test'
+  ...
+# Subtest: legacy snapshots, history and original request bytes remain exact across fades, travel and restart
+ok 9 - legacy snapshots, history and original request bytes remain exact across fades, travel and restart
+  ---
+  duration_ms: 738.903792
+  type: 'test'
+  ...
+# Subtest: fade requests distinguish omitted and explicit zero and retain revision and cross-project boundaries
+ok 10 - fade requests distinguish omitted and explicit zero and retain revision and cross-project boundaries
+  ---
+  duration_ms: 740.0125
+  type: 'test'
+  ...
+# Subtest: audio fades do not expand either model-facing Agent catalog or authority
+ok 11 - audio fades do not expand either model-facing Agent catalog or authority
+  ---
+  duration_ms: 0.45825
+  type: 'test'
+  ...
+1..11
+# tests 26
+# suites 0
+# pass 26
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 17749.590916

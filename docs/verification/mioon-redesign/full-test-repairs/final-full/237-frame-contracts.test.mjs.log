@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: frame surface is exactly six strict local operations with stable bounded replay keys
+ok 1 - frame surface is exactly six strict local operations with stable bounded replay keys
+  ---
+  duration_ms: 10.747916
+  type: 'test'
+  ...
+# Subtest: snapshot freezes acceptance metadata, managed relative path, requested clock and profile only
+ok 2 - snapshot freezes acceptance metadata, managed relative path, requested clock and profile only
+  ---
+  duration_ms: 2.459666
+  type: 'test'
+  ...
+# Subtest: receipt contains independent PNG identity and actual bounded probe evidence, never selected PTS
+ok 3 - receipt contains independent PNG identity and actual bounded probe evidence, never selected PTS
+  ---
+  duration_ms: 2.894416
+  type: 'test'
+  ...
+# Subtest: safe task DTOs distinguish local start fence, historical ACKs and immutable output
+ok 4 - safe task DTOs distinguish local start fence, historical ACKs and immutable output
+  ---
+  duration_ms: 2.506583
+  type: 'test'
+  ...
+# Subtest: paged frame reads reject foreign, duplicate, oversized and unsafe payloads
+ok 5 - paged frame reads reject foreign, duplicate, oversized and unsafe payloads
+  ---
+  duration_ms: 0.666041
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 212.060542

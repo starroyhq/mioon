@@ -1,0 +1,131 @@
+{
+  "checks": [
+    "step1-explicit-check",
+    "steps2-3-frozen-review",
+    "accepted-export-close-dialog",
+    "closed-dialog-job-succeeded",
+    "reopen-step5-download-1080x1920-4s",
+    "tasks-entry-after-export"
+  ],
+  "errors": [],
+  "rpc": [
+    {
+      "operation": "workspace.restore.inspect",
+      "ok": false,
+      "id": null
+    },
+    {
+      "operation": "workspace.restore.inspect",
+      "ok": true,
+      "id": null
+    },
+    {
+      "operation": "project.list",
+      "ok": true,
+      "id": null
+    },
+    {
+      "operation": "provider.list",
+      "ok": true,
+      "id": null
+    },
+    {
+      "operation": "workspace.restore.inspect",
+      "ok": true,
+      "id": null
+    },
+    {
+      "operation": "project.summary.list",
+      "ok": true,
+      "id": null
+    },
+    {
+      "operation": "workspace.restore.inspect",
+      "ok": true,
+      "id": null
+    },
+    {
+      "operation": "project.get",
+      "ok": true,
+      "id": null
+    },
+    {
+      "operation": "provider.list",
+      "ok": true,
+      "id": null
+    },
+    {
+      "operation": "asset.disposition.list",
+      "ok": true,
+      "id": null
+    },
+    {
+      "operation": "asset.annotation.list",
+      "ok": true,
+      "id": null
+    },
+    {
+      "operation": "subject.list",
+      "ok": true,
+      "id": null
+    },
+    {
+      "operation": "timeline.export.capabilities",
+      "ok": true,
+      "id": null
+    },
+    {
+      "operation": "timeline.export.preflight",
+      "ok": true,
+      "id": null
+    },
+    {
+      "operation": "project.get",
+      "ok": true,
+      "id": null
+    },
+    {
+      "operation": "provider.list",
+      "ok": true,
+      "id": null
+    },
+    {
+      "operation": "project.get",
+      "ok": true,
+      "id": null
+    },
+    {
+      "operation": "provider.list",
+      "ok": true,
+      "id": null
+    },
+    {
+      "operation": "project.get",
+      "ok": true,
+      "id": null
+    },
+    {
+      "operation": "provider.list",
+      "ok": true,
+      "id": null
+    },
+    {
+      "operation": "asset.disposition.list",
+      "ok": true,
+      "id": null
+    },
+    {
+      "operation": "asset.annotation.list",
+      "ok": true,
+      "id": null
+    }
+  ],
+  "acceptedStep": "4",
+  "media": {
+    "width": 1080,
+    "height": 1920,
+    "fps": "30/1",
+    "duration": "4.000000",
+    "bytes": 16787
+  }
+}

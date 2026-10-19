@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: typed error is the one canonical constructor through both import paths
+ok 1 - typed error is the one canonical constructor through both import paths
+  ---
+  duration_ms: 0.607042
+  type: 'test'
+  ...
+# Subtest: AppError type-only extraction preserves field order, defaults, details identity and serialization
+ok 2 - AppError type-only extraction preserves field order, defaults, details identity and serialization
+  ---
+  duration_ms: 3.486917
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 338.947541

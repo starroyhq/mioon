@@ -1,0 +1,115 @@
+{
+  "officialComponents": [
+    {
+      "name": "button",
+      "unchangedFromHead": true,
+      "actualSha256": "cea684b405ffb3e7ef6b4aae7811e7a356f9efe38f482aa4f959038b99f8e672",
+      "manifestSha256": "cea684b405ffb3e7ef6b4aae7811e7a356f9efe38f482aa4f959038b99f8e672",
+      "manifestMatches": true
+    },
+    {
+      "name": "input",
+      "unchangedFromHead": true,
+      "actualSha256": "b3c4dc745a3fcf4d18894b1e2481d754efcfc570c60154e23ca58a27f2a5417b",
+      "manifestSha256": "b3c4dc745a3fcf4d18894b1e2481d754efcfc570c60154e23ca58a27f2a5417b",
+      "manifestMatches": true
+    },
+    {
+      "name": "textarea",
+      "unchangedFromHead": true,
+      "actualSha256": "977092c3a0abc38438e317715815328fcfa6e3ea340c7d8583740e9df264e27f",
+      "manifestSha256": "977092c3a0abc38438e317715815328fcfa6e3ea340c7d8583740e9df264e27f",
+      "manifestMatches": true
+    },
+    {
+      "name": "select",
+      "unchangedFromHead": true,
+      "actualSha256": "15637e14313a2adbe79845c1271b8487e4a4f78718c5bb5fd3688fd081bfc014",
+      "manifestSha256": "15637e14313a2adbe79845c1271b8487e4a4f78718c5bb5fd3688fd081bfc014",
+      "manifestMatches": true
+    },
+    {
+      "name": "dialog",
+      "unchangedFromHead": true,
+      "actualSha256": "20a6d44880875f2f4fdeb031af867323302913af91eab650f916e2e288fe12de",
+      "manifestSha256": "0fe20dca84cb1246a390eecc1ad7d7cca0fe7a25975765e6a75a396c0a9327b1",
+      "manifestMatches": false
+    },
+    {
+      "name": "dropdown-menu",
+      "unchangedFromHead": true,
+      "actualSha256": "9d43d42b0cb79651350b9abe5c8bcc375fdd8583508ba1f553245d84d9428044",
+      "manifestSha256": "9d43d42b0cb79651350b9abe5c8bcc375fdd8583508ba1f553245d84d9428044",
+      "manifestMatches": true
+    },
+    {
+      "name": "tabs",
+      "unchangedFromHead": true,
+      "actualSha256": "94edb29d10e68393398adf15fb1c1b2c8219be6842f1248d64cda04679033fa3",
+      "manifestSha256": "94edb29d10e68393398adf15fb1c1b2c8219be6842f1248d64cda04679033fa3",
+      "manifestMatches": true
+    },
+    {
+      "name": "switch",
+      "unchangedFromHead": true,
+      "actualSha256": "168a593b9a6f9a12978f9d450b8ef69025fa7f8daf0272f52baf598b1273909a",
+      "manifestSha256": "168a593b9a6f9a12978f9d450b8ef69025fa7f8daf0272f52baf598b1273909a",
+      "manifestMatches": true
+    },
+    {
+      "name": "collapsible",
+      "unchangedFromHead": true,
+      "actualSha256": "ead4349ff7b01d696ef89294a81d18ee1d3f732321398896462c834ab9b9e065",
+      "manifestSha256": "ead4349ff7b01d696ef89294a81d18ee1d3f732321398896462c834ab9b9e065",
+      "manifestMatches": true
+    },
+    {
+      "name": "tooltip",
+      "unchangedFromHead": true,
+      "actualSha256": "610705031e815546d59514ff85d499421cc981fa505e6748a0ac4f80b9df99c4",
+      "manifestSha256": "610705031e815546d59514ff85d499421cc981fa505e6748a0ac4f80b9df99c4",
+      "manifestMatches": true
+    },
+    {
+      "name": "scroll-area",
+      "unchangedFromHead": true,
+      "actualSha256": "04c87f6e59a72a4cb637743bc6b2e928fe4fc0e5ac43ed857b261983a040a8c2",
+      "manifestSha256": "04c87f6e59a72a4cb637743bc6b2e928fe4fc0e5ac43ed857b261983a040a8c2",
+      "manifestMatches": true
+    },
+    {
+      "name": "label",
+      "unchangedFromHead": true,
+      "actualSha256": "717577f6e00c1448f307c13b09677446c7c9b5eb8a10c58215c9ac107440d2bc",
+      "manifestSha256": "717577f6e00c1448f307c13b09677446c7c9b5eb8a10c58215c9ac107440d2bc",
+      "manifestMatches": true
+    },
+    {
+      "name": "badge",
+      "unchangedFromHead": true,
+      "actualSha256": "46ea8a69c45b62e6539ae4e89be2bd0c970f7074d2c026ec85292d03845cef77",
+      "manifestSha256": "46ea8a69c45b62e6539ae4e89be2bd0c970f7074d2c026ec85292d03845cef77",
+      "manifestMatches": true
+    },
+    {
+      "name": "separator",
+      "unchangedFromHead": true,
+      "actualSha256": "5e1733d670232f24f6b6c297d6bb79e4d4dce69137d72f7736f1ad72d3b10608",
+      "manifestSha256": "5e1733d670232f24f6b6c297d6bb79e4d4dce69137d72f7736f1ad72d3b10608",
+      "manifestMatches": true
+    },
+    {
+      "name": "slider",
+      "unchangedFromHead": true,
+      "actualSha256": "cd704fc76c4e1f54f9cfa0f5cdf2f5dc9ab424c04deab492b5faaf86fd723305",
+      "manifestSha256": "cd704fc76c4e1f54f9cfa0f5cdf2f5dc9ab424c04deab492b5faaf86fd723305",
+      "manifestMatches": true
+    }
+  ],
+  "dependencyManifestChanges": [],
+  "baselineManifestDrift": [
+    "dialog"
+  ],
+  "branch": "codex/mioon-redesign",
+  "head": "8d2f7faea422b60e2030a72f15af2d7aa9d465f6"
+}

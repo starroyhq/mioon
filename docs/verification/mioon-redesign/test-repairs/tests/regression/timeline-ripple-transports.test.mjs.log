@@ -1,0 +1,16 @@
+TAP version 13
+# Subtest: ripple HTTP durable tasks, actual CLI and official MCP agree on strict schema, undo and exact replay
+ok 1 - ripple HTTP durable tasks, actual CLI and official MCP agree on strict schema, undo and exact replay
+  ---
+  duration_ms: 3209.820834
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3620.020833

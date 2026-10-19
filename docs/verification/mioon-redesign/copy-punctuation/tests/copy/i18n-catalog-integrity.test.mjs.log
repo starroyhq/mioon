@@ -1,0 +1,540 @@
+TAP version 13
+# Subtest: every composed UI and native catalog has exact four-locale and placeholder parity
+ok 1 - every composed UI and native catalog has exact four-locale and placeholder parity
+  ---
+  duration_ms: 39.94375
+  type: 'test'
+  ...
+# Subtest: UI literal ledger rejects unexplained, newly introduced and stale exceptions
+ok 2 - UI literal ledger rejects unexplained, newly introduced and stale exceptions
+  ---
+  duration_ms: 0.392458
+  type: 'test'
+  ...
+# Subtest: current source has no unreviewed or stale static UI literal exceptions
+not ok 3 - current source has no unreviewed or stale static UI literal exceptions
+  ---
+  duration_ms: 342.708834
+  type: 'test'
+  location: '/private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/i18n-catalog-integrity.test.mjs:31:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      {
+    +   stale: [
+    +     {
+    +       category: 'cjk-source',
+    +       file: 'apps/desktop/src/project-window-recovery.ts',
+    +       hash: '91280b43e3ff580ba9c536e5a227df6ce16ded65969b335623293797e05989d8',
+    +       owner: 'foundation',
+    +       reason: 'Internal BACKEND_START_EXITED diagnostic. main.mjs supplies localized native startup/recovery primary messages; it does not substitute raw exception text into primary controls.'
+    +     },
+    +     {
+    +       category: 'cjk-source',
+    +       file: 'apps/desktop/src/supervisor.mjs',
+    +       hash: '7d2f0490415e9ebf2bc233ccadd5b0b002d3d6df9ed3f4cd230eb70ddbf15e57',
+    +       owner: 'foundation',
+    +       reason: 'Preserved internal lifecycle diagnostic. main.mjs backendFailed/quitFailed/fatal select localized native.* summaries, and fatal raw details use native.originalDiagnostic. No user-owned backend lifecycle source is changed by localization.'
+    +     },
+    +     {
+    +       category: 'cjk-source',
+    +       file: 'apps/desktop/src/supervisor.mjs',
+    +       hash: 'de63a9b84bb7a095c3766e42101b36577137bfb77ecbf5fa392681d0b7fed7ff',
+    +       owner: 'foundation',
+    +       reason: 'Preserved internal lifecycle diagnostic. main.mjs backendFailed/quitFailed/fatal select localized native.* summaries, and fatal raw details use native.originalDiagnostic. No user-owned backend lifecycle source is changed by localization.'
+    +     },
+    +     {
+    +       category: 'cjk-source',
+    +       file: 'apps/desktop/src/supervisor.mjs',
+    +       hash: 'a161a5dff86b23f8e7ef31f67dd3ef7b1ab98b37e5d985c9007e9682bac95296',
+    +       owner: 'foundation',
+    +       reason: 'Preserved internal lifecycle diagnostic. main.mjs backendFailed/quitFailed/fatal select localized native.* summaries, and fatal raw details use native.originalDiagnostic. No user-owned backend lifecycle source is changed by localization.'
+    +     },
+    +     {
+    +       category: 'cjk-source',
+    +       file: 'apps/desktop/src/supervisor.mjs',
+    +       hash: 'e24b89d4739e49dda1a6bc9a88719f919a313916a1036523063880e87f94d5df',
+    +       owner: 'foundation',
+    +       reason: 'Preserved internal lifecycle diagnostic. main.mjs backendFailed/quitFailed/fatal select localized native.* summaries, and fatal raw details use native.originalDiagnostic. No user-owned backend lifecycle source is changed by localization.'
+    +     },
+    +     {
+    +       category: 'visible-jsx',
+    +       file: 'apps/web/src/App.jsx',
+    +       hash: '1c73ed523adee3e8abd10cdf89ec61019009e97ffebb2c8f49abbca692c9a071',
+    +       owner: 'shell',
+    +       reason: 'Technical version prefix beside an existing version number, not prose or user content; version identity/number is unchanged.'
+    +     },
+    +     {
+    +       category: 'visible-jsx',
+    +       file: 'apps/web/src/App.jsx',
+    +       hash: '83d6e86209a5b7d486da38558a8baddc3737d3fcb2deab1db100da0f1b9575cb',
+    +       owner: 'shell',
+    +       reason: 'Technical SI seconds unit in compact duration notation; the duration value remains display-only and its numeric protocol value is unchanged.'
+    +     },
+    +     {
+    +       category: 'visible-jsx',
+    +       file: 'apps/web/src/Nodes.jsx',
+    +       hash: '1c73ed523adee3e8abd10cdf89ec61019009e97ffebb2c8f49abbca692c9a071',
+    +       owner: 'shell',
+    +       reason: 'Technical version prefix beside an existing version number, not prose or user content; version identity/number is unchanged.'
+    +     },
+    +     {
+    +       category: 'visible-jsx',
+    +       file: 'apps/web/src/ProjectHome.tsx',
+    +       hash: '6128287041610e3e584b5cc1268df57e8d98f6dc1e16744caf935453325b9b78',
+    +       owner: 'shell',
+    +       reason: 'Exact Mioon application brand, including its existing lowercase logo/accessible brand spelling; product identity must not be translated.'
+    +     },
+    +     {
+    +       category: 'visible-jsx',
+    +       file: 'apps/web/src/ProjectHome.tsx',
+    +       hash: 'e4bb1d84af3d68f8d7999c5aa5b4cbaec430ad95d2cbfb148a9659b1c1b66235',
+    +       owner: 'shell',
+    +       reason: 'Exact Mioon application brand, including its existing lowercase logo/accessible brand spelling; product identity must not be translated.'
+    +     },
+    +     {
+    +       category: 'visible-jsx',
+    +       file: 'apps/web/src/WebSettingsCenter.tsx',
+    +       hash: 'e4bb1d84af3d68f8d7999c5aa5b4cbaec430ad95d2cbfb148a9659b1c1b66235',
+    +       owner: 'shell',
+    +       reason: 'Product brand, deliberately unchanged in every language, matching other mioon brand placements.'
+    +     },
+    +     {
+    +       category: 'cjk-source',
+    +       file: 'apps/web/src/agent-chat.js',
+    +       hash: '7dbfe873a789300f859c4b1fb23821939546be0a40de85360c4748941e1c8b2d',
+    +       owner: 'creation',
+    +       reason: 'The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. AgentPanel renders state.displayMessage/history.displayMessage; agentChatErrorDescriptor and agentChatPromptIssueDescriptor map stable error/validation branches. Timeline block strings only fence authorization; AgentPanel renders the corresponding blocked descriptor prop. Four-locale counterpart: agent.chat.state.consentChanged.'
+    +     },
+    +     {
+    +       category: 'visible-jsx',
+    +       file: 'apps/web/src/Preview.jsx',
+    +       hash: '8170d88edf1074bb37a191df4702b33d3a3944fdac209d0d8d7638ad95aaa4c3',
+    +       owner: 'timeline',
+    +       reason: "Fixed frames-per-second editing/output unit in the original frozen media geometry, not translatable prose. The numeric frame rate and dimensions remain unchanged; surrounding statuses and captions use localized descriptors. Reviewed literal template fragment: 'fps ·'."
+    +     },
+    +     {
+    +       category: 'visible-jsx',
+    +       file: 'apps/web/src/Preview.jsx',
+    +       hash: '23e3a16cd69e0ea405543ce66c9194e3360e6ae3299a2f4b0e52acf1e401fb74',
+    +       owner: 'timeline',
+    +       reason: "Fixed frames-per-second editing/output unit in the original frozen media geometry, not translatable prose. The numeric frame rate and dimensions remain unchanged; surrounding statuses and captions use localized descriptors. Reviewed literal template fragment: 'fps'."
+    +     },
+    +     {
+    +       category: 'visible-jsx',
+    +       file: 'apps/web/src/Timeline.jsx',
+    +       hash: '8170d88edf1074bb37a191df4702b33d3a3944fdac209d0d8d7638ad95aaa4c3',
+    +       owner: 'timeline',
+    +       reason: "Fixed frames-per-second editing/output unit in the original frozen media geometry, not translatable prose. The numeric frame rate and dimensions remain unchanged; surrounding statuses and captions use localized descriptors. Reviewed literal template fragment: 'fps ·'."
+    +     }
+    +   ],
+    +   unreviewed: [
+    +     {
+    +       category: 'cjk-source',
+    +       file: 'apps/desktop/src/project-window-recovery.ts',
+    +       hash: 'cb7f8e44a0c0937cda52568c2bbcc93194e2a5ef86192a3a63ef8eb615a583bf',
+    +       line: 83,
+    +       text: '本地服务在窗口准备完成前已停止'
+    +     },
+    +     {
+    +       category: 'cjk-source',
+    +       file: 'apps/desktop/src/supervisor.mjs',
+    +       hash: '24125cde4ce0fb06b517c547a2d2aacaa032db4ad45f98530a50dde4514c8404',
+    +       line: 14,
+    +       text: '本地服务未确认退出。请稍后重试；在确认退出前不能重启服务'
+    +     },
+    +     {
+    +       category: 'cjk-source',
+    +       file: 'apps/desktop/src/supervisor.mjs',
+    +       hash: 'bba25bac41c5905e8ba87b53bcfb4d3ee309092c3a3bee6a6fc369081aae631f',
+    +       line: 15,
+    +       text: '本地服务已退出，但媒体子进程是否退出尚无法确认。不能自动重启服务'
+    +     },
+    +     {
+    +       category: 'cjk-source',
+    +       file: 'apps/desktop/src/supervisor.mjs',
+    +       hash: 'e0543fa08068c83a5e7b67b48fa9438a842d5ab79d02871fde3a0042492e8146',
+    +       line: 16,
+    +       text: '本地服务退出时未能完成正常清理。已保存的数据将在下次启动时恢复'
+    +     },
+    +     {
+    +       category: 'cjk-source',
+    +       file: 'apps/desktop/src/supervisor.mjs',
+    +       hash: 'f23696139cd15595d943b19342754376b79d1a988ce8376c32fa453240344942',
+    +       line: 135,
+    +       text: '本地服务启动失败。请检查数据目录和应用文件'
+    +     },
+    +     {
+    +       category: 'visible-jsx',
+    +       file: 'apps/web/src/AssetLibrary.jsx',
+    +       hash: '83d6e86209a5b7d486da38558a8baddc3737d3fcb2deab1db100da0f1b9575cb',
+    +       line: 89,
+    +       text: 's'
+    +     },
+    +     {
+    +       category: 'visible-jsx',
+    +       file: 'apps/web/src/LoginScreen.tsx',
+    +       hash: '7a46cf2292a4ae656546bfaaf227049188aa7afe5b12953101345c8916893762',
+    +       line: 26,
+    +       text: 'Mioon'
+    +     },
+    +     {
+    +       category: 'visible-jsx',
+    +       file: 'apps/web/src/LoginScreen.tsx',
+    +       hash: '68155112c228d4225ef47f1e79ddb3650a43b013c4aefc34654902a2bafcd6a8',
+    +       line: 29,
+    +       text: 'data/access-token'
+    +     },
+    +     {
+    +       category: 'visible-jsx',
+    +       file: 'apps/web/src/ProjectHome.tsx',
+    +       hash: '3503c0f5cfcc36ae62cf8ff3d8e0fb77cd652a28c283e654e095bb4e3265bec1',
+    +       line: 139,
+    +       text: 'Mioon'
+    +     },
+    +     {
+    +       category: 'visible-jsx',
+    +       file: 'apps/web/src/ProjectHome.tsx',
+    +       hash: '7a46cf2292a4ae656546bfaaf227049188aa7afe5b12953101345c8916893762',
+    +       line: 139,
+    +       text: 'Mioon'
+    +     },
+    +     {
+    +       category: 'visible-jsx',
+    +       file: 'apps/web/src/SettingsExtraPages.tsx',
+    +       hash: '7a46cf2292a4ae656546bfaaf227049188aa7afe5b12953101345c8916893762',
+    +       line: 41,
+    +       text: 'Mioon'
+    +     },
+    +     {
+    +       category: 'visible-jsx',
+    +       file: 'apps/web/src/SettingsExtraPages.tsx',
+    +       hash: '97890ad4882a6bbc838a1c20fca197ad01cba6503bca3a15c61dcc829652bab3',
+    +       line: 42,
+    +       text: 'React · MIT'
+    +     },
+    +     {
+    +       category: 'visible-jsx',
+    +       file: 'apps/web/src/SettingsExtraPages.tsx',
+    +       hash: '8e55f97219f5b454cb2b4c34b063f6392deafb6e74688a1358792aadb7bf3ab5',
+    +       line: 42,
+    +       text: 'Base UI · MIT'
+    +     },
+    +     {
+    +       category: 'visible-jsx',
+    +       file: 'apps/web/src/SettingsExtraPages.tsx',
+    +       hash: 'a1b6715f2f7d2616829dbeb97f1918eea0c22d84016c9baf528ec21a75fa990b',
+    +       line: 42,
+    +       text: 'React Flow · MIT'
+    +     },
+    +     {
+    +       category: 'visible-jsx',
+    +       file: 'apps/web/src/SettingsExtraPages.tsx',
+    +       hash: '47a816b7bd48364a03275ba1992ac33ab754f049adc4e885e0cbcbd009d2e1a1',
+    +       line: 42,
+    +       text: 'Tailwind CSS · MIT'
+    +     },
+    +     {
+    +       category: 'visible-jsx',
+    +       file: 'apps/web/src/SettingsExtraPages.tsx',
+    +       hash: '3c49cc65d7ebf9b443fcf12bc998784aa7d36d3f2842adf863d58d6146170810',
+    +       line: 42,
+    +       text: 'Electron · MIT'
+    +     },
+    +     {
+    +       category: 'visible-jsx',
+    +       file: 'apps/web/src/SettingsWorkspace.tsx',
+    +       hash: '9221db0f72a6e7ee7cbf600eade275e5e8728c11958d28b4501e6b5346190c40',
+    +       line: 12,
+    +       text: 'MB'
+    +     },
+    +     {
+    +       category: 'visible-jsx',
+    +       file: 'apps/web/src/StoryboardStrip.tsx',
+    +       hash: '83d6e86209a5b7d486da38558a8baddc3737d3fcb2deab1db100da0f1b9575cb',
+    +       line: 22,
+    +       text: 's'
+    +     },
+    +     {
+    +       category: 'visible-jsx',
+    +       file: 'apps/web/src/StoryboardStrip.tsx',
+    +       hash: '1c73ed523adee3e8abd10cdf89ec61019009e97ffebb2c8f49abbca692c9a071',
+    +       line: 22,
+    +       text: 'V'
+    +     },
+    +     {
+    +       category: 'visible-jsx',
+    +       file: 'apps/web/src/VersionComparison.tsx',
+    +       hash: '83d6e86209a5b7d486da38558a8baddc3737d3fcb2deab1db100da0f1b9575cb',
+    +       line: 146,
+    +       text: 's'
+    +     },
+    +     {
+    +       category: 'cjk-source',
+    +       file: 'apps/web/src/agent-chat.js',
+    +       hash: 'e0d4f77831fd29bbd6a86e4cef5920dd9862a1ec143a11d4b6d406d9430dedde',
+    +       line: 27,
+    +       text: '目标、模型或发送范围尚未授权，或当前请求范围已变化，请核对授权与发送内容。'
+    +     }
+    +   ]
+    -   stale: [],
+    -   unreviewed: []
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    unreviewed:
+    stale:
+  actual:
+    unreviewed:
+      0:
+        file: 'apps/desktop/src/project-window-recovery.ts'
+        line: 83
+        category: 'cjk-source'
+        hash: 'cb7f8e44a0c0937cda52568c2bbcc93194e2a5ef86192a3a63ef8eb615a583bf'
+        text: '本地服务在窗口准备完成前已停止'
+      1:
+        file: 'apps/desktop/src/supervisor.mjs'
+        line: 14
+        category: 'cjk-source'
+        hash: '24125cde4ce0fb06b517c547a2d2aacaa032db4ad45f98530a50dde4514c8404'
+        text: '本地服务未确认退出。请稍后重试；在确认退出前不能重启服务'
+      2:
+        file: 'apps/desktop/src/supervisor.mjs'
+        line: 15
+        category: 'cjk-source'
+        hash: 'bba25bac41c5905e8ba87b53bcfb4d3ee309092c3a3bee6a6fc369081aae631f'
+        text: '本地服务已退出，但媒体子进程是否退出尚无法确认。不能自动重启服务'
+      3:
+        file: 'apps/desktop/src/supervisor.mjs'
+        line: 16
+        category: 'cjk-source'
+        hash: 'e0543fa08068c83a5e7b67b48fa9438a842d5ab79d02871fde3a0042492e8146'
+        text: '本地服务退出时未能完成正常清理。已保存的数据将在下次启动时恢复'
+      4:
+        file: 'apps/desktop/src/supervisor.mjs'
+        line: 135
+        category: 'cjk-source'
+        hash: 'f23696139cd15595d943b19342754376b79d1a988ce8376c32fa453240344942'
+        text: '本地服务启动失败。请检查数据目录和应用文件'
+      5:
+        file: 'apps/web/src/AssetLibrary.jsx'
+        line: 89
+        category: 'visible-jsx'
+        hash: '83d6e86209a5b7d486da38558a8baddc3737d3fcb2deab1db100da0f1b9575cb'
+        text: 's'
+      6:
+        file: 'apps/web/src/LoginScreen.tsx'
+        line: 26
+        category: 'visible-jsx'
+        hash: '7a46cf2292a4ae656546bfaaf227049188aa7afe5b12953101345c8916893762'
+        text: 'Mioon'
+      7:
+        file: 'apps/web/src/LoginScreen.tsx'
+        line: 29
+        category: 'visible-jsx'
+        hash: '68155112c228d4225ef47f1e79ddb3650a43b013c4aefc34654902a2bafcd6a8'
+        text: 'data/access-token'
+      8:
+        file: 'apps/web/src/ProjectHome.tsx'
+        line: 139
+        category: 'visible-jsx'
+        hash: '3503c0f5cfcc36ae62cf8ff3d8e0fb77cd652a28c283e654e095bb4e3265bec1'
+        text: 'Mioon'
+      9:
+        file: 'apps/web/src/ProjectHome.tsx'
+        line: 139
+        category: 'visible-jsx'
+        hash: '7a46cf2292a4ae656546bfaaf227049188aa7afe5b12953101345c8916893762'
+        text: 'Mioon'
+      10:
+        file: 'apps/web/src/SettingsExtraPages.tsx'
+        line: 41
+        category: 'visible-jsx'
+        hash: '7a46cf2292a4ae656546bfaaf227049188aa7afe5b12953101345c8916893762'
+        text: 'Mioon'
+      11:
+        file: 'apps/web/src/SettingsExtraPages.tsx'
+        line: 42
+        category: 'visible-jsx'
+        hash: '97890ad4882a6bbc838a1c20fca197ad01cba6503bca3a15c61dcc829652bab3'
+        text: 'React · MIT'
+      12:
+        file: 'apps/web/src/SettingsExtraPages.tsx'
+        line: 42
+        category: 'visible-jsx'
+        hash: '8e55f97219f5b454cb2b4c34b063f6392deafb6e74688a1358792aadb7bf3ab5'
+        text: 'Base UI · MIT'
+      13:
+        file: 'apps/web/src/SettingsExtraPages.tsx'
+        line: 42
+        category: 'visible-jsx'
+        hash: 'a1b6715f2f7d2616829dbeb97f1918eea0c22d84016c9baf528ec21a75fa990b'
+        text: 'React Flow · MIT'
+      14:
+        file: 'apps/web/src/SettingsExtraPages.tsx'
+        line: 42
+        category: 'visible-jsx'
+        hash: '47a816b7bd48364a03275ba1992ac33ab754f049adc4e885e0cbcbd009d2e1a1'
+        text: 'Tailwind CSS · MIT'
+      15:
+        file: 'apps/web/src/SettingsExtraPages.tsx'
+        line: 42
+        category: 'visible-jsx'
+        hash: '3c49cc65d7ebf9b443fcf12bc998784aa7d36d3f2842adf863d58d6146170810'
+        text: 'Electron · MIT'
+      16:
+        file: 'apps/web/src/SettingsWorkspace.tsx'
+        line: 12
+        category: 'visible-jsx'
+        hash: '9221db0f72a6e7ee7cbf600eade275e5e8728c11958d28b4501e6b5346190c40'
+        text: 'MB'
+      17:
+        file: 'apps/web/src/StoryboardStrip.tsx'
+        line: 22
+        category: 'visible-jsx'
+        hash: '83d6e86209a5b7d486da38558a8baddc3737d3fcb2deab1db100da0f1b9575cb'
+        text: 's'
+      18:
+        file: 'apps/web/src/StoryboardStrip.tsx'
+        line: 22
+        category: 'visible-jsx'
+        hash: '1c73ed523adee3e8abd10cdf89ec61019009e97ffebb2c8f49abbca692c9a071'
+        text: 'V'
+      19:
+        file: 'apps/web/src/VersionComparison.tsx'
+        line: 146
+        category: 'visible-jsx'
+        hash: '83d6e86209a5b7d486da38558a8baddc3737d3fcb2deab1db100da0f1b9575cb'
+        text: 's'
+      20:
+        file: 'apps/web/src/agent-chat.js'
+        line: 27
+        category: 'cjk-source'
+        hash: 'e0d4f77831fd29bbd6a86e4cef5920dd9862a1ec143a11d4b6d406d9430dedde'
+        text: '目标、模型或发送范围尚未授权，或当前请求范围已变化，请核对授权与发送内容。'
+    stale:
+      0:
+        file: 'apps/desktop/src/project-window-recovery.ts'
+        category: 'cjk-source'
+        hash: '91280b43e3ff580ba9c536e5a227df6ce16ded65969b335623293797e05989d8'
+        owner: 'foundation'
+        reason: 'Internal BACKEND_START_EXITED diagnostic. main.mjs supplies localized native startup/recovery primary messages; it does not substitute raw exception text into primary controls.'
+      1:
+        file: 'apps/desktop/src/supervisor.mjs'
+        category: 'cjk-source'
+        hash: '7d2f0490415e9ebf2bc233ccadd5b0b002d3d6df9ed3f4cd230eb70ddbf15e57'
+        owner: 'foundation'
+        reason: 'Preserved internal lifecycle diagnostic. main.mjs backendFailed/quitFailed/fatal select localized native.* summaries, and fatal raw details use native.originalDiagnostic. No user-owned backend lifecycle source is changed by localization.'
+      2:
+        file: 'apps/desktop/src/supervisor.mjs'
+        category: 'cjk-source'
+        hash: 'de63a9b84bb7a095c3766e42101b36577137bfb77ecbf5fa392681d0b7fed7ff'
+        owner: 'foundation'
+        reason: 'Preserved internal lifecycle diagnostic. main.mjs backendFailed/quitFailed/fatal select localized native.* summaries, and fatal raw details use native.originalDiagnostic. No user-owned backend lifecycle source is changed by localization.'
+      3:
+        file: 'apps/desktop/src/supervisor.mjs'
+        category: 'cjk-source'
+        hash: 'a161a5dff86b23f8e7ef31f67dd3ef7b1ab98b37e5d985c9007e9682bac95296'
+        owner: 'foundation'
+        reason: 'Preserved internal lifecycle diagnostic. main.mjs backendFailed/quitFailed/fatal select localized native.* summaries, and fatal raw details use native.originalDiagnostic. No user-owned backend lifecycle source is changed by localization.'
+      4:
+        file: 'apps/desktop/src/supervisor.mjs'
+        category: 'cjk-source'
+        hash: 'e24b89d4739e49dda1a6bc9a88719f919a313916a1036523063880e87f94d5df'
+        owner: 'foundation'
+        reason: 'Preserved internal lifecycle diagnostic. main.mjs backendFailed/quitFailed/fatal select localized native.* summaries, and fatal raw details use native.originalDiagnostic. No user-owned backend lifecycle source is changed by localization.'
+      5:
+        file: 'apps/web/src/App.jsx'
+        category: 'visible-jsx'
+        hash: '1c73ed523adee3e8abd10cdf89ec61019009e97ffebb2c8f49abbca692c9a071'
+        owner: 'shell'
+        reason: 'Technical version prefix beside an existing version number, not prose or user content; version identity/number is unchanged.'
+      6:
+        file: 'apps/web/src/App.jsx'
+        category: 'visible-jsx'
+        hash: '83d6e86209a5b7d486da38558a8baddc3737d3fcb2deab1db100da0f1b9575cb'
+        owner: 'shell'
+        reason: 'Technical SI seconds unit in compact duration notation; the duration value remains display-only and its numeric protocol value is unchanged.'
+      7:
+        file: 'apps/web/src/Nodes.jsx'
+        category: 'visible-jsx'
+        hash: '1c73ed523adee3e8abd10cdf89ec61019009e97ffebb2c8f49abbca692c9a071'
+        owner: 'shell'
+        reason: 'Technical version prefix beside an existing version number, not prose or user content; version identity/number is unchanged.'
+      8:
+        file: 'apps/web/src/ProjectHome.tsx'
+        category: 'visible-jsx'
+        hash: '6128287041610e3e584b5cc1268df57e8d98f6dc1e16744caf935453325b9b78'
+        owner: 'shell'
+        reason: 'Exact Mioon application brand, including its existing lowercase logo/accessible brand spelling; product identity must not be translated.'
+      9:
+        file: 'apps/web/src/ProjectHome.tsx'
+        category: 'visible-jsx'
+        hash: 'e4bb1d84af3d68f8d7999c5aa5b4cbaec430ad95d2cbfb148a9659b1c1b66235'
+        owner: 'shell'
+        reason: 'Exact Mioon application brand, including its existing lowercase logo/accessible brand spelling; product identity must not be translated.'
+      10:
+        file: 'apps/web/src/WebSettingsCenter.tsx'
+        category: 'visible-jsx'
+        hash: 'e4bb1d84af3d68f8d7999c5aa5b4cbaec430ad95d2cbfb148a9659b1c1b66235'
+        owner: 'shell'
+        reason: 'Product brand, deliberately unchanged in every language, matching other mioon brand placements.'
+      11:
+        file: 'apps/web/src/agent-chat.js'
+        category: 'cjk-source'
+        hash: '7dbfe873a789300f859c4b1fb23821939546be0a40de85360c4748941e1c8b2d'
+        owner: 'creation'
+        reason: 'The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. AgentPanel renders state.displayMessage/history.displayMessage; agentChatErrorDescriptor and agentChatPromptIssueDescriptor map stable error/validation branches. Timeline block strings only fence authorization; AgentPanel renders the corresponding blocked descriptor prop. Four-locale counterpart: agent.chat.state.consentChanged.'
+      12:
+        file: 'apps/web/src/Preview.jsx'
+        category: 'visible-jsx'
+        hash: '8170d88edf1074bb37a191df4702b33d3a3944fdac209d0d8d7638ad95aaa4c3'
+        owner: 'timeline'
+        reason: "Fixed frames-per-second editing/output unit in the original frozen media geometry, not translatable prose. The numeric frame rate and dimensions remain unchanged; surrounding statuses and captions use localized descriptors. Reviewed literal template fragment: 'fps ·'."
+      13:
+        file: 'apps/web/src/Preview.jsx'
+        category: 'visible-jsx'
+        hash: '23e3a16cd69e0ea405543ce66c9194e3360e6ae3299a2f4b0e52acf1e401fb74'
+        owner: 'timeline'
+        reason: "Fixed frames-per-second editing/output unit in the original frozen media geometry, not translatable prose. The numeric frame rate and dimensions remain unchanged; surrounding statuses and captions use localized descriptors. Reviewed literal template fragment: 'fps'."
+      14:
+        file: 'apps/web/src/Timeline.jsx'
+        category: 'visible-jsx'
+        hash: '8170d88edf1074bb37a191df4702b33d3a3944fdac209d0d8d7638ad95aaa4c3'
+        owner: 'timeline'
+        reason: "Fixed frames-per-second editing/output unit in the original frozen media geometry, not translatable prose. The numeric frame rate and dimensions remain unchanged; surrounding statuses and captions use localized descriptors. Reviewed literal template fragment: 'fps ·'."
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-copy-punctuation-qg9xp0pw/verify/tests/i18n-catalog-integrity.test.mjs:32:10)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: static semantic keys used by UI translation calls exist in the composed catalog
+ok 4 - static semantic keys used by UI translation calls exist in the composed catalog
+  ---
+  duration_ms: 201.885125
+  type: 'test'
+  ...
+# Subtest: visible template guard distinguishes app copy from dynamic semantic keys
+ok 5 - visible template guard distinguishes app copy from dynamic semantic keys
+  ---
+  duration_ms: 0.215583
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 4
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 939.6515

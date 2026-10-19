@@ -1,0 +1,53 @@
+TAP version 13
+# Subtest: complete candidate intent is detached and bounded while live schema admission grants no workspace authority
+ok 1 - complete candidate intent is detached and bounded while live schema admission grants no workspace authority
+  ---
+  duration_ms: 3.053333
+  type: 'test'
+  ...
+# Subtest: only the typed points path admits an ordinary dense bounded array without running code
+ok 2 - only the typed points path admits an ordinary dense bounded array without running code
+  ---
+  duration_ms: 0.872958
+  type: 'test'
+  ...
+# Subtest: node, depth, unicode and complete bytes fail closed without changing caps
+ok 3 - node, depth, unicode and complete bytes fail closed without changing caps
+  ---
+  duration_ms: 0.721459
+  type: 'test'
+  ...
+# Subtest: complete candidate task binds exact intent including presence and all IDs
+ok 4 - complete candidate task binds exact intent including presence and all IDs
+  ---
+  duration_ms: 10.359
+  type: 'test'
+  ...
+# Subtest: candidate is absent from production root and package export surface
+ok 5 - candidate is absent from production root and package export surface
+  ---
+  duration_ms: 1.682791
+  type: 'test'
+  ...
+# Subtest: maximal complete add and update include the largest current colour declaration within unchanged budgets
+ok 6 - maximal complete add and update include the largest current colour declaration within unchanged budgets
+  ---
+  duration_ms: 1.399083
+  type: 'test'
+  ...
+# {"maximalAdd":{"bytes":4600,"nodes":98,"depth":4},"maximalUpdate":{"bytes":4609,"nodes":99,"depth":5}}
+# Subtest: duration context is descriptor-checked before selection, including digest and task entry points
+ok 7 - duration context is descriptor-checked before selection, including digest and task entry points
+  ---
+  duration_ms: 0.751875
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 226.322125

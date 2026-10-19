@@ -1,0 +1,17 @@
+{
+  "checks": [
+    "real-ui-confirm-local-generator-stream-completed",
+    "authorized-target-scope-chip-default-collapsed",
+    "explicit-target-options-expand-collapse",
+    "reload-keeps-message-and-persistent-authorization",
+    "compact-agent-conversation-overlay-usable",
+    "public-revoke-reopens-disclosure-without-resending"
+  ],
+  "errors": [],
+  "externalRequests": [],
+  "fixture": "Injected local async generator; no external model or provider connection",
+  "gateway": {
+    "gatewayCalls": 1,
+    "transport": "injected local generator; no fetch or external model connection"
+  }
+}

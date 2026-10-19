@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: only strict no-path read-only inspection enters public shared contracts
+ok 1 - only strict no-path read-only inspection enters public shared contracts
+  ---
+  duration_ms: 1.30475
+  type: 'test'
+  ...
+# Subtest: manifest pins one raw database and rejects paths, duplicate entries, role changes and unbounded sizes
+ok 2 - manifest pins one raw database and rejects paths, duplicate entries, role changes and unbounded sizes
+  ---
+  duration_ms: 2.187458
+  type: 'test'
+  ...
+# Subtest: missing or retained partial source evidence cannot masquerade as clean inventory
+ok 3 - missing or retained partial source evidence cannot masquerade as clean inventory
+  ---
+  duration_ms: 0.299042
+  type: 'test'
+  ...
+# Subtest: complete marker must contain exact binding fields and cannot grant restoration or credentials
+ok 4 - complete marker must contain exact binding fields and cannot grant restoration or credentials
+  ---
+  duration_ms: 0.183917
+  type: 'test'
+  ...
+# Subtest: inspection never claims a running backend is cold-ready and does not invent unknown counts
+ok 5 - inspection never claims a running backend is cold-ready and does not invent unknown counts
+  ---
+  duration_ms: 0.503292
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 212.7425

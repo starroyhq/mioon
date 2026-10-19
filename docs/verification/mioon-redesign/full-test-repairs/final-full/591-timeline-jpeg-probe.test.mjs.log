@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: exact 2592-byte JFIF reproduces real image2 autodetect and old restricted generic probe failure
+ok 1 - exact 2592-byte JFIF reproduces real image2 autodetect and old restricted generic probe failure
+  ---
+  duration_ms: 81.291208
+  type: 'test'
+  ...
+# Subtest: hash-owned strict admission and real decode precede a jpeg_pipe-only metadata probe
+ok 2 - hash-owned strict admission and real decode precede a jpeg_pipe-only metadata probe
+  ---
+  duration_ms: 80.991292
+  type: 'test'
+  ...
+# Subtest: bad source hash, malformed JPEG and PNG masquerading as JPEG fail before decode or metadata probe spawn
+ok 3 - bad source hash, malformed JPEG and PNG masquerading as JPEG fail before decode or metadata probe spawn
+  ---
+  duration_ms: 20.00525
+  type: 'test'
+  ...
+# Subtest: PNG source preparation retains the exact generic restricted probe without JPEG decode or flags
+ok 4 - PNG source preparation retains the exact generic restricted probe without JPEG decode or flags
+  ---
+  duration_ms: 41.75975
+  type: 'test'
+  ...
+# Subtest: generic video probe remains unchanged and only literal true selects the closed JPEG demuxer
+ok 5 - generic video probe remains unchanged and only literal true selects the closed JPEG demuxer
+  ---
+  duration_ms: 196.564958
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 690.5075

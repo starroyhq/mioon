@@ -1,0 +1,100 @@
+TAP version 13
+# Subtest: actual Agent draft and held send report before React rerender; accepted stream is close-neutral
+ok 1 - actual Agent draft and held send report before React rerender; accepted stream is close-neutral
+  ---
+  duration_ms: 31.224416
+  type: 'test'
+  ...
+# Subtest: Agent unrecovered receipt stays blocked on initial failed read, and stopping blocks synchronously
+ok 2 - Agent unrecovered receipt stays blocked on initial failed read, and stopping blocks synchronously
+  ---
+  duration_ms: 8.976542
+  type: 'test'
+  ...
+# Subtest: hidden Image constructor immediately reports restored generation/remote intents and corrupt storage
+ok 3 - hidden Image constructor immediately reports restored generation/remote intents and corrupt storage
+  ---
+  duration_ms: 15.318167
+  type: 'test'
+  ...
+# Subtest: actual Image edits report synchronously and accepted durable generation never requires cancellation
+ok 4 - actual Image edits report synchronously and accepted durable generation never requires cancellation
+  ---
+  duration_ms: 14.798375
+  type: 'test'
+  ...
+# Subtest: actual Image lost rejection ACK remains blocked until an exact readonly rejected review is read
+ok 5 - actual Image lost rejection ACK remains blocked until an exact readonly rejected review is read
+  ---
+  duration_ms: 11.908333
+  type: 'test'
+  ...
+# Subtest: actual Agent proposal mutation and uncertainty are independent of chat source
+ok 6 - actual Agent proposal mutation and uncertainty are independent of chat source
+  ---
+  duration_ms: 4.610333
+  type: 'test'
+  ...
+# Subtest: replaced source owner cannot be released or updated by stale callback
+ok 7 - replaced source owner cannot be released or updated by stale callback
+  ---
+  duration_ms: 8.798167
+  type: 'test'
+  ...
+# Subtest: metadata versions follow draft identity, not saved Image task polling or chat stream deltas
+ok 8 - metadata versions follow draft identity, not saved Image task polling or chat stream deltas
+  ---
+  duration_ms: 0.168042
+  type: 'test'
+  ...
+# Subtest: rejection proof retains multiple exact identities; pending/unrelated/older evidence never clears
+ok 9 - rejection proof retains multiple exact identities; pending/unrelated/older evidence never clears
+  ---
+  duration_ms: 0.6035
+  type: 'test'
+  ...
+# Subtest: one hundred loop turns cannot certify completion; actual hash publication alone settles the observer
+ok 10 - one hundred loop turns cannot certify completion; actual hash publication alone settles the observer
+  ---
+  duration_ms: 4.118292
+  type: 'test'
+  ...
+# Subtest: real WebCrypto identity reconciliation publishes completion without a scheduler-turn assumption
+ok 11 - real WebCrypto identity reconciliation publishes completion without a scheduler-turn assumption
+  ---
+  duration_ms: 0.277542
+  type: 'test'
+  ...
+# Subtest: identity corruption, existing-domain overflow and hash failure never release close proof
+ok 12 - identity corruption, existing-domain overflow and hash failure never release close proof
+  ---
+  duration_ms: 15.920834
+  type: 'test'
+  ...
+# Subtest: disposed hash/reconciliation completions cannot publish or reset a replacement owner
+ok 13 - disposed hash/reconciliation completions cannot publish or reset a replacement owner
+  ---
+  duration_ms: 0.263667
+  type: 'test'
+  ...
+# Subtest: readonly concurrent approval/dispatched proof resolves lost rejection without cancelling durable work
+ok 14 - readonly concurrent approval/dispatched proof resolves lost rejection without cancelling durable work
+  ---
+  duration_ms: 19.570916
+  type: 'test'
+  ...
+# Subtest: a late failed hash for an older pending read cannot poison an already resolved review
+ok 15 - a late failed hash for an older pending read cannot poison an already resolved review
+  ---
+  duration_ms: 0.214166
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 420.966541

@@ -1,0 +1,40 @@
+[
+  {
+    "file": "tests/mutation-replay.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 27.28,
+    "tapSummary": {
+      "tests": 33,
+      "suites": 0,
+      "pass": 33,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-business-extra/001-mutation-replay.test.mjs.log",
+    "sha256": "f4345ad2d0d32e2ac9dde73a0648646ea68d09869af068eda8728bf1465610c8",
+    "sourceSha256": "abe156a34dd3936a13df013d57920a6e811e50034eaaeac56851db797000f3d4",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/named-delivery-business.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 13.18,
+    "tapSummary": {
+      "tests": 15,
+      "suites": 0,
+      "pass": 15,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-business-extra/002-named-delivery-business.test.mjs.log",
+    "sha256": "25b095413154a3ec5f1f40dd8fd8ff150cfeb00c8fef9e3fe480fc09f096f922",
+    "sourceSha256": "de8ca1ea083247fa3cb99f9078d43bb3d64c735da32ac72019e2aaafdcbdf2ec",
+    "failedSubtests": []
+  }
+]

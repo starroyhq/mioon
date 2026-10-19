@@ -1,0 +1,76 @@
+TAP version 13
+# Subtest: real HTTP timeline.export.preflight disconnect aborts only observation, detaches listeners and leaves a new connection healthy
+ok 1 - real HTTP timeline.export.preflight disconnect aborts only observation, detaches listeners and leaves a new connection healthy
+  ---
+  duration_ms: 35.947
+  type: 'test'
+  ...
+# Subtest: real HTTP timeline.export.capabilities disconnect aborts only observation, detaches listeners and leaves a new connection healthy
+ok 2 - real HTTP timeline.export.capabilities disconnect aborts only observation, detaches listeners and leaves a new connection healthy
+  ---
+  duration_ms: 9.0975
+  type: 'test'
+  ...
+# Subtest: real HTTP render disconnect does not cancel or retry its business operation
+ok 3 - real HTTP render disconnect does not cancel or retry its business operation
+  ---
+  duration_ms: 2.253625
+  type: 'test'
+  ...
+# Subtest: actual CLI Ctrl+C revokes only its timeline.export.preflight observer and never resubmits
+ok 4 - actual CLI Ctrl+C revokes only its timeline.export.preflight observer and never resubmits
+  ---
+  duration_ms: 361.434292
+  type: 'test'
+  ...
+# Subtest: actual CLI Ctrl+C revokes only its timeline.export.capabilities observer and never resubmits
+ok 5 - actual CLI Ctrl+C revokes only its timeline.export.capabilities observer and never resubmits
+  ---
+  duration_ms: 318.011333
+  type: 'test'
+  ...
+# Subtest: already disconnected timeline.export.preflight enters with revoked observer and cleans up on rejection
+ok 6 - already disconnected timeline.export.preflight enters with revoked observer and cleans up on rejection
+  ---
+  duration_ms: 1.135792
+  type: 'test'
+  ...
+# Subtest: already disconnected timeline.export.capabilities enters with revoked observer and cleans up on rejection
+ok 7 - already disconnected timeline.export.capabilities enters with revoked observer and cleans up on rejection
+  ---
+  duration_ms: 0.310542
+  type: 'test'
+  ...
+# Subtest: finished response and later close cannot revoke settled timeline.export.preflight or retain listeners
+ok 8 - finished response and later close cannot revoke settled timeline.export.preflight or retain listeners
+  ---
+  duration_ms: 0.362542
+  type: 'test'
+  ...
+# Subtest: finished response and later close cannot revoke settled timeline.export.capabilities or retain listeners
+ok 9 - finished response and later close cannot revoke settled timeline.export.capabilities or retain listeners
+  ---
+  duration_ms: 0.111084
+  type: 'test'
+  ...
+# Subtest: only six explicit advisory operations observe disconnect; private capability files do not become business cancellation
+ok 10 - only six explicit advisory operations observe disconnect; private capability files do not become business cancellation
+  ---
+  duration_ms: 0.87675
+  type: 'test'
+  ...
+# Subtest: observer policy rejects every other file writer and future business/network/paid capability effects
+ok 11 - observer policy rejects every other file writer and future business/network/paid capability effects
+  ---
+  duration_ms: 4.612458
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1017.014166

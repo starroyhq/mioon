@@ -1,0 +1,68 @@
+TAP version 13
+# Subtest: clip drafts survive SIGKILL/new port with exact raw text; authenticated rediscovery stays read-only
+ok 1 - clip drafts survive SIGKILL/new port with exact raw text; authenticated rediscovery stays read-only
+  ---
+  duration_ms: 1289.649292
+  type: 'test'
+  ...
+# Subtest: concurrent windows and lost PUT/DELETE acknowledgements use strict CAS across process crashes
+ok 2 - concurrent windows and lost PUT/DELETE acknowledgements use strict CAS across process crashes
+  ---
+  duration_ms: 2186.535625
+  type: 'test'
+  ...
+# Subtest: local draft HTTP keeps token/cookie/origin auth, exact fields, bounded bodies and project isolation
+ok 3 - local draft HTTP keeps token/cookie/origin auth, exact fields, bounded bodies and project isolation
+  ---
+  duration_ms: 841.315417
+  type: 'test'
+  ...
+# Subtest: a real cold schema-26 backup excludes populated local drafts and preserves the source sidecar exactly
+not ok 4 - a real cold schema-26 backup excludes populated local drafts and preserves the source sidecar exactly
+  ---
+  duration_ms: 1017.786125
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/local-drafts-transports.test.mjs:337:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    40 !== 26
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 26
+  actual: 40
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/local-drafts-transports.test.mjs:350:54)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: durable clip Save at afterPreparePersist preserves draft and reuses the original request key after crash
+ok 5 - durable clip Save at afterPreparePersist preserves draft and reuses the original request key after crash
+  ---
+  duration_ms: 1305.437292
+  type: 'test'
+  ...
+# Subtest: durable clip Save at afterBusinessCommit preserves draft and reuses the original request key after crash
+ok 6 - durable clip Save at afterBusinessCommit preserves draft and reuses the original request key after crash
+  ---
+  duration_ms: 1243.648458
+  type: 'test'
+  ...
+# Subtest: durable clip Save at lostExecuteAcknowledgement preserves draft and reuses the original request key after crash
+ok 7 - durable clip Save at lostExecuteAcknowledgement preserves draft and reuses the original request key after crash
+  ---
+  duration_ms: 1288.099041
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 6
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 9625.531458

@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: raw snapshot retains opacity and derives an exact immutable algorithm/source plan without authority
+ok 1 - raw snapshot retains opacity and derives an exact immutable algorithm/source plan without authority
+  ---
+  duration_ms: 4.3005
+  type: 'test'
+  ...
+# Subtest: absent and explicit null preserve raw presence and omit every new plan field
+ok 2 - absent and explicit null preserve raw presence and omit every new plan field
+  ---
+  duration_ms: 1.7135
+  type: 'test'
+  ...
+# Subtest: complete queued/progressed preview/export ACKs bind their raw plan and request identity
+ok 3 - complete queued/progressed preview/export ACKs bind their raw plan and request identity
+  ---
+  duration_ms: 3.811583
+  type: 'test'
+  ...
+# Subtest: named ranged custom export keeps the whole curve and legacy delivery semantics
+ok 4 - named ranged custom export keeps the whole curve and legacy delivery semantics
+  ---
+  duration_ms: 1.576708
+  type: 'test'
+  ...
+# Subtest: managed images derive premultiplied handling from the existing frozen colour plan
+ok 5 - managed images derive premultiplied handling from the existing frozen colour plan
+  ---
+  duration_ms: 3.050458
+  type: 'test'
+  ...
+# Subtest: missing, conflicting, extra, misbound and wrong-path plan evidence refuses
+ok 6 - missing, conflicting, extra, misbound and wrong-path plan evidence refuses
+  ---
+  duration_ms: 5.132833
+  type: 'test'
+  ...
+# Subtest: source preparation gets a detached validation-only projection; request payloads cannot select the effect
+ok 7 - source preparation gets a detached validation-only projection; request payloads cannot select the effect
+  ---
+  duration_ms: 0.530875
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 234.231542

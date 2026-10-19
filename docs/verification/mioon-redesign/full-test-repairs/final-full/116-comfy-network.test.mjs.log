@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: literal loopback endpoint rejects aliases, paths, credentials and runtime-owned ports before I/O
+ok 1 - literal loopback endpoint rejects aliases, paths, credentials and runtime-owned ports before I/O
+  ---
+  duration_ms: 1.14
+  type: 'test'
+  ...
+# Subtest: transport pins peer, port, fixed route and final synchronous fence without proxy, DNS or credentials
+ok 2 - transport pins peer, port, fixed route and final synchronous fence without proxy, DNS or credentials
+  ---
+  duration_ms: 1.676833
+  type: 'test'
+  ...
+# Subtest: peer mismatches, endpoint now self-owned, early responses and invalid fences never dispatch
+ok 3 - peer mismatches, endpoint now self-owned, early responses and invalid fences never dispatch
+  ---
+  duration_ms: 0.611792
+  type: 'test'
+  ...
+# Subtest: only typed known-node, exact job and safe PNG view GET routes exist
+ok 4 - only typed known-node, exact job and safe PNG view GET routes exist
+  ---
+  duration_ms: 1.848
+  type: 'test'
+  ...
+# Subtest: POST redirects/errors never retry and lost acknowledgement remains unknown
+ok 5 - POST redirects/errors never retry and lost acknowledgement remains unknown
+  ---
+  duration_ms: 11.639542
+  type: 'test'
+  ...
+# Subtest: JSON and PNG responses have streaming caps and strict encoding/completeness
+ok 6 - JSON and PNG responses have streaming caps and strict encoding/completeness
+  ---
+  duration_ms: 0.867625
+  type: 'test'
+  ...
+# Subtest: abort before or inside fence prevents POST; abort after end destroys observation without retry/cancel
+ok 7 - abort before or inside fence prevents POST; abort after end destroys observation without retry/cancel
+  ---
+  duration_ms: 5.695166
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 161.571042

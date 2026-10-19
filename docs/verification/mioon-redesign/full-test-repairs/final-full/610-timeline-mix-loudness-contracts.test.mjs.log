@@ -1,0 +1,184 @@
+TAP version 13
+# Subtest: full mix requires explicit target, profiles and current revision; no path or edit request
+ok 1 - full mix requires explicit target, profiles and current revision; no path or edit request
+  ---
+  duration_ms: 3.160042
+  type: 'test'
+  ...
+# Subtest: complete actual candidate report remains readonly even when both targets pass
+ok 2 - complete actual candidate report remains readonly even when both targets pass
+  ---
+  duration_ms: 1.796833
+  type: 'test'
+  ...
+# Subtest: full mix rejects apply permission
+ok 3 - full mix rejects apply permission
+  ---
+  duration_ms: 0.224708
+  type: 'test'
+  ...
+# Subtest: full mix rejects candidate permission
+ok 4 - full mix rejects candidate permission
+  ---
+  duration_ms: 0.195
+  type: 'test'
+  ...
+# Subtest: full mix rejects AAC tolerance
+ok 5 - full mix rejects AAC tolerance
+  ---
+  duration_ms: 0.221375
+  type: 'test'
+  ...
+# Subtest: full mix rejects candidate sample loss
+ok 6 - full mix rejects candidate sample loss
+  ---
+  duration_ms: 0.219625
+  type: 'test'
+  ...
+# Subtest: full mix rejects range
+ok 7 - full mix rejects range
+  ---
+  duration_ms: 0.163208
+  type: 'test'
+  ...
+# Subtest: full mix rejects revision
+ok 8 - full mix rejects revision
+  ---
+  duration_ms: 0.184375
+  type: 'test'
+  ...
+# Subtest: full mix rejects hash
+ok 9 - full mix rejects hash
+  ---
+  duration_ms: 0.665875
+  type: 'test'
+  ...
+# Subtest: full mix rejects singlehash
+ok 10 - full mix rejects singlehash
+  ---
+  duration_ms: 0.253
+  type: 'test'
+  ...
+# Subtest: full mix rejects pcm
+ok 11 - full mix rejects pcm
+  ---
+  duration_ms: 0.17525
+  type: 'test'
+  ...
+# Subtest: full mix rejects passes
+ok 12 - full mix rejects passes
+  ---
+  duration_ms: 0.128375
+  type: 'test'
+  ...
+# Subtest: full mix rejects partial
+ok 13 - full mix rejects partial
+  ---
+  duration_ms: 0.111833
+  type: 'test'
+  ...
+# Subtest: full mix rejects worklimit
+ok 14 - full mix rejects worklimit
+  ---
+  duration_ms: 0.143541
+  type: 'test'
+  ...
+# Subtest: full mix rejects duplicate sources
+ok 15 - full mix rejects duplicate sources
+  ---
+  duration_ms: 0.114667
+  type: 'test'
+  ...
+# Subtest: full mix rejects duplicate gains
+ok 16 - full mix rejects duplicate gains
+  ---
+  duration_ms: 0.101958
+  type: 'test'
+  ...
+# Subtest: full mix rejects wrong source
+ok 17 - full mix rejects wrong source
+  ---
+  duration_ms: 0.105083
+  type: 'test'
+  ...
+# Subtest: full mix rejects clamp
+ok 18 - full mix rejects clamp
+  ---
+  duration_ms: 0.110542
+  type: 'test'
+  ...
+# Subtest: full mix rejects gain max
+ok 19 - full mix rejects gain max
+  ---
+  duration_ms: 0.104041
+  type: 'test'
+  ...
+# Subtest: full mix rejects multiplier
+ok 20 - full mix rejects multiplier
+  ---
+  duration_ms: 0.081
+  type: 'test'
+  ...
+# Subtest: full mix rejects arithmetic
+ok 21 - full mix rejects arithmetic
+  ---
+  duration_ms: 0.083917
+  type: 'test'
+  ...
+# Subtest: full mix rejects target flag
+ok 22 - full mix rejects target flag
+  ---
+  duration_ms: 0.078917
+  type: 'test'
+  ...
+# Subtest: full mix rejects TP flag
+ok 23 - full mix rejects TP flag
+  ---
+  duration_ms: 0.078667
+  type: 'test'
+  ...
+# Subtest: full mix rejects reserve
+ok 24 - full mix rejects reserve
+  ---
+  duration_ms: 0.090375
+  type: 'test'
+  ...
+# Subtest: full mix rejects private path
+ok 25 - full mix rejects private path
+  ---
+  duration_ms: 0.091833
+  type: 'test'
+  ...
+# Subtest: full mix rejects NaN
+ok 26 - full mix rejects NaN
+  ---
+  duration_ms: 0.04125
+  type: 'test'
+  ...
+# Subtest: silent original has explicit absent candidate and only one complete PCM pass
+ok 27 - silent original has explicit absent candidate and only one complete PCM pass
+  ---
+  duration_ms: 0.421333
+  type: 'test'
+  ...
+# Subtest: gain constraint unavailability is explicit, never a clamped measured result
+ok 28 - gain constraint unavailability is explicit, never a clamped measured result
+  ---
+  duration_ms: 0.190625
+  type: 'test'
+  ...
+# Subtest: guard rejects accessors, sparse arrays, cycles and toJSON without invoking them
+ok 29 - guard rejects accessors, sparse arrays, cycles and toJSON without invoking them
+  ---
+  duration_ms: 0.183959
+  type: 'test'
+  ...
+1..29
+# tests 29
+# suites 0
+# pass 29
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 181.485584

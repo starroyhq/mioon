@@ -1,0 +1,677 @@
+TAP version 13
+# Subtest: lost ACKs, no-op attach, detached historical edges and later rebinding replay unchanged after restart
+ok 1 - lost ACKs, no-op attach, detached historical edges and later rebinding replay unchanged after restart
+  ---
+  duration_ms: 1197.30075
+  type: 'test'
+  ...
+# Subtest: every matching falsy, malformed, oversized or structurally corrupt receipt is retained without fresh execution
+    # Subtest: reference.attach
+    ok 1 - reference.attach
+      ---
+      duration_ms: 748.242792
+      type: 'test'
+      ...
+    # Subtest: reference.detach
+    ok 2 - reference.detach
+      ---
+      duration_ms: 868.067583
+      type: 'test'
+      ...
+    1..2
+ok 2 - every matching falsy, malformed, oversized or structurally corrupt receipt is retained without fresh execution
+  ---
+  duration_ms: 1616.728041
+  type: 'test'
+  ...
+# Subtest: changed operation, project, target, role or revision cannot reuse a retained reference key
+ok 3 - changed operation, project, target, role or revision cannot reuse a retained reference key
+  ---
+  duration_ms: 1026.417083
+  type: 'test'
+  ...
+# Subtest: SQL owners, JSON owners and stable identities are checked on fresh requests and historical receipts
+    # Subtest: reference.attach fresh project id
+    ok 1 - reference.attach fresh project id
+      ---
+      duration_ms: 879.229958
+      type: 'test'
+      ...
+    # Subtest: reference.attach fresh node SQL owner
+    ok 2 - reference.attach fresh node SQL owner
+      ---
+      duration_ms: 1695.906459
+      type: 'test'
+      ...
+    # Subtest: reference.attach fresh node JSON owner
+    ok 3 - reference.attach fresh node JSON owner
+      ---
+      duration_ms: 712.714333
+      type: 'test'
+      ...
+    # Subtest: reference.attach fresh node id
+    ok 4 - reference.attach fresh node id
+      ---
+      duration_ms: 618.80475
+      type: 'test'
+      ...
+    # Subtest: reference.attach fresh asset SQL owner
+    ok 5 - reference.attach fresh asset SQL owner
+      ---
+      duration_ms: 775.945958
+      type: 'test'
+      ...
+    # Subtest: reference.attach fresh asset JSON owner
+    ok 6 - reference.attach fresh asset JSON owner
+      ---
+      duration_ms: 695.367792
+      type: 'test'
+      ...
+    # Subtest: reference.attach fresh asset id
+    ok 7 - reference.attach fresh asset id
+      ---
+      duration_ms: 643.088959
+      type: 'test'
+      ...
+    # Subtest: reference.attach fresh shot SQL owner
+    ok 8 - reference.attach fresh shot SQL owner
+      ---
+      duration_ms: 607.616167
+      type: 'test'
+      ...
+    # Subtest: reference.attach fresh shot JSON owner
+    ok 9 - reference.attach fresh shot JSON owner
+      ---
+      duration_ms: 820.241292
+      type: 'test'
+      ...
+    # Subtest: reference.attach fresh shot id
+    ok 10 - reference.attach fresh shot id
+      ---
+      duration_ms: 1158.638084
+      type: 'test'
+      ...
+    # Subtest: reference.attach fresh source asset reassigned
+    ok 11 - reference.attach fresh source asset reassigned
+      ---
+      duration_ms: 752.539667
+      type: 'test'
+      ...
+    # Subtest: reference.attach fresh node JSON
+    ok 12 - reference.attach fresh node JSON
+      ---
+      duration_ms: 750.368542
+      type: 'test'
+      ...
+    # Subtest: reference.attach fresh shot oversized
+    ok 13 - reference.attach fresh shot oversized
+      ---
+      duration_ms: 676.136
+      type: 'test'
+      ...
+    # Subtest: reference.attach replay project id
+    ok 14 - reference.attach replay project id
+      ---
+      duration_ms: 781.648041
+      type: 'test'
+      ...
+    # Subtest: reference.attach replay node SQL owner
+    ok 15 - reference.attach replay node SQL owner
+      ---
+      duration_ms: 599.087833
+      type: 'test'
+      ...
+    # Subtest: reference.attach replay node JSON owner
+    ok 16 - reference.attach replay node JSON owner
+      ---
+      duration_ms: 612.25625
+      type: 'test'
+      ...
+    # Subtest: reference.attach replay node id
+    ok 17 - reference.attach replay node id
+      ---
+      duration_ms: 584.158792
+      type: 'test'
+      ...
+    # Subtest: reference.attach replay asset SQL owner
+    ok 18 - reference.attach replay asset SQL owner
+      ---
+      duration_ms: 581.378042
+      type: 'test'
+      ...
+    # Subtest: reference.attach replay asset JSON owner
+    ok 19 - reference.attach replay asset JSON owner
+      ---
+      duration_ms: 580.608625
+      type: 'test'
+      ...
+    # Subtest: reference.attach replay asset id
+    ok 20 - reference.attach replay asset id
+      ---
+      duration_ms: 652.002458
+      type: 'test'
+      ...
+    # Subtest: reference.attach replay shot SQL owner
+    ok 21 - reference.attach replay shot SQL owner
+      ---
+      duration_ms: 674.240833
+      type: 'test'
+      ...
+    # Subtest: reference.attach replay shot JSON owner
+    ok 22 - reference.attach replay shot JSON owner
+      ---
+      duration_ms: 656.603875
+      type: 'test'
+      ...
+    # Subtest: reference.attach replay shot id
+    ok 23 - reference.attach replay shot id
+      ---
+      duration_ms: 669.555875
+      type: 'test'
+      ...
+    # Subtest: reference.attach replay source asset reassigned
+    ok 24 - reference.attach replay source asset reassigned
+      ---
+      duration_ms: 679.915042
+      type: 'test'
+      ...
+    # Subtest: reference.attach replay node JSON
+    ok 25 - reference.attach replay node JSON
+      ---
+      duration_ms: 651.352709
+      type: 'test'
+      ...
+    # Subtest: reference.attach replay shot oversized
+    ok 26 - reference.attach replay shot oversized
+      ---
+      duration_ms: 645.575458
+      type: 'test'
+      ...
+    # Subtest: reference.detach fresh project id
+    ok 27 - reference.detach fresh project id
+      ---
+      duration_ms: 580.244083
+      type: 'test'
+      ...
+    # Subtest: reference.detach fresh node SQL owner
+    ok 28 - reference.detach fresh node SQL owner
+      ---
+      duration_ms: 611.476583
+      type: 'test'
+      ...
+    # Subtest: reference.detach fresh node JSON owner
+    ok 29 - reference.detach fresh node JSON owner
+      ---
+      duration_ms: 590.059458
+      type: 'test'
+      ...
+    # Subtest: reference.detach fresh node id
+    ok 30 - reference.detach fresh node id
+      ---
+      duration_ms: 586.751167
+      type: 'test'
+      ...
+    # Subtest: reference.detach fresh asset SQL owner
+    ok 31 - reference.detach fresh asset SQL owner
+      ---
+      duration_ms: 567.682875
+      type: 'test'
+      ...
+    # Subtest: reference.detach fresh asset JSON owner
+    ok 32 - reference.detach fresh asset JSON owner
+      ---
+      duration_ms: 586.913875
+      type: 'test'
+      ...
+    # Subtest: reference.detach fresh asset id
+    ok 33 - reference.detach fresh asset id
+      ---
+      duration_ms: 598.132208
+      type: 'test'
+      ...
+    # Subtest: reference.detach fresh shot SQL owner
+    ok 34 - reference.detach fresh shot SQL owner
+      ---
+      duration_ms: 570.097583
+      type: 'test'
+      ...
+    # Subtest: reference.detach fresh shot JSON owner
+    ok 35 - reference.detach fresh shot JSON owner
+      ---
+      duration_ms: 583.799292
+      type: 'test'
+      ...
+    # Subtest: reference.detach fresh shot id
+    ok 36 - reference.detach fresh shot id
+      ---
+      duration_ms: 575.572542
+      type: 'test'
+      ...
+    # Subtest: reference.detach fresh source asset reassigned
+    ok 37 - reference.detach fresh source asset reassigned
+      ---
+      duration_ms: 559.719041
+      type: 'test'
+      ...
+    # Subtest: reference.detach fresh node JSON
+    ok 38 - reference.detach fresh node JSON
+      ---
+      duration_ms: 577.376791
+      type: 'test'
+      ...
+    # Subtest: reference.detach fresh shot oversized
+    ok 39 - reference.detach fresh shot oversized
+      ---
+      duration_ms: 609.487084
+      type: 'test'
+      ...
+    # Subtest: reference.detach replay project id
+    ok 40 - reference.detach replay project id
+      ---
+      duration_ms: 597.066041
+      type: 'test'
+      ...
+    # Subtest: reference.detach replay node SQL owner
+    ok 41 - reference.detach replay node SQL owner
+      ---
+      duration_ms: 584.102542
+      type: 'test'
+      ...
+    # Subtest: reference.detach replay node JSON owner
+    ok 42 - reference.detach replay node JSON owner
+      ---
+      duration_ms: 589.655333
+      type: 'test'
+      ...
+    # Subtest: reference.detach replay node id
+    ok 43 - reference.detach replay node id
+      ---
+      duration_ms: 639.382792
+      type: 'test'
+      ...
+    # Subtest: reference.detach replay asset SQL owner
+    ok 44 - reference.detach replay asset SQL owner
+      ---
+      duration_ms: 827.425041
+      type: 'test'
+      ...
+    # Subtest: reference.detach replay asset JSON owner
+    ok 45 - reference.detach replay asset JSON owner
+      ---
+      duration_ms: 590.879375
+      type: 'test'
+      ...
+    # Subtest: reference.detach replay asset id
+    ok 46 - reference.detach replay asset id
+      ---
+      duration_ms: 622.172333
+      type: 'test'
+      ...
+    # Subtest: reference.detach replay shot SQL owner
+    ok 47 - reference.detach replay shot SQL owner
+      ---
+      duration_ms: 577.031417
+      type: 'test'
+      ...
+    # Subtest: reference.detach replay shot JSON owner
+    ok 48 - reference.detach replay shot JSON owner
+      ---
+      duration_ms: 611.587208
+      type: 'test'
+      ...
+    # Subtest: reference.detach replay shot id
+    ok 49 - reference.detach replay shot id
+      ---
+      duration_ms: 576.155333
+      type: 'test'
+      ...
+    # Subtest: reference.detach replay source asset reassigned
+    ok 50 - reference.detach replay source asset reassigned
+      ---
+      duration_ms: 587.37275
+      type: 'test'
+      ...
+    # Subtest: reference.detach replay node JSON
+    ok 51 - reference.detach replay node JSON
+      ---
+      duration_ms: 578.389833
+      type: 'test'
+      ...
+    # Subtest: reference.detach replay shot oversized
+    ok 52 - reference.detach replay shot oversized
+      ---
+      duration_ms: 579.490334
+      type: 'test'
+      ...
+    1..52
+ok 4 - SQL owners, JSON owners and stable identities are checked on fresh requests and historical receipts
+  ---
+  duration_ms: 34720.82225
+  type: 'test'
+  ...
+# Subtest: indirect current and frozen selected-version, snapshot references and generated-asset owners fail closed
+    # Subtest: fresh reference SQL
+    ok 1 - fresh reference SQL
+      ---
+      duration_ms: 580.381208
+      type: 'test'
+      ...
+    # Subtest: fresh reference JSON
+    ok 2 - fresh reference JSON
+      ---
+      duration_ms: 570.401084
+      type: 'test'
+      ...
+    # Subtest: fresh version SQL
+    ok 3 - fresh version SQL
+      ---
+      duration_ms: 604.11275
+      type: 'test'
+      ...
+    # Subtest: fresh version JSON
+    ok 4 - fresh version JSON
+      ---
+      duration_ms: 731.047542
+      type: 'test'
+      ...
+    # Subtest: fresh version job SQL
+    ok 5 - fresh version job SQL
+      ---
+      duration_ms: 678.478792
+      type: 'test'
+      ...
+    # Subtest: fresh job SQL
+    ok 6 - fresh job SQL
+      ---
+      duration_ms: 574.209375
+      type: 'test'
+      ...
+    # Subtest: fresh job JSON
+    ok 7 - fresh job JSON
+      ---
+      duration_ms: 581.761875
+      type: 'test'
+      ...
+    # Subtest: fresh job shot
+    ok 8 - fresh job shot
+      ---
+      duration_ms: 587.40975
+      type: 'test'
+      ...
+    # Subtest: fresh snapshot reference
+    ok 9 - fresh snapshot reference
+      ---
+      duration_ms: 581.87375
+      type: 'test'
+      ...
+    # Subtest: fresh snapshot connection node
+    ok 10 - fresh snapshot connection node
+      ---
+      duration_ms: 580.698459
+      type: 'test'
+      ...
+    # Subtest: replay reference SQL
+    ok 11 - replay reference SQL
+      ---
+      duration_ms: 663.320292
+      type: 'test'
+      ...
+    # Subtest: replay reference JSON
+    ok 12 - replay reference JSON
+      ---
+      duration_ms: 567.5845
+      type: 'test'
+      ...
+    # Subtest: replay version SQL
+    ok 13 - replay version SQL
+      ---
+      duration_ms: 589.785292
+      type: 'test'
+      ...
+    # Subtest: replay version JSON
+    ok 14 - replay version JSON
+      ---
+      duration_ms: 595.338666
+      type: 'test'
+      ...
+    # Subtest: replay version job SQL
+    ok 15 - replay version job SQL
+      ---
+      duration_ms: 595.698916
+      type: 'test'
+      ...
+    # Subtest: replay job SQL
+    ok 16 - replay job SQL
+      ---
+      duration_ms: 636.547667
+      type: 'test'
+      ...
+    # Subtest: replay job JSON
+    ok 17 - replay job JSON
+      ---
+      duration_ms: 594.25575
+      type: 'test'
+      ...
+    # Subtest: replay job shot
+    ok 18 - replay job shot
+      ---
+      duration_ms: 587.021041
+      type: 'test'
+      ...
+    # Subtest: replay snapshot reference
+    ok 19 - replay snapshot reference
+      ---
+      duration_ms: 649.03275
+      type: 'test'
+      ...
+    # Subtest: replay snapshot connection node
+    ok 20 - replay snapshot connection node
+      ---
+      duration_ms: 584.55725
+      type: 'test'
+      ...
+    1..20
+ok 5 - indirect current and frozen selected-version, snapshot references and generated-asset owners fail closed
+  ---
+  duration_ms: 12135.923875
+  type: 'test'
+  ...
+# Subtest: historical replay checks frozen selected lineage even after current shot selects another valid version
+ok 6 - historical replay checks frozen selected lineage even after current shot selects another valid version
+  ---
+  duration_ms: 596.652042
+  type: 'test'
+  ...
+# Subtest: matching historical keys reject reassigned edges while absent detached edges remain valid
+ok 7 - matching historical keys reject reassigned edges while absent detached edges remain valid
+  ---
+  duration_ms: 596.051708
+  type: 'test'
+  ...
+# Subtest: pre-write business rejections get exact rollback-backed proof, including safe revision limits
+ok 8 - pre-write business rejections get exact rollback-backed proof, including safe revision limits
+  ---
+  duration_ms: 601.127167
+  type: 'test'
+  ...
+# Subtest: combined malformed managed sources and foreign target or snapshot owners never produce proof
+    # Subtest: reference.attach fresh target
+    ok 1 - reference.attach fresh target
+      ---
+      duration_ms: 571.844209
+      type: 'test'
+      ...
+    # Subtest: reference.attach fresh snapshot
+    ok 2 - reference.attach fresh snapshot
+      ---
+      duration_ms: 628.772792
+      type: 'test'
+      ...
+    # Subtest: reference.attach replay target
+    ok 3 - reference.attach replay target
+      ---
+      duration_ms: 574.170833
+      type: 'test'
+      ...
+    # Subtest: reference.attach replay snapshot
+    ok 4 - reference.attach replay snapshot
+      ---
+      duration_ms: 579.400833
+      type: 'test'
+      ...
+    # Subtest: reference.detach fresh target
+    ok 5 - reference.detach fresh target
+      ---
+      duration_ms: 583.779959
+      type: 'test'
+      ...
+    # Subtest: reference.detach fresh snapshot
+    ok 6 - reference.detach fresh snapshot
+      ---
+      duration_ms: 575.158083
+      type: 'test'
+      ...
+    # Subtest: reference.detach replay target
+    ok 7 - reference.detach replay target
+      ---
+      duration_ms: 578.997084
+      type: 'test'
+      ...
+    # Subtest: reference.detach replay snapshot
+    ok 8 - reference.detach replay snapshot
+      ---
+      duration_ms: 579.066166
+      type: 'test'
+      ...
+    1..8
+ok 9 - combined malformed managed sources and foreign target or snapshot owners never produce proof
+  ---
+  duration_ms: 4672.209334
+  type: 'test'
+  ...
+# Subtest: receipt insert failures and post-write owner corruption roll back atomically without proof
+    # Subtest: reference.attach receipt failure
+    ok 1 - reference.attach receipt failure
+      ---
+      duration_ms: 581.635875
+      type: 'test'
+      ...
+    # Subtest: reference.attach receipt owner
+    ok 2 - reference.attach receipt owner
+      ---
+      duration_ms: 586.294125
+      type: 'test'
+      ...
+    # Subtest: reference.attach domain owner
+    ok 3 - reference.attach domain owner
+      ---
+      duration_ms: 566.520458
+      type: 'test'
+      ...
+    # Subtest: reference.detach receipt failure
+    ok 4 - reference.detach receipt failure
+      ---
+      duration_ms: 585.791667
+      type: 'test'
+      ...
+    # Subtest: reference.detach receipt owner
+    ok 5 - reference.detach receipt owner
+      ---
+      duration_ms: 612.871
+      type: 'test'
+      ...
+    # Subtest: reference.detach domain owner
+    ok 6 - reference.detach domain owner
+      ---
+      duration_ms: 568.352459
+      type: 'test'
+      ...
+    1..6
+ok 10 - receipt insert failures and post-write owner corruption roll back atomically without proof
+  ---
+  duration_ms: 3502.223958
+  type: 'test'
+  ...
+# Subtest: trigger-created extra bindings are rejected after domain and receipt writes
+    # Subtest: reference.attach domain
+    ok 1 - reference.attach domain
+      ---
+      duration_ms: 586.192292
+      type: 'test'
+      ...
+    # Subtest: reference.attach receipt
+    ok 2 - reference.attach receipt
+      ---
+      duration_ms: 604.664083
+      type: 'test'
+      ...
+    # Subtest: reference.detach domain
+    ok 3 - reference.detach domain
+      ---
+      duration_ms: 580.701958
+      type: 'test'
+      ...
+    # Subtest: reference.detach receipt
+    ok 4 - reference.detach receipt
+      ---
+      duration_ms: 601.9925
+      type: 'test'
+      ...
+    1..4
+ok 11 - trigger-created extra bindings are rejected after domain and receipt writes
+  ---
+  duration_ms: 2374.262584
+  type: 'test'
+  ...
+# Subtest: fresh no-op attach rolls back a receipt-triggered extra binding without releasing its key
+ok 12 - fresh no-op attach rolls back a receipt-triggered extra binding without releasing its key
+  ---
+  duration_ms: 599.42925
+  type: 'test'
+  ...
+# Subtest: commit uncertainty, failed transaction entry and incomplete rollback never emit not-applied proof
+ok 13 - commit uncertainty, failed transaction entry and incomplete rollback never emit not-applied proof
+  ---
+  duration_ms: 601.812708
+  type: 'test'
+  ...
+# Subtest: retention triggers bootstrap additively, preserve legacy bytes and block delete or replacement
+not ok 14 - retention triggers bootstrap additively, preserve legacy bytes and block delete or replacement
+  ---
+  duration_ms: 605.539041
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/reference-recovery-business.test.mjs:264:1'
+  failureType: 'testCodeFailure'
+  error: 'RESTORE_SCHEMA_UNSUPPORTED'
+  code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  stack: |-
+    fail (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/workspace-restore-schema-v49.ts:31:71)
+    Object.classifyWorkspaceSchemaV48V49 (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/workspace-restore-schema-v49.ts:154:3)
+    Object.initialize (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/workspace-schema-dispatch.ts:229:45)
+    openStore (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/db.mjs:97:40)
+    Object.restart (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/reference-recovery-business.test.mjs:19:33)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/reference-recovery-business.test.mjs:269:114)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: schema-valid maximally escaped shots remain attachable and replayable within the receipt budget
+ok 15 - schema-valid maximally escaped shots remain attachable and replayable within the receipt budget
+  ---
+  duration_ms: 602.512208
+  type: 'test'
+  ...
+# Subtest: independent SQLite writers return one exact receipt and competing fresh keys get pre-write proof
+ok 16 - independent SQLite writers return one exact receipt and competing fresh keys get pre-write proof
+  ---
+  duration_ms: 3544.425625
+  type: 'test'
+  ...
+1..16
+# tests 108
+# suites 0
+# pass 107
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 69390.36825

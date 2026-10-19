@@ -1,0 +1,9 @@
+{
+  "completedFiles": 5,
+  "totalFiles": 5,
+  "passedFiles": 3,
+  "failedFiles": 2,
+  "timeoutFiles": 0,
+  "seconds": 111.18,
+  "last": "tests/agent-timeline-gain-wire.test.mjs"
+}

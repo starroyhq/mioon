@@ -1,0 +1,1 @@
+{"status":"failed","code":"NATIVE_TEST_LANE_BLOCKED","message":"The full suite contains Linux/native storage assumptions. Run the reviewed portable lane; native platform validation remains required."}

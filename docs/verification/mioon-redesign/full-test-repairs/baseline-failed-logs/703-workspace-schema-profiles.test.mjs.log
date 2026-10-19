@@ -1,0 +1,616 @@
+TAP version 13
+# Subtest: independent schema goldens pin fixed baseline provenance, exact bytes and every supported profile
+ok 1 - independent schema goldens pin fixed baseline provenance, exact bytes and every supported profile
+  ---
+  duration_ms: 1.679292
+  type: 'test'
+  ...
+# Subtest: through24 schema-only dependency bodies stay byte-frozen independently of constructor output
+ok 2 - through24 schema-only dependency bodies stay byte-frozen independently of constructor output
+  ---
+  duration_ms: 19.739583
+  type: 'test'
+  ...
+# Subtest: fixed schema dependency imports and re-exports cannot reconnect to active runtime constants
+ok 3 - fixed schema dependency imports and re-exports cannot reconnect to active runtime constants
+  ---
+  duration_ms: 8.712375
+  type: 'test'
+  ...
+# Subtest: through24 interpolation values remain the independent fixed-baseline values
+ok 4 - through24 interpolation values remain the independent fixed-baseline values
+  ---
+  duration_ms: 0.137625
+  type: 'test'
+  ...
+# Subtest: through24 constructor keeps every ordinary1–24 trusted SQL/default-row checkpoint and the legacy alias
+ok 5 - through24 constructor keeps every ordinary1–24 trusted SQL/default-row checkpoint and the legacy alias
+  ---
+  duration_ms: 84.774209
+  type: 'test'
+  ...
+# Subtest: frozen ordinary1 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 6 - frozen ordinary1 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 264.59825
+  type: 'test'
+  ...
+# Subtest: frozen ordinary2 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 7 - frozen ordinary2 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 155.051333
+  type: 'test'
+  ...
+# Subtest: frozen ordinary3 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 8 - frozen ordinary3 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 158.16375
+  type: 'test'
+  ...
+# Subtest: frozen ordinary4 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 9 - frozen ordinary4 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 172.058291
+  type: 'test'
+  ...
+# Subtest: frozen ordinary5 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 10 - frozen ordinary5 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 145.701208
+  type: 'test'
+  ...
+# Subtest: frozen ordinary6 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 11 - frozen ordinary6 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 195.270709
+  type: 'test'
+  ...
+# Subtest: frozen ordinary7 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 12 - frozen ordinary7 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 244.293375
+  type: 'test'
+  ...
+# Subtest: frozen ordinary8 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 13 - frozen ordinary8 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 141.320541
+  type: 'test'
+  ...
+# Subtest: frozen ordinary9 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 14 - frozen ordinary9 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 137.595542
+  type: 'test'
+  ...
+# Subtest: frozen ordinary10 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 15 - frozen ordinary10 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 139.818291
+  type: 'test'
+  ...
+# Subtest: frozen ordinary11 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 16 - frozen ordinary11 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 159.516
+  type: 'test'
+  ...
+# Subtest: frozen ordinary12 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 17 - frozen ordinary12 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 163.085417
+  type: 'test'
+  ...
+# Subtest: frozen ordinary13 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 18 - frozen ordinary13 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 143.931125
+  type: 'test'
+  ...
+# Subtest: frozen ordinary14 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 19 - frozen ordinary14 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 141.491292
+  type: 'test'
+  ...
+# Subtest: frozen ordinary15 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 20 - frozen ordinary15 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 135.666167
+  type: 'test'
+  ...
+# Subtest: frozen ordinary16 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 21 - frozen ordinary16 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 135.15325
+  type: 'test'
+  ...
+# Subtest: frozen ordinary17 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 22 - frozen ordinary17 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 141.7345
+  type: 'test'
+  ...
+# Subtest: frozen ordinary18 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 23 - frozen ordinary18 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 139.194375
+  type: 'test'
+  ...
+# Subtest: frozen ordinary19 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 24 - frozen ordinary19 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 129.721166
+  type: 'test'
+  ...
+# Subtest: frozen ordinary20 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 25 - frozen ordinary20 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 128.90125
+  type: 'test'
+  ...
+# Subtest: frozen ordinary21 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 26 - frozen ordinary21 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 127.114292
+  type: 'test'
+  ...
+# Subtest: frozen ordinary22 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 27 - frozen ordinary22 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 124.27875
+  type: 'test'
+  ...
+# Subtest: frozen ordinary23 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 28 - frozen ordinary23 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 115.167625
+  type: 'test'
+  ...
+# Subtest: frozen ordinary24 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 29 - frozen ordinary24 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 107.788625
+  type: 'test'
+  ...
+# Subtest: fresh runtime construction has only the reviewed ordinary40 delta and no restoration authority
+ok 30 - fresh runtime construction has only the reviewed ordinary40 delta and no restoration authority
+  ---
+  duration_ms: 128.709792
+  type: 'test'
+  ...
+# Subtest: real Mock ledger constructor keeps the frozen optional ordinary24 table/index SQL and empty sequence absence
+ok 31 - real Mock ledger constructor keeps the frozen optional ordinary24 table/index SQL and empty sequence absence
+  ---
+  duration_ms: 42.45675
+  type: 'test'
+  ...
+# Subtest: frozen ordinary24 reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+ok 32 - frozen ordinary24 reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+  ---
+  duration_ms: 244.217167
+  type: 'test'
+  ...
+# Subtest: restore25 construction from independent ordinary24 matches frozen SQL and capture evidence
+ok 33 - restore25 construction from independent ordinary24 matches frozen SQL and capture evidence
+  ---
+  duration_ms: 51.753541
+  type: 'test'
+  ...
+# Subtest: independent frozen restored25 opens and validates without ordinary bootstrap or evidence rewrites
+ok 34 - independent frozen restored25 opens and validates without ordinary bootstrap or evidence rewrites
+  ---
+  duration_ms: 64.753042
+  type: 'test'
+  ...
+# Subtest: frozen ordinary24-seeded reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+not ok 35 - frozen ordinary24-seeded reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+  ---
+  duration_ms: 4.244292
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:350:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:352:29)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restore25 construction from independent ordinary24-seeded matches frozen SQL and capture evidence
+not ok 36 - restore25 construction from independent ordinary24-seeded matches frozen SQL and capture evidence
+  ---
+  duration_ms: 3.306667
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:362:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:112:41)
+    inMemory (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:135:13)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:363:16)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: independent frozen restored25-seeded opens and validates without ordinary bootstrap or evidence rewrites
+not ok 37 - independent frozen restored25-seeded opens and validates without ordinary bootstrap or evidence rewrites
+  ---
+  duration_ms: 4.214917
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:375:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:377:29)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: frozen ordinary24-mock reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+ok 38 - frozen ordinary24-mock reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+  ---
+  duration_ms: 109.5435
+  type: 'test'
+  ...
+# Subtest: restore25 construction from independent ordinary24-mock matches frozen SQL and capture evidence
+ok 39 - restore25 construction from independent ordinary24-mock matches frozen SQL and capture evidence
+  ---
+  duration_ms: 53.10025
+  type: 'test'
+  ...
+# Subtest: independent frozen restored25-mock opens and validates without ordinary bootstrap or evidence rewrites
+ok 40 - independent frozen restored25-mock opens and validates without ordinary bootstrap or evidence rewrites
+  ---
+  duration_ms: 66.488583
+  type: 'test'
+  ...
+# Subtest: frozen ordinary24-mock-seeded reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+not ok 41 - frozen ordinary24-mock-seeded reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+  ---
+  duration_ms: 4.108167
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:350:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:352:29)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restore25 construction from independent ordinary24-mock-seeded matches frozen SQL and capture evidence
+not ok 42 - restore25 construction from independent ordinary24-mock-seeded matches frozen SQL and capture evidence
+  ---
+  duration_ms: 3.507
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:362:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:112:41)
+    inMemory (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:135:13)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:363:16)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: independent frozen restored25-mock-seeded opens and validates without ordinary bootstrap or evidence rewrites
+not ok 43 - independent frozen restored25-mock-seeded opens and validates without ordinary bootstrap or evidence rewrites
+  ---
+  duration_ms: 4.497
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:375:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:377:29)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary runtime retains baseline repair eligibility for known-marker-gap; offline classification stays strict
+not ok 44 - ordinary runtime retains baseline repair eligibility for known-marker-gap; offline classification stays strict
+  ---
+  duration_ms: 3.899667
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:390:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:392:18)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary runtime retains baseline repair eligibility for initial-markers-absent; offline classification stays strict
+not ok 45 - ordinary runtime retains baseline repair eligibility for initial-markers-absent; offline classification stays strict
+  ---
+  duration_ms: 3.78575
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:390:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:392:18)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary runtime retains baseline repair eligibility for marker-table-absent; offline classification stays strict
+ok 46 - ordinary runtime retains baseline repair eligibility for marker-table-absent; offline classification stays strict
+  ---
+  duration_ms: 140.09975
+  type: 'test'
+  ...
+# Subtest: unsupported marker-only profile26 is refused before ordinary bootstrap can execute imported SQL
+not ok 47 - unsupported marker-only profile26 is refused before ordinary bootstrap can execute imported SQL
+  ---
+  duration_ms: 4.4
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:411:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:412:18)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: unsupported marker-only profile27 is refused before ordinary bootstrap can execute imported SQL
+not ok 48 - unsupported marker-only profile27 is refused before ordinary bootstrap can execute imported SQL
+  ---
+  duration_ms: 4.037667
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:411:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:412:18)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: unsupported marker-only profile28 is refused before ordinary bootstrap can execute imported SQL
+not ok 49 - unsupported marker-only profile28 is refused before ordinary bootstrap can execute imported SQL
+  ---
+  duration_ms: 4.094041
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:411:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:412:18)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: unsupported marker-only profile29 is refused before ordinary bootstrap can execute imported SQL
+not ok 50 - unsupported marker-only profile29 is refused before ordinary bootstrap can execute imported SQL
+  ---
+  duration_ms: 3.83875
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:411:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:412:18)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: marker25 only cannot enter ordinary bootstrap or mutate frozen captured bytes
+not ok 51 - marker25 only cannot enter ordinary bootstrap or mutate frozen captured bytes
+  ---
+  duration_ms: 3.950917
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:432:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:433:18)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restore metadata only cannot enter ordinary bootstrap or mutate frozen captured bytes
+not ok 52 - restore metadata only cannot enter ordinary bootstrap or mutate frozen captured bytes
+  ---
+  duration_ms: 3.890084
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:432:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:433:18)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: execution epoch only cannot enter ordinary bootstrap or mutate frozen captured bytes
+not ok 53 - execution epoch only cannot enter ordinary bootstrap or mutate frozen captured bytes
+  ---
+  duration_ms: 3.886417
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:432:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:433:18)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restore guard missing cannot enter ordinary bootstrap or mutate frozen captured bytes
+not ok 54 - restore guard missing cannot enter ordinary bootstrap or mutate frozen captured bytes
+  ---
+  duration_ms: 4.072167
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:432:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:433:18)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restore marker missing cannot enter ordinary bootstrap or mutate frozen captured bytes
+not ok 55 - restore marker missing cannot enter ordinary bootstrap or mutate frozen captured bytes
+  ---
+  duration_ms: 4.053792
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:432:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:433:18)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restore Mock evidence missing cannot enter ordinary bootstrap or mutate frozen captured bytes
+not ok 56 - restore Mock evidence missing cannot enter ordinary bootstrap or mutate frozen captured bytes
+  ---
+  duration_ms: 4.26925
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:432:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    loadFixture (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:112:41)
+    onDisk (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:145:11)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema-profiles.test.mjs:433:18)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..56
+# tests 56
+# suites 0
+# pass 38
+# fail 18
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5131.386375

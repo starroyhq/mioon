@@ -1,0 +1,65 @@
+TAP version 13
+# Subtest: delivered resource parser verifies exact five members in bounded arbitrary chunks
+ok 1 - delivered resource parser verifies exact five members in bounded arbitrary chunks
+  ---
+  duration_ms: 11.503875
+  type: 'test'
+  ...
+# Subtest: delivered resource parser rejects missing, duplicate, unknown, link, changed and wrong-sized members
+ok 2 - delivered resource parser rejects missing, duplicate, unknown, link, changed and wrong-sized members
+  ---
+  duration_ms: 69.6455
+  type: 'test'
+  ...
+# Subtest: bounded GNU/PAX names resolve to exact members and cannot hide duplicates or wrong sizes
+ok 3 - bounded GNU/PAX names resolve to exact members and cannot hide duplicates or wrong sizes
+  ---
+  duration_ms: 55.481625
+  type: 'test'
+  ...
+# Subtest: gzip verifier streams >10MiB font, detects corruption/missing files, and reads GNU tar output
+not ok 4 - gzip verifier streams >10MiB font, detects corruption/missing files, and reads GNU tar output
+  ---
+  duration_ms: 663.510375
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subtitles-package.test.mjs:62:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Command failed: tar --format=gnu -czf /private/tmp/mioon-full-recheck-_m5c6umh/final-full/test-k5z7u3eg/mioon-subtitle-package-g60Utd/gnu.tar.gz -C /private/tmp/mioon-full-recheck-_m5c6umh/final-full/test-k5z7u3eg/mioon-subtitle-package-g60Utd mioon-0.4.1-linux-x64
+    Can't use format gnu: No such format 'gnu'
+    Usage:
+      List:    tar -tf <archive-filename>
+      Extract: tar -xf <archive-filename>
+      Create:  tar -cf <archive-filename> [filenames...]
+      Help:    tar --help
+    
+  code: 1
+  stack: |-
+    genericNodeError (node:internal/errors:999:15)
+    wrappedFn (node:internal/errors:544:14)
+    ChildProcess.exithandler (node:child_process:417:12)
+    ChildProcess.emit (node:events:514:20)
+    maybeClose (node:internal/child_process:1125:16)
+    ChildProcess._handle.onexit (node:internal/child_process:305:5)
+  ...
+# Subtest: package inspector retains legacy ASAR ceiling and validates external delivered resources
+ok 5 - package inspector retains legacy ASAR ceiling and validates external delivered resources
+  ---
+  duration_ms: 1.212792
+  type: 'test'
+  ...
+# Subtest: actual ASAR root allowlist adds current preload and icons while preserving historical v3 exclusions
+ok 6 - actual ASAR root allowlist adds current preload and icons while preserving historical v3 exclusions
+  ---
+  duration_ms: 2.567958
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 5
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 941.6495

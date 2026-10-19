@@ -1,0 +1,382 @@
+TAP version 13
+# Subtest: ark: constructor/capabilities/reconcile/cancel are offline and secrets never appear
+ok 1 - ark: constructor/capabilities/reconcile/cancel are offline and secrets never appear
+  ---
+  duration_ms: 11.882125
+  type: 'test'
+  ...
+# Subtest: ark: synchronous validation needs metadata only and rejects unsupported inputs
+ok 2 - ark: synchronous validation needs metadata only and rejects unsupported inputs
+  ---
+  duration_ms: 3.302875
+  type: 'test'
+  ...
+# Subtest: ark: maps text to one fixed-origin POST
+ok 3 - ark: maps text to one fixed-origin POST
+  ---
+  duration_ms: 13.596708
+  type: 'test'
+  ...
+# Subtest: ark: maps first-frame image to one fixed-origin POST
+ok 4 - ark: maps first-frame image to one fixed-origin POST
+  ---
+  duration_ms: 3.356666
+  type: 'test'
+  ...
+# Subtest: ark: network loss preserves uncertainty and never duplicates POST
+ok 5 - ark: network loss preserves uncertainty and never duplicates POST
+  ---
+  duration_ms: 3.144417
+  type: 'test'
+  ...
+# Subtest: ark: abort preserves uncertainty and never duplicates POST
+ok 6 - ark: abort preserves uncertainty and never duplicates POST
+  ---
+  duration_ms: 3.59975
+  type: 'test'
+  ...
+# Subtest: ark: server error preserves uncertainty and never duplicates POST
+ok 7 - ark: server error preserves uncertainty and never duplicates POST
+  ---
+  duration_ms: 2.742459
+  type: 'test'
+  ...
+# Subtest: ark: request timeout preserves uncertainty and never duplicates POST
+ok 8 - ark: request timeout preserves uncertainty and never duplicates POST
+  ---
+  duration_ms: 2.995542
+  type: 'test'
+  ...
+# Subtest: ark: conflict preserves uncertainty and never duplicates POST
+ok 9 - ark: conflict preserves uncertainty and never duplicates POST
+  ---
+  duration_ms: 2.913834
+  type: 'test'
+  ...
+# Subtest: ark: redirect preserves uncertainty and never duplicates POST
+ok 10 - ark: redirect preserves uncertainty and never duplicates POST
+  ---
+  duration_ms: 2.794333
+  type: 'test'
+  ...
+# Subtest: ark: invalid json preserves uncertainty and never duplicates POST
+ok 11 - ark: invalid json preserves uncertainty and never duplicates POST
+  ---
+  duration_ms: 2.880416
+  type: 'test'
+  ...
+# Subtest: ark: oversized response preserves uncertainty and never duplicates POST
+ok 12 - ark: oversized response preserves uncertainty and never duplicates POST
+  ---
+  duration_ms: 3.835959
+  type: 'test'
+  ...
+# Subtest: ark: missing task identity preserves uncertainty and never duplicates POST
+ok 13 - ark: missing task identity preserves uncertainty and never duplicates POST
+  ---
+  duration_ms: 2.652042
+  type: 'test'
+  ...
+# Subtest: ark: explicit rejection preserves uncertainty and never duplicates POST
+ok 14 - ark: explicit rejection preserves uncertainty and never duplicates POST
+  ---
+  duration_ms: 2.684917
+  type: 'test'
+  ...
+# Subtest: ark: quota rejection preserves uncertainty and never duplicates POST
+ok 15 - ark: quota rejection preserves uncertainty and never duplicates POST
+  ---
+  duration_ms: 2.510833
+  type: 'test'
+  ...
+# Subtest: ark: validates approval/checksum/path/signature/size without transmitting
+ok 16 - ark: validates approval/checksum/path/signature/size without transmitting
+  ---
+  duration_ms: 7.771834
+  type: 'test'
+  ...
+# Subtest: ark: poll caches transient errors and successes, then resumes same ID
+ok 17 - ark: poll caches transient errors and successes, then resumes same ID
+  ---
+  duration_ms: 2.830167
+  type: 'test'
+  ...
+# Subtest: ark: downloads playable synthetic MP4 safely without exposing URLs
+ok 18 - ark: downloads playable synthetic MP4 safely without exposing URLs
+  ---
+  duration_ms: 83.197375
+  type: 'test'
+  ...
+# Subtest: ark: rejects unsafe output http://evil.test/x.mp4
+ok 19 - ark: rejects unsafe output http://evil.test/x.mp4
+  ---
+  duration_ms: 7.914666
+  type: 'test'
+  ...
+# Subtest: ark: rejects unsafe output https://localhost/x.mp4
+ok 20 - ark: rejects unsafe output https://localhost/x.mp4
+  ---
+  duration_ms: 3.75825
+  type: 'test'
+  ...
+# Subtest: ark: rejects unsafe output https://169.254.169.254/x.mp4
+ok 21 - ark: rejects unsafe output https://169.254.169.254/x.mp4
+  ---
+  duration_ms: 3.163916
+  type: 'test'
+  ...
+# Subtest: ark: rejects unsafe output https://generativelanguage.googleapis.com.evil.test/x.mp4
+ok 22 - ark: rejects unsafe output https://generativelanguage.googleapis.com.evil.test/x.mp4
+  ---
+  duration_ms: 3.747666
+  type: 'test'
+  ...
+# Subtest: ark: rejects unsafe output https://user:pass@generativelanguage.googleapis.com/v1beta/files/test:download
+ok 23 - ark: rejects unsafe output https://user:pass@generativelanguage.googleapis.com/v1beta/files/test:download
+  ---
+  duration_ms: 2.785583
+  type: 'test'
+  ...
+# Subtest: ark: expiry and broken stream refresh GET without another POST; partial files removed
+ok 24 - ark: expiry and broken stream refresh GET without another POST; partial files removed
+  ---
+  duration_ms: 10.946791
+  type: 'test'
+  ...
+# Subtest: ark: rejects output redirects, advertised oversize, and unmanaged destinations
+ok 25 - ark: rejects output redirects, advertised oversize, and unmanaged destinations
+  ---
+  duration_ms: 4.840417
+  type: 'test'
+  ...
+# Subtest: veo: constructor/capabilities/reconcile/cancel are offline and secrets never appear
+ok 26 - veo: constructor/capabilities/reconcile/cancel are offline and secrets never appear
+  ---
+  duration_ms: 3.520459
+  type: 'test'
+  ...
+# Subtest: veo: synchronous validation needs metadata only and rejects unsupported inputs
+ok 27 - veo: synchronous validation needs metadata only and rejects unsupported inputs
+  ---
+  duration_ms: 3.682125
+  type: 'test'
+  ...
+# Subtest: veo: maps text to one fixed-origin POST
+ok 28 - veo: maps text to one fixed-origin POST
+  ---
+  duration_ms: 3.697875
+  type: 'test'
+  ...
+# Subtest: veo: maps first-frame image to one fixed-origin POST
+ok 29 - veo: maps first-frame image to one fixed-origin POST
+  ---
+  duration_ms: 5.211709
+  type: 'test'
+  ...
+# Subtest: veo: network loss preserves uncertainty and never duplicates POST
+ok 30 - veo: network loss preserves uncertainty and never duplicates POST
+  ---
+  duration_ms: 3.602916
+  type: 'test'
+  ...
+# Subtest: veo: abort preserves uncertainty and never duplicates POST
+ok 31 - veo: abort preserves uncertainty and never duplicates POST
+  ---
+  duration_ms: 3.7795
+  type: 'test'
+  ...
+# Subtest: veo: server error preserves uncertainty and never duplicates POST
+ok 32 - veo: server error preserves uncertainty and never duplicates POST
+  ---
+  duration_ms: 3.186875
+  type: 'test'
+  ...
+# Subtest: veo: request timeout preserves uncertainty and never duplicates POST
+ok 33 - veo: request timeout preserves uncertainty and never duplicates POST
+  ---
+  duration_ms: 2.935959
+  type: 'test'
+  ...
+# Subtest: veo: conflict preserves uncertainty and never duplicates POST
+ok 34 - veo: conflict preserves uncertainty and never duplicates POST
+  ---
+  duration_ms: 3.484959
+  type: 'test'
+  ...
+# Subtest: veo: redirect preserves uncertainty and never duplicates POST
+ok 35 - veo: redirect preserves uncertainty and never duplicates POST
+  ---
+  duration_ms: 3.469209
+  type: 'test'
+  ...
+# Subtest: veo: invalid json preserves uncertainty and never duplicates POST
+ok 36 - veo: invalid json preserves uncertainty and never duplicates POST
+  ---
+  duration_ms: 2.901167
+  type: 'test'
+  ...
+# Subtest: veo: oversized response preserves uncertainty and never duplicates POST
+ok 37 - veo: oversized response preserves uncertainty and never duplicates POST
+  ---
+  duration_ms: 4.750667
+  type: 'test'
+  ...
+# Subtest: veo: missing task identity preserves uncertainty and never duplicates POST
+ok 38 - veo: missing task identity preserves uncertainty and never duplicates POST
+  ---
+  duration_ms: 3.034417
+  type: 'test'
+  ...
+# Subtest: veo: explicit rejection preserves uncertainty and never duplicates POST
+ok 39 - veo: explicit rejection preserves uncertainty and never duplicates POST
+  ---
+  duration_ms: 3.933583
+  type: 'test'
+  ...
+# Subtest: veo: quota rejection preserves uncertainty and never duplicates POST
+ok 40 - veo: quota rejection preserves uncertainty and never duplicates POST
+  ---
+  duration_ms: 4.897042
+  type: 'test'
+  ...
+# Subtest: veo: validates approval/checksum/path/signature/size without transmitting
+ok 41 - veo: validates approval/checksum/path/signature/size without transmitting
+  ---
+  duration_ms: 9.509375
+  type: 'test'
+  ...
+# Subtest: veo: poll caches transient errors and successes, then resumes same ID
+ok 42 - veo: poll caches transient errors and successes, then resumes same ID
+  ---
+  duration_ms: 5.378916
+  type: 'test'
+  ...
+# Subtest: veo: downloads playable synthetic MP4 safely without exposing URLs
+ok 43 - veo: downloads playable synthetic MP4 safely without exposing URLs
+  ---
+  duration_ms: 88.05825
+  type: 'test'
+  ...
+# Subtest: veo: rejects unsafe output http://evil.test/x.mp4
+ok 44 - veo: rejects unsafe output http://evil.test/x.mp4
+  ---
+  duration_ms: 3.372959
+  type: 'test'
+  ...
+# Subtest: veo: rejects unsafe output https://localhost/x.mp4
+ok 45 - veo: rejects unsafe output https://localhost/x.mp4
+  ---
+  duration_ms: 2.939292
+  type: 'test'
+  ...
+# Subtest: veo: rejects unsafe output https://169.254.169.254/x.mp4
+ok 46 - veo: rejects unsafe output https://169.254.169.254/x.mp4
+  ---
+  duration_ms: 2.800709
+  type: 'test'
+  ...
+# Subtest: veo: rejects unsafe output https://generativelanguage.googleapis.com.evil.test/x.mp4
+ok 47 - veo: rejects unsafe output https://generativelanguage.googleapis.com.evil.test/x.mp4
+  ---
+  duration_ms: 2.667792
+  type: 'test'
+  ...
+# Subtest: veo: rejects unsafe output https://user:pass@generativelanguage.googleapis.com/v1beta/files/test:download
+ok 48 - veo: rejects unsafe output https://user:pass@generativelanguage.googleapis.com/v1beta/files/test:download
+  ---
+  duration_ms: 2.968125
+  type: 'test'
+  ...
+# Subtest: veo: expiry and broken stream refresh GET without another POST; partial files removed
+ok 49 - veo: expiry and broken stream refresh GET without another POST; partial files removed
+  ---
+  duration_ms: 9.285667
+  type: 'test'
+  ...
+# Subtest: veo: rejects output redirects, advertised oversize, and unmanaged destinations
+ok 50 - veo: rejects output redirects, advertised oversize, and unmanaged destinations
+  ---
+  duration_ms: 4.407917
+  type: 'test'
+  ...
+# Subtest: Ark validates first-frame metadata AND actual dimensions before submission
+ok 51 - Ark validates first-frame metadata AND actual dimensions before submission
+  ---
+  duration_ms: 4.270708
+  type: 'test'
+  ...
+# Subtest: Ark maps queued status without leaking provider failure details
+ok 52 - Ark maps queued status without leaking provider failure details
+  ---
+  duration_ms: 2.490125
+  type: 'test'
+  ...
+# Subtest: Ark maps running status without leaking provider failure details
+ok 53 - Ark maps running status without leaking provider failure details
+  ---
+  duration_ms: 2.431083
+  type: 'test'
+  ...
+# Subtest: Ark maps succeeded status without leaking provider failure details
+ok 54 - Ark maps succeeded status without leaking provider failure details
+  ---
+  duration_ms: 2.38625
+  type: 'test'
+  ...
+# Subtest: Ark maps failed status without leaking provider failure details
+ok 55 - Ark maps failed status without leaking provider failure details
+  ---
+  duration_ms: 2.248958
+  type: 'test'
+  ...
+# Subtest: Ark maps cancelled status without leaking provider failure details
+ok 56 - Ark maps cancelled status without leaking provider failure details
+  ---
+  duration_ms: 2.482209
+  type: 'test'
+  ...
+# Subtest: Ark maps expired status without leaking provider failure details
+ok 57 - Ark maps expired status without leaking provider failure details
+  ---
+  duration_ms: 2.58275
+  type: 'test'
+  ...
+# Subtest: Veo content-filtered or empty output is a terminal failure; raw safety text is private
+ok 58 - Veo content-filtered or empty output is a terminal failure; raw safety text is private
+  ---
+  duration_ms: 5.325916
+  type: 'test'
+  ...
+# Subtest: Veo rejects authenticated host on any route other than exact files download
+ok 59 - Veo rejects authenticated host on any route other than exact files download
+  ---
+  duration_ms: 2.519458
+  type: 'test'
+  ...
+# Subtest: Veo never forwards its key to an explicitly allowlisted output CDN
+ok 60 - Veo never forwards its key to an explicitly allowlisted output CDN
+  ---
+  duration_ms: 10.212583
+  type: 'test'
+  ...
+# Subtest: Veo bounded redirects drop authentication even on same-origin first hop
+ok 61 - Veo bounded redirects drop authentication even on same-origin first hop
+  ---
+  duration_ms: 9.956375
+  type: 'test'
+  ...
+# Subtest: Veo redirect loops stop after three hops and never forward a key
+ok 62 - Veo redirect loops stop after three hops and never forward a key
+  ---
+  duration_ms: 2.951792
+  type: 'test'
+  ...
+1..62
+# tests 62
+# suites 0
+# pass 62
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 677.509084

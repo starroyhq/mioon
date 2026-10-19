@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: mock generation and probe use selected absolute executables with no host PATH
+not ok 1 - mock generation and probe use selected absolute executables with no host PATH
+  ---
+  duration_ms: 214.854959
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/media-runtime-paths.test.mjs:10:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Command failed: /opt/homebrew/Cellar/node/26.9.0/bin/node --input-type=module -e import {DatabaseSync} from 'node:sqlite';import {createMockProvider} from "file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/providers/mock.mjs";import {probe} from "file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media.mjs";const root="/tmp/wb-media-runtime-OGkWUq",db=new DatabaseSync(':memory:');const p=createMockProvider({db,root});const job=await p.submit({prompt:'Synthetic path verification',duration:2,aspectRatio:'9:16',parameters:{scenario:'success',delayMs:0},referenceAssets:[]},{requestId:'custom-runtime-path'});await p.download(job.providerJobId,root+'/output.mp4');const result=await probe(root+'/output.mp4');console.log(JSON.stringify({codec:result.codec,width:result.width,height:result.height,duration:result.duration}));db.close();
+    file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/providers/mock.mjs:11
+    const error = (code, message, tags = {}) => Object.assign(new Error(message), { code, ...tags });
+                                                              ^
+    
+    Error: Output must be inside the managed data directory.
+        at error (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/providers/mock.mjs:11:59)
+        at managedDestination (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/providers/mock.mjs:20:114)
+        at async Object.download (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/providers/mock.mjs:169:22)
+        at async file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/[eval1]:1:584 {
+      code: 'UNSAFE_PATH'
+    }
+    
+    Node.js v26.9.0
+    
+  code: 1
+  stack: |-
+    error (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/providers/mock.mjs:11:59)
+    managedDestination (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/providers/mock.mjs:20:114)
+    async Object.download (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/providers/mock.mjs:169:22)
+    async file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/[eval1]:1:584 {
+    genericNodeError (node:internal/errors:999:15)
+    wrappedFn (node:internal/errors:544:14)
+    ChildProcess.exithandler (node:child_process:417:12)
+    ChildProcess.emit (node:events:514:20)
+    maybeClose (node:internal/child_process:1125:16)
+    ChildProcess._handle.onexit (node:internal/child_process:305:5)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 341.825042

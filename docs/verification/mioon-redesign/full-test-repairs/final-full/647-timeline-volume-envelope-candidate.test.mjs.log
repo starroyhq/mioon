@@ -1,0 +1,94 @@
+TAP version 13
+# Subtest: candidate and live complete records preserve absent/null/value without workspace authority
+ok 1 - candidate and live complete records preserve absent/null/value without workspace authority
+  ---
+  duration_ms: 2.433667
+  type: 'test'
+  ...
+# Subtest: candidate envelope validation rejects undefined, unknown profiles, extra keys and out-of-duration points
+ok 2 - candidate envelope validation rejects undefined, unknown profiles, extra keys and out-of-duration points
+  ---
+  duration_ms: 0.7625
+  type: 'test'
+  ...
+# Subtest: strict typed traversal rejects getters, proxies, symbols, nonenumerable properties and exotic arrays without executing them
+ok 3 - strict typed traversal rejects getters, proxies, symbols, nonenumerable properties and exotic arrays without executing them
+  ---
+  duration_ms: 1.43825
+  type: 'test'
+  ...
+# Subtest: standalone candidate snapshot has exact conditional profile presence and is not a production render shape
+ok 4 - standalone candidate snapshot has exact conditional profile presence and is not a production render shape
+  ---
+  duration_ms: 0.768875
+  type: 'test'
+  ...
+# Subtest: add ACK matches the newly added clip, exact field presence and every untouched previous clip
+ok 5 - add ACK matches the newly added clip, exact field presence and every untouched previous clip
+  ---
+  duration_ms: 5.949
+  type: 'test'
+  ...
+# Subtest: update ACK binds exact envelope payload, untouched clips and shrink replacement semantics
+ok 6 - update ACK binds exact envelope payload, untouched clips and shrink replacement semantics
+  ---
+  duration_ms: 4.320208
+  type: 'test'
+  ...
+# Subtest: replacement ACK preserves the exact envelope and every non-source field
+ok 7 - replacement ACK preserves the exact envelope and every non-source field
+  ---
+  duration_ms: 1.732458
+  type: 'test'
+  ...
+# Subtest: split ACK checks all interior cuts, absent/null/held/ramps/max points and existing fade restrictions
+ok 8 - split ACK checks all interior cuts, absent/null/held/ramps/max points and existing fade restrictions
+  ---
+  duration_ms: 49.227458
+  type: 'test'
+  ...
+# Subtest: Undo/redo require exact expected history; immutable original ACK remains valid after later Undo
+ok 9 - Undo/redo require exact expected history; immutable original ACK remains valid after later Undo
+  ---
+  duration_ms: 0.908083
+  type: 'test'
+  ...
+# Subtest: 100 complete envelope clips serialize exactly on both sides of unchanged 256 KiB cap; rejection is pure, not a transaction proof
+ok 10 - 100 complete envelope clips serialize exactly on both sides of unchanged 256 KiB cap; rejection is pure, not a transaction proof
+  ---
+  duration_ms: 63.476459
+  type: 'test'
+  ...
+# Subtest: candidate and live ACK value validation never establishes workspace admission
+ok 11 - candidate and live ACK value validation never establishes workspace admission
+  ---
+  duration_ms: 0.33575
+  type: 'test'
+  ...
+# Subtest: separate dormant receipt binds exact operation, project, requestId and full input digest without claiming provenance
+ok 12 - separate dormant receipt binds exact operation, project, requestId and full input digest without claiming provenance
+  ---
+  duration_ms: 14.111458
+  type: 'test'
+  ...
+# Subtest: snapshot and receipt complete wrappers, not just inner timelines, obey unchanged 256 KiB cap
+ok 13 - snapshot and receipt complete wrappers, not just inner timelines, obey unchanged 256 KiB cap
+  ---
+  duration_ms: 120.33475
+  type: 'test'
+  ...
+# Subtest: receipt wrapper rejects hostile binding/context fields without executing code
+ok 14 - receipt wrapper rejects hostile binding/context fields without executing code
+  ---
+  duration_ms: 0.362875
+  type: 'test'
+  ...
+1..14
+# tests 14
+# suites 0
+# pass 14
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 522.066583

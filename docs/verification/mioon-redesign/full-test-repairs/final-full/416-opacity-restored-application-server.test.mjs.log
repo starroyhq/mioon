@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: actual restored43 shared handler discloses its fixed policy, captured history and excluded drafts
+ok 1 - actual restored43 shared handler discloses its fixed policy, captured history and excluded drafts
+  ---
+  duration_ms: 1542.8305
+  type: 'test'
+  ...
+# Subtest: HTTP origin gates and fixed operation catalogue reject writes without changing rows
+ok 2 - HTTP origin gates and fixed operation catalogue reject writes without changing rows
+  ---
+  duration_ms: 1185.367584
+  type: 'test'
+  ...
+# Subtest: captured pending HTTP tasks stay held through execute, reconcile and acknowledge
+ok 3 - captured pending HTTP tasks stay held through execute, reconcile and acknowledge
+  ---
+  duration_ms: 1280.103541
+  type: 'test'
+  ...
+# Subtest: new-origin HTTP prepare execute ACK saves opacity and supports actual Undo and Redo
+ok 4 - new-origin HTTP prepare execute ACK saves opacity and supports actual Undo and Redo
+  ---
+  duration_ms: 3100.39475
+  type: 'test'
+  ...
+# Subtest: reopen leaves a fresh prepared task idle and requires a current instance plus explicit execute
+ok 5 - reopen leaves a fresh prepared task idle and requires a current instance plus explicit execute
+  ---
+  duration_ms: 2198.26375
+  type: 'test'
+  ...
+# Subtest: restored companion endpoints remain unsupported and never read or overwrite local draft files
+ok 6 - restored companion endpoints remain unsupported and never read or overwrite local draft files
+  ---
+  duration_ms: 1183.369334
+  type: 'test'
+  ...
+# Subtest: restored preferences read through HTTP while all writes refuse even with the correct origin
+ok 7 - restored preferences read through HTTP while all writes refuse even with the correct origin
+  ---
+  duration_ms: 1065.800375
+  type: 'test'
+  ...
+# Subtest: already disconnected HTTP advisory calls are cancelled before effects and a healthy read remains available
+ok 8 - already disconnected HTTP advisory calls are cancelled before effects and a healthy read remains available
+  ---
+  duration_ms: 1123.402
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 13046.425458

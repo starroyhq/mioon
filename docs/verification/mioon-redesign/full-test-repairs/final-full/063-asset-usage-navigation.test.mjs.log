@@ -1,0 +1,174 @@
+TAP version 13
+# Subtest: a chosen saved use passes exact identity, asks once and reveals without changing source snapshots
+ok 1 - a chosen saved use passes exact identity, asks once and reveals without changing source snapshots
+  ---
+  duration_ms: 1.889417
+  type: 'test'
+  ...
+# Subtest: held confirmation rejects changed project before discard and before selection
+ok 2 - held confirmation rejects changed project before discard and before selection
+  ---
+  duration_ms: 0.239458
+  type: 'test'
+  ...
+# Subtest: held confirmation rejects changed project epoch before discard and before selection
+ok 3 - held confirmation rejects changed project epoch before discard and before selection
+  ---
+  duration_ms: 0.139583
+  type: 'test'
+  ...
+# Subtest: held confirmation rejects changed new selection before discard and before selection
+ok 4 - held confirmation rejects changed new selection before discard and before selection
+  ---
+  duration_ms: 0.151166
+  type: 'test'
+  ...
+# Subtest: held confirmation rejects changed panel intent before discard and before selection
+ok 5 - held confirmation rejects changed panel intent before discard and before selection
+  ---
+  duration_ms: 0.121833
+  type: 'test'
+  ...
+# Subtest: held confirmation rejects changed new usage request before discard and before selection
+ok 6 - held confirmation rejects changed new usage request before discard and before selection
+  ---
+  duration_ms: 0.123708
+  type: 'test'
+  ...
+# Subtest: held confirmation rejects changed workspace before discard and before selection
+ok 7 - held confirmation rejects changed workspace before discard and before selection
+  ---
+  duration_ms: 0.109875
+  type: 'test'
+  ...
+# Subtest: held confirmation rejects changed unmount before discard and before selection
+ok 8 - held confirmation rejects changed unmount before discard and before selection
+  ---
+  duration_ms: 0.37325
+  type: 'test'
+  ...
+# Subtest: held confirmation rejects changed unknown refresh before discard and before selection
+ok 9 - held confirmation rejects changed unknown refresh before discard and before selection
+  ---
+  duration_ms: 0.189791
+  type: 'test'
+  ...
+# Subtest: held confirmation rejects changed new timeline before discard and before selection
+ok 10 - held confirmation rejects changed new timeline before discard and before selection
+  ---
+  duration_ms: 0.196375
+  type: 'test'
+  ...
+# Subtest: held confirmation rejects changed revision before discard and before selection
+ok 11 - held confirmation rejects changed revision before discard and before selection
+  ---
+  duration_ms: 0.190458
+  type: 'test'
+  ...
+# Subtest: held confirmation rejects changed deleted clip before discard and before selection
+ok 12 - held confirmation rejects changed deleted clip before discard and before selection
+  ---
+  duration_ms: 0.122541
+  type: 'test'
+  ...
+# Subtest: held confirmation rejects changed same-revision moved clip before discard and before selection
+ok 13 - held confirmation rejects changed same-revision moved clip before discard and before selection
+  ---
+  duration_ms: 0.182875
+  type: 'test'
+  ...
+# Subtest: held confirmation rejects changed same-revision asset source hash before discard and before selection
+ok 14 - held confirmation rejects changed same-revision asset source hash before discard and before selection
+  ---
+  duration_ms: 0.1455
+  type: 'test'
+  ...
+# Subtest: held confirmation rejects changed same-revision name before discard and before selection
+ok 15 - held confirmation rejects changed same-revision name before discard and before selection
+  ---
+  duration_ms: 0.180875
+  type: 'test'
+  ...
+# Subtest: hidden/filtered/unmounted row and declined confirmation never reveal
+ok 16 - hidden/filtered/unmounted row and declined confirmation never reveal
+  ---
+  duration_ms: 1.889708
+  type: 'test'
+  ...
+# Subtest: stale row, unknown state or missing workspace identity do not even ask to discard
+ok 17 - stale row, unknown state or missing workspace identity do not even ask to discard
+  ---
+  duration_ms: 0.209417
+  type: 'test'
+  ...
+# Subtest: viewport reveal is bounded to its exact child and both layout callbacks respect a later selection
+ok 18 - viewport reveal is bounded to its exact child and both layout callbacks respect a later selection
+  ---
+  duration_ms: 0.171542
+  type: 'test'
+  ...
+# Subtest: actual App bridge opens the chosen clip in Properties and saved timeline without business calls
+ok 19 - actual App bridge opens the chosen clip in Properties and saved timeline without business calls
+  ---
+  duration_ms: 0.844709
+  type: 'test'
+  ...
+# Subtest: actual App bridge checks live projectEpoch after dirty confirmation
+ok 20 - actual App bridge checks live projectEpoch after dirty confirmation
+  ---
+  duration_ms: 0.148958
+  type: 'test'
+  ...
+# Subtest: actual App bridge checks live navigationEpoch after dirty confirmation
+ok 21 - actual App bridge checks live navigationEpoch after dirty confirmation
+  ---
+  duration_ms: 0.108542
+  type: 'test'
+  ...
+# Subtest: actual App bridge checks live panelIntent after dirty confirmation
+ok 22 - actual App bridge checks live panelIntent after dirty confirmation
+  ---
+  duration_ms: 0.081458
+  type: 'test'
+  ...
+# Subtest: actual App bridge checks live assetUsageAttempt after dirty confirmation
+ok 23 - actual App bridge checks live assetUsageAttempt after dirty confirmation
+  ---
+  duration_ms: 0.073375
+  type: 'test'
+  ...
+# Subtest: actual App bridge refuses an unaccepted home session before or during discard confirmation
+ok 24 - actual App bridge refuses an unaccepted home session before or during discard confirmation
+  ---
+  duration_ms: 0.162917
+  type: 'test'
+  ...
+# Subtest: App passes the target fence through the actual clip discard boundary
+not ok 25 - App passes the target fence through the actual clip discard boundary
+  ---
+  duration_ms: 0.2795
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/asset-usage-navigation.test.mjs:121:1'
+  failureType: 'testCodeFailure'
+  error: 'clipDraftRef.current?.hasPendingComposition is not a function'
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    guardNavigation (eval at <anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/asset-usage-navigation.test.mjs:128:15), <anonymous>:4:31)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/asset-usage-navigation.test.mjs:129:50)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..25
+# tests 25
+# suites 0
+# pass 24
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 215.058

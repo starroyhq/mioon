@@ -1,0 +1,99 @@
+TAP version 13
+# Subtest: before prepare publication: process death retains raw draft and zero business writes
+ok 1 - before prepare publication: process death retains raw draft and zero business writes
+  ---
+  duration_ms: 2291.86375
+  type: 'test'
+  ...
+# beforePersist: owned child SIGKILL before IPC reply; dispatches=0
+# Subtest: afterDirectorySync: startup only observes prepared input; explicit same-key recovery saves exactly once
+ok 2 - afterDirectorySync: startup only observes prepared input; explicit same-key recovery saves exactly once
+  ---
+  duration_ms: 2364.184625
+  type: 'test'
+  ...
+# afterDirectorySync: owned child SIGKILL before IPC reply; dispatches=0
+# Subtest: beforeDispatch: startup only observes prepared input; explicit same-key recovery saves exactly once
+ok 3 - beforeDispatch: startup only observes prepared input; explicit same-key recovery saves exactly once
+  ---
+  duration_ms: 2971.85925
+  type: 'test'
+  ...
+# beforeDispatch: owned child SIGKILL before IPC reply; dispatches=0
+# Subtest: afterBusinessReceiptCommit: immutable historical full-shot receipt survives crash and later revision without rebasing
+ok 4 - afterBusinessReceiptCommit: immutable historical full-shot receipt survives crash and later revision without rebasing
+  ---
+  duration_ms: 2360.411209
+  type: 'test'
+  ...
+# afterBusinessReceiptCommit: owned child SIGKILL before IPC reply; dispatches=1
+# Subtest: beforeOutcomePersist: immutable historical full-shot receipt survives crash and later revision without rebasing
+ok 5 - beforeOutcomePersist: immutable historical full-shot receipt survives crash and later revision without rebasing
+  ---
+  duration_ms: 2339.01025
+  type: 'test'
+  ...
+# beforeOutcomePersist: owned child SIGKILL before IPC reply; dispatches=1
+# Subtest: afterOutcomePersist: immutable historical full-shot receipt survives crash and later revision without rebasing
+ok 6 - afterOutcomePersist: immutable historical full-shot receipt survives crash and later revision without rebasing
+  ---
+  duration_ms: 2731.517458
+  type: 'test'
+  ...
+# afterOutcomePersist: owned child SIGKILL before IPC reply; dispatches=1
+# Subtest: fresh real revision rejection durably settles not_applied across process death
+ok 7 - fresh real revision rejection durably settles not_applied across process death
+  ---
+  duration_ms: 2290.090167
+  type: 'test'
+  ...
+# afterOutcomePersist: owned child SIGKILL before IPC reply; dispatches=1
+# Subtest: two windows preserve one project reservation, original input, and newer draft
+ok 8 - two windows preserve one project reservation, original input, and newer draft
+  ---
+  duration_ms: 2521.376333
+  type: 'test'
+  ...
+# Subtest: real committed receipt response corruption fails closed without dispatch or repair
+ok 9 - real committed receipt response corruption fails closed without dispatch or repair
+  ---
+  duration_ms: 2272.724625
+  type: 'test'
+  ...
+# afterBusinessReceiptCommit: owned child SIGKILL before IPC reply; dispatches=1
+# Subtest: real committed receipt owner corruption fails closed without dispatch or repair
+ok 10 - real committed receipt owner corruption fails closed without dispatch or repair
+  ---
+  duration_ms: 2775.38175
+  type: 'test'
+  ...
+# afterBusinessReceiptCommit: owned child SIGKILL before IPC reply; dispatches=1
+# Subtest: real committed receipt canonical corruption fails closed without dispatch or repair
+ok 11 - real committed receipt canonical corruption fails closed without dispatch or repair
+  ---
+  duration_ms: 2505.987916
+  type: 'test'
+  ...
+# afterBusinessReceiptCommit: owned child SIGKILL before IPC reply; dispatches=1
+# Subtest: real committed receipt duplicate corruption fails closed without dispatch or repair
+ok 12 - real committed receipt duplicate corruption fails closed without dispatch or repair
+  ---
+  duration_ms: 2264.34675
+  type: 'test'
+  ...
+# afterBusinessReceiptCommit: owned child SIGKILL before IPC reply; dispatches=1
+# Subtest: cross-project target cannot expose text or dispatch from retained authority
+ok 13 - cross-project target cannot expose text or dispatch from retained authority
+  ---
+  duration_ms: 1495.091125
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 31601.344209

@@ -1,0 +1,130 @@
+TAP version 13
+# Subtest: blank means own-property omission, exact nonempty text is never trimmed or renamed
+ok 1 - blank means own-property omission, exact nonempty text is never trimmed or renamed
+  ---
+  duration_ms: 1.667292
+  type: 'test'
+  ...
+# Subtest: per-project epoch draft retains exact invalid input, blanks are dirty edits, old closures fail
+ok 2 - per-project epoch draft retains exact invalid input, blanks are dirty edits, old closures fail
+  ---
+  duration_ms: 0.28475
+  type: 'test'
+  ...
+# Subtest: matching accepted snapshot marks only the exact draft clean without clearing the field
+ok 3 - matching accepted snapshot marks only the exact draft clean without clearing the field
+  ---
+  duration_ms: 0.27325
+  type: 'test'
+  ...
+# Subtest: late acknowledgements and navigation confirmations never clear a newer or different project draft
+ok 4 - late acknowledgements and navigation confirmations never clear a newer or different project draft
+  ---
+  duration_ms: 0.147583
+  type: 'test'
+  ...
+# Subtest: initial no-project navigation is allowed and cancelled navigation never replaces an in-flight capture
+ok 5 - initial no-project navigation is allowed and cancelled navigation never replaces an in-flight capture
+  ---
+  duration_ms: 0.110875
+  type: 'test'
+  ...
+# Subtest: capability payload remains name-free; checked render binding freezes exact displayed name and quality
+ok 6 - capability payload remains name-free; checked render binding freezes exact displayed name and quality
+  ---
+  duration_ms: 2.941166
+  type: 'test'
+  ...
+# Subtest: blank field omits name from preflight and checked binding, while mismatched own presence fails closed
+ok 7 - blank field omits name from preflight and checked binding, while mismatched own presence fails closed
+  ---
+  duration_ms: 3.310416
+  type: 'test'
+  ...
+# Subtest: live context change fences late check and old clicks: {"deliveryName":"第二版"}
+ok 8 - live context change fences late check and old clicks: {"deliveryName":"第二版"}
+  ---
+  duration_ms: 0.488541
+  type: 'test'
+  ...
+# Subtest: live context change fences late check and old clicks: {"deliveryNameVersion":3}
+ok 9 - live context change fences late check and old clicks: {"deliveryNameVersion":3}
+  ---
+  duration_ms: 0.351458
+  type: 'test'
+  ...
+# Subtest: live context change fences late check and old clicks: {"scope":"project:2"}
+ok 10 - live context change fences late check and old clicks: {"scope":"project:2"}
+  ---
+  duration_ms: 0.392667
+  type: 'test'
+  ...
+# Subtest: live context change fences late check and old clicks: {"projectId":"ab000000-0000-4000-8000-000000000009"}
+ok 11 - live context change fences late check and old clicks: {"projectId":"ab000000-0000-4000-8000-000000000009"}
+  ---
+  duration_ms: 0.350583
+  type: 'test'
+  ...
+# Subtest: live context change fences late check and old clicks: {"revision":5}
+ok 12 - live context change fences late check and old clicks: {"revision":5}
+  ---
+  duration_ms: 0.299208
+  type: 'test'
+  ...
+# Subtest: live context change fences late check and old clicks: {"settingsVersion":2}
+ok 13 - live context change fences late check and old clicks: {"settingsVersion":2}
+  ---
+  duration_ms: 0.272792
+  type: 'test'
+  ...
+# Subtest: live context change fences late check and old clicks: {"connected":false}
+ok 14 - live context change fences late check and old clicks: {"connected":false}
+  ---
+  duration_ms: 0.229458
+  type: 'test'
+  ...
+# Subtest: late media/auth response is ignored after A→B→A; invalid input does no capability or media work
+ok 15 - late media/auth response is ignored after A→B→A; invalid input does no capability or media work
+  ---
+  duration_ms: 0.198416
+  type: 'test'
+  ...
+# Subtest: unchecked intent includes exact name, respects live name fences, and is single-use
+ok 16 - unchecked intent includes exact name, respects live name fences, and is single-use
+  ---
+  duration_ms: 0.501917
+  type: 'test'
+  ...
+# Subtest: completed check survives hide/show without automatic work, in-progress hide cannot publish
+ok 17 - completed check survives hide/show without automatic work, in-progress hide cannot publish
+  ---
+  duration_ms: 0.311042
+  type: 'test'
+  ...
+# Subtest: pending exact key/input and retry preserve prior name when another draft is prepared
+ok 18 - pending exact key/input and retry preserve prior name when another draft is prepared
+  ---
+  duration_ms: 7.715292
+  type: 'test'
+  ...
+# Subtest: named projection rejects malformed own name, path-shaped IDs and legacy status aliases
+ok 19 - named projection rejects malformed own name, path-shaped IDs and legacy status aliases
+  ---
+  duration_ms: 0.251541
+  type: 'test'
+  ...
+# Subtest: frozen rate descriptors use stable settings without changing legacy projection acceptance or original history
+ok 20 - frozen rate descriptors use stable settings without changing legacy projection acceptance or original history
+  ---
+  duration_ms: 0.389583
+  type: 'test'
+  ...
+1..20
+# tests 20
+# suites 0
+# pass 20
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 269.515208

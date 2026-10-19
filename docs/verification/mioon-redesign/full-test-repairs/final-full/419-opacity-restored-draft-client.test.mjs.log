@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: fixed43 client injects origin/version on its separate endpoint and validates before projecting the original CAS envelope
+ok 1 - fixed43 client injects origin/version on its separate endpoint and validates before projecting the original CAS envelope
+  ---
+  duration_ms: 24.44775
+  type: 'test'
+  ...
+# Subtest: 43 client requires an exact present capability and its marker cannot be copied or authorized by a context flag
+ok 2 - 43 client requires an exact present capability and its marker cannot be copied or authorized by a context flag
+  ---
+  duration_ms: 10.283042
+  type: 'test'
+  ...
+# Subtest: 43 client rejects missing, altered, cross-origin or surplus response metadata as unknown, never accepts v3/unsupported fallback
+ok 3 - 43 client rejects missing, altered, cross-origin or surplus response metadata as unknown, never accepts v3/unsupported fallback
+  ---
+  duration_ms: 3.537917
+  type: 'test'
+  ...
+# Subtest: retained43 snapshot keeps its original origin through dirty/composing interruptions and controller refuses a replacement context
+ok 4 - retained43 snapshot keeps its original origin through dirty/composing interruptions and controller refuses a replacement context
+  ---
+  duration_ms: 0.663584
+  type: 'test'
+  ...
+# Subtest: 43 bad-file retains raw input through Cancel, business ACK and close
+ok 5 - 43 bad-file retains raw input through Cancel, business ACK and close
+  ---
+  duration_ms: 1.433959
+  type: 'test'
+  ...
+# Subtest: 43 unknown-put retains raw input through Cancel, business ACK and close
+ok 6 - 43 unknown-put retains raw input through Cancel, business ACK and close
+  ---
+  duration_ms: 1.453
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 281.553375

@@ -1,0 +1,142 @@
+TAP version 13
+# Subtest: image.generate: valid historical ACKs preserve exact request and receipt; no automatic second POST
+ok 1 - image.generate: valid historical ACKs preserve exact request and receipt; no automatic second POST
+  ---
+  duration_ms: 10.428541
+  type: 'test'
+  ...
+# Subtest: image.generate: forged or incomplete 200 ACKs remain uncertain without changing the caller key
+ok 2 - image.generate: forged or incomplete 200 ACKs remain uncertain without changing the caller key
+  ---
+  duration_ms: 7.647917
+  type: 'test'
+  ...
+# Subtest: image.generate: malformed envelopes, unreadable JSON and lost transport preserve recovery identity
+ok 3 - image.generate: malformed envelopes, unreadable JSON and lost transport preserve recovery identity
+  ---
+  duration_ms: 0.630416
+  type: 'test'
+  ...
+# Subtest: image.generate: explicit replay after malformed ACK sends only the original complete input
+ok 4 - image.generate: explicit replay after malformed ACK sends only the original complete input
+  ---
+  duration_ms: 1.658084
+  type: 'test'
+  ...
+# Subtest: image.task.cancelQueued: valid historical ACKs preserve exact request and receipt; no automatic second POST
+ok 5 - image.task.cancelQueued: valid historical ACKs preserve exact request and receipt; no automatic second POST
+  ---
+  duration_ms: 0.267916
+  type: 'test'
+  ...
+# Subtest: image.task.cancelQueued: forged or incomplete 200 ACKs remain uncertain without changing the caller key
+ok 6 - image.task.cancelQueued: forged or incomplete 200 ACKs remain uncertain without changing the caller key
+  ---
+  duration_ms: 2.429042
+  type: 'test'
+  ...
+# Subtest: image.task.cancelQueued: malformed envelopes, unreadable JSON and lost transport preserve recovery identity
+ok 7 - image.task.cancelQueued: malformed envelopes, unreadable JSON and lost transport preserve recovery identity
+  ---
+  duration_ms: 0.272708
+  type: 'test'
+  ...
+# Subtest: image.task.cancelQueued: explicit replay after malformed ACK sends only the original complete input
+ok 8 - image.task.cancelQueued: explicit replay after malformed ACK sends only the original complete input
+  ---
+  duration_ms: 0.11225
+  type: 'test'
+  ...
+# Subtest: image.task.recoverResult: valid historical ACKs preserve exact request and receipt; no automatic second POST
+ok 9 - image.task.recoverResult: valid historical ACKs preserve exact request and receipt; no automatic second POST
+  ---
+  duration_ms: 0.115333
+  type: 'test'
+  ...
+# Subtest: image.task.recoverResult: forged or incomplete 200 ACKs remain uncertain without changing the caller key
+ok 10 - image.task.recoverResult: forged or incomplete 200 ACKs remain uncertain without changing the caller key
+  ---
+  duration_ms: 2.163916
+  type: 'test'
+  ...
+# Subtest: image.task.recoverResult: malformed envelopes, unreadable JSON and lost transport preserve recovery identity
+ok 11 - image.task.recoverResult: malformed envelopes, unreadable JSON and lost transport preserve recovery identity
+  ---
+  duration_ms: 0.299959
+  type: 'test'
+  ...
+# Subtest: image.task.recoverResult: explicit replay after malformed ACK sends only the original complete input
+ok 12 - image.task.recoverResult: explicit replay after malformed ACK sends only the original complete input
+  ---
+  duration_ms: 0.10675
+  type: 'test'
+  ...
+# Subtest: image.generate accepts equivalent fixed-option key order but never supplies a missing request key
+ok 13 - image.generate accepts equivalent fixed-option key order but never supplies a missing request key
+  ---
+  duration_ms: 0.271084
+  type: 'test'
+  ...
+# Subtest: image mutation abort after dispatch keeps its original identity and never submits cancellation
+ok 14 - image mutation abort after dispatch keeps its original identity and never submits cancellation
+  ---
+  duration_ms: 0.210125
+  type: 'test'
+  ...
+# Subtest: image task and group reads bind exact project and target without normalization
+ok 15 - image task and group reads bind exact project and target without normalization
+  ---
+  duration_ms: 0.876792
+  type: 'test'
+  ...
+# Subtest: image request lookup binds project/key and returns a valid immutable receipt for each mutation
+ok 16 - image request lookup binds project/key and returns a valid immutable receipt for each mutation
+  ---
+  duration_ms: 1.861791
+  type: 'test'
+  ...
+# Subtest: image request lookup rejects impossible original-receipt operation/state combinations
+ok 17 - image request lookup rejects impossible original-receipt operation/state combinations
+  ---
+  duration_ms: 0.237084
+  type: 'test'
+  ...
+# Subtest: image profile DTO accepts explicit configured activation but rejects inconsistent state, forged live evidence and private fields
+ok 18 - image profile DTO accepts explicit configured activation but rejects inconsistent state, forged live evidence and private fields
+  ---
+  duration_ms: 1.090209
+  type: 'test'
+  ...
+# Subtest: image.task.list: pages reject foreign/duplicate/oversized or malformed records and cursors
+ok 19 - image.task.list: pages reject foreign/duplicate/oversized or malformed records and cursors
+  ---
+  duration_ms: 1.029666
+  type: 'test'
+  ...
+# Subtest: image.group.list: pages reject foreign/duplicate/oversized or malformed records and cursors
+ok 20 - image.group.list: pages reject foreign/duplicate/oversized or malformed records and cursors
+  ---
+  duration_ms: 0.578208
+  type: 'test'
+  ...
+# Subtest: image.version.list: pages reject foreign/duplicate/oversized or malformed records and cursors
+ok 21 - image.version.list: pages reject foreign/duplicate/oversized or malformed records and cursors
+  ---
+  duration_ms: 1.17275
+  type: 'test'
+  ...
+# Subtest: fresh-client request lookup after an uncertain generation is only a read and retains the same recovery key
+ok 22 - fresh-client request lookup after an uncertain generation is only a read and retains the same recovery key
+  ---
+  duration_ms: 0.214917
+  type: 'test'
+  ...
+1..22
+# tests 22
+# suites 0
+# pass 22
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 250.428833

@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: capability proves generated float MOVs, exact two-segment concat and AAC in private owned files
+ok 1 - capability proves generated float MOVs, exact two-segment concat and AAC in private owned files
+  ---
+  duration_ms: 11.814125
+  type: 'test'
+  ...
+# Subtest: capability refuses alias roots and rejects integer-headroom loss before final AAC
+ok 2 - capability refuses alias roots and rejects integer-headroom loss before final AAC
+  ---
+  duration_ms: 5.742875
+  type: 'test'
+  ...
+# Subtest: capability leaves unknown replacement staging untouched and cannot return available
+ok 3 - capability leaves unknown replacement staging untouched and cannot return available
+  ---
+  duration_ms: 5.972584
+  type: 'test'
+  ...
+# Subtest: capability retains all owned files while child termination remains unconfirmed
+ok 4 - capability retains all owned files while child termination remains unconfirmed
+  ---
+  duration_ms: 5.353708
+  type: 'test'
+  ...
+# Subtest: v2 render staging confirms only exact private owned cleanup and preserves unknown replacements
+ok 5 - v2 render staging confirms only exact private owned cleanup and preserves unknown replacements
+  ---
+  duration_ms: 5.793208
+  type: 'test'
+  ...
+# Subtest: capability preserves a primary encode failure if exact cleanup also cannot finish
+ok 6 - capability preserves a primary encode failure if exact cleanup also cannot finish
+  ---
+  duration_ms: 2.295791
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 210.342833

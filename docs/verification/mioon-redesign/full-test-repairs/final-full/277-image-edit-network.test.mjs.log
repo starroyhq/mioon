@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: official edit factory pins endpoint, certificate, selected public address and dedicated headers; passed URLs cannot redirect it
+ok 1 - official edit factory pins endpoint, certificate, selected public address and dedicated headers; passed URLs cannot redirect it
+  ---
+  duration_ms: 7.177084
+  type: 'test'
+  ...
+# Subtest: edit-only request cap admits exact derived maximum and rejects overflow without widening generation/custom bounds
+ok 2 - edit-only request cap admits exact derived maximum and rejects overflow without widening generation/custom bounds
+  ---
+  duration_ms: 6.554875
+  type: 'test'
+  ...
+# Subtest: all edit DNS answers and actual TLS peer must pass safety checks; no fallback to other addresses
+ok 3 - all edit DNS answers and actual TLS peer must pass safety checks; no fallback to other addresses
+  ---
+  duration_ms: 2.204875
+  type: 'test'
+  ...
+# Subtest: the edit dispatch fence runs once synchronously after DNS/TLS and immediately before sole POST, despite duplicate socket events
+ok 4 - the edit dispatch fence runs once synchronously after DNS/TLS and immediately before sole POST, despite duplicate socket events
+  ---
+  duration_ms: 0.76
+  type: 'test'
+  ...
+# Subtest: pre-dispatch aborts before DNS, during DNS, during TLS and inside fence are unsubmitted; after POST stays outcome-unknown
+ok 5 - pre-dispatch aborts before DNS, during DNS, during TLS and inside fence are unsubmitted; after POST stays outcome-unknown
+  ---
+  duration_ms: 0.497667
+  type: 'test'
+  ...
+# Subtest: redirect/error status never follows Location or retries and returned errors redact key, response and server messages
+ok 6 - redirect/error status never follows Location or retries and returned errors redact key, response and server messages
+  ---
+  duration_ms: 0.509542
+  type: 'test'
+  ...
+# Subtest: edit streaming response bounds, headers, completeness and declared lengths stay strict
+ok 7 - edit streaming response bounds, headers, completeness and declared lengths stay strict
+  ---
+  duration_ms: 1.297709
+  type: 'test'
+  ...
+# Subtest: deadlines and late callbacks never dispatch twice or resurrect completed/cancelled edit requests
+ok 8 - deadlines and late callbacks never dispatch twice or resurrect completed/cancelled edit requests
+  ---
+  duration_ms: 15.287584
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 247.117375

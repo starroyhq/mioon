@@ -1,0 +1,76 @@
+TAP version 13
+# Subtest: new async pipe lane pauses at one callback and excludes consumer backpressure from timeout
+ok 1 - new async pipe lane pauses at one callback and excludes consumer backpressure from timeout
+  ---
+  duration_ms: 471.884375
+  type: 'test'
+  ...
+# Subtest: cancelled backpressured callback joins exact child close rather than releasing on kill
+ok 2 - cancelled backpressured callback joins exact child close rather than releasing on kill
+  ---
+  duration_ms: 140.082792
+  type: 'test'
+  ...
+# Subtest: old synchronous pipe lane still rejects asynchronous callbacks
+ok 3 - old synchronous pipe lane still rejects asynchronous callbacks
+  ---
+  duration_ms: 126.062417
+  type: 'test'
+  ...
+# Subtest: cancellation retains callback ownership after exact child close until the consumer joins
+ok 4 - cancellation retains callback ownership after exact child close until the consumer joins
+  ---
+  duration_ms: 137.604708
+  type: 'test'
+  ...
+# Subtest: active timeout resumes only after the backpressured callback joins and reaps the exact idle child
+ok 5 - active timeout resumes only after the backpressured callback joins and reaps the exact idle child
+  ---
+  duration_ms: 715.875709
+  type: 'test'
+  ...
+# Subtest: nonzero process close wakes a blocked consumer and still joins its callback
+ok 6 - nonzero process close wakes a blocked consumer and still joins its callback
+  ---
+  duration_ms: 200.59375
+  type: 'test'
+  ...
+# Subtest: stderr overflow during backpressure wakes once and joins the callback even when the failure observer throws
+ok 7 - stderr overflow during backpressure wakes once and joins the callback even when the failure observer throws
+  ---
+  duration_ms: 200.810458
+  type: 'test'
+  ...
+# Subtest: consumer exceptions preserve their identity and reap the exact process
+ok 8 - consumer exceptions preserve their identity and reap the exact process
+  ---
+  duration_ms: 224.708125
+  type: 'test'
+  ...
+# Subtest: continuous default accepts more than the legacy buffered ceiling and enforces exact byte budgets
+ok 9 - continuous default accepts more than the legacy buffered ceiling and enforces exact byte budgets
+  ---
+  duration_ms: 405.58225
+  type: 'test'
+  ...
+# Subtest: invalid continuous options and pre-aborted work never spawn a process
+ok 10 - invalid continuous options and pre-aborted work never spawn a process
+  ---
+  duration_ms: 0.670125
+  type: 'test'
+  ...
+# Subtest: unconfirmed close keeps global admission closed and joins the blocked consumer before rejecting
+ok 11 - unconfirmed close keeps global admission closed and joins the blocked consumer before rejecting
+  ---
+  duration_ms: 3465.224041
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 6255.575708

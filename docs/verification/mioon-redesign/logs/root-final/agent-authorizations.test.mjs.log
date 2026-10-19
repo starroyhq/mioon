@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: closed scopes reject arbitrary authority fields and distinguish move from gain
+ok 1 - closed scopes reject arbitrary authority fields and distinguish move from gain
+  ---
+  duration_ms: 2.039416
+  type: 'test'
+  ...
+# Subtest: first send is denied; grants persist by exact endpoint/model/scope across restart
+ok 2 - first send is denied; grants persist by exact endpoint/model/scope across restart
+  ---
+  duration_ms: 1008.289542
+  type: 'test'
+  ...
+# Subtest: CAS, exact receipts and revocation cannot revive an old grant
+ok 3 - CAS, exact receipts and revocation cannot revive an old grant
+  ---
+  duration_ms: 684.680834
+  type: 'test'
+  ...
+# Subtest: changed settings, unsafe files and corruption fail closed without overwriting evidence
+ok 4 - changed settings, unsafe files and corruption fail closed without overwriting evidence
+  ---
+  duration_ms: 614.546375
+  type: 'test'
+  ...
+# Subtest: backend rejects ungranted requests before credentials and revocation fences async acquisition
+ok 5 - backend rejects ungranted requests before credentials and revocation fences async acquisition
+  ---
+  duration_ms: 638.6755
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3229.680833

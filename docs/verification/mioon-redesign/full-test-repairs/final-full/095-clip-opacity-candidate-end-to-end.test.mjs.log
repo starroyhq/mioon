@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: exact candidate application client saves and acknowledges raw opacity through the actual durable controller and HTTP services
+ok 1 - exact candidate application client saves and acknowledges raw opacity through the actual durable controller and HTTP services
+  ---
+  duration_ms: 888.543958
+  type: 'test'
+  ...
+# Subtest: default and copied task clients cannot select candidate ACK validation
+ok 2 - default and copied task clients cannot select candidate ACK validation
+  ---
+  duration_ms: 442.760667
+  type: 'test'
+  ...
+# Subtest: lost candidate execute ACK retains exact unknown task and recovers by GET without replaying execution
+ok 3 - lost candidate execute ACK retains exact unknown task and recovers by GET without replaying execution
+  ---
+  duration_ms: 734.269375
+  type: 'test'
+  ...
+# Subtest: candidate malformed applied opacity cannot clear a task and late prepare cannot dispatch after navigation
+ok 4 - candidate malformed applied opacity cannot clear a task and late prepare cannot dispatch after navigation
+  ---
+  duration_ms: 569.6885
+  type: 'test'
+  ...
+# Subtest: actual candidate controller preserves unfinished v3 text across reopen and saves through HTTP tasks into the existing transaction
+ok 5 - actual candidate controller preserves unfinished v3 text across reopen and saves through HTTP tasks into the existing transaction
+  ---
+  duration_ms: 1405.294167
+  type: 'test'
+  ...
+# Subtest: candidate Cancel clears the native v3 record without a task, while explicit local abandonment keeps a recoverable record
+ok 6 - candidate Cancel clears the native v3 record without a task, while explicit local abandonment keeps a recoverable record
+  ---
+  duration_ms: 823.618083
+  type: 'test'
+  ...
+# Subtest: default clients, copied clients and forged bindings never activate opacity despite advisory context flags
+ok 7 - default clients, copied clients and forged bindings never activate opacity despite advisory context flags
+  ---
+  duration_ms: 995.376542
+  type: 'test'
+  ...
+# Subtest: fixed43 editor keeps v3 drafts unsupported and untouched while an explicit-origin task saves opacity
+ok 8 - fixed43 editor keeps v3 drafts unsupported and untouched while an explicit-origin task saves opacity
+  ---
+  duration_ms: 1160.207625
+  type: 'test'
+  ...
+# Subtest: draining the fixed editor revokes its HTTP, task and business entrypoints without closing or modifying the store
+ok 9 - draining the fixed editor revokes its HTTP, task and business entrypoints without closing or modifying the store
+  ---
+  duration_ms: 381.386625
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 7918.470875

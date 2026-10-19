@@ -1,0 +1,172 @@
+TAP version 13
+# Subtest: nonempty SQLite -wal is refused and never repaired
+ok 1 - nonempty SQLite -wal is refused and never repaired
+  ---
+  duration_ms: 737.350291
+  type: 'test'
+  ...
+# Subtest: nonempty SQLite -journal is refused and never repaired
+ok 2 - nonempty SQLite -journal is refused and never repaired
+  ---
+  duration_ms: 608.753458
+  type: 'test'
+  ...
+# Subtest: empty sidecars are accepted, excluded and unchanged; safe legacy modes are retained
+ok 3 - empty sidecars are accepted, excluded and unchanged; safe legacy modes are retained
+  ---
+  duration_ms: 979.138333
+  type: 'test'
+  ...
+# Subtest: selected source symlink is rejected without changing target
+ok 4 - selected source symlink is rejected without changing target
+  ---
+  duration_ms: 642.712
+  type: 'test'
+  ...
+# Subtest: selected source hardlink is rejected without changing target
+ok 5 - selected source hardlink is rejected without changing target
+  ---
+  duration_ms: 627.062167
+  type: 'test'
+  ...
+# Subtest: selected source broad-mode is rejected without changing target
+ok 6 - selected source broad-mode is rejected without changing target
+  ---
+  duration_ms: 654.187917
+  type: 'test'
+  ...
+# Subtest: selected source foreign-owner is rejected without changing target
+ok 7 - selected source foreign-owner is rejected without changing target
+  ---
+  duration_ms: 641.9225
+  type: 'test'
+  ...
+# Subtest: selected source fifo is rejected without changing target
+ok 8 - selected source fifo is rejected without changing target
+  ---
+  duration_ms: 630.193667
+  type: 'test'
+  ...
+# Subtest: an unrecognized symlink in managed media is rejected rather than silently followed or copied
+ok 9 - an unrecognized symlink in managed media is rejected rather than silently followed or copied
+  ---
+  duration_ms: 637.566167
+  type: 'test'
+  ...
+# Subtest: invalid destination relative is never reused or repaired
+ok 10 - invalid destination relative is never reused or repaired
+  ---
+  duration_ms: 582.87125
+  type: 'test'
+  ...
+# Subtest: invalid destination nested is never reused or repaired
+ok 11 - invalid destination nested is never reused or repaired
+  ---
+  duration_ms: 590.23425
+  type: 'test'
+  ...
+# Subtest: invalid destination existing is never reused or repaired
+ok 12 - invalid destination existing is never reused or repaired
+  ---
+  duration_ms: 679.997458
+  type: 'test'
+  ...
+# Subtest: invalid destination symlink-parent is never reused or repaired
+ok 13 - invalid destination symlink-parent is never reused or repaired
+  ---
+  duration_ms: 615.387375
+  type: 'test'
+  ...
+# Subtest: fixed database byte limit rejects sparse oversize input before streaming media
+ok 14 - fixed database byte limit rejects sparse oversize input before streaming media
+  ---
+  duration_ms: 578.100917
+  type: 'test'
+  ...
+# Subtest: fixed single-file byte limit rejects sparse oversize input before streaming media
+ok 15 - fixed single-file byte limit rejects sparse oversize input before streaming media
+  ---
+  duration_ms: 627.691666
+  type: 'test'
+  ...
+# Subtest: fixed total byte limit rejects sparse oversize input before streaming media
+ok 16 - fixed total byte limit rejects sparse oversize input before streaming media
+  ---
+  duration_ms: 642.71925
+  type: 'test'
+  ...
+# Subtest: cancellation during chunked capture leaves no COMPLETE and releases only its own lease
+ok 17 - cancellation during chunked capture leaves no COMPLETE and releases only its own lease
+  ---
+  duration_ms: 600.05875
+  type: 'test'
+  ...
+# Subtest: source replacement after capture starts is fenced before completion
+ok 18 - source replacement after capture starts is fenced before completion
+  ---
+  duration_ms: 604.481584
+  type: 'test'
+  ...
+# Subtest: new backup parent fsync failure is fatal before publication and source is unchanged
+ok 19 - new backup parent fsync failure is fatal before publication and source is unchanged
+  ---
+  duration_ms: 607.699042
+  type: 'test'
+  ...
+# Subtest: publication failure removes only owned marker and fsyncs rollback
+ok 20 - publication failure removes only owned marker and fsyncs rollback
+  ---
+  duration_ms: 585.689791
+  type: 'test'
+  ...
+# Subtest: publication never adopts and deletes a substituted marker inode
+ok 21 - publication never adopts and deletes a substituted marker inode
+  ---
+  duration_ms: 563.947333
+  type: 'test'
+  ...
+# Subtest: verify rejects linked payload and does not create SQLite sidecars beside completed database
+ok 22 - verify rejects linked payload and does not create SQLite sidecars beside completed database
+  ---
+  duration_ms: 680.743625
+  type: 'test'
+  ...
+# Subtest: capture rehashes stored destination bytes before claiming verified integrity
+ok 23 - capture rehashes stored destination bytes before claiming verified integrity
+  ---
+  duration_ms: 768.155917
+  type: 'test'
+  ...
+# Subtest: completed backup stays verified with explicit lock cleanup warning after unlink
+ok 24 - completed backup stays verified with explicit lock cleanup warning after unlink
+  ---
+  duration_ms: 659.547416
+  type: 'test'
+  ...
+# Subtest: completed backup stays verified with explicit lock cleanup warning after metadata
+ok 25 - completed backup stays verified with explicit lock cleanup warning after metadata
+  ---
+  duration_ms: 688.302667
+  type: 'test'
+  ...
+# Subtest: completed backup stays verified with explicit lock cleanup warning after replacement
+ok 26 - completed backup stays verified with explicit lock cleanup warning after replacement
+  ---
+  duration_ms: 702.056041
+  type: 'test'
+  ...
+# Subtest: cancelled backup retains cancellation and explicitly reports uncertain source lock cleanup
+ok 27 - cancelled backup retains cancellation and explicitly reports uncertain source lock cleanup
+  ---
+  duration_ms: 611.443917
+  type: 'test'
+  ...
+1..27
+# tests 27
+# suites 0
+# pass 27
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 17822.815833

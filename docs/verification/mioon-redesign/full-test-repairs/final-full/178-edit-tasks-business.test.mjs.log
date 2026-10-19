@@ -1,0 +1,136 @@
+TAP version 13
+# Subtest: legacy FIRST12 relative order remains in the twenty-one-operation scope; prepare is durable/noncreating and preserves duplicate identity
+ok 1 - legacy FIRST12 relative order remains in the twenty-one-operation scope; prepare is durable/noncreating and preserves duplicate identity
+  ---
+  duration_ms: 691.878083
+  type: 'test'
+  ...
+# Subtest: exact claims dispatch once across concurrent managers; no outer transaction; immutable terminal ACK
+ok 2 - exact claims dispatch once across concurrent managers; no outer transaction; immutable terminal ACK
+  ---
+  duration_ms: 678.940208
+  type: 'test'
+  ...
+# Subtest: prepare failure at beforePreparePersist never dispatches
+ok 3 - prepare failure at beforePreparePersist never dispatches
+  ---
+  duration_ms: 601.380333
+  type: 'test'
+  ...
+# Subtest: prepare failure at afterPreparePersist never dispatches
+ok 4 - prepare failure at afterPreparePersist never dispatches
+  ---
+  duration_ms: 600.574
+  type: 'test'
+  ...
+# Subtest: restart recovers afterClaim without automatic dispatch or lost identity
+ok 5 - restart recovers afterClaim without automatic dispatch or lost identity
+  ---
+  duration_ms: 994.066083
+  type: 'test'
+  ...
+# Subtest: restart recovers beforeDispatch without automatic dispatch or lost identity
+ok 6 - restart recovers beforeDispatch without automatic dispatch or lost identity
+  ---
+  duration_ms: 696.87975
+  type: 'test'
+  ...
+# Subtest: restart recovers afterBusinessCommit without automatic dispatch or lost identity
+ok 7 - restart recovers afterBusinessCommit without automatic dispatch or lost identity
+  ---
+  duration_ms: 616.16125
+  type: 'test'
+  ...
+# Subtest: restart recovers beforeOutcomePersist without automatic dispatch or lost identity
+ok 8 - restart recovers beforeOutcomePersist without automatic dispatch or lost identity
+  ---
+  duration_ms: 644.988666
+  type: 'test'
+  ...
+# Subtest: restart recovers afterOutcomePersist without automatic dispatch or lost identity
+ok 9 - restart recovers afterOutcomePersist without automatic dispatch or lost identity
+  ---
+  duration_ms: 625.711917
+  type: 'test'
+  ...
+# Subtest: lock:false reader cannot dispatch, acknowledge, reconcile or steal startup claims
+ok 10 - lock:false reader cannot dispatch, acknowledge, reconcile or steal startup claims
+  ---
+  duration_ms: 632.522625
+  type: 'test'
+  ...
+# Subtest: legacy unknown imports remain idle; explicit recovery same key and preexisting receipt readback
+ok 11 - legacy unknown imports remain idle; explicit recovery same key and preexisting receipt readback
+  ---
+  duration_ms: 985.395875
+  type: 'test'
+  ...
+# Subtest: only journal absence plus transaction-issued proof is terminal not_applied
+ok 12 - only journal absence plus transaction-issued proof is terminal not_applied
+  ---
+  duration_ms: 800.614167
+  type: 'test'
+  ...
+# Subtest: history replay remains exact after undo and removed target clip
+ok 13 - history replay remains exact after undo and removed target clip
+  ---
+  duration_ms: 746.312334
+  type: 'test'
+  ...
+# Subtest: reference receipts survive detached/rebound targets and separate family namespace
+ok 14 - reference receipts survive detached/rebound targets and separate family namespace
+  ---
+  duration_ms: 965.320375
+  type: 'test'
+  ...
+# Subtest: capacity is retained after acknowledgement, list pages are SQL-bounded, exact maximum valid inputs fit
+ok 15 - capacity is retained after acknowledgement, list pages are SQL-bounded, exact maximum valid inputs fit
+  ---
+  duration_ms: 738.551625
+  type: 'test'
+  ...
+# Subtest: corrupt/foreign owners and oversized row data fail closed without leaking private contents
+ok 16 - corrupt/foreign owners and oversized row data fail closed without leaking private contents
+  ---
+  duration_ms: 741.902167
+  type: 'test'
+  ...
+# Subtest: drain fences new calls and waits for full execution outcome persistence
+ok 17 - drain fences new calls and waits for full execution outcome persistence
+  ---
+  duration_ms: 659.855292
+  type: 'test'
+  ...
+# Subtest: all original FIRST12 operations plus ripple remove use the same retained service receipts
+ok 18 - all original FIRST12 operations plus ripple remove use the same retained service receipts
+  ---
+  duration_ms: 914.576958
+  type: 'test'
+  ...
+# Subtest: a stale dispatch callback cannot regress a reconciled and acknowledged terminal outcome
+ok 19 - a stale dispatch callback cannot regress a reconciled and acknowledged terminal outcome
+  ---
+  duration_ms: 723.829041
+  type: 'test'
+  ...
+# Subtest: oversized/corrupt task payload is bounded in SQLite and never disclosed
+ok 20 - oversized/corrupt task payload is bounded in SQLite and never disclosed
+  ---
+  duration_ms: 680.591083
+  type: 'test'
+  ...
+# Subtest: an independent process cannot acquire ownership or steal an active persisted claim
+ok 21 - an independent process cannot acquire ownership or steal an active persisted claim
+  ---
+  duration_ms: 1307.899542
+  type: 'test'
+  ...
+1..21
+# tests 21
+# suites 0
+# pass 21
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 16463.718375

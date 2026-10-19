@@ -1,0 +1,470 @@
+
+FILE tests/timeline-contract.test.mjs PHASE revised
+✔ timeline migration is additive, stable, empty, and does not change v1 project revision (938.848417ms)
+✔ every timeline mutation replays the exact original response after later edits and restart (639.525333ms)
+✔ concurrent duplicate requests apply once; competing fresh requests serialize by revision (605.751833ms)
+✔ seed copies only selected versions in shot order once and freezes refs independently of selection (616.407833ms)
+✔ seed missing selections rejects atomically and allows a corrected retry (578.340208ms)
+✔ clip validation rejects invalid frames, rectangles, media kinds, cross-project refs and unsupported edits atomically (604.522959ms)
+✔ source bound tolerance accepts exact fractional frame durations and rejects fractional tails (576.137584ms)
+✔ same-track overlap is refused; edge-touching, cross-track overlap, exact trims and moves work (594.563ms)
+✔ track and clip limits are enforced without invalidating full-length empty/gap edits (1025.074125ms)
+✔ timeline render snapshots revision/assets once and shares mutation idempotency namespace (619.659833ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7121.591292
+
+
+FILE tests/timeline-history.test.mjs PHASE revised
+✔ history reads and unavailable undo/redo never initialize a timeline or journal (940.141083ms)
+✔ every track and clip edit round-trips complete domain snapshots with stable IDs and monotonic revisions (665.9055ms)
+✔ seed undo/redo retains its frozen asset references and does not reverse selections, jobs, exports or spending (619.878083ms)
+✔ new edits discard redo, while old edit/undo/redo requests replay exactly after branching and restart (608.9245ms)
+✔ history duplicates apply once and competing fresh revisions conflict atomically in both directions (600.238041ms)
+✔ independent SQLite connections serialize duplicate undo requests without double traversal (2947.350959ms)
+✔ failed durable-response commit rolls back snapshots, branch removal, cursor and timeline together (576.399125ms)
+✔ additive migration preserves legacy timeline and response bytes, using legacy state as first undo baseline (596.6825ms)
+✔ project history, cursor, request identities and state remain isolated (567.111292ms)
+✔ history metadata and project snapshots stay coherent during independent SQLite undo/redo writes (1258.268833ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9704.94625
+
+
+FILE tests/timeline-recovery-business.test.mjs PHASE revised
+✔ service-created empty timelines remain writable while a zero-track sentinel is rejected without writes (623.810458ms)
+✔ all seventeen retained responses remain exact after removal, branching, render progress and restart (1034.83775ms)
+✔ all seventeen fresh stale-revision rejections carry only transaction-backed not-applied proof (666.840542ms)
+✔ legacy initialization and transaction lifecycle failures never manufacture pre-write proof (572.39275ms)
+▶ lost acknowledgements retain proof absence after project, timeline and historical source ownership changes
+  ✔ project identity (653.978417ms)
+  ✔ timeline SQL owner (653.058334ms)
+  ✔ timeline JSON owner (643.923708ms)
+  ✔ historical source SQL owner (658.037958ms)
+  ✔ indirect generation owner (655.890417ms)
+✔ lost acknowledgements retain proof absence after project, timeline and historical source ownership changes (3265.699125ms)
+▶ all seventeen malformed, foreign and semantically corrupt durable receipts fail closed unchanged
+  ✔ hash (652.004584ms)
+  ✔ JSON (645.402667ms)
+  ✔ owner (639.533625ms)
+  ✔ semantics (658.395125ms)
+✔ all seventeen malformed, foreign and semantically corrupt durable receipts fail closed unchanged (2595.833541ms)
+▶ every keyed write rolls back receipt failures and post-write owner changes without not-applied proof
+  ✔ timeline.track.add: receipt failure (575.474292ms)
+  ✔ timeline.track.add: timeline owner (571.729875ms)
+  ✔ timeline.track.update: receipt failure (568.173708ms)
+  ✔ timeline.track.update: timeline owner (587.032ms)
+  ✔ timeline.clip.add: receipt failure (576.093458ms)
+  ✔ timeline.clip.add: timeline owner (575.657625ms)
+  ✔ timeline.clip.update: receipt failure (573.754542ms)
+  ✔ timeline.clip.update: timeline owner (581.519583ms)
+  ✔ timeline.clip.replaceSource: receipt failure (574.270625ms)
+  ✔ timeline.clip.replaceSource: timeline owner (578.235958ms)
+  ✔ timeline.clip.remove: receipt failure (583.238458ms)
+  ✔ timeline.clip.remove: timeline owner (574.646042ms)
+  ✔ timeline.clip.rippleRemove: receipt failure (587.448583ms)
+  ✔ timeline.clip.rippleRemove: timeline owner (573.82025ms)
+  ✔ timeline.clip.split: receipt failure (585.910542ms)
+  ✔ timeline.clip.split: timeline owner (577.100583ms)
+  ✔ timeline.seed: receipt failure (574.415458ms)
+  ✔ timeline.seed: timeline owner (580.576042ms)
+  ✔ timeline.undo: receipt failure (574.309625ms)
+  ✔ timeline.undo: timeline owner (585.096041ms)
+  ✔ timeline.redo: receipt failure (579.118209ms)
+  ✔ timeline.redo: timeline owner (579.525709ms)
+  ✔ timeline.render: receipt failure (580.360834ms)
+  ✔ timeline.render: timeline owner (587.101292ms)
+  ✔ timeline.format.set: receipt failure (581.768041ms)
+  ✔ timeline.format.set: timeline owner (570.020541ms)
+  ✔ timeline.subtitle.add: receipt failure (585.772917ms)
+  ✔ timeline.subtitle.add: timeline owner (579.024708ms)
+  ✔ timeline.subtitle.update: receipt failure (586.49325ms)
+  ✔ timeline.subtitle.update: timeline owner (585.597041ms)
+  ✔ timeline.subtitle.remove: receipt failure (585.073292ms)
+  ✔ timeline.subtitle.remove: timeline owner (584.458834ms)
+  ✔ timeline.loudness.apply: receipt failure (578.706458ms)
+  ✔ timeline.loudness.apply: timeline owner (579.566375ms)
+✔ every keyed write rolls back receipt failures and post-write owner changes without not-applied proof (19704.419917ms)
+▶ history only restores editable keys and cannot replace aggregate identity or revision
+  ✔ id (576.458834ms)
+  ✔ projectId (574.874125ms)
+  ✔ revision (579.69375ms)
+  ✔ createdAt (570.342667ms)
+✔ history only restores editable keys and cannot replace aggregate identity or revision (2301.935125ms)
+✔ forty-two independently bounded source lineages remain editable and renderable beyond four MiB aggregate metadata (909.964417ms)
+✔ legacy optional frozen fields remain omitted and replay bytes are never normalized (597.905542ms)
+✔ independent writers share one retained response and competing fresh keys receive rollback proof (2380.507333ms)
+▶ split receipts cannot reset moving-media source time using the still-image acknowledgement alternative
+  ✔ video/mp4 (582.605084ms)
+  ✔ audio/wav (580.873625ms)
+✔ split receipts cannot reset moving-media source time using the still-image acknowledgement alternative (1163.80525ms)
+▶ render replay rejects stable source identity changes and mismatched retained frozen snapshots
+  ✔ sha256 (584.753834ms)
+  ✔ mimeType (573.510708ms)
+  ✔ duration (576.67025ms)
+  ✔ width (582.35275ms)
+  ✔ height (578.014167ms)
+  ✔ hasAudio (586.365459ms)
+  ✔ relativePath (582.515125ms)
+✔ render replay rejects stable source identity changes and mismatched retained frozen snapshots (4064.954875ms)
+✔ schema-produced timelines larger than the replacement cap preserve generic mutation receipts and history (1764.632125ms)
+✔ historical render replay preserves frozen bytes after same-source shorter duration and audio metadata drift (621.973333ms)
+ℹ tests 71
+ℹ suites 0
+ℹ pass 71
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 42583.211625
+
+
+FILE tests/project-specifications-contracts.test.mjs PHASE revised
+✔ format contracts admit three current and three legacy frozen dimension pairs at the unchanged 30fps timebase (1.972417ms)
+✔ format read response is exact, scoped, bounded, and self-consistent (0.55175ms)
+✔ format ACK allows absence revision zero only for this operation and validates the response own format (0.576833ms)
+✔ rectangle syntax admits all preset envelopes while each ACK enforces its own output bounds (0.911833ms)
+✔ format uses existing lane and strict proof while preserving all legacy durable ordering (0.444917ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 200.957834
+
+
+FILE tests/project-specifications-business.test.mjs PHASE final
+✔ format read is genuinely noncreating and absence creates exactly revision one without modifying project bytes (949.786583ms)
+✔ default timeline lazy creation keeps the serialized shape with current 1080 dimensions (590.046167ms)
+✔ both revision fences are atomic and unchanged format writes no receipt (620.624416ms)
+✔ repeated pristine changes retain exact old acknowledgements after editing and project revision drift (585.686458ms)
+✔ history including redo at cursor zero and an isolated cursor row blocks format changes (1151.014667ms)
+✔ every supported format initializes clip rectangles against its own output pair (3493.811917ms)
+✔ submitted rectangles retain VALIDATION_ERROR against all six saved pairs without database writes or proof (4056.39925ms)
+✔ seed uses each saved output pair without changing shot generation aspect ratios (3489.644125ms)
+✔ non-format receipts and all frozen timeline export statuses block even after a timeline is empty (589.217917ms)
+✔ corrupt aggregates, history, receipts and provenance fail closed rather than fabricate eligibility (2309.984458ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18145.719791
+
+
+FILE tests/project-specifications-transports.test.mjs PHASE revised
+✔ format reads are noncreating and schemas/effects discoverable through actual CLI and official MCP, without Agent authority (1812.192416ms)
+✔ HTTP CLI and official MCP lost acknowledgements recover the exact format receipt after real backend restart, never retry implicitly (1891.478667ms)
+✔ format durable task survives lost execute response and restart with one exact intent and explicit recovery (2104.027625ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6246.252875
+
+
+FILE tests/project-specifications-recovery.test.mjs PHASE revised
+✔ format intent preparation is durable and noncreating; a matching prepared task is not a dispatch claim (652.930666ms)
+✔ only the exact claimed format input is exempt inside its live coordinator dispatch context (602.553208ms)
+✔ a direct caller cannot borrow a live claim while its coordinator awaits dispatch (601.877ms)
+✔ another prepared unacknowledged timeline task blocks a fresh format key (599.826166ms)
+✔ another unknown unacknowledged timeline task blocks a fresh format key (589.581167ms)
+✔ another applied unacknowledged timeline task blocks a fresh format key (608.744708ms)
+✔ another not_applied unacknowledged timeline task blocks a fresh format key (596.198166ms)
+✔ an older timeline edit blocks the same project only, without creating either timeline (597.944709ms)
+✔ reference and subject lanes do not block a pristine timeline specification (595.83375ms)
+✔ format restart after afterClaim preserves one request identity and original acknowledgement (923.307ms)
+✔ format restart after beforeDispatch preserves one request identity and original acknowledgement (619.433416ms)
+✔ format restart after afterBusinessCommit preserves one request identity and original acknowledgement (622.136375ms)
+✔ format restart after beforeOutcomePersist preserves one request identity and original acknowledgement (614.577ms)
+✔ format restart after afterOutcomePersist preserves one request identity and original acknowledgement (615.229708ms)
+✔ exact format replay survives later formats, project CAS drift, edits and restart without recreating history (624.3145ms)
+▶ current owner and immutable historical format ACK remain mandatory for lost-response recovery
+  ✔ project owner (583.085084ms)
+  ✔ timeline owner (589.390667ms)
+  ✔ receipt revision (588.211125ms)
+  ✔ receipt dimensions (586.786958ms)
+  ✔ companion input (583.787583ms)
+✔ current owner and immutable historical format ACK remain mandatory for lost-response recovery (2931.744666ms)
+✔ format receipt insertion failure rolls back the timeline, both journals and project CAS (591.2375ms)
+✔ same-preset and stale project CAS produce definite not-applied tasks without replacing requests (608.998083ms)
+✔ corrupt acknowledged prepared task cannot hide pending format work from the read or write boundary (587.425333ms)
+✔ corrupt wrong timeline lane cannot hide pending format work from the read or write boundary (580.0195ms)
+✔ a retained receipt with invalid UUID fails closed rather than disappearing from format admission (577.758833ms)
+✔ a retained receipt with missing project fails closed rather than disappearing from format admission (585.356834ms)
+ℹ tests 27
+ℹ suites 0
+ℹ pass 27
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 16264.36125
+
+
+FILE tests/project-specifications-media.test.mjs PHASE final
+▶ three current and three legacy frozen timeline presets render exact real media and retain project-sized storyboard exports
+  ✔ portrait_1080 (4476.033042ms)
+  ✔ landscape_1080 (4985.448667ms)
+  ✔ square_1080 (3318.20025ms)
+  ✔ portrait_720 (3086.179584ms)
+  ✔ landscape_720 (2998.43475ms)
+  ✔ square_720 (2522.624041ms)
+  ✔ retained receipts/output stay unchanged while a new storyboard export freezes saved project geometry (467.3505ms)
+✔ three current and three legacy frozen timeline presets render exact real media and retain project-sized storyboard exports (23052.892167ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 23431.008291
+
+
+FILE tests/client-timeline-recovery-response.test.mjs PHASE revised
+✔ the strict timeline acknowledgement allowlist covers exactly the seventeen replay-keyed operations (1.24825ms)
+✔ all seventeen complete historical acknowledgements validate without edits, defaults or array sorting (22.975084ms)
+✔ timeline acknowledgements reject malformed input identity without interpreting a result as another operation (1.649125ms)
+✔ format acknowledgements alone accept explicit timeline absence and bind the selected preset (0.183125ms)
+✔ empty timelines are valid for track edits, removals, undo and redo, while replacement, seed and render require content (0.349709ms)
+✔ timeline shape rejects malformed complete records across every mutation and preserves exact recovery identity (34.474375ms)
+✔ each mutation binds the caller-verifiable track, clip or source intent (1.476292ms)
+✔ omitted fades and explicit zeros survive clip add/split validation unchanged (0.402666ms)
+✔ render recovery validates progressed statuses, fixed snapshot and optional legacy source fields (1.539334ms)
+✔ render acknowledgements reject wrong purpose, request, snapshot, source links, outputs and known-state violations (0.652666ms)
+✔ frozen sources retain valid omitted dimensions and image duration without accepting invalid metadata (0.11225ms)
+✔ proof validation requires exact identity and a known transaction rejection, never just a 4xx (0.311ms)
+✔ shared client keeps ambiguous timeline and reference errors bound to the original key without retry or forged proof (2.132333ms)
+✔ shared client accepts exact backend no-application proof and preserves unrelated error policy (0.220542ms)
+✔ maximum escaped legacy names and subtitle cues fit the unified bounded acknowledgement (10.355583ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 286.205584
+
+
+FILE tests/client-timeline-idempotency.test.mjs PHASE revised
+✔ timeline mutations retain exact frame, rect, revision and request identity across a lost response (1.183583ms)
+✔ fetching a newer timeline cannot prove an uncertain mutation succeeded; only explicit replay clears it (0.343667ms)
+✔ all supported timeline mutation operations and render accept durable recovery records (0.339ms)
+✔ preview and export recovery identities stay separate and public render records never release either key (1.419083ms)
+✔ every valid public render lifecycle record preserves the original receipt after same-session reload (0.566875ms)
+✔ digest-bound render receipts require exact replay because public records cannot prove their private-path digest (0.230458ms)
+✔ undo and redo replay the exact original request even after a changed history cursor (0.148333ms)
+✔ read-only history requests are never accepted as durable mutations (0.270792ms)
+✔ lost replacement keeps the exact fixed source and optional version despite newer state or matching unrelated receipts (0.206958ms)
+✔ replacement cannot dispatch without a persisted exact recovery receipt (0.196542ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 243.828833
+
+
+FILE tests/client-mutation-recovery.test.mjs PHASE revised
+✔ all six mutations opt in, persist a deep exact input once, and never generate an ID for replay (8.3865ms)
+✔ new intent never receives an old save acknowledgement or replaces unknown input (0.45575ms)
+✔ pending mutation blocks only its project and newer server state cannot establish its outcome (0.2415ms)
+✔ legacy durable submissions retain their existing exact replay behavior (0.140333ms)
+✔ storage denial, silent write failure and corruption fail closed before a mutation dispatch (1.919833ms)
+✔ only exact backend rollback proof can clear a mutation failure (0.167625ms)
+✔ historical responses must identify the original project and target before acknowledging (0.296709ms)
+✔ App opts every six-op path in, uses explicit drawer replay, and never resumes a partial structure (12.980584ms)
+✔ six-op recovery warns about session-only unencrypted receipts without changing generation guarantees (0.676459ms)
+✔ a colliding legacy receipt can never silently turn a new edit into another operation (0.286792ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 252.44175
+
+
+FILE tests/edit-task-client.test.mjs PHASE revised
+✔ the durable allowlist includes the exact existing operations plus atomic loudness apply and ripple remove and preserves exclusions (3.041666ms)
+✔ fresh edits prepare exact immutable input before execute, with no business RPC or renderer receipt (8.386375ms)
+✔ lost prepare response survives full controller destruction and loads without execution (0.722041ms)
+✔ project or draft navigation during prepare leaves a recoverable task without dispatch (0.416792ms)
+✔ navigation during explicit recovery lookup cannot initiate a delayed execute (0.336417ms)
+✔ old preparation nonce is never replaced automatically after a backend restart (0.486541ms)
+✔ unknown requests block new edits and recover their persisted parameters, never the current draft (0.357208ms)
+✔ dispatching recovery is receipt-only and never blindly resubmits an active claim (0.25525ms)
+✔ stale list cannot resurrect acknowledged rows or downgrade an applied task (0.328542ms)
+✔ a stale GET cannot downgrade terminal outcome or clear a newer task in the same lane (0.323958ms)
+✔ malformed or wrongly bound 200 cannot clear recovery identity or accept an ACK (1.405709ms)
+✔ malformed fresh prepare never executes, and malformed execute never releases its task (0.277666ms)
+✔ loading, failing and truncated pagination cannot falsely declare an empty safe lane (0.174792ms)
+✔ pagination loads all valid pages once and rejects repeated cursors or changed server lifetime (0.187292ms)
+✔ obsolete load completion cannot replace a newer project refresh or hide a known unknown (0.110209ms)
+✔ legacy adoption is explicit metadata-only, exact input and original request ID retained (0.169458ms)
+✔ task HTTP uses the authenticated UI endpoint, validates every 200 and never retries a POST (0.581167ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 259.305541
+
+
+FILE tests/edit-tasks-business.test.mjs PHASE revised
+✔ legacy FIRST12 relative order remains in the twenty-one-operation scope; prepare is durable/noncreating and preserves duplicate identity (622.489542ms)
+✔ exact claims dispatch once across concurrent managers; no outer transaction; immutable terminal ACK (604.058209ms)
+✔ prepare failure at beforePreparePersist never dispatches (577.920833ms)
+✔ prepare failure at afterPreparePersist never dispatches (561.957209ms)
+✔ restart recovers afterClaim without automatic dispatch or lost identity (897.11725ms)
+✔ restart recovers beforeDispatch without automatic dispatch or lost identity (653.551834ms)
+✔ restart recovers afterBusinessCommit without automatic dispatch or lost identity (664.357167ms)
+✔ restart recovers beforeOutcomePersist without automatic dispatch or lost identity (687.1845ms)
+✔ restart recovers afterOutcomePersist without automatic dispatch or lost identity (655.447625ms)
+✔ lock:false reader cannot dispatch, acknowledge, reconcile or steal startup claims (605.057666ms)
+✔ legacy unknown imports remain idle; explicit recovery same key and preexisting receipt readback (591.1315ms)
+✔ only journal absence plus transaction-issued proof is terminal not_applied (601.986833ms)
+✔ history replay remains exact after undo and removed target clip (610.46625ms)
+✔ reference receipts survive detached/rebound targets and separate family namespace (587.967833ms)
+✔ capacity is retained after acknowledgement, list pages are SQL-bounded, exact maximum valid inputs fit (572.162542ms)
+✔ corrupt/foreign owners and oversized row data fail closed without leaking private contents (567.310083ms)
+✔ drain fences new calls and waits for full execution outcome persistence (573.333333ms)
+✔ all original FIRST12 operations plus ripple remove use the same retained service receipts (728.031208ms)
+✔ a stale dispatch callback cannot regress a reconciled and acknowledged terminal outcome (566.05925ms)
+✔ oversized/corrupt task payload is bounded in SQLite and never disclosed (560.035833ms)
+✔ an independent process cannot acquire ownership or steal an active persisted claim (1232.724042ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14035.401792
+
+
+FILE tests/edit-tasks-http.test.mjs PHASE revised
+✔ task HTTP preserves authentication, cookie, host/origin, exact methods and bounded closed request schemas (1000.606875ms)
+✔ GET/list are noncreating, strictly bound queries and never convert reads into dispatch or acknowledgement (646.06ms)
+✔ fixed durable tasks cannot expose generation, rendering, arbitrary RPC or model/MCP authority (618.902667ms)
+✔ real lost prepare acknowledgement rediscovers the exact persisted intent without automatic POST or business change (657.053792ms)
+✔ real dropped execute response commits once; reads/restart do not replay and explicit reconcile returns historical receipt (661.688667ms)
+✔ real process death at afterPreparePersist recovers before listen without dispatch and rejects stale instance callbacks (2024.189125ms)
+✔ real process death at afterClaim recovers before listen without dispatch and rejects stale instance callbacks (2029.352208ms)
+✔ real process death at afterBusinessCommit recovers before listen without dispatch and rejects stale instance callbacks (2025.833625ms)
+✔ legacy session import reconciles exact old RPC receipts and closes the lane only on explicit acknowledgement (625.852208ms)
+✔ reference attach/detach task receipts remain historical and GET does not reattach a removed edge (662.663875ms)
+✔ official CLI and MCP replay the same domain receipts after task execution without exposing task tools (1531.047125ms)
+✔ shutdown rejects a late request body and waits for owned HTTP work before releasing SQLite (679.930834ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13594.581625
+
+
+FILE tests/subject-recovery-business.test.mjs PHASE revised
+✔ only three subject writes add a third durable lane; preparation and reads never mutate the domain (674.405917ms)
+✔ all three subject operations use exact retained receipts and remain historical after new head and tombstone (968.209375ms)
+✔ subject restart preserves exact intent after beforePreparePersist, without autoresume (590.952375ms)
+✔ subject restart preserves exact intent after afterPreparePersist, without autoresume (616.351875ms)
+✔ subject restart preserves exact intent after afterClaim, without autoresume (662.187083ms)
+✔ subject restart preserves exact intent after beforeDispatch, without autoresume (617.544833ms)
+✔ subject restart preserves exact intent after afterBusinessCommit, without autoresume (607.5225ms)
+✔ subject restart preserves exact intent after beforeOutcomePersist, without autoresume (614.830667ms)
+✔ subject restart preserves exact intent after afterOutcomePersist, without autoresume (615.821708ms)
+✔ two durable managers claim one subject write once and acknowledgement never dispatches again (588.218917ms)
+✔ fresh rollback proof resolves rejection while generic and mismatched success remain unknown (634.156084ms)
+✔ shared local namespace collisions and duplicate receipts cannot authorize subject execution (586.288125ms)
+✔ current relational ownership is checked before historical receipt and foreign contents never escape (607.635375ms)
+✔ subject task quota remains retained after acknowledgement (589.121667ms)
+✔ external subject receipt adoption remains metadata-only until explicit reconciliation (589.171542ms)
+✔ corrupt or oversized retained subject response never settles or leaks a durable request (1749.713625ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11639.43225
+
+
+FILE tests/subtitles-contracts.test.mjs PHASE revised
+✔ subtitle schemas accept exactly three keyed manual operations and preserve the historical16 prefix (2.948917ms)
+✔ one shared text validator keeps manual line breaks and rejects unsupported Unicode with scalar positions (0.30275ms)
+✔ subtitle intervals are strict nonoverlapping exclusive-end ranges within media duration (1.734042ms)
+✔ complete saved acknowledgements match exact subtitle operation intent and reject partial responses (1.070084ms)
+✔ new proof requires every exact identity field and never treats missing cue or stale revision as an unscoped signal (0.390292ms)
+✔ snapshot profile and exact font hash are required only for nonempty cues; old shape stays byte-identical (1.077792ms)
+✔ maximal escaped legitimate aggregate fits the unified256KiB budget while model and render budgets remain independent (4.510458ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 249.571333
+
+
+FILE tests/mac-trial-docs.test.mjs PHASE revised
+✔ Mac trial documents identify the reviewed source snapshot and separate planned native evidence (0.562709ms)
+✔ documented Node, pnpm, Electron and application versions match current manifests (0.336833ms)
+✔ Mac instructions use the real serialized Web-desktop build and existing start entrypoints (0.274209ms)
+✔ durable scope, capacity and staging identity are tied to shared contracts (11.306708ms)
+✔ first trial uses tracked synthetic inputs and keeps separate model settings inactive (0.286375ms)
+✔ all local Markdown links in the three trial documents resolve, including anchors (1.718041ms)
+✔ Mac follow-up reports retain their own title and implementation subject rather than a copied neighboring report (1.89175ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 221.923042
+
+
+FILE tests/i18n-timeline.test.mjs PHASE revised
+✔ timeline catalog has all four locales and exact placeholders for every presentation message (20.860458ms)
+✔ real language store relabels the mounted subtitle inspector without recreating its controller or replaying uncertain input (40.601541ms)
+✔ language switches preserve frame extraction unknown identity, hash, source name and output format draft (2.161167ms)
+✔ presentation lifecycle does not key controllers or business effects by language (2.662542ms)
+✔ revision labels are localized rather than carrying English shorthand into non-English interfaces (1.678291ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 311.513958
+

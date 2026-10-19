@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: chat_completions: consented run makes two durable model requests and one shared read; replay never re-observes
+ok 1 - chat_completions: consented run makes two durable model requests and one shared read; replay never re-observes
+  ---
+  duration_ms: 727.823542
+  type: 'test'
+  ...
+# Subtest: responses: consented run makes two durable model requests and one shared read; replay never re-observes
+ok 2 - responses: consented run makes two durable model requests and one shared read; replay never re-observes
+  ---
+  duration_ms: 707.005583
+  type: 'test'
+  ...
+# Subtest: typed-chat context excludes every earlier project-derived tool answer
+ok 3 - typed-chat context excludes every earlier project-derived tool answer
+  ---
+  duration_ms: 823.267291
+  type: 'test'
+  ...
+# Subtest: project-mode answers without a tool retain conservative provenance and never become typed history
+ok 4 - project-mode answers without a tool retain conservative provenance and never become typed history
+  ---
+  duration_ms: 706.170875
+  type: 'test'
+  ...
+# Subtest: unavailable shared data fails one run safely and does not fault unrelated typed chat
+ok 5 - unavailable shared data fails one run safely and does not fault unrelated typed chat
+  ---
+  duration_ms: 681.989834
+  type: 'test'
+  ...
+# Subtest: result limits fail explicitly before continuation and retained failure never retries a read
+ok 6 - result limits fail explicitly before continuation and retained failure never retries a read
+  ---
+  duration_ms: 753.221459
+  type: 'test'
+  ...
+# Subtest: changed project, destination, catalog and limits fail consent before acceptance or credentials
+ok 7 - changed project, destination, catalog and limits fail consent before acceptance or credentials
+  ---
+  duration_ms: 694.413625
+  type: 'test'
+  ...
+# Subtest: Stop at published tool intent fences subsequent read or continuation
+ok 8 - Stop at published tool intent fences subsequent read or continuation
+  ---
+  duration_ms: 688.672791
+  type: 'test'
+  ...
+# Subtest: Stop at published tool completed fences subsequent read or continuation
+ok 9 - Stop at published tool completed fences subsequent read or continuation
+  ---
+  duration_ms: 627.305875
+  type: 'test'
+  ...
+# Subtest: unknown function, authority arguments and unfinished streams never dispatch inspection
+ok 10 - unknown function, authority arguments and unfinished streams never dispatch inspection
+  ---
+  duration_ms: 1897.045
+  type: 'test'
+  ...
+# Subtest: a second model tool request cannot cause a second read or third request
+ok 11 - a second model tool request cannot cause a second read or third request
+  ---
+  duration_ms: 661.603542
+  type: 'test'
+  ...
+# Subtest: tool argument schema rejects duplicate and escaped duplicate properties, unknown keys and limit escalation
+ok 12 - tool argument schema rejects duplicate and escaped duplicate properties, unknown keys and limit escalation
+  ---
+  duration_ms: 0.272916
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 9339.354542

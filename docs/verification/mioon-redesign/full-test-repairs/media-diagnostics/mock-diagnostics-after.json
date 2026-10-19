@@ -1,0 +1,60 @@
+{
+  "parser": {
+    "actualLacksDrawtext": true
+  },
+  "polls": [
+    {
+      "status": "failed",
+      "progress": 1,
+      "error": {
+        "code": "MOCK_RENDERER_UNSUPPORTED",
+        "message": "当前 FFmpeg 缺少 drawtext 滤镜（需要 libfreetype），无法生成模拟视频。请换用包含该滤镜的构建（例如 Homebrew 的 ffmpeg-full），再重新选择 ffmpeg 与 ffprobe。",
+        "retryable": false
+      }
+    },
+    {
+      "status": "failed",
+      "progress": 1,
+      "error": {
+        "code": "MOCK_RENDERER_UNSUPPORTED",
+        "message": "当前 FFmpeg 缺少 drawtext 滤镜（需要 libfreetype），无法生成模拟视频。请换用包含该滤镜的构建（例如 Homebrew 的 ffmpeg-full），再重新选择 ffmpeg 与 ffprobe。",
+        "retryable": false
+      }
+    },
+    {
+      "status": "failed",
+      "progress": 1,
+      "error": {
+        "code": "MOCK_RENDERER_UNSUPPORTED",
+        "message": "当前 FFmpeg 缺少 drawtext 滤镜（需要 libfreetype），无法生成模拟视频。请换用包含该滤镜的构建（例如 Homebrew 的 ffmpeg-full），再重新选择 ffmpeg 与 ffprobe。",
+        "retryable": false
+      }
+    }
+  ],
+  "reconciliations": [
+    {
+      "providerJobId": "mock-ad87f8f66de2d439adedb80127f2eda1"
+    },
+    {
+      "providerJobId": "mock-ad87f8f66de2d439adedb80127f2eda1"
+    },
+    {
+      "providerJobId": "mock-ad87f8f66de2d439adedb80127f2eda1"
+    }
+  ],
+  "providerJobId": "mock-ad87f8f66de2d439adedb80127f2eda1",
+  "download": {
+    "code": "MOCK_RENDERER_UNSUPPORTED",
+    "message": "当前 FFmpeg 缺少 drawtext 滤镜（需要 libfreetype），无法生成模拟视频。请换用包含该滤镜的构建（例如 Homebrew 的 ffmpeg-full），再重新选择 ffmpeg 与 ffprobe。",
+    "retryable": false
+  },
+  "ledger": {
+    "submissionCount": 1,
+    "taskCount": 1,
+    "task": {
+      "provider_job_id": "mock-ad87f8f66de2d439adedb80127f2eda1",
+      "poll_count": 3,
+      "download_attempts": 1
+    }
+  }
+}

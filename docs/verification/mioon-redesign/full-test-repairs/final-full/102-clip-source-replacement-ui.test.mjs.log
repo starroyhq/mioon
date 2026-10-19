@@ -1,0 +1,268 @@
+TAP version 13
+# Subtest: candidate list is current-project, same media category, non-current and exactly range/fade compatible
+ok 1 - candidate list is current-project, same media category, non-current and exactly range/fade compatible
+  ---
+  duration_ms: 3.068084
+  type: 'test'
+  ...
+# Subtest: review pins copied content and exact revision; only explicitly selected versions enter the payload
+ok 2 - review pins copied content and exact revision; only explicitly selected versions enter the payload
+  ---
+  duration_ms: 0.499625
+  type: 'test'
+  ...
+# Subtest: review requires saved selection, known timeline revision, online status and a clean draft
+ok 3 - review requires saved selection, known timeline revision, online status and a clean draft
+  ---
+  duration_ms: 0.138417
+  type: 'test'
+  ...
+# Subtest: revision change invalidates pinned review without refreshing or reviving its approval
+ok 4 - revision change invalidates pinned review without refreshing or reviving its approval
+  ---
+  duration_ms: 0.378709
+  type: 'test'
+  ...
+# Subtest: timeline ID change invalidates pinned review without refreshing or reviving its approval
+ok 5 - timeline ID change invalidates pinned review without refreshing or reviving its approval
+  ---
+  duration_ms: 0.117375
+  type: 'test'
+  ...
+# Subtest: clip timing change invalidates pinned review without refreshing or reviving its approval
+ok 6 - clip timing change invalidates pinned review without refreshing or reviving its approval
+  ---
+  duration_ms: 9.407291
+  type: 'test'
+  ...
+# Subtest: clip rect change invalidates pinned review without refreshing or reviving its approval
+ok 7 - clip rect change invalidates pinned review without refreshing or reviving its approval
+  ---
+  duration_ms: 0.227417
+  type: 'test'
+  ...
+# Subtest: clip gain change invalidates pinned review without refreshing or reviving its approval
+ok 8 - clip gain change invalidates pinned review without refreshing or reviving its approval
+  ---
+  duration_ms: 0.168
+  type: 'test'
+  ...
+# Subtest: clip fades change invalidates pinned review without refreshing or reviving its approval
+ok 9 - clip fades change invalidates pinned review without refreshing or reviving its approval
+  ---
+  duration_ms: 0.168625
+  type: 'test'
+  ...
+# Subtest: candidate name change invalidates pinned review without refreshing or reviving its approval
+ok 10 - candidate name change invalidates pinned review without refreshing or reviving its approval
+  ---
+  duration_ms: 0.276375
+  type: 'test'
+  ...
+# Subtest: candidate duration change invalidates pinned review without refreshing or reviving its approval
+ok 11 - candidate duration change invalidates pinned review without refreshing or reviving its approval
+  ---
+  duration_ms: 0.212084
+  type: 'test'
+  ...
+# Subtest: candidate hash change invalidates pinned review without refreshing or reviving its approval
+ok 12 - candidate hash change invalidates pinned review without refreshing or reviving its approval
+  ---
+  duration_ms: 0.189917
+  type: 'test'
+  ...
+# Subtest: candidate audio change invalidates pinned review without refreshing or reviving its approval
+ok 13 - candidate audio change invalidates pinned review without refreshing or reviving its approval
+  ---
+  duration_ms: 0.152
+  type: 'test'
+  ...
+# Subtest: candidate byte size change invalidates pinned review without refreshing or reviving its approval
+ok 14 - candidate byte size change invalidates pinned review without refreshing or reviving its approval
+  ---
+  duration_ms: 0.128042
+  type: 'test'
+  ...
+# Subtest: candidate video stream change invalidates pinned review without refreshing or reviving its approval
+ok 15 - candidate video stream change invalidates pinned review without refreshing or reviving its approval
+  ---
+  duration_ms: 0.134958
+  type: 'test'
+  ...
+# Subtest: candidate managed path change invalidates pinned review without refreshing or reviving its approval
+ok 16 - candidate managed path change invalidates pinned review without refreshing or reviving its approval
+  ---
+  duration_ms: 0.135125
+  type: 'test'
+  ...
+# Subtest: old source change invalidates pinned review without refreshing or reviving its approval
+ok 17 - old source change invalidates pinned review without refreshing or reviving its approval
+  ---
+  duration_ms: 0.083417
+  type: 'test'
+  ...
+# Subtest: version number change invalidates pinned review without refreshing or reviving its approval
+ok 18 - version number change invalidates pinned review without refreshing or reviving its approval
+  ---
+  duration_ms: 0.134041
+  type: 'test'
+  ...
+# Subtest: version hash change invalidates pinned review without refreshing or reviving its approval
+ok 19 - version hash change invalidates pinned review without refreshing or reviving its approval
+  ---
+  duration_ms: 0.114084
+  type: 'test'
+  ...
+# Subtest: version lineage change invalidates pinned review without refreshing or reviving its approval
+ok 20 - version lineage change invalidates pinned review without refreshing or reviving its approval
+  ---
+  duration_ms: 0.121833
+  type: 'test'
+  ...
+# Subtest: version owner change invalidates pinned review without refreshing or reviving its approval
+ok 21 - version owner change invalidates pinned review without refreshing or reviving its approval
+  ---
+  duration_ms: 0.08325
+  type: 'test'
+  ...
+# Subtest: shot label change invalidates pinned review without refreshing or reviving its approval
+ok 22 - shot label change invalidates pinned review without refreshing or reviving its approval
+  ---
+  duration_ms: 0.113375
+  type: 'test'
+  ...
+# Subtest: dirty edits block even retained approval before React commits, and are never saved/discarded by replacement
+ok 23 - dirty edits block even retained approval before React commits, and are never saved/discarded by replacement
+  ---
+  duration_ms: 0.393958
+  type: 'test'
+  ...
+# Subtest: choose and review are read-only; explicit approval is once-only and duplicate clicks do not re-key
+ok 24 - choose and review are read-only; explicit approval is once-only and duplicate clicks do not re-key
+  ---
+  duration_ms: 0.204042
+  type: 'test'
+  ...
+# Subtest: cancelled review and retained choose/start/cancel callbacks cannot act on a newer review
+ok 25 - cancelled review and retained choose/start/cancel callbacks cannot act on a newer review
+  ---
+  duration_ms: 0.230583
+  type: 'test'
+  ...
+# Subtest: Properties tab and dock collapse preserve review but hidden retained approval cannot submit
+ok 26 - Properties tab and dock collapse preserve review but hidden retained approval cannot submit
+  ---
+  duration_ms: 0.165083
+  type: 'test'
+  ...
+# Subtest: live owner fences late success and error before layout commit: {"projectId":"72000000-0000-4000-8000-000000000099"}
+ok 27 - live owner fences late success and error before layout commit: {"projectId":"72000000-0000-4000-8000-000000000099"}
+  ---
+  duration_ms: 1.69075
+  type: 'test'
+  ...
+# Subtest: live owner fences late success and error before layout commit: {"scope":"72000000-0000-4000-8000-000000000001:2:0"}
+ok 28 - live owner fences late success and error before layout commit: {"scope":"72000000-0000-4000-8000-000000000001:2:0"}
+  ---
+  duration_ms: 0.315209
+  type: 'test'
+  ...
+# Subtest: live owner fences late success and error before layout commit: {"clipId":"72000000-0000-4000-8000-000000000099"}
+ok 29 - live owner fences late success and error before layout commit: {"clipId":"72000000-0000-4000-8000-000000000099"}
+  ---
+  duration_ms: 0.338042
+  type: 'test'
+  ...
+# Subtest: unmount fences all callbacks and acknowledgements; StrictMode reattachment can begin a fresh review
+ok 30 - unmount fences all callbacks and acknowledgements; StrictMode reattachment can begin a fresh review
+  ---
+  duration_ms: 0.205
+  type: 'test'
+  ...
+# Subtest: null, malformed success and thrown errors including definitive 4xx remain unknown; no automatic reapproval
+ok 31 - null, malformed success and thrown errors including definitive 4xx remain unknown; no automatic reapproval
+  ---
+  duration_ms: 0.722958
+  type: 'test'
+  ...
+# Subtest: acknowledgement preserves every retained field and absent/explicit-zero fades and binds exact provenance
+ok 32 - acknowledgement preserves every retained field and absent/explicit-zero fades and binds exact provenance
+  ---
+  duration_ms: 1.192791
+  type: 'test'
+  ...
+# Subtest: error copy is actionable and never echoes server locations or secrets
+ok 33 - error copy is actionable and never echoes server locations or secrets
+  ---
+  duration_ms: 0.096542
+  type: 'test'
+  ...
+# Subtest: inline component renders accessible choose/review/explicit approval and every pinned source field
+ok 34 - inline component renders accessible choose/review/explicit approval and every pinned source field
+  ---
+  duration_ms: 9.729125
+  type: 'test'
+  ...
+# Subtest: real component preserves review across tab/collapse, fences retained approval after cancel, and explains unknown recovery
+ok 35 - real component preserves review across tab/collapse, fences retained approval after cancel, and explains unknown recovery
+  ---
+  duration_ms: 3.232583
+  type: 'test'
+  ...
+# Subtest: real component blocks same-tick dirty callbacks and exposes an immutable stale review with no approval
+ok 36 - real component blocks same-tick dirty callbacks and exposes an immutable stale review with no approval
+  ---
+  duration_ms: 2.184291
+  type: 'test'
+  ...
+# Subtest: actual parent guard rechecks current project, selection, scope, revision, metadata and unsaved draft before dispatch
+ok 37 - actual parent guard rechecks current project, selection, scope, revision, metadata and unsaved draft before dispatch
+  ---
+  duration_ms: 1.720792
+  type: 'test'
+  ...
+# Subtest: actual parent replacement cannot use retained project metadata before session acceptance
+ok 38 - actual parent replacement cannot use retained project metadata before session acceptance
+  ---
+  duration_ms: 0.210541
+  type: 'test'
+  ...
+# Subtest: actual App legacy session runner retains the exact replacement receipt for malformed success and unknown→404/409 replays
+ok 39 - actual App legacy session runner retains the exact replacement receipt for malformed success and unknown→404/409 replays
+  ---
+  duration_ms: 3.393792
+  type: 'test'
+  ...
+# Subtest: actual App legacy session runner clears replacement only for a matching request-bound fresh not-applied proof
+ok 40 - actual App legacy session runner clears replacement only for a matching request-bound fresh not-applied proof
+  ---
+  duration_ms: 0.319125
+  type: 'test'
+  ...
+# Subtest: source wiring uses the existing inline inspector, stable mutation key, session replay and no asset-only version inference
+ok 41 - source wiring uses the existing inline inspector, stable mutation key, session replay and no asset-only version inference
+  ---
+  duration_ms: 0.347125
+  type: 'test'
+  ...
+# Subtest: replacement history names the explicit source edit for undo and redo
+ok 42 - replacement history names the explicit source edit for undo and redo
+  ---
+  duration_ms: 0.111792
+  type: 'test'
+  ...
+# Subtest: retained acknowledgement copy is historical after later edits or undo
+ok 43 - retained acknowledgement copy is historical after later edits or undo
+  ---
+  duration_ms: 0.064125
+  type: 'test'
+  ...
+1..43
+# tests 43
+# suites 0
+# pass 43
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 351.467375

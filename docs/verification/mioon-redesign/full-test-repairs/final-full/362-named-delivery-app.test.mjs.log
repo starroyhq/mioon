@@ -1,0 +1,130 @@
+TAP version 13
+# Subtest: actual project guard allows first project without a delivery draft and preserves cancelled drafts
+ok 1 - actual project guard allows first project without a delivery draft and preserves cancelled drafts
+  ---
+  duration_ms: 1.569041
+  type: 'test'
+  ...
+# Subtest: actual project guard rejects new typing and replacement controller during confirmation
+ok 2 - actual project guard rejects new typing and replacement controller during confirmation
+  ---
+  duration_ms: 0.350125
+  type: 'test'
+  ...
+# Subtest: actual App options and real coordinator preserve the exact original render input through prepare, execute and refresh
+ok 3 - actual App options and real coordinator preserve the exact original render input through prepare, execute and refresh
+  ---
+  duration_ms: 13.866083
+  type: 'test'
+  ...
+# Subtest: actual named-delivery coordinator cannot read or submit before project opening is accepted
+ok 4 - actual named-delivery coordinator cannot read or submit before project opening is accepted
+  ---
+  duration_ms: 0.474042
+  type: 'test'
+  ...
+# Subtest: real App execution epoch blocks prepared export after dialog hide/show returns to the same view
+ok 5 - real App execution epoch blocks prepared export after dialog hide/show returns to the same view
+  ---
+  duration_ms: 1.514875
+  type: 'test'
+  ...
+# Subtest: real App execution epoch blocks prepared export after history/compose returns to the same view
+ok 6 - real App execution epoch blocks prepared export after history/compose returns to the same view
+  ---
+  duration_ms: 1.086792
+  type: 'test'
+  ...
+# Subtest: real coordinator ACK refresh cannot clear a newer name typed during execution
+ok 7 - real coordinator ACK refresh cannot clear a newer name typed during execution
+  ---
+  duration_ms: 1.281
+  type: 'test'
+  ...
+# Subtest: real coordinator ACK refresh cannot clear a newer name typed during refresh
+ok 8 - real coordinator ACK refresh cannot clear a newer name typed during refresh
+  ---
+  duration_ms: 1.038458
+  type: 'test'
+  ...
+# Subtest: actual normal export uses coordinator with exact captured input and marks only its matching acknowledgement clean
+ok 9 - actual normal export uses coordinator with exact captured input and marks only its matching acknowledgement clean
+  ---
+  duration_ms: 0.179375
+  type: 'test'
+  ...
+# Subtest: restored export preserves the legacy runner and exact named input without consulting the coordinator
+ok 10 - restored export preserves the legacy runner and exact named input without consulting the coordinator
+  ---
+  duration_ms: 0.189958
+  type: 'test'
+  ...
+# Subtest: timeline preview remains on the legacy runner and never submits or acknowledges a delivery draft
+ok 11 - timeline preview remains on the legacy runner and never submits or acknowledges a delivery draft
+  ---
+  duration_ms: 2.655167
+  type: 'test'
+  ...
+# Subtest: normal export cannot fall through to legacy run when the private coordinator is not ready
+ok 12 - normal export cannot fall through to legacy run when the private coordinator is not ready
+  ---
+  duration_ms: 0.259291
+  type: 'test'
+  ...
+# Subtest: actual render unknown outcome retains draft and existing pending key prevents new submission
+ok 13 - actual render unknown outcome retains draft and existing pending key prevents new submission
+  ---
+  duration_ms: 0.30875
+  type: 'test'
+  ...
+# Subtest: actual render late acknowledgement cannot clear a changed draft or new project epoch
+ok 14 - actual render late acknowledgement cannot clear a changed draft or new project epoch
+  ---
+  duration_ms: 0.302584
+  type: 'test'
+  ...
+# Subtest: cancelled project confirmation does not consume a valid render capture
+ok 15 - cancelled project confirmation does not consume a valid render capture
+  ---
+  duration_ms: 0.180084
+  type: 'test'
+  ...
+# Subtest: App wires name scope, validation, view identity, disclosure and independent unload guard
+ok 16 - App wires name scope, validation, view identity, disclosure and independent unload guard
+  ---
+  duration_ms: 0.430916
+  type: 'test'
+  ...
+# Subtest: actual App pure close read preserves an unacknowledged name and follows only its matching ACK
+ok 17 - actual App pure close read preserves an unacknowledged name and follows only its matching ACK
+  ---
+  duration_ms: 0.284208
+  type: 'test'
+  ...
+# Subtest: late accepted render cannot reopen delivery history after a newer panel or project choice
+ok 18 - late accepted render cannot reopen delivery history after a newer panel or project choice
+  ---
+  duration_ms: 0.275792
+  type: 'test'
+  ...
+# Subtest: actual history and compose open the independent dialog and keep the name draft
+ok 19 - actual history and compose open the independent dialog and keep the name draft
+  ---
+  duration_ms: 0.196083
+  type: 'test'
+  ...
+# Subtest: delivery pages retain both forms with inherited visibility and never submit on open/hide
+ok 20 - delivery pages retain both forms with inherited visibility and never submit on open/hide
+  ---
+  duration_ms: 0.783292
+  type: 'test'
+  ...
+1..20
+# tests 20
+# suites 0
+# pass 20
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 296.823542

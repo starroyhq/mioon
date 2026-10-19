@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: fixed seven-point profile validates exact values without normalization or mutation
+ok 1 - fixed seven-point profile validates exact values without normalization or mutation
+  ---
+  duration_ms: 1.083417
+  type: 'test'
+  ...
+# Subtest: unknown envelope values reject wrong shapes, profiles, bounds and eight points
+ok 2 - unknown envelope values reject wrong shapes, profiles, bounds and eight points
+  ---
+  duration_ms: 1.577792
+  type: 'test'
+  ...
+# Subtest: arrays and records reject sparse, subclassed, symbolic and nonenumerable data
+ok 3 - arrays and records reject sparse, subclassed, symbolic and nonenumerable data
+  ---
+  duration_ms: 0.226333
+  type: 'test'
+  ...
+# Subtest: all relevant getter boundaries reject without executing accessors
+ok 4 - all relevant getter boundaries reject without executing accessors
+  ---
+  duration_ms: 0.256917
+  type: 'test'
+  ...
+# Subtest: absent and null hold one inside playback with a separate inclusive endpoint evaluator
+ok 5 - absent and null hold one inside playback with a separate inclusive endpoint evaluator
+  ---
+  duration_ms: 0.271541
+  type: 'test'
+  ...
+# Subtest: linear interpolation, endpoint holding and detached immutable evaluators
+ok 6 - linear interpolation, endpoint holding and detached immutable evaluators
+  ---
+  duration_ms: 0.136833
+  type: 'test'
+  ...
+# Subtest: edits retain local anchors and exact presence, requiring atomic shrink replacement or clear
+ok 7 - edits retain local anchors and exact presence, requiring atomic shrink replacement or clear
+  ---
+  duration_ms: 0.410625
+  type: 'test'
+  ...
+# Subtest: every interior split rejoins the original integer-frame curve without exceeding seven points
+ok 8 - every interior split rejoins the original integer-frame curve without exceeding seven points
+  ---
+  duration_ms: 4.939208
+  type: 'test'
+  ...
+# Subtest: split preserves absence or null, detaches results, and refuses non-interior cuts
+ok 9 - split preserves absence or null, detaches results, and refuses non-interior cuts
+  ---
+  duration_ms: 0.450333
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 173.004625

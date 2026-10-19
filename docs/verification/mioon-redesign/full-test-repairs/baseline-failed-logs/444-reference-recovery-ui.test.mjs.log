@@ -1,0 +1,298 @@
+TAP version 13
+# Subtest: actual App legacy session runner validates both reference writes and preserves existing-binding attach no-op acknowledgements
+not ok 1 - actual App legacy session runner validates both reference writes and preserves existing-binding attach no-op acknowledgements
+  ---
+  duration_ms: 2.843625
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:90:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:85:102), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:96:30)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.start (node:internal/test_runner/test:1262:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+  ...
+# Subtest: malformed 200 responses retain exact reference receipts until a complete explicit acknowledgement
+not ok 2 - malformed 200 responses retain exact reference receipts until a complete explicit acknowledgement
+  ---
+  duration_ms: 0.363167
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:103:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:85:102), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:119:26)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: reference rollback proof requires its exact operation, project, request and reference rejection code
+not ok 3 - reference rollback proof requires its exact operation, project, request and reference rejection code
+  ---
+  duration_ms: 0.25075
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:134:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:85:102), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:139:13)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: a fresh proven reference rejection releases only its original key for a corrected intent
+not ok 4 - a fresh proven reference rejection releases only its original key for a corrected intent
+  ---
+  duration_ms: 1.311959
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:155:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:85:102), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:160:26)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: fresh same-operation reference callbacks cannot implicitly replay a pending input, even unchanged
+not ok 5 - fresh same-operation reference callbacks cannot implicitly replay a pending input, even unchanged
+  ---
+  duration_ms: 0.434166
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:167:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:85:102), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:174:28)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: stale-project reference callbacks cannot write either owner or perform any RPC
+not ok 6 - stale-project reference callbacks cannot write either owner or perform any RPC
+  ---
+  duration_ms: 0.24975
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:183:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:85:102), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:189:62)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: missing, changed, cross-operation and wrong-owner Tasks receipts never create replacement reference requests
+not ok 7 - missing, changed, cross-operation and wrong-owner Tasks receipts never create replacement reference requests
+  ---
+  duration_ms: 0.211709
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:196:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:85:102), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:200:26)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: same-session reload recovers original request bytes only through explicit Tasks replay
+not ok 8 - same-session reload recovers original request bytes only through explicit Tasks replay
+  ---
+  duration_ms: 0.204
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:217:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:85:102), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:221:17)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: historical attach and detach recovery do not require today’s edge and preserve newer selection and draft
+not ok 9 - historical attach and detach recovery do not require today’s edge and preserve newer selection and draft
+  ---
+  duration_ms: 0.419459
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:233:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:85:102), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:240:23)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: late reference ACK after project navigation changes no foreign data, pending view, selection or notice
+not ok 10 - late reference ACK after project navigation changes no foreign data, pending view, selection or notice
+  ---
+  duration_ms: 0.303792
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:247:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:85:102), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:253:26)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: late same-project reference ACK respects navigation epoch and keeps a newer inspector draft
+not ok 11 - late same-project reference ACK respects navigation epoch and keeps a newer inspector draft
+  ---
+  duration_ms: 0.208666
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:266:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:85:102), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:271:23)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: an old reference refresh cannot overwrite a reopened project epoch or its newer selection
+not ok 12 - an old reference refresh cannot overwrite a reopened project epoch or its newer selection
+  ---
+  duration_ms: 4.39
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:278:1'
+  failureType: 'unhandledRejection'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:85:102), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:282:21)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: late reference loss keeps only the original owner receipt without touching the foreign project
+not ok 13 - late reference loss keeps only the original owner receipt without touching the foreign project
+  ---
+  duration_ms: 0.388709
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:289:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:85:102), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:293:77)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: unavailable session storage prevents reference dispatch and never creates an alternate key
+not ok 14 - unavailable session storage prevents reference dispatch and never creates an alternate key
+  ---
+  duration_ms: 0.132833
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:306:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:85:102), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-ui.test.mjs:309:60)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: a project that has not opened cannot publish a recovery refresh
+ok 15 - a project that has not opened cannot publish a recovery refresh
+  ---
+  duration_ms: 0.2595
+  type: 'test'
+  ...
+# Error: Test "late reference ACK after project navigation changes no foreign data, pending view, selection or notice" at tests/reference-recovery-ui.test.mjs:247:1 generated asynchronous activity after the test ended. This activity created the error "ReferenceError: clipConnectionBlocked is not defined" and would have caused the test to fail, but instead triggered an unhandledRejection event.
+# Error: Test "late reference loss keeps only the original owner receipt without touching the foreign project" at tests/reference-recovery-ui.test.mjs:289:1 generated asynchronous activity after the test ended. This activity created the error "Error: Response lost after leaving" and would have caused the test to fail, but instead triggered an unhandledRejection event.
+1..15
+# tests 15
+# suites 0
+# pass 1
+# fail 14
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 305.353

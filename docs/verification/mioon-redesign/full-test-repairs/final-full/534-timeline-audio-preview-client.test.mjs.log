@@ -1,0 +1,214 @@
+TAP version 13
+# Subtest: serial complete preparation streams unaligned little-endian stereo directly into exact AudioBuffers
+ok 1 - serial complete preparation streams unaligned little-endian stereo directly into exact AudioBuffers
+  ---
+  duration_ms: 23.270833
+  type: 'test'
+  ...
+# Subtest: exact identical prepared source is retained once for multiple saved voices
+ok 2 - exact identical prepared source is retained once for multiple saved voices
+  ---
+  duration_ms: 3.193542
+  type: 'test'
+  ...
+# Subtest: retained verified plan rejects mutation of original decode segments and work accounting
+ok 3 - retained verified plan rejects mutation of original decode segments and work accounting
+  ---
+  duration_ms: 2.365584
+  type: 'test'
+  ...
+# Subtest: PCM fails closed for truncated
+ok 4 - PCM fails closed for truncated
+  ---
+  duration_ms: 2.819125
+  type: 'test'
+  ...
+# Subtest: PCM fails closed for extra
+ok 5 - PCM fails closed for extra
+  ---
+  duration_ms: 1.636042
+  type: 'test'
+  ...
+# Subtest: PCM fails closed for nonfinite-left
+ok 6 - PCM fails closed for nonfinite-left
+  ---
+  duration_ms: 0.540375
+  type: 'test'
+  ...
+# Subtest: PCM fails closed for nonfinite-right
+ok 7 - PCM fails closed for nonfinite-right
+  ---
+  duration_ms: 0.350542
+  type: 'test'
+  ...
+# Subtest: PCM fails closed for wrong-length
+ok 8 - PCM fails closed for wrong-length
+  ---
+  duration_ms: 0.32825
+  type: 'test'
+  ...
+# Subtest: PCM fails closed for wrong-plan
+ok 9 - PCM fails closed for wrong-plan
+  ---
+  duration_ms: 0.303416
+  type: 'test'
+  ...
+# Subtest: PCM fails closed for wrong-source
+ok 10 - PCM fails closed for wrong-source
+  ---
+  duration_ms: 1.058666
+  type: 'test'
+  ...
+# Subtest: PCM fails closed for wrong-clip
+ok 11 - PCM fails closed for wrong-clip
+  ---
+  duration_ms: 0.265458
+  type: 'test'
+  ...
+# Subtest: PCM fails closed for wrong-profile
+ok 12 - PCM fails closed for wrong-profile
+  ---
+  duration_ms: 0.21125
+  type: 'test'
+  ...
+# Subtest: PCM fails closed for wrong-frames
+ok 13 - PCM fails closed for wrong-frames
+  ---
+  duration_ms: 0.193959
+  type: 'test'
+  ...
+# Subtest: PCM fails closed for cacheable
+ok 14 - PCM fails closed for cacheable
+  ---
+  duration_ms: 0.530875
+  type: 'test'
+  ...
+# Subtest: PCM fails closed for compressed
+ok 15 - PCM fails closed for compressed
+  ---
+  duration_ms: 0.275458
+  type: 'test'
+  ...
+# Subtest: byte-stream oversized enqueue is consumed through bounded reused BYOB storage
+ok 16 - byte-stream oversized enqueue is consumed through bounded reused BYOB storage
+  ---
+  duration_ms: 27.702875
+  type: 'test'
+  ...
+# Subtest: fallback rejects a bounded visible chunk with an oversized backing allocation
+ok 17 - fallback rejects a bounded visible chunk with an oversized backing allocation
+  ---
+  duration_ms: 1.101291
+  type: 'test'
+  ...
+# Subtest: BYOB stream rejects empty-eof without returning partial audio
+ok 18 - BYOB stream rejects empty-eof without returning partial audio
+  ---
+  duration_ms: 0.531292
+  type: 'test'
+  ...
+# Subtest: BYOB stream rejects partial-final-sample without returning partial audio
+ok 19 - BYOB stream rejects partial-final-sample without returning partial audio
+  ---
+  duration_ms: 0.359542
+  type: 'test'
+  ...
+# Subtest: BYOB stream rejects extra-byte without returning partial audio
+ok 20 - BYOB stream rejects extra-byte without returning partial audio
+  ---
+  duration_ms: 0.318042
+  type: 'test'
+  ...
+# Subtest: BYOB stream rejects nonfinite-left without returning partial audio
+ok 21 - BYOB stream rejects nonfinite-left without returning partial audio
+  ---
+  duration_ms: 0.256792
+  type: 'test'
+  ...
+# Subtest: BYOB stream rejects nonfinite-right without returning partial audio
+ok 22 - BYOB stream rejects nonfinite-right without returning partial audio
+  ---
+  duration_ms: 0.235875
+  type: 'test'
+  ...
+# Subtest: fallback reader rejects forged nonempty done payload after the exact sample count
+ok 23 - fallback reader rejects forged nonempty done payload after the exact sample count
+  ---
+  duration_ms: 0.930042
+  type: 'test'
+  ...
+# Subtest: BYOB reader rejects forged nonempty done payload after the exact sample count
+ok 24 - BYOB reader rejects forged nonempty done payload after the exact sample count
+  ---
+  duration_ms: 0.476875
+  type: 'test'
+  ...
+# Subtest: zero-byte non-EOF fallback chunk fails immediately rather than spinning
+ok 25 - zero-byte non-EOF fallback chunk fails immediately rather than spinning
+  ---
+  duration_ms: 0.371375
+  type: 'test'
+  ...
+# Subtest: BYOB cancellation waits for exact resource acknowledgment
+ok 26 - BYOB cancellation waits for exact resource acknowledgment
+  ---
+  duration_ms: 4.9165
+  type: 'test'
+  ...
+# Subtest: BYOB cancellation rejects unconfirmed cleanup
+ok 27 - BYOB cancellation rejects unconfirmed cleanup
+  ---
+  duration_ms: 0.806334
+  type: 'test'
+  ...
+# Subtest: transport chunk allocation cannot exceed the fixed reserve boundary
+ok 28 - transport chunk allocation cannot exceed the fixed reserve boundary
+  ---
+  duration_ms: 2.244083
+  type: 'test'
+  ...
+# Subtest: a forged plan digest or over-budget plan is rejected before any source request/allocation
+ok 29 - a forged plan digest or over-budget plan is rejected before any source request/allocation
+  ---
+  duration_ms: 1.660375
+  type: 'test'
+  ...
+# Subtest: cancel and deadline reject ignored late plan acknowledgments without allocating or fetching
+ok 30 - cancel and deadline reject ignored late plan acknowledgments without allocating or fetching
+  ---
+  duration_ms: 11.171958
+  type: 'test'
+  ...
+# Subtest: failure in a later serial source rejects the entire interval with no playable partial result
+ok 31 - failure in a later serial source rejects the entire interval with no playable partial result
+  ---
+  duration_ms: 2.035083
+  type: 'test'
+  ...
+# Subtest: bounded source failure carries only its safe code and never creates a PCM buffer
+ok 32 - bounded source failure carries only its safe code and never creates a PCM buffer
+  ---
+  duration_ms: 1.244417
+  type: 'test'
+  ...
+# Subtest: resource acknowledgment waits when stream cancellation is not yet confirmed
+ok 33 - resource acknowledgment waits when stream cancellation is not yet confirmed
+  ---
+  duration_ms: 2.143416
+  type: 'test'
+  ...
+# Subtest: resource acknowledgment fails closed when stream cancellation is not yet confirmed
+ok 34 - resource acknowledgment fails closed when stream cancellation is not yet confirmed
+  ---
+  duration_ms: 0.846459
+  type: 'test'
+  ...
+1..34
+# tests 34
+# suites 0
+# pass 34
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 292.679459

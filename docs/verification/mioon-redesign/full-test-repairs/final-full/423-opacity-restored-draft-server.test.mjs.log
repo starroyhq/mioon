@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: actual43 new-origin draft endpoint starts empty while captured42 v3 stays excluded and old endpoints stay unsupported
+ok 1 - actual43 new-origin draft endpoint starts empty while captured42 v3 stays excluded and old endpoints stay unsupported
+  ---
+  duration_ms: 1828.2435
+  type: 'test'
+  ...
+# Subtest: actual43 PUT CAS, exact replay, list and explicit discard only change the current-origin companion
+ok 2 - actual43 PUT CAS, exact replay, list and explicit discard only change the current-origin companion
+  ---
+  duration_ms: 3140.713291
+  type: 'test'
+  ...
+# Subtest: cold43 reopen retains origin, scope and raw while rotating instance and requiring explicit frontend restore/discard
+ok 3 - cold43 reopen retains origin, scope and raw while rotating instance and requiring explicit frontend restore/discard
+  ---
+  duration_ms: 2288.987875
+  type: 'test'
+  ...
+# Subtest: shared43 HTTP refuses old wire, missing/cross origin, foreign scope, old42 files and excessive bodies without overwriting
+ok 4 - shared43 HTTP refuses old wire, missing/cross origin, foreign scope, old42 files and excessive bodies without overwriting
+  ---
+  duration_ms: 1917.976125
+  type: 'test'
+  ...
+# Subtest: actual frontend late draft ACK retains newer raw and a new-instance explicit restore/Save only uses current origin
+ok 5 - actual frontend late draft ACK retains newer raw and a new-instance explicit restore/Save only uses current origin
+  ---
+  duration_ms: 3646.381708
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 13256.056375

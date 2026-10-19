@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: desktop accepts only an explicit IPv4 loopback HTTP backend
+ok 1 - desktop accepts only an explicit IPv4 loopback HTTP backend
+  ---
+  duration_ms: 0.633
+  type: 'test'
+  ...
+# Subtest: desktop navigation supports only root and shared-UI project deep link
+ok 2 - desktop navigation supports only root and shared-UI project deep link
+  ---
+  duration_ms: 0.283333
+  type: 'test'
+  ...
+# Subtest: desktop request policy prevents credential leakage to any other origin
+ok 3 - desktop request policy prevents credential leakage to any other origin
+  ---
+  duration_ms: 0.094916
+  type: 'test'
+  ...
+# Subtest: downloads are only UUID managed media on the current backend
+ok 4 - downloads are only UUID managed media on the current backend
+  ---
+  duration_ms: 0.21325
+  type: 'test'
+  ...
+# Subtest: base renderer preferences expose no Node or implicit preload; main owns the fixed window bridge
+ok 5 - base renderer preferences expose no Node or implicit preload; main owns the fixed window bridge
+  ---
+  duration_ms: 0.078
+  type: 'test'
+  ...
+# Subtest: cookie is Secure HttpOnly SameSite Strict without disk expiration
+ok 6 - cookie is Secure HttpOnly SameSite Strict without disk expiration
+  ---
+  duration_ms: 0.107083
+  type: 'test'
+  ...
+# Subtest: session rejects permissions, subframes, and external requests
+ok 7 - session rejects permissions, subframes, and external requests
+  ---
+  duration_ms: 0.460084
+  type: 'test'
+  ...
+# Subtest: native export permits project query but never assigns an automatic save path
+ok 8 - native export permits project query but never assigns an automatic save path
+  ---
+  duration_ms: 0.343041
+  type: 'test'
+  ...
+# Subtest: window blocks webviews, popups, subframes and navigations
+ok 9 - window blocks webviews, popups, subframes and navigations
+  ---
+  duration_ms: 0.201125
+  type: 'test'
+  ...
+# Subtest: package configuration disables runtime injection and cannot publish by default
+ok 10 - package configuration disables runtime injection and cannot publish by default
+  ---
+  duration_ms: 12.440833
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 193.007708

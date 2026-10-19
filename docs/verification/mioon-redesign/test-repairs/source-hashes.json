@@ -1,0 +1,52 @@
+[
+  {
+    "path": "packages/i18n/src/catalogs/operations.ts",
+    "sha256": "6b19a9be0397ff05f1d8d95cd8f57363f09b049bfc64d8d2b43878b1e9ab3728",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "tests/i18n-command-unit.test.mjs",
+    "sha256": "d49fd5d37fa488d5cc0a77be8647c23c03305cec83d6576cb9aed124ee8e4ebf",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "tests/i18n-command-presentation.test.mjs",
+    "sha256": "1146e5e45537b25dcee8d5dab08edb80e46c9bd7c61e70d87290ff9c10fcf6d3",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "tests/export-history-ui.test.mjs",
+    "sha256": "bfaa79137180e60791108f6245726ce1dd044c2eac72c790768d647ad535569f",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "tests/named-delivery-ui.test.mjs",
+    "sha256": "c1946e662c0fb059d3966ebb59ea9707c9f1053008f3a6c8a138def6fa3cf8ee",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "tests/desktop-media-shutdown.test.mjs",
+    "sha256": "322bc6ed3e165aaa0112373648fe85efb246999927bac2ea97a8027f34e1a886",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "tests/desktop-startup-restart-race.test.mjs",
+    "sha256": "d1fb26ce02a36a671f5df0f155cff968db2f379aa7ea14bde95dace8bb5779bd",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "docs/i18n-ui-exceptions-creation.json",
+    "sha256": "75fd9d1b889d834cfaaf9d21d0df71d4c1e7cc4d21ddfe63c04cf827b2e6bb59",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "docs/i18n-ui-exceptions-shell.json",
+    "sha256": "9e011cb3283135704ed2db6c8c05d34b04291606dcc912393fc25de0ad9b5595",
+    "matchesVerifiedSnapshot": true
+  },
+  {
+    "path": "docs/i18n-ui-exceptions-timeline.json",
+    "sha256": "3a463e0dc460e7d5a7f3dabc1948333604008593ec8d246dfe2c01c042634f3b",
+    "matchesVerifiedSnapshot": true
+  }
+]

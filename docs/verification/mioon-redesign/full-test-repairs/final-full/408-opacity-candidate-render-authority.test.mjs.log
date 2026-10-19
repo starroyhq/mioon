@@ -1,0 +1,16 @@
+TAP version 13
+# Subtest: candidate render authority exercises real SQL, hashed synthetic files and private lifetimes without media processes
+ok 1 - candidate render authority exercises real SQL, hashed synthetic files and private lifetimes without media processes
+  ---
+  duration_ms: 7351.5615
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 7487.315375

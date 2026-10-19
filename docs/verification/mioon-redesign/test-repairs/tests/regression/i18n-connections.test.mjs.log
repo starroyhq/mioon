@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: all connection messages have four complete locales and matching placeholders
+ok 1 - all connection messages have four complete locales and matching placeholders
+  ---
+  duration_ms: 3.996584
+  type: 'test'
+  ...
+# Subtest: settings validation descriptors preserve legacy validation decisions and never include entered secrets
+ok 2 - settings validation descriptors preserve legacy validation decisions and never include entered secrets
+  ---
+  duration_ms: 0.654833
+  type: 'test'
+  ...
+# Subtest: preset copy comes from stable provider and platform IDs, never translated backend text
+ok 3 - preset copy comes from stable provider and platform IDs, never translated backend text
+  ---
+  duration_ms: 0.333917
+  type: 'test'
+  ...
+# Subtest: generation and Comfy display descriptors use stable statuses, preserve originals and safely bound unknown codes
+ok 4 - generation and Comfy display descriptors use stable statuses, preserve originals and safely bound unknown codes
+  ---
+  duration_ms: 1.084375
+  type: 'test'
+  ...
+# Subtest: settings components have no untranslated CJK literals or locale-dependent lifecycle keys/effects
+ok 5 - settings components have no untranslated CJK literals or locale-dependent lifecycle keys/effects
+  ---
+  duration_ms: 25.840875
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 531.421541

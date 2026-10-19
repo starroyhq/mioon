@@ -1,0 +1,41 @@
+{
+  "capture": "The spawn wrapper records real argv and stderr, calls the original spawn unchanged, and does not stub any process or rendering result",
+  "production": {
+    "code": "MEDIA_EXIT_FAILED",
+    "message": "Local media tool failed."
+  },
+  "commands": [
+    {
+      "command": "ffmpeg",
+      "args": [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-filter_threads",
+        "1",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=black@0:s=4096x256:r=30,format=rgba",
+        "-/filter:v",
+        "/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/subtitle-work-after/subtitle-measure.filter",
+        "-frames:v",
+        "1",
+        "-an",
+        "-c:v",
+        "rawvideo",
+        "-pix_fmt",
+        "gray",
+        "-threads",
+        "1",
+        "-f",
+        "rawvideo",
+        "pipe:1"
+      ],
+      "stderr": "[AVFilterGraph @ 0x755080c100] No such filter: 'drawtext'\nError opening output file pipe:1.\nError opening output files: Filter not found\n",
+      "exitCode": 8,
+      "signal": null
+    }
+  ],
+  "measurementFilter": "drawtext=fontfile=/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/subtitle-work-after/subtitle-font.otf:textfile=/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/subtitle-work-after/subtitle-000.txt:expansion=none:text_shaping=0:fontsize=28:borderw=2:line_spacing=8:fontcolor=white:bordercolor=white:x=64:y=64:enable='eq(n,0)',alphaextract,format=gray"
+}

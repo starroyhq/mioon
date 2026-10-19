@@ -1,0 +1,165 @@
+TAP version 13
+# Subtest: preview probe chooses the same exact first identified audio index as the renderer
+ok 1 - preview probe chooses the same exact first identified audio index as the renderer
+  ---
+  duration_ms: 1.536875
+  type: 'test'
+  ...
+# Subtest: preview probe permits only actual supported containers, indexed identified audio, bounded metadata and known layouts
+ok 2 - preview probe permits only actual supported containers, indexed identified audio, bounded metadata and known layouts
+  ---
+  duration_ms: 0.649083
+  type: 'test'
+  ...
+# Subtest: only PCM WAV may derive mono/stereo from explicit one/two channels when layout is absent
+ok 3 - only PCM WAV may derive mono/stereo from explicit one/two channels when layout is absent
+  ---
+  duration_ms: 0.151041
+  type: 'test'
+  ...
+# Subtest: preview decoder uses one exact allocation and copies arbitrary chunk boundaries without retaining chunks
+ok 4 - preview decoder uses one exact allocation and copies arbitrary chunk boundaries without retaining chunks
+  ---
+  duration_ms: 11.178917
+  type: 'test'
+  ...
+# Subtest: preview uses exact bounded source seek, actual demuxer/index, renderer pad/trim, and no caller filters or gain
+ok 5 - preview uses exact bounded source seek, actual demuxer/index, renderer pad/trim, and no caller filters or gain
+  ---
+  duration_ms: 1.302583
+  type: 'test'
+  ...
+# Subtest: original segment seeks and post-resample trims are sequential, probed once and copied into one final allocation
+ok 6 - original segment seeks and post-resample trims are sequential, probed once and copied into one final allocation
+  ---
+  duration_ms: 0.69375
+  type: 'test'
+  ...
+# Subtest: segment shape, continuity, disjoint original ranges and aggregate work are fixed internal bounds
+ok 7 - segment shape, continuity, disjoint original ranges and aggregate work are fixed internal bounds
+  ---
+  duration_ms: 0.4665
+  type: 'test'
+  ...
+# Subtest: a tiny selected suffix retains the original bounded seek/length without allocating the discarded prefix
+ok 8 - a tiny selected suffix retains the original bounded seek/length without allocating the discarded prefix
+  ---
+  duration_ms: 0.294875
+  type: 'test'
+  ...
+# Subtest: per-segment input lookahead is charged before probe or PCM allocation
+ok 9 - per-segment input lookahead is charged before probe or PCM allocation
+  ---
+  duration_ms: 0.140375
+  type: 'test'
+  ...
+# Subtest: revocation between original segments prevents the next process and preserves its exact cause
+ok 10 - revocation between original segments prevents the next process and preserves its exact cause
+  ---
+  duration_ms: 0.2645
+  type: 'test'
+  ...
+# Subtest: invalid requests, pre-abort and exhausted budget fail before permit or allocation
+ok 11 - invalid requests, pre-abort and exhausted budget fail before permit or allocation
+  ---
+  duration_ms: 0.746208
+  type: 'test'
+  ...
+# Subtest: unsupported source or out-of-bounds interval never allocates or decodes
+ok 12 - unsupported source or out-of-bounds interval never allocates or decodes
+  ---
+  duration_ms: 0.270958
+  type: 'test'
+  ...
+# Subtest: probe and streaming deadlines consume the same remaining budget; maximum allocation is 7,680,000 bytes
+ok 13 - probe and streaming deadlines consume the same remaining budget; maximum allocation is 7,680,000 bytes
+  ---
+  duration_ms: 28.737125
+  type: 'test'
+  ...
+# Subtest: dequeue, probe completion, spawn, chunks and process completion are all ownership boundaries
+ok 14 - dequeue, probe completion, spawn, chunks and process completion are all ownership boundaries
+  ---
+  duration_ms: 0.73225
+  type: 'test'
+  ...
+# Subtest: nonfinite, short, partial, extra, false receipt and decode failure never publish PCM
+ok 15 - nonfinite, short, partial, extra, false receipt and decode failure never publish PCM
+  ---
+  duration_ms: 1.143625
+  type: 'test'
+  ...
+# Subtest: callback failure and cancellation retain exact errors and unconfirmed-child ownership
+ok 16 - callback failure and cancellation retain exact errors and unconfirmed-child ownership
+  ---
+  duration_ms: 0.379625
+  type: 'test'
+  ...
+# Subtest: real canonical 48k WAV keeps exact selected onset/end, stereo headroom and one final allocation
+ok 17 - real canonical 48k WAV keeps exact selected onset/end, stereo headroom and one final allocation
+  ---
+  duration_ms: 99.92425
+  type: 'test'
+  ...
+# {"fixture":"canonical-stereo","bytes":51200,"firstLeft":1.25,"lastRight":0.800000011920929,"layoutOrigin":"pcm-wav-channel-count"}
+# Subtest: real PCM WAV layout omission is observed; mono conversion follows FFmpeg 1/sqrt(2)
+ok 18 - real PCM WAV layout omission is observed; mono conversion follows FFmpeg 1/sqrt(2)
+  ---
+  duration_ms: 301.293584
+  type: 'test'
+  ...
+# {"fixture":"mono-wav","ffprobeLayout":null,"admittedLayout":"mono","left":0.3535533845424652}
+# {"fixture":"stereo-wav","ffprobeLayout":null,"admittedLayout":"stereo","left":0.353546142578125}
+# Subtest: real 44.1k AAC seek/resample matches the declared renderer source filter byte-for-byte
+ok 19 - real 44.1k AAC seek/resample matches the declared renderer source filter byte-for-byte
+  ---
+  duration_ms: 447.24225
+  type: 'test'
+  ...
+# {"fixture":"aac-44100","sourceInFrame":0,"sampleFrames":6400,"rendererMaxAbsError":0}
+# {"fixture":"aac-44100","sourceInFrame":1,"sampleFrames":6400,"rendererMaxAbsError":0}
+# {"fixture":"aac-44100","sourceInFrame":7,"sampleFrames":6400,"rendererMaxAbsError":0}
+# Subtest: real 44.1k AAC retains original segment reseeks across selected cuts with one probe and allocation
+ok 20 - real 44.1k AAC retains original segment reseeks across selected cuts with one probe and allocation
+  ---
+  duration_ms: 644.719208
+  type: 'test'
+  ...
+# {"fixture":"AAC-original-segment-selected-cuts","fullSampleFrames":16000,"selectedSampleFrames":9600,"exactIdentity":true,"decoderAllocations":[128000]}
+# Subtest: real short embedded AAC legitimately pads while exact first audio selection ignores later streams
+ok 21 - real short embedded AAC legitimately pads while exact first audio selection ignores later streams
+  ---
+  duration_ms: 599.989083
+  type: 'test'
+  ...
+# {"fixture":"short-embedded-aac","sourceInFrame":0,"streamIndex":1,"sourceDuration":1,"audioDuration":0.2,"outputFrames":19200}
+# {"fixture":"short-embedded-aac","sourceInFrame":3,"streamIndex":1,"sourceDuration":1,"audioDuration":0.2,"outputFrames":19200}
+# {"fixture":"short-embedded-aac","sourceInFrame":12,"streamIndex":1,"sourceDuration":1,"audioDuration":0.2,"outputFrames":19200}
+# Subtest: real malformed AAC packets cannot become silence and a real video-only source cannot create audio
+ok 22 - real malformed AAC packets cannot become silence and a real video-only source cannot create audio
+  ---
+  duration_ms: 306.799875
+  type: 'test'
+  ...
+# {"fixture":"actual-malformed-AAC-and-no-audio","identifiedCodec":"aac","corruptedPackets":20,"corruptedBytes":6449,"realDecodeRejected":true,"noAudioRejectedBeforeAllocation":true}
+# Subtest: real process truncation, poison, excess, and nonzero exit remain distinct safe failures
+ok 23 - real process truncation, poison, excess, and nonzero exit remain distinct safe failures
+  ---
+  duration_ms: 781.781959
+  type: 'test'
+  ...
+# Subtest: real queued probe cancellation never spawns; real decode cancellation reaps the exact child
+ok 24 - real queued probe cancellation never spawns; real decode cancellation reaps the exact child
+  ---
+  duration_ms: 40.350833
+  type: 'test'
+  ...
+1..24
+# tests 24
+# suites 0
+# pass 24
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3504.284709

@@ -1,0 +1,15 @@
+{
+  "scope": "After native 7-check appearance acceptance, one selection presentation-only App fix and test fixture update were built. Native host/backend/preload/theme CSS unchanged; final web bundle is separately browser-verified.",
+  "unchangedFiles": 54,
+  "changedFiles": [
+    "web/index.html"
+  ],
+  "removedPaths": [
+    "web/assets/index-CaHM43li.js"
+  ],
+  "addedPaths": [
+    "web/assets/index-DK6QTfYa.js"
+  ],
+  "nativeSevenChecksRerunAfterPresentationFix": false,
+  "browserRegression": "../../browser/navigation-regression/results.json"
+}

@@ -1,0 +1,142 @@
+TAP version 13
+# Subtest: chat_completions/openai: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+ok 1 - chat_completions/openai: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 8.763458
+  type: 'test'
+  ...
+# Subtest: chat_completions/custom: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+ok 2 - chat_completions/custom: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 2.200917
+  type: 'test'
+  ...
+# Subtest: chat_completions/openrouter: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+ok 3 - chat_completions/openrouter: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 1.143292
+  type: 'test'
+  ...
+# Subtest: chat_completions/qwen: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+ok 4 - chat_completions/qwen: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.74575
+  type: 'test'
+  ...
+# Subtest: chat_completions/deepseek: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+ok 5 - chat_completions/deepseek: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.728583
+  type: 'test'
+  ...
+# Subtest: chat_completions/zhipu: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+ok 6 - chat_completions/zhipu: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.592666
+  type: 'test'
+  ...
+# Subtest: chat_completions/kimi: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+ok 7 - chat_completions/kimi: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.573125
+  type: 'test'
+  ...
+# Subtest: chat_completions/minimax: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+ok 8 - chat_completions/minimax: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.558834
+  type: 'test'
+  ...
+# Subtest: chat_completions/ollama: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+ok 9 - chat_completions/ollama: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 3.395583
+  type: 'test'
+  ...
+# Subtest: chat_completions: old shot scope rejects the new timeline tool after a complete response
+ok 10 - chat_completions: old shot scope rejects the new timeline tool after a complete response
+  ---
+  duration_ms: 1.246584
+  type: 'test'
+  ...
+# Subtest: chat_completions: timeline move tool rejects read catalog, identifiers, duplicate keys and incomplete streams before any completed call
+ok 11 - chat_completions: timeline move tool rejects read catalog, identifiers, duplicate keys and incomplete streams before any completed call
+  ---
+  duration_ms: 2.372792
+  type: 'test'
+  ...
+# Subtest: chat_completions: terminal function snapshot changes fail closed and answer phase cannot call again
+ok 12 - chat_completions: terminal function snapshot changes fail closed and answer phase cannot call again
+  ---
+  duration_ms: 0.726416
+  type: 'test'
+  ...
+# Subtest: chat_completions: full bounded selected context plus large proposal remains scoped to edit; arbitrary catalogs fail validation
+ok 13 - chat_completions: full bounded selected context plus large proposal remains scoped to edit; arbitrary catalogs fail validation
+  ---
+  duration_ms: 0.485917
+  type: 'test'
+  ...
+# Subtest: responses/openai: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+ok 14 - responses/openai: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 2.006209
+  type: 'test'
+  ...
+# Subtest: responses/custom: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+ok 15 - responses/custom: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.973083
+  type: 'test'
+  ...
+# Subtest: responses/qwen: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+ok 16 - responses/qwen: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.654583
+  type: 'test'
+  ...
+# Subtest: responses/deepseek: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+ok 17 - responses/deepseek: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.405625
+  type: 'test'
+  ...
+# Subtest: responses/ollama: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+ok 18 - responses/ollama: scoped timeline move catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.518417
+  type: 'test'
+  ...
+# Subtest: responses: old shot scope rejects the new timeline tool after a complete response
+ok 19 - responses: old shot scope rejects the new timeline tool after a complete response
+  ---
+  duration_ms: 0.551917
+  type: 'test'
+  ...
+# Subtest: responses: timeline move tool rejects read catalog, identifiers, duplicate keys and incomplete streams before any completed call
+ok 20 - responses: timeline move tool rejects read catalog, identifiers, duplicate keys and incomplete streams before any completed call
+  ---
+  duration_ms: 2.280834
+  type: 'test'
+  ...
+# Subtest: responses: terminal function snapshot changes fail closed and answer phase cannot call again
+ok 21 - responses: terminal function snapshot changes fail closed and answer phase cannot call again
+  ---
+  duration_ms: 1.027416
+  type: 'test'
+  ...
+# Subtest: responses: full bounded selected context plus large proposal remains scoped to edit; arbitrary catalogs fail validation
+ok 22 - responses: full bounded selected context plus large proposal remains scoped to edit; arbitrary catalogs fail validation
+  ---
+  duration_ms: 0.469667
+  type: 'test'
+  ...
+1..22
+# tests 22
+# suites 0
+# pass 22
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 264.627875

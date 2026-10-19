@@ -1,0 +1,178 @@
+TAP version 13
+# Subtest: utility shutdown has a finite 13-second default budget and rejects unbounded overrides
+ok 1 - utility shutdown has a finite 13-second default budget and rejects unbounded overrides
+  ---
+  duration_ms: 0.812167
+  type: 'test'
+  ...
+# Subtest: graceful utility exit is confirmed without requesting any signal
+ok 2 - graceful utility exit is confirmed without requesting any signal
+  ---
+  duration_ms: 3.552167
+  type: 'test'
+  ...
+# Subtest: a missing utility exit rejects within the budget without forgetting or restarting its child
+ok 3 - a missing utility exit rejects within the budget without forgetting or restarting its child
+  ---
+  duration_ms: 1.044458
+  type: 'test'
+  ...
+# Subtest: delayed grace cannot extend the absolute utility deadline or signal after unconfirmed completion
+ok 4 - delayed grace cannot extend the absolute utility deadline or signal after unconfirmed completion
+  ---
+  duration_ms: 0.708667
+  type: 'test'
+  ...
+# Subtest: throwing stop IPC and signals still have a fixed safe unconfirmed outcome
+ok 5 - throwing stop IPC and signals still have a fixed safe unconfirmed outcome
+  ---
+  duration_ms: 30.37075
+  type: 'test'
+  ...
+# Subtest: confirmed forced utility exit is distinct from graceful shutdown
+ok 6 - confirmed forced utility exit is distinct from graceful shutdown
+  ---
+  duration_ms: 10.574958
+  type: 'test'
+  ...
+# Subtest: utility close failure remains an error after a confirmed exit
+ok 7 - utility close failure remains an error after a confirmed exit
+  ---
+  duration_ms: 0.752875
+  type: 'test'
+  ...
+# Subtest: startup failure retains a live utility and stop fences its late ready message
+ok 8 - startup failure retains a live utility and stop fences its late ready message
+  ---
+  duration_ms: 10.653833
+  type: 'test'
+  ...
+# Subtest: media tracking accepts only current trusted utility telemetry, fencing old-child messages
+ok 9 - media tracking accepts only current trusted utility telemetry, fencing old-child messages
+  ---
+  duration_ms: 0.785375
+  type: 'test'
+  ...
+# Subtest: stale media PID never authorizes killing an unrelated replacement or clearing uncertainty
+ok 10 - stale media PID never authorizes killing an unrelated replacement or clearing uncertainty
+  ---
+  duration_ms: 0.453125
+  type: 'test'
+  ...
+# Subtest: native quit waits for the same unconfirmed child then cleans settings once, with no signal retry
+ok 11 - native quit waits for the same unconfirmed child then cleans settings once, with no signal retry
+  ---
+  duration_ms: 30.317584
+  type: 'test'
+  ...
+# Subtest: native quit handles exit-before-listener and notification failure without losing cleanup
+ok 12 - native quit handles exit-before-listener and notification failure without losing cleanup
+  ---
+  duration_ms: 0.277125
+  type: 'test'
+  ...
+# Subtest: native quit cleans only after confirmed failure and surfaces the failure without looping
+ok 13 - native quit cleans only after confirmed failure and surfaces the failure without looping
+  ---
+  duration_ms: 1.292
+  type: 'test'
+  ...
+# Subtest: real controlled utility ignores TERM, receives an owned hard stop and actually exits
+ok 14 - real controlled utility ignores TERM, receives an owned hard stop and actually exits
+  ---
+  duration_ms: 156.11975
+  type: 'test'
+  ...
+# Subtest: desktop tool validation routes version and encoder checks through bounded media execution
+ok 15 - desktop tool validation routes version and encoder checks through bounded media execution
+  ---
+  duration_ms: 6.82925
+  type: 'test'
+  ...
+# Subtest: desktop real version and encoder children reject synthetic secrets and injection variables
+ok 16 - desktop real version and encoder children reject synthetic secrets and injection variables
+  ---
+  duration_ms: 954.338833
+  type: 'test'
+  ...
+# Subtest: aborted validation cannot start encoder inspection after late version completion
+ok 17 - aborted validation cannot start encoder inspection after late version completion
+  ---
+  duration_ms: 13.40425
+  type: 'test'
+  ...
+# Subtest: startup abort drains only its signal and retains an unconfirmed owned validation child
+ok 18 - startup abort drains only its signal and retains an unconfirmed owned validation child
+  ---
+  duration_ms: 0.519
+  type: 'test'
+  ...
+# Subtest: main quit aborts active tool validation and a late result cannot create backend or settings
+ok 19 - main quit aborts active tool validation and a late result cannot create backend or settings
+  ---
+  duration_ms: 2.939
+  type: 'test'
+  ...
+# Subtest: main quit during settings initialization closes late settings without creating a backend
+ok 20 - main quit during settings initialization closes late settings without creating a backend
+  ---
+  duration_ms: 0.759917
+  type: 'test'
+  ...
+# Subtest: main ready arriving after quit cannot create a fresh startup scope
+ok 21 - main ready arriving after quit cannot create a fresh startup scope
+  ---
+  duration_ms: 0.647959
+  type: 'test'
+  ...
+# Subtest: unconfirmed orphan media quit requires a fixed explicit exit warning and ends nonzero
+ok 22 - unconfirmed orphan media quit requires a fixed explicit exit warning and ends nonzero
+  ---
+  duration_ms: 1.321083
+  type: 'test'
+  ...
+# Subtest: native smoke explicitly skips unsafe orphan-crash recovery without counting it as a pass
+ok 23 - native smoke explicitly skips unsafe orphan-crash recovery without counting it as a pass
+  ---
+  duration_ms: 0.696959
+  type: 'test'
+  ...
+# Subtest: backend shutdown reports a fixed failure and exits nonzero when close throws
+ok 24 - backend shutdown reports a fixed failure and exits nonzero when close throws
+  ---
+  duration_ms: 1.353875
+  type: 'test'
+  ...
+# Subtest: backend successful close emits stopped only once and exits zero
+ok 25 - backend successful close emits stopped only once and exits zero
+  ---
+  duration_ms: 0.670542
+  type: 'test'
+  ...
+# Subtest: backend stop during startup suppresses a late ready and drains the created server
+ok 26 - backend stop during startup suppresses a late ready and drains the created server
+  ---
+  duration_ms: 0.927542
+  type: 'test'
+  ...
+# Subtest: backend startup and shutdown failures cannot serialize an arbitrary error code
+ok 27 - backend startup and shutdown failures cannot serialize an arbitrary error code
+  ---
+  duration_ms: 0.599959
+  type: 'test'
+  ...
+# Subtest: backend waits for image codec availability and closes its own narrow client on shutdown
+ok 28 - backend waits for image codec availability and closes its own narrow client on shutdown
+  ---
+  duration_ms: 0.495208
+  type: 'test'
+  ...
+1..28
+# tests 28
+# suites 0
+# pass 28
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1578.759375

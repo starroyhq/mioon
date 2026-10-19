@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: frozen historical source fixtures have exact commit/path/byte/SHA256 provenance
+ok 1 - frozen historical source fixtures have exact commit/path/byte/SHA256 provenance
+  ---
+  duration_ms: 1.914041
+  type: 'test'
+  ...
+# Subtest: exact beb7fcf openStore lock=false refuses a closed SQLite-only copy before downstream work
+ok 2 - exact beb7fcf openStore lock=false refuses a closed SQLite-only copy before downstream work
+  ---
+  duration_ms: 437.414667
+  type: 'test'
+  ...
+# Subtest: exact beb7fcf openStore lock=true refuses a closed SQLite-only copy before downstream work
+ok 3 - exact beb7fcf openStore lock=true refuses a closed SQLite-only copy before downstream work
+  ---
+  duration_ms: 326.090375
+  type: 'test'
+  ...
+# Subtest: exact 1536878 openStore lock=false refuses a closed SQLite-only copy before downstream work
+ok 4 - exact 1536878 openStore lock=false refuses a closed SQLite-only copy before downstream work
+  ---
+  duration_ms: 313.921833
+  type: 'test'
+  ...
+# Subtest: exact 1536878 openStore lock=true refuses a closed SQLite-only copy before downstream work
+ok 5 - exact 1536878 openStore lock=true refuses a closed SQLite-only copy before downstream work
+  ---
+  duration_ms: 326.778458
+  type: 'test'
+  ...
+# Subtest: exact 3446aed openStore lock=false refuses a closed SQLite-only copy before downstream work
+ok 6 - exact 3446aed openStore lock=false refuses a closed SQLite-only copy before downstream work
+  ---
+  duration_ms: 229.812458
+  type: 'test'
+  ...
+# Subtest: exact 3446aed openStore lock=true refuses a closed SQLite-only copy before downstream work
+ok 7 - exact 3446aed openStore lock=true refuses a closed SQLite-only copy before downstream work
+  ---
+  duration_ms: 225.213917
+  type: 'test'
+  ...
+# Subtest: exact beb7fcf server startup rejects before provider/service/recovery/listener/worker entrypoints
+ok 8 - exact beb7fcf server startup rejects before provider/service/recovery/listener/worker entrypoints
+  ---
+  duration_ms: 325.952042
+  type: 'test'
+  ...
+# Subtest: exact 1536878 server startup rejects before provider/service/recovery/listener/worker entrypoints
+ok 9 - exact 1536878 server startup rejects before provider/service/recovery/listener/worker entrypoints
+  ---
+  duration_ms: 327.806959
+  type: 'test'
+  ...
+# Subtest: exact 3446aed server startup rejects before provider/service/recovery/listener/worker entrypoints
+ok 10 - exact 3446aed server startup rejects before provider/service/recovery/listener/worker entrypoints
+  ---
+  duration_ms: 228.728667
+  type: 'test'
+  ...
+# Subtest: exact old migrate-data copies the main-DB barrier then refuses its destination without changing source
+ok 11 - exact old migrate-data copies the main-DB barrier then refuses its destination without changing source
+  ---
+  duration_ms: 352.851833
+  type: 'test'
+  ...
+# Subtest: actual frozen344 services and timeline produce export intents whose original JSON/receipts survive normal upgrade24 and restore
+ok 12 - actual frozen344 services and timeline produce export intents whose original JSON/receipts survive normal upgrade24 and restore
+  ---
+  duration_ms: 265.476834
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3605.47925

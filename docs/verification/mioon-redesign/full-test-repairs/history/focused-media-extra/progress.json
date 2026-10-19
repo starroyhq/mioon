@@ -1,0 +1,9 @@
+{
+  "completedFiles": 3,
+  "totalFiles": 3,
+  "passedFiles": 2,
+  "failedFiles": 1,
+  "timeoutFiles": 0,
+  "seconds": 16.31,
+  "last": "tests/subject-video-provider.test.mjs"
+}

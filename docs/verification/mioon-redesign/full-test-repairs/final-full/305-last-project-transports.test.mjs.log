@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: actual HTTP rediscovery survives owned SIGKILL and a new listener without GET writes or domain effects
+ok 1 - actual HTTP rediscovery survives owned SIGKILL and a new listener without GET writes or domain effects
+  ---
+  duration_ms: 2137.119291
+  type: 'test'
+  ...
+# Subtest: lost acknowledgement is rediscovered and exact retry does not write twice; stale conflicting selection cannot rebase
+ok 2 - lost acknowledgement is rediscovered and exact retry does not write twice; stale conflicting selection cannot rebase
+  ---
+  duration_ms: 1331.341291
+  type: 'test'
+  ...
+# Subtest: private HTTP preserves token and cookie auth, Host/Origin checks, strict methods, fields and byte limits
+ok 3 - private HTTP preserves token and cookie auth, Host/Origin checks, strict methods, fields and byte limits
+  ---
+  duration_ms: 1342.87575
+  type: 'test'
+  ...
+# Subtest: route and storage failure are private, nonrepairing and absent from the operation catalog
+ok 4 - route and storage failure are private, nonrepairing and absent from the operation catalog
+  ---
+  duration_ms: 1316.392166
+  type: 'test'
+  ...
+# Subtest: real cold backup excludes fixed locator sidecar and leaves source bytes and metadata intact
+ok 5 - real cold backup excludes fixed locator sidecar and leaves source bytes and metadata intact
+  ---
+  duration_ms: 1686.482042
+  type: 'test'
+  ...
+# Subtest: restored server returns exact unsupported before unsafe locator access and still supports ordinary local editing
+ok 6 - restored server returns exact unsupported before unsafe locator access and still supports ordinary local editing
+  ---
+  duration_ms: 1783.792791
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 9937.316

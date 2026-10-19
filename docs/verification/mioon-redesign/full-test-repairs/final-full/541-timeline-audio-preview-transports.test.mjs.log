@@ -1,0 +1,34 @@
+TAP version 13
+# Subtest: real startServer HTTP, CLI and official MCP expose identical read-only plans; authenticated PCM is exact and disposable
+ok 1 - real startServer HTTP, CLI and official MCP expose identical read-only plans; authenticated PCM is exact and disposable
+  ---
+  duration_ms: 2662.458959
+  type: 'test'
+  ...
+# Subtest: real fixed PCM endpoint rejects unauthorized, foreign, stale, malformed and caller-selected source input before decoding
+ok 2 - real fixed PCM endpoint rejects unauthorized, foreign, stale, malformed and caller-selected source input before decoding
+  ---
+  duration_ms: 1538.356833
+  type: 'test'
+  ...
+# Subtest: shared client rejects malformed audio plan identity and accounting without retry or mutation recovery claims
+ok 3 - shared client rejects malformed audio plan identity and accounting without retry or mutation recovery claims
+  ---
+  duration_ms: 742.055042
+  type: 'test'
+  ...
+# Subtest: real HTTP disconnect during an actual bounded FFmpeg decode reaps the exact child and leaves a fresh explicit preparation available
+ok 4 - real HTTP disconnect during an actual bounded FFmpeg decode reaps the exact child and leaves a fresh explicit preparation available
+  ---
+  duration_ms: 1239.231167
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 6721.491042

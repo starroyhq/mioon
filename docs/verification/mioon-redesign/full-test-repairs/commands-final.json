@@ -1,0 +1,23 @@
+[
+  {
+    "name": "typecheck-final",
+    "command": [
+      "node",
+      "scripts/tooling.mjs",
+      "typecheck"
+    ],
+    "exitCode": 0,
+    "seconds": 16.23
+  },
+  {
+    "name": "build-final",
+    "command": [
+      "node",
+      "scripts/tooling.mjs",
+      "build",
+      "--channel=development"
+    ],
+    "exitCode": 0,
+    "seconds": 43.01
+  }
+]

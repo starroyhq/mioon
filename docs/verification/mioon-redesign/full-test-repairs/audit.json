@@ -1,0 +1,119 @@
+{
+  "dependencyManifests": [
+    {
+      "file": "package.json",
+      "sha256": "049b21513332b8c2da1a5ba3f241b3705631b8b06c44f8e0727de11e9de36b45",
+      "unchangedFromTaskStart": true
+    },
+    {
+      "file": "packages/ui/package.json",
+      "sha256": "8e0cac837f13546c76cbec3ba1d2d78a8cf595077b87d56f143bdf3ce2f89c6b",
+      "unchangedFromTaskStart": true
+    },
+    {
+      "file": "packages/contracts/package.json",
+      "sha256": "6c4d5008f65863cee662e6d6ace9ed7f005cb4f8f0586167ff211544af9285fd",
+      "unchangedFromTaskStart": true
+    },
+    {
+      "file": "packages/business/package.json",
+      "sha256": "abb5464273c9e42a89150e01636545a010c990f2a3b0ee8a7f14e19e2cde4516",
+      "unchangedFromTaskStart": true
+    },
+    {
+      "file": "packages/i18n/package.json",
+      "sha256": "452c2d48f30a190317d7eb8695c3d856126135ae07f37cba1ca0a09df419d143",
+      "unchangedFromTaskStart": true
+    },
+    {
+      "file": "packages/client/package.json",
+      "sha256": "ab2118d8cb89032ee5e6ae9f28cdac4129ea8f32ae236768687e6e4f130b689d",
+      "unchangedFromTaskStart": true
+    },
+    {
+      "file": "apps/web/package.json",
+      "sha256": "a780c4804593d98a812d7a175264fe2c5de2017a3bf9a1101cc93fb8afeb1981",
+      "unchangedFromTaskStart": true
+    },
+    {
+      "file": "apps/desktop/package.json",
+      "sha256": "003a1e26a2c3bce77bdfcf98e7bd790c5f9d9265ff8688dc0a70c483c1f19a5e",
+      "unchangedFromTaskStart": true
+    },
+    {
+      "file": "apps/server/package.json",
+      "sha256": "3917a4499845968dfa373e2a94e4bfcf00457386b53c578a5a3065ef43317de7",
+      "unchangedFromTaskStart": true
+    },
+    {
+      "file": "apps/mcp/package.json",
+      "sha256": "a4b62621714d16bb209ae2a25bd8d3863c8d9d0e71f68dea48d6582857e38d53",
+      "unchangedFromTaskStart": true
+    },
+    {
+      "file": "apps/cli/package.json",
+      "sha256": "0378404bbff9018c56411446ad4ab55ba77929c08cb50db9be3797946bc44d1a",
+      "unchangedFromTaskStart": true
+    },
+    {
+      "file": "pnpm-lock.yaml",
+      "sha256": "f05f62d4d1517d149c6384e25c7685c7a1e4f2b86d8d4a28245777e6ec98b9c9",
+      "unchangedFromTaskStart": true
+    },
+    {
+      "file": "pnpm-workspace.yaml",
+      "sha256": "a09bea35e5d11534ed2699e355068828ced1c610a67707bbcde249d583c08615",
+      "unchangedFromTaskStart": true
+    }
+  ],
+  "allUnchanged": true,
+  "originalTrackedStatus": "",
+  "worktreeBranch": "codex/mioon-redesign",
+  "worktreeHead": "8d2f7faea422b60e2030a72f15af2d7aa9d465f6",
+  "stagedDiffEmpty": true,
+  "frozenSourceFiles": 1888,
+  "frozenSourceMismatches": [],
+  "executedTestSourceMismatches": [],
+  "all755FilesPresentExactlyOnce": true,
+  "allLogHashesMatch": true,
+  "lateStandaloneTestSync": [
+    {
+      "file": "tests/workspace-restore-local-execution.test.mjs",
+      "beforeSha256": "5e7163940a89ce88ff8e74e27ef60b1b30002c7f147907b95bfaa9661742d748",
+      "afterSha256": "b1318c8833f099c8dcdea52896bc3914ade9c73ac4381b68e2615f7506881daf",
+      "synchronizedAt": "2026-10-19T03:01:14.814277+00:00",
+      "testWasDispatched": false,
+      "otherTestImports": [],
+      "reason": "Standalone synthetic probe output still used 720 dimensions for the new saved 1080 timeline; source probe remains720; no production or shared helper changed",
+      "progressAtSynchronization": {
+        "completedFiles": 241,
+        "totalFiles": 755,
+        "passedFiles": 214,
+        "failedFiles": 27,
+        "timeoutFiles": 0,
+        "seconds": 260.65,
+        "last": "tests/float-checked-export-transports.test.mjs"
+      }
+    }
+  ],
+  "productionAndSharedHelpersUnchangedDuringFinalRun": true,
+  "sourceChangesAfterLaunch": [
+    "tests/workspace-restore-local-execution.test.mjs"
+  ],
+  "sensitivePatternScan": {
+    "filesExamined": 1929,
+    "patternCounts": {
+      "private-key-header": 0,
+      "aws-key": 0,
+      "project-api-key": 0
+    },
+    "scope": "Limited known credential formats, no environment values read; live execution used project allowlist"
+  },
+  "gitDiffCheckExitCode": 0,
+  "postCleanupSourceHashCount": 1888,
+  "postCleanupSourceMismatches": [],
+  "postCleanupBuildHashCount": 61,
+  "postCleanupBuildMismatches": [],
+  "localMarkdownLinkFailures": [],
+  "postCleanupOwnedProcesses": []
+}

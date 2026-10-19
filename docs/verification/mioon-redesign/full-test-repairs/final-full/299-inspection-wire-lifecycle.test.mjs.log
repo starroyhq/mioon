@@ -1,0 +1,89 @@
+TAP version 13
+# Subtest: inspection CLI keeps the original 10s process deadline and repeatedly exits after offline and RPC envelopes
+ok 1 - inspection CLI keeps the original 10s process deadline and repeatedly exits after offline and RPC envelopes
+  ---
+  duration_ms: 1555.130292
+  type: 'test'
+  ...
+# {"scenario":"offline-schema","repeat":1,"reason":"completed","timeoutFired":false,"deadlineMs":10000,"elapsedMs":254,"spawnedAtMs":1,"phase":"stdio-close","stdoutBytes":724,"stderrBytes":0,"envelopeAtMs":249,"observations":[{"stage":"preloaded","elapsedMs":123},{"stage":"compile-cache-disabled","elapsedMs":123}],"exit":{"code":0,"signal":null,"elapsedMs":254},"close":{"code":0,"signal":null,"elapsedMs":254},"spawnErrorCode":null}
+# {"scenario":"offline-schema","repeat":2,"reason":"completed","timeoutFired":false,"deadlineMs":10000,"elapsedMs":253,"spawnedAtMs":1,"phase":"stdio-close","stdoutBytes":724,"stderrBytes":0,"envelopeAtMs":248,"observations":[{"stage":"preloaded","elapsedMs":123},{"stage":"compile-cache-disabled","elapsedMs":123}],"exit":{"code":0,"signal":null,"elapsedMs":253},"close":{"code":0,"signal":null,"elapsedMs":253},"spawnErrorCode":null}
+# {"scenario":"offline-schema","repeat":3,"reason":"completed","timeoutFired":false,"deadlineMs":10000,"elapsedMs":246,"spawnedAtMs":1,"phase":"stdio-close","stdoutBytes":724,"stderrBytes":0,"envelopeAtMs":241,"observations":[{"stage":"preloaded","elapsedMs":120},{"stage":"compile-cache-disabled","elapsedMs":120}],"exit":{"code":0,"signal":null,"elapsedMs":246},"close":{"code":0,"signal":null,"elapsedMs":246},"spawnErrorCode":null}
+# {"scenario":"synthetic-rpc","repeat":1,"reason":"completed","timeoutFired":false,"deadlineMs":10000,"elapsedMs":272,"spawnedAtMs":1,"phase":"stdio-close","stdoutBytes":65,"stderrBytes":0,"envelopeAtMs":266,"observations":[{"stage":"preloaded","elapsedMs":128},{"stage":"compile-cache-disabled","elapsedMs":128},{"stage":"fetch-start","elapsedMs":253},{"stage":"fetch-headers","elapsedMs":266}],"exit":{"code":0,"signal":null,"elapsedMs":272},"close":{"code":0,"signal":null,"elapsedMs":272},"spawnErrorCode":null}
+# {"scenario":"synthetic-rpc","repeat":2,"reason":"completed","timeoutFired":false,"deadlineMs":10000,"elapsedMs":261,"spawnedAtMs":0,"phase":"stdio-close","stdoutBytes":65,"stderrBytes":0,"envelopeAtMs":256,"observations":[{"stage":"preloaded","elapsedMs":122},{"stage":"compile-cache-disabled","elapsedMs":122},{"stage":"fetch-start","elapsedMs":245},{"stage":"fetch-headers","elapsedMs":255}],"exit":{"code":0,"signal":null,"elapsedMs":261},"close":{"code":0,"signal":null,"elapsedMs":261},"spawnErrorCode":null}
+# {"scenario":"synthetic-rpc","repeat":3,"reason":"completed","timeoutFired":false,"deadlineMs":10000,"elapsedMs":262,"spawnedAtMs":0,"phase":"stdio-close","stdoutBytes":65,"stderrBytes":0,"envelopeAtMs":257,"observations":[{"stage":"preloaded","elapsedMs":121},{"stage":"compile-cache-disabled","elapsedMs":121},{"stage":"fetch-start","elapsedMs":246},{"stage":"fetch-headers","elapsedMs":256}],"exit":{"code":0,"signal":null,"elapsedMs":262},"close":{"code":0,"signal":null,"elapsedMs":262},"spawnErrorCode":null}
+# Subtest: process deadline distinguishes startup, request, response body and an envelope waiting for exit
+    # Subtest: startup
+    ok 1 - startup
+      ---
+      duration_ms: 303.255959
+      type: 'test'
+      ...
+    # Subtest: command
+    ok 2 - command
+      ---
+      duration_ms: 302.936166
+      type: 'test'
+      ...
+    # Subtest: request
+    ok 3 - request
+      ---
+      duration_ms: 302.688583
+      type: 'test'
+      ...
+    # Subtest: response-body-or-envelope
+    ok 4 - response-body-or-envelope
+      ---
+      duration_ms: 303.711209
+      type: 'test'
+      ...
+    # Subtest: process-exit
+    ok 5 - process-exit
+      ---
+      duration_ms: 302.780167
+      type: 'test'
+      ...
+    1..5
+ok 2 - process deadline distinguishes startup, request, response body and an envelope waiting for exit
+  ---
+  duration_ms: 1516.211291
+  type: 'test'
+  ...
+# Subtest: outer test cancellation is distinct from the CLI process deadline and cleans the child
+ok 3 - outer test cancellation is distinct from the CLI process deadline and cleans the child
+  ---
+  duration_ms: 302.395666
+  type: 'test'
+  ...
+# Subtest: an exit with inherited stdout still open is diagnosed before owned pipes are closed
+ok 4 - an exit with inherited stdout still open is diagnosed before owned pipes are closed
+  ---
+  duration_ms: 323.736291
+  type: 'test'
+  ...
+# Subtest: spawn failure reports a safe code without executable path or raw arguments
+ok 5 - spawn failure reports a safe code without executable path or raw arguments
+  ---
+  duration_ms: 1.123375
+  type: 'test'
+  ...
+# Subtest: a process signal before the deadline preserves its actual exit and close evidence
+ok 6 - a process signal before the deadline preserves its actual exit and close evidence
+  ---
+  duration_ms: 106.536542
+  type: 'test'
+  ...
+# Subtest: dedicated trace accepts only bounded fixed phases and never includes child-controlled text
+ok 7 - dedicated trace accepts only bounded fixed phases and never includes child-controlled text
+  ---
+  duration_ms: 303.892208
+  type: 'test'
+  ...
+1..7
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4247.2865

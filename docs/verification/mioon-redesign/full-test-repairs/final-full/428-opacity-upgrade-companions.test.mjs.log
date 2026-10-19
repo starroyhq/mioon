@@ -1,0 +1,160 @@
+TAP version 13
+# Subtest: missing companion capture is noncreating and records all fixed absent paths without changing SQLite
+ok 1 - missing companion capture is noncreating and records all fixed absent paths without changing SQLite
+  ---
+  duration_ms: 6.195125
+  type: 'test'
+  ...
+# Subtest: last-project rebinding preserves revision, project and timestamp, and normal target CAS rejects old source authority
+ok 2 - last-project rebinding preserves revision, project and timestamp, and normal target CAS rejects old source authority
+  ---
+  duration_ms: 34.353292
+  type: 'test'
+  ...
+# Subtest: legacy clip content version1 tombstones are explicitly excluded without rewriting source bytes
+ok 3 - legacy clip content version1 tombstones are explicitly excluded without rewriting source bytes
+  ---
+  duration_ms: 4.536042
+  type: 'test'
+  ...
+# Subtest: legacy clip content version2 tombstones are explicitly excluded without rewriting source bytes
+ok 4 - legacy clip content version2 tombstones are explicitly excluded without rewriting source bytes
+  ---
+  duration_ms: 4.221417
+  type: 'test'
+  ...
+# Subtest: delivery and shot-text tombstones and empty files are validated and explicitly excluded
+ok 5 - delivery and shot-text tombstones and empty files are validated and explicitly excluded
+  ---
+  duration_ms: 11.279041
+  type: 'test'
+  ...
+# Subtest: local-drafts-v1.json retained draft/raw refuses without data loss or implicit task execution
+ok 6 - local-drafts-v1.json retained draft/raw refuses without data loss or implicit task execution
+  ---
+  duration_ms: 2.687416
+  type: 'test'
+  ...
+# Subtest: local-delivery-v1.json retained draft/raw refuses without data loss or implicit task execution
+ok 7 - local-delivery-v1.json retained draft/raw refuses without data loss or implicit task execution
+  ---
+  duration_ms: 2.651583
+  type: 'test'
+  ...
+# Subtest: local-delivery-v1.json retained intent/pending refuses without data loss or implicit task execution
+ok 8 - local-delivery-v1.json retained intent/pending refuses without data loss or implicit task execution
+  ---
+  duration_ms: 2.980709
+  type: 'test'
+  ...
+# Subtest: local-delivery-v1.json retained intent/accepted refuses without data loss or implicit task execution
+ok 9 - local-delivery-v1.json retained intent/accepted refuses without data loss or implicit task execution
+  ---
+  duration_ms: 3.6625
+  type: 'test'
+  ...
+# Subtest: local-shot-text-v1.json retained draft/raw refuses without data loss or implicit task execution
+ok 10 - local-shot-text-v1.json retained draft/raw refuses without data loss or implicit task execution
+  ---
+  duration_ms: 2.346667
+  type: 'test'
+  ...
+# Subtest: local-shot-text-v1.json retained intent/pending refuses without data loss or implicit task execution
+ok 11 - local-shot-text-v1.json retained intent/pending refuses without data loss or implicit task execution
+  ---
+  duration_ms: 2.463416
+  type: 'test'
+  ...
+# Subtest: local-shot-text-v1.json retained intent/applied refuses without data loss or implicit task execution
+ok 12 - local-shot-text-v1.json retained intent/applied refuses without data loss or implicit task execution
+  ---
+  duration_ms: 2.790709
+  type: 'test'
+  ...
+# Subtest: ordinary40 never imports or resets local-drafts-v3.json
+ok 13 - ordinary40 never imports or resets local-drafts-v3.json
+  ---
+  duration_ms: 3.293459
+  type: 'test'
+  ...
+# Subtest: ordinary40 never imports or resets local-drafts-restored43-v1.json
+ok 14 - ordinary40 never imports or resets local-drafts-restored43-v1.json
+  ---
+  duration_ms: 2.451208
+  type: 'test'
+  ...
+# Subtest: decoded duplicate keys, fatal UTF-8, malformed JSON and unknown formats remain untouched
+ok 15 - decoded duplicate keys, fatal UTF-8, malformed JSON and unknown formats remain untouched
+  ---
+  duration_ms: 7.188333
+  type: 'test'
+  ...
+# Subtest: foreign workspace or channel scope rejects valid locator and empty drafts without rebinding them
+ok 16 - foreign workspace or channel scope rejects valid locator and empty drafts without rebinding them
+  ---
+  duration_ms: 4.929375
+  type: 'test'
+  ...
+# Subtest: last-project target must exist and match bounded relational JSON identity
+ok 17 - last-project target must exist and match bounded relational JSON identity
+  ---
+  duration_ms: 7.791083
+  type: 'test'
+  ...
+# Subtest: slot uniqueness, known formats, missing fields and slot capacity are strict for excluded files
+ok 18 - slot uniqueness, known formats, missing fields and slot capacity are strict for excluded files
+  ---
+  duration_ms: 19.835083
+  type: 'test'
+  ...
+# Subtest: last-project-v1.json enforces its original 4096-byte bound
+ok 19 - last-project-v1.json enforces its original 4096-byte bound
+  ---
+  duration_ms: 2.3555
+  type: 'test'
+  ...
+# Subtest: local-drafts-v1.json enforces its original 2097152-byte bound
+ok 20 - local-drafts-v1.json enforces its original 2097152-byte bound
+  ---
+  duration_ms: 2.410708
+  type: 'test'
+  ...
+# Subtest: local-delivery-v1.json enforces its original 2097152-byte bound
+ok 21 - local-delivery-v1.json enforces its original 2097152-byte bound
+  ---
+  duration_ms: 2.222875
+  type: 'test'
+  ...
+# Subtest: local-shot-text-v1.json enforces its original 16777216-byte bound
+ok 22 - local-shot-text-v1.json enforces its original 16777216-byte bound
+  ---
+  duration_ms: 6.459333
+  type: 'test'
+  ...
+# Subtest: symlink, hardlink, directory and nonprivate mode refuse without repairs
+ok 23 - symlink, hardlink, directory and nonprivate mode refuse without repairs
+  ---
+  duration_ms: 3.265667
+  type: 'test'
+  ...
+# Subtest: final capture verification detects new paths, deletion, content changes and same-byte inode replacement
+ok 24 - final capture verification detects new paths, deletion, content changes and same-byte inode replacement
+  ---
+  duration_ms: 8.59475
+  type: 'test'
+  ...
+# Subtest: source identity admission rejects stale directory/database identities and lexical path aliases
+ok 25 - source identity admission rejects stale directory/database identities and lexical path aliases
+  ---
+  duration_ms: 3.196666
+  type: 'test'
+  ...
+1..25
+# tests 25
+# suites 0
+# pass 25
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 379.936292

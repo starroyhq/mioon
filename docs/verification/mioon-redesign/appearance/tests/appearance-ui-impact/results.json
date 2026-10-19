@@ -1,0 +1,62 @@
+[
+  {
+    "file": "workbench-shell.test.mjs",
+    "code": 0,
+    "seconds": 0.28
+  },
+  {
+    "file": "project-home-panel.test.mjs",
+    "code": 0,
+    "seconds": 0.63
+  },
+  {
+    "file": "project-home-app.test.mjs",
+    "code": 0,
+    "seconds": 0.65
+  },
+  {
+    "file": "workspace-panels.test.mjs",
+    "code": 0,
+    "seconds": 1.01
+  },
+  {
+    "file": "workspace-panel-intent.test.mjs",
+    "code": 1,
+    "seconds": 0.49
+  },
+  {
+    "file": "i18n-shell.test.mjs",
+    "code": 0,
+    "seconds": 0.43
+  },
+  {
+    "file": "ui-components.test.mjs",
+    "code": 0,
+    "seconds": 0.79
+  },
+  {
+    "file": "redesign-board-ui.test.mjs",
+    "code": 0,
+    "seconds": 0.45
+  },
+  {
+    "file": "task-center-app.test.mjs",
+    "code": 0,
+    "seconds": 0.38
+  },
+  {
+    "file": "export-preflight-ui.test.mjs",
+    "code": 0,
+    "seconds": 0.53
+  },
+  {
+    "file": "export-file-actions-ui.test.mjs",
+    "code": 0,
+    "seconds": 0.43
+  },
+  {
+    "file": "canvas-fit.test.mjs",
+    "code": 0,
+    "seconds": 0.28
+  }
+]

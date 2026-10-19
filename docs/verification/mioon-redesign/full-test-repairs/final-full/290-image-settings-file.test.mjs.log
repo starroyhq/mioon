@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: dedicated image envelope uses private atomic file and reading defaults does not create directories
+ok 1 - dedicated image envelope uses private atomic file and reading defaults does not create directories
+  ---
+  duration_ms: 24.968833
+  type: 'test'
+  ...
+# Subtest: image updates preserve independent Agent envelope bytes and neither adopt nor migrate its secrets
+ok 2 - image updates preserve independent Agent envelope bytes and neither adopt nor migrate its secrets
+  ---
+  duration_ms: 12.96075
+  type: 'test'
+  ...
+# Subtest: plaintext update DTOs, nonimage envelopes, corrupt and oversized file contents fail closed
+ok 3 - plaintext update DTOs, nonimage envelopes, corrupt and oversized file contents fail closed
+  ---
+  duration_ms: 5.048833
+  type: 'test'
+  ...
+# Subtest: symlinked parents, directory, envelope and hard links fail closed without changing target
+ok 4 - symlinked parents, directory, envelope and hard links fail closed without changing target
+  ---
+  duration_ms: 4.870709
+  type: 'test'
+  ...
+# Subtest: unsafe file and directory permissions fail closed without chmod repair
+ok 5 - unsafe file and directory permissions fail closed without chmod repair
+  ---
+  duration_ms: 10.761
+  type: 'test'
+  ...
+# Subtest: concurrent raw readers see complete envelopes and no leftover temporary files
+ok 6 - concurrent raw readers see complete envelopes and no leftover temporary files
+  ---
+  duration_ms: 88.217
+  type: 'test'
+  ...
+# Subtest: settings file path is absolute and bounded by a private root
+ok 7 - settings file path is absolute and bounded by a private root
+  ---
+  duration_ms: 0.332167
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 285.561375

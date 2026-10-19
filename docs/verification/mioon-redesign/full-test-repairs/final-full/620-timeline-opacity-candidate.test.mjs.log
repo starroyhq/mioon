@@ -1,0 +1,60 @@
+TAP version 13
+# Subtest: seven points fit the real 128-node prepare wrapper with maximal existing fields
+ok 1 - seven points fit the real 128-node prepare wrapper with maximal existing fields
+  ---
+  duration_ms: 5.497
+  type: 'test'
+  ...
+# {"operation":"timeline.clip.add","baselineNodes":98,"points":7,"nodes":122,"prepareNodes":126,"bytes":4938,"depth":5}
+# {"operation":"timeline.clip.update","baselineNodes":99,"points":7,"nodes":123,"prepareNodes":127,"bytes":4947,"depth":6}
+# Subtest: candidate add/update preserve absence/null/value and fail closed on duration and visual kind
+ok 2 - candidate add/update preserve absence/null/value and fail closed on duration and visual kind
+  ---
+  duration_ms: 3.829209
+  type: 'test'
+  ...
+# Subtest: candidate intent admits only two exact typed curve arrays, without executing hostile data
+ok 3 - candidate intent admits only two exact typed curve arrays, without executing hostile data
+  ---
+  duration_ms: 0.85575
+  type: 'test'
+  ...
+# Subtest: candidate record checks complete old structure and visual track while keeping new fields detached
+ok 4 - candidate record checks complete old structure and visual track while keeping new fields detached
+  ---
+  duration_ms: 1.181042
+  type: 'test'
+  ...
+# Subtest: record capture refuses hostile records, options and unrelated arrays before any user code runs
+ok 5 - record capture refuses hostile records, options and unrelated arrays before any user code runs
+  ---
+  duration_ms: 0.235333
+  type: 'test'
+  ...
+# Subtest: candidate traversal and complete size rejection leave original input unchanged
+ok 6 - candidate traversal and complete size rejection leave original input unchanged
+  ---
+  duration_ms: 11.601875
+  type: 'test'
+  ...
+# Subtest: complete opacity record has an exact 262144-byte admission boundary
+ok 7 - complete opacity record has an exact 262144-byte admission boundary
+  ---
+  duration_ms: 34.652583
+  type: 'test'
+  ...
+# Subtest: dormant imports do not broaden production wire, full record or durable task guards
+ok 8 - dormant imports do not broaden production wire, full record or durable task guards
+  ---
+  duration_ms: 0.612458
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 266.19625

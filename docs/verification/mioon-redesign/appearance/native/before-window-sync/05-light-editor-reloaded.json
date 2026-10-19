@@ -1,0 +1,64 @@
+{
+  "timestamp": "2026-10-19T00:20:22.591Z",
+  "pid": 44488,
+  "nativeTheme": {
+    "themeSource": "system",
+    "shouldUseDarkColors": false
+  },
+  "windows": [
+    {
+      "id": 2,
+      "bounds": {
+        "x": 278,
+        "y": 121,
+        "width": 1500,
+        "height": 960
+      },
+      "backgroundColor": "#F6F6F6",
+      "trafficLightPosition": {
+        "x": 20,
+        "y": 22
+      },
+      "visible": true,
+      "focused": true,
+      "document": {
+        "url": "/?project=63dfa66e-604d-4a2d-bfa7-7637550a86c9",
+        "appearance": "light",
+        "theme": "light",
+        "classes": "light",
+        "colorScheme": "light",
+        "background": "#f6f6f6",
+        "systemDark": false,
+        "workbench": true,
+        "settings": false
+      }
+    },
+    {
+      "id": 1,
+      "bounds": {
+        "x": 278,
+        "y": 121,
+        "width": 1500,
+        "height": 960
+      },
+      "backgroundColor": "#F6F6F6",
+      "trafficLightPosition": {
+        "x": 20,
+        "y": 22
+      },
+      "visible": false,
+      "focused": false,
+      "document": {
+        "url": "/",
+        "appearance": "dark",
+        "theme": "dark",
+        "classes": "dark",
+        "colorScheme": "dark",
+        "background": "#0b0c0e",
+        "systemDark": false,
+        "workbench": false,
+        "settings": false
+      }
+    }
+  ]
+}

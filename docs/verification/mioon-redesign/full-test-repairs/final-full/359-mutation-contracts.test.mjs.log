@@ -1,0 +1,28 @@
+TAP version 13
+# Subtest: exactly six existing local schemas accept an optional stable replay key without filling defaults
+ok 1 - exactly six existing local schemas accept an optional stable replay key without filling defaults
+  ---
+  duration_ms: 4.913916
+  type: 'test'
+  ...
+# Subtest: local replay remains explicitly opt-in in discovery and unconditional idempotent hints remain false
+ok 2 - local replay remains explicitly opt-in in discovery and unconditional idempotent hints remain false
+  ---
+  duration_ms: 1.114042
+  type: 'test'
+  ...
+# Subtest: project, edge and import operations do not gain optional local replay keys
+ok 3 - project, edge and import operations do not gain optional local replay keys
+  ---
+  duration_ms: 0.186416
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 269.476375

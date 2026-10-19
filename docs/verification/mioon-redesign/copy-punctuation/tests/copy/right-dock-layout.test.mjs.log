@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: the clip inspector leads with the fields people edit most and keeps source and replacement after them
+ok 1 - the clip inspector leads with the fields people edit most and keeps source and replacement after them
+  ---
+  duration_ms: 1.368958
+  type: 'test'
+  ...
+# Subtest: Agent authorization status, review entrance and send stay in the sticky composer; explicit consent belongs to its review dialog
+ok 2 - Agent authorization status, review entrance and send stay in the sticky composer; explicit consent belongs to its review dialog
+  ---
+  duration_ms: 1.91025
+  type: 'test'
+  ...
+# Subtest: selecting a shot, node or clip closes reference overlays after the existing navigation fence
+ok 3 - selecting a shot, node or clip closes reference overlays after the existing navigation fence
+  ---
+  duration_ms: 0.451375
+  type: 'test'
+  ...
+# Subtest: the generate button explains why it is idle while the title or prompt text still has to be saved
+ok 4 - the generate button explains why it is idle while the title or prompt text still has to be saved
+  ---
+  duration_ms: 0.230584
+  type: 'test'
+  ...
+# Subtest: an empty timeline is flagged before Check, and the empty preview offers building it from the storyboard
+ok 5 - an empty timeline is flagged before Check, and the empty preview offers building it from the storyboard
+  ---
+  duration_ms: 0.601709
+  type: 'test'
+  ...
+# Subtest: localized layout labels retain the original semantic copy
+ok 6 - localized layout labels retain the original semantic copy
+  ---
+  duration_ms: 0.172708
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 215.065083

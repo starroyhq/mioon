@@ -1,0 +1,126 @@
+{
+  "scope": "Real ProjectHomeScreen SSR in a bounded dialog CSS fixture; actual Electron recapture remains required.",
+  "passed": true,
+  "results": [
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "metrics": {
+        "dialog": {
+          "x": 230,
+          "y": 130,
+          "width": 980,
+          "height": 640,
+          "clientHeight": 638,
+          "scrollHeight": 638,
+          "display": "flex",
+          "overflowY": "hidden"
+        },
+        "layout": {
+          "x": 231,
+          "y": 262.1875,
+          "width": 978,
+          "height": 506.8125,
+          "clientHeight": 507,
+          "scrollHeight": 507,
+          "display": "block",
+          "overflowY": "visible"
+        },
+        "main": {
+          "x": 231,
+          "y": 262.1875,
+          "width": 978,
+          "height": 506.8125,
+          "clientHeight": 507,
+          "scrollHeight": 1222,
+          "display": "block",
+          "overflowY": "auto"
+        },
+        "alert": {
+          "x": 255,
+          "y": 282.1875,
+          "width": 925,
+          "height": 76.984375,
+          "clientHeight": 75,
+          "scrollHeight": 75,
+          "display": "flex",
+          "overflowY": "visible"
+        },
+        "search": {
+          "x": 729.125,
+          "y": 223.6875,
+          "width": 320,
+          "height": 28,
+          "clientHeight": 26,
+          "scrollHeight": 26,
+          "display": "block",
+          "overflowY": "clip"
+        }
+      },
+      "screenshot": "embedded-home-error-1440-100.png"
+    },
+    {
+      "viewport": {
+        "width": 1050,
+        "height": 680
+      },
+      "scale": 1.25,
+      "metrics": {
+        "dialog": {
+          "x": 25,
+          "y": 25,
+          "width": 1000,
+          "height": 630,
+          "clientHeight": 502,
+          "scrollHeight": 502,
+          "display": "flex",
+          "overflowY": "hidden"
+        },
+        "layout": {
+          "x": 26,
+          "y": 189.75,
+          "width": 998,
+          "height": 464.25,
+          "clientHeight": 371,
+          "scrollHeight": 371,
+          "display": "block",
+          "overflowY": "visible"
+        },
+        "main": {
+          "x": 26,
+          "y": 189.75,
+          "width": 998,
+          "height": 464.25,
+          "clientHeight": 371,
+          "scrollHeight": 1171,
+          "display": "block",
+          "overflowY": "auto"
+        },
+        "alert": {
+          "x": 56,
+          "y": 214.75,
+          "width": 932,
+          "height": 95.75,
+          "clientHeight": 75,
+          "scrollHeight": 75,
+          "display": "flex",
+          "overflowY": "visible"
+        },
+        "search": {
+          "x": 424.65625,
+          "y": 141.75,
+          "width": 400,
+          "height": 35,
+          "clientHeight": 26,
+          "scrollHeight": 26,
+          "display": "block",
+          "overflowY": "clip"
+        }
+      },
+      "screenshot": "embedded-home-error-1050-125.png"
+    }
+  ]
+}

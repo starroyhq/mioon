@@ -1,0 +1,160 @@
+TAP version 13
+# Subtest: actual client uses private fixed GET without query and strict write input
+ok 1 - actual client uses private fixed GET without query and strict write input
+  ---
+  duration_ms: 14.795583
+  type: 'test'
+  ...
+# Subtest: success, unsupported, malformed JSON, surplus keys, bad IDs and bounded bytes are validated
+ok 2 - success, unsupported, malformed JSON, surplus keys, bad IDs and bounded bytes are validated
+  ---
+  duration_ms: 2.861333
+  type: 'test'
+  ...
+# Subtest: failure classification requires bounded exact code/status and strict error envelope, never message guessing
+ok 3 - failure classification requires bounded exact code/status and strict error envelope, never message guessing
+  ---
+  duration_ms: 0.923625
+  type: 'test'
+  ...
+# Subtest: discovery is read-only and only a matching remembered project is a boot candidate
+ok 4 - discovery is read-only and only a matching remembered project is a boot candidate
+  ---
+  duration_ms: 1.067583
+  type: 'test'
+  ...
+# Subtest: older boot read cannot nominate a project after newer navigation, but can safely identify the selected workspace
+ok 5 - older boot read cannot nominate a project after newer navigation, but can safely identify the selected workspace
+  ---
+  duration_ms: 0.584375
+  type: 'test'
+  ...
+# Subtest: stale or invalid explicit-open epochs are ignored and never generate writes
+ok 6 - stale or invalid explicit-open epochs are ignored and never generate writes
+  ---
+  duration_ms: 0.265291
+  type: 'test'
+  ...
+# Subtest: newer selected project queues behind exact older ACK without receiving an old saved status
+ok 7 - newer selected project queues behind exact older ACK without receiving an old saved status
+  ---
+  duration_ms: 0.677625
+  type: 'test'
+  ...
+# Subtest: queue coalesces only authorized successful selections and invalidation drops stale queued work
+ok 8 - queue coalesces only authorized successful selections and invalidation drops stale queued work
+  ---
+  duration_ms: 0.875916
+  type: 'test'
+  ...
+# Subtest: two-window CAS conflict never overwrites or silently rebases after read-only recheck
+ok 9 - two-window CAS conflict never overwrites or silently rebases after read-only recheck
+  ---
+  duration_ms: 0.566958
+  type: 'test'
+  ...
+# Subtest: wrong scope or stale instance in a strict ACK blocks all further writes and invalidates verified scope
+ok 10 - wrong scope or stale instance in a strict ACK blocks all further writes and invalidates verified scope
+  ---
+  duration_ms: 0.799459
+  type: 'test'
+  ...
+# Subtest: server identity change during a pending PUT cannot be undone by its older valid ACK
+ok 11 - server identity change during a pending PUT cannot be undone by its older valid ACK
+  ---
+  duration_ms: 0.473542
+  type: 'test'
+  ...
+# Subtest: lost ACK plus empty recheck retains immutable original and never writes the newer selection
+ok 12 - lost ACK plus empty recheck retains immutable original and never writes the newer selection
+  ---
+  duration_ms: 0.4045
+  type: 'test'
+  ...
+# Subtest: even exact matching read does not cancel an unknown PUT or automatically release its queue
+ok 13 - even exact matching read does not cancel an unknown PUT or automatically release its queue
+  ---
+  duration_ms: 0.612416
+  type: 'test'
+  ...
+# Subtest: explicit retry sends precisely the original CAS body and only a strict matching ACK releases it
+ok 14 - explicit retry sends precisely the original CAS body and only a strict matching ACK releases it
+  ---
+  duration_ms: 0.4475
+  type: 'test'
+  ...
+# Subtest: a definite retry conflict cannot retroactively turn an unknown original into a rejected write
+ok 15 - a definite retry conflict cannot retroactively turn an unknown original into a rejected write
+  ---
+  duration_ms: 0.340334
+  type: 'test'
+  ...
+# Subtest: malformed or mismatched successful write response never produces saved state
+ok 16 - malformed or mismatched successful write response never produces saved state
+  ---
+  duration_ms: 1.024
+  type: 'test'
+  ...
+# Subtest: restored profile is explicitly unsupported and no selection or flush can write
+ok 17 - restored profile is explicitly unsupported and no selection or flush can write
+  ---
+  duration_ms: 0.147084
+  type: 'test'
+  ...
+# Subtest: dispose suppresses callbacks, fences old reads across activation, and does not create writes
+ok 18 - dispose suppresses callbacks, fences old reads across activation, and does not create writes
+  ---
+  duration_ms: 0.286959
+  type: 'test'
+  ...
+# Subtest: old close flush and late old write cannot publish after disposal/reactivation
+ok 19 - old close flush and late old write cannot publish after disposal/reactivation
+  ---
+  duration_ms: 0.335084
+  type: 'test'
+  ...
+# Subtest: bounded flush does not cancel an in-flight authorized write or invent work
+ok 20 - bounded flush does not cancel an in-flight authorized write or invent work
+  ---
+  duration_ms: 3.094291
+  type: 'test'
+  ...
+# Subtest: status component uses accessible shared controls, scopes its copy, and exposes only state-approved actions
+ok 21 - status component uses accessible shared controls, scopes its copy, and exposes only state-approved actions
+  ---
+  duration_ms: 23.627584
+  type: 'test'
+  ...
+# Subtest: request deadlines bound hanging GET and body reads, and tiny PUT permits keepalive
+ok 22 - request deadlines bound hanging GET and body reads, and tiny PUT permits keepalive
+  ---
+  duration_ms: 11.862042
+  type: 'test'
+  ...
+# Subtest: unknown PUT plus scope mismatch reread retains original uncertainty and exposes authoritative identity block
+ok 23 - unknown PUT plus scope mismatch reread retains original uncertainty and exposes authoritative identity block
+  ---
+  duration_ms: 0.528584
+  type: 'test'
+  ...
+# Subtest: a read started during PUT cannot regress a newer ACK with stale data or a stale failure
+ok 24 - a read started during PUT cannot regress a newer ACK with stale data or a stale failure
+  ---
+  duration_ms: 0.816
+  type: 'test'
+  ...
+# Subtest: a timed-out PUT late response never acknowledges the current renderer state
+ok 25 - a timed-out PUT late response never acknowledges the current renderer state
+  ---
+  duration_ms: 16.592084
+  type: 'test'
+  ...
+1..25
+# tests 25
+# suites 0
+# pass 25
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 292.525583

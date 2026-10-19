@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: Select preserves scalar values, option labels, disabled options, trigger props, and onChange shape
+ok 1 - Select preserves scalar values, option labels, disabled options, trigger props, and onChange shape
+  ---
+  duration_ms: 1.459209
+  type: 'test'
+  ...
+# Subtest: Select hides an open portal immediately, disables hidden controls, and rejects old open/value callbacks across hide and re-show
+ok 2 - Select hides an open portal immediately, disables hidden controls, and rejects old open/value callbacks across hide and re-show
+  ---
+  duration_ms: 0.337458
+  type: 'test'
+  ...
+# Subtest: Select callback captured while hidden cannot reopen or change the field after reveal
+ok 3 - Select callback captured while hidden cannot reopen or change the field after reveal
+  ---
+  duration_ms: 0.141667
+  type: 'test'
+  ...
+# Subtest: Select final-focus callback follows current visibility and respects newer outside focus
+ok 4 - Select final-focus callback follows current visibility and respects newer outside focus
+  ---
+  duration_ms: 0.204583
+  type: 'test'
+  ...
+# Subtest: Select unmount invalidates pending open, value, and final-focus callbacks
+ok 5 - Select unmount invalidates pending open, value, and final-focus callbacks
+  ---
+  duration_ms: 0.105667
+  type: 'test'
+  ...
+# Subtest: Tooltip retains ordinary visible behavior outside panels and preserves its trigger and content
+ok 6 - Tooltip retains ordinary visible behavior outside panels and preserves its trigger and content
+  ---
+  duration_ms: 0.11775
+  type: 'test'
+  ...
+# Subtest: Tooltip hides its portal and rejects delayed hover/open callbacks after hide, reveal, or unmount
+ok 7 - Tooltip hides its portal and rejects delayed hover/open callbacks after hide, reveal, or unmount
+  ---
+  duration_ms: 0.111542
+  type: 'test'
+  ...
+# Subtest: all panel Select/Tooltip consumers use the app visibility-aware adapters without modifying shared primitives
+ok 8 - all panel Select/Tooltip consumers use the app visibility-aware adapters without modifying shared primitives
+  ---
+  duration_ms: 0.8585
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 161.868625

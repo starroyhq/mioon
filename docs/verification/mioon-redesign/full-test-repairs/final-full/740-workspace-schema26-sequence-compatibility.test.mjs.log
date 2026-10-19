@@ -1,0 +1,581 @@
+TAP version 13
+# Subtest: actual historical format21 Number rebind produces REAL sequence that migrates intact to26
+ok 1 - actual historical format21 Number rebind produces REAL sequence that migrates intact to26
+  ---
+  duration_ms: 76.180166
+  type: 'test'
+  ...
+# Subtest: actual historical subtitle22 Number rebind produces REAL sequence that migrates intact to26
+ok 2 - actual historical subtitle22 Number rebind produces REAL sequence that migrates intact to26
+  ---
+  duration_ms: 67.261583
+  type: 'test'
+  ...
+# Subtest: ordinary26 preserves empty integer sequence 0, exact large rowid and AUTOINCREMENT behavior
+not ok 3 - ordinary26 preserves empty integer sequence 0, exact large rowid and AUTOINCREMENT behavior
+  ---
+  duration_ms: 11.217667
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:100:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    setSequence (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:28:91)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:102:5)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 preserves empty integer sequence 8123, exact large rowid and AUTOINCREMENT behavior
+not ok 4 - ordinary26 preserves empty integer sequence 8123, exact large rowid and AUTOINCREMENT behavior
+  ---
+  duration_ms: 10.613666
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:100:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    setSequence (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:28:91)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:102:5)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 preserves empty integer sequence 9007199254740991, exact large rowid and AUTOINCREMENT behavior
+not ok 5 - ordinary26 preserves empty integer sequence 9007199254740991, exact large rowid and AUTOINCREMENT behavior
+  ---
+  duration_ms: 10.327959
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:100:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    setSequence (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:28:91)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:102:5)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 preserves empty integer sequence 9007199254741999, exact large rowid and AUTOINCREMENT behavior
+not ok 6 - ordinary26 preserves empty integer sequence 9007199254741999, exact large rowid and AUTOINCREMENT behavior
+  ---
+  duration_ms: 10.305458
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:100:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    setSequence (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:28:91)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:102:5)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 preserves empty integer sequence 9223372036854775807, exact large rowid and AUTOINCREMENT behavior
+not ok 7 - ordinary26 preserves empty integer sequence 9223372036854775807, exact large rowid and AUTOINCREMENT behavior
+  ---
+  duration_ms: 11.452583
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:100:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    setSequence (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:28:91)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:102:5)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 preserves empty real sequence 0, exact large rowid and AUTOINCREMENT behavior
+not ok 8 - ordinary26 preserves empty real sequence 0, exact large rowid and AUTOINCREMENT behavior
+  ---
+  duration_ms: 10.855917
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:100:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    setSequence (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:28:91)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:102:5)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 preserves empty real sequence 8123, exact large rowid and AUTOINCREMENT behavior
+not ok 9 - ordinary26 preserves empty real sequence 8123, exact large rowid and AUTOINCREMENT behavior
+  ---
+  duration_ms: 10.783375
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:100:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    setSequence (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:28:91)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:102:5)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 preserves empty real sequence 9007199254740991, exact large rowid and AUTOINCREMENT behavior
+not ok 10 - ordinary26 preserves empty real sequence 9007199254740991, exact large rowid and AUTOINCREMENT behavior
+  ---
+  duration_ms: 11.082167
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:100:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    setSequence (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:28:91)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:102:5)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 preserves occupied integer sequence 31 at or above maximum position
+not ok 11 - ordinary26 preserves occupied integer sequence 31 at or above maximum position
+  ---
+  duration_ms: 10.979291
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:126:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    setSequence (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:28:91)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:129:5)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 preserves occupied integer sequence 8123 at or above maximum position
+not ok 12 - ordinary26 preserves occupied integer sequence 8123 at or above maximum position
+  ---
+  duration_ms: 10.529292
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:126:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    setSequence (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:28:91)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:129:5)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 preserves occupied real sequence 31 at or above maximum position
+not ok 13 - ordinary26 preserves occupied real sequence 31 at or above maximum position
+  ---
+  duration_ms: 10.824084
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:126:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    setSequence (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:28:91)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:129:5)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 preserves occupied real sequence 8123 at or above maximum position
+not ok 14 - ordinary26 preserves occupied real sequence 8123 at or above maximum position
+  ---
+  duration_ms: 10.593042
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:126:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    setSequence (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:28:91)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:129:5)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 preserves occupied real sequence 9007199254740991 at or above maximum position
+not ok 15 - ordinary26 preserves occupied real sequence 9007199254740991 at or above maximum position
+  ---
+  duration_ms: 11.342125
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:126:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    setSequence (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:28:91)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:129:5)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects null sequence before mutation
+ok 16 - ordinary26 rejects null sequence before mutation
+  ---
+  duration_ms: 20.804875
+  type: 'test'
+  ...
+# Subtest: ordinary26 rejects integer negative sequence before mutation
+ok 17 - ordinary26 rejects integer negative sequence before mutation
+  ---
+  duration_ms: 19.868917
+  type: 'test'
+  ...
+# Subtest: ordinary26 rejects real negative sequence before mutation
+ok 18 - ordinary26 rejects real negative sequence before mutation
+  ---
+  duration_ms: 20.4415
+  type: 'test'
+  ...
+# Subtest: ordinary26 rejects real fractional sequence before mutation
+ok 19 - ordinary26 rejects real fractional sequence before mutation
+  ---
+  duration_ms: 20.514958
+  type: 'test'
+  ...
+# Subtest: ordinary26 rejects real above safe integer sequence before mutation
+ok 20 - ordinary26 rejects real above safe integer sequence before mutation
+  ---
+  duration_ms: 21.031584
+  type: 'test'
+  ...
+# Subtest: ordinary26 rejects real near signed64 limit sequence before mutation
+ok 21 - ordinary26 rejects real near signed64 limit sequence before mutation
+  ---
+  duration_ms: 21.530083
+  type: 'test'
+  ...
+# Subtest: ordinary26 rejects positive infinity sequence before mutation
+ok 22 - ordinary26 rejects positive infinity sequence before mutation
+  ---
+  duration_ms: 20.371834
+  type: 'test'
+  ...
+# Subtest: ordinary26 rejects negative infinity sequence before mutation
+ok 23 - ordinary26 rejects negative infinity sequence before mutation
+  ---
+  duration_ms: 19.907375
+  type: 'test'
+  ...
+# Subtest: ordinary26 rejects numeric text sequence before mutation
+ok 24 - ordinary26 rejects numeric text sequence before mutation
+  ---
+  duration_ms: 21.090166
+  type: 'test'
+  ...
+# Subtest: ordinary26 rejects other text sequence before mutation
+ok 25 - ordinary26 rejects other text sequence before mutation
+  ---
+  duration_ms: 21.412042
+  type: 'test'
+  ...
+# Subtest: ordinary26 rejects blob sequence before mutation
+ok 26 - ordinary26 rejects blob sequence before mutation
+  ---
+  duration_ms: 20.917208
+  type: 'test'
+  ...
+# Subtest: ordinary26 rejects integer below maximum position sequence before mutation
+ok 27 - ordinary26 rejects integer below maximum position sequence before mutation
+  ---
+  duration_ms: 21.051042
+  type: 'test'
+  ...
+# Subtest: ordinary26 rejects real below maximum position sequence before mutation
+ok 28 - ordinary26 rejects real below maximum position sequence before mutation
+  ---
+  duration_ms: 21.310625
+  type: 'test'
+  ...
+# Subtest: ordinary26 rejects duplicate INTEGER/REAL sequence rows even with valid high-water values (bigint)
+not ok 29 - ordinary26 rejects duplicate INTEGER/REAL sequence rows even with valid high-water values (bigint)
+  ---
+  duration_ms: 11.595833
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:168:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    setSequence (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:28:91)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:170:5)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects duplicate INTEGER/REAL sequence rows even with valid high-water values (number)
+not ok 30 - ordinary26 rejects duplicate INTEGER/REAL sequence rows even with valid high-water values (number)
+  ---
+  duration_ms: 10.941166
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:168:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    setSequence (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:28:91)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:170:5)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 compares safe REAL sequence to an unsafe integer position without Number rounding
+not ok 31 - ordinary26 compares safe REAL sequence to an unsafe integer position without Number rounding
+  ---
+  duration_ms: 10.958041
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:178:1'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    setSequence (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:28:91)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:181:3)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rollback retains REAL sequence bytes, storage and rowid after DROP TABLE main.edit_tasks
+not ok 32 - ordinary26 rollback retains REAL sequence bytes, storage and rowid after DROP TABLE main.edit_tasks
+  ---
+  duration_ms: 10.923375
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:196:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    setSequence (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:28:91)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:199:5)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rollback retains REAL sequence bytes, storage and rowid after ALTER TABLE main.edit_tasks_loudness_v26 RENAME TO edit_tasks
+not ok 33 - ordinary26 rollback retains REAL sequence bytes, storage and rowid after ALTER TABLE main.edit_tasks_loudness_v26 RENAME TO edit_tasks
+  ---
+  duration_ms: 10.645875
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:196:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    setSequence (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:28:91)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:199:5)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rollback retains REAL sequence bytes, storage and rowid after DELETE FROM main.sqlite_sequence WHERE name='edit_tasks'
+not ok 34 - ordinary26 rollback retains REAL sequence bytes, storage and rowid after DELETE FROM main.sqlite_sequence WHERE name='edit_tasks'
+  ---
+  duration_ms: 10.648875
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:196:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    setSequence (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:28:91)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:199:5)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rollback retains REAL sequence bytes, storage and rowid before INSERT INTO main.sqlite_sequence(rowid,name,seq) VALUES(?,'edit_tasks',?)
+not ok 35 - ordinary26 rollback retains REAL sequence bytes, storage and rowid before INSERT INTO main.sqlite_sequence(rowid,name,seq) VALUES(?,'edit_tasks',?)
+  ---
+  duration_ms: 11.101792
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:196:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    setSequence (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:28:91)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:199:5)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rollback retains REAL sequence bytes, storage and rowid after INSERT INTO main.sqlite_sequence(rowid,name,seq) VALUES(?,'edit_tasks',?)
+not ok 36 - ordinary26 rollback retains REAL sequence bytes, storage and rowid after INSERT INTO main.sqlite_sequence(rowid,name,seq) VALUES(?,'edit_tasks',?)
+  ---
+  duration_ms: 10.5135
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:196:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    setSequence (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:28:91)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:199:5)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rollback retains REAL sequence bytes, storage and rowid after INSERT INTO main.schema_version(version) VALUES(26)
+not ok 37 - ordinary26 rollback retains REAL sequence bytes, storage and rowid after INSERT INTO main.schema_version(version) VALUES(26)
+  ---
+  duration_ms: 10.819083
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:196:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    setSequence (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:28:91)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:199:5)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rollback retains REAL sequence bytes, storage and rowid before COMMIT
+not ok 38 - ordinary26 rollback retains REAL sequence bytes, storage and rowid before COMMIT
+  ---
+  duration_ms: 10.925583
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:196:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    setSequence (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:28:91)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:199:5)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: numeric sequence compatibility retains SQL masking of giant TEXT/BLOB inputs
+not ok 39 - numeric sequence compatibility retains SQL masking of giant TEXT/BLOB inputs
+  ---
+  duration_ms: 3.578708
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:214:1'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    assertBoundedSequenceProjection (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:141:7)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-sequence-compatibility.test.mjs:215:3)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..39
+# tests 39
+# suites 0
+# pass 15
+# fail 24
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 845.244375

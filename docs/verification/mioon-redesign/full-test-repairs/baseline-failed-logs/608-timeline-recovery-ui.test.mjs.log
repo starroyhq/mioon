@@ -1,0 +1,647 @@
+TAP version 13
+# Subtest: actual App legacy session runner guards exactly the sixteen timeline writes and accepts their complete matching acknowledgements
+not ok 1 - actual App legacy session runner guards exactly the sixteen timeline writes and accepts their complete matching acknowledgements
+  ---
+  duration_ms: 2.619666
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:129:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:124:93), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:135:30)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.start (node:internal/test_runner/test:1262:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+  ...
+# Subtest: format recovery preserves expected project revision and absent-timeline revision zero in the original session intent
+not ok 2 - format recovery preserves expected project revision and absent-timeline revision zero in the original session intent
+  ---
+  duration_ms: 1.044209
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:143:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:124:93), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:150:11)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: every timeline write retains the exact original receipt after loss, 404/409 and corrupt ACK until explicit valid replay
+not ok 3 - every timeline write retains the exact original receipt after loss, 404/409 and corrupt ACK until explicit valid replay
+  ---
+  duration_ms: 0.332833
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:161:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:124:93), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:167:13)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: timeline rollback requires matching request-bound proof and rejects forbidden or contradictory claims
+not ok 4 - timeline rollback requires matching request-bound proof and rejects forbidden or contradictory claims
+  ---
+  duration_ms: 0.2195
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:191:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:124:93), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:196:58)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: fresh proven timeline rejection releases the key for a new user intent
+not ok 5 - fresh proven timeline rejection releases the key for a new user intent
+  ---
+  duration_ms: 0.211667
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:215:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:124:93), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:219:11)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: same-session reload rediscovers exact pending writes without automatically submitting or accepting newer project state
+not ok 6 - same-session reload rediscovers exact pending writes without automatically submitting or accepting newer project state
+  ---
+  duration_ms: 0.192208
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:225:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:124:93), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:227:83)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: late timeline results preserve project/navigation fences and release only their original busy key
+not ok 7 - late timeline results preserve project/navigation fences and release only their original busy key
+  ---
+  duration_ms: 0.23775
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:237:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:124:93), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:242:24)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: late same-project ACK respects draft navigation epoch while an opted-in mounted inspector can receive its own ACK
+not ok 8 - late same-project ACK respects draft navigation epoch while an opted-in mounted inspector can receive its own ACK
+  ---
+  duration_ms: 0.203042
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:251:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:124:93), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:256:23)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: late loss after project navigation retains only the original project receipt for explicit recovery
+not ok 9 - late loss after project navigation retains only the original project receipt for explicit recovery
+  ---
+  duration_ms: 0.290625
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:263:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:124:93), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:266:46)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: retained timeline and reference callbacks reject old-project input before any persistence or RPC
+not ok 10 - retained timeline and reference callbacks reject old-project input before any persistence or RPC
+  ---
+  duration_ms: 0.5625
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:279:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:124:93), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:287:62)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: missing timeline and reference Tasks receipts cannot be recreated by an obsolete replay callback
+not ok 11 - missing timeline and reference Tasks receipts cannot be recreated by an obsolete replay callback
+  ---
+  duration_ms: 0.22425
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:296:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:124:93), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:301:26)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: changed timeline and reference replay inputs or operation cannot replace the original saved request
+not ok 12 - changed timeline and reference replay inputs or operation cannot replace the original saved request
+  ---
+  duration_ms: 0.160667
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:307:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:124:93), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:314:28)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: stored timeline or reference input with a different owner stays intact and is never dispatched
+not ok 13 - stored timeline or reference input with a different owner stays intact and is never dispatched
+  ---
+  duration_ms: 0.132042
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:323:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:124:93), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:329:62)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: fresh timeline and reference actions cannot dispatch a different operation stored under the same key
+not ok 14 - fresh timeline and reference actions cannot dispatch a different operation stored under the same key
+  ---
+  duration_ms: 0.388125
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:336:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:124:93), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:347:62)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: preview and export keys remain independent while pending preview cannot silently resubmit
+not ok 15 - preview and export keys remain independent while pending preview cannot silently resubmit
+  ---
+  duration_ms: 0.168667
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:356:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:124:93), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:360:11)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: digest-bound render stays pending on matching public refresh and clears only after explicit exact replay
+not ok 16 - digest-bound render stays pending on matching public refresh and clears only after explicit exact replay
+  ---
+  duration_ms: 0.134709
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:370:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:124:93), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:375:11)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App catch and project refresh cannot erase a render receipt after source-ownership or receipt rejection
+not ok 17 - actual App catch and project refresh cannot erase a render receipt after source-ownership or receipt rejection
+  ---
+  duration_ms: 0.848209
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:385:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:124:93), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:397:13)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App refresh validates restored identity and held exports before changing data or reconciling receipts
+not ok 18 - actual App refresh validates restored identity and held exports before changing data or reconciling receipts
+  ---
+  duration_ms: 2.148
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:412:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    matching branch
+    + actual - expected
+    
+    + null
+    - {
+    -   exports: [
+    -     {
+    -       assetId: null,
+    -       createdAt: '2026-10-10T00:00:00.000Z',
+    -       error: null,
+    -       id: '82000000-0000-4000-8000-000000000010',
+    -       mode: 'timeline',
+    -       projectId: '82000000-0000-4000-8000-000000000001',
+    -       purpose: 'export',
+    -       requestId: 'original-timeline.render',
+    -       snapshot: {
+    -         assets: [
+    -           {
+    -             duration: 10,
+    -             hasAudio: true,
+    -             height: 1280,
+    -             id: '82000000-0000-4000-8000-000000000005',
+    -             mimeType: 'video/mp4',
+    -             sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    -             width: 720
+    -           }
+    -         ],
+    -         timeline: {
+    -           clips: [
+    -             {
+    -               assetId: '82000000-0000-4000-8000-000000000005',
+    -               durationFrames: 80,
+    -               gain: 1,
+    -               id: '82000000-0000-4000-8000-000000000004',
+    -               name: 'Original',
+    -               rect: {
+    -                 height: 1280,
+    -                 width: 720,
+    -                 x: 0,
+    -                 y: 0
+    -               },
+    -               sourceInFrame: 11,
+    -               startFrame: 10,
+    -               trackId: '82000000-0000-4000-8000-000000000003'
+    -             }
+    -           ],
+    -           createdAt: '2026-10-10T00:00:00.000Z',
+    -           durationFrames: 90,
+    -           fps: 30,
+    -           height: 1280,
+    -           id: '82000000-0000-4000-8000-000000000006',
+    -           projectId: '82000000-0000-4000-8000-000000000001',
+    -           revision: 7,
+    -           tracks: [
+    -             {
+    -               hidden: false,
+    -               id: '82000000-0000-4000-8000-000000000003',
+    -               kind: 'video',
+    -               muted: false,
+    -               name: 'Video',
+    -               orderIndex: 0
+    -             }
+    -           ],
+    -           updatedAt: '2026-10-10T00:00:01.000Z',
+    -           width: 720
+    -         }
+    -       },
+    -       status: 'queued',
+    -       timelineRevision: 7,
+    -       updatedAt: '2026-10-10T00:00:01.000Z',
+    -       url: null
+    -     }
+    -   ],
+    -   jobs: [
+    -     {
+    -       requestId: 'captured-generation-request'
+    -     }
+    -   ],
+    -   project: {
+    -     id: '82000000-0000-4000-8000-000000000001'
+    -   },
+    -   restore: {
+    -     heldExportIds: [
+    -       '82000000-0000-4000-8000-000000000010'
+    -     ],
+    -     workspaceOrigin: '82000000-0000-4000-8000-000000000040'
+    -   },
+    -   timeline: {
+    -     clips: [
+    -       {
+    -         assetId: '82000000-0000-4000-8000-000000000005',
+    -         durationFrames: 80,
+    -         gain: 1,
+    -         id: '82000000-0000-4000-8000-000000000004',
+    -         name: 'Original',
+    -         rect: {
+    -           height: 1280,
+    -           width: 720,
+    -           x: 0,
+    -           y: 0
+    -         },
+    -         sourceInFrame: 11,
+    -         startFrame: 10,
+    -         trackId: '82000000-0000-4000-8000-000000000003'
+    -       }
+    -     ],
+    -     createdAt: '2026-10-10T00:00:00.000Z',
+    -     durationFrames: 90,
+    -     fps: 30,
+    -     height: 1280,
+    -     id: '82000000-0000-4000-8000-000000000006',
+    -     projectId: '82000000-0000-4000-8000-000000000001',
+    -     revision: 99,
+    -     tracks: [
+    -       {
+    -         hidden: false,
+    -         id: '82000000-0000-4000-8000-000000000003',
+    -         kind: 'video',
+    -         muted: false,
+    -         name: 'Video',
+    -         orderIndex: 0
+    -       }
+    -     ],
+    -     updatedAt: '2026-10-10T00:00:01.000Z',
+    -     width: 720
+    -   }
+    - }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    project:
+      id: '82000000-0000-4000-8000-000000000001'
+    timeline:
+      id: '82000000-0000-4000-8000-000000000006'
+      projectId: '82000000-0000-4000-8000-000000000001'
+      revision: 99
+      fps: 30
+      width: 720
+      height: 1280
+      durationFrames: 90
+      tracks:
+        0:
+          id: '82000000-0000-4000-8000-000000000003'
+          name: 'Video'
+          kind: 'video'
+          orderIndex: 0
+          hidden: false
+          muted: false
+      clips:
+        0:
+          id: '82000000-0000-4000-8000-000000000004'
+          trackId: '82000000-0000-4000-8000-000000000003'
+          assetId: '82000000-0000-4000-8000-000000000005'
+          name: 'Original'
+          startFrame: 10
+          durationFrames: 80
+          sourceInFrame: 11
+          rect:
+            x: 0
+            y: 0
+            width: 720
+            height: 1280
+          gain: 1
+      createdAt: '2026-10-10T00:00:00.000Z'
+      updatedAt: '2026-10-10T00:00:01.000Z'
+    exports:
+      0:
+        id: '82000000-0000-4000-8000-000000000010'
+        projectId: '82000000-0000-4000-8000-000000000001'
+        requestId: 'original-timeline.render'
+        mode: 'timeline'
+        purpose: 'export'
+        timelineRevision: 7
+        snapshot:
+          timeline:
+            id: '82000000-0000-4000-8000-000000000006'
+            projectId: '82000000-0000-4000-8000-000000000001'
+            revision: 7
+            fps: 30
+            width: 720
+            height: 1280
+            durationFrames: 90
+            tracks:
+              0:
+                id: '82000000-0000-4000-8000-000000000003'
+                name: 'Video'
+                kind: 'video'
+                orderIndex: 0
+                hidden: false
+                muted: false
+            clips:
+              0:
+                id: '82000000-0000-4000-8000-000000000004'
+                trackId: '82000000-0000-4000-8000-000000000003'
+                assetId: '82000000-0000-4000-8000-000000000005'
+                name: 'Original'
+                startFrame: 10
+                durationFrames: 80
+                sourceInFrame: 11
+                rect:
+                  x: 0
+                  y: 0
+                  width: 720
+                  height: 1280
+                gain: 1
+            createdAt: '2026-10-10T00:00:00.000Z'
+            updatedAt: '2026-10-10T00:00:01.000Z'
+          assets:
+            0:
+              id: '82000000-0000-4000-8000-000000000005'
+              sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+              mimeType: 'video/mp4'
+              duration: 10
+              width: 720
+              height: 1280
+              hasAudio: true
+        status: 'queued'
+        assetId: ~
+        url: ~
+        error: ~
+        createdAt: '2026-10-10T00:00:00.000Z'
+        updatedAt: '2026-10-10T00:00:01.000Z'
+    jobs:
+      0:
+        requestId: 'captured-generation-request'
+    restore:
+      workspaceOrigin: '82000000-0000-4000-8000-000000000040'
+      heldExportIds:
+        0: '82000000-0000-4000-8000-000000000010'
+  actual: ~
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:433:12)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App refresh discards a late same-project snapshot after restored origin changes
+ok 19 - actual App refresh discards a late same-project snapshot after restored origin changes
+  ---
+  duration_ms: 0.312375
+  type: 'test'
+  ...
+# Subtest: pending timeline and reference cards disclose session-only recovery without broadening generation copy
+not ok 20 - pending timeline and reference cards disclose session-only recovery without broadening generation copy
+  ---
+  duration_ms: 2.85625
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:462:1'
+  failureType: 'testCodeFailure'
+  error: '(0 , import_I18nProvider.useI18n) is not a function'
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    Object.PendingSubmission (eval at <anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:471:3), <anonymous>:44:90)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:474:46)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: reference attach and detach retain ordinary 4xx without proof and unrelated matching records cannot clear them
+not ok 21 - reference attach and detach retain ordinary 4xx without proof and unrelated matching records cannot clear them
+  ---
+  duration_ms: 0.48275
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:484:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:124:93), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-ui.test.mjs:489:106)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: a project that has not opened cannot publish a recovery refresh
+ok 22 - a project that has not opened cannot publish a recovery refresh
+  ---
+  duration_ms: 0.219041
+  type: 'test'
+  ...
+# Error: Test "late timeline results preserve project/navigation fences and release only their original busy key" at tests/timeline-recovery-ui.test.mjs:237:1 generated asynchronous activity after the test ended. This activity created the error "ReferenceError: clipConnectionBlocked is not defined" and would have caused the test to fail, but instead triggered an unhandledRejection event.
+# Error: Test "late loss after project navigation retains only the original project receipt for explicit recovery" at tests/timeline-recovery-ui.test.mjs:263:1 generated asynchronous activity after the test ended. This activity created the error "Error: Response lost after leaving project" and would have caused the test to fail, but instead triggered an unhandledRejection event.
+1..22
+# tests 22
+# suites 0
+# pass 2
+# fail 20
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 316.982833

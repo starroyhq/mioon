@@ -1,0 +1,125 @@
+[
+  {
+    "file": "tests/mioon-brand-assets.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.32,
+    "tapSummary": {
+      "tests": 5,
+      "suites": 0,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-root-extra/001-mioon-brand-assets.test.mjs.log",
+    "sha256": "694d0c89ee7bca06c3e9e87a6ed2fe6e3ffc5509cc7e4614928a95c9063f31bb",
+    "sourceSha256": "0a5ac59cf52fd962f05e2fa84bb4dad842716188aeaf03038c429624888aa315",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/mioon-branding.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.37,
+    "tapSummary": {
+      "tests": 4,
+      "suites": 0,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-root-extra/002-mioon-branding.test.mjs.log",
+    "sha256": "8f943e51333dc2e4a86ce7f6a42eb9d23092fc67d6a747149a136a1c0eb770a9",
+    "sourceSha256": "9e3c8fe12b3826a1d3abfee387baa9bc52d12069c6c8e7ec27d8f4bd535cc615",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/project-specifications-preflight.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.32,
+    "tapSummary": {
+      "tests": 1,
+      "suites": 0,
+      "pass": 1,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-root-extra/003-project-specifications-preflight.test.mjs.log",
+    "sha256": "d176c1f215ac49114b974c9b76e2dd1d509cb3245cfb126f8668468a8737674b",
+    "sourceSha256": "a23101c1f587a2cfdca1250f62cea4b70cc89793492eadc12d11cd69fe680b76",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/timeline-export-range-business.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 11.75,
+    "tapSummary": {
+      "tests": 18,
+      "suites": 0,
+      "pass": 18,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-root-extra/004-timeline-export-range-business.test.mjs.log",
+    "sha256": "ba8d1f105e30a08addb41aa56a274367982b9194b52be5c6efe1467efc0f0abb",
+    "sourceSha256": "4944c6dd64e124756da2b326f0b64789b22d3a3e393870a9b203025b3a277984",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/timeline-preflight-business.test.mjs",
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 25.29,
+    "tapSummary": {
+      "tests": 46,
+      "suites": 0,
+      "pass": 45,
+      "fail": 1,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-root-extra/006-timeline-preflight-business.test.mjs.log",
+    "sha256": "f75ce6d9f9a2351e7f0b61f8fbc8478c5c4777a63e252406df460717e3eb0df6",
+    "sourceSha256": "3c3931d3eaed8a861b801f13be9e0f8ab8c2bc84fffd84f363cc589c93714892",
+    "failedSubtests": [
+      "restricted metadata probe accepts PNG JPEG WEBP MP4 WebM MP3 WAV and M4A with no full-decode process"
+    ]
+  },
+  {
+    "file": "tests/topbar-save-status.test.mjs",
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 0.58,
+    "tapSummary": {
+      "tests": 15,
+      "suites": 0,
+      "pass": 9,
+      "fail": 6,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-root-extra/005-topbar-save-status.test.mjs.log",
+    "sha256": "8ff6037693637eea37a4af6f66c3cbf23a6498e15c11cced3216e7fe3e800afd",
+    "sourceSha256": "78876dc0136f445a7bf466dee7cbf24be8c87b4f1c58b09964db14703036ff8a",
+    "failedSubtests": [
+      "App owns one busy projection, annotation-aware dirty status, late-bound Retry and unchanged reload fence",
+      "actual App ignores delayed A acknowledgement after B activation without a new write or stale visible state",
+      "actual Reload waits for confirmation and rejects newer project, navigation or workspace context",
+      "actual Retry replays exact lost-response body and cannot clean inspector or format drafts",
+      "actual App Retry callback reads the current project ref at click rather than render",
+      "actual conflict has only Reload and passive rerenders during held saves cannot mutate drafts, panels or paid review"
+    ]
+  }
+]

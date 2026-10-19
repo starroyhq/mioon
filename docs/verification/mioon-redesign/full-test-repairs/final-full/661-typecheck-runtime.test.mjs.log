@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: repository source policy and genuine compiler check all current included runtime sources
+ok 1 - repository source policy and genuine compiler check all current included runtime sources
+  ---
+  duration_ms: 10670.758041
+  type: 'test'
+  ...
+# Subtest: real CLI resolves the pnpm workspace TS implementation and retains version and schema output
+ok 2 - real CLI resolves the pnpm workspace TS implementation and retains version and schema output
+  ---
+  duration_ms: 530.36575
+  type: 'test'
+  ...
+# Subtest: official MCP actually initializes and discovers shared operations through the typed workspace graph
+ok 3 - official MCP actually initializes and discovers shared operations through the typed workspace graph
+  ---
+  duration_ms: 320.874417
+  type: 'test'
+  ...
+# Subtest: real React TSX consumer bundles erased types and renders through the installed React implementation
+ok 4 - real React TSX consumer bundles erased types and renders through the installed React implementation
+  ---
+  duration_ms: 160.551167
+  type: 'test'
+  ...
+# Subtest: ordinary Web and direct Desktop build entries cannot omit the compiler gate
+ok 5 - ordinary Web and direct Desktop build entries cannot omit the compiler gate
+  ---
+  duration_ms: 0.809833
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 11923.404167

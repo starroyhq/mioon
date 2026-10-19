@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: initial never-committed blank close consumes one native proof with zero renderer reads or writes
+ok 1 - initial never-committed blank close consumes one native proof with zero renderer reads or writes
+  ---
+  duration_ms: 0.882209
+  type: 'test'
+  ...
+# Subtest: initial retry is fixed URL and cannot reuse a replaced frame, navigation, committed error page or backend owner
+ok 2 - initial retry is fixed URL and cannot reuse a replaced frame, navigation, committed error page or backend owner
+  ---
+  duration_ms: 0.990459
+  type: 'test'
+  ...
+# Subtest: independent renderer incidents keep A pending recovery while B dialog is open
+ok 3 - independent renderer incidents keep A pending recovery while B dialog is open
+  ---
+  duration_ms: 0.228209
+  type: 'test'
+  ...
+# Subtest: late recovery answer cannot act on replacement context and duplicate same-window prompt is suppressed
+ok 4 - late recovery answer cannot act on replacement context and duplicate same-window prompt is suppressed
+  ---
+  duration_ms: 0.14675
+  type: 'test'
+  ...
+# Subtest: backend failure blocks interaction irreversibly for that scope and grants only one prompt
+ok 5 - backend failure blocks interaction irreversibly for that scope and grants only one prompt
+  ---
+  duration_ms: 0.336875
+  type: 'test'
+  ...
+# Subtest: actual main stop retains the old audition host until exact drain, and never clears a replacement
+ok 6 - actual main stop retains the old audition host until exact drain, and never clears a replacement
+  ---
+  duration_ms: 3.173375
+  type: 'test'
+  ...
+# Subtest: initial blank close disposal never reacquires destroyed BrowserWindow contents
+ok 7 - initial blank close disposal never reacquires destroyed BrowserWindow contents
+  ---
+  duration_ms: 0.199167
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 160.896875

@@ -1,0 +1,220 @@
+TAP version 13
+# Subtest: unknown stays open by default; ordinary discard and drain-failure approval cannot waive it
+ok 1 - unknown stays open by default; ordinary discard and drain-failure approval cannot waive it
+  ---
+  duration_ms: 1.3335
+  type: 'test'
+  ...
+# Subtest: explicit unknown-risk permission is consumed by one close without clearing evidence
+ok 2 - explicit unknown-risk permission is consumed by one close without clearing evidence
+  ---
+  duration_ms: 0.206417
+  type: 'test'
+  ...
+# Subtest: unknown plus dirty needs both independent decisions
+ok 3 - unknown plus dirty needs both independent decisions
+  ---
+  duration_ms: 0.400084
+  type: 'test'
+  ...
+# Subtest: additional cannot be waived by either or both confirmations
+ok 4 - additional cannot be waived by either or both confirmations
+  ---
+  duration_ms: 0.103125
+  type: 'test'
+  ...
+# Subtest: registry-busy cannot be waived by either or both confirmations
+ok 5 - registry-busy cannot be waived by either or both confirmations
+  ---
+  duration_ms: 0.076625
+  type: 'test'
+  ...
+# Subtest: registry-blocked cannot be waived by either or both confirmations
+ok 6 - registry-blocked cannot be waived by either or both confirmations
+  ---
+  duration_ms: 0.066584
+  type: 'test'
+  ...
+# Subtest: settings-busy cannot be waived by either or both confirmations
+ok 7 - settings-busy cannot be waived by either or both confirmations
+  ---
+  duration_ms: 0.070916
+  type: 'test'
+  ...
+# Subtest: settings-blocked cannot be waived by either or both confirmations
+ok 8 - settings-blocked cannot be waived by either or both confirmations
+  ---
+  duration_ms: 0.06675
+  type: 'test'
+  ...
+# Subtest: same-unknown new input invalidates unknown choice before commit
+ok 9 - same-unknown new input invalidates unknown choice before commit
+  ---
+  duration_ms: 0.18725
+  type: 'test'
+  ...
+# Subtest: same-unknown new input invalidates unknown choice after commit
+ok 10 - same-unknown new input invalidates unknown choice after commit
+  ---
+  duration_ms: 0.266292
+  type: 'test'
+  ...
+# Subtest: new unknown operation invalidates unknown choice before commit
+ok 11 - new unknown operation invalidates unknown choice before commit
+  ---
+  duration_ms: 0.174583
+  type: 'test'
+  ...
+# Subtest: new unknown operation invalidates unknown choice after commit
+ok 12 - new unknown operation invalidates unknown choice after commit
+  ---
+  duration_ms: 0.0715
+  type: 'test'
+  ...
+# Subtest: owner replacement invalidates unknown choice before commit
+ok 13 - owner replacement invalidates unknown choice before commit
+  ---
+  duration_ms: 0.044333
+  type: 'test'
+  ...
+# Subtest: owner replacement invalidates unknown choice after commit
+ok 14 - owner replacement invalidates unknown choice after commit
+  ---
+  duration_ms: 0.027
+  type: 'test'
+  ...
+# Subtest: late acknowledgement invalidates unknown choice before commit
+ok 15 - late acknowledgement invalidates unknown choice before commit
+  ---
+  duration_ms: 0.04475
+  type: 'test'
+  ...
+# Subtest: late acknowledgement invalidates unknown choice after commit
+ok 16 - late acknowledgement invalidates unknown choice after commit
+  ---
+  duration_ms: 0.030958
+  type: 'test'
+  ...
+# Subtest: new busy work invalidates unknown choice before commit
+ok 17 - new busy work invalidates unknown choice before commit
+  ---
+  duration_ms: 0.030916
+  type: 'test'
+  ...
+# Subtest: new busy work invalidates unknown choice after commit
+ok 18 - new busy work invalidates unknown choice after commit
+  ---
+  duration_ms: 0.022291
+  type: 'test'
+  ...
+# Subtest: new dirty input invalidates unknown choice before commit
+ok 19 - new dirty input invalidates unknown choice before commit
+  ---
+  duration_ms: 0.045792
+  type: 'test'
+  ...
+# Subtest: new dirty input invalidates unknown choice after commit
+ok 20 - new dirty input invalidates unknown choice after commit
+  ---
+  duration_ms: 0.02175
+  type: 'test'
+  ...
+# Subtest: DOM input invalidates unknown choice before commit
+ok 21 - DOM input invalidates unknown choice before commit
+  ---
+  duration_ms: 0.030042
+  type: 'test'
+  ...
+# Subtest: DOM input invalidates unknown choice after commit
+ok 22 - DOM input invalidates unknown choice after commit
+  ---
+  duration_ms: 0.0195
+  type: 'test'
+  ...
+# Subtest: scope replacement invalidates unknown choice before commit
+ok 23 - scope replacement invalidates unknown choice before commit
+  ---
+  duration_ms: 0.029208
+  type: 'test'
+  ...
+# Subtest: scope replacement invalidates unknown choice after commit
+ok 24 - scope replacement invalidates unknown choice after commit
+  ---
+  duration_ms: 0.019458
+  type: 'test'
+  ...
+# Subtest: mutable capture sequence invalidates unknown choice before commit
+ok 25 - mutable capture sequence invalidates unknown choice before commit
+  ---
+  duration_ms: 0.025542
+  type: 'test'
+  ...
+# Subtest: mutable capture sequence invalidates unknown choice after commit
+ok 26 - mutable capture sequence invalidates unknown choice after commit
+  ---
+  duration_ms: 0.019541
+  type: 'test'
+  ...
+# Subtest: new legacy owner invalidates unknown choice before commit
+ok 27 - new legacy owner invalidates unknown choice before commit
+  ---
+  duration_ms: 0.026542
+  type: 'test'
+  ...
+# Subtest: new legacy owner invalidates unknown choice after commit
+ok 28 - new legacy owner invalidates unknown choice after commit
+  ---
+  duration_ms: 0.022542
+  type: 'test'
+  ...
+# Subtest: unknown choice cannot authorize reload or an action-swapped commit
+ok 29 - unknown choice cannot authorize reload or an action-swapped commit
+  ---
+  duration_ms: 0.049292
+  type: 'test'
+  ...
+# Subtest: foreign, stale, cancelled and expired unknown tickets fail closed
+ok 30 - foreign, stale, cancelled and expired unknown tickets fail closed
+  ---
+  duration_ms: 0.099083
+  type: 'test'
+  ...
+# Subtest: new inspection and disposal revoke an already approved unknown choice
+ok 31 - new inspection and disposal revoke an already approved unknown choice
+  ---
+  duration_ms: 0.064416
+  type: 'test'
+  ...
+# Subtest: unknown risk is never silently added to a clean or ordinary dirty ticket
+ok 32 - unknown risk is never silently added to a clean or ordinary dirty ticket
+  ---
+  duration_ms: 0.0655
+  type: 'test'
+  ...
+# Subtest: missing, malformed, unidentifiable or throwing additional snapshots fail closed
+ok 33 - missing, malformed, unidentifiable or throwing additional snapshots fail closed
+  ---
+  duration_ms: 0.129166
+  type: 'test'
+  ...
+# Subtest: unknown inspection, commit and final validation are pure and preserve evidence
+ok 34 - unknown inspection, commit and final validation are pure and preserve evidence
+  ---
+  duration_ms: 0.222667
+  type: 'test'
+  ...
+# Subtest: omitting the optional snapshot preserves ordinary Web clean and dirty guards
+ok 35 - omitting the optional snapshot preserves ordinary Web clean and dirty guards
+  ---
+  duration_ms: 0.074959
+  type: 'test'
+  ...
+1..35
+# tests 35
+# suites 0
+# pass 35
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 163.838084

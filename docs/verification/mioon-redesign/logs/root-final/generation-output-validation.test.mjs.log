@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: decoded live output 128x128 validates actual ratio before version publication
+ok 1 - decoded live output 128x128 validates actual ratio before version publication
+  ---
+  duration_ms: 1009.616541
+  type: 'test'
+  ...
+# Subtest: decoded live output 144x256 validates actual ratio before version publication
+ok 2 - decoded live output 144x256 validates actual ratio before version publication
+  ---
+  duration_ms: 933.252792
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2300.249209

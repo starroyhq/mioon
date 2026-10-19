@@ -1,0 +1,4648 @@
+TAP version 13
+# Subtest: historical capture inventory is independently synchronized with all eight frozen family declarations
+ok 1 - historical capture inventory is independently synchronized with all eight frozen family declarations
+  ---
+  duration_ms: 1.89125
+  type: 'test'
+  ...
+# Subtest: historical 24→25: truly empty holds, optional mock=false, exact current result and read-only reopen
+ok 2 - historical 24→25: truly empty holds, optional mock=false, exact current result and read-only reopen
+  ---
+  duration_ms: 257.736459
+  type: 'test'
+  ...
+# Subtest: historical 24→25: truly empty holds, optional mock=true, exact current result and read-only reopen
+ok 3 - historical 24→25: truly empty holds, optional mock=true, exact current result and read-only reopen
+  ---
+  duration_ms: 112.838125
+  type: 'test'
+  ...
+# Subtest: historical 24→25: populated holds, optional mock=false, exact current result and read-only reopen
+ok 4 - historical 24→25: populated holds, optional mock=false, exact current result and read-only reopen
+  ---
+  duration_ms: 117.431417
+  type: 'test'
+  ...
+# Subtest: historical 24→25: populated holds, optional mock=true, exact current result and read-only reopen
+ok 5 - historical 24→25: populated holds, optional mock=true, exact current result and read-only reopen
+  ---
+  duration_ms: 117.590125
+  type: 'test'
+  ...
+# Subtest: historical 25: raw validator accepts only-hash corruption, current boundary refuses it read-only
+ok 6 - historical 25: raw validator accepts only-hash corruption, current boundary refuses it read-only
+  ---
+  duration_ms: 112.968084
+  type: 'test'
+  ...
+# Subtest: historical 25: 58 absent-pointer negatives across every fixed family (pointer coverage, not content coverage)
+    # Subtest: jobs: absent rowid 0
+    ok 1 - jobs: absent rowid 0
+      ---
+      duration_ms: 20.443125
+      type: 'test'
+      ...
+    # Subtest: jobs: absent rowid -1
+    ok 2 - jobs: absent rowid -1
+      ---
+      duration_ms: 21.404541
+      type: 'test'
+      ...
+    # Subtest: exports: absent rowid 0
+    ok 3 - exports: absent rowid 0
+      ---
+      duration_ms: 21.235959
+      type: 'test'
+      ...
+    # Subtest: exports: absent rowid -1
+    ok 4 - exports: absent rowid -1
+      ---
+      duration_ms: 21.028166
+      type: 'test'
+      ...
+    # Subtest: versions: absent rowid 0
+    ok 5 - versions: absent rowid 0
+      ---
+      duration_ms: 20.734167
+      type: 'test'
+      ...
+    # Subtest: versions: absent rowid -1
+    ok 6 - versions: absent rowid -1
+      ---
+      duration_ms: 21.914375
+      type: 'test'
+      ...
+    # Subtest: job_events: absent rowid 0
+    ok 7 - job_events: absent rowid 0
+      ---
+      duration_ms: 21.713083
+      type: 'test'
+      ...
+    # Subtest: job_events: absent rowid -1
+    ok 8 - job_events: absent rowid -1
+      ---
+      duration_ms: 21.396666
+      type: 'test'
+      ...
+    # Subtest: timeline_requests: absent rowid 0
+    ok 9 - timeline_requests: absent rowid 0
+      ---
+      duration_ms: 21.245166
+      type: 'test'
+      ...
+    # Subtest: timeline_requests: absent rowid -1
+    ok 10 - timeline_requests: absent rowid -1
+      ---
+      duration_ms: 21.176792
+      type: 'test'
+      ...
+    # Subtest: reference_requests: absent rowid 0
+    ok 11 - reference_requests: absent rowid 0
+      ---
+      duration_ms: 22.42975
+      type: 'test'
+      ...
+    # Subtest: reference_requests: absent rowid -1
+    ok 12 - reference_requests: absent rowid -1
+      ---
+      duration_ms: 22.200167
+      type: 'test'
+      ...
+    # Subtest: idempotency: absent rowid 0
+    ok 13 - idempotency: absent rowid 0
+      ---
+      duration_ms: 22.448875
+      type: 'test'
+      ...
+    # Subtest: idempotency: absent rowid -1
+    ok 14 - idempotency: absent rowid -1
+      ---
+      duration_ms: 22.329292
+      type: 'test'
+      ...
+    # Subtest: mutation_requests: absent rowid 0
+    ok 15 - mutation_requests: absent rowid 0
+      ---
+      duration_ms: 21.833084
+      type: 'test'
+      ...
+    # Subtest: mutation_requests: absent rowid -1
+    ok 16 - mutation_requests: absent rowid -1
+      ---
+      duration_ms: 19.946792
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests: absent rowid 0
+    ok 17 - asset_range_requests: absent rowid 0
+      ---
+      duration_ms: 21.967667
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests: absent rowid -1
+    ok 18 - asset_range_requests: absent rowid -1
+      ---
+      duration_ms: 20.685834
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests: absent rowid 0
+    ok 19 - asset_disposition_requests: absent rowid 0
+      ---
+      duration_ms: 20.8565
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests: absent rowid -1
+    ok 20 - asset_disposition_requests: absent rowid -1
+      ---
+      duration_ms: 20.089375
+      type: 'test'
+      ...
+    # Subtest: subject_requests: absent rowid 0
+    ok 21 - subject_requests: absent rowid 0
+      ---
+      duration_ms: 22.558334
+      type: 'test'
+      ...
+    # Subtest: subject_requests: absent rowid -1
+    ok 22 - subject_requests: absent rowid -1
+      ---
+      duration_ms: 22.76375
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads: absent rowid 0
+    ok 23 - agent_chat_threads: absent rowid 0
+      ---
+      duration_ms: 21.886792
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads: absent rowid -1
+    ok 24 - agent_chat_threads: absent rowid -1
+      ---
+      duration_ms: 20.92
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests: absent rowid 0
+    ok 25 - agent_chat_requests: absent rowid 0
+      ---
+      duration_ms: 22.388584
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests: absent rowid -1
+    ok 26 - agent_chat_requests: absent rowid -1
+      ---
+      duration_ms: 22.878292
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs: absent rowid 0
+    ok 27 - agent_chat_runs: absent rowid 0
+      ---
+      duration_ms: 20.997875
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs: absent rowid -1
+    ok 28 - agent_chat_runs: absent rowid -1
+      ---
+      duration_ms: 23.419833
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events: absent rowid 0
+    ok 29 - agent_chat_events: absent rowid 0
+      ---
+      duration_ms: 21.03225
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events: absent rowid -1
+    ok 30 - agent_chat_events: absent rowid -1
+      ---
+      duration_ms: 23.051292
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps: absent rowid 0
+    ok 31 - agent_chat_steps: absent rowid 0
+      ---
+      duration_ms: 20.942625
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps: absent rowid -1
+    ok 32 - agent_chat_steps: absent rowid -1
+      ---
+      duration_ms: 21.972083
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota: absent rowid 0
+    ok 33 - agent_chat_quota: absent rowid 0
+      ---
+      duration_ms: 22.264292
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota: absent rowid -1
+    ok 34 - agent_chat_quota: absent rowid -1
+      ---
+      duration_ms: 21.458125
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals: absent rowid 0
+    ok 35 - agent_edit_proposals: absent rowid 0
+      ---
+      duration_ms: 19.659
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals: absent rowid -1
+    ok 36 - agent_edit_proposals: absent rowid -1
+      ---
+      duration_ms: 21.567916
+      type: 'test'
+      ...
+    # Subtest: edit_tasks: absent rowid 0
+    ok 37 - edit_tasks: absent rowid 0
+      ---
+      duration_ms: 21.865875
+      type: 'test'
+      ...
+    # Subtest: edit_tasks: absent rowid -1
+    ok 38 - edit_tasks: absent rowid -1
+      ---
+      duration_ms: 21.496167
+      type: 'test'
+      ...
+    # Subtest: image_groups: absent rowid 0
+    ok 39 - image_groups: absent rowid 0
+      ---
+      duration_ms: 21.6885
+      type: 'test'
+      ...
+    # Subtest: image_groups: absent rowid -1
+    ok 40 - image_groups: absent rowid -1
+      ---
+      duration_ms: 22.965083
+      type: 'test'
+      ...
+    # Subtest: image_tasks: absent rowid 0
+    ok 41 - image_tasks: absent rowid 0
+      ---
+      duration_ms: 22.670458
+      type: 'test'
+      ...
+    # Subtest: image_tasks: absent rowid -1
+    ok 42 - image_tasks: absent rowid -1
+      ---
+      duration_ms: 21.400708
+      type: 'test'
+      ...
+    # Subtest: image_versions: absent rowid 0
+    ok 43 - image_versions: absent rowid 0
+      ---
+      duration_ms: 22.424208
+      type: 'test'
+      ...
+    # Subtest: image_versions: absent rowid -1
+    ok 44 - image_versions: absent rowid -1
+      ---
+      duration_ms: 22.429584
+      type: 'test'
+      ...
+    # Subtest: image_requests: absent rowid 0
+    ok 45 - image_requests: absent rowid 0
+      ---
+      duration_ms: 21.762042
+      type: 'test'
+      ...
+    # Subtest: image_requests: absent rowid -1
+    ok 46 - image_requests: absent rowid -1
+      ---
+      duration_ms: 20.529
+      type: 'test'
+      ...
+    # Subtest: image_reviews: absent rowid 0
+    ok 47 - image_reviews: absent rowid 0
+      ---
+      duration_ms: 22.067458
+      type: 'test'
+      ...
+    # Subtest: image_reviews: absent rowid -1
+    ok 48 - image_reviews: absent rowid -1
+      ---
+      duration_ms: 22.542291
+      type: 'test'
+      ...
+    # Subtest: image_remote_runs: absent rowid 0
+    ok 49 - image_remote_runs: absent rowid 0
+      ---
+      duration_ms: 23.411584
+      type: 'test'
+      ...
+    # Subtest: image_remote_runs: absent rowid -1
+    ok 50 - image_remote_runs: absent rowid -1
+      ---
+      duration_ms: 20.403
+      type: 'test'
+      ...
+    # Subtest: image_remote_observations: absent rowid 0
+    ok 51 - image_remote_observations: absent rowid 0
+      ---
+      duration_ms: 22.65025
+      type: 'test'
+      ...
+    # Subtest: image_remote_observations: absent rowid -1
+    ok 52 - image_remote_observations: absent rowid -1
+      ---
+      duration_ms: 23.009875
+      type: 'test'
+      ...
+    # Subtest: frame_tasks: absent rowid 0
+    ok 53 - frame_tasks: absent rowid 0
+      ---
+      duration_ms: 22.350541
+      type: 'test'
+      ...
+    # Subtest: frame_tasks: absent rowid -1
+    ok 54 - frame_tasks: absent rowid -1
+      ---
+      duration_ms: 21.852875
+      type: 'test'
+      ...
+    # Subtest: frame_requests: absent rowid 0
+    ok 55 - frame_requests: absent rowid 0
+      ---
+      duration_ms: 21.716
+      type: 'test'
+      ...
+    # Subtest: frame_requests: absent rowid -1
+    ok 56 - frame_requests: absent rowid -1
+      ---
+      duration_ms: 21.996833
+      type: 'test'
+      ...
+    # Subtest: waveform_cache: absent rowid 0
+    ok 57 - waveform_cache: absent rowid 0
+      ---
+      duration_ms: 21.12975
+      type: 'test'
+      ...
+    # Subtest: waveform_cache: absent rowid -1
+    ok 58 - waveform_cache: absent rowid -1
+      ---
+      duration_ms: 22.8785
+      type: 'test'
+      ...
+    1..58
+ok 7 - historical 25: 58 absent-pointer negatives across every fixed family (pointer coverage, not content coverage)
+  ---
+  duration_ms: 1346.965375
+  type: 'test'
+  ...
+# Subtest: historical 25: wrong well-formed hash for each of 19 genuinely populated families
+    # Subtest: jobs
+    ok 1 - jobs
+      ---
+      duration_ms: 22.136583
+      type: 'test'
+      ...
+    # Subtest: exports
+    ok 2 - exports
+      ---
+      duration_ms: 23.5835
+      type: 'test'
+      ...
+    # Subtest: versions
+    ok 3 - versions
+      ---
+      duration_ms: 21.346542
+      type: 'test'
+      ...
+    # Subtest: job_events
+    ok 4 - job_events
+      ---
+      duration_ms: 22.437083
+      type: 'test'
+      ...
+    # Subtest: timeline_requests
+    ok 5 - timeline_requests
+      ---
+      duration_ms: 22.285958
+      type: 'test'
+      ...
+    # Subtest: reference_requests
+    ok 6 - reference_requests
+      ---
+      duration_ms: 20.637833
+      type: 'test'
+      ...
+    # Subtest: idempotency
+    ok 7 - idempotency
+      ---
+      duration_ms: 23.115875
+      type: 'test'
+      ...
+    # Subtest: mutation_requests
+    ok 8 - mutation_requests
+      ---
+      duration_ms: 24.163542
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests
+    ok 9 - asset_range_requests
+      ---
+      duration_ms: 25.629791
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests
+    ok 10 - asset_disposition_requests
+      ---
+      duration_ms: 25.009792
+      type: 'test'
+      ...
+    # Subtest: subject_requests
+    ok 11 - subject_requests
+      ---
+      duration_ms: 27.566542
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads
+    ok 12 - agent_chat_threads
+      ---
+      duration_ms: 24.103875
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests
+    ok 13 - agent_chat_requests
+      ---
+      duration_ms: 23.86925
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs
+    ok 14 - agent_chat_runs
+      ---
+      duration_ms: 21.662042
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events
+    ok 15 - agent_chat_events
+      ---
+      duration_ms: 24.283
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps
+    ok 16 - agent_chat_steps
+      ---
+      duration_ms: 24.408042
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota
+    ok 17 - agent_chat_quota
+      ---
+      duration_ms: 23.142084
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals
+    ok 18 - agent_edit_proposals
+      ---
+      duration_ms: 24.982042
+      type: 'test'
+      ...
+    # Subtest: edit_tasks
+    ok 19 - edit_tasks
+      ---
+      duration_ms: 24.989292
+      type: 'test'
+      ...
+    1..19
+ok 8 - historical 25: wrong well-formed hash for each of 19 genuinely populated families
+  ---
+  duration_ms: 523.9395
+  type: 'test'
+  ...
+# Subtest: historical 25: all five held identity fields bind even when a live row and valid hash still exist
+    # Subtest: id
+    ok 1 - id
+      ---
+      duration_ms: 21.936625
+      type: 'test'
+      ...
+    # Subtest: projectId
+    ok 2 - projectId
+      ---
+      duration_ms: 22.44325
+      type: 'test'
+      ...
+    # Subtest: namespace
+    ok 3 - namespace
+      ---
+      duration_ms: 28.478709
+      type: 'test'
+      ...
+    # Subtest: requestId
+    ok 4 - requestId
+      ---
+      duration_ms: 23.304166
+      type: 'test'
+      ...
+    # Subtest: operation
+    ok 5 - operation
+      ---
+      duration_ms: 24.007958
+      type: 'test'
+      ...
+    1..5
+ok 9 - historical 25: all five held identity fields bind even when a live row and valid hash still exist
+  ---
+  duration_ms: 202.1045
+  type: 'test'
+  ...
+# Subtest: historical 26→27: truly empty holds, optional mock=false, exact current result and read-only reopen
+ok 10 - historical 26→27: truly empty holds, optional mock=false, exact current result and read-only reopen
+  ---
+  duration_ms: 276.5315
+  type: 'test'
+  ...
+# Subtest: historical 26→27: truly empty holds, optional mock=true, exact current result and read-only reopen
+ok 11 - historical 26→27: truly empty holds, optional mock=true, exact current result and read-only reopen
+  ---
+  duration_ms: 121.249292
+  type: 'test'
+  ...
+# Subtest: historical 26→27: populated holds, optional mock=false, exact current result and read-only reopen
+ok 12 - historical 26→27: populated holds, optional mock=false, exact current result and read-only reopen
+  ---
+  duration_ms: 124.480792
+  type: 'test'
+  ...
+# Subtest: historical 26→27: populated holds, optional mock=true, exact current result and read-only reopen
+ok 13 - historical 26→27: populated holds, optional mock=true, exact current result and read-only reopen
+  ---
+  duration_ms: 129.460917
+  type: 'test'
+  ...
+# Subtest: historical 27: raw validator accepts only-hash corruption, current boundary refuses it read-only
+ok 14 - historical 27: raw validator accepts only-hash corruption, current boundary refuses it read-only
+  ---
+  duration_ms: 113.973041
+  type: 'test'
+  ...
+# Subtest: historical 27: 58 absent-pointer negatives across every fixed family (pointer coverage, not content coverage)
+    # Subtest: jobs: absent rowid 0
+    ok 1 - jobs: absent rowid 0
+      ---
+      duration_ms: 19.315709
+      type: 'test'
+      ...
+    # Subtest: jobs: absent rowid -1
+    ok 2 - jobs: absent rowid -1
+      ---
+      duration_ms: 21.753708
+      type: 'test'
+      ...
+    # Subtest: exports: absent rowid 0
+    ok 3 - exports: absent rowid 0
+      ---
+      duration_ms: 20.387583
+      type: 'test'
+      ...
+    # Subtest: exports: absent rowid -1
+    ok 4 - exports: absent rowid -1
+      ---
+      duration_ms: 21.027125
+      type: 'test'
+      ...
+    # Subtest: versions: absent rowid 0
+    ok 5 - versions: absent rowid 0
+      ---
+      duration_ms: 20.089667
+      type: 'test'
+      ...
+    # Subtest: versions: absent rowid -1
+    ok 6 - versions: absent rowid -1
+      ---
+      duration_ms: 22.052625
+      type: 'test'
+      ...
+    # Subtest: job_events: absent rowid 0
+    ok 7 - job_events: absent rowid 0
+      ---
+      duration_ms: 20.892
+      type: 'test'
+      ...
+    # Subtest: job_events: absent rowid -1
+    ok 8 - job_events: absent rowid -1
+      ---
+      duration_ms: 21.635375
+      type: 'test'
+      ...
+    # Subtest: timeline_requests: absent rowid 0
+    ok 9 - timeline_requests: absent rowid 0
+      ---
+      duration_ms: 20.9835
+      type: 'test'
+      ...
+    # Subtest: timeline_requests: absent rowid -1
+    ok 10 - timeline_requests: absent rowid -1
+      ---
+      duration_ms: 21.913167
+      type: 'test'
+      ...
+    # Subtest: reference_requests: absent rowid 0
+    ok 11 - reference_requests: absent rowid 0
+      ---
+      duration_ms: 21.16125
+      type: 'test'
+      ...
+    # Subtest: reference_requests: absent rowid -1
+    ok 12 - reference_requests: absent rowid -1
+      ---
+      duration_ms: 20.33425
+      type: 'test'
+      ...
+    # Subtest: idempotency: absent rowid 0
+    ok 13 - idempotency: absent rowid 0
+      ---
+      duration_ms: 21.433333
+      type: 'test'
+      ...
+    # Subtest: idempotency: absent rowid -1
+    ok 14 - idempotency: absent rowid -1
+      ---
+      duration_ms: 22.124959
+      type: 'test'
+      ...
+    # Subtest: mutation_requests: absent rowid 0
+    ok 15 - mutation_requests: absent rowid 0
+      ---
+      duration_ms: 21.467375
+      type: 'test'
+      ...
+    # Subtest: mutation_requests: absent rowid -1
+    ok 16 - mutation_requests: absent rowid -1
+      ---
+      duration_ms: 19.944791
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests: absent rowid 0
+    ok 17 - asset_range_requests: absent rowid 0
+      ---
+      duration_ms: 22.102541
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests: absent rowid -1
+    ok 18 - asset_range_requests: absent rowid -1
+      ---
+      duration_ms: 21.541375
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests: absent rowid 0
+    ok 19 - asset_disposition_requests: absent rowid 0
+      ---
+      duration_ms: 21.695667
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests: absent rowid -1
+    ok 20 - asset_disposition_requests: absent rowid -1
+      ---
+      duration_ms: 20.516166
+      type: 'test'
+      ...
+    # Subtest: subject_requests: absent rowid 0
+    ok 21 - subject_requests: absent rowid 0
+      ---
+      duration_ms: 21.956417
+      type: 'test'
+      ...
+    # Subtest: subject_requests: absent rowid -1
+    ok 22 - subject_requests: absent rowid -1
+      ---
+      duration_ms: 21.607459
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads: absent rowid 0
+    ok 23 - agent_chat_threads: absent rowid 0
+      ---
+      duration_ms: 21.897791
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads: absent rowid -1
+    ok 24 - agent_chat_threads: absent rowid -1
+      ---
+      duration_ms: 21.105459
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests: absent rowid 0
+    ok 25 - agent_chat_requests: absent rowid 0
+      ---
+      duration_ms: 21.518375
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests: absent rowid -1
+    ok 26 - agent_chat_requests: absent rowid -1
+      ---
+      duration_ms: 22.348583
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs: absent rowid 0
+    ok 27 - agent_chat_runs: absent rowid 0
+      ---
+      duration_ms: 20.021375
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs: absent rowid -1
+    ok 28 - agent_chat_runs: absent rowid -1
+      ---
+      duration_ms: 26.349917
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events: absent rowid 0
+    ok 29 - agent_chat_events: absent rowid 0
+      ---
+      duration_ms: 22.120042
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events: absent rowid -1
+    ok 30 - agent_chat_events: absent rowid -1
+      ---
+      duration_ms: 21.292459
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps: absent rowid 0
+    ok 31 - agent_chat_steps: absent rowid 0
+      ---
+      duration_ms: 19.656417
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps: absent rowid -1
+    ok 32 - agent_chat_steps: absent rowid -1
+      ---
+      duration_ms: 21.275625
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota: absent rowid 0
+    ok 33 - agent_chat_quota: absent rowid 0
+      ---
+      duration_ms: 21.687292
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota: absent rowid -1
+    ok 34 - agent_chat_quota: absent rowid -1
+      ---
+      duration_ms: 22.0365
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals: absent rowid 0
+    ok 35 - agent_edit_proposals: absent rowid 0
+      ---
+      duration_ms: 20.756625
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals: absent rowid -1
+    ok 36 - agent_edit_proposals: absent rowid -1
+      ---
+      duration_ms: 21.474792
+      type: 'test'
+      ...
+    # Subtest: edit_tasks: absent rowid 0
+    ok 37 - edit_tasks: absent rowid 0
+      ---
+      duration_ms: 22.461209
+      type: 'test'
+      ...
+    # Subtest: edit_tasks: absent rowid -1
+    ok 38 - edit_tasks: absent rowid -1
+      ---
+      duration_ms: 21.224792
+      type: 'test'
+      ...
+    # Subtest: image_groups: absent rowid 0
+    ok 39 - image_groups: absent rowid 0
+      ---
+      duration_ms: 21.539416
+      type: 'test'
+      ...
+    # Subtest: image_groups: absent rowid -1
+    ok 40 - image_groups: absent rowid -1
+      ---
+      duration_ms: 25.357791
+      type: 'test'
+      ...
+    # Subtest: image_tasks: absent rowid 0
+    ok 41 - image_tasks: absent rowid 0
+      ---
+      duration_ms: 21.632792
+      type: 'test'
+      ...
+    # Subtest: image_tasks: absent rowid -1
+    ok 42 - image_tasks: absent rowid -1
+      ---
+      duration_ms: 20.358792
+      type: 'test'
+      ...
+    # Subtest: image_versions: absent rowid 0
+    ok 43 - image_versions: absent rowid 0
+      ---
+      duration_ms: 21.999458
+      type: 'test'
+      ...
+    # Subtest: image_versions: absent rowid -1
+    ok 44 - image_versions: absent rowid -1
+      ---
+      duration_ms: 22.129041
+      type: 'test'
+      ...
+    # Subtest: image_requests: absent rowid 0
+    ok 45 - image_requests: absent rowid 0
+      ---
+      duration_ms: 22.191417
+      type: 'test'
+      ...
+    # Subtest: image_requests: absent rowid -1
+    ok 46 - image_requests: absent rowid -1
+      ---
+      duration_ms: 21.148125
+      type: 'test'
+      ...
+    # Subtest: image_reviews: absent rowid 0
+    ok 47 - image_reviews: absent rowid 0
+      ---
+      duration_ms: 21.956791
+      type: 'test'
+      ...
+    # Subtest: image_reviews: absent rowid -1
+    ok 48 - image_reviews: absent rowid -1
+      ---
+      duration_ms: 21.153625
+      type: 'test'
+      ...
+    # Subtest: image_remote_runs: absent rowid 0
+    ok 49 - image_remote_runs: absent rowid 0
+      ---
+      duration_ms: 21.08475
+      type: 'test'
+      ...
+    # Subtest: image_remote_runs: absent rowid -1
+    ok 50 - image_remote_runs: absent rowid -1
+      ---
+      duration_ms: 21.931417
+      type: 'test'
+      ...
+    # Subtest: image_remote_observations: absent rowid 0
+    ok 51 - image_remote_observations: absent rowid 0
+      ---
+      duration_ms: 21.635834
+      type: 'test'
+      ...
+    # Subtest: image_remote_observations: absent rowid -1
+    ok 52 - image_remote_observations: absent rowid -1
+      ---
+      duration_ms: 22.735625
+      type: 'test'
+      ...
+    # Subtest: frame_tasks: absent rowid 0
+    ok 53 - frame_tasks: absent rowid 0
+      ---
+      duration_ms: 20.469708
+      type: 'test'
+      ...
+    # Subtest: frame_tasks: absent rowid -1
+    ok 54 - frame_tasks: absent rowid -1
+      ---
+      duration_ms: 21.629417
+      type: 'test'
+      ...
+    # Subtest: frame_requests: absent rowid 0
+    ok 55 - frame_requests: absent rowid 0
+      ---
+      duration_ms: 21.583042
+      type: 'test'
+      ...
+    # Subtest: frame_requests: absent rowid -1
+    ok 56 - frame_requests: absent rowid -1
+      ---
+      duration_ms: 21.78925
+      type: 'test'
+      ...
+    # Subtest: waveform_cache: absent rowid 0
+    ok 57 - waveform_cache: absent rowid 0
+      ---
+      duration_ms: 20.838458
+      type: 'test'
+      ...
+    # Subtest: waveform_cache: absent rowid -1
+    ok 58 - waveform_cache: absent rowid -1
+      ---
+      duration_ms: 22.313959
+      type: 'test'
+      ...
+    1..58
+ok 15 - historical 27: 58 absent-pointer negatives across every fixed family (pointer coverage, not content coverage)
+  ---
+  duration_ms: 1338.313167
+  type: 'test'
+  ...
+# Subtest: historical 27: wrong well-formed hash for each of 19 genuinely populated families
+    # Subtest: jobs
+    ok 1 - jobs
+      ---
+      duration_ms: 20.505792
+      type: 'test'
+      ...
+    # Subtest: exports
+    ok 2 - exports
+      ---
+      duration_ms: 20.537625
+      type: 'test'
+      ...
+    # Subtest: versions
+    ok 3 - versions
+      ---
+      duration_ms: 21.989625
+      type: 'test'
+      ...
+    # Subtest: job_events
+    ok 4 - job_events
+      ---
+      duration_ms: 22.149834
+      type: 'test'
+      ...
+    # Subtest: timeline_requests
+    ok 5 - timeline_requests
+      ---
+      duration_ms: 22.330042
+      type: 'test'
+      ...
+    # Subtest: reference_requests
+    ok 6 - reference_requests
+      ---
+      duration_ms: 20.604
+      type: 'test'
+      ...
+    # Subtest: idempotency
+    ok 7 - idempotency
+      ---
+      duration_ms: 22.545041
+      type: 'test'
+      ...
+    # Subtest: mutation_requests
+    ok 8 - mutation_requests
+      ---
+      duration_ms: 21.892875
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests
+    ok 9 - asset_range_requests
+      ---
+      duration_ms: 22.060917
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests
+    ok 10 - asset_disposition_requests
+      ---
+      duration_ms: 21.397667
+      type: 'test'
+      ...
+    # Subtest: subject_requests
+    ok 11 - subject_requests
+      ---
+      duration_ms: 24.667834
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads
+    ok 12 - agent_chat_threads
+      ---
+      duration_ms: 23.624
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests
+    ok 13 - agent_chat_requests
+      ---
+      duration_ms: 22.28175
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs
+    ok 14 - agent_chat_runs
+      ---
+      duration_ms: 24.217791
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events
+    ok 15 - agent_chat_events
+      ---
+      duration_ms: 22.461292
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps
+    ok 16 - agent_chat_steps
+      ---
+      duration_ms: 23.253125
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota
+    ok 17 - agent_chat_quota
+      ---
+      duration_ms: 22.523875
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals
+    ok 18 - agent_edit_proposals
+      ---
+      duration_ms: 23.612083
+      type: 'test'
+      ...
+    # Subtest: edit_tasks
+    ok 19 - edit_tasks
+      ---
+      duration_ms: 22.819208
+      type: 'test'
+      ...
+    1..19
+ok 16 - historical 27: wrong well-formed hash for each of 19 genuinely populated families
+  ---
+  duration_ms: 509.547458
+  type: 'test'
+  ...
+# Subtest: historical 27: all five held identity fields bind even when a live row and valid hash still exist
+    # Subtest: id
+    ok 1 - id
+      ---
+      duration_ms: 20.275334
+      type: 'test'
+      ...
+    # Subtest: projectId
+    ok 2 - projectId
+      ---
+      duration_ms: 21.44575
+      type: 'test'
+      ...
+    # Subtest: namespace
+    ok 3 - namespace
+      ---
+      duration_ms: 22.273459
+      type: 'test'
+      ...
+    # Subtest: requestId
+    ok 4 - requestId
+      ---
+      duration_ms: 21.884042
+      type: 'test'
+      ...
+    # Subtest: operation
+    ok 5 - operation
+      ---
+      duration_ms: 22.159125
+      type: 'test'
+      ...
+    1..5
+ok 17 - historical 27: all five held identity fields bind even when a live row and valid hash still exist
+  ---
+  duration_ms: 190.059166
+  type: 'test'
+  ...
+# Subtest: historical 28→29: truly empty holds, optional mock=false, exact current result and read-only reopen
+ok 18 - historical 28→29: truly empty holds, optional mock=false, exact current result and read-only reopen
+  ---
+  duration_ms: 300.029125
+  type: 'test'
+  ...
+# Subtest: historical 28→29: truly empty holds, optional mock=true, exact current result and read-only reopen
+ok 19 - historical 28→29: truly empty holds, optional mock=true, exact current result and read-only reopen
+  ---
+  duration_ms: 127.847334
+  type: 'test'
+  ...
+# Subtest: historical 28→29: populated holds, optional mock=false, exact current result and read-only reopen
+ok 20 - historical 28→29: populated holds, optional mock=false, exact current result and read-only reopen
+  ---
+  duration_ms: 140.303417
+  type: 'test'
+  ...
+# Subtest: historical 28→29: populated holds, optional mock=true, exact current result and read-only reopen
+ok 21 - historical 28→29: populated holds, optional mock=true, exact current result and read-only reopen
+  ---
+  duration_ms: 150.399959
+  type: 'test'
+  ...
+# Subtest: historical 29: raw validator accepts only-hash corruption, current boundary refuses it read-only
+ok 22 - historical 29: raw validator accepts only-hash corruption, current boundary refuses it read-only
+  ---
+  duration_ms: 130.989041
+  type: 'test'
+  ...
+# Subtest: historical 29: 62 absent-pointer negatives across every fixed family (pointer coverage, not content coverage)
+    # Subtest: jobs: absent rowid 0
+    ok 1 - jobs: absent rowid 0
+      ---
+      duration_ms: 20.132709
+      type: 'test'
+      ...
+    # Subtest: jobs: absent rowid -1
+    ok 2 - jobs: absent rowid -1
+      ---
+      duration_ms: 22.173625
+      type: 'test'
+      ...
+    # Subtest: exports: absent rowid 0
+    ok 3 - exports: absent rowid 0
+      ---
+      duration_ms: 22.779834
+      type: 'test'
+      ...
+    # Subtest: exports: absent rowid -1
+    ok 4 - exports: absent rowid -1
+      ---
+      duration_ms: 23.005666
+      type: 'test'
+      ...
+    # Subtest: versions: absent rowid 0
+    ok 5 - versions: absent rowid 0
+      ---
+      duration_ms: 22.774334
+      type: 'test'
+      ...
+    # Subtest: versions: absent rowid -1
+    ok 6 - versions: absent rowid -1
+      ---
+      duration_ms: 23.157042
+      type: 'test'
+      ...
+    # Subtest: job_events: absent rowid 0
+    ok 7 - job_events: absent rowid 0
+      ---
+      duration_ms: 25.535042
+      type: 'test'
+      ...
+    # Subtest: job_events: absent rowid -1
+    ok 8 - job_events: absent rowid -1
+      ---
+      duration_ms: 22.716375
+      type: 'test'
+      ...
+    # Subtest: timeline_requests: absent rowid 0
+    ok 9 - timeline_requests: absent rowid 0
+      ---
+      duration_ms: 21.940542
+      type: 'test'
+      ...
+    # Subtest: timeline_requests: absent rowid -1
+    ok 10 - timeline_requests: absent rowid -1
+      ---
+      duration_ms: 23.2165
+      type: 'test'
+      ...
+    # Subtest: reference_requests: absent rowid 0
+    ok 11 - reference_requests: absent rowid 0
+      ---
+      duration_ms: 23.540375
+      type: 'test'
+      ...
+    # Subtest: reference_requests: absent rowid -1
+    ok 12 - reference_requests: absent rowid -1
+      ---
+      duration_ms: 23.338542
+      type: 'test'
+      ...
+    # Subtest: idempotency: absent rowid 0
+    ok 13 - idempotency: absent rowid 0
+      ---
+      duration_ms: 21.763
+      type: 'test'
+      ...
+    # Subtest: idempotency: absent rowid -1
+    ok 14 - idempotency: absent rowid -1
+      ---
+      duration_ms: 23.178333
+      type: 'test'
+      ...
+    # Subtest: mutation_requests: absent rowid 0
+    ok 15 - mutation_requests: absent rowid 0
+      ---
+      duration_ms: 22.992958
+      type: 'test'
+      ...
+    # Subtest: mutation_requests: absent rowid -1
+    ok 16 - mutation_requests: absent rowid -1
+      ---
+      duration_ms: 22.423084
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests: absent rowid 0
+    ok 17 - asset_range_requests: absent rowid 0
+      ---
+      duration_ms: 23.746583
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests: absent rowid -1
+    ok 18 - asset_range_requests: absent rowid -1
+      ---
+      duration_ms: 21.184
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests: absent rowid 0
+    ok 19 - asset_disposition_requests: absent rowid 0
+      ---
+      duration_ms: 23.307583
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests: absent rowid -1
+    ok 20 - asset_disposition_requests: absent rowid -1
+      ---
+      duration_ms: 24.009417
+      type: 'test'
+      ...
+    # Subtest: subject_requests: absent rowid 0
+    ok 21 - subject_requests: absent rowid 0
+      ---
+      duration_ms: 23.652833
+      type: 'test'
+      ...
+    # Subtest: subject_requests: absent rowid -1
+    ok 22 - subject_requests: absent rowid -1
+      ---
+      duration_ms: 20.998125
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads: absent rowid 0
+    ok 23 - agent_chat_threads: absent rowid 0
+      ---
+      duration_ms: 22.454333
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads: absent rowid -1
+    ok 24 - agent_chat_threads: absent rowid -1
+      ---
+      duration_ms: 26.901875
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests: absent rowid 0
+    ok 25 - agent_chat_requests: absent rowid 0
+      ---
+      duration_ms: 21.380292
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests: absent rowid -1
+    ok 26 - agent_chat_requests: absent rowid -1
+      ---
+      duration_ms: 22.237625
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs: absent rowid 0
+    ok 27 - agent_chat_runs: absent rowid 0
+      ---
+      duration_ms: 23.281083
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs: absent rowid -1
+    ok 28 - agent_chat_runs: absent rowid -1
+      ---
+      duration_ms: 21.887709
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events: absent rowid 0
+    ok 29 - agent_chat_events: absent rowid 0
+      ---
+      duration_ms: 21.268125
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events: absent rowid -1
+    ok 30 - agent_chat_events: absent rowid -1
+      ---
+      duration_ms: 23.45875
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps: absent rowid 0
+    ok 31 - agent_chat_steps: absent rowid 0
+      ---
+      duration_ms: 22.938042
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps: absent rowid -1
+    ok 32 - agent_chat_steps: absent rowid -1
+      ---
+      duration_ms: 22.559709
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota: absent rowid 0
+    ok 33 - agent_chat_quota: absent rowid 0
+      ---
+      duration_ms: 21.404625
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota: absent rowid -1
+    ok 34 - agent_chat_quota: absent rowid -1
+      ---
+      duration_ms: 22.726958
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals: absent rowid 0
+    ok 35 - agent_edit_proposals: absent rowid 0
+      ---
+      duration_ms: 22.821708
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals: absent rowid -1
+    ok 36 - agent_edit_proposals: absent rowid -1
+      ---
+      duration_ms: 22.61775
+      type: 'test'
+      ...
+    # Subtest: edit_tasks: absent rowid 0
+    ok 37 - edit_tasks: absent rowid 0
+      ---
+      duration_ms: 23.108417
+      type: 'test'
+      ...
+    # Subtest: edit_tasks: absent rowid -1
+    ok 38 - edit_tasks: absent rowid -1
+      ---
+      duration_ms: 21.530834
+      type: 'test'
+      ...
+    # Subtest: image_groups: absent rowid 0
+    ok 39 - image_groups: absent rowid 0
+      ---
+      duration_ms: 21.923833
+      type: 'test'
+      ...
+    # Subtest: image_groups: absent rowid -1
+    ok 40 - image_groups: absent rowid -1
+      ---
+      duration_ms: 22.771625
+      type: 'test'
+      ...
+    # Subtest: image_tasks: absent rowid 0
+    ok 41 - image_tasks: absent rowid 0
+      ---
+      duration_ms: 22.713792
+      type: 'test'
+      ...
+    # Subtest: image_tasks: absent rowid -1
+    ok 42 - image_tasks: absent rowid -1
+      ---
+      duration_ms: 22.090042
+      type: 'test'
+      ...
+    # Subtest: image_versions: absent rowid 0
+    ok 43 - image_versions: absent rowid 0
+      ---
+      duration_ms: 23.628125
+      type: 'test'
+      ...
+    # Subtest: image_versions: absent rowid -1
+    ok 44 - image_versions: absent rowid -1
+      ---
+      duration_ms: 22.973458
+      type: 'test'
+      ...
+    # Subtest: image_requests: absent rowid 0
+    ok 45 - image_requests: absent rowid 0
+      ---
+      duration_ms: 23.424042
+      type: 'test'
+      ...
+    # Subtest: image_requests: absent rowid -1
+    ok 46 - image_requests: absent rowid -1
+      ---
+      duration_ms: 21.900833
+      type: 'test'
+      ...
+    # Subtest: image_reviews: absent rowid 0
+    ok 47 - image_reviews: absent rowid 0
+      ---
+      duration_ms: 23.54025
+      type: 'test'
+      ...
+    # Subtest: image_reviews: absent rowid -1
+    ok 48 - image_reviews: absent rowid -1
+      ---
+      duration_ms: 23.375125
+      type: 'test'
+      ...
+    # Subtest: image_remote_runs: absent rowid 0
+    ok 49 - image_remote_runs: absent rowid 0
+      ---
+      duration_ms: 23.132958
+      type: 'test'
+      ...
+    # Subtest: image_remote_runs: absent rowid -1
+    ok 50 - image_remote_runs: absent rowid -1
+      ---
+      duration_ms: 21.258791
+      type: 'test'
+      ...
+    # Subtest: image_remote_observations: absent rowid 0
+    ok 51 - image_remote_observations: absent rowid 0
+      ---
+      duration_ms: 23.527125
+      type: 'test'
+      ...
+    # Subtest: image_remote_observations: absent rowid -1
+    ok 52 - image_remote_observations: absent rowid -1
+      ---
+      duration_ms: 23.395584
+      type: 'test'
+      ...
+    # Subtest: project_lut_resources: absent rowid 0
+    ok 53 - project_lut_resources: absent rowid 0
+      ---
+      duration_ms: 22.622792
+      type: 'test'
+      ...
+    # Subtest: project_lut_resources: absent rowid -1
+    ok 54 - project_lut_resources: absent rowid -1
+      ---
+      duration_ms: 24.905708
+      type: 'test'
+      ...
+    # Subtest: lut_import_requests: absent rowid 0
+    ok 55 - lut_import_requests: absent rowid 0
+      ---
+      duration_ms: 22.333125
+      type: 'test'
+      ...
+    # Subtest: lut_import_requests: absent rowid -1
+    ok 56 - lut_import_requests: absent rowid -1
+      ---
+      duration_ms: 23.254125
+      type: 'test'
+      ...
+    # Subtest: frame_tasks: absent rowid 0
+    ok 57 - frame_tasks: absent rowid 0
+      ---
+      duration_ms: 23.952583
+      type: 'test'
+      ...
+    # Subtest: frame_tasks: absent rowid -1
+    ok 58 - frame_tasks: absent rowid -1
+      ---
+      duration_ms: 23.172208
+      type: 'test'
+      ...
+    # Subtest: frame_requests: absent rowid 0
+    ok 59 - frame_requests: absent rowid 0
+      ---
+      duration_ms: 22.072292
+      type: 'test'
+      ...
+    # Subtest: frame_requests: absent rowid -1
+    ok 60 - frame_requests: absent rowid -1
+      ---
+      duration_ms: 22.894209
+      type: 'test'
+      ...
+    # Subtest: waveform_cache: absent rowid 0
+    ok 61 - waveform_cache: absent rowid 0
+      ---
+      duration_ms: 22.712209
+      type: 'test'
+      ...
+    # Subtest: waveform_cache: absent rowid -1
+    ok 62 - waveform_cache: absent rowid -1
+      ---
+      duration_ms: 23.264541
+      type: 'test'
+      ...
+    1..62
+ok 23 - historical 29: 62 absent-pointer negatives across every fixed family (pointer coverage, not content coverage)
+  ---
+  duration_ms: 1513.594
+  type: 'test'
+  ...
+# Subtest: historical 29: wrong well-formed hash for each of 21 genuinely populated families
+    # Subtest: jobs
+    ok 1 - jobs
+      ---
+      duration_ms: 20.956041
+      type: 'test'
+      ...
+    # Subtest: exports
+    ok 2 - exports
+      ---
+      duration_ms: 22.49925
+      type: 'test'
+      ...
+    # Subtest: versions
+    ok 3 - versions
+      ---
+      duration_ms: 23.648708
+      type: 'test'
+      ...
+    # Subtest: job_events
+    ok 4 - job_events
+      ---
+      duration_ms: 24.855209
+      type: 'test'
+      ...
+    # Subtest: timeline_requests
+    ok 5 - timeline_requests
+      ---
+      duration_ms: 23.204083
+      type: 'test'
+      ...
+    # Subtest: reference_requests
+    ok 6 - reference_requests
+      ---
+      duration_ms: 22.567875
+      type: 'test'
+      ...
+    # Subtest: idempotency
+    ok 7 - idempotency
+      ---
+      duration_ms: 23.893542
+      type: 'test'
+      ...
+    # Subtest: mutation_requests
+    ok 8 - mutation_requests
+      ---
+      duration_ms: 24.51625
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests
+    ok 9 - asset_range_requests
+      ---
+      duration_ms: 25.831875
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests
+    ok 10 - asset_disposition_requests
+      ---
+      duration_ms: 23.971542
+      type: 'test'
+      ...
+    # Subtest: subject_requests
+    ok 11 - subject_requests
+      ---
+      duration_ms: 24.539959
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads
+    ok 12 - agent_chat_threads
+      ---
+      duration_ms: 24.2625
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests
+    ok 13 - agent_chat_requests
+      ---
+      duration_ms: 24.155875
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs
+    ok 14 - agent_chat_runs
+      ---
+      duration_ms: 25.238292
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events
+    ok 15 - agent_chat_events
+      ---
+      duration_ms: 23.78775
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps
+    ok 16 - agent_chat_steps
+      ---
+      duration_ms: 25.0075
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota
+    ok 17 - agent_chat_quota
+      ---
+      duration_ms: 24.69775
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals
+    ok 18 - agent_edit_proposals
+      ---
+      duration_ms: 24.969584
+      type: 'test'
+      ...
+    # Subtest: edit_tasks
+    ok 19 - edit_tasks
+      ---
+      duration_ms: 24.013667
+      type: 'test'
+      ...
+    # Subtest: project_lut_resources
+    ok 20 - project_lut_resources
+      ---
+      duration_ms: 25.588708
+      type: 'test'
+      ...
+    # Subtest: lut_import_requests
+    ok 21 - lut_import_requests
+      ---
+      duration_ms: 26.08925
+      type: 'test'
+      ...
+    1..21
+ok 24 - historical 29: wrong well-formed hash for each of 21 genuinely populated families
+  ---
+  duration_ms: 604.277583
+  type: 'test'
+  ...
+# Subtest: historical 29: all five held identity fields bind even when a live row and valid hash still exist
+    # Subtest: id
+    ok 1 - id
+      ---
+      duration_ms: 22.101791
+      type: 'test'
+      ...
+    # Subtest: projectId
+    ok 2 - projectId
+      ---
+      duration_ms: 23.443709
+      type: 'test'
+      ...
+    # Subtest: namespace
+    ok 3 - namespace
+      ---
+      duration_ms: 22.270917
+      type: 'test'
+      ...
+    # Subtest: requestId
+    ok 4 - requestId
+      ---
+      duration_ms: 25.796917
+      type: 'test'
+      ...
+    # Subtest: operation
+    ok 5 - operation
+      ---
+      duration_ms: 24.093
+      type: 'test'
+      ...
+    1..5
+ok 25 - historical 29: all five held identity fields bind even when a live row and valid hash still exist
+  ---
+  duration_ms: 210.902792
+  type: 'test'
+  ...
+# Subtest: historical 30→31: truly empty holds, optional mock=false, exact current result and read-only reopen
+ok 26 - historical 30→31: truly empty holds, optional mock=false, exact current result and read-only reopen
+  ---
+  duration_ms: 320.717333
+  type: 'test'
+  ...
+# Subtest: historical 30→31: truly empty holds, optional mock=true, exact current result and read-only reopen
+ok 27 - historical 30→31: truly empty holds, optional mock=true, exact current result and read-only reopen
+  ---
+  duration_ms: 134.081416
+  type: 'test'
+  ...
+# Subtest: historical 30→31: populated holds, optional mock=false, exact current result and read-only reopen
+ok 28 - historical 30→31: populated holds, optional mock=false, exact current result and read-only reopen
+  ---
+  duration_ms: 145.592042
+  type: 'test'
+  ...
+# Subtest: historical 30→31: populated holds, optional mock=true, exact current result and read-only reopen
+ok 29 - historical 30→31: populated holds, optional mock=true, exact current result and read-only reopen
+  ---
+  duration_ms: 149.212125
+  type: 'test'
+  ...
+# Subtest: historical 31: raw validator accepts only-hash corruption, current boundary refuses it read-only
+ok 30 - historical 31: raw validator accepts only-hash corruption, current boundary refuses it read-only
+  ---
+  duration_ms: 156.535375
+  type: 'test'
+  ...
+# Subtest: historical 31: 62 absent-pointer negatives across every fixed family (pointer coverage, not content coverage)
+    # Subtest: jobs: absent rowid 0
+    ok 1 - jobs: absent rowid 0
+      ---
+      duration_ms: 25.002667
+      type: 'test'
+      ...
+    # Subtest: jobs: absent rowid -1
+    ok 2 - jobs: absent rowid -1
+      ---
+      duration_ms: 22.722833
+      type: 'test'
+      ...
+    # Subtest: exports: absent rowid 0
+    ok 3 - exports: absent rowid 0
+      ---
+      duration_ms: 24.449166
+      type: 'test'
+      ...
+    # Subtest: exports: absent rowid -1
+    ok 4 - exports: absent rowid -1
+      ---
+      duration_ms: 24.234459
+      type: 'test'
+      ...
+    # Subtest: versions: absent rowid 0
+    ok 5 - versions: absent rowid 0
+      ---
+      duration_ms: 23.367
+      type: 'test'
+      ...
+    # Subtest: versions: absent rowid -1
+    ok 6 - versions: absent rowid -1
+      ---
+      duration_ms: 21.777292
+      type: 'test'
+      ...
+    # Subtest: job_events: absent rowid 0
+    ok 7 - job_events: absent rowid 0
+      ---
+      duration_ms: 24.619125
+      type: 'test'
+      ...
+    # Subtest: job_events: absent rowid -1
+    ok 8 - job_events: absent rowid -1
+      ---
+      duration_ms: 23.731125
+      type: 'test'
+      ...
+    # Subtest: timeline_requests: absent rowid 0
+    ok 9 - timeline_requests: absent rowid 0
+      ---
+      duration_ms: 23.54825
+      type: 'test'
+      ...
+    # Subtest: timeline_requests: absent rowid -1
+    ok 10 - timeline_requests: absent rowid -1
+      ---
+      duration_ms: 23.245125
+      type: 'test'
+      ...
+    # Subtest: reference_requests: absent rowid 0
+    ok 11 - reference_requests: absent rowid 0
+      ---
+      duration_ms: 24.033208
+      type: 'test'
+      ...
+    # Subtest: reference_requests: absent rowid -1
+    ok 12 - reference_requests: absent rowid -1
+      ---
+      duration_ms: 23.579542
+      type: 'test'
+      ...
+    # Subtest: idempotency: absent rowid 0
+    ok 13 - idempotency: absent rowid 0
+      ---
+      duration_ms: 23.966375
+      type: 'test'
+      ...
+    # Subtest: idempotency: absent rowid -1
+    ok 14 - idempotency: absent rowid -1
+      ---
+      duration_ms: 23.952042
+      type: 'test'
+      ...
+    # Subtest: mutation_requests: absent rowid 0
+    ok 15 - mutation_requests: absent rowid 0
+      ---
+      duration_ms: 22.700542
+      type: 'test'
+      ...
+    # Subtest: mutation_requests: absent rowid -1
+    ok 16 - mutation_requests: absent rowid -1
+      ---
+      duration_ms: 24.018959
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests: absent rowid 0
+    ok 17 - asset_range_requests: absent rowid 0
+      ---
+      duration_ms: 24.59725
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests: absent rowid -1
+    ok 18 - asset_range_requests: absent rowid -1
+      ---
+      duration_ms: 24.169292
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests: absent rowid 0
+    ok 19 - asset_disposition_requests: absent rowid 0
+      ---
+      duration_ms: 22.222834
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests: absent rowid -1
+    ok 20 - asset_disposition_requests: absent rowid -1
+      ---
+      duration_ms: 23.352292
+      type: 'test'
+      ...
+    # Subtest: subject_requests: absent rowid 0
+    ok 21 - subject_requests: absent rowid 0
+      ---
+      duration_ms: 23.642875
+      type: 'test'
+      ...
+    # Subtest: subject_requests: absent rowid -1
+    ok 22 - subject_requests: absent rowid -1
+      ---
+      duration_ms: 24.77825
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads: absent rowid 0
+    ok 23 - agent_chat_threads: absent rowid 0
+      ---
+      duration_ms: 22.396833
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads: absent rowid -1
+    ok 24 - agent_chat_threads: absent rowid -1
+      ---
+      duration_ms: 24.85075
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests: absent rowid 0
+    ok 25 - agent_chat_requests: absent rowid 0
+      ---
+      duration_ms: 24.466375
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests: absent rowid -1
+    ok 26 - agent_chat_requests: absent rowid -1
+      ---
+      duration_ms: 23.620208
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs: absent rowid 0
+    ok 27 - agent_chat_runs: absent rowid 0
+      ---
+      duration_ms: 23.987416
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs: absent rowid -1
+    ok 28 - agent_chat_runs: absent rowid -1
+      ---
+      duration_ms: 22.644708
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events: absent rowid 0
+    ok 29 - agent_chat_events: absent rowid 0
+      ---
+      duration_ms: 23.298708
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events: absent rowid -1
+    ok 30 - agent_chat_events: absent rowid -1
+      ---
+      duration_ms: 24.343459
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps: absent rowid 0
+    ok 31 - agent_chat_steps: absent rowid 0
+      ---
+      duration_ms: 22.569417
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps: absent rowid -1
+    ok 32 - agent_chat_steps: absent rowid -1
+      ---
+      duration_ms: 22.405708
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota: absent rowid 0
+    ok 33 - agent_chat_quota: absent rowid 0
+      ---
+      duration_ms: 24.509625
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota: absent rowid -1
+    ok 34 - agent_chat_quota: absent rowid -1
+      ---
+      duration_ms: 23.938708
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals: absent rowid 0
+    ok 35 - agent_edit_proposals: absent rowid 0
+      ---
+      duration_ms: 24.015042
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals: absent rowid -1
+    ok 36 - agent_edit_proposals: absent rowid -1
+      ---
+      duration_ms: 22.731708
+      type: 'test'
+      ...
+    # Subtest: edit_tasks: absent rowid 0
+    ok 37 - edit_tasks: absent rowid 0
+      ---
+      duration_ms: 24.583292
+      type: 'test'
+      ...
+    # Subtest: edit_tasks: absent rowid -1
+    ok 38 - edit_tasks: absent rowid -1
+      ---
+      duration_ms: 23.757541
+      type: 'test'
+      ...
+    # Subtest: image_groups: absent rowid 0
+    ok 39 - image_groups: absent rowid 0
+      ---
+      duration_ms: 23.611417
+      type: 'test'
+      ...
+    # Subtest: image_groups: absent rowid -1
+    ok 40 - image_groups: absent rowid -1
+      ---
+      duration_ms: 22.957917
+      type: 'test'
+      ...
+    # Subtest: image_tasks: absent rowid 0
+    ok 41 - image_tasks: absent rowid 0
+      ---
+      duration_ms: 24.161584
+      type: 'test'
+      ...
+    # Subtest: image_tasks: absent rowid -1
+    ok 42 - image_tasks: absent rowid -1
+      ---
+      duration_ms: 23.043375
+      type: 'test'
+      ...
+    # Subtest: image_versions: absent rowid 0
+    ok 43 - image_versions: absent rowid 0
+      ---
+      duration_ms: 24.074625
+      type: 'test'
+      ...
+    # Subtest: image_versions: absent rowid -1
+    ok 44 - image_versions: absent rowid -1
+      ---
+      duration_ms: 24.682125
+      type: 'test'
+      ...
+    # Subtest: image_requests: absent rowid 0
+    ok 45 - image_requests: absent rowid 0
+      ---
+      duration_ms: 22.193125
+      type: 'test'
+      ...
+    # Subtest: image_requests: absent rowid -1
+    ok 46 - image_requests: absent rowid -1
+      ---
+      duration_ms: 23.302541
+      type: 'test'
+      ...
+    # Subtest: image_reviews: absent rowid 0
+    ok 47 - image_reviews: absent rowid 0
+      ---
+      duration_ms: 24.065167
+      type: 'test'
+      ...
+    # Subtest: image_reviews: absent rowid -1
+    ok 48 - image_reviews: absent rowid -1
+      ---
+      duration_ms: 23.536917
+      type: 'test'
+      ...
+    # Subtest: image_remote_runs: absent rowid 0
+    ok 49 - image_remote_runs: absent rowid 0
+      ---
+      duration_ms: 23.035208
+      type: 'test'
+      ...
+    # Subtest: image_remote_runs: absent rowid -1
+    ok 50 - image_remote_runs: absent rowid -1
+      ---
+      duration_ms: 24.639166
+      type: 'test'
+      ...
+    # Subtest: image_remote_observations: absent rowid 0
+    ok 51 - image_remote_observations: absent rowid 0
+      ---
+      duration_ms: 24.148375
+      type: 'test'
+      ...
+    # Subtest: image_remote_observations: absent rowid -1
+    ok 52 - image_remote_observations: absent rowid -1
+      ---
+      duration_ms: 28.667917
+      type: 'test'
+      ...
+    # Subtest: project_lut_resources: absent rowid 0
+    ok 53 - project_lut_resources: absent rowid 0
+      ---
+      duration_ms: 23.590292
+      type: 'test'
+      ...
+    # Subtest: project_lut_resources: absent rowid -1
+    ok 54 - project_lut_resources: absent rowid -1
+      ---
+      duration_ms: 23.522667
+      type: 'test'
+      ...
+    # Subtest: lut_import_requests: absent rowid 0
+    ok 55 - lut_import_requests: absent rowid 0
+      ---
+      duration_ms: 24.741833
+      type: 'test'
+      ...
+    # Subtest: lut_import_requests: absent rowid -1
+    ok 56 - lut_import_requests: absent rowid -1
+      ---
+      duration_ms: 25.664
+      type: 'test'
+      ...
+    # Subtest: frame_tasks: absent rowid 0
+    ok 57 - frame_tasks: absent rowid 0
+      ---
+      duration_ms: 22.39775
+      type: 'test'
+      ...
+    # Subtest: frame_tasks: absent rowid -1
+    ok 58 - frame_tasks: absent rowid -1
+      ---
+      duration_ms: 24.257417
+      type: 'test'
+      ...
+    # Subtest: frame_requests: absent rowid 0
+    ok 59 - frame_requests: absent rowid 0
+      ---
+      duration_ms: 23.643916
+      type: 'test'
+      ...
+    # Subtest: frame_requests: absent rowid -1
+    ok 60 - frame_requests: absent rowid -1
+      ---
+      duration_ms: 24.862958
+      type: 'test'
+      ...
+    # Subtest: waveform_cache: absent rowid 0
+    ok 61 - waveform_cache: absent rowid 0
+      ---
+      duration_ms: 23.834875
+      type: 'test'
+      ...
+    # Subtest: waveform_cache: absent rowid -1
+    ok 62 - waveform_cache: absent rowid -1
+      ---
+      duration_ms: 24.377458
+      type: 'test'
+      ...
+    1..62
+ok 31 - historical 31: 62 absent-pointer negatives across every fixed family (pointer coverage, not content coverage)
+  ---
+  duration_ms: 1584.718458
+  type: 'test'
+  ...
+# Subtest: historical 31: wrong well-formed hash for each of 21 genuinely populated families
+    # Subtest: jobs
+    ok 1 - jobs
+      ---
+      duration_ms: 22.282625
+      type: 'test'
+      ...
+    # Subtest: exports
+    ok 2 - exports
+      ---
+      duration_ms: 24.154584
+      type: 'test'
+      ...
+    # Subtest: versions
+    ok 3 - versions
+      ---
+      duration_ms: 25.483916
+      type: 'test'
+      ...
+    # Subtest: job_events
+    ok 4 - job_events
+      ---
+      duration_ms: 23.932584
+      type: 'test'
+      ...
+    # Subtest: timeline_requests
+    ok 5 - timeline_requests
+      ---
+      duration_ms: 22.654917
+      type: 'test'
+      ...
+    # Subtest: reference_requests
+    ok 6 - reference_requests
+      ---
+      duration_ms: 24.23225
+      type: 'test'
+      ...
+    # Subtest: idempotency
+    ok 7 - idempotency
+      ---
+      duration_ms: 24.206167
+      type: 'test'
+      ...
+    # Subtest: mutation_requests
+    ok 8 - mutation_requests
+      ---
+      duration_ms: 24.903833
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests
+    ok 9 - asset_range_requests
+      ---
+      duration_ms: 24.620833
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests
+    ok 10 - asset_disposition_requests
+      ---
+      duration_ms: 29.924375
+      type: 'test'
+      ...
+    # Subtest: subject_requests
+    ok 11 - subject_requests
+      ---
+      duration_ms: 25.424375
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads
+    ok 12 - agent_chat_threads
+      ---
+      duration_ms: 27.437792
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests
+    ok 13 - agent_chat_requests
+      ---
+      duration_ms: 25.065584
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs
+    ok 14 - agent_chat_runs
+      ---
+      duration_ms: 25.68
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events
+    ok 15 - agent_chat_events
+      ---
+      duration_ms: 25.54275
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps
+    ok 16 - agent_chat_steps
+      ---
+      duration_ms: 25.601208
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota
+    ok 17 - agent_chat_quota
+      ---
+      duration_ms: 25.702833
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals
+    ok 18 - agent_edit_proposals
+      ---
+      duration_ms: 24.638291
+      type: 'test'
+      ...
+    # Subtest: edit_tasks
+    ok 19 - edit_tasks
+      ---
+      duration_ms: 26.798084
+      type: 'test'
+      ...
+    # Subtest: project_lut_resources
+    ok 20 - project_lut_resources
+      ---
+      duration_ms: 26.306834
+      type: 'test'
+      ...
+    # Subtest: lut_import_requests
+    ok 21 - lut_import_requests
+      ---
+      duration_ms: 27.214625
+      type: 'test'
+      ...
+    1..21
+ok 32 - historical 31: wrong well-formed hash for each of 21 genuinely populated families
+  ---
+  duration_ms: 632.975167
+  type: 'test'
+  ...
+# Subtest: historical 31: all five held identity fields bind even when a live row and valid hash still exist
+    # Subtest: id
+    ok 1 - id
+      ---
+      duration_ms: 23.799583
+      type: 'test'
+      ...
+    # Subtest: projectId
+    ok 2 - projectId
+      ---
+      duration_ms: 23.260083
+      type: 'test'
+      ...
+    # Subtest: namespace
+    ok 3 - namespace
+      ---
+      duration_ms: 24.832459
+      type: 'test'
+      ...
+    # Subtest: requestId
+    ok 4 - requestId
+      ---
+      duration_ms: 24.7105
+      type: 'test'
+      ...
+    # Subtest: operation
+    ok 5 - operation
+      ---
+      duration_ms: 24.5865
+      type: 'test'
+      ...
+    1..5
+ok 33 - historical 31: all five held identity fields bind even when a live row and valid hash still exist
+  ---
+  duration_ms: 221.595458
+  type: 'test'
+  ...
+# Subtest: historical 32→33: truly empty holds, optional mock=false, exact current result and read-only reopen
+ok 34 - historical 32→33: truly empty holds, optional mock=false, exact current result and read-only reopen
+  ---
+  duration_ms: 343.269833
+  type: 'test'
+  ...
+# Subtest: historical 32→33: truly empty holds, optional mock=true, exact current result and read-only reopen
+ok 35 - historical 32→33: truly empty holds, optional mock=true, exact current result and read-only reopen
+  ---
+  duration_ms: 144.636375
+  type: 'test'
+  ...
+# Subtest: historical 32→33: populated holds, optional mock=false, exact current result and read-only reopen
+ok 36 - historical 32→33: populated holds, optional mock=false, exact current result and read-only reopen
+  ---
+  duration_ms: 153.326125
+  type: 'test'
+  ...
+# Subtest: historical 32→33: populated holds, optional mock=true, exact current result and read-only reopen
+ok 37 - historical 32→33: populated holds, optional mock=true, exact current result and read-only reopen
+  ---
+  duration_ms: 156.326209
+  type: 'test'
+  ...
+# Subtest: historical 33: raw validator accepts only-hash corruption, current boundary refuses it read-only
+ok 38 - historical 33: raw validator accepts only-hash corruption, current boundary refuses it read-only
+  ---
+  duration_ms: 141.291291
+  type: 'test'
+  ...
+# Subtest: historical 33: 62 absent-pointer negatives across every fixed family (pointer coverage, not content coverage)
+    # Subtest: jobs: absent rowid 0
+    ok 1 - jobs: absent rowid 0
+      ---
+      duration_ms: 22.070042
+      type: 'test'
+      ...
+    # Subtest: jobs: absent rowid -1
+    ok 2 - jobs: absent rowid -1
+      ---
+      duration_ms: 23.572166
+      type: 'test'
+      ...
+    # Subtest: exports: absent rowid 0
+    ok 3 - exports: absent rowid 0
+      ---
+      duration_ms: 24.24575
+      type: 'test'
+      ...
+    # Subtest: exports: absent rowid -1
+    ok 4 - exports: absent rowid -1
+      ---
+      duration_ms: 21.726542
+      type: 'test'
+      ...
+    # Subtest: versions: absent rowid 0
+    ok 5 - versions: absent rowid 0
+      ---
+      duration_ms: 23.0375
+      type: 'test'
+      ...
+    # Subtest: versions: absent rowid -1
+    ok 6 - versions: absent rowid -1
+      ---
+      duration_ms: 22.331834
+      type: 'test'
+      ...
+    # Subtest: job_events: absent rowid 0
+    ok 7 - job_events: absent rowid 0
+      ---
+      duration_ms: 23.680333
+      type: 'test'
+      ...
+    # Subtest: job_events: absent rowid -1
+    ok 8 - job_events: absent rowid -1
+      ---
+      duration_ms: 22.128166
+      type: 'test'
+      ...
+    # Subtest: timeline_requests: absent rowid 0
+    ok 9 - timeline_requests: absent rowid 0
+      ---
+      duration_ms: 23.553
+      type: 'test'
+      ...
+    # Subtest: timeline_requests: absent rowid -1
+    ok 10 - timeline_requests: absent rowid -1
+      ---
+      duration_ms: 23.007375
+      type: 'test'
+      ...
+    # Subtest: reference_requests: absent rowid 0
+    ok 11 - reference_requests: absent rowid 0
+      ---
+      duration_ms: 23.117167
+      type: 'test'
+      ...
+    # Subtest: reference_requests: absent rowid -1
+    ok 12 - reference_requests: absent rowid -1
+      ---
+      duration_ms: 22.28375
+      type: 'test'
+      ...
+    # Subtest: idempotency: absent rowid 0
+    ok 13 - idempotency: absent rowid 0
+      ---
+      duration_ms: 23.940666
+      type: 'test'
+      ...
+    # Subtest: idempotency: absent rowid -1
+    ok 14 - idempotency: absent rowid -1
+      ---
+      duration_ms: 22.843416
+      type: 'test'
+      ...
+    # Subtest: mutation_requests: absent rowid 0
+    ok 15 - mutation_requests: absent rowid 0
+      ---
+      duration_ms: 23.984333
+      type: 'test'
+      ...
+    # Subtest: mutation_requests: absent rowid -1
+    ok 16 - mutation_requests: absent rowid -1
+      ---
+      duration_ms: 23.73
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests: absent rowid 0
+    ok 17 - asset_range_requests: absent rowid 0
+      ---
+      duration_ms: 22.534958
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests: absent rowid -1
+    ok 18 - asset_range_requests: absent rowid -1
+      ---
+      duration_ms: 24.00975
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests: absent rowid 0
+    ok 19 - asset_disposition_requests: absent rowid 0
+      ---
+      duration_ms: 24.35075
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests: absent rowid -1
+    ok 20 - asset_disposition_requests: absent rowid -1
+      ---
+      duration_ms: 24.29775
+      type: 'test'
+      ...
+    # Subtest: subject_requests: absent rowid 0
+    ok 21 - subject_requests: absent rowid 0
+      ---
+      duration_ms: 22.321875
+      type: 'test'
+      ...
+    # Subtest: subject_requests: absent rowid -1
+    ok 22 - subject_requests: absent rowid -1
+      ---
+      duration_ms: 24.063916
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads: absent rowid 0
+    ok 23 - agent_chat_threads: absent rowid 0
+      ---
+      duration_ms: 23.418583
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads: absent rowid -1
+    ok 24 - agent_chat_threads: absent rowid -1
+      ---
+      duration_ms: 23.591083
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests: absent rowid 0
+    ok 25 - agent_chat_requests: absent rowid 0
+      ---
+      duration_ms: 22.508042
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests: absent rowid -1
+    ok 26 - agent_chat_requests: absent rowid -1
+      ---
+      duration_ms: 23.171041
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs: absent rowid 0
+    ok 27 - agent_chat_runs: absent rowid 0
+      ---
+      duration_ms: 23.803083
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs: absent rowid -1
+    ok 28 - agent_chat_runs: absent rowid -1
+      ---
+      duration_ms: 24.385667
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events: absent rowid 0
+    ok 29 - agent_chat_events: absent rowid 0
+      ---
+      duration_ms: 23.936791
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events: absent rowid -1
+    ok 30 - agent_chat_events: absent rowid -1
+      ---
+      duration_ms: 23.631958
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps: absent rowid 0
+    ok 31 - agent_chat_steps: absent rowid 0
+      ---
+      duration_ms: 22.85275
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps: absent rowid -1
+    ok 32 - agent_chat_steps: absent rowid -1
+      ---
+      duration_ms: 24.248375
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota: absent rowid 0
+    ok 33 - agent_chat_quota: absent rowid 0
+      ---
+      duration_ms: 23.173333
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota: absent rowid -1
+    ok 34 - agent_chat_quota: absent rowid -1
+      ---
+      duration_ms: 22.230084
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals: absent rowid 0
+    ok 35 - agent_edit_proposals: absent rowid 0
+      ---
+      duration_ms: 26.198584
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals: absent rowid -1
+    ok 36 - agent_edit_proposals: absent rowid -1
+      ---
+      duration_ms: 24.033125
+      type: 'test'
+      ...
+    # Subtest: edit_tasks: absent rowid 0
+    ok 37 - edit_tasks: absent rowid 0
+      ---
+      duration_ms: 23.6605
+      type: 'test'
+      ...
+    # Subtest: edit_tasks: absent rowid -1
+    ok 38 - edit_tasks: absent rowid -1
+      ---
+      duration_ms: 23.419333
+      type: 'test'
+      ...
+    # Subtest: image_groups: absent rowid 0
+    ok 39 - image_groups: absent rowid 0
+      ---
+      duration_ms: 24.90975
+      type: 'test'
+      ...
+    # Subtest: image_groups: absent rowid -1
+    ok 40 - image_groups: absent rowid -1
+      ---
+      duration_ms: 23.727833
+      type: 'test'
+      ...
+    # Subtest: image_tasks: absent rowid 0
+    ok 41 - image_tasks: absent rowid 0
+      ---
+      duration_ms: 24.616917
+      type: 'test'
+      ...
+    # Subtest: image_tasks: absent rowid -1
+    ok 42 - image_tasks: absent rowid -1
+      ---
+      duration_ms: 24.349375
+      type: 'test'
+      ...
+    # Subtest: image_versions: absent rowid 0
+    ok 43 - image_versions: absent rowid 0
+      ---
+      duration_ms: 22.635917
+      type: 'test'
+      ...
+    # Subtest: image_versions: absent rowid -1
+    ok 44 - image_versions: absent rowid -1
+      ---
+      duration_ms: 24.827833
+      type: 'test'
+      ...
+    # Subtest: image_requests: absent rowid 0
+    ok 45 - image_requests: absent rowid 0
+      ---
+      duration_ms: 24.437042
+      type: 'test'
+      ...
+    # Subtest: image_requests: absent rowid -1
+    ok 46 - image_requests: absent rowid -1
+      ---
+      duration_ms: 23.195667
+      type: 'test'
+      ...
+    # Subtest: image_reviews: absent rowid 0
+    ok 47 - image_reviews: absent rowid 0
+      ---
+      duration_ms: 21.97275
+      type: 'test'
+      ...
+    # Subtest: image_reviews: absent rowid -1
+    ok 48 - image_reviews: absent rowid -1
+      ---
+      duration_ms: 23.632667
+      type: 'test'
+      ...
+    # Subtest: image_remote_runs: absent rowid 0
+    ok 49 - image_remote_runs: absent rowid 0
+      ---
+      duration_ms: 23.528625
+      type: 'test'
+      ...
+    # Subtest: image_remote_runs: absent rowid -1
+    ok 50 - image_remote_runs: absent rowid -1
+      ---
+      duration_ms: 25.368667
+      type: 'test'
+      ...
+    # Subtest: image_remote_observations: absent rowid 0
+    ok 51 - image_remote_observations: absent rowid 0
+      ---
+      duration_ms: 25.102167
+      type: 'test'
+      ...
+    # Subtest: image_remote_observations: absent rowid -1
+    ok 52 - image_remote_observations: absent rowid -1
+      ---
+      duration_ms: 22.622166
+      type: 'test'
+      ...
+    # Subtest: project_lut_resources: absent rowid 0
+    ok 53 - project_lut_resources: absent rowid 0
+      ---
+      duration_ms: 23.710584
+      type: 'test'
+      ...
+    # Subtest: project_lut_resources: absent rowid -1
+    ok 54 - project_lut_resources: absent rowid -1
+      ---
+      duration_ms: 26.963625
+      type: 'test'
+      ...
+    # Subtest: lut_import_requests: absent rowid 0
+    ok 55 - lut_import_requests: absent rowid 0
+      ---
+      duration_ms: 26.660625
+      type: 'test'
+      ...
+    # Subtest: lut_import_requests: absent rowid -1
+    ok 56 - lut_import_requests: absent rowid -1
+      ---
+      duration_ms: 23.06225
+      type: 'test'
+      ...
+    # Subtest: frame_tasks: absent rowid 0
+    ok 57 - frame_tasks: absent rowid 0
+      ---
+      duration_ms: 24.783459
+      type: 'test'
+      ...
+    # Subtest: frame_tasks: absent rowid -1
+    ok 58 - frame_tasks: absent rowid -1
+      ---
+      duration_ms: 24.446792
+      type: 'test'
+      ...
+    # Subtest: frame_requests: absent rowid 0
+    ok 59 - frame_requests: absent rowid 0
+      ---
+      duration_ms: 24.171875
+      type: 'test'
+      ...
+    # Subtest: frame_requests: absent rowid -1
+    ok 60 - frame_requests: absent rowid -1
+      ---
+      duration_ms: 22.72525
+      type: 'test'
+      ...
+    # Subtest: waveform_cache: absent rowid 0
+    ok 61 - waveform_cache: absent rowid 0
+      ---
+      duration_ms: 24.317167
+      type: 'test'
+      ...
+    # Subtest: waveform_cache: absent rowid -1
+    ok 62 - waveform_cache: absent rowid -1
+      ---
+      duration_ms: 23.847042
+      type: 'test'
+      ...
+    1..62
+ok 39 - historical 33: 62 absent-pointer negatives across every fixed family (pointer coverage, not content coverage)
+  ---
+  duration_ms: 1583.455875
+  type: 'test'
+  ...
+# Subtest: historical 33: wrong well-formed hash for each of 21 genuinely populated families
+    # Subtest: jobs
+    ok 1 - jobs
+      ---
+      duration_ms: 22.294917
+      type: 'test'
+      ...
+    # Subtest: exports
+    ok 2 - exports
+      ---
+      duration_ms: 24.391875
+      type: 'test'
+      ...
+    # Subtest: versions
+    ok 3 - versions
+      ---
+      duration_ms: 26.01225
+      type: 'test'
+      ...
+    # Subtest: job_events
+    ok 4 - job_events
+      ---
+      duration_ms: 23.650875
+      type: 'test'
+      ...
+    # Subtest: timeline_requests
+    ok 5 - timeline_requests
+      ---
+      duration_ms: 25.420208
+      type: 'test'
+      ...
+    # Subtest: reference_requests
+    ok 6 - reference_requests
+      ---
+      duration_ms: 24.631833
+      type: 'test'
+      ...
+    # Subtest: idempotency
+    ok 7 - idempotency
+      ---
+      duration_ms: 25.296833
+      type: 'test'
+      ...
+    # Subtest: mutation_requests
+    ok 8 - mutation_requests
+      ---
+      duration_ms: 23.559541
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests
+    ok 9 - asset_range_requests
+      ---
+      duration_ms: 24.459875
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests
+    ok 10 - asset_disposition_requests
+      ---
+      duration_ms: 24.382375
+      type: 'test'
+      ...
+    # Subtest: subject_requests
+    ok 11 - subject_requests
+      ---
+      duration_ms: 25.505208
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads
+    ok 12 - agent_chat_threads
+      ---
+      duration_ms: 26.927791
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests
+    ok 13 - agent_chat_requests
+      ---
+      duration_ms: 24.527125
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs
+    ok 14 - agent_chat_runs
+      ---
+      duration_ms: 25.493458
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events
+    ok 15 - agent_chat_events
+      ---
+      duration_ms: 26.273708
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps
+    ok 16 - agent_chat_steps
+      ---
+      duration_ms: 26.559667
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota
+    ok 17 - agent_chat_quota
+      ---
+      duration_ms: 24.308916
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals
+    ok 18 - agent_edit_proposals
+      ---
+      duration_ms: 26.91575
+      type: 'test'
+      ...
+    # Subtest: edit_tasks
+    ok 19 - edit_tasks
+      ---
+      duration_ms: 26.332792
+      type: 'test'
+      ...
+    # Subtest: project_lut_resources
+    ok 20 - project_lut_resources
+      ---
+      duration_ms: 27.386875
+      type: 'test'
+      ...
+    # Subtest: lut_import_requests
+    ok 21 - lut_import_requests
+      ---
+      duration_ms: 26.751125
+      type: 'test'
+      ...
+    1..21
+ok 40 - historical 33: wrong well-formed hash for each of 21 genuinely populated families
+  ---
+  duration_ms: 641.8105
+  type: 'test'
+  ...
+# Subtest: historical 33: all five held identity fields bind even when a live row and valid hash still exist
+    # Subtest: id
+    ok 1 - id
+      ---
+      duration_ms: 23.667208
+      type: 'test'
+      ...
+    # Subtest: projectId
+    ok 2 - projectId
+      ---
+      duration_ms: 23.106125
+      type: 'test'
+      ...
+    # Subtest: namespace
+    ok 3 - namespace
+      ---
+      duration_ms: 25.026708
+      type: 'test'
+      ...
+    # Subtest: requestId
+    ok 4 - requestId
+      ---
+      duration_ms: 25.317875
+      type: 'test'
+      ...
+    # Subtest: operation
+    ok 5 - operation
+      ---
+      duration_ms: 24.316125
+      type: 'test'
+      ...
+    1..5
+ok 41 - historical 33: all five held identity fields bind even when a live row and valid hash still exist
+  ---
+  duration_ms: 229.274666
+  type: 'test'
+  ...
+# Subtest: historical 34→35: truly empty holds, optional mock=false, exact current result and read-only reopen
+ok 42 - historical 34→35: truly empty holds, optional mock=false, exact current result and read-only reopen
+  ---
+  duration_ms: 367.256792
+  type: 'test'
+  ...
+# Subtest: historical 34→35: truly empty holds, optional mock=true, exact current result and read-only reopen
+ok 43 - historical 34→35: truly empty holds, optional mock=true, exact current result and read-only reopen
+  ---
+  duration_ms: 149.454709
+  type: 'test'
+  ...
+# Subtest: historical 34→35: populated holds, optional mock=false, exact current result and read-only reopen
+ok 44 - historical 34→35: populated holds, optional mock=false, exact current result and read-only reopen
+  ---
+  duration_ms: 165.1605
+  type: 'test'
+  ...
+# Subtest: historical 34→35: populated holds, optional mock=true, exact current result and read-only reopen
+ok 45 - historical 34→35: populated holds, optional mock=true, exact current result and read-only reopen
+  ---
+  duration_ms: 163.714166
+  type: 'test'
+  ...
+# Subtest: historical 35: raw validator accepts only-hash corruption, current boundary refuses it read-only
+ok 46 - historical 35: raw validator accepts only-hash corruption, current boundary refuses it read-only
+  ---
+  duration_ms: 149.022083
+  type: 'test'
+  ...
+# Subtest: historical 35: 62 absent-pointer negatives across every fixed family (pointer coverage, not content coverage)
+    # Subtest: jobs: absent rowid 0
+    ok 1 - jobs: absent rowid 0
+      ---
+      duration_ms: 21.271167
+      type: 'test'
+      ...
+    # Subtest: jobs: absent rowid -1
+    ok 2 - jobs: absent rowid -1
+      ---
+      duration_ms: 21.655792
+      type: 'test'
+      ...
+    # Subtest: exports: absent rowid 0
+    ok 3 - exports: absent rowid 0
+      ---
+      duration_ms: 22.867292
+      type: 'test'
+      ...
+    # Subtest: exports: absent rowid -1
+    ok 4 - exports: absent rowid -1
+      ---
+      duration_ms: 22.670917
+      type: 'test'
+      ...
+    # Subtest: versions: absent rowid 0
+    ok 5 - versions: absent rowid 0
+      ---
+      duration_ms: 22.325542
+      type: 'test'
+      ...
+    # Subtest: versions: absent rowid -1
+    ok 6 - versions: absent rowid -1
+      ---
+      duration_ms: 21.441083
+      type: 'test'
+      ...
+    # Subtest: job_events: absent rowid 0
+    ok 7 - job_events: absent rowid 0
+      ---
+      duration_ms: 23.458417
+      type: 'test'
+      ...
+    # Subtest: job_events: absent rowid -1
+    ok 8 - job_events: absent rowid -1
+      ---
+      duration_ms: 22.674958
+      type: 'test'
+      ...
+    # Subtest: timeline_requests: absent rowid 0
+    ok 9 - timeline_requests: absent rowid 0
+      ---
+      duration_ms: 22.898584
+      type: 'test'
+      ...
+    # Subtest: timeline_requests: absent rowid -1
+    ok 10 - timeline_requests: absent rowid -1
+      ---
+      duration_ms: 21.841833
+      type: 'test'
+      ...
+    # Subtest: reference_requests: absent rowid 0
+    ok 11 - reference_requests: absent rowid 0
+      ---
+      duration_ms: 22.917291
+      type: 'test'
+      ...
+    # Subtest: reference_requests: absent rowid -1
+    ok 12 - reference_requests: absent rowid -1
+      ---
+      duration_ms: 22.952583
+      type: 'test'
+      ...
+    # Subtest: idempotency: absent rowid 0
+    ok 13 - idempotency: absent rowid 0
+      ---
+      duration_ms: 23.032083
+      type: 'test'
+      ...
+    # Subtest: idempotency: absent rowid -1
+    ok 14 - idempotency: absent rowid -1
+      ---
+      duration_ms: 23.030458
+      type: 'test'
+      ...
+    # Subtest: mutation_requests: absent rowid 0
+    ok 15 - mutation_requests: absent rowid 0
+      ---
+      duration_ms: 21.833208
+      type: 'test'
+      ...
+    # Subtest: mutation_requests: absent rowid -1
+    ok 16 - mutation_requests: absent rowid -1
+      ---
+      duration_ms: 23.677958
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests: absent rowid 0
+    ok 17 - asset_range_requests: absent rowid 0
+      ---
+      duration_ms: 23.437167
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests: absent rowid -1
+    ok 18 - asset_range_requests: absent rowid -1
+      ---
+      duration_ms: 23.556458
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests: absent rowid 0
+    ok 19 - asset_disposition_requests: absent rowid 0
+      ---
+      duration_ms: 22.16925
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests: absent rowid -1
+    ok 20 - asset_disposition_requests: absent rowid -1
+      ---
+      duration_ms: 22.921417
+      type: 'test'
+      ...
+    # Subtest: subject_requests: absent rowid 0
+    ok 21 - subject_requests: absent rowid 0
+      ---
+      duration_ms: 24.452125
+      type: 'test'
+      ...
+    # Subtest: subject_requests: absent rowid -1
+    ok 22 - subject_requests: absent rowid -1
+      ---
+      duration_ms: 23.624833
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads: absent rowid 0
+    ok 23 - agent_chat_threads: absent rowid 0
+      ---
+      duration_ms: 21.787791
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads: absent rowid -1
+    ok 24 - agent_chat_threads: absent rowid -1
+      ---
+      duration_ms: 23.089667
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests: absent rowid 0
+    ok 25 - agent_chat_requests: absent rowid 0
+      ---
+      duration_ms: 23.4745
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests: absent rowid -1
+    ok 26 - agent_chat_requests: absent rowid -1
+      ---
+      duration_ms: 23.138292
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs: absent rowid 0
+    ok 27 - agent_chat_runs: absent rowid 0
+      ---
+      duration_ms: 23.684333
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs: absent rowid -1
+    ok 28 - agent_chat_runs: absent rowid -1
+      ---
+      duration_ms: 23.306667
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events: absent rowid 0
+    ok 29 - agent_chat_events: absent rowid 0
+      ---
+      duration_ms: 23.881459
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events: absent rowid -1
+    ok 30 - agent_chat_events: absent rowid -1
+      ---
+      duration_ms: 23.541166
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps: absent rowid 0
+    ok 31 - agent_chat_steps: absent rowid 0
+      ---
+      duration_ms: 22.87525
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps: absent rowid -1
+    ok 32 - agent_chat_steps: absent rowid -1
+      ---
+      duration_ms: 23.040292
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota: absent rowid 0
+    ok 33 - agent_chat_quota: absent rowid 0
+      ---
+      duration_ms: 24.263958
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota: absent rowid -1
+    ok 34 - agent_chat_quota: absent rowid -1
+      ---
+      duration_ms: 24.190167
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals: absent rowid 0
+    ok 35 - agent_edit_proposals: absent rowid 0
+      ---
+      duration_ms: 23.505125
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals: absent rowid -1
+    ok 36 - agent_edit_proposals: absent rowid -1
+      ---
+      duration_ms: 23.095333
+      type: 'test'
+      ...
+    # Subtest: edit_tasks: absent rowid 0
+    ok 37 - edit_tasks: absent rowid 0
+      ---
+      duration_ms: 22.115791
+      type: 'test'
+      ...
+    # Subtest: edit_tasks: absent rowid -1
+    ok 38 - edit_tasks: absent rowid -1
+      ---
+      duration_ms: 25.246375
+      type: 'test'
+      ...
+    # Subtest: image_groups: absent rowid 0
+    ok 39 - image_groups: absent rowid 0
+      ---
+      duration_ms: 23.525
+      type: 'test'
+      ...
+    # Subtest: image_groups: absent rowid -1
+    ok 40 - image_groups: absent rowid -1
+      ---
+      duration_ms: 24.275375
+      type: 'test'
+      ...
+    # Subtest: image_tasks: absent rowid 0
+    ok 41 - image_tasks: absent rowid 0
+      ---
+      duration_ms: 22.039833
+      type: 'test'
+      ...
+    # Subtest: image_tasks: absent rowid -1
+    ok 42 - image_tasks: absent rowid -1
+      ---
+      duration_ms: 24.680333
+      type: 'test'
+      ...
+    # Subtest: image_versions: absent rowid 0
+    ok 43 - image_versions: absent rowid 0
+      ---
+      duration_ms: 23.83325
+      type: 'test'
+      ...
+    # Subtest: image_versions: absent rowid -1
+    ok 44 - image_versions: absent rowid -1
+      ---
+      duration_ms: 23.23525
+      type: 'test'
+      ...
+    # Subtest: image_requests: absent rowid 0
+    ok 45 - image_requests: absent rowid 0
+      ---
+      duration_ms: 22.460042
+      type: 'test'
+      ...
+    # Subtest: image_requests: absent rowid -1
+    ok 46 - image_requests: absent rowid -1
+      ---
+      duration_ms: 24.833459
+      type: 'test'
+      ...
+    # Subtest: image_reviews: absent rowid 0
+    ok 47 - image_reviews: absent rowid 0
+      ---
+      duration_ms: 23.915125
+      type: 'test'
+      ...
+    # Subtest: image_reviews: absent rowid -1
+    ok 48 - image_reviews: absent rowid -1
+      ---
+      duration_ms: 23.933958
+      type: 'test'
+      ...
+    # Subtest: image_remote_runs: absent rowid 0
+    ok 49 - image_remote_runs: absent rowid 0
+      ---
+      duration_ms: 24.320833
+      type: 'test'
+      ...
+    # Subtest: image_remote_runs: absent rowid -1
+    ok 50 - image_remote_runs: absent rowid -1
+      ---
+      duration_ms: 22.785167
+      type: 'test'
+      ...
+    # Subtest: image_remote_observations: absent rowid 0
+    ok 51 - image_remote_observations: absent rowid 0
+      ---
+      duration_ms: 24.082208
+      type: 'test'
+      ...
+    # Subtest: image_remote_observations: absent rowid -1
+    ok 52 - image_remote_observations: absent rowid -1
+      ---
+      duration_ms: 24.438417
+      type: 'test'
+      ...
+    # Subtest: project_lut_resources: absent rowid 0
+    ok 53 - project_lut_resources: absent rowid 0
+      ---
+      duration_ms: 23.686542
+      type: 'test'
+      ...
+    # Subtest: project_lut_resources: absent rowid -1
+    ok 54 - project_lut_resources: absent rowid -1
+      ---
+      duration_ms: 22.503292
+      type: 'test'
+      ...
+    # Subtest: lut_import_requests: absent rowid 0
+    ok 55 - lut_import_requests: absent rowid 0
+      ---
+      duration_ms: 23.75625
+      type: 'test'
+      ...
+    # Subtest: lut_import_requests: absent rowid -1
+    ok 56 - lut_import_requests: absent rowid -1
+      ---
+      duration_ms: 23.614417
+      type: 'test'
+      ...
+    # Subtest: frame_tasks: absent rowid 0
+    ok 57 - frame_tasks: absent rowid 0
+      ---
+      duration_ms: 23.80975
+      type: 'test'
+      ...
+    # Subtest: frame_tasks: absent rowid -1
+    ok 58 - frame_tasks: absent rowid -1
+      ---
+      duration_ms: 22.6105
+      type: 'test'
+      ...
+    # Subtest: frame_requests: absent rowid 0
+    ok 59 - frame_requests: absent rowid 0
+      ---
+      duration_ms: 24.306667
+      type: 'test'
+      ...
+    # Subtest: frame_requests: absent rowid -1
+    ok 60 - frame_requests: absent rowid -1
+      ---
+      duration_ms: 24.621667
+      type: 'test'
+      ...
+    # Subtest: waveform_cache: absent rowid 0
+    ok 61 - waveform_cache: absent rowid 0
+      ---
+      duration_ms: 23.562458
+      type: 'test'
+      ...
+    # Subtest: waveform_cache: absent rowid -1
+    ok 62 - waveform_cache: absent rowid -1
+      ---
+      duration_ms: 23.633709
+      type: 'test'
+      ...
+    1..62
+ok 47 - historical 35: 62 absent-pointer negatives across every fixed family (pointer coverage, not content coverage)
+  ---
+  duration_ms: 1562.41525
+  type: 'test'
+  ...
+# Subtest: historical 35: wrong well-formed hash for each of 21 genuinely populated families
+    # Subtest: jobs
+    ok 1 - jobs
+      ---
+      duration_ms: 23.507
+      type: 'test'
+      ...
+    # Subtest: exports
+    ok 2 - exports
+      ---
+      duration_ms: 22.859417
+      type: 'test'
+      ...
+    # Subtest: versions
+    ok 3 - versions
+      ---
+      duration_ms: 24.881542
+      type: 'test'
+      ...
+    # Subtest: job_events
+    ok 4 - job_events
+      ---
+      duration_ms: 24.0665
+      type: 'test'
+      ...
+    # Subtest: timeline_requests
+    ok 5 - timeline_requests
+      ---
+      duration_ms: 24.331042
+      type: 'test'
+      ...
+    # Subtest: reference_requests
+    ok 6 - reference_requests
+      ---
+      duration_ms: 25.088667
+      type: 'test'
+      ...
+    # Subtest: idempotency
+    ok 7 - idempotency
+      ---
+      duration_ms: 24.064167
+      type: 'test'
+      ...
+    # Subtest: mutation_requests
+    ok 8 - mutation_requests
+      ---
+      duration_ms: 24.329209
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests
+    ok 9 - asset_range_requests
+      ---
+      duration_ms: 25.255125
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests
+    ok 10 - asset_disposition_requests
+      ---
+      duration_ms: 24.776416
+      type: 'test'
+      ...
+    # Subtest: subject_requests
+    ok 11 - subject_requests
+      ---
+      duration_ms: 24.561167
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads
+    ok 12 - agent_chat_threads
+      ---
+      duration_ms: 26.184458
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests
+    ok 13 - agent_chat_requests
+      ---
+      duration_ms: 25.401875
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs
+    ok 14 - agent_chat_runs
+      ---
+      duration_ms: 25.645083
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events
+    ok 15 - agent_chat_events
+      ---
+      duration_ms: 25.852
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps
+    ok 16 - agent_chat_steps
+      ---
+      duration_ms: 24.506041
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota
+    ok 17 - agent_chat_quota
+      ---
+      duration_ms: 27.036875
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals
+    ok 18 - agent_edit_proposals
+      ---
+      duration_ms: 27.05675
+      type: 'test'
+      ...
+    # Subtest: edit_tasks
+    ok 19 - edit_tasks
+      ---
+      duration_ms: 28.229458
+      type: 'test'
+      ...
+    # Subtest: project_lut_resources
+    ok 20 - project_lut_resources
+      ---
+      duration_ms: 26.0115
+      type: 'test'
+      ...
+    # Subtest: lut_import_requests
+    ok 21 - lut_import_requests
+      ---
+      duration_ms: 27.05275
+      type: 'test'
+      ...
+    1..21
+ok 48 - historical 35: wrong well-formed hash for each of 21 genuinely populated families
+  ---
+  duration_ms: 646.548084
+  type: 'test'
+  ...
+# Subtest: historical 35: all five held identity fields bind even when a live row and valid hash still exist
+    # Subtest: id
+    ok 1 - id
+      ---
+      duration_ms: 21.571958
+      type: 'test'
+      ...
+    # Subtest: projectId
+    ok 2 - projectId
+      ---
+      duration_ms: 24.9575
+      type: 'test'
+      ...
+    # Subtest: namespace
+    ok 3 - namespace
+      ---
+      duration_ms: 24.588917
+      type: 'test'
+      ...
+    # Subtest: requestId
+    ok 4 - requestId
+      ---
+      duration_ms: 24.993458
+      type: 'test'
+      ...
+    # Subtest: operation
+    ok 5 - operation
+      ---
+      duration_ms: 22.786167
+      type: 'test'
+      ...
+    1..5
+ok 49 - historical 35: all five held identity fields bind even when a live row and valid hash still exist
+  ---
+  duration_ms: 234.802208
+  type: 'test'
+  ...
+# Subtest: historical 36→37: truly empty holds, optional mock=false, exact current result and read-only reopen
+ok 50 - historical 36→37: truly empty holds, optional mock=false, exact current result and read-only reopen
+  ---
+  duration_ms: 400.529042
+  type: 'test'
+  ...
+# Subtest: historical 36→37: truly empty holds, optional mock=true, exact current result and read-only reopen
+ok 51 - historical 36→37: truly empty holds, optional mock=true, exact current result and read-only reopen
+  ---
+  duration_ms: 163.304083
+  type: 'test'
+  ...
+# Subtest: historical 36→37: populated holds, optional mock=false, exact current result and read-only reopen
+ok 52 - historical 36→37: populated holds, optional mock=false, exact current result and read-only reopen
+  ---
+  duration_ms: 182.303042
+  type: 'test'
+  ...
+# Subtest: historical 36→37: populated holds, optional mock=true, exact current result and read-only reopen
+ok 53 - historical 36→37: populated holds, optional mock=true, exact current result and read-only reopen
+  ---
+  duration_ms: 175.2825
+  type: 'test'
+  ...
+# Subtest: historical 37: raw validator accepts only-hash corruption, current boundary refuses it read-only
+ok 54 - historical 37: raw validator accepts only-hash corruption, current boundary refuses it read-only
+  ---
+  duration_ms: 162.857375
+  type: 'test'
+  ...
+# Subtest: historical 37: 66 absent-pointer negatives across every fixed family (pointer coverage, not content coverage)
+    # Subtest: jobs: absent rowid 0
+    ok 1 - jobs: absent rowid 0
+      ---
+      duration_ms: 23.27375
+      type: 'test'
+      ...
+    # Subtest: jobs: absent rowid -1
+    ok 2 - jobs: absent rowid -1
+      ---
+      duration_ms: 24.143083
+      type: 'test'
+      ...
+    # Subtest: exports: absent rowid 0
+    ok 3 - exports: absent rowid 0
+      ---
+      duration_ms: 24.432625
+      type: 'test'
+      ...
+    # Subtest: exports: absent rowid -1
+    ok 4 - exports: absent rowid -1
+      ---
+      duration_ms: 22.712584
+      type: 'test'
+      ...
+    # Subtest: versions: absent rowid 0
+    ok 5 - versions: absent rowid 0
+      ---
+      duration_ms: 24.710041
+      type: 'test'
+      ...
+    # Subtest: versions: absent rowid -1
+    ok 6 - versions: absent rowid -1
+      ---
+      duration_ms: 24.478791
+      type: 'test'
+      ...
+    # Subtest: job_events: absent rowid 0
+    ok 7 - job_events: absent rowid 0
+      ---
+      duration_ms: 25.228292
+      type: 'test'
+      ...
+    # Subtest: job_events: absent rowid -1
+    ok 8 - job_events: absent rowid -1
+      ---
+      duration_ms: 24.619208
+      type: 'test'
+      ...
+    # Subtest: timeline_requests: absent rowid 0
+    ok 9 - timeline_requests: absent rowid 0
+      ---
+      duration_ms: 23.119459
+      type: 'test'
+      ...
+    # Subtest: timeline_requests: absent rowid -1
+    ok 10 - timeline_requests: absent rowid -1
+      ---
+      duration_ms: 28.064667
+      type: 'test'
+      ...
+    # Subtest: reference_requests: absent rowid 0
+    ok 11 - reference_requests: absent rowid 0
+      ---
+      duration_ms: 24.71525
+      type: 'test'
+      ...
+    # Subtest: reference_requests: absent rowid -1
+    ok 12 - reference_requests: absent rowid -1
+      ---
+      duration_ms: 25.114792
+      type: 'test'
+      ...
+    # Subtest: idempotency: absent rowid 0
+    ok 13 - idempotency: absent rowid 0
+      ---
+      duration_ms: 24.294791
+      type: 'test'
+      ...
+    # Subtest: idempotency: absent rowid -1
+    ok 14 - idempotency: absent rowid -1
+      ---
+      duration_ms: 23.72475
+      type: 'test'
+      ...
+    # Subtest: mutation_requests: absent rowid 0
+    ok 15 - mutation_requests: absent rowid 0
+      ---
+      duration_ms: 25.162875
+      type: 'test'
+      ...
+    # Subtest: mutation_requests: absent rowid -1
+    ok 16 - mutation_requests: absent rowid -1
+      ---
+      duration_ms: 24.071292
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests: absent rowid 0
+    ok 17 - asset_range_requests: absent rowid 0
+      ---
+      duration_ms: 25.464125
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests: absent rowid -1
+    ok 18 - asset_range_requests: absent rowid -1
+      ---
+      duration_ms: 23.977916
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests: absent rowid 0
+    ok 19 - asset_disposition_requests: absent rowid 0
+      ---
+      duration_ms: 24.404667
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests: absent rowid -1
+    ok 20 - asset_disposition_requests: absent rowid -1
+      ---
+      duration_ms: 22.961875
+      type: 'test'
+      ...
+    # Subtest: asset_annotations: absent rowid 0
+    ok 21 - asset_annotations: absent rowid 0
+      ---
+      duration_ms: 24.684
+      type: 'test'
+      ...
+    # Subtest: asset_annotations: absent rowid -1
+    ok 22 - asset_annotations: absent rowid -1
+      ---
+      duration_ms: 23.91675
+      type: 'test'
+      ...
+    # Subtest: asset_annotation_requests: absent rowid 0
+    ok 23 - asset_annotation_requests: absent rowid 0
+      ---
+      duration_ms: 28.932875
+      type: 'test'
+      ...
+    # Subtest: asset_annotation_requests: absent rowid -1
+    ok 24 - asset_annotation_requests: absent rowid -1
+      ---
+      duration_ms: 23.202334
+      type: 'test'
+      ...
+    # Subtest: subject_requests: absent rowid 0
+    ok 25 - subject_requests: absent rowid 0
+      ---
+      duration_ms: 24.341292
+      type: 'test'
+      ...
+    # Subtest: subject_requests: absent rowid -1
+    ok 26 - subject_requests: absent rowid -1
+      ---
+      duration_ms: 24.607916
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads: absent rowid 0
+    ok 27 - agent_chat_threads: absent rowid 0
+      ---
+      duration_ms: 24.19725
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads: absent rowid -1
+    ok 28 - agent_chat_threads: absent rowid -1
+      ---
+      duration_ms: 24.799625
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests: absent rowid 0
+    ok 29 - agent_chat_requests: absent rowid 0
+      ---
+      duration_ms: 23.741458
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests: absent rowid -1
+    ok 30 - agent_chat_requests: absent rowid -1
+      ---
+      duration_ms: 26.436792
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs: absent rowid 0
+    ok 31 - agent_chat_runs: absent rowid 0
+      ---
+      duration_ms: 24.698208
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs: absent rowid -1
+    ok 32 - agent_chat_runs: absent rowid -1
+      ---
+      duration_ms: 24.876708
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events: absent rowid 0
+    ok 33 - agent_chat_events: absent rowid 0
+      ---
+      duration_ms: 23.961916
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events: absent rowid -1
+    ok 34 - agent_chat_events: absent rowid -1
+      ---
+      duration_ms: 23.987458
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps: absent rowid 0
+    ok 35 - agent_chat_steps: absent rowid 0
+      ---
+      duration_ms: 25.244625
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps: absent rowid -1
+    ok 36 - agent_chat_steps: absent rowid -1
+      ---
+      duration_ms: 24.165166
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota: absent rowid 0
+    ok 37 - agent_chat_quota: absent rowid 0
+      ---
+      duration_ms: 25.166042
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota: absent rowid -1
+    ok 38 - agent_chat_quota: absent rowid -1
+      ---
+      duration_ms: 25.365042
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals: absent rowid 0
+    ok 39 - agent_edit_proposals: absent rowid 0
+      ---
+      duration_ms: 23.518792
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals: absent rowid -1
+    ok 40 - agent_edit_proposals: absent rowid -1
+      ---
+      duration_ms: 24.845583
+      type: 'test'
+      ...
+    # Subtest: edit_tasks: absent rowid 0
+    ok 41 - edit_tasks: absent rowid 0
+      ---
+      duration_ms: 24.348292
+      type: 'test'
+      ...
+    # Subtest: edit_tasks: absent rowid -1
+    ok 42 - edit_tasks: absent rowid -1
+      ---
+      duration_ms: 24.429583
+      type: 'test'
+      ...
+    # Subtest: image_groups: absent rowid 0
+    ok 43 - image_groups: absent rowid 0
+      ---
+      duration_ms: 25.34525
+      type: 'test'
+      ...
+    # Subtest: image_groups: absent rowid -1
+    ok 44 - image_groups: absent rowid -1
+      ---
+      duration_ms: 23.838958
+      type: 'test'
+      ...
+    # Subtest: image_tasks: absent rowid 0
+    ok 45 - image_tasks: absent rowid 0
+      ---
+      duration_ms: 25.504875
+      type: 'test'
+      ...
+    # Subtest: image_tasks: absent rowid -1
+    ok 46 - image_tasks: absent rowid -1
+      ---
+      duration_ms: 25.221625
+      type: 'test'
+      ...
+    # Subtest: image_versions: absent rowid 0
+    ok 47 - image_versions: absent rowid 0
+      ---
+      duration_ms: 24.858833
+      type: 'test'
+      ...
+    # Subtest: image_versions: absent rowid -1
+    ok 48 - image_versions: absent rowid -1
+      ---
+      duration_ms: 25.871041
+      type: 'test'
+      ...
+    # Subtest: image_requests: absent rowid 0
+    ok 49 - image_requests: absent rowid 0
+      ---
+      duration_ms: 24.283541
+      type: 'test'
+      ...
+    # Subtest: image_requests: absent rowid -1
+    ok 50 - image_requests: absent rowid -1
+      ---
+      duration_ms: 26.060958
+      type: 'test'
+      ...
+    # Subtest: image_reviews: absent rowid 0
+    ok 51 - image_reviews: absent rowid 0
+      ---
+      duration_ms: 25.348708
+      type: 'test'
+      ...
+    # Subtest: image_reviews: absent rowid -1
+    ok 52 - image_reviews: absent rowid -1
+      ---
+      duration_ms: 25.475541
+      type: 'test'
+      ...
+    # Subtest: image_remote_runs: absent rowid 0
+    ok 53 - image_remote_runs: absent rowid 0
+      ---
+      duration_ms: 25.346416
+      type: 'test'
+      ...
+    # Subtest: image_remote_runs: absent rowid -1
+    ok 54 - image_remote_runs: absent rowid -1
+      ---
+      duration_ms: 26.397167
+      type: 'test'
+      ...
+    # Subtest: image_remote_observations: absent rowid 0
+    ok 55 - image_remote_observations: absent rowid 0
+      ---
+      duration_ms: 23.862667
+      type: 'test'
+      ...
+    # Subtest: image_remote_observations: absent rowid -1
+    ok 56 - image_remote_observations: absent rowid -1
+      ---
+      duration_ms: 24.303
+      type: 'test'
+      ...
+    # Subtest: project_lut_resources: absent rowid 0
+    ok 57 - project_lut_resources: absent rowid 0
+      ---
+      duration_ms: 24.972875
+      type: 'test'
+      ...
+    # Subtest: project_lut_resources: absent rowid -1
+    ok 58 - project_lut_resources: absent rowid -1
+      ---
+      duration_ms: 25.359167
+      type: 'test'
+      ...
+    # Subtest: lut_import_requests: absent rowid 0
+    ok 59 - lut_import_requests: absent rowid 0
+      ---
+      duration_ms: 25.385041
+      type: 'test'
+      ...
+    # Subtest: lut_import_requests: absent rowid -1
+    ok 60 - lut_import_requests: absent rowid -1
+      ---
+      duration_ms: 24.086083
+      type: 'test'
+      ...
+    # Subtest: frame_tasks: absent rowid 0
+    ok 61 - frame_tasks: absent rowid 0
+      ---
+      duration_ms: 24.703542
+      type: 'test'
+      ...
+    # Subtest: frame_tasks: absent rowid -1
+    ok 62 - frame_tasks: absent rowid -1
+      ---
+      duration_ms: 24.573
+      type: 'test'
+      ...
+    # Subtest: frame_requests: absent rowid 0
+    ok 63 - frame_requests: absent rowid 0
+      ---
+      duration_ms: 25.330209
+      type: 'test'
+      ...
+    # Subtest: frame_requests: absent rowid -1
+    ok 64 - frame_requests: absent rowid -1
+      ---
+      duration_ms: 25.274333
+      type: 'test'
+      ...
+    # Subtest: waveform_cache: absent rowid 0
+    ok 65 - waveform_cache: absent rowid 0
+      ---
+      duration_ms: 23.475792
+      type: 'test'
+      ...
+    # Subtest: waveform_cache: absent rowid -1
+    ok 66 - waveform_cache: absent rowid -1
+      ---
+      duration_ms: 24.612459
+      type: 'test'
+      ...
+    1..66
+ok 55 - historical 37: 66 absent-pointer negatives across every fixed family (pointer coverage, not content coverage)
+  ---
+  duration_ms: 1760.3835
+  type: 'test'
+  ...
+# Subtest: historical 37: wrong well-formed hash for each of 23 genuinely populated families
+    # Subtest: jobs
+    ok 1 - jobs
+      ---
+      duration_ms: 23.2725
+      type: 'test'
+      ...
+    # Subtest: exports
+    ok 2 - exports
+      ---
+      duration_ms: 25.204542
+      type: 'test'
+      ...
+    # Subtest: versions
+    ok 3 - versions
+      ---
+      duration_ms: 26.166125
+      type: 'test'
+      ...
+    # Subtest: job_events
+    ok 4 - job_events
+      ---
+      duration_ms: 25.529166
+      type: 'test'
+      ...
+    # Subtest: timeline_requests
+    ok 5 - timeline_requests
+      ---
+      duration_ms: 27.89125
+      type: 'test'
+      ...
+    # Subtest: reference_requests
+    ok 6 - reference_requests
+      ---
+      duration_ms: 27.131458
+      type: 'test'
+      ...
+    # Subtest: idempotency
+    ok 7 - idempotency
+      ---
+      duration_ms: 26.596792
+      type: 'test'
+      ...
+    # Subtest: mutation_requests
+    ok 8 - mutation_requests
+      ---
+      duration_ms: 28.579375
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests
+    ok 9 - asset_range_requests
+      ---
+      duration_ms: 26.691792
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests
+    ok 10 - asset_disposition_requests
+      ---
+      duration_ms: 27.229666
+      type: 'test'
+      ...
+    # Subtest: subject_requests
+    ok 11 - subject_requests
+      ---
+      duration_ms: 26.470292
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads
+    ok 12 - agent_chat_threads
+      ---
+      duration_ms: 27.368916
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests
+    ok 13 - agent_chat_requests
+      ---
+      duration_ms: 25.361167
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs
+    ok 14 - agent_chat_runs
+      ---
+      duration_ms: 27.364958
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events
+    ok 15 - agent_chat_events
+      ---
+      duration_ms: 25.993875
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps
+    ok 16 - agent_chat_steps
+      ---
+      duration_ms: 28.924167
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota
+    ok 17 - agent_chat_quota
+      ---
+      duration_ms: 26.224084
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals
+    ok 18 - agent_edit_proposals
+      ---
+      duration_ms: 26.386458
+      type: 'test'
+      ...
+    # Subtest: edit_tasks
+    ok 19 - edit_tasks
+      ---
+      duration_ms: 28.363542
+      type: 'test'
+      ...
+    # Subtest: asset_annotations
+    ok 20 - asset_annotations
+      ---
+      duration_ms: 25.74575
+      type: 'test'
+      ...
+    # Subtest: asset_annotation_requests
+    ok 21 - asset_annotation_requests
+      ---
+      duration_ms: 27.221458
+      type: 'test'
+      ...
+    # Subtest: project_lut_resources
+    ok 22 - project_lut_resources
+      ---
+      duration_ms: 27.788667
+      type: 'test'
+      ...
+    # Subtest: lut_import_requests
+    ok 23 - lut_import_requests
+      ---
+      duration_ms: 28.580959
+      type: 'test'
+      ...
+    1..23
+ok 56 - historical 37: wrong well-formed hash for each of 23 genuinely populated families
+  ---
+  duration_ms: 742.778959
+  type: 'test'
+  ...
+# Subtest: historical 37: all five held identity fields bind even when a live row and valid hash still exist
+    # Subtest: id
+    ok 1 - id
+      ---
+      duration_ms: 25.726292
+      type: 'test'
+      ...
+    # Subtest: projectId
+    ok 2 - projectId
+      ---
+      duration_ms: 25.980167
+      type: 'test'
+      ...
+    # Subtest: namespace
+    ok 3 - namespace
+      ---
+      duration_ms: 24.798541
+      type: 'test'
+      ...
+    # Subtest: requestId
+    ok 4 - requestId
+      ---
+      duration_ms: 27.89975
+      type: 'test'
+      ...
+    # Subtest: operation
+    ok 5 - operation
+      ---
+      duration_ms: 26.062458
+      type: 'test'
+      ...
+    1..5
+ok 57 - historical 37: all five held identity fields bind even when a live row and valid hash still exist
+  ---
+  duration_ms: 253.988459
+  type: 'test'
+  ...
+# Subtest: historical 38→39: truly empty holds, optional mock=false, exact current result and read-only reopen
+ok 58 - historical 38→39: truly empty holds, optional mock=false, exact current result and read-only reopen
+  ---
+  duration_ms: 430.784834
+  type: 'test'
+  ...
+# Subtest: historical 38→39: truly empty holds, optional mock=true, exact current result and read-only reopen
+ok 59 - historical 38→39: truly empty holds, optional mock=true, exact current result and read-only reopen
+  ---
+  duration_ms: 174.674208
+  type: 'test'
+  ...
+# Subtest: historical 38→39: populated holds, optional mock=false, exact current result and read-only reopen
+ok 60 - historical 38→39: populated holds, optional mock=false, exact current result and read-only reopen
+  ---
+  duration_ms: 182.640292
+  type: 'test'
+  ...
+# Subtest: historical 38→39: populated holds, optional mock=true, exact current result and read-only reopen
+ok 61 - historical 38→39: populated holds, optional mock=true, exact current result and read-only reopen
+  ---
+  duration_ms: 189.598375
+  type: 'test'
+  ...
+# Subtest: historical 39: raw validator accepts only-hash corruption, current boundary refuses it read-only
+ok 62 - historical 39: raw validator accepts only-hash corruption, current boundary refuses it read-only
+  ---
+  duration_ms: 172.559209
+  type: 'test'
+  ...
+# Subtest: historical 39: 66 absent-pointer negatives across every fixed family (pointer coverage, not content coverage)
+    # Subtest: jobs: absent rowid 0
+    ok 1 - jobs: absent rowid 0
+      ---
+      duration_ms: 22.720375
+      type: 'test'
+      ...
+    # Subtest: jobs: absent rowid -1
+    ok 2 - jobs: absent rowid -1
+      ---
+      duration_ms: 25.51175
+      type: 'test'
+      ...
+    # Subtest: exports: absent rowid 0
+    ok 3 - exports: absent rowid 0
+      ---
+      duration_ms: 25.35675
+      type: 'test'
+      ...
+    # Subtest: exports: absent rowid -1
+    ok 4 - exports: absent rowid -1
+      ---
+      duration_ms: 25.036042
+      type: 'test'
+      ...
+    # Subtest: versions: absent rowid 0
+    ok 5 - versions: absent rowid 0
+      ---
+      duration_ms: 25.530292
+      type: 'test'
+      ...
+    # Subtest: versions: absent rowid -1
+    ok 6 - versions: absent rowid -1
+      ---
+      duration_ms: 24.527791
+      type: 'test'
+      ...
+    # Subtest: job_events: absent rowid 0
+    ok 7 - job_events: absent rowid 0
+      ---
+      duration_ms: 25.228541
+      type: 'test'
+      ...
+    # Subtest: job_events: absent rowid -1
+    ok 8 - job_events: absent rowid -1
+      ---
+      duration_ms: 24.145708
+      type: 'test'
+      ...
+    # Subtest: timeline_requests: absent rowid 0
+    ok 9 - timeline_requests: absent rowid 0
+      ---
+      duration_ms: 24.324209
+      type: 'test'
+      ...
+    # Subtest: timeline_requests: absent rowid -1
+    ok 10 - timeline_requests: absent rowid -1
+      ---
+      duration_ms: 24.162667
+      type: 'test'
+      ...
+    # Subtest: reference_requests: absent rowid 0
+    ok 11 - reference_requests: absent rowid 0
+      ---
+      duration_ms: 24.719584
+      type: 'test'
+      ...
+    # Subtest: reference_requests: absent rowid -1
+    ok 12 - reference_requests: absent rowid -1
+      ---
+      duration_ms: 23.28575
+      type: 'test'
+      ...
+    # Subtest: idempotency: absent rowid 0
+    ok 13 - idempotency: absent rowid 0
+      ---
+      duration_ms: 25.120667
+      type: 'test'
+      ...
+    # Subtest: idempotency: absent rowid -1
+    ok 14 - idempotency: absent rowid -1
+      ---
+      duration_ms: 24.959458
+      type: 'test'
+      ...
+    # Subtest: mutation_requests: absent rowid 0
+    ok 15 - mutation_requests: absent rowid 0
+      ---
+      duration_ms: 24.347334
+      type: 'test'
+      ...
+    # Subtest: mutation_requests: absent rowid -1
+    ok 16 - mutation_requests: absent rowid -1
+      ---
+      duration_ms: 24.153666
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests: absent rowid 0
+    ok 17 - asset_range_requests: absent rowid 0
+      ---
+      duration_ms: 24.769417
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests: absent rowid -1
+    ok 18 - asset_range_requests: absent rowid -1
+      ---
+      duration_ms: 25.960916
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests: absent rowid 0
+    ok 19 - asset_disposition_requests: absent rowid 0
+      ---
+      duration_ms: 25.075917
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests: absent rowid -1
+    ok 20 - asset_disposition_requests: absent rowid -1
+      ---
+      duration_ms: 25.788291
+      type: 'test'
+      ...
+    # Subtest: asset_annotations: absent rowid 0
+    ok 21 - asset_annotations: absent rowid 0
+      ---
+      duration_ms: 25.490417
+      type: 'test'
+      ...
+    # Subtest: asset_annotations: absent rowid -1
+    ok 22 - asset_annotations: absent rowid -1
+      ---
+      duration_ms: 24.207292
+      type: 'test'
+      ...
+    # Subtest: asset_annotation_requests: absent rowid 0
+    ok 23 - asset_annotation_requests: absent rowid 0
+      ---
+      duration_ms: 25.697708
+      type: 'test'
+      ...
+    # Subtest: asset_annotation_requests: absent rowid -1
+    ok 24 - asset_annotation_requests: absent rowid -1
+      ---
+      duration_ms: 25.849667
+      type: 'test'
+      ...
+    # Subtest: subject_requests: absent rowid 0
+    ok 25 - subject_requests: absent rowid 0
+      ---
+      duration_ms: 26.414166
+      type: 'test'
+      ...
+    # Subtest: subject_requests: absent rowid -1
+    ok 26 - subject_requests: absent rowid -1
+      ---
+      duration_ms: 24.847459
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads: absent rowid 0
+    ok 27 - agent_chat_threads: absent rowid 0
+      ---
+      duration_ms: 26.429542
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads: absent rowid -1
+    ok 28 - agent_chat_threads: absent rowid -1
+      ---
+      duration_ms: 24.51725
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests: absent rowid 0
+    ok 29 - agent_chat_requests: absent rowid 0
+      ---
+      duration_ms: 26.161417
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests: absent rowid -1
+    ok 30 - agent_chat_requests: absent rowid -1
+      ---
+      duration_ms: 25.391792
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs: absent rowid 0
+    ok 31 - agent_chat_runs: absent rowid 0
+      ---
+      duration_ms: 25.927333
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs: absent rowid -1
+    ok 32 - agent_chat_runs: absent rowid -1
+      ---
+      duration_ms: 25.695834
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events: absent rowid 0
+    ok 33 - agent_chat_events: absent rowid 0
+      ---
+      duration_ms: 24.012083
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events: absent rowid -1
+    ok 34 - agent_chat_events: absent rowid -1
+      ---
+      duration_ms: 26.126916
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps: absent rowid 0
+    ok 35 - agent_chat_steps: absent rowid 0
+      ---
+      duration_ms: 25.2335
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps: absent rowid -1
+    ok 36 - agent_chat_steps: absent rowid -1
+      ---
+      duration_ms: 25.39975
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota: absent rowid 0
+    ok 37 - agent_chat_quota: absent rowid 0
+      ---
+      duration_ms: 25.774666
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota: absent rowid -1
+    ok 38 - agent_chat_quota: absent rowid -1
+      ---
+      duration_ms: 24.544584
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals: absent rowid 0
+    ok 39 - agent_edit_proposals: absent rowid 0
+      ---
+      duration_ms: 25.581708
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals: absent rowid -1
+    ok 40 - agent_edit_proposals: absent rowid -1
+      ---
+      duration_ms: 26.254583
+      type: 'test'
+      ...
+    # Subtest: edit_tasks: absent rowid 0
+    ok 41 - edit_tasks: absent rowid 0
+      ---
+      duration_ms: 26.534125
+      type: 'test'
+      ...
+    # Subtest: edit_tasks: absent rowid -1
+    ok 42 - edit_tasks: absent rowid -1
+      ---
+      duration_ms: 26.355834
+      type: 'test'
+      ...
+    # Subtest: image_groups: absent rowid 0
+    ok 43 - image_groups: absent rowid 0
+      ---
+      duration_ms: 25.250333
+      type: 'test'
+      ...
+    # Subtest: image_groups: absent rowid -1
+    ok 44 - image_groups: absent rowid -1
+      ---
+      duration_ms: 26.642458
+      type: 'test'
+      ...
+    # Subtest: image_tasks: absent rowid 0
+    ok 45 - image_tasks: absent rowid 0
+      ---
+      duration_ms: 26.419625
+      type: 'test'
+      ...
+    # Subtest: image_tasks: absent rowid -1
+    ok 46 - image_tasks: absent rowid -1
+      ---
+      duration_ms: 25.370583
+      type: 'test'
+      ...
+    # Subtest: image_versions: absent rowid 0
+    ok 47 - image_versions: absent rowid 0
+      ---
+      duration_ms: 26.099667
+      type: 'test'
+      ...
+    # Subtest: image_versions: absent rowid -1
+    ok 48 - image_versions: absent rowid -1
+      ---
+      duration_ms: 25.936917
+      type: 'test'
+      ...
+    # Subtest: image_requests: absent rowid 0
+    ok 49 - image_requests: absent rowid 0
+      ---
+      duration_ms: 24.614541
+      type: 'test'
+      ...
+    # Subtest: image_requests: absent rowid -1
+    ok 50 - image_requests: absent rowid -1
+      ---
+      duration_ms: 26.542792
+      type: 'test'
+      ...
+    # Subtest: image_reviews: absent rowid 0
+    ok 51 - image_reviews: absent rowid 0
+      ---
+      duration_ms: 26.266333
+      type: 'test'
+      ...
+    # Subtest: image_reviews: absent rowid -1
+    ok 52 - image_reviews: absent rowid -1
+      ---
+      duration_ms: 26.468542
+      type: 'test'
+      ...
+    # Subtest: image_remote_runs: absent rowid 0
+    ok 53 - image_remote_runs: absent rowid 0
+      ---
+      duration_ms: 26.075041
+      type: 'test'
+      ...
+    # Subtest: image_remote_runs: absent rowid -1
+    ok 54 - image_remote_runs: absent rowid -1
+      ---
+      duration_ms: 25.150084
+      type: 'test'
+      ...
+    # Subtest: image_remote_observations: absent rowid 0
+    ok 55 - image_remote_observations: absent rowid 0
+      ---
+      duration_ms: 26.00725
+      type: 'test'
+      ...
+    # Subtest: image_remote_observations: absent rowid -1
+    ok 56 - image_remote_observations: absent rowid -1
+      ---
+      duration_ms: 26.08375
+      type: 'test'
+      ...
+    # Subtest: project_lut_resources: absent rowid 0
+    ok 57 - project_lut_resources: absent rowid 0
+      ---
+      duration_ms: 26.395125
+      type: 'test'
+      ...
+    # Subtest: project_lut_resources: absent rowid -1
+    ok 58 - project_lut_resources: absent rowid -1
+      ---
+      duration_ms: 26.13175
+      type: 'test'
+      ...
+    # Subtest: lut_import_requests: absent rowid 0
+    ok 59 - lut_import_requests: absent rowid 0
+      ---
+      duration_ms: 27.040041
+      type: 'test'
+      ...
+    # Subtest: lut_import_requests: absent rowid -1
+    ok 60 - lut_import_requests: absent rowid -1
+      ---
+      duration_ms: 24.600833
+      type: 'test'
+      ...
+    # Subtest: frame_tasks: absent rowid 0
+    ok 61 - frame_tasks: absent rowid 0
+      ---
+      duration_ms: 25.98975
+      type: 'test'
+      ...
+    # Subtest: frame_tasks: absent rowid -1
+    ok 62 - frame_tasks: absent rowid -1
+      ---
+      duration_ms: 25.165
+      type: 'test'
+      ...
+    # Subtest: frame_requests: absent rowid 0
+    ok 63 - frame_requests: absent rowid 0
+      ---
+      duration_ms: 25.932583
+      type: 'test'
+      ...
+    # Subtest: frame_requests: absent rowid -1
+    ok 64 - frame_requests: absent rowid -1
+      ---
+      duration_ms: 26.676416
+      type: 'test'
+      ...
+    # Subtest: waveform_cache: absent rowid 0
+    ok 65 - waveform_cache: absent rowid 0
+      ---
+      duration_ms: 24.243
+      type: 'test'
+      ...
+    # Subtest: waveform_cache: absent rowid -1
+    ok 66 - waveform_cache: absent rowid -1
+      ---
+      duration_ms: 26.106916
+      type: 'test'
+      ...
+    1..66
+ok 63 - historical 39: 66 absent-pointer negatives across every fixed family (pointer coverage, not content coverage)
+  ---
+  duration_ms: 1818.292333
+  type: 'test'
+  ...
+# Subtest: historical 39: wrong well-formed hash for each of 23 genuinely populated families
+    # Subtest: jobs
+    ok 1 - jobs
+      ---
+      duration_ms: 25.771667
+      type: 'test'
+      ...
+    # Subtest: exports
+    ok 2 - exports
+      ---
+      duration_ms: 24.413375
+      type: 'test'
+      ...
+    # Subtest: versions
+    ok 3 - versions
+      ---
+      duration_ms: 31.545542
+      type: 'test'
+      ...
+    # Subtest: job_events
+    ok 4 - job_events
+      ---
+      duration_ms: 27.485875
+      type: 'test'
+      ...
+    # Subtest: timeline_requests
+    ok 5 - timeline_requests
+      ---
+      duration_ms: 27.604083
+      type: 'test'
+      ...
+    # Subtest: reference_requests
+    ok 6 - reference_requests
+      ---
+      duration_ms: 26.206708
+      type: 'test'
+      ...
+    # Subtest: idempotency
+    ok 7 - idempotency
+      ---
+      duration_ms: 27.99325
+      type: 'test'
+      ...
+    # Subtest: mutation_requests
+    ok 8 - mutation_requests
+      ---
+      duration_ms: 26.146708
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests
+    ok 9 - asset_range_requests
+      ---
+      duration_ms: 27.695417
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests
+    ok 10 - asset_disposition_requests
+      ---
+      duration_ms: 27.635375
+      type: 'test'
+      ...
+    # Subtest: subject_requests
+    ok 11 - subject_requests
+      ---
+      duration_ms: 26.480958
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads
+    ok 12 - agent_chat_threads
+      ---
+      duration_ms: 28.295625
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests
+    ok 13 - agent_chat_requests
+      ---
+      duration_ms: 28.417209
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs
+    ok 14 - agent_chat_runs
+      ---
+      duration_ms: 27.369833
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events
+    ok 15 - agent_chat_events
+      ---
+      duration_ms: 28.776875
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps
+    ok 16 - agent_chat_steps
+      ---
+      duration_ms: 28.456333
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota
+    ok 17 - agent_chat_quota
+      ---
+      duration_ms: 26.241083
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals
+    ok 18 - agent_edit_proposals
+      ---
+      duration_ms: 28.35475
+      type: 'test'
+      ...
+    # Subtest: edit_tasks
+    ok 19 - edit_tasks
+      ---
+      duration_ms: 28.200125
+      type: 'test'
+      ...
+    # Subtest: asset_annotations
+    ok 20 - asset_annotations
+      ---
+      duration_ms: 27.753208
+      type: 'test'
+      ...
+    # Subtest: asset_annotation_requests
+    ok 21 - asset_annotation_requests
+      ---
+      duration_ms: 26.909625
+      type: 'test'
+      ...
+    # Subtest: project_lut_resources
+    ok 22 - project_lut_resources
+      ---
+      duration_ms: 28.782292
+      type: 'test'
+      ...
+    # Subtest: lut_import_requests
+    ok 23 - lut_import_requests
+      ---
+      duration_ms: 28.740917
+      type: 'test'
+      ...
+    1..23
+ok 64 - historical 39: wrong well-formed hash for each of 23 genuinely populated families
+  ---
+  duration_ms: 775.710209
+  type: 'test'
+  ...
+# Subtest: historical 39: all five held identity fields bind even when a live row and valid hash still exist
+    # Subtest: id
+    ok 1 - id
+      ---
+      duration_ms: 25.874917
+      type: 'test'
+      ...
+    # Subtest: projectId
+    ok 2 - projectId
+      ---
+      duration_ms: 26.014625
+      type: 'test'
+      ...
+    # Subtest: namespace
+    ok 3 - namespace
+      ---
+      duration_ms: 25.323125
+      type: 'test'
+      ...
+    # Subtest: requestId
+    ok 4 - requestId
+      ---
+      duration_ms: 26.228834
+      type: 'test'
+      ...
+    # Subtest: operation
+    ok 5 - operation
+      ---
+      duration_ms: 26.66325
+      type: 'test'
+      ...
+    1..5
+ok 65 - historical 39: all five held identity fields bind even when a live row and valid hash still exist
+  ---
+  duration_ms: 265.601417
+  type: 'test'
+  ...
+1..65
+# tests 769
+# suites 0
+# pass 769
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 27129.121708

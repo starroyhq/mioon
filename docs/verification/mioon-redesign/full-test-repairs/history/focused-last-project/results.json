@@ -1,0 +1,21 @@
+[
+  {
+    "file": "tests/last-project-app.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.44,
+    "tapSummary": {
+      "tests": 14,
+      "suites": 0,
+      "pass": 14,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-last-project/001-last-project-app.test.mjs.log",
+    "sha256": "248548bf93626b937acd2c8ac5bfd27f4394d1426b7c334c7c45c594bc584660",
+    "sourceSha256": "b4d3ce2a143f2370541522253dac07aa61012d285e38bc94118346dd4a96f626",
+    "failedSubtests": []
+  }
+]

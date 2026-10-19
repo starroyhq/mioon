@@ -1,0 +1,154 @@
+TAP version 13
+# Subtest: saved snapshot gives exact copied usage provenance and known unused entries
+ok 1 - saved snapshot gives exact copied usage provenance and known unused entries
+  ---
+  duration_ms: 1.394792
+  type: 'test'
+  ...
+# Subtest: complete empty saved timeline is known zero, including an empty asset list
+ok 2 - complete empty saved timeline is known zero, including an empty asset list
+  ---
+  duration_ms: 0.11075
+  type: 'test'
+  ...
+# Subtest: missing, loading or foreign snapshots are unknown rather than zero
+ok 3 - missing, loading or foreign snapshots are unknown rather than zero
+  ---
+  duration_ms: 0.199458
+  type: 'test'
+  ...
+# Subtest: multiple tracks and uses sort by saved track order, then clip start and stable IDs
+ok 4 - multiple tracks and uses sort by saved track order, then clip start and stable IDs
+  ---
+  duration_ms: 0.3375
+  type: 'test'
+  ...
+# Subtest: all saved uses count, including hidden or muted tracks and silent clips
+ok 5 - all saved uses count, including hidden or muted tracks and silent clips
+  ---
+  duration_ms: 0.1025
+  type: 'test'
+  ...
+# Subtest: duplicate IDs anywhere in required collections make the entire result unknown
+ok 6 - duplicate IDs anywhere in required collections make the entire result unknown
+  ---
+  duration_ms: 0.12825
+  type: 'test'
+  ...
+# Subtest: foreign asset ownership, unresolved clips and explicit foreign owners cannot become known zero
+ok 7 - foreign asset ownership, unresolved clips and explicit foreign owners cannot become known zero
+  ---
+  duration_ms: 0.153666
+  type: 'test'
+  ...
+# Subtest: partial own metadata and sparse or malformed collections are unknown
+ok 8 - partial own metadata and sparse or malformed collections are unknown
+  ---
+  duration_ms: 0.189083
+  type: 'test'
+  ...
+# Subtest: invalid revision, track position, names and UUIDs are unknown
+ok 9 - invalid revision, track position, names and UUIDs are unknown
+  ---
+  duration_ms: 0.18775
+  type: 'test'
+  ...
+# Subtest: unsafe, negative, fractional or overflowing frame metadata remains unknown
+ok 10 - unsafe, negative, fractional or overflowing frame metadata remains unknown
+  ---
+  duration_ms: 0.468916
+  type: 'test'
+  ...
+# Subtest: inconsistent aggregate duration or overlapping saved intervals are unknown
+ok 11 - inconsistent aggregate duration or overlapping saved intervals are unknown
+  ---
+  duration_ms: 0.213917
+  type: 'test'
+  ...
+# Subtest: current exact timeline limits pass, while oversized tracks or clips are rejected before traversal
+ok 12 - current exact timeline limits pass, while oversized tracks or clips are rejected before traversal
+  ---
+  duration_ms: 0.842209
+  type: 'test'
+  ...
+# Subtest: asset libraries are not incorrectly capped at timeline or disposition batch limits
+ok 13 - asset libraries are not incorrectly capped at timeline or disposition batch limits
+  ---
+  duration_ms: 1.650375
+  type: 'test'
+  ...
+# Subtest: codec and unrelated render metadata are not usage prerequisites or consulted
+ok 14 - codec and unrelated render metadata are not usage prerequisites or consulted
+  ---
+  duration_ms: 0.089791
+  type: 'test'
+  ...
+# Subtest: same-revision source, clip provenance and track changes alter the immutable local identity
+ok 15 - same-revision source, clip provenance and track changes alter the immutable local identity
+  ---
+  duration_ms: 0.527375
+  type: 'test'
+  ...
+# Subtest: source identity preserves omission and canonical field order, and never includes paths or arbitrary objects
+ok 16 - source identity preserves omission and canonical field order, and never includes paths or arbitrary objects
+  ---
+  duration_ms: 0.191041
+  type: 'test'
+  ...
+# Subtest: malformed or oversized present identity metadata is unknown rather than arbitrarily serialized
+ok 17 - malformed or oversized present identity metadata is unknown rather than arbitrarily serialized
+  ---
+  duration_ms: 0.240041
+  type: 'test'
+  ...
+# Subtest: canvas nodes, selected versions and unsaved drafts never substitute saved clip source
+ok 18 - canvas nodes, selected versions and unsaved drafts never substitute saved clip source
+  ---
+  duration_ms: 0.085792
+  type: 'test'
+  ...
+# Subtest: names remain literal text, with a fallback only for genuinely absent legacy clip names
+ok 19 - names remain literal text, with a fallback only for genuinely absent legacy clip names
+  ---
+  duration_ms: 0.08525
+  type: 'test'
+  ...
+# Subtest: projection is deeply readonly at runtime and never changes even frozen input
+ok 20 - projection is deeply readonly at runtime and never changes even frozen input
+  ---
+  duration_ms: 0.364875
+  type: 'test'
+  ...
+# Subtest: unknown result is frozen and never leaks a partially built zero/use index
+ok 21 - unknown result is frozen and never leaks a partially built zero/use index
+  ---
+  duration_ms: 0.050542
+  type: 'test'
+  ...
+# Subtest: semantic retention preserves snapshot ownership across unchanged polling and key order
+ok 22 - semantic retention preserves snapshot ownership across unchanged polling and key order
+  ---
+  duration_ms: 0.141334
+  type: 'test'
+  ...
+# Subtest: semantic retention replaces changed status, scope, membership, source identity and every use field
+ok 23 - semantic retention replaces changed status, scope, membership, source identity and every use field
+  ---
+  duration_ms: 0.427833
+  type: 'test'
+  ...
+# Subtest: projection source has no storage, RPC, mutation or untyped-boundary escape
+ok 24 - projection source has no storage, RPC, mutation or untyped-boundary escape
+  ---
+  duration_ms: 3.821
+  type: 'test'
+  ...
+1..24
+# tests 24
+# suites 0
+# pass 24
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 176.366542

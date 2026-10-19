@@ -1,0 +1,88 @@
+TAP version 13
+# Subtest: raw text preserves bounded invalid business edits and valid Unicode without trimming or normalization
+ok 1 - raw text preserves bounded invalid business edits and valid Unicode without trimming or normalization
+  ---
+  duration_ms: 3.425333
+  type: 'test'
+  ...
+# Subtest: explicit project and shot key contains no arbitrary path or inferred target
+ok 2 - explicit project and shot key contains no arbitrary path or inferred target
+  ---
+  duration_ms: 0.3215
+  type: 'test'
+  ...
+# Subtest: prepare freezes exact caller input, key order, omission and canonical validator authority
+ok 3 - prepare freezes exact caller input, key order, omission and canonical validator authority
+  ---
+  duration_ms: 1.685667
+  type: 'test'
+  ...
+# Subtest: omission retains baseline, empty prompt clears, null is never a write, and no-op intents are rejected
+ok 4 - omission retains baseline, empty prompt clears, null is never a write, and no-op intents are rejected
+  ---
+  duration_ms: 0.701125
+  type: 'test'
+  ...
+# Subtest: draft and intent revisions are independent and old immutable intent survives newer draft or tombstone
+ok 5 - draft and intent revisions are independent and old immutable intent survives newer draft or tombstone
+  ---
+  duration_ms: 1.331625
+  type: 'test'
+  ...
+# Subtest: intent CAS retains latest identity and execute/recovery cannot rewrite the original frozen input
+ok 6 - intent CAS retains latest identity and execute/recovery cannot rewrite the original frozen input
+  ---
+  duration_ms: 0.640708
+  type: 'test'
+  ...
+# Subtest: disk retains bounded no-eviction shot tombstones and forbids duplicate owners or concurrent project intents
+ok 7 - disk retains bounded no-eviction shot tombstones and forbids duplicate owners or concurrent project intents
+  ---
+  duration_ms: 4.382583
+  type: 'test'
+  ...
+# Subtest: readonly project pending reference blocks sibling ambiguity without exposing sibling text
+ok 8 - readonly project pending reference blocks sibling ambiguity without exposing sibling text
+  ---
+  duration_ms: 1.101625
+  type: 'test'
+  ...
+# Subtest: outcomes carry only bounded authoritative references and applied revision is exact
+ok 9 - outcomes carry only bounded authoritative references and applied revision is exact
+  ---
+  duration_ms: 1.231917
+  type: 'test'
+  ...
+# Subtest: worst escaped legal text and newer maximum raw fit the derived 256 KiB slot and HTTP budgets
+ok 10 - worst escaped legal text and newer maximum raw fit the derived 256 KiB slot and HTTP budgets
+  ---
+  duration_ms: 129.856084
+  type: 'test'
+  ...
+# Subtest: narrow original receipt guard binds project, shot, exact next revision and both aftertexts
+ok 11 - narrow original receipt guard binds project, shot, exact next revision and both aftertexts
+  ---
+  duration_ms: 3.393208
+  type: 'test'
+  ...
+# Subtest: response and execution bounds are independent, explicit unknown/null, with historical receipt bytes unchanged
+ok 12 - response and execution bounds are independent, explicit unknown/null, with historical receipt bytes unchanged
+  ---
+  duration_ms: 11.889334
+  type: 'test'
+  ...
+# Subtest: restored workspace unsupported is explicit and cannot expose inferred authority or companion contents
+ok 13 - restored workspace unsupported is explicit and cannot expose inferred authority or companion contents
+  ---
+  duration_ms: 0.455667
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 441.269292

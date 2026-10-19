@@ -1,0 +1,170 @@
+TAP version 13
+# Subtest: loudness binds two actual hashes and frozen full/ranged delivery without database or file writes
+    # Subtest: {}
+    ok 1 - {}
+      ---
+      duration_ms: 738.170458
+      type: 'test'
+      ...
+    # Subtest: {"named":true,"range":true}
+    ok 2 - {"named":true,"range":true}
+      ---
+      duration_ms: 1122.810417
+      type: 'test'
+      ...
+    1..2
+ok 1 - loudness binds two actual hashes and frozen full/ranged delivery without database or file writes
+  ---
+  duration_ms: 1861.87725
+  type: 'test'
+  ...
+# Subtest: current timeline edits do not invalidate a historical measured export or authorize gain application
+ok 2 - current timeline edits do not invalidate a historical measured export or authorize gain application
+  ---
+  duration_ms: 826.970833
+  type: 'test'
+  ...
+# Subtest: strict input, hash pin and opaque ownership checks precede every managed file read
+ok 3 - strict input, hash pin and opaque ownership checks precede every managed file read
+  ---
+  duration_ms: 755.804125
+  type: 'test'
+  ...
+# Subtest: same native database serializes loudness and samplePeak in both directions without a queue
+    # Subtest: loudness
+    ok 1 - loudness
+      ---
+      duration_ms: 929.237917
+      type: 'test'
+      ...
+    # Subtest: samplePeak
+    ok 2 - samplePeak
+      ---
+      duration_ms: 750.234875
+      type: 'test'
+      ...
+    1..2
+ok 4 - same native database serializes loudness and samplePeak in both directions without a queue
+  ---
+  duration_ms: 1680.004208
+  type: 'test'
+  ...
+# Subtest: read-only database wrappers cannot claim the writer observation permit
+ok 5 - read-only database wrappers cannot claim the writer observation permit
+  ---
+  duration_ms: 965.883083
+  type: 'test'
+  ...
+# Subtest: cancellation retains nonsettled hash and cross-operation admission until exact underlying work settles
+ok 6 - cancellation retains nonsettled hash and cross-operation admission until exact underlying work settles
+  ---
+  duration_ms: 672.924708
+  type: 'test'
+  ...
+# Subtest: one operation deadline covers an outstanding hash and never publishes its late result
+ok 7 - one operation deadline covers an outstanding hash and never publishes its late result
+  ---
+  duration_ms: 641.34075
+  type: 'test'
+  ...
+# Subtest: metadata, same-size byte and path replacement discard measurement; owner revocation outranks decoder failure
+    # Subtest: metadata
+    ok 1 - metadata
+      ---
+      duration_ms: 656.735875
+      type: 'test'
+      ...
+    # Subtest: bytes
+    ok 2 - bytes
+      ---
+      duration_ms: 723.369
+      type: 'test'
+      ...
+    # Subtest: symlink
+    ok 3 - symlink
+      ---
+      duration_ms: 619.861833
+      type: 'test'
+      ...
+    # Subtest: foreign
+    ok 4 - foreign
+      ---
+      duration_ms: 628.343625
+      type: 'test'
+      ...
+    # Subtest: lock
+    ok 5 - lock
+      ---
+      duration_ms: 733.572166
+      type: 'test'
+      ...
+    1..5
+ok 8 - metadata, same-size byte and path replacement discard measurement; owner revocation outranks decoder failure
+  ---
+  duration_ms: 3362.776666
+  type: 'test'
+  ...
+# Subtest: invalid reducer relationships cannot pass as success or trigger the second hash
+ok 9 - invalid reducer relationships cannot pass as success or trigger the second hash
+  ---
+  duration_ms: 724.892042
+  type: 'test'
+  ...
+# Subtest: recorded input size and cumulative hash budgets fail before decode without partial measurements
+ok 10 - recorded input size and cumulative hash budgets fail before decode without partial measurements
+  ---
+  duration_ms: 671.665833
+  type: 'test'
+  ...
+# Subtest: no audio is distinct from silence and still needs the second successful byte hash
+    # Subtest: false
+    ok 1 - false
+      ---
+      duration_ms: 769.905875
+      type: 'test'
+      ...
+    # Subtest: true
+    ok 2 - true
+      ---
+      duration_ms: 655.661917
+      type: 'test'
+      ...
+    1..2
+ok 11 - no audio is distinct from silence and still needs the second successful byte hash
+  ---
+  duration_ms: 2210.839708
+  type: 'test'
+  ...
+# Subtest: restored denial occurs before payload getters or any file/media adapter
+ok 12 - restored denial occurs before payload getters or any file/media adapter
+  ---
+  duration_ms: 744.157041
+  type: 'test'
+  ...
+# Subtest: actual restored-v1 composition denies loudness before parsing valid or hostile payloads
+ok 13 - actual restored-v1 composition denies loudness before parsing valid or hostile payloads
+  ---
+  duration_ms: 766.104083
+  type: 'test'
+  ...
+# Subtest: service drain propagates an audioPreview owner rejection after the added loudness owner
+ok 14 - service drain propagates an audioPreview owner rejection after the added loudness owner
+  ---
+  duration_ms: 598.512125
+  type: 'test'
+  ...
+# Subtest: actual exact-child registry pins cross-operation cleanup and sticky termination failure through late close
+ok 15 - actual exact-child registry pins cross-operation cleanup and sticky termination failure through late close
+  ---
+  duration_ms: 617.695209
+  type: 'test'
+  ...
+1..15
+# tests 26
+# suites 0
+# pass 26
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 17444.110792

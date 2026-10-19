@@ -1,0 +1,433 @@
+TAP version 13
+# Subtest: actual App hook reads the current saved snapshot, supplies exact RPC options, and never prepares on render
+not ok 1 - actual App hook reads the current saved snapshot, supplies exact RPC options, and never prepares on render
+  ---
+  duration_ms: 0.922458
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:86:1'
+  failureType: 'testCodeFailure'
+  error: 'application is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    soundAuditionContext (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:15:17)
+    eval (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:18:135)
+    render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:133)
+    harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:82:19)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:87:13)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.start (node:internal/test_runner/test:1262:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+  ...
+# Subtest: an unapplied clip recovery candidate warns even with clean inputs without entering the saved mix or changing its owner
+not ok 2 - an unapplied clip recovery candidate warns even with clean inputs without entering the saved mix or changing its owner
+  ---
+  duration_ms: 0.15125
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:103:1'
+  failureType: 'testCodeFailure'
+  error: 'application is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    soundAuditionContext (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:15:17)
+    eval (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:18:135)
+    render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:133)
+    harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:82:19)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:104:13)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: actual App hidden signal retires sound and never prepares/resumes from a rerender
+not ok 3 - actual App hidden signal retires sound and never prepares/resumes from a rerender
+  ---
+  duration_ms: 0.098333
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:129:3'
+  failureType: 'testCodeFailure'
+  error: 'application is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    soundAuditionContext (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:15:17)
+    eval (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:18:135)
+    render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:133)
+    harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:82:19)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:130:15)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: actual App sourceTab signal retires sound and never prepares/resumes from a rerender
+not ok 4 - actual App sourceTab signal retires sound and never prepares/resumes from a rerender
+  ---
+  duration_ms: 0.074208
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:129:3'
+  failureType: 'testCodeFailure'
+  error: 'application is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    soundAuditionContext (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:15:17)
+    eval (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:18:135)
+    render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:133)
+    harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:82:19)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:130:15)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: actual App canvasMode signal retires sound and never prepares/resumes from a rerender
+not ok 5 - actual App canvasMode signal retires sound and never prepares/resumes from a rerender
+  ---
+  duration_ms: 0.079375
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:129:3'
+  failureType: 'testCodeFailure'
+  error: 'application is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    soundAuditionContext (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:15:17)
+    eval (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:18:135)
+    render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:133)
+    harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:82:19)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:130:15)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: actual App modal signal retires sound and never prepares/resumes from a rerender
+not ok 6 - actual App modal signal retires sound and never prepares/resumes from a rerender
+  ---
+  duration_ms: 0.077667
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:129:3'
+  failureType: 'testCodeFailure'
+  error: 'application is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    soundAuditionContext (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:15:17)
+    eval (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:18:135)
+    render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:133)
+    harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:82:19)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:130:15)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: actual App comparison signal retires sound and never prepares/resumes from a rerender
+not ok 7 - actual App comparison signal retires sound and never prepares/resumes from a rerender
+  ---
+  duration_ms: 0.079583
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:129:3'
+  failureType: 'testCodeFailure'
+  error: 'application is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    soundAuditionContext (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:15:17)
+    eval (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:18:135)
+    render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:133)
+    harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:82:19)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:130:15)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: actual App clipSwitch signal retires sound and never prepares/resumes from a rerender
+not ok 8 - actual App clipSwitch signal retires sound and never prepares/resumes from a rerender
+  ---
+  duration_ms: 0.068041
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:129:3'
+  failureType: 'testCodeFailure'
+  error: 'application is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    soundAuditionContext (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:15:17)
+    eval (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:18:135)
+    render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:133)
+    harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:82:19)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:130:15)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: actual App sourceSwitch signal retires sound and never prepares/resumes from a rerender
+not ok 9 - actual App sourceSwitch signal retires sound and never prepares/resumes from a rerender
+  ---
+  duration_ms: 0.083125
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:129:3'
+  failureType: 'testCodeFailure'
+  error: 'application is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    soundAuditionContext (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:15:17)
+    eval (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:18:135)
+    render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:133)
+    harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:82:19)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:130:15)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: actual App logout signal retires sound and never prepares/resumes from a rerender
+not ok 10 - actual App logout signal retires sound and never prepares/resumes from a rerender
+  ---
+  duration_ms: 0.109042
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:129:3'
+  failureType: 'testCodeFailure'
+  error: 'application is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    soundAuditionContext (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:15:17)
+    eval (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:18:135)
+    render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:133)
+    harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:82:19)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:130:15)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: actual App disconnected signal retires sound and never prepares/resumes from a rerender
+not ok 11 - actual App disconnected signal retires sound and never prepares/resumes from a rerender
+  ---
+  duration_ms: 0.086333
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:129:3'
+  failureType: 'testCodeFailure'
+  error: 'application is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    soundAuditionContext (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:15:17)
+    eval (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:18:135)
+    render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:133)
+    harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:82:19)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:130:15)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: actual App restored signal retires sound and never prepares/resumes from a rerender
+not ok 12 - actual App restored signal retires sound and never prepares/resumes from a rerender
+  ---
+  duration_ms: 0.072791
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:129:3'
+  failureType: 'testCodeFailure'
+  error: 'application is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    soundAuditionContext (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:15:17)
+    eval (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:18:135)
+    render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:133)
+    harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:82:19)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:130:15)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: actual App projectReopen signal retires sound and never prepares/resumes from a rerender
+not ok 13 - actual App projectReopen signal retires sound and never prepares/resumes from a rerender
+  ---
+  duration_ms: 0.055875
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:129:3'
+  failureType: 'testCodeFailure'
+  error: 'application is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    soundAuditionContext (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:15:17)
+    eval (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:18:135)
+    render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:133)
+    harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:82:19)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:130:15)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: actual App revision signal retires sound and never prepares/resumes from a rerender
+not ok 14 - actual App revision signal retires sound and never prepares/resumes from a rerender
+  ---
+  duration_ms: 0.057417
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:129:3'
+  failureType: 'testCodeFailure'
+  error: 'application is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    soundAuditionContext (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:15:17)
+    eval (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:18:135)
+    render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:133)
+    harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:82:19)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:130:15)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: unaccepted project data cannot start audition through actual App readiness guards
+not ok 15 - unaccepted project data cannot start audition through actual App readiness guards
+  ---
+  duration_ms: 0.088334
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:136:1'
+  failureType: 'testCodeFailure'
+  error: 'application is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    soundAuditionContext (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:15:17)
+    eval (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:18:135)
+    render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:133)
+    harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:82:19)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:138:15)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: actual App clock display stays ephemeral while each explicit seek writes the saved view exactly once
+not ok 16 - actual App clock display stays ephemeral while each explicit seek writes the saved view exactly once
+  ---
+  duration_ms: 0.09
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:143:1'
+  failureType: 'testCodeFailure'
+  error: 'application is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    soundAuditionContext (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:15:17)
+    eval (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:18:135)
+    render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:133)
+    harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:82:19)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:144:13)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: actual native-player guard revokes current sound, while stale media can only pause itself
+not ok 17 - actual native-player guard revokes current sound, while stale media can only pause itself
+  ---
+  duration_ms: 0.091583
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:156:1'
+  failureType: 'testCodeFailure'
+  error: 'application is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    soundAuditionContext (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:15:17)
+    eval (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:18:135)
+    render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:133)
+    harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:82:19)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:157:13)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: actual native pause registration cleanup cannot unregister a newer player owner
+ok 18 - actual native pause registration cleanup cannot unregister a newer player owner
+  ---
+  duration_ms: 0.128541
+  type: 'test'
+  ...
+# Subtest: actual TSX callbacks pass their rendered owner once; shared Slider seek remains an explicit action
+not ok 19 - actual TSX callbacks pass their rendered owner once; shared Slider seek remains an explicit action
+  ---
+  duration_ms: 20.795333
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:176:1'
+  failureType: 'testCodeFailure'
+  error: 'application is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    soundAuditionContext (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:15:17)
+    eval (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:18:135)
+    render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:133)
+    harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:82:19)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:188:13)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: actual component never substitutes a last-frame prepare for an outside or empty saved range
+not ok 20 - actual component never substitutes a last-frame prepare for an outside or empty saved range
+  ---
+  duration_ms: 1.440292
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:201:1'
+  failureType: 'testCodeFailure'
+  error: 'application is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    soundAuditionContext (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:15:17)
+    eval (eval at render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:12), <anonymous>:18:135)
+    render (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:80:133)
+    harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:82:19)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-audio-preview-app.test.mjs:215:13)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+1..20
+# tests 20
+# suites 0
+# pass 1
+# fail 19
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 274.4585

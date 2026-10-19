@@ -1,0 +1,1020 @@
+{
+  "url": "http://127.0.0.1:49506",
+  "purpose": "Actual UI screenshots and pointer interaction in a separate synthetic project; no application source changes.",
+  "checks": [
+    {
+      "check": "1050 material rail opens actual populated overlay over unchanged canvas; inspector draft preserved",
+      "overlay": {
+        "x": 56,
+        "y": 50,
+        "width": 260,
+        "height": 624
+      }
+    },
+    {
+      "check": "editing overlays retain actual content width, hit-testable controls and normal body/pin/filter clicks within preview row",
+      "inspector": {
+        "x": 668,
+        "y": 56,
+        "width": 320,
+        "height": 312
+      },
+      "inspectorRegionWidth": 318,
+      "assets": {
+        "x": 62,
+        "y": 56,
+        "width": 260,
+        "height": 312
+      }
+    },
+    {
+      "check": "real pointer resize reaches 160 CSS px and keeps selected clip",
+      "initialHeight": 294.0,
+      "finalHeight": 160
+    },
+    {
+      "check": "same timeline instance collapses to full toolbar; playhead/snap remain usable; hidden body is inert and deletion shortcuts do nothing",
+      "previewBefore": 372,
+      "previewCollapsed": 492,
+      "collapsedBarHeight": 40
+    },
+    {
+      "check": "toolbar expansion restores 160 px and exact selected clip without creative mutation"
+    },
+    {
+      "check": "1050 editing inspector collapses to rail with timeline still 160 px"
+    },
+    {
+      "check": "1440 return and actual reload retain isolated project 160 px layout"
+    }
+  ],
+  "screenshots": {
+    "canvas-1050-dual-rails": {
+      "file": "canvas-1050-dual-rails.png",
+      "viewport": {
+        "width": 1050,
+        "height": 680
+      },
+      "geometry": {
+        "workbench": {
+          "x": 0,
+          "y": 0,
+          "width": 1050,
+          "height": 680,
+          "visible": null
+        },
+        "dock-canvas": {
+          "x": 0,
+          "y": 44,
+          "width": 1050,
+          "height": 636,
+          "visible": "true"
+        },
+        "dock-assets": {
+          "x": 6,
+          "y": 50,
+          "width": 44,
+          "height": 624,
+          "visible": "false"
+        },
+        "dock-inspector": {
+          "x": 1000,
+          "y": 50,
+          "width": 44,
+          "height": 624,
+          "visible": "false"
+        },
+        "dock-timeline": null,
+        "reopen-timeline": null,
+        "resize-timeline": null
+      }
+    },
+    "canvas-1050-assets-collapsed-inspector-pinned": {
+      "file": "canvas-1050-assets-collapsed-inspector-pinned.png",
+      "viewport": {
+        "width": 1050,
+        "height": 680
+      },
+      "geometry": {
+        "workbench": {
+          "x": 0,
+          "y": 0,
+          "width": 1050,
+          "height": 680,
+          "visible": null
+        },
+        "dock-canvas": {
+          "x": 0,
+          "y": 44,
+          "width": 1050,
+          "height": 636,
+          "visible": "true"
+        },
+        "dock-assets": {
+          "x": 6,
+          "y": 50,
+          "width": 44,
+          "height": 624,
+          "visible": "false"
+        },
+        "dock-inspector": {
+          "x": 724,
+          "y": 50,
+          "width": 320,
+          "height": 624,
+          "visible": "true"
+        },
+        "dock-timeline": null,
+        "reopen-timeline": null,
+        "resize-timeline": null
+      }
+    },
+    "canvas-1050-assets-overlay": {
+      "file": "canvas-1050-assets-overlay.png",
+      "viewport": {
+        "width": 1050,
+        "height": 680
+      },
+      "geometry": {
+        "workbench": {
+          "x": 0,
+          "y": 0,
+          "width": 1050,
+          "height": 680,
+          "visible": null
+        },
+        "dock-canvas": {
+          "x": 0,
+          "y": 44,
+          "width": 1050,
+          "height": 636,
+          "visible": "true"
+        },
+        "dock-assets": {
+          "x": 56,
+          "y": 50,
+          "width": 260,
+          "height": 624,
+          "visible": "true"
+        },
+        "dock-inspector": {
+          "x": 724,
+          "y": 50,
+          "width": 320,
+          "height": 624,
+          "visible": "true"
+        },
+        "dock-timeline": null,
+        "reopen-timeline": null,
+        "resize-timeline": null
+      }
+    },
+    "editing-1440-before-resize": {
+      "file": "editing-1440-before-resize.png",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "geometry": {
+        "workbench": {
+          "x": 0,
+          "y": 0,
+          "width": 1440,
+          "height": 900,
+          "visible": null
+        },
+        "dock-canvas": {
+          "x": 272,
+          "y": 50,
+          "width": 836,
+          "height": 538,
+          "visible": "true"
+        },
+        "dock-assets": {
+          "x": 6,
+          "y": 50,
+          "width": 260,
+          "height": 538,
+          "visible": "true"
+        },
+        "dock-inspector": {
+          "x": 1114,
+          "y": 50,
+          "width": 320,
+          "height": 538,
+          "visible": "true"
+        },
+        "dock-timeline": {
+          "x": 6,
+          "y": 594,
+          "width": 1428,
+          "height": 300,
+          "visible": "true"
+        },
+        "reopen-timeline": null,
+        "resize-timeline": {
+          "x": 19,
+          "y": 586,
+          "width": 1402,
+          "height": 14,
+          "visible": null
+        }
+      }
+    },
+    "editing-1050-properties-overlay": {
+      "file": "editing-1050-properties-overlay.png",
+      "viewport": {
+        "width": 1050,
+        "height": 680
+      },
+      "geometry": {
+        "workbench": {
+          "x": 0,
+          "y": 0,
+          "width": 1050,
+          "height": 680,
+          "visible": null
+        },
+        "dock-canvas": {
+          "x": 56,
+          "y": 50,
+          "width": 938,
+          "height": 324,
+          "visible": "true"
+        },
+        "dock-assets": {
+          "x": 6,
+          "y": 50,
+          "width": 44,
+          "height": 324,
+          "visible": "false"
+        },
+        "dock-inspector": {
+          "x": 668,
+          "y": 56,
+          "width": 320,
+          "height": 312,
+          "visible": "true"
+        },
+        "dock-timeline": {
+          "x": 6,
+          "y": 380,
+          "width": 1038,
+          "height": 294,
+          "visible": "true"
+        },
+        "reopen-timeline": null,
+        "resize-timeline": {
+          "x": 19,
+          "y": 372,
+          "width": 1012,
+          "height": 14,
+          "visible": null
+        }
+      }
+    },
+    "editing-1050-assets-overlay": {
+      "file": "editing-1050-assets-overlay.png",
+      "viewport": {
+        "width": 1050,
+        "height": 680
+      },
+      "geometry": {
+        "workbench": {
+          "x": 0,
+          "y": 0,
+          "width": 1050,
+          "height": 680,
+          "visible": null
+        },
+        "dock-canvas": {
+          "x": 56,
+          "y": 50,
+          "width": 662,
+          "height": 324,
+          "visible": "true"
+        },
+        "dock-assets": {
+          "x": 62,
+          "y": 56,
+          "width": 260,
+          "height": 312,
+          "visible": "true"
+        },
+        "dock-inspector": {
+          "x": 724,
+          "y": 50,
+          "width": 320,
+          "height": 324,
+          "visible": "true"
+        },
+        "dock-timeline": {
+          "x": 6,
+          "y": 380,
+          "width": 1038,
+          "height": 294,
+          "visible": "true"
+        },
+        "reopen-timeline": null,
+        "resize-timeline": {
+          "x": 19,
+          "y": 372,
+          "width": 1012,
+          "height": 14,
+          "visible": null
+        }
+      }
+    },
+    "editing-1050-timeline-160-inspector-pinned": {
+      "file": "editing-1050-timeline-160-inspector-pinned.png",
+      "viewport": {
+        "width": 1050,
+        "height": 680
+      },
+      "geometry": {
+        "workbench": {
+          "x": 0,
+          "y": 0,
+          "width": 1050,
+          "height": 680,
+          "visible": null
+        },
+        "dock-canvas": {
+          "x": 56,
+          "y": 50,
+          "width": 662,
+          "height": 458,
+          "visible": "true"
+        },
+        "dock-assets": {
+          "x": 6,
+          "y": 50,
+          "width": 44,
+          "height": 458,
+          "visible": "false"
+        },
+        "dock-inspector": {
+          "x": 724,
+          "y": 50,
+          "width": 320,
+          "height": 458,
+          "visible": "true"
+        },
+        "dock-timeline": {
+          "x": 6,
+          "y": 514,
+          "width": 1038,
+          "height": 160,
+          "visible": "true"
+        },
+        "reopen-timeline": null,
+        "resize-timeline": {
+          "x": 19,
+          "y": 506,
+          "width": 1012,
+          "height": 14,
+          "visible": null
+        }
+      }
+    },
+    "editing-1050-timeline-collapsed": {
+      "file": "editing-1050-timeline-collapsed.png",
+      "viewport": {
+        "width": 1050,
+        "height": 680
+      },
+      "geometry": {
+        "workbench": {
+          "x": 0,
+          "y": 0,
+          "width": 1050,
+          "height": 680,
+          "visible": null
+        },
+        "dock-canvas": {
+          "x": 56,
+          "y": 50,
+          "width": 662,
+          "height": 578,
+          "visible": "true"
+        },
+        "dock-assets": {
+          "x": 6,
+          "y": 50,
+          "width": 44,
+          "height": 578,
+          "visible": "false"
+        },
+        "dock-inspector": {
+          "x": 724,
+          "y": 50,
+          "width": 320,
+          "height": 578,
+          "visible": "true"
+        },
+        "dock-timeline": {
+          "x": 6,
+          "y": 634,
+          "width": 1038,
+          "height": 40,
+          "visible": "true"
+        },
+        "reopen-timeline": null,
+        "resize-timeline": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "visible": null
+        }
+      }
+    },
+    "editing-1050-timeline-restored-160": {
+      "file": "editing-1050-timeline-restored-160.png",
+      "viewport": {
+        "width": 1050,
+        "height": 680
+      },
+      "geometry": {
+        "workbench": {
+          "x": 0,
+          "y": 0,
+          "width": 1050,
+          "height": 680,
+          "visible": null
+        },
+        "dock-canvas": {
+          "x": 56,
+          "y": 50,
+          "width": 662,
+          "height": 458,
+          "visible": "true"
+        },
+        "dock-assets": {
+          "x": 6,
+          "y": 50,
+          "width": 44,
+          "height": 458,
+          "visible": "false"
+        },
+        "dock-inspector": {
+          "x": 724,
+          "y": 50,
+          "width": 320,
+          "height": 458,
+          "visible": "true"
+        },
+        "dock-timeline": {
+          "x": 6,
+          "y": 514,
+          "width": 1038,
+          "height": 160,
+          "visible": "true"
+        },
+        "reopen-timeline": null,
+        "resize-timeline": {
+          "x": 19,
+          "y": 506,
+          "width": 1012,
+          "height": 14,
+          "visible": null
+        }
+      }
+    },
+    "editing-1050-timeline-160-dual-rails": {
+      "file": "editing-1050-timeline-160-dual-rails.png",
+      "viewport": {
+        "width": 1050,
+        "height": 680
+      },
+      "geometry": {
+        "workbench": {
+          "x": 0,
+          "y": 0,
+          "width": 1050,
+          "height": 680,
+          "visible": null
+        },
+        "dock-canvas": {
+          "x": 56,
+          "y": 50,
+          "width": 938,
+          "height": 458,
+          "visible": "true"
+        },
+        "dock-assets": {
+          "x": 6,
+          "y": 50,
+          "width": 44,
+          "height": 458,
+          "visible": "false"
+        },
+        "dock-inspector": {
+          "x": 1000,
+          "y": 50,
+          "width": 44,
+          "height": 458,
+          "visible": "false"
+        },
+        "dock-timeline": {
+          "x": 6,
+          "y": 514,
+          "width": 1038,
+          "height": 160,
+          "visible": "true"
+        },
+        "reopen-timeline": null,
+        "resize-timeline": {
+          "x": 19,
+          "y": 506,
+          "width": 1012,
+          "height": 14,
+          "visible": null
+        }
+      }
+    },
+    "editing-1440-timeline-restored-160": {
+      "file": "editing-1440-timeline-restored-160.png",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "geometry": {
+        "workbench": {
+          "x": 0,
+          "y": 0,
+          "width": 1440,
+          "height": 900,
+          "visible": null
+        },
+        "dock-canvas": {
+          "x": 272,
+          "y": 50,
+          "width": 836,
+          "height": 678,
+          "visible": "true"
+        },
+        "dock-assets": {
+          "x": 6,
+          "y": 50,
+          "width": 260,
+          "height": 678,
+          "visible": "true"
+        },
+        "dock-inspector": {
+          "x": 1114,
+          "y": 50,
+          "width": 320,
+          "height": 678,
+          "visible": "true"
+        },
+        "dock-timeline": {
+          "x": 6,
+          "y": 734,
+          "width": 1428,
+          "height": 160,
+          "visible": "true"
+        },
+        "reopen-timeline": null,
+        "resize-timeline": {
+          "x": 19,
+          "y": 726,
+          "width": 1402,
+          "height": 14,
+          "visible": null
+        }
+      }
+    }
+  },
+  "pageErrors": [],
+  "globalPreferenceWrites": [],
+  "projectPreferenceWrites": [
+    {
+      "projectId": "89e36940-eb52-45ba-8f2b-6beea8e9504c",
+      "state": {
+        "version": 1,
+        "activeMode": "canvas",
+        "canvas": {
+          "viewport": null,
+          "selectedId": "c84d6f97-3053-4199-af13-63d4edf98430",
+          "selectedEdgeId": null,
+          "inspectorTab": "settings",
+          "highlightedVersionId": null,
+          "storyboardOpen": false,
+          "miniMap": false
+        },
+        "editing": {
+          "selectedClipId": null,
+          "quickAssetId": null,
+          "previewKind": "timeline",
+          "playhead": 0,
+          "pixelsPerSecond": 76,
+          "scrollLeft": 0,
+          "scrollTop": 0,
+          "timelineCollapsed": false,
+          "snappingEnabled": true
+        },
+        "shared": {
+          "assetFilter": "all",
+          "assetsCollapsed": false,
+          "inspectorCollapsed": false
+        },
+        "layout": {
+          "canvas": {
+            "assetsWidth": 260,
+            "inspectorWidth": 320,
+            "assetsCollapsed": false,
+            "inspectorCollapsed": false
+          },
+          "editing": {
+            "assetsWidth": 260,
+            "inspectorWidth": 320,
+            "assetsCollapsed": false,
+            "inspectorCollapsed": false,
+            "timelineHeight": 300
+          }
+        }
+      }
+    },
+    {
+      "projectId": "89e36940-eb52-45ba-8f2b-6beea8e9504c",
+      "state": {
+        "version": 1,
+        "activeMode": "canvas",
+        "canvas": {
+          "viewport": {
+            "x": 520,
+            "y": 226,
+            "zoom": 1
+          },
+          "selectedId": "c84d6f97-3053-4199-af13-63d4edf98430",
+          "selectedEdgeId": null,
+          "inspectorTab": "settings",
+          "highlightedVersionId": null,
+          "storyboardOpen": false,
+          "miniMap": false
+        },
+        "editing": {
+          "selectedClipId": null,
+          "quickAssetId": null,
+          "previewKind": "timeline",
+          "playhead": 0,
+          "pixelsPerSecond": 76,
+          "scrollLeft": 0,
+          "scrollTop": 0,
+          "timelineCollapsed": false,
+          "snappingEnabled": true
+        },
+        "shared": {
+          "assetFilter": "all",
+          "assetsCollapsed": false,
+          "inspectorCollapsed": false
+        },
+        "layout": {
+          "canvas": {
+            "assetsWidth": 260,
+            "inspectorWidth": 320,
+            "assetsCollapsed": false,
+            "inspectorCollapsed": false
+          },
+          "editing": {
+            "assetsWidth": 260,
+            "inspectorWidth": 320,
+            "assetsCollapsed": false,
+            "inspectorCollapsed": false,
+            "timelineHeight": 300
+          }
+        }
+      }
+    },
+    {
+      "projectId": "89e36940-eb52-45ba-8f2b-6beea8e9504c",
+      "state": {
+        "version": 1,
+        "activeMode": "editing",
+        "canvas": {
+          "viewport": {
+            "x": 520,
+            "y": 226,
+            "zoom": 1
+          },
+          "selectedId": "c84d6f97-3053-4199-af13-63d4edf98430",
+          "selectedEdgeId": null,
+          "inspectorTab": "settings",
+          "highlightedVersionId": null,
+          "storyboardOpen": false,
+          "miniMap": false
+        },
+        "editing": {
+          "selectedClipId": null,
+          "quickAssetId": null,
+          "previewKind": "timeline",
+          "playhead": 0,
+          "pixelsPerSecond": 76,
+          "scrollLeft": 0,
+          "scrollTop": 0,
+          "timelineCollapsed": false,
+          "snappingEnabled": true
+        },
+        "shared": {
+          "assetFilter": "all",
+          "assetsCollapsed": false,
+          "inspectorCollapsed": false
+        },
+        "layout": {
+          "canvas": {
+            "assetsWidth": 260,
+            "inspectorWidth": 320,
+            "assetsCollapsed": false,
+            "inspectorCollapsed": false
+          },
+          "editing": {
+            "assetsWidth": 260,
+            "inspectorWidth": 320,
+            "assetsCollapsed": false,
+            "inspectorCollapsed": false,
+            "timelineHeight": 300
+          }
+        }
+      }
+    },
+    {
+      "projectId": "89e36940-eb52-45ba-8f2b-6beea8e9504c",
+      "state": {
+        "version": 1,
+        "activeMode": "editing",
+        "canvas": {
+          "viewport": {
+            "x": 520,
+            "y": 226,
+            "zoom": 1
+          },
+          "selectedId": "c84d6f97-3053-4199-af13-63d4edf98430",
+          "selectedEdgeId": null,
+          "inspectorTab": "settings",
+          "highlightedVersionId": null,
+          "storyboardOpen": false,
+          "miniMap": false
+        },
+        "editing": {
+          "selectedClipId": "efaf44c8-03e4-479f-981f-1ea54c0c468c",
+          "quickAssetId": null,
+          "previewKind": "source",
+          "playhead": 0,
+          "pixelsPerSecond": 76,
+          "scrollLeft": 0,
+          "scrollTop": 0,
+          "timelineCollapsed": false,
+          "snappingEnabled": true
+        },
+        "shared": {
+          "assetFilter": "all",
+          "assetsCollapsed": false,
+          "inspectorCollapsed": false
+        },
+        "layout": {
+          "canvas": {
+            "assetsWidth": 260,
+            "inspectorWidth": 320,
+            "assetsCollapsed": false,
+            "inspectorCollapsed": false
+          },
+          "editing": {
+            "assetsWidth": 260,
+            "inspectorWidth": 320,
+            "assetsCollapsed": false,
+            "inspectorCollapsed": false,
+            "timelineHeight": 300
+          }
+        }
+      }
+    },
+    {
+      "projectId": "89e36940-eb52-45ba-8f2b-6beea8e9504c",
+      "state": {
+        "version": 1,
+        "activeMode": "editing",
+        "canvas": {
+          "viewport": {
+            "x": 520,
+            "y": 226,
+            "zoom": 1
+          },
+          "selectedId": "c84d6f97-3053-4199-af13-63d4edf98430",
+          "selectedEdgeId": null,
+          "inspectorTab": "settings",
+          "highlightedVersionId": null,
+          "storyboardOpen": false,
+          "miniMap": false
+        },
+        "editing": {
+          "selectedClipId": "efaf44c8-03e4-479f-981f-1ea54c0c468c",
+          "quickAssetId": null,
+          "previewKind": "source",
+          "playhead": 0,
+          "pixelsPerSecond": 76,
+          "scrollLeft": 0,
+          "scrollTop": 0,
+          "timelineCollapsed": false,
+          "snappingEnabled": true
+        },
+        "shared": {
+          "assetFilter": "all",
+          "assetsCollapsed": false,
+          "inspectorCollapsed": false
+        },
+        "layout": {
+          "canvas": {
+            "assetsWidth": 260,
+            "inspectorWidth": 320,
+            "assetsCollapsed": false,
+            "inspectorCollapsed": false
+          },
+          "editing": {
+            "assetsWidth": 260,
+            "inspectorWidth": 320,
+            "assetsCollapsed": false,
+            "inspectorCollapsed": false,
+            "timelineHeight": 160
+          }
+        }
+      }
+    },
+    {
+      "projectId": "89e36940-eb52-45ba-8f2b-6beea8e9504c",
+      "state": {
+        "version": 1,
+        "activeMode": "editing",
+        "canvas": {
+          "viewport": {
+            "x": 520,
+            "y": 226,
+            "zoom": 1
+          },
+          "selectedId": "c84d6f97-3053-4199-af13-63d4edf98430",
+          "selectedEdgeId": null,
+          "inspectorTab": "settings",
+          "highlightedVersionId": null,
+          "storyboardOpen": false,
+          "miniMap": false
+        },
+        "editing": {
+          "selectedClipId": "efaf44c8-03e4-479f-981f-1ea54c0c468c",
+          "quickAssetId": null,
+          "previewKind": "source",
+          "playhead": 0,
+          "pixelsPerSecond": 76,
+          "scrollLeft": 0,
+          "scrollTop": 85,
+          "timelineCollapsed": true,
+          "snappingEnabled": true
+        },
+        "shared": {
+          "assetFilter": "all",
+          "assetsCollapsed": false,
+          "inspectorCollapsed": false
+        },
+        "layout": {
+          "canvas": {
+            "assetsWidth": 260,
+            "inspectorWidth": 320,
+            "assetsCollapsed": false,
+            "inspectorCollapsed": false
+          },
+          "editing": {
+            "assetsWidth": 260,
+            "inspectorWidth": 320,
+            "assetsCollapsed": false,
+            "inspectorCollapsed": false,
+            "timelineHeight": 160
+          }
+        }
+      }
+    },
+    {
+      "projectId": "89e36940-eb52-45ba-8f2b-6beea8e9504c",
+      "state": {
+        "version": 1,
+        "activeMode": "editing",
+        "canvas": {
+          "viewport": {
+            "x": 520,
+            "y": 226,
+            "zoom": 1
+          },
+          "selectedId": "c84d6f97-3053-4199-af13-63d4edf98430",
+          "selectedEdgeId": null,
+          "inspectorTab": "settings",
+          "highlightedVersionId": null,
+          "storyboardOpen": false,
+          "miniMap": false
+        },
+        "editing": {
+          "selectedClipId": "efaf44c8-03e4-479f-981f-1ea54c0c468c",
+          "quickAssetId": null,
+          "previewKind": "source",
+          "playhead": 30,
+          "pixelsPerSecond": 76,
+          "scrollLeft": 0,
+          "scrollTop": 85,
+          "timelineCollapsed": true,
+          "snappingEnabled": false
+        },
+        "shared": {
+          "assetFilter": "all",
+          "assetsCollapsed": false,
+          "inspectorCollapsed": false
+        },
+        "layout": {
+          "canvas": {
+            "assetsWidth": 260,
+            "inspectorWidth": 320,
+            "assetsCollapsed": false,
+            "inspectorCollapsed": false
+          },
+          "editing": {
+            "assetsWidth": 260,
+            "inspectorWidth": 320,
+            "assetsCollapsed": false,
+            "inspectorCollapsed": false,
+            "timelineHeight": 160
+          }
+        }
+      }
+    },
+    {
+      "projectId": "89e36940-eb52-45ba-8f2b-6beea8e9504c",
+      "state": {
+        "version": 1,
+        "activeMode": "editing",
+        "canvas": {
+          "viewport": {
+            "x": 520,
+            "y": 226,
+            "zoom": 1
+          },
+          "selectedId": "c84d6f97-3053-4199-af13-63d4edf98430",
+          "selectedEdgeId": null,
+          "inspectorTab": "settings",
+          "highlightedVersionId": null,
+          "storyboardOpen": false,
+          "miniMap": false
+        },
+        "editing": {
+          "selectedClipId": "efaf44c8-03e4-479f-981f-1ea54c0c468c",
+          "quickAssetId": null,
+          "previewKind": "source",
+          "playhead": 30,
+          "pixelsPerSecond": 76,
+          "scrollLeft": 0,
+          "scrollTop": 85,
+          "timelineCollapsed": false,
+          "snappingEnabled": false
+        },
+        "shared": {
+          "assetFilter": "all",
+          "assetsCollapsed": false,
+          "inspectorCollapsed": false
+        },
+        "layout": {
+          "canvas": {
+            "assetsWidth": 260,
+            "inspectorWidth": 320,
+            "assetsCollapsed": false,
+            "inspectorCollapsed": false
+          },
+          "editing": {
+            "assetsWidth": 260,
+            "inspectorWidth": 320,
+            "assetsCollapsed": false,
+            "inspectorCollapsed": false,
+            "timelineHeight": 160
+          }
+        }
+      }
+    }
+  ],
+  "creativeMutations": [],
+  "projectId": "89e36940-eb52-45ba-8f2b-6beea8e9504c",
+  "assetId": "aeba3639-3633-49ff-ba3e-0fcae3f820cc",
+  "clipId": "efaf44c8-03e4-479f-981f-1ea54c0c468c",
+  "setup": "Public local RPC project.create/asset.import/shot.create/timeline.clip.add; existing synthetic 1080x1920/4s MP4; no supplier generation.",
+  "browserVersion": "155.0.8059.80",
+  "persistedProjectLayout": {
+    "canvas": {
+      "assetsWidth": 260,
+      "inspectorWidth": 320,
+      "assetsCollapsed": false,
+      "inspectorCollapsed": false
+    },
+    "editing": {
+      "assetsWidth": 260,
+      "inspectorWidth": 320,
+      "assetsCollapsed": false,
+      "inspectorCollapsed": false,
+      "timelineHeight": 160
+    }
+  },
+  "passed": true,
+  "runtimeStyleInjection": false
+}

@@ -1,0 +1,130 @@
+TAP version 13
+# Subtest: tagged RGB8/RGBA8 admit exact immutable full-byte evidence with straight PNG alpha
+ok 1 - tagged RGB8/RGBA8 admit exact immutable full-byte evidence with straight PNG alpha
+  ---
+  duration_ms: 7.585917
+  type: 'test'
+  ...
+# Subtest: all rendering intents and canonical optional gamma/chromaticities are admitted in either order
+ok 2 - all rendering intents and canonical optional gamma/chromaticities are admitted in either order
+  ---
+  duration_ms: 8.662291
+  type: 'test'
+  ...
+# Subtest: absent sRGB always needs explicit interpretation, even with canonical gamma/chromaticities
+ok 3 - absent sRGB always needs explicit interpretation, even with canonical gamma/chromaticities
+  ---
+  duration_ms: 1.529459
+  type: 'test'
+  ...
+# Subtest: full-file hash binds valid differing pixels, tagging and compressed encoding, not a decoded surrogate
+ok 4 - full-file hash binds valid differing pixels, tagging and compressed encoding, not a decoded surrogate
+  ---
+  duration_ms: 0.9485
+  type: 'test'
+  ...
+# Subtest: consecutive split and empty IDAT chunks may bisect every zlib byte
+ok 5 - consecutive split and empty IDAT chunks may bisect every zlib byte
+  ---
+  duration_ms: 1.148625
+  type: 'test'
+  ...
+# Subtest: every legal filter is accepted at scanline boundaries spanning inflate chunks
+ok 6 - every legal filter is accepted at scanline boundaries spanning inflate chunks
+  ---
+  duration_ms: 1.969333
+  type: 'test'
+  ...
+# Subtest: supplied methods, accessors, iteration and subclasses cannot change or observe parsing
+ok 7 - supplied methods, accessors, iteration and subclasses cannot change or observe parsing
+  ---
+  duration_ms: 1.645334
+  type: 'test'
+  ...
+# Subtest: non-byte inputs, proxies, detached views and shared storage reject without source callbacks
+ok 8 - non-byte inputs, proxies, detached views and shared storage reject without source callbacks
+  ---
+  duration_ms: 0.685833
+  type: 'test'
+  ...
+# Subtest: source snapshot stays byte-bound when caller mutates or detaches its input during streaming
+ok 9 - source snapshot stays byte-bound when caller mutates or detaches its input during streaming
+  ---
+  duration_ms: 3.017458
+  type: 'test'
+  ...
+# Subtest: signature, truncation, length arithmetic and CRC checks reject malformed chunks
+ok 10 - signature, truncation, length arithmetic and CRC checks reject malformed chunks
+  ---
+  duration_ms: 1.562167
+  type: 'test'
+  ...
+# Subtest: IHDR/IDAT/IEND order, cardinality and exact final EOF are required
+ok 11 - IHDR/IDAT/IEND order, cardinality and exact final EOF are required
+  ---
+  duration_ms: 0.47475
+  type: 'test'
+  ...
+# Subtest: only RGB/RGBA depth8, compression0, filter0 and noninterlaced layout are supported
+ok 12 - only RGB/RGBA depth8, compression0, filter0 and noninterlaced layout are supported
+  ---
+  duration_ms: 0.680792
+  type: 'test'
+  ...
+# Subtest: ICC, P3, HDR, gain-map, APNG, EXIF, transparency and all unknown/benign metadata reject, never strip
+ok 13 - ICC, P3, HDR, gain-map, APNG, EXIF, transparency and all unknown/benign metadata reject, never strip
+  ---
+  duration_ms: 1.623792
+  type: 'test'
+  ...
+# Subtest: malformed, duplicate or late colour declarations reject instead of establishing compatibility
+ok 14 - malformed, duplicate or late colour declarations reject instead of establishing compatibility
+  ---
+  duration_ms: 0.929375
+  type: 'test'
+  ...
+# Subtest: zero dimensions, edge/pixel caps and source/metadata/chunk budgets fail before unbounded decode
+ok 15 - zero dimensions, edge/pixel caps and source/metadata/chunk budgets fail before unbounded decode
+  ---
+  duration_ms: 40.147959
+  type: 'test'
+  ...
+# Subtest: a real image at the exact decimal pixel limit validates using bounded streaming output
+ok 16 - a real image at the exact decimal pixel limit validates using bounded streaming output
+  ---
+  duration_ms: 24.774041
+  type: 'test'
+  ...
+# Subtest: zlib corruption, truncation, dictionaries, concatenated streams and trailing compressed bytes reject
+ok 17 - zlib corruption, truncation, dictionaries, concatenated streams and trailing compressed bytes reject
+  ---
+  duration_ms: 6.501125
+  type: 'test'
+  ...
+# Subtest: exact decoded length and legal per-row filters are verified without allocating bomb output
+ok 18 - exact decoded length and legal per-row filters are verified without allocating bomb output
+  ---
+  duration_ms: 12.718792
+  type: 'test'
+  ...
+# Subtest: cancellation propagates the exact abort reason before input and during streaming
+ok 19 - cancellation propagates the exact abort reason before input and during streaming
+  ---
+  duration_ms: 1.549083
+  type: 'test'
+  ...
+# Subtest: runtime fences cover streaming and final publication, and preserve ownership failures exactly
+ok 20 - runtime fences cover streaming and final publication, and preserve ownership failures exactly
+  ---
+  duration_ms: 1.698792
+  type: 'test'
+  ...
+1..20
+# tests 20
+# suites 0
+# pass 20
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 295.846042

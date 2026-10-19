@@ -1,0 +1,280 @@
+TAP version 13
+# Subtest: unsafe existing root755 fails before any initialization or permission repair
+ok 1 - unsafe existing root755 fails before any initialization or permission repair
+  ---
+  duration_ms: 3.578417
+  type: 'test'
+  ...
+# Subtest: unsafe existing root777 fails before any initialization or permission repair
+ok 2 - unsafe existing root777 fails before any initialization or permission repair
+  ---
+  duration_ms: 1.248417
+  type: 'test'
+  ...
+# Subtest: unsafe symbolic-link media is refused before lock, token, database or external writes
+ok 3 - unsafe symbolic-link media is refused before lock, token, database or external writes
+  ---
+  duration_ms: 2.464875
+  type: 'test'
+  ...
+# Subtest: unsafe symbolic-link workbench.sqlite is refused before lock, token, database or external writes
+ok 4 - unsafe symbolic-link workbench.sqlite is refused before lock, token, database or external writes
+  ---
+  duration_ms: 2.643458
+  type: 'test'
+  ...
+# Subtest: unsafe symbolic-link workbench.sqlite-wal is refused before lock, token, database or external writes
+ok 5 - unsafe symbolic-link workbench.sqlite-wal is refused before lock, token, database or external writes
+  ---
+  duration_ms: 2.528708
+  type: 'test'
+  ...
+# Subtest: unsafe symbolic-link workbench.sqlite-shm is refused before lock, token, database or external writes
+ok 6 - unsafe symbolic-link workbench.sqlite-shm is refused before lock, token, database or external writes
+  ---
+  duration_ms: 2.415917
+  type: 'test'
+  ...
+# Subtest: unsafe symbolic-link workbench.sqlite-journal is refused before lock, token, database or external writes
+ok 7 - unsafe symbolic-link workbench.sqlite-journal is refused before lock, token, database or external writes
+  ---
+  duration_ms: 2.1665
+  type: 'test'
+  ...
+# Subtest: unsafe symbolic-link server.lock is refused before lock, token, database or external writes
+ok 8 - unsafe symbolic-link server.lock is refused before lock, token, database or external writes
+  ---
+  duration_ms: 2.313042
+  type: 'test'
+  ...
+# Subtest: unsafe symbolic-link access-token is refused before lock, token, database or external writes
+ok 9 - unsafe symbolic-link access-token is refused before lock, token, database or external writes
+  ---
+  duration_ms: 2.377958
+  type: 'test'
+  ...
+# Subtest: unsafe symbolic-link agent-settings is refused before lock, token, database or external writes
+ok 10 - unsafe symbolic-link agent-settings is refused before lock, token, database or external writes
+  ---
+  duration_ms: 2.217292
+  type: 'test'
+  ...
+# Subtest: hardlinked workbench.sqlite is never opened, removed or rewritten
+ok 11 - hardlinked workbench.sqlite is never opened, removed or rewritten
+  ---
+  duration_ms: 1.718917
+  type: 'test'
+  ...
+# Subtest: hardlinked workbench.sqlite-wal is never opened, removed or rewritten
+ok 12 - hardlinked workbench.sqlite-wal is never opened, removed or rewritten
+  ---
+  duration_ms: 2.137166
+  type: 'test'
+  ...
+# Subtest: hardlinked workbench.sqlite-shm is never opened, removed or rewritten
+ok 13 - hardlinked workbench.sqlite-shm is never opened, removed or rewritten
+  ---
+  duration_ms: 2.052875
+  type: 'test'
+  ...
+# Subtest: hardlinked server.lock is never opened, removed or rewritten
+ok 14 - hardlinked server.lock is never opened, removed or rewritten
+  ---
+  duration_ms: 3.06575
+  type: 'test'
+  ...
+# Subtest: hardlinked access-token is never opened, removed or rewritten
+ok 15 - hardlinked access-token is never opened, removed or rewritten
+  ---
+  duration_ms: 1.988417
+  type: 'test'
+  ...
+# Subtest: nonregular workbench.sqlite is refused without partial initialization
+ok 16 - nonregular workbench.sqlite is refused without partial initialization
+  ---
+  duration_ms: 1.430833
+  type: 'test'
+  ...
+# Subtest: nonregular workbench.sqlite-wal is refused without partial initialization
+ok 17 - nonregular workbench.sqlite-wal is refused without partial initialization
+  ---
+  duration_ms: 1.369417
+  type: 'test'
+  ...
+# Subtest: nonregular workbench.sqlite-shm is refused without partial initialization
+ok 18 - nonregular workbench.sqlite-shm is refused without partial initialization
+  ---
+  duration_ms: 1.4145
+  type: 'test'
+  ...
+# Subtest: nonregular server.lock is refused without partial initialization
+ok 19 - nonregular server.lock is refused without partial initialization
+  ---
+  duration_ms: 1.855334
+  type: 'test'
+  ...
+# Subtest: nonregular access-token is refused without partial initialization
+ok 20 - nonregular access-token is refused without partial initialization
+  ---
+  duration_ms: 1.544083
+  type: 'test'
+  ...
+# Subtest: token permissions and bounded size remain mandatory even when a valid token is supplied
+ok 21 - token permissions and bounded size remain mandatory even when a valid token is supplied
+  ---
+  duration_ms: 3.171083
+  type: 'test'
+  ...
+# Subtest: consumed malformed token fails before DB/media creation or removal of a safe stale lock
+ok 22 - consumed malformed token fails before DB/media creation or removal of a safe stale lock
+  ---
+  duration_ms: 6.618417
+  type: 'test'
+  ...
+# Subtest: valid supplied token overrides unused malformed contents without ever reading or rewriting them
+ok 23 - valid supplied token overrides unused malformed contents without ever reading or rewriting them
+  ---
+  duration_ms: 188.451583
+  type: 'test'
+  ...
+# Subtest: invalid supplied tokens fail without creating even a missing root
+ok 24 - invalid supplied tokens fail without creating even a missing root
+  ---
+  duration_ms: 0.931959
+  type: 'test'
+  ...
+# Subtest: legacy media0755 and SQLite0644 survive restart with exact project values and stored token normalization
+not ok 25 - legacy media0755 and SQLite0644 survive restart with exact project values and stored token normalization
+  ---
+  duration_ms: 223.676875
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/server-storage.test.mjs:102:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    ... Skipped lines
+    
+      [
+        1,
+        2,
+        3,
+        4,
+    ...
+        26,
+    +   28,
+    +   30,
+    +   32,
+    +   34,
+    +   36,
+    +   38,
+    +   40
+      ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: 1
+    1: 2
+    2: 3
+    3: 4
+    4: 5
+    5: 6
+    6: 7
+    7: 8
+    8: 9
+    9: 10
+    10: 11
+    11: 12
+    12: 13
+    13: 14
+    14: 15
+    15: 16
+    16: 17
+    17: 18
+    18: 19
+    19: 20
+    20: 21
+    21: 22
+    22: 23
+    23: 24
+    24: 26
+  actual:
+    0: 1
+    1: 2
+    2: 3
+    3: 4
+    4: 5
+    5: 6
+    6: 7
+    7: 8
+    8: 9
+    9: 10
+    10: 11
+    11: 12
+    12: 13
+    13: 14
+    14: 15
+    15: 16
+    16: 17
+    17: 18
+    18: 19
+    19: 20
+    20: 21
+    21: 22
+    22: 23
+    23: 24
+    24: 26
+    25: 28
+    26: 30
+    27: 32
+    28: 34
+    29: 36
+    30: 38
+    31: 40
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/server-storage.test.mjs:110:105)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: token file accepts bounded maximum plus CRLF, and fresh token is private and durable
+ok 26 - token file accepts bounded maximum plus CRLF, and fresh token is private and durable
+  ---
+  duration_ms: 346.438875
+  type: 'test'
+  ...
+# Subtest: lock ownership and failed SQLite initialization cleanup preserve unrelated entries
+ok 27 - lock ownership and failed SQLite initialization cleanup preserve unrelated entries
+  ---
+  duration_ms: 176.370916
+  type: 'test'
+  ...
+# Subtest: existing writable media/database and unsafe settings metadata fail read-only preflight before stale-lock cleanup
+ok 28 - existing writable media/database and unsafe settings metadata fail read-only preflight before stale-lock cleanup
+  ---
+  duration_ms: 9.36675
+  type: 'test'
+  ...
+# Subtest: FIFO token is rejected promptly without blocking or creating startup files
+ok 29 - FIFO token is rejected promptly without blocking or creating startup files
+  ---
+  duration_ms: 6.791875
+  type: 'test'
+  ...
+# Subtest: symlink ancestor with nonexistent workspace creates nothing outside managed storage
+ok 30 - symlink ancestor with nonexistent workspace creates nothing outside managed storage
+  ---
+  duration_ms: 1.239375
+  type: 'test'
+  ...
+1..30
+# tests 30
+# suites 0
+# pass 29
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1354.795667

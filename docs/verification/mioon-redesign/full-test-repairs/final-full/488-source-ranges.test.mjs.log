@@ -1,0 +1,301 @@
+TAP version 13
+# Subtest: default range reads write nothing, create no timeline, and return exact revision-zero envelopes
+ok 1 - default range reads write nothing, create no timeline, and return exact revision-zero envelopes
+  ---
+  duration_ms: 634.086542
+  type: 'test'
+  ...
+# Subtest: range saves are metadata-only with exclusive bounds; long source spans remain independent of timeline limits
+ok 2 - range saves are metadata-only with exclusive bounds; long source spans remain independent of timeline limits
+  ---
+  duration_ms: 622.506125
+  type: 'test'
+  ...
+# Subtest: audio and fractional duration boundaries share timeline source counts; unsupported sources never write
+ok 3 - audio and fractional duration boundaries share timeline source counts; unsupported sources never write
+  ---
+  duration_ms: 797.910209
+  type: 'test'
+  ...
+# Subtest: exact range replay survives later edits and restart without writes; stale fresh keys conflict with safe current state
+ok 4 - exact range replay survives later edits and restart without writes; stale fresh keys conflict with safe current state
+  ---
+  duration_ms: 1178.849542
+  type: 'test'
+  ...
+# Subtest: cross-operation and cross-project keys conflict globally before ownership lookup, without leaked response bytes
+ok 5 - cross-operation and cross-project keys conflict globally before ownership lookup, without leaked response bytes
+  ---
+  duration_ms: 632.177125
+  type: 'test'
+  ...
+# Subtest: missing and foreign reads/writes are uniform; exact replay revalidates both owner copies and retained project
+ok 6 - missing and foreign reads/writes are uniform; exact replay revalidates both owner copies and retained project
+  ---
+  duration_ms: 602.082625
+  type: 'test'
+  ...
+# Subtest: damaged saved range rows and retained acknowledgements fail closed before revision/current disclosure
+ok 7 - damaged saved range rows and retained acknowledgements fail closed before revision/current disclosure
+  ---
+  duration_ms: 613.043791
+  type: 'test'
+  ...
+# Subtest: duplicate receipts and wrong operation/table pairing fail closed before target lookup
+ok 8 - duplicate receipts and wrong operation/table pairing fail closed before target lookup
+  ---
+  duration_ms: 576.29975
+  type: 'test'
+  ...
+# Subtest: range, receipt, and trigger-induced ownership changes roll back together
+ok 9 - range, receipt, and trigger-induced ownership changes roll back together
+  ---
+  duration_ms: 594.896834
+  type: 'test'
+  ...
+# Subtest: retained source receipts reject update/delete/replacement, and cross-table SQL inserts cannot duplicate keys
+ok 10 - retained source receipts reject update/delete/replacement, and cross-table SQL inserts cannot duplicate keys
+  ---
+  duration_ms: 594.36475
+  type: 'test'
+  ...
+# Subtest: targeted v11/v12 additive reapplication preserves all old receipt bytes and fresh schema invariants
+not ok 11 - targeted v11/v12 additive reapplication preserves all old receipt bytes and fresh schema invariants
+  ---
+  duration_ms: 1203.542917
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/source-ranges.test.mjs:180:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    ... Skipped lines
+    
+      {
+        agent_chat_events: [],
+        agent_chat_quota: [
+          [Object: null prototype] {
+            bytes: 0,
+    ...
+        agent_edit_proposals: [],
+    +   asset_annotation_requests: [],
+    +   asset_annotations: [],
+        assets: [],
+        edges: [],
+        edit_tasks: [],
+        exports: [],
+        frame_requests: [],
+    ...
+        jobs: [],
+    +   lut_import_requests: [],
+        mutation_requests: [
+          [Object: null prototype] {
+            canonicalInput: '{"projectId":"8e4a3360-0222-4f47-9b47-f5b87939ab01","title":"Legacy keyed shot"}',
+            operation: 'shot.create',
+            projectId: '8e4a3360-0222-4f47-9b47-f5b87939ab01',
+    ...
+        nodes: [],
+    +   project_deletion_cleanup: [],
+    +   project_deletion_receipts: [],
+    +   project_deletion_scope: [],
+    +   project_lut_resources: [],
+    +   project_mutation_requests: [],
+        projects: [
+          [Object: null prototype] {
+            data: '{"id":"8e4a3360-0222-4f47-9b47-f5b87939ab01","name":"Source ranges","description":"","revision":2,"createdAt":"2026-10-19T03:08:23.073Z","updatedAt":"2026-10-19T03:08:23.076Z"}',
+            id: '8e4a3360-0222-4f47-9b47-f5b87939ab01'
+          },
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    agent_chat_events:
+    agent_chat_quota:
+      0:
+        id: 1
+        runs: 0
+        bytes: 0
+        reservedBytes: 0
+    agent_chat_requests:
+    agent_chat_runs:
+    agent_chat_steps:
+    agent_chat_threads:
+    agent_edit_proposals:
+    assets:
+    edges:
+    edit_tasks:
+    exports:
+    frame_requests:
+    frame_tasks:
+    idempotency:
+    image_groups:
+    image_remote_observations:
+    image_remote_runs:
+    image_requests:
+    image_reviews:
+    image_tasks:
+    image_versions:
+    job_events:
+    jobs:
+    mutation_requests:
+      0:
+        requestId: '7c82c40b-a215-426d-8e80-7f09e937494e'
+        operation: 'shot.create'
+        projectId: '8e4a3360-0222-4f47-9b47-f5b87939ab01'
+        canonicalInput: '{"projectId":"8e4a3360-0222-4f47-9b47-f5b87939ab01","title":"Legacy keyed shot"}'
+        response: '{"id":"a7af329a-4e94-4c9b-a91c-a5ff70c8be43","projectId":"8e4a3360-0222-4f47-9b47-f5b87939ab01","title":"Legacy keyed shot","prompt":"","referenceAssetIds":[],"aspectRatio":"9:16","duration":2,"parameters":{},"position":{"x":80,"y":100},"orderIndex":0,"revision":1,"selectedVersionId":null,"createdAt":"2026-10-19T03:08:23.076Z","updatedAt":"2026-10-19T03:08:23.076Z"}'
+    nodes:
+    projects:
+      0:
+        id: '8e4a3360-0222-4f47-9b47-f5b87939ab01'
+        data: '{"id":"8e4a3360-0222-4f47-9b47-f5b87939ab01","name":"Source ranges","description":"","revision":2,"createdAt":"2026-10-19T03:08:23.073Z","updatedAt":"2026-10-19T03:08:23.076Z"}'
+      1:
+        id: '7d461c2f-ed50-4a4e-a66a-480c8829c82e'
+        data: '{"id":"7d461c2f-ed50-4a4e-a66a-480c8829c82e","name":"Foreign private project","description":"","revision":1,"createdAt":"2026-10-19T03:08:23.074Z","updatedAt":"2026-10-19T03:08:23.074Z"}'
+    reference_requests:
+      0:
+        requestId: '856dca20-92e3-42c9-92c1-b9811ff80718'
+        requestHash: 'old-hash'
+        response: ' { "old": true, "preserve": "spacing" } '
+    shots:
+      0:
+        id: 'a7af329a-4e94-4c9b-a91c-a5ff70c8be43'
+        projectId: '8e4a3360-0222-4f47-9b47-f5b87939ab01'
+        data: '{"id":"a7af329a-4e94-4c9b-a91c-a5ff70c8be43","projectId":"8e4a3360-0222-4f47-9b47-f5b87939ab01","title":"Legacy keyed shot","prompt":"","referenceAssetIds":[],"aspectRatio":"9:16","duration":2,"parameters":{},"position":{"x":80,"y":100},"orderIndex":0,"revision":1,"selectedVersionId":null,"createdAt":"2026-10-19T03:08:23.076Z","updatedAt":"2026-10-19T03:08:23.076Z"}'
+    subject_bindings:
+    subject_requests:
+    subject_versions:
+    subjects:
+    timeline_history:
+    timeline_history_cursors:
+    timeline_requests:
+      0:
+        requestId: '1acc7d0b-ece4-45a8-8cac-c3830580b211'
+        requestHash: 'old-hash'
+        response: ' { "old": true, "preserve": "spacing" } '
+    timelines:
+    versions:
+    waveform_cache:
+    workspace_preferences:
+  actual:
+    agent_chat_events:
+    agent_chat_quota:
+      0:
+        id: 1
+        runs: 0
+        bytes: 0
+        reservedBytes: 0
+    agent_chat_requests:
+    agent_chat_runs:
+    agent_chat_steps:
+    agent_chat_threads:
+    agent_edit_proposals:
+    asset_annotation_requests:
+    asset_annotations:
+    assets:
+    edges:
+    edit_tasks:
+    exports:
+    frame_requests:
+    frame_tasks:
+    idempotency:
+    image_groups:
+    image_remote_observations:
+    image_remote_runs:
+    image_requests:
+    image_reviews:
+    image_tasks:
+    image_versions:
+    job_events:
+    jobs:
+    lut_import_requests:
+    mutation_requests:
+      0:
+        requestId: '7c82c40b-a215-426d-8e80-7f09e937494e'
+        operation: 'shot.create'
+        projectId: '8e4a3360-0222-4f47-9b47-f5b87939ab01'
+        canonicalInput: '{"projectId":"8e4a3360-0222-4f47-9b47-f5b87939ab01","title":"Legacy keyed shot"}'
+        response: '{"id":"a7af329a-4e94-4c9b-a91c-a5ff70c8be43","projectId":"8e4a3360-0222-4f47-9b47-f5b87939ab01","title":"Legacy keyed shot","prompt":"","referenceAssetIds":[],"aspectRatio":"9:16","duration":2,"parameters":{},"position":{"x":80,"y":100},"orderIndex":0,"revision":1,"selectedVersionId":null,"createdAt":"2026-10-19T03:08:23.076Z","updatedAt":"2026-10-19T03:08:23.076Z"}'
+    nodes:
+    project_deletion_cleanup:
+    project_deletion_receipts:
+    project_deletion_scope:
+    project_lut_resources:
+    project_mutation_requests:
+    projects:
+      0:
+        id: '8e4a3360-0222-4f47-9b47-f5b87939ab01'
+        data: '{"id":"8e4a3360-0222-4f47-9b47-f5b87939ab01","name":"Source ranges","description":"","revision":2,"createdAt":"2026-10-19T03:08:23.073Z","updatedAt":"2026-10-19T03:08:23.076Z"}'
+      1:
+        id: '7d461c2f-ed50-4a4e-a66a-480c8829c82e'
+        data: '{"id":"7d461c2f-ed50-4a4e-a66a-480c8829c82e","name":"Foreign private project","description":"","revision":1,"createdAt":"2026-10-19T03:08:23.074Z","updatedAt":"2026-10-19T03:08:23.074Z"}'
+    reference_requests:
+      0:
+        requestId: '856dca20-92e3-42c9-92c1-b9811ff80718'
+        requestHash: 'old-hash'
+        response: ' { "old": true, "preserve": "spacing" } '
+    shots:
+      0:
+        id: 'a7af329a-4e94-4c9b-a91c-a5ff70c8be43'
+        projectId: '8e4a3360-0222-4f47-9b47-f5b87939ab01'
+        data: '{"id":"a7af329a-4e94-4c9b-a91c-a5ff70c8be43","projectId":"8e4a3360-0222-4f47-9b47-f5b87939ab01","title":"Legacy keyed shot","prompt":"","referenceAssetIds":[],"aspectRatio":"9:16","duration":2,"parameters":{},"position":{"x":80,"y":100},"orderIndex":0,"revision":1,"selectedVersionId":null,"createdAt":"2026-10-19T03:08:23.076Z","updatedAt":"2026-10-19T03:08:23.076Z"}'
+    subject_bindings:
+    subject_requests:
+    subject_versions:
+    subjects:
+    timeline_history:
+    timeline_history_cursors:
+    timeline_requests:
+      0:
+        requestId: '1acc7d0b-ece4-45a8-8cac-c3830580b211'
+        requestHash: 'old-hash'
+        response: ' { "old": true, "preserve": "spacing" } '
+    timelines:
+    versions:
+    waveform_cache:
+    workspace_preferences:
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/source-ranges.test.mjs:199:9)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: two-process cross-table key race: asset.range.set commits once and the opposite helper conflicts
+ok 12 - two-process cross-table key race: asset.range.set commits once and the opposite helper conflicts
+  ---
+  duration_ms: 1303.459209
+  type: 'test'
+  ...
+# Subtest: two-process cross-table key race: shot.create commits once and the opposite helper conflicts
+ok 13 - two-process cross-table key race: shot.create commits once and the opposite helper conflicts
+  ---
+  duration_ms: 1449.52725
+  type: 'test'
+  ...
+# Subtest: oversized asset or project JSON is rejected without materialization, writes, or current-record disclosure
+ok 14 - oversized asset or project JSON is rejected without materialization, writes, or current-record disclosure
+  ---
+  duration_ms: 572.020792
+  type: 'test'
+  ...
+# Subtest: revision overflow and lost or malformed asset rows never expose retained range responses
+ok 15 - revision overflow and lost or malformed asset rows never expose retained range responses
+  ---
+  duration_ms: 595.302166
+  type: 'test'
+  ...
+# Subtest: a legacy operation misplaced in the companion journal is never replayed
+ok 16 - a legacy operation misplaced in the companion journal is never replayed
+  ---
+  duration_ms: 598.131042
+  type: 'test'
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 15
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 12920.048625

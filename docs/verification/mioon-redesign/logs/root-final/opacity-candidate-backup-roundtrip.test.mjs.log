@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: actual cold42 archive restores independent guarded43 while preserving raw opacity, history, tasks, receipts and asset bytes
+ok 1 - actual cold42 archive restores independent guarded43 while preserving raw opacity, history, tasks, receipts and asset bytes
+  ---
+  duration_ms: 1059.041416
+  type: 'test'
+  ...
+# Subtest: draft exclusion is explicit in archive, results and status, preserves original v3 bytes and never imports its unfinished opacity
+ok 2 - draft exclusion is explicit in archive, results and status, preserves original v3 bytes and never imports its unfinished opacity
+  ---
+  duration_ms: 789.986417
+  type: 'test'
+  ...
+# Subtest: restored old pending task stays held and fresh explicit-origin edit, Undo and Redo use only original candidate capabilities
+ok 3 - restored old pending task stays held and fresh explicit-origin edit, Undo and Redo use only original candidate capabilities
+  ---
+  duration_ms: 2730.543667
+  type: 'test'
+  ...
+# Subtest: guarded43 cannot produce a recursive archive through candidate or default backup entry
+ok 4 - guarded43 cannot produce a recursive archive through candidate or default backup entry
+  ---
+  duration_ms: 670.493833
+  type: 'test'
+  ...
+# Subtest: default40-to41 archive and restoration retain original DTO boundaries while fixed42-to43 stays separate
+ok 5 - default40-to41 archive and restoration retain original DTO boundaries while fixed42-to43 stays separate
+  ---
+  duration_ms: 1604.683459
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 7229.805125

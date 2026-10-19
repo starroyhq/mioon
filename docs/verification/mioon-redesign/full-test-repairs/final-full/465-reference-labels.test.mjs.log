@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: reference source includes the material, node name and a collision-free identity
+ok 1 - reference source includes the material, node name and a collision-free identity
+  ---
+  duration_ms: 0.879708
+  type: 'test'
+  ...
+# Subtest: target labels distinguish duplicate titles in the supplied storyboard order without mutating records
+ok 2 - target labels distinguish duplicate titles in the supplied storyboard order without mutating records
+  ---
+  duration_ms: 0.494084
+  type: 'test'
+  ...
+# Subtest: long names remain complete and blank names receive readable fallbacks
+ok 3 - long names remain complete and blank names receive readable fallbacks
+  ---
+  duration_ms: 0.152333
+  type: 'test'
+  ...
+# Subtest: missing source and missing asset fall back independently without inventing a replacement
+ok 4 - missing source and missing asset fall back independently without inventing a replacement
+  ---
+  duration_ms: 0.078459
+  type: 'test'
+  ...
+# Subtest: foreign records with matching IDs cannot supply labels, media or inspect targets
+ok 5 - foreign records with matching IDs cannot supply labels, media or inspect targets
+  ---
+  duration_ms: 0.093583
+  type: 'test'
+  ...
+# Subtest: bound source resolution keeps the edge asset and refuses a mismatched node
+ok 6 - bound source resolution keeps the edge asset and refuses a mismatched node
+  ---
+  duration_ms: 0.099583
+  type: 'test'
+  ...
+# Subtest: unscoped records and non-image records do not acquire reference labels
+ok 7 - unscoped records and non-image records do not acquire reference labels
+  ---
+  duration_ms: 0.108208
+  type: 'test'
+  ...
+# Subtest: source panel wires readable labels and full selected-target descriptions to the shared control
+ok 8 - source panel wires readable labels and full selected-target descriptions to the shared control
+  ---
+  duration_ms: 38.192125
+  type: 'test'
+  ...
+# Subtest: connected target labels ignore decorative and foreign edges and never navigate to missing targets
+ok 9 - connected target labels ignore decorative and foreign edges and never navigate to missing targets
+  ---
+  duration_ms: 4.97675
+  type: 'test'
+  ...
+# Subtest: a target that disappears or moves projects no longer remains selected or attachable
+ok 10 - a target that disappears or moves projects no longer remains selected or attachable
+  ---
+  duration_ms: 4.228375
+  type: 'test'
+  ...
+# Subtest: bound reference uses complete accessible names and preserves inspect/detach IDs and guards
+ok 11 - bound reference uses complete accessible names and preserves inspect/detach IDs and guards
+  ---
+  duration_ms: 4.635458
+  type: 'test'
+  ...
+# Subtest: unavailable bound records expose neither foreign labels nor media and keep detach available
+ok 12 - unavailable bound records expose neither foreign labels nor media and keep detach available
+  ---
+  duration_ms: 6.459209
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 357.687

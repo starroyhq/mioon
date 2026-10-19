@@ -1,0 +1,442 @@
+TAP version 13
+# Subtest: service-created empty timelines remain writable while a zero-track sentinel is rejected without writes
+ok 1 - service-created empty timelines remain writable while a zero-track sentinel is rejected without writes
+  ---
+  duration_ms: 657.991958
+  type: 'test'
+  ...
+# Subtest: all seventeen retained responses remain exact after removal, branching, render progress and restart
+ok 2 - all seventeen retained responses remain exact after removal, branching, render progress and restart
+  ---
+  duration_ms: 1081.498167
+  type: 'test'
+  ...
+# Subtest: all seventeen fresh stale-revision rejections carry only transaction-backed not-applied proof
+ok 3 - all seventeen fresh stale-revision rejections carry only transaction-backed not-applied proof
+  ---
+  duration_ms: 696.444
+  type: 'test'
+  ...
+# Subtest: legacy initialization and transaction lifecycle failures never manufacture pre-write proof
+ok 4 - legacy initialization and transaction lifecycle failures never manufacture pre-write proof
+  ---
+  duration_ms: 586.923416
+  type: 'test'
+  ...
+# Subtest: lost acknowledgements retain proof absence after project, timeline and historical source ownership changes
+    # Subtest: project identity
+    ok 1 - project identity
+      ---
+      duration_ms: 665.900125
+      type: 'test'
+      ...
+    # Subtest: timeline SQL owner
+    ok 2 - timeline SQL owner
+      ---
+      duration_ms: 673.956958
+      type: 'test'
+      ...
+    # Subtest: timeline JSON owner
+    ok 3 - timeline JSON owner
+      ---
+      duration_ms: 664.987875
+      type: 'test'
+      ...
+    # Subtest: historical source SQL owner
+    ok 4 - historical source SQL owner
+      ---
+      duration_ms: 672.62575
+      type: 'test'
+      ...
+    # Subtest: indirect generation owner
+    ok 5 - indirect generation owner
+      ---
+      duration_ms: 684.65175
+      type: 'test'
+      ...
+    1..5
+ok 5 - lost acknowledgements retain proof absence after project, timeline and historical source ownership changes
+  ---
+  duration_ms: 3363.253083
+  type: 'test'
+  ...
+# Subtest: all seventeen malformed, foreign and semantically corrupt durable receipts fail closed unchanged
+    # Subtest: hash
+    ok 1 - hash
+      ---
+      duration_ms: 670.11725
+      type: 'test'
+      ...
+    # Subtest: JSON
+    ok 2 - JSON
+      ---
+      duration_ms: 700.551041
+      type: 'test'
+      ...
+    # Subtest: owner
+    ok 3 - owner
+      ---
+      duration_ms: 719.257459
+      type: 'test'
+      ...
+    # Subtest: semantics
+    ok 4 - semantics
+      ---
+      duration_ms: 751.706459
+      type: 'test'
+      ...
+    1..4
+ok 6 - all seventeen malformed, foreign and semantically corrupt durable receipts fail closed unchanged
+  ---
+  duration_ms: 2842.584333
+  type: 'test'
+  ...
+# Subtest: every keyed write rolls back receipt failures and post-write owner changes without not-applied proof
+    # Subtest: timeline.track.add: receipt failure
+    ok 1 - timeline.track.add: receipt failure
+      ---
+      duration_ms: 605.84475
+      type: 'test'
+      ...
+    # Subtest: timeline.track.add: timeline owner
+    ok 2 - timeline.track.add: timeline owner
+      ---
+      duration_ms: 659.25325
+      type: 'test'
+      ...
+    # Subtest: timeline.track.update: receipt failure
+    ok 3 - timeline.track.update: receipt failure
+      ---
+      duration_ms: 648.144041
+      type: 'test'
+      ...
+    # Subtest: timeline.track.update: timeline owner
+    ok 4 - timeline.track.update: timeline owner
+      ---
+      duration_ms: 926.792458
+      type: 'test'
+      ...
+    # Subtest: timeline.clip.add: receipt failure
+    ok 5 - timeline.clip.add: receipt failure
+      ---
+      duration_ms: 1398.216333
+      type: 'test'
+      ...
+    # Subtest: timeline.clip.add: timeline owner
+    ok 6 - timeline.clip.add: timeline owner
+      ---
+      duration_ms: 676.85125
+      type: 'test'
+      ...
+    # Subtest: timeline.clip.update: receipt failure
+    ok 7 - timeline.clip.update: receipt failure
+      ---
+      duration_ms: 629.133583
+      type: 'test'
+      ...
+    # Subtest: timeline.clip.update: timeline owner
+    ok 8 - timeline.clip.update: timeline owner
+      ---
+      duration_ms: 737.464167
+      type: 'test'
+      ...
+    # Subtest: timeline.clip.replaceSource: receipt failure
+    ok 9 - timeline.clip.replaceSource: receipt failure
+      ---
+      duration_ms: 743.645042
+      type: 'test'
+      ...
+    # Subtest: timeline.clip.replaceSource: timeline owner
+    ok 10 - timeline.clip.replaceSource: timeline owner
+      ---
+      duration_ms: 654.90975
+      type: 'test'
+      ...
+    # Subtest: timeline.clip.remove: receipt failure
+    ok 11 - timeline.clip.remove: receipt failure
+      ---
+      duration_ms: 596.229584
+      type: 'test'
+      ...
+    # Subtest: timeline.clip.remove: timeline owner
+    ok 12 - timeline.clip.remove: timeline owner
+      ---
+      duration_ms: 601.874667
+      type: 'test'
+      ...
+    # Subtest: timeline.clip.rippleRemove: receipt failure
+    ok 13 - timeline.clip.rippleRemove: receipt failure
+      ---
+      duration_ms: 589.083958
+      type: 'test'
+      ...
+    # Subtest: timeline.clip.rippleRemove: timeline owner
+    ok 14 - timeline.clip.rippleRemove: timeline owner
+      ---
+      duration_ms: 599.737875
+      type: 'test'
+      ...
+    # Subtest: timeline.clip.split: receipt failure
+    ok 15 - timeline.clip.split: receipt failure
+      ---
+      duration_ms: 608.4345
+      type: 'test'
+      ...
+    # Subtest: timeline.clip.split: timeline owner
+    ok 16 - timeline.clip.split: timeline owner
+      ---
+      duration_ms: 607.260666
+      type: 'test'
+      ...
+    # Subtest: timeline.seed: receipt failure
+    ok 17 - timeline.seed: receipt failure
+      ---
+      duration_ms: 617.23575
+      type: 'test'
+      ...
+    # Subtest: timeline.seed: timeline owner
+    ok 18 - timeline.seed: timeline owner
+      ---
+      duration_ms: 612.374541
+      type: 'test'
+      ...
+    # Subtest: timeline.undo: receipt failure
+    ok 19 - timeline.undo: receipt failure
+      ---
+      duration_ms: 592.769791
+      type: 'test'
+      ...
+    # Subtest: timeline.undo: timeline owner
+    ok 20 - timeline.undo: timeline owner
+      ---
+      duration_ms: 630.721958
+      type: 'test'
+      ...
+    # Subtest: timeline.redo: receipt failure
+    ok 21 - timeline.redo: receipt failure
+      ---
+      duration_ms: 602.097042
+      type: 'test'
+      ...
+    # Subtest: timeline.redo: timeline owner
+    ok 22 - timeline.redo: timeline owner
+      ---
+      duration_ms: 589.687292
+      type: 'test'
+      ...
+    # Subtest: timeline.render: receipt failure
+    ok 23 - timeline.render: receipt failure
+      ---
+      duration_ms: 633.156792
+      type: 'test'
+      ...
+    # Subtest: timeline.render: timeline owner
+    ok 24 - timeline.render: timeline owner
+      ---
+      duration_ms: 641.668375
+      type: 'test'
+      ...
+    # Subtest: timeline.format.set: receipt failure
+    ok 25 - timeline.format.set: receipt failure
+      ---
+      duration_ms: 600.954625
+      type: 'test'
+      ...
+    # Subtest: timeline.format.set: timeline owner
+    ok 26 - timeline.format.set: timeline owner
+      ---
+      duration_ms: 606.695709
+      type: 'test'
+      ...
+    # Subtest: timeline.subtitle.add: receipt failure
+    ok 27 - timeline.subtitle.add: receipt failure
+      ---
+      duration_ms: 623.732125
+      type: 'test'
+      ...
+    # Subtest: timeline.subtitle.add: timeline owner
+    ok 28 - timeline.subtitle.add: timeline owner
+      ---
+      duration_ms: 663.078208
+      type: 'test'
+      ...
+    # Subtest: timeline.subtitle.update: receipt failure
+    ok 29 - timeline.subtitle.update: receipt failure
+      ---
+      duration_ms: 652.981
+      type: 'test'
+      ...
+    # Subtest: timeline.subtitle.update: timeline owner
+    ok 30 - timeline.subtitle.update: timeline owner
+      ---
+      duration_ms: 647.0575
+      type: 'test'
+      ...
+    # Subtest: timeline.subtitle.remove: receipt failure
+    ok 31 - timeline.subtitle.remove: receipt failure
+      ---
+      duration_ms: 722.939125
+      type: 'test'
+      ...
+    # Subtest: timeline.subtitle.remove: timeline owner
+    ok 32 - timeline.subtitle.remove: timeline owner
+      ---
+      duration_ms: 643.796375
+      type: 'test'
+      ...
+    # Subtest: timeline.loudness.apply: receipt failure
+    ok 33 - timeline.loudness.apply: receipt failure
+      ---
+      duration_ms: 834.705583
+      type: 'test'
+      ...
+    # Subtest: timeline.loudness.apply: timeline owner
+    ok 34 - timeline.loudness.apply: timeline owner
+      ---
+      duration_ms: 747.15425
+      type: 'test'
+      ...
+    1..34
+ok 7 - every keyed write rolls back receipt failures and post-write owner changes without not-applied proof
+  ---
+  duration_ms: 22950.688542
+  type: 'test'
+  ...
+# Subtest: history only restores editable keys and cannot replace aggregate identity or revision
+    # Subtest: id
+    ok 1 - id
+      ---
+      duration_ms: 868.161333
+      type: 'test'
+      ...
+    # Subtest: projectId
+    ok 2 - projectId
+      ---
+      duration_ms: 639.337917
+      type: 'test'
+      ...
+    # Subtest: revision
+    ok 3 - revision
+      ---
+      duration_ms: 647.040166
+      type: 'test'
+      ...
+    # Subtest: createdAt
+    ok 4 - createdAt
+      ---
+      duration_ms: 652.439167
+      type: 'test'
+      ...
+    1..4
+ok 8 - history only restores editable keys and cannot replace aggregate identity or revision
+  ---
+  duration_ms: 2807.556333
+  type: 'test'
+  ...
+# Subtest: forty-two independently bounded source lineages remain editable and renderable beyond four MiB aggregate metadata
+ok 9 - forty-two independently bounded source lineages remain editable and renderable beyond four MiB aggregate metadata
+  ---
+  duration_ms: 1082.797416
+  type: 'test'
+  ...
+# Subtest: legacy optional frozen fields remain omitted and replay bytes are never normalized
+ok 10 - legacy optional frozen fields remain omitted and replay bytes are never normalized
+  ---
+  duration_ms: 777.263875
+  type: 'test'
+  ...
+# Subtest: independent writers share one retained response and competing fresh keys receive rollback proof
+ok 11 - independent writers share one retained response and competing fresh keys receive rollback proof
+  ---
+  duration_ms: 2386.018125
+  type: 'test'
+  ...
+# Subtest: split receipts cannot reset moving-media source time using the still-image acknowledgement alternative
+    # Subtest: video/mp4
+    ok 1 - video/mp4
+      ---
+      duration_ms: 586.057625
+      type: 'test'
+      ...
+    # Subtest: audio/wav
+    ok 2 - audio/wav
+      ---
+      duration_ms: 582.987958
+      type: 'test'
+      ...
+    1..2
+ok 12 - split receipts cannot reset moving-media source time using the still-image acknowledgement alternative
+  ---
+  duration_ms: 1169.355042
+  type: 'test'
+  ...
+# Subtest: render replay rejects stable source identity changes and mismatched retained frozen snapshots
+    # Subtest: sha256
+    ok 1 - sha256
+      ---
+      duration_ms: 607.010875
+      type: 'test'
+      ...
+    # Subtest: mimeType
+    ok 2 - mimeType
+      ---
+      duration_ms: 586.339084
+      type: 'test'
+      ...
+    # Subtest: duration
+    ok 3 - duration
+      ---
+      duration_ms: 600.163125
+      type: 'test'
+      ...
+    # Subtest: width
+    ok 4 - width
+      ---
+      duration_ms: 612.323084
+      type: 'test'
+      ...
+    # Subtest: height
+    ok 5 - height
+      ---
+      duration_ms: 591.809958
+      type: 'test'
+      ...
+    # Subtest: hasAudio
+    ok 6 - hasAudio
+      ---
+      duration_ms: 586.169542
+      type: 'test'
+      ...
+    # Subtest: relativePath
+    ok 7 - relativePath
+      ---
+      duration_ms: 582.992917
+      type: 'test'
+      ...
+    1..7
+ok 13 - render replay rejects stable source identity changes and mismatched retained frozen snapshots
+  ---
+  duration_ms: 4167.666875
+  type: 'test'
+  ...
+# Subtest: schema-produced timelines larger than the replacement cap preserve generic mutation receipts and history
+ok 14 - schema-produced timelines larger than the replacement cap preserve generic mutation receipts and history
+  ---
+  duration_ms: 1892.358208
+  type: 'test'
+  ...
+# Subtest: historical render replay preserves frozen bytes after same-source shorter duration and audio metadata drift
+ok 15 - historical render replay preserves frozen bytes after same-source shorter duration and audio metadata drift
+  ---
+  duration_ms: 684.633959
+  type: 'test'
+  ...
+1..15
+# tests 71
+# suites 0
+# pass 71
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 47500.844542

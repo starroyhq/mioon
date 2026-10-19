@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: actual TaskCenter renders an inline named dock with keyboard-scrollable body and no modal controls
+ok 1 - actual TaskCenter renders an inline named dock with keyboard-scrollable body and no modal controls
+  ---
+  duration_ms: 0.949375
+  type: 'test'
+  ...
+# Subtest: mount, rerender and disclosure expansion execute nothing; explicit current clicks retain exact operation inputs
+ok 2 - mount, rerender and disclosure expansion execute nothing; explicit current clicks retain exact operation inputs
+  ---
+  duration_ms: 53.311
+  type: 'test'
+  ...
+# Subtest: all retained task actions reject hidden, unmounted, changed-scope and leave-return pane lifetimes
+ok 3 - all retained task actions reject hidden, unmounted, changed-scope and leave-return pane lifetimes
+  ---
+  duration_ms: 55.182333
+  type: 'test'
+  ...
+# Subtest: hidden initial render cannot admit clicks and a null or false App capture fails closed
+ok 4 - hidden initial render cannot admit clicks and a null or false App capture fails closed
+  ---
+  duration_ms: 25.41675
+  type: 'test'
+  ...
+# Subtest: cancel confirmation admits only the current context and pane after the awaited decision
+ok 5 - cancel confirmation admits only the current context and pane after the awaited decision
+  ---
+  duration_ms: 53.02375
+  type: 'test'
+  ...
+# Subtest: narrow-dock styles keep only the body scrollable and wrap long IDs and shared action buttons
+ok 6 - narrow-dock styles keep only the body scrollable and wrap long IDs and shared action buttons
+  ---
+  duration_ms: 1.180875
+  type: 'test'
+  ...
+# Subtest: pending task confirmation relabels across four languages while retaining its exact original cancellation target
+ok 7 - pending task confirmation relabels across four languages while retaining its exact original cancellation target
+  ---
+  duration_ms: 10.74025
+  type: 'test'
+  ...
+# Subtest: local task list error descriptors relabel without leaking raw diagnostics or reloading
+ok 8 - local task list error descriptors relabel without leaking raw diagnostics or reloading
+  ---
+  duration_ms: 8.731708
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1141.106792

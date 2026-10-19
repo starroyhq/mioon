@@ -1,0 +1,232 @@
+TAP version 13
+# Subtest: chat_completions: real HTTP/SSE proposal is durable and exact; approval applies only the selected title/prompt once
+ok 1 - chat_completions: real HTTP/SSE proposal is durable and exact; approval applies only the selected title/prompt once
+  ---
+  duration_ms: 1262.935959
+  type: 'test'
+  ...
+# Subtest: chat_completions: pending and lost approval acknowledgement survive process restart; read-only rediscovery never dispatches
+ok 2 - chat_completions: pending and lost approval acknowledgement survive process restart; read-only rediscovery never dispatches
+  ---
+  duration_ms: 2690.002792
+  type: 'test'
+  ...
+# Subtest: chat_completions: Stop during request aborts the actual socket and leaves no approvable edit
+ok 3 - chat_completions: Stop during request aborts the actual socket and leaves no approvable edit
+  ---
+  duration_ms: 1824.606292
+  type: 'test'
+  ...
+# Subtest: chat_completions: Stop during answer aborts the actual socket and leaves no approvable edit
+ok 4 - chat_completions: Stop during answer aborts the actual socket and leaves no approvable edit
+  ---
+  duration_ms: 2187.700666
+  type: 'test'
+  ...
+# Subtest: chat_completions: failed second answer, second tool attempt and interrupted run cannot approve captured proposals
+ok 5 - chat_completions: failed second answer, second tool attempt and interrupted run cannot approve captured proposals
+  ---
+  duration_ms: 2258.24125
+  type: 'test'
+  ...
+# Subtest: chat_completions: malformed, duplicate, unauthorized and target-bearing function arguments fail before any proposal or mutation
+ok 6 - chat_completions: malformed, duplicate, unauthorized and target-bearing function arguments fail before any proposal or mutation
+  ---
+  duration_ms: 1408.674958
+  type: 'test'
+  ...
+# Subtest: chat_completions: null leaves title untouched, empty prompt clears it, and stale revisions fail without rebasing
+ok 7 - chat_completions: null leaves title untouched, empty prompt clears it, and stale revisions fail without rebasing
+  ---
+  duration_ms: 1234.066208
+  type: 'test'
+  ...
+# Subtest: responses: real HTTP/SSE proposal is durable and exact; approval applies only the selected title/prompt once
+ok 8 - responses: real HTTP/SSE proposal is durable and exact; approval applies only the selected title/prompt once
+  ---
+  duration_ms: 1183.041667
+  type: 'test'
+  ...
+# Subtest: responses: pending and lost approval acknowledgement survive process restart; read-only rediscovery never dispatches
+ok 9 - responses: pending and lost approval acknowledgement survive process restart; read-only rediscovery never dispatches
+  ---
+  duration_ms: 2620.948333
+  type: 'test'
+  ...
+# Subtest: responses: Stop during request aborts the actual socket and leaves no approvable edit
+ok 10 - responses: Stop during request aborts the actual socket and leaves no approvable edit
+  ---
+  duration_ms: 2487.73075
+  type: 'test'
+  ...
+# Subtest: responses: Stop during answer aborts the actual socket and leaves no approvable edit
+ok 11 - responses: Stop during answer aborts the actual socket and leaves no approvable edit
+  ---
+  duration_ms: 2174.829208
+  type: 'test'
+  ...
+# Subtest: responses: failed second answer, second tool attempt and interrupted run cannot approve captured proposals
+ok 12 - responses: failed second answer, second tool attempt and interrupted run cannot approve captured proposals
+  ---
+  duration_ms: 2084.555375
+  type: 'test'
+  ...
+# Subtest: responses: malformed, duplicate, unauthorized and target-bearing function arguments fail before any proposal or mutation
+ok 13 - responses: malformed, duplicate, unauthorized and target-bearing function arguments fail before any proposal or mutation
+  ---
+  duration_ms: 1422.670542
+  type: 'test'
+  ...
+# Subtest: responses: null leaves title untouched, empty prompt clears it, and stale revisions fail without rebasing
+ok 14 - responses: null leaves title untouched, empty prompt clears it, and stale revisions fail without rebasing
+  ---
+  duration_ms: 1279.624584
+  type: 'test'
+  ...
+# Subtest: edit endpoints enforce auth/origin/methods/closed bounded schemas, project ownership, epoch and immutable digest
+ok 15 - edit endpoints enforce auth/origin/methods/closed bounded schemas, project ownership, epoch and immutable digest
+  ---
+  duration_ms: 1172.058625
+  type: 'test'
+  ...
+# Subtest: two authenticated windows racing approve/reject produce one durable decision and at most one exact mutation
+ok 16 - two authenticated windows racing approve/reject produce one durable decision and at most one exact mutation
+  ---
+  duration_ms: 1247.844833
+  type: 'test'
+  ...
+# Subtest: bounded unresolved listing rediscovers old pending edits before pagination and rejects cross-project/view cursors
+ok 17 - bounded unresolved listing rediscovers old pending edits before pagination and rejects cross-project/view cursors
+  ---
+  duration_ms: 2278.222875
+  type: 'test'
+  ...
+# Subtest: saved shot-json-id corruption fails closed without following an indirect foreign target
+ok 18 - saved shot-json-id corruption fails closed without following an indirect foreign target
+  ---
+  duration_ms: 1138.796458
+  type: 'test'
+  ...
+# Subtest: saved shot-json-project corruption fails closed without following an indirect foreign target
+ok 19 - saved shot-json-project corruption fails closed without following an indirect foreign target
+  ---
+  duration_ms: 1129.669709
+  type: 'test'
+  ...
+# Subtest: saved foreign-reference corruption fails closed without following an indirect foreign target
+ok 20 - saved foreign-reference corruption fails closed without following an indirect foreign target
+  ---
+  duration_ms: 1146.41625
+  type: 'test'
+  ...
+# Subtest: saved foreign-selected-version corruption fails closed without following an indirect foreign target
+ok 21 - saved foreign-selected-version corruption fails closed without following an indirect foreign target
+  ---
+  duration_ms: 1124.1695
+  type: 'test'
+  ...
+# Subtest: saved proposal-relational-shot corruption fails closed without following an indirect foreign target
+ok 22 - saved proposal-relational-shot corruption fails closed without following an indirect foreign target
+  ---
+  duration_ms: 1232.469583
+  type: 'test'
+  ...
+# Subtest: chat_completions: owned SIGKILL at beforeApproval retains immutable review intent and only explicit recovery can dispatch
+ok 23 - chat_completions: owned SIGKILL at beforeApproval retains immutable review intent and only explicit recovery can dispatch
+  ---
+  duration_ms: 2138.249667
+  type: 'test'
+  ...
+# Subtest: chat_completions: owned SIGKILL at afterApproval retains immutable review intent and only explicit recovery can dispatch
+ok 24 - chat_completions: owned SIGKILL at afterApproval retains immutable review intent and only explicit recovery can dispatch
+  ---
+  duration_ms: 1955.125375
+  type: 'test'
+  ...
+# Subtest: chat_completions: owned SIGKILL at beforeDispatch retains immutable review intent and only explicit recovery can dispatch
+ok 25 - chat_completions: owned SIGKILL at beforeDispatch retains immutable review intent and only explicit recovery can dispatch
+  ---
+  duration_ms: 1929.977333
+  type: 'test'
+  ...
+# Subtest: chat_completions: owned SIGKILL at afterDispatchStarted retains immutable review intent and only explicit recovery can dispatch
+ok 26 - chat_completions: owned SIGKILL at afterDispatchStarted retains immutable review intent and only explicit recovery can dispatch
+  ---
+  duration_ms: 1929.101625
+  type: 'test'
+  ...
+# Subtest: chat_completions: owned SIGKILL at afterDispatch retains immutable review intent and only explicit recovery can dispatch
+ok 27 - chat_completions: owned SIGKILL at afterDispatch retains immutable review intent and only explicit recovery can dispatch
+  ---
+  duration_ms: 2025.188084
+  type: 'test'
+  ...
+# Subtest: chat_completions: owned SIGKILL at afterOutcome retains immutable review intent and only explicit recovery can dispatch
+ok 28 - chat_completions: owned SIGKILL at afterOutcome retains immutable review intent and only explicit recovery can dispatch
+  ---
+  duration_ms: 1950.381792
+  type: 'test'
+  ...
+# Subtest: chat_completions: owned SIGKILL at beforeAcknowledgement retains immutable review intent and only explicit recovery can dispatch
+ok 29 - chat_completions: owned SIGKILL at beforeAcknowledgement retains immutable review intent and only explicit recovery can dispatch
+  ---
+  duration_ms: 2055.942333
+  type: 'test'
+  ...
+# Subtest: responses: owned SIGKILL at beforeApproval retains immutable review intent and only explicit recovery can dispatch
+ok 30 - responses: owned SIGKILL at beforeApproval retains immutable review intent and only explicit recovery can dispatch
+  ---
+  duration_ms: 2059.74125
+  type: 'test'
+  ...
+# Subtest: responses: owned SIGKILL at afterApproval retains immutable review intent and only explicit recovery can dispatch
+ok 31 - responses: owned SIGKILL at afterApproval retains immutable review intent and only explicit recovery can dispatch
+  ---
+  duration_ms: 2002.796625
+  type: 'test'
+  ...
+# Subtest: responses: owned SIGKILL at beforeDispatch retains immutable review intent and only explicit recovery can dispatch
+ok 32 - responses: owned SIGKILL at beforeDispatch retains immutable review intent and only explicit recovery can dispatch
+  ---
+  duration_ms: 1936.429541
+  type: 'test'
+  ...
+# Subtest: responses: owned SIGKILL at afterDispatchStarted retains immutable review intent and only explicit recovery can dispatch
+ok 33 - responses: owned SIGKILL at afterDispatchStarted retains immutable review intent and only explicit recovery can dispatch
+  ---
+  duration_ms: 1949.204958
+  type: 'test'
+  ...
+# Subtest: responses: owned SIGKILL at afterDispatch retains immutable review intent and only explicit recovery can dispatch
+ok 34 - responses: owned SIGKILL at afterDispatch retains immutable review intent and only explicit recovery can dispatch
+  ---
+  duration_ms: 1969.60325
+  type: 'test'
+  ...
+# Subtest: responses: owned SIGKILL at afterOutcome retains immutable review intent and only explicit recovery can dispatch
+ok 35 - responses: owned SIGKILL at afterOutcome retains immutable review intent and only explicit recovery can dispatch
+  ---
+  duration_ms: 1917.480125
+  type: 'test'
+  ...
+# Subtest: responses: owned SIGKILL at beforeAcknowledgement retains immutable review intent and only explicit recovery can dispatch
+ok 36 - responses: owned SIGKILL at beforeAcknowledgement retains immutable review intent and only explicit recovery can dispatch
+  ---
+  duration_ms: 1958.831125
+  type: 'test'
+  ...
+# Subtest: MCP discovery and calls expose no proposal/approval/recovery authority
+ok 37 - MCP discovery and calls expose no proposal/approval/recovery authority
+  ---
+  duration_ms: 1469.199708
+  type: 'test'
+  ...
+1..37
+# tests 37
+# suites 0
+# pass 37
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 66159.051542

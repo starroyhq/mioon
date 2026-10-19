@@ -1,0 +1,9 @@
+{
+  "completedFiles": 4,
+  "totalFiles": 4,
+  "passedFiles": 4,
+  "failedFiles": 0,
+  "timeoutFiles": 0,
+  "seconds": 11.35,
+  "last": "tests/workspace-opacity-candidate.test.mjs"
+}

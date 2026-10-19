@@ -1,0 +1,124 @@
+TAP version 13
+# Subtest: composition segments preserve every exact global edge, gap and readonly bound
+ok 1 - composition segments preserve every exact global edge, gap and readonly bound
+  ---
+  duration_ms: 1.268334
+  type: 'test'
+  ...
+# Subtest: strict public inputs admit only saved identity and fixed source binding
+ok 2 - strict public inputs admit only saved identity and fixed source binding
+  ---
+  duration_ms: 1.832625
+  type: 'test'
+  ...
+# Subtest: builds exact max20s or remaining saved interval without changing legacy fields
+ok 3 - builds exact max20s or remaining saved interval without changing legacy fields
+  ---
+  duration_ms: 2.797542
+  type: 'test'
+  ...
+# Subtest: retains original clip clock/fades while mapping just its trimmed intersection
+ok 4 - retains original clip clock/fades while mapping just its trimmed intersection
+  ---
+  duration_ms: 0.507291
+  type: 'test'
+  ...
+# Subtest: zero gain and track mute silence, hidden video remains audible, known silent media stays silent
+ok 5 - zero gain and track mute silence, hidden video remains audible, known silent media stays silent
+  ---
+  duration_ms: 0.926
+  type: 'test'
+  ...
+# Subtest: muted and image clip edges preserve export reseeks including the pre-window prefix
+ok 6 - muted and image clip edges preserve export reseeks including the pre-window prefix
+  ---
+  duration_ms: 1.162541
+  type: 'test'
+  ...
+# Subtest: matching requested source intervals dedupe only when their original decode segments also match
+ok 7 - matching requested source intervals dedupe only when their original decode segments also match
+  ---
+  duration_ms: 0.560458
+  type: 'test'
+  ...
+# Subtest: unknown media audio fails closed even when muted, zero gain, or outside the window
+ok 8 - unknown media audio fails closed even when muted, zero gain, or outside the window
+  ---
+  duration_ms: 0.427708
+  type: 'test'
+  ...
+# Subtest: cross-track voices sum independently and dedupe only exact prepared source identities
+ok 9 - cross-track voices sum independently and dedupe only exact prepared source identities
+  ---
+  duration_ms: 1.300958
+  type: 'test'
+  ...
+# Subtest: strict snapshot validates whole graph/ranges/gain/fades before audible filtering
+ok 10 - strict snapshot validates whole graph/ranges/gain/fades before audible filtering
+  ---
+  duration_ms: 1.394167
+  type: 'test'
+  ...
+# Subtest: admission uses every distinct clipped source payload rather than track count
+ok 11 - admission uses every distinct clipped source payload rather than track count
+  ---
+  duration_ms: 5.222917
+  type: 'test'
+  ...
+# Subtest: per-source and aggregate double-hash caps reject complete interval without shortening
+ok 12 - per-source and aggregate double-hash caps reject complete interval without shortening
+  ---
+  duration_ms: 0.564625
+  type: 'test'
+  ...
+# Subtest: decode work charges original prefixes, repeated work and every one-frame lookahead without truncation
+ok 13 - decode work charges original prefixes, repeated work and every one-frame lookahead without truncation
+  ---
+  duration_ms: 0.647458
+  type: 'test'
+  ...
+# Subtest: decode segment count is bounded across all distinct sources, with large valid segment arrays admitted
+ok 14 - decode segment count is bounded across all distinct sources, with large valid segment arrays admitted
+  ---
+  duration_ms: 5.043375
+  type: 'test'
+  ...
+# Subtest: response schema enforces exact counts, identity references, resource equations and strict fields
+ok 15 - response schema enforces exact counts, identity references, resource equations and strict fields
+  ---
+  duration_ms: 1.918834
+  type: 'test'
+  ...
+# Subtest: response rejects forged decode segments, cross-voice original bounds and work arithmetic
+ok 16 - response rejects forged decode segments, cross-voice original bounds and work arithmetic
+  ---
+  duration_ms: 2.111625
+  type: 'test'
+  ...
+# Subtest: canonical digest binds gain, fades, source hash, bytes, revision, range and profile with key-order stability
+ok 17 - canonical digest binds gain, fades, source hash, bytes, revision, range and profile with key-order stability
+  ---
+  duration_ms: 1.345042
+  type: 'test'
+  ...
+# Subtest: hostile bounded boundary never evaluates getters or toJSON or traverses unbounded arrays
+ok 18 - hostile bounded boundary never evaluates getters or toJSON or traverses unbounded arrays
+  ---
+  duration_ms: 1.445875
+  type: 'test'
+  ...
+# Subtest: half-open ramps, one-frame fades, meeting ramps and seeks use the identical integer sample clock
+ok 19 - half-open ramps, one-frame fades, meeting ramps and seeks use the identical integer sample clock
+  ---
+  duration_ms: 0.371042
+  type: 'test'
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 241.877792

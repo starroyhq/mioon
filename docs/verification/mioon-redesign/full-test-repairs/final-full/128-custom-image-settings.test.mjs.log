@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: custom slot starts empty, disabled, network-free and cannot bind a credential before complete configuration
+ok 1 - custom slot starts empty, disabled, network-free and cannot bind a credential before complete configuration
+  ---
+  duration_ms: 5.285333
+  type: 'test'
+  ...
+# Subtest: official and custom engines have independent configuration, revisions and session credentials
+ok 2 - official and custom engines have independent configuration, revisions and session credentials
+  ---
+  duration_ms: 1.260416
+  type: 'test'
+  ...
+# Subtest: custom recipient or model changes require explicit replacement or removal and never reuse the old binding
+ok 3 - custom recipient or model changes require explicit replacement or removal and never reuse the old binding
+  ---
+  duration_ms: 3.802875
+  type: 'test'
+  ...
+# Subtest: enable toggles retain a custom key, every save fences old revisions, backend close drops session secrets
+ok 4 - enable toggles retain a custom key, every save fences old revisions, backend close drops session secrets
+  ---
+  duration_ms: 0.799083
+  type: 'test'
+  ...
+# Subtest: custom CAS and admitted mutation fences match official lifecycle, including known failed saves
+ok 5 - custom CAS and admitted mutation fences match official lifecycle, including known failed saves
+  ---
+  duration_ms: 0.945708
+  type: 'test'
+  ...
+# Subtest: custom unknown-save outcomes remain fenced during read-back and latch closed unless old durable state is proven
+ok 6 - custom unknown-save outcomes remain fenced during read-back and latch closed unless old durable state is proven
+  ---
+  duration_ms: 1.472625
+  type: 'test'
+  ...
+# Subtest: custom persistent secrets bind namespace, connection, profile, origin, model and options and survive restart
+ok 7 - custom persistent secrets bind namespace, connection, profile, origin, model and options and survive restart
+  ---
+  duration_ms: 1.80025
+  type: 'test'
+  ...
+# Subtest: custom vault unavailable/locked never silently falls back and explicit session or removal is possible
+ok 8 - custom vault unavailable/locked never silently falls back and explicit session or removal is possible
+  ---
+  duration_ms: 1.253834
+  type: 'test'
+  ...
+# Subtest: custom envelopes fail closed on corrupt, foreign or incomplete binding without rewriting
+ok 9 - custom envelopes fail closed on corrupt, foreign or incomplete binding without rewriting
+  ---
+  duration_ms: 0.609958
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 154.088042

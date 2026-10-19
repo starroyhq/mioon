@@ -1,0 +1,134 @@
+{
+  "scope": "Isolated second light candidate after user rejected v1 as high contrast; no production preference activation.",
+  "url": "http://127.0.0.1:51051",
+  "candidateStyleSource": "compiled development build; only isolated preview class activated",
+  "runtimeStyleInjection": false,
+  "cssSha256": "fa87a4c54d6bdb69074009ff9bc820b703169de13448fb30f287a3c9ff3ee5fe",
+  "states": [
+    {
+      "state": "editing",
+      "width": 1440,
+      "height": 900,
+      "docWidth": 1440,
+      "viewport": 1440,
+      "panel": {
+        "width": 260,
+        "height": 538,
+        "color": "rgb(51, 52, 48)",
+        "background": "rgb(244, 244, 241)",
+        "border": "rgb(228, 228, 222)"
+      },
+      "track": {
+        "width": 1258,
+        "height": 31,
+        "color": "rgb(51, 52, 48)",
+        "background": "rgb(250, 250, 248)",
+        "border": "rgb(215, 215, 208)"
+      },
+      "mediaLabel": {
+        "width": 122,
+        "height": 14,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(51, 52, 48)",
+        "border": "rgba(0, 0, 0, 0)"
+      },
+      "tokens": {
+        "bg": "#f0f0ed",
+        "panel": "#fafaf8",
+        "card": "#f4f4f1",
+        "raised": "#fff",
+        "line": "#d7d7d0",
+        "line-subtle": "#e4e4de",
+        "text": "#333430",
+        "soft": "#5e5f59",
+        "muted": "#666661",
+        "accent": "#464646"
+      }
+    },
+    {
+      "state": "settings",
+      "width": 1440,
+      "height": 900,
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "state": "editing",
+      "width": 1050,
+      "height": 680,
+      "docWidth": 1050,
+      "viewport": 1050,
+      "panel": {
+        "width": 44,
+        "height": 324,
+        "color": "rgb(51, 52, 48)",
+        "background": "rgb(244, 244, 241)",
+        "border": "rgb(228, 228, 222)"
+      },
+      "track": {
+        "width": 912,
+        "height": 31,
+        "color": "rgb(51, 52, 48)",
+        "background": "rgb(250, 250, 248)",
+        "border": "rgb(215, 215, 208)"
+      },
+      "mediaLabel": {
+        "width": 122,
+        "height": 14,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(51, 52, 48)",
+        "border": "rgba(0, 0, 0, 0)"
+      },
+      "tokens": {
+        "bg": "#f0f0ed",
+        "panel": "#fafaf8",
+        "card": "#f4f4f1",
+        "raised": "#fff",
+        "line": "#d7d7d0",
+        "line-subtle": "#e4e4de",
+        "text": "#333430",
+        "soft": "#5e5f59",
+        "muted": "#666661",
+        "accent": "#464646"
+      }
+    },
+    {
+      "state": "settings",
+      "width": 1050,
+      "height": 680,
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    }
+  ],
+  "checks": [
+    "system-light-remains-production-dark",
+    "two-sizes-editing-and-settings-no-overflow",
+    "keyboard-focus-visible",
+    "candidate-removal-restores-original-theme",
+    "no-external-requests"
+  ],
+  "pageErrors": [],
+  "externalRequests": [],
+  "before": {
+    "systemLight": true,
+    "productionTheme": "dark",
+    "appearance": "system",
+    "previewClass": false,
+    "panel": "#141518"
+  },
+  "after": {
+    "systemLight": true,
+    "productionTheme": "dark",
+    "appearance": "system",
+    "previewClass": false,
+    "panel": "#141518"
+  }
+}

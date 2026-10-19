@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: four synthetic cases run serially, use only generated filters and preserve binary pixel expectations
+ok 1 - four synthetic cases run serially, use only generated filters and preserve binary pixel expectations
+  ---
+  duration_ms: 7.5305
+  type: 'test'
+  ...
+# Subtest: one-byte rounding tolerance passes, larger pixel mismatch stops before case two
+ok 2 - one-byte rounding tolerance passes, larger pixel mismatch stops before case two
+  ---
+  duration_ms: 2.510791
+  type: 'test'
+  ...
+# Subtest: stdout/stderr hard limits stop and join only the exact owned child
+ok 3 - stdout/stderr hard limits stop and join only the exact owned child
+  ---
+  duration_ms: 1.4705
+  type: 'test'
+  ...
+# Subtest: exact stderr cap is admitted without retaining or exposing diagnostics
+ok 4 - exact stderr cap is admitted without retaining or exposing diagnostics
+  ---
+  duration_ms: 2.08425
+  type: 'test'
+  ...
+# Subtest: later failure preserves the prior independent result and skips all later probes
+ok 5 - later failure preserves the prior independent result and skips all later probes
+  ---
+  duration_ms: 0.856834
+  type: 'test'
+  ...
+# Subtest: close/code0/no signal/full stdin and exact stdout are all required
+ok 6 - close/code0/no signal/full stdin and exact stdout are all required
+  ---
+  duration_ms: 3.346166
+  type: 'test'
+  ...
+# Subtest: exit alone cannot release the 5s execution fence; confirmed stop ends the sequence
+ok 7 - exit alone cannot release the 5s execution fence; confirmed stop ends the sequence
+  ---
+  duration_ms: 1.02675
+  type: 'test'
+  ...
+# Subtest: unconfirmed or unowned stop is uncertain and never launches another case
+ok 8 - unconfirmed or unowned stop is uncertain and never launches another case
+  ---
+  duration_ms: 1.084583
+  type: 'test'
+  ...
+# Subtest: all three pipe errors and external scoped interruption stop serial probing
+ok 9 - all three pipe errors and external scoped interruption stop serial probing
+  ---
+  duration_ms: 2.70975
+  type: 'test'
+  ...
+# Subtest: unavailable executable or synchronous spawn failure cannot retry or fall back
+ok 10 - unavailable executable or synchronous spawn failure cannot retry or fall back
+  ---
+  duration_ms: 0.418541
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 184.013208

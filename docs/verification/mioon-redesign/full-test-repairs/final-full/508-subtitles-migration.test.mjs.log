@@ -1,0 +1,146 @@
+TAP version 13
+# Subtest: startup SQL normalization rejects missing, duplicate, extra and isolated loudness expansion
+ok 1 - startup SQL normalization rejects missing, duplicate, extra and isolated loudness expansion
+  ---
+  duration_ms: 29.510334
+  type: 'test'
+  ...
+# Subtest: schema22 changes only operation CHECK preserving independently frozen schema21 bytes, rowids and all legacy states
+ok 2 - schema22 changes only operation CHECK preserving independently frozen schema21 bytes, rowids and all legacy states
+  ---
+  duration_ms: 70.518334
+  type: 'test'
+  ...
+# Subtest: real schema21 startup equals fresh schema26 and repeated restart preserves every retained byte
+not ok 3 - real schema21 startup equals fresh schema26 and repeated restart preserves every retained byte
+  ---
+  duration_ms: 1410.081667
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subtitles-migration.test.mjs:211:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    trigger retain_agent_chat_events: exact SQL retained outside the pinned schema23/24 additions
+    + actual - expected
+    
+      [Object: null prototype] {
+        name: 'retain_agent_chat_events',
+        sql: 'CREATE TRIGGER retain_agent_chat_events BEFORE DELETE ON agent_chat_events\n' +
+    +     " WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='agent_chat_events' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'chat events must be retained');END",
+    -     " BEGIN SELECT RAISE(ABORT,'chat events must be retained');END",
+        tbl_name: 'agent_chat_events',
+        type: 'trigger'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    type: 'trigger'
+    name: 'retain_agent_chat_events'
+    tbl_name: 'agent_chat_events'
+    sql: |-
+      CREATE TRIGGER retain_agent_chat_events BEFORE DELETE ON agent_chat_events
+       BEGIN SELECT RAISE(ABORT,'chat events must be retained');END
+  actual:
+    type: 'trigger'
+    name: 'retain_agent_chat_events'
+    tbl_name: 'agent_chat_events'
+    sql: |-
+      CREATE TRIGGER retain_agent_chat_events BEFORE DELETE ON agent_chat_events
+       WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='agent_chat_events' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'chat events must be retained');END
+  operator: 'deepStrictEqual'
+  stack: |-
+    preserved (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subtitles-migration.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subtitles-migration.test.mjs:214:2)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: schema22 retains empty sequence absence
+ok 4 - schema22 retains empty sequence absence
+  ---
+  duration_ms: 26.002709
+  type: 'test'
+  ...
+# Subtest: schema22 retains empty sequence 0
+ok 5 - schema22 retains empty sequence 0
+  ---
+  duration_ms: 26.299708
+  type: 'test'
+  ...
+# Subtest: schema22 retains empty sequence 9123
+ok 6 - schema22 retains empty sequence 9123
+  ---
+  duration_ms: 25.279291
+  type: 'test'
+  ...
+# Subtest: failed schema22 marker rolls back raw rebuild, schema objects and sequence, then startup retries safely
+not ok 7 - failed schema22 marker rolls back raw rebuild, schema objects and sequence, then startup retries safely
+  ---
+  duration_ms: 980.843042
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subtitles-migration.test.mjs:224:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    trigger retain_agent_chat_events: exact SQL retained outside the pinned schema23/24 additions
+    + actual - expected
+    
+      [Object: null prototype] {
+        name: 'retain_agent_chat_events',
+        sql: 'CREATE TRIGGER retain_agent_chat_events BEFORE DELETE ON agent_chat_events\n' +
+    +     " WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='agent_chat_events' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'chat events must be retained');END",
+    -     " BEGIN SELECT RAISE(ABORT,'chat events must be retained');END",
+        tbl_name: 'agent_chat_events',
+        type: 'trigger'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    type: 'trigger'
+    name: 'retain_agent_chat_events'
+    tbl_name: 'agent_chat_events'
+    sql: |-
+      CREATE TRIGGER retain_agent_chat_events BEFORE DELETE ON agent_chat_events
+       BEGIN SELECT RAISE(ABORT,'chat events must be retained');END
+  actual:
+    type: 'trigger'
+    name: 'retain_agent_chat_events'
+    tbl_name: 'agent_chat_events'
+    sql: |-
+      CREATE TRIGGER retain_agent_chat_events BEFORE DELETE ON agent_chat_events
+       WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='agent_chat_events' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'chat events must be retained');END
+  operator: 'deepStrictEqual'
+  stack: |-
+    preserved (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subtitles-migration.test.mjs:73:10)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subtitles-migration.test.mjs:228:143)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: subtitle migration refuses invalid preconditions and no-ops when operation CHECK is already expanded
+ok 8 - subtitle migration refuses invalid preconditions and no-ops when operation CHECK is already expanded
+  ---
+  duration_ms: 26.789375
+  type: 'test'
+  ...
+# Subtest: subtitle allowlist retains lane, immutable identities, pending reservation and terminal capacity protections
+ok 9 - subtitle allowlist retains lane, immutable identities, pending reservation and terminal capacity protections
+  ---
+  duration_ms: 32.19625
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 7
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2872.887125

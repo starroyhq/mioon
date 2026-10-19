@@ -1,0 +1,232 @@
+TAP version 13
+# Subtest: chat_completions: actual fragmented HTTP/SSE gain freezes a gain-only review and authenticated approval shares the timeline transaction
+ok 1 - chat_completions: actual fragmented HTTP/SSE gain freezes a gain-only review and authenticated approval shares the timeline transaction
+  ---
+  duration_ms: 1322.563458
+  type: 'test'
+  ...
+# Subtest: chat_completions: gain pending restart and lost approval ACK retain one exact key with no automatic model or mutation POST
+ok 2 - chat_completions: gain pending restart and lost approval ACK retain one exact key with no automatic model or mutation POST
+  ---
+  duration_ms: 2805.252375
+  type: 'test'
+  ...
+# Subtest: chat_completions: applied gain historical replay remains exact after undo, redo, selected clip removal and process restart
+ok 3 - chat_completions: applied gain historical replay remains exact after undo, redo, selected clip removal and process restart
+  ---
+  duration_ms: 2215.136167
+  type: 'test'
+  ...
+# Subtest: chat_completions: stale gain timeline CAS records a request-bound rejection without rebase, receipt or second dispatch
+ok 4 - chat_completions: stale gain timeline CAS records a request-bound rejection without rebase, receipt or second dispatch
+  ---
+  duration_ms: 1263.551167
+  type: 'test'
+  ...
+# Subtest: chat_completions: forged authority, invalid gain, no-op and incomplete SSE fail before proposal capture
+ok 5 - chat_completions: forged authority, invalid gain, no-op and incomplete SSE fail before proposal capture
+  ---
+  duration_ms: 2619.434084
+  type: 'test'
+  ...
+# Subtest: chat_completions: Stop during gain request closes the provider socket and blocks later approval
+ok 6 - chat_completions: Stop during gain request closes the provider socket and blocks later approval
+  ---
+  duration_ms: 1853.037291
+  type: 'test'
+  ...
+# Subtest: chat_completions: Stop during gain answer closes the provider socket and blocks later approval
+ok 7 - chat_completions: Stop during gain answer closes the provider socket and blocks later approval
+  ---
+  duration_ms: 1972.573542
+  type: 'test'
+  ...
+# Subtest: chat_completions: tools-off answer failure and backend interruption leave captured gain proposals unapprovable
+ok 8 - chat_completions: tools-off answer failure and backend interruption leave captured gain proposals unapprovable
+  ---
+  duration_ms: 2230.255584
+  type: 'test'
+  ...
+# Subtest: responses: actual fragmented HTTP/SSE gain freezes a gain-only review and authenticated approval shares the timeline transaction
+ok 9 - responses: actual fragmented HTTP/SSE gain freezes a gain-only review and authenticated approval shares the timeline transaction
+  ---
+  duration_ms: 1354.281375
+  type: 'test'
+  ...
+# Subtest: responses: gain pending restart and lost approval ACK retain one exact key with no automatic model or mutation POST
+ok 10 - responses: gain pending restart and lost approval ACK retain one exact key with no automatic model or mutation POST
+  ---
+  duration_ms: 2829.835958
+  type: 'test'
+  ...
+# Subtest: responses: applied gain historical replay remains exact after undo, redo, selected clip removal and process restart
+ok 11 - responses: applied gain historical replay remains exact after undo, redo, selected clip removal and process restart
+  ---
+  duration_ms: 2075.135209
+  type: 'test'
+  ...
+# Subtest: responses: stale gain timeline CAS records a request-bound rejection without rebase, receipt or second dispatch
+ok 12 - responses: stale gain timeline CAS records a request-bound rejection without rebase, receipt or second dispatch
+  ---
+  duration_ms: 1204.556333
+  type: 'test'
+  ...
+# Subtest: responses: forged authority, invalid gain, no-op and incomplete SSE fail before proposal capture
+ok 13 - responses: forged authority, invalid gain, no-op and incomplete SSE fail before proposal capture
+  ---
+  duration_ms: 2673.483042
+  type: 'test'
+  ...
+# Subtest: responses: Stop during gain request closes the provider socket and blocks later approval
+ok 14 - responses: Stop during gain request closes the provider socket and blocks later approval
+  ---
+  duration_ms: 1908.34275
+  type: 'test'
+  ...
+# Subtest: responses: Stop during gain answer closes the provider socket and blocks later approval
+ok 15 - responses: Stop during gain answer closes the provider socket and blocks later approval
+  ---
+  duration_ms: 1934.566958
+  type: 'test'
+  ...
+# Subtest: responses: tools-off answer failure and backend interruption leave captured gain proposals unapprovable
+ok 16 - responses: tools-off answer failure and backend interruption leave captured gain proposals unapprovable
+  ---
+  duration_ms: 2239.950292
+  type: 'test'
+  ...
+# Subtest: gain HTTP routes fence authentication, project, epoch, digest and outbound consent before any authority is acquired
+ok 17 - gain HTTP routes fence authentication, project, epoch, digest and outbound consent before any authority is acquired
+  ---
+  duration_ms: 1275.161417
+  type: 'test'
+  ...
+# Subtest: two authenticated windows racing gain approve/reject retain one decision and at most one exact timeline receipt
+ok 18 - two authenticated windows racing gain approve/reject retain one decision and at most one exact timeline receipt
+  ---
+  duration_ms: 1552.99225
+  type: 'test'
+  ...
+# Subtest: pending gain HTTP review refuses a source that now belongs to a foreign project
+ok 19 - pending gain HTTP review refuses a source that now belongs to a foreign project
+  ---
+  duration_ms: 1260.889042
+  type: 'test'
+  ...
+# Subtest: historical gain HTTP review refuses a source that now belongs to a foreign project
+ok 20 - historical gain HTTP review refuses a source that now belongs to a foreign project
+  ---
+  duration_ms: 1317.656083
+  type: 'test'
+  ...
+# Subtest: chat_completions: owned SIGKILL at gain beforeApproval never auto-repeats inference or approval and recovery retains the exact key
+ok 21 - chat_completions: owned SIGKILL at gain beforeApproval never auto-repeats inference or approval and recovery retains the exact key
+  ---
+  duration_ms: 2366.819375
+  type: 'test'
+  ...
+# Subtest: chat_completions: owned SIGKILL at gain afterApproval never auto-repeats inference or approval and recovery retains the exact key
+ok 22 - chat_completions: owned SIGKILL at gain afterApproval never auto-repeats inference or approval and recovery retains the exact key
+  ---
+  duration_ms: 2210.477875
+  type: 'test'
+  ...
+# Subtest: chat_completions: owned SIGKILL at gain afterDispatchStarted never auto-repeats inference or approval and recovery retains the exact key
+ok 23 - chat_completions: owned SIGKILL at gain afterDispatchStarted never auto-repeats inference or approval and recovery retains the exact key
+  ---
+  duration_ms: 2337.837
+  type: 'test'
+  ...
+# Subtest: chat_completions: owned SIGKILL at gain afterDispatch never auto-repeats inference or approval and recovery retains the exact key
+ok 24 - chat_completions: owned SIGKILL at gain afterDispatch never auto-repeats inference or approval and recovery retains the exact key
+  ---
+  duration_ms: 2127.388916
+  type: 'test'
+  ...
+# Subtest: chat_completions: owned SIGKILL at gain beforeAcknowledgement never auto-repeats inference or approval and recovery retains the exact key
+ok 25 - chat_completions: owned SIGKILL at gain beforeAcknowledgement never auto-repeats inference or approval and recovery retains the exact key
+  ---
+  duration_ms: 2817.937916
+  type: 'test'
+  ...
+# Subtest: responses: owned SIGKILL at gain beforeApproval never auto-repeats inference or approval and recovery retains the exact key
+ok 26 - responses: owned SIGKILL at gain beforeApproval never auto-repeats inference or approval and recovery retains the exact key
+  ---
+  duration_ms: 2348.516
+  type: 'test'
+  ...
+# Subtest: responses: owned SIGKILL at gain afterApproval never auto-repeats inference or approval and recovery retains the exact key
+ok 27 - responses: owned SIGKILL at gain afterApproval never auto-repeats inference or approval and recovery retains the exact key
+  ---
+  duration_ms: 2232.212166
+  type: 'test'
+  ...
+# Subtest: responses: owned SIGKILL at gain afterDispatchStarted never auto-repeats inference or approval and recovery retains the exact key
+ok 28 - responses: owned SIGKILL at gain afterDispatchStarted never auto-repeats inference or approval and recovery retains the exact key
+  ---
+  duration_ms: 2061.936708
+  type: 'test'
+  ...
+# Subtest: responses: owned SIGKILL at gain afterDispatch never auto-repeats inference or approval and recovery retains the exact key
+ok 29 - responses: owned SIGKILL at gain afterDispatch never auto-repeats inference or approval and recovery retains the exact key
+  ---
+  duration_ms: 2092.733458
+  type: 'test'
+  ...
+# Subtest: responses: owned SIGKILL at gain beforeAcknowledgement never auto-repeats inference or approval and recovery retains the exact key
+ok 30 - responses: owned SIGKILL at gain beforeAcknowledgement never auto-repeats inference or approval and recovery retains the exact key
+  ---
+  duration_ms: 2084.640083
+  type: 'test'
+  ...
+# Subtest: actual CLI and MCP gain update/undo share the approved Agent timeline history while exposing no Agent approval tools
+ok 31 - actual CLI and MCP gain update/undo share the approved Agent timeline history while exposing no Agent approval tools
+  ---
+  duration_ms: 3972.725791
+  type: 'test'
+  ...
+# Subtest: chat_completions: changed saved gain, mute or audio eligibility rejects prior disclosure before credentials or POST
+ok 32 - chat_completions: changed saved gain, mute or audio eligibility rejects prior disclosure before credentials or POST
+  ---
+  duration_ms: 1112.303292
+  type: 'test'
+  ...
+# Subtest: chat_completions: gain history branches once and historical recovery never restores a discarded redo branch
+ok 33 - chat_completions: gain history branches once and historical recovery never restores a discarded redo branch
+  ---
+  duration_ms: 2076.880542
+  type: 'test'
+  ...
+# Subtest: responses: changed saved gain, mute or audio eligibility rejects prior disclosure before credentials or POST
+ok 34 - responses: changed saved gain, mute or audio eligibility rejects prior disclosure before credentials or POST
+  ---
+  duration_ms: 1134.133958
+  type: 'test'
+  ...
+# Subtest: responses: gain history branches once and historical recovery never restores a discarded redo branch
+ok 35 - responses: gain history branches once and historical recovery never restores a discarded redo branch
+  ---
+  duration_ms: 2139.237042
+  type: 'test'
+  ...
+# Subtest: chat_completions: changed target after first POST prevents continuation POST and cannot authorize captured gain
+ok 36 - chat_completions: changed target after first POST prevents continuation POST and cannot authorize captured gain
+  ---
+  duration_ms: 2268.820167
+  type: 'test'
+  ...
+# Subtest: responses: changed target after first POST prevents continuation POST and cannot authorize captured gain
+ok 37 - responses: changed target after first POST prevents continuation POST and cannot authorize captured gain
+  ---
+  duration_ms: 1994.38625
+  type: 'test'
+  ...
+1..37
+# tests 37
+# suites 0
+# pass 37
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 75669.964959

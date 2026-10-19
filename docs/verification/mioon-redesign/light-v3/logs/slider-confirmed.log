@@ -1,0 +1,27 @@
+[{"tag": "DIV", "slot": "slider", "role": "group", "disabled": null, "value": null, "width": 199.1875, "height": 3.25, "display": "block", "opacity": "1", "visibility": "visible", "background": "rgba(0, 0, 0, 0)", "border": "rgb(229, 229, 229)", "color": "rgb(25, 28, 31)"}, {"tag": "DIV", "slot": null, "role": null, "disabled": null, "value": null, "width": 199.1875, "height": 3.25, "display": "flex", "opacity": "1", "visibility": "visible", "background": "rgba(0, 0, 0, 0)", "border": "rgb(229, 229, 229)", "color": "rgb(25, 28, 31)"}, {"tag": "DIV", "slot": "slider-track", "role": null, "disabled": null, "value": null, "width": 199.1875, "height": 3.25, "display": "block", "opacity": "1", "visibility": "visible", "background": "rgb(252, 252, 252)", "border": "rgb(229, 229, 229)", "color": "rgb(25, 28, 31)"}, {"tag": "DIV", "slot": "slider-range", "role": null, "disabled": null, "value": null, "width": 56.90625, "height": 3.25, "display": "block", "opacity": "1", "visibility": "visible", "background": "rgb(48, 51, 54)", "border": "rgb(229, 229, 229)", "color": "rgb(25, 28, 31)"}, {"tag": "DIV", "slot": "slider-thumb", "role": null, "disabled": null, "value": null, "width": 9.75, "height": 9.75, "display": "block", "opacity": "1", "visibility": "visible", "background": "rgb(255, 255, 255)", "border": "rgb(96, 100, 105)", "color": "rgb(25, 28, 31)"}, {"tag": "INPUT", "slot": null, "role": null, "disabled": null, "value": "100", "width": 7.75, "height": 7.75, "display": "block", "opacity": "1", "visibility": "visible", "background": "rgb(255, 255, 255)", "border": "rgb(25, 28, 31)", "color": "rgb(25, 28, 31)"}]
+Traceback (most recent call last):
+  File "/private/tmp/mioon-light-v3-uf1kv1gy/check-slider.py", line 10, in <module>
+    thumb=page.get_by_test_id('appearance-scale').get_by_role('slider');before=thumb.get_attribute('aria-valuenow');thumb.focus();page.keyboard.press('ArrowRight');page.wait_for_function('(v)=>document.querySelector("[data-testid=appearance-scale] [role=slider]").getAttribute("aria-valuenow")!==v',arg=before);changed=thumb.get_attribute('aria-valuenow');page.keyboard.press('ArrowLeft');page.wait_for_function('(v)=>document.querySelector("[data-testid=appearance-scale] [role=slider]").getAttribute("aria-valuenow")===v',arg=before);after=thumb.get_attribute('aria-valuenow');result={'metrics':metrics,'before':before,'changed':changed,'restored':after};(root/'slider-results.json').write_text(json.dumps(result,indent=2));print(json.dumps(result));b.close()
+                                                                                                                                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kouzen/Library/Python/3.11/lib/python/site-packages/playwright/sync_api/_generated.py", line 11595, in wait_for_function
+    self._sync(
+  File "/Users/kouzen/Library/Python/3.11/lib/python/site-packages/playwright/_impl/_sync_base.py", line 115, in _sync
+    return task.result()
+           ^^^^^^^^^^^^^
+  File "/Users/kouzen/Library/Python/3.11/lib/python/site-packages/playwright/_impl/_page.py", line 1110, in wait_for_function
+    return await self._main_frame.wait_for_function(**locals_to_params(locals()))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kouzen/Library/Python/3.11/lib/python/site-packages/playwright/_impl/_frame.py", line 878, in wait_for_function
+    await self._channel.send("waitForFunction", self._timeout, params)
+  File "/Users/kouzen/Library/Python/3.11/lib/python/site-packages/playwright/_impl/_connection.py", line 69, in send
+    return await self._connection.wrap_api_call(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kouzen/Library/Python/3.11/lib/python/site-packages/playwright/_impl/_connection.py", line 559, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+playwright._impl._errors.Error: Page.wait_for_function: TypeError: Cannot read properties of null (reading 'getAttribute')
+    at eval (eval at predicate (eval at evaluate (:290:30)), <anonymous>:1:76)
+    at predicate (eval at evaluate (:290:30), <anonymous>:13:25)
+    at next (eval at evaluate (:290:30), <anonymous>:29:29)
+    at eval (eval at evaluate (:290:30), <anonymous>:42:9)
+    at UtilityScript.evaluate (<anonymous>:292:16)
+    at UtilityScript.<anonymous> (<anonymous>:1:44)

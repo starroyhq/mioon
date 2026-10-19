@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: export history preserves its empty-state text and original single wrapper
+ok 1 - export history preserves its empty-state text and original single wrapper
+  ---
+  duration_ms: 0.716083
+  type: 'test'
+  ...
+# Subtest: failed and pending outcomes keep the exact errors, badge and non-download behavior
+ok 2 - failed and pending outcomes keep the exact errors, badge and non-download behavior
+  ---
+  duration_ms: 0.16525
+  type: 'test'
+  ...
+# Subtest: ready rows pass exact URL precedence and identity to the async file check without claiming a download
+ok 3 - ready rows pass exact URL precedence and identity to the async file check without claiming a download
+  ---
+  duration_ms: 13.179958
+  type: 'test'
+  ...
+# Subtest: snapshot labels preserve preview/export/storyboard and strict revision comparison
+ok 4 - snapshot labels preserve preview/export/storyboard and strict revision comparison
+  ---
+  duration_ms: 0.141708
+  type: 'test'
+  ...
+# Subtest: fallback display name stays local while download filenames remain server-owned
+ok 5 - fallback display name stays local while download filenames remain server-owned
+  ---
+  duration_ms: 0.25
+  type: 'test'
+  ...
+# Subtest: project/error text and download attributes stay React-escaped without changing encoded media URLs
+ok 6 - project/error text and download attributes stay React-escaped without changing encoded media URLs
+  ---
+  duration_ms: 0.105875
+  type: 'test'
+  ...
+# Subtest: presentation uses supplied order and never mutates frozen input rows
+ok 7 - presentation uses supplied order and never mutates frozen input rows
+  ---
+  duration_ms: 0.34175
+  type: 'test'
+  ...
+# Subtest: App keeps history in the controlled export dialog with visibility, recovery and immutable identity inputs
+ok 8 - App keeps history in the controlled export dialog with visibility, recovery and immutable identity inputs
+  ---
+  duration_ms: 0.687583
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 938.029958

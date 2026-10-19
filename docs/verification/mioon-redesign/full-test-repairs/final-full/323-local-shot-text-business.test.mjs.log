@@ -1,0 +1,172 @@
+TAP version 13
+# Subtest: GET and independent draft CAS preserve raw/base text without SQLite writes or dispatch
+ok 1 - GET and independent draft CAS preserve raw/base text without SQLite writes or dispatch
+  ---
+  duration_ms: 784.2915
+  type: 'test'
+  ...
+# Subtest: prepare freezes exact keyed patch and requires saved capture; one pending intent spans project shots
+ok 2 - prepare freezes exact keyed patch and requires saved capture; one pending intent spans project shots
+  ---
+  duration_ms: 730.287041
+  type: 'test'
+  ...
+# Subtest: actual shared scoped update applies once, clears exact capture and preserves original historical receipt bytes
+ok 3 - actual shared scoped update applies once, clears exact capture and preserves original historical receipt bytes
+  ---
+  duration_ms: 728.635709
+  type: 'test'
+  ...
+# Subtest: overlapping execute/recover single-flights while a newer draft survives the exact accepted callback
+ok 4 - overlapping execute/recover single-flights while a newer draft survives the exact accepted callback
+  ---
+  duration_ms: 738.366083
+  type: 'test'
+  ...
+# Subtest: lost shared response reconciles receipt without a second update across new instance
+ok 5 - lost shared response reconciles receipt without a second update across new instance
+  ---
+  duration_ms: 1041.990709
+  type: 'test'
+  ...
+# Subtest: ambiguous failure remains pending through restart and only explicit recover reuses exact original input
+ok 6 - ambiguous failure remains pending through restart and only explicit recover reuses exact original input
+  ---
+  duration_ms: 750.195833
+  type: 'test'
+  ...
+# Subtest: actual fresh revision rollback settles not_applied and terminal recovery never retries even after restoration
+ok 7 - actual fresh revision rollback settles not_applied and terminal recovery never retries even after restoration
+  ---
+  duration_ms: 973.521291
+  type: 'test'
+  ...
+# Subtest: prepare fault beforePersist never dispatches
+ok 8 - prepare fault beforePersist never dispatches
+  ---
+  duration_ms: 675.088417
+  type: 'test'
+  ...
+# Subtest: prepare fault afterPersist never dispatches
+ok 9 - prepare fault afterPersist never dispatches
+  ---
+  duration_ms: 683.174125
+  type: 'test'
+  ...
+# Subtest: prepare fault beforeDirectorySync never dispatches
+ok 10 - prepare fault beforeDirectorySync never dispatches
+  ---
+  duration_ms: 642.143625
+  type: 'test'
+  ...
+# Subtest: prepare fault afterDirectorySync never dispatches
+ok 11 - prepare fault afterDirectorySync never dispatches
+  ---
+  duration_ms: 670.455791
+  type: 'test'
+  ...
+# Subtest: outcome fault beforeOutcomePersist keeps a reservation until explicit original-key recovery
+ok 12 - outcome fault beforeOutcomePersist keeps a reservation until explicit original-key recovery
+  ---
+  duration_ms: 828.4115
+  type: 'test'
+  ...
+# Subtest: outcome fault beforePersist keeps a reservation until explicit original-key recovery
+ok 13 - outcome fault beforePersist keeps a reservation until explicit original-key recovery
+  ---
+  duration_ms: 871.640209
+  type: 'test'
+  ...
+# Subtest: outcome fault afterPersist keeps a reservation until explicit original-key recovery
+ok 14 - outcome fault afterPersist keeps a reservation until explicit original-key recovery
+  ---
+  duration_ms: 814.493167
+  type: 'test'
+  ...
+# Subtest: outcome fault beforeDirectorySync keeps a reservation until explicit original-key recovery
+ok 15 - outcome fault beforeDirectorySync keeps a reservation until explicit original-key recovery
+  ---
+  duration_ms: 1138.64025
+  type: 'test'
+  ...
+# Subtest: outcome fault afterDirectorySync keeps a reservation until explicit original-key recovery
+ok 16 - outcome fault afterDirectorySync keeps a reservation until explicit original-key recovery
+  ---
+  duration_ms: 1020.555125
+  type: 'test'
+  ...
+# Subtest: postrename not-applied uncertainty never reruns the terminal intent
+ok 17 - postrename not-applied uncertainty never reruns the terminal intent
+  ---
+  duration_ms: 1058.344833
+  type: 'test'
+  ...
+# Subtest: generic errors and forged acknowledgements cannot establish a terminal result
+ok 18 - generic errors and forged acknowledgements cannot establish a terminal result
+  ---
+  duration_ms: 5135.994666
+  type: 'test'
+  ...
+# Subtest: corrupt, oversized, wrong-aftertext and cross-table receipts fail closed without altering legacy bytes
+ok 19 - corrupt, oversized, wrong-aftertext and cross-table receipts fail closed without altering legacy bytes
+  ---
+  duration_ms: 5589.189125
+  type: 'test'
+  ...
+# Subtest: relational and JSON ownership checks cover current and historical references without foreign responses
+ok 20 - relational and JSON ownership checks cover current and historical references without foreign responses
+  ---
+  duration_ms: 2823.292959
+  type: 'test'
+  ...
+# Subtest: late owner reassignment, lease loss, abort and restored transition cannot persist a terminal result
+ok 21 - late owner reassignment, lease loss, abort and restored transition cannot persist a terminal result
+  ---
+  duration_ms: 3037.894875
+  type: 'test'
+  ...
+# Subtest: maximum legal multibyte/control text survives draft, intent, receipt and new-instance recovery
+ok 22 - maximum legal multibyte/control text survives draft, intent, receipt and new-instance recovery
+  ---
+  duration_ms: 762.52375
+  type: 'test'
+  ...
+# Subtest: tombstones count toward capacity and never evict existing keys
+ok 23 - tombstones count toward capacity and never evict existing keys
+  ---
+  duration_ms: 675.915917
+  type: 'test'
+  ...
+# Subtest: stale instances, copied scopes, malformed and unsafe private companions never repair or reset
+ok 24 - stale instances, copied scopes, malformed and unsafe private companions never repair or reset
+  ---
+  duration_ms: 1367.962208
+  type: 'test'
+  ...
+# Subtest: reentrant before-persist write trips full-file CAS while malformed inputs never evaluate getters
+ok 25 - reentrant before-persist write trips full-file CAS while malformed inputs never evaluate getters
+  ---
+  duration_ms: 701.85875
+  type: 'test'
+  ...
+# Subtest: restored workspace is unsupported before sidecar, lock, ownership or mutation I/O
+ok 26 - restored workspace is unsupported before sidecar, lock, ownership or mutation I/O
+  ---
+  duration_ms: 0.680125
+  type: 'test'
+  ...
+# Subtest: successful same-CAS retry checkpoints prepublication storage failure before prepare
+ok 27 - successful same-CAS retry checkpoints prepublication storage failure before prepare
+  ---
+  duration_ms: 698.890459
+  type: 'test'
+  ...
+1..27
+# tests 27
+# suites 0
+# pass 27
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 35295.549042

@@ -1,0 +1,68 @@
+{
+  "values": {
+    "--wb-bg": "#F6F6F6",
+    "--wb-panel": "#FFFFFF",
+    "--wb-card": "#FCFCFC",
+    "--wb-raised": "#FFFFFF",
+    "--wb-hover": "#F3F3F3",
+    "--wb-selected": "#EFF0F0",
+    "--wb-input": "#FFFFFF",
+    "--wb-line-subtle": "#EDEDED",
+    "--wb-line": "#E5E5E5",
+    "--wb-line-strong": "#D6D8DA",
+    "--wb-text": "#191C1F",
+    "--wb-soft": "#3B3E40",
+    "--wb-muted": "#66686A",
+    "--wb-disabled": "#A2A4A5",
+    "--wb-accent": "#303336",
+    "--wb-accent-hover": "#232629",
+    "--wb-accent-pressed": "#191C1F",
+    "--wb-accent-foreground": "#FFFFFF",
+    "--wb-accent-line": "#606469",
+    "--wb-danger": "#B52A2A",
+    "--wb-danger-fill": "#BA2525",
+    "--wb-danger-foreground": "#FFFFFF",
+    "--wb-warning": "#8A5300",
+    "--wb-success": "#2B704D",
+    "--wb-video": "#1E3A5F",
+    "--wb-video-edge": "#7694B2",
+    "--wb-image": "#1F4A45",
+    "--wb-image-edge": "#7CA699",
+    "--wb-audio": "#24452C",
+    "--wb-audio-edge": "#819C72",
+    "--wb-subtitle": "#33295C",
+    "--wb-subtitle-edge": "#9B8FB6",
+    "--wb-media-text": "#FFFFFF"
+  },
+  "ratios": {
+    "text": {
+      "bg": 15.834,
+      "panel": 17.112,
+      "card": 16.679,
+      "raised": 17.112,
+      "selected": 14.987
+    },
+    "soft": {
+      "bg": 9.97,
+      "panel": 10.775,
+      "card": 10.502,
+      "raised": 10.775,
+      "selected": 9.437
+    },
+    "muted": {
+      "bg": 5.177,
+      "panel": 5.595,
+      "card": 5.454,
+      "raised": 5.595,
+      "selected": 4.9
+    },
+    "primary": 12.708,
+    "media": {
+      "video": 11.503,
+      "image": 9.888,
+      "audio": 10.7,
+      "subtitle": 13.023
+    }
+  },
+  "cssSha256": "1a5d675595a254a18a9808dc6be25c44a60e9825ef05a0f4eeb327df44ed7a15"
+}

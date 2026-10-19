@@ -1,0 +1,18 @@
+{
+  "file": "tests/design-tokens.test.mjs",
+  "command": [
+    "node",
+    "--test",
+    "--test-reporter=tap",
+    "tests/design-tokens.test.mjs"
+  ],
+  "exitCode": 0,
+  "tests": 5,
+  "pass": 5,
+  "fail": 0,
+  "skipped": 0,
+  "source": "light-v3/logs/design-tokens.log",
+  "testSourceSha256": "cc7677537c81895d38e46eb6dc6e8fc28304cef21de0be5adfec8ced0742fa05",
+  "candidateCssSha256": "1a5d675595a254a18a9808dc6be25c44a60e9825ef05a0f4eeb327df44ed7a15",
+  "temporaryDirectory": "real canonical /private/tmp, independently owned and removed"
+}

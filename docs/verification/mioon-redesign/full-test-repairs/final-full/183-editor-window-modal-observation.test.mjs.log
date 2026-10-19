@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: dirty Agent native inspection pauses before capture; modal blur/focus cannot start a load or stale the commit
+ok 1 - dirty Agent native inspection pauses before capture; modal blur/focus cannot start a load or stale the commit
+  ---
+  duration_ms: 5.756166
+  type: 'test'
+  ...
+# Subtest: unknown-result risk close with dirty Agent keeps the exact unknown owner and requires separate discard
+ok 2 - unknown-result risk close with dirty Agent keeps the exact unknown owner and requires separate discard
+  ---
+  duration_ms: 0.634458
+  type: 'test'
+  ...
+# Subtest: only the current cancellation resumes one Agent read and reuses retained authorization without sending
+ok 3 - only the current cancellation resumes one Agent read and reuses retained authorization without sending
+  ---
+  duration_ms: 0.9085
+  type: 'test'
+  ...
+# Subtest: cancelling while still blurred waits for actual focus rather than reviving an inactive Agent
+ok 4 - cancelling while still blurred waits for actual focus rather than reviving an inactive Agent
+  ---
+  duration_ms: 0.749459
+  type: 'test'
+  ...
+# Subtest: new inspection replaces pause ownership; late old cancel and commit cannot resume or authorize the new attempt
+ok 5 - new inspection replaces pause ownership; late old cancel and commit cannot resume or authorize the new attempt
+  ---
+  duration_ms: 1.2605
+  type: 'test'
+  ...
+# Subtest: final unload veto never resumes reads inline; exact main cancellation resumes after consumed ticket
+ok 6 - final unload veto never resumes reads inline; exact main cancellation resumes after consumed ticket
+  ---
+  duration_ms: 1.112417
+  type: 'test'
+  ...
+# Subtest: a disposed scope cannot be revived by a late modal cancellation or focus callback
+ok 7 - a disposed scope cannot be revived by a late modal cancellation or focus callback
+  ---
+  duration_ms: 0.43475
+  type: 'test'
+  ...
+# Subtest: native close detaches only observation of an accepted Agent run and never stops or repeats it
+ok 8 - native close detaches only observation of an accepted Agent run and never stops or repeats it
+  ---
+  duration_ms: 1.177917
+  type: 'test'
+  ...
+# Subtest: actual image draft stays unchanged through native modal focus and cancellation performs reads only
+ok 9 - actual image draft stays unchanged through native modal focus and cancellation performs reads only
+  ---
+  duration_ms: 3.85175
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 294.432208

@@ -1,0 +1,979 @@
+TAP version 13
+# Subtest: ordinary26 fixes the retained old-constructor red and admits only its new durable operation
+ok 1 - ordinary26 fixes the retained old-constructor red and admits only its new durable operation
+  ---
+  duration_ms: 68.09025
+  type: 'test'
+  ...
+# Subtest: ordinary26 preserves independent ordinary-24 raw catalog and every record/receipt/sequence
+ok 2 - ordinary26 preserves independent ordinary-24 raw catalog and every record/receipt/sequence
+  ---
+  duration_ms: 39.104333
+  type: 'test'
+  ...
+# Subtest: ordinary26 preserves independent ordinary-24-seeded raw catalog and every record/receipt/sequence
+not ok 3 - ordinary26 preserves independent ordinary-24-seeded raw catalog and every record/receipt/sequence
+  ---
+  duration_ms: 3.76525
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:45:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:46:16)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 preserves independent ordinary-24-mock raw catalog and every record/receipt/sequence
+ok 4 - ordinary26 preserves independent ordinary-24-mock raw catalog and every record/receipt/sequence
+  ---
+  duration_ms: 39.623833
+  type: 'test'
+  ...
+# Subtest: ordinary26 preserves independent ordinary-24-mock-seeded raw catalog and every record/receipt/sequence
+not ok 5 - ordinary26 preserves independent ordinary-24-mock-seeded raw catalog and every record/receipt/sequence
+  ---
+  duration_ms: 3.724166
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:45:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:46:16)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 preserves all19 legacy operations, all states, raw BLOB/TEXT and signed64 rowids/high-water marks
+not ok 6 - ordinary26 preserves all19 legacy operations, all states, raw BLOB/TEXT and signed64 rowids/high-water marks
+  ---
+  duration_ms: 3.553708
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:54:1'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:55:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 preserves empty sequence absence including original rowid
+ok 7 - ordinary26 preserves empty sequence absence including original rowid
+  ---
+  duration_ms: 28.787542
+  type: 'test'
+  ...
+# Subtest: ordinary26 preserves empty sequence 0 including original rowid
+not ok 8 - ordinary26 preserves empty sequence 0 including original rowid
+  ---
+  duration_ms: 13.214209
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:66:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:68:111)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 preserves empty sequence 8000 including original rowid
+not ok 9 - ordinary26 preserves empty sequence 8000 including original rowid
+  ---
+  duration_ms: 10.945542
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:66:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:68:111)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 preserves empty sequence 9007199254741999 including original rowid
+not ok 10 - ordinary26 preserves empty sequence 9007199254741999 including original rowid
+  ---
+  duration_ms: 10.547791
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:66:3'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741991'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:68:111)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 keeps lane uniqueness, immutable identity, state machine, input bounds and FK constraints
+not ok 11 - ordinary26 keeps lane uniqueness, immutable identity, state machine, input bounds and FK constraints
+  ---
+  duration_ms: 3.853792
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:78:1'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:79:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 preserves unrelated custom table/index/trigger/view without executing imported DDL
+not ok 12 - ordinary26 preserves unrelated custom table/index/trigger/view without executing imported DDL
+  ---
+  duration_ms: 3.73975
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:105:1'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:106:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects custom attached index before schema or data effects
+not ok 13 - ordinary26 rejects custom attached index before schema or data effects
+  ---
+  duration_ms: 3.752584
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:127:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:128:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects custom attached trigger before schema or data effects
+not ok 14 - ordinary26 rejects custom attached trigger before schema or data effects
+  ---
+  duration_ms: 3.493667
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:127:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:128:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects dependent view before schema or data effects
+not ok 15 - ordinary26 rejects dependent view before schema or data effects
+  ---
+  duration_ms: 3.346375
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:127:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:128:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects external trigger dependency before schema or data effects
+not ok 16 - ordinary26 rejects external trigger dependency before schema or data effects
+  ---
+  duration_ms: 3.645458
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:127:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:128:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects marker trigger before schema or data effects
+not ok 17 - ordinary26 rejects marker trigger before schema or data effects
+  ---
+  duration_ms: 3.6405
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:127:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:128:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects inbound cascade FK before schema or data effects
+not ok 18 - ordinary26 rejects inbound cascade FK before schema or data effects
+  ---
+  duration_ms: 3.644209
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:127:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:128:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects inbound restrict FK before schema or data effects
+not ok 19 - ordinary26 rejects inbound restrict FK before schema or data effects
+  ---
+  duration_ms: 4.963416
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:127:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:128:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects additional task column before schema or data effects
+not ok 20 - ordinary26 rejects additional task column before schema or data effects
+  ---
+  duration_ms: 3.5
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:127:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:128:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects changed protection before schema or data effects
+not ok 21 - ordinary26 rejects changed protection before schema or data effects
+  ---
+  duration_ms: 3.353042
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:127:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:128:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects missing protection before schema or data effects
+not ok 22 - ordinary26 rejects missing protection before schema or data effects
+  ---
+  duration_ms: 3.5465
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:127:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:128:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects staging collision before schema or data effects
+not ok 23 - ordinary26 rejects staging collision before schema or data effects
+  ---
+  duration_ms: 3.307667
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:127:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:128:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects restore residue before schema or data effects
+not ok 24 - ordinary26 rejects restore residue before schema or data effects
+  ---
+  duration_ms: 3.318542
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:127:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:128:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects TEMP task trigger before schema or data effects
+not ok 25 - ordinary26 rejects TEMP task trigger before schema or data effects
+  ---
+  duration_ms: 3.631708
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:127:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:128:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects TEMP marker trigger before schema or data effects
+not ok 26 - ordinary26 rejects TEMP marker trigger before schema or data effects
+  ---
+  duration_ms: 3.382958
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:127:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:128:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects TEMP dependent view before schema or data effects
+not ok 27 - ordinary26 rejects TEMP dependent view before schema or data effects
+  ---
+  duration_ms: 3.357708
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:127:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:128:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects missing marker without repairing or rewriting old records
+not ok 28 - ordinary26 rejects missing marker without repairing or rewriting old records
+  ---
+  duration_ms: 3.899125
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:146:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:147:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects restored25 marker without repairing or rewriting old records
+not ok 29 - ordinary26 rejects restored25 marker without repairing or rewriting old records
+  ---
+  duration_ms: 3.38675
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:146:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:147:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects unexpanded26 marker without repairing or rewriting old records
+not ok 30 - ordinary26 rejects unexpanded26 marker without repairing or rewriting old records
+  ---
+  duration_ms: 3.555834
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:146:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:147:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects future27 marker without repairing or rewriting old records
+not ok 31 - ordinary26 rejects future27 marker without repairing or rewriting old records
+  ---
+  duration_ms: 3.553041
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:146:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:147:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects unknown signed64 marker without repairing or rewriting old records
+not ok 32 - ordinary26 rejects unknown signed64 marker without repairing or rewriting old records
+  ---
+  duration_ms: 3.439417
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:146:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:147:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects negative marker without repairing or rewriting old records
+not ok 33 - ordinary26 rejects negative marker without repairing or rewriting old records
+  ---
+  duration_ms: 3.348792
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:146:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:147:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects duplicate sequence without repairing or rewriting old records
+not ok 34 - ordinary26 rejects duplicate sequence without repairing or rewriting old records
+  ---
+  duration_ms: 3.70325
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:146:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:147:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects absent occupied sequence without repairing or rewriting old records
+not ok 35 - ordinary26 rejects absent occupied sequence without repairing or rewriting old records
+  ---
+  duration_ms: 3.841459
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:146:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:147:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects low sequence without repairing or rewriting old records
+not ok 36 - ordinary26 rejects low sequence without repairing or rewriting old records
+  ---
+  duration_ms: 3.402375
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:146:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:147:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects negative sequence without repairing or rewriting old records
+not ok 37 - ordinary26 rejects negative sequence without repairing or rewriting old records
+  ---
+  duration_ms: 3.51975
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:146:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:147:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects real sequence without repairing or rewriting old records
+not ok 38 - ordinary26 rejects real sequence without repairing or rewriting old records
+  ---
+  duration_ms: 3.3315
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:146:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:147:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects text sequence without repairing or rewriting old records
+not ok 39 - ordinary26 rejects text sequence without repairing or rewriting old records
+  ---
+  duration_ms: 3.296417
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:146:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:147:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rejects blob sequence without repairing or rewriting old records
+not ok 40 - ordinary26 rejects blob sequence without repairing or rewriting old records
+  ---
+  duration_ms: 3.720166
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:146:4'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:147:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 never migrates frozen restored-25
+ok 41 - ordinary26 never migrates frozen restored-25
+  ---
+  duration_ms: 29.152042
+  type: 'test'
+  ...
+# Subtest: ordinary26 never migrates frozen restored-25-seeded
+not ok 42 - ordinary26 never migrates frozen restored-25-seeded
+  ---
+  duration_ms: 4.1655
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:150:87'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:151:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 never migrates frozen restored-25-mock-seeded
+not ok 43 - ordinary26 never migrates frozen restored-25-mock-seeded
+  ---
+  duration_ms: 3.996458
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:150:87'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:151:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 read-only validator does not bootstrap24 and rejects lost/mixed markers
+not ok 44 - ordinary26 read-only validator does not bootstrap24 and rejects lost/mixed markers
+  ---
+  duration_ms: 3.558875
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:154:1'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:155:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 main-qualified migration ignores harmless TEMP table shadows and preserves them
+not ok 45 - ordinary26 main-qualified migration ignores harmless TEMP table shadows and preserves them
+  ---
+  duration_ms: 3.4805
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:161:1'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:162:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 refuses unsafe connection settings and nested transactions
+not ok 46 - ordinary26 refuses unsafe connection settings and nested transactions
+  ---
+  duration_ms: 3.453958
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:167:1'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:168:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: ordinary26 rolls back every DDL/copy/index/trigger/sequence/marker stage before and after native execution
+not ok 47 - ordinary26 rolls back every DDL/copy/index/trigger/sequence/marker stage before and after native execution
+  ---
+  duration_ms: 3.765542
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:175:1'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:176:21)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: real WAL child SIGKILL at every migration write cold-reopens complete24 or committed26 and converges on reentry
+not ok 48 - real WAL child SIGKILL at every migration write cold-reopens complete24 or committed26 and converges on reentry
+  ---
+  duration_ms: 4.118417
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:225:1'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:226:42)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: non-integer sequence projection masks giant TEXT/BLOB payloads before they cross into JavaScript
+not ok 49 - non-integer sequence projection masks giant TEXT/BLOB payloads before they cross into JavaScript
+  ---
+  duration_ms: 3.353209
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:247:1'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    assertBoundedSequenceProjection (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:141:7)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:248:3)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: complete24 read-only migration preflight rejects marker trigger before frozen bootstrap
+not ok 50 - complete24 read-only migration preflight rejects marker trigger before frozen bootstrap
+  ---
+  duration_ms: 3.311959
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:251:1'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:15:59)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26.test.mjs:252:14)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..50
+# tests 50
+# suites 0
+# pass 5
+# fail 45
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 567.591958

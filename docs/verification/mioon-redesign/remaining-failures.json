@@ -1,0 +1,1092 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-18T19:31:10.207603+00:00",
+  "scope": "Read-only comparison of the ten parent-selected remaining failing files. No rerun, source modification or verify synchronization. Baseline logs resolved by exact file match in results.jsonl; candidate uses designated run only.",
+  "baselineIndex": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/results.jsonl",
+  "candidateRuns": [
+    "/private/tmp/mioon-redesign-2_80wkck/focused-final-regression/results.json",
+    "/private/tmp/mioon-redesign-2_80wkck/focused-legacy-media-final/results.json"
+  ],
+  "totals": {
+    "files": 10,
+    "baseline": {
+      "tests": 66,
+      "pass": 46,
+      "fail": 20,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "candidate": {
+      "tests": 66,
+      "pass": 46,
+      "fail": 20,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "leafFailuresEach": 17,
+    "aggregateFailuresEach": 3,
+    "newFailureSubtests": 0,
+    "resolvedFailureSubtests": 0,
+    "filesWithChangedActualAssertionValue": 1,
+    "filesWithChangedRefusalDiagnostic": 2
+  },
+  "conclusion": "All ten files retain exactly the baseline failing subtest set. No new failing assertion was observed in these designated runs. This does not make the remaining tests pass or prove paths after their failure points.",
+  "files": [
+    {
+      "file": "tests/cli-v4.test.mjs",
+      "classification": "same_watch_timeout_and_dependent_failures",
+      "observableReason": "WATCH_TIMEOUT；任务停在 downloading；退出码实际5/期望0。后续版本数实际0/期望1、预期冲突退出3但实际成功0均相同。",
+      "inferenceAndLimits": "超时与两个后续失败相同；Mock 渲染链的关系由测试共享状态推断，本日志未显示底层 FFmpeg stderr。",
+      "sameFailingSubtestSet": true,
+      "newFailureSubtests": [],
+      "resolvedFailureSubtests": [],
+      "baseline": {
+        "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/066-cli-v4.test.mjs.log",
+        "exitCode": 1,
+        "wallSeconds": 66.929,
+        "summary": {
+          "tests": 9,
+          "pass": 5,
+          "fail": 4,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "evidencePath": "logs/remaining/baseline/cli-v4.test.mjs.tap",
+        "evidenceSha256": "c4ae6c88bb8af246e9cb0c78c8348a00ec0784c24ffbb4e0c0d4befc368291f7"
+      },
+      "candidate": {
+        "log": "/private/tmp/mioon-redesign-2_80wkck/focused-final-regression/cli-v4.test.mjs.log",
+        "exitCode": 1,
+        "wallSeconds": 59.74,
+        "summary": {
+          "tests": 9,
+          "pass": 5,
+          "fail": 4,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "evidencePath": "logs/remaining/candidate/cli-v4.test.mjs.tap",
+        "evidenceSha256": "95b3240c10ef2ab44b5ec742348822ed1a78adafa60c5c79a5db4fbb7a786eea"
+      },
+      "failures": [
+        {
+          "name": "stable request IDs replay exactly across CLI and MCP and never duplicate provider submits",
+          "aggregateOnly": false,
+          "sameFailureName": true,
+          "baseline": {
+            "tapIndex": 2,
+            "failureType": "testCodeFailure",
+            "code": "ERR_ASSERTION",
+            "expected": "0",
+            "actual": "5",
+            "operator": "strictEqual",
+            "location": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/cli-v4.test.mjs:187:11",
+            "embeddedErrorCodes": [
+              "WATCH_TIMEOUT"
+            ],
+            "embeddedStatuses": [
+              "downloading",
+              "running"
+            ],
+            "logLine": 16,
+            "errorOmitted": "Long synthetic job payload omitted; original error is in the exact log at logLine."
+          },
+          "candidate": {
+            "tapIndex": 2,
+            "failureType": "testCodeFailure",
+            "code": "ERR_ASSERTION",
+            "expected": "0",
+            "actual": "5",
+            "operator": "strictEqual",
+            "location": "/private/tmp/mioon-redesign-2_80wkck/verify/tests/cli-v4.test.mjs:189:11",
+            "embeddedErrorCodes": [
+              "WATCH_TIMEOUT"
+            ],
+            "embeddedStatuses": [
+              "downloading",
+              "running"
+            ],
+            "logLine": 16,
+            "errorOmitted": "Long synthetic job payload omitted; original error is in the exact log at logLine."
+          },
+          "assertionOrCodeDeltas": [],
+          "semanticDiagnosticChanged": false
+        },
+        {
+          "name": "version selection, timeline editing and export watch use actual durable media",
+          "aggregateOnly": false,
+          "sameFailureName": true,
+          "baseline": {
+            "tapIndex": 3,
+            "failureType": "testCodeFailure",
+            "code": "ERR_ASSERTION",
+            "expected": "1",
+            "actual": "0",
+            "operator": "strictEqual",
+            "location": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/cli-v4.test.mjs:209:11",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 47,
+            "error": "Expected values to be strictly equal:\n\n0 !== 1"
+          },
+          "candidate": {
+            "tapIndex": 3,
+            "failureType": "testCodeFailure",
+            "code": "ERR_ASSERTION",
+            "expected": "1",
+            "actual": "0",
+            "operator": "strictEqual",
+            "location": "/private/tmp/mioon-redesign-2_80wkck/verify/tests/cli-v4.test.mjs:211:11",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 47,
+            "error": "Expected values to be strictly equal:\n\n0 !== 1"
+          },
+          "assertionOrCodeDeltas": [],
+          "semanticDiagnosticChanged": false
+        },
+        {
+          "name": "watch reports terminal failure and strict revision conflicts without mutating existing work",
+          "aggregateOnly": false,
+          "sameFailureName": true,
+          "baseline": {
+            "tapIndex": 5,
+            "failureType": "testCodeFailure",
+            "code": "ERR_ASSERTION",
+            "expected": "3",
+            "actual": "0",
+            "operator": "strictEqual",
+            "location": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/cli-v4.test.mjs:280:11",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 78,
+            "errorOmitted": "Long synthetic job payload omitted; original error is in the exact log at logLine."
+          },
+          "candidate": {
+            "tapIndex": 5,
+            "failureType": "testCodeFailure",
+            "code": "ERR_ASSERTION",
+            "expected": "3",
+            "actual": "0",
+            "operator": "strictEqual",
+            "location": "/private/tmp/mioon-redesign-2_80wkck/verify/tests/cli-v4.test.mjs:282:11",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 78,
+            "errorOmitted": "Long synthetic job payload omitted; original error is in the exact log at logLine."
+          },
+          "assertionOrCodeDeltas": [],
+          "semanticDiagnosticChanged": false
+        },
+        {
+          "name": "CLI inputs, MCP crossvisibility, stable replay, watches and real mock export share one backend",
+          "aggregateOnly": true,
+          "sameFailureName": true,
+          "baseline": {
+            "tapIndex": 2,
+            "failureType": "subtestsFailed",
+            "code": "ERR_TEST_FAILURE",
+            "location": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/cli-v4.test.mjs:142:1",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 110,
+            "error": "3 subtests failed"
+          },
+          "candidate": {
+            "tapIndex": 2,
+            "failureType": "subtestsFailed",
+            "code": "ERR_TEST_FAILURE",
+            "location": "/private/tmp/mioon-redesign-2_80wkck/verify/tests/cli-v4.test.mjs:142:1",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 110,
+            "error": "3 subtests failed"
+          },
+          "assertionOrCodeDeltas": [],
+          "semanticDiagnosticChanged": false
+        }
+      ]
+    },
+    {
+      "file": "tests/export-settings-media.test.mjs",
+      "classification": "same_observable_media_failure",
+      "observableReason": "同一 native/360/1080 + 字幕测试报 MEDIA_EXIT_FAILED / Local media tool failed.",
+      "inferenceAndLimits": "两侧只暴露通用媒体退出错误；不能由本 TAP 断言具体滤镜或系统错误相同。",
+      "sameFailingSubtestSet": true,
+      "newFailureSubtests": [],
+      "resolvedFailureSubtests": [],
+      "baseline": {
+        "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/213-export-settings-media.test.mjs.log",
+        "exitCode": 1,
+        "wallSeconds": 31.001,
+        "summary": {
+          "tests": 20,
+          "pass": 19,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "evidencePath": "logs/remaining/baseline/export-settings-media.test.mjs.tap",
+        "evidenceSha256": "5bc9ff7dbe973c684985c45389ac4a62033a0218610ee4ee0b4fe11227d95a76"
+      },
+      "candidate": {
+        "log": "/private/tmp/mioon-redesign-2_80wkck/focused-final-regression/export-settings-media.test.mjs.log",
+        "exitCode": 1,
+        "wallSeconds": 17.69,
+        "summary": {
+          "tests": 20,
+          "pass": 19,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "evidencePath": "logs/remaining/candidate/export-settings-media.test.mjs.tap",
+        "evidenceSha256": "93cf013ce4b38c598b00756ed7c7b68dd1aaffe6b5cd54e61ed69dd8f132a827"
+      },
+      "failures": [
+        {
+          "name": "all three timeline aspects deliver native/360/1080 with post-caption scale, exact frame boundaries and identical audio",
+          "aggregateOnly": false,
+          "sameFailureName": true,
+          "baseline": {
+            "tapIndex": 1,
+            "failureType": "testCodeFailure",
+            "code": "MEDIA_EXIT_FAILED",
+            "location": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/export-settings-media.test.mjs:71:1",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 3,
+            "error": "Local media tool failed."
+          },
+          "candidate": {
+            "tapIndex": 1,
+            "failureType": "testCodeFailure",
+            "code": "MEDIA_EXIT_FAILED",
+            "location": "/private/tmp/mioon-redesign-2_80wkck/verify/tests/export-settings-media.test.mjs:71:1",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 3,
+            "error": "Local media tool failed."
+          },
+          "assertionOrCodeDeltas": [],
+          "semanticDiagnosticChanged": false
+        }
+      ]
+    },
+    {
+      "file": "tests/integration.test.mjs",
+      "classification": "same_mock_render_failures_and_dependent_failures",
+      "observableReason": "A4/A7/A8 的 job 均 downloading，携带 MOCK_RENDER_FAILED；A5/security 读 undefined.id，A6 读 undefined.url。",
+      "inferenceAndLimits": "MOCK_RENDER_FAILED 为直接日志证据；三个 undefined 失败依赖未发布版本，是共享夹具的后续失败。",
+      "sameFailingSubtestSet": true,
+      "newFailureSubtests": [],
+      "resolvedFailureSubtests": [],
+      "baseline": {
+        "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/288-integration.test.mjs.log",
+        "exitCode": 1,
+        "wallSeconds": 148.203,
+        "summary": {
+          "tests": 9,
+          "pass": 2,
+          "fail": 7,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "evidencePath": "logs/remaining/baseline/integration.test.mjs.tap",
+        "evidenceSha256": "db059e905127e516516354912483fdf195bcce605df5a4267e75fb650ed47b64"
+      },
+      "candidate": {
+        "log": "/private/tmp/mioon-redesign-2_80wkck/focused-final-regression/integration.test.mjs.log",
+        "exitCode": 1,
+        "wallSeconds": 147.35,
+        "summary": {
+          "tests": 9,
+          "pass": 2,
+          "fail": 7,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "evidencePath": "logs/remaining/candidate/integration.test.mjs.tap",
+        "evidenceSha256": "d614cc658c95e736e4a68e158af785fb15bf337d9dcf037278c4b460ef054da2"
+      },
+      "failures": [
+        {
+          "name": "A4 twenty concurrent replays plus stale replay create one durable provider submission and accepted task",
+          "aggregateOnly": false,
+          "sameFailureName": true,
+          "baseline": {
+            "tapIndex": 2,
+            "failureType": "testCodeFailure",
+            "code": "ERR_TEST_FAILURE",
+            "location": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/integration.test.mjs:89:11",
+            "embeddedErrorCodes": [
+              "MOCK_RENDER_FAILED"
+            ],
+            "embeddedStatuses": [
+              "available",
+              "downloading"
+            ],
+            "logLine": 10,
+            "errorOmitted": "Long synthetic job payload omitted; original error is in the exact log at logLine."
+          },
+          "candidate": {
+            "tapIndex": 2,
+            "failureType": "testCodeFailure",
+            "code": "ERR_TEST_FAILURE",
+            "location": "/private/tmp/mioon-redesign-2_80wkck/verify/tests/integration.test.mjs:89:11",
+            "embeddedErrorCodes": [
+              "MOCK_RENDER_FAILED"
+            ],
+            "embeddedStatuses": [
+              "available",
+              "downloading"
+            ],
+            "logLine": 10,
+            "errorOmitted": "Long synthetic job payload omitted; original error is in the exact log at logLine."
+          },
+          "assertionOrCodeDeltas": [],
+          "semanticDiagnosticChanged": false
+        },
+        {
+          "name": "A5 stale shot, node, ordering and selected-version writes return HTTP 409 and preserve latest state",
+          "aggregateOnly": false,
+          "sameFailureName": true,
+          "baseline": {
+            "tapIndex": 3,
+            "failureType": "testCodeFailure",
+            "code": "ERR_TEST_FAILURE",
+            "location": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/integration.test.mjs:104:11",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 27,
+            "error": "\"Cannot read properties of undefined (reading 'id')\""
+          },
+          "candidate": {
+            "tapIndex": 3,
+            "failureType": "testCodeFailure",
+            "code": "ERR_TEST_FAILURE",
+            "location": "/private/tmp/mioon-redesign-2_80wkck/verify/tests/integration.test.mjs:104:11",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 27,
+            "error": "\"Cannot read properties of undefined (reading 'id')\""
+          },
+          "assertionOrCodeDeltas": [],
+          "semanticDiagnosticChanged": false
+        },
+        {
+          "name": "A6 two real immutable versions survive later edits; original replay works and different reuse conflicts",
+          "aggregateOnly": false,
+          "sameFailureName": true,
+          "baseline": {
+            "tapIndex": 4,
+            "failureType": "testCodeFailure",
+            "code": "ERR_TEST_FAILURE",
+            "location": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/integration.test.mjs:116:11",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 45,
+            "error": "\"Cannot read properties of undefined (reading 'url')\""
+          },
+          "candidate": {
+            "tapIndex": 4,
+            "failureType": "testCodeFailure",
+            "code": "ERR_TEST_FAILURE",
+            "location": "/private/tmp/mioon-redesign-2_80wkck/verify/tests/integration.test.mjs:116:11",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 45,
+            "error": "\"Cannot read properties of undefined (reading 'url')\""
+          },
+          "assertionOrCodeDeltas": [],
+          "semanticDiagnosticChanged": false
+        },
+        {
+          "name": "A7 rejection, terminal failure, unknown, poll timeout, download retry, accepted-response loss and local cancellation",
+          "aggregateOnly": false,
+          "sameFailureName": true,
+          "baseline": {
+            "tapIndex": 5,
+            "failureType": "testCodeFailure",
+            "code": "ERR_TEST_FAILURE",
+            "location": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/integration.test.mjs:136:11",
+            "embeddedErrorCodes": [
+              "MOCK_RENDER_FAILED"
+            ],
+            "embeddedStatuses": [
+              "available",
+              "downloading"
+            ],
+            "logLine": 63,
+            "errorOmitted": "Long synthetic job payload omitted; original error is in the exact log at logLine."
+          },
+          "candidate": {
+            "tapIndex": 5,
+            "failureType": "testCodeFailure",
+            "code": "ERR_TEST_FAILURE",
+            "location": "/private/tmp/mioon-redesign-2_80wkck/verify/tests/integration.test.mjs:136:11",
+            "embeddedErrorCodes": [
+              "MOCK_RENDER_FAILED"
+            ],
+            "embeddedStatuses": [
+              "available",
+              "downloading"
+            ],
+            "logLine": 63,
+            "errorOmitted": "Long synthetic job payload omitted; original error is in the exact log at logLine."
+          },
+          "assertionOrCodeDeltas": [],
+          "semanticDiagnosticChanged": false
+        },
+        {
+          "name": "security denies unauthenticated, foreign Host/Origin, paths, URLs, cross-project references and invalid MIME",
+          "aggregateOnly": false,
+          "sameFailureName": true,
+          "baseline": {
+            "tapIndex": 7,
+            "failureType": "testCodeFailure",
+            "code": "ERR_TEST_FAILURE",
+            "location": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/integration.test.mjs:162:11",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 86,
+            "error": "\"Cannot read properties of undefined (reading 'id')\""
+          },
+          "candidate": {
+            "tapIndex": 7,
+            "failureType": "testCodeFailure",
+            "code": "ERR_TEST_FAILURE",
+            "location": "/private/tmp/mioon-redesign-2_80wkck/verify/tests/integration.test.mjs:162:11",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 86,
+            "error": "\"Cannot read properties of undefined (reading 'id')\""
+          },
+          "assertionOrCodeDeltas": [],
+          "semanticDiagnosticChanged": false
+        },
+        {
+          "name": "A8 export stitches three genuine clips into decodable H264 720x1280 MP4 with summed duration",
+          "aggregateOnly": false,
+          "sameFailureName": true,
+          "baseline": {
+            "tapIndex": 8,
+            "failureType": "testCodeFailure",
+            "code": "ERR_TEST_FAILURE",
+            "location": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/integration.test.mjs:192:11",
+            "embeddedErrorCodes": [
+              "MOCK_RENDER_FAILED"
+            ],
+            "embeddedStatuses": [
+              "available",
+              "downloading"
+            ],
+            "logLine": 104,
+            "errorOmitted": "Long synthetic job payload omitted; original error is in the exact log at logLine."
+          },
+          "candidate": {
+            "tapIndex": 8,
+            "failureType": "testCodeFailure",
+            "code": "ERR_TEST_FAILURE",
+            "location": "/private/tmp/mioon-redesign-2_80wkck/verify/tests/integration.test.mjs:192:11",
+            "embeddedErrorCodes": [
+              "MOCK_RENDER_FAILED"
+            ],
+            "embeddedStatuses": [
+              "available",
+              "downloading"
+            ],
+            "logLine": 104,
+            "errorOmitted": "Long synthetic job payload omitted; original error is in the exact log at logLine."
+          },
+          "assertionOrCodeDeltas": [],
+          "semanticDiagnosticChanged": false
+        },
+        {
+          "name": "durable HTTP acceptance: real process restarts, provider side effects, media and security",
+          "aggregateOnly": true,
+          "sameFailureName": true,
+          "baseline": {
+            "tapIndex": 1,
+            "failureType": "subtestsFailed",
+            "code": "ERR_TEST_FAILURE",
+            "location": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/integration.test.mjs:56:1",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 121,
+            "error": "6 subtests failed"
+          },
+          "candidate": {
+            "tapIndex": 1,
+            "failureType": "subtestsFailed",
+            "code": "ERR_TEST_FAILURE",
+            "location": "/private/tmp/mioon-redesign-2_80wkck/verify/tests/integration.test.mjs:56:1",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 121,
+            "error": "6 subtests failed"
+          },
+          "assertionOrCodeDeltas": [],
+          "semanticDiagnosticChanged": false
+        }
+      ]
+    },
+    {
+      "file": "tests/local-drafts-transports.test.mjs",
+      "classification": "same_stale_schema_expectation_with_actual_value_change",
+      "observableReason": "同一旧 schema-26 备份断言：基线实际40、候选实际48，期望均26。",
+      "inferenceAndLimits": "实际值新增差异源于当前默认 schema 前进；旧断言在基线已经失败，不能把测试记为通过。",
+      "sameFailingSubtestSet": true,
+      "newFailureSubtests": [],
+      "resolvedFailureSubtests": [],
+      "baseline": {
+        "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/306-local-drafts-transports.test.mjs.log",
+        "exitCode": 1,
+        "wallSeconds": 9.783,
+        "summary": {
+          "tests": 7,
+          "pass": 6,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "evidencePath": "logs/remaining/baseline/local-drafts-transports.test.mjs.tap",
+        "evidenceSha256": "4fe37d52b2f3781c79ac687c02780661bd5d7270cc4a8685f9155a8b24072dcf"
+      },
+      "candidate": {
+        "log": "/private/tmp/mioon-redesign-2_80wkck/focused-final-regression/local-drafts-transports.test.mjs.log",
+        "exitCode": 1,
+        "wallSeconds": 16.37,
+        "summary": {
+          "tests": 7,
+          "pass": 6,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "evidencePath": "logs/remaining/candidate/local-drafts-transports.test.mjs.tap",
+        "evidenceSha256": "1bea40fb7568348cb1073b819b56cea8c89c3b05b45b93eb899b04cb07a6114e"
+      },
+      "failures": [
+        {
+          "name": "a real cold schema-26 backup excludes populated local drafts and preserves the source sidecar exactly",
+          "aggregateOnly": false,
+          "sameFailureName": true,
+          "baseline": {
+            "tapIndex": 4,
+            "failureType": "testCodeFailure",
+            "code": "ERR_ASSERTION",
+            "expected": "26",
+            "actual": "40",
+            "operator": "strictEqual",
+            "location": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/local-drafts-transports.test.mjs:337:1",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 21,
+            "error": "Expected values to be strictly equal:\n\n40 !== 26"
+          },
+          "candidate": {
+            "tapIndex": 4,
+            "failureType": "testCodeFailure",
+            "code": "ERR_ASSERTION",
+            "expected": "26",
+            "actual": "48",
+            "operator": "strictEqual",
+            "location": "/private/tmp/mioon-redesign-2_80wkck/verify/tests/local-drafts-transports.test.mjs:337:1",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 21,
+            "error": "Expected values to be strictly equal:\n\n48 !== 26"
+          },
+          "assertionOrCodeDeltas": [
+            {
+              "field": "actual",
+              "baseline": "40",
+              "candidate": "48"
+            }
+          ],
+          "semanticDiagnosticChanged": true
+        }
+      ]
+    },
+    {
+      "file": "tests/mcp.test.mjs",
+      "classification": "same_explicit_mock_render_failure",
+      "observableReason": "同一 Mock job 携带 MOCK_RENDER_FAILED，实际 downloading / 期望 succeeded。",
+      "inferenceAndLimits": "失败证据与断言一致；底层渲染 stderr 未在本 TAP 展开。",
+      "sameFailingSubtestSet": true,
+      "newFailureSubtests": [],
+      "resolvedFailureSubtests": [],
+      "baseline": {
+        "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/332-mcp.test.mjs.log",
+        "exitCode": 1,
+        "wallSeconds": 47.546,
+        "summary": {
+          "tests": 1,
+          "pass": 0,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "evidencePath": "logs/remaining/baseline/mcp.test.mjs.tap",
+        "evidenceSha256": "441a271d006329c8f588c05a632054518954be76002ccd0e5f5913e524635744"
+      },
+      "candidate": {
+        "log": "/private/tmp/mioon-redesign-2_80wkck/focused-final-regression/mcp.test.mjs.log",
+        "exitCode": 1,
+        "wallSeconds": 47.06,
+        "summary": {
+          "tests": 1,
+          "pass": 0,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "evidencePath": "logs/remaining/candidate/mcp.test.mjs.tap",
+        "evidenceSha256": "b7a24efcb617c75e744d05d2a3e04656a472dce852494723ee29aebe8e3b6b78"
+      },
+      "failures": [
+        {
+          "name": "A3 official MCP SDK stdio initialize/list/call controls durable HTTP project, jobs and versions",
+          "aggregateOnly": false,
+          "sameFailureName": true,
+          "baseline": {
+            "tapIndex": 1,
+            "failureType": "testCodeFailure",
+            "code": "ERR_ASSERTION",
+            "expected": "succeeded",
+            "actual": "downloading",
+            "operator": "strictEqual",
+            "location": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/mcp.test.mjs:19:1",
+            "embeddedErrorCodes": [
+              "MOCK_RENDER_FAILED"
+            ],
+            "embeddedStatuses": [
+              "available",
+              "downloading"
+            ],
+            "logLine": 3,
+            "errorOmitted": "Long synthetic job payload omitted; original error is in the exact log at logLine."
+          },
+          "candidate": {
+            "tapIndex": 1,
+            "failureType": "testCodeFailure",
+            "code": "ERR_ASSERTION",
+            "expected": "succeeded",
+            "actual": "downloading",
+            "operator": "strictEqual",
+            "location": "/private/tmp/mioon-redesign-2_80wkck/verify/tests/mcp.test.mjs:19:1",
+            "embeddedErrorCodes": [
+              "MOCK_RENDER_FAILED"
+            ],
+            "embeddedStatuses": [
+              "available",
+              "downloading"
+            ],
+            "logLine": 3,
+            "errorOmitted": "Long synthetic job payload omitted; original error is in the exact log at logLine."
+          },
+          "assertionOrCodeDeltas": [],
+          "semanticDiagnosticChanged": false
+        }
+      ]
+    },
+    {
+      "file": "tests/reference-recovery-transports.test.mjs",
+      "classification": "same_receipt_guard_refusal_with_diagnostic_change",
+      "observableReason": "同一重启报 RESTORE_SCHEMA_UNSUPPORTED；夹具 DROP immutable_reference_responses 后未重建。",
+      "inferenceAndLimits": "基线文案为 missing receipt protection；候选为通用 RESTORE_SCHEMA_UNSUPPORTED，栈进入48/49固定目录分类器。拒绝损坏目录的边界一致。",
+      "sameFailingSubtestSet": true,
+      "newFailureSubtests": [],
+      "resolvedFailureSubtests": [],
+      "baseline": {
+        "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/443-reference-recovery-transports.test.mjs.log",
+        "exitCode": 1,
+        "wallSeconds": 3.197,
+        "summary": {
+          "tests": 2,
+          "pass": 1,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "evidencePath": "logs/remaining/baseline/reference-recovery-transports.test.mjs.tap",
+        "evidenceSha256": "9047fbf58990509f1226ea862919abd25f605c7ce718e4f6fc34d3300e08bbaf"
+      },
+      "candidate": {
+        "log": "/private/tmp/mioon-redesign-2_80wkck/focused-final-regression/reference-recovery-transports.test.mjs.log",
+        "exitCode": 1,
+        "wallSeconds": 4.5,
+        "summary": {
+          "tests": 2,
+          "pass": 1,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "evidencePath": "logs/remaining/candidate/reference-recovery-transports.test.mjs.tap",
+        "evidenceSha256": "880cd5adbd99e39c135e69fe173938afb76378b64992b7f6177738b22937f513"
+      },
+      "failures": [
+        {
+          "name": "real HTTP CLI and official MCP lose attach/detach acknowledgements, retain ownership uncertainty and replay historical exact responses",
+          "aggregateOnly": false,
+          "sameFailureName": true,
+          "baseline": {
+            "tapIndex": 1,
+            "failureType": "testCodeFailure",
+            "code": "RESTORE_SCHEMA_UNSUPPORTED",
+            "location": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/reference-recovery-transports.test.mjs:64:1",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 3,
+            "error": "Ordinary receipt protection repair is unsupported: missing receipt protection"
+          },
+          "candidate": {
+            "tapIndex": 1,
+            "failureType": "testCodeFailure",
+            "code": "RESTORE_SCHEMA_UNSUPPORTED",
+            "location": "/private/tmp/mioon-redesign-2_80wkck/verify/tests/reference-recovery-transports.test.mjs:64:1",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 3,
+            "error": "RESTORE_SCHEMA_UNSUPPORTED"
+          },
+          "assertionOrCodeDeltas": [],
+          "semanticDiagnosticChanged": true
+        }
+      ]
+    },
+    {
+      "file": "tests/timeline-image-transports.test.mjs",
+      "classification": "same_invalid_historical_fixture",
+      "observableReason": "同一 restored33 接线测试报 RESTORE_SCHEMA_UNSUPPORTED / Workspace schema role is unsupported。",
+      "inferenceAndLimits": "夹具只删除 schema34 marker，但其余较新 marker/结构仍在；两侧均无法构成合法32→33历史源。",
+      "sameFailingSubtestSet": true,
+      "newFailureSubtests": [],
+      "resolvedFailureSubtests": [],
+      "baseline": {
+        "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/559-timeline-image-transports.test.mjs.log",
+        "exitCode": 1,
+        "wallSeconds": 2.285,
+        "summary": {
+          "tests": 5,
+          "pass": 4,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "evidencePath": "logs/remaining/baseline/timeline-image-transports.test.mjs.tap",
+        "evidenceSha256": "fd068ec4bf9596bf89f89d472d27e31983b797769a007e9db393e6500b8dc338"
+      },
+      "candidate": {
+        "log": "/private/tmp/mioon-redesign-2_80wkck/focused-final-regression/timeline-image-transports.test.mjs.log",
+        "exitCode": 1,
+        "wallSeconds": 3.2,
+        "summary": {
+          "tests": 5,
+          "pass": 4,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "evidencePath": "logs/remaining/candidate/timeline-image-transports.test.mjs.tap",
+        "evidenceSha256": "c8e0d176c8e0a5c0eb7e8e0b459ac18fc0955e1ce2f60e41ac7d40e47e0415d0"
+      },
+      "failures": [
+        {
+          "name": "actual authenticated HTTP, CLI and official MCP preserve image inspection scope; restored33 refuses even an explicit origin",
+          "aggregateOnly": false,
+          "sameFailureName": true,
+          "baseline": {
+            "tapIndex": 5,
+            "failureType": "testCodeFailure",
+            "code": "RESTORE_SCHEMA_UNSUPPORTED",
+            "location": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-image-transports.test.mjs:264:1",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 27,
+            "error": "Workspace schema role is unsupported"
+          },
+          "candidate": {
+            "tapIndex": 5,
+            "failureType": "testCodeFailure",
+            "code": "RESTORE_SCHEMA_UNSUPPORTED",
+            "location": "/private/tmp/mioon-redesign-2_80wkck/verify/tests/timeline-image-transports.test.mjs:264:1",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 27,
+            "error": "Workspace schema role is unsupported"
+          },
+          "assertionOrCodeDeltas": [],
+          "semanticDiagnosticChanged": false
+        }
+      ]
+    },
+    {
+      "file": "tests/timeline-mcp.test.mjs",
+      "classification": "same_explicit_mock_render_failure",
+      "observableReason": "同一 Mock job 携带 MOCK_RENDER_FAILED，实际 downloading / 期望 succeeded。",
+      "inferenceAndLimits": "失败证据与断言一致；底层渲染 stderr 未在本 TAP 展开。",
+      "sameFailingSubtestSet": true,
+      "newFailureSubtests": [],
+      "resolvedFailureSubtests": [],
+      "baseline": {
+        "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/580-timeline-mcp.test.mjs.log",
+        "exitCode": 1,
+        "wallSeconds": 43.774,
+        "summary": {
+          "tests": 1,
+          "pass": 0,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "evidencePath": "logs/remaining/baseline/timeline-mcp.test.mjs.tap",
+        "evidenceSha256": "1d0175354486eeb74d26d63435f62e29312986c7a9f34623b62e8d5ed4af3d99"
+      },
+      "candidate": {
+        "log": "/private/tmp/mioon-redesign-2_80wkck/focused-final-regression/timeline-mcp.test.mjs.log",
+        "exitCode": 1,
+        "wallSeconds": 44.03,
+        "summary": {
+          "tests": 1,
+          "pass": 0,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "evidencePath": "logs/remaining/candidate/timeline-mcp.test.mjs.tap",
+        "evidenceSha256": "3fca0cee375942287b0cf47e23d1345dca695af9e0145b48f7a43704e973ed62"
+      },
+      "failures": [
+        {
+          "name": "timeline official SDK protocol exercises strict tools, shared HTTP state, exact replay and real backend restart",
+          "aggregateOnly": false,
+          "sameFailureName": true,
+          "baseline": {
+            "tapIndex": 1,
+            "failureType": "testCodeFailure",
+            "code": "ERR_ASSERTION",
+            "expected": "succeeded",
+            "actual": "downloading",
+            "operator": "strictEqual",
+            "location": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-mcp.test.mjs:21:1",
+            "embeddedErrorCodes": [
+              "MOCK_RENDER_FAILED"
+            ],
+            "embeddedStatuses": [
+              "available",
+              "downloading"
+            ],
+            "logLine": 3,
+            "errorOmitted": "Long synthetic job payload omitted; original error is in the exact log at logLine."
+          },
+          "candidate": {
+            "tapIndex": 1,
+            "failureType": "testCodeFailure",
+            "code": "ERR_ASSERTION",
+            "expected": "succeeded",
+            "actual": "downloading",
+            "operator": "strictEqual",
+            "location": "/private/tmp/mioon-redesign-2_80wkck/verify/tests/timeline-mcp.test.mjs:21:1",
+            "embeddedErrorCodes": [
+              "MOCK_RENDER_FAILED"
+            ],
+            "embeddedStatuses": [
+              "available",
+              "downloading"
+            ],
+            "logLine": 3,
+            "errorOmitted": "Long synthetic job payload omitted; original error is in the exact log at logLine."
+          },
+          "assertionOrCodeDeltas": [],
+          "semanticDiagnosticChanged": false
+        }
+      ]
+    },
+    {
+      "file": "tests/timeline-media.test.mjs",
+      "classification": "same_explicit_mock_render_failure",
+      "observableReason": "唯一叶失败为 v1 selected-shot export：MOCK_RENDER_FAILED，实际 downloading / 期望 succeeded；8项通过。",
+      "inferenceAndLimits": "采用最后 focused-legacy-media-final 日志；不使用更早 focused-final-regression 中本文件的失败轮。",
+      "sameFailingSubtestSet": true,
+      "newFailureSubtests": [],
+      "resolvedFailureSubtests": [],
+      "baseline": {
+        "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/581-timeline-media.test.mjs.log",
+        "exitCode": 1,
+        "wallSeconds": 64.964,
+        "summary": {
+          "tests": 10,
+          "pass": 8,
+          "fail": 2,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "evidencePath": "logs/remaining/baseline/timeline-media.test.mjs.tap",
+        "evidenceSha256": "0eb68831e101bc45f1b8e8468ad02ef202bbb4ab730b9993e969024c9a2129b4"
+      },
+      "candidate": {
+        "log": "/private/tmp/mioon-redesign-2_80wkck/focused-legacy-media-final/timeline-media.test.mjs.log",
+        "exitCode": 1,
+        "wallSeconds": 63.96,
+        "summary": {
+          "tests": 10,
+          "pass": 8,
+          "fail": 2,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "evidencePath": "logs/remaining/candidate/timeline-media.test.mjs.tap",
+        "evidenceSha256": "39f45d3c1f37c6f18293084c282fcb72ed36d16db757afacf60b36f1ad4afb28"
+      },
+      "failures": [
+        {
+          "name": "v1 selected-shot sequence export remains separate and decodable with an empty v2 timeline",
+          "aggregateOnly": false,
+          "sameFailureName": true,
+          "baseline": {
+            "tapIndex": 9,
+            "failureType": "testCodeFailure",
+            "code": "ERR_ASSERTION",
+            "expected": "succeeded",
+            "actual": "downloading",
+            "operator": "strictEqual",
+            "location": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-media.test.mjs:111:11",
+            "embeddedErrorCodes": [
+              "MOCK_RENDER_FAILED"
+            ],
+            "embeddedStatuses": [
+              "available",
+              "downloading"
+            ],
+            "logLine": 52,
+            "errorOmitted": "Long synthetic job payload omitted; original error is in the exact log at logLine."
+          },
+          "candidate": {
+            "tapIndex": 9,
+            "failureType": "testCodeFailure",
+            "code": "ERR_ASSERTION",
+            "expected": "succeeded",
+            "actual": "downloading",
+            "operator": "strictEqual",
+            "location": "/private/tmp/mioon-redesign-2_80wkck/verify/tests/timeline-media.test.mjs:114:11",
+            "embeddedErrorCodes": [
+              "MOCK_RENDER_FAILED"
+            ],
+            "embeddedStatuses": [
+              "available",
+              "downloading"
+            ],
+            "logLine": 52,
+            "errorOmitted": "Long synthetic job payload omitted; original error is in the exact log at logLine."
+          },
+          "assertionOrCodeDeltas": [],
+          "semanticDiagnosticChanged": false
+        },
+        {
+          "name": "multitrack v2 real-media rendering acceptance",
+          "aggregateOnly": true,
+          "sameFailureName": true,
+          "baseline": {
+            "tapIndex": 1,
+            "failureType": "subtestsFailed",
+            "code": "ERR_TEST_FAILURE",
+            "location": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-media.test.mjs:163:1",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 80,
+            "error": "1 subtest failed"
+          },
+          "candidate": {
+            "tapIndex": 1,
+            "failureType": "subtestsFailed",
+            "code": "ERR_TEST_FAILURE",
+            "location": "/private/tmp/mioon-redesign-2_80wkck/verify/tests/timeline-media.test.mjs:166:1",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 80,
+            "error": "1 subtest failed"
+          },
+          "assertionOrCodeDeltas": [],
+          "semanticDiagnosticChanged": false
+        }
+      ]
+    },
+    {
+      "file": "tests/timeline-recovery-transports.test.mjs",
+      "classification": "same_receipt_guard_refusal_with_diagnostic_change",
+      "observableReason": "同一重启报 RESTORE_SCHEMA_UNSUPPORTED；夹具 DROP immutable_timeline_responses 后未重建。",
+      "inferenceAndLimits": "基线文案为 missing receipt protection；候选为通用 RESTORE_SCHEMA_UNSUPPORTED，栈进入48/49固定目录分类器。拒绝损坏目录的边界一致。",
+      "sameFailingSubtestSet": true,
+      "newFailureSubtests": [],
+      "resolvedFailureSubtests": [],
+      "baseline": {
+        "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/607-timeline-recovery-transports.test.mjs.log",
+        "exitCode": 1,
+        "wallSeconds": 1.898,
+        "summary": {
+          "tests": 2,
+          "pass": 1,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "evidencePath": "logs/remaining/baseline/timeline-recovery-transports.test.mjs.tap",
+        "evidenceSha256": "dbc4864a3d6799a77bea0b6504b1832f2dfc50b7ee53ba244fe8a692b2a43640"
+      },
+      "candidate": {
+        "log": "/private/tmp/mioon-redesign-2_80wkck/focused-final-regression/timeline-recovery-transports.test.mjs.log",
+        "exitCode": 1,
+        "wallSeconds": 3.11,
+        "summary": {
+          "tests": 2,
+          "pass": 1,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "evidencePath": "logs/remaining/candidate/timeline-recovery-transports.test.mjs.tap",
+        "evidenceSha256": "44af6f2b591ebb27f96aebd4cdb8fd85213b929f6847fcc8a29935bc1b611c99"
+      },
+      "failures": [
+        {
+          "name": "real HTTP, CLI and official MCP retain ambiguous lost-commit errors and replay exact bytes after backend recreation",
+          "aggregateOnly": false,
+          "sameFailureName": true,
+          "baseline": {
+            "tapIndex": 1,
+            "failureType": "testCodeFailure",
+            "code": "RESTORE_SCHEMA_UNSUPPORTED",
+            "location": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-recovery-transports.test.mjs:48:1",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 3,
+            "error": "Ordinary receipt protection repair is unsupported: missing receipt protection"
+          },
+          "candidate": {
+            "tapIndex": 1,
+            "failureType": "testCodeFailure",
+            "code": "RESTORE_SCHEMA_UNSUPPORTED",
+            "location": "/private/tmp/mioon-redesign-2_80wkck/verify/tests/timeline-recovery-transports.test.mjs:48:1",
+            "embeddedErrorCodes": [],
+            "embeddedStatuses": [],
+            "logLine": 3,
+            "error": "RESTORE_SCHEMA_UNSUPPORTED"
+          },
+          "assertionOrCodeDeltas": [],
+          "semanticDiagnosticChanged": true
+        }
+      ]
+    }
+  ],
+  "archivedEvidence": {
+    "files": 20,
+    "credentialScan": {
+      "potentialMatches": 0,
+      "patterns": "Bearer-like values, sk-key prefixes, quoted credential assignments; content not printed."
+    },
+    "copyVerification": "All twenty copies are byte-identical SHA-256 evidence."
+  }
+}

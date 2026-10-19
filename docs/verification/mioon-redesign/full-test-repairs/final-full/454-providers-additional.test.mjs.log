@@ -1,0 +1,298 @@
+TAP version 13
+# Subtest: minimax: construction, capabilities, reconciliation and local stop use no network
+ok 1 - minimax: construction, capabilities, reconciliation and local stop use no network
+  ---
+  duration_ms: 7.853584
+  type: 'test'
+  ...
+# Subtest: minimax: maps text request with no hidden upload
+ok 2 - minimax: maps text request with no hidden upload
+  ---
+  duration_ms: 14.825083
+  type: 'test'
+  ...
+# Subtest: minimax: maps first-frame request with no hidden upload
+ok 3 - minimax: maps first-frame request with no hidden upload
+  ---
+  duration_ms: 4.317292
+  type: 'test'
+  ...
+# Subtest: minimax: selects only verified global/cn origins with region-compatible server credentials
+ok 4 - minimax: selects only verified global/cn origins with region-compatible server credentials
+  ---
+  duration_ms: 6.179209
+  type: 'test'
+  ...
+# Subtest: minimax: immutable job region cannot silently switch accounts after restart
+ok 5 - minimax: immutable job region cannot silently switch accounts after restart
+  ---
+  duration_ms: 3.400958
+  type: 'test'
+  ...
+# Subtest: minimax: validation works before paths are resolved and rejects unsupported options
+ok 6 - minimax: validation works before paths are resolved and rejects unsupported options
+  ---
+  duration_ms: 3.818333
+  type: 'test'
+  ...
+# Subtest: minimax: lost response is never retried or exposed
+ok 7 - minimax: lost response is never retried or exposed
+  ---
+  duration_ms: 3.275667
+  type: 'test'
+  ...
+# Subtest: minimax: HTTP500 is never retried or exposed
+ok 8 - minimax: HTTP500 is never retried or exposed
+  ---
+  duration_ms: 4.731875
+  type: 'test'
+  ...
+# Subtest: minimax: HTTP408 is never retried or exposed
+ok 9 - minimax: HTTP408 is never retried or exposed
+  ---
+  duration_ms: 3.222083
+  type: 'test'
+  ...
+# Subtest: minimax: HTTP409 is never retried or exposed
+ok 10 - minimax: HTTP409 is never retried or exposed
+  ---
+  duration_ms: 3.123667
+  type: 'test'
+  ...
+# Subtest: minimax: unreadable response is never retried or exposed
+ok 11 - minimax: unreadable response is never retried or exposed
+  ---
+  duration_ms: 3.622458
+  type: 'test'
+  ...
+# Subtest: minimax: missing ID is never retried or exposed
+ok 12 - minimax: missing ID is never retried or exposed
+  ---
+  duration_ms: 3.8495
+  type: 'test'
+  ...
+# Subtest: minimax: HTTP400 is never retried or exposed
+ok 13 - minimax: HTTP400 is never retried or exposed
+  ---
+  duration_ms: 2.629917
+  type: 'test'
+  ...
+# Subtest: minimax: HTTP402 billing rejection is never retried or exposed
+ok 14 - minimax: HTTP402 billing rejection is never retried or exposed
+  ---
+  duration_ms: 3.258875
+  type: 'test'
+  ...
+# Subtest: minimax: managed references are approved, checksum-bound, size-bounded and never fetched by URL
+ok 15 - minimax: managed references are approved, checksum-bound, size-bounded and never fetched by URL
+  ---
+  duration_ms: 15.565166
+  type: 'test'
+  ...
+# Subtest: minimax: status cache includes failures and never turns polling into submission
+ok 16 - minimax: status cache includes failures and never turns polling into submission
+  ---
+  duration_ms: 3.286458
+  type: 'test'
+  ...
+# Subtest: minimax: downloads actual H264 MP4, drops auth, refreshes expired URL by task GET only
+ok 17 - minimax: downloads actual H264 MP4, drops auth, refreshes expired URL by task GET only
+  ---
+  duration_ms: 51.143375
+  type: 'test'
+  ...
+# Subtest: minimax: blocks credentialed/unknown output, redirects, malformed media and output symlink escapes
+ok 18 - minimax: blocks credentialed/unknown output, redirects, malformed media and output symlink escapes
+  ---
+  duration_ms: 32.079791
+  type: 'test'
+  ...
+# Subtest: vidu: construction, capabilities, reconciliation and local stop use no network
+ok 19 - vidu: construction, capabilities, reconciliation and local stop use no network
+  ---
+  duration_ms: 9.924334
+  type: 'test'
+  ...
+# Subtest: vidu: maps text request with no hidden upload
+ok 20 - vidu: maps text request with no hidden upload
+  ---
+  duration_ms: 5.761333
+  type: 'test'
+  ...
+# Subtest: vidu: maps first-frame request with no hidden upload
+ok 21 - vidu: maps first-frame request with no hidden upload
+  ---
+  duration_ms: 4.025
+  type: 'test'
+  ...
+# Subtest: vidu: selects only verified global/cn origins with region-compatible server credentials
+ok 22 - vidu: selects only verified global/cn origins with region-compatible server credentials
+  ---
+  duration_ms: 6.082334
+  type: 'test'
+  ...
+# Subtest: vidu: immutable job region cannot silently switch accounts after restart
+ok 23 - vidu: immutable job region cannot silently switch accounts after restart
+  ---
+  duration_ms: 2.925667
+  type: 'test'
+  ...
+# Subtest: vidu: validation works before paths are resolved and rejects unsupported options
+ok 24 - vidu: validation works before paths are resolved and rejects unsupported options
+  ---
+  duration_ms: 3.51225
+  type: 'test'
+  ...
+# Subtest: vidu: lost response is never retried or exposed
+ok 25 - vidu: lost response is never retried or exposed
+  ---
+  duration_ms: 3.341041
+  type: 'test'
+  ...
+# Subtest: vidu: HTTP500 is never retried or exposed
+ok 26 - vidu: HTTP500 is never retried or exposed
+  ---
+  duration_ms: 4.149708
+  type: 'test'
+  ...
+# Subtest: vidu: HTTP408 is never retried or exposed
+ok 27 - vidu: HTTP408 is never retried or exposed
+  ---
+  duration_ms: 2.883917
+  type: 'test'
+  ...
+# Subtest: vidu: HTTP409 is never retried or exposed
+ok 28 - vidu: HTTP409 is never retried or exposed
+  ---
+  duration_ms: 3.023916
+  type: 'test'
+  ...
+# Subtest: vidu: unreadable response is never retried or exposed
+ok 29 - vidu: unreadable response is never retried or exposed
+  ---
+  duration_ms: 4.186125
+  type: 'test'
+  ...
+# Subtest: vidu: missing ID is never retried or exposed
+ok 30 - vidu: missing ID is never retried or exposed
+  ---
+  duration_ms: 2.862542
+  type: 'test'
+  ...
+# Subtest: vidu: HTTP400 is never retried or exposed
+ok 31 - vidu: HTTP400 is never retried or exposed
+  ---
+  duration_ms: 3.5025
+  type: 'test'
+  ...
+# Subtest: vidu: HTTP402 billing rejection is never retried or exposed
+ok 32 - vidu: HTTP402 billing rejection is never retried or exposed
+  ---
+  duration_ms: 3.107041
+  type: 'test'
+  ...
+# Subtest: vidu: managed references are approved, checksum-bound, size-bounded and never fetched by URL
+ok 33 - vidu: managed references are approved, checksum-bound, size-bounded and never fetched by URL
+  ---
+  duration_ms: 18.868125
+  type: 'test'
+  ...
+# Subtest: vidu: status cache includes failures and never turns polling into submission
+ok 34 - vidu: status cache includes failures and never turns polling into submission
+  ---
+  duration_ms: 3.502167
+  type: 'test'
+  ...
+# Subtest: vidu: downloads actual H264 MP4, drops auth, refreshes expired URL by task GET only
+ok 35 - vidu: downloads actual H264 MP4, drops auth, refreshes expired URL by task GET only
+  ---
+  duration_ms: 45.051541
+  type: 'test'
+  ...
+# Subtest: vidu: blocks credentialed/unknown output, redirects, malformed media and output symlink escapes
+ok 36 - vidu: blocks credentialed/unknown output, redirects, malformed media and output symlink escapes
+  ---
+  duration_ms: 13.730834
+  type: 'test'
+  ...
+# Subtest: MiniMax maps queued documented V2 state
+ok 37 - MiniMax maps queued documented V2 state
+  ---
+  duration_ms: 2.651208
+  type: 'test'
+  ...
+# Subtest: MiniMax maps running documented V2 state
+ok 38 - MiniMax maps running documented V2 state
+  ---
+  duration_ms: 2.511917
+  type: 'test'
+  ...
+# Subtest: MiniMax maps succeeded documented V2 state
+ok 39 - MiniMax maps succeeded documented V2 state
+  ---
+  duration_ms: 3.084167
+  type: 'test'
+  ...
+# Subtest: MiniMax maps failed documented V2 state
+ok 40 - MiniMax maps failed documented V2 state
+  ---
+  duration_ms: 2.584041
+  type: 'test'
+  ...
+# Subtest: MiniMax maps cancelled documented V2 state
+ok 41 - MiniMax maps cancelled documented V2 state
+  ---
+  duration_ms: 2.427917
+  type: 'test'
+  ...
+# Subtest: Vidu maps created documented state
+ok 42 - Vidu maps created documented state
+  ---
+  duration_ms: 2.710583
+  type: 'test'
+  ...
+# Subtest: Vidu maps queueing documented state
+ok 43 - Vidu maps queueing documented state
+  ---
+  duration_ms: 2.604792
+  type: 'test'
+  ...
+# Subtest: Vidu maps processing documented state
+ok 44 - Vidu maps processing documented state
+  ---
+  duration_ms: 2.678042
+  type: 'test'
+  ...
+# Subtest: Vidu maps success documented state
+ok 45 - Vidu maps success documented state
+  ---
+  duration_ms: 2.677667
+  type: 'test'
+  ...
+# Subtest: Vidu maps failed documented state
+ok 46 - Vidu maps failed documented state
+  ---
+  duration_ms: 2.49225
+  type: 'test'
+  ...
+# Subtest: Vidu refuses generation until an exact output host is independently reviewed/configured
+ok 47 - Vidu refuses generation until an exact output host is independently reviewed/configured
+  ---
+  duration_ms: 2.676667
+  type: 'test'
+  ...
+# Subtest: Vidu reports externally cancelled task as cancelled failure without making a cancel POST
+ok 48 - Vidu reports externally cancelled task as cancelled failure without making a cancel POST
+  ---
+  duration_ms: 2.499208
+  type: 'test'
+  ...
+1..48
+# tests 48
+# suites 0
+# pass 48
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 480.509625

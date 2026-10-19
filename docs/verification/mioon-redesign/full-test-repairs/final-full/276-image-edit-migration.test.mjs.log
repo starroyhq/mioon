@@ -1,0 +1,221 @@
+TAP version 13
+# Subtest: schema23 changes only image_reviews CHECKs and preserves every row, rowid, raw receipt, trigger, index, FK and sequence
+not ok 1 - schema23 changes only image_reviews CHECKs and preserves every row, rowid, raw receipt, trigger, index, FK and sequence
+  ---
+  duration_ms: 16.437583
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:116:1'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741111'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    insert (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:20:163)
+    seed (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:58:3)
+    populate (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:112:50)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:117:26)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.start (node:internal/test_runner/test:1262:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+  ...
+# Subtest: schema23 copy, external-trigger drop, parent drop, trigger restore, FK check and marker failures roll back byte-exact
+not ok 2 - schema23 copy, external-trigger drop, parent drop, trigger restore, FK check and marker failures roll back byte-exact
+  ---
+  duration_ms: 8.889417
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:123:1'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741111'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    insert (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:20:163)
+    seed (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:58:3)
+    populate (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:112:50)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:124:123)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: schema23 admits only a bound official edit descriptor and rejects cross-branch, oversized and mutable source authority
+not ok 3 - schema23 admits only a bound official edit descriptor and rejects cross-branch, oversized and mutable source authority
+  ---
+  duration_ms: 7.548417
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:129:1'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741111'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    insert (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:20:163)
+    seed (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:58:3)
+    populate (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:112:50)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:130:38)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: fresh startup and frozen schema22 upgrade restore FK enforcement and restart without rewriting old bytes
+not ok 4 - fresh startup and frozen schema22 upgrade restore FK enforcement and restart without rewriting old bytes
+  ---
+  duration_ms: 613.778958
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:138:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    ... Skipped lines
+    
+      [
+        1,
+        2,
+        3,
+        4,
+    ...
+        26,
+    +   28,
+    +   30,
+    +   32,
+    +   34,
+    +   36,
+    +   38,
+    +   40,
+    +   44,
+    +   48
+      ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: 1
+    1: 2
+    2: 3
+    3: 4
+    4: 5
+    5: 6
+    6: 7
+    7: 8
+    8: 9
+    9: 10
+    10: 11
+    11: 12
+    12: 13
+    13: 14
+    14: 15
+    15: 16
+    16: 17
+    17: 18
+    18: 19
+    19: 20
+    20: 21
+    21: 22
+    22: 23
+    23: 24
+    24: 26
+  actual:
+    0: 1
+    1: 2
+    2: 3
+    3: 4
+    4: 5
+    5: 6
+    6: 7
+    7: 8
+    8: 9
+    9: 10
+    10: 11
+    11: 12
+    12: 13
+    13: 14
+    14: 15
+    15: 16
+    16: 17
+    17: 18
+    18: 19
+    19: 20
+    20: 21
+    21: 22
+    22: 23
+    23: 24
+    24: 26
+    25: 28
+    26: 30
+    27: 32
+    28: 34
+    29: 36
+    30: 38
+    31: 40
+    32: 44
+    33: 48
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:139:288)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: startup marker failure preserves frozen database and enables a later successful retry
+not ok 5 - startup marker failure preserves frozen database and enables a later successful retry
+  ---
+  duration_ms: 109.490208
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:142:1'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741111'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    insert (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:20:163)
+    seed (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:58:3)
+    populate (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:112:50)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:144:6)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: schema23 rejects missing transaction, an unguarded rebuild and an actual broken foreign-key graph
+not ok 6 - schema23 rejects missing transaction, an unguarded rebuild and an actual broken foreign-key graph
+  ---
+  duration_ms: 7.168875
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:149:1'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254741111'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    insert (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:20:163)
+    seed (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:58:3)
+    populate (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:112:50)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/image-edit-migration.test.mjs:150:26)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 0
+# fail 6
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1007.42025

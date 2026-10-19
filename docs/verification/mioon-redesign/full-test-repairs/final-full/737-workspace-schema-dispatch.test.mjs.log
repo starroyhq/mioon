@@ -1,0 +1,535 @@
+TAP version 13
+# Subtest: known historical marker repair eligibility remains []
+ok 1 - known historical marker repair eligibility remains []
+  ---
+  duration_ms: 1.895667
+  type: 'test'
+  ...
+# Subtest: known historical marker repair eligibility remains [1]
+ok 2 - known historical marker repair eligibility remains [1]
+  ---
+  duration_ms: 0.303208
+  type: 'test'
+  ...
+# Subtest: known historical marker repair eligibility remains [1,3,19]
+ok 3 - known historical marker repair eligibility remains [1,3,19]
+  ---
+  duration_ms: 0.201167
+  type: 'test'
+  ...
+# Subtest: known historical marker repair eligibility remains [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24]
+ok 4 - known historical marker repair eligibility remains [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24]
+  ---
+  duration_ms: 0.326458
+  type: 'test'
+  ...
+# Subtest: missing marker table still preserves ordinary bootstrap eligibility
+ok 5 - missing marker table still preserves ordinary bootstrap eligibility
+  ---
+  duration_ms: 0.218416
+  type: 'test'
+  ...
+# Subtest: explicit marker role restored-25-evidence never follows maximum-number inference
+ok 6 - explicit marker role restored-25-evidence never follows maximum-number inference
+  ---
+  duration_ms: 0.305792
+  type: 'test'
+  ...
+# Subtest: explicit marker role ordinary-26 never follows maximum-number inference
+ok 7 - explicit marker role ordinary-26 never follows maximum-number inference
+  ---
+  duration_ms: 0.343458
+  type: 'test'
+  ...
+# Subtest: explicit marker role restored-27-evidence never follows maximum-number inference
+ok 8 - explicit marker role restored-27-evidence never follows maximum-number inference
+  ---
+  duration_ms: 0.244958
+  type: 'test'
+  ...
+# Subtest: unsupported marker combination is refused 26
+ok 9 - unsupported marker combination is refused 26
+  ---
+  duration_ms: 0.343584
+  type: 'test'
+  ...
+# Subtest: unsupported marker combination is refused 27
+ok 10 - unsupported marker combination is refused 27
+  ---
+  duration_ms: 0.162542
+  type: 'test'
+  ...
+# Subtest: unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,27
+ok 11 - unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,27
+  ---
+  duration_ms: 0.186708
+  type: 'test'
+  ...
+# Subtest: unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26
+ok 12 - unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26
+  ---
+  duration_ms: 0.249833
+  type: 'test'
+  ...
+# Subtest: unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,27
+ok 13 - unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,27
+  ---
+  duration_ms: 0.2415
+  type: 'test'
+  ...
+# Subtest: unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,26,27,28
+ok 14 - unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,26,27,28
+  ---
+  duration_ms: 0.994917
+  type: 'test'
+  ...
+# Subtest: unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,28
+ok 15 - unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,28
+  ---
+  duration_ms: 0.232667
+  type: 'test'
+  ...
+# Subtest: unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,0
+ok 16 - unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,0
+  ---
+  duration_ms: 0.1875
+  type: 'test'
+  ...
+# Subtest: unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,-1
+ok 17 - unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,-1
+  ---
+  duration_ms: 0.617792
+  type: 'test'
+  ...
+# Subtest: unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,9007199254740993
+not ok 18 - unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,9007199254740993
+  ---
+  duration_ms: 0.823541
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:26:181'
+  failureType: 'testCodeFailure'
+  error: |-
+    The "unsupported" validation function is expected to return "true". Received false
+    
+    Caught error:
+    
+    RangeError: Value is too large to be represented as a JavaScript number: 9007199254740993
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:27:9)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: partial restoration evidence never gives an ordinary26 fallback
+ok 19 - partial restoration evidence never gives an ordinary26 fallback
+  ---
+  duration_ms: 1.027208
+  type: 'test'
+  ...
+# Subtest: marker declaration is validated before query and TEMP rows cannot spoof main
+ok 20 - marker declaration is validated before query and TEMP rows cannot spoof main
+  ---
+  duration_ms: 0.710542
+  type: 'test'
+  ...
+# Subtest: bounded role query preserves harmless marker whitespace and comments
+ok 21 - bounded role query preserves harmless marker whitespace and comments
+  ---
+  duration_ms: 0.227125
+  type: 'test'
+  ...
+# Subtest: restored25 dispatch only validates the original fixed profile and never bootstraps or upgrades it
+ok 22 - restored25 dispatch only validates the original fixed profile and never bootstraps or upgrades it
+  ---
+  duration_ms: 206.702959
+  type: 'test'
+  ...
+# Subtest: failed restored25 validation cannot fall back to ordinary initializer
+ok 23 - failed restored25 validation cannot fall back to ordinary initializer
+  ---
+  duration_ms: 0.570292
+  type: 'test'
+  ...
+# Subtest: completed24 enters explicit26,28,30,32,34,36,38 and40 migrations without legacy bootstrap writes
+not ok 24 - completed24 enters explicit26,28,30,32,34,36,38 and40 migrations without legacy bootstrap writes
+  ---
+  duration_ms: 540.72
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:87:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    3 !== 0
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 0
+  actual: 3
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:90:9)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: completed24 rejects imported marker trigger before its real audit side effect can execute
+ok 25 - completed24 rejects imported marker trigger before its real audit side effect can execute
+  ---
+  duration_ms: 19.733333
+  type: 'test'
+  ...
+# Subtest: completed24 missing known protection is refused instead of silently repaired before26
+ok 26 - completed24 missing known protection is refused instead of silently repaired before26
+  ---
+  duration_ms: 18.714667
+  type: 'test'
+  ...
+# Subtest: genuinely missing known markers keep the old ordinary repair path before26
+not ok 27 - genuinely missing known markers keep the old ordinary repair path before26
+  ---
+  duration_ms: 525.657834
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:105:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    4 !== 1
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 4
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:107:73)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: real missing marker table retains historical bootstrap/upgrade qualification
+not ok 28 - real missing marker table retains historical bootstrap/upgrade qualification
+  ---
+  duration_ms: 558.672584
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:112:84'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    4 !== 1
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 4
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:114:73)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: real ordinary-1 retains historical bootstrap/upgrade qualification
+not ok 29 - real ordinary-1 retains historical bootstrap/upgrade qualification
+  ---
+  duration_ms: 550.636125
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:112:84'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    4 !== 1
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 4
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:114:73)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: real ordinary-14 retains historical bootstrap/upgrade qualification
+not ok 30 - real ordinary-14 retains historical bootstrap/upgrade qualification
+  ---
+  duration_ms: 555.612
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:112:84'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    4 !== 1
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 4
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:114:73)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: real ordinary-21 retains historical bootstrap/upgrade qualification
+not ok 31 - real ordinary-21 retains historical bootstrap/upgrade qualification
+  ---
+  duration_ms: 530.10675
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:112:84'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    4 !== 1
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 4
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:114:73)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: real ordinary-23 retains historical bootstrap/upgrade qualification
+not ok 32 - real ordinary-23 retains historical bootstrap/upgrade qualification
+  ---
+  duration_ms: 516.312292
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:112:84'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    4 !== 1
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 4
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:114:73)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual current schema marker26 removed is refused unchanged before historical repair
+not ok 33 - actual current schema marker26 removed is refused unchanged before historical repair
+  ---
+  duration_ms: 498.069
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:125:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    3 !== 0
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 0
+  actual: 3
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:127:33)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual current schema known marker removed is refused unchanged before historical repair
+not ok 34 - actual current schema known marker removed is refused unchanged before historical repair
+  ---
+  duration_ms: 499.850167
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:125:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    3 !== 0
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 0
+  actual: 3
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:127:33)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual current schema marker26 and known marker removed is refused unchanged before historical repair
+not ok 35 - actual current schema marker26 and known marker removed is refused unchanged before historical repair
+  ---
+  duration_ms: 505.6935
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:125:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    3 !== 0
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 0
+  actual: 3
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:127:33)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual current schema all marker rows removed is refused unchanged before historical repair
+not ok 36 - actual current schema all marker rows removed is refused unchanged before historical repair
+  ---
+  duration_ms: 504.406833
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:125:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    3 !== 0
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 0
+  actual: 3
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:127:33)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual current schema marker table removed is refused unchanged before historical repair
+not ok 37 - actual current schema marker table removed is refused unchanged before historical repair
+  ---
+  duration_ms: 505.785708
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:125:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    3 !== 0
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 0
+  actual: 3
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:127:33)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: new operation evidence in a commented/quoted operation CHECK is fail-closed and never authorizes a profile
+ok 38 - new operation evidence in a commented/quoted operation CHECK is fail-closed and never authorizes a profile
+  ---
+  duration_ms: 0.59425
+  type: 'test'
+  ...
+# Subtest: old operation CHECK evidence stays eligible: CREATE TABLE edit_tasks(operation TEXT CHECK(operation IN ('timeline.undo','timeline.loudness.apply.more')))
+ok 39 - old operation CHECK evidence stays eligible: CREATE TABLE edit_tasks(operation TEXT CHECK(operation IN ('timeline.undo','timeline.loudness.apply.more')))
+  ---
+  duration_ms: 0.41275
+  type: 'test'
+  ...
+# Subtest: old operation CHECK evidence stays eligible: CREATE TABLE edit_tasks(operation TEXT CHECK(operation IN ('timeline.undo')) /* CHECK(operation IN ('timeline.loudness.apply')) */)
+ok 40 - old operation CHECK evidence stays eligible: CREATE TABLE edit_tasks(operation TEXT CHECK(operation IN ('timeline.undo')) /* CHECK(operation IN ('timeline.loudness.apply')) */)
+  ---
+  duration_ms: 0.264375
+  type: 'test'
+  ...
+# Subtest: old operation CHECK evidence stays eligible: CREATE TABLE edit_tasks(operation TEXT CHECK(operation IN ('timeline.undo')),note TEXT DEFAULT 'timeline.loudness.apply')
+ok 41 - old operation CHECK evidence stays eligible: CREATE TABLE edit_tasks(operation TEXT CHECK(operation IN ('timeline.undo')),note TEXT DEFAULT 'timeline.loudness.apply')
+  ---
+  duration_ms: 0.337292
+  type: 'test'
+  ...
+# Subtest: non-TEXT retained golden cells refuse current envelope migration before writes
+not ok 42 - non-TEXT retained golden cells refuse current envelope migration before writes
+  ---
+  duration_ms: 3.828792
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:146:1'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    ordinaryDatabase (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:67:63)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema-dispatch.test.mjs:147:11)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..42
+# tests 42
+# suites 0
+# pass 28
+# fail 14
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 6824.934875

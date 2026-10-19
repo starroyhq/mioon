@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: candidate lease is exact-store bound, non-copyable, and permanently revoked after identity replacement
+ok 1 - candidate lease is exact-store bound, non-copyable, and permanently revoked after identity replacement
+  ---
+  duration_ms: 627.426375
+  type: 'test'
+  ...
+# Subtest: closed and recreated stores never revive an earlier capability
+ok 2 - closed and recreated stores never revive an earlier capability
+  ---
+  duration_ms: 232.467042
+  type: 'test'
+  ...
+# Subtest: a removed or replaced lease and a modified fixed catalog revoke rather than repair capability
+ok 3 - a removed or replaced lease and a modified fixed catalog revoke rather than repair capability
+  ---
+  duration_ms: 485.3695
+  type: 'test'
+  ...
+# Subtest: ordinary candidate whitelist and synchronous transactions preserve atomic rollback
+ok 4 - ordinary candidate whitelist and synchronous transactions preserve atomic rollback
+  ---
+  duration_ms: 206.400375
+  type: 'test'
+  ...
+# Subtest: restored candidate retains held records and requires exact explicit origin for fresh execution
+ok 5 - restored candidate retains held records and requires exact explicit origin for fresh execution
+  ---
+  duration_ms: 384.236167
+  type: 'test'
+  ...
+# Subtest: restored invocations cannot cross stores, change digest, survive completion, or survive abort
+ok 6 - restored invocations cannot cross stores, change digest, survive completion, or survive abort
+  ---
+  duration_ms: 527.069542
+  type: 'test'
+  ...
+# Subtest: restored task invocation pins live SQL claim and execution epoch, refusing captured and changed rows
+ok 7 - restored task invocation pins live SQL claim and execution epoch, refusing captured and changed rows
+  ---
+  duration_ms: 269.1455
+  type: 'test'
+  ...
+# Subtest: a restored43 invocation cannot write or prepare an ordinary42 store through its actual services
+ok 8 - a restored43 invocation cannot write or prepare an ordinary42 store through its actual services
+  ---
+  duration_ms: 639.704083
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3768.31325

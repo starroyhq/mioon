@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: presentation catalog is exhaustive in four locales, with unchanged operation identities
+ok 1 - presentation catalog is exhaustive in four locales, with unchanged operation identities
+  ---
+  duration_ms: 15.489375
+  type: 'test'
+  ...
+# Subtest: continuous plan discovery has four explicit locales without changing machine definitions
+ok 2 - continuous plan discovery has four explicit locales without changing machine definitions
+  ---
+  duration_ms: 8.992667
+  type: 'test'
+  ...
+# Subtest: CLI localizes only prose; default help snapshot, schema, version and error JSON stay exact
+ok 3 - CLI localizes only prose; default help snapshot, schema, version and error JSON stay exact
+  ---
+  duration_ms: 5603.150834
+  type: 'test'
+  ...
+# Subtest: MCP offline list/instructions translate while schemas, effects and call envelopes stay exact
+ok 4 - MCP offline list/instructions translate while schemas, effects and call envelopes stay exact
+  ---
+  duration_ms: 1472.400959
+  type: 'test'
+  ...
+# Subtest: launch locale is stripped before RPC and never causes submission replay
+ok 5 - launch locale is stripped before RPC and never causes submission replay
+  ---
+  duration_ms: 1058.091125
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 8434.889792

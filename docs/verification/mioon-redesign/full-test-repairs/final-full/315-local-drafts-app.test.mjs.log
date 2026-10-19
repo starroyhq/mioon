@@ -1,0 +1,112 @@
+TAP version 13
+# Subtest: actual App Cancel sees a synchronous clip edit before React rerender and preserves every draft
+ok 1 - actual App Cancel sees a synchronous clip edit before React rerender and preserves every draft
+  ---
+  duration_ms: 9.233083
+  type: 'test'
+  ...
+# Subtest: actual App late confirmation rejects newer typing
+ok 2 - actual App late confirmation rejects newer typing
+  ---
+  duration_ms: 0.379583
+  type: 'test'
+  ...
+# Subtest: actual App late confirmation rejects newer typing even when text changes back
+ok 3 - actual App late confirmation rejects newer typing even when text changes back
+  ---
+  duration_ms: 0.260416
+  type: 'test'
+  ...
+# Subtest: actual App late confirmation cannot discard a replacement controller with identical text
+ok 4 - actual App late confirmation cannot discard a replacement controller with identical text
+  ---
+  duration_ms: 0.349209
+  type: 'test'
+  ...
+# Subtest: actual App project change while confirmation is open preserves the original clip draft
+ok 5 - actual App project change while confirmation is open preserves the original clip draft
+  ---
+  duration_ms: 0.251666
+  type: 'test'
+  ...
+# Subtest: actual App clean registered controller permits navigation without a prompt or draft reset
+ok 6 - actual App clean registered controller permits navigation without a prompt or draft reset
+  ---
+  duration_ms: 0.176959
+  type: 'test'
+  ...
+# Subtest: actual App waits for the exact local-draft CAS delete before resetting other panels
+ok 7 - actual App waits for the exact local-draft CAS delete before resetting other panels
+  ---
+  duration_ms: 1.875417
+  type: 'test'
+  ...
+# Subtest: actual App failed asynchronous discard retains local input and never resets other panels
+ok 8 - actual App failed asynchronous discard retains local input and never resets other panels
+  ---
+  duration_ms: 0.5075
+  type: 'test'
+  ...
+# Subtest: actual App typing during CAS discard keeps navigation blocked and the newer input dirty
+ok 9 - actual App typing during CAS discard keeps navigation blocked and the newer input dirty
+  ---
+  duration_ms: 0.362458
+  type: 'test'
+  ...
+# Subtest: actual App project change while awaiting discard cannot reset the newer panel
+ok 10 - actual App project change while awaiting discard cannot reset the newer panel
+  ---
+  duration_ms: 0.368708
+  type: 'test'
+  ...
+# Subtest: actual App navigation epoch change while awaiting discard cannot reset the newer panel
+ok 11 - actual App navigation epoch change while awaiting discard cannot reset the newer panel
+  ---
+  duration_ms: 0.250458
+  type: 'test'
+  ...
+# Subtest: actual App controller change while awaiting discard cannot reset the newer panel
+ok 12 - actual App controller change while awaiting discard cannot reset the newer panel
+  ---
+  duration_ms: 0.24325
+  type: 'test'
+  ...
+# Subtest: actual App rechecks subtitle ownership after awaiting local clip discard
+ok 13 - actual App rechecks subtitle ownership after awaiting local clip discard
+  ---
+  duration_ms: 0.259084
+  type: 'test'
+  ...
+# Subtest: actual App registration cleanup releases only its still-registered controller
+ok 14 - actual App registration cleanup releases only its still-registered controller
+  ---
+  duration_ms: 0.088833
+  type: 'test'
+  ...
+# Subtest: actual beforeunload reads synchronous clip state and follows registration ownership
+ok 15 - actual beforeunload reads synchronous clip state and follows registration ownership
+  ---
+  duration_ms: 0.925125
+  type: 'test'
+  ...
+# Subtest: actual App draft discard leaves the original pending timeline request and its blocking path untouched
+ok 16 - actual App draft discard leaves the original pending timeline request and its blocking path untouched
+  ---
+  duration_ms: 0.364792
+  type: 'test'
+  ...
+# Subtest: actual Inspector save binding still routes the exact draft through the existing timeline mutation
+ok 17 - actual Inspector save binding still routes the exact draft through the existing timeline mutation
+  ---
+  duration_ms: 0.310792
+  type: 'test'
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 240.790417

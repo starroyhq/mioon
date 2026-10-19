@@ -1,0 +1,78 @@
+[
+  {
+    "file": "tests/media-filter-files.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.49,
+    "tapSummary": {
+      "tests": 1,
+      "suites": 0,
+      "pass": 1,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-cli-compat/001-media-filter-files.test.mjs.log",
+    "sha256": "dc595cec4c3a63d9965078caae5edd8a1704028d57695afb88e3c7e43efcbf2c",
+    "sourceSha256": "6d64892af4bc5840f7b18cecff4ef58e4c1c2019e098af66c1b25a14a1dd5bdf",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/opacity-candidate-preflight-execution.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 45.23,
+    "tapSummary": {
+      "tests": 9,
+      "suites": 0,
+      "pass": 9,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-cli-compat/004-opacity-candidate-preflight-execution.test.mjs.log",
+    "sha256": "148fac4f8b23bb0de95eac4d61d310e2bed34d68b6bd8e0aa7a61d90cd0f29f5",
+    "sourceSha256": "49ba4c7aa9d45d49cf20f06102f503d29cdbea9b2ad5e7cdcea9941d090956e2",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/timeline-opacity-legacy-render-regression.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 1.59,
+    "tapSummary": {
+      "tests": 1,
+      "suites": 0,
+      "pass": 1,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-cli-compat/002-timeline-opacity-legacy-render-regression.test.mjs.log",
+    "sha256": "4b6fd3de1bd666e1f7955a20adcada27efee14d296ff0f38a4f549f8cacedb08",
+    "sourceSha256": "dbf8492ea296dbc1ae016f8bb5c74132eb47ee6a5fe46a14ab55448fabe3af2d",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/timeline-opacity-worker-candidate.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 14.8,
+    "tapSummary": {
+      "tests": 4,
+      "suites": 0,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-cli-compat/003-timeline-opacity-worker-candidate.test.mjs.log",
+    "sha256": "3927e3329de2409b70387bc954d8f253af6e5086cda22c28e6275231992352ce",
+    "sourceSha256": "93fa784e9140cbd639054245f72c7dccda4fb557b659a29198fe51a71796bd6b",
+    "failedSubtests": []
+  }
+]

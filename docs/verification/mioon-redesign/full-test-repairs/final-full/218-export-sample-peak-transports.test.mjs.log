@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: actual CLI and official MCP discover the exact strict sample-peak input and unchanged annotations offline
+ok 1 - actual CLI and official MCP discover the exact strict sample-peak input and unchanged annotations offline
+  ---
+  duration_ms: 635.382875
+  type: 'test'
+  ...
+# Subtest: actual HTTP, CLI and official MCP carry identical ephemeral reports, validate identity and never retry
+ok 2 - actual HTTP, CLI and official MCP carry identical ephemeral reports, validate identity and never retry
+  ---
+  duration_ms: 1477.34475
+  type: 'test'
+  ...
+# Subtest: actual HTTP cancellation disconnects only sample-peak observation and leaves server healthy
+ok 3 - actual HTTP cancellation disconnects only sample-peak observation and leaves server healthy
+  ---
+  duration_ms: 5.954458
+  type: 'test'
+  ...
+# Subtest: actual CLI cancellation disconnects only sample-peak observation and leaves server healthy
+ok 4 - actual CLI cancellation disconnects only sample-peak observation and leaves server healthy
+  ---
+  duration_ms: 414.977542
+  type: 'test'
+  ...
+# Subtest: actual MCP cancellation disconnects only sample-peak observation and leaves server healthy
+ok 5 - actual MCP cancellation disconnects only sample-peak observation and leaves server healthy
+  ---
+  duration_ms: 388.41125
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3211.883125

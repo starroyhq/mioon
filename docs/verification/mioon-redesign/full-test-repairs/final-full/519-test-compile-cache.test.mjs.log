@@ -1,0 +1,88 @@
+TAP version 13
+# Subtest: opt-in cache is private, active in actual child, source-invalidating and removed
+ok 1 - opt-in cache is private, active in actual child, source-invalidating and removed
+  ---
+  duration_ms: 497.766792
+  type: 'test'
+  ...
+# Subtest: explicit nonempty disable remains authoritative and creates no cache
+ok 2 - explicit nonempty disable remains authoritative and creates no cache
+  ---
+  duration_ms: 198.880042
+  type: 'test'
+  ...
+# Subtest: owned cache cleanup preserves original callback failure
+ok 3 - owned cache cleanup preserves original callback failure
+  ---
+  duration_ms: 136.365875
+  type: 'test'
+  ...
+# Subtest: owned cache cleanup retains terminal test outcome 1
+ok 4 - owned cache cleanup retains terminal test outcome 1
+  ---
+  duration_ms: 133.881375
+  type: 'test'
+  ...
+# Subtest: owned cache cleanup retains terminal test outcome 130
+ok 5 - owned cache cleanup retains terminal test outcome 130
+  ---
+  duration_ms: 189.812125
+  type: 'test'
+  ...
+# Subtest: owned cache cleanup retains terminal test outcome 143
+ok 6 - owned cache cleanup retains terminal test outcome 143
+  ---
+  duration_ms: 186.782084
+  type: 'test'
+  ...
+# Subtest: cache propagation refuses arbitrary inherited cache without owned marker
+ok 7 - cache propagation refuses arbitrary inherited cache without owned marker
+  ---
+  duration_ms: 192.158875
+  type: 'test'
+  ...
+# Subtest: cache cleanup refuses a replaced directory and preserves original failure
+ok 8 - cache cleanup refuses a replaced directory and preserves original failure
+  ---
+  duration_ms: 158.823833
+  type: 'test'
+  ...
+# Subtest: real SIGINT during cache setup removes owned cache and retains signal outcome
+ok 9 - real SIGINT during cache setup removes owned cache and retains signal outcome
+  ---
+  duration_ms: 177.342292
+  type: 'test'
+  ...
+# Subtest: real SIGINT during cache cleanup removes owned cache and retains signal outcome
+ok 10 - real SIGINT during cache cleanup removes owned cache and retains signal outcome
+  ---
+  duration_ms: 307.0965
+  type: 'test'
+  ...
+# Subtest: real SIGTERM during cache setup removes owned cache and retains signal outcome
+ok 11 - real SIGTERM during cache setup removes owned cache and retains signal outcome
+  ---
+  duration_ms: 202.364625
+  type: 'test'
+  ...
+# Subtest: real SIGTERM during cache cleanup removes owned cache and retains signal outcome
+ok 12 - real SIGTERM during cache cleanup removes owned cache and retains signal outcome
+  ---
+  duration_ms: 273.003959
+  type: 'test'
+  ...
+# Subtest: real interruption retains a visible refused-cleanup diagnostic and restores listeners
+ok 13 - real interruption retains a visible refused-cleanup diagnostic and restores listeners
+  ---
+  duration_ms: 283.77
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3120.13575

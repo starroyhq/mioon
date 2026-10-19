@@ -1,0 +1,160 @@
+TAP version 13
+# Subtest: Ark pair sends exact fixed-origin model, first/last roles, adaptive ratio and silent MP4 once
+ok 1 - Ark pair sends exact fixed-origin model, first/last roles, adaptive ratio and silent MP4 once
+  ---
+  duration_ms: 26.467084
+  type: 'test'
+  ...
+# Subtest: Ark refuses untyped reference roles without network
+ok 2 - Ark refuses untyped reference roles without network
+  ---
+  duration_ms: 4.652375
+  type: 'test'
+  ...
+# Subtest: Ark refuses reversed reference roles without network
+ok 3 - Ark refuses reversed reference roles without network
+  ---
+  duration_ms: 4.652917
+  type: 'test'
+  ...
+# Subtest: Ark refuses last-only reference roles without network
+ok 4 - Ark refuses last-only reference roles without network
+  ---
+  duration_ms: 4.59925
+  type: 'test'
+  ...
+# Subtest: Ark refuses duplicate reference roles without network
+ok 5 - Ark refuses duplicate reference roles without network
+  ---
+  duration_ms: 4.477792
+  type: 'test'
+  ...
+# Subtest: Ark refuses binding-mismatch reference roles without network
+ok 6 - Ark refuses binding-mismatch reference roles without network
+  ---
+  duration_ms: 4.577209
+  type: 'test'
+  ...
+# Subtest: Ark refuses tail-id-mismatch reference roles without network
+ok 7 - Ark refuses tail-id-mismatch reference roles without network
+  ---
+  duration_ms: 4.495583
+  type: 'test'
+  ...
+# Subtest: Ark refuses null-tail reference roles without network
+ok 8 - Ark refuses null-tail reference roles without network
+  ---
+  duration_ms: 4.124209
+  type: 'test'
+  ...
+# Subtest: Ark refuses missing-pair reference roles without network
+ok 9 - Ark refuses missing-pair reference roles without network
+  ---
+  duration_ms: 4.515542
+  type: 'test'
+  ...
+# Subtest: each actual image requires its own explicit approved hash
+ok 10 - each actual image requires its own explicit approved hash
+  ---
+  duration_ms: 10.664958
+  type: 'test'
+  ...
+# Subtest: second frame hash mismatch prevents POST
+ok 11 - second frame hash mismatch prevents POST
+  ---
+  duration_ms: 4.66975
+  type: 'test'
+  ...
+# Subtest: second frame MIME signature mismatch prevents POST
+ok 12 - second frame MIME signature mismatch prevents POST
+  ---
+  duration_ms: 4.418166
+  type: 'test'
+  ...
+# Subtest: second frame over 10 MiB prevents POST
+ok 13 - second frame over 10 MiB prevents POST
+  ---
+  duration_ms: 7.593583
+  type: 'test'
+  ...
+# Subtest: second frame actual dimensions mismatch prevents POST
+ok 14 - second frame actual dimensions mismatch prevents POST
+  ---
+  duration_ms: 4.543541
+  type: 'test'
+  ...
+# Subtest: second frame unsupported MIME prevents POST
+ok 15 - second frame unsupported MIME prevents POST
+  ---
+  duration_ms: 4.249084
+  type: 'test'
+  ...
+# Subtest: second frame wrong aspect prevents POST
+ok 16 - second frame wrong aspect prevents POST
+  ---
+  duration_ms: 4.246584
+  type: 'test'
+  ...
+# Subtest: second frame small dimensions prevents POST
+ok 17 - second frame small dimensions prevents POST
+  ---
+  duration_ms: 4.086417
+  type: 'test'
+  ...
+# Subtest: abort at second-image async boundary is definitely before dispatch
+ok 18 - abort at second-image async boundary is definitely before dispatch
+  ---
+  duration_ms: 4.455625
+  type: 'test'
+  ...
+# Subtest: second-image owner check and final POST fence both fail closed
+ok 19 - second-image owner check and final POST fence both fail closed
+  ---
+  duration_ms: 4.863666
+  type: 'test'
+  ...
+# Subtest: outgoing first image remains its captured approved buffer if file changes during second read
+ok 20 - outgoing first image remains its captured approved buffer if file changes during second read
+  ---
+  duration_ms: 4.64075
+  type: 'test'
+  ...
+# Subtest: unknown pair submission is never retried and cancellation remains explicitly local
+ok 21 - unknown pair submission is never retried and cancellation remains explicitly local
+  ---
+  duration_ms: 4.543416
+  type: 'test'
+  ...
+# Subtest: veo adapter rejects a frame pair without dropping its second input
+ok 22 - veo adapter rejects a frame pair without dropping its second input
+  ---
+  duration_ms: 4.562209
+  type: 'test'
+  ...
+# Subtest: minimax adapter rejects a frame pair without dropping its second input
+ok 23 - minimax adapter rejects a frame pair without dropping its second input
+  ---
+  duration_ms: 4.153167
+  type: 'test'
+  ...
+# Subtest: vidu adapter rejects a frame pair without dropping its second input
+ok 24 - vidu adapter rejects a frame pair without dropping its second input
+  ---
+  duration_ms: 4.435291
+  type: 'test'
+  ...
+# Subtest: runway adapter rejects a frame pair without dropping its second input
+ok 25 - runway adapter rejects a frame pair without dropping its second input
+  ---
+  duration_ms: 4.362625
+  type: 'test'
+  ...
+1..25
+# tests 25
+# suites 0
+# pass 25
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 372.816791

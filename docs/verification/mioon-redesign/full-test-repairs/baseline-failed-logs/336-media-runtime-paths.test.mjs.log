@@ -1,0 +1,48 @@
+TAP version 13
+# Subtest: mock generation and probe use selected absolute executables with no host PATH
+not ok 1 - mock generation and probe use selected absolute executables with no host PATH
+  ---
+  duration_ms: 361.509833
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/media-runtime-paths.test.mjs:10:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Command failed: /opt/homebrew/Cellar/node/26.9.0/bin/node --input-type=module -e import {DatabaseSync} from 'node:sqlite';import {createMockProvider} from "file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/providers/mock.mjs";import {probe} from "file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/media.mjs";const root="/tmp/wb-media-runtime-RGOFei",db=new DatabaseSync(':memory:');const p=createMockProvider({db,root});const job=await p.submit({prompt:'Synthetic path verification',duration:2,aspectRatio:'9:16',parameters:{scenario:'success',delayMs:0},referenceAssets:[]},{requestId:'custom-runtime-path'});await p.download(job.providerJobId,root+'/output.mp4');const result=await probe(root+'/output.mp4');console.log(JSON.stringify({codec:result.codec,width:result.width,height:result.height,duration:result.duration}));db.close();
+    file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/providers/mock.mjs:11
+    const error = (code, message, tags = {}) => Object.assign(new Error(message), { code, ...tags });
+                                                              ^
+    
+    Error: Output must be inside the managed data directory.
+        at error (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/providers/mock.mjs:11:59)
+        at managedDestination (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/providers/mock.mjs:20:114)
+        at async Object.download (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/providers/mock.mjs:169:22)
+        at async file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/[eval1]:1:682 {
+      code: 'UNSAFE_PATH'
+    }
+    
+    Node.js v26.9.0
+    
+  code: 1
+  stack: |-
+    error (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/providers/mock.mjs:11:59)
+    managedDestination (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/providers/mock.mjs:20:114)
+    async Object.download (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/providers/mock.mjs:169:22)
+    async file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/[eval1]:1:682 {
+    genericNodeError (node:internal/errors:999:15)
+    wrappedFn (node:internal/errors:544:14)
+    ChildProcess.exithandler (node:child_process:417:12)
+    ChildProcess.emit (node:events:514:20)
+    maybeClose (node:internal/child_process:1125:16)
+    Socket.<anonymous> (node:internal/child_process:497:11)
+    Socket.emit (node:events:514:20)
+    Pipe.<anonymous> (node:net:362:12)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 961.462708

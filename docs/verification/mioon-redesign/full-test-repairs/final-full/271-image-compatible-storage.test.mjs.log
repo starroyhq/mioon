@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: custom settings permissions fails private startup preflight without stale lock, file, mode or SQLite writes
+ok 1 - custom settings permissions fails private startup preflight without stale lock, file, mode or SQLite writes
+  ---
+  duration_ms: 7.447667
+  type: 'test'
+  ...
+# Subtest: custom settings symlink fails private startup preflight without stale lock, file, mode or SQLite writes
+ok 2 - custom settings symlink fails private startup preflight without stale lock, file, mode or SQLite writes
+  ---
+  duration_ms: 3.052292
+  type: 'test'
+  ...
+# Subtest: custom settings hardlink fails private startup preflight without stale lock, file, mode or SQLite writes
+ok 3 - custom settings hardlink fails private startup preflight without stale lock, file, mode or SQLite writes
+  ---
+  duration_ms: 3.152583
+  type: 'test'
+  ...
+# Subtest: custom settings oversize fails private startup preflight without stale lock, file, mode or SQLite writes
+ok 4 - custom settings oversize fails private startup preflight without stale lock, file, mode or SQLite writes
+  ---
+  duration_ms: 3.205041
+  type: 'test'
+  ...
+# Subtest: custom settings directory fails private startup preflight without stale lock, file, mode or SQLite writes
+ok 5 - custom settings directory fails private startup preflight without stale lock, file, mode or SQLite writes
+  ---
+  duration_ms: 2.945167
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 258.111916
