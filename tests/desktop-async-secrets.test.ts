@@ -8,10 +8,29 @@ import {randomUUID, createCipheriv, createDecipheriv} from 'node:crypto';
 const APP_ID = 'app.starroy.mioon.dev';
 const SENTINEL = 'synthetic-async-vault-only';
 const imagePlaintexts = ['official', 'custom'].map(profile => JSON.stringify({auditProfile: profile, value: SENTINEL}));
-const turn = () => new Promise(resolve => setImmediate(resolve));
-const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return {promise, resolve, reject}; };
+const turn = (): Promise<void> => new Promise(resolve => { setImmediate(resolve); });
+function deferred<T = unknown>(): Pending<T> {
+  let resolve!: (value?: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = (value?: T | PromiseLike<T>) => { yes(value as T); }; reject = no; });
+  return {promise, resolve, reject};
+}
+type Pending<T = void> = {promise: Promise<T>; resolve: (value?: T | PromiseLike<T>) => void; reject: (reason?: unknown) => void};
+type BeforeHook = (method: string, value: string | Buffer) => Promise<void>;
+const asString = (value: string | Buffer): string => value as string;
+const asBuffer = (value: string | Buffer): Buffer => value as Buffer;
+interface VaultNative {
+  isEncryptionAvailable(): never; encryptString(...args: never[]): never; decryptString(...args: never[]): never;
+  getSelectedStorageBackend(): string;
+  isAsyncEncryptionAvailable(): Promise<boolean>;
+  encryptStringAsync(value: string): Promise<Buffer>;
+  decryptStringAsync(value: Buffer): Promise<{result: string; shouldReEncrypt: boolean}>;
+}
+interface VaultFixture {native: VaultNative; calls: string[]; seal(value: string): Buffer; open(bytes: Buffer): string; set before(value: BeforeHook)}
+type TestPort = EventEmitter & {postMessage(message: unknown): void};
+interface TestChild extends EventEmitter {messages: Array<Record<string, unknown>>; postMessage(message: Record<string, unknown>): void; kill(): void}
 const root = new URL('../', import.meta.url);
-const data = source => 'data:text/javascript;base64,' + Buffer.from(source).toString('base64');
+const data = (source: string): string => 'data:text/javascript;base64,' + Buffer.from(source).toString('base64');
 
 // No installed dependencies are used or borrowed. Real Agent config/settings,
 // codecs, brokers, supervisor and quit-helper bodies use import-only rewriting.
@@ -55,14 +74,14 @@ const approved = new Set(['apps/desktop/src/app-language-text.ts', 'packages/i18
   'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/shutdown.ts', 'packages/business/src/agent/settings.ts', 'packages/business/src/agent/config.ts',
   'packages/business/src/agent/presets.ts']);
 const reviewedTypeScript = approved;
-const urls = new Map();
-function moduleUrl(name) {
-  if (urls.has(name)) return urls.get(name);
+const urls = new Map<string, string>();
+function moduleUrl(name: string): string {
+  if (urls.has(name)) return urls.get(name)!;
   assert.ok(approved.has(name), 'Unreviewed source: ' + name);
   let source = readFileSync(new URL(name, root), 'utf8');
   assert.doesNotMatch(source, /\bimport\s*\(|\brequire\s*\(/);
   if (reviewedTypeScript.has(name)) source = stripTypeScriptTypes(source, {mode: 'strip'});
-  source = source.replace(/\bfrom\s+(['"])([^'"]+)\1/g, (_, quote, specifier) => {
+  source = source.replace(/\bfrom\s+(['"])([^'"]+)\1/g, (_match: string, quote: string, specifier: string) => {
     let url = overrides.get(specifier);
     if (!url && ['node:path', 'node:crypto', 'node:net', 'node:events'].includes(specifier)) url = specifier;
     if (!url && specifier === '../identity.ts') {
@@ -88,59 +107,59 @@ const {DEFAULT_AGENT_CONFIGURATION} = await import(moduleUrl('packages/business/
 const {BackendSupervisor} = await import(moduleUrl('apps/desktop/src/supervisor.ts'));
 const {stopBackendForQuit} = await import(moduleUrl('apps/desktop/src/shutdown.ts'));
 
-function vault() {
-  const key = Buffer.alloc(32, 23), calls = [];
-  let counter = 0, before = async () => {};
-  const seal = value => {
+function vault(): VaultFixture {
+  const key = Buffer.alloc(32, 23), calls: string[] = [];
+  let counter = 0; let before: BeforeHook = async () => {};
+  const seal = (value: string): Buffer => {
     const iv = Buffer.alloc(12); iv.writeUInt32BE(++counter, 8);
     const cipher = createCipheriv('aes-256-gcm', key, iv);
     const bytes = Buffer.concat([cipher.update(value), cipher.final()]);
     return Buffer.concat([iv, cipher.getAuthTag(), bytes]);
   };
-  const open = bytes => {
+  const open = (bytes: Buffer): string => {
     const cipher = createDecipheriv('aes-256-gcm', key, bytes.subarray(0, 12));
     cipher.setAuthTag(bytes.subarray(12, 28));
     return Buffer.concat([cipher.update(bytes.subarray(28)), cipher.final()]).toString();
   };
-  const native = {
+  const native: VaultNative = {
     isEncryptionAvailable() { throw Error('Synchronous status must not run'); },
     encryptString() { throw Error('Synchronous encryption must not run'); },
     decryptString() { throw Error('Synchronous decryption must not run'); },
     getSelectedStorageBackend: () => 'gnome_libsecret',
-    async isAsyncEncryptionAvailable() { calls.push('status'); await before('status'); return true; },
-    async encryptStringAsync(value) { calls.push('encrypt'); await before('encrypt', value); return seal(value); },
-    async decryptStringAsync(value) { calls.push('decrypt'); await before('decrypt', value); return {result: open(value), shouldReEncrypt: true}; },
+    async isAsyncEncryptionAvailable() { calls.push('status'); await before('status', ''); return true; },
+    async encryptStringAsync(value: string) { calls.push('encrypt'); await before('encrypt', value); return seal(value); },
+    async decryptStringAsync(value: Buffer) { calls.push('decrypt'); await before('decrypt', value); return {result: open(value), shouldReEncrypt: true}; },
   };
-  return {native, calls, seal, open, set before(value) { before = value; }};
+  return {native, calls, seal, open, set before(value: BeforeHook) { before = value; }};
 }
-const codecFor = (fixture, extra = {}) => secret.createDesktopSecretCodec({safeStorage: fixture.native, appId: APP_ID, platform: 'darwin', ...extra});
-const imageFor = (fixture, extra = {}) => images.createDesktopImageSecretCodec({safeStorage: fixture.native, appId: APP_ID, platform: 'darwin', ...extra});
-function memory(initial = null) {
-  let stored = structuredClone(initial), saves = 0;
-  return {async load() { return structuredClone(stored); }, async save(value) { saves++; stored = structuredClone(value); },
+const codecFor = (fixture: VaultFixture, extra: Record<string, unknown> = {}): Record<string, any> => secret.createDesktopSecretCodec({safeStorage: fixture.native, appId: APP_ID, platform: 'darwin', ...extra});
+const imageFor = (fixture: VaultFixture, extra: Record<string, unknown> = {}): Record<string, any> => images.createDesktopImageSecretCodec({safeStorage: fixture.native, appId: APP_ID, platform: 'darwin', ...extra});
+function memory(initial: unknown = null): {load(): Promise<Record<string, unknown> | null>; save(value: unknown): Promise<void>; readonly value: Record<string, unknown> | null; readonly saves: number} {
+  let stored: Record<string, unknown> | null = structuredClone(initial) as Record<string, unknown> | null; let saves = 0;
+  return {async load() { return structuredClone(stored); }, async save(value: unknown) { saves++; stored = structuredClone(value) as Record<string, unknown> | null; },
     get value() { return structuredClone(stored); }, get saves() { return saves; }};
 }
-function agentPair(engine, {timeout = 1000, isActive, delayCancel = false} = {}) {
-  const port = new EventEmitter(), messages = [], requests = [], delayed = [];
+function agentPair(engine: unknown, {timeout = 1000, isActive = undefined, delayCancel = false}: {timeout?: number; isActive?: () => boolean; delayCancel?: boolean} = {}) {
+  const port = new EventEmitter() as TestPort, messages: Array<Record<string, unknown>> = [], requests: Array<Record<string, unknown>> = [], delayed: Array<Record<string, unknown>> = [];
   const broker = agentBridge.createAgentSettingsBroker({agentSettings: engine, isActive,
-    send: message => { messages.push(message); port.emit('message', {data: message}); }});
+    send: (message: Record<string, unknown>) => { messages.push(message); port.emit('message', {data: message}); }});
   port.postMessage = message => {
-    requests.push(message);
-    if (delayCancel && message.type === 'agent-credential-cancel') delayed.push(message);
+    requests.push(message as Record<string, unknown>);
+    if (delayCancel && (message as {type?: string}).type === 'agent-credential-cancel') delayed.push(message as Record<string, unknown>);
     else broker.handle(message);
   };
   const client = agentBridge.createAgentSettingsClient({port, timeout});
   return {client, broker, requests, messages, delayed, close() { client.close(); broker.close(); }};
 }
-function imagePair(codec, {timeout = 1000} = {}) {
-  const port = new EventEmitter(), messages = [];
-  const broker = imageBridge.createImageSecretBroker({imageSecretCodec: codec, send: message => { messages.push(message); port.emit('message', {data: message}); }});
-  port.postMessage = message => broker.handle(message);
+function imagePair(codec: unknown, {timeout = 1000}: {timeout?: number} = {}) {
+  const port = new EventEmitter() as TestPort, messages: Array<Record<string, unknown>> = [];
+  const broker = imageBridge.createImageSecretBroker({imageSecretCodec: codec, send: (message: Record<string, unknown>) => { messages.push(message); port.emit('message', {data: message}); }});
+  port.postMessage = message => { broker.handle(message); };
   const client = imageBridge.createImageSecretClient({port, timeout});
   return {client, broker, messages, close() { client.close(); broker.close(); }};
 }
 const update = (revision = 0, storage = 'persistent') => ({expectedRevision: revision, configuration: {...DEFAULT_AGENT_CONFIGURATION}, secret: {action: 'replace', storage, value: SENTINEL}});
-const safeError = error => { assert.ok(!(JSON.stringify(error) + error.message).includes(SENTINEL)); return true; };
+const safeError = (error: unknown): boolean => { assert.ok(!(JSON.stringify(error) + String((error as {message?: unknown})?.message)).includes(SENTINEL)); return true; };
 
 test('audited imports and codec construction make no native calls; Images client completes an async round trip', async t => {
   const f = vault(), codec = imageFor(f);
@@ -175,30 +194,30 @@ test('import fixture permits only six reviewed erased modules and refuses runtim
 });
 
 test('Images client directly arms its 2000ms default and times out a silent port', {timeout: 5000}, async t => {
-  const port = new EventEmitter(), requests = [], delays = [];
-  port.postMessage = message => requests.push(message);
+  const port = new EventEmitter() as TestPort, requests: Array<Record<string, unknown>> = [], delays: unknown[] = [];
+  port.postMessage = message => { requests.push(message as Record<string, unknown>); };
   const client = imageBridge.createImageSecretClient({port}); t.after(() => client.close());
   const original = globalThis.setTimeout, begun = performance.now();
   let outcome;
   try {
     // Observe the argument synchronously, then restore the real timer before
     // awaiting its actual expiry. No other test runs during this interception.
-    globalThis.setTimeout = (callback, delay, ...args) => { delays.push(delay); return original(callback, delay, ...args); };
-    outcome = client.refreshStorage().then(() => 'unexpected-success', error => error.code);
+    globalThis.setTimeout = ((callback: Parameters<typeof setTimeout>[0], delay?: number, ...args: unknown[]) => { delays.push(Number(delay)); return original(callback, Number(delay), ...args); }) as unknown as typeof setTimeout;
+    outcome = client.refreshStorage().then(() => 'unexpected-success', (error: unknown) => (error as {code?: string}).code);
   } finally { globalThis.setTimeout = original; }
   assert.deepEqual(delays, [2000]);
   assert.equal(await outcome, 'IMAGE_SECRET_CODEC_TIMEOUT');
   assert.ok(performance.now() - begun >= 1900);
   const request = requests[0];
   assert.ok(requests.some(message => message.type === 'image-secret-codec-cancel' && message.requestId === request.requestId));
-  port.emit('message', {data: {type: 'image-secret-codec-response', version: 1, namespace: 'images', requestId: request.requestId,
+  port.emit('message', {data: {type: 'image-secret-codec-response', version: 1, namespace: 'images', requestId: request!.requestId,
     ok: true, data: {persistentAvailable: true, sessionScope: 'server', reasonCode: null}}});
   assert.equal(client.storage().persistentAvailable, false);
 });
 
 test('Images broker close before its microtask makes zero native calls and sends no reply', async () => {
-  const f = vault(), messages = [];
-  const broker = imageBridge.createImageSecretBroker({imageSecretCodec: imageFor(f), send: value => messages.push(value)});
+  const f = vault(), messages: Array<Record<string, unknown>> = [];
+  const broker = imageBridge.createImageSecretBroker({imageSecretCodec: imageFor(f), send: (value: unknown) => messages.push(value as Record<string, unknown>)});
   broker.handle({type: 'image-secret-codec-request', version: 1, namespace: 'images', requestId: randomUUID(), operation: 'status'});
   broker.close(); await turn();
   assert.deepEqual(f.calls, []); assert.deepEqual(messages, []);
@@ -211,18 +230,18 @@ for (const phase of ['status', 'encrypt', 'decrypt']) {
     const ciphertext = f.seal(JSON.stringify({version: 1, appId: APP_ID, plaintext}));
     let nativeFinished = false, entries = 0, beats = 0, beatTarget = Infinity;
     let quitEntered = false, quitFinished = false, cleanup = false, kills = 0, settled = false;
-    const forcedChildren = [];
-    let probe, quit;
+    const forcedChildren: unknown[] = [];
+    let probe: ReturnType<typeof setInterval>; let quit: Promise<unknown>;
     f.before = async (method, value) => {
       const matches = method === phase && (phase === 'status' ||
-        (phase === 'encrypt' ? value.startsWith('{') : value.equals(ciphertext)));
+        (phase === 'encrypt' ? asString(value).startsWith('{') : asBuffer(value).equals(ciphertext)));
       if (!matches) return;
-      if (phase === 'encrypt') assert.deepEqual(JSON.parse(value), {version: 1, appId: APP_ID, plaintext});
+      if (phase === 'encrypt') assert.deepEqual(JSON.parse(asString(value)), {version: 1, appId: APP_ID, plaintext});
       entries++; entered.resolve();
       await gate.promise; nativeFinished = true;
     };
-    const port = new EventEmitter(), child = new EventEmitter(), requests = [], replies = [];
-    child.postMessage = message => {
+    const port = new EventEmitter() as TestPort, child = new EventEmitter() as TestChild, requests: Array<Record<string, unknown>> = [], replies: Array<Record<string, unknown>> = [];
+    child.postMessage = (message: Record<string, unknown>) => {
       if (message.type === 'start') queueMicrotask(() => child.emit('message', {type: 'ready', url: 'http://127.0.0.1:43191/'}));
       if (message.type === 'image-secret-codec-response') { replies.push(message); port.emit('message', {data: message}); }
       // Deliberately never acknowledge stop or synthesize exit from a signal.
@@ -230,8 +249,8 @@ for (const phase of ['status', 'encrypt', 'decrypt']) {
     child.kill = () => { kills++; };
     const supervisor = new BackendSupervisor({fork: () => child, modulePath: 'synthetic-never-executed', environment: {},
       imageSecretCodec: imageFor(f), stopTimeout: 20, terminateTimeout: 20, exitTimeout: 20,
-      forceKill: owned => { forcedChildren.push(owned); }});
-    port.postMessage = message => { requests.push(message); child.emit('message', message); };
+      forceKill: (owned: unknown) => { forcedChildren.push(owned); }});
+    port.postMessage = message => { requests.push(message as Record<string, unknown>); child.emit('message', message); };
     const client = imageBridge.createImageSecretClient({port});
     t.after(async () => {
       clearInterval(probe); client.close(); gate.resolve();
@@ -244,10 +263,10 @@ for (const phase of ['status', 'encrypt', 'decrypt']) {
     probe = setInterval(() => { beats++; if (beats >= beatTarget) beatsReady.resolve(); }, 5);
     const operation = phase === 'status' ? client.refreshStorage() : phase === 'encrypt'
       ? client.encrypt(plaintext) : client.decrypt(ciphertext.toString('base64'));
-    const outcome = operation.then(value => ({value}), error => ({code: error.code})).finally(() => { settled = true; });
+    const outcome = operation.then((value: unknown) => ({value}), (error: unknown) => ({code: (error as {code?: string}).code})).finally(() => { settled = true; });
     await entered.promise;
     assert.equal(entries, 1); assert.equal(nativeFinished, false); assert.equal(settled, false);
-    const target = requests.findLast(message => message.type === 'image-secret-codec-request' && message.operation === phase);
+    const target = requests.findLast((message: Record<string, unknown>) => message.type === 'image-secret-codec-request' && message.operation === phase);
     assert.ok(target);
     const beatsAtEntry = beats; beatTarget = beatsAtEntry + 3;
     await beatsReady.promise;
@@ -256,7 +275,7 @@ for (const phase of ['status', 'encrypt', 'decrypt']) {
       quitEntered = true;
       quit = stopBackendForQuit({backend: supervisor, onUnconfirmed: () => unconfirmed.resolve(), cleanup: () => {
         cleanup = true; clearInterval(probe);
-      }}).then(() => { quitFinished = true; return {ok: true}; }, error => ({code: error.code || 'QUIT_FAILED'}));
+      }}).then(() => { quitFinished = true; return {ok: true}; }, (error: unknown) => ({code: (error as {code?: string}).code || 'QUIT_FAILED'}));
     });
     await unconfirmed.promise;
     assert.equal(quitEntered, true); assert.equal(quitFinished, false); assert.equal(cleanup, false);
@@ -266,15 +285,15 @@ for (const phase of ['status', 'encrypt', 'decrypt']) {
     // An overdue absolute confirmation may precede the nested force timer.
     assert.ok(forcedChildren.length <= 1); assert.ok(forcedChildren.every(owned => owned === child));
     assert.equal(nativeFinished, false); assert.equal(settled, false);
-    assert.ok(!replies.some(message => message.requestId === target.requestId));
-    child.emit('exit', 0); assert.deepEqual(await quit, {ok: true});
+    assert.ok(!replies.some((message: Record<string, unknown>) => message.requestId === target.requestId));
+    child.emit('exit', 0); assert.deepEqual(await quit!, {ok: true});
     assert.equal(quitFinished, true); assert.equal(cleanup, true); assert.equal(supervisor.child, null);
     assert.equal(nativeFinished, false, 'Quit cleanup and stop budgets progressed before native settlement');
     client.close();
     assert.deepEqual(await outcome, {code: 'IMAGE_SECRET_CODEC_UNAVAILABLE'});
     gate.resolve(); await turn();
     assert.equal(nativeFinished, true); assert.equal(entries, 1);
-    assert.ok(!replies.some(message => message.requestId === target.requestId && message.ok));
+    assert.ok(!replies.some((message: Record<string, unknown>) => message.requestId === target.requestId && message.ok));
     assert.equal(client.storage().persistentAvailable, false);
   });
 }
@@ -305,7 +324,7 @@ test('true status without working crypto latches unavailable across replacement 
 
 test('missing async methods, false status and unsupported or weak platforms fail closed', async () => {
   for (const name of ['isAsyncEncryptionAvailable', 'encryptStringAsync', 'decryptStringAsync']) {
-    const f = vault(); delete f.native[name];
+    const f = vault(); delete (f.native as unknown as Record<string, unknown>)[name];
     assert.equal((await codecFor(f).refreshStorage()).persistentAvailable, false);
     assert.equal(f.calls.length, 0);
   }
@@ -338,13 +357,13 @@ for (const method of ['encrypt', 'decrypt']) {
     const saved = await engine.put(update()), original = persistence.value;
     let failures = 0;
     f.before = async (name, value) => {
-      if (name === method && (method === 'encrypt' ? value : f.open(value)).startsWith('{')) {
+      if (name === method && String(method === 'encrypt' ? value : f.open(asBuffer(value))).startsWith('{')) {
         failures++; throw Error(SENTINEL);
       }
     };
     const pending = method === 'encrypt' ? engine.put(update(saved.revision))
       : engine[agent.AGENT_CREDENTIAL_ACQUIRE]({expectedRevision: saved.revision, configuration: saved.configuration});
-    await assert.rejects(pending, error => { assert.equal(error.code, 'AGENT_SETTINGS_STORAGE_UNAVAILABLE'); return safeError(error); });
+    await assert.rejects(pending, (error: unknown) => { assert.equal((error as {code?: string}).code, 'AGENT_SETTINGS_STORAGE_UNAVAILABLE'); return safeError(error); });
     assert.equal(failures, 1); assert.deepEqual(persistence.value, original); assert.equal(persistence.saves, 1);
     const after = await engine.get();
     assert.equal(after.revision, saved.revision); assert.deepEqual(after.configuration, saved.configuration); assert.deepEqual(after.secret, saved.secret);
@@ -357,7 +376,7 @@ test('async native wait leaves the JS loop responsive; timeout and late status n
   const codec = codecFor(f, {timeout: 30});
   t.after(() => { gate.resolve(); codec.close(); });
   const pending = codec.refreshStorage(); await entered.promise;
-  let pulse = false; await new Promise(resolve => setImmediate(() => { pulse = true; resolve(); }));
+  let pulse = false; await new Promise<void>(resolve => { setImmediate(() => { pulse = true; resolve(); }); });
   assert.equal(pulse, true); assert.deepEqual(f.calls, ['status']);
   assert.equal((await pending).persistentAvailable, false);
   gate.resolve(); await turn();
@@ -367,12 +386,12 @@ test('async native wait leaves the JS loop responsive; timeout and late status n
 });
 
 test('native capacity survives repeated broker/codec replacement and releases only on real settlement', async t => {
-  const f = vault(), gates = [], pairs = [];
+  const f = vault(), gates: Array<Pending<unknown>> = [], pairs: Array<ReturnType<typeof imagePair>> = [];
   f.before = async method => { if (method === 'status') { const gate = deferred(); gates.push(gate); await gate.promise; } };
   t.after(() => { for (const pair of pairs) pair.close(); for (const gate of gates) gate.resolve(); });
   for (let i = 0; i < 16; i++) {
     const pair = imagePair(imageFor(f)); pairs.push(pair);
-    const pending = pair.client.refreshStorage().catch(error => error.code);
+    const pending = pair.client.refreshStorage().catch((error: unknown) => (error as {code?: string}).code);
     await turn(); pair.close(); await pending; await turn();
   }
   assert.equal(gates.length, 16);
@@ -391,13 +410,13 @@ test('canceling Images status does not invalidate concurrent Agent encryption on
   let holdStatus = false;
   f.before = async (method, value) => {
     if (method === 'status' && holdStatus) await statusGate.promise;
-    if (method === 'encrypt' && value.startsWith('{')) { entered.resolve(); await encryptGate.promise; }
+    if (method === 'encrypt' && asString(value).startsWith('{')) { entered.resolve(); await encryptGate.promise; }
   };
   const pending = codec.encrypt(SENTINEL);
   await entered.promise; holdStatus = true;
   const pair = imagePair(imageFor(f));
   t.after(() => { statusGate.resolve(); encryptGate.resolve(); pair.close(); codec.close(); });
-  const status = pair.client.refreshStorage().catch(error => error.code);
+  const status = pair.client.refreshStorage().catch((error: unknown) => (error as {code?: string}).code);
   await turn(); pair.close(); await status;
   holdStatus = false; encryptGate.resolve();
   const encrypted = await pending;
@@ -413,10 +432,10 @@ for (const phase of ['status', 'probe-encrypt', 'credential-encrypt']) {
     let active = true, held = false;
     f.before = async (method, value) => {
       const match = phase === 'status' ? method === 'status' : method === 'encrypt' &&
-        (phase === 'probe-encrypt' ? value.startsWith('mioon-vault-probe:') : value.startsWith('{'));
+        (phase === 'probe-encrypt' ? asString(value).startsWith('mioon-vault-probe:') : asString(value).startsWith('{'));
       if (match && !held) { held = true; entered.resolve(); await gate.promise; }
     };
-    const pending = codec.encrypt(SENTINEL, {isActive: () => active}).then(() => 'unexpected-success', error => error.code);
+    const pending = codec.encrypt(SENTINEL, {isActive: () => active}).then(() => 'unexpected-success', (error: unknown) => (error as {code?: string}).code);
     t.after(() => { gate.resolve(); codec.close(); });
     await entered.promise; active = false;
     const replacement = codecFor(f); t.after(() => replacement.close());
@@ -430,16 +449,16 @@ for (const phase of ['status', 'probe-encrypt', 'credential-encrypt']) {
 }
 
 test('broker releases canceled logical requests when a codec ignores options and returns late', async () => {
-  const gates = [], messages = [], unavailable = {persistentAvailable: false, sessionScope: 'server', reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'};
+  const gates: Array<Pending<unknown>> = [], messages: Array<Record<string, unknown>> = [], unavailable = {persistentAvailable: false, sessionScope: 'server', reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'};
   const broker = imageBridge.createImageSecretBroker({imageSecretCodec: {
     storage() { const gate = deferred(); gates.push(gate); return gate.promise; }, encrypt() {}, decrypt() {},
-  }, send: value => messages.push(value)});
+  }, send: (value: Record<string, unknown>) => messages.push(value)});
   for (let i = 0; i < 20; i++) {
     const requestId = randomUUID();
     broker.handle({type: 'image-secret-codec-request', version: 1, namespace: 'images', requestId, operation: 'status'});
     await turn();
     broker.handle({type: 'image-secret-codec-cancel', version: 1, namespace: 'images', requestId});
-    gates.at(-1).resolve(unavailable); await turn();
+    gates.at(-1)!.resolve(unavailable); await turn();
   }
   assert.equal(gates.length, 20); assert.equal(messages.length, 0);
   broker.close();
@@ -458,21 +477,21 @@ for (const boundary of ['timeout', 'client-close', 'broker-close', 'ownership', 
     const f = vault(), codec = codecFor(f), persistence = memory();
     const engine = await agent.createAgentSettings({persistence, secretCodec: codec, storage: codec.storage});
     const gate = deferred(), entered = deferred();
-    f.before = async (method, value) => { if (method === 'encrypt' && value.startsWith('{')) { entered.resolve(); await gate.promise; } };
+    f.before = async (method, value) => { if (method === 'encrypt' && asString(value).startsWith('{')) { entered.resolve(); await gate.promise; } };
     let active = true;
     const pair = agentPair(engine, {timeout: boundary === 'timeout' ? 50 : 1000, isActive: () => active, delayCancel: boundary === 'timeout'});
     t.after(async () => { gate.resolve(); pair.close(); await engine.close(); });
     let clientSettled = false;
-    const pending = pair.client.put(update()).then(() => 'unexpected-success', error => error.code).finally(() => { clientSettled = true; });
+    const pending = pair.client.put(update()).then(() => 'unexpected-success', (error: unknown) => (error as {code?: string}).code).finally(() => { clientSettled = true; });
     await entered.promise;
     if (boundary === 'client-close') pair.client.close();
     if (boundary === 'broker-close') pair.broker.close();
     if (boundary === 'ownership') active = false;
     if (boundary === 'engine-close') await engine.close();
     if (boundary === 'broker-close' || boundary === 'ownership') {
-      assert.ok(Date.now() < pair.requests[0].deadline);
+      assert.ok(Date.now() < Number(pair.requests[0]!.deadline));
       gate.resolve(); await turn();
-      assert.ok(Date.now() < pair.requests[0].deadline, 'The late native result arrived before the client deadline');
+      assert.ok(Date.now() < Number(pair.requests[0]!.deadline), 'The late native result arrived before the client deadline');
       assert.equal(clientSettled, false, 'The client timeout has not provided the fence');
       assert.equal(persistence.saves, 0); assert.equal(pair.messages.length, 0);
       pair.client.close();
@@ -491,10 +510,10 @@ test('Agent checks original client deadline before save even before main cancel/
   const f = vault(), codec = codecFor(f), persistence = memory();
   const engine = await agent.createAgentSettings({persistence, secretCodec: codec, storage: codec.storage});
   const gate = deferred(), entered = deferred();
-  f.before = async (method, value) => { if (method === 'encrypt' && value.startsWith('{')) { entered.resolve(); await gate.promise; } };
+  f.before = async (method, value) => { if (method === 'encrypt' && asString(value).startsWith('{')) { entered.resolve(); await gate.promise; } };
   const pair = agentPair(engine, {timeout: 1000, delayCancel: true});
   t.after(async () => { gate.resolve(); pair.close(); await engine.close(); });
-  const pending = pair.client.put(update()).then(() => 'unexpected-success', error => error.code);
+  const pending = pair.client.put(update()).then(() => 'unexpected-success', (error: unknown) => (error as {code?: string}).code);
   await entered.promise;
   const realNow = Date.now;
   try {
@@ -513,13 +532,13 @@ test('Agent queued puts cancel before execution, while an already-started save r
   const engine = await agent.createAgentSettings({persistence, secretCodec: codec, storage: codec.storage});
   const pair = agentPair(engine);
   t.after(async () => { finish.resolve(); pair.close(); await engine.close(); });
-  const first = pair.client.put(update(0, 'session')).catch(error => error.code);
+  const first = pair.client.put(update(0, 'session')).catch((error: unknown) => (error as {code?: string}).code);
   await started.promise;
   const calls = f.calls.length;
-  const second = pair.client.put(update(1)).catch(error => error.code);
+  const second = pair.client.put(update(1)).catch((error: unknown) => (error as {code?: string}).code);
   pair.client.close(); await Promise.all([first, second]); finish.resolve(); await turn();
   assert.equal(persistence.saves, 1);
-  assert.equal(persistence.value.revision, 1);
+  assert.equal(persistence.value!.revision, 1);
   assert.equal(f.calls.length, calls, 'Canceled queued put never enters the native codec');
   assert.equal((await engine.get()).revision, 1, 'RAM follows the save that already started');
 });
@@ -531,18 +550,18 @@ test('Agent save completed past the deadline commits consistently without cachin
   const engine = await agent.createAgentSettings({persistence, secretCodec: codec, storage: codec.storage});
   const pair = agentPair(engine);
   t.after(async () => { finish.resolve(); pair.close(); await engine.close(); });
-  const pending = pair.client.put(update()).then(() => 'unexpected-success', error => error.code);
+  const pending = pair.client.put(update()).then(() => 'unexpected-success', (error: unknown) => (error as {code?: string}).code);
   await started.promise;
   const original = pair.requests[0], realNow = Date.now;
   try {
     Date.now = () => realNow() + 2000;
     finish.resolve(); await turn();
-    assert.equal(persistence.saves, 1); assert.equal(persistence.value.revision, 1);
+    assert.equal(persistence.saves, 1); assert.equal(persistence.value!.revision, 1);
     assert.equal(pair.messages.length, 0);
   } finally { Date.now = realNow; }
   assert.equal((await engine.get()).revision, 1);
   pair.broker.handle({...original, deadline: Date.now() + 1000}); await turn();
-  assert.equal(pair.messages.at(-1).ok, false, 'Expired completion was not cached as successful');
+  assert.equal(pair.messages.at(-1)?.ok, false, 'Expired completion was not cached as successful');
   assert.equal(persistence.saves, 1);
   assert.notEqual(await pending, 'unexpected-success');
 });
@@ -559,18 +578,19 @@ test('Agent engine close waits for an atomic save that already started', async t
   await turn(); assert.equal(closed, false); assert.equal(persistence.saves, 0);
   finish.resolve(); const saved = await pending; await closing;
   assert.equal(closed, true); assert.equal(persistence.saves, 1);
-  assert.equal(persistence.value.revision, saved.revision); assert.equal(saved.revision, 1);
+  assert.equal(persistence.value!.revision, saved.revision); assert.equal(saved.revision, 1);
   await assert.rejects(engine.get(), {code: 'AGENT_SETTINGS_CLOSED'});
 });
 
 test('Agent client rejects a response past its deadline before the timeout callback runs', async () => {
-  const port = new EventEmitter(); let request;
-  port.postMessage = value => { if (value.type === 'agent-settings-request') request = value; };
+  const port = new EventEmitter() as TestPort;
+  let request: {deadline: number; requestId: string} | undefined;
+  port.postMessage = (value: {type?: string; deadline?: number; requestId?: string}) => { if (value.type === 'agent-settings-request') request = value as {deadline: number; requestId: string}; };
   const client = agentBridge.createAgentSettingsClient({port, timeout: 1000});
-  const pending = client.get().catch(error => error.code), realNow = Date.now;
+  const pending = client.get().catch((error: unknown) => (error as {code?: string}).code), realNow = Date.now;
   try {
-    Date.now = () => request.deadline;
-    port.emit('message', {data: {type: 'agent-settings-response', version: 1, requestId: request.requestId,
+    Date.now = () => request!.deadline;
+    port.emit('message', {data: {type: 'agent-settings-response', version: 1, requestId: request!.requestId,
       ok: true, data: {revision: 0, configuration: {...DEFAULT_AGENT_CONFIGURATION}, secret: {configured: false, storage: 'none'},
         storage: {persistentAvailable: true, sessionScope: 'app', reasonCode: null}}}});
     assert.equal(await pending, 'AGENT_SETTINGS_TIMEOUT');
@@ -578,13 +598,14 @@ test('Agent client rejects a response past its deadline before the timeout callb
 });
 
 test('Images client rejects a delayed status response before the timeout callback runs', async () => {
-  const port = new EventEmitter(); let request;
-  port.postMessage = value => { if (value.type === 'image-secret-codec-request') request = value; };
+  const port = new EventEmitter() as TestPort;
+  let request: {deadline: number; requestId: string} | undefined;
+  port.postMessage = (value: {type?: string; deadline?: number; requestId?: string}) => { if (value.type === 'image-secret-codec-request') request = value as {deadline: number; requestId: string}; };
   const client = imageBridge.createImageSecretClient({port, timeout: 1000});
-  const pending = client.refreshStorage().catch(error => error.code), realNow = Date.now;
+  const pending = client.refreshStorage().catch((error: unknown) => (error as {code?: string}).code), realNow = Date.now;
   try {
-    Date.now = () => request.deadline;
-    port.emit('message', {data: {type: 'image-secret-codec-response', version: 1, namespace: 'images', requestId: request.requestId,
+    Date.now = () => request!.deadline;
+    port.emit('message', {data: {type: 'image-secret-codec-response', version: 1, namespace: 'images', requestId: request!.requestId,
       ok: true, data: {persistentAvailable: true, sessionScope: 'server', reasonCode: null}}});
     assert.equal(await pending, 'IMAGE_SECRET_CODEC_TIMEOUT');
     assert.equal(client.storage().persistentAvailable, false);
@@ -598,7 +619,7 @@ test('initial async status and old-secret decrypt are bounded, preserving old by
     const encrypted = f.seal(JSON.stringify({version: 1, appId: APP_ID, plaintext: JSON.stringify({version: 1, binding, value: SENTINEL})})).toString('base64');
     const original = {version: 2, revision: 4, configuration, secret: {binding, encrypted}}, persistence = memory(original);
     f.before = async (method, value) => {
-      if (method === operation && (operation === 'status' || f.open(value).startsWith('{'))) await gate.promise;
+      if (method === operation && (operation === 'status' || f.open(asBuffer(value)).startsWith('{'))) await gate.promise;
     };
     const engine = await agent.createAgentSettings({persistence, secretCodec: codec, storage: codec.storage});
     t.after(async () => { gate.resolve(); await engine.close(); });
@@ -617,7 +638,7 @@ test('startup abort returns without waiting for the native Promise and never ena
   f.before = async method => { if (method === 'status') { entered.resolve(); await gate.promise; } };
   let initialized = false;
   const pending = agent.createAgentSettings({persistence: memory(), secretCodec: codec, storage: codec.storage, signal: controller.signal})
-    .then(engine => { initialized = true; return engine; });
+    .then((engine: {close(): Promise<void>}) => { initialized = true; return engine; });
   t.after(async () => { gate.resolve(); await (await pending).close(); });
   await entered.promise; controller.abort(); await turn();
   assert.equal(initialized, true, 'Startup settled in the abort turn, without waiting for the 1500ms native timeout');
@@ -642,11 +663,11 @@ test('Agent binding validation rejects copied channel-valid plaintext without ch
 test('owned utility replacement cannot save or receive an old Agent encryption result', async t => {
   const f = vault(), codec = codecFor(f), persistence = memory(), gate = deferred(), entered = deferred();
   const engine = await agent.createAgentSettings({persistence, secretCodec: codec, storage: codec.storage});
-  f.before = async (method, value) => { if (method === 'encrypt' && value.startsWith('{')) { entered.resolve(); await gate.promise; } };
-  function child() {
-    const value = new EventEmitter(); value.messages = [];
-    value.postMessage = message => { value.messages.push(message); if (message.type === 'start') queueMicrotask(() => value.emit('message', {type: 'ready', url: 'http://127.0.0.1:43191/'})); if (message.type === 'stop') queueMicrotask(() => value.emit('exit', 0)); };
-    value.kill = () => value.emit('exit', 0); return value;
+  f.before = async (method, value) => { if (method === 'encrypt' && asString(value).startsWith('{')) { entered.resolve(); await gate.promise; } };
+  function child(): TestChild {
+    const value = new EventEmitter() as TestChild; value.messages = [];
+    value.postMessage = (message: Record<string, unknown>) => { value.messages.push(message); if (message.type === 'start') queueMicrotask(() => value.emit('message', {type: 'ready', url: 'http://127.0.0.1:43191/'})); if (message.type === 'stop') queueMicrotask(() => value.emit('exit', 0)); };
+    value.kill = () => { value.emit('exit', 0); }; return value;
   }
   const first = child(), second = child(); let next = first;
   const supervisor = new BackendSupervisor({fork: () => next, modulePath: 'synthetic-never-executed', environment: {}, agentSettings: engine,

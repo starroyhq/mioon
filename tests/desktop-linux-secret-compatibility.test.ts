@@ -2,24 +2,43 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCipheriv, createDecipheriv } from 'node:crypto';
 import { createLinuxDesktopSecretCodec, linuxDesktopSecretStorage } from '../apps/desktop/src/secret-store-linux.ts';
+import type {SecretOperationOptions, SecretStorageState} from '../apps/desktop/src/secret-store.ts';
 import { agentSettingsError } from '../packages/business/src/agent/config.ts';
+
+type LinuxCodecOptions = Parameters<typeof createLinuxDesktopSecretCodec>[0];
+type SyncSafeStorageArg = LinuxCodecOptions['safeStorage'];
+interface SyncCodec {
+  storage(): SecretStorageState;
+  refreshStorage(options?: SecretOperationOptions): SecretStorageState;
+  encrypt(plaintext: unknown, options?: SecretOperationOptions): string;
+  decrypt(ciphertext: unknown, options?: SecretOperationOptions): string;
+  close(): void;
+}
+const syncCodec = (options: LinuxCodecOptions): SyncCodec => createLinuxDesktopSecretCodec(options) as unknown as SyncCodec;
 
 const SECRET = 'synthetic-linux-credential-never-live';
 const DEVELOPMENT = 'app.starroy.mioon.dev';
 const PRODUCTION = 'app.starroy.mioon';
-const AVAILABLE = { persistentAvailable: true, sessionScope: 'app', reasonCode: null };
-const UNAVAILABLE = { persistentAvailable: false, sessionScope: 'app', reasonCode: 'OS_SECRET_STORE_UNAVAILABLE' };
+const AVAILABLE = { persistentAvailable: true, sessionScope: 'app' as const, reasonCode: null };
+const UNAVAILABLE = { persistentAvailable: false, sessionScope: 'app' as const, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE' as const };
 
 // Synthetic, in-memory crypto only. These tests do not open a native keyring,
 // read existing credentials/settings, or certify native Linux integration.
-function fakeVault(backend = 'gnome_libsecret') {
+interface FakeVault {
+  isEncryptionAvailable: () => boolean;
+  getSelectedStorageBackend: () => string | null | undefined;
+  encryptString: (plaintext: string) => unknown;
+  decryptString: (ciphertext: Buffer) => unknown;
+}
+interface FakeVaultState {backend: string | null | undefined; available: boolean | number | undefined; encryptCalls: number; decryptCalls: number; asyncCalls: number; plaintexts: string[]}
+function fakeVault(backend: string | null | undefined = 'gnome_libsecret') {
   let sequence = 0;
   const key = Buffer.alloc(32, 9);
-  const state = { backend, available: true, encryptCalls: 0, decryptCalls: 0, asyncCalls: 0, plaintexts: [] };
-  const vault = {
-    isEncryptionAvailable: () => state.available,
+  const state: FakeVaultState = { backend, available: true, encryptCalls: 0, decryptCalls: 0, asyncCalls: 0, plaintexts: [] };
+  const vault: FakeVault = {
+    isEncryptionAvailable: () => state.available === true,
     getSelectedStorageBackend: () => state.backend,
-    encryptString(plaintext) {
+    encryptString(plaintext: string) {
       state.encryptCalls++;
       state.plaintexts.push(plaintext);
       const iv = Buffer.alloc(12); iv.writeUInt32BE(++sequence, 8);
@@ -27,7 +46,7 @@ function fakeVault(backend = 'gnome_libsecret') {
       const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
       return Buffer.concat([iv, cipher.getAuthTag(), ciphertext]);
     },
-    decryptString(bytes) {
+    decryptString(bytes: Buffer) {
       state.decryptCalls++;
       const decipher = createDecipheriv('aes-256-gcm', key, bytes.subarray(0, 12));
       decipher.setAuthTag(bytes.subarray(12, 28));
@@ -40,12 +59,13 @@ function fakeVault(backend = 'gnome_libsecret') {
   return { vault, state };
 }
 
-function fixedError(code) {
-  return error => {
-    assert.equal(error.code, code);
-    assert.equal(error.message, agentSettingsError(code).message);
+function fixedError(code: string) {
+  return (error: unknown) => {
+    const failure = error as {code: string; message: string; stack?: string};
+    assert.equal(failure.code, code);
+    assert.equal(failure.message, agentSettingsError(code).message);
     assert.equal(JSON.stringify(error).includes(SECRET), false);
-    assert.equal(String(error.stack).includes(SECRET), false);
+    assert.equal(String(failure.stack).includes(SECRET), false);
     return true;
   };
 }
@@ -54,8 +74,8 @@ for (const backend of ['gnome_libsecret', 'kwallet', 'kwallet5', 'kwallet6']) {
   test(`Linux ${backend} preserves synchronous crypto and the original channel wrapper`, async () => {
     const { vault, state } = fakeVault(backend);
     for (const appId of [DEVELOPMENT, PRODUCTION]) {
-      const codec = createLinuxDesktopSecretCodec({ safeStorage: vault, appId });
-      assert.deepEqual(linuxDesktopSecretStorage(vault), AVAILABLE);
+      const codec = syncCodec({ safeStorage: vault as unknown as SyncSafeStorageArg, appId } as LinuxCodecOptions);
+      assert.deepEqual(linuxDesktopSecretStorage(vault as unknown as SyncSafeStorageArg), AVAILABLE);
       assert.deepEqual(codec.storage(), AVAILABLE);
       assert.deepEqual(await codec.refreshStorage(), AVAILABLE);
       const encrypted = codec.encrypt(SECRET);
@@ -65,7 +85,7 @@ for (const backend of ['gnome_libsecret', 'kwallet', 'kwallet5', 'kwallet6']) {
       assert.equal(Buffer.from(encrypted, 'base64').includes(Buffer.from(SECRET)), false);
       assert.equal(codec.decrypt(encrypted), SECRET);
       // An existing v1 ciphertext is readable without rewriting its wrapper.
-      const legacy = vault.encryptString(JSON.stringify({ version: 1, appId, plaintext: SECRET })).toString('base64');
+      const legacy = (vault.encryptString(JSON.stringify({ version: 1, appId, plaintext: SECRET })) as Buffer).toString('base64');
       const writes = state.encryptCalls;
       assert.equal(await codec.decrypt(legacy), SECRET);
       assert.equal(state.encryptCalls, writes);
@@ -77,7 +97,7 @@ for (const backend of ['gnome_libsecret', 'kwallet', 'kwallet5', 'kwallet6']) {
 test('Linux denies basic_text, unknown/missing backends and unavailable encryption before native crypto', () => {
   for (const backend of ['basic_text', 'unknown', 'future-backend', undefined, null]) {
     const { vault, state } = fakeVault(); state.backend = backend;
-    const codec = createLinuxDesktopSecretCodec({ safeStorage: vault, appId: DEVELOPMENT });
+    const codec = syncCodec({ safeStorage: vault as unknown as SyncSafeStorageArg, appId: DEVELOPMENT });
     const expected = { ...UNAVAILABLE, reasonCode: backend === 'basic_text' ? 'LINUX_BASIC_TEXT' : 'OS_SECRET_STORE_UNAVAILABLE' };
     assert.deepEqual(codec.storage(), expected);
     assert.deepEqual(codec.refreshStorage(), expected);
@@ -86,7 +106,7 @@ test('Linux denies basic_text, unknown/missing backends and unavailable encrypti
     assert.equal(state.encryptCalls + state.decryptCalls + state.asyncCalls, 0);
   }
   const { vault, state } = fakeVault();
-  const codec = createLinuxDesktopSecretCodec({ safeStorage: vault, appId: DEVELOPMENT });
+  const codec = syncCodec({ safeStorage: vault as unknown as SyncSafeStorageArg, appId: DEVELOPMENT });
   for (const available of [false, undefined, 1]) {
     state.available = available;
     assert.deepEqual(codec.storage(), UNAVAILABLE);
@@ -96,14 +116,14 @@ test('Linux denies basic_text, unknown/missing backends and unavailable encrypti
   for (const broken of [undefined, {}, { isEncryptionAvailable() { throw new Error(SECRET); } },
     { isEncryptionAvailable: () => true },
     { isEncryptionAvailable: () => true, getSelectedStorageBackend() { throw new Error(SECRET); } }]) {
-    assert.deepEqual(linuxDesktopSecretStorage(broken), UNAVAILABLE);
+    assert.deepEqual(linuxDesktopSecretStorage(broken as unknown as SyncSafeStorageArg), UNAVAILABLE);
   }
   assert.equal(state.encryptCalls + state.decryptCalls + state.asyncCalls, 0);
 });
 
 test('Linux checks current availability before each encrypt/decrypt and never falls back', () => {
   const { vault, state } = fakeVault();
-  const codec = createLinuxDesktopSecretCodec({ safeStorage: vault, appId: DEVELOPMENT });
+  const codec = syncCodec({ safeStorage: vault as unknown as SyncSafeStorageArg, appId: DEVELOPMENT });
   const encrypted = codec.encrypt(SECRET);
   state.backend = 'basic_text';
   assert.throws(() => codec.encrypt(SECRET), fixedError('AGENT_SETTINGS_STORAGE_UNAVAILABLE'));
@@ -120,10 +140,10 @@ test('Linux checks current availability before each encrypt/decrypt and never fa
 
 test('Linux keeps appId, strict base64, payload bounds and fixed corruption errors', () => {
   const { vault, state } = fakeVault();
-  const codec = createLinuxDesktopSecretCodec({ safeStorage: vault, appId: DEVELOPMENT });
-  const production = createLinuxDesktopSecretCodec({ safeStorage: vault, appId: PRODUCTION });
+  const codec = syncCodec({ safeStorage: vault as unknown as SyncSafeStorageArg, appId: DEVELOPMENT });
+  const production = syncCodec({ safeStorage: vault as unknown as SyncSafeStorageArg, appId: PRODUCTION });
   for (const appId of ['', null, 'other.app']) {
-    assert.throws(() => createLinuxDesktopSecretCodec({ safeStorage: vault, appId }), fixedError('AGENT_SETTINGS_STORAGE_UNAVAILABLE'));
+    assert.throws(() => syncCodec({ safeStorage: vault as unknown as SyncSafeStorageArg, appId: appId as string }), fixedError('AGENT_SETTINGS_STORAGE_UNAVAILABLE'));
   }
   const encrypted = codec.encrypt(SECRET);
   assert.throws(() => production.decrypt(encrypted), fixedError('AGENT_SETTINGS_CORRUPT'));
@@ -139,7 +159,7 @@ test('Linux keeps appId, strict base64, payload bounds and fixed corruption erro
     { version: 1, appId: DEVELOPMENT, plaintext: SECRET, extra: true },
     { version: 1, appId: DEVELOPMENT, plaintext: 1 },
     { version: 1, appId: DEVELOPMENT, plaintext: 'a'.repeat(32 * 1024 + 1) }]) {
-    const invalid = vault.encryptString(JSON.stringify(value)).toString('base64');
+    const invalid = (vault.encryptString(JSON.stringify(value)) as Buffer).toString('base64');
     assert.throws(() => codec.decrypt(invalid), fixedError('AGENT_SETTINGS_CORRUPT'));
   }
   for (const decoded of [null, Buffer.from(SECRET), '{', 'a'.repeat(64 * 1024 + 1)]) {
@@ -159,7 +179,7 @@ test('Linux keeps appId, strict base64, payload bounds and fixed corruption erro
 
 test('Linux closed, aborted and inactive calls do not touch native crypto or return secrets', () => {
   const { vault, state } = fakeVault();
-  const codec = createLinuxDesktopSecretCodec({ safeStorage: vault, appId: DEVELOPMENT });
+  const codec = syncCodec({ safeStorage: vault as unknown as SyncSafeStorageArg, appId: DEVELOPMENT });
   const encrypted = codec.encrypt(SECRET), writes = state.encryptCalls;
   const controller = new AbortController(); controller.abort(SECRET);
   for (const options of [{ signal: controller.signal }, { isActive: () => false }, { isActive() { throw new Error(SECRET); } }]) {
@@ -179,19 +199,20 @@ for (const operation of ['encrypt', 'decrypt']) {
   for (const fence of ['abort', 'inactive', 'close']) {
     test(`Linux ${operation} discards a completed synchronous result after ${fence}`, () => {
       const { vault, state } = fakeVault();
-      const codec = createLinuxDesktopSecretCodec({ safeStorage: vault, appId: DEVELOPMENT });
+      const codec = syncCodec({ safeStorage: vault as unknown as SyncSafeStorageArg, appId: DEVELOPMENT });
       const encrypted = codec.encrypt(SECRET);
       const controller = new AbortController(); let active = true;
       const method = operation === 'encrypt' ? 'encryptString' : 'decryptString';
-      const native = vault[method];
-      vault[method] = value => {
+      const vaultRecord = vault as unknown as Record<string, (value: never) => unknown>;
+      const native = vaultRecord[method];
+      (vault as unknown as Record<string, (value: never) => unknown>)[method] = value => {
         const result = native(value);
         if (fence === 'abort') controller.abort(SECRET);
         if (fence === 'inactive') active = false;
         if (fence === 'close') codec.close();
         return result;
       };
-      assert.throws(() => codec[operation](operation === 'encrypt' ? SECRET : encrypted,
+      assert.throws(() => codec[operation as 'encrypt' | 'decrypt'](operation === 'encrypt' ? SECRET : encrypted,
         { signal: controller.signal, isActive: () => active }), fixedError('AGENT_SETTINGS_STORAGE_UNAVAILABLE'));
       assert.equal(state.encryptCalls, operation === 'encrypt' ? 2 : 1);
       assert.equal(state.decryptCalls, operation === 'decrypt' ? 1 : 0);
@@ -202,7 +223,7 @@ for (const operation of ['encrypt', 'decrypt']) {
 
 test('Linux refresh and pre-crypto capability probes fence a lifetime change', () => {
   const { vault, state } = fakeVault();
-  const codec = createLinuxDesktopSecretCodec({ safeStorage: vault, appId: DEVELOPMENT });
+  const codec = syncCodec({ safeStorage: vault as unknown as SyncSafeStorageArg, appId: DEVELOPMENT });
   let active = true;
   vault.isEncryptionAvailable = () => { active = false; return true; };
   assert.deepEqual(codec.refreshStorage({ isActive: () => active }), UNAVAILABLE);
