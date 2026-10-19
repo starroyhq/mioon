@@ -10,17 +10,17 @@ test('panel defaults and bounds agree across renderer and strict server parsing'
     inspectorWidth: { default: 320, min: 240, max: 560 },
     timelineHeight: { default: 300, min: 160, max: 800 },
   });
-  const state = defaultWorkspaceState(); delete state.shared.assetSearch;
+  const state = defaultWorkspaceState(); delete (state.shared as unknown as Record<string, unknown>).assetSearch;
   assert.deepEqual(parseWorkspacePreferencesState(state), state);
   for (const [key, bounds] of Object.entries(PANEL_BOUNDS)) {
     for (const mode of key === 'timelineHeight' ? ['editing'] : ['canvas', 'editing']) {
       for (const good of [bounds.min, bounds.default, bounds.max, (bounds.min + bounds.max) / 2 + .25]) {
-        const value = structuredClone(state); value.layout[mode][key] = good;
-        assert.equal(parseWorkspacePreferencesState(value).layout[mode][key], good);
-        assert.equal(normalizeWorkspaceState(value).layout[mode][key], good);
+        const value = structuredClone(state); (value.layout as unknown as Record<string, Record<string, unknown>>)[mode][key] = good;
+        assert.equal((parseWorkspacePreferencesState(value).layout as unknown as Record<string, Record<string, unknown>>)[mode][key], good);
+        assert.equal((normalizeWorkspaceState(value).layout as unknown as Record<string, Record<string, unknown>>)[mode][key], good);
       }
       for (const bad of [bounds.min - 1, bounds.max + 1, NaN, Infinity, '300', null]) {
-        const value = structuredClone(state); value.layout[mode][key] = bad;
+        const value = structuredClone(state); (value.layout as unknown as Record<string, Record<string, unknown>>)[mode][key] = bad;
         assert.throws(() => parseWorkspacePreferencesState(value), { code: 'VALIDATION_ERROR' });
         assert.equal(isWorkspaceLayout(value.layout), false);
       }
@@ -34,10 +34,11 @@ test('preferred dimensions clamp only explicit state normalization and defaults 
   assert.equal(first.editing.assetsWidth, 260); assert.equal(second.canvas.assetsWidth, 260);
   assert.equal(isWorkspaceLayout(first), true);
   for (const [key, bounds] of Object.entries(PANEL_BOUNDS)) {
-    assert.equal(clampPanelSize(key, -1), bounds.min);
-    assert.equal(clampPanelSize(key, 1e6), bounds.max);
-    assert.equal(clampPanelSize(key, NaN), bounds.default);
-    assert.equal(clampPanelSize(key, '350'), bounds.default);
+    const panel = key as Parameters<typeof clampPanelSize>[0];
+    assert.equal(clampPanelSize(panel, -1), bounds.min);
+    assert.equal(clampPanelSize(panel, 1e6), bounds.max);
+    assert.equal(clampPanelSize(panel, NaN), bounds.default);
+    assert.equal(clampPanelSize(panel, '350' as unknown as number), bounds.default);
   }
   assert.deepEqual(normalizeWorkspaceLayout(undefined, { assetsCollapsed: true }).canvas,
     { assetsWidth: 260, inspectorWidth: 320, assetsCollapsed: true, inspectorCollapsed: false });
@@ -63,7 +64,7 @@ test('effective geometry preserves center space and never changes durable prefer
 test('the center keeps a comfortable height while the timeline can still keep its floor, then yields to the hard minimum', () => {
   const preferred = defaultWorkspaceLayout().editing, before = structuredClone(preferred);
   const options = { width: 1800, centerMinWidth: 300, centerMinHeight: 180, centerComfortHeight: 300, timelineFloorHeight: 220, separatorSize: 0, collapsedWidth: 28 };
-  const at = height => effectiveWorkspaceLayout(preferred, { ...options, height });
+  const at = (height: number) => effectiveWorkspaceLayout(preferred, { ...options, height });
   assert.equal(at(900).timelineHeight, 300);
   assert.equal(at(584).timelineHeight, 284); assert.equal(at(584).timelineMaxHeight, 284);
   assert.equal(at(434).timelineHeight, 220); assert.equal(at(434).timelineMaxHeight, 220);
@@ -81,8 +82,9 @@ test('effective collapsed and extremely narrow layouts stay finite and preserve 
   assert.equal(wide.assetsCollapsed, true); assert.equal(wide.inspectorCollapsed, false);
   for (const width of [0, 120, 500, 800]) for (const height of [0, 100, 400]) {
     const result = effectiveWorkspaceLayout(preferred, { width, height });
+    const metrics = result as unknown as Record<string, number>;
     for (const key of ['assetsWidth', 'inspectorWidth', 'timelineHeight', 'assetsMaxWidth', 'inspectorMaxWidth', 'timelineMaxHeight']) {
-      assert.ok(Number.isFinite(result[key])); assert.ok(result[key] >= 0);
+      assert.ok(Number.isFinite(metrics[key])); assert.ok(metrics[key] >= 0);
     }
     assert.ok(result.assetsWidth + result.inspectorWidth <= width);
     assert.ok(result.timelineHeight <= height);
@@ -94,17 +96,17 @@ test('effective collapsed and extremely narrow layouts stay finite and preserve 
 test('layout validation rejects extra, missing, malformed and symbolic fields at every boundary', () => {
   const invalid = [null, [], false, {}, { canvas: {}, editing: {} }];
   for (const mode of ['canvas', 'editing']) {
-    for (const key of Object.keys(defaultWorkspaceLayout()[mode])) {
-      const value = defaultWorkspaceLayout(); delete value[mode][key]; invalid.push(value);
+    for (const key of Object.keys((defaultWorkspaceLayout() as unknown as Record<string, Record<string, unknown>>)[mode])) {
+      const value = defaultWorkspaceLayout(); delete (value as unknown as Record<string, Record<string, unknown>>)[mode][key]; invalid.push(value);
     }
     for (const key of ['assetsCollapsed', 'inspectorCollapsed']) for (const bad of [null, 0, 'true']) {
-      const value = defaultWorkspaceLayout(); value[mode][key] = bad; invalid.push(value);
+      const value = defaultWorkspaceLayout(); (value as unknown as Record<string, Record<string, unknown>>)[mode][key] = bad; invalid.push(value);
     }
     for (const key of ['extra', Symbol('extra')]) {
-      const value = defaultWorkspaceLayout(); value[mode][key] = true; invalid.push(value);
+      const value = defaultWorkspaceLayout(); const modes = value as unknown as Record<string, Record<PropertyKey, unknown>>; modes[mode][key] = true; invalid.push(value);
     }
   }
-  const extra = defaultWorkspaceLayout(); extra.extra = true; invalid.push(extra);
+  const extra = defaultWorkspaceLayout(); (extra as unknown as Record<string, unknown>).extra = true; invalid.push(extra);
   for (const value of invalid) assert.equal(isWorkspaceLayout(value), false);
 });
 

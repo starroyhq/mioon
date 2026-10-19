@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {spawnSync} from 'node:child_process';
@@ -12,17 +12,17 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const version = '6.0.3';
 const metadata = {name: 'typescript', version, bin: {tsc: './bin/tsc', tsserver: './bin/tsserver'}};
 const projects = ['tests/typecheck/tsconfig.foundation.json', 'tests/typecheck/tsconfig.browser.json', 'tests/tsconfig.tests.json'];
-const directoryLink = (target, link) => symlink(target, link, process.platform === 'win32' ? 'junction' : 'dir');
+const directoryLink = (target: string, link: string) => symlink(target, link, process.platform === 'win32' ? 'junction' : 'dir');
 
-async function fixture(t, compiler = "process.stdout.write(JSON.stringify(process.argv.slice(2)) + '\\n');\n") {
+async function fixture(t: TestContext, compiler = "process.stdout.write(JSON.stringify(process.argv.slice(2)) + '\\n');\n") {
   const directory = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon typecheck 中 '));
   t.after(() => rm(directory, {recursive: true, force: true}));
-  const file = async (name, contents) => {
+  const file = async (name: string, contents: string) => {
     const target = path.join(directory, name);
     await mkdir(path.dirname(target), {recursive: true});
     await writeFile(target, contents);
   };
-  const json = (name, value) => file(name, JSON.stringify(value));
+  const json = (name: string, value: unknown) => file(name, JSON.stringify(value));
   await json('package.json', {type: 'module', devDependencies: {typescript: version}});
   await json('config/typecheck-legacy-sources.json', []);
   await json('node_modules/typescript/package.json', metadata);
@@ -33,14 +33,14 @@ async function fixture(t, compiler = "process.stdout.write(JSON.stringify(proces
   return {directory, file, json};
 }
 
-async function fixtureCli(t, compiler) {
+async function fixtureCli(t: TestContext, compiler = "process.stdout.write(JSON.stringify(process.argv.slice(2)) + '\\n');\n") {
   const state = await fixture(t, compiler);
   await state.file('scripts/tooling.ts', await readFile(path.join(root, 'scripts/tooling.ts'), 'utf8'));
   await directoryLink(path.join(root, 'scripts/lib'), path.join(state.directory, 'scripts/lib'));
   return state;
 }
 
-function runCli(directory, args) {
+function runCli(directory: string, args: readonly string[]) {
   const result = spawnSync(process.execPath, ['scripts/tooling.ts', ...args], {
     cwd: directory, env: toolingEnvironment(), encoding: 'utf8', timeout: 10000, shell: false, windowsHide: true,
   });
@@ -236,18 +236,18 @@ test('actual compiler failure propagates and prevents the second check', async t
 test('typecheck reuses the shell-free reduced environment and existing interruption outcomes', async t => {
   const {directory} = await fixture(t);
   const [spec] = await typecheckCommands(directory);
-  for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143]]) {
-    const source = new EventEmitter(), child = new EventEmitter();
-    const killed = []; child.kill = value => killed.push(value);
-    const result = executeCommand(spec, {signalSource: source,
+  for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143]] as Array<[NodeJS.Signals, number]>) {
+    const source = new EventEmitter(), child = new EventEmitter() as EventEmitter & {kill: (value: string) => void};
+    const killed: string[] = []; child.kill = (value: string) => killed.push(value);
+    const result = executeCommand(spec, {signalSource: source as unknown as NodeJS.Process,
       env: toolingEnvironment({NODE_OPTIONS: '--require=untrusted', NODE_PATH: 'outside', HTTPS_PROXY: 'secret', MIOON_FFMPEG_PATH: 'outside'}),
-      spawnChild: (command, args, options) => {
+      spawnChild: ((command: string, args: readonly string[], options: import('node:child_process').SpawnOptions) => {
         assert.equal(command, process.execPath); assert.deepEqual(args, spec.args);
         assert.equal(options.shell, false); assert.equal(options.windowsHide, true); assert.equal(options.stdio, 'inherit');
-        assert.equal(options.env.MIOON_ENABLE_LIVE_PROVIDER, '0');
-        for (const key of ['NODE_OPTIONS', 'NODE_PATH', 'HTTPS_PROXY', 'MIOON_FFMPEG_PATH']) assert.equal(options.env[key], undefined);
+        assert.equal(options.env?.MIOON_ENABLE_LIVE_PROVIDER, '0');
+        for (const key of ['NODE_OPTIONS', 'NODE_PATH', 'HTTPS_PROXY', 'MIOON_FFMPEG_PATH']) assert.equal(options.env?.[key], undefined);
         return child;
-      }});
+      }) as never});
     source.emit(signal); child.emit('close', 0, null);
     assert.deepEqual(await result, {code, signal}); assert.deepEqual(killed, [signal]);
     assert.equal(source.listenerCount('SIGINT'), 0); assert.equal(source.listenerCount('SIGTERM'), 0);

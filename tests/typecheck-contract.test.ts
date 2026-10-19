@@ -43,7 +43,7 @@ const frozenBaselineSource = [
   '',
 ].join('\n');
 
-function executableSource(source, loader) {
+function executableSource(source: string, loader: 'ts' | 'js') {
   // Parse real source, remove comments/types, and print without bundling or
   // minification. This compares executable structure rather than source spelling.
   return transformSync(source, {loader, target: 'es2022', format: 'esm',
@@ -70,13 +70,13 @@ test('native Node package barrel and real TS implementation share identity', asy
   assert.ok(Object.isFrozen(direct.AGENT_PROTOCOLS));
   for (const [protocol, definition] of Object.entries(direct.AGENT_PROTOCOLS)) {
     assert.ok(Object.isFrozen(definition));
-    assert.equal(direct.deriveAgentEndpoint({protocol, baseUrl: 'https://api.example.com/v1'}),
+    assert.equal(direct.deriveAgentEndpoint({protocol: protocol as 'chat_completions' | 'responses', baseUrl: 'https://api.example.com/v1'}),
       `https://api.example.com/v1${definition.path}`);
   }
   for (const configuration of [undefined, null, {}, {protocol: 'auto', baseUrl: 'https://api.example.com/v1'},
     {protocol: 'responses', baseUrl: 123}, {protocol: 'responses', baseUrl: 'https://api.example.com/v1/'},
     {protocol: '__proto__', baseUrl: 'https://api.example.com/v1'}]) {
-    assert.throws(() => direct.deriveAgentEndpoint(configuration), TypeError);
+    assert.throws(() => direct.deriveAgentEndpoint(configuration as unknown as Parameters<typeof direct.deriveAgentEndpoint>[0]), TypeError);
   }
 });
 
@@ -128,7 +128,7 @@ async function localCompiler() {
   assert.equal(declared.devDependencies.typescript, '6.0.3');
   const modules = await realpath(path.join(root, 'node_modules'));
   const repository = await realpath(root);
-  const isInside = (parent, child) => {
+  const isInside = (parent: string, child: string) => {
     const relative = path.relative(parent, child);
     return relative !== '' && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
   };
@@ -144,8 +144,8 @@ async function localCompiler() {
   return entry;
 }
 
-async function snapshotFiles(directory) {
-  const snapshot = {};
+async function snapshotFiles(directory: string): Promise<Record<string, string>> {
+  const snapshot: Record<string, string> = {};
   for (const entry of await readdir(directory, {withFileTypes: true})) {
     const file = path.join(directory, entry.name);
     if (entry.isDirectory()) {
@@ -158,7 +158,7 @@ async function snapshotFiles(directory) {
   return snapshot;
 }
 
-async function compileWithoutEmitting(directory, compiler) {
+async function compileWithoutEmitting(directory: string, compiler: string) {
   const before = await snapshotFiles(directory);
   const result = spawnSync(process.execPath, [compiler, '--project', path.join(directory, configName), '--pretty', 'false', '--noEmit'], {
     cwd: directory, env: {...mediaEnvironment(), MIOON_ENABLE_LIVE_PROVIDER: '0'},
@@ -170,17 +170,18 @@ async function compileWithoutEmitting(directory, compiler) {
   return result;
 }
 
-async function compilerFixtureSources(compiler) {
+async function compilerFixtureSources(compiler: string) {
   // Copy every explicitly checked consumer and its real local import closure.
   // New foundation files must not become missing-file errors in this isolated
   // fixture, and public workspace imports must resolve to its copied packages.
   // The compiler only reads these helpers; their runtime tests are never run.
-  const ts = createRequire(import.meta.url)(path.join(path.dirname(compiler), '../lib/typescript.js'));
+  const ts = createRequire(import.meta.url)(path.join(path.dirname(compiler), '../lib/typescript.js')) as typeof import('typescript');
   const configFile = path.join(root, configName), loaded = ts.readConfigFile(configFile, ts.sys.readFile);
   assert.equal(loaded.error, undefined);
   const parsed = ts.parseJsonConfigFileContent(loaded.config, ts.sys, path.dirname(configFile));
   assert.deepEqual(parsed.errors, []);
-  const inputs = loaded.config.files.map(name => path.resolve(path.dirname(configFile), name));
+  const configFiles = (loaded.config as {files?: string[]}).files ?? [];
+  const inputs = configFiles.map((name: string) => path.resolve(path.dirname(configFile), name));
   const program = ts.createProgram(inputs, parsed.options);
   const names = new Set([configName, ...['contracts', 'client', 'i18n'].map(name => `packages/${name}/package.json`)]);
   for (const source of program.getSourceFiles()) {

@@ -4,12 +4,12 @@ import { defaultWorkspaceState, normalizeWorkspaceState, readStoredWorkspaceStat
 import { prepareSubmission, readPending, reconcilePending } from '../apps/web/src/submissions.ts';
 
 class MemoryStorage {
-  values = new Map();
+  values = new Map<string, string>();
   get length() { return this.values.size; }
-  key(index) { return [...this.values.keys()][index] ?? null; }
-  getItem(key) { return this.values.get(key) ?? null; }
-  setItem(key, value) { this.values.set(key, String(value)); }
-  removeItem(key) { this.values.delete(key); }
+  key(index: number) { return [...this.values.keys()][index] ?? null; }
+  getItem(key: string) { return this.values.get(key) ?? null; }
+  setItem(key: string, value: unknown) { this.values.set(key, String(value)); }
+  removeItem(key: string) { this.values.delete(key); }
 }
 const projectData = () => ({
   project: { id: 'project-a' },
@@ -43,14 +43,14 @@ test('new projects open Canvas with storyboard collapsed and independent Editing
 
 test('legacy v1 cache defaults only the new magnet preference without a read mutation', () => {
   const storage = new MemoryStorage(), legacy = saved();
-  delete legacy.editing.snappingEnabled;
+  delete (legacy.editing as unknown as Record<string, unknown>).snappingEnabled;
   const raw = JSON.stringify(legacy);
   storage.setItem('mioon.workspace.v1:project-a', raw);
   assert.deepEqual(readWorkspaceState('project-a', storage), { ...legacy, editing: { ...legacy.editing, snappingEnabled: true } });
   assert.equal(storage.getItem('mioon.workspace.v1:project-a'), raw);
   assert.equal('snappingEnabled' in legacy.editing, false);
   for (const value of [null, 0, 1, 'false', 'true']) {
-    legacy.editing.snappingEnabled = value;
+    (legacy.editing as unknown as Record<string, unknown>).snappingEnabled = value;
     assert.equal(normalizeWorkspaceState(legacy).editing.snappingEnabled, true);
   }
   legacy.editing.snappingEnabled = false;
@@ -83,10 +83,10 @@ test('malformed, obsolete and unavailable preference storage fall back safely', 
     storage.setItem('mioon.workspace.v1:project-a', value);
     assert.deepEqual(readWorkspaceState('project-a', storage), defaultWorkspaceState());
   }
-  const unavailable = { getItem() { throw Error('unavailable'); }, setItem() { throw Error('quota'); } };
+  const unavailable = { getItem() { throw Error('unavailable'); }, setItem() { throw Error('quota'); } } as unknown as Storage;
   assert.deepEqual(readWorkspaceState('project-a', unavailable), defaultWorkspaceState());
   assert.equal(writeWorkspaceState('project-a', saved(), unavailable), false);
-  assert.equal(writeWorkspaceState(null, saved(), storage), false);
+  assert.equal(writeWorkspaceState(null as unknown as string, saved(), storage), false);
 });
 
 test('preference normalization bounds viewport, timeline geometry, frames and text', () => {
@@ -122,17 +122,18 @@ test('external removals prune dangling IDs without switching modes or resetting 
   current.shots = []; current.edges = []; current.versions = []; current.timeline.clips = []; current.assets = [];
   const result = reconcileWorkspaceState(state, current);
   assert.equal(result.activeMode, 'editing');
-  for (const key of ['selectedId', 'selectedEdgeId', 'highlightedVersionId']) assert.equal(result.canvas[key], null);
-  for (const key of ['selectedClipId', 'quickAssetId']) assert.equal(result.editing[key], null);
+  const canvasView = result.canvas as unknown as Record<string, unknown>, editingView = result.editing as unknown as Record<string, unknown>;
+  for (const key of ['selectedId', 'selectedEdgeId', 'highlightedVersionId']) assert.equal(canvasView[key], null);
+  for (const key of ['selectedClipId', 'quickAssetId']) assert.equal(editingView[key], null);
   assert.deepEqual(result.canvas.viewport, state.canvas.viewport);
-  for (const key of ['playhead', 'pixelsPerSecond', 'scrollLeft', 'scrollTop']) assert.equal(result.editing[key], state.editing[key]);
+  for (const key of ['playhead', 'pixelsPerSecond', 'scrollLeft', 'scrollTop']) assert.equal(editingView[key], (state.editing as unknown as Record<string, unknown>)[key]);
 });
 
 test('external CLI/MCP edits and late generated versions never select a local mode', () => {
   for (const activeMode of ['canvas', 'editing']) {
     const data = projectData(), state = { ...saved(), activeMode };
     data.shots[0].selectedVersionId = 'version-3'; data.shots[0].revision++;
-    data.versions.push({ id: 'version-3', assetId: 'new-asset', shotId: 'shot-a' });
+    data.versions.push({ id: 'version-3', assetId: 'new-asset', shotId: 'shot-a' } as never);
     data.assets.push({ id: 'new-asset' }); data.timeline.revision++;
     data.timelineHistory = { revision: 6, cursor: 3, length: 3 };
     assert.deepEqual(reconcileWorkspaceState(state, data), state);
@@ -142,31 +143,38 @@ test('external CLI/MCP edits and late generated versions never select a local mo
 test('return-to-source resolves the immutable clip asset version instead of the shot current version', () => {
   const data = projectData(), before = structuredClone(data), clip = data.timeline.clips[0];
   const source = sourceForAsset(data, clip.assetId);
-  assert.equal(source.version.id, 'version-1'); assert.equal(source.shot.id, 'shot-a');
-  assert.equal(source.shot.selectedVersionId, 'version-2'); assert.equal(source.asset.id, clip.assetId);
+  assert.ok(source);
+  const version = source.version as {id: string};
+  const shot = source.shot as {id: string; selectedVersionId?: string};
+  const asset = source.asset as {id: string};
+  assert.equal(version.id, 'version-1'); assert.equal(shot.id, 'shot-a');
+  assert.equal(shot.selectedVersionId, 'version-2'); assert.equal(asset.id, clip.assetId);
   assert.deepEqual(data, before);
 });
 
 test('imported source resolves one canvas node and absent sources fail safely', () => {
   const data = projectData();
-  assert.equal(sourceForAsset(data, 'image').node.id, 'image-node');
-  assert.equal(sourceForAsset(data, 'image').version, null);
+  const imported = sourceForAsset(data, 'image');
+  assert.ok(imported);
+  assert.equal((imported.node as {id: string}).id, 'image-node');
+  assert.equal(imported.version, null);
   assert.equal(sourceForAsset(data, 'missing'), null);
-  assert.equal(sourceForAsset(data, 'orphan').node, null);
-  data.nodes.push({ id: 'second-image-node', assetId: 'image' });
-  assert.equal(sourceForAsset(data, 'image').node, null, 'Never pick arbitrarily among multiple nodes');
+  const orphan = sourceForAsset(data, 'orphan');
+  assert.ok(orphan); assert.equal(orphan.node, null);
+  data.nodes.push({ id: 'second-image-node', assetId: 'image' } as never);
+  const importedAgain = sourceForAsset(data, 'image'); assert.ok(importedAgain); assert.equal(importedAgain.node, null, 'Never pick arbitrarily among multiple nodes');
   data.shots = [];
-  assert.equal(sourceForAsset(data, 'asset-v1').version, null, 'A missing parent shot cannot yield a navigable version');
+  const versionless = sourceForAsset(data, 'asset-v1'); assert.ok(versionless); assert.equal(versionless.version, null, 'A missing parent shot cannot yield a navigable version');
 });
 
 test('workspace switching/reload leaves exact pending generation, reference and timeline recovery identities intact', t => {
   const storage = new MemoryStorage(), prior = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
   Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: storage });
-  t.after(() => prior ? Object.defineProperty(globalThis, 'sessionStorage', prior) : delete globalThis.sessionStorage);
+  t.after(() => prior ? Object.defineProperty(globalThis, 'sessionStorage', prior) : delete (globalThis as Record<string, unknown>).sessionStorage);
   const requests = ['generation.submit', 'reference.attach', 'timeline.clip.add', 'timeline.undo', 'timeline.render'].map((operation, index) => ({
     projectId: 'project-a', key: `pending-${index}`, operation, createdAt: '2026-10-09T13:00:00.000Z', input: { projectId: 'project-a', expectedRevision: 5, requestId: `original-${index}` },
   }));
-  requests.forEach(prepareSubmission);
+  requests.forEach(entry => prepareSubmission(entry as unknown as Parameters<typeof prepareSubmission>[0]));
   for (const activeMode of ['editing', 'canvas', 'editing']) {
     writeWorkspaceState('project-a', { ...saved(), activeMode }, storage);
     assert.equal(readWorkspaceState('project-a', storage).activeMode, activeMode);
@@ -179,7 +187,7 @@ test('workspace switching/reload leaves exact pending generation, reference and 
 test('a denied global localStorage getter is caught before reading or writing preferences', t => {
   const prior = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, get() { throw Object.assign(Error('Access denied'), { name: 'SecurityError' }); } });
-  t.after(() => prior ? Object.defineProperty(globalThis, 'localStorage', prior) : delete globalThis.localStorage);
+  t.after(() => prior ? Object.defineProperty(globalThis, 'localStorage', prior) : delete (globalThis as Record<string, unknown>).localStorage);
   assert.deepEqual(readWorkspaceState('project-a'), defaultWorkspaceState());
   assert.equal(writeWorkspaceState('project-a', saved()), false);
 });
@@ -187,13 +195,15 @@ test('a denied global localStorage getter is caught before reading or writing pr
 test('legacy cache seeds independent mode layouts from shared flags without rewriting its bytes', () => {
   const storage = new MemoryStorage();
   for (const assetsCollapsed of [true, false]) for (const inspectorCollapsed of [true, false]) {
-    const legacy = saved(); delete legacy.layout;
+    const legacy = saved(); delete (legacy as unknown as Record<string, unknown>).layout;
     Object.assign(legacy.shared, { assetsCollapsed, inspectorCollapsed });
     const raw = JSON.stringify(legacy); storage.setItem('mioon.workspace.v1:project-a', raw);
-    const restored = readStoredWorkspaceState('project-a', storage);
+    const restored = readStoredWorkspaceState('project-a', storage); assert.ok(restored);
     for (const mode of ['canvas', 'editing']) {
-      assert.equal(restored.layout[mode].assetsCollapsed, assetsCollapsed);
-      assert.equal(restored.layout[mode].inspectorCollapsed, inspectorCollapsed);
+      const layoutByMode = restored.layout as unknown as Record<string, Record<string, unknown>>;
+      const modeLayout: Record<string, unknown> = layoutByMode[mode];
+      assert.equal((modeLayout as {assetsCollapsed: unknown}).assetsCollapsed, assetsCollapsed);
+      assert.equal((modeLayout as {inspectorCollapsed: unknown}).inspectorCollapsed, inspectorCollapsed);
     }
     assert.notEqual(restored.layout.canvas, restored.layout.editing);
     assert.equal(restored.layout.editing.timelineHeight, 300);
@@ -206,11 +216,11 @@ test('supplied malformed cache layouts are rejected instead of imported as repai
   const storage = new MemoryStorage();
   const invalid = [null, [], {}, { canvas: {} }, { ...saved().layout, extra: true }];
   for (const mode of ['canvas', 'editing']) {
-    for (const key of Object.keys(saved().layout[mode])) {
-      const layout = saved().layout; delete layout[mode][key]; invalid.push(layout);
+    for (const key of Object.keys((saved().layout as unknown as Record<string, Record<string, unknown>>)[mode])) {
+      const layout = saved().layout; delete (layout as unknown as Record<string, Record<string, unknown>>)[mode][key]; invalid.push(layout);
     }
     for (const assetsWidth of [0, 481, Infinity, '242', null]) {
-      const layout = saved().layout; layout[mode].assetsWidth = assetsWidth; invalid.push(layout);
+      const layout = saved().layout; (layout as unknown as Record<string, Record<string, unknown>>)[mode].assetsWidth = assetsWidth; invalid.push(layout);
     }
   }
   for (const layout of invalid) {
@@ -232,7 +242,7 @@ test('mode layouts survive project switching, reconciliation and reload independ
   const restored = readWorkspaceState('project-a', storage);
   assert.deepEqual(restored, initial);
   for (const activeMode of ['canvas', 'editing', 'canvas']) {
-    restored.activeMode = activeMode;
+    restored.activeMode = activeMode as 'canvas' | 'editing';
     assert.deepEqual(reconcileWorkspaceState(restored, {}).layout, initial.layout);
     assert.equal(restored.editing.timelineCollapsed, initial.editing.timelineCollapsed);
     assert.equal(restored.canvas.storyboardOpen, initial.canvas.storyboardOpen);

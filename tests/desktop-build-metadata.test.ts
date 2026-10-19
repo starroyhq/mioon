@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm, unlink, realpath, cp } from 'node:fs/promises';
@@ -12,10 +12,10 @@ const { identityForChannel } = desktopIdentity;
 const require = createRequire(import.meta.url);
 const rootPackage = (version = '2.3.4', electron = '55.6.7') => ({ version, devDependencies: { electron } });
 const desktopPackage = (version = '2.3.4') => ({ version, description: 'Fixture desktop' });
-const stagePackage = identity => ({ name: 'mioon-desktop', version: '2.3.4', main: 'main.cjs', private: true,
+const stagePackage = (identity: ReturnType<typeof identityForChannel>) => ({ name: 'mioon-desktop', version: '2.3.4', main: 'main.cjs', private: true,
   desktopName: `${identity.appId}.desktop`, dependencies: {}, mioonDesktop: identity });
 
-async function fixture(t, root = rootPackage(), desktop = desktopPackage()) {
+async function fixture(t: TestContext, root = rootPackage(), desktop = desktopPackage()) {
   const directory = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-build-metadata-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   await mkdir(path.join(directory, 'apps/desktop'), { recursive: true });
@@ -24,7 +24,7 @@ async function fixture(t, root = rootPackage(), desktop = desktopPackage()) {
   return directory;
 }
 
-async function builderFixture(t) {
+async function builderFixture(t: TestContext) {
   const directory = await fixture(t);
   for (const name of ['builder-config.ts', 'subtitle-resources.ts', 'runtime-notices.ts', 'build-metadata.ts', 'identity.ts']) {
     await copyFile(new URL(`../apps/desktop/${name}`, import.meta.url), path.join(directory, 'apps/desktop', name));
@@ -96,17 +96,19 @@ test('reader reports malformed JSON and missing manifests with the failing path'
   const directory = await fixture(t);
   const rootFile = path.join(directory, 'package.json');
   await writeFile(rootFile, '{broken');
-  assert.throws(() => readBuildMetadata(directory), error => {
-    assert.ok(error.message.includes(rootFile));
-    assert.ok(error.cause instanceof SyntaxError);
+  assert.throws(() => readBuildMetadata(directory), (error: unknown) => {
+    const failure = error as Error & {cause?: unknown};
+    assert.ok(failure.message.includes(rootFile));
+    assert.ok(failure.cause instanceof SyntaxError);
     return true;
   });
   await writeFile(rootFile, JSON.stringify(rootPackage()));
   const desktopFile = path.join(directory, 'apps/desktop/package.json');
   await unlink(desktopFile);
-  assert.throws(() => readBuildMetadata(directory), error => {
-    assert.ok(error.message.includes(desktopFile));
-    assert.equal(error.cause.code, 'ENOENT');
+  assert.throws(() => readBuildMetadata(directory), (error: unknown) => {
+    const failure = error as Error & {cause?: {code?: string}};
+    assert.ok(failure.message.includes(desktopFile));
+    assert.equal(failure.cause?.code, 'ENOENT');
     return true;
   });
 });
@@ -136,11 +138,11 @@ test('staging rejects missing or changed packaging envelope fields and nonempty 
     const valid = stagePackage(identity);
     for (const [key, value] of [['name', 'other-app'], ['main', 'other.cjs'], ['private', false],
       ['desktopName', 'other.desktop'], ['dependencies', { electron: '55.6.7' }], ['dependencies', []],
-      ['dependencies', null], ['dependencies', '']]) {
+      ['dependencies', null], ['dependencies', '']] as Array<[string, unknown]>) {
       assert.throws(() => validateStagedMetadata({ ...valid, [key]: value }, expected), /package metadata mismatch; rebuild with --channel=/);
     }
     for (const key of ['name', 'main', 'private', 'desktopName', 'dependencies']) {
-      const missing = { ...valid };
+      const missing: Record<string, unknown> = { ...valid };
       delete missing[key];
       assert.throws(() => validateStagedMetadata(missing, expected), /package metadata mismatch/);
     }

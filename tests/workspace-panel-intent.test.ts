@@ -17,29 +17,29 @@ const mobileEnd = source.indexOf('  const panelFallback', mobileStart);
 assert.ok(mobileStart > 0 && mobileEnd > mobileStart);
 const mobileSource = source.slice(mobileStart, mobileEnd).trim();
 function fixture() {
-  let release, dispatched;
-  const held = new Promise(resolve => { release = resolve; });
+  let release: (value: unknown) => void = () => undefined, dispatched: () => void = () => undefined;
+  const held = new Promise<unknown>(resolve => { release = resolve; });
   const state = defaultWorkspaceState();
   state.canvas.viewport = { x: 123, y: -77, zoom: .75 };
   state.editing.timelineCollapsed = true;
   state.layout.editing.inspectorCollapsed = true;
   const asset = { id: 'asset-one', name: 'Synthetic image', mimeType: 'image/png' };
   const timeline = { revision: 5, tracks: [{ id: 'video-one', kind: 'video' }], clips: [] };
-  const env = { msg, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }),
+  const env = { msg, ...createI18nTestContext(), localizedError: (value: unknown) => Object.assign(new Error(renderCoreMessage('zh-Hans', value as never)), { displayMessage: value }),
     application: null,
     panelIntent: { current: 0 }, currentProject: { current: 'project-one' },
     guardNavigation: async () => true,
     dataRef: { current: { assets: [asset], timeline } },
-    assetKind: item => item.mimeType.split('/')[0],
+    assetKind: (item: {mimeType: string}) => item.mimeType.split('/')[0],
     assetTimelineDuration: () => ({ known: true, durationFrames: 60 }),
-    notify: message => notifications.push(message),
-    mutateTimeline: async (...args) => { calls.push(args); dispatched(); return held; },
+    notify: (message: string) => notifications.push(message),
+    mutateTimeline: async (...args: unknown[]) => { calls.push(args); dispatched(); return held; },
     navigationEpoch: { current: 0 },
-    updateView: (section, patch) => { if (section === 'activeMode') state.activeMode = patch; else Object.assign(state[section], patch); },
-    setMobilePanel: panel => mobile.push(panel),
+    updateView: (section: string, patch: unknown) => { if (section === 'activeMode') state.activeMode = patch as 'canvas' | 'editing'; else Object.assign((state as unknown as Record<string, Record<string, unknown>>)[section], patch as Record<string, unknown>); },
+    setMobilePanel: (panel: string) => mobile.push(panel),
   };
-  const calls = [], notifications = [], mobile = [];
-  const started = new Promise(resolve => { dispatched = resolve; });
+  const calls: unknown[][] = [], notifications: string[] = [], mobile: string[] = [];
+  const started = new Promise<void>(resolve => { dispatched = () => resolve(); });
   const add = Function(...Object.keys(env), `return (${stripSourceTypes(bridgeSource,{loader:'tsx'})});`)(...Object.values(env));
   const accepted = { ...timeline, revision: 6, clips: [{ id: 'accepted-clip', assetId: asset.id, trackId: 'video-one', startFrame: 0, durationFrames: 60 }] };
   return { state, env, add, release: () => release(accepted), started, calls, notifications, mobile, accepted };
@@ -57,12 +57,12 @@ test('an uninterrupted Add-to-Timeline acknowledgement reveals its accepted clip
 
 for (const mode of ['canvas', 'editing']) {
   test(`a newer ${mode} panel hide wins over a held bridge reveal while preserving the accepted clip`, async () => {
-    const f = fixture(); f.state.activeMode = mode;
+    const f = fixture(); f.state.activeMode = mode as 'canvas' | 'editing';
     const beforeCanvas = structuredClone(f.state.canvas);
     const pending = f.add('asset-one'); await f.started;
     // This models collapse itself: no navigation invalidation or cancellation.
     f.env.panelIntent.current++;
-    f.state.layout[mode].assetsCollapsed = true; f.state.layout[mode].inspectorCollapsed = true;
+    (f.state.layout as unknown as Record<string, Record<string, unknown>>)[mode].assetsCollapsed = true; (f.state.layout as unknown as Record<string, Record<string, unknown>>)[mode].inspectorCollapsed = true;
     const chosenLayout = structuredClone(f.state.layout);
     f.release(); await pending;
     assert.equal(f.calls.length, 1); assert.equal(f.accepted.clips.length, 1);
@@ -73,7 +73,7 @@ for (const mode of ['canvas', 'editing']) {
   });
 
   test(`newer narrow ${mode} navigation to its center suppresses a held bridge reveal`, async () => {
-    const f = fixture(); f.state.activeMode = mode;
+    const f = fixture(); f.state.activeMode = mode as 'canvas' | 'editing';
     const navigate = Function('markPanelIntent', 'setMobilePanel', 'setPanelOpen', 'clipDraftRef', `return (${stripSourceTypes(mobileSource,{loader:'tsx'})});`)(
       () => f.env.panelIntent.current++, f.env.setMobilePanel,
       () => assert.fail('Center navigation must not open a side panel'),

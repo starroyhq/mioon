@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {spawnSync} from 'node:child_process';
@@ -7,10 +7,11 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {parseArguments, nativeReadiness, toolingEnvironment, installedPackages, inspectPackageManager, preflight, discoverTests,
-  PORTABLE_TEST_FILES, isContainedPath, buildCommands, testCommand, executeCommand} from '../scripts/lib/local-tooling.ts';
+  PORTABLE_TEST_FILES, isContainedPath, buildCommands, testCommand, executeCommand,
+  type PackageManagerInspectionOptions} from '../scripts/lib/local-tooling.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-function runToolingNode(args) {
+function runToolingNode(args: readonly string[]) {
   const result = spawnSync(process.execPath, args, {cwd: root, env: toolingEnvironment(),
     encoding: 'utf8', timeout: 5000, shell: false, windowsHide: true});
   assert.equal(result.error, undefined);
@@ -51,11 +52,11 @@ test('tooling module import does not run the CLI for unrelated or missing entry 
   }
 });
 
-async function fixture(t) {
+async function fixture(t: TestContext) {
   // Canonicalize only this newly owned synthetic fixture, not a user data path.
   const directory = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon tooling 中 '));
   t.after(() => rm(directory, {recursive: true, force: true}));
-  const json = async (name, value) => {await mkdir(path.dirname(path.join(directory, name)), {recursive: true}); await writeFile(path.join(directory, name), JSON.stringify(value));};
+  const json = async (name: string, value: unknown) => {await mkdir(path.dirname(path.join(directory, name)), {recursive: true}); await writeFile(path.join(directory, name), JSON.stringify(value));};
   await json('package.json', {version: '0.4.1', packageManager: 'pnpm@11.25.0', devDependencies: {esbuild: '0.27.7', electron: '44.7.0'}});
   await json('apps/desktop/package.json', {version: '0.4.1'});
   await json('apps/web/package.json', {devDependencies: {vite: '7.3.1'}});
@@ -69,7 +70,7 @@ async function fixture(t) {
   return {directory, json};
 }
 
-async function managerFixture(t, version = '11.25.0') {
+async function managerFixture(t: TestContext, version = '11.25.0') {
   const state = await fixture(t), {directory, json} = state;
   const bin = path.join(directory, 'manager/bin'), sentinel = path.join(directory, 'must-not-execute');
   await json('manager/package.json', {name: 'pnpm', version, bin: {pnpm: 'bin/pnpm'}});
@@ -77,7 +78,8 @@ async function managerFixture(t, version = '11.25.0') {
   await writeFile(path.join(bin, 'pnpm'), `#!/usr/bin/env node\nrequire('node:fs').writeFileSync(${JSON.stringify(sentinel)}, 'executed');\n`, {mode: 0o755});
   // Exercise metadata recognition using a synthetic POSIX command layout even
   // on Windows; the actual Windows observation remains explicitly unverified.
-  return {...state, bin, sentinel, options: {env: {PATH: bin}, platform: 'linux'}};
+  const options: PackageManagerInspectionOptions = {env: {PATH: bin}, platform: 'linux'};
+  return {...state, bin, sentinel, options};
 }
 
 test('pnpm metadata observation distinguishes exact pin and mismatch without executing the command', async t => {
@@ -123,19 +125,20 @@ test('Corepack, invalid versions and mismatched bin declarations never masquerad
 });
 test('doctor observes pnpm separately without changing direct Node build prerequisites or native gates', async t => {
   const {directory, options} = await managerFixture(t, '10.8.1');
-  const probe = async name => `${name} version 7.1.5 Copyright`;
+  const probe = async (name: string) => `${name} version 7.1.5 Copyright`;
   const result = await preflight(directory, {media: true, nodeVersion: '26.9.0', platform: 'linux', probe, packageManagerEnvironment: options.env});
-  assert.equal(result.report.packageManager.status, 'mismatch');
+  assert.equal(result.report.packageManager?.status, 'mismatch');
   assert.equal(result.report.buildReady, true); assert.equal(result.report.prerequisitesReady, true);
   assert.equal(result.report.nativeReadiness.ready, false);
   await rm(path.join(directory, 'manager'), {recursive: true});
-  const direct = await preflight(directory, {packageManagerEnvironment: {get PATH() { assert.fail('Build/test must not inspect pnpm'); }}});
+  const direct = await preflight(directory, {packageManagerEnvironment: {get PATH(): string { throw Error('Build/test must not inspect pnpm'); }}});
   assert.equal(direct.report.buildReady, true); assert.equal(direct.report.prerequisitesReady, true);
   assert.equal(Object.hasOwn(direct.report, 'packageManager'), false);
   await rm(path.join(directory, 'node_modules'), {recursive: true});
   const missing = await preflight(directory, {media: true, platform: 'linux', probe, packageManagerEnvironment: options.env});
-  assert.equal(missing.report.buildReady, false); assert.equal(missing.report.packageManager.status, 'missing');
-  assert.match(missing.report.checks.find(row => row.name === 'installedDependencies').nextStep, /--frozen-lockfile/);
+  assert.equal(missing.report.buildReady, false); assert.equal(missing.report.packageManager?.status, 'missing');
+  const installedCheck = missing.report.checks.find(row => row.name === 'installedDependencies'); assert.ok(installedCheck);
+  assert.match(String(installedCheck.nextStep ?? ''), /--frozen-lockfile/);
 });
 
 test('tooling options are explicit and bounded; no shell or arbitrary command arguments', () => {
@@ -146,7 +149,7 @@ test('tooling options are explicit and bounded; no shell or arbitrary command ar
   assert.equal(parseArguments(['test', '--reporter=tap']).reporter, 'tap');
   assert.equal(parseArguments(['test', '--reporter=spec']).reporter, 'spec');
   for (const args of [['test', '--reporter=other'], ['test', '--reporter=tap', '--reporter=spec'], ['build', '--reporter=tap']]) assert.throws(() => parseArguments(args));
-  assert.throws(() => testCommand('.', [], 1, process.execPath, 'outside'));
+  assert.throws(() => testCommand('.', [], 1, process.execPath, 'outside' as unknown as 'tap' | 'spec'));
   assert.ok(testCommand('.', [], 1, process.execPath, 'tap').args.includes('--test-reporter=tap'));
   assert.equal(parseArguments(['test', '--compile-cache']).compileCache, true);
   for (const args of [['build', '--compile-cache'], ['doctor', '--compile-cache'], ['test', '--compile-cache=yes'], ['test', '--compile-cache', '--compile-cache']]) assert.throws(() => parseArguments(args));
@@ -155,7 +158,7 @@ test('tooling options are explicit and bounded; no shell or arbitrary command ar
   for (const args of [[], ['exec'], ['build', '--file=a.test.mjs'], ['test', '--concurrency=0'], ['test', '--concurrency=5'], ['test', '--file=../bad.test.mjs'], ['test', '--file=a.test.mjs;echo x'], ['test', '--file=a.test.mjs', '--file=a.test.mjs'], ['doctor', '--native-ready=yes'], ['test', '--suite=all'], ['build', '--channel=production', '--channel=development']]) assert.throws(() => parseArguments(args));
 });
 test('native readiness never conflates prerequisite success with OS release verification', () => {
-  for (const platform of ['linux', 'darwin', 'win32', 'freebsd']) assert.equal(nativeReadiness(platform, 'arm64').ready, false);
+  for (const platform of ['linux', 'darwin', 'win32', 'freebsd'] as NodeJS.Platform[]) assert.equal(nativeReadiness(platform, 'arm64').ready, false);
   assert.equal(nativeReadiness('win32').blocker, 'WINDOWS_ACL_UNIMPLEMENTED');
   assert.equal(nativeReadiness('darwin').status, 'unverified');
   assert.equal(nativeReadiness('linux').blocker, 'EXACT_ARTIFACT_NATIVE_QA_REQUIRED');
@@ -190,8 +193,9 @@ test('missing dependency and declaration ranges fail actionably without install 
   await assert.rejects(installedPackages(directory), {code: 'LOCAL_DEPENDENCY_MISSING'});
 });
 test('preflight checks SQLite only in memory and separates native and build readiness', async t => {
-  const {directory} = await fixture(t); const calls = [];
-  const result = await preflight(directory, {platform: 'win32', media: true, packageManagerEnvironment: {}, probe: async (...args) => {calls.push(args); return `${args[0]} version 7.1.5 Copyright`;}});
+  const {directory} = await fixture(t);
+  const calls: Array<[string, unknown[], {timeout?: number; maxStdoutBytes?: number}]> = [];
+  const result = await preflight(directory, {platform: 'win32', media: true, packageManagerEnvironment: {}, probe: async (command: string, args: readonly string[], options: unknown) => {calls.push([command, [...args], options as {timeout?: number; maxStdoutBytes?: number}]); return `${command} version 7.1.5 Copyright`;}});
   assert.equal(result.report.buildReady, true); assert.equal(result.report.prerequisitesReady, true);
   assert.equal(result.report.nativeReadiness.status, 'blocked'); assert.equal(calls.length, 2);
   for (const [name, args, options] of calls) {assert.ok(['ffmpeg', 'ffprobe'].includes(name)); assert.deepEqual(args, ['-version']); assert.equal(options.timeout, 10000); assert.equal(options.maxStdoutBytes, 65536);}
@@ -206,21 +210,22 @@ test('doctor identifies each media failure and provides safe next steps without 
   const {directory} = await fixture(t);
   for (const code of ['MEDIA_SPAWN_FAILED', 'MEDIA_TIMEOUT', 'MEDIA_EXIT_FAILED', 'MEDIA_INVALID_CONFIGURATION', 'MEDIA_OUTPUT_LIMIT',
     'MEDIA_PROCESS_FAILED', 'MEDIA_CANCELLED', 'MEDIA_TERMINATION_UNCONFIRMED', 'SYNTHETIC_SECRET']) {
-    const {report} = await preflight(directory, {media: true, packageManagerEnvironment: {}, probe: async name => {
+    const {report} = await preflight(directory, {media: true, packageManagerEnvironment: {}, probe: async (name: string) => {
       if (name === 'ffmpeg') throw Object.assign(new Error('SYNTHETIC_SECRET /private/path'), {code});
       return 'ffprobe version 7.1.5 Copyright';
     }});
     const failed = report.checks.find(row => row.name === 'ffmpeg');
+    assert.ok(failed);
     assert.equal(failed.code, code === 'SYNTHETIC_SECRET' ? 'PREREQUISITE_FAILED' : code);
     assert.ok(failed.message); assert.ok(failed.nextStep);
-    assert.equal(report.checks.find(row => row.name === 'ffprobe').status, 'passed');
+    assert.equal(report.checks.find(row => row.name === 'ffprobe')?.status, 'passed');
     assert.equal(report.buildReady, true); assert.equal(report.prerequisitesReady, false);
     assert.equal(report.nativeReadiness.ready, false);
     assert.doesNotMatch(JSON.stringify(report), /SYNTHETIC_SECRET|\/private\/path/);
-    if (code === 'MEDIA_SPAWN_FAILED') assert.match(failed.message, /inaccessible or incompatible/);
+    if (code === 'MEDIA_SPAWN_FAILED') assert.match(String(failed.message), /inaccessible or incompatible/);
   }
   const invalid = await preflight(directory, {media: true, packageManagerEnvironment: {}, probe: async () => 'unexpected SYNTHETIC_SECRET'});
-  assert.equal(invalid.report.checks.find(row => row.name === 'ffprobe').code, 'MEDIA_VERSION_INVALID');
+  assert.equal(invalid.report.checks.find(row => row.name === 'ffprobe')?.code, 'MEDIA_VERSION_INVALID');
   assert.doesNotMatch(JSON.stringify(invalid.report), /SYNTHETIC_SECRET/);
 });
 test('old Node and mismatched application versions fail preflight', async t => {
@@ -228,8 +233,8 @@ test('old Node and mismatched application versions fail preflight', async t => {
   await json('apps/desktop/package.json', {version: '0.3.0'});
   const result = await preflight(directory, {nodeVersion: '22.1.0'});
   assert.equal(result.report.buildReady, false);
-  assert.equal(result.report.checks.find(row => row.name === 'node').status, 'failed');
-  assert.equal(result.report.checks.find(row => row.name === 'buildIdentity').status, 'failed');
+  assert.equal(result.report.checks.find(row => row.name === 'node')?.status, 'failed');
+  assert.equal(result.report.checks.find(row => row.name === 'buildIdentity')?.status, 'failed');
 });
 test('portable manifest is explicit, sorted, present and not broadened by filename guesses', async t => {
   const {directory} = await fixture(t);
@@ -243,7 +248,7 @@ test('full Linux selection supports more than the old 512-file limit within the 
   const {directory} = await fixture(t);
   for (let index = 0; index < 600; index += 1) await writeFile(path.join(directory, 'tests', `bulk-${index}.test.mjs`), '');
   const files = await discoverTests(directory, {suite: 'full', platform: 'linux'});
-  assert.ok(files.length >= 600, files.length);
+  assert.ok(files.length >= 600, String(files.length));
   assert.equal(files.filter(name => name.endsWith('bulk-0.test.mjs')).length, 1);
 });
 test('missing portable test fails rather than silently skipping it', async t => {
@@ -252,7 +257,7 @@ test('missing portable test fails rather than silently skipping it', async t => 
 });
 test('build and test plans retain spaces, Unicode and Windows executable path as exact argv', () => {
   const executable = 'C:\\Program Files\\Node 中\\node.exe';
-  const commands = buildCommands('/repo 中 space', {vite: {entry: 'C:\\repo 中\\node_modules\\vite\\bin\\vite.js'}}, 'production', executable);
+  const commands = buildCommands('/repo 中 space', {vite: {entry: 'C:\\repo 中\\node_modules\\vite\\bin\\vite.js'}} as never, 'production', executable);
   assert.equal(commands[0].command, executable); assert.equal(commands[0].args[1], 'C:\\repo 中\\node_modules\\vite\\bin\\vite.js');
   assert.equal(commands[1].args.at(-1), '--channel=production');
   const testPlan = testCommand('/repo', ['tests/z.test.mjs', 'tests/a.test.mjs'], 2, executable);
@@ -260,20 +265,21 @@ test('build and test plans retain spaces, Unicode and Windows executable path as
   assert.throws(() => testCommand('/repo', [], 10));
 });
 test('launcher forwards owned-child signals, latches interruption and removes handlers after close', async () => {
-  const signals = new EventEmitter(), child = new EventEmitter(), kills = []; child.kill = signal => kills.push(signal);
-  let spec;
-  const pending = executeCommand({command: '/node', args: ['entry.js'], cwd: '/repo'}, {env: {PATH: '/tools'}, signalSource: signals,
-    spawnChild: (...args) => {spec = args; return child;}});
+  const signals = new EventEmitter(), child = new EventEmitter() as EventEmitter & {kill: (signal: string) => void}; const kills: string[] = []; child.kill = (signal: string) => kills.push(signal);
+  let spec: unknown[] | undefined;
+  const pending = executeCommand({command: '/node', args: ['entry.js'], cwd: '/repo'}, {env: {PATH: '/tools'}, signalSource: signals as unknown as NodeJS.Process,
+    spawnChild: ((...args: unknown[]) => {spec = args; return child;}) as never});
   signals.emit('SIGINT'); child.emit('close', 0, null);
   assert.deepEqual(await pending, {code: 130, signal: 'SIGINT'}); assert.deepEqual(kills, ['SIGINT']);
   assert.equal(signals.listenerCount('SIGINT'), 0); assert.equal(signals.listenerCount('SIGTERM'), 0);
-  assert.equal(spec[2].shell, false); assert.equal(spec[2].windowsHide, true); assert.equal(spec[2].stdio, 'inherit');
+  const spawnOptions = spec?.[2] as {shell?: boolean; windowsHide?: boolean; stdio?: string};
+  assert.equal(spawnOptions.shell, false); assert.equal(spawnOptions.windowsHide, true); assert.equal(spawnOptions.stdio, 'inherit');
 });
 test('launcher preserves nonzero child exit and safely rejects spawn failure', async () => {
   const signals = new EventEmitter(), child = new EventEmitter();
-  const pending = executeCommand({command: '/node', args: [], cwd: '/'}, {signalSource: signals, spawnChild: () => child});
+  const pending = executeCommand({command: '/node', args: [], cwd: '/'}, {signalSource: signals as unknown as NodeJS.Process, spawnChild: (() => child) as never});
   child.emit('close', 7, null); assert.deepEqual(await pending, {code: 7, signal: null});
-  await assert.rejects(executeCommand({}, {spawnChild: () => {throw Error('SYNTHETIC_SECRET');}}), error => error.code === 'TOOL_START_FAILED' && !error.message.includes('SYNTHETIC_SECRET'));
+  await assert.rejects(executeCommand({} as never, {spawnChild: (() => {throw Error('SYNTHETIC_SECRET');}) as never}), (error: unknown) => { const failure = error as {code?: string; message?: string}; return failure.code === 'TOOL_START_FAILED' && !failure.message?.includes('SYNTHETIC_SECRET'); });
 });
 test('real shell-free Node child handles a spaced Unicode script path and nonzero exit', async t => {
   const {directory} = await fixture(t); const script = path.join(directory, 'child 空格.mjs');
@@ -304,8 +310,8 @@ test('real child receives only the explicit environment and live calls remain di
 
 test('launcher preserves spontaneous signal termination and cleans up asynchronous spawn failures', async () => {
   for (const signal of ['SIGTERM', 'SIGINT']) {
-    const source = new EventEmitter(), child = new EventEmitter(); const kills = []; child.kill = value => kills.push(value);
-    const pending = executeCommand({command: '/node', args: [], cwd: '/'}, {signalSource: source, spawnChild: () => child});
+    const source = new EventEmitter(), child = new EventEmitter() as EventEmitter & {kill: (value: string) => void}; const kills: string[] = []; child.kill = (value: string) => kills.push(value);
+    const pending = executeCommand({command: '/node', args: [], cwd: '/'}, {signalSource: source as unknown as NodeJS.Process, spawnChild: (() => child) as never});
     if (signal === 'SIGTERM') source.emit(signal);
     child.emit('close', null, signal);
     assert.deepEqual(await pending, {code: signal === 'SIGTERM' ? 143 : 130, signal});
@@ -313,7 +319,7 @@ test('launcher preserves spontaneous signal termination and cleans up asynchrono
     assert.equal(source.listenerCount('SIGTERM'), 0);
   }
   const source = new EventEmitter(), child = new EventEmitter();
-  const pending = executeCommand({command: '/missing', args: [], cwd: '/'}, {signalSource: source, spawnChild: () => child});
+  const pending = executeCommand({command: '/missing', args: [], cwd: '/'}, {signalSource: source as unknown as NodeJS.Process, spawnChild: (() => child) as never});
   child.emit('error', Error('synthetic spawn error'));
   await assert.rejects(pending, {code: 'TOOL_START_FAILED'});
   assert.equal(source.listenerCount('SIGINT'), 0); assert.equal(source.listenerCount('SIGTERM'), 0);

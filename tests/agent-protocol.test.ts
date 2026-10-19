@@ -12,7 +12,7 @@ test('shared protocol labels and fixed suffixes are pure, closed and deeply froz
   });
   assert.ok(Object.isFrozen(AGENT_PROTOCOLS));
   for (const entry of Object.values(AGENT_PROTOCOLS)) assert.ok(Object.isFrozen(entry));
-  assert.throws(() => { AGENT_PROTOCOLS.responses.path = '/other'; }, TypeError);
+  assert.throws(() => { (AGENT_PROTOCOLS.responses as {path: string}).path = '/other'; }, TypeError);
   for (const file of ['agent-protocol.ts']) {
     const source = await readFile(new URL(`../packages/contracts/src/${file}`, import.meta.url), 'utf8');
     assert.doesNotMatch(source, /(?:import\s|require\(|\bfetch\(|\bBuffer\b|\bprocess\b)/);
@@ -21,16 +21,17 @@ test('shared protocol labels and fixed suffixes are pure, closed and deeply froz
 
 test('endpoint derivation preserves complete canonical base path and accepts only two fixed protocol suffixes', () => {
   for (const baseUrl of ['https://api.openai.com/v1', 'https://api.deepseek.com', 'https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1', 'http://127.0.0.1:11434/v1', 'http://[::1]:11434/v1']) {
-    for (const [protocol, {path}] of Object.entries(AGENT_PROTOCOLS)) {
+    for (const protocol of ['chat_completions', 'responses'] as const) {
+      const path = AGENT_PROTOCOLS[protocol].path;
       assert.equal(deriveAgentEndpoint({baseUrl, protocol}), baseUrl + path);
-      assert.equal(deriveAgentEndpoint({baseUrl, protocol, path: '/attacker', requestPath: '/attacker'}), baseUrl + path);
+      assert.equal(deriveAgentEndpoint({baseUrl, protocol, path: '/attacker', requestPath: '/attacker'} as unknown as Parameters<typeof deriveAgentEndpoint>[0]), baseUrl + path);
     }
   }
   for (const protocol of [undefined, null, '', 'Responses', 'auto', '__proto__', 'constructor', '/responses', ['responses'], {}]) {
-    assert.throws(() => deriveAgentEndpoint({baseUrl: 'https://api.example.com/v1', protocol}), TypeError);
+    assert.throws(() => deriveAgentEndpoint({baseUrl: 'https://api.example.com/v1', protocol} as unknown as Parameters<typeof deriveAgentEndpoint>[0]), TypeError);
   }
   for (const baseUrl of [undefined, null, '', 123, 'https://API.example.com/v1', 'https://api.example.com:443/v1', 'https://api.example.com/v1/', 'https://api.example.com/v1/../other', 'https://api.example.com/v1//other', 'https://api.example.com/%2fother', 'https://api.example.com/v1?secret=x', 'https://user:key@api.example.com/v1', 'https://api.example.com/v1#other', 'file:///v1', 'https://api.example.com\\@elsewhere.example.com/v1', 'https://api.example.com/v1\n']) {
-    assert.throws(() => deriveAgentEndpoint({baseUrl, protocol: 'responses'}), TypeError);
+    assert.throws(() => deriveAgentEndpoint({baseUrl, protocol: 'responses'} as unknown as Parameters<typeof deriveAgentEndpoint>[0]), TypeError);
   }
 });
 
@@ -48,15 +49,15 @@ test('every catalog default stays CC and only explicitly fixture-supported profi
       assert.deepEqual(parseAgentConfiguration(configuration), configuration);
       if (candidates.includes(preset.id)) {
         assert.deepEqual(parseAgentConfiguration({...configuration, protocol: 'responses'}), {...configuration, protocol: 'responses'});
-        assert.ok(Object.isFrozen(platform.supportedModelHints.responses));
+        const hints = (preset as {supportedModelHints?: {responses: string[]}}).supportedModelHints; assert.ok(hints); assert.ok(Object.isFrozen(hints.responses));
       } else assert.throws(() => parseAgentConfiguration({...configuration, protocol: 'responses'}), {code: 'AGENT_SETTINGS_VALIDATION'});
     }
   }
-  const qwen = AGENT_PRESETS.find(preset => preset.id === 'qwen');
+  const qwen = AGENT_PRESETS.find(preset => preset.id === 'qwen'); assert.ok(qwen);
   for (const platform of qwen.platforms) {
     assert.equal(platform.model, 'qwen-plus');
-    assert.deepEqual(platform.supportedModelHints.responses, ['qwen3.8-flash']);
-    assert.match(platform.protocolNotes.responses, /截断无法禁用/);
+    assert.deepEqual((qwen as {supportedModelHints: {responses: string[]}}).supportedModelHints.responses, ['qwen3.8-flash']);
+    assert.match((qwen as {protocolNotes: {responses: string}}).protocolNotes.responses, /截断无法禁用/);
   }
 });
 
