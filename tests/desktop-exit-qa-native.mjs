@@ -28,6 +28,7 @@ import {createTimelineRecoveryBoundary} from '../packages/business/src/timeline-
 import {createWorkspacePreferences} from '../packages/business/src/workspace-preferences.ts';
 import {defaultWorkspaceState} from '../apps/web/src/workspace-state.ts';
 import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '../packages/contracts/src/private-storage.ts';
+import {mkdtempPortable} from './helpers/temp-root.ts';
 
 const repo=fileURLToPath(new URL('../',import.meta.url)),require=createRequire(import.meta.url);
 const ffmpeg='/opt/homebrew/bin/ffmpeg',ffprobe='/opt/homebrew/bin/ffprobe';
@@ -76,7 +77,7 @@ function databaseSnapshot(workspace){
 }
 async function prepare(){
   assert.equal(process.platform,'darwin');assert.equal(options.root,undefined,'Preparation always creates a fresh private root');
-  const root=path.join('/private/tmp','mioon-exit-native-'+randomUUID());await privateDirectory(root);
+  const root=mkdtempPortable('mioon-exit-native-'+randomUUID());await privateDirectory(root);
   const runtime=path.join(root,'private-runtime'),report=path.join(root,'report'),userData=path.join(runtime,'user-data'),workspace=path.join(userData,'workspace');
   for(const directory of [runtime,report,userData])await privateDirectory(directory);
   const source=path.join(runtime,'synthetic-green-880hz.mp4'),image=path.join(runtime,'synthetic-purple.png');

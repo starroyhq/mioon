@@ -9,6 +9,7 @@ import path from 'node:path';
 import {openOpacityCandidateStore, getOpacityCandidateAssembly} from '../../packages/business/src/opacity-candidate-store.ts';
 import {installWorkspaceRestoreSchemaV43} from '../../packages/business/src/workspace-restore-schema-v43.ts';
 import {onMediaProcess} from '../../packages/business/src/media-processes.ts';
+import {mkdtempPortable} from '../helpers/temp-root.ts';
 
 const realRuntime = await import('../../packages/business/src/media-runtime.ts');
 let probeCalls = 0;
@@ -25,7 +26,7 @@ const {bindTimelineOpacityRenderAttempt, getTimelineOpacityRenderBinding} = awai
 const stamp = '2026-10-16T00:00:00.000Z';
 const denied = error => ['RESTORE_OPERATION_UNAVAILABLE', 'OPACITY_RENDER_BINDING_UNAVAILABLE'].includes(error?.code);
 function fixture(t) {
-  const root = mkdtempSync('/private/tmp/mioon-opacity-authority-');
+  const root = mkdtempPortable('mioon-opacity-authority-');
   const ids = Object.fromEntries(['project','asset','timeline','track','clip'].map(key => [key, randomUUID()]));
   const bytes = Buffer.from('synthetic source: real hash, no media decoder');
   let store, services;

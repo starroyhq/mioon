@@ -12,12 +12,13 @@ import {createServices} from '../packages/business/src/services.ts';
 import {timelineSnapshotHash} from '../packages/business/src/timeline-preflight.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
+import {mkdtempPortable} from './helpers/temp-root.ts';
 
 const stamp='2026-10-16T00:00:00.000Z';
 const curve=()=>({profileId:'mioon-clip-linear-opacity-v1',points:[{frame:0,opacity:0},{frame:30,opacity:1}]});
 const denied=error=>['RESTORE_OPERATION_UNAVAILABLE','RESTORE_STORE_UNVERIFIED'].includes(error?.code);
 function fixture(t) {
-  const root=mkdtempSync('/private/tmp/mioon-opacity-preflight-domain-');
+  const root=mkdtempPortable('mioon-opacity-preflight-domain-');
   const ids=Object.fromEntries(['project','asset','timeline','track','clip'].map(key=>[key,randomUUID()]));
   const data={project:{id:ids.project,name:'Synthetic preflight',revision:1,createdAt:stamp,updatedAt:stamp},
     asset:{id:ids.asset,projectId:ids.project,name:'Synthetic metadata only',mimeType:'video/mp4',duration:1,width:720,height:1280,hasVideo:true,hasAudio:false,

@@ -10,11 +10,12 @@ import {openNewOpacityCandidateApplicationStore, openOpacityCandidateStore} from
 import {createOpacityCandidateApplicationServices} from '../packages/business/src/opacity-candidate-services.ts';
 import {createOpacityCandidateTimelineDeliveryGuards, readOpacityCandidateApplicationSource, assertOpacityCandidateApplicationSource} from '../packages/business/src/opacity-candidate-delivery.ts';
 import {readTimelineExportPreviewMedia, timelineExportPreviewResponseHeaders, readTimelineDeliveryDownload, timelineDeliveryResponseHeaders} from '../packages/business/src/timeline-delivery-read.ts';
+import {mkdtempPortable} from './helpers/temp-root.ts';
 
 const stamp = '2026-10-16T00:00:00.000Z';
 const curve = {profileId: 'mioon-clip-linear-opacity-v1', points: [{frame: 0, opacity: 0}, {frame: 30, opacity: 1}]};
 async function fixture(t, purpose = 'export', named = false) {
-  const parent = mkdtempSync('/private/tmp/mioon-opacity-delivery-'), store = openNewOpacityCandidateApplicationStore(path.join(parent, 'fresh42'));
+  const parent = mkdtempPortable('mioon-opacity-delivery-'), store = openNewOpacityCandidateApplicationStore(path.join(parent, 'fresh42'));
   const services = createOpacityCandidateApplicationServices(store);
   t.after(async () => {try {await services.drain(); store.close();} finally {rmSync(parent, {recursive: true, force: true});}});
   const project = await services.call('project.create', {name: 'Synthetic delivery'}), sourceId = randomUUID();
@@ -83,7 +84,7 @@ test('candidate media binds exact owner, queued receipt, output path and late re
 test('ordinary42, copied stores and a closed application never grant candidate delivery rules', async t => {
   const f = await fixture(t);
   assert.throws(() => createOpacityCandidateTimelineDeliveryGuards({...f.store}), {code: 'FILE_UNAVAILABLE'});
-  const parent = mkdtempSync('/private/tmp/mioon-opacity-delivery-ordinary-'), ordinary = openOpacityCandidateStore(parent);
+  const parent = mkdtempPortable('mioon-opacity-delivery-ordinary-'), ordinary = openOpacityCandidateStore(parent);
   t.after(() => {ordinary.close();rmSync(parent, {recursive: true, force: true});});
   assert.throws(() => createOpacityCandidateTimelineDeliveryGuards(ordinary), {code: 'FILE_UNAVAILABLE'});
   const descriptor = readTimelineExportPreviewMedia(f.store.db, f.url('preview'), f.guards);assert.ok(descriptor);

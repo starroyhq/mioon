@@ -12,6 +12,7 @@ import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {openStore} from '../packages/business/src/db.ts';
 import {hasRequestNotAppliedProof} from '../packages/contracts/src/timeline-acknowledgement.ts';
 import {AppError} from '../packages/contracts/src/app-error.ts';
+import {mkdtempPortable} from './helpers/temp-root.ts';
 
 const stamp='2026-10-16T00:00:00.000Z';
 const curve=(end=30)=>({profileId:'mioon-clip-linear-opacity-v1',points:[{frame:0,opacity:0},{frame:end,opacity:1}]});
@@ -32,7 +33,7 @@ function snapshot(store,tables=['timelines','timeline_requests','timeline_histor
   return JSON.stringify(tables.map(table=>[table,store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
 }
 function fixture(t,data=metadata()){
-  const root=mkdtempSync(path.join('/private/tmp','mioon-opacity-transactions-'));
+  const root=mkdtempPortable('mioon-opacity-transactions-');
   let store,services,tasks,providerTouches=0;
   const media=[],off=onMediaProcess(event=>media.push(event));
   const providers=new Proxy(new Map(),{get(){providerTouches++;throw Error('Candidate services must not inspect providers');}});
@@ -226,7 +227,7 @@ test('revision digit growth refuses the final complete record above 262144 bytes
 });
 
 test('default48 still refuses opacity and never upgrades to candidate42',async t=>{
-  const root=mkdtempSync(path.join('/private/tmp','mioon-opacity-legacy40-')),store=openStore(root),services=createServices(store,new Map());
+  const root=mkdtempPortable('mioon-opacity-legacy40-'),store=openStore(root),services=createServices(store,new Map());
   const media=[],off=onMediaProcess(event=>media.push(event));
   t.after(async()=>{try{await services.drain();store.close();assert.equal(media.length,0);}finally{off();rmSync(root,{recursive:true,force:true});}});
   const data=metadata();seed(store,data);const tasks=createEditTasks({store,services});t.after(()=>tasks.drain());

@@ -20,6 +20,7 @@ import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-po
 import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import {TIMELINE_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-edit-tool-policy.ts';
 import {TIMELINE_GAIN_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-gain-tool-policy.ts';
+import {mkdtempPortable} from './helpers/temp-root.ts';
 
 const execute = promisify(execFile), operation = 'timeline.audioPreview.continuousPlan';
 const repo = fileURLToPath(new URL('..', import.meta.url)), token = 'synthetic-continuous-audio-transport-token';
@@ -33,7 +34,7 @@ function wav() {
 }
 
 test('real HTTP RPC, CLI and official MCP expose the same strict read-only continuous plan and authenticated mixed PCM', {timeout: 60000}, async t => {
-  const root = await realpath(await mkdtemp(path.join(process.platform === 'darwin' ? '/private/tmp' : tmpdir(), 'mioon-continuous-wire-')));
+  const root = await realpath(mkdtempPortable('mioon-continuous-wire-'));
   let backend, mcp;
   t.after(async () => {await mcp?.close(); await backend?.close(); await rm(root, {recursive: true, force: true});});
   backend = await startServer({dataDir: root, port: 0, token, chatGateway: async function* () {throw Error('No model call permitted');}});

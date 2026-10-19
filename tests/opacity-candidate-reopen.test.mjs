@@ -16,6 +16,7 @@ import {createWorkspaceRestoreProfileV41} from '../packages/business/src/workspa
 import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {createExistingOpacityCandidateLaunch, consumeOpacityCandidateLaunch, closeUnusedOpacityCandidateLaunch} from '../apps/server/src/opacity-candidate-launch.ts';
 import {parseOpacityCandidateArguments} from '../apps/server/src/opacity-candidate-cli.ts';
+import {mkdtempPortable} from './helpers/temp-root.ts';
 
 let attempts=0;
 const forbidden=()=>{attempts++;throw Error('No listener or native process in reopen qualification');};
@@ -25,7 +26,7 @@ syncBuiltinESMExports();
 after(()=>{mock.restoreAll();syncBuiltinESMExports();assert.equal(attempts,0);});
 const hash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const metadata=()=>({restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:'2026-10-16T00:00:00.000Z'});
-function parent(t){const root=fs.mkdtempSync('/private/tmp/mioon-opacity-reopen-');t.after(()=>fs.rmSync(root,{recursive:true,force:true}));return root;}
+function parent(t){const root=mkdtempPortable('mioon-opacity-reopen-');t.after(()=>fs.rmSync(root,{recursive:true,force:true}));return root;}
 function seedDatabase(root,version){
  fs.mkdirSync(root,{mode:0o700});const db=new DatabaseSync(path.join(root,'workbench.sqlite'));
  try{

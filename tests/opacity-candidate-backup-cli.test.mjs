@@ -141,7 +141,7 @@ test('candidate CLI preserves original parser validation and identifies its own 
     ['restore-status', '--destination', absent, '--restoration-id', 'invalid'],
   ]) {
     const result = await run(t, f, args), error = failure(result, 'VALIDATION_ERROR', 2);
-    assert.match(error.message, /apps\/cli\/src\/opacity-backup\.ts --help/); assert.ok(!error.message.includes('backup.ts'));
+    assert.match(error.message, /apps\/cli\/src\/opacity-backup\.ts --help/); assert.ok(!/apps\/cli\/src\/backup\.(?:ts|mjs)/u.test(error.message));
   }
   for (const bad of ['relative', `${f.base}/../source`, `${f.source}/`]) failure(await run(t, f, ['verify', '--directory', bad]), 'WORKSPACE_BACKUP_INVALID_PATH', 2);
   assert.equal(fs.existsSync(absent), false);

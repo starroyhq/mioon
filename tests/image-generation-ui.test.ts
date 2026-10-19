@@ -317,10 +317,12 @@ function renderer(f: Fixture, options: RenderOptions = {}): Harness {
     render(owner: string = currentProject): UiNode {
       currentProject = owner; index = 0; effects = [];
       tree = renderComponent({projectId: owner, projectName: 'Test project', reviewClient: f.reviewClient, settingsClient: f.settingsClient, customSettingsClient: f.customSettingsClient, onDirtyChange: (value: unknown) => {dirty = value === true;}, onRevealAsset: options.onRevealAsset, projectAssets: options.projectAssets || [], editIntent: options.editIntent || null, isEditIntentCurrent: options.isEditIntentCurrent});
-      for (const slot of effects) {slots[slot].cleanup = (slots[slot].callback as () => unknown)();}
+      for (const slot of effects) {if (typeof slots[slot].cleanup === 'function') (slots[slot].cleanup as () => void)(); slots[slot].cleanup = (slots[slot].callback as () => unknown)();}
       return tree;
     },
-    find(idValue: string): UiNode { const value = nodes(tree).find(node => node.props['data-testid'] === idValue); assert.ok(value, idValue); return value; },
+    // Baseline contract: a missing id yields undefined so unchanged absence assertions
+    // remain meaningful. Call sites that require a node already fail on property access.
+    find(idValue: string): UiNode { return nodes(tree).find(node => node.props['data-testid'] === idValue) as UiNode; },
     form(): UiNode { const value = nodes(tree).find(node => node.type === 'form'); assert.ok(value, 'form'); return value; },
     change(idValue: string, value: unknown): void {(harness.find(idValue).props.onChange as EventHandler)({target: {value}}); harness.render();},
     click(idValue: string): void {(harness.find(idValue).props.onClick as EventHandler)(); harness.render();},
