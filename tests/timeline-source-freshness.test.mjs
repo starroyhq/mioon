@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { staleClipSources, staleSourceSentence } from '../apps/web/src/timeline-source-freshness.ts';
-import { clipSelectedVersionCandidate } from '../apps/web/src/clip-source-replacement.js';
+import { clipSelectedVersionCandidate } from '../apps/web/src/clip-source-replacement.ts';
 
 const clip = (id, shotId, versionId) => ({ id, shotId, versionId });
 const seeded = (id, assetId) => ({ id, assetId });
@@ -40,8 +40,8 @@ test('the selected version is offered as a candidate only when it can replace th
 
 test('the timeline marks stale clips and the inspector offers the pre-filled review', () => {
   const read = name => readFileSync(new URL(`../apps/web/src/${name}`, import.meta.url), 'utf8');
-  assert.match(read('Timeline.jsx'), /\$\{stale \? 'source-stale' : ''\}[\s\S]*?clip-stale-mark/);
-  assert.match(read('TimelineInspector.jsx'), /data-testid="clip-source-stale-note"/);
-  assert.match(read('ClipSourceReplacement.jsx'), /data-testid="review-selected-version-replacement"[^>]*onClick=\{\(\) => \{ if \(controller\.begin\(\) && controller\.choose\(suggested\.key\)\) controller\.review\(\); \}\}/);
-  assert.match(read('App.jsx'), /staleClipSources\(timeline\?\.clips \?\? \[\], data\.shots, data\.versions\)/);
+  assert.match(read('Timeline.tsx'), /\$\{stale \? 'source-stale' : ''\}[\s\S]*?clip-stale-mark/);
+  assert.match(read('TimelineInspector.tsx'), /data-testid="clip-source-stale-note"/);
+  assert.match(read('ClipSourceReplacement.tsx'), /data-testid="review-selected-version-replacement"[^>]*onClick=\{\(\) => \{ if \(controller\.begin\(\) && controller\.choose\(suggested\.key\)\) controller\.review\(\); \}\}/);
+  assert.match(read('App.tsx'), /staleClipSources\(timeline\?\.clips \?\? \[\], data\.shots, data\.versions\)/);
 });

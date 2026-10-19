@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {fixture,typedFrame,typedImage,rowBytes} from './subject-video-fixture.mjs';
-import {createOwnedMediaGraphReader,INSPECTION_LIMITS} from '../packages/business/src/inspection.mjs';
-import {createSubjectOwnershipReader,SUBJECT_OWNER_COLUMNS,SUBJECT_VERSION_COLUMNS} from '../packages/business/src/subject-ownership.mjs';
+import {createOwnedMediaGraphReader,INSPECTION_LIMITS} from '../packages/business/src/inspection.ts';
+import {createSubjectOwnershipReader,SUBJECT_OWNER_COLUMNS,SUBJECT_VERSION_COLUMNS} from '../packages/business/src/subject-ownership.ts';
 
 for(const drift of ['asset-sql','asset-json','asset-hash','asset-dimensions','shot-sql','job-sql','subject-owner','version-owner'])test(`subject ${drift} drift denies exact replay, reads and retry without disclosure`,async t=>{
  const f=await fixture(t),a=await f.asset(),subject=await f.subject(a),shot=await f.shot(),input=f.input(shot,subject.headVersionId),job=await f.call('generation.submit',input);
@@ -69,7 +69,7 @@ test('subject ownership rows share supplied budget, bound materialization and us
 
 test('large retained history keeps subject row reads bounded; native read-only reopen does not mutate',async t=>{
  const {DatabaseSync}=await import('node:sqlite'),path=await import('node:path');
- const {assertSubjectGenerationSelection,assertSubjectGenerationRequestVacant}=await import('../packages/business/src/generation-inputs.mjs');
+ const {assertSubjectGenerationSelection,assertSubjectGenerationRequestVacant}=await import('../packages/business/src/generation-inputs.ts');
  const f=await fixture(t),a=await f.asset(),subject=await f.subject(a),shot=await f.shot(),otherShot=await f.shot(),db=f.store.db;
  f.store.tx(()=>{
   const owner=db.prepare('INSERT INTO subjects(id,projectId,kind,name,revision,headVersionId,createdAt,updatedAt) VALUES(?,?,?,?,?,?,?,?)'),version=db.prepare('INSERT INTO subject_versions(id,projectId,subjectId,number,assetId,data) VALUES(?,?,?,?,?,?)'),edge=db.prepare('INSERT INTO edges(id,projectId,data) VALUES(?,?,?)');

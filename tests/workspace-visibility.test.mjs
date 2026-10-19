@@ -7,18 +7,18 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as contracts from '@mioon/contracts';
 import { LOCAL_SHOT_TEXT_LIMITS } from '@mioon/contracts/local-shot-text';
-import * as exportSettings from '../apps/web/src/export-settings-state.js';
-import * as sourceRanges from '../apps/web/src/source-range-state.js';
+import * as exportSettings from '../apps/web/src/export-settings-state.ts';
+import * as sourceRanges from '../apps/web/src/source-range-state.ts';
 import * as previewPlayback from '../apps/web/src/preview-playback.ts';
 import * as candidatePresentation from '../apps/web/src/opacity-candidate-render-presentation.ts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
-import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.js';
+import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.ts';
 
 // Exercise the real component functions with deterministic hook, ref, media,
 // and animation-frame boundaries. These tests intentionally do not claim DOM
 // or browser playback coverage; browser acceptance covers the integrated UI.
-const componentCode = new Map(['workspace-visibility.jsx', 'Nodes.jsx', 'Preview.jsx', 'Inspector.jsx'].map(file => [file,
-  transformSync(readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs', sourcefile: file }).code,
+const componentCode = new Map(['workspace-visibility.tsx', 'Nodes.tsx', 'Preview.tsx', 'Inspector.tsx'].map(file => [file,
+  transformSync(readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs', sourcefile: file }).code,
 ]));
 const noop = () => {};
 function makeElement(src = null) {
@@ -84,24 +84,24 @@ function createHarness(file, exportName = 'default') {
     './preview-playback.ts': previewPlayback,
     './opacity-candidate-render-presentation.ts': candidatePresentation,
     './UiPreferencesProvider.tsx': {useUiPreferences:()=>({preferences:DEFAULT_UI_PREFERENCES})},
-    './image-generation.js': {imageEditSourceIssueDescriptor},
-    './source-range-state.js': sourceRanges,
-    './export-settings-state.js': exportSettings,
+    './image-generation.ts': {imageEditSourceIssueDescriptor},
+    './source-range-state.ts': sourceRanges,
+    './export-settings-state.ts': exportSettings,
     '@xyflow/react': { Handle: 'Handle', Position: { Left: 'left', Right: 'right' } },
     './TimelineAudioPreview.tsx': { default: 'TimelineAudioPreview', __esModule: true },
-    './icons.jsx': { default: 'Icon', __esModule: true },
-    './api.js': { assetUrl: asset => asset?.url || '', versionUrl: version => version?.url || '', activeJob: () => false, statusText: value => value, jobStatusText: value => value, outputReviewRequired: () => false },
-    './Timeline.jsx': { assetKind: asset => asset?.mimeType?.split('/')[0], framesLabel: String, dragAsset: noop },
-    './reference-connections.js': { referenceForShot: () => null },
-    './generation-settings.js': { generationSelection: () => ({ provider: { id: 'mock', mock: true }, model: 'mock', capabilities: {}, inputMode: 'text', scenario: 'success' }), generationInputIssue: () => '', providerAvailabilityIssue: () => '', inputModeLabel: String, inputModeDescriptor: String, generationInputIssueDescriptor: () => '', providerAvailabilityDescriptor: () => '' },
-    './VideoFrameControls.jsx': { default: 'VideoFrameControls', VideoFrameSummary: 'VideoFrameSummary', __esModule: true },
-    './ProviderSettings.jsx': { default: 'ProviderSettings', __esModule: true },
-    './SubjectVideoSelection.jsx': { default: 'SubjectVideoSelection', __esModule: true },
-    './SubjectVideoSummary.jsx': { default: 'SubjectVideoSummary', __esModule: true },
-    './subject-video.js': { subjectVideoConflictIssue: () => '' },
-    './ShotSubjectBindings.jsx': { default: 'ShotSubjectBindings', __esModule: true },
-    './WorkspaceControls.jsx': { WorkbenchSelect: 'WorkbenchSelect', WorkbenchTooltip: 'WorkbenchTooltip' },
-    './ReferenceConnections.jsx': { ReferenceSourcePanel: 'ReferenceSourcePanel', BoundReference: 'BoundReference' },
+    './icons.tsx': { default: 'Icon', __esModule: true },
+    './api.ts': { assetUrl: asset => asset?.url || '', versionUrl: version => version?.url || '', activeJob: () => false, statusText: value => value, jobStatusText: value => value, outputReviewRequired: () => false },
+    './Timeline.tsx': { assetKind: asset => asset?.mimeType?.split('/')[0], framesLabel: String, dragAsset: noop },
+    './reference-connections.ts': { referenceForShot: () => null },
+    './generation-settings.ts': { generationSelection: () => ({ provider: { id: 'mock', mock: true }, model: 'mock', capabilities: {}, inputMode: 'text', scenario: 'success' }), generationInputIssue: () => '', providerAvailabilityIssue: () => '', inputModeLabel: String, inputModeDescriptor: String, generationInputIssueDescriptor: () => '', providerAvailabilityDescriptor: () => '' },
+    './VideoFrameControls.tsx': { default: 'VideoFrameControls', VideoFrameSummary: 'VideoFrameSummary', __esModule: true },
+    './ProviderSettings.tsx': { default: 'ProviderSettings', __esModule: true },
+    './SubjectVideoSelection.tsx': { default: 'SubjectVideoSelection', __esModule: true },
+    './SubjectVideoSummary.tsx': { default: 'SubjectVideoSummary', __esModule: true },
+    './subject-video.ts': { subjectVideoConflictIssue: () => '' },
+    './ShotSubjectBindings.tsx': { default: 'ShotSubjectBindings', __esModule: true },
+    './WorkspaceControls.tsx': { WorkbenchSelect: 'WorkbenchSelect', WorkbenchTooltip: 'WorkbenchTooltip' },
+    './ReferenceConnections.tsx': { ReferenceSourcePanel: 'ReferenceSourcePanel', BoundReference: 'BoundReference' },
   };
   function load(filename) {
     if (modules.has(filename)) return modules.get(filename).exports;
@@ -159,7 +159,7 @@ const inspectorProps = patch => ({
 });
 
 test('visibility defaults to visible and nested visible panels cannot override a hidden ancestor', () => {
-  const h = createHarness('workspace-visibility.jsx', 'WorkspaceVisibilityProvider');
+  const h = createHarness('workspace-visibility.tsx', 'WorkspaceVisibilityProvider');
   assert.equal(h.render({ children: 'content' }).props.value, true);
   assert.equal(h.render({ visible: false }).props.value, false);
   h.ancestorVisible = false;
@@ -170,7 +170,7 @@ test('visibility defaults to visible and nested visible panels cannot override a
 
 for (const kind of ['video', 'audio']) {
   test(`${kind} Media pauses before passive effects; hide/reopen preserves element, source and time`, () => {
-    const h = createHarness('Nodes.jsx', 'Media'), events = [];
+    const h = createHarness('Nodes.tsx', 'Media'), events = [];
     const props = { asset: asset(kind), controls: true, onPlay: () => events.push('play'), onTimeUpdate: () => events.push('time') };
     h.render(props);
     const node = h.mediaNode(), element = node.props.ref.current;
@@ -190,7 +190,7 @@ for (const kind of ['video', 'audio']) {
   });
 
   test(`${kind} Preview ignores late hidden callbacks and does not seek or resume on reopen`, () => {
-    const h = createHarness('Preview.jsx'), seeks = [], props = previewProps({ asset: asset(kind), onSeek: value => seeks.push(value) });
+    const h = createHarness('Preview.tsx'), seeks = [], props = previewProps({ asset: asset(kind), onSeek: value => seeks.push(value) });
     h.render(props);
     const node = h.mediaNode(), element = node.props.ref.current;
     element.currentTime = 5.25; element.paused = false;
@@ -212,7 +212,7 @@ for (const kind of ['video', 'audio']) {
 
 for (const kind of ['source', 'timeline']) {
   test(`${kind} Preview cannot publish late playback or native-seek events while hidden`, () => {
-    const h = createHarness('Preview.jsx'), seeks = [], props = previewProps({
+    const h = createHarness('Preview.tsx'), seeks = [], props = previewProps({
       kind, onSeek: value => seeks.push(value), timeline: { revision: 1 },
       clip: { id: 'clip-one', sourceInFrame: 0, startFrame: 0, durationFrames: 300 },
       job: { id: 'render-one', status: 'succeeded', url: '/render', timelineRevision: 1 },
@@ -228,7 +228,7 @@ for (const kind of ['source', 'timeline']) {
 }
 
 test('Preview applies a changed playhead deferred while hidden, without publishing that programmatic seek', () => {
-  const h = createHarness('Preview.jsx'), seeks = [], props = previewProps({ clip: { id: 'clip-one', sourceInFrame: 30, startFrame: 60, durationFrames: 300 }, playhead: 90, onSeek: value => seeks.push(value) });
+  const h = createHarness('Preview.tsx'), seeks = [], props = previewProps({ clip: { id: 'clip-one', sourceInFrame: 30, startFrame: 60, durationFrames: 300 }, playhead: 90, onSeek: value => seeks.push(value) });
   h.render(props); const element = h.mediaNode().props.ref.current;
   assert.equal(element.currentTime, 2);
   h.ancestorVisible = false; h.render({ ...props, playhead: 180 });
@@ -241,7 +241,7 @@ test('Preview applies a changed playhead deferred while hidden, without publishi
 });
 
 test('replaced Preview sources reject old callbacks and Strict Mode disposal restores the current source', () => {
-  const h = createHarness('Preview.jsx'), seeks = [], props = previewProps({ kind: 'timeline', timeline: { revision: 1 }, job: { id: 'render-one', status: 'succeeded', url: '/first', timelineRevision: 1 }, onSeek: value => seeks.push(value) });
+  const h = createHarness('Preview.tsx'), seeks = [], props = previewProps({ kind: 'timeline', timeline: { revision: 1 }, job: { id: 'render-one', status: 'succeeded', url: '/first', timelineRevision: 1 }, onSeek: value => seeks.push(value) });
   h.render(props); const old = h.mediaNode(), original = old.props.ref.current;
   h.render({ ...props, job: { ...props.job, id: 'render-two', url: '/second' } });
   const current = h.mediaNode().props.ref.current;
@@ -253,7 +253,7 @@ test('replaced Preview sources reject old callbacks and Strict Mode disposal res
 });
 
 test('Inspector cancels pending highlight focus when hidden and does not refocus on reopening or refresh', () => {
-  const h = createHarness('Inspector.jsx'), props = inspectorProps();
+  const h = createHarness('Inspector.tsx'), props = inspectorProps();
   h.render(props); const element = h.find('version-card-version-one').props.ref.current;
   const [queued] = h.pendingFrames(); assert.ok(queued);
   h.ancestorVisible = false; h.render(props);
@@ -267,7 +267,7 @@ test('Inspector cancels pending highlight focus when hidden and does not refocus
 });
 
 test('Inspector never schedules hidden focus, and an unmounted pending callback is inert', () => {
-  const h = createHarness('Inspector.jsx'), props = inspectorProps();
+  const h = createHarness('Inspector.tsx'), props = inspectorProps();
   h.ancestorVisible = false; h.render(props); assert.equal(h.pendingFrames().length, 0);
   h.ancestorVisible = true; h.render({ ...props, tab: 'settings' }); h.render(props);
   const [queued] = h.pendingFrames(), element = h.find('version-card-version-one').props.ref.current;
@@ -275,7 +275,7 @@ test('Inspector never schedules hidden focus, and an unmounted pending callback 
 });
 
 test('collapsing Inspector preserves the draft and an already requested save-and-generate continuation', async () => {
-  const h = createHarness('Inspector.jsx'), generated = [];
+  const h = createHarness('Inspector.tsx'), generated = [];
   let resolveSave;
   const props = inspectorProps({ tab: 'settings', highlightedVersionId: null, onSave: () => new Promise(resolve => { resolveSave = resolve; }), onGenerate: (...args) => generated.push(args) });
   h.render(props); h.find('shot-prompt').props.onChange({ target: { value: 'Edited while visible' } }); h.render(props);
@@ -288,7 +288,7 @@ test('collapsing Inspector preserves the draft and an already requested save-and
 });
 
 test('language-only updates preserve the exact media decoder, playback position and source identity', () => {
-  const h = createHarness('Nodes.jsx', 'Media');
+  const h = createHarness('Nodes.tsx', 'Media');
   const props = { asset: asset('video'), controls: true };
   h.render(props); const element = h.mediaNode().props.ref.current, originalKey = h.mediaNode().props.key;
   element.currentTime = 7.125; element.paused = false;

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readTimelineClipLoudnessRpc } from '../apps/web/src/timeline-clip-loudness-rpc.ts';
-import { rpc } from '../apps/web/src/api.js';
+import { rpc } from '../apps/web/src/api.ts';
 import { input, report, deferred, id } from './helpers/timeline-clip-loudness-ui-fixture.mjs';
 const wire = value => new TextEncoder().encode(JSON.stringify(value));
 const response = body => new Response(wire(body), { headers: { 'Content-Type': 'application/json' } });
@@ -46,7 +46,7 @@ test('pre-abort and absent clip identity never fetch; malformed/truncated/invali
   for (const bytes of ['{', '', new Uint8Array([0xff])])
     await assert.rejects(readTimelineClipLoudnessRpc(input(), { fetch: async () => new Response(bytes) }), { code: 'BACKEND_PROTOCOL_ERROR' });
 });
-test('actual api.js selects bounded branch, validates report and retains existing non-mix JSON path', async t => {
+test('actual api.ts selects bounded branch, validates report and retains existing non-mix JSON path', async t => {
   const original = globalThis.fetch; t.after(() => { globalThis.fetch = original; });
   let jsonCalls = 0;
   globalThis.fetch = async () => { const res = response({ ok: true, data: report(input()) }); res.json = () => { jsonCalls++; assert.fail('Mix must use bounded stream'); }; return res; };

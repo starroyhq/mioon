@@ -1,8 +1,10 @@
 import { APP_LANGUAGE_EVENT, isLanguageRequest, parseLanguagePreference, serializeLanguagePreference } from '../../../packages/i18n/src/preference.ts';
+import type { ProjectWindowFrame, ProjectWindowWebContents } from './project-window-host.ts';
 import type { LanguageSnapshot } from '../../../packages/i18n/src/preference.ts';
 import { resolveLocale } from '../../../packages/i18n/src/locale.ts';
 import type { LanguagePreference } from '../../../packages/i18n/src/types.ts';
-export interface LanguageIPCEvent { readonly sender: unknown; readonly senderFrame: unknown }
+/** The exact owned project-window document and main frame that issued the request. */
+export interface LanguageIPCEvent { readonly sender: ProjectWindowWebContents; readonly senderFrame: ProjectWindowFrame | null }
 interface Options {
   systemLanguages: () => readonly string[];
   isTrusted: (event: LanguageIPCEvent) => boolean;

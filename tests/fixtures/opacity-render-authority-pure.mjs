@@ -8,17 +8,17 @@ import {DatabaseSync} from 'node:sqlite';
 import path from 'node:path';
 import {openOpacityCandidateStore, getOpacityCandidateAssembly} from '../../packages/business/src/opacity-candidate-store.ts';
 import {installWorkspaceRestoreSchemaV43} from '../../packages/business/src/workspace-restore-schema-v43.ts';
-import {onMediaProcess} from '../../packages/business/src/media-processes.mjs';
+import {onMediaProcess} from '../../packages/business/src/media-processes.ts';
 
-const realRuntime = await import('../../packages/business/src/media-runtime.mjs');
+const realRuntime = await import('../../packages/business/src/media-runtime.ts');
 let probeCalls = 0;
-mock.module('../../packages/business/src/media-runtime.mjs', {namedExports: {...realRuntime,
+mock.module('../../packages/business/src/media-runtime.ts', {namedExports: {...realRuntime,
   run: async (binary, argv, options) => {
     assert.equal(binary, 'ffprobe');assert.ok(argv.includes('-show_streams'));options.beforeSpawn?.();options.beforeEffect?.();probeCalls++;
     return JSON.stringify({streams:[{index:0,codec_type:'video',codec_name:'h264',width:720,height:1280,duration:'1'}],format:{duration:'1'}});
   }, runStreaming: () => {throw Error('No external streaming media is permitted');},
 }});
-const {createServices} = await import('../../packages/business/src/services.mjs');
+const {createServices} = await import('../../packages/business/src/services.ts');
 const {claimOpacityCandidateExport, recoverOpacityCandidateExport, isOpacityCandidateExportClaim, matchesOpacityCandidateExport,
   prepareOpacityCandidateRenderInputs, createOpacityCandidateRenderAttempt, assertOpacityCandidateRenderAttempt, revokeOpacityCandidateExportClaim} = await import('../../packages/business/src/opacity-candidate-render-authority.ts');
 const {bindTimelineOpacityRenderAttempt, getTimelineOpacityRenderBinding} = await import('../../packages/business/src/timeline-opacity-render-binding.ts');
@@ -158,7 +158,7 @@ test('restored43 captured exports stay held while fresh explicit-origin export u
 
 test('candidate float outcomes retain the raw snapshot digest and independently owned output hash guards', async t => {
   const f=fixture(t), original=await f.accept();
-  const {resolveTimelineExportDelivery}=await import('../../packages/contracts/src/index.mjs');
+  const {resolveTimelineExportDelivery}=await import('../../packages/contracts/src/index.ts');
   const {floatSnapshotSha256}=await import('../../packages/business/src/timeline-float-outcome.ts');
   const {TIMELINE_EXPORT_FLOAT_PROFILE_ID,TIMELINE_EXPORT_FLOAT_POLICY_ID}=await import('../../packages/contracts/src/timeline-export-float.ts');
   const settings={profileId:TIMELINE_EXPORT_FLOAT_PROFILE_ID,resolution:'short_360',rateControl:{mode:'crf',quality:'standard'}};

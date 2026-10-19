@@ -9,10 +9,10 @@ import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.mjs';
-import {parseReadToolArguments} from '../packages/business/src/agent/read-tool-policy.mjs';
-import {parseEditToolArguments} from '../packages/business/src/agent/edit-tool-policy.mjs';
-import {parseTimelineEditToolArguments} from '../packages/business/src/agent/timeline-edit-tool-policy.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {parseReadToolArguments} from '../packages/business/src/agent/read-tool-policy.ts';
+import {parseEditToolArguments} from '../packages/business/src/agent/edit-tool-policy.ts';
+import {parseTimelineEditToolArguments} from '../packages/business/src/agent/timeline-edit-tool-policy.ts';
 import {parseTimelineGainEditToolArguments} from '../packages/business/src/agent/timeline-gain-tool-policy.ts';
 
 const repo=fileURLToPath(new URL('../',import.meta.url)),run=promisify(execFile);
@@ -22,14 +22,14 @@ test('HTTP, CLI and MCP share grant/revoke state without granting built-in model
   const client=new Client({name:'authorization-offline-test',version:'1'},{capabilities:{}});
   t.after(async()=>{await client.close();await server.close();await rm(root,{recursive:true,force:true});});
   const env={PATH:process.env.PATH||'',MIOON_BASE_URL:server.url,MIOON_TOKEN:token,MIOON_ENABLE_LIVE_PROVIDER:'0'};
-  const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.mjs')],cwd:repo,env,stderr:'pipe'});transport.stderr?.resume();
+  const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.ts')],cwd:repo,env,stderr:'pipe'});transport.stderr?.resume();
   await client.connect(transport);
   const http=async(operation,input={})=>{
     const response=await fetch(server.url+'/api/rpc',{method:'POST',headers:{authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({operation,input})});
     const body=await response.json();assert.equal(response.status,200,JSON.stringify(body));assert.equal(body.ok,true);return body.data;
   };
   const cli=async(operation,input={})=>{
-    const result=await run(process.execPath,[path.join(repo,'apps/cli/src/index.mjs'),...operation.split('.'),'--input',JSON.stringify(input)],{cwd:repo,env,timeout:15000});
+    const result=await run(process.execPath,[path.join(repo,'apps/cli/src/index.ts'),...operation.split('.'),'--input',JSON.stringify(input)],{cwd:repo,env,timeout:15000});
     const body=JSON.parse(result.stdout);assert.equal(body.ok,true);return body.data;
   };
   const mcp=async(operation,input={})=>{

@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { installPreferencesCloseDrain, installUnsavedGuard, QuitCoordinator } from '../apps/desktop/src/lifecycle.mjs';
-import { createWorkspacePreferences } from '../apps/web/src/workspace-preferences.js';
-import { defaultWorkspaceState } from '../apps/web/src/workspace-state.js';
+import { installPreferencesCloseDrain, installUnsavedGuard, QuitCoordinator } from '../apps/desktop/src/lifecycle.ts';
+import { createWorkspacePreferences } from '../apps/web/src/workspace-preferences.ts';
+import { defaultWorkspaceState } from '../apps/web/src/workspace-state.ts';
 
 function windowFixture() {
   const win = new EventEmitter();

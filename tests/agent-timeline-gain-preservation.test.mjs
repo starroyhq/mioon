@@ -8,14 +8,14 @@ import {createHash,randomUUID} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {DatabaseSync} from 'node:sqlite';
-import {openStore,classifyCurrentWorkspaceSchema} from '../packages/business/src/db.mjs';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {createAgentEditService} from '../packages/business/src/agent/edit-proposals.mjs';
-import {isUnavailableRestoredRoute} from '../packages/business/src/workspace-restore-policy.mjs';
-import {EDIT_TOOL_DEFINITIONS,EDIT_TOOL_CATALOG_HASH,editToolPolicy,parseEditToolArguments} from '../packages/business/src/agent/edit-tool-policy.mjs';
-import {TIMELINE_EDIT_TOOL_DEFINITIONS,TIMELINE_EDIT_TOOL_CATALOG_HASH,timelineEditToolPolicy,parseTimelineEditToolArguments} from '../packages/business/src/agent/timeline-edit-tool-policy.mjs';
-import {READ_TOOL_DEFINITIONS,READ_TOOL_CATALOG_HASH,readToolPolicy,parseReadToolArguments} from '../packages/business/src/agent/read-tool-policy.mjs';
+import {openStore,classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createAgentEditService} from '../packages/business/src/agent/edit-proposals.ts';
+import {isUnavailableRestoredRoute} from '../packages/business/src/workspace-restore-policy.ts';
+import {EDIT_TOOL_DEFINITIONS,EDIT_TOOL_CATALOG_HASH,editToolPolicy,parseEditToolArguments} from '../packages/business/src/agent/edit-tool-policy.ts';
+import {TIMELINE_EDIT_TOOL_DEFINITIONS,TIMELINE_EDIT_TOOL_CATALOG_HASH,timelineEditToolPolicy,parseTimelineEditToolArguments} from '../packages/business/src/agent/timeline-edit-tool-policy.ts';
+import {READ_TOOL_DEFINITIONS,READ_TOOL_CATALOG_HASH,readToolPolicy,parseReadToolArguments} from '../packages/business/src/agent/read-tool-policy.ts';
 import {agentTimelineGainFixture} from './helpers/agent-timeline-gain-fixture.mjs';
 
 const repo=fileURLToPath(new URL('..',import.meta.url));
@@ -102,12 +102,12 @@ function historicalStore(t,source){
 let frozen;
 async function loadFrozenValidators(fixture=baseline,readDependency=file=>fs.readFileSync(path.join(repo,file))){
  assert.equal(compatibility.sourceCommit,baseline.sourceCommit);
- assert.deepEqual(Object.keys(compatibility.sources).sort(),['packages/business/src/timeline-recovery.mjs','packages/contracts/src/edit-tasks.mjs','packages/contracts/src/workspace-backup.mjs','packages/contracts/src/workspace-restore-offline.mjs','packages/contracts/src/workspace-restore.mjs']);
+ assert.deepEqual(Object.keys(compatibility.sources).sort(),['packages/business/src/timeline-recovery.ts','packages/contracts/src/edit-tasks.ts','packages/contracts/src/workspace-backup.ts','packages/contracts/src/workspace-restore-offline.ts','packages/contracts/src/workspace-restore.ts']);
  for(const [file,saved]of Object.entries(compatibility.sources)){assert.equal(Object.hasOwn(fixture.sources,file),false);assert.equal(saved.sha256,baseline.dependencyHashes[file]);}
  assert.deepEqual(compatibility.dependencyHashes,{
-  'packages/business/src/timeline-format-receipts.mjs':'038bb41b5b84b8eaa0af1c09b987a767c4a3a3a2be40046f0e81536b987c1ff1',
-  'packages/business/src/inspection.mjs':'2e65efe72987b3f7f9e370387081431147f09eb05cdf2a0f71d713a5d7e7c995',
-  'packages/business/src/timeline-inputs.mjs':'ec83abd83d7477d20db55a140d8197e0931403ad27686c8bb660a3a3a871cd7e',
+  'packages/business/src/timeline-format-receipts.ts':'038bb41b5b84b8eaa0af1c09b987a767c4a3a3a2be40046f0e81536b987c1ff1',
+  'packages/business/src/inspection.ts':'2e65efe72987b3f7f9e370387081431147f09eb05cdf2a0f71d713a5d7e7c995',
+  'packages/business/src/timeline-inputs.ts':'ec83abd83d7477d20db55a140d8197e0931403ad27686c8bb660a3a3a871cd7e',
  });
  fixture={...fixture,sources:{...fixture.sources,...compatibility.sources},dependencyHashes:{...fixture.dependencyHashes,...compatibility.dependencyHashes}};
  for(const [file,hash]of Object.entries(fixture.dependencyHashes))assert.equal(sha(fixture.sources[file]?.text??readDependency(file)),hash,`Baseline dependency changed: ${file}; explicitly freeze and review it before using this harness.`);
@@ -126,29 +126,29 @@ async function loadFrozenValidators(fixture=baseline,readDependency=file=>fs.rea
   for(const [file,saved]of Object.entries(fixture.sources)){
    const source=saved.text.replace(/(from\s+)(['"])([^'"]+)\2/gu,(_match,prefix,_quote,specifier)=>{
     let destination=specifier;
-    if(specifier==='@mioon/contracts')destination=url('packages/contracts/src/index.mjs');
-    else if(specifier==='@mioon/contracts/private-storage'&&file==='packages/business/src/db.mjs'){
-     const dependency='packages/contracts/src/private-storage.mjs';assert.ok(Object.hasOwn(fixture.dependencyHashes,dependency));destination=absolute(dependency);
+    if(specifier==='@mioon/contracts')destination=url('packages/contracts/src/index.ts');
+    else if(specifier==='@mioon/contracts/private-storage'&&file==='packages/business/src/db.ts'){
+     const dependency='packages/contracts/src/private-storage.ts';assert.ok(Object.hasOwn(fixture.dependencyHashes,dependency));destination=absolute(dependency);
     }else if(specifier.startsWith('.')){
      const resolved=path.posix.normalize(path.posix.join(path.posix.dirname(file),specifier));
-     if(resolved==='packages/business/src/services.mjs')destination=canonical;
+     if(resolved==='packages/business/src/services.ts')destination=canonical;
      else if(Object.hasOwn(fixture.sources,resolved))destination=url(resolved);
      else{assert.ok(Object.hasOwn(fixture.dependencyHashes,resolved),`Unpinned frozen-validator import: ${file} -> ${resolved}`);destination=absolute(resolved);}
-    }else if(specifier==='zod'&&['packages/contracts/src/index.mjs','packages/contracts/src/timeline-export-profile.mjs','packages/contracts/src/local-delivery.ts','packages/contracts/src/workspace-backup.mjs','packages/contracts/src/workspace-restore-offline.mjs','packages/contracts/src/workspace-restore.mjs'].includes(file))destination=pathToFileURL(requireContracts.resolve('zod')).href;
-    else assert.ok(['node:crypto','node:net'].includes(specifier)||file==='packages/business/src/db.mjs'&&['node:sqlite','node:util/types','node:path'].includes(specifier)||file==='packages/business/src/workspace-restore-schema.mjs'&&specifier==='node:sqlite',`Unexpected frozen-validator import: ${file} -> ${specifier}`);
+    }else if(specifier==='zod'&&['packages/contracts/src/index.ts','packages/contracts/src/timeline-export-profile.ts','packages/contracts/src/local-delivery.ts','packages/contracts/src/workspace-backup.ts','packages/contracts/src/workspace-restore-offline.ts','packages/contracts/src/workspace-restore.ts'].includes(file))destination=pathToFileURL(requireContracts.resolve('zod')).href;
+    else assert.ok(['node:crypto','node:net'].includes(specifier)||file==='packages/business/src/db.ts'&&['node:sqlite','node:util/types','node:path'].includes(specifier)||file==='packages/business/src/workspace-restore-schema.ts'&&specifier==='node:sqlite',`Unexpected frozen-validator import: ${file} -> ${specifier}`);
     return prefix+JSON.stringify(destination);
    });
    fs.mkdirSync(path.dirname(local(file)),{recursive:true,mode:0o700});fs.writeFileSync(local(file),source,{mode:0o600});
   }
-  const edit=await import(url('packages/business/src/agent/edit-proposals.mjs')),context=await import(url('packages/business/src/agent/chat-context.mjs'));
-  return {...edit,...context,contracts:await import(url('packages/contracts/src/index.mjs')),restorePolicy:await import(url('packages/business/src/workspace-restore-policy.mjs'))};
+  const edit=await import(url('packages/business/src/agent/edit-proposals.ts')),context=await import(url('packages/business/src/agent/chat-context.ts'));
+  return {...edit,...context,contracts:await import(url('packages/contracts/src/index.ts')),restorePolicy:await import(url('packages/business/src/workspace-restore-policy.ts'))};
  }finally{fs.rmSync(directory,{recursive:true,force:true});}
 }
 async function frozenValidators(){return frozen??=await loadFrozenValidators();}
 
 function tree(root){return fs.readdirSync(root,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name)).flatMap(entry=>{const file=path.join(root,entry.name),info=fs.lstatSync(file);return [{path:file,mode:info.mode,...(entry.isFile()?{sha256:sha(fs.readFileSync(file))}:{})},...(entry.isDirectory()?tree(file):[])];});}
 async function backupCli(t,args){
- const child=spawn(process.execPath,[path.join(repo,'apps/cli/src/backup.mjs'),...args],{cwd:repo,env:{PATH:process.env.PATH,HOME:process.env.HOME,MIOON_ENABLE_LIVE_PROVIDER:'0'},stdio:['ignore','pipe','pipe']});
+ const child=spawn(process.execPath,[path.join(repo,'apps/cli/src/backup.ts'),...args],{cwd:repo,env:{PATH:process.env.PATH,HOME:process.env.HOME,MIOON_ENABLE_LIVE_PROVIDER:'0'},stdio:['ignore','pipe','pipe']});
  let stdout='',stderr='',failure,closed=false;
  const done=new Promise(resolve=>{child.once('error',error=>{failure=error;});child.once('close',(exitCode,signal)=>{closed=true;resolve({exitCode,signal});});});
  for(const [stream,key]of [[child.stdout,'out'],[child.stderr,'err']])stream.setEncoding('utf8').on('data',text=>{if(key==='out')stdout+=text;else stderr+=text;if(stdout.length+stderr.length>512*1024){failure=Error('bounded CLI output exceeded');child.kill('SIGKILL');}});
@@ -174,28 +174,28 @@ async function capturedGainStates(t){
 
 test('frozen c3a0a57 schema dependency cycle preserves exact original source hashes',()=>{
  const expected={
-  'packages/business/src/db.mjs':'84af099e2b1422574fcabf27d9f3984c0c9c1f045d00860f20f16d247707544f',
-  'packages/business/src/workspace-fixed-schema.mjs':'9751e2f2d74b64c1cbd070d61e11941d1eba135ca8748bbdc20bd20ebab05bab',
-  'packages/business/src/workspace-restore-schema.mjs':'9b3861b3e0ec72b0ab1d1b676657205f5b3a934342abf308a4cc394307c3670b',
-  'packages/business/src/image-schema.mjs':'8a364f2d61669cff35ba6a77d5a8a6fd5a26044bfa970b09e78ce780929931e3',
-  'packages/business/src/frame-schema.mjs':'d1310a5945bfcf577b5e2780159507e753eb28f3b4e94d5e109c4bf65ced2655',
+  'packages/business/src/db.ts':'84af099e2b1422574fcabf27d9f3984c0c9c1f045d00860f20f16d247707544f',
+  'packages/business/src/workspace-fixed-schema.ts':'9751e2f2d74b64c1cbd070d61e11941d1eba135ca8748bbdc20bd20ebab05bab',
+  'packages/business/src/workspace-restore-schema.ts':'9b3861b3e0ec72b0ab1d1b676657205f5b3a934342abf308a4cc394307c3670b',
+  'packages/business/src/image-schema.ts':'8a364f2d61669cff35ba6a77d5a8a6fd5a26044bfa970b09e78ce780929931e3',
+  'packages/business/src/frame-schema.ts':'d1310a5945bfcf577b5e2780159507e753eb28f3b4e94d5e109c4bf65ced2655',
  };
  assert.equal(baseline.sourceCommit,'c3a0a57da7b54f62a999fe006dbc47d46d6c83c0');
  for(const [file,hash]of Object.entries(expected)){assert.equal(baseline.sources[file].sha256,hash);assert.equal(sha(baseline.sources[file].text),hash);assert.equal(baseline.dependencyHashes[file],hash);}
 });
 test('frozen validator loader rejects changed historical source before import',async()=>{
- const changed=plain(baseline);changed.sources['packages/business/src/db.mjs'].text+='\n// deliberate drift';
+ const changed=plain(baseline);changed.sources['packages/business/src/db.ts'].text+='\n// deliberate drift';
  await assert.rejects(loadFrozenValidators(changed),/Baseline dependency changed: packages\/business\/src\/db\.mjs/u);
- const unpinnedSource=plain(baseline);unpinnedSource.sources['packages/business/src/agent/chat-context.mjs'].text+='\n// deliberate drift';
+ const unpinnedSource=plain(baseline);unpinnedSource.sources['packages/business/src/agent/chat-context.ts'].text+='\n// deliberate drift';
  await assert.rejects(loadFrozenValidators(unpinnedSource),/Frozen source changed: packages\/business\/src\/agent\/chat-context\.mjs/u);
 });
 test('frozen validator loader rejects live direct-dependency drift before import',async()=>{
- const target='packages/business/src/workspace-lock.mjs';let reads=0;
+ const target='packages/business/src/workspace-lock.ts';let reads=0;
  await assert.rejects(loadFrozenValidators(baseline,file=>{const value=fs.readFileSync(path.join(repo,file));if(file!==target)return value;reads++;return Buffer.concat([value,Buffer.from('\n// deliberate drift')]);}),/Baseline dependency changed: packages\/business\/src\/workspace-lock\.mjs/u);
  assert.equal(reads,1);
 });
 test('frozen validator loader refuses unpinned imports instead of broadening its dependency allowlist',async()=>{
- const changed=plain(baseline),file='packages/business/src/agent/chat-context.mjs';
+ const changed=plain(baseline),file='packages/business/src/agent/chat-context.ts';
  changed.sources[file].text='import unknown from "./not-a-pinned-module.mjs";\n'+changed.sources[file].text;
  changed.sources[file].sha256=sha(changed.sources[file].text);
  await assert.rejects(loadFrozenValidators(changed),/Unpinned frozen-validator import: .*not-a-pinned-module\.mjs/u);
@@ -203,12 +203,12 @@ test('frozen validator loader refuses unpinned imports instead of broadening its
 
 test('frozen c3a0a57 restore policy and effects use the exact old catalog despite current operation additions',async()=>{
  for(const [file,expected]of [
-  ['packages/business/src/workspace-restore-policy.mjs','2be61a06ccfaf1ef37837ca3111ebd16c8ef1f872489728770bf6c2470ca4b05'],
-  ['packages/contracts/src/operation-effects.mjs','c34dad9256d6a24820679add3497c10ce114b28da9b1c8257a958e8b0c9cec10'],
-  ['packages/contracts/src/index.mjs','b9e200c6ae0bc43dc20c8b2febedad81be6442b0e0049dc12ee0c7eee88a2104'],
+  ['packages/business/src/workspace-restore-policy.ts','2be61a06ccfaf1ef37837ca3111ebd16c8ef1f872489728770bf6c2470ca4b05'],
+  ['packages/contracts/src/operation-effects.ts','c34dad9256d6a24820679add3497c10ce114b28da9b1c8257a958e8b0c9cec10'],
+  ['packages/contracts/src/index.ts','b9e200c6ae0bc43dc20c8b2febedad81be6442b0e0049dc12ee0c7eee88a2104'],
   ['packages/contracts/src/local-delivery.ts','da3793397e7d9ad222965751a85520405610c9e9cd00f8fd991ed5dbb31030d2'],
-  ['packages/contracts/src/timeline-acknowledgement.mjs','e1a35468ce23103007352f1aedb6f89cfc61ec6ca16c464d416e07c295eca35e'],
-  ['packages/contracts/src/timeline-export-profile.mjs','3632a6a0166c0fb1219c006100a5c4fe1d005beaf2bafa53039552029494380d'],
+  ['packages/contracts/src/timeline-acknowledgement.ts','e1a35468ce23103007352f1aedb6f89cfc61ec6ca16c464d416e07c295eca35e'],
+  ['packages/contracts/src/timeline-export-profile.ts','3632a6a0166c0fb1219c006100a5c4fe1d005beaf2bafa53039552029494380d'],
  ])assert.equal(sha(baseline.sources[file].text),expected,file);
  const old=await frozenValidators();
  assert.equal(old.contracts.DURABLE_EDIT_OPERATIONS.length,19);

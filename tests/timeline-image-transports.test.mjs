@@ -9,18 +9,18 @@ import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.mjs';
-import {createClient, discoverSchema, effectAnnotations} from '../packages/client/src/index.mjs';
-import {operationEffect} from '../packages/contracts/src/index.mjs';
-import {openStore, classifyCurrentWorkspaceSchema, installCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.mjs';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {createClient, discoverSchema, effectAnnotations} from '../packages/client/src/index.ts';
+import {operationEffect} from '../packages/contracts/src/index.ts';
+import {openStore, classifyCurrentWorkspaceSchema, installCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.ts';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
 import {initializeWorkspaceSchema28} from '../packages/business/src/workspace-schema-v28.ts';
 import {initializeWorkspaceSchema30} from '../packages/business/src/workspace-schema-v30.ts';
 import {initializeWorkspaceSchema32} from '../packages/business/src/workspace-schema-v32.ts';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
-import {READ_TOOL_DEFINITIONS, READ_TOOL_OPERATIONS, parseReadToolArguments} from '../packages/business/src/agent/read-tool-policy.mjs';
-import {RESTORE_READ_OPERATIONS, RESTORE_LOCAL_OPERATIONS} from '../packages/business/src/workspace-restore-policy.mjs';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
+import {READ_TOOL_DEFINITIONS, READ_TOOL_OPERATIONS, parseReadToolArguments} from '../packages/business/src/agent/read-tool-policy.ts';
+import {RESTORE_READ_OPERATIONS, RESTORE_LOCAL_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
 import {png, sha, stamp} from './helpers/timeline-image-fixtures.mjs';
 
 const operation = 'timeline.colour.image.inspect';
@@ -143,7 +143,7 @@ function childEnvironment(root, origin, audit) {
 }
 
 async function cli(args, env) {
-  const child = spawn(process.execPath, ['--import', wireGuard, 'apps/cli/src/index.mjs', ...args],
+  const child = spawn(process.execPath, ['--import', wireGuard, 'apps/cli/src/index.ts', ...args],
     {cwd: repo, env, stdio: ['ignore', 'pipe', 'pipe']});
   let stdout = '', stderr = '', failure;
   const closed = new Promise(resolve => child.once('close', (code, signal) => resolve({code, signal})));
@@ -244,7 +244,7 @@ async function fixture(t) {
       await transport?.close(); transport = undefined;
       mcp = new Client({name: 'timeline-image-inspection-test', version: '1.0.0'}, {capabilities: {}});
       transport = new StdioClientTransport({command: process.execPath, cwd: repo, stderr: 'pipe',
-        args: ['--import', wireGuard, 'apps/mcp/src/index.mjs', ...(expectedWorkspaceOrigin ? ['--workspace-origin', expectedWorkspaceOrigin] : [])], env: childEnvironment(root, server.url, audit)});
+        args: ['--import', wireGuard, 'apps/mcp/src/index.ts', ...(expectedWorkspaceOrigin ? ['--workspace-origin', expectedWorkspaceOrigin] : [])], env: childEnvironment(root, server.url, audit)});
       let stderr = '';
       transport.stderr.setEncoding('utf8').on('data', value => { stderr = (stderr + value).slice(-65_536); });
       await bounded(mcp.connect(transport), 'Owned image MCP connect');

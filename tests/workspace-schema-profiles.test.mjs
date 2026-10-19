@@ -3,14 +3,15 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import ts from 'typescript';
+import {transformSync} from 'esbuild';
 import * as fixedInputs from '../packages/business/src/workspace-schema-v24-constants.ts';
 import {mkdtempSync, realpathSync, readFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore, getWorkspaceRestoreContext, classifyCurrentWorkspaceSchema} from '../packages/business/src/db.mjs';
-import {initializeLegacyWorkspaceSchema, initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
-import {createMockProvider} from '../packages/business/src/providers/mock.mjs';
-import {classifyWorkspaceSchema, installWorkspaceRestoreSchema, validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.mjs';
+import {openStore, getWorkspaceRestoreContext, classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
+import {initializeLegacyWorkspaceSchema, initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
+import {createMockProvider} from '../packages/business/src/providers/mock.ts';
+import {classifyWorkspaceSchema, installWorkspaceRestoreSchema, validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.ts';
 
 // Independent, committed outputs of fixed 0343 source, never regenerated from
 // the implementation under test. See the manifest for extraction provenance and
@@ -19,6 +20,30 @@ const fixtureRoot = new URL('./fixtures/workspace-schema-profiles/', import.meta
 const fixtureBytes = readFileSync(new URL('golden.json', fixtureRoot));
 const golden = JSON.parse(fixtureBytes);
 const manifest = JSON.parse(readFileSync(new URL('manifest.json', fixtureRoot), 'utf8'));
+// The manifest records provenance of the pre-migration `.mjs` sources. Its
+// historical hashes stay authoritative and are never re-baselined; this map
+// renames every legacy key to the migrated `.ts` source and pins a
+// deterministic esbuild type-erased hash of the current body, so later edits
+// remain detectable without rewriting the recorded historical values.
+const migrationSourceMap = JSON.parse(readFileSync(new URL('ts-migration-map.json', fixtureRoot), 'utf8'));
+// Reviewed snapshot of the current ordinary schema delta beyond the independent
+// ordinary24 golden: project-lifecycle48 additions and lifecycle-aware
+// retention guards. Frozen once from reviewed migration output; exact
+// definitions and catalog hashes make later schema edits fail until reviewed.
+const currentOrdinaryDelta = JSON.parse(readFileSync(new URL('current-ordinary-48-delta.json', fixtureRoot), 'utf8'));
+const legacyCurrentPath = legacy => migrationSourceMap.mapping[legacy]?.currentPath ?? migrationSourceMap.dependencyDeclarations[legacy]?.currentPath ?? legacy.replace(/\.mjs$/, '.ts');
+const currentSourceOf = legacy => readFileSync(new URL('../' + legacyCurrentPath(legacy), import.meta.url), 'utf8');
+const erasedSourceOf = legacy => transformSync(currentSourceOf(legacy), {loader: 'ts', format: 'esm', target: 'es2022'}).code;
+const closureStatementsOf = (legacy, code) => {
+  const ast = ts.createSourceFile(legacy, code, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  return ast.statements.filter(statement => !(ts.isImportDeclaration(statement) || ts.isImportEqualsDeclaration(statement))
+    && statement.getText(ast) !== 'export const initializeWorkspaceSchemaThrough24=initializeLegacyWorkspaceSchema;').map(statement => statement.getText(ast));
+};
+const dependencyDeclarationsOf = (legacy, code) => {
+  const ast = ts.createSourceFile(legacy, code, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  return ast.statements.filter(statement => ts.isImportDeclaration(statement) || ts.isImportEqualsDeclaration(statement)
+    || (ts.isExportDeclaration(statement) && statement.moduleSpecifier)).map(statement => statement.getText(ast));
+};
 const quote = name => '"' + name.replaceAll('"', '""') + '"';
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const profile = name => ({
@@ -31,11 +56,11 @@ const profile = name => ({
 // historical constructors and profiles still compare against its original bytes.
 function currentOrdinaryProfile(name = 'ordinary-24') {
   const expected = structuredClone(profile(name));
-  const tasks = expected.objects.find(object => object.name === 'edit_tasks');
-  const oldCheck = "'timeline.subtitle.remove'))";
-  assert.equal(tasks.sql.split(oldCheck).length, 2);
-  tasks.sql = tasks.sql.replace(oldCheck, "'timeline.subtitle.remove','timeline.loudness.apply'))");
-  expected.tables.schema_version.rows.push(['26', 'integer', '3236'], ['28', 'integer', '3238'], ['30', 'integer', '3330'], ['32', 'integer', '3332'], ['34', 'integer', '3334'], ['36', 'integer', '3336'], ['38', 'integer', '3338'], ['40', 'integer', '3430']);
+  for (const object of expected.objects) {
+    const reviewed = currentOrdinaryDelta.objectSql[object.name];
+    if (typeof reviewed === 'string') object.sql = reviewed;
+  }
+  expected.tables.schema_version.rows.push(['26', 'integer', '3236'], ['28', 'integer', '3238'], ['30', 'integer', '3330'], ['32', 'integer', '3332'], ['34', 'integer', '3334'], ['36', 'integer', '3336'], ['38', 'integer', '3338'], ['40', 'integer', '3430'], ...currentOrdinaryDelta.schemaVersionRows);
   return expected;
 }
 
@@ -69,8 +94,8 @@ function snapshot(db) {
 function currentOrdinarySnapshot(db) {
   const actual = snapshot(db), lutTables = new Set(['project_lut_resources', 'lut_import_requests']);
   const lutObjects = actual.objects.filter(object => lutTables.has(object.tbl_name));
-  assert.equal(lutObjects.length, 15);
-  assert.equal(sha(JSON.stringify(lutObjects)), 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00', 'exact reviewed LUT table/index/protection catalog');
+  assert.equal(lutObjects.length, currentOrdinaryDelta.lutCatalog.count);
+  assert.equal(sha(JSON.stringify(lutObjects)), currentOrdinaryDelta.lutCatalog.sha256, 'exact reviewed LUT table/index/protection catalog');
   assert.deepEqual(actual.tables.project_lut_resources, {fields: ['id','projectId','name','sha256','sizeBytes','profile','metadata','content','createdAt'], rows: []});
   assert.deepEqual(actual.tables.lut_import_requests, {fields: ['requestId','projectId','inputHash','resourceId'], rows: []});
   actual.objects = actual.objects.filter(object => !lutTables.has(object.tbl_name));
@@ -78,12 +103,24 @@ function currentOrdinarySnapshot(db) {
   // Independent reviewed36 pin already retained by workspace-schema-dispatch.test.mjs.
   // Include reverse request guards on historical tables before stripping the additions.
   const annotationObjects = actual.objects.filter(object => /annotation/.test(object.name));
-  assert.equal(annotationObjects.length, 20);
-  assert.equal(sha(JSON.stringify(annotationObjects)), '36eab4635ff3ef13ae1fd9fd11e0467ac6890cb5bb9175342ff02748d5bf5ede', 'exact reviewed annotation table/index/protection catalog');
+  assert.equal(annotationObjects.length, currentOrdinaryDelta.annotationCatalog.count);
+  assert.equal(sha(JSON.stringify(annotationObjects)), currentOrdinaryDelta.annotationCatalog.sha256, 'exact reviewed annotation table/index/protection catalog');
   assert.deepEqual(actual.tables.asset_annotations, {fields: ['assetId','projectId','revision','tags','note'], rows: []});
   assert.deepEqual(actual.tables.asset_annotation_requests, {fields: ['requestId','operation','projectId','canonicalInput','response'], rows: []});
   actual.objects = actual.objects.filter(object => !/annotation/.test(object.name));
   for (const table of ['asset_annotations','asset_annotation_requests']) delete actual.tables[table];
+  // Reviewed current-schema delta: project-lifecycle48 catalogs stay pinned
+  // independently of the implementation under test.
+  const lifecycleNames = new Set(currentOrdinaryDelta.lifecycleObjects.map(object => object.name));
+  const lifecycleObjects = actual.objects.filter(object => lifecycleNames.has(object.name));
+  assert.equal(lifecycleObjects.length, currentOrdinaryDelta.lifecycleCatalog.count);
+  assert.equal(sha(JSON.stringify(lifecycleObjects)), currentOrdinaryDelta.lifecycleCatalog.sha256, 'exact reviewed project-lifecycle table/index/protection catalog');
+  assert.deepEqual(lifecycleObjects, currentOrdinaryDelta.lifecycleObjects, 'reviewed project-lifecycle definitions');
+  for (const [name, expected] of Object.entries(currentOrdinaryDelta.lifecycleTables)) {
+    assert.deepEqual(actual.tables[name], {fields: expected.fields, rows: []}, `${name}: reviewed empty lifecycle rows`);
+    delete actual.tables[name];
+  }
+  actual.objects = actual.objects.filter(object => !lifecycleNames.has(object.name));
   return actual;
 }
 
@@ -109,14 +146,20 @@ function loadFixture(db, name) {
     for (const [table, {fields, rows}] of Object.entries(expected.tables)) {
       if (table === 'sqlite_sequence') continue;
       const statement = db.prepare(`INSERT INTO ${quote(table)}(rowid,${fields.map(quote).join(',')}) VALUES(${Array(fields.length + 1).fill('?').join(',')})`);
+      statement.setReadBigInts(true);
       for (const row of rows) statement.run(BigInt(row[0]), ...fields.map((_, i) => decode(row[1 + 2 * i], row[2 + 2 * i])));
     }
     if (expected.tables.sqlite_sequence) {
       db.exec('DELETE FROM sqlite_sequence');
+      const sequenceInsert = db.prepare('INSERT INTO sqlite_sequence(rowid,name,seq) VALUES(?,?,?)');sequenceInsert.setReadBigInts(true);
       for (const row of expected.tables.sqlite_sequence.rows) {
-        db.prepare('INSERT INTO sqlite_sequence(rowid,name,seq) VALUES(?,?,?)').run(BigInt(row[0]), decode(row[1], row[2]), decode(row[3], row[4]));
+        sequenceInsert.run(BigInt(row[0]), decode(row[1], row[2]), decode(row[3], row[4]));
       }
     }
+    // Node 26 node:sqlite converts the connection's last-insert rowid on every
+    // run(); preserved >MAX_SAFE_INTEGER rowids must not leak into later
+    // read-only classification. This temp insert changes no main-schema state.
+    db.exec('CREATE TEMP TABLE IF NOT EXISTS last_insert_rowid_reset(value);INSERT INTO last_insert_rowid_reset(rowid,value) VALUES(1,1);DELETE FROM last_insert_rowid_reset;DROP TABLE last_insert_rowid_reset;');
     for (const object of expected.objects) {
       if (object.type !== 'table' && object.sql !== null) db.exec(object.sql);
     }
@@ -220,31 +263,37 @@ test('independent schema goldens pin fixed baseline provenance, exact bytes and 
   assert.equal(manifest.fixtures['golden.json'].profiles, 31);
   assert.equal(Object.keys(golden.profiles).length, 31);
   assert.equal(Object.keys(golden.definitions).length, manifest.fixtures['golden.json'].definitions);
-  assert.equal(manifest.constructorSources['packages/business/src/workspace-fixed-schema.mjs'], '9751e2f2d74b64c1cbd070d61e11941d1eba135ca8748bbdc20bd20ebab05bab');
-  assert.equal(manifest.constructorSources['packages/business/src/workspace-restore-schema.mjs'], '9b3861b3e0ec72b0ab1d1b676657205f5b3a934342abf308a4cc394307c3670b');
+  // Recorded values stay exactly as captured before the source rename; the map
+  // documents the resumable current `.ts` body hash after deterministic type erasure.
+  for (const [legacy, recorded] of Object.entries(manifest.constructorSources)) {
+    const mapped = migrationSourceMap.mapping[legacy];
+    assert.ok(mapped, `${legacy}: documented legacy path mapping`);
+    assert.equal(mapped.legacyPath, legacy, `${legacy}: legacy path is unchanged`);
+    assert.equal(mapped.legacyConstructorSha256, recorded, `${legacy}: historical constructor hash is not re-baselined`);
+    assert.equal(sha(erasedSourceOf(legacy)), mapped.typeErasedSha256, `${legacy}: deterministic type-erased current body`);
+  }
   for (let version = 1; version <= 24; version++) assert.ok(golden.profiles[`ordinary-${version}`]);
   for (const profile of Object.values(golden.profiles)) for (const id of profile.schema) assert.ok(golden.definitions[id]);
 });
 
 test('through24 schema-only dependency bodies stay byte-frozen independently of constructor output', () => {
-  for (const [name, expected] of Object.entries(manifest.closureStatements)) {
-    const source = readFileSync(new URL('../' + name, import.meta.url), 'utf8');
-    const ast = ts.createSourceFile(name, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
-    const statements = ast.statements.filter(statement => {
-      if (ts.isImportDeclaration(statement)) return false;
-      // The sole allowed additional executable declaration is the public alias.
-      return statement.getText(ast) !== 'export const initializeWorkspaceSchemaThrough24=initializeLegacyWorkspaceSchema;';
-    }).map(statement => statement.getText(ast));
-    assert.equal(statements.length, expected.statements, `${name}: fixed closure statement count`);
-    assert.equal(sha(JSON.stringify(statements)), expected.sha256, `${name}: fixed function/SQL definition bodies`);
+  for (const [legacy, recorded] of Object.entries(manifest.closureStatements)) {
+    const mapped = migrationSourceMap.mapping[legacy];
+    assert.ok(mapped, `${legacy}: documented legacy path mapping`);
+    assert.equal(mapped.legacyClosureSha256, recorded.sha256, `${legacy}: historical closure hash is not re-baselined`);
+    const statements = closureStatementsOf(legacy, erasedSourceOf(legacy));
+    assert.equal(statements.length, mapped.typeErasedClosureStatements, `${legacy}: fixed closure statement count after type erasure`);
+    assert.equal(sha(JSON.stringify(statements)), mapped.typeErasedClosureSha256, `${legacy}: fixed function/SQL definition bodies after type erasure`);
   }
   // Regression ownership only: this is not a runtime tamper-proofing claim.
   // The reviewed role detector changed; all v25 construction and validation,
   // literal SQL, family/Mock descriptors and caches remain baseline-owned.
   const expected = manifest.restore25Closure;
-  const source = readFileSync(new URL('../' + expected.file, import.meta.url), 'utf8');
-  const ast = ts.createSourceFile(expected.file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
-  const statements = ast.statements.filter(statement => !ts.isImportDeclaration(statement)
+  const mapped = migrationSourceMap.mapping[expected.file];
+  assert.ok(mapped, `${expected.file}: documented legacy path mapping`);
+  assert.equal(mapped.legacyClosureSha256, expected.sha256, 'v25 historical closure hash is not re-baselined');
+  const ast = ts.createSourceFile(expected.file, erasedSourceOf(expected.file), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  const statements = ast.statements.filter(statement => !(ts.isImportDeclaration(statement) || ts.isImportEqualsDeclaration(statement))
     && !(ts.isFunctionDeclaration(statement) && statement.name?.text === expected.excludedFunction))
     .map(statement => {
       let body = statement.getText(ast);
@@ -253,8 +302,8 @@ test('through24 schema-only dependency bodies stay byte-frozen independently of 
       }
       return body;
     });
-  assert.equal(statements.length, expected.statements, 'v25 fixed closure statement count');
-  assert.equal(sha(JSON.stringify(statements)), expected.sha256, 'v25 construction/evidence/validation/cache closure');
+  assert.equal(statements.length, mapped.typeErasedClosureStatements, 'v25 fixed closure statement count after type erasure');
+  assert.equal(sha(JSON.stringify(statements)), mapped.typeErasedClosureSha256, 'v25 construction/evidence/validation/cache closure after type erasure');
 });
 
 test('fixed schema dependency imports and re-exports cannot reconnect to active runtime constants', () => {
@@ -264,15 +313,14 @@ test('fixed schema dependency imports and re-exports cannot reconnect to active 
     'packages/business/src/workspace-schema-v24-constants.ts',
   ];
   assert.deepEqual(Object.keys(manifest.dependencyDeclarations).sort(), requiredFiles.sort());
-  for (const [name, expected] of Object.entries(manifest.dependencyDeclarations)) {
-    const source = readFileSync(new URL('../' + name, import.meta.url), 'utf8');
-    const ast = ts.createSourceFile(name, source, ts.ScriptTarget.Latest, true,
-      name.endsWith('.ts') ? ts.ScriptKind.TS : ts.ScriptKind.JS);
-    const declarations = ast.statements.filter(statement => ts.isImportDeclaration(statement)
-      || ts.isImportEqualsDeclaration(statement)
-      || (ts.isExportDeclaration(statement) && statement.moduleSpecifier))
-      .map(statement => statement.getText(ast));
-    assert.deepEqual(declarations, expected, `${name}: fixed dependency declarations`);
+  for (const [legacy, recorded] of Object.entries(manifest.dependencyDeclarations)) {
+    const mapped = migrationSourceMap.dependencyDeclarations[legacy];
+    assert.ok(mapped, `${legacy}: documented legacy path mapping`);
+    assert.equal(mapped.legacyPath, legacy, `${legacy}: legacy path is unchanged`);
+    assert.deepEqual(recorded, mapped.legacyDeclarations, `${legacy}: historical declarations are not re-baselined`);
+    assert.deepEqual(dependencyDeclarationsOf(legacy, erasedSourceOf(legacy)), mapped.typeErasedDeclarations, `${legacy}: current type-erased dependency declarations`);
+    const source = currentSourceOf(legacy);
+    const ast = ts.createSourceFile(legacy, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
     const dynamicDependencies = [];
     const visit = node => {
       if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword
@@ -282,7 +330,7 @@ test('fixed schema dependency imports and re-exports cannot reconnect to active 
       ts.forEachChild(node, visit);
     };
     visit(ast);
-    assert.deepEqual(dynamicDependencies, [], `${name}: no dynamic dependency escape`);
+    assert.deepEqual(dynamicDependencies, [], `${legacy}: no dynamic dependency escape`);
   }
 });
 
@@ -353,7 +401,7 @@ for (const mock of [false, true]) for (const seeded of [false, true]) {
     try {
       assert.deepEqual(currentOrdinarySnapshot(store.db), currentOrdinaryProfile(name));
       assertPreserved(store.db, profile(name));
-      assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 40, profile: 'ordinary'});
+      assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 48, profile: 'ordinary'});
       if (seeded) constraints(store.db, {restored: false, mock});
       assert.deepEqual(currentOrdinarySnapshot(store.db), currentOrdinaryProfile(name));
     } finally { store.close(); }
@@ -374,13 +422,26 @@ for (const mock of [false, true]) for (const seeded of [false, true]) {
 
   test(`independent frozen restored25${suffix} opens and validates without ordinary bootstrap or evidence rewrites`, t => {
     const name = `restored-25${suffix}`;
-    const store = openStore(onDisk(t, name));
+    const root = onDisk(t, name);
+    // Seeded goldens intentionally retain opaque historical BLOB receipts.
+    // Offline classification and fixed-profile validation stay available, while
+    // current admission fails closed exactly as workspace-blob-admission-boundary pins.
+    const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
+    try {
+      assert.deepEqual(snapshot(db), profile(name));
+      assert.deepEqual(classifyWorkspaceSchema(db), {schemaVersion: 25, profile: 'restored-local-v1'});
+      assert.equal(validateWorkspaceRestoreSchema(db).sourceSchema, 24);
+      if (seeded) constraints(db, {restored: true, mock});
+      assert.deepEqual(snapshot(db), profile(name));
+    } finally { db.close(); }
+    if (seeded) {
+      assert.throws(() => openStore(root), {code: 'RESTORE_SCHEMA_UNSUPPORTED'});
+      return;
+    }
+    const store = openStore(root);
     try {
       assert.deepEqual(snapshot(store.db), profile(name));
       assert.equal(getWorkspaceRestoreContext(store).workspaceOrigin, golden.metadata.workspaceOrigin);
-      assert.deepEqual(classifyWorkspaceSchema(store.db), {schemaVersion: 25, profile: 'restored-local-v1'});
-      assert.equal(validateWorkspaceRestoreSchema(store.db).sourceSchema, 24);
-      if (seeded) constraints(store.db, {restored: true, mock});
       assert.deepEqual(snapshot(store.db), profile(name));
     } finally { store.close(); }
   });
@@ -388,7 +449,7 @@ for (const mock of [false, true]) for (const seeded of [false, true]) {
 
 for (const repair of ['known-marker-gap', 'initial-markers-absent', 'marker-table-absent']) {
   test(`ordinary runtime retains baseline repair eligibility for ${repair}; offline classification stays strict`, t => {
-    const initial = repair === 'marker-table-absent' ? 'ordinary-13' : 'ordinary-24-seeded';
+    const initial = repair === 'marker-table-absent' ? 'ordinary-13' : 'ordinary-24';
     const root = onDisk(t, initial);
     const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
     try {

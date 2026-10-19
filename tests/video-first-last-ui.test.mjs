@@ -7,15 +7,17 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as contracts from '@mioon/contracts';
 import { LOCAL_SHOT_TEXT_LIMITS } from '@mioon/contracts/local-shot-text';
-import * as subjectVideo from '../apps/web/src/subject-video.js';
-import * as settings from '../apps/web/src/generation-settings.js';
-import * as api from '../apps/web/src/api.js';
-import * as submissions from '../apps/web/src/submissions.js';
-import * as mutations from '../apps/web/src/mutation-submissions.js';
-import { RESTORE_DISABLED_REASON } from '../apps/web/src/restored-workspace.js';
-import { referenceForShot } from '../apps/web/src/reference-connections.js';
-import { imageEditSourceIssueDescriptor } from '../apps/web/src/image-generation.js';
+import * as subjectVideo from '../apps/web/src/subject-video.ts';
+import * as settings from '../apps/web/src/generation-settings.ts';
+import * as api from '../apps/web/src/api.ts';
+import * as submissions from '../apps/web/src/submissions.ts';
+import * as mutations from '../apps/web/src/mutation-submissions.ts';
+import { RESTORE_DISABLED_REASON } from '../apps/web/src/restored-workspace.ts';
+import { referenceForShot } from '../apps/web/src/reference-connections.ts';
+import { imageEditSourceIssueDescriptor } from '../apps/web/src/image-generation.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const taskIntentModule = { exports: {} };
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
 const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
@@ -56,7 +58,7 @@ function harness(patch = {}) {
   const primitive = new Proxy({}, { get: (_, key) => String(key) });
   function load(filename) {
     if (modules.has(filename)) return modules.get(filename);
-    const code = transformSync(readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code;
+    const code = transformSync(readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
     const module = { exports: {} };
     Function('require', 'module', 'exports', code)(name => {
       if (name === 'react') return react;
@@ -71,31 +73,31 @@ function harness(patch = {}) {
       // These passive leaves do not participate in saved frame drafts or their
       // confirmation epochs; keep the actual Inspector/frame controls below.
       if (['./AssetAnnotations.tsx','./CanvasOverview.tsx','./BoardInspectorGroup.tsx','./VersionCardPreview.tsx'].includes(name)) return { default: name, __esModule: true };
-      if (name === './image-generation.js') return { imageEditSourceIssueDescriptor };
+      if (name === './image-generation.ts') return { imageEditSourceIssueDescriptor };
       if (name === '@mioon/contracts') return contracts;
       if (name === '@mioon/contracts/local-shot-text') return { LOCAL_SHOT_TEXT_LIMITS };
-      if (name === './generation-settings.js') return settings;
-      if (name === './subject-video.js') return subjectVideo;
-      if (['./SubjectVideoSelection.jsx', './SubjectVideoSummary.jsx'].includes(name)) return { default: name, __esModule: true };
-      if (name === './api.js') return api;
-      if (name === './reference-connections.js') return { referenceForShot };
-      if (name === './VideoFrameControls.jsx') return load('VideoFrameControls.jsx');
-      if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => h.visible };
+      if (name === './generation-settings.ts') return settings;
+      if (name === './subject-video.ts') return subjectVideo;
+      if (['./SubjectVideoSelection.tsx', './SubjectVideoSummary.tsx'].includes(name)) return { default: name, __esModule: true };
+      if (name === './api.ts') return api;
+      if (name === './reference-connections.ts') return { referenceForShot };
+      if (name === './VideoFrameControls.tsx') return load('VideoFrameControls.tsx');
+      if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => h.visible };
       if (name === '@mioon/ui/components/workbench-confirm') return { useConfirmation: () => message => h.confirm(message) };
       if (name.endsWith('.css')) return {};
-      if (name === './icons.jsx') return { default: 'Icon', __esModule: true };
+      if (name === './icons.tsx') return { default: 'Icon', __esModule: true };
       if (name.startsWith('@mioon/ui/')) return primitive;
-      if (name === './Nodes.jsx') return { Media: 'Media' };
-      if (name === './Timeline.jsx') return { dragAsset() {} };
-      if (name === './ProviderSettings.jsx') return { default: 'ProviderSettings', __esModule: true };
-      if (name === './ShotSubjectBindings.jsx') return { default: 'ShotSubjectBindings', __esModule: true };
-      if (name === './WorkspaceControls.jsx') return { WorkbenchSelect: 'WorkbenchSelect' };
-      if (name === './ReferenceConnections.jsx') return { BoundReference: 'BoundReference', ReferenceSourcePanel: 'ReferenceSourcePanel' };
+      if (name === './Nodes.tsx') return { Media: 'Media' };
+      if (name === './Timeline.tsx') return { dragAsset() {} };
+      if (name === './ProviderSettings.tsx') return { default: 'ProviderSettings', __esModule: true };
+      if (name === './ShotSubjectBindings.tsx') return { default: 'ShotSubjectBindings', __esModule: true };
+      if (name === './WorkspaceControls.tsx') return { WorkbenchSelect: 'WorkbenchSelect' };
+      if (name === './ReferenceConnections.tsx') return { BoundReference: 'BoundReference', ReferenceSourcePanel: 'ReferenceSourcePanel' };
       throw Error(`Unexpected dependency ${name}`);
     }, module, module.exports);
     modules.set(filename, module.exports); return module.exports;
   }
-  const Component = load('Inspector.jsx').default;
+  const Component = load('Inspector.tsx').default;
   const flush = queue => { for (const i of queue) { slots[i].cleanup?.(); slots[i].cleanup = slots[i].callback(); } };
   Object.assign(h, {
     render(next = {}) { assert.equal(unmounted, false); props = { ...props, ...next }; let tries = 0; do { needsRender = false; cursor = 0; layouts = []; effects = []; tree = Component(props); flush(layouts); flush(effects); assert.ok(++tries < 20); } while (needsRender); return tree; },
@@ -272,7 +274,7 @@ test('history summary includes both frozen human labels/thumbnails with collapse
 });
 
 test('App paid review wires complete frames and count, frozen retries, asset-use and tab scope without new submission fields', () => {
-  const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   assert.match(app, /checkGeneration\(shot, provider, job.model, inputMode, true\)/);
   assert.match(app, /generationReferences\(realConfirm.shot, \{ frozen: Boolean\(realConfirm.retryJobId\), subjectReference: realConfirm.subjectReference \}\).references.length/);
   assert.match(app, /VideoFrameSummary shot=\{realConfirm.shot\} assets=\{realConfirm.referenceAssets\}/);
@@ -281,15 +283,15 @@ test('App paid review wires complete frames and count, frozen retries, asset-use
   assert.ok(inspectorStart >= 0 && inspectorEnd > inspectorStart);
   const inspectorTag = app.slice(inspectorStart, inspectorEnd);
   assert.match(inspectorTag, /\bactionScopeKey=\{`\$\{rightDockTab\}:\$\{propertiesPage\}`\}/);
-  assert.match(inspectorTag, /\bgenerationUnavailableReason=\{generationUnavailableReason\}/);
-  assert.match(app, /generationReferenceIdentity\(args.shot, dataRef.current.assets, \{ frozen, subjectReference: args.subjectReference \}\) !== args.referenceIdentity/);
+  assert.match(inspectorTag, /\bgenerationUnavailableReason=\{generationUnavailableReason(?: as never)?\}/);
+  assert.match(app, /generationReferenceIdentity\(args.shot, dataRef.current!\.assets, \{ frozen, subjectReference: args.subjectReference \}\) !== args.referenceIdentity/);
   assert.match(app, /currentShot.revision !== args.shot.revision/);
   const submit = app.slice(app.indexOf('const submitGeneration ='), app.indexOf('function generate('));
   assert.doesNotMatch(submit, /lastFrameAssetId|referenceAssetIds|approve|budget|limit/);
 });
 
 test('actual App confirmation sends once and rejects changed content, navigation, provider or stale view scope', () => {
-  const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const functions = source.slice(source.indexOf('  function reviewGeneration('), source.indexOf('  async function createProject('));
   function reviewHarness({ frozen = false } = {}) {
     const p = provider('ark'), current = shot({ lastFrameAssetId: tailId });
@@ -330,7 +332,7 @@ function mutationRunner(t, result) {
     setItem: (key, value) => values.set(key, String(value)), removeItem: key => values.delete(key),
   } });
   t.after(() => prior ? Object.defineProperty(globalThis, 'sessionStorage', prior) : delete globalThis.sessionStorage);
-  const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const code = app.slice(app.indexOf('  async function runSession('), app.indexOf('  async function inspect('));
   const state = { result, calls: [], notices: [], pending: [] }, locks = new Set();
   const scope = { msg, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), ...contracts, ...submissions, ...mutations, clipConnectionBlocked:{current:false},shotTextRef: { current: null }, dataRef: { current: { project: { id: projectId }, shots: [shot()], nodes: [] } }, currentProject: { current: projectId },

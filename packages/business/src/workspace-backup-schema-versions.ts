@@ -1,4 +1,8 @@
 import {validateWorkspaceSchema48} from './workspace-schema-v48.ts';
+import {createWorkspaceRestoreProfileV49} from './workspace-restore-schema-v49.ts';
+import {createWorkspaceRestoreProfileV45} from './workspace-restore-schema-v45.ts';
+import {createWorkspaceRestoreProfileV41} from './workspace-restore-schema-v41.ts';
+import {initializeWorkspaceSchemaThrough24} from './workspace-fixed-schema.ts';
 import {validateWorkspaceSchema44} from './workspace-schema-v44.ts';
 import {validateWorkspaceSchema40} from './workspace-schema-v40.ts';
 import {validateWorkspaceVolumeEnvelopeRows} from './workspace-volume-envelope-validation.ts';
@@ -32,10 +36,10 @@ export function readWorkspaceBackupSchemaVersion(db:DatabaseSync): number {
   versions.add(row.version);version=Math.max(version,row.version);
  }
  if(!version)invalid();
- if(version===48){try{validateWorkspaceSchema48(db);}catch{invalid();}return version;}
- if(version===44){try{validateWorkspaceSchema44(db);}catch{invalid();}return version;}
- if(version===40){try{validateWorkspaceSchema40(db);}catch{invalid();}return version;}
- try{validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:false});}catch{invalid();}
+ if(version===48){try{validateWorkspaceSchema48(db);}catch{try{const classification=createWorkspaceRestoreProfileV49(initializeWorkspaceSchemaThrough24).classifyWorkspaceSchemaV48V49AllowingUnknown(db);if(classification.schemaVersion!==48)invalid();}catch{invalid();}}return version;}
+ if(version===44){try{validateWorkspaceSchema44(db);}catch{try{const classification=createWorkspaceRestoreProfileV45(initializeWorkspaceSchemaThrough24).classifyWorkspaceSchemaV44V45AllowingUnknown(db);if(classification.schemaVersion!==44)invalid();}catch{invalid();}}return version;}
+ if(version===40){try{validateWorkspaceSchema40(db);}catch{try{const classification=createWorkspaceRestoreProfileV41(initializeWorkspaceSchemaThrough24).classifyWorkspaceSchemaV40V41AllowingUnknown(db);if(classification.schemaVersion!==40)invalid();}catch{invalid();}}return version;}
+ try{validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:false,allowOpaqueCells:true});}catch{invalid();}
  try{validateWorkspaceAudioRoleRows(db,{allowAudioRoles:version===38});}catch{invalid();}
  try{validateWorkspaceColourRows(db,{allowColour:version===30||version===32||version===34||version===36||version===38,allowMixedImages:version===32||version===34||version===36||version===38,allowJpegImages:version===34||version===36||version===38});}catch{invalid();}
  if(version===26){

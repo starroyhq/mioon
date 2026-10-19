@@ -18,7 +18,7 @@ Electron 主进程
 
 打包后的桌面应用不调用系统 `node`，不使用 `child_process.fork`，也不会悄悄回退到 PATH 中的 Node。此前 Linux Electron 44.7.0 的实际二进制探测结果为 Node 24.21.0、SQLite 3.53.4；其他平台必须记录其实际运行结果。最终运行验证还须覆盖 utilityProcess，而不能仅凭版本或 Node 模式探测声称通过。
 
-`apps/desktop/scripts/build.mjs` 用 esbuild 将共享服务及其运行依赖打入 `backend.cjs`，将桌面壳打入 `main.cjs`，复制 `apps/web/dist`。暂存目录与最终 ASAR 均排除 workspace 软链接、`node_modules`、原素材、项目数据库或访问令牌。生产依赖许可证和 checked-in shadcn/ui 的 MIT 许可证一同装入 ASAR 的 `licenses/`。Electron/Chromium 原始通知来自各目标 Electron 分发包：Linux 保持可执行文件旁的 `LICENSE.electron.txt` 和 `LICENSES.chromium.html`；macOS 的 `afterExtract` 钩子在 builder 删除分发包根目录通知之前，将两份原始字节保存到 `.app/Contents/Resources/licenses/`，`afterPack` 再分别核对大小与 SHA-256。这些额外资源不扩大 ASAR 白名单，也不使用构建主机的 Electron 通知替代目标运行时。现有 Linux 专用 `inspect-package.mjs` 仍按原有路径检查最终 ASAR 及实际二进制 fuse 字节。
+`apps/desktop/scripts/build.ts` 用 esbuild 将共享服务及其运行依赖打入 `backend.cjs`，将桌面壳打入 `main.cjs`，复制 `apps/web/dist`。暂存目录与最终 ASAR 均排除 workspace 软链接、`node_modules`、原素材、项目数据库或访问令牌。生产依赖许可证和 checked-in shadcn/ui 的 MIT 许可证一同装入 ASAR 的 `licenses/`。Electron/Chromium 原始通知来自各目标 Electron 分发包：Linux 保持可执行文件旁的 `LICENSE.electron.txt` 和 `LICENSES.chromium.html`；macOS 的 `afterExtract` 钩子在 builder 删除分发包根目录通知之前，将两份原始字节保存到 `.app/Contents/Resources/licenses/`，`afterPack` 再分别核对大小与 SHA-256。这些额外资源不扩大 ASAR 白名单，也不使用构建主机的 Electron 通知替代目标运行时。现有 Linux 专用 `inspect-package.ts` 仍按原有路径检查最终 ASAR 及实际二进制 fuse 字节。桌面 builder 配置已迁移为 typed ESM：`apps/desktop/builder-config.ts`（配合 `identity.ts`、`build-metadata.ts`、`subtitle-resources.ts`、`runtime-notices.ts`）由 `apps/desktop/scripts/prepare-builder-config.ts` 打包成忽略目录中的 `.generated/electron-builder{,.dev}.cjs`；`scripts/build.ts` 在暂存构建时自动生成，仓库不再保留手写 builder CJS 入口。
 
 macOS 通知保护钩子要求目标 framework/config 版本和尚未改写的 `Electron.app/Contents/Info.plist` 版本与根清单 Electron 固定版本一致；正常解包会在钩子前移除根目录 `version`，所以不依赖该文件。输入与输出拒绝符号链接、非普通文件、空文件和超限文件；Electron 通知上限 256 KiB、Chromium 通知上限 32 MiB、原始 plist 上限 1 MiB。版本证据是解包上下文和原始 bundle 元数据，不构成运行时签名认证。2026-10-11 留存的旧 arm64 development/production `.app` 验收仍缺少两份通知，development DMG 也没有重新生成或重新挂载检查；此处源码修复与云端契约测试不能替代新的 Mac 验收。
 
@@ -32,8 +32,8 @@ Mac 首次源码试用见 [Mac 源码试用指南](MAC-SOURCE-TRIAL.zh-CN.md) �
 
 ```sh
 pnpm install --frozen-lockfile
-node scripts/tooling.mjs doctor
-node scripts/tooling.mjs build --channel=development
+node scripts/tooling.ts doctor
+node scripts/tooling.ts build --channel=development
 MIOON_ENABLE_LIVE_PROVIDER=0 pnpm desktop
 ```
 
@@ -79,7 +79,7 @@ V3/V4 原来的 `video-workbench/` 目录原封不动保留。V4.1 首次启动�
 提供明确执行的源码迁移助手（需要 Node ≥24）。先正常关闭两边应用，再指定旧数据目录与尚不存在的新 `workspace/` 路径：
 
 ```sh
-node apps/desktop/scripts/migrate-data.mjs --source=/absolute/old/data --destination=/absolute/desktop-user-data/workspace
+node apps/desktop/scripts/migrate-data.ts --source=/absolute/old/data --destination=/absolute/desktop-user-data/workspace
 ```
 
 助手只复制数据库与托管媒体，在副本应用同一份迁移并执行 `integrity_check`；不会修改或删除源目录，不复制访问令牌、服务锁或 Chromium 配置。源服务锁、未 checkpoint 的 WAL、符号链接或已存在的目标目录都会导致拒绝。不要覆盖已有桌面项目；先保留完整备份并选择新目录。
@@ -148,7 +148,7 @@ pnpm --filter @mioon/desktop package:dir:dev
 
 正式版输出在 `release/desktop/production/`，开发版在 `release/desktop/development/`：Linux x64 解包目录及 `tar.gz`。两个渠道输出互不覆盖，旧 `release/desktop/` 历史产物保持原样。压缩包中包含 Electron / Node / SQLite / 页面 / 后端；解包后运行正式版 `mioon` 或开发版 `mioon-dev`，仍需外部 FFmpeg / ffprobe。必须在支持 Chromium 沙箱的非 root Linux 图形会话中运行。若系统策略阻止用户命名空间或沙箱辅助程序，保持安全失败，不添加 `--no-sandbox` 或静默降级。
 
-`pnpm --filter @mioon/desktop package:mac` 与 `package:mac:dev` 先通过 tooling 串行构建 Web 和对应渠道，再运行 builder（`--publish never`）；不能并行共用 staging。`apps/desktop/electron-builder.cjs` 与 `.dev.cjs` 配置 macOS arm64/x64 DMG，目前 `identity:null`，没有已验证的签名/公证、Gatekeeper 或安装升级结果，不能将构建成功称为可分发认证。入口依据见 [打包入口说明](PACKAGE-ENTRYPOINTS.md)，平台门槛见 [发布门槛](PLATFORM-RELEASE-GATES.md)。
+`pnpm --filter @mioon/desktop package:mac` 与 `package:mac:dev` 先通过 tooling 串行构建 Web 和对应渠道，再运行 builder（`--publish never`）；不能并行共用 staging。生成的 `apps/desktop/.generated/electron-builder.cjs` / `.dev.cjs`（源自 typed `apps/desktop/builder-config.ts`）配置 macOS arm64/x64 DMG，目前 `identity:null`，没有已验证的签名/公证、Gatekeeper 或安装升级结果，不能将构建成功称为可分发认证。入口依据见 [打包入口说明](PACKAGE-ENTRYPOINTS.md)，平台门槛见 [发布门槛](PLATFORM-RELEASE-GATES.md)。
 
 ## 验证
 
@@ -167,7 +167,7 @@ Q3 当前媒体环境/退出验收与原生限制见 [MEDIA-RUNTIME.md](MEDIA-RU
 
 历史 V3 打包黑盒验证针对 `release/desktop/linux-unpacked/video-workbench`，检查空 PATH 启动、捆绑 utility、正常 HTTP 渲染与原生退出；历史证据保留在 `evidence/v3-desktop/`，不是当前 Mioon 构建的验证。
 
-当前 `apps/desktop/scripts/packaged-qa.mjs` 默认检查正式渠道 `release/desktop/production/linux-unpacked/mioon`；传入 `--channel=development` 检查开发渠道的 `mioon-dev`。`inspect-package.mjs` 使用相同渠道参数检查该渠道的包、归档和当前暂存构建，报告写入 `evidence/mioon-desktop/<channel>/`。只有显式 `--historical-v3` 才检查未改动的旧 0.3.0 归档，且不与当前暂存构建比较；报告为 `evidence/mioon-desktop/historical-v3-inspection.json`。这些脚本没有启用 smoke bridge 或远程调试。本次更名修改了脚本入口，但没有构建安装包或运行上述打包版检查。
+当前 `apps/desktop/scripts/packaged-qa.ts` 默认检查正式渠道 `release/desktop/production/linux-unpacked/mioon`；传入 `--channel=development` 检查开发渠道的 `mioon-dev`。`inspect-package.ts` 使用相同渠道参数检查该渠道的包、归档和当前暂存构建，报告写入 `evidence/mioon-desktop/<channel>/`。只有显式 `--historical-v3` 才检查未改动的旧 0.3.0 归档，且不与当前暂存构建比较；报告为 `evidence/mioon-desktop/historical-v3-inspection.json`。这些脚本没有启用 smoke bridge 或远程调试。本次更名修改了脚本入口，但没有构建安装包或运行上述打包版检查。
 
 历史 V3 Linux x64 打包黑盒测试通过 6 项：ASAR 启动、捆绑 utility 身份、迁移项目、真实多轨 MP4、匿名拒绝、正常原生退出清理。`packaged-qa.json` 记录完成状态，`packaged-electron-preview.jpg` 是原生窗口检查截图。最终 `tar.gz` 已通过 gzip 完整性检查，内含 ASAR 哈希与这个实测目录一致；打包检查记录 SHA-256。macOS 仍只交付配置，未验证。
 

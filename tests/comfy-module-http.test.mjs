@@ -8,14 +8,14 @@ import {EventEmitter, once} from 'node:events';
 import {spawn} from 'node:child_process';
 import {DatabaseSync} from 'node:sqlite';
 import {Readable} from 'node:stream';
-import {createComfyHttp} from '../apps/server/src/comfy-http.mjs';
+import {createComfyHttp} from '../apps/server/src/comfy-http.ts';
 import {randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.mjs';
-import {operationDefinition, EXIT_CODES} from '../packages/client/src/index.mjs';
-import {COMFY_IMAGE_OPTIONS, DEFAULT_COMFY_IMAGE_CONFIGURATION, comfyImageSettingsResultSchema} from '../packages/contracts/src/comfy-images.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {operationDefinition, EXIT_CODES} from '../packages/client/src/index.ts';
+import {COMFY_IMAGE_OPTIONS, DEFAULT_COMFY_IMAGE_CONFIGURATION, comfyImageSettingsResultSchema} from '../packages/contracts/src/comfy-images.ts';
 import {startComfyFixture, COMFY_FIXTURE_MODEL} from './helpers/comfy-http-fixture.mjs';
 import {availability, imageRows, until} from './helpers/comfy-module-fixture.mjs';
 
@@ -28,7 +28,7 @@ const cliEnvironment = f => ({...Object.fromEntries(['PATH', 'HOME', 'TMPDIR', '
 async function cli(f, operation, input) {
   // Feature-specific invocation against this test's owned ephemeral backend.
   // No doctor, startup measurement, native QA workspace, or external service.
-  const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.mjs'), 'rpc', operation, '--input', JSON.stringify(input)],
+  const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.ts'), 'rpc', operation, '--input', JSON.stringify(input)],
     {cwd: repo, env: cliEnvironment(f), stdio: ['ignore', 'pipe', 'pipe']});
   let stdout = '', stderr = '';
   child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; if (stdout.length > 1024 * 1024) child.kill('SIGKILL'); });
@@ -183,7 +183,7 @@ test('omitting Comfy preserves official MCP discovery and CLI refusal but grants
   assert.equal(networkCalls, 0);
   const client = new Client({name: 'synthetic-optional-comfy-acceptance', version: '1.0.0'}, {capabilities: {}});
   const clean = Object.fromEntries(['PATH', 'HOME', 'TMPDIR', 'TEMP', 'LANG', 'SYSTEMROOT', 'COMSPEC'].filter(key => typeof process.env[key] === 'string').map(key => [key, process.env[key]]));
-  const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.mjs')], cwd: repo,
+  const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.ts')], cwd: repo,
     env: {...clean, TZ: 'UTC', MIOON_BASE_URL: f.server.url, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0'}, stderr: 'pipe'});
   t.after(() => client.close());
   await client.connect(transport);

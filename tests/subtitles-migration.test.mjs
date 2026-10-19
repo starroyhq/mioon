@@ -7,12 +7,12 @@ import {randomUUID,createHash} from 'node:crypto';
 import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.mjs';
-import {migrateComfyImageReviewSchema} from '../packages/business/src/images/review-schema.mjs';
-import {migrateComfyImageSchema} from '../packages/business/src/comfy-image-schema.mjs';
-import {migrateFrameSchema} from '../packages/business/src/frame-schema.mjs';
-import {migrateTimelineFormatSchema} from '../packages/business/src/timeline-format-schema.mjs';
-import {migrateTimelineFormatEditTasks,migrateTimelineSubtitleEditTasks} from '../packages/business/src/edit-task-schema.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {migrateComfyImageReviewSchema} from '../packages/business/src/images/review-schema.ts';
+import {migrateComfyImageSchema} from '../packages/business/src/comfy-image-schema.ts';
+import {migrateFrameSchema} from '../packages/business/src/frame-schema.ts';
+import {migrateTimelineFormatSchema} from '../packages/business/src/timeline-format-schema.ts';
+import {migrateTimelineFormatEditTasks,migrateTimelineSubtitleEditTasks} from '../packages/business/src/edit-task-schema.ts';
 
 // Schema21 is independently reconstructed from frozen schema18 and the
 // unchanged historical migrations. No subtitle DDL or current operation list

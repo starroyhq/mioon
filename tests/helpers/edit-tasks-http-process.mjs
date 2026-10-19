@@ -1,6 +1,6 @@
 /** Disposable backend crash harness. Only trusted fixture IPC can arm a phase;
  * production HTTP and environment variables cannot configure task faults. */
-import {startServer} from '../../apps/server/src/index.mjs';
+import {startServer} from '../../apps/server/src/index.ts';
 
 let server, armed, started = false, closing;
 const phases = [];

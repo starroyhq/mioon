@@ -33,7 +33,7 @@ try {
     MIOON_CONNECTION_FILE: connectionFile, MIOON_ENABLE_LIVE_PROVIDER: '0'};
   for (const operation of ['project.inspect', 'asset.inspect', 'shot.inspect', 'timeline.inspect']) {
     const input = {projectId, ...(['asset.inspect', 'shot.inspect'].includes(operation) ? {limit: 2} : {})};
-    const {stdout} = await exec(process.execPath, [path.resolve('apps/cli/src/index.mjs'),
+    const {stdout} = await exec(process.execPath, [path.resolve('apps/cli/src/index.ts'),
       ...operation.split('.'), '--input', JSON.stringify(input)], {env, timeout: 10000, maxBuffer: 256 * 1024});
     const result = JSON.parse(stdout);
     assert.equal(result.ok, true, operation);

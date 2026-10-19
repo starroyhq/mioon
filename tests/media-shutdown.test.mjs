@@ -1,15 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,readFile} from 'node:fs/promises';
+import {mkdtemp,readFile, realpath} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import path from 'node:path';
+import {tmpdir} from 'node:os';
 import {startServer} from '@mioon/server';
 import {onMediaProcess} from '@mioon/business/media-processes';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
 test('shutdown interrupts a real long FFmpeg export, reaps its process and preserves queued recovery',async()=>{
- const dataDir=await mkdtemp('/tmp/wb-shutdown-render-'),token='synthetic-interruption-test-token';
+ const dataDir=await mkdtemp(path.join(await realpath(tmpdir()),'wb-shutdown-render-')),token='synthetic-interruption-test-token';
  const active=new Map();const unsubscribe=onMediaProcess(event=>event.type==='started'?active.set(event.pid,event.kind):active.delete(event.pid));
  const service=await startServer({dataDir,port:0,token});
  const rpc=async(operation,input={})=>{const response=await fetch(service.url+'/api/rpc',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({operation,input})});const value=await response.json();assert.equal(value.ok,true,JSON.stringify(value));return value.data;};

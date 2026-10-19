@@ -58,7 +58,7 @@ test('host busy presentation alone does not republish local create metadata', ()
 test('typed launcher dependency graph never imports App, editor controllers or legacy settings forms', () => {
   const result = buildSync({ entryPoints: [join(root, 'apps/web/src/LauncherRoot.tsx')], bundle: true, platform: 'browser', write: false, metafile: true, loader: { '.css': 'empty' } });
   const paths = Object.keys(result.metafile.inputs);
-  for (const forbidden of ['/App.jsx', '/AgentWorkspace.jsx', '/ImageGeneration.jsx', '/use-subjects.js', '/AgentSettings.jsx', '/ImageSettings.jsx', '/ComfyImageSettings.jsx']) assert.equal(paths.some(path => path.endsWith(forbidden)), false, forbidden);
+  for (const forbidden of ['/App.tsx', '/AgentWorkspace.tsx', '/ImageGeneration.tsx', '/use-subjects.ts', '/AgentSettings.tsx', '/ImageSettings.tsx', '/ComfyImageSettings.tsx']) assert.equal(paths.some(path => path.endsWith(forbidden)), false, forbidden);
 });
 
 test('root mounts all three verified native roles without project-role URL authority', () => {
@@ -80,11 +80,11 @@ test('entry form stale handlers cannot mutate while sealed before React rerender
   assert.equal(h.reports.length, before); assert.equal(find(h.render(), 'project-home-name').props.value, '');
 });
 test('native settings slot delegates before existing key clearing; Web fallback remains present', () => {
-  for (const file of ['ImageSettings.jsx', 'ComfyImageSettings.jsx']) assert.match(source(file), /onRequestSelectSlot/);
-  const image = source('ImageSettings.jsx');
+  for (const file of ['ImageSettings.tsx', 'ComfyImageSettings.tsx']) assert.match(source(file), /onRequestSelectSlot/);
+  const image = source('ImageSettings.tsx');
   assert.ok(image.indexOf('if (onRequestSelectSlot)') < image.indexOf("setKeyNotice(message('image.settings.keySwitched"));
   assert.match(image, /onRequestSelectSlot\(next\); return;/);
-  assert.match(source('ComfyImageSettings.jsx'), /else leave\(\(\) => onSelectSlot\(slot\)\)/);
+  assert.match(source('ComfyImageSettings.tsx'), /else leave\(\(\) => onSelectSlot\(slot\), undefined\)/);
   assert.match(source('SettingsRoot.tsx'), /window\.close\(\); return false/);
 });
 

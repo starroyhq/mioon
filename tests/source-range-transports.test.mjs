@@ -10,11 +10,11 @@ import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
-import {discoverSchema} from '../packages/client/src/index.mjs';
+import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
+import {discoverSchema} from '../packages/client/src/index.ts';
 import {optionalRequestIdOperations} from './helpers/catalog-input-branches.mjs';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.mjs';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.mjs';
+import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
+import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import {IDS, TOKEN, snapshot} from './helpers/mutation-wire-fixture.mjs';
 import {PRIVATE, RANGE_IDS} from './helpers/source-range-wire-fixture.mjs';
 
@@ -127,7 +127,7 @@ async function fixture(t) {
     return {raw, envelope};
   }
   async function cliArgs(args, expectedError) {
-    const child = launch(t, ['--import', helper, path.join(repo, 'apps/cli/src/index.mjs'), ...args], env());
+    const child = launch(t, ['--import', helper, path.join(repo, 'apps/cli/src/index.ts'), ...args], env());
     const {code, signal} = await child.finish(); noPrivate(child.stdout); noPrivate(child.stderr);
     assert.equal(signal, null, child.stderr);
     const lines = child.lines(); assert.equal(lines.length, 1, 'real CLI returns one JSON envelope');
@@ -139,7 +139,7 @@ async function fixture(t) {
   const cli = (operation, input, error) => cliArgs([...operation.split('.'), '--input', JSON.stringify(input)], error);
   const client = new Client({name: 'source-range-wire-acceptance', version: '1.0.0'}, {capabilities: {}});
   const transport = new StdioClientTransport({command: process.execPath, cwd: repo, env: environment(env()), stderr: 'pipe',
-    args: ['--import', helper, path.join(repo, 'apps/mcp/src/index.mjs')]});
+    args: ['--import', helper, path.join(repo, 'apps/mcp/src/index.ts')]});
   let stderr = '';
   transport.stderr.setEncoding('utf8').on('data', chunk => { stderr = (stderr + chunk).slice(-64 * 1024); });
   cleanups.push(() => bounded(client.close(), 'Official MCP cleanup', 7_000));

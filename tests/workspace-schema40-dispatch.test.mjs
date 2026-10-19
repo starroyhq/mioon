@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
 import {initializeWorkspaceSchema28} from '../packages/business/src/workspace-schema-v28.ts';
 import {initializeWorkspaceSchema30} from '../packages/business/src/workspace-schema-v30.ts';
@@ -151,13 +151,13 @@ for(const feature of ['role','colour'])test(`dispatch preserves old38/39 ${featu
  }
 });
 
-import {createServices} from '../packages/business/src/services.mjs';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.mjs';
+import {createServices} from '../packages/business/src/services.ts';
+import {openStore} from '../packages/business/src/db.ts';
+import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
+import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import {readTimelineVolumeEnvelopeCapability} from '../packages/business/src/timeline-volume-envelope-capability.ts';
 import {assertTimelineVolumeEnvelopeWorkspace} from '../packages/business/src/timeline-volume-envelope-admission.ts';
-import {isWorkspaceRestoreInspection,canEditTimelineVolumeEnvelope,workspaceRestoreSchemas} from '../packages/contracts/src/workspace-restore.mjs';
+import {isWorkspaceRestoreInspection,canEditTimelineVolumeEnvelope,workspaceRestoreSchemas} from '../packages/contracts/src/workspace-restore.ts';
 import {timelineVolumeEnvelopeCapabilitySchema} from '../packages/contracts/src/timeline-volume-envelope-capability.ts';
 
 const capability=editable=>({profileId:ep,editable});

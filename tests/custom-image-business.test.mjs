@@ -5,12 +5,12 @@ import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {createImageSettings,createCustomImageSettings,IMAGE_SETTINGS_READ_CURRENT} from '../packages/business/src/images/settings.mjs';
-import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION,DEFAULT_IMAGE_CONFIGURATION,getCustomImageDestination} from '../packages/contracts/src/image-settings.mjs';
-import {IMAGE_FIXED_OPTIONS,IMAGE_MODELS,canonicalImageInput} from '../packages/contracts/src/images.mjs';
-import {renderMockImagePng} from '../packages/business/src/images/png.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createImageSettings,createCustomImageSettings,IMAGE_SETTINGS_READ_CURRENT} from '../packages/business/src/images/settings.ts';
+import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION,DEFAULT_IMAGE_CONFIGURATION,getCustomImageDestination} from '../packages/contracts/src/image-settings.ts';
+import {IMAGE_FIXED_OPTIONS,IMAGE_MODELS,canonicalImageInput} from '../packages/contracts/src/images.ts';
+import {renderMockImagePng} from '../packages/business/src/images/png.ts';
 
 const canonical=canonicalImageInput;
 const config=patch=>({...structuredClone(DEFAULT_CUSTOM_IMAGE_CONFIGURATION),enabled:true,baseUrl:'https://images.example.com/provider/v1',model:'custom-fixture-model',...patch});

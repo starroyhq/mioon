@@ -6,12 +6,12 @@ import {normalizeImageReviewObject} from './image-edit-migration-preservation.mj
 import {readFileSync,writeFileSync,mkdtempSync,rmSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {openStore} from '../packages/business/src/db.mjs';
+import {openStore} from '../packages/business/src/db.ts';
 import {randomUUID,createHash} from 'node:crypto';
-import {migrateComfyImageReviewSchema} from '../packages/business/src/images/review-schema.mjs';
-import {migrateComfyImageSchema} from '../packages/business/src/comfy-image-schema.mjs';
-import {migrateFrameSchema} from '../packages/business/src/frame-schema.mjs';
-import {FRAME_PROFILE,FRAME_PROFILE_ID,FRAME_SELECTION_RULE,FRAME_LIMITS,canonicalFrameInput as canonical} from '../packages/contracts/src/frame-extraction.mjs';
+import {migrateComfyImageReviewSchema} from '../packages/business/src/images/review-schema.ts';
+import {migrateComfyImageSchema} from '../packages/business/src/comfy-image-schema.ts';
+import {migrateFrameSchema} from '../packages/business/src/frame-schema.ts';
+import {FRAME_PROFILE,FRAME_PROFILE_ID,FRAME_SELECTION_RULE,FRAME_LIMITS,canonicalFrameInput as canonical} from '../packages/contracts/src/frame-extraction.ts';
 const at='2026-10-11T00:00:00.000Z';
 const hash=value=>createHash('sha256').update(typeof value==='string'?value:canonical(value)).digest('hex');
 const insert=(db,table,row)=>{const keys=Object.keys(row);return db.prepare(`INSERT INTO ${table}(${keys.join(',')}) VALUES(${keys.map(()=>'?').join(',')})`).run(...Object.values(row));};

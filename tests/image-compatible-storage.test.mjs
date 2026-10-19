@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {openStore,validateWorkspaceStorage} from '../packages/business/src/db.mjs';
+import {openStore,validateWorkspaceStorage} from '../packages/business/src/db.ts';
 function capture(root){const result={};const visit=(file,key)=>{const info=fs.lstatSync(file);result[key]={mode:info.mode,uid:info.uid,ino:info.ino,nlink:info.nlink,bytes:info.isFile()?fs.readFileSync(file).toString('hex'):info.isSymbolicLink()?fs.readlinkSync(file):null};if(info.isDirectory())for(const name of fs.readdirSync(file).sort())visit(path.join(file,name),key+'/'+name);};visit(root,'root');return result;}
 for(const kind of ['permissions','symlink','hardlink','oversize','directory'])test(`custom settings ${kind} fails private startup preflight without stale lock, file, mode or SQLite writes`,{skip:process.platform==='win32'},t=>{
  const base=fs.mkdtempSync(path.join(tmpdir(),'mioon-custom-image-storage-'));t.after(()=>fs.rmSync(base,{recursive:true,force:true}));

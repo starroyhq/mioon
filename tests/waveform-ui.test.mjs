@@ -3,13 +3,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import * as waveform from '../apps/web/src/waveform-state.js';
+import * as waveform from '../apps/web/src/waveform-state.ts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
 import * as geometry from '../apps/web/src/timeline-view-geometry.ts';
 import * as removalState from '../apps/web/src/timeline-removal.ts';
 import {hasOpenWorkbenchModal} from '../apps/web/src/workbench-modal-state.ts';
-import { WAVEFORM_ALGORITHM } from '../packages/contracts/src/waveforms.mjs';
+import { WAVEFORM_ALGORITHM } from '../packages/contracts/src/waveforms.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const projectId = '11111111-1111-4111-8111-111111111111';
 const otherProject = '22222222-2222-4222-8222-222222222222';
 const assetId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -233,19 +235,19 @@ function componentHarness({ hook = false, waveformState } = {}) {
       if (id === './ClipRemovalControls.tsx') return load('ClipRemovalControls.tsx');
       if (id === './TimelineToolbar.tsx') return load('TimelineToolbar.tsx');
       if (id === './workbench-modal-state.ts') return {hasOpenWorkbenchModal};
-      if (id === './waveform-state.js') return waveform;
-      if (id === './api.js') return { rpc: (operation, input) => { const pending = deferred(); requests.push({ operation, input, ...pending }); return pending.promise; }, assetUrl: () => '' };
-      if (id === './use-timeline-waveforms.js') return hook ? load('use-timeline-waveforms.js') : { useTimelineWaveforms: () => waveformState };
-      if (id === './TimelineWaveform.jsx') return load('TimelineWaveform.jsx');
-      if (id === './timeline-keyboard.js') return { rulerFrameForKey: () => null };
-      if (id === './timeline-snapping.js') return { timelineDropPreview: () => null };
+      if (id === './waveform-state.ts') return waveform;
+      if (id === './api.ts') return { rpc: (operation, input) => { const pending = deferred(); requests.push({ operation, input, ...pending }); return pending.promise; }, assetUrl: () => '' };
+      if (id === './use-timeline-waveforms.ts') return hook ? load('use-timeline-waveforms.ts') : { useTimelineWaveforms: () => waveformState };
+      if (id === './TimelineWaveform.tsx') return load('TimelineWaveform.tsx');
+      if (id === './timeline-keyboard.ts') return { rulerFrameForKey: () => null };
+      if (id === './timeline-snapping.ts') return { timelineDropPreview: () => null };
       if (id.startsWith('@mioon/ui/')) return primitive;
       return { default: 'Control', __esModule: true };
     }, module, module.exports, document, ResizeObserver, { addEventListener() {}, removeEventListener() {} });
     modules.set(file, module.exports); return module.exports;
   }
   let props = hook ? { timeline: timeline(), assets: [asset()], viewport: { current: element }, pixelsPerFrame: 2, active: true } : { timeline: timeline(), assets: [asset()], playhead: 0, visible: true, collapsed: false, onSelectClip: id => selections.push(id) };
-  const component = hook ? load('use-timeline-waveforms.js').useTimelineWaveforms : load('Timeline.jsx').default;
+  const component = hook ? load('use-timeline-waveforms.ts').useTimelineWaveforms : load('Timeline.tsx').default;
   const h = { requests, selections, element,
     render(next = {}) { props = { ...props, ...next }; let attempts = 0; do { cursor = 0; effects = []; needsRender = false; output = component(props); for (const index of effects) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].callback(); } assert.ok(++attempts < 20, 'Hook effects stabilize'); } while (needsRender); return output; },
     get value() { return output; },
@@ -291,9 +293,9 @@ test('actual Timeline renders decorative bounded SVG inside existing clip button
   assert.equal(content(h.find('timeline-waveform-clipped')), '满刻度峰值'); assert.match(h.find('timeline-waveform-clipped').props.title, /原始源音轨.*不反映片段音量/);
   assert.equal(h.find('timeline-waveform-toggle').props['aria-pressed'], true); assert.match(content(h.find('timeline-waveform-status')), /原始源音轨.*固定满刻度/);
   h.render({ busy: true }); assert.equal(h.find('timeline-clip-clip-one').props.draggable, false);
-  const source = readFileSync(new URL('../apps/web/src/Timeline.jsx', import.meta.url), 'utf8');
-  assert.match(source, /session\.projectId === timeline\.projectId && session\.revision === timeline\.revision/);
-  assert.match(source, /if \(!allowed \|\| !payloadMatches \|\| value\.unchanged\) return/);
+  const source = readFileSync(new URL('../apps/web/src/Timeline.tsx', import.meta.url), 'utf8');
+  assert.match(source, /session\.projectId === timeline!\.projectId && session\.revision === timeline!\.revision/);
+  assert.match(source, /if \(!allowed \|\| !payloadMatches \|\| value!\.unchanged\) return/);
   const css = readFileSync(new URL('../apps/web/src/styles.css', import.meta.url), 'utf8'); assert.match(css, /\.timeline-waveform\{[^}]*pointer-events:none/); h.unmount();
 });
 

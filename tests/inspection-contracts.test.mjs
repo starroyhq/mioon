@@ -10,7 +10,7 @@ import {ToolAnnotationsSchema} from '@modelcontextprotocol/sdk/types.js';
 import {schemas, inspectionArgumentSchemas, inspectionSchemas, operationEffects,IMAGE_FIXED_OPTIONS,IMAGE_MODELS,COMFY_IMAGE_OPTIONS,
   operationEffect, assertOperationEffectCoverage, effectAnnotations, parse} from '@mioon/contracts';
 import {operationDefinition, discoverSchema, discoveryEffects, jsonSchema} from '@mioon/client';
-import {readToolRequestFields, chatToolAccumulator, responseToolSnapshot} from '../packages/business/src/agent/tool-wire.mjs';
+import {readToolRequestFields, chatToolAccumulator, responseToolSnapshot} from '../packages/business/src/agent/tool-wire.ts';
 
 const projectId = '11111111-1111-4111-8111-111111111111';
 const inspections = ['project.inspect', 'asset.inspect', 'shot.inspect', 'timeline.inspect'];
@@ -124,14 +124,14 @@ test('every shared operation has a complete explicit frozen effect descriptor; u
 test('offline CLI schema and official MCP list/schema expose identical inspection contracts and effects', {timeout:30_000}, async t => {
   const env = environment();
   const cli = async operation => {
-    const {stdout, stderr} = await run(process.execPath, [path.join(repo, 'apps/cli/src/index.mjs'), 'schema', ...(operation ? [operation] : [])], {cwd:repo, env, timeout:10_000});
+    const {stdout, stderr} = await run(process.execPath, [path.join(repo, 'apps/cli/src/index.ts'), 'schema', ...(operation ? [operation] : [])], {cwd:repo, env, timeout:10_000});
     assert.equal(stderr, '');
     const envelope = JSON.parse(stdout);
     assert.equal(envelope.ok, true);
     return envelope.data;
   };
   const client = new Client({name:'inspection-contracts-offline', version:'1.0.0'}, {capabilities:{}});
-  const transport = new StdioClientTransport({command:process.execPath, args:[path.join(repo, 'apps/mcp/src/index.mjs')], cwd:repo, env, stderr:'pipe'});
+  const transport = new StdioClientTransport({command:process.execPath, args:[path.join(repo, 'apps/mcp/src/index.ts')], cwd:repo, env, stderr:'pipe'});
   transport.stderr?.resume();
   t.after(() => client.close());
   await client.connect(transport);

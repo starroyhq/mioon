@@ -2,14 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { isTimelineMutationResponse } from '@mioon/contracts';
-import { createEditTaskClient, isDurableEditOperation } from '../apps/web/src/edit-task-client.js';
-import { createEditTaskController } from '../apps/web/src/edit-task-controller.js';
+import { createEditTaskClient, isDurableEditOperation } from '../apps/web/src/edit-task-client.ts';
+import { createEditTaskController } from '../apps/web/src/edit-task-controller.ts';
 import { createTimelineLoudnessApplyController } from '../apps/web/src/timeline-loudness-apply-state.ts';
 import { timelineMixLoudnessViewState } from '../apps/web/src/timeline-mix-loudness-state.ts';
 import { submitTimelineLoudnessApply } from '../apps/web/src/timeline-loudness-apply-submit.ts';
 import { timelineLoudnessCandidateDigest } from '@mioon/contracts/timeline-loudness-apply';
 import { id, input, report, context as mixContext, projectId, timelineId, fixture } from './helpers/timeline-mix-loudness-ui-fixture.mjs';
-const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+import { message as messageKey, renderMessage } from './helpers/i18n.ts';
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
+const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const part = (start, end) => app.slice(app.indexOf(start), app.indexOf(end, app.indexOf(start)));
 const durable = part('  async function run(', '  async function runSession(');
 const mutate = part('  async function mutateTimeline(', '  async function selectClip(');
@@ -59,11 +62,13 @@ async function harness(wire, onBusy = () => {}) {
   const currentProject = { current: projectId }, dataRef = { current: { project: { id: projectId }, timeline: { id: timelineId, revision: 4 }, timelineHistory: { revision: 4 } } };
   let options, keys = 0, epoch = 0;
   const env = {
+    application: null, clipDraftRef: { current: null }, setSubjectRefresh: () => undefined, msg: messageKey,
+    localizedError: value => Object.assign(new Error(renderMessage('zh-Hans', value)), { displayMessage: value }),
     readTimelineLoudnessRecoveryScope: () => 'test-workspace-identity', nativeCloseRegistry: { current: undefined }, isDurableEditOperation, isTimelineMutationResponse, submitTimelineLoudnessApply, tasksRef: { current: tasks }, currentProject, dataRef,
     timelinePending: false, requestId: () => `unused-generated-key-${++keys}`, context: () => ({ projectId: currentProject.current, epoch }), isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === epoch,
     captureTaskWorkspaceIntent: () => () => true, readTaskRevealContext: () => ({}), pendingForProject: () => [], isMutationOperation: () => false,
     isBusy: key => busy.has(key), markBusy: (_projectId, key, value) => { if (value) busy.add(key); else busy.delete(key); onBusy(value); },
-    requestCounter: { current: 0 }, setData: update => { dataRef.current = update(dataRef.current); }, refresh: async owner => { refreshed.push(owner); },
+    requestCounter: { current: 0 }, clipConnectionBlocked: { current: false }, setData: update => { dataRef.current = update(dataRef.current); }, refresh: async owner => { refreshed.push(owner); },
     notify: message => notices.push(message), openTasks: () => undefined, setAuth: () => undefined, readableError: error => error.message,
     runSession: () => { throw Error('Loudness must not use the legacy session path'); },
     timelineFormatRef: { current: null }, subtitlesRef: { current: null }, timelineLoudnessApplyRef: { current: { controller: { recovered: task => recovered.push(task) } } },
@@ -106,7 +111,7 @@ test('malformed application ACK cannot release durable lane or become UI success
 test('apply is nested in the existing delivery card and recovers through existing TaskCenter only', () => {
   assert.match(app, /<TimelineMixLoudness loudness=\{timelineMixLoudness\}[^>]*onRevokeApply/);
   assert.match(app, /apply=\{<TimelineLoudnessApply apply=\{timelineLoudnessApply\}/);
-  assert.match(app, /timelineLoudnessApplyRef\.current\?\.controller\.recovered\(acknowledgedTask, loudnessRecoveryScope\)/);
+  assert.match(app, /timelineLoudnessApplyRef\.current\?\.controller\.recovered\(\(acknowledgedTask as unknown as string \| null\), loudnessRecoveryScope as string \| null\)/);
   assert.doesNotMatch(apply, /rpc\(|exportSettings.*choose|localStorage|sessionStorage|gains/);
 });
 

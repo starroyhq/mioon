@@ -10,13 +10,13 @@
 
 ## 导入安全与证明边界
 
-执行前逐一读取并核对了 broker、codec、supervisor、shutdown、identity/security 模块及其导入；这些模块通过注入参数取得 safeStorage，不直接导入 Electron。未导入有启动副作用的 `main.mjs`、`backend.mjs`，未调用创建真实设置引擎或文件持久化的入口。
+执行前逐一读取并核对了 broker、codec、supervisor、shutdown、identity/security 模块及其导入；这些模块通过注入参数取得 safeStorage，不直接导入 Electron。未导入有启动副作用的 `main.ts`、`backend.ts`，未调用创建真实设置引擎或文件持久化的入口。
 
 当前 worktree 没有安装依赖。测试从该 worktree 读取真实模块主体，以内存 data URL 加载，只替换明确列举的 import：
 
 - 保留真实 Images broker/client、共享 secret codec、Images codec、BackendSupervisor、stopBackendForQuit 的控制流，以及真实 identity/security 实现。
 - 业务 schema、错误构造和持久化依赖使用显式合成替身；明文校验仅接受一个固定测试字符串。未使用的 Agent settings、文件存储和目录校验入口调用即抛错。**没有执行真实 Zod/schema、业务持久化或完整设置流程。**
-- data URL 模块的导入检查仅允许已审查的模块和所需 Node 内建模块，拒绝新增动态／副作用导入和未登记依赖；直接按文件加载的 identity.cjs 另有无 import／require 的断言。这些检查是当前已审查源码的变更探针，不是通用递归安全沙箱。不加载 Electron、child_process 或联网工具。导入与 codec 构造阶段的假 vault 调用数为零。
+- data URL 模块的导入检查仅允许已审查的模块和所需 Node 内建模块，拒绝新增动态／副作用导入和未登记依赖；直接按文件加载的当前 identity.ts 是普通 ESM TypeScript 模块；历史重放仍由冻结快照按原字节校验旧 identity.cjs，本次不修改该冻结夹具。这些检查是当前已审查源码的变更探针，不是通用递归安全沙箱。不加载 Electron、child_process 或联网工具。导入与 codec 构造阶段的假 vault 调用数为零。
 - 所有值均为新造内存数据；假加密仅用 Buffer 包装，不代表密码学验证，也不读写密钥文件、真实媒体或用户数据。
 
 测试用一个 Worker 代表 main，用测试线程代表 utility，两者拥有独立事件循环，经消息适配调用真实 broker/client。同步假 safeStorage 用 SharedArrayBuffer 与 Atomics.wait 阻塞 Worker；实际客户端使用默认 2000 ms，没有缩短该期限。对照用例同步捕获真实请求的 setTimeout 参数并断言为 2000，以独立锁定默认值；墙钟下限只证明没有缩短等待，不设置易受调度影响的窄上限。共享状态证明调用已进入、尚未返回及主循环探针不再推进。阻塞有 8 秒安全上限，各阻塞测试有 12 秒总上限，清理始终先释放 gate，再终止本测试拥有的 Worker；不使用真实进程 PID。
@@ -49,17 +49,17 @@ Worker 发出 entered 后可能在进入 Atomics.wait 前被调度暂停。因�
 
 | 位置 | 事实及边界 |
 | --- | --- |
-| `apps/desktop/src/image-secret-broker.mjs:104–117` | queueMicrotask 内同步调用 codec；微任务没有把工作移出主事件循环 |
-| `apps/desktop/src/secret-store.mjs:19,41,53` | 直接调用 isEncryptionAvailable、encryptString、decryptString；外层 Promise 不会抢占它们 |
-| `apps/desktop/src/image-secret-broker.mjs:127,132–140,169` | 默认 2 秒只删除客户端 pending 并 reject，迟到响应被忽略，没有传输级取消消息 |
-| `apps/desktop/src/image-secret-broker.mjs:184–187` | crypto 先 status 再 encrypt/decrypt；2 秒是每条 wire request 的期限，不能描述为整个 crypto 操作的端到端 2 秒 |
-| `packages/business/src/images/settings.mjs:112–123` | 另有 5 秒业务等待包装，不会停止 main 中已开始的同步函数 |
-| `apps/desktop/src/supervisor.mjs:103–105`；`backend.mjs:35–37` | main 每 10 秒发 ping；utility 每 5 秒检查距最后 ping 是否超过 30 秒。长 main 阻塞可能令 utility 自行关闭；时间依赖上次 ping 和检查相位，不能说“阻塞恰好 30 秒必退出” |
-| `apps/desktop/src/main.mjs:206–224,247–250`；`supervisor.mjs:173–185` | before-quit、停止调度和确认计时器也依赖 main。排队退出可能尚未进入；已进入的默认 10+2+1 秒停止预算也不是 main 卡住时的墙钟保证 |
-| `apps/desktop/src/main.mjs:74–84`；`packages/business/src/agent/settings.mjs:80–85` | Agent 持久化初始化解密发生在创建／启动 supervisor 前，utility 启动 20 秒预算尚未开始 |
-| `apps/desktop/src/secret-broker.mjs:96,117,148,158,203`；`packages/business/src/agent/settings.mjs:19–31,118` | Agent 是另一组期限：client 默认 10 秒，acquire 有取消消息、7 秒 broker 与 5 秒读取包装。main 的计时器和 abort 处理仍无法抢占同步调用；不得套用 Images 的 2 秒结论 |
+| `apps/desktop/src/image-secret-broker.ts:104–117` | queueMicrotask 内同步调用 codec；微任务没有把工作移出主事件循环 |
+| `apps/desktop/src/secret-store.ts:19,41,53` | 直接调用 isEncryptionAvailable、encryptString、decryptString；外层 Promise 不会抢占它们 |
+| `apps/desktop/src/image-secret-broker.ts:127,132–140,169` | 默认 2 秒只删除客户端 pending 并 reject，迟到响应被忽略，没有传输级取消消息 |
+| `apps/desktop/src/image-secret-broker.ts:184–187` | crypto 先 status 再 encrypt/decrypt；2 秒是每条 wire request 的期限，不能描述为整个 crypto 操作的端到端 2 秒 |
+| `packages/business/src/images/settings.ts:112–123` | 另有 5 秒业务等待包装，不会停止 main 中已开始的同步函数 |
+| `apps/desktop/src/supervisor.ts:103–105`；`backend.ts:35–37` | main 每 10 秒发 ping；utility 每 5 秒检查距最后 ping 是否超过 30 秒。长 main 阻塞可能令 utility 自行关闭；时间依赖上次 ping 和检查相位，不能说“阻塞恰好 30 秒必退出” |
+| `apps/desktop/src/main.ts:206–224,247–250`；`supervisor.ts:173–185` | before-quit、停止调度和确认计时器也依赖 main。排队退出可能尚未进入；已进入的默认 10+2+1 秒停止预算也不是 main 卡住时的墙钟保证 |
+| `apps/desktop/src/main.ts:74–84`；`packages/business/src/agent/settings.ts:80–85` | Agent 持久化初始化解密发生在创建／启动 supervisor 前，utility 启动 20 秒预算尚未开始 |
+| `apps/desktop/src/secret-broker.ts:96,117,148,158,203`；`packages/business/src/agent/settings.ts:19–31,118` | Agent 是另一组期限：client 默认 10 秒，acquire 有取消消息、7 秒 broker 与 5 秒读取包装。main 的计时器和 abort 处理仍无法抢占同步调用；不得套用 Images 的 2 秒结论 |
 
-基于这些接线，主进程依赖的交互、窗口生命周期和退出可能延迟；只停止 utility 不会停止 main 内的 vault 调用。30 秒 lease、Agent 启动和 Agent acquire 在此为静态风险分析，未做对应时长或原生动态验收。Agent put 超时后仍可能在底层返回后继续保存（`agent/settings.mjs:147–158`），属于既有结果未知／需重新读取语义；本次未执行持久化，也不将它误报成 Images 的迟到回包恢复。
+基于这些接线，主进程依赖的交互、窗口生命周期和退出可能延迟；只停止 utility 不会停止 main 内的 vault 调用。30 秒 lease、Agent 启动和 Agent acquire 在此为静态风险分析，未做对应时长或原生动态验收。Agent put 超时后仍可能在底层返回后继续保存（`agent/settings.ts:147–158`），属于既有结果未知／需重新读取语义；本次未执行持久化，也不将它误报成 Images 的迟到回包恢复。
 
 已证明的保护仍有效：未开始的 broker 操作可在 close 后被阻止；迟到结果不会让超时客户端恢复可用。没有发现本次条件下的自动重试、自动降级明文或凭据回显；这不是完整安全审计结论。
 

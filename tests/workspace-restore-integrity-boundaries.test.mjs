@@ -5,7 +5,7 @@ import {DatabaseSync} from 'node:sqlite';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
 import {initializeWorkspaceSchema28} from '../packages/business/src/workspace-schema-v28.ts';
 import {initializeWorkspaceSchema30} from '../packages/business/src/workspace-schema-v30.ts';
@@ -13,9 +13,9 @@ import {initializeWorkspaceSchema32} from '../packages/business/src/workspace-sc
 import {initializeWorkspaceSchema34} from '../packages/business/src/workspace-schema-v34.ts';
 import {initializeWorkspaceSchema36} from '../packages/business/src/workspace-schema-v36.ts';
 import {initializeWorkspaceSchema38} from '../packages/business/src/workspace-schema-v38.ts';
-import {openStore,getWorkspaceRestoreContext,validateCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.mjs';
-import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';
-import {restoreWorkspaceBackup,inspectWorkspaceRestorePublication} from '../packages/business/src/workspace-restore.mjs';
+import {openStore,getWorkspaceRestoreContext,validateCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.ts';
+import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
+import {restoreWorkspaceBackup,inspectWorkspaceRestorePublication} from '../packages/business/src/workspace-restore.ts';
 
 // No assets, media payload, providers, workers, child processes or transport.
 // The fixed initializer's real quota row supplies a genuine captured identity.

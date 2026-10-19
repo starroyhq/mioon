@@ -4,8 +4,8 @@ import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
-import { timelineHistoryState } from '../apps/web/src/timeline-history.js';
-import { timelineHistoryActionForKey } from '../apps/web/src/timeline-keyboard.js';
+import { timelineHistoryState } from '../apps/web/src/timeline-history.ts';
+import { timelineHistoryActionForKey } from '../apps/web/src/timeline-keyboard.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const entry = (id, operation = 'timeline.clip.update') => ({ id, operation, createdAt: '2026-10-09T12:00:00.000Z' });
@@ -107,14 +107,14 @@ test('history controls render shared Base UI buttons with disabled states, label
   const fixtureSource = `
     import React from 'react';
     import { renderToStaticMarkup } from 'react-dom/server.browser';
-    import TimelineHistoryControls from './src/TimelineHistoryControls.jsx';
+    import TimelineHistoryControls from './src/TimelineHistoryControls.tsx';
     export const ready = renderToStaticMarkup(<TimelineHistoryControls state={${JSON.stringify(timelineHistoryState(fixture()))}} onHistory={() => {}} />);
     export const pending = renderToStaticMarkup(<TimelineHistoryControls state={${JSON.stringify(timelineHistoryState({ ...fixture(), pending: true }))}} busy onHistory={() => {}} />);
   `;
   const script = `
     import { build } from 'esbuild';
     import assert from 'node:assert/strict';
-    const { outputFiles } = await build({ stdin: { contents: ${JSON.stringify(fixtureSource)}, loader: 'jsx', resolveDir: ${JSON.stringify(resolve(root, 'apps/web'))} }, bundle: true, format: 'esm', platform: 'browser', write: false, define: { 'process.env.NODE_ENV': '\"production\"' } });
+    const { outputFiles } = await build({ stdin: { contents: ${JSON.stringify(fixtureSource)}, loader: 'tsx', resolveDir: ${JSON.stringify(resolve(root, 'apps/web'))} }, bundle: true, format: 'esm', platform: 'browser', write: false, define: { 'process.env.NODE_ENV': '\"production\"' } });
     const { ready, pending } = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].text).toString('base64'));
     assert.equal((ready.match(/<button/g) || []).length, 2);
     assert.equal((ready.match(/data-slot="button"/g) || []).length, 2);
@@ -133,11 +133,14 @@ test('history controls render shared Base UI buttons with disabled states, label
 });
 
 test('App invalidates history around mutation dispatch and uses the common refresh/recovery path', () => {
-  const source = readFileSync(resolve(root, 'apps/web/src/App.jsx'), 'utf8');
-  assert.match(source, /invalidateHistory\(\);\s*dispatched = true;\s*const result = await rpc\(operation, input, invocation\);\s*invalidateHistory\(\);/);
+  const source = readFileSync(resolve(root, 'apps/web/src/App.tsx'), 'utf8');
+  assert.match(source, /invalidateHistory\(\);\s*dispatched = true;\s*const result = await rpc\(operation, input, invocation as never\);\s*invalidateHistory\(\);/);
   assert.match(source, /if \(dispatched\) invalidateHistory\(\);/);
   assert.match(source, /\+\+requestCounter\.current;\s*dataRef\.current = \{ \.\.\.dataRef\.current, timelineHistory: null \}/);
   assert.match(source, /return mutateTimeline\(`timeline\.\$\{direction\}`\)/);
   assert.match(source, /history: data\.timelineHistory/);
-  assert.match(source, /document\.querySelector\('\[role="dialog"\], \[role="alertdialog"\], \[aria-modal="true"\]'\)/);
+  const modalState = readFileSync(resolve(root, 'apps/web/src/workbench-modal-state.ts'), 'utf8');
+  assert.match(source, /import \{ hasOpenWorkbenchModal \} from '\.\/workbench-modal-state\.ts'/);
+  assert.match(source, /modalOpen: hasOpenWorkbenchModal\(document\)/);
+  assert.match(modalState, /querySelectorAll\('\[role="dialog"\], \[role="alertdialog"\], \[aria-modal="true"\]'\)/);
 });

@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
-import {detectWorkspaceRestoreEvidence} from '../packages/business/src/workspace-restore-schema.mjs';
-import {openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.mjs';
+import {detectWorkspaceRestoreEvidence} from '../packages/business/src/workspace-restore-schema.ts';
+import {openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
 import {inspectWorkspaceSchemaMarkerRole} from '../packages/business/src/workspace-schema-profile.ts';
-import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.mjs';
-import {withOrdinaryMigrationSource} from '../apps/desktop/scripts/migration-restore-guard.mjs';
+import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
+import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
+import {withOrdinaryMigrationSource} from '../apps/desktop/scripts/migration-restore-guard.ts';
 import {restoreFixture,tree,logical,refreshDatabaseManifest} from './helpers/workspace-restore-offline-fixture.mjs';
 function database(t, versions, ddl='CREATE TABLE schema_version(version INTEGER PRIMARY KEY)') {
   const db=new DatabaseSync(':memory:');t.after(()=>db.close());db.exec(ddl);

@@ -1,15 +1,17 @@
 import { i18nTestModule, message, translate } from './helpers/i18n.ts';
 import * as i18n from '../packages/i18n/src/index.ts';
-import * as preflightState from '../apps/web/src/export-preflight-state.js';
+import * as preflightState from '../apps/web/src/export-preflight-state.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import { createExportPreflightController, preflightErrorMessage, preflightIssueMessage } from '../apps/web/src/export-preflight-state.js';
-import { rpc } from '../apps/web/src/api.js';
+import { createExportPreflightController, preflightErrorMessage, preflightIssueMessage } from '../apps/web/src/export-preflight-state.ts';
+import { rpc } from '../apps/web/src/api.ts';
 import * as rangeState from '../apps/web/src/export-range-state.ts';
 import * as rangeContracts from '@mioon/contracts/timeline-export-range';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const id = n => `70000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), timelineId = id(2), hash = 'a'.repeat(64);
 const context = patch => ({ scope: `${projectId}:1`, projectId, timelineId, revision: 4, connected: true, ...patch });
@@ -124,7 +126,7 @@ test('current auth and RPC errors are readable, path-free, fail closed; obsolete
   for (const message of ['/private/source.mp4', 'C:\\Users\\file.mp4', 'https://private.example/video', 'token=secret']) assert.doesNotMatch(preflightIssueMessage({ severity: 'error', message }), /private|Users|secret|token/);
 });
 
-const appSource = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const appSource = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 function appFunction(begin, end, scope) {
   const start = appSource.indexOf(begin), stop = appSource.indexOf(end, start); assert.ok(start >= 0 && stop > start);
   return Function(...Object.keys({ msg: message, ...scope }), `return (${appSource.slice(start, stop).trim()});`)(...Object.values({ msg: message, ...scope }));
@@ -194,10 +196,10 @@ test('actual export never auto-replays an unknown receipt or replaces an old bin
 const element = (type, props, ...children) => ({ type, props: { ...props, children } });
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : !tree || typeof tree !== 'object' ? [] : [tree, ...nodes(tree.props?.children)];
 const textOf = tree => Array.isArray(tree) ? tree.map(textOf).join('') : tree && typeof tree === 'object' ? textOf(tree.props?.children) : tree ?? '';
-const panelSource = readFileSync(new URL('../apps/web/src/TimelineExportPreflight.jsx', import.meta.url), 'utf8');
+const panelSource = readFileSync(new URL('../apps/web/src/TimelineExportPreflight.tsx', import.meta.url), 'utf8');
 function renderPanel(props) {
   const module = { exports: {} }, react = { createElement: element }; react.default = react;
-  Function('module', 'exports', 'require', transformSync(panelSource, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, name => name === './i18n/I18nProvider.tsx' ? i18nTestModule() : name === 'react' ? react : name.endsWith('export-preflight-state.js') ? preflightState : name.endsWith('icons.jsx') ? { __esModule: true, default: 'Icon' } : { Button: 'Button' });
+  Function('module', 'exports', 'require', transformSync(panelSource, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, name => name === './i18n/I18nProvider.tsx' ? i18nTestModule() : name === 'react' ? react : name.endsWith('export-preflight-state.ts') ? preflightState : name.endsWith('icons.tsx') ? { __esModule: true, default: 'Icon' } : { Button: 'Button' });
   return module.exports.default({ canCheck: true, onCheck() {}, onExport() {}, ...props });
 }
 
@@ -215,7 +217,7 @@ test('accessible topbar export action opens recovery even when a candidate, base
     { localDelivery: { state: { candidate: null, baselineConflict: true } } }, { deliveryName: { error: 'Invalid name' } }, { exportRange: { error: 'Invalid range' } }, { online: false }]) {
     const flags = gate(patch); assert.deepEqual(flags, { canOpenExport: true, canCheckExport: false });
     const f = fixture(), h = appHarness(f), module = { exports: {} };
-    Function('module', 'React', 'WorkbenchButton', 'Icon', 'canOpenExport', 'openTimelineExport', 't', transformSync(`module.exports = (${buttonSource});`, { loader: 'jsx', format: 'cjs' }).code)(module, { createElement: element }, 'WorkbenchButton', 'Icon', flags.canOpenExport, h.open, (key, params) => translate('zh-Hans', key, params));
+    Function('module', 'React', 'WorkbenchButton', 'Icon', 'canOpenExport', 'openTimelineExport', 't', transformSync(`module.exports = (${buttonSource});`, { loader: 'tsx', format: 'cjs' }).code)(module, { createElement: element }, 'WorkbenchButton', 'Icon', flags.canOpenExport, h.open, (key, params) => translate('zh-Hans', key, params));
     const button = module.exports; assert.equal(button.type, 'WorkbenchButton'); assert.equal(button.props.disabled, false); assert.equal(textOf(button), '导出');
     button.props.onClick(); assert.deepEqual(h.panels, [['tasks', false], ['image', false], ['delivery', true]]); assert.deepEqual(h.exports, [false]);
     assert.equal(f.calls.length, 0); assert.equal(h.calls.length, 0);
@@ -282,13 +284,13 @@ test('third dock integrates with original keep-mounted/inert panes, existing mod
   assert.match(appSource, /data-testid="export-timeline"[^>]+onClick={openTimelineExport}/);
   for (const tab of ['properties', 'agent', 'delivery']) { const shell = readFileSync(new URL('../apps/web/src/WorkbenchShell.tsx', import.meta.url), 'utf8'); assert.ok((appSource + shell).includes(`data-testid="right-dock-tab-${tab}"`)); assert.ok(appSource.includes(`<AgentDockPane id="right-dock-${tab}"`)); }
   assert.match(appSource, /<CollapsibleContent keepMounted className="inspector-region-content">/);
-  assert.match(appSource, /async function changeMode\(mode\)[\s\S]*?if \(!await guardNavigation\(\)\) return;/);
+  assert.match(appSource, /async function changeMode\(mode: WorkspaceMode\)[\s\S]*?if \(!await guardNavigation\(\)\) return;/);
   const inspect = appSource.slice(appSource.indexOf('  async function inspect('), appSource.indexOf('  async function addShot(')); assert.doesNotMatch(inspect, /setRightDockTab/);
-  const controllerSource = readFileSync(new URL('../apps/web/src/export-preflight-state.js', import.meta.url), 'utf8');
-  const hook = readFileSync(new URL('../apps/web/src/use-export-preflight.js', import.meta.url), 'utf8');
+  const controllerSource = readFileSync(new URL('../apps/web/src/export-preflight-state.ts', import.meta.url), 'utf8');
+  const hook = readFileSync(new URL('../apps/web/src/use-export-preflight.ts', import.meta.url), 'utf8');
   assert.doesNotMatch(controllerSource + hook, /localStorage|sessionStorage|setInterval|setTimeout|timeline\.render/);
   assert.doesNotMatch(hook, /\.check\(|takeExportBinding|visibilitychange/);
-  assert.match(hook, /controller\.current\.setVisible\(visible\)/);
+  assert.match(hook, /controller\.current!\.setVisible\(visible\)/);
 });
 
 test('rpc optional signal preserves exact existing call shape and only attaches observer signal on request', async t => {
@@ -306,8 +308,8 @@ function hookHarness() {
     useState(initial) { const i = cursor++; slots[i] ||= { value: initial }; return [slots[i].value, value => { slots[i].value = value; }]; },
     useLayoutEffect(callback, dependencies) { const i = cursor++, old = slots[i]; if (old && dependencies.length === old.dependencies.length && dependencies.every((value, j) => value === old.dependencies[j])) return; slots[i] = { dependencies, callback, cleanup: old?.cleanup }; effects.push(i); },
   };
-  const module = { exports: {} }, source = readFileSync(new URL('../apps/web/src/use-export-preflight.js', import.meta.url), 'utf8');
-  Function('module', 'exports', 'require', transformSync(source, { loader: 'js', format: 'cjs' }).code)(module, module.exports, name => name === 'react' ? react : { createExportPreflightController });
+  const module = { exports: {} }, source = readFileSync(new URL('../apps/web/src/use-export-preflight.ts', import.meta.url), 'utf8');
+  Function('module', 'exports', 'require', transformSync(source, { loader: 'ts', format: 'cjs' }).code)(module, module.exports, name => name === 'react' ? react : { createExportPreflightController });
   return {
     tasks,
     render(patch = {}) { cursor = 0; effects = []; const props = { ...context(), projectId, visible: false, read: (input, options) => { const task = deferred(); tasks.push({ ...task, input, options }); return task.promise; }, ...patch }; const result = module.exports.useExportPreflight(props); for (const i of effects) { slots[i].cleanup?.(); slots[i].cleanup = slots[i].callback(); } return result; },

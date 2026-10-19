@@ -4,7 +4,7 @@ import {createClipDraftController, clipDraftRaw} from '../apps/web/src/clip-draf
 import {createOpacityCandidateClipDraftClient} from '../apps/web/src/clip-draft-client.ts';
 import {rawOpacityEnvelopeFields, validateRawOpacityEnvelope} from '../apps/web/src/clip-opacity-envelope-state.ts';
 import {opacityCandidateTimelineProjection} from '../apps/web/src/clip-opacity-candidate-assembly.ts';
-import {isTimelineRecord} from '../packages/contracts/src/timeline-replacement.mjs';
+import {isTimelineRecord} from '../packages/contracts/src/timeline-replacement.ts';
 
 const id = n => `a3000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const stamp = '2026-10-16T00:00:00.000Z';

@@ -11,7 +11,7 @@ import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {defaultWorkspaceState} from '../apps/web/src/workspace-state.js';
+import {defaultWorkspaceState} from '../apps/web/src/workspace-state.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url)), token = 'synthetic-workspace-preferences-test-token';
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -32,7 +32,7 @@ async function backend(t) {
   }
   async function start() {
     let stdout = '', stderr = '';
-    child = spawn(process.execPath, [path.join(repo, 'apps/server/src/cli.mjs')], {cwd: repo, env: environment({MIOON_DATA_DIR: root, MIOON_TOKEN: token, PORT: '0'}), stdio: ['ignore', 'pipe', 'pipe']});
+    child = spawn(process.execPath, [path.join(repo, 'apps/server/src/cli.ts')], {cwd: repo, env: environment({MIOON_DATA_DIR: root, MIOON_TOKEN: token, PORT: '0'}), stdio: ['ignore', 'pipe', 'pipe']});
     child.stdout.setEncoding('utf8').on('data', chunk => stdout += chunk); child.stderr.setEncoding('utf8').on('data', chunk => stderr += chunk);
     const deadline = Date.now() + 10000;
     while (Date.now() < deadline) {
@@ -163,7 +163,7 @@ test('preferences endpoint retains token/cookie authentication, strict origin/ho
 
 test('official MCP discovery and calls cannot reach renderer workspace preferences', {timeout: 20000}, async t => {
   const client = new Client({name: 'workspace-preferences-boundary-test', version: '1.0.0'}, {capabilities: {}});
-  const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.mjs')], cwd: repo, env: environment(), stderr: 'pipe'});
+  const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.ts')], cwd: repo, env: environment(), stderr: 'pipe'});
   transport.stderr?.resume(); t.after(() => client.close());
   await client.connect(transport);
   const tools = (await client.listTools()).tools;

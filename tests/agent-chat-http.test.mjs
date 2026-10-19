@@ -6,14 +6,14 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import {EventEmitter} from 'node:events';
 import {setImmediate as turn} from 'node:timers/promises';
-import {createChatHttp} from '../apps/server/src/chat-http.mjs';
-import {createAgentSettings, AGENT_CREDENTIAL_ACQUIRE} from '../packages/business/src/agent/settings.mjs';
+import {createChatHttp} from '../apps/server/src/chat-http.ts';
+import {createAgentSettings, AGENT_CREDENTIAL_ACQUIRE} from '../packages/business/src/agent/settings.ts';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {mkdtemp, rm, readFile, readdir} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
-import {startServer} from '../apps/server/src/index.mjs';
+import {startServer} from '../apps/server/src/index.ts';
 
 const token = 'synthetic-agent-chat-http-token';
 const SECRET = 'SYNTHETIC_CHAT_HTTP_KEY';

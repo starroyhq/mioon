@@ -15,7 +15,7 @@ const data = source => 'data:text/javascript;base64,' + Buffer.from(source).toSt
 
 // No installed dependencies are used or borrowed. Real Agent config/settings,
 // codecs, brokers, supervisor and quit-helper bodies use import-only rewriting.
-// Six explicitly reviewed TypeScript modules use Node's strip-only erasure;
+// Every approved TypeScript module uses Node's strip-only erasure;
 // their type-only imports must never become runtime imports. Native audition
 // schemas are a counted rejecting double: this secrets-only fixture supplies no
 // audio configuration and must never execute an audio admission or proof.
@@ -44,18 +44,17 @@ const overrides = new Map([
   ['node:fs', diagnosticFsUrl],
   ['@mioon/contracts/timeline-delivery', deliveryParserUrl],
   ['@mioon/contracts/native-audio-preview', nativeAudioContractsUrl],
-  ['@mioon/contracts', data('export {AGENT_PROTOCOLS} from ' + JSON.stringify(new URL('packages/contracts/src/agent-protocol.mjs', root).href) + '; export const IMAGE_SETTINGS_LIMITS = {ciphertextCharacters: 49152};')],
+  ['@mioon/contracts', data('export {AGENT_PROTOCOLS} from ' + JSON.stringify(new URL('packages/contracts/src/agent-protocol.ts', root).href) + '; export const IMAGE_SETTINGS_LIMITS = {ciphertextCharacters: 49152};')],
   ['@mioon/business/images/settings', data('const accepted = ' + JSON.stringify(imagePlaintexts) + '; export function validateImageSecretPlaintext(value) { if (!accepted.includes(value)) throw Object.assign(new Error("Synthetic Images validation"), {code: "IMAGE_SETTINGS_VALIDATION"}); } export const imageSettingsError = code => Object.assign(new Error("Synthetic Images error"), {code});')],
   ['@mioon/business/agent/settings-file', data('export const createAgentSettingsFile = ' + forbidden.toString())],
   ['@mioon/contracts/private-storage', data('export const validatePrivateDirectory = ' + forbidden.toString() + '; export const ensurePrivateDirectory = validatePrivateDirectory')],
 ]);
-const approved = new Set(['apps/desktop/src/app-language-text.ts', 'packages/i18n/src/catalogs/native.ts', 'apps/desktop/src/secret-store-linux.mjs', 'apps/desktop/src/secret-store.mjs', 'apps/desktop/src/image-secret-store.mjs',
-  'apps/desktop/src/image-secret-broker.mjs', 'apps/desktop/src/secret-broker.mjs', 'apps/desktop/src/supervisor.mjs',
-  'apps/desktop/src/security.mjs', 'apps/desktop/src/timeline-delivery-download.ts', 'apps/desktop/src/exit-diagnostics.ts',
-  'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/shutdown.mjs', 'packages/business/src/agent/settings.mjs', 'packages/business/src/agent/config.mjs',
-  'packages/business/src/agent/presets.mjs']);
-const reviewedTypeScript = new Set(['apps/desktop/src/app-language-text.ts', 'packages/i18n/src/catalogs/native.ts', 'apps/desktop/src/timeline-delivery-download.ts',
-  'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/exit-diagnostics.ts']);
+const approved = new Set(['apps/desktop/src/app-language-text.ts', 'packages/i18n/src/catalogs/native.ts', 'apps/desktop/src/secret-store-linux.ts', 'apps/desktop/src/secret-store.ts', 'apps/desktop/src/image-secret-store.ts',
+  'apps/desktop/src/image-secret-broker.ts', 'apps/desktop/src/secret-broker.ts', 'apps/desktop/src/supervisor.ts',
+  'apps/desktop/src/security.ts', 'apps/desktop/src/timeline-delivery-download.ts', 'apps/desktop/src/exit-diagnostics.ts',
+  'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/shutdown.ts', 'packages/business/src/agent/settings.ts', 'packages/business/src/agent/config.ts',
+  'packages/business/src/agent/presets.ts']);
+const reviewedTypeScript = approved;
 const urls = new Map();
 function moduleUrl(name) {
   if (urls.has(name)) return urls.get(name);
@@ -66,12 +65,12 @@ function moduleUrl(name) {
   source = source.replace(/\bfrom\s+(['"])([^'"]+)\1/g, (_, quote, specifier) => {
     let url = overrides.get(specifier);
     if (!url && ['node:path', 'node:crypto', 'node:net', 'node:events'].includes(specifier)) url = specifier;
-    if (!url && specifier === '../identity.cjs') {
-      const identity = new URL('apps/desktop/identity.cjs', root);
+    if (!url && specifier === '../identity.ts') {
+      const identity = new URL('apps/desktop/identity.ts', root);
       assert.doesNotMatch(readFileSync(identity, 'utf8'), /\bimport\b|\brequire\s*\(/);
       url = identity.href;
     }
-    if (!url && specifier.startsWith('@mioon/business/agent/')) url = moduleUrl('packages/business/src/agent/' + specifier.split('/').at(-1) + '.mjs');
+    if (!url && specifier.startsWith('@mioon/business/agent/')) url = moduleUrl('packages/business/src/agent/' + specifier.split('/').at(-1) + '.ts');
     if (!url && specifier.startsWith('.')) url = moduleUrl(new URL(specifier, new URL(name, root)).href.slice(root.href.length));
     assert.ok(url, 'Unreviewed import: ' + specifier);
     return 'from ' + JSON.stringify(url);
@@ -79,15 +78,15 @@ function moduleUrl(name) {
   assert.doesNotMatch(source, /\bimport\s*['"]/);
   const url = data(source); urls.set(name, url); return url;
 }
-const secret = await import(moduleUrl('apps/desktop/src/secret-store.mjs'));
-const images = await import(moduleUrl('apps/desktop/src/image-secret-store.mjs'));
-const imageBridge = await import(moduleUrl('apps/desktop/src/image-secret-broker.mjs'));
-const agentBridge = await import(moduleUrl('apps/desktop/src/secret-broker.mjs'));
-const agent = await import(moduleUrl('packages/business/src/agent/settings.mjs'));
-const agentConfig = await import(moduleUrl('packages/business/src/agent/config.mjs'));
-const {DEFAULT_AGENT_CONFIGURATION} = await import(moduleUrl('packages/business/src/agent/presets.mjs'));
-const {BackendSupervisor} = await import(moduleUrl('apps/desktop/src/supervisor.mjs'));
-const {stopBackendForQuit} = await import(moduleUrl('apps/desktop/src/shutdown.mjs'));
+const secret = await import(moduleUrl('apps/desktop/src/secret-store.ts'));
+const images = await import(moduleUrl('apps/desktop/src/image-secret-store.ts'));
+const imageBridge = await import(moduleUrl('apps/desktop/src/image-secret-broker.ts'));
+const agentBridge = await import(moduleUrl('apps/desktop/src/secret-broker.ts'));
+const agent = await import(moduleUrl('packages/business/src/agent/settings.ts'));
+const agentConfig = await import(moduleUrl('packages/business/src/agent/config.ts'));
+const {DEFAULT_AGENT_CONFIGURATION} = await import(moduleUrl('packages/business/src/agent/presets.ts'));
+const {BackendSupervisor} = await import(moduleUrl('apps/desktop/src/supervisor.ts'));
+const {stopBackendForQuit} = await import(moduleUrl('apps/desktop/src/shutdown.ts'));
 
 function vault() {
   const key = Buffer.alloc(32, 23), calls = [];
@@ -165,12 +164,13 @@ test('import fixture permits only six reviewed erased modules and refuses runtim
   assert.deepEqual([...erased.matchAll(/\bfrom\s+(['"])([^'"]+)\1/g)].map(match => match[2]), ['./app-language-text.ts', 'node:path', '@mioon/contracts/timeline-delivery']);
   assert.equal(overrides.has('electron'), false);
   assert.equal(overrides.has('@mioon/contracts/arbitrary'), false);
-  for (const unreviewed of ['apps/desktop/src/main.mjs', 'apps/desktop/src/backend.mjs', 'packages/contracts/src/timeline-delivery.ts', 'apps/desktop/src/../src/not-approved.ts']) {
+  for (const unreviewed of ['apps/desktop/src/main.ts', 'apps/desktop/src/backend.ts', 'packages/contracts/src/timeline-delivery.ts', 'apps/desktop/src/../src/not-approved.ts']) {
     assert.throws(() => moduleUrl(unreviewed), /Unreviewed source:/);
   }
   assert.equal(deliveryParser.calls, 0);
   assert.equal(nativeAudioContracts.calls, 0);
-  assert.deepEqual([...reviewedTypeScript].sort(), ['apps/desktop/src/app-language-text.ts', 'apps/desktop/src/exit-diagnostics.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/timeline-delivery-download.ts', 'packages/i18n/src/catalogs/native.ts']);
+  assert.equal(reviewedTypeScript.size, approved.size);
+  for (const name of approved) assert.ok(reviewedTypeScript.has(name), name);
   for (const adapter of reviewedTypeScript) assert.ok(urls.has(adapter));
 });
 
@@ -625,7 +625,7 @@ test('startup abort returns without waiting for the native Promise and never ena
   await pending;
   gate.resolve(); await turn();
   assert.equal(codec.storage().persistentAvailable, false);
-  assert.match(readFileSync(new URL('apps/desktop/src/main.mjs', root), 'utf8'), /appId: identity\.appId, signal: startup\.signal/);
+  assert.match(readFileSync(new URL('apps/desktop/src/main.ts', root), 'utf8'), /appId: identity\.appId, signal: startup\.signal/);
 });
 
 test('Agent binding validation rejects copied channel-valid plaintext without changing its stored envelope', async t => {

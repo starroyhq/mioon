@@ -44,7 +44,7 @@ export default function SettingsRoot({ context, bridge, rpc, contractChecks, ren
     const visibility = () => setVisible(document.visibilityState !== 'hidden');
     document.addEventListener('visibilitychange', visibility);
     const win = window as SettingsWindow;
-    const cleanup = installNativeCloseAdmission(win, { registry: native, settings: registry,
+    const cleanup = installNativeCloseAdmission(win as Parameters<typeof installNativeCloseAdmission>[0], { registry: native, settings: registry,
       readScope: () => `${context.backendId}:${context.contextId}:${navigation.version}`, readDocumentURL: () => window.location.href });
     const drain = async () => registry.canLeave(registry.capture());
     win.__mioonFlushWorkspacePreferences = drain;

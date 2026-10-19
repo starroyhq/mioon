@@ -7,10 +7,10 @@ import {once} from 'node:events';
 import http from 'node:http';
 import cp from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {isOpacityRestoredApplicationInspection} from '../packages/contracts/src/opacity-restored-application.ts';
-import {publicValue} from '../packages/contracts/src/index.mjs';
-import {defaultWorkspaceState} from '../apps/web/src/workspace-state.js';
+import {publicValue} from '../packages/contracts/src/index.ts';
+import {defaultWorkspaceState} from '../apps/web/src/workspace-state.ts';
 import {hash} from './helpers/opacity-backup-fixture.mjs';
 import {restoredApplicationFixture, request, rpc, prepareTask, applyTask} from './helpers/opacity-restored-application-fixture.mjs';
 

@@ -23,13 +23,13 @@ function mockBuiltin(t, name, replacement, check) {
 
 test('private policy is an explicit Node-only subpath and capability metadata cannot enable Windows', () => {
   const manifest = JSON.parse(fs.readFileSync(new URL('../packages/contracts/package.json', import.meta.url), 'utf8'));
-  assert.equal(manifest.exports['./private-storage'], './src/private-storage.mjs');
-  assert.ok(!fs.readFileSync(new URL('../packages/contracts/src/index.mjs', import.meta.url), 'utf8').includes('private-storage'));
+  assert.equal(manifest.exports['./private-storage'], './src/private-storage.ts');
+  assert.ok(!fs.readFileSync(new URL('../packages/contracts/src/index.ts', import.meta.url), 'utf8').includes('private-storage'));
   assert.deepEqual(getStoragePrivacyCapability('win32'), {available: false, backend: 'unavailable', code: 'STORAGE_PRIVACY_UNAVAILABLE', reason: 'WINDOWS_ACL_UNIMPLEMENTED'});
   assert.equal(getStoragePrivacyCapability('unknown').available, false);
   // Synthetic platform process proves even a positive code-injected verifier
   // cannot enable the unimplemented Windows backend. This is not native ACL QA.
-  const module = new URL('../packages/contracts/src/private-storage.mjs', import.meta.url).href;
+  const module = new URL('../packages/contracts/src/private-storage.ts', import.meta.url).href;
   const probe = spawnSync(process.execPath, ['--input-type=module', '-e', `Object.defineProperty(process,'platform',{value:'win32'}); const {createPrivateStoragePolicy}=await import(${JSON.stringify(module)}); let called=false; const policy=createPrivateStoragePolicy({windowsAclVerifier:()=>{called=true;return true;}}); try { policy.ensurePrivateDirectory('/synthetic-never-created',{create:true}); process.exitCode=1; } catch(error) { if(error.code!=='STORAGE_PRIVACY_UNAVAILABLE'||!called)process.exitCode=2; }`], {encoding: 'utf8'});
   assert.equal(probe.status, 0, probe.stderr);
 });

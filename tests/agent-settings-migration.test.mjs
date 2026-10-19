@@ -4,10 +4,10 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {mkdtemp, readFile, rm, stat} from 'node:fs/promises';
 import {randomBytes, createCipheriv, createDecipheriv} from 'node:crypto';
-import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.mjs';
-import {agentCredentialBinding} from '../packages/business/src/agent/config.mjs';
-import {createAgentSettings, AGENT_CREDENTIAL_ACQUIRE, sanitizeAgentSettingsResult} from '../packages/business/src/agent/settings.mjs';
-import {createAgentSettingsFile} from '../packages/business/src/agent/settings-file.mjs';
+import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
+import {agentCredentialBinding} from '../packages/business/src/agent/config.ts';
+import {createAgentSettings, AGENT_CREDENTIAL_ACQUIRE, sanitizeAgentSettingsResult} from '../packages/business/src/agent/settings.ts';
+import {createAgentSettingsFile} from '../packages/business/src/agent/settings-file.ts';
 
 const KEY = 'SYNTHETIC_MIGRATION_KEY_NEVER_LIVE';
 const persistent = {persistentAvailable: true, sessionScope: 'app', reasonCode: null};

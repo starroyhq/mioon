@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
-import {isTimelineRecord, TIMELINE_RESPONSE_BYTES} from '../packages/contracts/src/timeline-replacement.mjs';
-import {isTimelineMutationResponse, hasRequestNotAppliedProof} from '../packages/contracts/src/timeline-acknowledgement.mjs';
+import {isTimelineRecord, TIMELINE_RESPONSE_BYTES} from '../packages/contracts/src/timeline-replacement.ts';
+import {isTimelineMutationResponse, hasRequestNotAppliedProof} from '../packages/contracts/src/timeline-acknowledgement.ts';
 import {VOLUME_ENVELOPE_PROFILE as profileId, splitVolumeEnvelopeFields} from '../packages/contracts/src/timeline-volume-envelope.ts';
 import {volumeEnvelopeCandidateIntentDigest} from './helpers/timeline-volume-envelope-candidate-intent.mjs';
 import {

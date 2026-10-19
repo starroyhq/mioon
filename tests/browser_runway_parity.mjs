@@ -5,7 +5,7 @@ import { clickWorkbenchAction } from './browser-workbench-actions.mjs';
 import assert from 'node:assert/strict';
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { openStore } from '../packages/business/src/db.mjs';
+import { openStore } from '../packages/business/src/db.ts';
 export async function runRunwayParityBrowserAcceptance({ tab, runtime, outDir }) {
   assert.ok(path.resolve(runtime).endsWith('/evidence/q1-runway-parity/runtime'));
   await mkdir(outDir, { recursive: true });

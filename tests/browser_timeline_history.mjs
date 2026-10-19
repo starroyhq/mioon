@@ -1,6 +1,6 @@
 /** Real browser acceptance using the supported CUA tab API.
  * Bundle for the CUA REPL's workspace-package resolver before running:
- *   node -e "import('esbuild').then(b=>b.build({entryPoints:['tests/browser_timeline_history.mjs'],bundle:true,platform:'node',format:'esm',outfile:'evidence/timeline-history/runtime/browser-qa.bundle.mjs'}))"
+ *   node -e "import('esbuild').then(b=>b.build({entryPoints:['tests/browser_timeline_history.ts'],bundle:true,platform:'node',format:'esm',outfile:'evidence/timeline-history/runtime/browser-qa.bundle.mjs'}))"
  * In the own-cloud CUA REPL, with a signed-in tab displaying the copied synthetic
  * multitrack project:
  *   const qa = await import('/workspace/shared/video-workbench/evidence/timeline-history/runtime/browser-qa.bundle.mjs');
@@ -14,8 +14,8 @@ import assert from 'node:assert/strict';
 import {mkdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
 const equal=(actual,expected,message)=>assert.equal(JSON.stringify(actual),JSON.stringify(expected),message);
 const domain=timeline=>({tracks:timeline.tracks,clips:timeline.clips,durationFrames:timeline.durationFrames});
 export async function runHistoryBrowserAcceptance({tab,projectId,dataDir,outDir}) {

@@ -6,12 +6,12 @@ import {DatabaseSync} from 'node:sqlite';
 import path from 'node:path';
 import {openOpacityCandidateStore,getOpacityCandidateAssembly,OPACITY_CANDIDATE_ADVISORY_OPERATIONS,OPACITY_CANDIDATE_RESTORE_LOCAL_OPERATIONS} from '../packages/business/src/opacity-candidate-store.ts';
 import {createOpacityCandidateDomain} from '../packages/business/src/opacity-candidate-domain.ts';
-import {createTimelineExportAdmissionServices} from '../packages/business/src/timeline-export-admission.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
+import {createTimelineExportAdmissionServices} from '../packages/business/src/timeline-export-admission.ts';
+import {createServices} from '../packages/business/src/services.ts';
 import {OPACITY_CANDIDATE_PREFLIGHT_MESSAGES} from '../packages/business/src/opacity-candidate-preflight.ts';
 import {installWorkspaceRestoreSchemaV43} from '../packages/business/src/workspace-restore-schema-v43.ts';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
-import {isTimelineExportCapabilitiesResponse} from '../packages/contracts/src/index.mjs';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
+import {isTimelineExportCapabilitiesResponse} from '../packages/contracts/src/index.ts';
 
 const stamp='2026-10-16T00:00:00.000Z';
 const operation='timeline.export.capabilities';

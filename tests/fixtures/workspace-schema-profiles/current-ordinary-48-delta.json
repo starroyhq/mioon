@@ -1,0 +1,161 @@
+{
+  "formatVersion": 1,
+  "note": "Reviewed snapshot of the current ordinary schema delta beyond the independent ordinary24 golden fixture (project-lifecycle 48 additions and lifecycle-aware retention guards). Generated once from the reviewed migration output, then frozen: the tests compare implementation output against these exact definitions and pin catalog hashes, so later schema edits fail until reviewed.",
+  "schemaVersionRows": [
+    [
+      "44",
+      "integer",
+      "3434"
+    ],
+    [
+      "48",
+      "integer",
+      "3438"
+    ]
+  ],
+  "objectSql": {
+    "edit_tasks": "CREATE TABLE \"edit_tasks\"(\n position INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE CHECK(length(CAST(id AS BLOB))=36),\n projectId TEXT NOT NULL REFERENCES projects(id) CHECK(length(CAST(projectId AS BLOB))=36),\n operation TEXT NOT NULL CHECK(operation IN ('timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.replaceSource','timeline.clip.remove','timeline.clip.rippleRemove','timeline.clip.split','timeline.seed','timeline.undo','timeline.redo','reference.attach','reference.detach','timeline.format.set','subject.create','subject.version.add','subject.binding.set','timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove','timeline.loudness.apply')),\n input TEXT NOT NULL CHECK(json_valid(input) AND json_type(input)='object' AND length(CAST(input AS BLOB)) BETWEEN 1 AND 8192),\n requestId TEXT NOT NULL CHECK(length(requestId) BETWEEN 8 AND 200 AND length(CAST(requestId AS BLOB))<=800),\n digest TEXT NOT NULL CHECK(length(CAST(digest AS BLOB))=64),\n lane TEXT NOT NULL CHECK(lane IN ('timeline:mutation','reference:mutation','subject:mutation')),\n origin TEXT NOT NULL CHECK(origin IN ('new','legacy_session')),\n status TEXT NOT NULL CHECK(status IN ('prepared','dispatching','unknown','applied','not_applied')),\n revision INTEGER NOT NULL CHECK(typeof(revision)='integer' AND revision BETWEEN 1 AND 9007199254740991),\n acknowledged INTEGER NOT NULL CHECK(acknowledged IN (0,1)),\n claim TEXT CHECK(claim IS NULL OR length(CAST(claim AS BLOB))=36),\n claimInstance TEXT CHECK(claimInstance IS NULL OR length(CAST(claimInstance AS BLOB))=36),\n receiptDigest TEXT CHECK(receiptDigest IS NULL OR length(CAST(receiptDigest AS BLOB))=64),\n errorCode TEXT CHECK(errorCode IS NULL OR length(CAST(errorCode AS BLOB)) BETWEEN 1 AND 80),\n createdAt TEXT NOT NULL CHECK(length(CAST(createdAt AS BLOB)) BETWEEN 1 AND 40),\n updatedAt TEXT NOT NULL CHECK(length(CAST(updatedAt AS BLOB)) BETWEEN 1 AND 40),\n bytes INTEGER NOT NULL CHECK(bytes=16384),UNIQUE(lane,requestId),\n CHECK(json_extract(input,'$.projectId')=projectId AND json_extract(input,'$.requestId')=requestId),\n CHECK((operation LIKE 'timeline.%' AND lane='timeline:mutation') OR (operation LIKE 'reference.%' AND lane='reference:mutation') OR (operation IN ('subject.create','subject.version.add','subject.binding.set') AND lane='subject:mutation')),\n CHECK((status='applied')=(receiptDigest IS NOT NULL)),CHECK((status='not_applied')=(errorCode IS NOT NULL)),\n CHECK((claim IS NULL)=(claimInstance IS NULL)),CHECK(status!='dispatching' OR claim IS NOT NULL),\n CHECK(status!='prepared' OR (origin='new' AND claim IS NULL)),CHECK(acknowledged=0 OR status IN ('applied','not_applied')))",
+    "retain_agent_chat_events": "CREATE TRIGGER retain_agent_chat_events BEFORE DELETE ON agent_chat_events\n WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='agent_chat_events' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'chat events must be retained');END",
+    "retain_agent_chat_requests": "CREATE TRIGGER retain_agent_chat_requests BEFORE DELETE ON agent_chat_requests\n WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='agent_chat_requests' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'accepted chat requests must be retained');END",
+    "retain_agent_chat_steps": "CREATE TRIGGER retain_agent_chat_steps BEFORE DELETE ON agent_chat_steps\n WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='agent_chat_steps' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'agent steps must be retained');END",
+    "retain_agent_edit_proposals": "CREATE TRIGGER retain_agent_edit_proposals BEFORE DELETE ON agent_edit_proposals\n WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='agent_edit_proposals' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'agent edit proposals must be retained');END",
+    "retain_asset_disposition_requests": "CREATE TRIGGER retain_asset_disposition_requests BEFORE DELETE ON asset_disposition_requests\n WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='asset_disposition_requests' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'asset disposition request responses must be retained');END",
+    "retain_asset_range_requests": "CREATE TRIGGER retain_asset_range_requests BEFORE DELETE ON asset_range_requests\n WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='asset_range_requests' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'source range request responses must be retained');END",
+    "retain_edit_tasks": "CREATE TRIGGER retain_edit_tasks BEFORE DELETE ON edit_tasks\n WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='edit_tasks' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'edit task identities must be retained');END",
+    "retain_frame_requests": "CREATE TRIGGER retain_frame_requests BEFORE DELETE ON frame_requests\n WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='frame_requests' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'frame request responses must be retained');END",
+    "retain_frame_tasks": "CREATE TRIGGER retain_frame_tasks BEFORE DELETE ON frame_tasks\n WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='frame_tasks' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'frame tasks must be retained');END",
+    "retain_image_groups": "CREATE TRIGGER retain_image_groups BEFORE DELETE ON image_groups WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='image_groups' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'image groups must be retained');END",
+    "retain_image_remote_observations": "CREATE TRIGGER retain_image_remote_observations BEFORE DELETE ON image_remote_observations\n WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='image_remote_observations' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'remote observations must be retained');END",
+    "retain_image_remote_runs": "CREATE TRIGGER retain_image_remote_runs BEFORE DELETE ON image_remote_runs\n WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='image_remote_runs' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'remote image identities must be retained');END",
+    "retain_image_requests": "CREATE TRIGGER retain_image_requests BEFORE DELETE ON image_requests WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='image_requests' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'image request responses must be retained');END",
+    "retain_image_reviews": "CREATE TRIGGER retain_image_reviews BEFORE DELETE ON image_reviews\n      WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='image_reviews' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'image reviews must be retained'); END",
+    "retain_image_tasks": "CREATE TRIGGER retain_image_tasks BEFORE DELETE ON image_tasks WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='image_tasks' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'image tasks must be retained');END",
+    "retain_image_versions": "CREATE TRIGGER retain_image_versions BEFORE DELETE ON image_versions WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='image_versions' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'image versions must be retained');END",
+    "retain_mutation_requests": "CREATE TRIGGER retain_mutation_requests BEFORE DELETE ON mutation_requests\n WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='mutation_requests' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'mutation request responses must be retained');END",
+    "retain_reference_requests": "CREATE TRIGGER retain_reference_requests BEFORE DELETE ON reference_requests\n WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='reference_requests' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'reference request responses must be retained');END",
+    "retain_subject_bindings": "CREATE TRIGGER retain_subject_bindings BEFORE DELETE ON subject_bindings WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='subject_bindings' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'subject binding tombstones must be retained');END",
+    "retain_subject_requests": "CREATE TRIGGER retain_subject_requests BEFORE DELETE ON subject_requests WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='subject_requests' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'subject request responses must be retained');END",
+    "retain_subject_versions": "CREATE TRIGGER retain_subject_versions BEFORE DELETE ON subject_versions WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='subject_versions' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'subject versions must be retained');END",
+    "retain_timeline_format_requests": "CREATE TRIGGER retain_timeline_format_requests BEFORE DELETE ON timeline_format_requests\n WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='timeline_format_requests' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'timeline format requests must be retained');END"
+  },
+  "lifecycleObjects": [
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_project_deletion_cleanup_1",
+      "tbl_name": "project_deletion_cleanup",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_project_deletion_receipts_1",
+      "tbl_name": "project_deletion_receipts",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_project_deletion_scope_1",
+      "tbl_name": "project_deletion_scope",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_project_mutation_requests_1",
+      "tbl_name": "project_mutation_requests",
+      "sql": null
+    },
+    {
+      "type": "table",
+      "name": "project_deletion_cleanup",
+      "tbl_name": "project_deletion_cleanup",
+      "sql": "CREATE TABLE project_deletion_cleanup(requestId TEXT PRIMARY KEY REFERENCES project_deletion_receipts(requestId),manifest TEXT NOT NULL CHECK(json_valid(manifest) AND length(CAST(manifest AS BLOB))<=1048576))"
+    },
+    {
+      "type": "table",
+      "name": "project_deletion_receipts",
+      "tbl_name": "project_deletion_receipts",
+      "sql": "CREATE TABLE project_deletion_receipts(requestId TEXT PRIMARY KEY,projectId TEXT NOT NULL CHECK(length(projectId)=36),digest TEXT NOT NULL CHECK(length(digest)=64),createdAt TEXT NOT NULL)"
+    },
+    {
+      "type": "table",
+      "name": "project_deletion_scope",
+      "tbl_name": "project_deletion_scope",
+      "sql": "CREATE TABLE project_deletion_scope(tableName TEXT NOT NULL,rowId INTEGER NOT NULL CHECK(typeof(rowId)='integer'),PRIMARY KEY(tableName,rowId))"
+    },
+    {
+      "type": "table",
+      "name": "project_mutation_requests",
+      "tbl_name": "project_mutation_requests",
+      "sql": "CREATE TABLE project_mutation_requests(requestId TEXT PRIMARY KEY,projectId TEXT NOT NULL REFERENCES projects(id),digest TEXT NOT NULL CHECK(length(digest)=64),response TEXT NOT NULL CHECK(json_valid(response)))"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_project_deletion_receipts",
+      "tbl_name": "project_deletion_receipts",
+      "sql": "CREATE TRIGGER immutable_project_deletion_receipts BEFORE UPDATE ON project_deletion_receipts BEGIN SELECT RAISE(ABORT,'project deletion receipts are immutable');END"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_project_mutation_requests",
+      "tbl_name": "project_mutation_requests",
+      "sql": "CREATE TRIGGER immutable_project_mutation_requests BEFORE UPDATE ON project_mutation_requests BEGIN SELECT RAISE(ABORT,'project responses are immutable');END"
+    },
+    {
+      "type": "trigger",
+      "name": "retain_project_deletion_receipts",
+      "tbl_name": "project_deletion_receipts",
+      "sql": "CREATE TRIGGER retain_project_deletion_receipts BEFORE DELETE ON project_deletion_receipts BEGIN SELECT RAISE(ABORT,'project deletion receipts must be retained');END"
+    },
+    {
+      "type": "trigger",
+      "name": "retain_project_mutation_requests",
+      "tbl_name": "project_mutation_requests",
+      "sql": "CREATE TRIGGER retain_project_mutation_requests BEFORE DELETE ON project_mutation_requests WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='project_mutation_requests' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'project responses must be retained');END"
+    }
+  ],
+  "lifecycleTables": {
+    "project_deletion_cleanup": {
+      "fields": [
+        "requestId",
+        "manifest"
+      ],
+      "rows": 0
+    },
+    "project_deletion_receipts": {
+      "fields": [
+        "requestId",
+        "projectId",
+        "digest",
+        "createdAt"
+      ],
+      "rows": 0
+    },
+    "project_deletion_scope": {
+      "fields": [
+        "tableName",
+        "rowId"
+      ],
+      "rows": 0
+    },
+    "project_mutation_requests": {
+      "fields": [
+        "requestId",
+        "projectId",
+        "digest",
+        "response"
+      ],
+      "rows": 0
+    }
+  },
+  "lutCatalog": {
+    "count": 15,
+    "sha256": "99c9ff2aa8f382c7634c6aa04fb16da46267c1143d3a78865faaae1c8d7dc41e"
+  },
+  "annotationCatalog": {
+    "count": 20,
+    "sha256": "e0d45302ffa7ccb63888ee3767b0ff69801779b762398f055256df1b8fd8e962"
+  },
+  "lifecycleCatalog": {
+    "count": 12,
+    "sha256": "7117e7ff8cb66c653661212c2cebc265510e2af8e758e4d510b9b49d5a69a634"
+  }
+}

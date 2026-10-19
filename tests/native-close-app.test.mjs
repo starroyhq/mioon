@@ -5,7 +5,9 @@ import { readNativeLegacyClose } from '../apps/web/src/native-close-legacy.ts';
 import { createNativeCloseRegistry, installNativeCloseAdmission } from '../apps/web/src/native-close-state.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 
-const app = readFileSync(process.env.MIOON_NATIVE_CLOSE_APP_SOURCE || new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
+const app = readFileSync(process.env.MIOON_NATIVE_CLOSE_APP_SOURCE || new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 function harness() {
   const events = new Map(), registry = createNativeCloseRegistry(), settings = createSettingsNavigationRegistry();
   const window = { location: { href: 'http://127.0.0.1:8123/?project=a' }, addEventListener: (name, callback) => events.set(name, callback), removeEventListener: (name, callback) => { if (events.get(name) === callback) events.delete(name); } };

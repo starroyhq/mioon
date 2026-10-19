@@ -14,7 +14,7 @@ import {createOpacityCandidateApplicationHandlers, OPACITY_CANDIDATE_APPLICATION
 type Value = Record<string, unknown>;
 const object = (value: unknown): value is Value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const require = createRequire(import.meta.url);
-const lifecycle: unknown = require('./operation-lifecycle.mjs');
+const lifecycle: unknown = require('./operation-lifecycle.ts');
 const canonical = (value: unknown): string => JSON.stringify(value, (_key, item: unknown) => object(item)
   ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right))) : item);
 const hash = (value: unknown): string => createHash('sha256').update(canonical(value)).digest('hex');
@@ -41,19 +41,19 @@ export function createOpacityCandidateServices(store: unknown, options: {signal?
   const domain = createOpacityCandidateDomain(store);
   const lifetime = new AbortController();
   const signal = options.signal ? AbortSignal.any([lifetime.signal, options.signal]) : lifetime.signal;
-  const admissionModule: unknown = require('./timeline-export-admission.mjs');
+  const admissionModule: unknown = require('./timeline-export-admission.ts');
   if (!object(admissionModule) || typeof admissionModule.createTimelineExportAdmissionServices !== 'function') return unavailable();
   const exportAdmission: unknown = admissionModule.createTimelineExportAdmissionServices(store, {signal, hash});
   if (!object(exportAdmission) || !object(exportAdmission.handlers) || typeof exportAdmission.render !== 'function' || typeof exportAdmission.drain !== 'function') return unavailable();
   const drainAdmission = exportAdmission.drain;
-  const preflightModule: unknown = require('./timeline-preflight.mjs');
+  const preflightModule: unknown = require('./timeline-preflight.ts');
   if (!object(preflightModule) || typeof preflightModule.createTimelinePreflightServices !== 'function') return unavailable();
   const preflight: unknown = preflightModule.createTimelinePreflightServices(store, {signal});
   if (!object(preflight) || !object(preflight.handlers) || typeof preflight.drain !== 'function') return unavailable();
   const drainPreflight = preflight.drain;
   // Concrete legacy entrypoint, not a caller-selected module/validator. Keep
   // this narrow checked boundary rather than pretending legacy JS is typed.
-  const module: unknown = require('./timeline.mjs');
+  const module: unknown = require('./timeline.ts');
   if (!object(module) || typeof module.createTimelineServices !== 'function') return unavailable();
   const get = store.get;
   const made: unknown = module.createTimelineServices(store, {

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildComfyWorkflow, hashComfyWorkflow, canonicalComfyJson, validateComfyExecution, buildComfySubmission} from '../packages/business/src/comfy/workflow.mjs';
-import {COMFY_IMAGE_PROFILE_ID, COMFY_IMAGE_VERSION} from '../packages/contracts/src/comfy-images.mjs';
+import {buildComfyWorkflow, hashComfyWorkflow, canonicalComfyJson, validateComfyExecution, buildComfySubmission} from '../packages/business/src/comfy/workflow.ts';
+import {COMFY_IMAGE_PROFILE_ID, COMFY_IMAGE_VERSION} from '../packages/contracts/src/comfy-images.ts';
 
 const input = {prompt: '  A fox\nunder the moon. 中文  ', checkpoint: 'sd15/example.safetensors', seed: 123456, outputNonce: '33333333-3333-4333-8333-333333333333'};
 function execution() {

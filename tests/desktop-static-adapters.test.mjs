@@ -7,19 +7,19 @@ import {fileURLToPath} from 'node:url';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {build} from 'esbuild';
-import {exposeLocalRequire,localRequireBundlePlugin} from '../apps/desktop/scripts/bundle-local-require.mjs';
+import {exposeLocalRequire,localRequireBundlePlugin} from '../apps/desktop/scripts/bundle-local-require.ts';
 const run=promisify(execFile),repo=fileURLToPath(new URL('../',import.meta.url));
 test('desktop adapter transform refuses dynamic or escaped require and preserves other source',()=>{
  const declaration='const require = createRequire(import.meta.url);';
  assert.equal(exposeLocalRequire('export const unrelated=1;','test.ts'),null);
- assert.match(exposeLocalRequire(declaration+"\nconst result:unknown=require('./media.mjs');",'test.ts'),/require\('\.\/media.mjs'\)/u);
- for(const source of ["require(variable)","require('node:fs')",'const escape=require;',"require.resolve('./media.mjs')"])assert.throws(()=>exposeLocalRequire(declaration+'\n'+source,'test.ts'),/Non-static/u);
+ assert.match(exposeLocalRequire(declaration+"\nconst result:unknown=require('./media.ts');",'test.ts'),/require\('\.\/media.ts'\)/u);
+ for(const source of ["require(variable)","require('node:fs')",'const escape=require;',"require.resolve('./media.ts')"])assert.throws(()=>exposeLocalRequire(declaration+'\n'+source,'test.ts'),/Non-static/u);
 });
 test('a self-contained CJS bundle opens ordinary48 and exact46/47 without source-tree runtime paths',{timeout:60000},async t=>{
  const root=await mkdtemp(path.join(tmpdir(),'mioon-desktop-adapters-'));t.after(()=>rm(root,{recursive:true,force:true}));const output=path.join(root,'program.cjs');
  const source=`import assert from 'node:assert/strict';import path from 'node:path';
-import {openStore,classifyCurrentWorkspaceSchema} from './packages/business/src/db.mjs';
-import {createServices} from './packages/business/src/services.mjs';
+import {openStore,classifyCurrentWorkspaceSchema} from './packages/business/src/db.ts';
+import {createServices} from './packages/business/src/services.ts';
 import {openNewRippleOpacityCandidateApplicationStore,openRippleOpacityCandidateStore,openOpacityCandidateStore,getOpacityCandidateAssembly} from './packages/business/src/opacity-candidate-store.ts';
 import {createOpacityCandidateServices} from './packages/business/src/opacity-candidate-services.ts';
 import {createRippleOpacityCandidateWorkspaceBackup,restoreRippleOpacityCandidateWorkspaceBackup} from './packages/business/src/opacity-ripple-candidate-backup.ts';

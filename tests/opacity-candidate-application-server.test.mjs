@@ -11,11 +11,11 @@ import cp from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
 import {createFreshOpacityCandidateLaunch, createExistingOpacityCandidateLaunch, closeUnusedOpacityCandidateLaunch, assertOpacityCandidateBuild} from '../apps/server/src/opacity-candidate-launch.ts';
 import {parseOpacityCandidateArguments} from '../apps/server/src/opacity-candidate-cli.ts';
-import {createOpacityCandidateRequestApplication, startServer} from '../apps/server/src/index.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
+import {createOpacityCandidateRequestApplication, startServer} from '../apps/server/src/index.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {clipDraftRaw, clipDraftSource} from '../apps/web/src/clip-draft-state.ts';
 import {rawOpacityEnvelopeFields} from '../apps/web/src/clip-opacity-envelope-state.ts';
-import {defaultWorkspaceState} from '../apps/web/src/workspace-state.js';
+import {defaultWorkspaceState} from '../apps/web/src/workspace-state.ts';
 
 // No denied listener is retried. This suite invokes the actual shared HTTP
 // handler with streams in memory and forbids every process/listen entrypoint.

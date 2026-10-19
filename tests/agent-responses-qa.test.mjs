@@ -4,8 +4,8 @@ import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {startChatQaMock} from './agent-chat-qa-mock.mjs';
-import {streamAgentResponse} from '../packages/business/src/agent/agent-gateway.mjs';
-import {CHAT_SYSTEM_INSTRUCTION} from '../packages/business/src/agent/chat-policy.mjs';
+import {streamAgentResponse} from '../packages/business/src/agent/agent-gateway.ts';
+import {CHAT_SYSTEM_INSTRUCTION} from '../packages/business/src/agent/chat-policy.ts';
 
 test('graphical QA fixture genuinely exercises both independent production protocol adapters', async t => {
   const directory = await mkdtemp(path.join(tmpdir(), 'mioon-responses-qa-'));

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PANEL_BOUNDS, clampPanelSize, defaultWorkspaceLayout, normalizeWorkspaceLayout, isWorkspaceLayout, effectiveWorkspaceLayout } from '../apps/web/src/workspace-layout.js';
-import { defaultWorkspaceState, normalizeWorkspaceState } from '../apps/web/src/workspace-state.js';
-import { parseWorkspacePreferencesState } from '../packages/business/src/workspace-preferences.mjs';
+import { PANEL_BOUNDS, clampPanelSize, defaultWorkspaceLayout, normalizeWorkspaceLayout, isWorkspaceLayout, effectiveWorkspaceLayout } from '../apps/web/src/workspace-layout.ts';
+import { defaultWorkspaceState, normalizeWorkspaceState } from '../apps/web/src/workspace-state.ts';
+import { parseWorkspacePreferencesState } from '../packages/business/src/workspace-preferences.ts';
 
 test('panel defaults and bounds agree across renderer and strict server parsing', () => {
   assert.deepEqual(PANEL_BOUNDS, {

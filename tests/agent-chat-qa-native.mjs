@@ -4,7 +4,7 @@ import {spawn} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {mkdir, writeFile, readFile, access, appendFile} from 'node:fs/promises';
 import path from 'node:path';
-import {migrateData} from '../apps/desktop/scripts/migrate-data.mjs';
+import {migrateData} from '../apps/desktop/scripts/migrate-data.ts';
 import {startChatQaMock} from './agent-chat-qa-mock.mjs';
 import {startToolsQaMock} from './agent-tools-qa-mock.mjs';
 const toolsQa = process.argv.includes('--tools');

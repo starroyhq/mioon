@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCipheriv, createDecipheriv } from 'node:crypto';
-import { createLinuxDesktopSecretCodec, linuxDesktopSecretStorage } from '../apps/desktop/src/secret-store-linux.mjs';
-import { agentSettingsError } from '../packages/business/src/agent/config.mjs';
+import { createLinuxDesktopSecretCodec, linuxDesktopSecretStorage } from '../apps/desktop/src/secret-store-linux.ts';
+import { agentSettingsError } from '../packages/business/src/agent/config.ts';
 
 const SECRET = 'synthetic-linux-credential-never-live';
 const DEVELOPMENT = 'app.starroy.mioon.dev';

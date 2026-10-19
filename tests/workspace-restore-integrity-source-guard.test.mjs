@@ -28,7 +28,7 @@ function historicalBytes(file, bytes) {
   return changes.length ? Buffer.from(source) : bytes;
 }
 const constructors = [
-  'packages/business/src/workspace-restore-schema.mjs',
+  'packages/business/src/workspace-restore-schema.ts',
   ...[27, 29, 31, 33, 35, 37, 39].map(version => `packages/business/src/workspace-restore-schema-v${version}.ts`),
 ];
 
@@ -40,7 +40,7 @@ test('historical source manifest is pinned to the accepted baseline, not candida
   assert.deepEqual(Object.keys(manifest.constructorSources), constructors);
   assert.equal(Object.keys(manifest.fixedDependencyClosure).length, 45);
   assert.equal(Object.keys(manifest.goldenFixtures).length, 21);
-  assert.deepEqual(Object.keys(manifest.excludedRelativeImports), ['packages/business/src/db.mjs']);
+  assert.deepEqual(Object.keys(manifest.excludedRelativeImports), ['packages/business/src/db.ts']);
 });
 
 for (const [group, entries] of Object.entries({

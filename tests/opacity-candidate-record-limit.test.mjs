@@ -4,9 +4,9 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {openOpacityCandidateStore} from '../packages/business/src/opacity-candidate-store.ts';
-import {createServices} from '../packages/business/src/services.mjs';
+import {createServices} from '../packages/business/src/services.ts';
 import {captureOpacityTimelineRecord} from '../packages/contracts/src/timeline-opacity-persistence.ts';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 
 const stamp='2026-10-16T00:00:00.000Z';
 const bytes=value=>Buffer.byteLength(JSON.stringify(value));

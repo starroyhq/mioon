@@ -4,11 +4,11 @@ import {randomUUID} from 'node:crypto';
 import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {getTimelineFadeIssue, TIMELINE_FADE_MAX_FRAMES, parse, schemas} from '../packages/contracts/src/index.mjs';
-import {READ_TOOL_DEFINITIONS, parseReadToolArguments} from '../packages/business/src/agent/read-tool-policy.mjs';
-import {EDIT_TOOL_DEFINITIONS, parseEditToolArguments} from '../packages/business/src/agent/edit-tool-policy.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {getTimelineFadeIssue, TIMELINE_FADE_MAX_FRAMES, parse, schemas} from '../packages/contracts/src/index.ts';
+import {READ_TOOL_DEFINITIONS, parseReadToolArguments} from '../packages/business/src/agent/read-tool-policy.ts';
+import {EDIT_TOOL_DEFINITIONS, parseEditToolArguments} from '../packages/business/src/agent/edit-tool-policy.ts';
 
 // Synthetic metadata only: these tests never invoke providers or media workers.
 const fields = ['fadeInFrames', 'fadeOutFrames'];

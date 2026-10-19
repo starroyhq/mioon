@@ -4,10 +4,10 @@ import http from 'node:http';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {mkdir,readFile,writeFile,appendFile,unlink,access,readdir} from 'node:fs/promises';
-import {startServer} from '../apps/server/src/index.mjs';
-import {migrateData} from '../apps/desktop/scripts/migrate-data.mjs';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {migrateData} from '../apps/desktop/scripts/migrate-data.ts';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
 export const qaRoot=path.resolve('evidence/dockable-panels');
 export const runtime=path.join(qaRoot,'browser-runtime');
 export async function prepareDockableFixture(){

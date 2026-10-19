@@ -10,7 +10,7 @@ import {CLI_PROCESS_TIMEOUT_MS, InspectionProcessError, runInspectionProcess} fr
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const preload = path.join(repo, 'tests/helpers/inspection-wire-fixture.mjs');
-const entry = path.join(repo, 'apps/cli/src/index.mjs');
+const entry = path.join(repo, 'apps/cli/src/index.ts');
 const sensitive = 'synthetic-diagnostic-private-value';
 function environment(extra = {}) {
   const env = {...process.env};

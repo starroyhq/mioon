@@ -11,13 +11,13 @@ import {operationMessages} from '../packages/i18n/src/catalogs/operations.ts';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const cleanEnv = () => Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('MIOON_')));
 function cli(args, env = {}) {
-  const result = spawnSync(process.execPath, ['apps/cli/src/index.mjs', ...args], {cwd:root, env:{...cleanEnv(), ...env}, encoding:'utf8', timeout:30000, maxBuffer:8*1024*1024});
+  const result = spawnSync(process.execPath, ['apps/cli/src/index.ts', ...args], {cwd:root, env:{...cleanEnv(), ...env}, encoding:'utf8', timeout:30000, maxBuffer:8*1024*1024});
   assert.ifError(result.error);
   return {...result, json:JSON.parse(result.stdout)};
 }
 // Minimal bounded stdio harness: no backend, server bootstrap or generation.
 async function mcp(t, args = [], env = {}) {
-  const child = spawn(process.execPath, ['apps/mcp/src/index.mjs', ...args], {cwd:root, env:{...cleanEnv(), ...env}, stdio:['pipe','pipe','pipe']});
+  const child = spawn(process.execPath, ['apps/mcp/src/index.ts', ...args], {cwd:root, env:{...cleanEnv(), ...env}, stdio:['pipe','pipe','pipe']});
   let buffer = '', next = 0; const pending = new Map();
   child.stderr.resume();
   t.after(() => { child.kill('SIGKILL'); for (const entry of pending.values()) { clearTimeout(entry.timer); entry.reject(new Error('MCP closed')); } });
@@ -114,7 +114,7 @@ test('launch locale is stripped before RPC and never causes submission replay', 
   const env={MIOON_BASE_URL:`http://127.0.0.1:${server.address().port}`,MIOON_TOKEN:'synthetic-locale-test-token'};
   // Async child so the fixture server stays responsive.
   for(const locale of LOCALES) await new Promise((resolve,reject)=>{
-    const child=spawn(process.execPath,['apps/cli/src/index.mjs','--locale',locale,'project','create','--input','{"name":"Keep 用户 日本語"}'],{cwd:root,env:{...cleanEnv(),...env},stdio:'ignore'});
+    const child=spawn(process.execPath,['apps/cli/src/index.ts','--locale',locale,'project','create','--input','{"name":"Keep 用户 日本語"}'],{cwd:root,env:{...cleanEnv(),...env},stdio:'ignore'});
     const timer=setTimeout(()=>{child.kill('SIGKILL');reject(new Error('CLI exceeded 30 seconds'));},30000);
     child.on('exit',code=>{clearTimeout(timer);code===0?resolve():reject(new Error(`CLI exit ${code}`));});child.on('error',reject);
   });

@@ -2,9 +2,9 @@ import {randomUUID} from 'node:crypto';
 import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 
 export async function subjectFixture(t, options={}) {
  const root=mkdtempSync(path.join(tmpdir(),'mioon-subject-recovery-'));

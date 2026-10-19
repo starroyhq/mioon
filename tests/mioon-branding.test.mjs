@@ -3,9 +3,9 @@ import { LOCALES } from '../packages/i18n/src/index.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
-import { identityForChannel } from '../apps/desktop/identity.cjs';
+import { identityForChannel } from '../apps/desktop/identity.ts';
 import { resolveConnection, connectionSource } from '@mioon/client/connection';
-import { COOKIE_NAME, sessionCookie } from '../apps/desktop/src/security.mjs';
+import { COOKIE_NAME, sessionCookie } from '../apps/desktop/src/security.ts';
 const read = name => readFile(new URL(`../${name}`, import.meta.url), 'utf8');
 
 test('Mioon is the sole application identity while production and development data roots remain exact', () => {
@@ -25,11 +25,11 @@ test('every workspace package uses @mioon and CLI publishes no old command alias
       assert.equal(Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }).some(name => name.startsWith('@video-workbench/')), false);
     }
   }
-  assert.deepEqual(JSON.parse(await read('apps/cli/package.json')).bin, { mioon: './src/index.mjs' });
+  assert.deepEqual(JSON.parse(await read('apps/cli/package.json')).bin, { mioon: './src/index.ts' });
 });
 
 test('login, loading, header and browser title display Mioon rather than prior branding', async () => {
-  const app = await read('apps/web/src/App.jsx'), login = await read('apps/web/src/LoginScreen.tsx'), html = await read('apps/web/index.html');
+  const app = await read('apps/web/src/App.tsx'), login = await read('apps/web/src/LoginScreen.tsx'), html = await read('apps/web/index.html');
   assert.match(app, /className="boot-page"[\s\S]*?<\/span>Mioon/);
   assert.match(app, /<WorkbenchTopbar brand=\{<a[\s\S]*?className="brand-name">Mioon/);
   assert.match(app, /import Login from '\.\/LoginScreen\.tsx';/);
@@ -41,7 +41,7 @@ test('login, loading, header and browser title display Mioon rather than prior b
   assert.doesNotMatch(app, />frame|Frame 影像|Video Workbench|VideoWorkbench/);
   assert.doesNotMatch(login, />frame|Frame 影像|Video Workbench|VideoWorkbench/);
   assert.match(html, /<title>Mioon<\/title>/);
-  assert.match(await read('apps/desktop/src/main.mjs'), /title: identity\.productName/);
+  assert.match(await read('apps/desktop/src/main.ts'), /title: identity\.productName/);
 });
 
 test('old connection environment names do not act as aliases; current names resolve explicitly', async () => {

@@ -6,7 +6,7 @@ import {spawn} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import builderConfig from '../apps/desktop/builder-config.cjs';
+import builderConfig from '../apps/desktop/builder-config.ts';
 
 // Historical regression evidence only. These immutable 9e9598d source bytes
 // intentionally reproduce the old synchronous defect. Current macOS async
@@ -16,6 +16,10 @@ const fixtureFile = new URL('./fixtures/keychain-sync-9e9598d.json', import.meta
 const raw = await readFile(fixtureFile);
 const fixture = JSON.parse(raw);
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
+// Frozen historical 9e path names. The source tree has since moved to .ts (and
+// identity.cjs to identity.ts), but this fixture is immutable regression evidence:
+// the replay child executes only the historical copies written under these names.
+// Current on-disk sources are checked separately below and never parsed from it.
 const expected = ['tests/keychain-timeout-audit.test.mjs', 'apps/desktop/identity.cjs',
   ...['secret-store', 'image-secret-store', 'image-secret-broker', 'secret-broker', 'security', 'shutdown', 'supervisor']
     .map(name => `apps/desktop/src/${name}.mjs`)];
@@ -71,11 +75,11 @@ test('historical Keychain fixture is outside production staging and package allo
   for (const channel of ['development', 'production']) {
     assert.deepEqual(builderConfig(channel).files, ['main.cjs', 'backend.cjs', 'preload.cjs', 'package.json', 'web/**/*', 'icons/**/*', 'licenses/**/*', '!node_modules/**/*']);
   }
-  const build = await readFile(path.join(root, 'apps/desktop/scripts/build.mjs'), 'utf8');
+  const build = await readFile(path.join(root, 'apps/desktop/scripts/build.ts'), 'utf8');
   assert.match(build, /for \(const name of \['main', 'backend'\]\)/);
   assert.doesNotMatch(build, /keychain-sync-9e9598d|tests\/fixtures/);
   for (const name of ['main', 'secret-store', 'image-secret-store', 'image-secret-broker', 'secret-broker']) {
-    const source = await readFile(path.join(root, `apps/desktop/src/${name}.mjs`), 'utf8');
+    const source = await readFile(path.join(root, `apps/desktop/src/${name}.ts`), 'utf8');
     assert.doesNotMatch(source, /keychain-sync-9e9598d|tests\/fixtures/);
   }
 });

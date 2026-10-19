@@ -5,11 +5,11 @@ import {mkdtempSync,rmSync,readFileSync,existsSync,unlinkSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {createComfySettings} from '../packages/business/src/comfy/settings.mjs';
-import {DEFAULT_COMFY_IMAGE_CONFIGURATION,COMFY_IMAGE_OPTIONS} from '../packages/contracts/src/comfy-images.mjs';
-import {imageProfilesResponseSchema} from '../packages/contracts/src/images.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createComfySettings} from '../packages/business/src/comfy/settings.ts';
+import {DEFAULT_COMFY_IMAGE_CONFIGURATION,COMFY_IMAGE_OPTIONS} from '../packages/contracts/src/comfy-images.ts';
+import {imageProfilesResponseSchema} from '../packages/contracts/src/images.ts';
 import {deflateSync} from 'node:zlib';
 
 function syntheticPng(edge=512,color=0){

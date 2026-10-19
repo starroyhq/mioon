@@ -2,20 +2,21 @@ import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { evaluateSource } from './helpers/eval-source.mjs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildSync } from 'esbuild';
-import { defaultWorkspaceState, reconcileWorkspaceState } from '../apps/web/src/workspace-state.js';
-import { workspaceOriginScope } from '../apps/web/src/workspace-origin.js';
+import { defaultWorkspaceState, reconcileWorkspaceState } from '../apps/web/src/workspace-state.ts';
+import { workspaceOriginScope } from '../apps/web/src/workspace-origin.ts';
 import { projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind } from '../apps/web/src/project-open-state.ts';
-import { validateProjectWorkspace } from '../apps/web/src/restored-workspace.js';
+import { validateProjectWorkspace } from '../apps/web/src/restored-workspace.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 import { editorInitialSelection } from '../apps/web/src/editor-native-window.ts';
 import { chooseInitialProject, retainLastProjectScope, createProjectBootGuard, assertLastProjectBootIdentity } from '../apps/web/src/last-project-navigation.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const app = readFileSync(join(root, 'apps/web/src/App.jsx'), 'utf8');
+const app = readFileSync(join(root, 'apps/web/src/App.tsx'), 'utf8');
 const A = '88000000-0000-4000-8000-000000000001', B = '88000000-0000-4000-8000-000000000002';
 const emptyData = { project: null, shots: [], nodes: [], assets: [], versions: [], edges: [] };
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
@@ -25,7 +26,7 @@ function section(source, start, end) {
   assert.equal(source.indexOf(start, a + start.length), -1, `Ambiguous source seam: ${start}`);
   return source.slice(a, b);
 }
-const compile = (source, name, env) => Function(...Object.keys(env), `${source}\nreturn ${name};`)(...Object.values(env));
+const compile = (source, name, env) => evaluateSource(`${source}\nreturn ${name};`, Object.keys(env), Object.values(env), {loader: 'tsx'});
 const modesMarkup = section(app, '<Tabs value={workspaceMode} onValueChange={changeMode}', '<details className="topbar-status"');
 const homeBoundary = section(app, '  if (!workbenchReady) return <ProjectHome ', '  return <main className={`workbench');
 const refreshSource = section(app, '  const refresh = useCallback(', '  async function revealImageAsset(');
@@ -88,7 +89,7 @@ const fixture = `
   }
   export { React, Tabs, TabsList, TabsTrigger, Button };
 `;
-const built = buildSync({ stdin: { contents: fixture, loader: 'jsx', resolveDir: join(root, 'apps/web') }, bundle: true, platform: 'node', format: 'cjs', write: false, jsx: 'automatic', loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '"production"' } });
+const built = buildSync({ stdin: { contents: fixture, loader: 'tsx', resolveDir: join(root, 'apps/web') }, bundle: true, platform: 'node', format: 'cjs', write: false, jsx: 'automatic', loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '"production"' } });
 const module = { exports: {} };
 Function('require', 'module', 'exports', built.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
 const ui = module.exports;

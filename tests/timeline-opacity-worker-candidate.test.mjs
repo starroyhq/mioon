@@ -18,7 +18,7 @@ for (const name of ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execF
 syncBuiltinESMExports();
 const runtimeKey = Symbol.for('mioon.test.opacity-worker-codec');
 const expression = 'globalThis[Symbol.for("mioon.test.opacity-worker-codec")]';
-const runtimeUrl = new URL('../packages/business/src/media-runtime.mjs', import.meta.url).href;
+const runtimeUrl = new URL('../packages/business/src/media-runtime.ts', import.meta.url).href;
 const actualUrl = runtimeUrl + '?opacity-worker-actual-runtime';
 let activeCodec;
 globalThis[runtimeKey] = {
@@ -35,8 +35,8 @@ const hooks = registerHooks({load(url, context, next) {
 await import('@mioon/contracts');
 const runtime = await import(actualUrl);
 const stores = await import('../packages/business/src/opacity-candidate-store.ts');
-const serviceModule = await import('../packages/business/src/services.mjs');
-const workers = await import('../packages/business/src/jobs.mjs');
+const serviceModule = await import('../packages/business/src/services.ts');
+const workers = await import('../packages/business/src/jobs.ts');
 const restore = await import('../packages/business/src/workspace-restore-schema-v43.ts');
 const authority = await import('../packages/business/src/opacity-candidate-render-authority.ts');
 const bindings = await import('../packages/business/src/timeline-opacity-render-binding.ts');

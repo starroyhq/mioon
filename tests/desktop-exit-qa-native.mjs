@@ -20,14 +20,14 @@ import {createReadStream} from 'node:fs';
 import {readFile,writeFile,mkdir,lstat,readdir,realpath,open,rename,link,unlink} from 'node:fs/promises';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
-import {openStore,ownsStoreLock} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {createProviderRegistry} from '../packages/business/src/provider-registry.mjs';
+import {openStore,ownsStoreLock} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
 import {createLocalDrafts} from '../packages/business/src/local-drafts.ts';
-import {createTimelineRecoveryBoundary} from '../packages/business/src/timeline-recovery.mjs';
-import {createWorkspacePreferences} from '../packages/business/src/workspace-preferences.mjs';
-import {defaultWorkspaceState} from '../apps/web/src/workspace-state.js';
-import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '../packages/contracts/src/private-storage.mjs';
+import {createTimelineRecoveryBoundary} from '../packages/business/src/timeline-recovery.ts';
+import {createWorkspacePreferences} from '../packages/business/src/workspace-preferences.ts';
+import {defaultWorkspaceState} from '../apps/web/src/workspace-state.ts';
+import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '../packages/contracts/src/private-storage.ts';
 
 const repo=fileURLToPath(new URL('../',import.meta.url)),require=createRequire(import.meta.url);
 const ffmpeg='/opt/homebrew/bin/ffmpeg',ffprobe='/opt/homebrew/bin/ffprobe';
@@ -214,7 +214,7 @@ async function artifactHash(file){
 }
 async function metadata(){
   const c=await context(),sources={},artifacts={};
-  for(const name of ['exit-diagnostics.ts','backend.mjs','supervisor.mjs'])sources[name]=await artifactHash(path.join(repo,'apps/desktop/src',name));
+  for(const name of ['exit-diagnostics.ts','backend.ts','supervisor.ts'])sources[name]=await artifactHash(path.join(repo,'apps/desktop/src',name));
   sources['desktop-exit-qa-native.mjs']=await artifactHash(fileURLToPath(import.meta.url));
   for(const name of ['main.cjs','backend.cjs','preload.cjs','package.json'])artifacts[name]=await artifactHash(path.join(repo,'apps/desktop/build',name));
   const {stdout}=await executeFile('/usr/bin/sw_vers',['-productVersion'],{timeout:2000,maxBuffer:4096}),logs=await diagnostics(c);

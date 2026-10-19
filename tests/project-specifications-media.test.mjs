@@ -8,9 +8,9 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash,randomUUID} from 'node:crypto';
 import {TIMELINE_OUTPUT_PRESETS,isExportPreflightResponse} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {startWorker} from '../packages/business/src/jobs.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {startWorker} from '../packages/business/src/jobs.ts';
 
 // Synthetic, local-only shared-service/worker acceptance. No provider/model calls.
 // Retained old bytes are immutable; freshly encoded MP4 bytes are not promised

@@ -13,11 +13,11 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient} from '@mioon/client';
 import {EXPORT_LOUDNESS_PROFILE, isExportLoudnessResponse} from '@mioon/contracts/export-loudness';
-import {startServer} from '../apps/server/src/index.mjs';
-import {mediaEnvironment, mediaExecutable} from '../packages/business/src/media-environment.mjs';
-import {run, runStreaming, checkMediaEffect} from '../packages/business/src/media-runtime.mjs';
-import {withProbePermit} from '../packages/business/src/media-probe.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {mediaEnvironment, mediaExecutable} from '../packages/business/src/media-environment.ts';
+import {run, runStreaming, checkMediaEffect} from '../packages/business/src/media-runtime.ts';
+import {withProbePermit} from '../packages/business/src/media-probe.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {createExportLoudnessDecoder} from '../packages/business/src/export-loudness-decoder.ts';
 import {floatSnapshotSha256} from '../packages/business/src/timeline-float-outcome.ts';
 
@@ -36,14 +36,14 @@ async function bounded(promise, label) {
   finally {clearTimeout(timer);}
 }
 async function cli(url, input) {
-  const {stdout, stderr} = await execute(process.execPath, [path.join(repo, 'apps/cli/src/index.mjs'), 'timeline', 'export', 'loudness', '--input', JSON.stringify(input)],
+  const {stdout, stderr} = await execute(process.execPath, [path.join(repo, 'apps/cli/src/index.ts'), 'timeline', 'export', 'loudness', '--input', JSON.stringify(input)],
     {cwd: repo, env: clientEnvironment(url), encoding: 'utf8', timeout: 20000, maxBuffer: 1024 * 1024});
   assert.equal(stdout.trim().split('\n').length, 1); assert.ok(!stdout.includes(token) && !stderr.includes(token));
   const body = JSON.parse(stdout); assert.equal(body.ok, true, stdout); return body.data;
 }
 async function official(t, url) {
   const client = new Client({name: 'export-loudness-real-service', version: '1.0.0'}, {capabilities: {}});
-  const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.mjs')], cwd: repo,
+  const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.ts')], cwd: repo,
     env: clientEnvironment(url), stderr: 'ignore'});
   t.after(() => bounded(client.close(), 'MCP close')); await bounded(client.connect(transport), 'MCP connect');
   return async input => {

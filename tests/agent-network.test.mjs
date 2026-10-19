@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {Readable} from 'node:stream';
 import {setTimeout as delay} from 'node:timers/promises';
-import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.mjs';
-import {isPublicAgentAddress, resolveAgentDestination, assertPinnedAgentSocket, createAgentTransport} from '../packages/business/src/agent/network-policy.mjs';
-import {safeAgentChatError} from '../packages/business/src/agent/chat-errors.mjs';
+import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
+import {isPublicAgentAddress, resolveAgentDestination, assertPinnedAgentSocket, createAgentTransport} from '../packages/business/src/agent/network-policy.ts';
+import {safeAgentChatError} from '../packages/business/src/agent/chat-errors.ts';
 const configuration = {...DEFAULT_AGENT_CONFIGURATION};
 const publicAnswers = async () => [{address: '8.8.8.8', family: 4}];
 function injectedRequest({peer = '8.8.8.8', authorized = true, status = 200, headers = {'content-type': 'text/event-stream'}, beforeConnect, body = 'data: [DONE]\n\n'} = {}) {

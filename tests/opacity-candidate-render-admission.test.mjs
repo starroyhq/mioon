@@ -6,12 +6,12 @@ import {createHash, randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {openOpacityCandidateStore, getOpacityCandidateAssembly} from '../packages/business/src/opacity-candidate-store.ts';
 import {installWorkspaceRestoreSchemaV43} from '../packages/business/src/workspace-restore-schema-v43.ts';
-import {createServices} from '../packages/business/src/services.mjs';
-import {createTimelineServices} from '../packages/business/src/timeline.mjs';
-import {createTimelineExportAdmissionServices} from '../packages/business/src/timeline-export-admission.mjs';
+import {createServices} from '../packages/business/src/services.ts';
+import {createTimelineServices} from '../packages/business/src/timeline.ts';
+import {createTimelineExportAdmissionServices} from '../packages/business/src/timeline-export-admission.ts';
 import {isOpacityRenderRecord} from '../packages/contracts/src/timeline-opacity-render-candidate.ts';
-import {resolveTimelineExportDelivery} from '../packages/contracts/src/index.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
+import {resolveTimelineExportDelivery} from '../packages/contracts/src/index.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 
 const stamp='2026-10-16T00:00:00.000Z';
 const curve=()=>({profileId:'mioon-clip-linear-opacity-v1',points:[{frame:0,opacity:0},{frame:30,opacity:1}]});

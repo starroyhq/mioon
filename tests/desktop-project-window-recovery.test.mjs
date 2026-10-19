@@ -59,7 +59,7 @@ test('backend failure blocks interaction irreversibly for that scope and grants 
 
 test('actual main stop retains the old audition host until exact drain, and never clears a replacement', async () => {
   const {readFile} = await import('node:fs/promises'); const vm = await import('node:vm');
-  const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
+  const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
   const source = main.slice(main.indexOf('async function stop() {'), main.indexOf('\nasync function cleanupStoppedBackend()', main.indexOf('async function stop() {')));
   for (const replace of [false, true]) {
     const gate = defer(), calls=[]; const audio={shutdown: () => {calls.push('drain'); return gate.promise;}};

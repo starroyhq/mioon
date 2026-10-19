@@ -5,9 +5,9 @@ import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {Worker} from 'node:worker_threads';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {parse, schemas, descriptions} from '../packages/contracts/src/index.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {parse, schemas, descriptions} from '../packages/contracts/src/index.ts';
 
 // Synthetic metadata keeps split correctness independent of FFmpeg and providers.
 // Independent workers below use the same disposable SQLite file, not one JS queue.
@@ -289,7 +289,7 @@ async function independentRequests(t, f, inputs) {
       });
       parentPort.postMessage({ready: true});
     })().catch(error => { throw error; });`;
-  const workers = inputs.map(input => new Worker(source, {eval: true, workerData: {root: f.root, input, db: new URL('../packages/business/src/db.mjs', import.meta.url).href, services: new URL('../packages/business/src/services.mjs', import.meta.url).href}}));
+  const workers = inputs.map(input => new Worker(source, {eval: true, workerData: {root: f.root, input, db: new URL('../packages/business/src/db.ts', import.meta.url).href, services: new URL('../packages/business/src/services.ts', import.meta.url).href}}));
   t.after(() => Promise.all(workers.map(worker => worker.terminate())));
   await Promise.all(workers.map(worker => new Promise((resolve, reject) => { worker.once('message', message => { assert.equal(message.ready, true); resolve(); }); worker.once('error', reject); })));
   const results = workers.map(worker => new Promise((resolve, reject) => { worker.once('message', resolve); worker.once('error', reject); }));

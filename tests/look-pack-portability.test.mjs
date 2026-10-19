@@ -4,12 +4,12 @@ import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { openStore, getWorkspaceRestoreContext } from '../packages/business/src/db.mjs';
-import { createServices } from '../packages/business/src/services.mjs';
-import { startWorker } from '../packages/business/src/jobs.mjs';
-import { run } from '../packages/business/src/media-runtime.mjs';
-import { createWorkspaceBackup } from '../packages/business/src/workspace-backup.mjs';
-import { restoreWorkspaceBackup } from '../packages/business/src/workspace-restore.mjs';
+import { openStore, getWorkspaceRestoreContext } from '../packages/business/src/db.ts';
+import { createServices } from '../packages/business/src/services.ts';
+import { startWorker } from '../packages/business/src/jobs.ts';
+import { run } from '../packages/business/src/media-runtime.ts';
+import { createWorkspaceBackup } from '../packages/business/src/workspace-backup.ts';
+import { restoreWorkspaceBackup } from '../packages/business/src/workspace-restore.ts';
 
 for (const sourceSchema of [32, 34]) test(`project-owned Look survives removed source file, cold reopen, render and restored${sourceSchema + 1} backup`, { timeout: 120000 }, async t => {
   const base = await mkdtemp(path.join(tmpdir(), 'mioon-look-portable-')), root = path.join(base, 'workspace');

@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {initializeWorkspaceSchema26, validateWorkspaceSchema26, validateWorkspaceSchema24For26Migration} from '../packages/business/src/workspace-schema-v26.ts';
-import {migrateComfyImageReviewSchema} from '../packages/business/src/images/review-schema.mjs';
-import {migrateComfyImageSchema} from '../packages/business/src/comfy-image-schema.mjs';
-import {migrateFrameSchema} from '../packages/business/src/frame-schema.mjs';
-import {migrateTimelineFormatSchema} from '../packages/business/src/timeline-format-schema.mjs';
-import {migrateTimelineFormatEditTasks, migrateTimelineSubtitleEditTasks} from '../packages/business/src/edit-task-schema.mjs';
+import {migrateComfyImageReviewSchema} from '../packages/business/src/images/review-schema.ts';
+import {migrateComfyImageSchema} from '../packages/business/src/comfy-image-schema.ts';
+import {migrateFrameSchema} from '../packages/business/src/frame-schema.ts';
+import {migrateTimelineFormatSchema} from '../packages/business/src/timeline-format-schema.ts';
+import {migrateTimelineFormatEditTasks, migrateTimelineSubtitleEditTasks} from '../packages/business/src/edit-task-schema.ts';
 import {open, fixture, snapshot, preserved, task, insert, probe, facade, assertBoundedSequenceProjection} from './workspace-schema26-fixtures.mjs';
 
 function database(t) {
@@ -25,7 +25,7 @@ function sequence(db) {
 
 function setSequence(db, value, rowid = 9007199254741991n) {
   db.exec("DELETE FROM main.sqlite_sequence WHERE name='edit_tasks'");
-  db.prepare("INSERT INTO main.sqlite_sequence(rowid,name,seq) VALUES(?,'edit_tasks',?)").run(rowid, value);
+  const insertion=db.prepare("INSERT INTO main.sqlite_sequence(rowid,name,seq) VALUES(?,'edit_tasks',?)");insertion.setReadBigInts(true);insertion.run(rowid, value);
 }
 
 function transaction(db, fn) {
@@ -168,7 +168,7 @@ for (const duplicate of [8123n, 8123]) {
   test(`ordinary26 rejects duplicate INTEGER/REAL sequence rows even with valid high-water values (${typeof duplicate})`, t => {
     const db = database(t);
     setSequence(db, 8123);
-    db.prepare("INSERT INTO sqlite_sequence(name,seq) VALUES('edit_tasks',?)").run(duplicate);
+    const duplicateInsert=db.prepare("INSERT INTO sqlite_sequence(name,seq) VALUES('edit_tasks',?)");duplicateInsert.setReadBigInts(true);duplicateInsert.run(duplicate);
     const before = snapshot(db);
     assert.throws(() => initializeWorkspaceSchema26(db), {code: 'RESTORE_SCHEMA_UNSUPPORTED'});
     assert.deepEqual(snapshot(db), before);

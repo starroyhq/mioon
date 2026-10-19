@@ -7,17 +7,17 @@ import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
-import {migrateImageEditReviewSchema} from '../packages/business/src/images/review-schema.mjs';
-import {openStore} from '../packages/business/src/db.mjs';
-import {canonicalImageInput as canonical} from '../packages/contracts/src/images.mjs';
-import {COMFY_IMAGE_OPTIONS,COMFY_IMAGE_POLICY,DEFAULT_COMFY_IMAGE_CONFIGURATION} from '../packages/contracts/src/comfy-images.mjs';
-import {buildComfyWorkflow,hashComfyWorkflow} from '../packages/business/src/comfy/workflow.mjs';
+import {migrateImageEditReviewSchema} from '../packages/business/src/images/review-schema.ts';
+import {openStore} from '../packages/business/src/db.ts';
+import {canonicalImageInput as canonical} from '../packages/contracts/src/images.ts';
+import {COMFY_IMAGE_OPTIONS,COMFY_IMAGE_POLICY,DEFAULT_COMFY_IMAGE_CONFIGURATION} from '../packages/contracts/src/comfy-images.ts';
+import {buildComfyWorkflow,hashComfyWorkflow} from '../packages/business/src/comfy/workflow.ts';
 const fixtureSql=readFileSync(new URL('./fixtures/image-edit-legacy-schema22.sql',import.meta.url),'utf8');
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const options={size:'1024x1024',quality:'low',outputFormat:'png',background:'opaque',n:1},at='2026-10-11T00:00:00.000Z';
 const model='gpt-image-2.5-flare-2026-09-08',destination='https://api.openai.com/v1/images/generations';
 const policy={maxPostAttempts:1,automaticRetry:false,price:'usage-based-unknown',promptStorage:'local-plaintext'};
-const insert=(db,table,value)=>{const keys=Object.keys(value);return db.prepare(`INSERT INTO ${table}(${keys.join(',')}) VALUES(${keys.map(()=>'?').join(',')})`).run(...Object.values(value));};
+const insert=(db,table,value)=>{const keys=Object.keys(value);const statement=db.prepare(`INSERT INTO ${table}(${keys.join(',')}) VALUES(${keys.map(()=>'?').join(',')})`);statement.setReadBigInts(true);return statement.run(...Object.values(value));};
 function database(file=':memory:'){const db=new DatabaseSync(file);db.exec('PRAGMA foreign_keys=ON');db.exec(fixtureSql);return db;}
 function snapshot(db){const objects=db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all(),rows={},foreignKeys={};for(const {name} of objects.filter(value=>value.type==='table')){const query=db.prepare(`SELECT rowid AS retainedRowid,* FROM "${name}" ORDER BY rowid`);query.setReadBigInts(true);rows[name]=query.all();foreignKeys[name]=db.prepare(`PRAGMA foreign_key_list("${name}")`).all();}return {objects,rows,foreignKeys};}
 function normalizeStartupTaskObject(row){

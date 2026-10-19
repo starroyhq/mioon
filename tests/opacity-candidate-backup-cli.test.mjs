@@ -10,7 +10,7 @@ import {opacityWorkspaceBackupResultSchema, opacityWorkspaceRestoreResultSchema,
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const entry = path.join(repo, 'apps/cli/src/opacity-backup.ts');
-const legacy = path.join(repo, 'apps/cli/src/backup.mjs');
+const legacy = path.join(repo, 'apps/cli/src/backup.ts');
 const secret = 'SYNTHETIC_CLI_CREDENTIAL_NEVER_LIVE';
 const guards = ['BOUNDARY', 'NETWORK', 'SUBPROCESS', 'CREDENTIAL_ENV', 'CREDENTIAL_FILE'];
 
@@ -18,7 +18,7 @@ const guards = ['BOUNDARY', 'NETWORK', 'SUBPROCESS', 'CREDENTIAL_ENV', 'CREDENTI
  * records evidence outside sanitized diagnostics, so a caught error cannot
  * disguise an attempted provider/media/network/credential operation. */
 function guardFor(base, extra = '') {
-  const guard = path.join(base, `guard-${fs.readdirSync(base).filter(name => name.startsWith('guard-')).length}.mjs`);
+  const guard = path.join(base, `guard-${fs.readdirSync(base).filter(name => name.startsWith('guard-')).length}.ts`);
   const violations = path.join(base, 'guard-violations.jsonl');
   fs.writeFileSync(guard, `
 import {registerHooks,syncBuiltinESMExports} from 'node:module';
@@ -141,7 +141,7 @@ test('candidate CLI preserves original parser validation and identifies its own 
     ['restore-status', '--destination', absent, '--restoration-id', 'invalid'],
   ]) {
     const result = await run(t, f, args), error = failure(result, 'VALIDATION_ERROR', 2);
-    assert.match(error.message, /apps\/cli\/src\/opacity-backup\.ts --help/); assert.ok(!error.message.includes('backup.mjs'));
+    assert.match(error.message, /apps\/cli\/src\/opacity-backup\.ts --help/); assert.ok(!error.message.includes('backup.ts'));
   }
   for (const bad of ['relative', `${f.base}/../source`, `${f.source}/`]) failure(await run(t, f, ['verify', '--directory', bad]), 'WORKSPACE_BACKUP_INVALID_PATH', 2);
   assert.equal(fs.existsSync(absent), false);

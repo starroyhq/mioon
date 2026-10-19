@@ -22,7 +22,7 @@ globalThis[key] = {async run(command, argv, options = {}) {
   return JSON.stringify({streams: [{index:0, codec_type:'video', codec_name:'h264', width:64, height:48, pix_fmt:'yuv420p',
     r_frame_rate:'30/1', avg_frame_rate:'30/1', duration:'1', sample_aspect_ratio:'1:1', time_base:'1/30000'}], format:{format_name:'mov,mp4', duration:'1'}});
 }};
-const runtimeUrl = new URL('../packages/business/src/media-runtime.mjs', import.meta.url).href;
+const runtimeUrl = new URL('../packages/business/src/media-runtime.ts', import.meta.url).href;
 const actualUrl = runtimeUrl + '?opacity-application-actual-runtime';
 const hook = registerHooks({load(url, context, next) {
   if (url === runtimeUrl) return {format:'module',shortCircuit:true,source:`export * from ${JSON.stringify(actualUrl)};export const run=(...args)=>globalThis[Symbol.for("mioon.test.opacity-application-import-codec")].run(...args);`};
@@ -30,8 +30,8 @@ const hook = registerHooks({load(url, context, next) {
 }});
 const {openNewOpacityCandidateApplicationStore, openOpacityCandidateStore, isOpacityCandidateApplicationStore} = await import('../packages/business/src/opacity-candidate-store.ts');
 const {createOpacityCandidateApplicationServices, createOpacityCandidateServices} = await import('../packages/business/src/opacity-candidate-services.ts');
-const {createServices} = await import('../packages/business/src/services.mjs');
-const {openStore} = await import('../packages/business/src/db.mjs');
+const {createServices} = await import('../packages/business/src/services.ts');
+const {openStore} = await import('../packages/business/src/db.ts');
 after(() => {assert.equal(childAttempts,0);hook.deregister();delete globalThis[key];mock.restoreAll();syncBuiltinESMExports();});
 const code = expected => error => error?.code === expected;
 const bytes = Buffer.concat([Buffer.from([0,0,0,16]),Buffer.from('ftypisom'),Buffer.from('synthetic isolated bytes; never native decoded')]);

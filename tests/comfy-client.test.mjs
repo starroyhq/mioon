@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
-import {createClient} from '../packages/client/src/index.mjs';
-import {canonicalImageInput} from '../packages/contracts/src/images.mjs';
+import {createClient} from '../packages/client/src/index.ts';
+import {canonicalImageInput} from '../packages/contracts/src/images.ts';
 const env={MIOON_BASE_URL:'http://127.0.0.1:4318',MIOON_TOKEN:'synthetic-comfy-client-token'};
 const at='2026-10-10T00:00:00.000Z',operation='image.task.observeRemote';
 function fixture(){const input={projectId:randomUUID(),taskId:randomUUID(),expectedRevision:3,requestId:randomUUID()};return {input,ack:{id:randomUUID(),projectId:input.projectId,taskId:input.taskId,requestId:input.requestId,state:'queued',revision:1,remoteRevision:4,createdAt:at}};}

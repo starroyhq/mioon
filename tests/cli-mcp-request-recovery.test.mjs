@@ -54,7 +54,7 @@ for (const operation of ['image.review.prepare', 'image.request.get']) {
   const input = operation === 'image.review.prepare' ? review : {projectId, requestId};
   test(`CLI preserves operation-specific recovery for ${operation}`, {timeout: 10000}, async t => {
     const f = await fixture(t);
-    await assert.rejects(execute(process.execPath, ['apps/cli/src/index.mjs', ...operation.split('.'), '--input', JSON.stringify(input)],
+    await assert.rejects(execute(process.execPath, ['apps/cli/src/index.ts', ...operation.split('.'), '--input', JSON.stringify(input)],
       {cwd: repo, env: f.env, timeout: 5000}), error => {
       assert.equal(error.code, 4);
       const lines = error.stdout.trim().split('\n');
@@ -70,7 +70,7 @@ for (const operation of ['image.review.prepare', 'image.request.get']) {
   test(`MCP preserves operation-specific recovery for ${operation}`, {timeout: 10000}, async t => {
     const f = await fixture(t);
     const client = new Client({name: 'synthetic-recovery-test', version: '1.0.0'}, {capabilities: {}});
-    const transport = new StdioClientTransport({command: process.execPath, args: ['apps/mcp/src/index.mjs'], cwd: repo, env: f.env, stderr: 'pipe'});
+    const transport = new StdioClientTransport({command: process.execPath, args: ['apps/mcp/src/index.ts'], cwd: repo, env: f.env, stderr: 'pipe'});
     t.after(() => client.close());
     await client.connect(transport);
     const result = await client.callTool({name: operation.replaceAll('.', '_'), arguments: input});

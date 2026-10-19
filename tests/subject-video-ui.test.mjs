@@ -7,15 +7,17 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as contracts from '@mioon/contracts';
 import { LOCAL_SHOT_TEXT_LIMITS } from '@mioon/contracts/local-shot-text';
-import * as settings from '../apps/web/src/generation-settings.js';
-import * as subjectVideo from '../apps/web/src/subject-video.js';
-import * as subjectState from '../apps/web/src/subject-state.js';
-import * as submissions from '../apps/web/src/submissions.js';
-import * as workspaceOrigin from '../apps/web/src/workspace-origin.js';
-import * as api from '../apps/web/src/api.js';
-import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.js';
-import { referenceForShot } from '../apps/web/src/reference-connections.js';
+import * as settings from '../apps/web/src/generation-settings.ts';
+import * as subjectVideo from '../apps/web/src/subject-video.ts';
+import * as subjectState from '../apps/web/src/subject-state.ts';
+import * as submissions from '../apps/web/src/submissions.ts';
+import * as workspaceOrigin from '../apps/web/src/workspace-origin.ts';
+import * as api from '../apps/web/src/api.ts';
+import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.ts';
+import { referenceForShot } from '../apps/web/src/reference-connections.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const taskIntentModule = { exports: {} };
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
 const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
@@ -52,7 +54,7 @@ function harness(file, initial) {
   }; react.default = react;
   function load(filename) {
     if (modules.has(filename)) return modules.get(filename);
-    const module = { exports: {} }, code = transformSync(readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8'), { loader: filename.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code;
+    const module = { exports: {} }, code = transformSync(readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
     Function('module', 'exports', 'require', code)(module, module.exports, name => {
       if (name === 'react') return react;
       if (name === './i18n/I18nProvider.tsx') return { useI18n: () => i18nTestModule(h.locale).useI18n() };
@@ -60,7 +62,7 @@ function harness(file, initial) {
       if (name === './creation-i18n.ts') return creationI18n;
       if (name === './RecoveryStorageDetails.tsx') return load('RecoveryStorageDetails.tsx');
       if (['./AssetAnnotations.tsx', './CanvasOverview.tsx', './BoardInspectorGroup.tsx', './VersionCardPreview.tsx', './TaskRenderList.tsx'].includes(name)) return { default: name, __esModule: true };
-      if (name === './image-generation.js') return { imageEditSourceIssueDescriptor };
+      if (name === './image-generation.ts') return { imageEditSourceIssueDescriptor };
       if (name === './TaskWorkspace.tsx') return load('TaskWorkspace.tsx');
       if (name === './local-shot-text-state.ts') return { useLocalShotText: ({ context }) => {
         assert.equal(context.restored, true, 'This legacy Inspector fixture has no shot-text context');
@@ -69,27 +71,29 @@ function harness(file, initial) {
       if (name === './ShotTextDraftRecovery.tsx') return { default: 'ShotTextDraftRecovery', __esModule: true };
       if (name === '@mioon/contracts') return contracts;
       if (name === '@mioon/contracts/local-shot-text') return { LOCAL_SHOT_TEXT_LIMITS };
-      if (name === './mutation-submissions.js') return { isMutationOperation: () => false };
-      if (name === './edit-task-client.js') return { isDurableEditOperation: () => false };
-      if (name === './generation-settings.js') return settings;
-      if (name === './subject-video.js') return subjectVideo;
-      if (name === './subject-state.js') return subjectState;
-      if (name === './use-subjects.js') return load('use-subjects.js');
-      if (name === './api.js') return api;
-      if (name === './submissions.js') return submissions;
-      if (name === './workspace-origin.js') return workspaceOrigin;
-      if (name === './reference-connections.js') return { referenceForShot };
-      if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => h.visible };
+      if (name === './mutation-submissions.ts') return { isMutationOperation: () => false };
+      if (name === './edit-task-client.ts') return { isDurableEditOperation: () => false };
+      if (name === './generation-settings.ts') return settings;
+      if (name === './subject-video.ts') return subjectVideo;
+      if (name === './subject-state.ts') return subjectState;
+      if (name === './use-subjects.ts') return load('use-subjects.ts');
+      if (name === './api.ts') return api;
+      if (name === './submissions.ts') return submissions;
+      if (name === './workspace-origin.ts') return workspaceOrigin;
+      if (name === './reference-connections.ts') return { referenceForShot };
+      if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => h.visible };
       if (name === '@mioon/ui/components/workbench-confirm') return { useConfirmation: () => async () => true };
       if (name.startsWith('@mioon/ui/')) return new Proxy({}, { get: (_, key) => String(key) });
-      if (name === './WorkspaceControls.jsx') return { WorkbenchSelect: 'WorkbenchSelect' };
-      if (name === './SubjectLibrary.jsx') return { SubjectPager: 'SubjectPager' };
-      if (name === './VideoFrameControls.jsx') return { default: 'VideoFrameControls', VideoFrameSummary: 'VideoFrameSummary', __esModule: true };
-      if (name === './ReferenceConnections.jsx') return { ReferenceSourcePanel: 'ReferenceSourcePanel', BoundReference: 'BoundReference' };
-      if (name === './Nodes.jsx') return { Media: 'Media' };
-      if (name === './Timeline.jsx') return { dragAsset() {} };
+      if (name === './WorkspaceControls.tsx') return { WorkbenchSelect: 'WorkbenchSelect' };
+      if (name === './SubjectLibrary.tsx') return { SubjectPager: 'SubjectPager' };
+      if (name === './VideoFrameControls.tsx') return { default: 'VideoFrameControls', VideoFrameSummary: 'VideoFrameSummary', __esModule: true };
+      if (name === './ReferenceConnections.tsx') return { ReferenceSourcePanel: 'ReferenceSourcePanel', BoundReference: 'BoundReference' };
+      if (name === './Nodes.tsx') return { Media: 'Media' };
+      if (name === './Timeline.tsx') return { dragAsset() {} };
       if (name.endsWith('.css')) return {};
-      if (name.endsWith('.jsx')) return { default: name, __esModule: true };
+      if (name === './icons.tsx') return { __esModule: true, default: 'Icon' };
+      if (name === './SubjectVideoSummary.tsx') return { __esModule: true, default: 'SubjectVideoSummary' };
+      if (name.endsWith('.jsx') || name.endsWith('.tsx')) return { default: name, __esModule: true };
       throw Error(`Unexpected dependency ${name}`);
     });
     modules.set(filename, module.exports); return module.exports;
@@ -152,7 +156,7 @@ test('exact server v3 Ark and Mock accept square references independently of out
 });
 
 test('real selector requires a separate version action, uses paginated library, and preserves old/new labels', () => {
-  const props = selectionProps({ inputMode: 'subject' }), h = harness('SubjectVideoSelection.jsx', props);
+  const props = selectionProps({ inputMode: 'subject' }), h = harness('SubjectVideoSelection.tsx', props);
   assert.equal(h.find('subject-video-subject').props.value, ''); assert.equal(h.find('subject-video-version'), undefined); assert.equal(props.changes.length, 0);
   h.find('subject-video-subject').props.onChange({ target: { value: subjectId } });
   assert.deepEqual(props.changes[0], { subjectId, subjectReference: null });
@@ -168,7 +172,7 @@ test('real selector requires a separate version action, uses paginated library, 
 
 test('selector hidden/returned and obsolete model, choice, project, shot callbacks cannot change a session choice', () => {
   for (const change of ['hide', 'model', 'choice', 'project', 'shot', 'disabled', 'unmount']) {
-    const props = selectionProps({ inputMode: 'subject', subjectId }), h = harness('SubjectVideoSelection.jsx', props);
+    const props = selectionProps({ inputMode: 'subject', subjectId }), h = harness('SubjectVideoSelection.tsx', props);
     const old = h.find('subject-video-version').props.onChange;
     if (change === 'hide') { h.visible = false; h.render(); assert.equal(h.find('subject-video-enabled').props.disabled, true); h.visible = true; h.render(); }
     if (change === 'model') h.render({ model: 'unavailable' });
@@ -182,7 +186,7 @@ test('selector hidden/returned and obsolete model, choice, project, shot callbac
 });
 
 test('selector exposes unavailable reasons and never auto-clears saved first or tail choices', () => {
-  const saved = shot({ referenceAssetIds: [asset().id], lastFrameAssetId: asset(2).id }), props = selectionProps(), h = harness('SubjectVideoSelection.jsx', { ...props, shot: saved, draft: shot() });
+  const saved = shot({ referenceAssetIds: [asset().id], lastFrameAssetId: asset(2).id }), props = selectionProps(), h = harness('SubjectVideoSelection.tsx', { ...props, shot: saved, draft: shot() });
   assert.equal(h.find('subject-video-enabled').props.disabled, true); assert.match(h.text(), /保存镜头/);
   h.find('subject-video-enabled').props.onCheckedChange(true); assert.deepEqual(props.changes, []);
   h.render({ shot: shot(), draft: shot(), provider: provider('mock'), model: provider('mock').models[0] });
@@ -191,7 +195,7 @@ test('selector exposes unavailable reasons and never auto-clears saved first or 
 });
 
 test('subject provenance summary shows human labels, pinned old/current versions and collapsed source identity', () => {
-  const h = harness('SubjectVideoSummary.jsx', { reference: reference(), assets, latestSubject: subject(2) });
+  const h = harness('SubjectVideoSummary.tsx', { reference: reference(), assets, latestSubject: subject(2) });
   assert.match(h.text(), /方形产品.*固定 V1.*用户导入图片/); assert.match(h.text(), /本次仍固定 V1；主体库当前为 V2/);
   assert.equal(h.nodes().filter(node => node.type === 'img').length, 1);
   const detail = h.nodes().find(node => node.type === 'details'); assert.equal(detail.props.open, undefined); assert.match(text(detail), new RegExp(version().id)); assert.match(text(detail), /1{64}/);
@@ -209,7 +213,7 @@ function reviewHarness({ retry = false } = {}) {
     context: () => ({ epoch: state.epoch }), isCurrent: value => value.epoch === state.epoch,
     setRealConfirm: value => { state.review = value; }, notify: message => state.notices.push(message), submitGeneration: args => state.sent.push(args),
   };
-  const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const code = source.slice(source.indexOf('  function reviewGeneration('), source.indexOf('  async function createProject('));
   const app = Function(...Object.keys(scope), `${code}; return { reviewGeneration, confirmGeneration };`)(...Object.values(scope));
   app.reviewGeneration({ shot: retry ? { ...snapshot, id: shotId } : shot(), providerId: p.id, model: p.models[0], inputMode: 'subject', ...(retry ? { retryJobId: job.id, expectedRetrySnapshot: snapshot } : { subjectReference: original }) });
@@ -261,7 +265,7 @@ function inspectorProps(save, generated) {
 test('Inspector saves only shot fields then generates explicit pinned option, and late save cannot act on changed selection', async () => {
   for (const change of ['none', 'version', 'provider', 'model', 'tab', 'scope', 'edit', 'unmount']) {
     const wait = deferred(), generated = [], saved = [], props = inspectorProps((id, revision, draft) => { saved.push(structuredClone(draft)); return wait.promise; }, generated);
-    const h = harness('Inspector.jsx', props);
+    const h = harness('Inspector.tsx', props);
     h.find('shot-prompt').props.onChange({ target: { value: 'Saved words only.' } }); h.render();
     const sending = h.find('generate-shot').props.onClick();
     if (change === 'version') h.render({ generationOptions: { ...props.generationOptions, subjectReference: reference(2) } });
@@ -280,21 +284,21 @@ test('Inspector saves only shot fields then generates explicit pinned option, an
 });
 
 test('App uses subjectVersionId only on wire, exact expected reference beside pending input, and disclosures in review/history/tasks', () => {
-  const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const submit = app.slice(app.indexOf('const submitGeneration ='), app.indexOf('function generate('));
   assert.match(submit, /subjectVersionId: subjectReference.subjectVersionId/);
   assert.match(submit, /expectedSubjectReference: subjectReference/);
   assert.doesNotMatch(submit, /subjectBinding|headVersion|referenceAssetIds|referenceBindings|lastFrameAssetId/);
-  assert.match(app, /isSubjectGenerationResponse\(operation, input, result, \{ projectId, subjectReference: stored.expectedSubjectReference \}\)/);
+  assert.match(app, /isSubjectGenerationResponse\(operation, input, result, \{ projectId: projectId as string, subjectReference: stored!\.expectedSubjectReference \}\)/);
   assert.match(app, /paid-subject-face-warning/);
-  const inspector = readFileSync(new URL('../apps/web/src/Inspector.jsx', import.meta.url), 'utf8');
-  const tasks = readFileSync(new URL('../apps/web/src/TaskCenter.jsx', import.meta.url), 'utf8');
-  assert.match(inspector, /SubjectVideoSummary reference=\{v.snapshot.subjectReference\}/);
-  assert.match(tasks, /SubjectVideoSummary reference=\{job.snapshot\?\.subjectReference\}/);
+  const inspector = readFileSync(new URL('../apps/web/src/Inspector.tsx', import.meta.url), 'utf8');
+  const tasks = readFileSync(new URL('../apps/web/src/TaskCenter.tsx', import.meta.url), 'utf8');
+  assert.match(inspector, /SubjectVideoSummary reference=\{v\.snapshot!\.subjectReference as unknown as React\.ComponentProps<typeof SubjectVideoSummary>\['reference'\]\}/);
+  assert.match(tasks, /SubjectVideoSummary reference=\{pass\(job\.snapshot\?\.subjectReference\)\}/);
 });
 
 test('actual App subject retry captures original public snapshot beside unchanged wire input; legacy retries remain unchanged', async () => {
-  const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const code = source.slice(source.indexOf('  const submitGeneration ='), source.indexOf('  function reviewGeneration('));
   const p = provider('mock'), calls = [], notices = [];
   const original = { ...subjectVideo.subjectVideoSnapshot(shot(), reference(), assets), providerId: p.id, model: p.models[0], shotId, shotRevision: 1 }; delete original.id;
@@ -321,8 +325,8 @@ test('TaskCenter routes marked or observed subject retries to strict recovery an
     { key: 'retry:legacy', projectId, operation: 'job.retry', input: { jobId: id(89), requestId: 'original-legacy-request' } },
     { key: 'retry:stripped', projectId, operation: 'job.retry', input: { jobId: id(90), requestId: 'stripped-subject-request' } },
   ];
-  const h = harness('TaskCenter.jsx', { captureView: () => () => true, taskViewScope: 'subject-retry-current-view', activeCount: 0, pending: entries, busy: {}, jobs: [], data: { assets: [], shots: [], jobs: [{ id: id(90), projectId, snapshot: { subjectReference: reference() } }] }, tasks: { phase: 'ready', items: [], uncertain: [], busy: [] }, run: (...args) => calls.push(args), onClose() {} });
-  const rows = h.nodes().filter(node => node.type === './PendingSubmission.jsx'); assert.equal(rows.length, 3);
+  const h = harness('TaskCenter.tsx', { captureView: () => () => true, taskViewScope: 'subject-retry-current-view', activeCount: 0, pending: entries, busy: {}, jobs: [], data: { assets: [], shots: [], jobs: [{ id: id(90), projectId, snapshot: { subjectReference: reference() } }] }, tasks: { phase: 'ready', items: [], uncertain: [], busy: [] }, run: (...args) => calls.push(args), onClose() {} });
+  const rows = h.nodes().filter(node => node.type === './PendingSubmission.tsx'); assert.equal(rows.length, 3);
   rows[0].props.onReplay(); rows[1].props.onReplay(); rows[2].props.onReplay();
   assert.deepEqual(calls[0][4], { replay: true, subjectRetry: true }); assert.deepEqual(calls[1][4], { replay: true });
   assert.deepEqual(calls[0][2], entries[0].input); assert.deepEqual(calls[2][4], { replay: true, subjectRetry: true });
@@ -330,9 +334,9 @@ test('TaskCenter routes marked or observed subject retries to strict recovery an
 
 test('subject selection and immutable provenance relabel live in all four locales without reselecting or refetching', () => {
   const selected = reference(), props = selectionProps({ inputMode: 'subject', subjectId, subjectReference: selected });
-  const before = JSON.stringify(selected), h = harness('SubjectVideoSelection.jsx', props);
+  const before = JSON.stringify(selected), h = harness('SubjectVideoSelection.tsx', props);
   const oldChoice = h.find('subject-video-version').props.onChange;
-  const summary = harness('SubjectVideoSummary.jsx', { reference: selected, assets, latestSubject: subject(2) });
+  const summary = harness('SubjectVideoSummary.tsx', { reference: selected, assets, latestSubject: subject(2) });
   for (const locale of i18n.LOCALES) {
     h.locale = locale; h.render(); summary.locale = locale; summary.render();
     assert.equal(h.find('subject-video-selection').props['aria-label'], i18n.translate(locale, 'subjects.video.sectionLabel'));

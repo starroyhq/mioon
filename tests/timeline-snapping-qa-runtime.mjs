@@ -7,7 +7,7 @@
 import http from 'node:http';
 import path from 'node:path';
 import { readFile, writeFile, access, unlink } from 'node:fs/promises';
-import { startServer } from '../apps/server/src/index.mjs';
+import { startServer } from '../apps/server/src/index.ts';
 const runtime = path.resolve(process.env.MIOON_QA_RUNTIME || 'evidence/timeline-snapping/runtime');
 if (!runtime.endsWith('/evidence/timeline-snapping/runtime')) throw Error('Disposable timeline-snapping runtime required');
 process.env.MIOON_ENABLE_LIVE_PROVIDER = '0';

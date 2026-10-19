@@ -11,17 +11,17 @@ import {DatabaseSync} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.mjs';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {createClient} from '../packages/client/src/index.mjs';
-import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createClient} from '../packages/client/src/index.ts';
+import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 
 const repo=fileURLToPath(new URL('..',import.meta.url));
 const token='timeline-recovery-public-synthetic-token';
 const environment=extra=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',...extra});
 async function command(args,env){
- const child=spawn(process.execPath,[path.join(repo,'apps/cli/src/index.mjs'),...args],{cwd:repo,env:environment(env),stdio:['ignore','pipe','pipe']});
+ const child=spawn(process.execPath,[path.join(repo,'apps/cli/src/index.ts'),...args],{cwd:repo,env:environment(env),stdio:['ignore','pipe','pipe']});
  let stdout='',stderr='';for(const [stream,append] of [[child.stdout,b=>stdout+=b],[child.stderr,b=>stderr+=b]])stream.setEncoding('utf8').on('data',b=>{append(b);if(stdout.length+stderr.length>1024*1024)child.kill('SIGKILL');});
  const timer=setTimeout(()=>child.kill('SIGKILL'),15000);let code,signal;try{[code,signal]=await once(child,'close');}finally{clearTimeout(timer);}
  assert.equal(signal,null,stderr);assert.ok(!stdout.includes(token)&&!stderr.includes(token));const body=JSON.parse(stdout);assert.equal(code===0,body.ok,stdout+stderr);return body;
@@ -34,7 +34,7 @@ async function fixture(t){
  backend=await startServer({dataDir:root,port:0,token});let fault=null;const requests=[],observed=[];
  proxy=http.createServer(async(req,res)=>{try{const chunks=[];let bytes=0;for await(const b of req){bytes+=b.length;if(bytes>256*1024)throw Error('fixture request cap');chunks.push(b);}const raw=Buffer.concat(chunks).toString();const request=JSON.parse(raw);requests.push(raw);const upstream=await fetch(backend.url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:raw});const text=await upstream.text();observed.push({request,status:upstream.status,text});if(fault&&fault.operation===request.operation){const mode=fault.mode;fault=null;if(mode==='drop'){res.destroy();return;}res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,data:{malformed:true}}));return;}res.writeHead(upstream.status,{'content-type':'application/json'});res.end(text);}catch{res.destroy();}});
  proxy.listen(0,'127.0.0.1');await once(proxy,'listening');const url=`http://127.0.0.1:${proxy.address().port}`,env={MIOON_BASE_URL:url,MIOON_TOKEN:token};
- mcp=new Client({name:'timeline-recovery-tests',version:'1.0.0'},{capabilities:{}});const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.mjs')],cwd:repo,env:environment(env),stderr:'pipe'});transport.stderr?.resume();await mcp.connect(transport);
+ mcp=new Client({name:'timeline-recovery-tests',version:'1.0.0'},{capabilities:{}});const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.ts')],cwd:repo,env:environment(env),stderr:'pipe'});transport.stderr?.resume();await mcp.connect(transport);
  const db=fn=>{const connection=new DatabaseSync(path.join(root,'workbench.sqlite'));try{return fn(connection);}finally{connection.close();}};
  const raw=async(operation,input)=>{try{const r=await fetch(url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input})});return await r.json();}catch{return {ok:false,error:{code:'LOST_TRANSPORT'}};}};
  return {root,project,foreign,source,timeline,requests,observed,db,raw,client:createClient({env}),fault:(operation,mode='drop')=>{fault={operation,mode};},restart:async()=>{await backend.close();backend=await startServer({dataDir:root,port:0,token});},transports:[

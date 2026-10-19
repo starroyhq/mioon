@@ -6,7 +6,7 @@ import {EXPORT_SAMPLE_PEAK_ALGORITHM,EXPORT_SAMPLE_PEAK_LIMITS,exportSamplePeakS
   exportSamplePeakResponseSchema,isExportSamplePeakResponse,exportSamplePeakReason} from '@mioon/contracts/export-sample-peak';
 import {isExportSamplePeakFrameCountCompatible} from '@mioon/contracts/export-sample-peak';
 import {samplePeakOperation as operation,samplePeakInput as input,readySamplePeak,incompleteSamplePeak} from './helpers/export-sample-peak-fixture.mjs';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.mjs';
+import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 
 const changed = change => {const report=readySamplePeak();change(report);return report;};
 test('已导出文件解码样本峰值 has exact shared input, bounds, truthful effects and no Agent read authority',()=>{

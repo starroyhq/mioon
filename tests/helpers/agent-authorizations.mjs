@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {ownsStoreLock,getWorkspaceRestoreContext} from '../../packages/business/src/db.mjs';
+import {ownsStoreLock,getWorkspaceRestoreContext} from '../../packages/business/src/db.ts';
 import {deriveAgentEndpoint} from '../../packages/contracts/src/agent-protocol.ts';
 import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
 import {createAgentAuthorizations} from '../../packages/business/src/agent/authorizations.ts';

@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createCompatibleImageAdapter, createOpenAIImageAdapter} from '../packages/business/src/images/adapter.mjs';
-import {createCompatibleImageGenerationBody, createImageGenerationBody, CUSTOM_IMAGE_JSON_PROFILE, IMAGE_GENERATION_ENDPOINT, IMAGE_PROFILES} from '../packages/business/src/images/profiles.mjs';
-import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS} from '../packages/contracts/src/images.mjs';
-import {CUSTOM_IMAGE_PROFILE_ID} from '../packages/contracts/src/image-settings.mjs';
-import {renderMockImagePng} from '../packages/business/src/images/png.mjs';
+import {createCompatibleImageAdapter, createOpenAIImageAdapter} from '../packages/business/src/images/adapter.ts';
+import {createCompatibleImageGenerationBody, createImageGenerationBody, CUSTOM_IMAGE_JSON_PROFILE, IMAGE_GENERATION_ENDPOINT, IMAGE_PROFILES} from '../packages/business/src/images/profiles.ts';
+import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS} from '../packages/contracts/src/images.ts';
+import {CUSTOM_IMAGE_PROFILE_ID} from '../packages/contracts/src/image-settings.ts';
+import {renderMockImagePng} from '../packages/business/src/images/png.ts';
 
 const input = {providerId: 'openai-compatible', model: 'vendor/model-EXACT_v1:2026.10', prompt: 'Original prompt: 蓝色 sky, with exact punctuation.', options: {...IMAGE_FIXED_OPTIONS}};
 let bytes;

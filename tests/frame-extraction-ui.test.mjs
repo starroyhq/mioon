@@ -3,11 +3,11 @@ import * as i18n from '../packages/i18n/src/index.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { ApiError } from '../apps/web/src/api.js';
+import { ApiError } from '../apps/web/src/api.ts';
 import { canonicalFrameInput } from '@mioon/contracts';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import * as frame from '../apps/web/src/frame-extraction.js';
+import * as frame from '../apps/web/src/frame-extraction.ts';
 
 const project = '00000000-0000-4000-8000-000000000001', otherProject = '00000000-0000-4000-8000-000000000002';
 const sourceId = '00000000-0000-4000-8000-000000000003', taskId = '00000000-0000-4000-8000-000000000004', resultId = '00000000-0000-4000-8000-000000000005';
@@ -121,14 +121,14 @@ test('result reveal re-reads current task, preserves draft refusal, and rejects 
   assert.equal(await pending, false); assert.equal(reveals, 1);
 });
 
-const code = transformSync(readFileSync(new URL('../apps/web/src/FrameExtractionPanel.jsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code;
+const code = transformSync(readFileSync(new URL('../apps/web/src/FrameExtractionPanel.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
 const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
 function panelHarness(controller) {
   let cursor = 0, tree, visible = true, effects = [], layouts = []; const slots = [];
   const effect = (queue, fn, deps) => { const index = cursor++, previous = slots[index]; if (previous && deps.every((item, i) => Object.is(item, previous.deps[i]))) return; slots[index] = { deps, cleanup: previous?.cleanup, fn }; queue.push(index); };
   const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), useRef: value => slots[cursor++] ||= { current: value }, useState: value => { const index = cursor++; if (!slots[index]) slots[index] = { value: typeof value === 'function' ? value() : value }; return [slots[index].value, next => { slots[index].value = typeof next === 'function' ? next(slots[index].value) : next; }]; }, useLayoutEffect: (fn, deps) => effect(layouts, fn, deps), useEffect: (fn, deps) => effect(effects, fn, deps) }; react.default = react;
   const module = { exports: {} };
-  Function('require', 'module', 'exports', code)(id => id === './i18n/I18nProvider.tsx' ? i18nTestModule() : id.endsWith('packages/i18n/src/index.ts') ? i18n : id === 'react' ? react : id === './frame-extraction.js' ? frame : id === './workspace-visibility.jsx' ? { useWorkspaceVisibility: () => visible } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
+  Function('require', 'module', 'exports', code)(id => id === './i18n/I18nProvider.tsx' ? i18nTestModule() : id.endsWith('packages/i18n/src/index.ts') ? i18n : id === 'react' ? react : id === './frame-extraction.ts' ? frame : id === './workspace-visibility.tsx' ? { useWorkspaceVisibility: () => visible } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
   const flush = queue => { for (const index of queue) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].fn(); } };
   return { render() { cursor = 0; effects = []; layouts = []; tree = module.exports.default({ controller }); flush(layouts); return tree; }, handlers: () => nodes(tree).filter(node => node.props?.onClick).map(node => node.props.onClick), hide() { visible = false; }, unmount() { slots.forEach(slot => slot.cleanup?.()); }, nodes: () => nodes(tree) };
 }

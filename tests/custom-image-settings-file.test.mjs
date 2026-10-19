@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {mkdtemp, mkdir, readFile, writeFile, readdir, rm, stat, symlink, chmod} from 'node:fs/promises';
-import {createImageSettingsFile, createCustomImageSettingsFile} from '../packages/business/src/images/settings-file.mjs';
-import {createImageSettings, createCustomImageSettings} from '../packages/business/src/images/settings.mjs';
-import {DEFAULT_IMAGE_CONFIGURATION, DEFAULT_CUSTOM_IMAGE_CONFIGURATION, IMAGE_SETTINGS_NAMESPACE, CUSTOM_IMAGE_SETTINGS_NAMESPACE} from '../packages/contracts/src/image-settings.mjs';
+import {createImageSettingsFile, createCustomImageSettingsFile} from '../packages/business/src/images/settings-file.ts';
+import {createImageSettings, createCustomImageSettings} from '../packages/business/src/images/settings.ts';
+import {DEFAULT_IMAGE_CONFIGURATION, DEFAULT_CUSTOM_IMAGE_CONFIGURATION, IMAGE_SETTINGS_NAMESPACE, CUSTOM_IMAGE_SETTINGS_NAMESPACE} from '../packages/contracts/src/image-settings.ts';
 const configuration = {...DEFAULT_CUSTOM_IMAGE_CONFIGURATION, enabled: true, baseUrl: 'https://images.example.com/v1', model: 'custom-image'};
 const envelope = (revision = 1) => ({version: 1, namespace: CUSTOM_IMAGE_SETTINGS_NAMESPACE, revision, configuration, secret: null});
 async function fixture(t) {

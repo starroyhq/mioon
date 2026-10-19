@@ -7,15 +7,16 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { buildSync, transformSync } from 'esbuild';
-import { createWorkspacePreferences, durableWorkspaceState } from '../apps/web/src/workspace-preferences.js';
-import { defaultWorkspaceState } from '../apps/web/src/workspace-state.js';
+import { createWorkspacePreferences, durableWorkspaceState } from '../apps/web/src/workspace-preferences.ts';
+import { defaultWorkspaceState } from '../apps/web/src/workspace-state.ts';
 import { projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind } from '../apps/web/src/project-open-state.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
-import { workspaceOriginScope } from '../apps/web/src/workspace-origin.js';
+import { workspaceOriginScope } from '../apps/web/src/workspace-origin.ts';
+import { stripSourceTypes } from './helpers/eval-source.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const componentPath = path.join(root, 'apps/web/src/TopbarSaveStatus.tsx');
-const app = readFileSync(path.join(root, 'apps/web/src/App.jsx'), 'utf8');
+const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
 // Exact shipped markup, copied before extraction from c3c10316347d30ed50b365442e78738267ac288a.
 // This oracle is deliberately independent of the implementation under test.
 const baselineMarkup = "<div className=\"topbar-sync\" title={lastSync ? `最近同步：${lastSync.toLocaleTimeString('zh-CN')}` : ''}><span className={`status-dot ${!online ? 'red' : Object.values(busy).some(Boolean) ? 'orange' : 'green'}`} />{!online ? '连接中断' : Object.values(busy).some(Boolean) ? '正在同步' : inspectorDirty || formatDirty ? '有未保存修改' : '已保存'}</div><div className=\"workspace-save-status\" data-testid=\"workspace-save-status\" data-phase={preferenceStatus.phase} role=\"status\">{['local', 'conflict', 'error'].includes(preferenceStatus.phase) ? <><span>{preferenceStatus.phase === 'conflict' ? '视图已在其他窗口更新' : '视图位置未同步'}</span>{preferenceStatus.phase === 'error' && preferenceStatus.canRetry && <Button variant=\"ghost\" className=\"text-button\" data-testid=\"retry-workspace-save\" onClick={() => preferencesRef.current.flush({ projectId: currentProject.current })}>重试</Button>}<Button variant=\"ghost\" className=\"text-button\" data-testid=\"reload-workspace-preferences\" onClick={reloadPreferences}>载入已保存视图</Button></> : preferenceStatus.pending ? <span>保存视图…</span> : null}</div>";
@@ -47,7 +48,7 @@ function view(kind) {
     function DirectComponent(props) { let tree; function Probe() { tree = Component(props); return null; } renderToStaticMarkup(<Probe />); return tree; }
     export { DirectComponent as Component, React, Button, renderToStaticMarkup };
     export const render = props => renderToStaticMarkup(<Component {...props} />);`;
-  const result = buildSync({ stdin: { contents: fixture, loader: 'jsx', resolveDir: path.join(root, 'apps/web') },
+  const result = buildSync({ stdin: { contents: fixture, loader: 'tsx', resolveDir: path.join(root, 'apps/web') },
     bundle: true, platform: 'node', format: 'cjs', write: false, jsx: 'automatic',
     define: { 'process.env.NODE_ENV': '"production"' } });
   const module = { exports: {} };
@@ -140,22 +141,22 @@ function section(start, end) {
   return app.slice(first, last);
 }
 const statusSource = section('    onStatus: (projectId, status) =>', '\n  });').trim().slice('onStatus: '.length);
-const contextSource = section('  const context = () =>', '  taskWorkspaceState.current =');
+const contextSource = section('  const context = (): CapturedContext =>', '  taskWorkspaceState.current =');
 const settingsDepartureSource = section('  async function prepareSettingsDeparture()', '  async function changeHomePage(');
 const sessionReadySource = section('  function projectSessionReady()', '  const workbenchReady =');
 const selectSource = section('  async function selectProject(', '  async function reloadPreferences(');
-const reloadSource = section('  async function reloadPreferences() {', '  async function boot() {');
+const reloadSource = section('  async function reloadPreferences(', '\n  // Optional feature discovery has its own connection epoch.');
 const callsites = [...app.matchAll(/<TopbarSaveStatus\b[\s\S]*?\/>/g)];
 assert.equal(callsites.length, 1, 'the actual status component has one unambiguous callsite');
 const callsite = callsites[0][0];
 assert.match(callsite, /\/>$/);
-const compile = (source, expression, env) => Function(...Object.keys(env), `${source}\nreturn ${expression};`)(...Object.values(env));
+const compile = (source, expression, env) => Function(...Object.keys(env), `${stripSourceTypes(source, {loader: 'tsx'})}\nreturn ${expression};`)(...Object.values(env));
 let projectElement;
 function appElement(env) {
   const actual = view('extracted');
   if (!projectElement) {
     const code = transformSync(`function project({ online, busy, inspectorDirty, formatDirty, annotations = { state: null }, lastSync, preferenceStatus, preferencesRef, currentProject, reloadPreferences }) { return ${callsite}; }`,
-      { loader: 'jsx', jsx: 'transform' }).code;
+      { loader: 'tsx', jsx: 'transform' }).code;
     projectElement = compile(code, 'project', { React: actual.React, TopbarSaveStatus: actual.Component });
   }
   return projectElement(env);
@@ -228,11 +229,13 @@ test('App owns one busy projection, annotation-aware dirty status, late-bound Re
   assert.equal(statusSource, '(projectId, status) => { if (currentProject.current === projectId) setPreferenceStatus(status); }');
   assert.match(app, /const busy = busyByProject\[currentProject\.current \|\| 'none'\] \|\| emptyBusy;/);
   assert.match(contextSource, /captured\.projectId === currentProject\.current && captured\.epoch === navigationEpoch\.current && workspaceOriginScope\(captured\.workspace\) === workspaceOriginScope\(workspaceRef\.current\)/);
-  assert.equal(reloadSource.trim(), `async function reloadPreferences() {
-    const captured = context();
-    if (!await confirm(msg('shell.confirm.loadSavedView'))) return;
-    if (isCurrent(captured)) await selectProject(captured.projectId, false, true, true);
-  }`);
+  assert.deepEqual(stripSourceTypes(reloadSource, {loader: 'ts'}).split('\n').map(line => line.trim()).filter(Boolean), [
+    'async function reloadPreferences() {',
+    'const captured = context();',
+    'if (!await confirm(msg("shell.confirm.loadSavedView"))) return;',
+    'if (isCurrent(captured)) await selectProject(captured.projectId, false, true, true);',
+    '}',
+  ]);
   assert.equal(renderCoreMessage('zh-Hans', msg('shell.confirm.loadSavedView')), '载入已保存视图会替换当前的工作区、选择和位置。继续？');
   assert.match(selectSource, /if \(!importSession\.current\.active \|\| currentProject\.current !== id \|\| projectEpoch\.current !== epoch \|\| workspaceOriginScope\(workspaceRef\.current\) !== attempt\.workspaceScope\) return false;/);
   assert.match(selectSource, /if \(!restored\) throw Object\.assign\(localizedError\([^;]+PROJECT_VIEW_UNAVAILABLE/);
@@ -278,7 +281,7 @@ function harness(t) {
     inspectorDirty: false, formatDirty: false, inspectorDraft: { title: 'retained inspector draft' }, formatDraft: { width: 1920 },
     paidReview: { token: 'unchanged paid review' }, mobilePanel: 'canvas', rightDockTab: 'properties' };
   const calls = [], currentProject = { current: null }, navigationEpoch = { current: 0 }, projectEpoch = { current: 0 };
-  const env = { msg, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), nativeWindow: null, nativeProjectEntry: null, currentProject, navigationEpoch, projectEpoch, workspaceRef: { current: { restored: false } }, workspaceOriginScope,
+  const env = { msg, application: null, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), nativeWindow: null, nativeProjectEntry: null, currentProject, navigationEpoch, projectEpoch, workspaceRef: { current: { restored: false } }, workspaceOriginScope,
     projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind,
     openedProject: { current: null }, settingsNavigation: { current: createSettingsNavigationRegistry() },
     loading: false, importSession: { current: { active: true, selection: 0 } }, agentDraft: { current: false }, imageDraft: { current: false },
@@ -291,7 +294,8 @@ function harness(t) {
     window: { location: { href: 'http://127.0.0.1:4318/' }, history: { pushState() {}, replaceState() {} } },
     refresh: async (id, _quiet, options) => { assert.equal(options?.opening, true); env.dataRef.current = { project: { id }, shots: [], nodes: [] }; return env.dataRef.current; },
     ...Object.fromEntries(['setProjectOpening', 'setHomePage', 'setAuth', 'setPropertiesPage', 'setTaskState', 'setPending', 'setShowProjects', 'setData', 'setNodes', 'setLoading',
-      'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setRightDockTab',
+      'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setRightDockTab', 'setPanelOverlay',
+      'setShowTasks', 'setShowDelivery', 'setShowImage', 'setShowProjectChooser', 'setWebSettingsRequest',
       'setShowExports', 'setComparisonId', 'setPreviewAsset', 'setRealConfirm', 'setToast', 'setMobilePanel', 'setZoom']
       .map(name => [name, value => calls.push([name, value])])),
     setPreferenceStatus: value => { state.preferenceStatus = value; calls.push(['status', copy(value)]); },

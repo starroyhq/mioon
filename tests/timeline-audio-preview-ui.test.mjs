@@ -141,7 +141,7 @@ before(async () => {
     const values=${JSON.stringify(values)}; const controller={prepare(){throw Error('render must not prepare')},play(){throw Error('render must not play')},pause(){},seek(){},stop(){},cancel(){}};
     export const html=Object.fromEntries(Object.entries(values).map(([name,state])=>[name,renderToStaticMarkup(<TimelineAudioPreview audioPreview={{state,controller}} startFrame={0}/>)]));`;
   const script = `import {build} from 'esbuild';globalThis.fetch=()=>{throw Error('render may not fetch')};
-    const {outputFiles}=await build({stdin:{contents:${JSON.stringify(fixtures)},loader:'jsx',resolveDir:${JSON.stringify(path.join(root, 'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,jsx:'transform',define:{'process.env.NODE_ENV':'"production"'}});
+    const {outputFiles}=await build({stdin:{contents:${JSON.stringify(fixtures)},loader:'tsx',resolveDir:${JSON.stringify(path.join(root, 'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,jsx:'transform',define:{'process.env.NODE_ENV':'"production"'}});
     const result=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));process.stdout.write(JSON.stringify(result.html));process.exit(0);`;
   rendered = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30000 }));
 });

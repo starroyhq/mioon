@@ -3,12 +3,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const app = () => readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
+const app = () => readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 test('App wires one explicit historical-file observer with live project/workspace/navigation fences', () => {
   const source = app();
   assert.equal(source.includes('useExportSamplePeak'), true, 'App must wire the explicit history observer');
-  assert.match(source, /rpc\('timeline\.export\.samplePeak', input, options\)/);
-  assert.match(source, /samplePeak=\{application \? undefined : exportSamplePeak\}/);
+  assert.match(source, /rpc\('timeline\.export\.samplePeak', input, options as never\)/);
+  assert.match(source, /samplePeak=\{application \? undefined : exportSamplePeak(?: as never)?\}/);
 });
 
 import { before } from 'node:test';
@@ -17,7 +19,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 import { isTimelineRenderRecord } from '@mioon/contracts';
-import { pinNewWorkspaceIntent, workspaceOriginScope } from '../apps/web/src/workspace-origin.js';
+import { pinNewWorkspaceIntent, workspaceOriginScope } from '../apps/web/src/workspace-origin.ts';
 import { createExportSamplePeakController, EXPORT_SAMPLE_PEAK_LABEL } from '../apps/web/src/export-sample-peak-state.ts';
 import { context, fixture, row, asset, report, unready, projectId, id } from './helpers/export-sample-peak-ui-fixture.mjs';
 
@@ -43,7 +45,7 @@ before(async () => {
   const fixtures = `import React from 'react';
     import { renderToStaticMarkup } from 'react-dom/server.browser';
     import ExportSamplePeak from './src/ExportSamplePeak.tsx';
-    import ExportHistoryList from './src/ExportHistoryList.jsx';
+    import ExportHistoryList from './src/ExportHistoryList.tsx';
     import ActualExportFileActions from 'test:actual-export-file-actions';
     const values = ${JSON.stringify(values)}, props = ${JSON.stringify(historyProps)};
     const controller = { check() { throw Error('Rendering may not dispatch a check'); }, cancel() { throw Error('Rendering may not cancel a render'); } };
@@ -63,10 +65,10 @@ before(async () => {
   }`;
   const script = `import {build} from 'esbuild';
     globalThis.fetch = () => {throw Error('History presentation must never request data');};
-    const {outputFiles} = await build({stdin:{contents:${JSON.stringify(fixtures)},loader:'jsx',resolveDir:${JSON.stringify(path.join(root, 'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,jsx:'transform',define:{'process.env.NODE_ENV':'"production"'},plugins:[{name:'capture-file-action-props',setup(build){
+    const {outputFiles} = await build({stdin:{contents:${JSON.stringify(fixtures)},loader:'tsx',resolveDir:${JSON.stringify(path.join(root, 'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,jsx:'transform',define:{'process.env.NODE_ENV':'"production"'},plugins:[{name:'capture-file-action-props',setup(build){
       build.onResolve({filter:/^test:actual-export-file-actions$/},()=>({path:${JSON.stringify(path.join(root,'apps/web/src/ExportFileActions.tsx'))}}));
       build.onResolve({filter:/ExportFileActions\\.tsx$/},()=>({path:'capture',namespace:'file-action-capture'}));
-      build.onLoad({filter:/.*/,namespace:'file-action-capture'},()=>({contents:${JSON.stringify(capture)},loader:'jsx',resolveDir:${JSON.stringify(path.join(root,'apps/web'))}}));
+      build.onLoad({filter:/.*/,namespace:'file-action-capture'},()=>({contents:${JSON.stringify(capture)},loader:'tsx',resolveDir:${JSON.stringify(path.join(root,'apps/web'))}}));
     }}]});
     const result = await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));process.stdout.write(JSON.stringify({html:result.html,actions:result.actions,actualFileActions:result.actualFileActions}));process.exit(0);`;
   ({html:rendered, actions:fileActions, actualFileActions} = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30000 })));

@@ -11,13 +11,13 @@ import {fileURLToPath, pathToFileURL} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createClient, discoverSchema} from '../packages/client/src/index.mjs';
+import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
+import {openStore} from '../packages/business/src/db.ts';
+import {createClient, discoverSchema} from '../packages/client/src/index.ts';
 import {parse, schemas, operationEffect, exportPreflightSchemas, exportPreflightResponseSchema,
-  isExportPreflightResponse, EXPORT_PREFLIGHT_LIMITS} from '../packages/contracts/src/index.mjs';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.mjs';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.mjs';
+  isExportPreflightResponse, EXPORT_PREFLIGHT_LIMITS} from '../packages/contracts/src/index.ts';
+import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
+import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import {IDS, TOKEN, NOW, uuid, snapshot, seedMutationStore} from './helpers/mutation-wire-fixture.mjs';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -173,7 +173,7 @@ if(process.argv[2] === 'preflight-server'){
     return child;
   };
   syncBuiltinESMExports();
-  const {startServer} = await import(${JSON.stringify(pathToFileURL(path.join(repo, 'apps/server/src/index.mjs')).href)});
+  const {startServer} = await import(${JSON.stringify(pathToFileURL(path.join(repo, 'apps/server/src/index.ts')).href)});
   const server = await startServer({dataDir:process.env.MIOON_DATA_DIR,port:0,token:${JSON.stringify(TOKEN)},chatGateway:async function*(){deny('model gateway');}});
   process.stdout.write(JSON.stringify({ready:true,url:server.url,pid:process.pid})+'\\n');
   let closing; const close = () => closing ??= server.close().catch(()=>{process.exitCode=1;});
@@ -205,7 +205,7 @@ if(process.argv[2] === 'preflight-server'){
     return validateEnvelope(envelope, expectedError);
   }
   async function cliArgs(args, expectedError) {
-    const child = launch(t, ['--import', helper, path.join(repo, 'apps/cli/src/index.mjs'), ...args], env);
+    const child = launch(t, ['--import', helper, path.join(repo, 'apps/cli/src/index.ts'), ...args], env);
     const {code, signal} = await child.finish(); noPrivate(child.stdout); noPrivate(child.stderr);
     assert.equal(signal, null, child.stderr); assert.equal(child.stdout.trim().split('\n').length, 1);
     assert.equal(code === 0, !expectedError, child.stdout + child.stderr);
@@ -214,7 +214,7 @@ if(process.argv[2] === 'preflight-server'){
   const cli = (op, request, error) => cliArgs([...op.split('.'), '--input', JSON.stringify(request)], error);
   client = new Client({name: 'timeline-preflight-wire-acceptance', version: '1.0.0'}, {capabilities: {}});
   const transport = new StdioClientTransport({command: process.execPath, cwd: repo, env: environment(env), stderr: 'pipe',
-    args: ['--import', helper, path.join(repo, 'apps/mcp/src/index.mjs')]});
+    args: ['--import', helper, path.join(repo, 'apps/mcp/src/index.ts')]});
   let stderr = ''; transport.stderr?.setEncoding('utf8').on('data', chunk => { stderr = (stderr + chunk).slice(-64 * 1024); });
   await bounded(client.connect(transport), 'Official MCP initialization');
   assert.equal(client.getServerVersion().name, 'mioon'); assert.ok(client.getServerCapabilities().tools);

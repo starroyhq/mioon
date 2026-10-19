@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {mkdtemp,rm} from 'node:fs/promises';import path from 'node:path';import os from 'node:os';
 import {startServer} from '@mioon/server';import {createClient} from '@mioon/client';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.mjs';
+import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 const source='LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n';
 test('actual authenticated HTTP shared client imports, replays, lists and inspects without media authority',async t=>{
  const root=await mkdtemp(path.join(os.tmpdir(),'mioon-lut-http-')),token='synthetic-lut-resource-http-token';

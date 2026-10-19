@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import * as subjectState from '../apps/web/src/subject-state.js';
+import * as subjectState from '../apps/web/src/subject-state.ts';
 
 const { createSubjectController, subjectDraftDirty, filterSubjects, subjectImage } = subjectState;
 const id = (kind, n = 1) => `${kind}0000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -222,8 +222,8 @@ function harness(filename) {
   const modules = {};
   function load(file) {
     if (modules[file]) return modules[file];
-    const source = readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'), code = transformSync(source, { loader: file.endsWith('jsx') ? 'jsx' : 'js', format: 'cjs' }).code, module = { exports: {} };
-    Function('require', 'module', 'exports', code)(name => name === 'react' ? { ...react, default: react } : name === './i18n/I18nProvider.tsx' ? { useI18n: () => i18nTestModule(h.locale).useI18n() } : name.endsWith('subject-state.js') ? subjectState : name.endsWith('workspace-visibility.jsx') ? { useWorkspaceVisibility: () => h.visible } : name.endsWith('use-subjects.js') ? load('use-subjects.js') : name.endsWith('api.js') ? { assetUrl: asset => `/media/${asset.id}` } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
+    const source = readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'), code = transformSync(source, { loader: file.endsWith('.tsx') ? 'tsx' : file.endsWith('.ts') ? 'ts' : 'jsx', format: 'cjs' }).code, module = { exports: {} };
+    Function('require', 'module', 'exports', code)(name => name === 'react' ? { ...react, default: react } : name === './i18n/I18nProvider.tsx' ? { useI18n: () => i18nTestModule(h.locale).useI18n() } : name.endsWith('subject-state.ts') ? subjectState : name.endsWith('workspace-visibility.tsx') ? { useWorkspaceVisibility: () => h.visible } : name.endsWith('use-subjects.ts') ? load('use-subjects.ts') : name.endsWith('api.ts') ? { assetUrl: asset => `/media/${asset.id}` } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
     return modules[file] = module.exports;
   }
   const component = load(filename);
@@ -233,7 +233,7 @@ function harness(filename) {
 const byId = (tree, id) => tree.find(node => node.props?.['data-testid'] === id);
 
 test('real library callbacks reject hidden, re-shown, stale form, wrong project and unmounted events', async () => {
-  const f = await fixture(); f.controller.updateCreate({ name: 'Hero', assetId }); const h = harness('SubjectLibrary.jsx');
+  const f = await fixture(); f.controller.updateCreate({ name: 'Hero', assetId }); const h = harness('SubjectLibrary.tsx');
   const props = () => ({ subjects: { state: f.controller.getState(), controller: f.controller }, assets: [image()] });
   const first = byId(h.render(props()), 'subject-create'); h.visible = false; const hidden = byId(h.render(props()), 'subject-create'); assert.equal(hidden.props.disabled, true); first.props.onClick(); assert.equal(f.writes.length, 0);
   h.visible = true; const shown = byId(h.render(props()), 'subject-create'); first.props.onClick(); hidden.props.onClick(); assert.equal(f.writes.length, 0);
@@ -244,7 +244,7 @@ test('real library callbacks reject hidden, re-shown, stale form, wrong project 
 
 test('shot controls render exact Use V2 and Keep V1 choices and reject retained row callbacks', async () => {
   const f = await fixture(); f.remote.subject = subject(2); f.remote.versions = [version(2), version()]; f.remote.bindings = [binding({ subjectRevision: 2, headVersionId: versionId(2), needsReview: true })]; await f.controller.read(); await f.controller.readBindings(shotId); await f.controller.readVersions(subjectId);
-  const h = harness('ShotSubjectBindings.jsx'), state = f.controller.getState(), row = state.bindings[shotId].items[0];
+  const h = harness('ShotSubjectBindings.tsx'), state = f.controller.getState(), row = state.bindings[shotId].items[0];
   const props = { binding: row, state, controller: f.controller, assets: [image(), image(2)], scope: state.scope };
   const tree = h.render(props, 'BoundSubject'); const use = byId(tree, `subject-use-head-${row.id}`), keep = byId(tree, `subject-keep-version-${row.id}`);
   assert.equal(use.props.disabled, false); assert.match(JSON.stringify(use.props.children), /V2/); assert.match(JSON.stringify(keep.props.children), /V1/);
@@ -259,17 +259,17 @@ test('shot controls render exact Use V2 and Keep V1 choices and reject retained 
 test('new binding displays the exact selected historical image rather than silently previewing head', async () => {
   const f = await fixture(); f.remote.subject = subject(2); f.remote.versions = [version(), version(2)]; await f.controller.read(); await f.controller.readBindings(shotId); await f.controller.readVersions(subjectId);
   f.controller.chooseBinding(shotId, subjectId, versionId(1));
-  const h = harness('ShotSubjectBindings.jsx'), state = f.controller.getState();
+  const h = harness('ShotSubjectBindings.tsx'), state = f.controller.getState();
   const tree = h.render({ shot: { id: shotId, projectId }, subjects: { state, controller: f.controller }, assets: [image(), image(2)] });
   const preview = byId(tree, 'shot-subject-selected-preview'), displayed = nodes(preview).find(node => node.type === 'SubjectImage');
   assert.equal(displayed.props.version.id, versionId(1)); assert.equal(displayed.props.version.assetId, assetId); assert.match(displayed.props.label, /V1/);
 });
 
 test('library composition retains both panes and never changes source/range selection or imports images', () => {
-  const library = readFileSync(new URL('../apps/web/src/AssetLibrary.jsx', import.meta.url), 'utf8');
+  const library = readFileSync(new URL('../apps/web/src/AssetLibrary.tsx', import.meta.url), 'utf8');
   assert.match(library, /library-subjects-pane/); assert.match(library, /WorkspaceVisibilityProvider visible=\{libraryView === 'assets'\}/); assert.match(library, /hidden=\{libraryView !== 'subjects'\} inert=\{libraryView !== 'subjects'\}/);
   assert.doesNotMatch(library, /setQuickAssetId|setSelectedClipId|sourceRangeScope/);
-  const componentSources = ['SubjectLibrary.jsx', 'ShotSubjectBindings.jsx'].map(file => readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'));
+  const componentSources = ['SubjectLibrary.tsx', 'ShotSubjectBindings.tsx'].map(file => readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'));
   for (const component of componentSources) {
     assert.match(component, /subjects.library.planningNote/);
     assert.equal(subjectsMessages['subjects.library.planningNote']['zh-Hans'], '策划关联不会自动用于生成；生成输入需另行选择版本');
@@ -294,7 +294,7 @@ test('subject library live relabeling preserves one controller, filters, selecte
   f.controller.updateVersion(subjectId, id(4, 2));
   const state = f.controller.getState(), create = state.createDraft, versionDraft = state.versionDrafts[subjectId];
   const props = { subjects: { state, controller: f.controller }, assets: [image(), image(2)] };
-  const h = harness('SubjectLibrary.jsx');
+  const h = harness('SubjectLibrary.tsx');
   let tree = h.render(props);
   tree.find(node => node.props?.['aria-label'] === subjectsMessages['subjects.library.search']['zh-Hans']).props.onChange({ target: { value: 'Hero' } });
   for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) {
@@ -317,7 +317,7 @@ test('read failures store a safe descriptor separately from original diagnostics
   const state = f.controller.getState(), notice = state.list.error;
   assert.equal(notice.key, 'subjects.read.failed'); assert.equal(Object.isFrozen(notice), true);
   assert.equal(state.list.diagnostic, raw); assert.equal(calls, 1);
-  const h = harness('SubjectLibrary.jsx');
+  const h = harness('SubjectLibrary.tsx');
   for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) {
     h.locale = locale;
     const tree = h.render({ subjects: { state, controller: f.controller } });
@@ -333,7 +333,7 @@ test('pending mutation notice relabels while retaining exact request identity an
   const f = await fixture({ hasPending: () => pending, save: async (operation, input) => { requests.push({ operation, input }); pending = true; return null; } });
   f.controller.updateCreate({ name: 'Unchanged draft', assetId }); await f.controller.create();
   const state = f.controller.getState(), draft = state.createDraft, notice = state.mutationError;
-  const h = harness('SubjectLibrary.jsx');
+  const h = harness('SubjectLibrary.tsx');
   assert.equal(notice.key, 'subjects.mutation.unconfirmed');
   for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) {
     h.locale = locale;
@@ -351,7 +351,7 @@ test('shot binding review and selected historical draft relabel without changing
   await f.controller.read(); await f.controller.readBindings(shotId); await f.controller.readVersions(subjectId);
   f.controller.chooseBinding(shotId, subjectId, versionId(1));
   const state = f.controller.getState(), row = state.bindings[shotId].items[0], draft = state.bindingDrafts[shotId];
-  const h = harness('ShotSubjectBindings.jsx'), review = harness('ShotSubjectBindings.jsx');
+  const h = harness('ShotSubjectBindings.tsx'), review = harness('ShotSubjectBindings.tsx');
   const reviewProps = { binding: row, state, controller: f.controller, assets: [image(), image(2)], scope: state.scope };
   const retainedKeep = byId(review.render(reviewProps, 'BoundSubject'), `subject-keep-version-${row.id}`).props.onClick;
   for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) {

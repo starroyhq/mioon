@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {COMFY_IMAGE_OPTIONS,COMFY_IMAGE_POLICY,DEFAULT_COMFY_IMAGE_CONFIGURATION,comfyImageConfigurationSchema,comfyImageExecutionSchema,comfyRemoteSchemas,
-  comfyImageSettingsResultSchema,comfyImageBaseUrlSchema,normalizeComfyImageBaseUrl,comfyCheckpointSchema,isComfyObserveResponse,comfyImageGraphSchema} from '../packages/contracts/src/comfy-images.mjs';
-import {imageSchemas,imageReceiptSchema,imageSnapshotSchema,imageAdapterInputSchema,IMAGE_FIXED_OPTIONS,IMAGE_MODELS} from '../packages/contracts/src/images.mjs';
-import {imageReviewIntentSchema,imageReviewSchemas,IMAGE_REVIEW_POLICY} from '../packages/contracts/src/image-reviews.mjs';
-import {buildComfyWorkflow,hashComfyWorkflow} from '../packages/business/src/comfy/workflow.mjs';
-import {operationDefinition,jsonSchema} from '../packages/client/src/index.mjs';
+  comfyImageSettingsResultSchema,comfyImageBaseUrlSchema,normalizeComfyImageBaseUrl,comfyCheckpointSchema,isComfyObserveResponse,comfyImageGraphSchema} from '../packages/contracts/src/comfy-images.ts';
+import {imageSchemas,imageReceiptSchema,imageSnapshotSchema,imageAdapterInputSchema,IMAGE_FIXED_OPTIONS,IMAGE_MODELS} from '../packages/contracts/src/images.ts';
+import {imageReviewIntentSchema,imageReviewSchemas,IMAGE_REVIEW_POLICY} from '../packages/contracts/src/image-reviews.ts';
+import {buildComfyWorkflow,hashComfyWorkflow} from '../packages/business/src/comfy/workflow.ts';
+import {operationDefinition,jsonSchema} from '../packages/client/src/index.ts';
 const projectId=randomUUID(),taskId=randomUUID(),groupId=randomUUID(),requestId=randomUUID(),at='2026-10-10T00:00:00.000Z';
 function fixture(){const input={projectId,requestId,name:'Local image',providerId:'comfy-local',model:'folder/model.safetensors',prompt:'A red tree',options:COMFY_IMAGE_OPTIONS};
  const configuration={...DEFAULT_COMFY_IMAGE_CONFIGURATION,enabled:true,baseUrl:'http://127.0.0.1:8188',model:input.model};

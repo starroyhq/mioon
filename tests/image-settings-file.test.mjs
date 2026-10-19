@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {mkdtemp, mkdir, readFile, writeFile, readdir, rm, chmod, stat, symlink, link} from 'node:fs/promises';
-import {createImageSettingsFile} from '../packages/business/src/images/settings-file.mjs';
-import {createImageSettings} from '../packages/business/src/images/settings.mjs';
-import {DEFAULT_IMAGE_CONFIGURATION, IMAGE_SETTINGS_NAMESPACE} from '../packages/contracts/src/image-settings.mjs';
-import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.mjs';
+import {createImageSettingsFile} from '../packages/business/src/images/settings-file.ts';
+import {createImageSettings} from '../packages/business/src/images/settings.ts';
+import {DEFAULT_IMAGE_CONFIGURATION, IMAGE_SETTINGS_NAMESPACE} from '../packages/contracts/src/image-settings.ts';
+import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
 
 const envelope = (revision = 1) => ({version: 1, namespace: IMAGE_SETTINGS_NAMESPACE, revision, configuration: structuredClone(DEFAULT_IMAGE_CONFIGURATION), secret: null});
 async function fixture(t) {
@@ -110,7 +110,7 @@ test('concurrent raw readers see complete envelopes and no leftover temporary fi
 
 test('settings file path is absolute and bounded by a private root', () => {
   for (const options of [{directory: 'relative'}, {directory: '/tmp/image-settings', privateRoot: '/tmp/other'},
-    {directory: '/tmp/image-settings', filename: '../agent-settings.json'}, {directory: '/tmp/image-settings', filename: '/settings.json'}]) {
+    {directory: '/tmp/image-settings', filename: '../agent-settings.tson'}, {directory: '/tmp/image-settings', filename: '/settings.json'}]) {
     assert.throws(() => createImageSettingsFile(options), {code: 'IMAGE_SETTINGS_CORRUPT'});
   }
 });

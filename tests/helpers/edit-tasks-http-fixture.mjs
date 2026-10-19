@@ -8,9 +8,9 @@ import {tmpdir} from 'node:os';
 import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {setTimeout as delay} from 'node:timers/promises';
-import {startServer} from '../../apps/server/src/index.mjs';
-import {openStore} from '../../packages/business/src/db.mjs';
-import {createServices} from '../../packages/business/src/services.mjs';
+import {startServer} from '../../apps/server/src/index.ts';
+import {openStore} from '../../packages/business/src/db.ts';
+import {createServices} from '../../packages/business/src/services.ts';
 
 export const TASK_TOKEN = 'synthetic-durable-edit-transport-token';
 export const REPO = fileURLToPath(new URL('../../', import.meta.url));

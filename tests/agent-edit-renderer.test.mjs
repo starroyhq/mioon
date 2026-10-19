@@ -1,16 +1,18 @@
 import {createAgentAuthorizationUiMock} from './helpers/agent-authorization-ui.mjs';
 import { creationTestDependency } from './helpers/creation-i18n.ts';
 import * as nativeCloseSources from '../apps/web/src/native-close-sources.ts';
-import * as timing from '../apps/web/src/agent-timeline-context.js';
+import * as timing from '../apps/web/src/agent-timeline-context.ts';
 import * as gainContext from '../apps/web/src/agent-timeline-gain-context.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import * as edits from '../apps/web/src/agent-edits.js';
-import * as chat from '../apps/web/src/agent-chat.js';
-import * as policy from '../apps/web/src/agent-tool-state.js';
+import * as edits from '../apps/web/src/agent-edits.ts';
+import * as chat from '../apps/web/src/agent-chat.ts';
+import * as policy from '../apps/web/src/agent-tool-state.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), instanceId = id(2), threadId = id(3), shotId = id(4), runId = id(5), proposalId = id(6), requestId = id(7);
 const target = { projectId, shotId, expectedRevision: 4, title: 'Saved title', prompt: 'Saved prompt <script>untrusted</script>' };
@@ -44,7 +46,7 @@ test('unresolved proposal discovery and native recreation are GET-only without b
   const again = edits.createAgentEditsSession({ projectId, client: f.client }); await again.load();
   assert.equal(again.getState().proposals[0].approval.requestId, approval.requestId);
   assert.equal(f.calls.filter(call => call[0] === 'act').length, 0);
-  assert.doesNotMatch(readFileSync(new URL('../apps/web/src/agent-edits.js', import.meta.url), 'utf8'), /(?:sessionStorage|localStorage)\s*[.(]|randomUUID\s*\(/);
+  assert.doesNotMatch(readFileSync(new URL('../apps/web/src/agent-edits.ts', import.meta.url), 'utf8'), /(?:sessionStorage|localStorage)\s*[.(]|randomUUID\s*\(/);
   again.dispose();
 });
 
@@ -178,25 +180,25 @@ function harness(file, options = {}) {
   }; react.default = react;
   const resolve = name => {
     const i18nDependency = creationTestDependency(name); if (i18nDependency) return i18nDependency;
-    if (name === './agent-timeline-context.js') return timing;
+    if (name === './agent-timeline-context.ts') return timing;
     if (name === './agent-timeline-gain-context.ts') return gainContext;
     if (name === './AgentTimelineGain.tsx') { const gain = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/AgentTimelineGain.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(gain, gain.exports, resolve); return gain.exports; }
     if (name === './editor-settings-scope.ts') { const scope = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/editor-settings-scope.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(scope, scope.exports, resolve); return scope.exports; }
     if (name === './native-close-sources.ts') return nativeCloseSources;
     if (name === 'react') return react;
-    if (name === './agent-edits.js') return { ...edits, createAgentEditsSession: input => edits.createAgentEditsSession({ ...input, client: options.client }) };
-    if (name === './agent-chat.js') return { ...chat, createAgentChatSession: input => chat.createAgentChatSession({ ...input, client: options.chatClient, receipts: options.receipts, requestId: () => requestId }) };
-    if (name === './agent-tool-state.js') return policy;
+    if (name === './agent-edits.ts') return { ...edits, createAgentEditsSession: input => edits.createAgentEditsSession({ ...input, client: options.client }) };
+    if (name === './agent-chat.ts') return { ...chat, createAgentChatSession: input => chat.createAgentChatSession({ ...input, client: options.chatClient, receipts: options.receipts, requestId: () => requestId }) };
+    if (name === './agent-tool-state.ts') return policy;
     if (name === './AgentAuthorizations.tsx') return {__esModule:true,default:'AgentAuthorizations'};
-    if (name === './AgentEditProposal.jsx') return { __esModule: true, default: 'AgentEditProposal' };
-    if (name === './AgentRunActivity.jsx') return load('AgentRunActivity');
-    if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
-    if (name === './icons.jsx') return { default: 'Icon' };
+    if (name === './AgentEditProposal.tsx') return { __esModule: true, default: 'AgentEditProposal' };
+    if (name === './AgentRunActivity.tsx') return load('AgentRunActivity');
+    if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => visible };
+    if (name === './icons.tsx') return { default: 'Icon' };
     if (name.endsWith('.css')) return {};
-    if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.jsx') return new Proxy({}, { get: (_, key) => String(key) });
+    if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return new Proxy({}, { get: (_, key) => String(key) });
     throw Error(name);
   };
-  const load = name => { const module = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL(`../apps/web/src/${name}.jsx`, import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, resolve); return module.exports; };
+  const load = name => { const module = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL(`../apps/web/src/${name}.tsx`, import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, resolve); return module.exports; };
   const component = load(file).default;
   const h = {
     render(patch = {}) { props = { ...props, ...patch }; cursor = 0; effects = []; tree = component(props); for (const index of effects) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].fn(); } return tree; },
@@ -253,8 +255,8 @@ test('actual composer previews saved title/prompt, requires distinct edit mode a
 });
 
 test('App confirmed-apply refresh is same-project and cannot mark an Inspector draft saved or remount it', () => {
-  const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
-  const handler = app.match(/onApplied=\{projectId => \{([^}]+)\}\}/)?.[1]; assert.ok(handler); assert.match(handler, /currentProject.current === projectId/); assert.match(handler, /refresh\(projectId\)/);
+  const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
+  const handler = app.match(/onApplied=\{\(projectId: string\) => \{([^}]+)\}\}/)?.[1]; assert.ok(handler); assert.match(handler, /currentProject.current === projectId/); assert.match(handler, /refresh\(projectId\)/);
   assert.doesNotMatch(handler, /setShotDirty|setClipDirty|setSourceDirty|setSubjectDirty|setSubtitleDirty|setInspectorEpoch|saveShot|setSelected|rpc/);
   const calls = [], apply = Function('currentProject', 'refresh', `return projectId => { ${handler} };`)({ current: projectId }, id => calls.push(id));
   apply(id(90)); assert.equal(calls.length, 0); apply(projectId); assert.deepEqual(calls, [projectId]);
@@ -270,7 +272,7 @@ test('App confirmed-apply refresh is same-project and cannot mark an Inspector d
   assert.notEqual(keyFor({project:{id:id(90)}}, shotId, 3), key);
   assert.notEqual(keyFor({project:{id:projectId}}, id(91), 3), key);
   assert.notEqual(keyFor({project:{id:projectId}}, shotId, 4), key);
-  const inspector = readFileSync(new URL('../apps/web/src/Inspector.jsx', import.meta.url), 'utf8'); assert.match(inspector, /if \(!dirty\) \{ draftRef\.current = latest; setDraft\(latest\)/); assert.match(inspector, /else if \(record.revision !== baseRevision\) setConflict\(true\)/);
+  const inspector = readFileSync(new URL('../apps/web/src/Inspector.tsx', import.meta.url), 'utf8'); assert.match(inspector, /if \(!dirty\) \{ draftRef\.current = latest; setDraft\(latest\)/); assert.match(inspector, /else if \(record.revision !== baseRevision\) setConflict\(true\)/);
 });
 
 test('a stale-epoch rejection only rereads and preserves uncertainty until terminal evidence or explicit same-intent retry', async () => {

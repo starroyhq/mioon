@@ -1,7 +1,7 @@
 import { creationUiMessages } from '../packages/i18n/src/catalogs/creation-ui.ts';
 import { createLanguageStore } from '../apps/web/src/i18n/language-store.ts';
 import { createI18nTestContext } from './helpers/i18n.ts';
-import { comfyConnectorAvailabilityDescriptor } from '../apps/web/src/comfy-image-settings.js';
+import { comfyConnectorAvailabilityDescriptor } from '../apps/web/src/comfy-image-settings.ts';
 import { creationTestDependency } from './helpers/creation-i18n.ts';
 import * as nativeCloseSources from '../apps/web/src/native-close-sources.ts';
 import test from 'node:test';
@@ -9,15 +9,17 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import { createHash } from 'node:crypto';
-import { canonicalImageInput } from '../packages/contracts/src/images.mjs';
-import { ApiError } from '../apps/web/src/api.js';
-import * as imageLogic from '../apps/web/src/image-generation.js';
+import { canonicalImageInput } from '../packages/contracts/src/images.ts';
+import { ApiError } from '../apps/web/src/api.ts';
+import * as imageLogic from '../apps/web/src/image-generation.ts';
 import * as imageEditIntents from '../apps/web/src/image-edit-intent.ts';
-import { IMAGE_LIMITS } from '../packages/contracts/src/images.mjs';
-import { DEFAULT_IMAGE_CONFIGURATION, DEFAULT_CUSTOM_IMAGE_CONFIGURATION } from '../packages/contracts/src/image-settings.mjs';
-import { IMAGE_REVIEW_DESTINATION, IMAGE_REVIEW_POLICY } from '../packages/contracts/src/image-reviews.mjs';
-import { IMAGE_FIXED_OPTIONS, IMAGE_MODELS, createImageGenerationSession, imageCanGenerate, imageDraftDirty, imageInputIssue, imageTaskLabel } from '../apps/web/src/image-generation.js';
+import { IMAGE_LIMITS } from '../packages/contracts/src/images.ts';
+import { DEFAULT_IMAGE_CONFIGURATION, DEFAULT_CUSTOM_IMAGE_CONFIGURATION } from '../packages/contracts/src/image-settings.ts';
+import { IMAGE_REVIEW_DESTINATION, IMAGE_REVIEW_POLICY } from '../packages/contracts/src/image-reviews.ts';
+import { IMAGE_FIXED_OPTIONS, IMAGE_MODELS, createImageGenerationSession, imageCanGenerate, imageDraftDirty, imageInputIssue, imageTaskLabel } from '../apps/web/src/image-generation.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), groupId = id(2), taskId = id(3), requestId = id(4), versionId = id(5), assetId = id(6);
 const at = '2026-10-10T10:00:00.000Z';
@@ -180,7 +182,7 @@ test('completion is observed before rereading current group and immutable result
 });
 
 test('actual library reveal respects newer project, navigation and panel choices while refresh is pending', async () => {
-  const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const start = app.indexOf('  async function revealImageAsset('), end = app.indexOf('  async function selectProject(', start);
   assert.ok(start > 0 && end > start); const source = app.slice(start, end).trim();
   for (const changed of [null, 'projectEpoch', 'navigationEpoch', 'panelIntent', 'currentProject']) {
@@ -197,7 +199,7 @@ test('actual library reveal respects newer project, navigation and panel choices
   assert.match(app, /setShowTasks\(false\); setShowDelivery\(false\); setShowImage\(true\)/);
   assert.doesNotMatch(app, /rightDockTab === 'image'/);
   assert.doesNotMatch(source, /node\.create|setPreviewAsset|image\.generate/);
-  assert.doesNotThrow(() => transformSync(app, { loader: 'jsx', format: 'esm' }));
+  assert.doesNotThrow(() => transformSync(app, { loader: 'tsx', format: 'esm' }));
 });
 
 test('input limits match contract and state copy distinguishes unknown, failure, cancellation and local failure', () => {
@@ -207,8 +209,8 @@ test('input limits match contract and state copy distinguishes unknown, failure,
 });
 
 test('renderer remains an extracted dock with explicit providers, fixed paid disclosure and local previews', () => {
-  const source = readFileSync(new URL('../apps/web/src/ImageGeneration.jsx', import.meta.url), 'utf8');
-  assert.doesNotThrow(() => transformSync(source, { loader: 'jsx', format: 'esm' }));
+  const source = readFileSync(new URL('../apps/web/src/ImageGeneration.tsx', import.meta.url), 'utf8');
+  assert.doesNotThrow(() => transformSync(source, { loader: 'tsx', format: 'esm' }));
   const displayCopy = source + Object.entries(creationUiMessages).filter(([key]) => source.includes(`'${key}'`)).map(([, value]) => JSON.stringify(value['zh-Hans'])).join('\n');
   for (const text of ['useWorkspaceVisibility', 'image-provider-openai', '真实调用尚未验证', '确定性测试图案', '未加密', 'image-paid-warning', 'image-review-approve', 'image-review-reject', 'image-draft-guard', 'image-edit-version', 'image-version-preview', 'image-reveal-asset', 'image-cancel-queued', 'image-recover-result']) assert.ok(displayCopy.includes(text), text);
   assert.match(source, /composerVisible \? `\/media\/\$\{encodeURIComponent\(version.assetId\)\}` : undefined/);
@@ -216,7 +218,7 @@ test('renderer remains an extracted dock with explicit providers, fixed paid dis
   assert.match(source, /disabled=\{busy \|\| Boolean\(state.target\)\}/);
 });
 
-const componentSource = readFileSync(new URL('../apps/web/src/ImageGeneration.jsx', import.meta.url), 'utf8');
+const componentSource = readFileSync(new URL('../apps/web/src/ImageGeneration.tsx', import.meta.url), 'utf8');
 const element = (type, props = {}, ...children) => ({ type, props: { ...props, children: children.length === 1 ? children[0] : children } });
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
 const depsEqual = (left, right) => Boolean(left && right && left.length === right.length && left.every((value, index) => Object.is(value, right[index])));
@@ -241,22 +243,22 @@ function renderer(f, options = {}) {
     }
     if (name === 'react') return react;
     if (name === '@mioon/contracts') return { IMAGE_LIMITS };
-    if (name === './image-generation.js') return { ...imageLogic, createImageGenerationSession: options => createImageGenerationSession({ ...options, api: f.api, storage: f.storage, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) };
+    if (name === './image-generation.ts') return { ...imageLogic, createImageGenerationSession: options => createImageGenerationSession({ ...options, api: f.api, storage: f.storage, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) };
     if (name === './image-edit-intent.ts') return imageEditIntents;
-    if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
-    if (name === './ComfyImageSettings.jsx') return { __esModule: true, default: 'ComfyImageSettings' };
-    if (name === './ComfyImageDetails.jsx') return { ComfyImageReviewDetails: 'ComfyImageReviewDetails', ComfyImageTaskDetails: 'ComfyImageTaskDetails' };
-    if (name === './comfy-image-settings.js') return { comfyConnectorAvailabilityDescriptor, createComfyImageSettingsClient: () => ({ read: async () => null }) };
+    if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => visible };
+    if (name === './ComfyImageSettings.tsx') return { __esModule: true, default: 'ComfyImageSettings' };
+    if (name === './ComfyImageDetails.tsx') return { ComfyImageReviewDetails: 'ComfyImageReviewDetails', ComfyImageTaskDetails: 'ComfyImageTaskDetails' };
+    if (name === './comfy-image-settings.ts') return { comfyConnectorAvailabilityDescriptor, createComfyImageSettingsClient: () => ({ read: async () => null }) };
     // This element-tree harness adapts only the status wrapper; owner semantics have dedicated tests.
     if (name === './SettingsNavigationSlot.tsx') return { __esModule: true, default: 'SettingsNavigationSlot' };
-    if (name === './ImageSettings.jsx') return { __esModule: true, default: 'ImageSettings' };
-    if (name === './image-settings.js') return { createImageSettingsClient: options => options?.slot === 'custom' ? f.customSettingsClient : f.settingsClient };
-    if (name === './icons.jsx') return { default: 'Icon' };
+    if (name === './ImageSettings.tsx') return { __esModule: true, default: 'ImageSettings' };
+    if (name === './image-settings.ts') return { createImageSettingsClient: options => options?.slot === 'custom' ? f.customSettingsClient : f.settingsClient };
+    if (name === './icons.tsx') return { default: 'Icon' };
     if (name === './image-generation.css') return {};
-    if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.jsx') return primitive;
+    if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return primitive;
     throw Error(name);
   };
-  Function('module', 'exports', 'require', transformSync(componentSource, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, require);
+  Function('module', 'exports', 'require', transformSync(componentSource, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, require);
   const harness = {
     render(owner = currentProject) { currentProject = owner; index = 0; effects = []; tree = module.exports.default({ projectId: owner, projectName: 'Test project', reviewClient: f.reviewClient, settingsClient: f.settingsClient, customSettingsClient: f.customSettingsClient, onDirtyChange: value => { dirty = value; }, onRevealAsset: options.onRevealAsset, projectAssets: options.projectAssets || [], editIntent: options.editIntent || null, isEditIntentCurrent: options.isEditIntentCurrent }); for (const slot of effects) { slots[slot].cleanup?.(); slots[slot].cleanup = slots[slot].callback(); } return tree; },
     find(id) { return nodes(tree).find(node => node.props['data-testid'] === id); },

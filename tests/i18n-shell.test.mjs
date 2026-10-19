@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { shellMessages } from '../packages/i18n/src/catalogs/shell.ts';
 import { LOCALES, validateCatalogs, translate, message, renderMessage } from '../packages/i18n/src/index.ts';
-import { referenceSourceDetails, referenceTargetOptions, referenceAttachIssueDescriptor, canvasEdge } from '../apps/web/src/reference-connections.js';
-import { importFeedback, renderImportFeedback } from '../apps/web/src/import-feedback.js';
+import { referenceSourceDetails, referenceTargetOptions, referenceAttachIssueDescriptor, canvasEdge } from '../apps/web/src/reference-connections.ts';
+import { importFeedback, renderImportFeedback } from '../apps/web/src/import-feedback.ts';
 
+import { lenientFunction, stripSourceTypes } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 test('shell catalog has all four locales, exact placeholders, and no missing-key fallback', () => {
   assert.deepEqual(validateCatalogs(shellMessages), []);
   for (const [key, entry] of Object.entries(shellMessages)) {
@@ -55,14 +57,14 @@ test('stored uncertainty notices re-render without changing filenames, outcomes,
 });
 
 test('shell component controllers are not keyed or reconstructed by locale', () => {
-  for (const name of ['App.jsx', 'ProjectHome.tsx', 'ProjectEntry.tsx', 'SettingsRoot.tsx', 'Inspector.jsx', 'AssetLibrary.jsx', 'ReferenceConnections.jsx']) {
+  for (const name of ['App.tsx', 'ProjectHome.tsx', 'ProjectEntry.tsx', 'SettingsRoot.tsx', 'Inspector.tsx', 'AssetLibrary.tsx', 'ReferenceConnections.tsx']) {
     const source = readFileSync(new URL(`../apps/web/src/${name}`, import.meta.url), 'utf8');
     assert.doesNotMatch(source, /key=\{locale\}|key=\{language\}/u, name);
   }
 });
 
 test('header actions and native settings remain reachable without locale or resize remount keys', () => {
-  const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const header = app.slice(app.indexOf('<WorkbenchTopbar'), app.indexOf('{showGuide && <section'));
   const shell = readFileSync(new URL('../apps/web/src/WorkbenchShell.tsx', import.meta.url), 'utf8');
   const task = readFileSync(new URL('../apps/web/src/TaskPopover.tsx', import.meta.url), 'utf8');
@@ -91,9 +93,9 @@ test('header actions and native settings remain reachable without locale or resi
 });
 
 test('known workspace/storage diagnostics retain actionable meaning without exposing raw server text', () => {
-  const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
-  const source = app.slice(app.indexOf('function readableError(error)'), app.indexOf('function Modal('));
-  const readableError = Function('msg', `${source}; return readableError;`)(message);
+  const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
+  const source = app.slice(app.indexOf('function readableError(error'), app.indexOf('function Modal('));
+  const readableError = Function('msg', `${stripSourceTypes(source,{loader:'tsx'})}; return readableError;`)(message);
   const cases = {
     STORAGE_MIGRATION_BLOCKED: 'shell.error.storageMigration', WORKSPACE_ORIGIN_UNVERIFIED: 'tasks.unverifiedWorkspace',
     RESTORED_RECORD_HELD: 'tasks.heldReason', RESTORE_WORKSPACE_ORIGIN_MISMATCH: 'shell.error.workspaceChanged',

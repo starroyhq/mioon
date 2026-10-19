@@ -34,14 +34,14 @@ export class OpacityUpgradeDatabaseError extends Error {
 function fail(code: OpacityUpgradeDatabaseCode = 'SOURCE_INVALID'): never {throw new OpacityUpgradeDatabaseError(code);}
 function runtimeModule(moduleName: string): unknown {
   switch (moduleName) {
-    case '../../contracts/src/index.mjs': return require('../../contracts/src/index.mjs');
-    case './timeline-sources.mjs': return require('./timeline-sources.mjs');
-    case './db.mjs': return require('./db.mjs');
-    case './workspace-preferences.mjs': return require('./workspace-preferences.mjs');
-    case './timeline-recovery.mjs': return require('./timeline-recovery.mjs');
-    case './reference-recovery.mjs': return require('./reference-recovery.mjs');
-    case './subject-recovery.mjs': return require('./subject-recovery.mjs');
-    case './subjects.mjs': return require('./subjects.mjs');
+    case '../../contracts/src/index.ts': return require('../../contracts/src/index.ts');
+    case './timeline-sources.ts': return require('./timeline-sources.ts');
+    case './db.ts': return require('./db.ts');
+    case './workspace-preferences.ts': return require('./workspace-preferences.ts');
+    case './timeline-recovery.ts': return require('./timeline-recovery.ts');
+    case './reference-recovery.ts': return require('./reference-recovery.ts');
+    case './subject-recovery.ts': return require('./subject-recovery.ts');
+    case './subjects.ts': return require('./subjects.ts');
     default: return fail();
   }
 }
@@ -99,20 +99,20 @@ function checkTasks(db: DatabaseSync, tables: Set<string>): void {
     const task = {id: row.id, projectId: row.projectId, operation: row.operation, input, requestId: row.requestId,
       digest: row.digest, lane: row.lane, status: row.status, revision: row.revision, createdAt: row.createdAt,
       updatedAt: row.updatedAt, acknowledged: true, origin: row.origin, ...(row.errorCode === null ? {} : {errorCode: row.errorCode})};
-    if (invoke('../../contracts/src/index.mjs', 'isEditTask', [task]) !== true || row.digest !== hash({operation: row.operation, input})) fail();
+    if (invoke('../../contracts/src/index.ts', 'isEditTask', [task]) !== true || row.digest !== hash({operation: row.operation, input})) fail();
     // A terminal ACK does not make an old operation readable by the fixed42
     // application's task coordinator. Preserve such projects in40 instead of
     // publishing a copy whose task history fails get/list after reopening.
     if (!isOpacityApplicationTask(task)) fail('SOURCE_UNSUPPORTED');
-    const family = row.lane === 'timeline:mutation' ? ['timeline-recovery.mjs', 'readTimelineReceipt', 'createTimelineRecoveryBoundary']
-      : row.lane === 'reference:mutation' ? ['reference-recovery.mjs', 'readReferenceReceipt', 'createReferenceRecoveryBoundary']
-      : row.lane === 'subject:mutation' ? ['subject-recovery.mjs', 'readSubjectReceipt', 'createSubjectRecoveryBoundary'] : fail();
+    const family = row.lane === 'timeline:mutation' ? ['timeline-recovery.ts', 'readTimelineReceipt', 'createTimelineRecoveryBoundary']
+      : row.lane === 'reference:mutation' ? ['reference-recovery.ts', 'readReferenceReceipt', 'createReferenceRecoveryBoundary']
+      : row.lane === 'subject:mutation' ? ['subject-recovery.ts', 'readSubjectReceipt', 'createSubjectRecoveryBoundary'] : fail();
     const module = './' + family[0], receipt = invoke(module, family[1]!, [db, input, row.operation]) ?? null;
     if (row.status === 'not_applied') {
-      if (receipt !== null || row.receiptDigest !== null || invoke('../../contracts/src/index.mjs', 'hasRequestNotAppliedProof', [{code: row.errorCode, status: 409, details: {mutationOutcome: 'not_applied', operation: row.operation, projectId: row.projectId, requestId: row.requestId}}, input, {operation: row.operation}]) !== true) fail();
+      if (receipt !== null || row.receiptDigest !== null || invoke('../../contracts/src/index.ts', 'hasRequestNotAppliedProof', [{code: row.errorCode, status: 409, details: {mutationOutcome: 'not_applied', operation: row.operation, projectId: row.projectId, requestId: row.requestId}}, input, {operation: row.operation}]) !== true) fail();
     } else {
       if (!object(receipt) || receipt.requestHash !== row.digest) fail();
-      const boundary = invoke(row.lane === 'subject:mutation' ? './subjects.mjs' : module, family[2]!, [db, input]);
+      const boundary = invoke(row.lane === 'subject:mutation' ? './subjects.ts' : module, family[2]!, [db, input]);
       if (!object(boundary) || typeof boundary.replay !== 'function') fail();
       const result: unknown = Reflect.apply(boundary.replay, boundary, [row.operation, receipt.response]);
       if (row.receiptDigest !== hash(result)) fail();
@@ -132,12 +132,12 @@ function checkExports(db: DatabaseSync, values: Iterable<Value>): void {
     if (!hex(receipt?.requestHash) || !object(saved) || saved.status !== 'queued' || saved.assetId !== null || saved.url !== null ||
         !isOpacityRenderRecord(saved, input) || identity(saved) !== identity(value)) fail('UNSUPPORTED_EXPORT');
     assertFloatTimelineExportRead(db, value, {isTimelineRenderRecord: isOpacityRenderRecord,
-      readOwnedAsset: (projectId, id) => invoke('./timeline-sources.mjs', 'readOwnedTimelineAsset', [db, projectId, id])});
+      readOwnedAsset: (projectId, id) => invoke('./timeline-sources.ts', 'readOwnedTimelineAsset', [db, projectId, id])});
   }
 }
 function eligible(db: DatabaseSync, transaction: boolean): void {
   settings(db, transaction);
-  const classification = invoke('./db.mjs', 'classifyCurrentWorkspaceSchema', [db]);
+  const classification = invoke('./db.ts', 'classifyCurrentWorkspaceSchema', [db]);
   if (!object(classification) || classification.schemaVersion !== 40 || classification.profile !== 'ordinary') fail();
   if (Object.values(db.prepare('PRAGMA quick_check(1)').get() ?? {})[0] !== 'ok' || db.prepare('SELECT 1 FROM pragma_foreign_key_check LIMIT 1').get()) fail();
   const tables = new Set(db.prepare("SELECT name FROM main.sqlite_schema WHERE type='table'").all().map(row => String(row.name)));
@@ -151,7 +151,7 @@ function eligible(db: DatabaseSync, transaction: boolean): void {
     const extension = typeof asset.mimeType === 'string' ? extensions[asset.mimeType] : undefined;
     if (!extension || asset.provenance !== 'user-import' || asset.relativePath !== `media/${String(asset.id)}.${extension}` ||
         !hex(asset.sha256) || typeof asset.sizeBytes !== 'number' || !Number.isSafeInteger(asset.sizeBytes) || asset.sizeBytes < 1) fail('UNSUPPORTED_ASSET');
-    const owned = invoke('./timeline-sources.mjs', 'readOwnedTimelineAsset', [db, asset.projectId, asset.id]);
+    const owned = invoke('./timeline-sources.ts', 'readOwnedTimelineAsset', [db, asset.projectId, asset.id]);
     if (!object(owned) || canonical(owned) !== canonical(asset)) fail('UNSUPPORTED_ASSET');
     if (db.prepare("SELECT 1 FROM main.exports WHERE CASE WHEN json_valid(data) THEN json_extract(data,'$.assetId') END=? LIMIT 1").get(String(asset.id))) fail('UNSUPPORTED_ASSET');
   }
@@ -159,7 +159,7 @@ function eligible(db: DatabaseSync, transaction: boolean): void {
   for (const row of db.prepare("SELECT CASE WHEN typeof(projectId)='text' AND length(CAST(projectId AS BLOB))=36 THEN projectId END AS projectId,CASE WHEN typeof(state)='text' AND length(CAST(state AS BLOB)) BETWEEN 1 AND 16384 THEN state END AS state FROM main.workspace_preferences LIMIT 100001").iterate()) {
     if (!uuid(row.projectId) || typeof row.state !== 'string') fail();
     let value: unknown; try {value = JSON.parse(row.state) as unknown;} catch {return fail();}
-    invoke('./workspace-preferences.mjs', 'parseWorkspacePreferencesState', [value]);
+    invoke('./workspace-preferences.ts', 'parseWorkspacePreferencesState', [value]);
   }
   validateOpacityWorkspaceRows(db, {schemaVersion: 42});
 }

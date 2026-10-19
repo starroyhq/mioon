@@ -8,10 +8,10 @@ import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {openStore, createServices} from '@mioon/business';
 import {deriveAgentEndpoint, AGENT_TIMELINE_MOVE_CONTEXT, agentTimelineMoveReviewTarget} from '@mioon/contracts';
-import {createAgentSettings, AGENT_CREDENTIAL_ACQUIRE} from '../packages/business/src/agent/settings.mjs';
-import {createChatRuntime} from '../packages/business/src/agent/chat-runtime.mjs';
-import {createAgentEditService} from '../packages/business/src/agent/edit-proposals.mjs';
-import {editToolCapability, EDIT_TOOL_CATALOG_HASH} from '../packages/business/src/agent/edit-tool-policy.mjs';
+import {createAgentSettings, AGENT_CREDENTIAL_ACQUIRE} from '../packages/business/src/agent/settings.ts';
+import {createChatRuntime} from '../packages/business/src/agent/chat-runtime.ts';
+import {createAgentEditService} from '../packages/business/src/agent/edit-proposals.ts';
+import {editToolCapability, EDIT_TOOL_CATALOG_HASH} from '../packages/business/src/agent/edit-tool-policy.ts';
 
 const context = AGENT_TIMELINE_MOVE_CONTEXT;
 function done(protocol, changes = {startFrame: 90}, name = 'mioon_propose_timeline_clip_move') {

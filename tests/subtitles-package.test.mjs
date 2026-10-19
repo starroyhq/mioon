@@ -6,8 +6,8 @@ import path from 'node:path';
 import {gzipSync} from 'node:zlib';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import resources from '../apps/desktop/subtitle-resources.cjs';
-import {createSubtitleTarVerifier,verifySubtitleResourceTarball} from '../apps/desktop/subtitle-package.mjs';
+import resources from '../apps/desktop/subtitle-resources.ts';
+import {createSubtitleTarVerifier,verifySubtitleResourceTarball} from '../apps/desktop/subtitle-package.ts';
 const base='mioon-0.4.1-linux-x64',prefix=base+'/resources/subtitles',expected=resources.SUBTITLE_RESOURCE_MANIFEST;
 const source=new URL('../packages/business/resources/subtitles/',import.meta.url);
 const bytes=Object.fromEntries(await Promise.all(Object.keys(expected).map(async name=>[name,await readFile(new URL(name,source))])));
@@ -75,13 +75,13 @@ test('gzip verifier streams >10MiB font, detects corruption/missing files, and r
 });
 
 test('package inspector retains legacy ASAR ceiling and validates external delivered resources',async()=>{
- const source=await readFile(new URL('../apps/desktop/scripts/inspect-package.mjs',import.meta.url),'utf8');
+ const source=await readFile(new URL('../apps/desktop/scripts/inspect-package.ts',import.meta.url),'utf8');
  assert.match(source,/maxBuffer: 10 \* 1024 \* 1024/);assert.match(source,/new Set\(\['main\.cjs', 'backend\.cjs', \.\.\.\(!historicalV3 \? \['preload\.cjs'\] : \[\]\), 'package\.json', 'web', 'licenses'\]\)/);
  assert.match(source,/historicalV3\?null:await verifySubtitleResourceTarball\(tarball,artifactBase\)/);assert.match(source,/archivedSubtitleResourcesMatchNativePackage:true/);
 });
 
 test('actual ASAR root allowlist adds current preload and icons while preserving historical v3 exclusions',async()=>{
- const source=await readFile(new URL('../apps/desktop/scripts/inspect-package.mjs',import.meta.url),'utf8');
+ const source=await readFile(new URL('../apps/desktop/scripts/inspect-package.ts',import.meta.url),'utf8');
  const match=source.match(/^(const allowed = new Set\([^\n]+\);\nif \(!historicalV3\) allowed\.add\('icons'\);)$/m);assert.ok(match,'bounded current and historical root allowlist');
  const inspect=Function('historicalV3',`${match[1]} return allowed;`);
  const legacy=['main.cjs','backend.cjs','package.json','web','licenses'];

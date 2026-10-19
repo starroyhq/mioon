@@ -10,13 +10,15 @@ import * as shotClient from '../apps/web/src/local-shot-text-client.ts';
 import * as shotModule from '../apps/web/src/local-shot-text-state.ts';
 import { createTimelineDeliveryNameController } from '../apps/web/src/export-delivery-state.ts';
 import { createClipDraftController } from '../apps/web/src/clip-draft-state.ts';
-import { createTimelineFormatController } from '../apps/web/src/timeline-format-state.js';
-import { createSubjectController, subjectDraftDirty } from '../apps/web/src/subject-state.js';
-import { createSubtitleController } from '../apps/web/src/subtitle-state.js';
+import { createTimelineFormatController } from '../apps/web/src/timeline-format-state.ts';
+import { createSubjectController, subjectDraftDirty } from '../apps/web/src/subject-state.ts';
+import { createSubtitleController } from '../apps/web/src/subtitle-state.ts';
 import { readNativeLegacyClose } from '../apps/web/src/native-close-legacy.ts';
 import { createNativeCloseAdmission, createNativeCloseRegistry } from '../apps/web/src/native-close-state.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 // The negative control loads the original real controller, with its original
 // dependencies. A missing pure close getter must fail rather than fall back to
 // mutating hasUnsaved/capture. No clean-state controller is substituted.
@@ -148,7 +150,7 @@ test('adapter preserves exactly legacy dirty/submitting predicates and optional 
   assert.equal(readNativeLegacyClose({ inspectorDirty: true }).dirty, true); assert.equal(readNativeLegacyClose().dirty, false);
 });
 
-const subjectHookSource = readFileSync(new URL('../apps/web/src/use-subjects.js', import.meta.url), 'utf8');
+const subjectHookSource = readFileSync(new URL('../apps/web/src/use-subjects.ts', import.meta.url), 'utf8');
 const settleSubjectReads = async () => { for (let i = 0; i < 25; i++) await Promise.resolve(); };
 async function subjectCloseFixture(t) {
   const subjectId = id(30), otherSubjectId = id(32), otherShotId = id(33);
@@ -161,7 +163,7 @@ async function subjectCloseFixture(t) {
     save: () => { counts.save++; return new Promise(() => {}); }, hasPending: () => { counts.pending++; return pending; }, onChange: () => counts.change++ });
   const context = { scope: 'subject:1', projectId, assets: [{ id: assetId, projectId, mimeType: 'image/png' }], shotIds: [shotId, otherShotId] };
   subject.setContext(context); await settleSubjectReads(); subject.selectSubject(subjectId); await subject.readBindings(shotId); await settleSubjectReads();
-  const refreshMatch = subjectHookSource.match(/const refresh = \(\) => \{[^\n]+\};/); assert.ok(refreshMatch, 'Use the real focus/visibility refresh callback');
+  const refreshMatch = subjectHookSource.match(/const refresh = \(\)(?:: [^=]+)? => \{[^\n]+\};/); assert.ok(refreshMatch, 'Use the real focus/visibility refresh callback');
   const focus = Function('controller', 'document', `${refreshMatch[0]} return refresh;`)({ current: subject }, { visibilityState: 'visible' });
   const read = () => readNativeLegacyClose({ inspectorDirty: subjectDraftDirty(subject.getState()), subject });
   const url = 'http://127.0.0.1:4317/?project=test';
@@ -235,8 +237,8 @@ test('real subtitle equal-revision refresh already preserves identity while sele
   const draft = readNativeLegacyClose({ subtitle }); subtitle.setContext({ ...context, timeline: copy(timeline) }); assert.equal(sameIdentity(draft, readNativeLegacyClose({ subtitle })), true);
 });
 
-const inspectorSource = readFileSync(process.env.MIOON_NATIVE_CLOSE_INSPECTOR_SOURCE || new URL('../apps/web/src/Inspector.jsx', import.meta.url), 'utf8');
-const appSource = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const inspectorSource = readFileSync(process.env.MIOON_NATIVE_CLOSE_INSPECTOR_SOURCE || new URL('../apps/web/src/Inspector.tsx', import.meta.url), 'utf8');
+const appSource = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const between = (source, start, end) => { const from = source.indexOf(start), to = source.indexOf(end, from + start.length); assert.ok(from >= 0 && to > from, start); return source.slice(from, to); };
 function actualShotRegistration(shotTextRef, shotCloseRef) {
   return Function('useCallback', 'shotTextRef', 'shotCloseRef', `${between(appSource, '  const registerShotText =', '  const registerClipDraft =')} return registerShotText;`)(callback => callback, shotTextRef, shotCloseRef);

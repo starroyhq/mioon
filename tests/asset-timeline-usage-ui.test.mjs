@@ -7,12 +7,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 import { deriveTimelineAssetUsage, retainTimelineAssetUsage } from '../apps/web/src/timeline-asset-usage.ts';
-import { dispositionCounts, dispositionFilters, filterLibraryAssets } from '../apps/web/src/asset-disposition-state.js';
+import { dispositionCounts, dispositionFilters, filterLibraryAssets } from '../apps/web/src/asset-disposition-state.ts';
 import * as annotations from '../apps/web/src/asset-annotation-state.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const source = readFileSync(path.join(root, 'apps/web/src/AssetTimelineUsage.tsx'), 'utf8');
-const librarySource = readFileSync(path.join(root, 'apps/web/src/AssetLibrary.jsx'), 'utf8');
+const librarySource = readFileSync(path.join(root, 'apps/web/src/AssetLibrary.tsx'), 'utf8');
 const id = n => `cb000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), otherProject = id(2), assetId = id(3);
 const assets = [3, 4, 5].map(n => ({ id: id(n), projectId, name: `素材 ${n}`, mimeType: 'video/mp4', sizeBytes: 1000 }));
@@ -54,22 +54,22 @@ function harness() {
   h.usage = load(source, 'tsx', strictRequire);
   const modules = {
     './AssetTimelineUsage.tsx': h.usage,
-    './asset-disposition-state.js': { dispositionCounts, dispositionFilters, filterLibraryAssets },
-    './AssetDispositionControls.jsx': { __esModule: true, default: 'AssetDispositionControls', useDispositionInteraction: () => ({ visible: h.visible, admit: action => { if (h.visible) action(); } }) },
-    './Timeline.jsx': { assetKind: () => 'video', dragAsset() {} },
-    './WorkspaceControls.jsx': { WorkbenchTooltip: 'WorkbenchTooltip', WorkbenchSelect: 'WorkbenchSelect' },
+    './asset-disposition-state.ts': { dispositionCounts, dispositionFilters, filterLibraryAssets },
+    './AssetDispositionControls.tsx': { __esModule: true, default: 'AssetDispositionControls', useDispositionInteraction: () => ({ visible: h.visible, admit: action => { if (h.visible) action(); } }) },
+    './Timeline.tsx': { assetKind: () => 'video', dragAsset() {} },
+    './WorkspaceControls.tsx': { WorkbenchTooltip: 'WorkbenchTooltip', WorkbenchSelect: 'WorkbenchSelect' },
     './AssetLibraryToolbar.tsx': { __esModule: true, default: 'AssetLibraryToolbar', useAssetLibraryLayout: () => ({ layout: 'grid', setLayout() {} }) },
     './asset-annotation-state.ts': annotations,
-    './workspace-visibility.jsx': { WorkspaceVisibilityProvider: 'WorkspaceVisibilityProvider' },
-    './Nodes.jsx': { Media: 'Media' },
-    './icons.jsx': { __esModule: true, default: 'Icon' },
-    './SubjectLibrary.jsx': { __esModule: true, default: 'SubjectLibrary' },
+    './workspace-visibility.tsx': { WorkspaceVisibilityProvider: 'WorkspaceVisibilityProvider' },
+    './Nodes.tsx': { Media: 'Media' },
+    './icons.tsx': { __esModule: true, default: 'Icon' },
+    './SubjectLibrary.tsx': { __esModule: true, default: 'SubjectLibrary' },
     '@mioon/ui/components/input': { Input: 'Input' },
     '@mioon/ui/components/tabs': { Tabs: 'Tabs', TabsList: 'TabsList', TabsTrigger: 'TabsTrigger', TabsContent: 'TabsContent' },
     '@mioon/ui/components/collapsible': { Collapsible: 'Collapsible', CollapsibleTrigger: 'CollapsibleTrigger', CollapsibleContent: 'CollapsibleContent' },
     '@mioon/ui/components/scroll-area': { ScrollArea: 'ScrollArea' },
   };
-  h.library = load(librarySource, 'jsx', name => Object.hasOwn(modules, name) ? modules[name] : strictRequire(name)).default;
+  h.library = load(librarySource, 'tsx', name => Object.hasOwn(modules, name) ? modules[name] : strictRequire(name)).default;
   h.render = (component, props) => { let result, iterations = 0; do { cursor = 0; dirty = false; result = component(props); if (++iterations > 10) throw Error('Repeated render update'); } while (dirty); for (const [i, fn] of pending) { slots[i].cleanup?.(); slots[i].cleanup = fn(); } pending.clear(); return result; };
   h.unmount = () => slots.forEach(slot => slot.cleanup?.());
   return h;
@@ -236,7 +236,7 @@ test('real React and shared Button render safe compact HTML without network or s
       renderToStaticMarkup(<AssetTimelineUsageFilters {...props} filter="all" onFilter={() => {}} />)];`;
   const script = `import {build} from 'esbuild'; globalThis.fetch = () => { throw Error('Unexpected network'); };
     for (const key of ['localStorage','sessionStorage']) Object.defineProperty(globalThis, key, {get() { throw Error('Unexpected storage'); }});
-    const {outputFiles} = await build({stdin:{contents:${JSON.stringify(fixture)},loader:'jsx',resolveDir:${JSON.stringify(path.join(root, 'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,jsx:'automatic',define:{'process.env.NODE_ENV':'"production"'},logLevel:'silent'});
+    const {outputFiles} = await build({stdin:{contents:${JSON.stringify(fixture)},loader:'tsx',resolveDir:${JSON.stringify(path.join(root, 'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,jsx:'automatic',define:{'process.env.NODE_ENV':'"production"'},logLevel:'silent'});
     const result = await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64')); process.stdout.write(JSON.stringify(result.html)); process.exit(0);`;
   const [card, filters] = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30000 }));
   assert.match(card, /data-slot="button"/); assert.match(card, /aria-expanded="false"/); assert.match(card, /<ul[^>]*hidden=""/);

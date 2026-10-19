@@ -6,11 +6,11 @@ import {writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {crc32,deflateSync} from 'node:zlib';
-import {createArkProvider} from '../packages/business/src/providers/ark.mjs';
-import {createVeoProvider} from '../packages/business/src/providers/veo.mjs';
-import {createMinimaxProvider} from '../packages/business/src/providers/minimax.mjs';
-import {createViduProvider} from '../packages/business/src/providers/vidu.mjs';
-import {createRunwayProvider} from '../packages/business/src/providers/runway.mjs';
+import {createArkProvider} from '../packages/business/src/providers/ark.ts';
+import {createVeoProvider} from '../packages/business/src/providers/veo.ts';
+import {createMinimaxProvider} from '../packages/business/src/providers/minimax.ts';
+import {createViduProvider} from '../packages/business/src/providers/vidu.ts';
+import {createRunwayProvider} from '../packages/business/src/providers/runway.ts';
 
 function png(width=360,height=640,fill=0){
  const chunk=(name,data)=>{const body=Buffer.concat([Buffer.from(name),data]),head=Buffer.alloc(4),tail=Buffer.alloc(4);head.writeUInt32BE(data.length);tail.writeUInt32BE(crc32(body));return Buffer.concat([head,body,tail]);};

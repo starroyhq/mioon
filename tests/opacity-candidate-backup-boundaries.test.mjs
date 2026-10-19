@@ -12,10 +12,10 @@ import {validateWorkspaceRestoreSchemaV43} from '../packages/business/src/worksp
 import {createOpacityCandidateWorkspaceBackup as create, verifyOpacityCandidateWorkspaceBackup as verify,
   restoreOpacityCandidateWorkspaceBackup as restore, inspectOpacityCandidateRestorePublication as status} from '../packages/business/src/opacity-candidate-backup.ts';
 import {OPACITY_CANDIDATE_BACKUP_PROFILE as profile} from '../packages/business/src/opacity-candidate-backup-profile.ts';
-import {createWorkspaceBackup, verifyWorkspaceBackup, withVerifiedWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';
-import {inspectDatabase, buildWorkspaceInventory} from '../packages/business/src/workspace-backup-inventory.mjs';
-import {restoreWorkspaceBackup, inspectWorkspaceRestorePublication} from '../packages/business/src/workspace-restore.mjs';
-import {acquireWorkspaceLock} from '../packages/business/src/workspace-lock.mjs';
+import {createWorkspaceBackup, verifyWorkspaceBackup, withVerifiedWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
+import {inspectDatabase, buildWorkspaceInventory} from '../packages/business/src/workspace-backup-inventory.ts';
+import {restoreWorkspaceBackup, inspectWorkspaceRestorePublication} from '../packages/business/src/workspace-restore.ts';
+import {acquireWorkspaceLock} from '../packages/business/src/workspace-lock.ts';
 
 // These bytes are deliberately not decoded: admission, copying and hashing are
 // tested offline without a media executable, listener, service or provider.

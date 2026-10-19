@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {randomUUID, createCipheriv, createDecipheriv} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
-import {createDesktopSecretCodec} from '../apps/desktop/src/secret-store.mjs';
-import {createDesktopImageSecretCodec} from '../apps/desktop/src/image-secret-store.mjs';
-import {createImageSecretBroker, createImageSecretClient, MAX_IMAGE_SECRET_MESSAGE_BYTES} from '../apps/desktop/src/image-secret-broker.mjs';
-import {BackendSupervisor} from '../apps/desktop/src/supervisor.mjs';
-import {createImageSettings, IMAGE_CREDENTIAL_ACQUIRE} from '../packages/business/src/images/settings.mjs';
-import {DEFAULT_IMAGE_CONFIGURATION, IMAGE_SETTINGS_NAMESPACE} from '../packages/contracts/src/image-settings.mjs';
+import {createDesktopSecretCodec} from '../apps/desktop/src/secret-store.ts';
+import {createDesktopImageSecretCodec} from '../apps/desktop/src/image-secret-store.ts';
+import {createImageSecretBroker, createImageSecretClient, MAX_IMAGE_SECRET_MESSAGE_BYTES} from '../apps/desktop/src/image-secret-broker.ts';
+import {BackendSupervisor} from '../apps/desktop/src/supervisor.ts';
+import {createImageSettings, IMAGE_CREDENTIAL_ACQUIRE} from '../packages/business/src/images/settings.ts';
+import {DEFAULT_IMAGE_CONFIGURATION, IMAGE_SETTINGS_NAMESPACE} from '../packages/contracts/src/image-settings.ts';
 
 const SENTINEL = 'synthetic-images-key-never-live';
 const AGENT_SENTINEL = 'synthetic-agent-key-never-live';
@@ -133,7 +133,7 @@ test('Images broker rejects all nonfixed operations, namespaces and oversized en
   const broker = createImageSecretBroker({imageSecretCodec: codec, send: value => messages.push(value)});
   for (const invalid of [request('get'), request('put', {input: {apiKey: SENTINEL}}), request('acquire'),
     request('status', {input: SENTINEL}), request('status', {namespace: 'agent'}), request('status', {version: 2}),
-    request('status', {path: '/private/agent-settings.json'}), request('status', {url: 'https://attacker.example'}),
+    request('status', {path: '/private/agent-settings.tson'}), request('status', {url: 'https://attacker.example'}),
     request('encrypt', {input: SENTINEL}), request('decrypt', {input: SENTINEL}),
     request('encrypt', {input: 'x'.repeat(MAX_IMAGE_SECRET_MESSAGE_BYTES)})]) {
     assert.equal(broker.handle(invalid), true);
@@ -296,9 +296,9 @@ for (const platform of ['linux', 'darwin']) test('utility engine persists only c
 });
 
 test('desktop wiring adds no renderer capability and leaves settings ownership in the utility', async () => {
-  const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
-  const backend = await readFile(new URL('../apps/desktop/src/backend.mjs', import.meta.url), 'utf8');
-  const broker = await readFile(new URL('../apps/desktop/src/image-secret-broker.mjs', import.meta.url), 'utf8');
+  const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
+  const backend = await readFile(new URL('../apps/desktop/src/backend.ts', import.meta.url), 'utf8');
+  const broker = await readFile(new URL('../apps/desktop/src/image-secret-broker.ts', import.meta.url), 'utf8');
   assert.match(main, /createDesktopImageSecretCodec\(\{ safeStorage, appId: identity\.appId \}\)/);
   assert.doesNotMatch(main, /createImageSettings\(/);
   assert.match(backend, /createImageSecretClient\(\{ port: process\.parentPort \}\)/);
@@ -309,7 +309,7 @@ test('desktop wiring adds no renderer capability and leaves settings ownership i
   }
   assert.doesNotMatch(main, /sandbox\s*:\s*false|nodeIntegration\s*:\s*true/);
   assert.deepEqual([...main.matchAll(/ipcMain\s*\.\s*handle\s*\(\s*([^,]+),/g)].map(match => match[1].trim()).sort(),
-    ['APP_LANGUAGE_CHANNEL', 'NATIVE_AUDIO_CHANNEL', 'PROJECT_WINDOW_CHANNEL']);
+    ['APP_LANGUAGE_CHANNEL', 'CLIP_LUT_RECOVERY_CHANNEL', 'NATIVE_AUDIO_CHANNEL', 'PROJECT_WINDOW_CHANNEL', 'WORKSPACE_TOOLS_CHANNEL']);
   assert.doesNotMatch(main, /ipcMain\s*\[|ipcMain\s*\.\s*(?:on|once|handleOnce)\s*\(/);
   assert.match(main, /ipcMain\.handle\(PROJECT_WINDOW_CHANNEL,/);
   const preload = await readFile(new URL('../apps/desktop/src/preload.ts', import.meta.url), 'utf8');
@@ -318,5 +318,5 @@ test('desktop wiring adds no renderer capability and leaves settings ownership i
   const languageBridge = await readFile(new URL('../apps/desktop/src/app-language-preload.ts', import.meta.url), 'utf8');
   assert.doesNotMatch(preload + bridge + audioBridge + languageBridge, /safeStorage|secretCodec|agentSettings|decrypt|process\.parentPort|imageSecret|\.env|access-token/);
   assert.deepEqual([...preload.matchAll(/exposeInMainWorld\('([^']+)'/g)].map(match => match[1]).sort(),
-    ['__mioonAppLanguage', '__mioonNativeAudioPreview', '__mioonProjectWindow']);
+    ['__mioonAppLanguage', '__mioonDesktop', '__mioonLutRecovery', '__mioonNativeAudioPreview', '__mioonProjectWindow', '__mioonWorkspaceTools']);
 });

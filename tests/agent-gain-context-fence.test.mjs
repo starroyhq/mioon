@@ -33,9 +33,9 @@ test('complete serialized gain request budget counts JSON escaping and UTF-8 but
 });
 
 test('both real gain builders enforce complete escaped request bytes before any dispatch', async()=>{
- const {buildAgentRequest}=await import('../packages/business/src/agent/agent-gateway.mjs');
+ const {buildAgentRequest}=await import('../packages/business/src/agent/agent-gateway.ts');
  const {TIMELINE_GAIN_EDIT_TOOL_SYSTEM_INSTRUCTION}=await import('../packages/business/src/agent/timeline-gain-tool-policy.ts');
- const {AGENT_PRESETS}=await import('../packages/business/src/agent/presets.mjs');
+ const {AGENT_PRESETS}=await import('../packages/business/src/agent/presets.ts');
  const platform=AGENT_PRESETS.find(item=>item.id==='openai').platforms[0];
  for(const protocol of ['chat_completions','responses']){
   const configuration={presetId:'openai',platformId:platform.id,baseUrl:platform.baseUrl,model:platform.model,protocol};

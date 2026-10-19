@@ -26,7 +26,7 @@ before(() => {
   const fixture = `import React from 'react'; import { renderToStaticMarkup } from 'react-dom/server.browser'; import ShotTextDraftRecovery from './src/ShotTextDraftRecovery.tsx';
     const fixtures = ${JSON.stringify(fixtures)}; const controller = new Proxy({}, { get() { return () => { throw Error('Passive view invoked an action'); }; } });
     export const html = Object.fromEntries(Object.entries(fixtures).map(([key,state]) => [key,renderToStaticMarkup(<ShotTextDraftRecovery state={state} controller={controller} onInspect={() => { throw Error('Passive view jumped'); }} />)]));`;
-  const script = `import {build} from 'esbuild'; globalThis.fetch = () => { throw Error('Passive view fetched'); }; const {outputFiles} = await build({stdin:{contents:${JSON.stringify(fixture)},loader:'jsx',resolveDir:${JSON.stringify(path.join(root,'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,jsx:'automatic',define:{'process.env.NODE_ENV':'"production"'}}); const result = await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64')); process.stdout.write(JSON.stringify(result.html)); process.exit(0);`;
+  const script = `import {build} from 'esbuild'; globalThis.fetch = () => { throw Error('Passive view fetched'); }; const {outputFiles} = await build({stdin:{contents:${JSON.stringify(fixture)},loader:'tsx',resolveDir:${JSON.stringify(path.join(root,'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,jsx:'automatic',define:{'process.env.NODE_ENV':'"production"'}}); const result = await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64')); process.stdout.write(JSON.stringify(result.html)); process.exit(0);`;
   rendered = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30000 }));
 });
 
@@ -62,6 +62,6 @@ test('new logic is typed and isolated from broad RPC, renderer storage, modal an
   for (const file of ['local-shot-text-client.ts', 'local-shot-text-state.ts', 'ShotTextDraftRecovery.tsx']) {
     const source = readFileSync(path.join(root,'apps/web/src',file),'utf8'); assert.doesNotMatch(source, /from ['"]@mioon\/contracts['"]|:\s*any\b|as\s+any\b|@ts-ignore|@ts-nocheck|localStorage|sessionStorage|workbench-confirm|rpc\(/);
   }
-  const inspector = readFileSync(path.join(root,'apps/web/src/Inspector.jsx'),'utf8'); assert.equal((inspector.match(/id="shot-title"/g) || []).length, 2); assert.equal((inspector.match(/id="shot-prompt"/g) || []).length, 2);
+  const inspector = readFileSync(path.join(root,'apps/web/src/Inspector.tsx'),'utf8'); assert.equal((inspector.match(/id="shot-title"/g) || []).length, 2); assert.equal((inspector.match(/id="shot-prompt"/g) || []).length, 2);
   assert.match(inspector, /完整“保存修改”不会跳过文字修改/); assert.match(inspector, /mergeFreshShotTextAck/); assert.match(inspector, /onShotTextController\(shotText.controller, \(\) => \(\{ mounted: mounted.current,/);
 });

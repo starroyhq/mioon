@@ -6,7 +6,7 @@ import {mkdtemp, realpath, mkdir, writeFile, readFile, rm, rename, symlink} from
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
-import {parseArguments, installedTypeScript, typecheckCommands, verifySourceLanguages, executeCommand, toolingEnvironment} from '../scripts/lib/local-tooling.mjs';
+import {parseArguments, installedTypeScript, typecheckCommands, verifySourceLanguages, executeCommand, toolingEnvironment} from '../scripts/lib/local-tooling.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const version = '6.0.3';
@@ -23,7 +23,7 @@ async function fixture(t, compiler = "process.stdout.write(JSON.stringify(proces
     await writeFile(target, contents);
   };
   const json = (name, value) => file(name, JSON.stringify(value));
-  await json('package.json', {devDependencies: {typescript: version}});
+  await json('package.json', {type: 'module', devDependencies: {typescript: version}});
   await json('config/typecheck-legacy-sources.json', []);
   await json('node_modules/typescript/package.json', metadata);
   // Only the verified lib entry should run; this bin is inspected, not invoked.
@@ -35,13 +35,13 @@ async function fixture(t, compiler = "process.stdout.write(JSON.stringify(proces
 
 async function fixtureCli(t, compiler) {
   const state = await fixture(t, compiler);
-  await state.file('scripts/tooling.mjs', await readFile(path.join(root, 'scripts/tooling.mjs'), 'utf8'));
+  await state.file('scripts/tooling.ts', await readFile(path.join(root, 'scripts/tooling.ts'), 'utf8'));
   await directoryLink(path.join(root, 'scripts/lib'), path.join(state.directory, 'scripts/lib'));
   return state;
 }
 
 function runCli(directory, args) {
-  const result = spawnSync(process.execPath, ['scripts/tooling.mjs', ...args], {
+  const result = spawnSync(process.execPath, ['scripts/tooling.ts', ...args], {
     cwd: directory, env: toolingEnvironment(), encoding: 'utf8', timeout: 10000, shell: false, windowsHide: true,
   });
   assert.equal(result.error, undefined);
@@ -88,7 +88,7 @@ test('declaration ranges, missing declarations, package substitutions and wrong 
     await json('package.json', {devDependencies: {typescript: declared}});
     await assert.rejects(installedTypeScript(directory), {code: 'TYPECHECK_DEPENDENCY_INVALID'});
   }
-  await json('package.json', {devDependencies: {typescript: version}});
+  await json('package.json', {type: 'module', devDependencies: {typescript: version}});
   for (const installed of [
     {...metadata, name: '@typescript/native-preview'}, {...metadata, version: '6.0.2'},
     {...metadata, bin: {tsc: '../../outside.js'}}, {...metadata, bin: {tsc: 'lib/tsc.js'}}, {...metadata, bin: 'bin/tsc'}, {...metadata, bin: {tsc: 'bin/tsc'}},
@@ -134,11 +134,9 @@ test('entry directory links to outside or alternative in-package locations fail 
   }
 });
 
-test('legacy runtime JavaScript remains accepted while new JS/JSX/MJS/CJS paths fail the language policy', async t => {
+test('runtime JavaScript paths are rejected while .ts/.tsx source is accepted', async t => {
   const {directory, file, json} = await fixture(t);
-  const legacy = ['apps/server/src/index.mjs', 'packages/contracts/src/compat.mjs'];
-  for (const name of legacy) await file(name, '// Existing runtime source.\n');
-  await json('config/typecheck-legacy-sources.json', legacy);
+  await json('config/typecheck-legacy-sources.json', []);
   await verifySourceLanguages(directory);
   for (const extension of ['js', 'jsx', 'mjs', 'cjs']) {
     const relative = `apps/web/src/new-feature.${extension}`;
@@ -151,9 +149,9 @@ test('legacy runtime JavaScript remains accepted while new JS/JSX/MJS/CJS paths 
   await verifySourceLanguages(directory);
 });
 
-test('missing, duplicate and escaping legacy allowlists cannot disable the language guard', async t => {
+test('missing, duplicate, non-empty and escaping allowlists cannot disable the language guard', async t => {
   const {directory, json} = await fixture(t);
-  for (const policy of [{}, ['apps/server/src/index.mjs', 'apps/server/src/index.mjs'], ['../outside.js'], ['apps/server/src/../outside.js']]) {
+  for (const policy of [{}, ['apps/server/src/index.ts'], ['apps/server/src/index.ts', 'apps/server/src/index.ts'], ['../outside.js'], ['apps/server/src/../outside.js']]) {
     await json('config/typecheck-legacy-sources.json', policy);
     await assert.rejects(verifySourceLanguages(directory), {code: 'TYPECHECK_SOURCE_POLICY_INVALID'});
   }
@@ -175,16 +173,13 @@ test('runtime TSX outside the browser and unchecked alternate TypeScript extensi
   }
 });
 
-test('fixed compiler projects cover future runtime TypeScript and only the exact legacy browser typed island is excluded', async () => {
+test('fixed compiler projects cover all runtime TypeScript without legacy browser exclusions', async () => {
   const foundation = JSON.parse(await readFile(path.join(root, projects[0]), 'utf8'));
   const browser = JSON.parse(await readFile(path.join(root, projects[1]), 'utf8'));
-  const excluded = JSON.parse(await readFile(path.join(root, 'config/typecheck-legacy-typed-exclusions.json'), 'utf8'));
-  assert.deepEqual(foundation.include, ['../../packages/*/src/**/*.ts', '../../apps/*/src/**/*.ts']);
+  assert.deepEqual(foundation.include, ['../../packages/*/src/**/*.ts', '../../apps/*/src/**/*.ts', '../../apps/desktop/*.ts', '../../apps/desktop/scripts/**/*.ts', '../../server/**/*.ts', '../../scripts/**/*.ts']);
   assert.deepEqual(foundation.exclude, ['../../packages/ui/**', '../../apps/web/**']);
   assert.deepEqual(browser.include, ['../../packages/ui/src/**/*.ts', '../../packages/ui/src/**/*.tsx', '../../apps/web/src/**/*.ts', '../../apps/web/src/**/*.tsx', 'browser.consumer.tsx', 'export-sample-peak.consumer.tsx', 'desktop-launcher.consumer.tsx', 'timeline-audio-preview.consumer.tsx', 'export-loudness.consumer.tsx', 'timeline-mix-loudness.consumer.tsx', 'timeline-clip-loudness.consumer.tsx', 'timeline-loudness-apply.consumer.tsx']);
-  assert.equal(excluded.length, 19); assert.equal(new Set(excluded).size, excluded.length);
-  for (const file of excluded) assert.match(file, /^packages\/ui\/src\/[a-zA-Z0-9/.-]+\.tsx?$/);
-  assert.deepEqual(browser.exclude, excluded.map(file => `../../${file}`));
+  assert.deepEqual(browser.exclude, []);
   for (const config of [foundation, browser]) {
     assert.equal(config.compilerOptions.strict, true); assert.equal(config.compilerOptions.noEmit, true);
     assert.equal(config.compilerOptions.erasableSyntaxOnly, true); assert.equal(config.compilerOptions.skipLibCheck, false);
@@ -249,7 +244,7 @@ test('typecheck reuses the shell-free reduced environment and existing interrupt
 });
 
 test('build command places both typechecks before the existing build command sequence', async () => {
-  const source = await readFile(path.join(root, 'scripts/tooling.mjs'), 'utf8');
+  const source = await readFile(path.join(root, 'scripts/tooling.ts'), 'utf8');
   assert.match(source, /\[\.\.\.await typecheckCommands\(root\), \.\.\.buildCommands\(root, entries, options\.channel\)\]/);
   assert.doesNotMatch(source, /npm install|pnpm install|npx |tsgo|electron-builder/);
 });

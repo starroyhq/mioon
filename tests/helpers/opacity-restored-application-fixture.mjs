@@ -9,7 +9,7 @@ import {reopenOpacityCandidateApplicationStore} from '../../packages/business/sr
 import {createOpacityCandidateApplicationServices} from '../../packages/business/src/opacity-candidate-services.ts';
 import {createOpacityCandidateWorkspaceBackup, restoreOpacityCandidateWorkspaceBackup} from '../../packages/business/src/opacity-candidate-backup.ts';
 import {createRestoredOpacityCandidateLaunch} from '../../apps/server/src/opacity-candidate-launch.ts';
-import {createOpacityCandidateRequestApplication} from '../../apps/server/src/index.mjs';
+import {createOpacityCandidateRequestApplication} from '../../apps/server/src/index.ts';
 
 export const restoredApplicationToken = 'synthetic-restored-opacity-application-token';
 

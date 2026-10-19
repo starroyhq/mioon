@@ -4,9 +4,9 @@ import {randomUUID} from 'node:crypto';
 import {mkdtemp,rm,writeFile,readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {migrateSubjectSchema} from '../packages/business/src/subject-schema.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {migrateSubjectSchema} from '../packages/business/src/subject-schema.ts';
 import {schemas,LOCAL_MUTATION_OPERATIONS,isSubjectMutationResponse,isSubjectListResponse} from '@mioon/contracts';
 
 async function fixture(t){

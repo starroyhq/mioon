@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto';
 import {cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {installedTypeScript, toolingEnvironment} from '../scripts/lib/local-tooling.mjs';
+import {installedTypeScript, toolingEnvironment} from '../scripts/lib/local-tooling.ts';
 
 const repository = fileURLToPath(new URL('../', import.meta.url));
 const configurationName = 'tests/typecheck/tsconfig.foundation.json';

@@ -1,16 +1,18 @@
 import * as i18n from '../packages/i18n/src/index.ts';
 import { createI18nTestContext as localeDisplay } from './helpers/i18n.ts';
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const localizedSource = source => source + JSON.stringify(Object.entries(i18n.catalogs).filter(([key]) => source.includes(key)).map(([, entry]) => entry['zh-Hans']));
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as navigation from '../apps/web/src/settings-navigation-state.ts';
-import * as logic from '../apps/web/src/image-settings.js';
-import { createImageReviewClient } from '../apps/web/src/image-review.js';
-import { IMAGE_REVIEW_DESTINATION, IMAGE_REVIEW_POLICY, isImageReviewResponse } from '../packages/contracts/src/image-reviews.mjs';
+import * as logic from '../apps/web/src/image-settings.ts';
+import { createImageReviewClient } from '../apps/web/src/image-review.ts';
+import { IMAGE_REVIEW_DESTINATION, IMAGE_REVIEW_POLICY, isImageReviewResponse } from '../packages/contracts/src/image-reviews.ts';
 import { createHash } from 'node:crypto';
-import { canonicalImageInput } from '../packages/contracts/src/images.mjs';
+import { canonicalImageInput } from '../packages/contracts/src/images.ts';
 
 const { DEFAULT_IMAGE_CONFIGURATION, DEFAULT_CUSTOM_IMAGE_CONFIGURATION, createImageSettingsClient, createImageSettingsSession, imageKeyIssue, imageSettingsCanSave, safeImageSettings } = logic;
 const snapshot = (patch = {}) => ({ revision: 0, configuration: structuredClone(DEFAULT_IMAGE_CONFIGURATION), secret: { configured: false, storage: 'none' }, storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY' }, ...patch });
@@ -63,15 +65,15 @@ test('double save, hidden edits and disposed completions cannot write again or l
   const g = fixture(); await g.session.load(); g.session.setVisible(false); assert.equal(g.session.setEnabled(true), false); assert.equal(g.session.setStorage('session'), false); assert.equal(await g.session.save('synthetic'), false); g.session.setVisible(true); assert.equal(g.session.setEnabled(true), true); g.session.dispose();
 });
 
-const source = readFileSync(new URL('../apps/web/src/ImageSettings.jsx', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../apps/web/src/ImageSettings.tsx', import.meta.url), 'utf8');
 const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
 const equalDeps = (a, b) => a && b && a.length === b.length && a.every((value, index) => Object.is(value, b[index]));
 function renderer(f) {
   let index = 0, effects = [], active = true, contextKey = 'project-one', ancestor = true, tree, dirty = false, locale = 'zh-Hans'; const slots = [];
   const react = { createElement(type, props = {}, ...children) { if (props?.ref && !props.ref.current) props.ref.current = { value: '' }; return { type, props: { ...props, children } }; }, useState(initial) { const slot = index++; slots[slot] ||= { value: typeof initial === 'function' ? initial() : initial }; return [slots[slot].value, value => { slots[slot].value = typeof value === 'function' ? value(slots[slot].value) : value; }]; }, useRef(initial) { return slots[index++] ||= { current: initial }; }, useMemo(callback, deps) { const slot = index++; if (!slots[slot] || !equalDeps(slots[slot].deps, deps)) slots[slot] = { value: callback(), deps }; return slots[slot].value; }, useLayoutEffect(callback, deps) { const slot = index++, old = slots[slot]; if (old && equalDeps(old.deps, deps)) return; slots[slot] = { callback, deps, cleanup: old?.cleanup }; effects.push(slot); } }; react.default = react;
   const primitive = new Proxy({}, { get: (_, key) => String(key) }), module = { exports: {} };
-  const require = name => { if (name === './i18n/I18nProvider.tsx') return { useI18n: () => localeDisplay(locale) }; if (name === '../../../packages/i18n/src/index.ts') return i18n; if (name === 'react') return react; if (name === './settings-navigation-state.ts') return navigation; if (name === './image-settings.js') return logic; if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => ancestor }; if (name === './icons.jsx') return { default: 'Icon' }; if (name.endsWith('.css')) return {}; if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.jsx') return primitive; throw Error(name); };
-  Function('module', 'exports', 'require', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, require);
+  const require = name => { if (name === './i18n/I18nProvider.tsx') return { useI18n: () => localeDisplay(locale) }; if (name === '../../../packages/i18n/src/index.ts') return i18n; if (name === 'react') return react; if (name === './settings-navigation-state.ts') return navigation; if (name === './image-settings.ts') return logic; if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => ancestor }; if (name === './icons.tsx') return { default: 'Icon' }; if (name.endsWith('.css')) return {}; if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return primitive; throw Error(name); };
+  Function('module', 'exports', 'require', transformSync(source, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, require);
   const ui = { render() { index = 0; effects = []; tree = module.exports.default({ active, contextKey, client: f.client, slot: f.slot, onSelectSlot: () => { active = false; }, onClose: () => { active = false; }, onDirtyChange: value => { dirty = value; } }); for (const slot of effects) { slots[slot].cleanup?.(); slots[slot].cleanup = slots[slot].callback(); } return tree; }, find(id) { return nodes(tree).find(node => node.props['data-testid'] === id); }, form() { return nodes(tree).find(node => node.type === 'form'); }, key(value) { const field = ui.find(f.slot === 'custom' ? 'custom-image-settings-key' : 'image-settings-key'); field.props.ref.current.value = value; field.props.onChange({ target: { value } }); ui.render(); }, show(value) { active = value; ui.render(); }, collapse(value) { ancestor = !value; ui.render(); }, project(value) { contextKey = value; ui.render(); }, change(id, value) { ui.find(id).props.onChange({ target: { value, checked: value } }); ui.render(); }, click(id) { ui.find(id).props.onClick(); ui.render(); }, get dirty() { return dirty; }, setLocale(value) { locale = value; return ui.render(); }, unmount() { for (const slot of slots) slot.cleanup?.(); } }; return ui;
 }
 
@@ -110,7 +112,7 @@ test('actual hidden, collapsed, project-switched and closed settings clear key w
 });
 
 test('settings remains a natural dock with no modal, secret cache or arbitrary provider fields', () => {
-  assert.doesNotThrow(() => transformSync(source, { loader: 'jsx', format: 'esm' })); assert.doesNotMatch(source, /Dialog|localStorage|sessionStorage|console\.|dangerouslySetInnerHTML|value=\{(?:key|secret)/); assert.match(source, /type="password"/); assert.match(source, /hidden=\{!visible\} inert=\{!visible\}/); assert.match(localizedSource(source), /basic_text/); assert.match(localizedSource(source), /最多|一次配置/);
+  assert.doesNotThrow(() => transformSync(source, { loader: 'tsx', format: 'esm' })); assert.doesNotMatch(source, /Dialog|localStorage|sessionStorage|console\.|dangerouslySetInnerHTML|value=\{(?:key|secret)/); assert.match(source, /type="password"/); assert.match(source, /hidden=\{!visible\} inert=\{!visible\}/); assert.match(localizedSource(source), /basic_text/); assert.match(localizedSource(source), /最多|一次配置/);
 });
 
 test('private review client binds exact receipt and posts once only to authenticated approval route', async () => {

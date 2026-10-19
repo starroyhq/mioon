@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
 import {imageFixture,insert} from './images-fixture.mjs';
-import {migrateFrameSchema} from '../packages/business/src/frame-schema.mjs';
-import {createFrameOwnershipReader,FRAME_OWNERSHIP_LIMITS} from '../packages/business/src/frame-ownership.mjs';
-import {createOwnedMediaGraphReader,createInspectionServices,INSPECTION_OPERATIONS} from '../packages/business/src/inspection.mjs';
-import {createSubjectRecoveryBoundary,createSubjectServices} from '../packages/business/src/subjects.mjs';
-import {subjectVersionResponseSchema} from '../packages/contracts/src/subjects.mjs';
-import {FRAME_PROFILE,FRAME_PROFILE_ID,FRAME_SELECTION_RULE,canonicalFrameInput as canonical} from '../packages/contracts/src/frame-extraction.mjs';
+import {migrateFrameSchema} from '../packages/business/src/frame-schema.ts';
+import {createFrameOwnershipReader,FRAME_OWNERSHIP_LIMITS} from '../packages/business/src/frame-ownership.ts';
+import {createOwnedMediaGraphReader,createInspectionServices,INSPECTION_OPERATIONS} from '../packages/business/src/inspection.ts';
+import {createSubjectRecoveryBoundary,createSubjectServices} from '../packages/business/src/subjects.ts';
+import {subjectVersionResponseSchema} from '../packages/contracts/src/subjects.ts';
+import {FRAME_PROFILE,FRAME_PROFILE_ID,FRAME_SELECTION_RULE,canonicalFrameInput as canonical} from '../packages/contracts/src/frame-extraction.ts';
 
 const at='2026-10-11T00:00:00.000Z';
 const unavailable=error=>error.code==='INSPECTION_UNAVAILABLE'&&error.status===404&&!JSON.stringify(error).includes('private payload');

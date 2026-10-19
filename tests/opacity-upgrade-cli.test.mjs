@@ -7,7 +7,7 @@ import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {parseOpacityUpgradeArguments, opacityUpgradeHelp, safeOpacityUpgradeError} from '../apps/cli/src/opacity-upgrade.ts';
 import {OPACITY_UPGRADE_ERROR_CODES, opacityWorkspaceUpgradeInputSchema, opacityWorkspaceUpgradeResultSchema} from '../packages/contracts/src/opacity-upgrade.ts';
-import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';
+import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {opacityUpgradeFixture, upgradeFixtureHash} from './helpers/opacity-upgrade-fixture.mjs';
 import {tree} from './helpers/opacity-backup-fixture.mjs';
 

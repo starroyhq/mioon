@@ -5,12 +5,14 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
 import { projectOpenAttempt, canPublishProjectOpen } from '../apps/web/src/project-open-state.ts';
-import { workspaceOriginScope } from '../apps/web/src/workspace-origin.js';
-import * as replacement from '../apps/web/src/clip-source-replacement.js';
-import * as submissions from '../apps/web/src/submissions.js';
-import { timelineHistoryState } from '../apps/web/src/timeline-history.js';
-import { mutationNotApplied } from '../apps/web/src/mutation-submissions.js';
+import { workspaceOriginScope } from '../apps/web/src/workspace-origin.ts';
+import * as replacement from '../apps/web/src/clip-source-replacement.ts';
+import * as submissions from '../apps/web/src/submissions.ts';
+import { timelineHistoryState } from '../apps/web/src/timeline-history.ts';
+import { mutationNotApplied } from '../apps/web/src/mutation-submissions.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const taskIntentModule = { exports: {} };
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
 const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
@@ -190,9 +192,9 @@ function componentHarness(patch = {}) {
     useRef(initial) { return slots[cursor++] ||= { current: initial }; },
     useLayoutEffect(callback, deps) { const index = cursor++, previous = slots[index]; if (previous && equalDeps(deps, previous.deps)) return; slots[index] = { deps, callback, cleanup: previous?.cleanup }; effects.push(index); },
   }; react.default = react;
-  const source = readFileSync(new URL('../apps/web/src/ClipSourceReplacement.jsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../apps/web/src/ClipSourceReplacement.tsx', import.meta.url), 'utf8');
   const module = { exports: {} };
-  Function('require', 'module', 'exports', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(name => name === 'react' ? react : name === './i18n/I18nProvider.tsx' ? i18nTestModule() : name === './clip-source-replacement.js' ? replacement : name === './workspace-visibility.jsx' ? { useWorkspaceVisibility: () => visible } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
+  Function('require', 'module', 'exports', transformSync(source, { loader: 'tsx', format: 'cjs' }).code)(name => name === 'react' ? react : name === './i18n/I18nProvider.tsx' ? i18nTestModule() : name === './clip-source-replacement.ts' ? replacement : name === './workspace-visibility.tsx' ? { useWorkspaceVisibility: () => visible } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
   const h = { calls, responses, opened,
     render(next = {}) { props = { ...props, ...next }; let attempts = 0; do { needsRender = false; cursor = 0; effects = []; tree = module.exports.default(props); for (const index of effects) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].callback(); } assert.ok(++attempts < 15); } while (needsRender); return tree; },
     find(testId) { return nodes(tree).find(node => node.props?.['data-testid'] === testId || node.props?.id === testId); },
@@ -234,7 +236,7 @@ test('real component blocks same-tick dirty callbacks and exposes an immutable s
   assert.equal(h.find('approve-clip-replacement'), undefined); await approve(); assert.equal(h.calls.length, 0);
 });
 
-const appSource = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const appSource = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const extract = (start, end) => appSource.slice(appSource.indexOf(start), appSource.indexOf(end, appSource.indexOf(start)));
 function sessionFixture(t) {
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage'), values = new Map();
@@ -317,15 +319,15 @@ test('actual App legacy session runner clears replacement only for a matching re
 });
 
 test('source wiring uses the existing inline inspector, stable mutation key, session replay and no asset-only version inference', () => {
-  const inspector = readFileSync(new URL('../apps/web/src/TimelineInspector.jsx', import.meta.url), 'utf8');
+  const inspector = readFileSync(new URL('../apps/web/src/TimelineInspector.tsx', import.meta.url), 'utf8');
   assert.match(inspector, /ClipSourceReplacement context=\{\{ \.\.\.replacementContext, timeline, clipId: clip\.id, dirty \}\}/);
   assert.match(inspector, /getDirty=\{\(\) => dirtyRef\.current\}/); assert.match(inspector, /dirtyRef\.current = true/);
   assert.match(appSource, /displayedClipInspector\.clip\.versionId === clipSource\.version\.id/);
   assert.match(appSource, /CollapsibleContent keepMounted className="inspector-region-content"/);
   assert.match(appSource, /return run\('timeline:mutation', operation/);
-  const responseGuard = appSource.indexOf('!isTimelineMutationResponse(operation, input, result)'), exactClear = appSource.indexOf('clearPending(projectId, key, stored)');
+  const responseGuard = appSource.indexOf('!isTimelineMutationResponse(operation, input, result)'), exactClear = appSource.indexOf('clearPending(projectId as string, key, stored!)');
   assert.ok(responseGuard >= 0 && exactClear > responseGuard, 'Validate the exact response before compare-and-clear of its retained intent');
-  const component = readFileSync(new URL('../apps/web/src/ClipSourceReplacement.jsx', import.meta.url), 'utf8');
+  const component = readFileSync(new URL('../apps/web/src/ClipSourceReplacement.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(component, /\brpc\(|requestId\(|Dialog|Modal|confirm\(/);
 });
 
@@ -340,7 +342,7 @@ test('replacement history names the explicit source edit for undo and redo', () 
 
 
 test('retained acknowledgement copy is historical after later edits or undo', () => {
-  const source = readFileSync(new URL('../apps/web/src/ClipSourceReplacement.jsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../apps/web/src/ClipSourceReplacement.tsx', import.meta.url), 'utf8');
   assert.match(source, /t\('timeline\.replace\.applied'\)/);
   assert.match(translate('zh-Hans', 'timeline.replace.applied'), /本次来源替换已确认。后续编辑或撤销可能改变当前片段，请以上方来源为准/);
   assert.doesNotMatch(source, /来源替换已确认，可通过时间线撤销恢复/);

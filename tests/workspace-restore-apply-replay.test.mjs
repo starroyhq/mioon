@@ -4,11 +4,11 @@ import {randomUUID,createHash} from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
-import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
+import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
+import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import {isTimelineMutationResponse} from '@mioon/contracts';
 import {timelineLoudnessCandidateDigest} from '../packages/contracts/src/timeline-loudness-apply.ts';
 
@@ -76,13 +76,13 @@ async function restored(t,{alterReceipt}={}){
  const sourceRows=rows(sourceStore.db);
  await sourceTasks.drain();sourceTasks=undefined;await sourceServices.drain();sourceServices=undefined;sourceStore.close();sourceStore=undefined;
  const sourceBefore=tree(source),created=await createWorkspaceBackup({source,destination:backup}),backupBefore=tree(backup);
- assert.equal(created.databaseSchemaVersion,26);assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),created);
- const result=await restoreWorkspaceBackup({directory:backup,destination});assert.equal(result.databaseSchemaVersion,27);
+ assert.equal(created.databaseSchemaVersion,48);assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),created);
+ const result=await restoreWorkspaceBackup({directory:backup,destination});assert.equal(result.databaseSchemaVersion,49);
  assert.deepEqual(tree(source),sourceBefore);assert.deepEqual(tree(backup),backupBefore);
  store=openStore(destination);services=createServices(store,new Map());tasks=createEditTasks({store,services});
  const retained=rows(store.db);
  for(const [table,original] of Object.entries(sourceRows)){
-  const captured=retained[table].filter(row=>table!=='schema_version'||row.version!==27).map(row=>{
+  const captured=retained[table].filter(row=>table!=='schema_version'||row.version!==49).map(row=>{
    const copy={...row};if(table==='edit_tasks')delete copy.executionEpoch;return copy;
   });
   assert.deepEqual(captured.map(row=>({...row})),original.map(row=>({...row})),table);

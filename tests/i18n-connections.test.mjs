@@ -4,11 +4,11 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { LOCALES, catalogs, renderMessage, translate, validateCatalogs } from '../packages/i18n/src/index.ts';
 import { connectionMessages } from '../packages/i18n/src/catalogs/creation-connections.ts';
-import { agentSettingsIssue, agentSettingsIssueDescriptor, agentPresetLabel, agentPlatformLabel, agentPresetNote } from '../apps/web/src/agent-settings.js';
-import { imageKeyIssue, imageKeyIssueDescriptor } from '../apps/web/src/image-settings.js';
-import { comfyConnectorAvailabilityDescriptor, comfyImageCheckDescriptor } from '../apps/web/src/comfy-image-settings.js';
-import { providerAvailabilityDescriptor, providerStatusDescriptor, inputModeDescriptor, generationIssueDescriptor, generationProfileSelection, generationInputIssue, generationInputIssueDescriptor } from '../apps/web/src/generation-settings.js';
-import { AGENT_PRESETS, DEFAULT_AGENT_CONFIGURATION } from '../packages/business/src/agent/presets.mjs';
+import { agentSettingsIssue, agentSettingsIssueDescriptor, agentPresetLabel, agentPlatformLabel, agentPresetNote } from '../apps/web/src/agent-settings.ts';
+import { imageKeyIssue, imageKeyIssueDescriptor } from '../apps/web/src/image-settings.ts';
+import { comfyConnectorAvailabilityDescriptor, comfyImageCheckDescriptor } from '../apps/web/src/comfy-image-settings.ts';
+import { providerAvailabilityDescriptor, providerStatusDescriptor, inputModeDescriptor, generationIssueDescriptor, generationProfileSelection, generationInputIssue, generationInputIssueDescriptor } from '../apps/web/src/generation-settings.ts';
+import { AGENT_PRESETS, DEFAULT_AGENT_CONFIGURATION } from '../packages/business/src/agent/presets.ts';
 
 test('all connection messages have four complete locales and matching placeholders', () => {
   assert.deepEqual(validateCatalogs(connectionMessages), []);
@@ -58,7 +58,7 @@ test('generation and Comfy display descriptors use stable statuses, preserve ori
 });
 
 test('settings components have no untranslated CJK literals or locale-dependent lifecycle keys/effects', () => {
-  for (const filename of ['AgentSettings.jsx', 'ImageSettings.jsx', 'ComfyImageSettings.jsx']) {
+  for (const filename of ['AgentSettings.tsx', 'ImageSettings.tsx', 'ComfyImageSettings.tsx']) {
     const source = readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8');
     const ast = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
     function visit(node) {

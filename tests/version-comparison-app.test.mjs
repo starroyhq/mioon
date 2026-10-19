@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isAllowedRequest, isAllowedDownload, isAllowedNavigation } from '../apps/desktop/src/security.mjs';
+import { isAllowedRequest, isAllowedDownload, isAllowedNavigation } from '../apps/desktop/src/security.ts';
 import { captureComparison } from '../apps/web/src/version-comparison-state.ts';
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 test('exact comparison route inherits native same-origin media permission, not download/navigation/audio grants', () => {
   const binding = captureComparison({ scope: 'project:epoch', projectId: id(1), workspaceOrigin: 'normal', connected: true, visible: true, restored: false,
@@ -18,7 +20,7 @@ test('exact comparison route inherits native same-origin media permission, not d
 
 import { readFileSync } from 'node:fs';
 import { comparisonCurrent } from '../apps/web/src/version-comparison-state.ts';
-const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 function execute(start, end, env) { const source = app.slice(app.indexOf(start), app.indexOf(end, app.indexOf(start))); assert.ok(source); return Function(...Object.keys(env), `${source}; return ${/function (\w+)/.exec(source)[1]};`)(...Object.values(env)); }
 test('actual App comparison opening and close synchronously fence context and pause owners', () => {
   const calls = [], comparisonIdRef = { current: null }, clipLoudnessEpoch = { current: 0 };
@@ -52,10 +54,10 @@ test('background visibility, exact comparison ownership and four-locale catalog 
   const background = app.indexOf('<WorkspaceVisibilityProvider visible={!comparisonId}>'), end = app.indexOf('</WorkspaceVisibilityProvider>', background), comparison = app.indexOf('<VersionComparison key=');
   assert.ok(background > 0 && end > background && comparison > end);
   for (const name of ['<Inspector ', '<Preview ', '<ExportPreview', '<Media asset={previewAsset}']) assert.ok(app.indexOf(name, background) < end);
-  assert.match(app, /visible=\{!comparisonId && workbenchReady && rightDockTab === 'delivery'/);
+  assert.match(app, /visible=\{!comparisonId && workbenchReady && showDelivery && !showExports\}/);
   assert.match(app, /onBeforePlay=\{beforeMainPreviewPlay\}/); assert.match(app, /onBeforePlay=\{beforeExportPreviewPlay\}/); assert.match(app, /onBeforePlay: beforeTimelineAudioPlay/);
   assert.doesNotMatch(app, /function Comparison\(/);
-  const i18n = readFileSync(new URL('../packages/i18n/src/index.ts', import.meta.url), 'utf8'); assert.match(i18n, /assertNoDuplicateMessageKeys\(comparisonMessages, annotationMessages/);
+  const i18n = readFileSync(new URL('../packages/i18n/src/index.ts', import.meta.url), 'utf8'); assert.match(i18n, /assertNoDuplicateMessageKeys\([^)]*comparisonMessages[^)]*annotationMessages/);
 });
 
 test('retained invalid Compare opener has no state or media effects; null always closes', () => {
@@ -72,7 +74,7 @@ import { transformSync } from 'esbuild';
 test('actual App conditional retains comparison after its shot disappears, leaving a close path', () => {
   const start = app.indexOf('{comparisonId && <VersionComparison'), end = app.indexOf('/>}', start) + 3;
   assert.ok(start > 0 && end > start);
-  const code = transformSync(`module.exports = () => (${app.slice(start + 1, end - 1)});`, { loader: 'jsx', format: 'cjs' }).code;
+  const code = transformSync(`module.exports = () => (${app.slice(start + 1, end - 1)});`, { loader: 'tsx', format: 'cjs' }).code;
   const module = { exports: {} }, calls = [];
   const env = { React: { createElement: (type, props) => ({ type, props }) }, comparisonId: id(2), VersionComparison: 'comparison', data: { project: { id: id(1) }, shots: [] }, projectEpoch: { current: 1 },
     comparisonContext: () => ({ shot: null }), setComparisonId: value => calls.push(value), useComparedVersion() {}, busy: {}, registerComparisonPreviewPause() {}, audioPreview: { controller: { revoke() {} } }, nativePreviewPause: { current: null }, exportPreviewPause: { current: null } };

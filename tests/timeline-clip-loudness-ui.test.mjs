@@ -51,7 +51,7 @@ before(async () => {
     const values = ${JSON.stringify(values)};
     const controller = {prepare(){throw Error('No automatic read');},cancel(){throw Error('No automatic cancellation');},revoke(){throw Error('No automatic revoke');}};
     export const html=Object.fromEntries(Object.entries(values).map(([name,state])=>[name,renderToStaticMarkup(<TimelineClipLoudness loudness={{state,controller}}/>)]));`;
-  const script = `import {build} from 'esbuild'; const {outputFiles}=await build({stdin:{contents:${JSON.stringify(fixtures)},loader:'jsx',resolveDir:${JSON.stringify(path.join(root,'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,jsx:'transform',define:{'process.env.NODE_ENV':'"production"'}});
+  const script = `import {build} from 'esbuild'; const {outputFiles}=await build({stdin:{contents:${JSON.stringify(fixtures)},loader:'tsx',resolveDir:${JSON.stringify(path.join(root,'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,jsx:'transform',define:{'process.env.NODE_ENV':'"production"'}});
     const result=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));process.stdout.write(JSON.stringify(result.html));process.exit(0);`;
   rendered = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30000 }));
 });
@@ -102,7 +102,7 @@ test('four locale component labels/statuses and placeholders are present, zh-Han
   }
 });
 test('actual host binds selected saved clip and shared RPC; comparison/source overlays and draft conflicts fence analysis', () => {
-  const app = source('App.jsx'), inspector = source('TimelineInspector.jsx'), api = source('api.js');
+  const app = source('App.tsx'), inspector = source('TimelineInspector.tsx'), api = source('api.ts');
   assert.match(app, /savedClipLoudnessFields\(saved, dataRef.current.assets, editing.selectedClipId\)/);
   assert.match(app, /clipLoudnessEpoch.current\+\+/); assert.match(app, /!previewAssetRef.current && !comparisonIdRef.current && !webSettingsOpen/);
   assert.match(app, /loudnessContext=\{clipLoudnessContext\}/); assert.match(app, /loudnessInvocation=\{\(\) => pinNewWorkspaceIntent\(\{\}, workspaceRef.current\)\}/);

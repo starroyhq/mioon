@@ -8,7 +8,7 @@ import { createLanguageStore } from '../apps/web/src/i18n/language-store.ts';
 
 // Execute the actual main-process language-host wiring, with only native window
 // and storage boundaries faked. This does not claim native destruction timing.
-const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
+const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
 const start = main.indexOf('    languageHost = createAppLanguageHost({ systemLanguages,');
 const end = main.indexOf('\n    installMenu();', start);
 assert.ok(start >= 0 && end > start, 'The main-process language host must remain testable.');

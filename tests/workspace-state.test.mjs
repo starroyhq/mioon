@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultWorkspaceState, normalizeWorkspaceState, readStoredWorkspaceState, readWorkspaceState, writeWorkspaceState, reconcileWorkspaceState, sourceForAsset } from '../apps/web/src/workspace-state.js';
-import { prepareSubmission, readPending, reconcilePending } from '../apps/web/src/submissions.js';
+import { defaultWorkspaceState, normalizeWorkspaceState, readStoredWorkspaceState, readWorkspaceState, writeWorkspaceState, reconcileWorkspaceState, sourceForAsset } from '../apps/web/src/workspace-state.ts';
+import { prepareSubmission, readPending, reconcilePending } from '../apps/web/src/submissions.ts';
 
 class MemoryStorage {
   values = new Map();

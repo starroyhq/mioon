@@ -2,7 +2,7 @@
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {appendFileSync, writeFileSync} from 'node:fs';
-import {startServer} from '../apps/server/src/index.mjs';
+import {startServer} from '../apps/server/src/index.ts';
 import {EDIT_QA_REPO, EDIT_QA_TOKEN, prepareEditQaFixture, seedEditQaSettings, clearEditQaEnvironment,
   startEditQaModel, startEditQaMailbox, jsonFile} from './helpers/agent-edits-qa-support.mjs';
 

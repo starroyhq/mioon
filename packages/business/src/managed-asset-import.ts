@@ -12,8 +12,8 @@ import {AppError} from '../../contracts/src/app-error.ts';
 type Value = Record<string, unknown>;
 const object = (value: unknown): value is Value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const require = createRequire(import.meta.url);
-const media: unknown = require('./media.mjs');
-const lifecycle: unknown = require('./operation-lifecycle.mjs');
+const media: unknown = require('./media.ts');
+const lifecycle: unknown = require('./operation-lifecycle.ts');
 function invoke(module: unknown, name: string, args: unknown[]): unknown {
   if (!object(module) || typeof module[name] !== 'function') throw new Error('Managed import runtime is unavailable');
   return Reflect.apply(module[name], module, args) as unknown;

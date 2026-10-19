@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { schemas, workspaceRestoreInspectionSchema } from '../packages/contracts/src/index.mjs';
+import { schemas, workspaceRestoreInspectionSchema } from '../packages/contracts/src/index.ts';
 import { createLauncherClient, createLauncherController, parseLauncherProjects } from '../apps/web/src/launcher-state.ts';
 import { createProjectEntryController } from '../apps/web/src/project-entry-state.ts';
 import { createLastProjectController } from '../apps/web/src/last-project-state.ts';

@@ -9,14 +9,14 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient,discoverSchema} from '@mioon/client';
 import {TIMELINE_SUBTITLE_OPERATIONS,isTimelineMutationResponse} from '@mioon/contracts';
-import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.mjs';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.mjs';
+import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
+import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
+import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import {taskFixture,database,snapshot,taskPath,REPO,TASK_TOKEN} from './helpers/edit-tasks-http-fixture.mjs';
 
 const env=url=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',MIOON_BASE_URL:url,MIOON_TOKEN:TASK_TOKEN});
 async function cli(url,args){
- const child=spawn(process.execPath,[path.join(REPO,'apps/cli/src/index.mjs'),...args],{cwd:REPO,env:env(url),stdio:['ignore','pipe','pipe']});
+ const child=spawn(process.execPath,[path.join(REPO,'apps/cli/src/index.ts'),...args],{cwd:REPO,env:env(url),stdio:['ignore','pipe','pipe']});
  let out='',err='';
  child.stdout.setEncoding('utf8').on('data',part=>{out+=part;if(out.length>512*1024)child.kill('SIGKILL');});
  child.stderr.setEncoding('utf8').on('data',part=>{err+=part;if(err.length>64*1024)child.kill('SIGKILL');});
@@ -38,7 +38,7 @@ async function wire(t){
  }catch{res.destroy();}});
  proxy.listen(0,'127.0.0.1');await once(proxy,'listening');const url=`http://127.0.0.1:${proxy.address().port}`;
  const mcp=new Client({name:'manual-subtitle-tests',version:'1.0.0'},{capabilities:{}});
- const transport=new StdioClientTransport({command:process.execPath,args:[path.join(REPO,'apps/mcp/src/index.mjs')],cwd:REPO,env:env(url),stderr:'pipe'});
+ const transport=new StdioClientTransport({command:process.execPath,args:[path.join(REPO,'apps/mcp/src/index.ts')],cwd:REPO,env:env(url),stderr:'pipe'});
  // The official SDK owns protocol stdout; stderr is drained, not coerced or parsed.
  transport.stderr?.resume();await mcp.connect(transport);
  t.after(async()=>{await mcp.close();proxy.closeAllConnections();await new Promise(resolve=>proxy.close(resolve));});

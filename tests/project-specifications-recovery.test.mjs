@@ -4,9 +4,9 @@ import {randomUUID} from 'node:crypto';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices,canonical,hash} from '../packages/business/src/services.mjs';
-import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices,canonical,hash} from '../packages/business/src/services.ts';
+import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 import {isEditTaskEnvelope} from '@mioon/contracts';
 
 const code=expected=>error=>error.code===expected&&!JSON.stringify(error).includes('PRIVATE');

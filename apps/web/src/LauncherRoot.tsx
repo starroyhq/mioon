@@ -27,7 +27,7 @@ export default function LauncherRoot({ context, bridge, rpc, contractChecks }: L
     const owner = locatorOwner.current!; owner.activate();
     const releaseLocator = bridge.subscribe(owner.receive); owner.receive(context);
     const win = window as LauncherWindow;
-    const cleanup = installNativeCloseAdmission(win, { registry: native, settings,
+    const cleanup = installNativeCloseAdmission(win as Parameters<typeof installNativeCloseAdmission>[0], { registry: native, settings,
       readScope: () => `${controller.getContext().backendId}:${controller.getContext().contextId}`,
       readAdditionalSnapshot: controller.readCloseSnapshot, readDocumentURL: () => window.location.href });
     const drain = async () => { const current = controller.readCloseSnapshot(); return !current.busy && !current.unknown && await locator.flush(); };

@@ -1,4 +1,4 @@
-import { generationIssueDescriptor } from '../apps/web/src/generation-settings.js';
+import { generationIssueDescriptor } from '../apps/web/src/generation-settings.ts';
 import { creationTestDependency } from './helpers/creation-i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,8 +8,10 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 import { GENERATION_INPUT_PROFILES, INPUT_PROFILE_VERSION, evaluateCapabilityLifecycle, getGenerationIssue } from '@mioon/contracts';
-import { generationInputIssue, generationIssueMessage, generationProfileSelection, generationSelection } from '../apps/web/src/generation-settings.js';
+import { generationInputIssue, generationIssueMessage, generationProfileSelection, generationSelection } from '../apps/web/src/generation-settings.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const fixture = (id = 'mock', date = '2026-10-10', region) => {
   const profile = GENERATION_INPUT_PROFILES.find(item => item.providerId === id);
@@ -57,8 +59,8 @@ test('lifecycle display and shared preflight use server evaluation date, never b
   assert.equal(generationInputIssue(shot, before, model, [], 'text'), '');
   assert.equal(generationInputIssue(shot, after, model, [], 'text'), generationIssueMessage(getGenerationIssue({ ...shot, model, referenceAssets: [] }, after)));
   assert.match(generationInputIssue(shot, after, model, [], 'text'), /服务器已阻止新提交/);
-  const helper = readFileSync(resolve(root, 'apps/web/src/generation-settings.js'), 'utf8');
-  const component = readFileSync(resolve(root, 'apps/web/src/GenerationInputSummary.jsx'), 'utf8');
+  const helper = readFileSync(resolve(root, 'apps/web/src/generation-settings.ts'), 'utf8');
+  const component = readFileSync(resolve(root, 'apps/web/src/GenerationInputSummary.tsx'), 'utf8');
   assert.doesNotMatch(helper + component, /Date\(|Date\.now|fetch\(|getCapabilityProfile\(/);
 });
 
@@ -99,10 +101,10 @@ test('wired ProviderSettings renders accessible compact summaries and all role d
   const fixtureSource = `
     import React from 'react';
     import { renderToStaticMarkup } from 'react-dom/server.browser';
-    import ProviderSettings from './ProviderSettings.jsx';
-    import GenerationInputSummary, { GenerationInputDetails } from './GenerationInputSummary.jsx';
-    import { generationProfileSelection, generationSelection } from './generation-settings.js';
-    import { WorkspaceVisibilityProvider } from './workspace-visibility.jsx';
+    import ProviderSettings from './ProviderSettings.tsx';
+    import GenerationInputSummary, { GenerationInputDetails } from './GenerationInputSummary.tsx';
+    import { generationProfileSelection, generationSelection } from './generation-settings.ts';
+    import { WorkspaceVisibilityProvider } from './workspace-visibility.tsx';
     const providers = ${JSON.stringify(providers)};
     const blocked = ${JSON.stringify(blocked)};
     export const markup = Object.fromEntries(providers.map(provider => {
@@ -121,9 +123,9 @@ test('wired ProviderSettings renders accessible compact summaries and all role d
   `;
   const script = `
     import { build } from 'esbuild';
-    const { outputFiles } = await build({ stdin: { contents: ${JSON.stringify(fixtureSource)}, loader: 'jsx', resolveDir: ${JSON.stringify(resolve(root, 'apps/web/src'))} }, bundle: true, format: 'esm', platform: 'browser', write: false, loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '\"production\"' }, logLevel: 'silent' });
+    const { outputFiles } = await build({ stdin: { contents: ${JSON.stringify(fixtureSource)}, loader: 'tsx', resolveDir: ${JSON.stringify(resolve(root, 'apps/web/src'))} }, bundle: true, format: 'esm', platform: 'browser', write: false, loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '\"production\"' }, logLevel: 'silent' });
     const { markup } = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].text).toString('base64'));
-    process.stdout.write(JSON.stringify(markup)); process.exit(0);
+    process.stdout.write(JSON.stringify(markup), () => process.exit(0));
   `;
   const markup = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30_000 }));
   for (const provider of providers) {
@@ -160,8 +162,8 @@ test('wired ProviderSettings renders accessible compact summaries and all role d
 
 // Focused callback/effect checks; these are not a browser-layout claim.
 function disclosureHarness() {
-  const source = readFileSync(resolve(root, 'apps/web/src/GenerationInputSummary.jsx'), 'utf8');
-  const code = transformSync(source, { loader: 'jsx', format: 'cjs' }).code;
+  const source = readFileSync(resolve(root, 'apps/web/src/GenerationInputSummary.tsx'), 'utf8');
+  const code = transformSync(source, { loader: 'tsx', format: 'cjs' }).code;
   const slots = []; let cursor = 0, layouts = [], tree;
   const equal = (a, b) => a?.length === b?.length && a.every((value, i) => Object.is(value, b[i]));
   const h = { visible: true };
@@ -176,10 +178,10 @@ function disclosureHarness() {
   Function('module', 'exports', 'require', code)(module, module.exports, name => {
     const i18nDependency = creationTestDependency(name); if (i18nDependency) return i18nDependency;
     if (name === 'react') return react;
-    if (name === './generation-settings.js') return { generationProfileSelection, generationIssueDescriptor };
-    if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => h.visible };
+    if (name === './generation-settings.ts') return { generationProfileSelection, generationIssueDescriptor };
+    if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => h.visible };
     if (name.endsWith('.css')) return {};
-    if (name === './icons.jsx') return { default: 'Icon', __esModule: true };
+    if (name === './icons.tsx') return { default: 'Icon', __esModule: true };
     if (name.startsWith('@mioon/ui/')) return new Proxy({}, { get: (_, key) => String(key) });
     throw Error(`Unexpected dependency: ${name}`);
   });

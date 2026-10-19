@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {initializeWorkspaceSchema26,validateWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
 import {initializeWorkspaceSchema28,validateWorkspaceSchema28} from '../packages/business/src/workspace-schema-v28.ts';
 import {createWorkspaceRestoreProfileV27} from '../packages/business/src/workspace-restore-schema-v27.ts';
 import {createWorkspaceRestoreProfileV29} from '../packages/business/src/workspace-restore-schema-v29.ts';
-import {classifyWorkspaceSchema as classifyHistorical,installWorkspaceRestoreSchema as installHistorical,validateWorkspaceRestoreSchema as validateHistorical} from '../packages/business/src/workspace-restore-schema.mjs';
+import {classifyWorkspaceSchema as classifyHistorical,installWorkspaceRestoreSchema as installHistorical,validateWorkspaceRestoreSchema as validateHistorical} from '../packages/business/src/workspace-restore-schema.ts';
 import {readCurrentWorkspaceRole,createWorkspaceSchemaDispatch} from '../packages/business/src/workspace-schema-dispatch.ts';
 import {readWorkspaceBackupSchemaVersion} from '../packages/business/src/workspace-backup-schema-versions.ts';
 import {workspaceBackupSourceSchemaVersion,workspaceRestorationPairSchema} from '../packages/contracts/src/workspace-schema-profiles.ts';
@@ -124,12 +124,13 @@ for(const kind of ['receipt mismatch','invalid semantic metadata'])test(`metadat
  const before=snapshot(db);assert.throws(()=>initializeWorkspaceSchema28(db),{code:'LUT_RESOURCE_INVALID'});assert.deepEqual(snapshot(db),before);
 });
 
-test('new pair contracts accept exactly24/25,26/27,28/29,30/31 32/33 and34/35, never numerical neighbors or cross-pairs',()=>{
- for(const version of [1,24,26,28,30,32,34])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(version).success,true);
- for(const version of [0,25,27,29,31,33,35,36,28.5])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(version).success,false);
- for(const [index,profile]of ['restored-local-v1','restored-local-v2','restored-local-v3','restored-local-v4','restored-local-v5','restored-local-v6'].entries())for(const sourceSchema of [24,26,28,30,32,34])for(const databaseSchemaVersion of [25,27,29,31,33,35]){
-  assert.equal(workspaceRestorationPairSchema.safeParse({profile,sourceSchema,databaseSchemaVersion}).success,sourceSchema===24+index*2&&databaseSchemaVersion===25+index*2);
- }
+test('new pair contracts accept only the exact registered source/restoration pairs',()=>{
+ for(const version of [1,24,26,28,30,32,34,36,38,40,44,48])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(version).success,true);
+ for(const version of [0,25,27,29,31,33,35,37,39,41,45,49,28.5])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(version).success,false);
+ const pairs=[['restored-local-v1',24,25],['restored-local-v2',26,27],['restored-local-v3',28,29],['restored-local-v4',30,31],['restored-local-v5',32,33],['restored-local-v6',34,35],['restored-local-v7',36,37],['restored-local-v8',38,39],['restored-local-v9',40,41],['restored-local-v11',44,45],['restored-local-v13',48,49]];
+ for(const [profile,sourceSchema,databaseSchemaVersion]of pairs)assert.equal(workspaceRestorationPairSchema.safeParse({profile,sourceSchema,databaseSchemaVersion}).success,true);
+ for(const profile of ['restored-local-v10','restored-local-v12','restored-local-v14'])for(const sourceSchema of [24,26,28,30,32,34,36,38,40,44,48])assert.equal(workspaceRestorationPairSchema.safeParse({profile,sourceSchema,databaseSchemaVersion:sourceSchema+1}).success,false);
+ for(const [index,[,sourceSchema,databaseSchemaVersion]]of pairs.entries())for(const shift of [-1,1])assert.equal(workspaceRestorationPairSchema.safeParse({profile:pairs[index][0],sourceSchema:sourceSchema+shift,databaseSchemaVersion}).success,false);
 });
 
 test('restore29 holds exact LUT bytes, raw metadata, receipt and rowids; new imports stay unavailable',t=>{

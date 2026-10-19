@@ -8,12 +8,12 @@ import {tmpdir} from 'node:os';
 import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {isTimelineRenderRecord} from '@mioon/contracts';
-import {openStore, getWorkspaceRestoreContext} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {createWorkspaceBackup, verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';
-import {restoreWorkspaceBackup, inspectWorkspaceRestorePublication} from '../packages/business/src/workspace-restore.mjs';
-import {isRestoredRecordHeld} from '../packages/business/src/workspace-restore-schema.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
+import {openStore, getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createWorkspaceBackup, verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
+import {restoreWorkspaceBackup, inspectWorkspaceRestorePublication} from '../packages/business/src/workspace-restore.ts';
+import {isRestoredRecordHeld} from '../packages/business/src/workspace-restore-schema.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {claimFloatTimelineExport, bindFloatTimelineMeasurement} from '../packages/business/src/timeline-float-outcome.ts';
 import {createTimelineFloatAudioAccumulator} from '../packages/business/src/timeline-float-audio-check.ts';
 import {tree, logical, hash} from './helpers/workspace-restore-offline-fixture.mjs';
@@ -91,7 +91,7 @@ test('cold backup verify and offline restore preserve v2 queued failed succeeded
   }
   assert.deepEqual(tree(source), sourceBefore); const backupBefore = tree(backup);
   const restored = await restoreWorkspaceBackup({directory: backup, destination});
-  assert.equal(restored.publication, 'confirmed'); assert.equal(restored.databaseSchemaVersion, 27);
+  assert.equal(restored.publication, 'confirmed'); assert.equal(restored.databaseSchemaVersion, 49);
   assert.equal(restored.heldCounts.exports, 3); assert.ok(restored.heldCounts.timeline_requests >= 3);
   assert.deepEqual(restored.inventory, created.inventory);
   assert.deepEqual(tree(source), sourceBefore); assert.deepEqual(tree(backup), backupBefore);
@@ -102,7 +102,7 @@ test('cold backup verify and offline restore preserve v2 queued failed succeeded
     assert.deepEqual(select(db), frozenRows);
     const after = logical(db);
     for (const [table, values] of Object.entries(originalTables)) {
-      const actual = after[table].filter(value => table !== 'schema_version' || value.version !== 27).map(value => {
+      const actual = after[table].filter(value => table !== 'schema_version' || value.version !== 49).map(value => {
         const next = Object.assign(Object.create(Object.getPrototypeOf(value)), value);
         if (table === 'edit_tasks') delete next.executionEpoch; return next;
       });

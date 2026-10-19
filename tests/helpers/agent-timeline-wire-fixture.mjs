@@ -59,7 +59,7 @@ export async function timelineWireFixture(t, protocol) {
     const proposal = (await f.proposals(projectId, '?view=all')).proposals.find(item => item.runId === sent.run.id);
     return {input, sent, done, proposal};
   };
-  f.cli = (operation, input = {}) => fixtureCli(f.lifetime, process.execPath, [path.join(REPO, 'apps/cli/src/index.mjs'), ...operation.split('.'), '--input', JSON.stringify(input)],
+  f.cli = (operation, input = {}) => fixtureCli(f.lifetime, process.execPath, [path.join(REPO, 'apps/cli/src/index.ts'), ...operation.split('.'), '--input', JSON.stringify(input)],
     {cwd: REPO, env: {PATH: process.env.PATH || '', HOME: f.root, MIOON_BASE_URL: f.process.url, MIOON_TOKEN: EDIT_WIRE_TOKEN, MIOON_ENABLE_LIVE_PROVIDER: '0'}}, operation, EDIT_WIRE_TOKEN);
 
   return f;

@@ -5,9 +5,9 @@ import {mkdtempSync, readFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createChatRuntime} from '../packages/business/src/agent/chat-runtime.mjs';
-import {AGENT_CREDENTIAL_ACQUIRE} from '../packages/business/src/agent/settings.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createChatRuntime} from '../packages/business/src/agent/chat-runtime.ts';
+import {AGENT_CREDENTIAL_ACQUIRE} from '../packages/business/src/agent/settings.ts';
 
 const cwd = fileURLToPath(new URL('../', import.meta.url));
 // Only this owned synthetic process is killed. It has no network transport,
@@ -18,10 +18,10 @@ import {createTestAuthorizations,authorizeTestScope} from './tests/helpers/agent
 import {appendFileSync, writeFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import path from 'node:path';
-import {openStore} from './packages/business/src/db.mjs';
-import {createInspectionServices} from './packages/business/src/inspection.mjs';
-import {createChatRuntime} from './packages/business/src/agent/chat-runtime.mjs';
-import {createAgentSettings, AGENT_CREDENTIAL_ACQUIRE} from './packages/business/src/agent/settings.mjs';
+import {openStore} from './packages/business/src/db.ts';
+import {createInspectionServices} from './packages/business/src/inspection.ts';
+import {createChatRuntime} from './packages/business/src/agent/chat-runtime.ts';
+import {createAgentSettings, AGENT_CREDENTIAL_ACQUIRE} from './packages/business/src/agent/settings.ts';
 import {deriveAgentEndpoint} from '@mioon/contracts';
 const {FIXTURE_ROOT: root, FIXTURE_PROTOCOL: protocol, FIXTURE_BOUNDARY: boundary} = process.env;
 const trace = entry => appendFileSync(path.join(root, 'trace.jsonl'), JSON.stringify(entry) + '\n');

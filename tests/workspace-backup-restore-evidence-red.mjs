@@ -8,10 +8,10 @@ import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
-import {openStore} from '../packages/business/src/db.mjs';
+import {openStore} from '../packages/business/src/db.ts';
 
-const sourceURL=new URL('../packages/business/src/workspace-backup.mjs',import.meta.url);
-const priorURL=new URL(`.backup-capture-prior-${randomUUID()}.mjs`,sourceURL);
+const sourceURL=new URL('../packages/business/src/workspace-backup.ts',import.meta.url);
+const priorURL=new URL(`.backup-capture-prior-${randomUUID()}.ts`,sourceURL);
 const current=fs.readFileSync(sourceURL,'utf8');
 const decision='hasWorkspaceBackupRestoreEvidence(db)||detectWorkspaceRestoreEvidence(db)';
 assert.equal(current.split(decision).length,2,'the causal control changes exactly one capture decision');

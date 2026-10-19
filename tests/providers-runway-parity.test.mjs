@@ -4,11 +4,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdtemp, writeFile, readFile, rm, symlink, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { createRunwayProvider } from '../packages/business/src/providers/runway.mjs';
-import { createPollCache } from '../packages/business/src/providers/live-common.mjs';
-import { openStore } from '../packages/business/src/db.mjs';
-import { createServices } from '../packages/business/src/services.mjs';
-import { startWorker } from '../packages/business/src/jobs.mjs';
+import { createRunwayProvider } from '../packages/business/src/providers/runway.ts';
+import { createPollCache } from '../packages/business/src/providers/live-common.ts';
+import { openStore } from '../packages/business/src/db.ts';
+import { createServices } from '../packages/business/src/services.ts';
+import { startWorker } from '../packages/business/src/jobs.ts';
 import { createRunwayUnknownFixture, syntheticPng } from './helpers/runway-unknown-fixture.mjs';
 
 const ID = '12345678-1234-4123-8123-123456789abc';

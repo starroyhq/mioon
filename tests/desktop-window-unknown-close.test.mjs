@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import vm from 'node:vm';
 import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
-import { QuitCoordinator } from '../apps/desktop/src/lifecycle.mjs';
+import { QuitCoordinator } from '../apps/desktop/src/lifecycle.ts';
 import { createNativeCloseAdmission, createNativeCloseRegistry } from '../apps/web/src/native-close-state.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 

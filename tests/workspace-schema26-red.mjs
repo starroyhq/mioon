@@ -1,7 +1,7 @@
 // Deliberate pre-fix reproducer. Run separately; exit1 is the expected retained
 // red evidence. Ordinary through24 must remain frozen and cannot accept apply.
 import assert from 'node:assert/strict';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {open, task, insert} from './workspace-schema26-fixtures.mjs';
 const db = open(':memory:');
 try {

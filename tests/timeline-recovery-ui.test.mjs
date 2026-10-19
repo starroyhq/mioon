@@ -1,26 +1,31 @@
 import test from 'node:test';
+import { message as messageKey, renderMessage } from '../packages/i18n/src/index.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, isTimelineRenderRecord, hasRequestNotAppliedProof, timelineOutputPreset } from '@mioon/contracts';
-import * as submissions from '../apps/web/src/submissions.js';
-import * as mutations from '../apps/web/src/mutation-submissions.js';
-import * as workspaceOrigin from '../apps/web/src/workspace-origin.js';
-import * as restoredWorkspace from '../apps/web/src/restored-workspace.js';
+import * as submissions from '../apps/web/src/submissions.ts';
+import * as mutations from '../apps/web/src/mutation-submissions.ts';
+import * as workspaceOrigin from '../apps/web/src/workspace-origin.ts';
+import * as restoredWorkspace from '../apps/web/src/restored-workspace.ts';
 import * as projectOpening from '../apps/web/src/project-open-state.ts';
-import { defaultWorkspaceState, reconcileWorkspaceState } from '../apps/web/src/workspace-state.js';
-import { isReferenceOperation } from '../apps/web/src/reference-connections.js';
+import { defaultWorkspaceState, reconcileWorkspaceState } from '../apps/web/src/workspace-state.ts';
+import { isReferenceOperation } from '../apps/web/src/reference-connections.ts';
 import { loudnessApplyFixture } from './fixtures/timeline-loudness-apply.mjs';
+import { i18nTestModule } from './helpers/i18n.ts';
+import { creationParameter } from '../apps/web/src/creation-i18n.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const taskIntentModule = { exports: {} };
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
 const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
-const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const runSource = source.slice(source.indexOf('async function runSession('), source.indexOf('async function inspect(')).replace('async function runSession(', 'async function run(');
 const refreshSource = source.slice(source.indexOf('const refresh = useCallback('), source.indexOf('async function revealImageAsset('));
 const id = n => `82000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), otherProjectId = id(2), trackId = id(3), clipId = id(4), assetId = id(5);
-const operations = ['timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update', 'timeline.clip.remove',
+const operations = ['timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update', 'timeline.clip.remove', 'timeline.clip.rippleRemove',
   'timeline.clip.split', 'timeline.clip.replaceSource', 'timeline.seed', 'timeline.undo', 'timeline.redo', 'timeline.render', 'timeline.format.set', 'timeline.subtitle.add', 'timeline.subtitle.update', 'timeline.subtitle.remove', 'timeline.loudness.apply'];
 const clone = value => structuredClone(value);
 const loudnessApply = await loudnessApplyFixture({projectId, expectedRevision: 7, requestId: 'original-timeline.loudness.apply'});
@@ -40,7 +45,7 @@ function inputFor(operation, patch = {}) {
     'timeline.track.update': { trackId, patch: { muted: true, name: 'Edited track' } },
     'timeline.clip.add': { trackId, assetId: id(9), name: 'Added', startFrame: 100, durationFrames: 40, sourceInFrame: 11, gain: 0.5 },
     'timeline.clip.update': { clipId, patch: { gain: 0.5, rect: { x: 100, y: 200, width: 300, height: 400 } } },
-    'timeline.clip.remove': { clipId }, 'timeline.clip.split': { clipId, atFrame: 50 },
+    'timeline.clip.remove': { clipId }, 'timeline.clip.rippleRemove': { clipId }, 'timeline.clip.split': { clipId, atFrame: 50 },
     'timeline.clip.replaceSource': { clipId, assetId: id(9) }, 'timeline.render': { purpose: 'preview' },
     'timeline.format.set': { expectedProjectRevision: 3, presetId: 'landscape_720' },
     'timeline.subtitle.add': { text: '字幕', startFrame: 0, durationFrames: 30 },
@@ -82,6 +87,7 @@ function acknowledged(operation, input) {
   }
   if (operation === 'timeline.clip.update') Object.assign(value.clips[0], input.patch);
   if (operation === 'timeline.clip.remove') { value.clips = []; value.durationFrames = 0; }
+  if (operation === 'timeline.clip.rippleRemove') { value.clips = value.clips.filter(clip => clip.id !== input.clipId); value.durationFrames = 0; }
   if (operation === 'timeline.clip.replaceSource') value.clips[0].assetId = input.assetId;
   if (operation === 'timeline.clip.split') {
     const right = { ...clone(value.clips[0]), id: id(8), startFrame: input.atFrame, durationFrames: 40, sourceInFrame: 51 };
@@ -99,14 +105,14 @@ function harness(dispatch, { projectSnapshot, workspace = { restored: false } } 
   const state = { projectReady: true, epoch: 0, calls: [], reads: [], notices: [], refreshes: [], pending: submissions.pendingForProject(projectId), jobs: false, auth: true, online: null, providers: null };
   const currentProject = { current: projectId }, workspaceRef = { current: workspace }, busy = new Set();
   const dataRef = { current: { project: { id: projectId }, timeline: timeline(7), timelineHistory: { revision: 7 } } };
-  const scope = { ...submissions, ...mutations, ...workspaceOrigin, ...restoredWorkspace, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, isReferenceOperation,
+  const scope = { ...submissions, ...mutations, ...workspaceOrigin, ...restoredWorkspace, msg: messageKey, localizedError: value => Object.assign(new Error(renderMessage('zh-Hans', value)), {displayMessage: value}), TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, isReferenceOperation,
     shotTextRef: { current: null }, currentProject, workspaceRef, dataRef, context: () => ({ projectId: currentProject.current, epoch: state.epoch, workspace: workspaceRef.current }),
     isCurrent: owner => owner.projectId === currentProject.current && owner.epoch === state.epoch && workspaceOrigin.workspaceOriginScope(owner.workspace) === workspaceOrigin.workspaceOriginScope(workspaceRef.current),
     isBusy: (key, owner) => busy.has(`${owner}:${key}`), markBusy: (owner, key, value) => value ? busy.add(`${owner}:${key}`) : busy.delete(`${owner}:${key}`),
-    requestCounter: { current: 0 }, setData: update => { dataRef.current = typeof update === 'function' ? update(dataRef.current) : update; },
+    requestCounter: { current: 0 }, clipConnectionBlocked: { current: false }, setData: update => { dataRef.current = typeof update === 'function' ? update(dataRef.current) : update; },
     setPending: entries => { state.pending = entries; }, openTasks: (canReveal = () => true) => { if (canReveal()) state.jobs = true; }, setAuth: value => { state.auth = value; },
-    readableError: error => error.message, clipReplacementErrorMessage: error => error.message,
-    notify: (message, type) => state.notices.push({ message, type }), refresh: async owner => { state.refreshes.push(owner); },
+    readableError: error => error.message, clipReplacementErrorDescriptor: error => error.message,
+    notify: (message, type) => state.notices.push({ message: typeof message === 'string' ? message : renderMessage('zh-Hans', message), type }), refresh: async owner => { state.refreshes.push(owner); },
     rpc: async (operation, input) => {
       if (projectSnapshot && operation === 'project.get') { state.reads.push({ operation, input: clone(input) }); return projectSnapshot(input.projectId); }
       if (projectSnapshot && operation === 'provider.list') { state.reads.push({ operation }); return []; }
@@ -114,7 +120,7 @@ function harness(dispatch, { projectSnapshot, workspace = { restored: false } } 
     },
   };
   if (projectSnapshot) {
-    const refreshScope = { ...scope, ...projectOpening, projectSessionReady: () => state.projectReady, importSession: { current: { active: true } }, useCallback: callback => callback, emptyData: {}, projectEpoch: { current: 1 },
+    const refreshScope = { ...scope, ...projectOpening, application: null, clipDraftRef: { current: null }, projectSessionReady: () => state.projectReady, importSession: { current: { active: true } }, useCallback: callback => callback, emptyData: {}, projectEpoch: { current: 1 },
       setProviders: value => { state.providers = value; }, setLastSync() {}, setOnline: value => { state.online = value; }, reconcileWorkspaceState,
       viewRef: { current: defaultWorkspaceState() }, viewReady: { current: false }, setView() {}, preferencesRef: { current: {} } };
     delete refreshScope.refresh;
@@ -126,7 +132,7 @@ function harness(dispatch, { projectSnapshot, workspace = { restored: false } } 
 const keyFor = operation => operation === 'timeline.render' ? 'timeline:render:preview' : 'timeline:mutation';
 const error = (code, details = {}, definitive = true) => Object.assign(Error('Synthetic failure'), { code, details, definitive });
 
-test('actual App legacy session runner guards exactly the sixteen timeline writes and accepts their complete matching acknowledgements', async t => {
+test('actual App legacy session runner guards exactly the seventeen timeline writes and accepts their complete matching acknowledgements', async t => {
   storage(t); assert.deepEqual(new Set(TIMELINE_MUTATION_OPERATIONS), new Set(operations));
   const h = harness(acknowledged);
   for (const operation of operations) {
@@ -460,13 +466,15 @@ test('actual App refresh discards a late same-project snapshot after restored or
 });
 
 test('pending timeline and reference cards disclose session-only recovery without broadening generation copy', () => {
-  const cardSource = readFileSync(new URL('../apps/web/src/PendingSubmission.jsx', import.meta.url), 'utf8');
-  const code = transformSync(cardSource, { loader: 'jsx', format: 'cjs' }).code, module = { exports: {} };
+  const cardSource = readFileSync(new URL('../apps/web/src/PendingSubmission.tsx', import.meta.url), 'utf8');
+  const code = transformSync(cardSource, { loader: 'tsx', format: 'cjs' }).code, module = { exports: {} };
   const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }) };
   const require = name => name === 'react' ? { ...react, default: react }
+    : name === './i18n/I18nProvider.tsx' ? i18nTestModule()
+    : name === './creation-i18n.ts' ? { creationParameter }
     : name === '@mioon/contracts' ? { TIMELINE_MUTATION_OPERATIONS }
-      : name.endsWith('mutation-submissions.js') ? mutations
-        : name.endsWith('reference-connections.js') ? { isReferenceOperation }
+      : name.endsWith('mutation-submissions.ts') ? mutations
+        : name.endsWith('reference-connections.ts') ? { isReferenceOperation }
           : new Proxy({}, { get: (_target, property) => String(property) });
   Function('require', 'module', 'exports', code)(require, module, module.exports);
   const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];

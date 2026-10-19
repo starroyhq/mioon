@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.mjs",
-    "./private-storage": "./src/private-storage.mjs",
+    ".": "./src/index.ts",
+    "./private-storage": "./src/private-storage.ts",
     "./export-sample-peak": "./src/export-sample-peak.ts",
     "./timeline-export-float": "./src/timeline-export-float.ts",
     "./timeline-export-range": "./src/timeline-export-range.ts",

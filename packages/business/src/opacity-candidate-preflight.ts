@@ -30,8 +30,8 @@ export const OPACITY_CANDIDATE_PREFLIGHT_MESSAGES = Object.freeze({
   INVALID_CLIP_TYPE: 'A source is not supported on its saved timeline track.',
 });
 const require = createRequire(import.meta.url);
-const sources: unknown = require('./timeline-sources.mjs');
-const managed: unknown = require('./managed-media.mjs');
+const sources: unknown = require('./timeline-sources.ts');
+const managed: unknown = require('./managed-media.ts');
 const object = (value: unknown): value is Value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const digest = (value: unknown): string => createHash('sha256').update(JSON.stringify(value, (_key, part: unknown) => object(part)
   ? Object.fromEntries(Object.entries(part).sort(([a], [b]) => a.localeCompare(b))) : part)).digest('hex');

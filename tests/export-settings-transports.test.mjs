@@ -14,11 +14,11 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient,discoverSchema,effectAnnotations} from '@mioon/client';
 import {isTimelineExportCapabilitiesResponse,isTimelineMutationResponse,publicValue,resolveTimelineExportDelivery} from '@mioon/contracts';
-import {startServer} from '../apps/server/src/index.mjs';
-import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.mjs';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
+import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
+import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 
 const REPO=fileURLToPath(new URL('..',import.meta.url));
 const TOKEN='synthetic-export-settings-wire-token';
@@ -31,7 +31,7 @@ const noPrivate=value=>{const text=typeof value==='string'?value:JSON.stringify(
 async function bounded(promise,label,ms=35000){let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(`${label} timed out`)),ms);})]);}finally{clearTimeout(timer);}}
 
 async function cli(url,args){
- const child=spawn(process.execPath,[path.join(REPO,'apps/cli/src/index.mjs'),...args],{cwd:REPO,env:environment(url),stdio:['ignore','pipe','pipe']});
+ const child=spawn(process.execPath,[path.join(REPO,'apps/cli/src/index.ts'),...args],{cwd:REPO,env:environment(url),stdio:['ignore','pipe','pipe']});
  let out='',err='',overflow=false;
  child.stdout.setEncoding('utf8').on('data',part=>{out+=part;if(Buffer.byteLength(out)>1024*1024){overflow=true;child.kill('SIGKILL');}});
  child.stderr.setEncoding('utf8').on('data',part=>{err+=part;if(Buffer.byteLength(err)>64*1024){overflow=true;child.kill('SIGKILL');}});
@@ -43,7 +43,7 @@ async function cli(url,args){
 }
 async function officialMcp(t,url){
  const mcp=new Client({name:'export-settings-wire-acceptance',version:'1.0.0'},{capabilities:{}});
- const transport=new StdioClientTransport({command:process.execPath,args:[path.join(REPO,'apps/mcp/src/index.mjs')],cwd:REPO,env:environment(url),stderr:'pipe'});
+ const transport=new StdioClientTransport({command:process.execPath,args:[path.join(REPO,'apps/mcp/src/index.ts')],cwd:REPO,env:environment(url),stderr:'pipe'});
  let stderr='',overflow=false;
  // Official SDK owns stdout framing; our only SDK-side text collector is stderr.
  transport.stderr?.setEncoding('utf8').on('data',part=>{stderr+=part;if(Buffer.byteLength(stderr)>64*1024){overflow=true;void mcp.close();}});

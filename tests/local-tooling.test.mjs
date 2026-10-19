@@ -7,7 +7,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {parseArguments, nativeReadiness, toolingEnvironment, installedPackages, inspectPackageManager, preflight, discoverTests,
-  PORTABLE_TEST_FILES, isContainedPath, buildCommands, testCommand, executeCommand} from '../scripts/lib/local-tooling.mjs';
+  PORTABLE_TEST_FILES, isContainedPath, buildCommands, testCommand, executeCommand} from '../scripts/lib/local-tooling.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 function runToolingNode(args) {
@@ -23,8 +23,8 @@ test('tooling CLI entry handles canonical and aliased script paths identically',
   t.after(() => rm(directory, {recursive: true, force: true}));
   const alias = path.join(directory, 'scripts alias 中');
   await symlink(path.join(root, 'scripts'), alias, process.platform === 'win32' ? 'junction' : 'dir');
-  const canonical = await realpath(path.join(root, 'scripts/tooling.mjs'));
-  const entries = [canonical, path.join(alias, 'tooling.mjs')];
+  const canonical = await realpath(path.join(root, 'scripts/tooling.ts'));
+  const entries = [canonical, path.join(alias, 'tooling.ts')];
   // Windows uses the directory junction above; file symlinks can require privileges.
   if (process.platform !== 'win32') {
     const scriptAlias = path.join(directory, 'tooling alias 中.mjs');
@@ -41,8 +41,8 @@ test('tooling CLI entry handles canonical and aliased script paths identically',
 });
 
 test('tooling module import does not run the CLI for unrelated or missing entry paths', () => {
-  const moduleUrl = new URL('../scripts/tooling.mjs', import.meta.url).href;
-  for (const entry of [undefined, path.join(root, 'package.json'), path.join(root, 'scripts/tooling.mjs', 'missing')]) {
+  const moduleUrl = new URL('../scripts/tooling.ts', import.meta.url).href;
+  for (const entry of [undefined, path.join(root, 'package.json'), path.join(root, 'scripts/tooling.ts', 'missing')]) {
     const source = `process.argv[1] = ${JSON.stringify(entry)}; await import(${JSON.stringify(moduleUrl)}); process.stdout.write('imported\\n');`;
     const result = runToolingNode(['--input-type=module', '-e', source]);
     assert.equal(result.status, 0);
@@ -239,6 +239,13 @@ test('portable manifest is explicit, sorted, present and not broadened by filena
   await assert.rejects(discoverTests(directory, {suite: 'full', platform: 'win32'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});
   await assert.rejects(discoverTests(directory, {suite: 'full', platform: 'darwin'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});
 });
+test('full Linux selection supports more than the old 512-file limit within the argv budget', async t => {
+  const {directory} = await fixture(t);
+  for (let index = 0; index < 600; index += 1) await writeFile(path.join(directory, 'tests', `bulk-${index}.test.mjs`), '');
+  const files = await discoverTests(directory, {suite: 'full', platform: 'linux'});
+  assert.ok(files.length >= 600, files.length);
+  assert.equal(files.filter(name => name.endsWith('bulk-0.test.mjs')).length, 1);
+});
 test('missing portable test fails rather than silently skipping it', async t => {
   const {directory} = await fixture(t); await rm(path.join(directory, 'tests', PORTABLE_TEST_FILES[0]));
   await assert.rejects(discoverTests(directory), {code: 'TEST_SELECTION_INVALID'});
@@ -275,9 +282,9 @@ test('real shell-free Node child handles a spaced Unicode script path and nonzer
   assert.deepEqual(result, {code: 3, signal: null});
 });
 test('tooling preserves compatibility protocol values and does not invoke packaging or network setup', async () => {
-  const source = await readFile(path.join(root, 'scripts/tooling.mjs'), 'utf8');
+  const source = await readFile(path.join(root, 'scripts/tooling.ts'), 'utf8');
   assert.doesNotMatch(source, /electron-builder|npm install|pnpm install|https?:\/\/|access-token|desktop-config|chmod|chown/);
-  assert.equal(JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')).scripts['test:local'], 'node scripts/tooling.mjs test');
+  assert.equal(JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')).scripts['test:local'], 'node scripts/tooling.ts test');
 });
 
 test('dependency containment is segment-aware for POSIX and Windows drive/case rules', () => {

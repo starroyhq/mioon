@@ -6,6 +6,8 @@ import { projectOpenAttempt, canPublishProjectOpen } from '../apps/web/src/proje
 import { deriveTimelineAssetUsage } from '../apps/web/src/timeline-asset-usage.ts';
 import { locateTimelineAssetUse, matchesTimelineAssetUse, revealTimelineAssetUse } from '../apps/web/src/timeline-asset-navigation.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const id = n => `ce100000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 function fixture() {
   const projectId = id(1), assetId = id(2);
@@ -69,7 +71,7 @@ test('viewport reveal is bounded to its exact child and both layout callbacks re
   }
 });
 
-const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const section = (start, end) => { const a = source.indexOf(start), b = source.indexOf(end, a); assert.ok(a >= 0 && b > a); return source.slice(a, b); };
 const readySource = section('  function projectSessionReady()', '  const workbenchReady =');
 const bridge = section('  function readAssetUsageNavigation()', '  function timelineFormatContext()');
@@ -122,7 +124,7 @@ test('App passes the target fence through the actual clip discard boundary', asy
   const guard = section('  async function guardNavigation(', '  async function guardProjectNavigation(');
   let passed, dirty = true;
   const env = { nativeWindow: null, context: () => 'owner', isCurrent: () => true, subtitlesRef: { current: null }, shotTextRef: { current: null },
-    clipDraftRef: { current: { capture: () => 'token', hasUnsaved: () => true, isCurrent: () => true, discard: async (token, fence) => { assert.equal(token, 'token'); passed = fence; return false; } } },
+    clipDraftRef: { current: { capture: () => 'token', hasUnsaved: () => true, isCurrent: () => true, hasPendingComposition: () => false, discard: async (token, fence) => { assert.equal(token, 'token'); passed = fence; return false; } } },
     dirtyRef: { current: true }, confirm: async () => true, subjectsRef: { current: null },
     setShotDirty: () => assert.fail('No clear'), setClipDirty: () => { dirty = false; }, setSourceDirty: () => assert.fail('No clear'), setSubjectDirty: () => assert.fail('No clear'), setSubtitleDirty: () => assert.fail('No clear'), setInspectorEpoch: () => assert.fail('No clear') };
   const run = Function(...Object.keys(env), `${guard}; return guardNavigation;`)(...Object.values(env));

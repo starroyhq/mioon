@@ -1,0 +1,373 @@
+{
+  "formatVersion": 1,
+  "note": "Legacy `.mjs` provenance recorded in manifest.json predates the TypeScript source migration. Historical hashes stay authoritative and unchanged; this file maps each legacy key to its renamed `.ts` source and pins a deterministic esbuild type-erased hash of the current body so later edits are still detected.",
+  "mapping": {
+    "packages/business/src/agent/edit-proposal-schema.mjs": {
+      "legacyPath": "packages/business/src/agent/edit-proposal-schema.mjs",
+      "currentPath": "packages/business/src/agent/edit-proposal-schema.ts",
+      "legacyConstructorSha256": "662ed2c50f6d69c6d675c0d0db3f4edf10ffef93f56931c3fde36b323d6fc632",
+      "legacyClosureSha256": "404b6a140976c92deef032c6d0c950f959ba74a290ffea7197fab514c4ac36a9",
+      "legacyClosureStatements": 1,
+      "typeErasedSha256": "80a651108a0e6962f57f72a07dfa9a32e4d6eba29331539a8d2f7cc8a52467e9",
+      "typeErasedClosureSha256": "36aba5fc74e3bdd8907242f60a1a321ddd2c838016a0629f6a7d8a63995d2d4e",
+      "typeErasedClosureStatements": 2,
+      "typeErasedDependencyDeclarations": []
+    },
+    "packages/business/src/comfy-image-schema.mjs": {
+      "legacyPath": "packages/business/src/comfy-image-schema.mjs",
+      "currentPath": "packages/business/src/comfy-image-schema.ts",
+      "legacyConstructorSha256": "31e354a1223ecfbfa67d7e8cdc171c99f49a4b032d57ac17366aa4061ca2300c",
+      "legacyClosureSha256": "2f0d70670edf76b3536199f8c443032b5916e07c22810c41274d6342862d3038",
+      "legacyClosureStatements": 2,
+      "typeErasedSha256": "da54ec03c66097c7d3dd1c04c8e808d3c0d0236c093ce102cb73f83fe644a770",
+      "typeErasedClosureSha256": "fa09b992f9d59eabaa3fcaf3866251d3e6ebfa1fd9b530471ec71f31b9fff3cd",
+      "typeErasedClosureStatements": 3,
+      "typeErasedDependencyDeclarations": []
+    },
+    "packages/business/src/edit-task-schema.mjs": {
+      "legacyPath": "packages/business/src/edit-task-schema.mjs",
+      "currentPath": "packages/business/src/edit-task-schema.ts",
+      "legacyConstructorSha256": "6a7753f04ede401445f3e68f35aa804cc546938e5b485b2152f48e8d6d69ca91",
+      "legacyClosureSha256": "e5589f96b04fbbd18fd7cc12ac5c187b4561c76bb69af1e86076dd41bceb5335",
+      "legacyClosureStatements": 6,
+      "typeErasedSha256": "6143022de4336fdbbefa1679a72426ce853c28f24b570f8dda237490cc387ca0",
+      "typeErasedClosureSha256": "1f3f7a3ba1e5e7b4e6dd69245733c8688ebe97e372c95d895c69dc038b1b2136",
+      "typeErasedClosureStatements": 6,
+      "typeErasedDependencyDeclarations": [
+        "import { migrateTimelineSubtitleEditTasks } from \"./timeline-subtitle-schema.ts\";"
+      ]
+    },
+    "packages/business/src/frame-schema.mjs": {
+      "legacyPath": "packages/business/src/frame-schema.mjs",
+      "currentPath": "packages/business/src/frame-schema.ts",
+      "legacyConstructorSha256": "d1310a5945bfcf577b5e2780159507e753eb28f3b4e94d5e109c4bf65ced2655",
+      "legacyClosureSha256": "4a5377951035d8903652ab55feda0cd4d9f30f7e29b53e6ca88b5e2ba2337dd3",
+      "legacyClosureStatements": 5,
+      "typeErasedSha256": "469030ad3531d85aae09bfd104c8fb28222c8f65e6b6c4a489914b81f2fce417",
+      "typeErasedClosureSha256": "064b0a092907e9d6b848afc6002dfbea1ccd5de9acb8c534727140bb1dfeb5c2",
+      "typeErasedClosureStatements": 6,
+      "typeErasedDependencyDeclarations": [
+        "import { FRAME_LIMITS, FRAME_PROFILE_ID, FRAME_SELECTION_RULE } from \"./workspace-schema-v24-constants.ts\";",
+        "import { INSPECTION_VERSION_ASSET_EXPRESSION, INSPECTION_ROW_LIMITS } from \"./workspace-schema-v24-constants.ts\";"
+      ]
+    },
+    "packages/business/src/image-schema.mjs": {
+      "legacyPath": "packages/business/src/image-schema.mjs",
+      "currentPath": "packages/business/src/image-schema.ts",
+      "legacyConstructorSha256": "8a364f2d61669cff35ba6a77d5a8a6fd5a26044bfa970b09e78ce780929931e3",
+      "legacyClosureSha256": "8ce8c6d2d869972814810335490cc88cd44cd0af06a82b2f198a3e69f66a7575",
+      "legacyClosureStatements": 1,
+      "typeErasedSha256": "f843f1988e0dd5a74d55a3d2ae3e841b98da1de5fe7674223220c4b7402ad8cc",
+      "typeErasedClosureSha256": "c464a270f5a3f6d28d81cf7165de2eb68675fc3d97ba634c7b30d84395510c86",
+      "typeErasedClosureStatements": 2,
+      "typeErasedDependencyDeclarations": [
+        "import { INSPECTION_VERSION_ASSET_EXPRESSION, INSPECTION_ROW_LIMITS } from \"./workspace-schema-v24-constants.ts\";"
+      ]
+    },
+    "packages/business/src/images/review-schema.mjs": {
+      "legacyPath": "packages/business/src/images/review-schema.mjs",
+      "currentPath": "packages/business/src/images/review-schema.ts",
+      "legacyConstructorSha256": "71d7b325ec4441c758638f214ce35f27296493aef1073c3b0be62f669ebdd240",
+      "legacyClosureSha256": "aec00d46baf1ad3050d2d32968ac5f3e452ae0e6381391947d09161261258f12",
+      "legacyClosureStatements": 7,
+      "typeErasedSha256": "5a64b8ba50aa766467dc6cbcb962a866c6fb7303725dc5a678aa99dbd51b7205",
+      "typeErasedClosureSha256": "3c048d17936e83421c3991c086f9004ec64fc228838b3188d0fad7e03056715c",
+      "typeErasedClosureStatements": 8,
+      "typeErasedDependencyDeclarations": []
+    },
+    "packages/business/src/inspection-query.mjs": {
+      "legacyPath": "packages/business/src/inspection-query.mjs",
+      "currentPath": "packages/business/src/inspection-query.ts",
+      "legacyConstructorSha256": "6aae6b7fdd32ddb7c4a842a63402c0f92a589e28d55f1a10f5daf060c0ef3465",
+      "legacyClosureSha256": null,
+      "legacyClosureStatements": null,
+      "typeErasedSha256": "9f159367eb35b12bcc73feda8ca3b86e4910e052ee418a7c424c2f78a8fc2713",
+      "typeErasedClosureSha256": "717c83b430c0bed80e916b2409dd36c157c12395beae66ead5af57100da47d3b",
+      "typeErasedClosureStatements": 3,
+      "typeErasedDependencyDeclarations": [
+        "import { TIMELINE_RESPONSE_BYTES } from \"@mioon/contracts\";"
+      ]
+    },
+    "packages/business/src/providers/mock.mjs": {
+      "legacyPath": "packages/business/src/providers/mock.mjs",
+      "currentPath": "packages/business/src/providers/mock.ts",
+      "legacyConstructorSha256": "a0c0dc758234af6ad475dc7f1ec037c54f871aa1c44faf5e8d099b6a5214ae3b",
+      "legacyClosureSha256": null,
+      "legacyClosureStatements": null,
+      "typeErasedSha256": "e79df022a0e08528f7f8bfbbddbd2da6ed238ec1d7042ce450d6fd302036ae7d",
+      "typeErasedClosureSha256": "67b565682471e08b36aaad6a58dece4850cf39cb2fdcc66b07c45524b7420cd8",
+      "typeErasedClosureStatements": 10,
+      "typeErasedDependencyDeclarations": [
+        "import { createHash, randomUUID } from \"node:crypto\";",
+        "import { throwIfMediaAborted } from \"../media-processes.ts\";",
+        "import { run } from \"../media-runtime.ts\";",
+        "import { createMockRendererCapability, DRAWTEXT_MESSAGE } from \"./mock-renderer-capability.ts\";",
+        "import { mkdir, realpath, rename, rm } from \"node:fs/promises\";",
+        "import path from \"node:path\";",
+        "import { SUBJECT_REFERENCE_PROFILE_VERSION, getSubjectGenerationSnapshotIssue } from \"@mioon/contracts\";",
+        "import { providerError } from \"./live-common.ts\";"
+      ]
+    },
+    "packages/business/src/subject-schema.mjs": {
+      "legacyPath": "packages/business/src/subject-schema.mjs",
+      "currentPath": "packages/business/src/subject-schema.ts",
+      "legacyConstructorSha256": "2ba181530ac2ed4cb861e7578280f6d653b2fbe81b25a6b2484e088833a62e7d",
+      "legacyClosureSha256": "ae3efbb76a4d5953cf7a4d0af84fbe7b97324d99b1805304ce35f8a5ea4aec9d",
+      "legacyClosureStatements": 1,
+      "typeErasedSha256": "f101064019f467a753d7fb886b3c70c607e4662135366a22fb086c9643b554c6",
+      "typeErasedClosureSha256": "4804d943cd65a648f5367f9e302d309f1569475b729ec4ad459e95868456506a",
+      "typeErasedClosureStatements": 2,
+      "typeErasedDependencyDeclarations": []
+    },
+    "packages/business/src/timeline-format-schema.mjs": {
+      "legacyPath": "packages/business/src/timeline-format-schema.mjs",
+      "currentPath": "packages/business/src/timeline-format-schema.ts",
+      "legacyConstructorSha256": "25ac5e155a99d8df4c4c53dd1acb184df51b29f6b034b5becc4ceef2ccf44609",
+      "legacyClosureSha256": "58583aded1af71f311ef0eb9a26e7d99ee799e704baa61d922cade862e17d3dc",
+      "legacyClosureStatements": 2,
+      "typeErasedSha256": "e59d071392f543baef6c2972a0abc1f55b605fd53fc1c52f313971bcc2e70711",
+      "typeErasedClosureSha256": "ab0eb60d792eabf3733576b2eb0d97c74fe12a34b92124b61d327b41518e9d57",
+      "typeErasedClosureStatements": 3,
+      "typeErasedDependencyDeclarations": []
+    },
+    "packages/business/src/timeline-subtitle-schema.mjs": {
+      "legacyPath": "packages/business/src/timeline-subtitle-schema.mjs",
+      "currentPath": "packages/business/src/timeline-subtitle-schema.ts",
+      "legacyConstructorSha256": "cdcfa2c9e97dd26bb478e91852ae48e76f5847b179c4d84e7e6f81d5ce01e9fe",
+      "legacyClosureSha256": "66f3c72d7e8b045c5ed33cc012f640b4bf0fda07af241fc0457be59813020583",
+      "legacyClosureStatements": 4,
+      "typeErasedSha256": "ef2c289decd324cd8f190d253105ed963292a038f121aa51bcce284bc3271b59",
+      "typeErasedClosureSha256": "a97f5ee4322f25a8b45bfb6980cdc8de22add90cd26fc88c522b3c6c60c72041",
+      "typeErasedClosureStatements": 5,
+      "typeErasedDependencyDeclarations": []
+    },
+    "packages/business/src/workspace-fixed-schema.mjs": {
+      "legacyPath": "packages/business/src/workspace-fixed-schema.mjs",
+      "currentPath": "packages/business/src/workspace-fixed-schema.ts",
+      "legacyConstructorSha256": "9751e2f2d74b64c1cbd070d61e11941d1eba135ca8748bbdc20bd20ebab05bab",
+      "legacyClosureSha256": "8f265f51f2566f7c735757821060cac4f496b4568cf4d5d9cdcb090360bca97c",
+      "legacyClosureStatements": 1,
+      "typeErasedSha256": "9113425728d1755e9a51977b7cfab7d48fd5008f5d28afa57f9acc7d61b3af0a",
+      "typeErasedClosureSha256": "be8433c5375e65eb4b139cc671e5ea6dbb3c0fa4dbc70c00d62d3f6712123eaf",
+      "typeErasedClosureStatements": 3,
+      "typeErasedDependencyDeclarations": [
+        "import { INSPECTION_VERSION_ASSET_EXPRESSION } from \"./workspace-schema-v24-constants.ts\";",
+        "import { bootstrapEditTaskSchema, migrateSubjectEditTasks, migrateTimelineFormatEditTasks, migrateTimelineSubtitleEditTasks } from \"./edit-task-schema.ts\";",
+        "import { migrateSubjectSchema } from \"./subject-schema.ts\";",
+        "import { migrateImageSchema } from \"./image-schema.ts\";",
+        "import { migrateImageReviewSchema, migrateCustomImageReviewSchema, migrateComfyImageReviewSchema, migrateImageEditReviewSchema } from \"./images/review-schema.ts\";",
+        "import { migrateComfyImageSchema } from \"./comfy-image-schema.ts\";",
+        "import { migrateFrameSchema } from \"./frame-schema.ts\";",
+        "import { migrateTimelineFormatSchema } from \"./timeline-format-schema.ts\";",
+        "import { migrateAgentEditProposalSchema } from \"./agent/edit-proposal-schema.ts\";"
+      ]
+    },
+    "packages/business/src/workspace-restore-schema.mjs": {
+      "legacyPath": "packages/business/src/workspace-restore-schema.mjs",
+      "currentPath": "packages/business/src/workspace-restore-schema.ts",
+      "legacyConstructorSha256": "9b3861b3e0ec72b0ab1d1b676657205f5b3a934342abf308a4cc394307c3670b",
+      "legacyClosureSha256": "49ee16aa394793188d5ce7b93e4f91b3242a8e6d6fdb02c6d8fc91be82e5e926",
+      "legacyClosureStatements": 48,
+      "typeErasedSha256": "69b714eb95876e6ee6ce49357dbb6e6d8591099f6ae3bf49460ce98f92f504a6",
+      "typeErasedClosureSha256": "94ed069c619202cba32347603a9f177ef7bea28080772ae357d11895895a7c69",
+      "typeErasedClosureStatements": 48,
+      "typeErasedDependencyDeclarations": [
+        "import { DatabaseSync } from \"node:sqlite\";",
+        "import { detectFixedWorkspaceRestoreEvidence } from \"./workspace-schema-profile.ts\";",
+        "import { createHash } from \"node:crypto\";",
+        "import { initializeWorkspaceSchemaThrough24 } from \"./workspace-fixed-schema.ts\";",
+        "import { getWorkspaceRestoreContext } from \"./db.ts\";",
+        "import { getWorkspaceRestoreContext as getWorkspaceRestoreContext2 } from \"./db.ts\";"
+      ]
+    },
+    "packages/contracts/src/frame-extraction.mjs": {
+      "legacyPath": "packages/contracts/src/frame-extraction.mjs",
+      "currentPath": "packages/contracts/src/frame-extraction.ts",
+      "legacyConstructorSha256": "f391842a6cf697dc889f0c852c5ee49dd198af8d4eefc66ff03d87a4f2e425c9",
+      "legacyClosureSha256": null,
+      "legacyClosureStatements": null,
+      "typeErasedSha256": "11662f3f19b42f2f0fa9b0ade50aa53c6dd71095315c7a2806827f997dcb275b",
+      "typeErasedClosureSha256": "0835485eeb5c80306aee8bb0e513c7dadb3c418f5d901d29fa8609ca641fd58b",
+      "typeErasedClosureStatements": 34,
+      "typeErasedDependencyDeclarations": [
+        "import { z } from \"zod\";",
+        "import { SOURCE_RANGE_FPS, sourceFrameCount } from \"./source-range.ts\";"
+      ]
+    }
+  },
+  "dependencyDeclarations": {
+    "packages/business/src/workspace-fixed-schema.mjs": {
+      "legacyPath": "packages/business/src/workspace-fixed-schema.mjs",
+      "currentPath": "packages/business/src/workspace-fixed-schema.ts",
+      "legacyDeclarations": [
+        "import {INSPECTION_VERSION_ASSET_EXPRESSION} from './workspace-schema-v24-constants.ts';",
+        "import {bootstrapEditTaskSchema,migrateSubjectEditTasks,migrateTimelineFormatEditTasks,migrateTimelineSubtitleEditTasks} from './edit-task-schema.mjs';",
+        "import {migrateSubjectSchema} from './subject-schema.mjs';",
+        "import {migrateImageSchema} from './image-schema.mjs';",
+        "import {migrateImageReviewSchema,migrateCustomImageReviewSchema,migrateComfyImageReviewSchema,migrateImageEditReviewSchema} from './images/review-schema.mjs';",
+        "import {migrateComfyImageSchema} from './comfy-image-schema.mjs';",
+        "import {migrateFrameSchema} from './frame-schema.mjs';",
+        "import {migrateTimelineFormatSchema} from './timeline-format-schema.mjs';",
+        "import {migrateAgentEditProposalSchema} from './agent/edit-proposal-schema.mjs';"
+      ],
+      "typeErasedDeclarations": [
+        "import { INSPECTION_VERSION_ASSET_EXPRESSION } from \"./workspace-schema-v24-constants.ts\";",
+        "import { bootstrapEditTaskSchema, migrateSubjectEditTasks, migrateTimelineFormatEditTasks, migrateTimelineSubtitleEditTasks } from \"./edit-task-schema.ts\";",
+        "import { migrateSubjectSchema } from \"./subject-schema.ts\";",
+        "import { migrateImageSchema } from \"./image-schema.ts\";",
+        "import { migrateImageReviewSchema, migrateCustomImageReviewSchema, migrateComfyImageReviewSchema, migrateImageEditReviewSchema } from \"./images/review-schema.ts\";",
+        "import { migrateComfyImageSchema } from \"./comfy-image-schema.ts\";",
+        "import { migrateFrameSchema } from \"./frame-schema.ts\";",
+        "import { migrateTimelineFormatSchema } from \"./timeline-format-schema.ts\";",
+        "import { migrateAgentEditProposalSchema } from \"./agent/edit-proposal-schema.ts\";"
+      ]
+    },
+    "packages/business/src/edit-task-schema.mjs": {
+      "legacyPath": "packages/business/src/edit-task-schema.mjs",
+      "currentPath": "packages/business/src/edit-task-schema.ts",
+      "legacyDeclarations": [
+        "export {migrateTimelineSubtitleEditTasks} from './timeline-subtitle-schema.mjs';"
+      ],
+      "typeErasedDeclarations": [
+        "import { migrateTimelineSubtitleEditTasks } from \"./timeline-subtitle-schema.ts\";"
+      ]
+    },
+    "packages/business/src/subject-schema.mjs": {
+      "legacyPath": "packages/business/src/subject-schema.mjs",
+      "currentPath": "packages/business/src/subject-schema.ts",
+      "legacyDeclarations": [],
+      "typeErasedDeclarations": []
+    },
+    "packages/business/src/image-schema.mjs": {
+      "legacyPath": "packages/business/src/image-schema.mjs",
+      "currentPath": "packages/business/src/image-schema.ts",
+      "legacyDeclarations": [
+        "import {INSPECTION_VERSION_ASSET_EXPRESSION,INSPECTION_ROW_LIMITS} from './workspace-schema-v24-constants.ts';"
+      ],
+      "typeErasedDeclarations": [
+        "import { INSPECTION_VERSION_ASSET_EXPRESSION, INSPECTION_ROW_LIMITS } from \"./workspace-schema-v24-constants.ts\";"
+      ]
+    },
+    "packages/business/src/images/review-schema.mjs": {
+      "legacyPath": "packages/business/src/images/review-schema.mjs",
+      "currentPath": "packages/business/src/images/review-schema.ts",
+      "legacyDeclarations": [],
+      "typeErasedDeclarations": []
+    },
+    "packages/business/src/comfy-image-schema.mjs": {
+      "legacyPath": "packages/business/src/comfy-image-schema.mjs",
+      "currentPath": "packages/business/src/comfy-image-schema.ts",
+      "legacyDeclarations": [],
+      "typeErasedDeclarations": []
+    },
+    "packages/business/src/frame-schema.mjs": {
+      "legacyPath": "packages/business/src/frame-schema.mjs",
+      "currentPath": "packages/business/src/frame-schema.ts",
+      "legacyDeclarations": [
+        "import {FRAME_LIMITS,FRAME_PROFILE_ID,FRAME_SELECTION_RULE} from './workspace-schema-v24-constants.ts';",
+        "import {INSPECTION_VERSION_ASSET_EXPRESSION,INSPECTION_ROW_LIMITS} from './workspace-schema-v24-constants.ts';"
+      ],
+      "typeErasedDeclarations": [
+        "import { FRAME_LIMITS, FRAME_PROFILE_ID, FRAME_SELECTION_RULE } from \"./workspace-schema-v24-constants.ts\";",
+        "import { INSPECTION_VERSION_ASSET_EXPRESSION, INSPECTION_ROW_LIMITS } from \"./workspace-schema-v24-constants.ts\";"
+      ]
+    },
+    "packages/business/src/timeline-format-schema.mjs": {
+      "legacyPath": "packages/business/src/timeline-format-schema.mjs",
+      "currentPath": "packages/business/src/timeline-format-schema.ts",
+      "legacyDeclarations": [],
+      "typeErasedDeclarations": []
+    },
+    "packages/business/src/timeline-subtitle-schema.mjs": {
+      "legacyPath": "packages/business/src/timeline-subtitle-schema.mjs",
+      "currentPath": "packages/business/src/timeline-subtitle-schema.ts",
+      "legacyDeclarations": [],
+      "typeErasedDeclarations": []
+    },
+    "packages/business/src/agent/edit-proposal-schema.mjs": {
+      "legacyPath": "packages/business/src/agent/edit-proposal-schema.mjs",
+      "currentPath": "packages/business/src/agent/edit-proposal-schema.ts",
+      "legacyDeclarations": [],
+      "typeErasedDeclarations": []
+    },
+    "packages/business/src/workspace-restore-schema.mjs": {
+      "legacyPath": "packages/business/src/workspace-restore-schema.mjs",
+      "currentPath": "packages/business/src/workspace-restore-schema.ts",
+      "legacyDeclarations": [
+        "import {DatabaseSync} from 'node:sqlite';",
+        "import {detectFixedWorkspaceRestoreEvidence} from './workspace-schema-profile.ts';",
+        "import {createHash} from 'node:crypto';",
+        "import {initializeWorkspaceSchemaThrough24} from './workspace-fixed-schema.mjs';",
+        "import {getWorkspaceRestoreContext} from './db.mjs';",
+        "export {getWorkspaceRestoreContext} from './db.mjs';"
+      ],
+      "typeErasedDeclarations": [
+        "import { DatabaseSync } from \"node:sqlite\";",
+        "import { detectFixedWorkspaceRestoreEvidence } from \"./workspace-schema-profile.ts\";",
+        "import { createHash } from \"node:crypto\";",
+        "import { initializeWorkspaceSchemaThrough24 } from \"./workspace-fixed-schema.ts\";",
+        "import { getWorkspaceRestoreContext } from \"./db.ts\";",
+        "import { getWorkspaceRestoreContext as getWorkspaceRestoreContext2 } from \"./db.ts\";"
+      ]
+    },
+    "packages/business/src/workspace-schema-v24-constants.ts": {
+      "legacyPath": "packages/business/src/workspace-schema-v24-constants.ts",
+      "currentPath": "packages/business/src/workspace-schema-v24-constants.ts",
+      "legacyDeclarations": [],
+      "typeErasedDeclarations": []
+    }
+  },
+  "frozenConstructorSources": {
+    "note": "workspace-schema34 pins historical constructor source bodies. The sources were renamed .mjs->.ts and type-annotated by the migration; historical pins stay authoritative and unchanged, while this map records the deterministic esbuild type-erased body hash of each current file.",
+    "sources": {
+      "packages/business/src/workspace-schema-v26.mjs": {
+        "legacyPath": "packages/business/src/workspace-schema-v26.mjs",
+        "currentPath": "packages/business/src/workspace-schema-v26.ts",
+        "legacySha256": "98811d77cef4cd675123d0d8be22282588d26b09307c07543d7fa7361449d473",
+        "typeErasedSha256": "14f60e314f486f03345215d0d479e1a85a661adb359e3554a00bc2c4fab81964"
+      },
+      "packages/business/src/workspace-schema-v28.mjs": {
+        "legacyPath": "packages/business/src/workspace-schema-v28.mjs",
+        "currentPath": "packages/business/src/workspace-schema-v28.ts",
+        "legacySha256": "c8696ae2ee13ccae8a17ad66417081b9f5e479e79dcf9fdd0b108f4aa01248ed",
+        "typeErasedSha256": "e21ae713e1328b7424224235293944104c27985a75d8dba8002eae650a4b81e9"
+      },
+      "packages/business/src/workspace-schema-v30.mjs": {
+        "legacyPath": "packages/business/src/workspace-schema-v30.mjs",
+        "currentPath": "packages/business/src/workspace-schema-v30.ts",
+        "legacySha256": "54cea43b7c6c9ab2cadd316c463794036c40c0bf98b8693b03719bc80c3e1901",
+        "typeErasedSha256": "a439ab0d8b39be909614cd62ad4880fd6691946a00c93596dd22fda317e9c734"
+      },
+      "packages/business/src/workspace-schema-v32.mjs": {
+        "legacyPath": "packages/business/src/workspace-schema-v32.mjs",
+        "currentPath": "packages/business/src/workspace-schema-v32.ts",
+        "legacySha256": "155743d3ccdc29489efd612ff27e68b5dd94bdeff0ec8d4b765a41e914ef70a9",
+        "typeErasedSha256": "9dd9bf6e1ec52701f29f1e8c1f8e20d5777f9c10eb311ab101a17f3e4d678938"
+      },
+      "packages/business/src/workspace-restore-schema-v27.mjs": {
+        "legacyPath": "packages/business/src/workspace-restore-schema-v27.mjs",
+        "currentPath": "packages/business/src/workspace-restore-schema-v27.ts",
+        "legacySha256": "49fee1a9b0f891e04f7dc789c5793cfbafba843c728bb8f10bc30529a0c6dc35",
+        "typeErasedSha256": "a03b3a5a5a344dd7e0fc07d6de488b27a69251f786f02ce42e97e0f93cfd0644"
+      },
+      "packages/business/src/workspace-restore-schema-v29.mjs": {
+        "legacyPath": "packages/business/src/workspace-restore-schema-v29.mjs",
+        "currentPath": "packages/business/src/workspace-restore-schema-v29.ts",
+        "legacySha256": "07823b4fdf6ffa570e3e1cf2caf3edcd20db37ee6649f134e56e6067ad595a31",
+        "typeErasedSha256": "c9e25eca19fe306c4e072714d55296b23893d0d11d62187ab3d890fdfda5b7f1"
+      },
+      "packages/business/src/workspace-restore-schema-v31.mjs": {
+        "legacyPath": "packages/business/src/workspace-restore-schema-v31.mjs",
+        "currentPath": "packages/business/src/workspace-restore-schema-v31.ts",
+        "legacySha256": "0932065643b57395d310792236846357c5927bbc6e5ef596b07ce9caff551764",
+        "typeErasedSha256": "c192c98a11739aa35768e5c5d8e3c934a2891b8df0da0250f9bcba71873122d7"
+      },
+      "packages/business/src/workspace-restore-schema-v33.mjs": {
+        "legacyPath": "packages/business/src/workspace-restore-schema-v33.mjs",
+        "currentPath": "packages/business/src/workspace-restore-schema-v33.ts",
+        "legacySha256": "81feb41eeb6d2853bb3f8a905f4cc7dd57aaf7fec4317374bba4499ddef054da",
+        "typeErasedSha256": "0f659b02ea4057fb96f54d6306f2d2bcc00f18884506db92206273c5851d5573"
+      }
+    }
+  }
+}

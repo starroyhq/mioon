@@ -6,11 +6,11 @@ import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {openOpacityCandidateStore,getOpacityCandidateAssembly} from '../packages/business/src/opacity-candidate-store.ts';
 import {installWorkspaceRestoreSchemaV43,validateWorkspaceRestoreSchemaV43} from '../packages/business/src/workspace-restore-schema-v43.ts';
-import {createServices} from '../packages/business/src/services.mjs';
-import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
-import {openStore} from '../packages/business/src/db.mjs';
-import {hasRequestNotAppliedProof} from '../packages/contracts/src/timeline-acknowledgement.mjs';
+import {createServices} from '../packages/business/src/services.ts';
+import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
+import {openStore} from '../packages/business/src/db.ts';
+import {hasRequestNotAppliedProof} from '../packages/contracts/src/timeline-acknowledgement.ts';
 import {AppError} from '../packages/contracts/src/app-error.ts';
 
 const stamp='2026-10-16T00:00:00.000Z';

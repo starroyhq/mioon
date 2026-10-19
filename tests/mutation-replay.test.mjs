@@ -6,10 +6,10 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
-import {openStore} from '../packages/business/src/db.mjs';
-import {initializeLegacyWorkspaceSchema} from '../packages/business/src/workspace-fixed-schema.mjs';
-import {createServices,canonical} from '../packages/business/src/services.mjs';
-import {createMutationReplay} from '../packages/business/src/mutation-replay.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {initializeLegacyWorkspaceSchema} from '../packages/business/src/workspace-fixed-schema.ts';
+import {createServices,canonical} from '../packages/business/src/services.ts';
+import {createMutationReplay} from '../packages/business/src/mutation-replay.ts';
 import {AppError} from '@mioon/contracts';
 
 async function fixture(t,{open=openStore}={}) {

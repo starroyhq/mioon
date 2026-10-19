@@ -9,10 +9,10 @@ import http from 'node:http';
 import https from 'node:https';
 import {syncBuiltinESMExports} from 'node:module';
 import {WAVEFORM_ALGORITHM,sourceFrameCount} from '@mioon/contracts';
-import {initializeLegacyWorkspaceSchema} from '../packages/business/src/workspace-fixed-schema.mjs';
-import {installWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.mjs';
-import {createWaveformHistoryReaders,WAVEFORM_CACHE_LIMITS} from '../packages/business/src/waveforms-history.mjs';
-import {createWaveformServices} from '../packages/business/src/waveforms.mjs';
+import {initializeLegacyWorkspaceSchema} from '../packages/business/src/workspace-fixed-schema.ts';
+import {installWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.ts';
+import {createWaveformHistoryReaders,WAVEFORM_CACHE_LIMITS} from '../packages/business/src/waveforms-history.ts';
+import {createWaveformServices} from '../packages/business/src/waveforms.ts';
 
 const at='2026-10-12T00:00:00.000Z',sha=value=>createHash('sha256').update(value).digest('hex');
 const snapshot=db=>JSON.stringify(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name})=>[name,db.prepare(`SELECT rowid AS capturedRowid,* FROM "${name}" ORDER BY rowid`).all()]));

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {deflateSync} from 'node:zlib';
 import {createHash} from 'node:crypto';
-import {validatePng, renderMockImagePng} from '../packages/business/src/images/png.mjs';
+import {validatePng, renderMockImagePng} from '../packages/business/src/images/png.ts';
 
 const signature = Buffer.from([137,80,78,71,13,10,26,10]);
 function crc(data) { let c = 0xffffffff; for (const byte of data) { c ^= byte; for (let n=0;n<8;n++) c = c&1 ? 0xedb88320^(c>>>1) : c>>>1; } return (c^0xffffffff)>>>0; }

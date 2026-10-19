@@ -15,8 +15,8 @@ import {initializeWorkspaceSchema40} from './workspace-schema-v40.ts';
 const require = createRequire(import.meta.url);
 function invalid(): never {throw Object.assign(new Error('Fixed opacity workspace dependencies are unavailable.'), {code: 'RESTORE_SCHEMA_UNSUPPORTED'});}
 function initializeThrough24(db: DatabaseSync): void {
-  const assembled: unknown = require('./db.mjs');
-  const legacy: unknown = require('./workspace-fixed-schema.mjs');
+  const assembled: unknown = require('./db.ts');
+  const legacy: unknown = require('./workspace-fixed-schema.ts');
   if (!assembled || typeof assembled !== 'object' || !legacy || typeof legacy !== 'object') invalid();
   const constructor: unknown = Reflect.get(legacy, 'initializeWorkspaceSchemaThrough24');
   if (typeof constructor !== 'function') invalid();

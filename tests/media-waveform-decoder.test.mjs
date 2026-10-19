@@ -7,9 +7,9 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { run, runStreaming, MEDIA_RUNTIME_LIMITS } from '../packages/business/src/media-runtime.mjs';
-import { onMediaProcess, terminateMediaProcesses, hasUnconfirmedMediaProcesses } from '../packages/business/src/media-processes.mjs';
-import { createWaveformAccumulator, decodeWaveform, WAVEFORM_DECODE_LIMITS } from '../packages/business/src/waveform-decoder.mjs';
+import { run, runStreaming, MEDIA_RUNTIME_LIMITS } from '../packages/business/src/media-runtime.ts';
+import { onMediaProcess, terminateMediaProcesses, hasUnconfirmedMediaProcesses } from '../packages/business/src/media-processes.ts';
+import { createWaveformAccumulator, decodeWaveform, WAVEFORM_DECODE_LIMITS } from '../packages/business/src/waveform-decoder.ts';
 
 const fixture = fileURLToPath(new URL('./helpers/media-child-fixture.mjs', import.meta.url));
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));

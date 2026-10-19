@@ -7,19 +7,19 @@ import os from 'node:os';
 import path from 'node:path';
 import {createRequire} from 'node:module';
 import {pathToFileURL} from 'node:url';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
 import {createWorkspaceRestoreProfileV27} from '../packages/business/src/workspace-restore-schema-v27.ts';
-import {classifyWorkspaceSchema as classifyHistorical,detectWorkspaceRestoreEvidence as detectHistorical,installWorkspaceRestoreSchema as installHistorical} from '../packages/business/src/workspace-restore-schema.mjs';
-import {openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.mjs';
-import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';
-import {restoreWorkspaceBackup,inspectWorkspaceRestorePublication} from '../packages/business/src/workspace-restore.mjs';
-import {inspectWorkspaceBackup} from '../packages/business/src/backup-readiness.mjs';
-import {createMockProvider} from '../packages/business/src/providers/mock.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {workspaceRestoreOfflineResultSchema,workspaceRestorePublicationStatusSchema} from '../packages/contracts/src/workspace-restore-offline.mjs';
-import {workspaceRestoreInspectionSchema} from '../packages/contracts/src/workspace-restore.mjs';
-import {workspaceBackupManifestSchema,workspaceBackupResultSchema,workspaceBackupInspectionSchema} from '../packages/contracts/src/workspace-backup.mjs';
+import {classifyWorkspaceSchema as classifyHistorical,detectWorkspaceRestoreEvidence as detectHistorical,installWorkspaceRestoreSchema as installHistorical} from '../packages/business/src/workspace-restore-schema.ts';
+import {openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
+import {restoreWorkspaceBackup,inspectWorkspaceRestorePublication} from '../packages/business/src/workspace-restore.ts';
+import {inspectWorkspaceBackup} from '../packages/business/src/backup-readiness.ts';
+import {createMockProvider} from '../packages/business/src/providers/mock.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {workspaceRestoreOfflineResultSchema,workspaceRestorePublicationStatusSchema} from '../packages/contracts/src/workspace-restore-offline.ts';
+import {workspaceRestoreInspectionSchema} from '../packages/contracts/src/workspace-restore.ts';
+import {workspaceBackupManifestSchema,workspaceBackupResultSchema,workspaceBackupInspectionSchema} from '../packages/contracts/src/workspace-backup.ts';
 import {workspaceRestorationPairSchema,workspaceBackupSourceSchemaVersion} from '../packages/contracts/src/workspace-schema-profiles.ts';
 
 // The fixture source remains byte-exact. Only its three fixed import edges
@@ -30,11 +30,11 @@ const zodURL=pathToFileURL(createRequire(new URL('../packages/contracts/package.
 function oldSource(name,backupURL){
  const source=fs.readFileSync(new URL(`legacy-contracts/${name}`,oldFixtureRoot),'utf8');
  assert.equal(createHash('sha256').update(source).digest('hex'),oldManifest.files[name]);
- const expected=name==='workspace-restore-offline.mjs'?['zod','./workspace-backup.mjs']:['zod'];
+ const expected=name==='workspace-restore-offline.mjs'?['zod','./workspace-backup.ts']:['zod'];
  const imports=[...source.matchAll(/from\s+['"]([^'"]+)['"]/g)].map(match=>match[1]);assert.deepEqual(imports,expected);
- return 'data:text/javascript;base64,'+Buffer.from(source.replace("from 'zod'",`from '${zodURL}'`).replace("from './workspace-backup.mjs'",`from '${backupURL}'`)).toString('base64');
+ return 'data:text/javascript;base64,'+Buffer.from(source.replace("from 'zod'",`from '${zodURL}'`).replace("from './workspace-backup.ts'",`from '${backupURL}'`)).toString('base64');
 }
-const oldBackupURL=oldSource('workspace-backup.mjs');
+const oldBackupURL=oldSource('workspace-backup.ts');
 const {workspaceBackupManifestSchema:oldManifestSchema,workspaceBackupResultSchema:oldResultSchema}=await import(oldBackupURL);
 const {workspaceRestoreOfflineResultSchema:oldRestoreResultSchema}=await import(oldSource('workspace-restore-offline.mjs',oldBackupURL));
 const {workspaceRestoreInspectionSchema:oldRestoreInspectionSchema}=await import(oldSource('workspace-restore.mjs'));
@@ -63,7 +63,7 @@ function fresh(t,{version=26,mock=false,file=':memory:'}={}){
  initializeWorkspaceSchemaThrough24(db);if(version===26)initializeWorkspaceSchema26(db);
  if(mock){
   createMockProvider({db,root:'/synthetic-unused-root'});
-  db.prepare('INSERT INTO mock_provider_tasks(rowid,provider_job_id,request_id,snapshot_json,snapshot_hash,scenario,created_at_ms,ready_at_ms,poll_count,download_attempts,cancelled) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(9007199254740993n,'mock-id','mock-request',Buffer.from([0,255,13,10]),'a'.repeat(64),'unknown',9007199254740993n,123.25,7,2,0);
+  const mockTaskInsert=db.prepare('INSERT INTO mock_provider_tasks(rowid,provider_job_id,request_id,snapshot_json,snapshot_hash,scenario,created_at_ms,ready_at_ms,poll_count,download_attempts,cancelled) VALUES(?,?,?,?,?,?,?,?,?,?,?)');mockTaskInsert.setReadBigInts(true);mockTaskInsert.run(9007199254740993n,'mock-id','mock-request',Buffer.from([0,255,13,10]),'a'.repeat(64),'unknown',9007199254740993n,123.25,7,2,0);
   db.prepare('INSERT INTO mock_provider_submissions(id,request_id,job_id,provider_job_id,created_at_ms,outcome) VALUES(?,?,?,?,?,?)').run(17,'mock-request',null,'mock-id',9007199254740993n,Buffer.from([0,254,13,10]));
   db.exec("UPDATE sqlite_sequence SET seq=9007199254740995 WHERE name='mock_provider_submissions'");
  }
@@ -81,9 +81,10 @@ function seedApplyStates(db){
  }
  const projectId=tasks[0].projectId;
  // Opaque old receipts must remain byte-for-byte; restoration is not repair.
- db.prepare('INSERT INTO timeline_requests(rowid,requestId,requestHash,response) VALUES(?,?,?,?)').run(9007199254740993n,randomUUID(),'a'.repeat(64),Buffer.from([0,255,13,10]));
- db.prepare('INSERT INTO timeline_history(rowid,id,projectId,position,operation,createdAt,beforeSnapshot,afterSnapshot) VALUES(?,?,?,?,?,?,?,?)')
-  .run(9007199254740995n,randomUUID(),projectId,1,'timeline.loudness.apply','at',raw({gain:0.25}),raw({gain:0.5}));
+ const timelineRequestInsert=db.prepare('INSERT INTO timeline_requests(rowid,requestId,requestHash,response) VALUES(?,?,?,?)');timelineRequestInsert.setReadBigInts(true);timelineRequestInsert.run(9007199254740993n,randomUUID(),'a'.repeat(64),Buffer.from([0,255,13,10]));
+ const historyInsert=db.prepare('INSERT INTO timeline_history(rowid,id,projectId,position,operation,createdAt,beforeSnapshot,afterSnapshot) VALUES(?,?,?,?,?,?,?,?)');
+ historyInsert.setReadBigInts(true);
+ historyInsert.run(9007199254740995n,randomUUID(),projectId,1,'timeline.loudness.apply','at',raw({gain:0.25}),raw({gain:0.5}));
  db.prepare('INSERT INTO timeline_history_cursors VALUES(?,1)').run(projectId);
  db.exec("UPDATE sqlite_sequence SET seq=9007199254740997 WHERE name='edit_tasks'");
  return tasks;

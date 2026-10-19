@@ -11,12 +11,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { readFile } from 'node:fs/promises';
+import { stripTypeScriptTypes } from 'node:module';
 import { randomBytes, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import vm from 'node:vm';
-import { createDesktopStartup } from '../apps/desktop/src/startup.mjs';
-import { BackendSupervisor } from '../apps/desktop/src/supervisor.mjs';
-import { stopBackendForQuit } from '../apps/desktop/src/shutdown.mjs';
+import { createDesktopStartup } from '../apps/desktop/src/startup.ts';
+import { BackendSupervisor } from '../apps/desktop/src/supervisor.ts';
+import { stopBackendForQuit } from '../apps/desktop/src/shutdown.ts';
 import { createProjectWindowHost } from '../apps/desktop/src/project-window-host.ts';
 import { createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity } from '../apps/desktop/src/native-audio-preview-host.ts';
 import { NATIVE_AUDIO_CHANNEL } from '../apps/desktop/src/native-audio-preview-protocol.ts';
@@ -26,11 +27,11 @@ import { MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjec
 import { confirmOwnedWindowRestart } from '../apps/desktop/src/project-window-confirmation.ts';
 import { PROJECT_WINDOW_CHANNEL } from '../apps/desktop/src/project-window-protocol.ts';
 import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
-import * as security from '../apps/desktop/src/security.mjs';
+import * as security from '../apps/desktop/src/security.ts';
 import { windowChromeOptions, MAC_TRAFFIC_LIGHT_POSITION } from '../apps/desktop/src/window-chrome.ts';
 import { createDesktopWindowAppearance } from '../apps/desktop/src/window-appearance.ts';
 
-const source = (await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
+const source = stripTypeScriptTypes((await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, ''), { mode: 'strip' });
 const tools = { ffmpeg: '/synthetic/ffmpeg', ffprobe: '/synthetic/ffprobe', versions: { ffmpeg: 'synthetic' } };
 const deferred = () => Promise.withResolvers();
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -241,7 +242,7 @@ async function harness(t, options = {}) {
     },
     storageFailureDialog: error => ({ title: 'Storage failure', detail: error.message })
   });
-  vm.runInContext(source, context, { filename: 'actual-desktop-main.mjs' });
+  vm.runInContext(source, context, { filename: 'actual-desktop-main.ts' });
   assert.deepEqual([...r.ipcHandlers.keys()].sort(),
     [APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, NATIVE_AUDIO_CHANNEL, PROJECT_WINDOW_CHANNEL, WORKSPACE_TOOLS_CHANNEL].sort());
   const get = text => vm.runInContext(text, context);

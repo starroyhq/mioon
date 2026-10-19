@@ -23,7 +23,7 @@ function component(locale = 'en') {
   const state = { scope: 's', ownerScope: 'o', projectId, assetIds: [assetId], version: 1, dirtyCount: 1, uncertainCount: 0, entries: { [assetId]: { row: { revision: 0, tags: [], note: '' }, draft: { tags: ['<tag>'], note: '<b>literal</b>', tagInput: '' }, dirty: true, verified: true, loading: false, saving: false, uncertain: false, conflict: false } } };
   const controller = { getState: () => state, save: () => saved++, editNote: (id, note) => edited.push([id, note]), editTagInput() {}, addTag() {}, removeTag() {}, clear() {}, discard() {}, refresh() {}, discardRetained: version => discarded.push(version) };
   props = { asset: { id: assetId, projectId, name: 'Named asset' }, state, controller, blocked: false, confirm: async () => true };
-  Function('module', 'exports', 'require', compile('AssetAnnotations.tsx'))(module, module.exports, name => name === 'react' ? h.react : name.includes('I18nProvider') ? { useI18n: () => ({ t: (key, params) => translate(locale, key, params), renderMessage: value => renderMessage(locale, value), formatNumber: value => formatNumber(locale, value) }) } : name.includes('workspace-visibility') ? { useWorkspaceVisibility: () => visible } : name.includes('/button') ? { Button: 'button' } : name.includes('/input') ? { Input: 'input' } : assert.fail(name));
+  Function('module', 'exports', 'require', compile('AssetAnnotations.tsx'))(module, module.exports, name => name === 'react' ? h.react : name.includes('I18nProvider') ? { useI18n: () => ({ t: (key, params) => translate(locale, key, params), renderMessage: value => renderMessage(locale, value), formatNumber: value => formatNumber(locale, value) }) } : name.includes('workspace-visibility') ? { useWorkspaceVisibility: () => visible } : name.includes('/button') ? { Button: 'button' } : name.includes('/input') ? { Input: 'input' } : name.includes('/textarea') ? { Textarea: 'textarea' } : assert.fail(name));
   return { props, state, saved: () => saved, edited, discarded,
     render(patch = {}) { Object.assign(props, patch); h.reset(); tree = module.exports.default(props); h.flush(); return tree; },
     find: id => find(tree, node => node.props?.['data-testid'] === id), hide() { visible = false; }, unmount: h.cleanup };
@@ -75,7 +75,7 @@ test('discard-all confirmation survives an unrelated dialog rerender', async () 
   assert.deepEqual(h.discarded, [1]);
 });
 test('actual AssetLibrary composes saved tag, type, name, disposition and unused filters, retaining unknown rows', async () => {
-  const dispositions = await import('../apps/web/src/asset-disposition-state.js');
+  const dispositions = await import('../apps/web/src/asset-disposition-state.ts');
   const projectId = 'project', ids = ['match', 'wrongTag', 'unknown', 'used', 'rejected', 'wrongType', 'wrongName', 'foreign'];
   const assets = ids.map(id => ({ id, projectId: id === 'foreign' ? 'foreign' : projectId, name: id === 'wrongName' ? 'other' : `needle ${id}`, mimeType: id === 'wrongType' ? 'audio/wav' : 'image/png', sizeBytes: 100 }));
   const state = { scope: 's', entries: Object.fromEntries(ids.map(id => [id, { phase: 'ready', row: { disposition: id === 'rejected' ? 'rejected' : 'favorite' } }])) };
@@ -83,21 +83,21 @@ test('actual AssetLibrary composes saved tag, type, name, disposition and unused
   let stateIndex = 0, captured;
   const react = { createElement: (type, props, ...children) => ({ type, props: props || {}, children }), useState: () => [ [{ scope: projectId, value: 'assets' }, { scope: 's', value: 'favorite' }, { scope: 'owner', value: 'tag' }][stateIndex++], () => {} ] };
   const module = { exports: {} }, primitives = new Proxy({}, { get: (_, key) => String(key) });
-  const code = transformSync(readFileSync(new URL('../apps/web/src/AssetLibrary.jsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code;
+  const code = transformSync(readFileSync(new URL('../apps/web/src/AssetLibrary.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
   Function('module', 'exports', 'require', code)(module, module.exports, name => {
     if (name === 'react') return react;
     if (name.includes('I18nProvider')) return { useI18n: () => ({ t: (key, params) => translate('en', key, params), renderMessage: value => renderMessage('en', value), formatNumber: value => String(value) }) };
     if (name === './asset-annotation-state.ts') return annotationState;
-    if (name === './asset-disposition-state.js') return dispositions;
-    if (name === './AssetDispositionControls.jsx') return { __esModule: true, default: 'disposition', useDispositionInteraction: () => ({ visible: true, admit: action => action() }) };
+    if (name === './asset-disposition-state.ts') return dispositions;
+    if (name === './AssetDispositionControls.tsx') return { __esModule: true, default: 'disposition', useDispositionInteraction: () => ({ visible: true, admit: action => action() }) };
     if (name === './AssetTimelineUsage.tsx') return { __esModule: true, default: 'usage', AssetTimelineUsageFilters: 'usage-filter', useAssetTimelineUsageFilter: input => { captured = input.assets; return { visibleAssets: input.assets.filter(asset => asset.id !== 'used'), filter: 'unused', reset() {}, choose() {} }; } };
     // Layout owns presentation only; keep the real annotation/disposition
     // filters and their input to the usage filter under test below.
     if (name === './AssetLibraryToolbar.tsx') return { __esModule: true, default: 'asset-library-toolbar', useAssetLibraryLayout: scope => { assert.equal(scope, projectId); return { layout: 'grid', setLayout() {} }; } };
-    if (name === './Timeline.jsx') return { assetKind: () => 'image', dragAsset() {} };
+    if (name === './Timeline.tsx') return { assetKind: () => 'image', dragAsset() {} };
     if (name === './AssetAnnotations.tsx') return { __esModule: true, default: 'annotations-editor' };
     if (name.endsWith('.css')) return {};
-    if (name.startsWith('@mioon/') || ['./WorkspaceControls.jsx', './workspace-visibility.jsx', './Nodes.jsx'].includes(name)) return primitives;
+    if (name.startsWith('@mioon/') || ['./WorkspaceControls.tsx', './workspace-visibility.tsx', './Nodes.tsx'].includes(name)) return primitives;
     return { __esModule: true, default: name };
   });
   const tree = module.exports.default({ assets, filter: 'image', search: 'needle', project: { id: projectId }, busy: {}, dispositions: { state, controller: {} }, annotations, selectedAsset: assets[1], timelineUsage: {}, onFilter() {}, onSearch() {} });

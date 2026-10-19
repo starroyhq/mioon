@@ -5,14 +5,14 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
-import {openStore} from '../packages/business/src/db.mjs';
-import {initializeLegacyWorkspaceSchema} from '../packages/business/src/workspace-fixed-schema.mjs';
-import {createMockProvider} from '../packages/business/src/providers/mock.mjs';
-import {classifyWorkspaceSchema,installWorkspaceRestoreSchema,validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.mjs';
-import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {startWorker} from '../packages/business/src/jobs.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {initializeLegacyWorkspaceSchema} from '../packages/business/src/workspace-fixed-schema.ts';
+import {createMockProvider} from '../packages/business/src/providers/mock.ts';
+import {classifyWorkspaceSchema,installWorkspaceRestoreSchema,validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.ts';
+import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
+import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {startWorker} from '../packages/business/src/jobs.ts';
 import {tree} from './helpers/workspace-restore-offline-fixture.mjs';
 
 const info=()=>({restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:'2026-10-12T05:00:00.000Z'});
@@ -35,7 +35,7 @@ function seedRaw(db){
  db.prepare('INSERT INTO jobs VALUES(?,?,?)').run(randomUUID(),projectId,JSON.stringify({id:'replace',projectId,status:'submission_unknown'}));
  // Make the application identity valid, independently from provider identities.
  const job=db.prepare('SELECT id FROM jobs LIMIT 1').get().id;db.prepare('UPDATE jobs SET data=? WHERE id=?').run(JSON.stringify({id:job,projectId,status:'submission_unknown'}),job);
- db.prepare('INSERT INTO mock_provider_tasks(rowid,provider_job_id,request_id,snapshot_json,snapshot_hash,scenario,created_at_ms,ready_at_ms,poll_count,download_attempts,cancelled) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(9007199254740993n,id,request,Buffer.from([0,255,13,10]),'f'.repeat(64),'opaque_original_outcome',9007199254740993n,123.25,7,2,0);
+ const mockTaskInsert=db.prepare('INSERT INTO mock_provider_tasks(rowid,provider_job_id,request_id,snapshot_json,snapshot_hash,scenario,created_at_ms,ready_at_ms,poll_count,download_attempts,cancelled) VALUES(?,?,?,?,?,?,?,?,?,?,?)');mockTaskInsert.setReadBigInts(true);mockTaskInsert.run(9007199254740993n,id,request,Buffer.from([0,255,13,10]),'f'.repeat(64),'opaque_original_outcome',9007199254740993n,123.25,7,2,0);
  db.prepare('INSERT INTO mock_provider_submissions(id,request_id,job_id,provider_job_id,created_at_ms,outcome) VALUES(?,?,?,?,?,?)').run(17,request,null,id,9007199254740993n,Buffer.from([0,254,13,10]));
  db.prepare('INSERT INTO mock_provider_submissions(id,request_id,job_id,provider_job_id,created_at_ms,outcome) VALUES(?,?,?,?,?,?)').run(99,'ambiguous-request',job,null,1,'  unknown\n');
  db.prepare("UPDATE sqlite_sequence SET seq=7001 WHERE name='mock_provider_submissions'").run();

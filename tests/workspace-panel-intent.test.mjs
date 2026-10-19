@@ -2,11 +2,12 @@ import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { defaultWorkspaceState } from '../apps/web/src/workspace-state.js';
+import { defaultWorkspaceState } from '../apps/web/src/workspace-state.ts';
+import { stripSourceTypes } from './helpers/eval-source.mjs';
 
 // Execute the actual App bridge body with a held real-result boundary. Browser
 // acceptance separately holds the real HTTP acknowledgement after SQLite commit.
-const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const start = source.indexOf('  async function addTimelineAsset(');
 const end = source.indexOf('  async function returnToSource(', start);
 assert.ok(start > 0 && end > start);
@@ -39,7 +40,7 @@ function fixture() {
   };
   const calls = [], notifications = [], mobile = [];
   const started = new Promise(resolve => { dispatched = resolve; });
-  const add = Function(...Object.keys(env), `return (${bridgeSource});`)(...Object.values(env));
+  const add = Function(...Object.keys(env), `return (${stripSourceTypes(bridgeSource,{loader:'tsx'})});`)(...Object.values(env));
   const accepted = { ...timeline, revision: 6, clips: [{ id: 'accepted-clip', assetId: asset.id, trackId: 'video-one', startFrame: 0, durationFrames: 60 }] };
   return { state, env, add, release: () => release(accepted), started, calls, notifications, mobile, accepted };
 }
@@ -73,7 +74,7 @@ for (const mode of ['canvas', 'editing']) {
 
   test(`newer narrow ${mode} navigation to its center suppresses a held bridge reveal`, async () => {
     const f = fixture(); f.state.activeMode = mode;
-    const navigate = Function('markPanelIntent', 'setMobilePanel', 'setPanelOpen', 'clipDraftRef', `return (${mobileSource});`)(
+    const navigate = Function('markPanelIntent', 'setMobilePanel', 'setPanelOpen', 'clipDraftRef', `return (${stripSourceTypes(mobileSource,{loader:'tsx'})});`)(
       () => f.env.panelIntent.current++, f.env.setMobilePanel,
       () => assert.fail('Center navigation must not open a side panel'),
       { current: { hasPendingComposition: () => false } },

@@ -6,10 +6,10 @@ import {deflateSync} from 'node:zlib';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore,ownsStoreLock} from '../packages/business/src/db.mjs';
-import {createFrameServices} from '../packages/business/src/frames.mjs';
-import {validatePng} from '../packages/business/src/images/png.mjs';
-import {FRAME_LIMITS,FRAME_PROFILE_ID,FRAME_SELECTION_RULE,isFrameTaskResponse,isFrameRequestResponse,isFrameListResponse} from '../packages/contracts/src/frame-extraction.mjs';
+import {openStore,ownsStoreLock} from '../packages/business/src/db.ts';
+import {createFrameServices} from '../packages/business/src/frames.ts';
+import {validatePng} from '../packages/business/src/images/png.ts';
+import {FRAME_LIMITS,FRAME_PROFILE_ID,FRAME_SELECTION_RULE,isFrameTaskResponse,isFrameRequestResponse,isFrameListResponse} from '../packages/contracts/src/frame-extraction.ts';
 
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 const error=code=>cause=>cause.code===code&&!JSON.stringify(cause).includes('PRIVATE_SENTINEL');

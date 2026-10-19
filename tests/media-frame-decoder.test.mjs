@@ -7,12 +7,12 @@ import { chmod, mkdtemp, mkdir, readFile, readdir, rm, stat, truncate, writeFile
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { FRAME_PROFILE, FRAME_PROFILE_ID } from '@mioon/contracts';
-import { decodeManagedFrame, frameDecodePlan, FRAME_DECODE_LIMITS } from '../packages/business/src/frame-decoder.mjs';
-import { validateManagedSource } from '../packages/business/src/managed-media.mjs';
-import { parseProbeOutput } from '../packages/business/src/media-probe.mjs';
-import { run, runStreaming } from '../packages/business/src/media-runtime.mjs';
-import { hasUnconfirmedMediaProcesses, onMediaProcess, terminateMediaProcesses } from '../packages/business/src/media-processes.mjs';
-import { renderMockImagePng, validatePng } from '../packages/business/src/images/png.mjs';
+import { decodeManagedFrame, frameDecodePlan, FRAME_DECODE_LIMITS } from '../packages/business/src/frame-decoder.ts';
+import { validateManagedSource } from '../packages/business/src/managed-media.ts';
+import { parseProbeOutput } from '../packages/business/src/media-probe.ts';
+import { run, runStreaming } from '../packages/business/src/media-runtime.ts';
+import { hasUnconfirmedMediaProcesses, onMediaProcess, terminateMediaProcesses } from '../packages/business/src/media-processes.ts';
+import { renderMockImagePng, validatePng } from '../packages/business/src/images/png.ts';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const safeCode = code => error => error.code === code && !error.message.includes('synthetic-private') && !Object.hasOwn(error, 'cause');

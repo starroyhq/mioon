@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {imageFixture} from './images-fixture.mjs';
-import {migrateImageReviewSchema} from '../packages/business/src/images/review-schema.mjs';
-import {validateImageTaskReview} from '../packages/business/src/images/reviews.mjs';
+import {migrateImageReviewSchema} from '../packages/business/src/images/review-schema.ts';
+import {validateImageTaskReview} from '../packages/business/src/images/reviews.ts';
 
 const digest = value => createHash('sha256').update(JSON.stringify(value, (_key, field) => typeof field === 'bigint' ? String(field) : field)).digest('hex');
 function capture(db, names) {

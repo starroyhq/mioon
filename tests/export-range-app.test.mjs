@@ -7,13 +7,15 @@ import {schemas, isTimelineMutationResponse, hasRequestNotAppliedProof, resolveT
 import {timelineExportRangeFields} from '@mioon/contracts/timeline-export-range';
 import {timelineDeliveryNameFields} from '@mioon/contracts/timeline-delivery';
 import {createExportRangeController} from '../apps/web/src/export-range-state.ts';
-import {createExportSettingsController} from '../apps/web/src/export-settings-state.js';
+import {createExportSettingsController} from '../apps/web/src/export-settings-state.ts';
 import {createTimelineDeliveryNameController} from '../apps/web/src/export-delivery-state.ts';
-import {createExportPreflightController} from '../apps/web/src/export-preflight-state.js';
+import {createExportPreflightController} from '../apps/web/src/export-preflight-state.ts';
 import {createLocalDeliveryController} from '../apps/web/src/local-delivery-state.ts';
-import {pinNewWorkspaceIntent} from '../apps/web/src/workspace-origin.js';
+import {pinNewWorkspaceIntent} from '../apps/web/src/workspace-origin.ts';
 
-const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
+const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const id = n => `89400000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), timelineId = id(2), scope = `${projectId}:1`, stamp = '2026-10-13T00:00:00.000Z';
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return {promise, resolve}; };

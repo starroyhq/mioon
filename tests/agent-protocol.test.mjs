@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {AGENT_PROTOCOLS, deriveAgentEndpoint} from '@mioon/contracts';
-import {AGENT_PRESETS, DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.mjs';
-import {parseAgentConfiguration, parseAgentSettingsUpdate} from '../packages/business/src/agent/config.mjs';
+import {AGENT_PRESETS, DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
+import {parseAgentConfiguration, parseAgentSettingsUpdate} from '../packages/business/src/agent/config.ts';
 
 test('shared protocol labels and fixed suffixes are pure, closed and deeply frozen', async () => {
   assert.deepEqual(AGENT_PROTOCOLS, {
@@ -13,7 +13,7 @@ test('shared protocol labels and fixed suffixes are pure, closed and deeply froz
   assert.ok(Object.isFrozen(AGENT_PROTOCOLS));
   for (const entry of Object.values(AGENT_PROTOCOLS)) assert.ok(Object.isFrozen(entry));
   assert.throws(() => { AGENT_PROTOCOLS.responses.path = '/other'; }, TypeError);
-  for (const file of ['agent-protocol.mjs', 'agent-protocol.ts']) {
+  for (const file of ['agent-protocol.ts']) {
     const source = await readFile(new URL(`../packages/contracts/src/${file}`, import.meta.url), 'utf8');
     assert.doesNotMatch(source, /(?:import\s|require\(|\bfetch\(|\bBuffer\b|\bprocess\b)/);
   }

@@ -7,10 +7,10 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {TIMELINE_SUBTITLE_FONT_SHA256,TIMELINE_SUBTITLE_PROFILE_ID,isTimelineSubtitleCodePoint} from '@mioon/contracts';
-import {initializeSubtitleResources,verifySubtitleFontResource,validateSubtitleSnapshotProfile,SUBTITLE_FONT_BYTES,SUBTITLE_FONT_FILE} from '../packages/business/src/subtitle-resources.mjs';
-import {prepareTimelineSubtitles} from '../packages/business/src/subtitle-media.mjs';
+import {initializeSubtitleResources,verifySubtitleFontResource,validateSubtitleSnapshotProfile,SUBTITLE_FONT_BYTES,SUBTITLE_FONT_FILE} from '../packages/business/src/subtitle-resources.ts';
+import {prepareTimelineSubtitles} from '../packages/business/src/subtitle-media.ts';
 const require=createRequire(import.meta.url);
-const {verifySubtitleResources,SUBTITLE_RESOURCE_FILES,FONT_SHA256,packagedSubtitleDirectory}=require('../apps/desktop/subtitle-resources.cjs');
+const {verifySubtitleResources,SUBTITLE_RESOURCE_FILES,FONT_SHA256,packagedSubtitleDirectory}=require('../apps/desktop/subtitle-resources.ts');
 const bundle=fileURLToPath(new URL('../packages/business/resources/subtitles/',import.meta.url));
 const profile={profileId:TIMELINE_SUBTITLE_PROFILE_ID,fontSha256:TIMELINE_SUBTITLE_FONT_SHA256};
 
@@ -57,7 +57,7 @@ test('frozen profile permits no optional metadata on old snapshots and never exp
 
 test('both desktop channels whitelist only external subtitle resources and retain ASAR boundaries',()=>{
  for(const channel of ['production','development']){
-  const config=require('../apps/desktop/builder-config.cjs')(channel);
+  const config=require('../apps/desktop/builder-config.ts').builderConfig(channel);
   assert.equal(config.asar,true);assert.deepEqual(config.extraResources,[{from:'build/subtitles',to:'subtitles',filter:[...SUBTITLE_RESOURCE_FILES]}]);
   assert.equal(config.files.some(file=>file.includes('subtitles')),false);assert.equal(config.files.includes('licenses/**/*'),true);
  }

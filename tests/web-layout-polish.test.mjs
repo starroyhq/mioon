@@ -2,7 +2,7 @@ import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { PANEL_BOUNDS } from '../apps/web/src/workspace-layout.js';
+import { PANEL_BOUNDS } from '../apps/web/src/workspace-layout.ts';
 import { timelineVisibleTracks } from '../apps/web/src/timeline-view-geometry.ts';
 
 const read = name => readFileSync(new URL(`../apps/web/src/${name}`, import.meta.url), 'utf8');
@@ -30,12 +30,12 @@ test('the default timeline panel shows all four default tracks (subtitle, two vi
   assert.deepEqual(timelineVisibleTracks(tracks, true).map(track => track.id), ['v1', 'a1']);
   const empty = Number(editing.match(/\.edit-timeline-empty\{[^}]*min-height:(\d+)px;/)?.[1]);
   assert.ok(toolbar + ruler + video + audio + empty + footnote + borders <= PANEL_BOUNDS.timelineHeight.default, 'The pristine drop zones and empty prompt must also fit');
-  assert.match(read('Timeline.jsx'), /const pristineEmpty = !timeline\?\.clips\?\.length && historyState\?\.length === 0/);
-  assert.match(read('Timeline.jsx'), /timeline && !pristineEmpty && !basicEditingOnly && <SubtitleLane/);
+  assert.match(read('Timeline.tsx'), /const pristineEmpty = !timeline\?\.clips\?\.length && historyState\?\.length === 0/);
+  assert.match(read('Timeline.tsx'), /timeline && !pristineEmpty && !basicEditingOnly && <SubtitleLane/);
 });
 
 test('the library search uses a drawn icon that cannot collide with the placeholder', () => {
-  const library = read('AssetLibrary.jsx'), icons = read('icons.jsx');
+  const library = read('AssetLibrary.tsx'), icons = read('icons.tsx');
   assert.match(library, /<Input aria-label=\{t\('assets.search'\)\}[\s\S]*?\/><Icon name="search" size=\{14\} \/>/);
   assert.doesNotMatch(library, /⌕/);
   assert.match(icons, /\n  search: </);

@@ -17,10 +17,10 @@ const require = createRequire(import.meta.url);
 // Checked, concrete legacy boundaries only. No caller-supplied profile, reader,
 // path resolver, constructor or plugin chooses these internal modules.
 const legacy: Readonly<Record<'storage'|'backup'|'inventory'|'restore'|'locks'|'private'|'contract', unknown>> = Object.freeze({
-  storage: require('./workspace-backup-storage.mjs'), backup: require('./workspace-backup.mjs'),
-  inventory: require('./workspace-backup-inventory.mjs'), restore: require('./workspace-restore.mjs'),
-  locks: require('./workspace-lock.mjs'), private: require('../../contracts/src/private-storage.mjs'),
-  contract: require('../../contracts/src/workspace-backup.mjs'),
+  storage: require('./workspace-backup-storage.ts'), backup: require('./workspace-backup.ts'),
+  inventory: require('./workspace-backup-inventory.ts'), restore: require('./workspace-restore.ts'),
+  locks: require('./workspace-lock.ts'), private: require('../../contracts/src/private-storage.ts'),
+  contract: require('../../contracts/src/workspace-backup.ts'),
 });
 type Value = Record<string, unknown>;
 type Method = (...args: unknown[]) => unknown;

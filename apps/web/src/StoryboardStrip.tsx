@@ -3,7 +3,7 @@ import {Collapsible,CollapsibleTrigger,CollapsibleContent} from '@mioon/ui/compo
 import {WorkbenchButton} from '@mioon/ui/components/workbench-controls';
 import {Clapperboard,ChevronDown,Plus,ArrowUp,ArrowDown} from '@mioon/ui/components/workbench-icons';
 import {useI18n} from './i18n/I18nProvider.tsx';
-import {WorkspaceVisibilityProvider,useWorkspaceVisibility} from './workspace-visibility.jsx';
+import {WorkspaceVisibilityProvider,useWorkspaceVisibility} from './workspace-visibility.tsx';
 interface Shot{id:string;title:string;duration:number;selectedVersionId?:string|null}
 interface Version{id:string;assetId?:string;number:number;snapshot?:{duration?:number}}
 interface Props{scope:string;open:boolean;onOpenChange(value:boolean):void;shots:readonly Shot[];versions:readonly Version[];selectedId:string|null;reordering:boolean;assetDragType:string;onSelect(shotId:string):void|Promise<void>;onReorder(shotId:string,index:number):void;onAddShot():void;renderThumbnail(shot:Shot):React.ReactNode}

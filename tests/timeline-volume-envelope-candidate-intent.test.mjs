@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
-import {schemas} from '../packages/contracts/src/index.mjs';
-import {isEditTask} from '../packages/contracts/src/edit-tasks.mjs';
+import {schemas} from '../packages/contracts/src/index.ts';
+import {isEditTask} from '../packages/contracts/src/edit-tasks.ts';
 import {VOLUME_ENVELOPE_PROFILE as profileId} from '../packages/contracts/src/timeline-volume-envelope.ts';
 import {captureVolumeEnvelopeCandidateIntent as capture,volumeEnvelopeCandidateIntentDigest as digest,isVolumeEnvelopeCandidateEditTask as taskValid} from './helpers/timeline-volume-envelope-candidate-intent.mjs';
 const id='11111111-1111-4111-8111-111111111111', add='timeline.clip.add',update='timeline.clip.update';
@@ -61,7 +61,7 @@ test('complete candidate task binds exact intent including presence and all IDs'
  let calls=0;const hostile={...task};Object.defineProperty(hostile,'input',{enumerable:true,get(){calls++;throw Error();}});assert.equal(taskValid(hostile),false);assert.equal(calls,0);
 });
 test('candidate is absent from production root and package export surface',()=>{
- const root=readFileSync(new URL('../packages/contracts/src/index.mjs',import.meta.url),'utf8');
+ const root=readFileSync(new URL('../packages/contracts/src/index.ts',import.meta.url),'utf8');
  const pkg=JSON.parse(readFileSync(new URL('../packages/contracts/package.json',import.meta.url),'utf8'));
  assert.equal(root.includes('timeline-volume-envelope-candidate'),false);assert.equal(JSON.stringify(pkg.exports).includes('volume-envelope'),false);
  assert.equal(Object.keys(schemas).some(k=>/envelope/i.test(k)),false);

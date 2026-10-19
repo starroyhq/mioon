@@ -11,8 +11,8 @@ import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {build} from 'esbuild';
-import {openStore} from '../../../packages/business/src/db.mjs';
-import {createServices} from '../../../packages/business/src/services.mjs';
+import {openStore} from '../../../packages/business/src/db.ts';
+import {createServices} from '../../../packages/business/src/services.ts';
 import {timelineCompositionSegments} from '../../../packages/contracts/src/timeline-segments.ts';
 
 const here=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(here,'../../..'),exec=promisify(execFile),hash=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -100,8 +100,8 @@ export async function run(rootArgument,{reuse=false}={}){
   await writeFile(path.join(root,'environment.json'),JSON.stringify({launcherNode:process.version,ffmpeg:ffmpegVersion.stdout.split('\n')[0],ffprobe:ffprobeVersion.stdout.split('\n')[0]},null,2),{mode:0o600});
   const sourceFiles=['apps/web/src/timeline-audio-continuous-client.ts','apps/web/src/timeline-audio-continuous-engine.ts','apps/web/src/native-audio-preview-adapter.ts',
     'packages/contracts/src/timeline-audio-continuous.ts','packages/contracts/src/native-audio-preview.ts','packages/business/src/timeline-audio-continuous.ts',
-    'packages/business/src/timeline-audio-continuous-decoder.ts','packages/business/src/native-audio-preview.ts','packages/business/src/media-runtime.mjs',
-    'packages/business/src/media-streaming-runtime.ts','packages/business/src/timeline-audio-preview-coordinator.ts','packages/business/src/services.mjs',
+    'packages/business/src/timeline-audio-continuous-decoder.ts','packages/business/src/native-audio-preview.ts','packages/business/src/media-runtime.ts',
+    'packages/business/src/media-streaming-runtime.ts','packages/business/src/timeline-audio-preview-coordinator.ts','packages/business/src/services.ts',
     'apps/server/src/timeline-audio-continuous-http.ts','apps/desktop/src/native-audio-preview-host.ts','apps/desktop/src/native-audio-preview-preload.ts',
     ...['launch.mjs','main.mjs','preload.ts','renderer.ts','capture-worklet.js'].map(file=>`tests/fixtures/timeline-audio-continuous/${file}`)];
   const base=await exec('git',['rev-parse','HEAD'],{cwd:repo});

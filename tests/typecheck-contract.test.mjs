@@ -7,11 +7,10 @@ import {cp, mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile} from 'no
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {transformSync} from 'esbuild';
-import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
+import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const sourceName = 'packages/contracts/src/agent-protocol.ts';
-const shimName = 'packages/contracts/src/agent-protocol.mjs';
 const consumerName = 'tests/typecheck/agent-protocol.consumer.mts';
 const configName = 'tests/typecheck/tsconfig.foundation.json';
 
@@ -51,25 +50,20 @@ function executableSource(source, loader) {
     legalComments: 'none', minify: false, sourcemap: false, treeShaking: false}).code;
 }
 
-test('typed protocol preserves the frozen baseline executable and explicit compatibility exports', async () => {
+test('typed protocol preserves the frozen baseline executable contract', async () => {
   assert.equal(createHash('sha256').update(frozenBaselineSource).digest('hex'), 'd83f1f42d8a46c0740179a86a927e88a8288568942ae3dc10de44e3342e2e673');
   const source = await readFile(path.join(root, sourceName), 'utf8');
-  const shim = await readFile(path.join(root, shimName), 'utf8');
   assert.equal(executableSource(source, 'ts'), executableSource(frozenBaselineSource, 'js'));
-  assert.equal(executableSource(shim, 'js'), executableSource(
-    "export {AGENT_PROTOCOLS, deriveAgentEndpoint} from './agent-protocol.ts';", 'js'));
   assert.doesNotMatch(source, /@ts-(?:ignore|nocheck|expect-error)\b|\bany\b/);
-  const barrel = await readFile(path.join(root, 'packages/contracts/src/index.mjs'), 'utf8');
-  assert.ok(barrel.includes("export {AGENT_PROTOCOLS, deriveAgentEndpoint} from './agent-protocol.mjs';"));
+  const barrel = await readFile(path.join(root, 'packages/contracts/src/index.ts'), 'utf8');
+  assert.ok(barrel.includes("export {AGENT_PROTOCOLS, deriveAgentEndpoint} from './agent-protocol.ts';"));
 });
 
-test('native Node package barrel, compatibility module and real TS implementation share identity', async () => {
+test('native Node package barrel and real TS implementation share identity', async () => {
   const direct = await import('../packages/contracts/src/agent-protocol.ts');
-  const compatibility = await import('../packages/contracts/src/agent-protocol.mjs');
   const barrel = await import('@mioon/contracts');
   assert.deepEqual(Object.keys(direct).sort(), ['AGENT_PROTOCOLS', 'deriveAgentEndpoint']);
-  assert.deepEqual(Object.keys(compatibility).sort(), Object.keys(direct).sort());
-  for (const entry of [compatibility, barrel]) {
+  for (const entry of [barrel]) {
     assert.equal(entry.AGENT_PROTOCOLS, direct.AGENT_PROTOCOLS);
     assert.equal(entry.deriveAgentEndpoint, direct.deriveAgentEndpoint);
   }
@@ -94,7 +88,6 @@ test('foundation configuration strictly checks the real contract and automatical
     '../helpers/agent-edit-wire-lifecycle-cases.ts',
     '../helpers/test-compile-cache-cases.ts',
     '../../packages/contracts/src/agent-protocol.ts',
-    '../../packages/contracts/src/agent-protocol.mjs',
     './agent-protocol.consumer.mts',
     './agent-timeline-gain.consumer.mts',
     './export-sample-peak.consumer.mts',
@@ -111,7 +104,7 @@ test('foundation configuration strictly checks the real contract and automatical
     './timeline-clip-loudness.consumer.mts',
     './opacity-envelope.consumer.mts',
   ]);
-  assert.deepEqual(configuration.include, ['../../packages/*/src/**/*.ts', '../../apps/*/src/**/*.ts']);
+  assert.deepEqual(configuration.include, ['../../packages/*/src/**/*.ts', '../../apps/*/src/**/*.ts', '../../apps/desktop/*.ts', '../../apps/desktop/scripts/**/*.ts', '../../server/**/*.ts', '../../scripts/**/*.ts']);
   assert.deepEqual(configuration.exclude, ['../../packages/ui/**', '../../apps/web/**']);
   assert.equal(configuration.extends, undefined);
   const options = configuration.compilerOptions;
@@ -195,7 +188,7 @@ async function compilerFixtureSources(compiler) {
     if (relative && !path.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`) &&
         !relative.split(path.sep).includes('node_modules')) names.add(relative);
   }
-  for (const name of [sourceName, shimName, consumerName]) assert.ok(names.has(name));
+  for (const name of [sourceName, consumerName]) assert.ok(names.has(name));
   return [...names].sort();
 }
 

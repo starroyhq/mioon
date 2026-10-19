@@ -9,12 +9,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 import * as contracts from '@mioon/contracts';
-import * as api from '../apps/web/src/api.js';
-import * as submissions from '../apps/web/src/submissions.js';
-import * as mutations from '../apps/web/src/mutation-submissions.js';
-import * as editTasks from '../apps/web/src/edit-task-client.js';
-import * as workspaceOrigin from '../apps/web/src/workspace-origin.js';
-import * as references from '../apps/web/src/reference-connections.js';
+import * as api from '../apps/web/src/api.ts';
+import * as submissions from '../apps/web/src/submissions.ts';
+import * as mutations from '../apps/web/src/mutation-submissions.ts';
+import * as editTasks from '../apps/web/src/edit-task-client.ts';
+import * as workspaceOrigin from '../apps/web/src/workspace-origin.ts';
+import * as references from '../apps/web/src/reference-connections.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const read = file => readFileSync(path.join(root, 'apps/web/src', file), 'utf8');
@@ -34,8 +34,8 @@ before(() => {
   const populated = { ...defaults(), activeCount: 1, jobs: [job(10, 'failed'), job(11, 'submission_unknown'), job(12, 'running')], tasks: { phase: 'ready', items: [{ ...task(1), requestId: 'original-request-'.repeat(24) }, task(2, 'applied')], uncertain: [], busy: [] } };
   const fixture = `import React from 'react';
     import {renderToStaticMarkup} from 'react-dom/server.browser';
-    import TaskCenter from './src/TaskCenter.jsx';
-    import {AgentDockPane} from './src/AgentWorkspace.jsx';
+    import TaskCenter from './src/TaskCenter.tsx';
+    import {AgentDockPane} from './src/AgentWorkspace.tsx';
     const forbidden = () => { throw Error('Rendering may not capture a view or execute a task'); };
     const callbacks = { captureView: forbidden, run: forbidden, retryGeneration: forbidden, onInspectJob: forbidden, onRecover: forbidden, onReload: forbidden, onAdopt: forbidden, setReconcileIds: forbidden, context: forbidden, isCurrent: forbidden, confirm: forbidden };
     const populated = ${JSON.stringify(populated)};
@@ -45,7 +45,7 @@ before(() => {
       </AgentDockPane>)]));`;
   const script = `import {build} from 'esbuild';
     globalThis.fetch = () => { throw Error('Task presentation may not request data'); };
-    const {outputFiles} = await build({stdin: {contents: ${JSON.stringify(fixture)}, loader: 'jsx', resolveDir: ${JSON.stringify(path.join(root, 'apps/web'))}}, bundle: true, format: 'esm', platform: 'browser', write: false, outfile: 'task-dock-fixture.js', define: {'process.env.NODE_ENV': '"production"'}});
+    const {outputFiles} = await build({stdin: {contents: ${JSON.stringify(fixture)}, loader: 'tsx', resolveDir: ${JSON.stringify(path.join(root, 'apps/web'))}}, bundle: true, format: 'esm', platform: 'browser', write: false, outfile: 'task-dock-fixture.js', define: {'process.env.NODE_ENV': '"production"'}});
     const javascript = outputFiles.find(file => file.path.endsWith('.js'));
     if (!javascript) throw Error('Task dock fixture did not emit JavaScript');
     const result = await import('data:text/javascript;base64,' + Buffer.from(javascript.text).toString('base64'));
@@ -94,12 +94,12 @@ function harness(languageStore) {
     const resolve = name => {
     const i18nDependency = creationTestDependency(name, languageStore); if (i18nDependency) return i18nDependency;
       if (name === 'react') return react;
-      if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => h.visible };
+      if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => h.visible };
       if (name === './TaskWorkspace.css') return {};
-      if (['./TaskWorkspace.tsx', './PendingSubmission.jsx', './RecoveryStorageDetails.tsx', './TaskRenderList.tsx'].includes(name)) return load(name.slice(2));
-      const business = { '@mioon/contracts': contracts, './api.js': api, './submissions.js': submissions, './mutation-submissions.js': mutations, './edit-task-client.js': editTasks, './workspace-origin.js': workspaceOrigin, './reference-connections.js': references };
+      if (['./TaskWorkspace.tsx', './PendingSubmission.tsx', './RecoveryStorageDetails.tsx', './TaskRenderList.tsx'].includes(name)) return load(name.slice(2));
+      const business = { '@mioon/contracts': contracts, './api.ts': api, './submissions.ts': submissions, './mutation-submissions.ts': mutations, './edit-task-client.ts': editTasks, './workspace-origin.ts': workspaceOrigin, './reference-connections.ts': references };
       if (business[name]) return business[name];
-      if (['./icons.jsx', './SubjectVideoSummary.jsx'].includes(name)) return { __esModule: true, default: name };
+      if (['./icons.tsx', './SubjectVideoSummary.tsx'].includes(name)) return { __esModule: true, default: name };
       const primitives = { '@mioon/ui/components/workbench-controls': ['WorkbenchBadge', 'WorkbenchButton', 'WorkbenchProgress'], '@mioon/ui/components/badge': ['Badge'], '@mioon/ui/components/button': ['Button'], '@mioon/ui/components/input': ['Input'], '@mioon/ui/components/label': ['Label'] };
       if (primitives[name]) return Object.fromEntries(primitives[name].map(key => [key, key]));
       assert.fail(`Unexpected TaskCenter dependency: ${name}`);
@@ -107,7 +107,7 @@ function harness(languageStore) {
     Function('module', 'exports', 'require', 'fetch', 'localStorage', 'sessionStorage', transformSync(read(file), { loader: file.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code)(module, module.exports, resolve, forbidden, storage, storage);
     modules.set(file, module.exports); return module.exports;
   }
-  const Component = load('TaskCenter.jsx').default;
+  const Component = load('TaskCenter.tsx').default;
   const callbacks = Object.fromEntries(['run', 'retryGeneration', 'onInspectJob', 'onRecover', 'onReload', 'onAdopt', 'setReconcileIds'].map(name => [name, (...args) => calls.push([name, ...args])]));
   h.render = (patch = {}) => {
     cursor = 0; effects = [];
@@ -218,7 +218,7 @@ test('narrow-dock styles keep only the body scrollable and wrap long IDs and sha
   assert.match(css, /\.inspector-region-heading>\.right-dock-tabs \[data-slot="tabs-list"\]\{[^}]*width:max-content/);
   assert.match(css, /\.inspector-region-heading>\[data-testid="toggle-inspector"\]\{[^}]*flex:none/);
   assert.doesNotMatch(css, /position:fixed|min-width:(240|310|420)px/);
-  const shell = read('TaskWorkspace.tsx'), taskCenter = read('TaskCenter.jsx');
+  const shell = read('TaskWorkspace.tsx'), taskCenter = read('TaskCenter.tsx');
   assert.doesNotMatch(shell, /\bfetch\s*\(|\brpc\s*\(|sessionStorage|localStorage|setInterval|setTimeout|createPortal|Dialog|Modal|:\s*any\b|as\s+any\b|@ts-ignore|@ts-nocheck/);
   assert.doesNotMatch(shell, /workspace-visibility\.jsx|TaskWorkspace\.css/);
   assert.match(taskCenter, /useTaskWorkspaceInteraction\(captureView, taskViewScope, Boolean\(useWorkspaceVisibility\(\)\)\)/);

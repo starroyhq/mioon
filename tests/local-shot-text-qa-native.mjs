@@ -27,12 +27,12 @@ import {readFile,writeFile,readdir,lstat,open,readlink} from 'node:fs/promises';
 import {DatabaseSync} from 'node:sqlite';
 import {schemas} from '@mioon/contracts';
 import {createLocalShotTextSchemas} from '@mioon/contracts/local-shot-text';
-import {ensurePrivateDirectory,readPrivateFile,validateManagedFile} from '../packages/contracts/src/private-storage.mjs';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {createProviderRegistry} from '../packages/business/src/provider-registry.mjs';
-import {createWorkspacePreferences} from '../packages/business/src/workspace-preferences.mjs';
-import {defaultWorkspaceState} from '../apps/web/src/workspace-state.js';
+import {ensurePrivateDirectory,readPrivateFile,validateManagedFile} from '../packages/contracts/src/private-storage.ts';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
+import {createWorkspacePreferences} from '../packages/business/src/workspace-preferences.ts';
+import {defaultWorkspaceState} from '../apps/web/src/workspace-state.ts';
 import {ownQaChild} from './agent-timeline-move-qa-native.mjs';
 
 const repo=fileURLToPath(new URL('../',import.meta.url)),scenario=process.env.MIOON_LOCAL_SHOT_TEXT_QA_RUN||'native';

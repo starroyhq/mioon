@@ -191,8 +191,8 @@ export function initializeWorkspaceSchema26(db: DatabaseSync): void {
       for (const object of PROTECTIONS) {
         db.exec(object.sql.replace(/^(CREATE (?:UNIQUE )?(?:INDEX|TRIGGER) )/, '$1main.'));
       }
-      db.prepare("DELETE FROM main.sqlite_sequence WHERE name='edit_tasks'").run();
-      if (current.sequence) db.prepare("INSERT INTO main.sqlite_sequence(rowid,name,seq) VALUES(?,'edit_tasks',?)").run(current.sequence.rowid, current.sequence.seq);
+      const sequenceDelete=db.prepare("DELETE FROM main.sqlite_sequence WHERE name='edit_tasks'");sequenceDelete.setReadBigInts(true);sequenceDelete.run();
+      if (current.sequence) {const sequenceInsert=db.prepare("INSERT INTO main.sqlite_sequence(rowid,name,seq) VALUES(?,'edit_tasks',?)");sequenceInsert.setReadBigInts(true);sequenceInsert.run(current.sequence.rowid, current.sequence.seq);}
       db.exec('INSERT INTO main.schema_version(version) VALUES(26)');
       // A postcondition catches a bad trusted migration edit before committing.
       validateWorkspaceSchema26(db);

@@ -3,14 +3,18 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import { DURABLE_EDIT_OPERATIONS, editTaskLane } from '@mioon/contracts';
-import { createEditTaskController } from '../apps/web/src/edit-task-controller.js';
-import { isDurableEditOperation, taskInputKey } from '../apps/web/src/edit-task-client.js';
-import * as submissions from '../apps/web/src/submissions.js';
-import { isMutationOperation } from '../apps/web/src/mutation-submissions.js';
+import { createEditTaskController } from '../apps/web/src/edit-task-controller.ts';
+import { isDurableEditOperation, taskInputKey } from '../apps/web/src/edit-task-client.ts';
+import * as submissions from '../apps/web/src/submissions.ts';
+import { message as messageKey, renderMessage } from '../packages/i18n/src/index.ts';
+import { isMutationOperation } from '../apps/web/src/mutation-submissions.ts';
+import { creationParameter } from '../apps/web/src/creation-i18n.ts';
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const taskIntentModule = { exports: {} };
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
 const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
-const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const actual = (start, end) => app.slice(app.indexOf(start), app.indexOf(end));
 const source = actual('  async function run(', '  async function runSession(');
 const id = n => `92000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -44,10 +48,11 @@ async function harness(t, hooks = {}) {
   await controller.load(projectId);
   const dataRef = { current: { project: { id: projectId }, timeline: { ...timeline(), revision: 1 }, timelineHistory: { revision: 1 } } };
   const scope = { timelineLoudnessApplyRef: { current: null }, captureTaskWorkspaceIntent,
+    msg: (key, ...args) => renderMessage('zh-Hans', messageKey(key, ...args)),
     readTaskRevealContext: () => ({ active: true, projectId: currentProject.current, projectEpoch: 0, navigationEpoch: state.epoch, panelIntent: 0, workspaceScope: 'test-workspace' }), subtitlesRef: { current: { controller: { recovered: task => { (state.recoveredSubtitleTasks ||= []).push(structuredClone(task)); } } } }, timelineFormatRef: { current: { controller: { recovered: task => state.recoveredTasks.push(structuredClone(task)) } } }, ...submissions, isMutationOperation, isDurableEditOperation, taskInputKey, tasksRef: { current: controller }, currentProject, dataRef,
     context: () => ({ projectId: currentProject.current, epoch: state.epoch }), isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === state.epoch,
     isBusy: (key, owner = currentProject.current) => busy.has(`${owner}:${key}`), markBusy: (owner, key, value) => value ? busy.add(`${owner}:${key}`) : busy.delete(`${owner}:${key}`),
-    requestCounter: { current: 0 }, setData: next => { dataRef.current = typeof next === 'function' ? next(dataRef.current) : next; },
+    requestCounter: { current: 0 }, clipConnectionBlocked: { current: false }, setData: next => { dataRef.current = typeof next === 'function' ? next(dataRef.current) : next; },
     notify: (message, type) => state.notices.push({ message, type }), readableError: error => error.message,
     setPending: value => { state.pending = value; }, openTasks: (canReveal = () => true) => { if (canReveal()) state.jobs = true; }, setAuth: value => { state.auth = value; }, setSubjectRefresh: update => { state.subjectRefresh = update(state.subjectRefresh || {}); },
     refresh: async owner => { state.refreshes.push(owner); }, runSession: async (...args) => { state.calls.push(['session', args]); return null; },
@@ -224,41 +229,55 @@ test('actual App malformed adoption and race with a newer receipt never clear or
 });
 
 test('TaskCenter separates durable, legacy and generation details, retains generation recovery/cancel/retry controls', () => {
-  const source = readFileSync(new URL('../apps/web/src/TaskCenter.jsx', import.meta.url), 'utf8');
-  const pending = readFileSync(new URL('../apps/web/src/PendingSubmission.jsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../apps/web/src/TaskCenter.tsx', import.meta.url), 'utf8');
+  const pending = readFileSync(new URL('../apps/web/src/PendingSubmission.tsx', import.meta.url), 'utf8');
   assert.match(source, /<TaskWorkspace activeCount=\{activeCount\}>/);
   assert.doesNotMatch(source, /Dialog(?:Content|Title|Description)?|aria-modal|关闭任务中心/);
-  assert.match(readFileSync(new URL('../apps/web/src/TaskWorkspace.tsx', import.meta.url), 'utf8'), /<h2 id="task-workspace-heading">任务中心<\/h2>/); assert.match(source, /本地编辑请求/); assert.match(source, /<h3>生成任务<\/h3>/);
-  assert.match(source, /明文 SQLite/); assert.match(source, /未经保险库加密/); assert.match(source, /不会自动执行/);
+  const workspaceSource = readFileSync(new URL('../apps/web/src/TaskWorkspace.tsx', import.meta.url), 'utf8');
+  assert.match(workspaceSource, /<h2 id="task-workspace-heading">\{t\('tasks\.workspace\.heading'\)\}<\/h2>/);
+  assert.equal(renderMessage('zh-Hans', messageKey('tasks.workspace.heading')), '任务中心');
+  const rendered = (key, params) => renderMessage('zh-Hans', messageKey(key, params));
+  assert.match(source, /t\('tasks\.center\.localEditRequests'\)/); assert.equal(rendered('tasks.center.localEditRequests'), '本地编辑请求');
+  assert.match(source, /t\('tasks\.center\.generationTasks'\)/); assert.equal(rendered('tasks.center.generationTasks'), '生成任务');
+  const durableStorage = rendered('tasks.center.durableStorage', {length: DURABLE_EDIT_OPERATIONS.length});
+  assert.match(durableStorage, /明文 SQLite/); assert.match(durableStorage, /未经保险库加密/); assert.match(durableStorage, /不会自动执行/);
   assert.match(source, /import RecoveryStorageDetails from '\.\/RecoveryStorageDetails\.tsx'/);
   assert.match(source, /<RecoveryStorageDetails domain="task-center" durableOperationCount=\{DURABLE_EDIT_OPERATIONS\.length\} \/>/);
   assert.doesNotMatch(source, /其他 8 类画板\/素材编辑、时间线渲染及生成\/导出提交的待确认参数仍依赖当前浏览器会话/);
-  for (const text of ['submission_unknown', 'providerJobId', 'outputReviewRequired', 'retryGeneration', 'job.cancel', '服务商可能已接受任务并计费']) assert.ok(source.includes(text), text);
-  assert.match(pending, /恢复记录仅存于当前浏览器会话/); assert.match(pending, /adopt-legacy-task/); assert.match(pending, /legacy-task-duplicate/);
-  assert.match(app, /void tasksRef.current.load\(id\)/);
+  for (const text of ['submission_unknown', 'providerJobId', 'outputReviewRequired', 'retryGeneration', 'job.cancel']) assert.ok(source.includes(text), text);
+  assert.match(rendered('tasks.center.unknownSubmissionWarning'), /服务商可能已接受任务并计费/);
+  assert.match(rendered('tasks.pending.mutationStorage'), /恢复记录仅存于当前浏览器会话/); assert.match(pending, /adopt-legacy-task/); assert.match(pending, /legacy-task-duplicate/);
+  assert.match(app, /void tasksRef\.current!?\.load\(id\)/);
   assert.match(app, /taskState.phase !== 'ready'/);
 });
 
 test('actual TaskCenter does not render an empty-list claim when loading or error and keeps unknown card visible', () => {
-  const source = readFileSync(new URL('../apps/web/src/TaskCenter.jsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../apps/web/src/TaskCenter.tsx', import.meta.url), 'utf8');
   const module = { exports: {} }, react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
     useMemo: factory => factory(), useRef: current => ({ current }), useLayoutEffect: callback => callback() };
   const workspace = { exports: {} };
+  const i18n = { useI18n: () => ({ t: (key, ...args) => renderMessage('zh-Hans', messageKey(key, ...args)),
+    renderMessage: value => renderMessage('zh-Hans', value), formatDate: value => String(value), formatNumber: value => String(value) }) };
   Function('require', 'module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/TaskWorkspace.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(name => {
     if (name === 'react') return { ...react, default: react };
+    if (name === './i18n/I18nProvider.tsx') return i18n;
+    if (name === './creation-i18n.ts') return { creationParameter };
     assert.fail(`Unexpected TaskWorkspace dependency: ${name}`);
   }, workspace, workspace.exports);
   const disclosure = { exports: {} };
   Function('require', 'module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/RecoveryStorageDetails.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(name => {
+    if (name === './i18n/I18nProvider.tsx') return i18n;
     assert.equal(name, 'react'); return { ...react, default: react };
   }, disclosure, disclosure.exports);
-  Function('require', 'module', 'exports', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(name => name === 'react' ? { ...react, default: react }
+  Function('require', 'module', 'exports', transformSync(source, { loader: 'tsx', format: 'cjs' }).code)(name => name === 'react' ? { ...react, default: react }
+    : name === './i18n/I18nProvider.tsx' ? i18n
+    : name === './creation-i18n.ts' ? { creationParameter }
     : name === '@mioon/contracts' ? { DURABLE_EDIT_OPERATIONS }
     : name === './RecoveryStorageDetails.tsx' ? disclosure.exports
     : name === './TaskWorkspace.tsx' ? workspace.exports
-    : name === './workspace-visibility.jsx' ? { useWorkspaceVisibility: () => true }
+    : name === './workspace-visibility.tsx' ? { useWorkspaceVisibility: () => true }
     : name === './TaskWorkspace.css' ? {}
-    : name.endsWith('mutation-submissions.js') ? { isMutationOperation } : name.endsWith('edit-task-client.js') ? { isDurableEditOperation }
+    : name.endsWith('mutation-submissions.ts') ? { isMutationOperation } : name.endsWith('edit-task-client.ts') ? { isDurableEditOperation }
       : new Proxy({}, { get: (_object, property) => String(property) }), module, module.exports);
   const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
   const props = { captureView: () => () => true, taskViewScope: 'current-task-view', activeCount: 0, pending: [], busy: {}, jobs: [], data: { shots: [] }, reconcileIds: {} };
@@ -266,7 +285,7 @@ test('actual TaskCenter does not render an empty-list claim when loading or erro
     const rendered = nodes(module.exports.default({ ...props, tasks: { phase, items: [], uncertain: [], busy: [] } }));
     const details = rendered.find(node => node.type === disclosure.exports.default);
     assert.equal(details.props.domain, 'task-center'); assert.equal(details.props.durableOperationCount, DURABLE_EDIT_OPERATIONS.length);
-    assert.match(rendered.find(node => node.props?.['data-testid'] === 'durable-task-storage').props.children.join(''), /^20 类时间线元数据（含输出规格）/);
+    assert.match(rendered.find(node => node.props?.['data-testid'] === 'durable-task-storage').props.children.join(''), new RegExp(`^${DURABLE_EDIT_OPERATIONS.length} 类时间线元数据（含输出规格）`));
     assert.equal(rendered.some(node => node.props?.['data-testid'] === 'no-durable-tasks'), phase === 'ready');
     assert.equal(rendered.some(node => node.props?.['data-testid'] === 'task-list-unavailable'), phase !== 'ready');
   }

@@ -6,8 +6,8 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {fork} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices, canonical} from '../packages/business/src/services.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices, canonical} from '../packages/business/src/services.ts';
 
 async function fixture(t) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-edit-scope-'));

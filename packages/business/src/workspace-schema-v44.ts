@@ -15,7 +15,17 @@ export function validateWorkspaceSchema44(db: DatabaseSync): void {
 export function initializeWorkspaceSchema44(db: DatabaseSync, initializeThrough24: (db: DatabaseSync) => void): void {
   const source = createWorkspaceRestoreProfileV41(initializeThrough24);
   migrateRippleTaskSchema(db, 44, connection => {
-    const profile = source.classifyWorkspaceSchemaV40V41(connection);
+    let profile;
+    try {
+      profile = source.classifyWorkspaceSchemaV40V41(connection);
+    } catch (strictFailure) {
+      // Ordinary startup must keep upgrading long-retained archives that carry
+      // unknown, application-unmanaged tables. The tolerant pass re-proves the
+      // complete fixed catalog, markers and row validators; fixed restore and
+      // candidate classification remain strict.
+      try { profile = source.classifyWorkspaceSchemaV40V41AllowingUnknown(connection); }
+      catch { throw strictFailure; }
+    }
     if (profile.schemaVersion !== 40 || profile.profile !== 'ordinary')
       throw Object.assign(new Error('Ripple migration requires ordinary40.'), {code: 'RESTORE_SCHEMA_UNSUPPORTED'});
     assertNoRippleWorkspaceOpacity(connection);

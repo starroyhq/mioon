@@ -6,10 +6,12 @@ import {createRequire} from 'node:module';
 import {randomUUID} from 'node:crypto';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {timelineHistoryState} from '../apps/web/src/timeline-history.js';
-import {timelineHistoryActionForKey} from '../apps/web/src/timeline-keyboard.js';
+import {timelineHistoryState} from '../apps/web/src/timeline-history.ts';
+import {timelineHistoryActionForKey} from '../apps/web/src/timeline-keyboard.ts';
 import {message as msg, renderMessage} from '../packages/i18n/src/index.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 // No application, HTTP server, browser, worker, media process or provider is started.
 // The first group executes unchanged ordinary-JS App functions, extracted exactly
 // as the existing edit-task-app tests do, against an explicitly synthetic task port.
@@ -17,7 +19,7 @@ import {message as msg, renderMessage} from '../packages/i18n/src/index.ts';
 const taskIntentModule = { exports: {} };
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
 const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
-const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 function section(start, end) {
   const at = app.indexOf(start), until = app.indexOf(end, at + start.length);
   assert.ok(at >= 0 && until > at, `App extraction boundary missing: ${start}`);
@@ -177,7 +179,7 @@ for (const direction of ['undo', 'redo']) {
     const notices = h.state.notices.length; release.resolve(); await recovery;
     assert.equal(allowed, false); assert.equal(h.state.notices.length, notices);
     assert.equal(h.busy.size, 0);
-    assert.match(app, /canExecute: \(\) => !clipConnectionBlocked\.current && !acknowledgeOnly && isCurrent\(captured\) && canExecute\(\)/);
+    assert.match(app, /canExecute: \(\(\) => !clipConnectionBlocked\.current && !acknowledgeOnly && isCurrent\(captured\) && canExecute\(\)\) as unknown as never/);
     assert.match(app, /<TaskCenter taskViewScope=\{taskViewScope\}[^>]*captureView=\{captureTaskView\}/);
   });
 }
@@ -209,8 +211,8 @@ for (const [name, resolver] of [['@mioon/contracts', requireHere], ['zod', requi
 const businessOptions = {skip:missing.length ? `Not initialized: missing installed ${missing.join(', ')}; no installation performed` : false};
 async function businessFixture(t, direction) {
   const [{openStore}, {createServices}, {createEditTasks}, {AppError}] = await Promise.all([
-    import('../packages/business/src/db.mjs'), import('../packages/business/src/services.mjs'),
-    import('../packages/business/src/edit-tasks.mjs'), import('@mioon/contracts'),
+    import('../packages/business/src/db.ts'), import('../packages/business/src/services.ts'),
+    import('../packages/business/src/edit-tasks.ts'), import('@mioon/contracts'),
   ]);
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-timeline-audit-'));
   let store, services, tasks, fault = () => {}, dispatches = 0;

@@ -5,12 +5,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as contracts from '@mioon/contracts';
-import * as api from '../apps/web/src/api.js';
-import * as submissions from '../apps/web/src/submissions.js';
-import * as mutations from '../apps/web/src/mutation-submissions.js';
-import * as editTasks from '../apps/web/src/edit-task-client.js';
-import * as workspaceOrigin from '../apps/web/src/workspace-origin.js';
-import * as references from '../apps/web/src/reference-connections.js';
+import * as api from '../apps/web/src/api.ts';
+import * as submissions from '../apps/web/src/submissions.ts';
+import * as mutations from '../apps/web/src/mutation-submissions.ts';
+import * as editTasks from '../apps/web/src/edit-task-client.ts';
+import * as workspaceOrigin from '../apps/web/src/workspace-origin.ts';
+import * as references from '../apps/web/src/reference-connections.ts';
 
 const read = file => readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8');
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
@@ -50,16 +50,16 @@ function harness(operations = contracts.DURABLE_EDIT_OPERATIONS) {
       if (name === './RecoveryStorageDetails.tsx') return load('RecoveryStorageDetails.tsx');
       if (name === './TaskWorkspace.tsx') return load('TaskWorkspace.tsx');
       if (name === './TaskRenderList.tsx') return load('TaskRenderList.tsx');
-      if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => h.visible };
+      if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => h.visible };
       if (name === './TaskWorkspace.css') return {};
-      if (name === './PendingSubmission.jsx') return load('PendingSubmission.jsx');
-      if (name === './api.js') return api;
-      if (name === './submissions.js') return submissions;
-      if (name === './mutation-submissions.js') return mutations;
-      if (name === './edit-task-client.js') return editTasks;
-      if (name === './workspace-origin.js') return workspaceOrigin;
-      if (name === './reference-connections.js') return references;
-      if (name === './icons.jsx' || name === './SubjectVideoSummary.jsx') return { __esModule: true, default: name };
+      if (name === './PendingSubmission.tsx') return load('PendingSubmission.tsx');
+      if (name === './api.ts') return api;
+      if (name === './submissions.ts') return submissions;
+      if (name === './mutation-submissions.ts') return mutations;
+      if (name === './edit-task-client.ts') return editTasks;
+      if (name === './workspace-origin.ts') return workspaceOrigin;
+      if (name === './reference-connections.ts') return references;
+      if (name === './icons.tsx' || name === './SubjectVideoSummary.tsx') return { __esModule: true, default: name };
       const primitives = { '@mioon/ui/components/workbench-controls': ['WorkbenchBadge', 'WorkbenchButton', 'WorkbenchProgress'], '@mioon/ui/components/badge': ['Badge'], '@mioon/ui/components/button': ['Button'], '@mioon/ui/components/input': ['Input'], '@mioon/ui/components/label': ['Label'], '@mioon/ui/components/dialog': ['Dialog', 'DialogContent', 'DialogTitle', 'DialogDescription'] };
       if (primitives[name]) return Object.fromEntries(primitives[name].map(key => [key, key]));
       assert.fail(`Unexpected TaskCenter dependency: ${name}`);
@@ -67,7 +67,7 @@ function harness(operations = contracts.DURABLE_EDIT_OPERATIONS) {
     Function('module', 'exports', 'require', 'fetch', 'localStorage', 'sessionStorage', transformSync(read(file), { loader: file.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code)(module, module.exports, resolve, forbidden, storage, storage);
     modules.set(file, module.exports); return module.exports;
   }
-  const Component = load('TaskCenter.jsx').default;
+  const Component = load('TaskCenter.tsx').default;
   const callbacks = Object.fromEntries(['run', 'retryGeneration', 'onInspectJob', 'onRecover', 'onReload', 'onAdopt'].map(name => [name, (...args) => calls.push([name, ...args])]));
   const defaults = { captureView: () => () => h.current, taskViewScope: 'original-task-view', activeCount: 0, pending: [], busy: {}, jobs: [], data: { shots: [], assets: [], jobs: [] }, reconcileIds: {}, tasks: { phase: 'ready', items: [], uncertain: [], busy: [] }, context: () => 'original-context', isCurrent: () => true, confirm: async () => true, ...callbacks };
   return Object.assign(h, { calls, disclosureProps, render(patch) {

@@ -8,10 +8,10 @@ import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {openStore, createServices} from '@mioon/business';
 import {deriveAgentEndpoint} from '@mioon/contracts';
-import {createAgentSettings, AGENT_CREDENTIAL_ACQUIRE} from '../packages/business/src/agent/settings.mjs';
-import {createChatRuntime} from '../packages/business/src/agent/chat-runtime.mjs';
-import {createAgentEditService} from '../packages/business/src/agent/edit-proposals.mjs';
-import {parseEditToolArguments} from '../packages/business/src/agent/edit-tool-policy.mjs';
+import {createAgentSettings, AGENT_CREDENTIAL_ACQUIRE} from '../packages/business/src/agent/settings.ts';
+import {createChatRuntime} from '../packages/business/src/agent/chat-runtime.ts';
+import {createAgentEditService} from '../packages/business/src/agent/edit-proposals.ts';
+import {parseEditToolArguments} from '../packages/business/src/agent/edit-tool-policy.ts';
 
 function done(protocol, changes = {title: 'REVIEWED_TITLE', prompt: null}, name = 'mioon_propose_shot_update') {
   const argumentsJson = JSON.stringify(changes), id = 'call_edit', itemId = 'fc_distinct_item';

@@ -4,9 +4,9 @@ import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { openStore } from '../packages/business/src/db.mjs';
-import { createServices } from '../packages/business/src/services.mjs';
-import { startWorker } from '../packages/business/src/jobs.mjs';
+import { openStore } from '../packages/business/src/db.ts';
+import { createServices } from '../packages/business/src/services.ts';
+import { startWorker } from '../packages/business/src/jobs.ts';
 
 // Deferred, in-process adapters make the exact await boundary deterministic.
 // They do not contact a provider or read any real user's media or credentials.

@@ -63,7 +63,7 @@ function schema(db: DatabaseSync): Catalog {
  }
  return result;
 }
-// Optional constructor-owned schema from providers/mock.mjs, deliberately kept
+// Optional constructor-owned schema from providers/mock.ts, deliberately kept
 // as fixed SQL here so restored startup never imports/constructs a provider.
 // Dedicated tests compare all five objects to the actual ordinary constructor.
 const MOCK_SCHEMA_SQL=`
@@ -132,6 +132,19 @@ function optionalMockTables(db: DatabaseSync){return db.prepare("SELECT 1 FROM m
  function matches(actual: Catalog,expected: Catalog): boolean {
   return actual.size===expected.size&&[...expected].every(([name,value])=>JSON.stringify(actual.get(name))===JSON.stringify(value));
  }
+ /** Ordinary startup over long-retained archives may legitimately carry unknown
+  * application-unmanaged objects. Everything application-owned, every marker
+  * and every row validator stays exact; fixed restore/candidate classification
+  * never uses this tolerant variant. */
+ function matchesToleratingUnknown(actual: Catalog,expected: Catalog): boolean {
+  const managed=new Set([...expected.values()].map(value=>value.name));
+  for(const [name,value] of expected)if(JSON.stringify(actual.get(name))!==JSON.stringify(value))return false;
+  for(const [name,value] of actual){
+   if(expected.has(name))continue;
+   if(managed.has(name)||managed.has(value.table))return false;
+  }
+  return true;
+ }
  function markers(db: DatabaseSync, restored: boolean): void {
   const expected=[...Array.from({length:24},(_,i)=>i+1),26,28,30,32,34,36,38,40,44,...(restored?[45]:[])];
   const values=db.prepare("SELECT CASE WHEN typeof(version)='integer' AND (version BETWEEN 1 AND 24 OR version IN (26,28,30,32,34,36,38,40,44,45)) THEN version END AS version,typeof(version) AS type FROM main.schema_version ORDER BY main.schema_version.version LIMIT 36").all();
@@ -151,6 +164,15 @@ function optionalMockTables(db: DatabaseSync){return db.prepare("SELECT 1 FROM m
    markers(db,true);validateAssetAnnotationRows(db);validateWorkspaceAudioRoleRows(db,{allowAudioRoles:true,frozenEvidenceProfile:'workspace40-restored41'});validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:true});validateWorkspaceColourRows(db,{allowColour:true,allowMixedImages:true,allowJpegImages:true,frozenEvidenceProfile:'workspace40-restored41'});return Object.freeze({schemaVersion:45,profile:WORKSPACE_RESTORE_PROFILE});
   }
   fail('RESTORE_SCHEMA_UNSUPPORTED');
+ }
+ function classifyWorkspaceSchemaV44V45AllowingUnknown(db: DatabaseSync): WorkspaceClassificationV44V45 {
+  safety(db);
+  if(db.prepare('SELECT 1 FROM temp.sqlite_schema LIMIT 1').get())fail('RESTORE_SCHEMA_UNSUPPORTED');
+  const actual=schema(db),fixed=fixedProfilesV44V45();
+  assertNoRippleWorkspaceOpacity(db);
+  if(!matchesToleratingUnknown(actual,fixed.ordinary))fail('RESTORE_SCHEMA_UNSUPPORTED');
+  markers(db,false);validateAssetAnnotationRows(db);validateWorkspaceAudioRoleRows(db,{allowAudioRoles:true,frozenEvidenceProfile:'workspace40-restored41'});validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:true});validateWorkspaceColourRows(db,{allowColour:true,allowMixedImages:true,allowJpegImages:true,frozenEvidenceProfile:'workspace40-restored41'});
+  return Object.freeze({schemaVersion:44,profile:'ordinary'});
  }
 
 // These descriptors are fixed application code, never request-provided SQL.
@@ -478,7 +500,7 @@ function validateWorkspaceRestoreSchemaV45(db: DatabaseSync): WorkspaceRestoreIn
  if(db.prepare('PRAGMA foreign_key_check').get())fail('RESTORE_RELATIONSHIP_INVALID');
  return Object.freeze({...info,heldCounts:Object.freeze(heldCounts)});
 }
-return Object.freeze({classifyWorkspaceSchemaV44V45,installWorkspaceRestoreSchemaV45,validateWorkspaceRestoreSchemaV45});
+return Object.freeze({classifyWorkspaceSchemaV44V45,classifyWorkspaceSchemaV44V45AllowingUnknown,installWorkspaceRestoreSchemaV45,validateWorkspaceRestoreSchemaV45});
 }
 
 const rippleProfile = createWorkspaceRestoreProfileV45(initializeRippleLegacyThrough24);

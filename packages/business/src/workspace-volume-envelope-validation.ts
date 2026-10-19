@@ -36,7 +36,7 @@ export function hasWorkspaceVolumeEnvelopeEvidence(root:unknown):boolean {
 
 /** Scan all retained rows, including completed tasks, historical receipts and
  * archived history. This is read-only admission, never a migration or capability. */
-export function validateWorkspaceVolumeEnvelopeRows(db:Pick<DatabaseSync,'prepare'>,{allowVolumeEnvelopes:allowed}:{allowVolumeEnvelopes:boolean}):void {
+export function validateWorkspaceVolumeEnvelopeRows(db:Pick<DatabaseSync,'prepare'>,{allowVolumeEnvelopes:allowed,allowOpaqueCells=false}:{allowVolumeEnvelopes:boolean;allowOpaqueCells?:boolean}):void {
  const runtime=allowed?requireWorkspaceEnvelopeRuntime():undefined;
  const isTimelineLoudnessApplyResponse=(root:unknown,input:unknown)=>createTimelineLoudnessApplyContracts({isTimelineRecord:requireWorkspaceEnvelopeRuntime().isTimelineRecord}).isTimelineLoudnessApplyResponse(root,input);
  const names=new Map<string,{type:unknown;sql:unknown}>();
@@ -165,11 +165,15 @@ export function validateWorkspaceVolumeEnvelopeRows(db:Pick<DatabaseSync,'prepar
   const request=columns.has('requestId')?"CASE WHEN typeof(requestId)='text' AND length(requestId) BETWEEN 8 AND 200 AND length(CAST(requestId AS BLOB))<=800 THEN requestId END":'NULL';
   for(const field of fields.filter(field=>columns.has(field))){const column=quote(field);
    const bounded=`typeof(${column})='text' AND length(CAST(${column} AS BLOB)) BETWEEN 1 AND ${JSON_BYTES}`;
-   const query=`SELECT ${owner} AS owner,${operation} AS operation,${request} AS request,CASE WHEN ${bounded} THEN json_valid(${column}) ELSE 0 END AS valid,CASE WHEN ${bounded} THEN ${column} END AS value,CASE WHEN ${bounded} THEN CASE WHEN json_valid(${column}) THEN EXISTS(SELECT 1 FROM json_tree(${column}) WHERE typeof(key)='text' GROUP BY parent,key HAVING count(*)>1) ELSE 1 END ELSE 1 END AS duplicates FROM main.${quote(table)} WHERE CASE WHEN length(CAST(${column} AS BLOB))>${JSON_BYTES} THEN 1 WHEN typeof(${column})!='text' THEN 1 WHEN length(CAST(${column} AS BLOB))=0 THEN 0 WHEN json_valid(${column}) THEN EXISTS(SELECT 1 FROM json_tree(${column}) WHERE ${evidenceSql}) ELSE 1 END`;
+   const query=`SELECT ${owner} AS owner,${operation} AS operation,${request} AS request,CASE WHEN ${bounded} THEN json_valid(${column}) ELSE 0 END AS valid,CASE WHEN ${bounded} THEN ${column} END AS value,CASE WHEN ${bounded} THEN CASE WHEN json_valid(${column}) THEN EXISTS(SELECT 1 FROM json_tree(${column}) WHERE typeof(key)='text' GROUP BY parent,key HAVING count(*)>1) ELSE 1 END ELSE 1 END AS duplicates,CASE WHEN length(CAST(${column} AS BLOB))>${JSON_BYTES} THEN 0 WHEN typeof(${column})!='text' THEN 1 ELSE 0 END AS opaque FROM main.${quote(table)} WHERE CASE WHEN length(CAST(${column} AS BLOB))>${JSON_BYTES} THEN 1 WHEN typeof(${column})!='text' THEN 1 WHEN length(CAST(${column} AS BLOB))=0 THEN 0 WHEN json_valid(${column}) THEN EXISTS(SELECT 1 FROM json_tree(${column}) WHERE ${evidenceSql}) ELSE 1 END`;
    for(const row of db.prepare(query).iterate()){
     // Malformed unrelated legacy JSON stays with its historical reader. Decode
     // member/string tokens, including escaped spellings, before JSON.parse can
     // erase duplicate evidence. Oversized/non-TEXT cells are never parsed.
+    // Cold archives preserve opaque (non-TEXT) historical cells; such cells
+    // cannot carry readable envelope evidence into any admission reader. Restore
+    // classification paths keep the strict default and still fail closed.
+    if(row.opaque===1){if(allowed||!allowOpaqueCells)invalid(allowed);continue;}
     if(row.valid===0&&typeof row.value==='string'){
      let evidence=false;
      for(const match of row.value.matchAll(/"(?:[^"\\]|\\.)*"/g))try{const token=JSON.parse(match[0]);if(keys.includes(token)||token===VOLUME_ENVELOPE_PROFILE||codeEvidence(token))evidence=true;}catch{}

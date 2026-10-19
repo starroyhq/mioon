@@ -4,10 +4,10 @@
  */
 import path from 'node:path';
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
-import { startServer } from '../apps/server/src/index.mjs';
+import { startServer } from '../apps/server/src/index.ts';
 import { randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
-import { providerEnvironmentKeys } from '../packages/business/src/provider-registry.mjs';
+import { providerEnvironmentKeys } from '../packages/business/src/provider-registry.ts';
 import { createRunwayUnknownFixture } from './helpers/runway-unknown-fixture.mjs';
 const runtime = path.resolve('evidence/q1-runway-parity/runtime');
 const dataDir = path.join(runtime, 'workspace'), fixtureFile = path.join(runtime, 'fixture.json');

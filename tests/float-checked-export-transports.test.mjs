@@ -10,10 +10,10 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {discoverSchema, effectAnnotations} from '@mioon/client';
 import {isExportPreflightResponse, isTimelineMutationResponse, publicValue} from '@mioon/contracts';
-import {hash} from '../packages/business/src/services.mjs';
+import {hash} from '../packages/business/src/services.ts';
 import {claimFloatTimelineExport, bindFloatTimelineMeasurement} from '../packages/business/src/timeline-float-outcome.ts';
 import {createTimelineFloatAudioAccumulator} from '../packages/business/src/timeline-float-audio-check.ts';
-import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
+import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {selectedRangeFixture, TOKEN, RANGE, SETTINGS, bounded, authority, action} from './fixtures/selected-range-http-fixture.mjs';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -22,7 +22,7 @@ const env = url => ({...mediaEnvironment(), MIOON_ENABLE_LIVE_PROVIDER: '0',
 const safe = value => {assert.equal(JSON.stringify(value).includes(TOKEN), false); assert.equal(JSON.stringify(value).includes('Bearer '), false);};
 
 function launchCli(t, url, args) {
-  const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.mjs'), ...args], {cwd: repo, env: env(url), stdio: ['ignore', 'pipe', 'pipe'], shell: false});
+  const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.ts'), ...args], {cwd: repo, env: env(url), stdio: ['ignore', 'pipe', 'pipe'], shell: false});
   let stdout = '', stderr = '', bytes = 0, failure;
   const ended = new Promise(resolve => child.once('close', (code, signal) => resolve({code, signal})));
   child.once('error', error => {failure = error;});
@@ -53,7 +53,7 @@ function launchCli(t, url, args) {
 const cli = async (t, url, args) => (await launchCli(t, url, args).finish()).body;
 async function officialMcp(t, url) {
   const client = new Client({name: 'float-checked-official-sdk', version: '1.0.0'}, {capabilities: {}});
-  const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.mjs')], cwd: repo, env: env(url), stderr: 'pipe'});
+  const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.ts')], cwd: repo, env: env(url), stderr: 'pipe'});
   let stderr = '', overflow = false, closing;
   const close = () => closing ??= bounded(client.close(), 'Official MCP close', 8000);
   // SDK-owned stdout remains binary framed protocol data; only stderr is ours.

@@ -1,8 +1,8 @@
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {randomUUID,createHash} from 'node:crypto';
-import {migrateImageSchema} from '../packages/business/src/image-schema.mjs';
-import {IMAGE_FIXED_OPTIONS,IMAGE_MODELS} from '../packages/contracts/src/images.mjs';
+import {migrateImageSchema} from '../packages/business/src/image-schema.ts';
+import {IMAGE_FIXED_OPTIONS,IMAGE_MODELS} from '../packages/contracts/src/images.ts';
 export const canonical=value=>JSON.stringify(value,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.entries(v).sort(([a],[b])=>a.localeCompare(b))):v);
 export function legacyDatabase(file=':memory:'){
  const db=new DatabaseSync(file);db.exec('PRAGMA foreign_keys=ON');db.exec(readFileSync(new URL('./fixtures/images-legacy-schema15.sql',import.meta.url),'utf8'));return db;

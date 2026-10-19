@@ -15,12 +15,12 @@ import {createClient,discoverSchema,schemas} from '@mioon/client';
 import {effectAnnotations,operationEffect,isTimelineMutationResponse,EXPORT_LOUDNESS_PROFILE,TIMELINE_MIX_LOUDNESS_PROFILE} from '@mioon/contracts';
 import {timelineLoudnessCandidateDigest,isTimelineLoudnessApplicableReport} from '@mioon/contracts/timeline-loudness-apply';
 import {readTimelineLoudnessApplyEnvelope} from '@mioon/client/timeline-loudness-apply';
-import {startServer} from '../apps/server/src/index.mjs';
-import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.mjs';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.mjs';
-import {TIMELINE_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-edit-tool-policy.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
+import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
+import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
+import {TIMELINE_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-edit-tool-policy.ts';
 import {TIMELINE_GAIN_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-gain-tool-policy.ts';
 import {loudnessApplyFixture} from './fixtures/timeline-loudness-apply.mjs';
 
@@ -35,7 +35,7 @@ async function bounded(promise,label,ms=20000){let timer;try{
   return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(label+' timed out')),ms);})]);
 }finally{clearTimeout(timer);}}
 function cli(t,url,args){
-  const child=spawn(process.execPath,[path.join(repo,'apps/cli/src/index.mjs'),...args],
+  const child=spawn(process.execPath,[path.join(repo,'apps/cli/src/index.ts'),...args],
     {cwd:repo,env:environment(url),stdio:['ignore','pipe','pipe']});
   let stdout='',stderr='',overflow=false,timedOut=false;
   child.stdout.setEncoding('utf8').on('data',part=>{stdout+=part;if(Buffer.byteLength(stdout)>1024*1024){overflow=true;child.kill('SIGKILL');}});
@@ -53,7 +53,7 @@ function cli(t,url,args){
 }
 async function official(t,url){
   const client=new Client({name:'timeline-loudness-apply-public-transports',version:'1.0.0'},{capabilities:{}});
-  const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.mjs')],
+  const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.ts')],
     cwd:repo,env:environment(url),stderr:'pipe',maxBufferSize:1024*1024});
   let stderr='',overflow=false;const closed=new Promise(resolve=>{client.onclose=resolve;});
   transport.stderr?.setEncoding('utf8').on('data',part=>{stderr+=part;if(Buffer.byteLength(stderr)>65536){overflow=true;void close().catch(()=>{});}});

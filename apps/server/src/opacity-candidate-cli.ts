@@ -33,7 +33,7 @@ export async function runOpacityCandidateDevelopment(args: readonly string[] = p
   const proof = mode === 'open-restored' ? createRestoredOpacityCandidateLaunch(directory)
     : mode === 'open' ? createExistingOpacityCandidateLaunch(directory) : createFreshOpacityCandidateLaunch(directory);
   try {
-    const module: unknown = require('./index.mjs');
+    const module: unknown = require('./index.ts');
     if (!object(module) || typeof module.startServer !== 'function') throw new Error('The local server runtime is unavailable.');
     const value: unknown = await Reflect.apply(module.startServer, module, [{opacityCandidateLaunch: proof, port, distDir: defaultDist, localDraftChannel: 'development'}]);
     if (!object(value) || typeof value.close !== 'function' || typeof value.url !== 'string' || typeof value.tokenFile !== 'string' || typeof value.dataDir !== 'string') throw new Error('The candidate server lifecycle is unavailable.');

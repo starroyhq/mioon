@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {pathToFileURL} from 'node:url';
-import {installedTypeScript} from '../scripts/lib/local-tooling.mjs';
+import {installedTypeScript} from '../scripts/lib/local-tooling.ts';
 
 // Frozen pre-migration implementations are text fixtures, not live modules.
 // Compare emitted executable syntax, allowing only the dependency extension

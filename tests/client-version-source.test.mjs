@@ -6,10 +6,10 @@ import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import desktopBuildMetadata from '../apps/desktop/build-metadata.cjs';
+import desktopBuildMetadata from '../apps/desktop/build-metadata.ts';
 
 const root = new URL('../', import.meta.url);
-const clientFile = new URL('packages/client/src/index.mjs', root);
+const clientFile = new URL('packages/client/src/index.ts', root);
 const clientSource = await readFile(clientFile, 'utf8');
 const applicationPackage = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
 
@@ -34,13 +34,13 @@ async function fixture(t, manifest = applicationPackage) {
   await mkdir(cwd);
   await writeFile(path.join(sourceRoot, 'package.json'), JSON.stringify(manifest));
   await writeFile(path.join(sourceRoot, 'packages/client/package.json'), JSON.stringify({type: 'module', version: '88.0.0'}));
-  await writeFile(path.join(sourceRoot, 'packages/client/src/index.mjs'), versionSlice());
+  await writeFile(path.join(sourceRoot, 'packages/client/src/index.ts'), versionSlice());
   await writeFile(path.join(cwd, 'package.json'), JSON.stringify({version: '99.0.0'}));
   return {directory, sourceRoot, cwd};
 }
 
 function runVersion(sourceRoot, cwd) {
-  const moduleUrl = pathToFileURL(path.join(sourceRoot, 'packages/client/src/index.mjs')).href;
+  const moduleUrl = pathToFileURL(path.join(sourceRoot, 'packages/client/src/index.ts')).href;
   return spawnSync(process.execPath, ['--input-type=module', '--eval',
     `import {VERSION} from ${JSON.stringify(moduleUrl)}; process.stdout.write(JSON.stringify(VERSION));`],
   {cwd, env: {}, encoding: 'utf8', timeout: 10_000, maxBuffer: 64 * 1024});
@@ -89,12 +89,17 @@ test('missing root manifest fails instead of falling back to cwd or client metad
 });
 
 test('source wiring keeps CLI, MCP, schema discovery and doctor on the shared VERSION export', async () => {
-  const cli = await readFile(new URL('apps/cli/src/index.mjs', root), 'utf8');
-  const mcp = await readFile(new URL('apps/mcp/src/index.mjs', root), 'utf8');
+  const cli = await readFile(new URL('apps/cli/src/index.ts', root), 'utf8');
+  const mcp = await readFile(new URL('apps/mcp/src/index.ts', root), 'utf8');
   for (const source of [cli, mcp]) {
     assert.ok(/import\s*\{[^}]*\bVERSION\b[^}]*\}\s*from\s*['"]@mioon\/client['"]/.test(source), 'consumer imports VERSION from the shared client');
   }
-  assert.ok(/function help\(operation\)\s*\{\s*return\s*\{name:\s*'mioon',\s*version:\s*VERSION/.test(cli), 'CLI help uses VERSION');
+  // Help presentation now lives in a typed module and receives the shared VERSION
+  // through its explicit dependency object; the source wiring must still keep it.
+  const cliHelp = await readFile(new URL('apps/cli/src/help.ts', root), 'utf8');
+  assert.ok(/import\s*\{help\}\s*from\s*'\.\/help\.ts'/.test(cli), 'CLI routes help through the shared help module');
+  assert.ok(/export function help\(operation: string \| undefined, \{[^}]*VERSION/.test(cliHelp), 'CLI help receives VERSION');
+  assert.ok(/version:\s*VERSION/.test(cliHelp), 'CLI help uses VERSION');
   assert.ok(/if\s*\(options\.version\)\s*data\s*=\s*\{name:\s*'mioon',\s*version:\s*VERSION\}/.test(cli), 'CLI --version uses VERSION');
   assert.ok(/new Server\(\{name:\s*'mioon',\s*version:\s*VERSION\}/.test(mcp), 'MCP server metadata uses VERSION');
   assert.ok(/return parsed\.operation\s*\?[^;]+:\s*\{version:\s*VERSION,/.test(clientSource), 'schema discovery uses VERSION');
@@ -139,7 +144,7 @@ test('actual CLI startup reports the application version from unrelated cwd with
   if (!hasRuntimeDependencies(t, clientDependencies)) return;
   const {cwd} = await fixture(t);
   for (const args of [['--version'], ['--help'], ['schema']]) {
-    const result = spawnSync(process.execPath, [fileURLToPath(new URL('apps/cli/src/index.mjs', root)), ...args],
+    const result = spawnSync(process.execPath, [fileURLToPath(new URL('apps/cli/src/index.ts', root)), ...args],
       {cwd, env: {}, encoding: 'utf8', timeout: 10_000, maxBuffer: 2 * 1024 * 1024});
     assert.ifError(result.error); assert.equal(result.status, 0, result.stderr); assert.equal(result.signal, null);
     const envelope = JSON.parse(result.stdout);
@@ -155,7 +160,7 @@ test('official MCP initialization separates application serverInfo from negotiat
   const {SUPPORTED_PROTOCOL_VERSIONS} = await import('@modelcontextprotocol/sdk/types.js');
   const client = new Client({name: 'synthetic-client-version-acceptance', version: '1.0.0'}, {capabilities: {}});
   const transport = new StdioClientTransport({command: process.execPath,
-    args: [fileURLToPath(new URL('apps/mcp/src/index.mjs', root))], cwd: fileURLToPath(root),
+    args: [fileURLToPath(new URL('apps/mcp/src/index.ts', root))], cwd: fileURLToPath(root),
     env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}, stderr: 'pipe'});
   let stderr = ''; transport.stderr.setEncoding('utf8').on('data', bytes => { stderr += bytes; });
   const messages = [];

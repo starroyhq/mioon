@@ -5,10 +5,10 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
 import {randomUUID,createHash} from 'node:crypto';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
-import {installWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.mjs';
-import {migrateData} from '../apps/desktop/scripts/migrate-data.mjs';
-import {withOrdinaryMigrationSource} from '../apps/desktop/scripts/migration-restore-guard.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
+import {installWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.ts';
+import {migrateData} from '../apps/desktop/scripts/migrate-data.ts';
+import {withOrdinaryMigrationSource} from '../apps/desktop/scripts/migration-restore-guard.ts';
 
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const metadata=()=>({restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:'2026-10-12T00:00:00.000Z'});

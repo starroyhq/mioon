@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {Readable} from 'node:stream';
-import {createComfyTransport, resolveComfyDestination, validateComfyDescriptor} from '../packages/business/src/comfy/network.mjs';
-import {COMFY_NETWORK_LIMITS} from '../packages/business/src/comfy/profile.mjs';
+import {createComfyTransport, resolveComfyDestination, validateComfyDescriptor} from '../packages/business/src/comfy/network.ts';
+import {COMFY_NETWORK_LIMITS} from '../packages/business/src/comfy/profile.ts';
 
 const baseUrl='http://127.0.0.1:8188', id='11111111-1111-4111-8111-111111111111';
 const filenamePrefix=`mioon_${id}`, descriptor={filename:`${filenamePrefix}_00001_.png`,subfolder:'',type:'output'};

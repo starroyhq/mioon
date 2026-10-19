@@ -9,8 +9,8 @@ import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import * as audio from '../apps/web/src/clip-audio-state.js';
-import * as timelineFormat from '../apps/web/src/timeline-format-state.js';
+import * as audio from '../apps/web/src/clip-audio-state.ts';
+import * as timelineFormat from '../apps/web/src/timeline-format-state.ts';
 import * as clipDraft from '../apps/web/src/clip-draft-state.ts';
 import * as clipLut from '../apps/web/src/clip-lut-state.ts';
 import { createClipLutRecovery } from '../apps/web/src/clip-lut-recovery.ts';
@@ -69,8 +69,8 @@ async function inspectorHarness(patch = {}, lutRpc = async () => { throw Error('
       if (id === './ClipRemovalControls.tsx') return load('ClipRemovalControls.tsx');
       if (id === './workbench-modal-state.ts') return {hasOpenWorkbenchModal};
       if (id === '../../../packages/i18n/src/index.ts') return i18nCore;
-      if (id === './clip-audio-state.js') return audio;
-      if (id === './timeline-format-state.js') return timelineFormat;
+      if (id === './clip-audio-state.ts') return audio;
+      if (id === './timeline-format-state.ts') return timelineFormat;
       if (id === './clip-draft-state.ts') return clipDraft;
       if (id === './clip-audio-role-state.ts') return roleState;
       if (id === './clip-volume-envelope-state.ts') return envelopeState;
@@ -80,22 +80,22 @@ async function inspectorHarness(patch = {}, lutRpc = async () => { throw Error('
       if (id === './ClipAudioRoleControls.tsx') return load('ClipAudioRoleControls.tsx');
       if (id === './clip-lut-state.ts') return { ...clipLut, createClipLutController: options => clipLut.createClipLutController({ ...options, recovery: createClipLutRecovery({ storage: () => ({ getItem: () => null, setItem() {}, removeItem() {} }), lock: async (_name, action) => action() }) }) };
       if (id === './ClipLutControls.tsx') return load('ClipLutControls.tsx');
-      if (id === './api.js') return { rpc: lutRpc };
+      if (id === './api.ts') return { rpc: lutRpc };
       if (id === './clip-draft-client.ts') return { createClipDraftClient: () => client };
       if (id === './clip-draft-hook.ts') return load('clip-draft-hook.ts');
       if (id === './ClipDraftRecovery.tsx') return load('ClipDraftRecovery.tsx');
       if (id === './RecoveryStorageDetails.tsx') return load('RecoveryStorageDetails.tsx');
-      if (id === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => true };
-      if (id === './ClipAudioControls.jsx') return load('ClipAudioControls.jsx');
-      if (id === './Timeline.jsx') return { assetKind: value => value?.mimeType?.split('/')[0] || 'image', framesLabel: String };
+      if (id === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => true };
+      if (id === './ClipAudioControls.tsx') return load('ClipAudioControls.tsx');
+      if (id === './Timeline.tsx') return { assetKind: value => value?.mimeType?.split('/')[0] || 'image', framesLabel: String };
       if (id === '@mioon/contracts') return { sourceFrameCount: duration => Math.floor(duration * 30), isTimelineRecord };
       if (id === '@mioon/ui/components/workbench-confirm') return { useConfirmation: () => async () => true };
-      if (id === './icons.jsx') return { default: 'Icon', __esModule: true };
+      if (id === './icons.tsx') return { default: 'Icon', __esModule: true };
       return primitive;
     }, module, module.exports);
     modules.set(filename, module.exports); return module.exports;
   }
-  const component = load('TimelineInspector.jsx').default;
+  const component = load('TimelineInspector.tsx').default;
   const flush = queue => { for (const i of queue) { slots[i].cleanup?.(); slots[i].cleanup = slots[i].callback(); } };
   const h = {
     dirtyEvents, saves,
@@ -263,13 +263,13 @@ test('keyed project unmount fences late fade acknowledgments and retained form s
   await retained({ preventDefault() {} });
   assert.equal(calls.length, 1); assert.equal(old.dirtyEvents.length, oldDirtyCount); assert.equal(old.dirtyEvents.at(-1), false);
   assert.equal(next.find('clip-fade-out').props.value, '8'); assert.equal(next.dirtyEvents.at(-1), true);
-  const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   assert.match(source, /TimelineInspector key=\{displayedClipInspector.key\}/);
   assert.match(source, /key: `\$\{data\.project\?\.id\}:\$\{chosenClip\.id\}:\$\{inspectorEpoch\}`/);
 });
 
 test('source playback copy stays explicit about dry audio and the shared render path', () => {
-  const source = readFileSync(new URL('../apps/web/src/Preview.jsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../apps/web/src/Preview.tsx', import.meta.url), 'utf8');
   assert.match(source, /timeline.preview.sourceUnprocessed/); assert.match(i18nCore.translate('zh-Hans', 'timeline.preview.sourceUnprocessed'), /源素材原声 · 不应用片段音量或淡入\/淡出/);
   assert.match(source, /timeline.preview.renderDetail/); assert.match(i18nCore.translate('zh-Hans', 'timeline.preview.renderDetail'), /音频淡入\/淡出均使用与导出相同的本地渲染/);
 });

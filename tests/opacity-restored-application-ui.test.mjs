@@ -9,9 +9,9 @@ import {i18nTestModule} from './helpers/i18n.ts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
 import * as geometry from '../apps/web/src/timeline-view-geometry.ts';
 import {displayTimelineFrame} from '../apps/web/src/timeline-removal.ts';
-import {WAVEFORM_LIMITS} from '../apps/web/src/waveform-state.js';
-import {rulerFrameForKey} from '../apps/web/src/timeline-keyboard.js';
-import {timelineDropPreview} from '../apps/web/src/timeline-snapping.js';
+import {WAVEFORM_LIMITS} from '../apps/web/src/waveform-state.ts';
+import {rulerFrameForKey} from '../apps/web/src/timeline-keyboard.ts';
+import {timelineDropPreview} from '../apps/web/src/timeline-snapping.ts';
 import {staleSourceSentence} from '../apps/web/src/timeline-source-freshness.ts';
 import {randomUUID} from 'node:crypto';
 import * as legacy from '@mioon/contracts';
@@ -19,20 +19,22 @@ import {createOpacityCandidateWorkspaceBackup, restoreOpacityCandidateWorkspaceB
 import {reopenOpacityCandidateApplicationStore, reopenRestoredOpacityCandidateApplicationStore} from '../packages/business/src/opacity-candidate-store.ts';
 import {createRestoredOpacityCandidateLocalDrafts} from '../packages/business/src/opacity-candidate-local-drafts.ts';
 import {createOpacityCandidateApplicationServices} from '../packages/business/src/opacity-candidate-services.ts';
-import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
+import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 import {opacityBackupFixture} from './helpers/opacity-backup-fixture.mjs';
 import {createOpacityCandidateApplication, readOpacityCandidateApplication} from '../apps/web/src/opacity-candidate-application.ts';
-import {createEditTaskClient} from '../apps/web/src/edit-task-client.js';
-import {createEditTaskController} from '../apps/web/src/edit-task-controller.js';
-import {rpc} from '../apps/web/src/api.js';
+import {createEditTaskClient} from '../apps/web/src/edit-task-client.ts';
+import {createEditTaskController} from '../apps/web/src/edit-task-controller.ts';
+import {rpc} from '../apps/web/src/api.ts';
 import {readOpacityCandidateInspectorBinding} from '../apps/web/src/clip-opacity-candidate-assembly.ts';
 import {createClipDraftController, clipDraftRaw, clipDraftSource} from '../apps/web/src/clip-draft-state.ts';
 import {rawOpacityEnvelopeFields} from '../apps/web/src/clip-opacity-envelope-state.ts';
-import {pinNewWorkspaceIntent} from '../apps/web/src/workspace-origin.js';
+import {pinNewWorkspaceIntent} from '../apps/web/src/workspace-origin.ts';
 import {LOCALES, translate, validateCatalogs} from '../packages/i18n/src/index.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const root = fileURLToPath(new URL('../', import.meta.url));
-const appSource = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const appSource = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const runtime = {...legacy, rpc, createEditTaskClient};
 const response = data => new Response(JSON.stringify({ok: true, data}), {status: 200, headers: {'Content-Type': 'application/json'}});
 
@@ -184,11 +186,11 @@ test('actual App view updates remain in memory for43 and continue using the exis
 function renderComponents(f) {
   const data = {timeline: f.timeline, asset: f.store.get('assets', f.assetId), project: f.store.get('projects', f.projectId)};
   const fixture = `import React from 'react';import {renderToStaticMarkup} from 'react-dom/server.browser';
-    import AssetLibrary from './src/AssetLibrary.jsx';import Timeline from './src/Timeline.jsx';import Preview from './src/Preview.jsx';
-    import TimelineInspector from './src/TimelineInspector.jsx';import ProjectHome from './src/ProjectHome.tsx';import OpacityRestoredNotice from './src/OpacityRestoredNotice.tsx';
+    import AssetLibrary from './src/AssetLibrary.tsx';import Timeline from './src/Timeline.tsx';import Preview from './src/Preview.tsx';
+    import TimelineInspector from './src/TimelineInspector.tsx';import ProjectHome from './src/ProjectHome.tsx';import OpacityRestoredNotice from './src/OpacityRestoredNotice.tsx';
     import {I18nProvider} from './src/i18n/I18nProvider.tsx';import {ConfirmationProvider} from '@mioon/ui/components/workbench-confirm';
     import {createOpacityCandidateApplication,readOpacityCandidateApplication} from './src/opacity-candidate-application.ts';
-    import * as contracts from '@mioon/contracts';import {rpc} from './src/api.js';import {createEditTaskClient} from './src/edit-task-client.js';
+    import * as contracts from '@mioon/contracts';import {rpc} from './src/api.ts';import {createEditTaskClient} from './src/edit-task-client.ts';
     const f=${JSON.stringify(data)}, noop=()=>{}, token=createOpacityCandidateApplication({...contracts,rpc,createEditTaskClient},()=>{throw Error('SSR must never fetch');}), app=readOpacityCandidateApplication(token);
     const components={assets:<AssetLibrary mutationDisabled assets={[f.asset]} project={f.project} mode="editing" filter="all" search="" onFilter={noop} onSearch={noop} onPreview={noop} busy={{}}/>,
       timeline:<Timeline basicEditingOnly structureReadOnly sessionViewOnly waveformReadOnly timeline={f.timeline} assets={[f.asset]} playhead={0} historyState={{canUndo:true,canRedo:true}} onHistory={noop} onSeek={noop} onRender={noop} onCollapse={noop}/>,
@@ -200,7 +202,7 @@ function renderComponents(f) {
       return [locale,Object.fromEntries(Object.entries(components).map(([name,component])=>[name,renderToStaticMarkup(<I18nProvider store={store}><ConfirmationProvider labels={{title:'Confirm',cancel:'Cancel',continue:'Continue'}}>{component}</ConfirmationProvider></I18nProvider>)]))];
     }));`;
   const script = `import {build} from 'esbuild';globalThis.fetch=()=>{throw Error('SSR must not fetch');};
-    const {outputFiles}=await build({stdin:{contents:${JSON.stringify(fixture)},loader:'jsx',resolveDir:${JSON.stringify(path.join(root, 'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,loader:{'.css':'empty'},jsx:'automatic',define:{'process.env.NODE_ENV':'"production"'}});
+    const {outputFiles}=await build({stdin:{contents:${JSON.stringify(fixture)},loader:'tsx',resolveDir:${JSON.stringify(path.join(root, 'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,loader:{'.css':'empty'},jsx:'automatic',define:{'process.env.NODE_ENV':'"production"'}});
     const result=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64')).catch(error=>{process.stderr.write(error.stack.replace(/data:text\\/javascript;base64,[A-Za-z0-9+/=]+/g,'<bundle>'));process.exit(1);});
     await new Promise(resolve=>process.stdout.write(JSON.stringify(result.html),resolve));process.exit(0);`;
   return JSON.parse(execFileSync(process.execPath, ['--input-type=module'], {cwd: root, input: script, encoding: 'utf8', timeout: 30000, maxBuffer: 4 * 1024 * 1024}));
@@ -251,24 +253,25 @@ function timelineActionsHarness(timeline, asset) {
       if (name === './UiPreferencesProvider.tsx') return {useUiPreferences:()=>({preferences:DEFAULT_UI_PREFERENCES})};
       if (name === './timeline-view-geometry.ts') return geometry;
       if (name === './timeline-removal.ts') return {displayTimelineFrame};
-      if (name === './timeline-keyboard.js') return {rulerFrameForKey};
-      if (name === './timeline-snapping.js') return {timelineDropPreview};
+      if (name === './timeline-keyboard.ts') return {rulerFrameForKey};
+      if (name === './timeline-snapping.ts') return {timelineDropPreview};
       if (name === './timeline-source-freshness.ts') return {staleSourceSentence};
       if (name === './TimelineToolbar.tsx') return load('TimelineToolbar.tsx');
       if (name === './ClipRemovalControls.tsx') return {ClipActionsMenu:'ClipActionsMenu',TimelineRemovalShortcuts:'TimelineRemovalShortcuts',useClipRemoval:()=>({request(){},dialog:null})};
-      if (name === './use-timeline-waveforms.js') return {useTimelineWaveforms:()=>({enabled:false,windows:[],entries:new Map(),setEnabled(){},retry(){}})};
-      if (name === './TimelineWaveform.jsx') return {default:'TimelineWaveform',TimelineWaveformControls:'TimelineWaveformControls',__esModule:true};
-      if (name === './waveform-state.js') return {WAVEFORM_LIMITS};
-      if (name === './api.js') return {assetUrl:()=>''};
-      if (name === './Nodes.jsx') return {Media:'Media'};
+      if (name === './use-timeline-waveforms.ts') return {useTimelineWaveforms:()=>({enabled:false,windows:[],entries:new Map(),setEnabled(){},retry(){}})};
+      if (name === './TimelineWaveform.tsx') return {default:'TimelineWaveform',TimelineWaveformControls:'TimelineWaveformControls',__esModule:true};
+      if (name === './waveform-state.ts') return {WAVEFORM_LIMITS};
+      if (name === './api.ts') return {assetUrl:()=>''};
+      if (name === './Nodes.tsx') return {Media:'Media'};
       if (name.startsWith('@mioon/ui/')) return new Proxy({}, {get:(_,key)=>String(key)});
       if (name.endsWith('.css')) return {};
-      if (name.endsWith('.jsx')) return {default:name,__esModule:true};
+      if (name.endsWith('.jsx') || name.endsWith('.tsx')) return {default:name,__esModule:true};
+      if (name === './icons.tsx') return {default:'Icon',__esModule:true};
       throw Error(`Unexpected Timeline action dependency ${name}`);
     },module,module.exports);
     modules.set(file,module.exports);return module.exports;
   }
-  const Timeline = load('Timeline.jsx').default, Toolbar = load('TimelineToolbar.tsx').default;
+  const Timeline = load('Timeline.tsx').default, Toolbar = load('TimelineToolbar.tsx').default;
   return {writes, render(structureReadOnly, overrides={}) {
     cursor=0;
     const tree=Timeline({timeline,assets:[asset],playhead:0,visible:true,presentationVisible:true,collapsed:false,basicEditingOnly:true,structureReadOnly,sessionViewOnly:true,waveformReadOnly:true,

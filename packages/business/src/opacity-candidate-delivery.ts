@@ -8,7 +8,7 @@ import {matchesOpacityCandidateExport} from './opacity-candidate-render-authorit
 import type {TimelineDeliveryReadGuards} from './timeline-delivery-read.ts';
 
 const require = createRequire(import.meta.url);
-const sources: unknown = require('./timeline-sources.mjs');
+const sources: unknown = require('./timeline-sources.ts');
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 interface Binding {assertRecord(value: unknown): boolean; assertDatabase(value: DatabaseSync): void; checkpoint(): void}
 const bindings = new WeakMap<object, Binding>();

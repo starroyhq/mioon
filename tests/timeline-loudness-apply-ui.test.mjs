@@ -6,7 +6,7 @@ import { transformSync } from 'esbuild';
 import * as stateModule from '../apps/web/src/timeline-loudness-apply-state.ts';
 import * as floatModule from '@mioon/contracts/timeline-export-float';
 import { TIMELINE_EXPORT_DEFAULT_SETTINGS } from '@mioon/contracts';
-import { createExportSettingsController, exportSettingsKey, freezeExportSettings } from '../apps/web/src/export-settings-state.js';
+import { createExportSettingsController, exportSettingsKey, freezeExportSettings } from '../apps/web/src/export-settings-state.ts';
 import { fixture, context, draft, report, input } from './helpers/timeline-mix-loudness-ui-fixture.mjs';
 const source = name => readFileSync(new URL(`../apps/web/src/${name}`, import.meta.url), 'utf8');
 const flatten = value => Array.isArray(value) ? value.flatMap(flatten) : value && typeof value === 'object' ? [value, ...flatten(value.props?.children)] : [];
@@ -55,7 +55,7 @@ test('explicit export profile selector retains omitted legacy and default-v1 sha
   const captured = controller.getState(); assert.equal(controller.choose(choices[0],captured.scope,captured.version),true);
   assert.equal(controller.getSettings('project:1').profileId,floatModule.TIMELINE_EXPORT_FLOAT_PROFILE_ID);
   controller.setContext({scope:'project:2',enabled:true});assert.deepEqual(controller.getSettings('project:2'),TIMELINE_EXPORT_DEFAULT_SETTINGS);
-  assert.match(source('TimelineExportSettings.jsx'), /<TimelineExportProfile value=\{value\} disabled=\{disabled\} onChange=\{onChange\} Select=\{WorkbenchSelect\}/);
+  assert.match(source('TimelineExportSettings.tsx'), /<TimelineExportProfile value=\{value\} disabled=\{disabled\} onChange=\{onChange\} Select=\{WorkbenchSelect\}/);
 });
 function hookHarness() {
   const refs=[], effects=[], pending=[]; let cursor=0;

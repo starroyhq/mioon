@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {Readable} from 'node:stream';
-import {createCompatibleImageGateway, createLiveImageGateway} from '../packages/business/src/images/gateway.mjs';
-import {createCustomImageSettings, createImageSettings, IMAGE_CREDENTIAL_ACQUIRE, IMAGE_SETTINGS_ASSERT_CURRENT} from '../packages/business/src/images/settings.mjs';
-import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION, DEFAULT_IMAGE_CONFIGURATION, CUSTOM_IMAGE_SETTINGS_NAMESPACE} from '../packages/contracts/src/image-settings.mjs';
-import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS} from '../packages/contracts/src/images.mjs';
-import {renderMockImagePng} from '../packages/business/src/images/png.mjs';
+import {createCompatibleImageGateway, createLiveImageGateway} from '../packages/business/src/images/gateway.ts';
+import {createCustomImageSettings, createImageSettings, IMAGE_CREDENTIAL_ACQUIRE, IMAGE_SETTINGS_ASSERT_CURRENT} from '../packages/business/src/images/settings.ts';
+import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION, DEFAULT_IMAGE_CONFIGURATION, CUSTOM_IMAGE_SETTINGS_NAMESPACE} from '../packages/contracts/src/image-settings.ts';
+import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS} from '../packages/contracts/src/images.ts';
+import {renderMockImagePng} from '../packages/business/src/images/png.ts';
 
 const key = 'synthetic-custom-gateway-key', officialKey = 'synthetic-official-gateway-key';
 const configuration = {...DEFAULT_CUSTOM_IMAGE_CONFIGURATION, enabled: true, baseUrl: 'https://custom-images.example/proxy/v1', model: 'vendor/reviewed-image-EXACT-v1'};

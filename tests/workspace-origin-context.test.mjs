@@ -4,7 +4,7 @@ import {
   workspaceOriginOptions, workspaceOriginScope, pinNewWorkspaceIntent,
   workspaceIntentDisposition, assertWorkspaceIntent, sameWorkspaceIntent,
   workspacePendingKey, removeExactWorkspacePending, createWorkspaceOriginReader,
-} from '../apps/web/src/workspace-origin.js';
+} from '../apps/web/src/workspace-origin.ts';
 
 const a = '11111111-1111-4111-8111-111111111111';
 const b = '22222222-2222-4222-8222-222222222222';

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node src/index.mjs"
+    "start": "node src/index.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",

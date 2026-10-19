@@ -6,8 +6,8 @@ import path from 'node:path';
 import {ChildProcess} from 'node:child_process';
 import {once} from 'node:events';
 import {resolveTimelineExportDelivery,TIMELINE_OUTPUT_PRESETS,timelineExportCapabilityResultSchema} from '@mioon/contracts';
-import {inspectTimelineExportCapability,timelineExportVideoArgs,TIMELINE_EXPORT_CAPABILITY_LIMITS} from '../packages/business/src/timeline-export-capabilities.mjs';
-import {onMediaProcess,terminateMediaProcesses,hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.mjs';
+import {inspectTimelineExportCapability,timelineExportVideoArgs,TIMELINE_EXPORT_CAPABILITY_LIMITS} from '../packages/business/src/timeline-export-capabilities.ts';
+import {onMediaProcess,terminateMediaProcesses,hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.ts';
 
 const settings=(resolution='native',rateControl={mode:'crf',quality:'standard'})=>({profileId:'mp4_h264_v1',resolution,rateControl});
 const delivery=resolveTimelineExportDelivery(TIMELINE_OUTPUT_PRESETS[0],settings());

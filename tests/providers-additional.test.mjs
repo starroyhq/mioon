@@ -7,8 +7,8 @@ import path from 'node:path';
 import { crc32, deflateSync } from 'node:zlib';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { createMinimaxProvider } from '../packages/business/src/providers/minimax.mjs';
-import { createViduProvider } from '../packages/business/src/providers/vidu.mjs';
+import { createMinimaxProvider } from '../packages/business/src/providers/minimax.ts';
+import { createViduProvider } from '../packages/business/src/providers/vidu.ts';
 
 const exec = promisify(execFile);
 const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });

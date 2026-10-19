@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
 import * as contracts from '@mioon/contracts';
-import {createEditTaskClient} from '../apps/web/src/edit-task-client.js';
+import {createEditTaskClient} from '../apps/web/src/edit-task-client.ts';
 import {createOpacityCandidateApplication, readOpacityCandidateApplication} from '../apps/web/src/opacity-candidate-application.ts';
 import {LOCALES, translate} from '../packages/i18n/src/index.ts';
 
-const source = readFileSync(new URL('../apps/web/src/main.jsx', import.meta.url), 'utf8');
-const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
+const source = readFileSync(new URL('../apps/web/src/main.tsx', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const element = (type, props, ...children) => ({type, props: {...props, children}});
 const nodes = value => !value || typeof value !== 'object' ? [] : Array.isArray(value) ? value.flatMap(nodes) : [value, ...nodes(value.props?.children)];
 
@@ -16,16 +18,16 @@ function entry(candidate) {
   let rendered, calls = 0, token;
   const rpc = async () => {throw Error('Entry must not issue RPC while rendering.');};
   const react = {createElement: element, StrictMode: 'StrictMode'};
-  const code = transformSync(source, {loader: 'jsx', format: 'cjs', define: {__MIOON_INTERNAL_OPACITY_CANDIDATE__: String(candidate)}}).code;
+  const code = transformSync(source, {loader: 'tsx', format: 'cjs', define: {__MIOON_INTERNAL_OPACITY_CANDIDATE__: String(candidate)}}).code;
   const module = {exports: {}};
   Function('require', 'module', 'exports', 'document', 'navigator', code)(name => {
     if (name === 'react') return {...react, default: react};
     if (name === 'react-dom/client') return {createRoot: () => ({render: value => {rendered = value;}})};
     if (name === '@mioon/contracts') return contracts;
-    if (name.endsWith('/api.js')) return {rpc, ApiError: class extends Error {}};
-    if (name.endsWith('/edit-task-client.js')) return {createEditTaskClient};
+    if (name.endsWith('/api.ts')) return {rpc, ApiError: class extends Error {}};
+    if (name.endsWith('/edit-task-client.ts')) return {createEditTaskClient};
     if (name.endsWith('/opacity-candidate-application.ts')) return {createOpacityCandidateApplication(runtime) {calls++; token = createOpacityCandidateApplication(runtime);return token;}};
-    if (name.endsWith('/App.jsx')) return {__esModule: true, default: 'App', SettingsConnectionForms: 'SettingsConnectionForms'};
+    if (name.endsWith('/App.tsx')) return {__esModule: true, default: 'App', SettingsConnectionForms: 'SettingsConnectionForms'};
     if (name.endsWith('/DesktopRoot.tsx')) return {__esModule: true, default: 'DesktopRoot'};
     if (name.endsWith('/desktop-frame.ts')) return {desktopFrame: () => null};
     if (name.includes('I18nProvider.tsx')) return {I18nProvider: 'I18nProvider', useI18n: () => ({t: key => key, renderMessage: String})};
@@ -78,7 +80,7 @@ test('candidate App binds the actual task lane, Inspector v3 client and render r
   assert.match(app, /opacityCandidate=\{application\?\.inspectorBinding\}/);
   assert.match(app, /application && !application\.validateProjectSnapshot\(next, projectId\)/);
   assert.match(app, /const editorView = application \? \{ \.\.\.restored, activeMode: 'editing' \}/);
-  assert.match(app, /<Preview[^>]*opacityApplication=\{opacityApplication\}/);
+  assert.match(app, /<Preview[^>]*opacityApplication=\{opacityApplication(?: as never)?\}/);
   assert.match(app, /onCanvas=\{application \? undefined : \(\) => changeMode\('canvas'\)\}/);
   const history = app.match(/<ExportHistoryList\s[\s\S]*?\/>/)?.[0];
   assert.ok(history, 'The actual history composition remains in App');
@@ -87,7 +89,7 @@ test('candidate App binds the actual task lane, Inspector v3 client and render r
     /fileRecoveryEnabled=\{!restored && !application\}/,
     /candidateConnected=\{online && auth === true && workbenchReady && !loading\}/,
   ]) assert.match(history, prop);
-  assert.match(app, /onReplaceSource=\{application \? undefined : replaceTimelineClipSource\}/);
+  assert.match(app, /onReplaceSource=\{application \? undefined : replaceTimelineClipSource(?: as never)?\}/);
   assert.match(app, /<Timeline basicEditingOnly=\{Boolean\(application\)\}/);
   assert.match(app, /!application && <AgentWorkspace/);
   assert.match(app, /!application && <ImageGeneration/);
@@ -95,7 +97,7 @@ test('candidate App binds the actual task lane, Inspector v3 client and render r
 });
 
 test('candidate Inspector describes saved preview/export behavior in all supported languages', () => {
-  const inspector = readFileSync(new URL('../apps/web/src/TimelineInspector.jsx', import.meta.url), 'utf8');
+  const inspector = readFileSync(new URL('../apps/web/src/TimelineInspector.tsx', import.meta.url), 'utf8');
   assert.match(inspector, /t\('opacity\.envelope\.renderSaved'\)/);
   assert.doesNotMatch(inspector, /t\('opacity\.envelope\.renderPending'\)/);
   for (const locale of LOCALES) {
@@ -104,7 +106,7 @@ test('candidate Inspector describes saved preview/export behavior in all support
 });
 
 test('actual candidate Return to source keeps editing and uses the shared source-preview navigation guard', async () => {
-  const first = app.indexOf('  async function returnToSource(assetId) {');
+  const first = app.indexOf('  async function returnToSource(assetId: string): Promise<void> {');
   const last = app.indexOf('  async function moveTimelineClip(', first);
   assert.ok(first > 0 && last > first);
   const calls = [], asset = {id: 'source'};

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { nativeText, setNativeLanguageReader } from '../apps/desktop/src/app-language-text.ts';
 
-const source = readFileSync(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
 
 function recoveryDetail(key) {
   assert.ok(source.includes(`detail: nt('${key}')`), 'The native recovery dialog must use the translated safety detail.');

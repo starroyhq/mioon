@@ -5,8 +5,8 @@ import {mkdtemp, realpath, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {AppError} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
 import {createSavedTimelineAudioReader, createTimelineAudioPreviewCoordinator} from '../packages/business/src/timeline-audio-preview-coordinator.ts';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));

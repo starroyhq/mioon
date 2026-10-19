@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {imageSchemas,IMAGE_FIXED_OPTIONS,IMAGE_MODELS,IMAGE_LIMITS,IMAGE_STATES,imageSnapshotSchema,imageReceiptSchema,imageAdapterInputSchema,isImageTaskResponse,isImageMutationResponse,isImageListResponse,isImageRequestResponse,isImageProfilesResponse} from '../packages/contracts/src/images.mjs';
-import {isSubjectVersionResponse} from '../packages/contracts/src/subjects.mjs';
+import {imageSchemas,IMAGE_FIXED_OPTIONS,IMAGE_MODELS,IMAGE_LIMITS,IMAGE_STATES,imageSnapshotSchema,imageReceiptSchema,imageAdapterInputSchema,isImageTaskResponse,isImageMutationResponse,isImageListResponse,isImageRequestResponse,isImageProfilesResponse} from '../packages/contracts/src/images.ts';
+import {isSubjectVersionResponse} from '../packages/contracts/src/subjects.ts';
 const projectId=randomUUID(),groupId=randomUUID(),taskId=randomUUID(),assetId=randomUUID(),versionId=randomUUID(),requestId=randomUUID(),timestamp='2026-10-10T00:00:00.000Z';
 const input={projectId,name:'Example',prompt:'A blue square',providerId:'mock',model:IMAGE_MODELS.mock,options:IMAGE_FIXED_OPTIONS,requestId};
 const task={id:taskId,projectId,groupId,requestId,name:input.name,prompt:input.prompt,providerId:input.providerId,model:input.model,options:input.options,state:'queued',revision:1,dispatched:false,versionId:null,errorCode:null,createdAt:timestamp,updatedAt:timestamp};

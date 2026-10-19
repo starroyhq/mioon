@@ -5,22 +5,22 @@ import {mkdtempSync,rmSync,readFileSync,writeFileSync,existsSync} from 'node:fs'
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
 import {initializeWorkspaceSchema28} from '../packages/business/src/workspace-schema-v28.ts';
 import {initializeWorkspaceSchema30,validateWorkspaceSchema30} from '../packages/business/src/workspace-schema-v30.ts';
 import {createWorkspaceRestoreProfileV29} from '../packages/business/src/workspace-restore-schema-v29.ts';
 import {readCurrentWorkspaceRole} from '../packages/business/src/workspace-schema-dispatch.ts';
-import {openStore,classifyCurrentWorkspaceSchema,installCurrentWorkspaceRestoreSchema,validateCurrentWorkspaceRestoreSchema,validateCurrentWorkspaceColourProfile,getWorkspaceRestoreContext} from '../packages/business/src/db.mjs';
-import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';
+import {openStore,classifyCurrentWorkspaceSchema,installCurrentWorkspaceRestoreSchema,validateCurrentWorkspaceRestoreSchema,validateCurrentWorkspaceColourProfile,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {readWorkspaceBackupSchemaVersion} from '../packages/business/src/workspace-backup-schema-versions.ts';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.mjs';
-import {withOrdinaryMigrationSource} from '../apps/desktop/scripts/migration-restore-guard.mjs';
+import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
+import {withOrdinaryMigrationSource} from '../apps/desktop/scripts/migration-restore-guard.ts';
 import {workspaceBackupSourceSchemaVersion,workspaceRestorationPairSchema} from '../packages/contracts/src/workspace-schema-profiles.ts';
 import {projectTimelineColourPlan} from '../packages/contracts/src/timeline-colour.ts';
 import {parseCube3D} from '../packages/business/src/cube-lut.ts';
 import {lutInputHash} from '../packages/business/src/lut-resource-validation.ts';
-import {open,snapshot,fixture,facade} from './workspace-schema26-fixtures.mjs';
+import {open,snapshot,fixture,facade,createHistoricalDatabase} from './workspace-schema26-fixtures.mjs';
 
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const stamp='2026-10-14T00:00:00.000Z';
@@ -93,10 +93,13 @@ for(const version of [24,26,28,30])test(`current reader keeps exact source${vers
  assert.equal(readCurrentWorkspaceRole(db),`restored-${version+1}-evidence`);assert.deepEqual(validateCurrentWorkspaceRestoreSchema(db),info);
 });
 
-test('pair contracts keep30/31 and current32/33 exact while rejecting unknown versions and cross-pairs',()=>{
- for(const value of [1,24,26,28,30,32,34])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(value).success,true);
- for(const value of [25,27,29,31,33,35,36,37,30.5])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(value).success,false);
- for(const [index,profile]of ['restored-local-v1','restored-local-v2','restored-local-v3','restored-local-v4','restored-local-v5','restored-local-v6'].entries())for(const sourceSchema of [24,26,28,30,32,34])for(const databaseSchemaVersion of [25,27,29,31,33,35])assert.equal(workspaceRestorationPairSchema.safeParse({profile,sourceSchema,databaseSchemaVersion}).success,sourceSchema===24+2*index&&databaseSchemaVersion===25+2*index);
+test('pair contracts keep only exact registered source/restoration pairs',()=>{
+ for(const value of [1,24,26,28,30,32,34,36,38,40,44,48])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(value).success,true);
+ for(const value of [25,27,29,31,33,35,37,39,41,45,49,30.5])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(value).success,false);
+ const pairs=[['restored-local-v1',24,25],['restored-local-v2',26,27],['restored-local-v3',28,29],['restored-local-v4',30,31],['restored-local-v5',32,33],['restored-local-v6',34,35],['restored-local-v7',36,37],['restored-local-v8',38,39],['restored-local-v9',40,41],['restored-local-v11',44,45],['restored-local-v13',48,49]];
+ for(const [profile,sourceSchema,databaseSchemaVersion]of pairs)assert.equal(workspaceRestorationPairSchema.safeParse({profile,sourceSchema,databaseSchemaVersion}).success,true);
+ for(const profile of ['restored-local-v10','restored-local-v12','restored-local-v14'])for(const sourceSchema of [24,26,28,30,32,34,36,38,40,44,48])assert.equal(workspaceRestorationPairSchema.safeParse({profile,sourceSchema,databaseSchemaVersion:sourceSchema+1}).success,false);
+ for(const [index,[,sourceSchema,databaseSchemaVersion]]of pairs.entries())for(const shift of [-1,1])assert.equal(workspaceRestorationPairSchema.safeParse({profile:pairs[index][0],sourceSchema:sourceSchema+shift,databaseSchemaVersion}).success,false);
 });
 
 for(const change of ['future marker','missing30','missing26','restore31 without30'])test(`new role rejects stale/corrupt markers: ${change}`,t=>{
@@ -168,8 +171,8 @@ test('cold backup30 and restored31 preserve exact colour, snapshots, history, LU
  const base=mkdtempSync(path.join(tmpdir(),'mioon-colour-backup-'));t.after(()=>rmSync(base,{recursive:true,force:true}));
  const root=path.join(base,'source'),backup=path.join(base,'backup'),restored=path.join(base,'restored');
  // Keep an actual source30 archive fixture after ordinary startup advances.
- const store=openStore(root);store.db.exec('DELETE FROM schema_version WHERE version IN (32,34)');
- const f=seed(store.db),before=snapshot(store.db);writeFileSync(path.join(root,f.asset.relativePath),bytes,{mode:0o600});store.close();
+ const db=createHistoricalDatabase(root,30);
+ const f=seed(db),before=snapshot(db);writeFileSync(path.join(root,f.asset.relativePath),bytes,{mode:0o600});db.close();
  const sourceBytes=readFileSync(path.join(root,'workbench.sqlite'));
  let migrated=false;await withOrdinaryMigrationSource(path.join(root,'workbench.sqlite'),async({file})=>{migrated=true;assert.deepEqual(readFileSync(file),sourceBytes);});assert.equal(migrated,true);
  const result=await createWorkspaceBackup({source:root,destination:backup});assert.equal(result.databaseSchemaVersion,30);assert.equal(result.integrity,'verified');
@@ -189,9 +192,9 @@ test('cold backup30 and restored31 preserve exact colour, snapshots, history, LU
 test('cold capture and migration refuse missing30 or corrupt colour before publishing a destination',async t=>{
  for(const kind of ['missing30','corrupt colour']){
   const base=mkdtempSync(path.join(tmpdir(),'mioon-colour-refuse-'));t.after(()=>rmSync(base,{recursive:true,force:true}));
-  const root=path.join(base,'source'),backup=path.join(base,'backup'),store=openStore(root);store.db.exec('DELETE FROM schema_version WHERE version IN (32,34)');seed(store.db,{render:false});
-  if(kind==='missing30')store.db.exec('DELETE FROM schema_version WHERE version=30');
-  else changeTimeline(store.db,value=>{value.clips[0].colour.look.strength=-1;});store.close();
+  const root=path.join(base,'source'),backup=path.join(base,'backup'),db=createHistoricalDatabase(root,30);seed(db,{render:false});
+  if(kind==='missing30')db.exec('DELETE FROM schema_version WHERE version=30');
+  else changeTimeline(db,value=>{value.clips[0].colour.look.strength=-1;});db.close();
   let consumed=false;await assert.rejects(withOrdinaryMigrationSource(path.join(root,'workbench.sqlite'),()=>{consumed=true;}));assert.equal(consumed,false);
   await assert.rejects(createWorkspaceBackup({source:root,destination:backup}),{code:'WORKSPACE_BACKUP_DATABASE_INVALID'});assert.equal(existsSync(path.join(backup,'COMPLETE.json')),false);
  }

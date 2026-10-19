@@ -5,8 +5,8 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {Worker} from 'node:worker_threads';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
 
 const operation='timeline.clip.replaceSource';
 const clone=value=>JSON.parse(JSON.stringify(value));
@@ -286,7 +286,7 @@ test('durable receipt failures and post-write owner corruption roll back timelin
 
 async function race(t,f,inputs){
  const source=`const {parentPort,workerData}=require('node:worker_threads');(async()=>{const {openStore}=await import(workerData.db);const {createServices}=await import(workerData.services);const store=openStore(workerData.root,{lock:false});parentPort.postMessage({ready:true});parentPort.once('message',async()=>{try{parentPort.postMessage({result:await createServices(store,new Map()).call('${operation}',workerData.input)});}catch(error){parentPort.postMessage({error:error.code||error.message});}finally{store.close();}});})().catch(error=>{throw error});`;
- const workers=inputs.map(input=>new Worker(source,{eval:true,workerData:{root:f.root,input,db:new URL('../packages/business/src/db.mjs',import.meta.url).href,services:new URL('../packages/business/src/services.mjs',import.meta.url).href}}));
+ const workers=inputs.map(input=>new Worker(source,{eval:true,workerData:{root:f.root,input,db:new URL('../packages/business/src/db.ts',import.meta.url).href,services:new URL('../packages/business/src/services.ts',import.meta.url).href}}));
  t.after(()=>Promise.all(workers.map(worker=>worker.terminate())));
  await Promise.all(workers.map(worker=>new Promise((resolve,reject)=>{worker.once('message',resolve);worker.once('error',reject);})));
  const pending=workers.map(worker=>new Promise((resolve,reject)=>{worker.once('message',resolve);worker.once('error',reject);}));workers.forEach(worker=>worker.postMessage('go'));

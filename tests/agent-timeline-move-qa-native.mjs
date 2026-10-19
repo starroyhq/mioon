@@ -7,11 +7,11 @@ import {spawn} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {readFile,writeFile,readdir,lstat,open,mkdir} from 'node:fs/promises';
-import {ensurePrivateDirectory} from '../packages/contracts/src/private-storage.mjs';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {createAgentSettings} from '../packages/business/src/agent/settings.mjs';
-import {createAgentSettingsFile} from '../packages/business/src/agent/settings-file.mjs';
+import {ensurePrivateDirectory} from '../packages/contracts/src/private-storage.ts';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
+import {createAgentSettingsFile} from '../packages/business/src/agent/settings-file.ts';
 import {seedEditQaSettings,startEditQaModel,startEditQaMailbox,jsonFile,assertNativeFixtureClosed} from './helpers/agent-edits-qa-support.mjs';
 
 const repo=fileURLToPath(new URL('../',import.meta.url));

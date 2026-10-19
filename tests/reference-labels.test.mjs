@@ -2,7 +2,7 @@ import { i18nTestModule, renderMessage as renderI18nMessage, message as msg } fr
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import * as references from '../apps/web/src/reference-connections.js';
+import * as references from '../apps/web/src/reference-connections.ts';
 
 const projectId = 'project-a';
 const asset = { id: 'asset-a', projectId, name: '花园首帧.png', mimeType: 'image/png' };
@@ -106,15 +106,15 @@ function harness(name) {
     useState: () => [selected, value => { selected = value; }],
   };
   react.default = react;
-  const code = transformSync(readFileSync(new URL('../apps/web/src/ReferenceConnections.jsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code;
+  const code = transformSync(readFileSync(new URL('../apps/web/src/ReferenceConnections.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
   const module = { exports: {} };
   Function('module', 'exports', 'require', code)(module, module.exports, id => {
     if (id === 'react') return react;
     if (id.endsWith('/i18n/I18nProvider.tsx')) return i18nTestModule();
-    if (id === './reference-connections.js') return references;
-    if (id === './WorkspaceControls.jsx') return { WorkbenchSelect: 'WorkbenchSelect' };
-    if (id === './icons.jsx') return { default: 'Icon', __esModule: true };
-    if (id === './api.js') return { assetUrl: value => `/media/${value.id}` };
+    if (id === './reference-connections.ts') return references;
+    if (id === './WorkspaceControls.tsx') return { WorkbenchSelect: 'WorkbenchSelect' };
+    if (id === './icons.tsx') return { default: 'Icon', __esModule: true };
+    if (id === './api.ts') return { assetUrl: value => `/media/${value.id}` };
     if (id === '@mioon/ui/components/button') return { Button: 'Button' };
     if (id === '@mioon/ui/components/label') return { Label: 'Label' };
     throw Error(`Unexpected component dependency: ${id}`);

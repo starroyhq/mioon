@@ -2,14 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { stripSourceTypes } from './helpers/eval-source.mjs';
 import { transformSync } from 'esbuild';
 import { buildAudioPreviewPlan } from '../packages/contracts/src/timeline-audio-preview.ts';
-import { workspaceOriginScope, pinNewWorkspaceIntent } from '../apps/web/src/workspace-origin.js';
+import { workspaceOriginScope, pinNewWorkspaceIntent } from '../apps/web/src/workspace-origin.ts';
 import { createTimelineAudioPreviewController, timelineAudioPreviewSourceIdentity, timelineAudioPreviewPosition, seekTimelineAudioPreview } from '../apps/web/src/use-timeline-audio-preview.ts';
 import * as i18n from '../packages/i18n/src/index.ts';
 
-const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
-const preview = readFileSync(new URL('../apps/web/src/Preview.jsx', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
+const preview = readFileSync(new URL('../apps/web/src/Preview.tsx', import.meta.url), 'utf8');
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const start = app.indexOf('  function soundAuditionContext()');
@@ -36,7 +37,7 @@ function harness() {
   const calls = { rpc: [], positions: [], contexts: [], transports: [], order: [] };
   let controller, latestOptions;
   const env = {
-    nativeAudioAdmission: null,
+    application: null, nativeAudioAdmission: null,
     workspaceOriginScope, pinNewWorkspaceIntent, timelineAudioPreviewSourceIdentity, timelineAudioPreviewPosition, seekTimelineAudioPreview,
     workspaceRef: { current: { restored: false } }, currentProject: { current: id(1) }, projectEpoch: { current: 1 }, navigationEpoch: { current: 0 },
     dataRef: { current: { project: { id: id(1) }, timeline, assets: [asset] } },
@@ -77,7 +78,7 @@ function harness() {
   const render = () => {
     env.playhead = env.viewRef.current.editing.playhead;
     env.workspaceMode = env.viewRef.current.activeMode; env.previewKind = env.viewRef.current.editing.previewKind;
-    return Function(...Object.keys(env), `${block};return {audioPreview,soundAuditionContext,effectivePlayhead,seekTimelineSound};`)(...Object.values(env));
+    return Function(...Object.keys(env), `${stripSourceTypes(block,{loader:'tsx'})};return {audioPreview,soundAuditionContext,effectivePlayhead,seekTimelineSound};`)(...Object.values(env));
   };
   const initial = render();
   return { env, calls, render, initial, get controller() { return controller; }, get options() { return latestOptions; } };
@@ -149,7 +150,7 @@ test('actual App clock display stays ephemeral while each explicit seek writes t
   f.controller.revoke(); await tick(); f.render().seekTimelineSound(88); assert.deepEqual(f.calls.positions, [77, 88]);
   const previewTag = app.slice(app.indexOf('<Preview '), app.indexOf('/>', app.indexOf('<Preview ')) + 2);
   assert.match(previewTag, /playhead=\{playhead\} onSeek=\{setPlayhead\}/); assert.doesNotMatch(previewTag, /effectivePlayhead|seekTimelineSound/);
-  const timelineTag = app.slice(app.indexOf('<Timeline staleClips='), app.indexOf('/>', app.indexOf('<Timeline staleClips=')) + 2);
+  const timelineTag = app.slice(app.indexOf('<Timeline '), app.indexOf('/>', app.indexOf('<Timeline ')) + 2);
   assert.match(timelineTag, /onSeek=\{seekTimelineSound\} playhead=\{effectivePlayhead\}/);
 });
 

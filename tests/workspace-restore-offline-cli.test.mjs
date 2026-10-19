@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import {parseBackupArguments} from '../apps/cli/src/backup.mjs';
+import {parseBackupArguments} from '../apps/cli/src/backup.ts';
 import {restoreFixture,tree,secret,runRestoreChild} from './helpers/workspace-restore-offline-fixture.mjs';
 const envelope=result=>{const lines=result.stdout.trim().split('\n');assert.equal(lines.length,1);return JSON.parse(lines[0]);};
 const statusArgs=(destination,data)=>['restore-status','--destination',destination,'--restoration-id',data.restorationId,'--backup-id',data.sourceBackupId,'--manifest-hash',data.manifestHash,'--source-db-hash',data.sourceDbHash];

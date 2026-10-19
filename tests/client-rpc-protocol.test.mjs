@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createClient } from '@mioon/client';
-import { rpc, ApiError } from '../apps/web/src/api.js';
+import { rpc, ApiError } from '../apps/web/src/api.ts';
 const projectId = '11111111-1111-4111-8111-111111111111';
 const env = { MIOON_TOKEN: 'synthetic-client-protocol-token-only' };
 const input = { projectId, title: 'Synthetic shot', requestId: 'original-mutation-request' };

@@ -12,12 +12,12 @@ import {constants, copyFileSync, readdirSync, lstatSync, readFileSync} from 'nod
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash, randomUUID} from 'node:crypto';
-import {resolveTimelineExportDelivery} from '../../../packages/contracts/src/index.mjs';
+import {resolveTimelineExportDelivery} from '../../../packages/contracts/src/index.ts';
 import {timelineCompositionSegments} from '../../../packages/contracts/src/timeline-segments.ts';
-import {renderTimeline} from '../../../packages/business/src/timeline-media.mjs';
-import {run, runStreaming, checkMediaEffect} from '../../../packages/business/src/media-runtime.mjs';
-import {withProbePermit} from '../../../packages/business/src/media-probe.mjs';
-import {onMediaProcess} from '../../../packages/business/src/media-processes.mjs';
+import {renderTimeline} from '../../../packages/business/src/timeline-media.ts';
+import {run, runStreaming, checkMediaEffect} from '../../../packages/business/src/media-runtime.ts';
+import {withProbePermit} from '../../../packages/business/src/media-probe.ts';
+import {onMediaProcess} from '../../../packages/business/src/media-processes.ts';
 import {createTimelineAudioPreviewDecoder} from '../../../packages/business/src/timeline-audio-preview-decoder.ts';
 import {planTimelineExportRange} from '../../../packages/business/src/timeline-export-range-plan.ts';
 

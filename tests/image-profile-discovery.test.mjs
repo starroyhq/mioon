@@ -11,21 +11,21 @@ import {once} from 'node:events';
 import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
 import {createImageSettings, createCustomImageSettings, IMAGE_SETTINGS_READ_CURRENT,
-  IMAGE_SETTINGS_ASSERT_CURRENT, IMAGE_CREDENTIAL_ACQUIRE} from '../packages/business/src/images/settings.mjs';
-import {createComfySettings, COMFY_SETTINGS_READ_CURRENT, COMFY_SETTINGS_ASSERT_CURRENT} from '../packages/business/src/comfy/settings.mjs';
+  IMAGE_SETTINGS_ASSERT_CURRENT, IMAGE_CREDENTIAL_ACQUIRE} from '../packages/business/src/images/settings.ts';
+import {createComfySettings, COMFY_SETTINGS_READ_CURRENT, COMFY_SETTINGS_ASSERT_CURRENT} from '../packages/business/src/comfy/settings.ts';
 import {IMAGE_MODELS, IMAGE_FIXED_OPTIONS, imageSchemas, imageOptionsSchema,
-  imageProfileResponseSchema, imageProfilesResponseSchema, isImageProfilesResponse} from '../packages/contracts/src/images.mjs';
+  imageProfileResponseSchema, imageProfilesResponseSchema, isImageProfilesResponse} from '../packages/contracts/src/images.ts';
 import {DEFAULT_IMAGE_CONFIGURATION, DEFAULT_CUSTOM_IMAGE_CONFIGURATION,
-  customImageModelSchema} from '../packages/contracts/src/image-settings.mjs';
+  customImageModelSchema} from '../packages/contracts/src/image-settings.ts';
 import {DEFAULT_COMFY_IMAGE_CONFIGURATION, COMFY_IMAGE_OPTIONS, comfyCheckpointSchema,
-  comfyImageOptionsSchema} from '../packages/contracts/src/comfy-images.mjs';
-import {createClient, operationDefinition} from '../packages/client/src/index.mjs';
-import {startServer} from '../apps/server/src/index.mjs';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.mjs';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.mjs';
+  comfyImageOptionsSchema} from '../packages/contracts/src/comfy-images.ts';
+import {createClient, operationDefinition} from '../packages/client/src/index.ts';
+import {startServer} from '../apps/server/src/index.ts';
+import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
+import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 
 const {z} = createRequire(new URL('../packages/contracts/package.json', import.meta.url))('zod');
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -340,7 +340,7 @@ function childEnvironment(extra = {}) {
   return {...clean, TZ: 'UTC', MIOON_ENABLE_LIVE_PROVIDER: '0', ...extra};
 }
 async function cli(input, env) {
-  const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.mjs'), 'rpc', operation, '--input', JSON.stringify(input)],
+  const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.ts'), 'rpc', operation, '--input', JSON.stringify(input)],
     {cwd: repo, env: childEnvironment(env), stdio: ['ignore','pipe','pipe']});
   let stdout = '', stderr = '';
   child.stdout.setEncoding('utf8').on('data', chunk => {stdout += chunk; if (stdout.length > 1024 * 1024) child.kill('SIGKILL');});
@@ -387,7 +387,7 @@ test('real HTTP, CLI and official MCP discover the same revisions without provid
   db = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
   const before = rows(db), version = db.prepare('PRAGMA data_version').get().data_version, files = await settingFiles(root), beforeCalls = clone(calls);
   mcp = new Client({name: 'image-profile-discovery-test', version: '1.0.0'}, {capabilities: {}});
-  const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.mjs')],
+  const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.ts')],
     cwd: repo, env: childEnvironment(env), stderr: 'pipe'});
   let stderr = ''; transport.stderr?.setEncoding('utf8').on('data', chunk => {stderr = (stderr + chunk).slice(-20000);});
   await mcp.connect(transport);

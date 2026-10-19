@@ -4,9 +4,9 @@ import {randomUUID} from 'node:crypto';
 import {schemas,TIMELINE_SUBTITLE_OPERATIONS,TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256,TIMELINE_SUBTITLE_LIMITS,
  getTimelineSubtitleTextIssue,getTimelineSubtitleIssue,isTimelineSubtitleSnapshotProfile,isTimelineRecord,isTimelineMutationResponse,isTimelineRenderRecord,
  DURABLE_EDIT_OPERATIONS,editTaskLane,operationEffect,hasRequestNotAppliedProof,TIMELINE_RESPONSE_BYTES,TIMELINE_REPLACEMENT_RESPONSE_BYTES} from '@mioon/contracts';
-import {INSPECTION_ROW_LIMITS} from '../packages/business/src/inspection-query.mjs';
-import {INSPECTION_LIMITS} from '../packages/business/src/inspection.mjs';
-import {freezeTimelineSnapshot} from '../packages/business/src/timeline-inputs.mjs';
+import {INSPECTION_ROW_LIMITS} from '../packages/business/src/inspection-query.ts';
+import {INSPECTION_LIMITS} from '../packages/business/src/inspection.ts';
+import {freezeTimelineSnapshot} from '../packages/business/src/timeline-inputs.ts';
 const clone=value=>structuredClone(value),at='2026-10-11T12:00:00.000Z';
 const base=()=>({projectId:randomUUID(),expectedRevision:1,requestId:randomUUID()});
 const cue=(patch={})=>({id:randomUUID(),text:'手动字幕 Hello 100%',startFrame:0,durationFrames:30,...patch});

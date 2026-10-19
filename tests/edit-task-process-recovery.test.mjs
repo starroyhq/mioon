@@ -8,8 +8,8 @@ import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
 import {isEditTaskEnvelope} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
 
 const repo = fileURLToPath(new URL('../', import.meta.url));
 const workerPath = fileURLToPath(new URL('./helpers/edit-task-process-worker.mjs', import.meta.url));

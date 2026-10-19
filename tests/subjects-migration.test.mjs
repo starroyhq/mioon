@@ -7,10 +7,10 @@ import {DatabaseSync} from 'node:sqlite';
 import {mkdtempSync,rmSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices,hash} from '../packages/business/src/services.mjs';
-import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
-import {bootstrapEditTaskSchema,migrateSubjectEditTasks} from '../packages/business/src/edit-task-schema.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices,hash} from '../packages/business/src/services.ts';
+import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
+import {bootstrapEditTaskSchema,migrateSubjectEditTasks} from '../packages/business/src/edit-task-schema.ts';
 import {schemas,DURABLE_EDIT_OPERATIONS,editTaskLane} from '@mioon/contracts';
 
 // Independently frozen from schema 14 at 1b08cf2. Do not derive this fixture

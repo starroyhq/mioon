@@ -1,0 +1,18 @@
+import {readFile,writeFile,mkdir} from 'node:fs/promises';import path from 'node:path';
+interface RpcEnvelope<T> {readonly ok: boolean; readonly data: T; readonly error?: unknown}
+interface Project {readonly id: string; readonly name: string}
+interface Asset {readonly id: string}
+interface Shot {readonly id: string; readonly revision: number}
+interface Job {readonly status: string}
+interface ProjectState {readonly jobs: Job[]}
+interface ExportJob {readonly id: string; readonly status: string; readonly url: string}
+const base=process.env.MIOON_BASE_URL||'http://127.0.0.1:4318';const token=process.env.MIOON_TOKEN||(await readFile(path.join(process.env.MIOON_DATA_DIR||'data','access-token'),'utf8')).trim();
+const rpc=async <T>(operation: string,input: unknown={}): Promise<T>=>{const r=await fetch(base+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input})});const v=await r.json() as RpcEnvelope<T>;if(!v.ok)throw Error(JSON.stringify(v.error));return v.data;};
+const name='Stanley × Maltese｜10 秒故事 · 合成演示';let project=(await rpc<Project[]>('project.list',{})).find(p=>p.name===name);if(project){console.log(`Demo already exists: ${base}/?project=${project.id}`);process.exit(0);}
+project=await rpc<Project>('project.create',{name,description:'五镜头 × 2 秒。原品牌故事仅作数据样例；画面为自行制作的测试图形及模拟运动测试片，非真实产品参考图，非模型广告成片。'});
+const asset=await rpc<Asset>('asset.import',{projectId:project.id,name:'自产合成测试参考.png',mimeType:'image/png',dataBase64:(await readFile(new URL('../examples/synthetic/reference.png',import.meta.url))).toString('base64')});
+const stories=[['追逐星星','二维白色与浅棕小狗追逐星星，轻快的运动。'],['举杯接星','小狗举起小杯，接住落下的星星。'],['印花对位','动作姿势与杯身平面印花对位。真实产品细节待原图接入。'],['产品展示','随行杯与宠物碗同框。产品造型须另行审片。'],['双产品定格','双产品定格，星星停留，结束。']] as const;
+const shots: Shot[]=[];for(let i=0;i<stories.length;i++){const [title,prompt]=stories[i];const s=await rpc<Shot>('shot.create',{projectId:project.id,title:`${String(i+1).padStart(2,'0')} ${title}`,prompt,referenceAssetIds:[asset.id],duration:2,position:{x:80+i*315,y:100+(i%2)*40}});shots.push(s);await rpc('generation.submit',{shotId:s.id,expectedRevision:s.revision,requestId:`demo-${project.id}-${i}`,providerId:'mock'});if(i)await rpc('edge.create',{projectId:project.id,source:shots[i-1].id,target:s.id});}
+await rpc('node.create',{projectId:project.id,type:'text',label:'软件验收演示',text:'合成测试素材 + 模拟视频\n不是模型生成广告。真实产品图尚未接入。',position:{x:80,y:-120}});
+let state!: ProjectState;for(let i=0;i<180;i++){state=await rpc<ProjectState>('project.get',{projectId:project.id});if(state.jobs.every(j=>j.status==='succeeded'))break;if(state.jobs.some(j=>j.status==='failed'))throw Error('Demo generation failed');await new Promise(r=>setTimeout(r,500));}if(!state.jobs.every(j=>j.status==='succeeded'))throw Error('Demo generation timeout');
+const out=await rpc<ExportJob>('export.create',{projectId:project.id,requestId:`demo-export-${project.id}`});let exp!: ExportJob;for(let i=0;i<180;i++){exp=await rpc<ExportJob>('export.get',{exportId:out.id});if(['succeeded','failed'].includes(exp.status))break;await new Promise(r=>setTimeout(r,500));}if(exp.status!=='succeeded')throw Error('Demo export failed');await mkdir('evidence',{recursive:true});await writeFile('evidence/demo.json',JSON.stringify({projectId:project.id,shotIds:shots.map(s=>s.id),export:exp},null,2));console.log(JSON.stringify({url:`${base}/?project=${project.id}`,exportUrl:base+exp.url,projectId:project.id},null,2));

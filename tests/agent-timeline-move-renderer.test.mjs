@@ -6,11 +6,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import * as edits from '../apps/web/src/agent-edits.js';
-import * as chat from '../apps/web/src/agent-chat.js';
-import * as policy from '../apps/web/src/agent-tool-state.js';
-import * as timing from '../apps/web/src/agent-timeline-context.js';
+import * as edits from '../apps/web/src/agent-edits.ts';
+import * as chat from '../apps/web/src/agent-chat.ts';
+import * as policy from '../apps/web/src/agent-tool-state.ts';
+import * as timing from '../apps/web/src/agent-timeline-context.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), instanceId = id(2), threadId = id(3), timelineId = id(4), clipId = id(5), trackId = id(6), runId = id(7), proposalId = id(8), requestId = id(9);
 const at = '2026-10-12T00:00:00.000Z';
@@ -59,7 +61,7 @@ function harness(file, options = {}) {
   }; react.default = react;
   const resolve = name => {
     const i18nDependency=creationTestDependency(name);if(i18nDependency)return i18nDependency;
-    if (name === './agent-timeline-context.js') return timing;
+    if (name === './agent-timeline-context.ts') return timing;
     if (name === './agent-timeline-gain-context.ts') return gainContext;
     if (name === './AgentTimelineGain.tsx') { const gain = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/AgentTimelineGain.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(gain, gain.exports, resolve); return gain.exports; }
     if (name === './editor-settings-scope.ts') {
@@ -71,19 +73,19 @@ function harness(file, options = {}) {
     }
     if (name === './native-close-sources.ts') return nativeCloseSources;
     if (name === 'react') return react;
-    if (name === './agent-edits.js') return { ...edits, createAgentEditsSession: input => edits.createAgentEditsSession({ ...input, client: options.client }) };
-    if (name === './agent-chat.js') return { ...chat, createAgentChatSession: input => chat.createAgentChatSession({ ...input, client: options.chatClient, receipts: options.receipts, requestId: () => requestId }) };
-    if (name === './agent-tool-state.js') return policy;
+    if (name === './agent-edits.ts') return { ...edits, createAgentEditsSession: input => edits.createAgentEditsSession({ ...input, client: options.client }) };
+    if (name === './agent-chat.ts') return { ...chat, createAgentChatSession: input => chat.createAgentChatSession({ ...input, client: options.chatClient, receipts: options.receipts, requestId: () => requestId }) };
+    if (name === './agent-tool-state.ts') return policy;
     if (name === './AgentAuthorizations.tsx') return {__esModule:true,default:'AgentAuthorizations'};
-    if (name === './AgentEditProposal.jsx') return { __esModule: true, default: 'AgentEditProposal' };
-    if (name === './AgentRunActivity.jsx') return load('AgentRunActivity');
-    if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
-    if (name === './icons.jsx') return { default: 'Icon' };
+    if (name === './AgentEditProposal.tsx') return { __esModule: true, default: 'AgentEditProposal' };
+    if (name === './AgentRunActivity.tsx') return load('AgentRunActivity');
+    if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => visible };
+    if (name === './icons.tsx') return { default: 'Icon' };
     if (name.endsWith('.css')) return {};
-    if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.jsx') return new Proxy({}, { get: (_, key) => String(key) });
+    if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return new Proxy({}, { get: (_, key) => String(key) });
     throw Error(name);
   };
-  const load = name => { const module = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL(`../apps/web/src/${name}.jsx`, import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, resolve); return module.exports; };
+  const load = name => { const module = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL(`../apps/web/src/${name}.tsx`, import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, resolve); return module.exports; };
   const component = load(file).default;
   const h = {
     render(patch = {}) { props = { ...props, ...patch }; cursor = 0; effects = []; tree = component(props); for (const index of effects) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].fn(); } return tree; },

@@ -10,8 +10,8 @@ import {promisify} from 'node:util';
 import {createClient} from '@mioon/client';
 import {isTimelineMutationResponse} from '@mioon/contracts';
 import {timelineLoudnessCandidateDigest} from '@mioon/contracts/timeline-loudness-apply';
-import {startServer} from '../apps/server/src/index.mjs';
-import {mediaEnvironment,mediaExecutable} from '../packages/business/src/media-environment.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {mediaEnvironment,mediaExecutable} from '../packages/business/src/media-environment.ts';
 
 const execute=promisify(execFile),sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const operation='timeline.loudness.apply',profile='bs1770-5-48k-stereo-fir4x-v1';

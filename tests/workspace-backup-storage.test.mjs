@@ -6,9 +6,9 @@ import {tmpdir} from 'node:os';
 import {createHash,randomUUID} from 'node:crypto';
 import {syncBuiltinESMExports} from 'node:module';
 import {setImmediate as pause} from 'node:timers/promises';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';
-import {publishMarker} from '../packages/business/src/workspace-backup-storage.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
+import {publishMarker} from '../packages/business/src/workspace-backup-storage.ts';
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 function fixture(t){const base=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'mioon-backup-storage-')),source=path.join(base,'source'),destination=path.join(base,'backup');const store=openStore(source);t.after(()=>{store.close();fs.rmSync(base,{recursive:true,force:true});});return {base,source,destination,store,close:()=>store.close()};}
 const absent=f=>assert.equal(fs.existsSync(path.join(f.destination,'COMPLETE.json')),false);

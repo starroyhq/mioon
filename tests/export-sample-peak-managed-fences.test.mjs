@@ -6,7 +6,7 @@ import {syncBuiltinESMExports} from 'node:module';
 import {createHash} from 'node:crypto';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {verifiedManagedHash} from '../packages/business/src/managed-media.mjs';
+import {verifiedManagedHash} from '../packages/business/src/managed-media.ts';
 
 async function fixture(t) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-peak-hash-fences-'));

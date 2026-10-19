@@ -13,12 +13,12 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient, discoverSchema} from '@mioon/client';
 import {parse, effectAnnotations, operationEffect} from '@mioon/contracts';
 import {AUDIO_PREVIEW_PROFILE, isAudioPreviewPlan, audioPreviewPlanDigestMaterial} from '@mioon/contracts/timeline-audio-preview';
-import {startServer} from '../apps/server/src/index.mjs';
-import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
-import {onMediaProcess, hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.mjs';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.mjs';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.mjs';
-import {TIMELINE_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-edit-tool-policy.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
+import {onMediaProcess, hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.ts';
+import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
+import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
+import {TIMELINE_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-edit-tool-policy.ts';
 import {TIMELINE_GAIN_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-gain-tool-policy.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -38,7 +38,7 @@ function publicOnly(value, root = '') {
   for (const privateValue of [token, 'Bearer ', ...(root ? [root] : [])]) assert.ok(!text.includes(privateValue), 'No credential or local path leakage');
 }
 function cli(t, url, args) {
-  const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.mjs'), ...args],
+  const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.ts'), ...args],
     {cwd: repo, env: environment(url), stdio: ['ignore', 'pipe', 'pipe'], shell: false});
   let stdout = '', stderr = '', failure, timer;
   const close = new Promise(resolve => child.once('close', (code, signal) => resolve({code, signal})));
@@ -63,7 +63,7 @@ function cli(t, url, args) {
 }
 async function official(t, url) {
   const client = new Client({name: 'timeline-audio-preview-transports', version: '1.0.0'}, {capabilities: {}});
-  const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.mjs')],
+  const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.ts')],
     cwd: repo, env: environment(url), stderr: 'pipe'});
   let stderr = '', overflow = false;
   transport.stderr?.setEncoding('utf8').on('data', value => {

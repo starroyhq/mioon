@@ -5,9 +5,9 @@ import net from 'node:net';
 import {EventEmitter, once} from 'node:events';
 import {randomUUID} from 'node:crypto';
 import {setImmediate as turn} from 'node:timers/promises';
-import {createChatHttp} from '../apps/server/src/chat-http.mjs';
-import {createChatSse, CHAT_SSE_LIMITS} from '../apps/server/src/chat-sse.mjs';
-import {CHAT_LIMITS, chatRuntimeError} from '../packages/business/src/agent/chat-runtime.mjs';
+import {createChatHttp} from '../apps/server/src/chat-http.ts';
+import {createChatSse, CHAT_SSE_LIMITS} from '../apps/server/src/chat-sse.ts';
+import {CHAT_LIMITS, chatRuntimeError} from '../packages/business/src/agent/chat-runtime.ts';
 
 const frame = value => `id: ${value.id}\nevent: ${value.type}\ndata: ${JSON.stringify(value)}\n\n`;
 const delta = (id = 1, text = 'synthetic') => ({id, type: 'delta', text});

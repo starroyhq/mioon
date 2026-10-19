@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readTimelineMixLoudnessRpc } from '../apps/web/src/timeline-mix-loudness-rpc.ts';
-import { rpc } from '../apps/web/src/api.js';
+import { rpc } from '../apps/web/src/api.ts';
 import { input, report, deferred, id } from './helpers/timeline-mix-loudness-ui-fixture.mjs';
 const wire = value => new TextEncoder().encode(JSON.stringify(value));
 const response = body => new Response(wire(body), { headers: { 'Content-Type': 'application/json' } });
@@ -46,7 +46,7 @@ test('pre-abort and absent target never fetch; malformed/truncated/invalid UTF8 
   for (const bytes of ['{', '', new Uint8Array([0xff])])
     await assert.rejects(readTimelineMixLoudnessRpc(input(), { fetch: async () => new Response(bytes) }), { code: 'BACKEND_PROTOCOL_ERROR' });
 });
-test('actual api.js selects bounded branch, validates report and retains existing non-mix JSON path', async t => {
+test('actual api.ts selects bounded branch, validates report and retains existing non-mix JSON path', async t => {
   const original = globalThis.fetch; t.after(() => { globalThis.fetch = original; });
   let jsonCalls = 0;
   globalThis.fetch = async () => { const res = response({ ok: true, data: report(input()) }); res.json = () => { jsonCalls++; assert.fail('Mix must use bounded stream'); }; return res; };

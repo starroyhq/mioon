@@ -7,7 +7,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {installedPackages, inspectPackageManager, toolingEnvironment} from '../scripts/lib/local-tooling.mjs';
+import {installedPackages, inspectPackageManager, toolingEnvironment} from '../scripts/lib/local-tooling.ts';
 
 const exec = promisify(execFile);
 
@@ -81,7 +81,7 @@ test('a FIFO masquerading as pnpm package metadata cannot hang doctor', async t 
   await rm(metadata);
   // Native POSIX-only fixture. The portable manifest does not include this file.
   await exec('/usr/bin/mkfifo', [metadata], {env: toolingEnvironment(), timeout: 5000});
-  const moduleUrl = new URL('../scripts/lib/local-tooling.mjs', import.meta.url).href;
+  const moduleUrl = new URL('../scripts/lib/local-tooling.ts', import.meta.url).href;
   const script = `import {inspectPackageManager} from ${JSON.stringify(moduleUrl)}; console.log(JSON.stringify(await inspectPackageManager(${JSON.stringify(repo)}, ${JSON.stringify(options)})));`;
   // A regression is killed in its own Node process, so the test runner cannot
   // hang on an outstanding FIFO open or leave a reader attached to the fixture.

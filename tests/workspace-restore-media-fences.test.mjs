@@ -6,14 +6,14 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
 import {resolveTimelineExportDelivery,TIMELINE_OUTPUT_PRESETS,TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256} from '@mioon/contracts';
-import {run,runStreaming} from '../packages/business/src/media-runtime.mjs';
-import {probe,fileInfo,stitch} from '../packages/business/src/media.mjs';
-import {withProbePermit,MEDIA_PROBE_LIMITS} from '../packages/business/src/media-probe.mjs';
-import {onMediaProcess,terminateMediaProcesses} from '../packages/business/src/media-processes.mjs';
-import {renderTimeline} from '../packages/business/src/timeline-media.mjs';
-import {inspectTimelineExportCapability,assertTimelineExportCapability} from '../packages/business/src/timeline-export-capabilities.mjs';
-import {verifySubtitleFontResource} from '../packages/business/src/subtitle-resources.mjs';
-import {probeTimelineSource,prepareTimelineInputs} from '../packages/business/src/timeline-sources.mjs';
+import {run,runStreaming} from '../packages/business/src/media-runtime.ts';
+import {probe,fileInfo,stitch} from '../packages/business/src/media.ts';
+import {withProbePermit,MEDIA_PROBE_LIMITS} from '../packages/business/src/media-probe.ts';
+import {onMediaProcess,terminateMediaProcesses} from '../packages/business/src/media-processes.ts';
+import {renderTimeline} from '../packages/business/src/timeline-media.ts';
+import {inspectTimelineExportCapability,assertTimelineExportCapability} from '../packages/business/src/timeline-export-capabilities.ts';
+import {verifySubtitleFontResource} from '../packages/business/src/subtitle-resources.ts';
+import {probeTimelineSource,prepareTimelineInputs} from '../packages/business/src/timeline-sources.ts';
 
 const codes=['RESTORE_OPERATION_UNAVAILABLE','RESTORED_RECORD_HELD','RESTORE_WORKSPACE_ORIGIN_REQUIRED','RESTORE_WORKSPACE_ORIGIN_MISMATCH'];
 const restriction=(code=codes[0])=>Object.assign(Error('Synthetic revoked media owner.'),{code});
@@ -23,7 +23,7 @@ const metadata={streams:[{index:0,codec_type:'video',codec_name:'h264',width:720
 const listing='Encoders:\n ------\n V....D libx264 Synthetic video\n A..... aac Synthetic audio\n';
 async function sandbox(t){const root=await mkdtemp(path.join(tmpdir(),'mioon-restore-media-'));t.after(()=>rm(root,{recursive:true,force:true}));return root;}
 async function fixture(t){
- const root=await sandbox(t),binary=path.join(root,'synthetic-media.mjs');
+ const root=await sandbox(t),binary=path.join(root,'synthetic-media.ts');
  await writeFile(binary,`#!${process.execPath}\nimport {writeFileSync} from 'node:fs';
  const args=process.argv.slice(2);
  if(args.includes('-show_streams'))process.stdout.write(${JSON.stringify(JSON.stringify(metadata))});

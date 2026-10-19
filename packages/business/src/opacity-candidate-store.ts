@@ -62,7 +62,7 @@ function legacyCall(module: unknown, member: string, args: unknown[]): unknown {
   return result;
 }
 function storageRuntime(): unknown {
-  const runtime: unknown = require('../../contracts/src/private-storage.mjs');
+  const runtime: unknown = require('../../contracts/src/private-storage.ts');
   return runtime;
 }
 function preflight(root: string, storage: unknown): void {
@@ -81,7 +81,7 @@ function preflight(root: string, storage: unknown): void {
   }
 }
 function acquireLease(root: string): Lease {
-  const runtime: unknown = require('./workspace-lock.mjs');
+  const runtime: unknown = require('./workspace-lock.ts');
   const value = legacyCall(runtime, 'acquireWorkspaceLock', [root, {allowStale: true}]);
   if (!object(value) || typeof value.isOwned !== 'function' || typeof value.release !== 'function') unverified();
   return {isOwned: () => legacyCall(value, 'isOwned', []) === true, release: () => legacyCall(value, 'release', [])};

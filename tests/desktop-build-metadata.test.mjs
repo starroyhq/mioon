@@ -4,8 +4,8 @@ import { createRequire } from 'node:module';
 import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm, unlink, realpath, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import desktopBuildMetadata from '../apps/desktop/build-metadata.cjs';
-import desktopIdentity from '../apps/desktop/identity.cjs';
+import desktopBuildMetadata from '../apps/desktop/build-metadata.ts';
+import desktopIdentity from '../apps/desktop/identity.ts';
 
 const { readBuildMetadata, validateBuildMetadata, validateStagedMetadata } = desktopBuildMetadata;
 const { identityForChannel } = desktopIdentity;
@@ -26,10 +26,10 @@ async function fixture(t, root = rootPackage(), desktop = desktopPackage()) {
 
 async function builderFixture(t) {
   const directory = await fixture(t);
-  for (const name of ['builder-config.cjs', 'subtitle-resources.cjs', 'build-metadata.cjs', 'identity.cjs']) {
+  for (const name of ['builder-config.ts', 'subtitle-resources.ts', 'runtime-notices.ts', 'build-metadata.ts', 'identity.ts']) {
     await copyFile(new URL(`../apps/desktop/${name}`, import.meta.url), path.join(directory, 'apps/desktop', name));
   }
-  return { directory, builderConfig: require(path.join(directory, 'apps/desktop/builder-config.cjs')) };
+  return { directory, builderConfig: require(path.join(directory, 'apps/desktop/builder-config.ts')).builderConfig };
 }
 
 test('metadata uses the root app version and exact Electron pin without changing manifests', () => {
@@ -187,7 +187,7 @@ test('beforePack rejects stale same-channel versions and names for both channels
 });
 
 test('staging build preflights metadata before cleanup and writes the root application version', async () => {
-  const source = await readFile(new URL('../apps/desktop/scripts/build.mjs', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../apps/desktop/scripts/build.ts', import.meta.url), 'utf8');
   const validation = source.indexOf('desktopBuildMetadata.readBuildMetadata(root)');
   const cleanup = source.indexOf('await rm(output,');
   assert.ok(validation >= 0 && cleanup > validation, 'Metadata validation must run before staging removal');

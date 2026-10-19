@@ -6,12 +6,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import * as exportSettings from '../apps/web/src/export-settings-state.js';
-import * as format from '../apps/web/src/timeline-format-state.js';
+import * as exportSettings from '../apps/web/src/export-settings-state.ts';
+import * as format from '../apps/web/src/timeline-format-state.ts';
 import { createTimelineDeliveryNameController } from '../apps/web/src/export-delivery-state.ts';
 import { createLocalDeliveryController } from '../apps/web/src/local-delivery-state.ts';
 import * as contracts from '@mioon/contracts';
-import * as audio from '../apps/web/src/clip-audio-state.js';
+import * as audio from '../apps/web/src/clip-audio-state.ts';
 import * as clipDraft from '../apps/web/src/clip-draft-state.ts';
 import * as opacityState from '../apps/web/src/clip-opacity-envelope-state.ts';
 import * as opacityAssembly from '../apps/web/src/clip-opacity-candidate-assembly.ts';
@@ -20,6 +20,8 @@ import * as audioRoleState from '../apps/web/src/clip-audio-role-state.ts';
 import * as removalState from '../apps/web/src/timeline-removal.ts';
 import * as viewGeometry from '../apps/web/src/timeline-view-geometry.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const id = n => `73000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), timelineId = id(2);
 const context = patch => ({ scope: `${projectId}:1`, projectId, projectRevision: 2, timelineId: null, timelineRevision: 0, connected: true, pending: false, ...patch });
@@ -68,7 +70,7 @@ test('closed presets and noncreating read retain exact authoritative eligibility
 test('saved legacy720 remains readable but new format choices use only the three1080 presets', async () => {
   const f=fixture();f.set({timelineId,timelineRevision:1});f.server({timelineId,timelineRevision:1,presetId:'portrait_720',width:720,height:1280});await f.ready();
   assert.equal(f.state().saved.presetId,'portrait_720');assert.equal(f.state().saved.width,720);assert.equal(f.controller.choose('landscape_1080'),true);
-  const Panel=component('TimelineFormatPanel.jsx').default,tree=Panel({state:f.state(),controller:f.controller});
+  const Panel=component('TimelineFormatPanel.tsx').default,tree=Panel({state:f.state(),controller:f.controller});
   const options=nodes(tree).filter(node=>node.type==='option');assert.deepEqual(options.map(node=>node.props.value),['portrait_1080','landscape_1080','square_1080','portrait_720']);
 });
 
@@ -171,13 +173,13 @@ const primitive = new Proxy({ __esModule: true, default: 'Component' }, { get: (
 function component(name, imports = {}) {
   const react = { createElement: element, useEffect() {}, useLayoutEffect() {}, useRef: current => ({ current }), useState: value => [typeof value === 'function' ? value() : value, () => {}] }; react.default = react;
   const module = { exports: {} };
-  Function('module', 'exports', 'require', transformSync(read(name), { loader: name.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code)(module, module.exports, key => key === './creation-i18n.ts' ? creationI18n : key === './i18n/I18nProvider.tsx' ? i18nTestModule() : key.endsWith('packages/i18n/src/index.ts') ? i18n : key === 'react' ? react : key === '@mioon/contracts' ? contracts : key === './timeline-format-state.js' ? format : key === './export-settings-state.js' ? exportSettings : key === './clip-opacity-envelope-state.ts' ? opacityState : key === './clip-opacity-candidate-assembly.ts' ? opacityAssembly : key === './clip-volume-envelope-state.ts' ? volumeState : key === './clip-audio-role-state.ts' ? audioRoleState : key === './timeline-removal.ts' ? removalState : key === './timeline-view-geometry.ts' ? viewGeometry : key === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : key === './ClipRemovalControls.tsx' ? component('ClipRemovalControls.tsx') : imports[key] || primitive);
+  Function('module', 'exports', 'require', transformSync(read(name), { loader: name.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code)(module, module.exports, key => key === './creation-i18n.ts' ? creationI18n : key === './i18n/I18nProvider.tsx' ? i18nTestModule() : key.endsWith('packages/i18n/src/index.ts') ? i18n : key === 'react' ? react : key === '@mioon/contracts' ? contracts : key === './timeline-format-state.ts' ? format : key === './export-settings-state.ts' ? exportSettings : key === './clip-opacity-envelope-state.ts' ? opacityState : key === './clip-opacity-candidate-assembly.ts' ? opacityAssembly : key === './clip-volume-envelope-state.ts' ? volumeState : key === './clip-audio-role-state.ts' ? audioRoleState : key === './timeline-removal.ts' ? removalState : key === './timeline-view-geometry.ts' ? viewGeometry : key === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : key === './ClipRemovalControls.tsx' ? component('ClipRemovalControls.tsx') : imports[key] || primitive);
   return module.exports;
 }
 
 test('actual format panel uses accessible shared controls and tells the truth about scope, fixed fps and blocked reasons', async () => {
   const f = fixture(); await f.ready(); const events = [];
-  const Panel = component('TimelineFormatPanel.jsx').default;
+  const Panel = component('TimelineFormatPanel.tsx').default;
   let tree = Panel({ state: f.state(), controller: f.controller, onBack: () => events.push('back'), onOpenTasks: () => events.push('tasks') });
   const text = textOf(tree);
   for (const label of ['时间线输出规格', '返回属性', '源素材、生成比例不会改变', '分镜导出固定 9:16', '30 fps', '不进入片段撤销历史', '服务器会再次核对资格']) assert.ok(text.includes(label), label);
@@ -194,12 +196,12 @@ test('actual format panel uses accessible shared controls and tells the truth ab
   tree = Panel({ state: f.state(), controller: f.controller });
   for (const reason of f.state().saved.blockedReasons) assert.ok(textOf(tree).includes(format.timelineFormatReason(reason)));
   assert.equal(nodes(tree).find(node => node.props.id === 'timeline-format-preset').props.disabled, true);
-  assert.doesNotMatch(read('TimelineFormatPanel.jsx'), /<input|<select|<button|role="dialog"|\brpc\(|useEffect/);
+  assert.doesNotMatch(read('TimelineFormatPanel.tsx'), /<input|<select|<button|role="dialog"|\brpc\(|useEffect/);
 });
 
 test('retained format panel callbacks cannot edit, reset, read or submit a revisited project epoch', async () => {
   const f = fixture(); await f.ready(); f.controller.choose('landscape_1080');
-  const Panel = component('TimelineFormatPanel.jsx').default, old = Panel({ state: f.state(), controller: f.controller });
+  const Panel = component('TimelineFormatPanel.tsx').default, old = Panel({ state: f.state(), controller: f.controller });
   f.set({ scope: `${projectId}:2` }); await f.ready(); f.controller.choose('square_1080');
   const count = f.reads.length;
   nodes(old).find(node => node.props.id === 'timeline-format-preset').props.onChange({ target: { value: 'portrait_1080' } });
@@ -208,7 +210,7 @@ test('retained format panel callbacks cannot edit, reset, read or submit a revis
 });
 
 test('actual preview labels legacy frozen job dimensions, never the new current timeline', () => {
-  const Preview = component('Preview.jsx', { './workspace-visibility.jsx': { useWorkspaceVisibility: () => true }, './api.js': { assetUrl: () => '', statusText: () => '成功' }, './Timeline.jsx': { assetKind: () => 'video', framesLabel: String } }).default;
+  const Preview = component('Preview.tsx', { './workspace-visibility.tsx': { useWorkspaceVisibility: () => true }, './api.ts': { assetUrl: () => '', statusText: () => '成功' }, './Timeline.tsx': { assetKind: () => 'video', framesLabel: String } }).default;
   const tree = Preview({ kind: 'timeline', timeline: timeline('landscape_1080', 9), job: { id: id(7), status: 'succeeded', url: '/media/old', timelineRevision: 1, snapshot: { timeline: timeline('square_720', 1) } }, playhead: 30 });
   const label = nodes(tree).find(node => node.props.className === 'edit-preview-format');
   assert.match(textOf(label), /720 × 720 · 30 fps/); assert.doesNotMatch(textOf(label), /1920/);
@@ -217,17 +219,17 @@ test('actual preview labels legacy frozen job dimensions, never the new current 
 });
 
 test('actual monitor header and preflight summary use their own saved dimensions', () => {
-  const Preview = component('Preview.jsx', { './workspace-visibility.jsx': { useWorkspaceVisibility: () => true }, './api.js': { assetUrl: () => '' }, './Timeline.jsx': { assetKind: () => 'video' } }).default;
+  const Preview = component('Preview.tsx', { './workspace-visibility.tsx': { useWorkspaceVisibility: () => true }, './api.ts': { assetUrl: () => '' }, './Timeline.tsx': { assetKind: () => 'video' } }).default;
   const tree = Preview({ kind: 'timeline', timeline: timeline('landscape_1080'), playhead: 0 });
   assert.equal(textOf(nodes(tree).find(node => node.props.className === 'edit-preview-format')), '1920 × 1080 · 30 fps');
-  const Panel = component('TimelineExportPreflight.jsx').default;
+  const Panel = component('TimelineExportPreflight.tsx').default;
   const summary = { fps: 30, width: 1080, height: 1080, durationFrames: 90, trackCount: 1, clipCount: 1, assetCount: 1 };
   const report = Panel({ state: { phase: 'ready', report: { timelineRevision: 1, checkedAt: '2026-10-11T00:00:00Z', issues: [], summary, checks: { checkedAssets: 1, totalAssets: 1, bytesHashed: 0 } } } });
   assert.match(textOf(report), /1080 × 1080 · 30 fps/); assert.doesNotMatch(textOf(report), /1920/);
 });
 
 test('actual inspector bounds follow landscape and square timelines and reject odd or overflowing rectangles', () => {
-  const Inspector = component('TimelineInspector.jsx', { './clip-audio-state.js': audio, './Timeline.jsx': { assetKind: () => 'image', framesLabel: String }, '@mioon/ui/components/workbench-confirm': { useConfirmation: () => async () => true }, './workspace-visibility.jsx': { useWorkspaceVisibility: () => true }, './clip-draft-state.ts': clipDraft,
+  const Inspector = component('TimelineInspector.tsx', { './clip-audio-state.ts': audio, './Timeline.tsx': { assetKind: () => 'image', framesLabel: String }, '@mioon/ui/components/workbench-confirm': { useConfirmation: () => async () => true }, './workspace-visibility.tsx': { useWorkspaceVisibility: () => true }, './clip-draft-state.ts': clipDraft,
     './clip-draft-hook.ts': { useClipDraft: ({ context }) => { const controller = clipDraft.createClipDraftController({ context, client: { get: () => assert.fail('Static bounds inspection does not load persistence') } }); return { state: controller.getState(), controller }; } },
   }).default;
   for (const preset of ['landscape_1080', 'square_1080']) {
@@ -241,7 +243,7 @@ test('actual inspector bounds follow landscape and square timelines and reject o
   }
 });
 
-const app = read('App.jsx');
+const app = read('App.tsx');
 function appFunction(name, end, env) {
   const start = app.indexOf(`  ${name}`), stop = app.indexOf(`  ${end}`, start);
   assert.ok(start >= 0 && stop > start, 'Actual App callback boundaries must remain present');
@@ -399,7 +401,7 @@ test('actual format save callback uses only the existing durable timeline lane a
 });
 
 test('App keeps both Properties subpages mounted and keeps format dirtiness outside inspector reset logic', () => {
-  transformSync(app, { loader: 'jsx', format: 'esm' });
+  transformSync(app, { loader: 'tsx', format: 'esm' });
   for (const id of ['properties-inspector-pane', 'properties-format-pane', 'properties-subtitle-pane']) assert.ok(app.includes(`<AgentDockPane id="${id}"`));
   const {WorkbenchInspectorTabs}=component('WorkbenchShell.tsx');
   for(const [mode,expected] of [['canvas',['properties','versions','agent']],['editing',['properties','agent']]]) {
@@ -411,13 +413,13 @@ test('App keeps both Properties subpages mounted and keeps format dirtiness outs
   assert.match(app, /visible=\{propertiesPage === 'inspector' \|\| propertiesPage === 'subtitle' && workspaceMode === 'canvas'\}/); assert.match(app, /visible=\{propertiesPage === 'format'\}/);
   const open = app.slice(app.indexOf('  function openTimelineFormat()'), app.indexOf('  function subtitleContext()'));
   assert.doesNotMatch(open, /guardNavigation|setInspectorEpoch|setSelected|setQuickAsset|setSourceDirty|discardDraft/);
-  const wrapper = read('AgentWorkspace.jsx'); assert.match(wrapper, /hidden=\{!shown\} inert=\{!shown\}/);
-  const controls = read('WorkspaceControls.jsx'); assert.match(controls, /if \(!visible\) \{ setOpen\(false\)/); assert.match(controls, /inert=\{!popup.visible\}/);
-  const task = read('TaskCenter.jsx'); assert.match(task, /DURABLE_EDIT_OPERATIONS\.length/); assert.equal(contracts.DURABLE_EDIT_OPERATIONS.length, 21); assert.equal(contracts.DURABLE_EDIT_OPERATIONS.filter(operation => operation === 'timeline.clip.rippleRemove').length, 1); assert.equal(contracts.DURABLE_EDIT_OPERATIONS.at(-1), 'timeline.loudness.apply');
+  const wrapper = read('AgentWorkspace.tsx'); assert.match(wrapper, /hidden=\{!shown\} inert=\{!shown\}/);
+  const controls = read('WorkspaceControls.tsx'); assert.match(controls, /if \(!visible\) \{ setOpen\(false\)/); assert.match(controls, /inert=\{!popup.visible\}/);
+  const task = read('TaskCenter.tsx'); assert.match(task, /DURABLE_EDIT_OPERATIONS\.length/); assert.equal(contracts.DURABLE_EDIT_OPERATIONS.length, 21); assert.equal(contracts.DURABLE_EDIT_OPERATIONS.filter(operation => operation === 'timeline.clip.rippleRemove').length, 1); assert.equal(contracts.DURABLE_EDIT_OPERATIONS.at(-1), 'timeline.loudness.apply');
 });
 
 test('actual dock pane retains child identity while hidden and removes it from focus and accessibility navigation', () => {
-  const { AgentDockPane } = component('AgentWorkspace.jsx', { './workspace-visibility.jsx': { useWorkspaceVisibility: () => true, WorkspaceVisibilityProvider: 'VisibilityProvider' } });
+  const { AgentDockPane } = component('AgentWorkspace.tsx', { './workspace-visibility.tsx': { useWorkspaceVisibility: () => true, WorkspaceVisibilityProvider: 'VisibilityProvider' } });
   const draftChild = { type: 'Draft', props: { value: 'retained' } };
   for (const visible of [true, false, true]) {
     const tree = AgentDockPane({ visible, children: draftChild, id: 'format-pane', labelledBy: 'format-label', fallbackFocus: '#properties' });
@@ -471,7 +473,7 @@ test('actual hook keeps the project draft across visibility and polling without 
     useLayoutEffect(callback, dependencies) { const i = cursor++, old = slots[i]; if (old && dependencies.every((value, index) => Object.is(value, old.dependencies[index]))) return; slots[i] = { dependencies, callback, cleanup: old?.cleanup }; effects.push(i); },
   };
   const module = { exports: {} };
-  Function('module', 'exports', 'require', transformSync(read('use-timeline-format.js'), { loader: 'js', format: 'cjs' }).code)(module, module.exports, name => name === 'react' ? react : format);
+  Function('module', 'exports', 'require', transformSync(read('use-timeline-format.ts'), { loader: 'ts', format: 'cjs' }).code)(module, module.exports, name => name === 'react' ? react : format);
   function render(patch = {}) {
     props = { ...props, ...patch }; cursor = 0; effects = [];
     const value = module.exports.useTimelineFormat({ ...props, getContext: () => props,

@@ -3,14 +3,16 @@ import test from 'node:test';
 import { transformSync } from 'esbuild';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {createClient} from '../packages/client/src/index.mjs';
+import {createClient} from '../packages/client/src/index.ts';
 import {GENERATION_INPUT_PROFILES,isSubjectGenerationResponse} from '@mioon/contracts';
 import * as contracts from '@mioon/contracts';
-import * as submissions from '../apps/web/src/submissions.js';
-import * as mutations from '../apps/web/src/mutation-submissions.js';
-import {ApiError} from '../apps/web/src/api.js';
-import {prepareSubmission,readPending,writePending,reconcilePending} from '../apps/web/src/submissions.js';
+import * as submissions from '../apps/web/src/submissions.ts';
+import * as mutations from '../apps/web/src/mutation-submissions.ts';
+import {ApiError} from '../apps/web/src/api.ts';
+import {prepareSubmission,readPending,writePending,reconcilePending} from '../apps/web/src/submissions.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const taskIntentModule = { exports: {} };
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
 const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
@@ -98,7 +100,7 @@ test('shared client rejects malformed subject success as unknown with original k
 });
 
 function appHarness(t,dispatch,jobs=[]){
- storage(t);const source=readFileSync(new URL('../apps/web/src/App.jsx',import.meta.url),'utf8');
+ storage(t);const source=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');
  const start=source.indexOf('async function runSession('),end=source.indexOf('async function inspect(',start);
  assert.ok(start>=0&&end>start);const actual=source.slice(start,end);
  const currentProject={current:id(1)},busy=new Set(),state={epoch:0,calls:[],notices:[],refreshes:[],pending:[],showJobs:false};
@@ -108,7 +110,7 @@ function appHarness(t,dispatch,jobs=[]){
   rpc:async(operation,input)=>{state.calls.push({operation,input:copy(input)});return dispatch(operation,input);},
   setPending:items=>{state.pending=items;},openTasks:(canReveal=()=>true)=>{if(canReveal())state.showJobs=true;},setAuth:()=>{},
   refresh:async project=>{state.refreshes.push(project);},notify:(text,type)=>state.notices.push({text,type}),readableError:error=>error.message,
-  requestCounter:{current:0},dataRef:{current:{project:{id:id(1)},shots:[],nodes:[],jobs}},setData:()=>{}};
+  requestCounter:{current:0},clipConnectionBlocked:{current:false},dataRef:{current:{project:{id:id(1)},shots:[],nodes:[],jobs}},setData:()=>{}};
   Object.assign(scope, { captureTaskWorkspaceIntent, readTaskRevealContext: () => { const captured = scope.context(); return { active: true, projectId: captured.projectId, projectEpoch: 0, navigationEpoch: captured.epoch || 0, panelIntent: 0, workspaceScope: JSON.stringify(captured.workspace || 'test-workspace') }; } });
  const run=Function(...Object.keys(scope),`${actual};return runSession;`)(...Object.values(scope));
  return {run,state,currentProject,busy};

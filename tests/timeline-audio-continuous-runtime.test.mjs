@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setTimeout as delay} from 'node:timers/promises';
-import {MEDIA_PULL_CHUNK_BYTES, MEDIA_RUNTIME_LIMITS, checkMediaEffect, runStreaming, runStreamingWithBackpressure} from '../packages/business/src/media-runtime.mjs';
-import {mediaConfigurationError, mediaExecutable} from '../packages/business/src/media-environment.mjs';
+import {MEDIA_PULL_CHUNK_BYTES, MEDIA_RUNTIME_LIMITS, checkMediaEffect, runStreaming, runStreamingWithBackpressure} from '../packages/business/src/media-runtime.ts';
+import {mediaConfigurationError, mediaExecutable} from '../packages/business/src/media-environment.ts';
 import {hasUnconfirmedMediaProcesses, interruptedMediaError, mediaInterrupted, onMediaInterruption, onMediaProcess,
-  spawnMedia, terminateMediaProcess, terminateMediaProcesses, throwIfMediaAborted} from '../packages/business/src/media-processes.mjs';
+  spawnMedia, terminateMediaProcess, terminateMediaProcesses, throwIfMediaAborted} from '../packages/business/src/media-processes.ts';
 import {createStreamingMediaRuntime} from '../packages/business/src/media-streaming-runtime.ts';
 
 test('new async pipe lane pauses at one callback and excludes consumer backpressure from timeout', {timeout: 10000}, async () => {

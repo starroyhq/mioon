@@ -7,11 +7,11 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { parseProbeOutput, withProbePermit, MEDIA_PROBE_LIMITS } from '../packages/business/src/media-probe.mjs';
-import { run, probe, fileHash, fileInfo, stitch } from '../packages/business/src/media.mjs';
-import { renderTimeline } from '../packages/business/src/timeline-media.mjs';
-import { onMediaProcess } from '../packages/business/src/media-processes.mjs';
-import { createMockProvider } from '../packages/business/src/providers/mock.mjs';
+import { parseProbeOutput, withProbePermit, MEDIA_PROBE_LIMITS } from '../packages/business/src/media-probe.ts';
+import { run, probe, fileHash, fileInfo, stitch } from '../packages/business/src/media.ts';
+import { renderTimeline } from '../packages/business/src/timeline-media.ts';
+import { onMediaProcess } from '../packages/business/src/media-processes.ts';
+import { createMockProvider } from '../packages/business/src/providers/mock.ts';
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const video = (width = 1920, height = 1080, extra = {}) => ({ index: 0, codec_type: 'video', codec_name: 'h264', width, height, ...extra });
@@ -99,8 +99,8 @@ test('actual probe timeout and in-flight abort reap the selected synthetic execu
   if (process.platform === 'win32') { t.skip('Executable script fixture is POSIX; native Windows verification is separate'); return; }
   const root = await sandbox(t), binary = path.join(root, 'synthetic probe 工具');
   await writeFile(binary, `#!${process.execPath}\nsetInterval(()=>{},1000);\n`, { mode: 0o700 });
-  const media = new URL('../packages/business/src/media.mjs', import.meta.url).href;
-  const processes = new URL('../packages/business/src/media-processes.mjs', import.meta.url).href;
+  const media = new URL('../packages/business/src/media.ts', import.meta.url).href;
+  const processes = new URL('../packages/business/src/media-processes.ts', import.meta.url).href;
   const source = `import {probe} from ${JSON.stringify(media)};import {onMediaProcess,terminateMediaProcesses} from ${JSON.stringify(processes)};
     const outcomes=[];for(const mode of ['timeout','abort']){const events=[],c=new AbortController();const off=onMediaProcess(e=>{events.push(e.type);if(e.type==='started'&&mode==='abort')c.abort()});try{await probe('synthetic-only',{timeout:60,signal:c.signal});throw Error('unexpected success')}catch(e){outcomes.push({code:e.code,events})}finally{off()}}
     console.log(JSON.stringify({outcomes,remaining:await terminateMediaProcesses()}));`;

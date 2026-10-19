@@ -5,9 +5,9 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
 import {createHash,randomUUID} from 'node:crypto';
-import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';
-import {canonicalImageInput as canonical,IMAGE_FIXED_OPTIONS} from '../packages/contracts/src/images.mjs';
-import {workspaceBackupManifestSchema,workspaceBackupResultSchema} from '../packages/contracts/src/workspace-backup.mjs';
+import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
+import {canonicalImageInput as canonical,IMAGE_FIXED_OPTIONS} from '../packages/contracts/src/images.ts';
+import {workspaceBackupManifestSchema,workspaceBackupResultSchema} from '../packages/contracts/src/workspace-backup.ts';
 
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 const code=expected=>error=>error.code===expected;

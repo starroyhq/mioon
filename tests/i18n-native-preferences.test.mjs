@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { mkdtemp, readFile, rm, stat, writeFile, symlink, chmod } from 'node:fs/promises';
 import { readAppLanguagePreference, writeAppLanguagePreference, validateDesktopStorage, storageFailureDialog,
-  writeConnection, removeConnection, removeConnectionOnShutdown } from '../apps/desktop/src/config.mjs';
+  writeConnection, removeConnection, removeConnectionOnShutdown } from '../apps/desktop/src/config.ts';
 import { createAppLanguageHost } from '../apps/desktop/src/app-language-host.ts';
 import { setNativeLanguageReader, nativeText } from '../apps/desktop/src/app-language-text.ts';
 import { configureTimelineDeliveryDownload } from '../apps/desktop/src/timeline-delivery-download.ts';

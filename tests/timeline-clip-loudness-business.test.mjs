@@ -5,16 +5,16 @@ import {mkdtemp, writeFile, readFile, readdir, rm, unlink} from 'node:fs/promise
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
-import {openStore, ownsStoreLock, getWorkspaceRestoreContext} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
+import {openStore, ownsStoreLock, getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
 import {createTimelineClipLoudnessServices} from '../packages/business/src/timeline-clip-loudness.ts';
 import {planTimelineClipLoudnessDecode} from '../packages/business/src/timeline-clip-loudness-decoder.ts';
-import {readTimelinePreflightSnapshot, readTimelineSourceGraph} from '../packages/business/src/timeline-sources.mjs';
-import {validateTimeline} from '../packages/business/src/timeline-inputs.mjs';
-import {validateManagedSource, verifiedManagedHash} from '../packages/business/src/managed-media.mjs';
-import {boundedShutdown} from '../packages/business/src/operation-lifecycle.mjs';
-import {workspaceRestoreError, RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-restore-policy.mjs';
-import {installCurrentWorkspaceRestoreSchema as installWorkspaceRestoreSchema} from '../packages/business/src/db.mjs';
+import {readTimelinePreflightSnapshot, readTimelineSourceGraph} from '../packages/business/src/timeline-sources.ts';
+import {validateTimeline} from '../packages/business/src/timeline-inputs.ts';
+import {validateManagedSource, verifiedManagedHash} from '../packages/business/src/managed-media.ts';
+import {boundedShutdown} from '../packages/business/src/operation-lifecycle.ts';
+import {workspaceRestoreError, RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
+import {installCurrentWorkspaceRestoreSchema as installWorkspaceRestoreSchema} from '../packages/business/src/db.ts';
 import {exportAudioObservationAdmission} from '../packages/business/src/export-audio-observation.ts';
 
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');

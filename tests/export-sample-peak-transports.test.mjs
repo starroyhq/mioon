@@ -8,7 +8,7 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {discoverSchema,createClient} from '@mioon/client';
 import {parse,isExportSamplePeakResponse,effectAnnotations,operationEffect} from '@mioon/contracts';
-import {callObservedRpc} from '../apps/server/src/rpc-observation.mjs';
+import {callObservedRpc} from '../apps/server/src/rpc-observation.ts';
 import {samplePeakOperation as operation,samplePeakInput as input,samplePeakToken as token,readySamplePeak,incompleteSamplePeak} from './helpers/export-sample-peak-fixture.mjs';
 
 const repo=fileURLToPath(new URL('..',import.meta.url));
@@ -16,7 +16,7 @@ const env=url=>({PATH:process.env.PATH||'',MIOON_ENABLE_LIVE_PROVIDER:'0',...(ur
 const deferred=()=>{let resolve;const promise=new Promise(r=>{resolve=r;});return {promise,resolve};};
 async function bounded(promise,label,ms=10000){let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(label+' timed out')),ms);})]);}finally{clearTimeout(timer);}}
 function cli(t,url,args){
-  const child=spawn(process.execPath,[repo+'apps/cli/src/index.mjs',...args],{cwd:repo,env:env(url),stdio:['ignore','pipe','pipe']});
+  const child=spawn(process.execPath,[repo+'apps/cli/src/index.ts',...args],{cwd:repo,env:env(url),stdio:['ignore','pipe','pipe']});
   let stdout='',stderr='',overflow=false;
   child.stdout.setEncoding('utf8').on('data',part=>{stdout+=part;if(Buffer.byteLength(stdout)>1024*1024){overflow=true;child.kill('SIGKILL');}});
   child.stderr.setEncoding('utf8').on('data',part=>{stderr+=part;if(Buffer.byteLength(stderr)>64*1024){overflow=true;child.kill('SIGKILL');}});
@@ -29,7 +29,7 @@ function cli(t,url,args){
 }
 async function official(t,url){
   const client=new Client({name:'export-sample-peak-transport-tests',version:'1.0.0'},{capabilities:{}});
-  const transport=new StdioClientTransport({command:process.execPath,args:[repo+'apps/mcp/src/index.mjs'],cwd:repo,env:env(url),stderr:'pipe'});
+  const transport=new StdioClientTransport({command:process.execPath,args:[repo+'apps/mcp/src/index.ts'],cwd:repo,env:env(url),stderr:'pipe'});
   let stderr='',overflow=false;
   transport.stderr?.setEncoding('utf8').on('data',part=>{stderr+=part;if(Buffer.byteLength(stderr)>64*1024){overflow=true;void client.close();}});
   t.after(async()=>{await bounded(client.close(),'MCP cleanup');assert.equal(overflow,false);assert.ok(!stderr.includes(token));});

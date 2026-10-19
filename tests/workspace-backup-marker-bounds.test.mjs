@@ -5,8 +5,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
-import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
+import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {readWorkspaceBackupSchemaVersion} from '../packages/business/src/workspace-backup-schema-versions.ts';
 
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -59,8 +59,8 @@ test('bounded marker projection refuses unsafe integer values without JavaScript
 });
 
 test('ordinary24 unknown journal survives startup migration and cold40 archive while fixed41 restore refuses it',async t=>{
- const {openStore}=await import('../packages/business/src/db.mjs');
- const {restoreWorkspaceBackup}=await import('../packages/business/src/workspace-restore.mjs');
+ const {openStore}=await import('../packages/business/src/db.ts');
+ const {restoreWorkspaceBackup}=await import('../packages/business/src/workspace-restore.ts');
  const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'backup-custom-journal-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  const source=path.join(root,'source'),backup24=path.join(root,'backup24'),backupCurrent=path.join(root,'backup-current'),destination=path.join(root,'restore41');
  fs.mkdirSync(source,{mode:0o700});fs.mkdirSync(path.join(source,'media'),{mode:0o700});
@@ -68,7 +68,7 @@ test('ordinary24 unknown journal survives startup migration and cold40 archive w
  try{
   db.exec('PRAGMA foreign_keys=ON;PRAGMA trusted_schema=OFF');initializeWorkspaceSchemaThrough24(db);
   db.exec('CREATE TABLE unknown_retained_journal(id TEXT PRIMARY KEY,data BLOB,n REAL)');
-  db.prepare('INSERT INTO unknown_retained_journal(rowid,id,data,n) VALUES(?,?,?,?)').run(9007199254740993n,'opaque-history',Buffer.from([0,255,13,10]),123.25);
+  const retained=db.prepare('INSERT INTO unknown_retained_journal(rowid,id,data,n) VALUES(?,?,?,?)');retained.setReadBigInts(true);retained.run(9007199254740993n,'opaque-history',Buffer.from([0,255,13,10]),123.25);
  }finally{db.close();}
  fs.chmodSync(file,0o600);
  const original24=fs.readFileSync(file);
@@ -77,12 +77,12 @@ test('ordinary24 unknown journal survives startup migration and cold40 archive w
  assert.equal((await verifyWorkspaceBackup({directory:backup24})).restoration,'not_tested');
  const store=openStore(source);
  try{
-  assert.equal(store.db.prepare('SELECT max(version) AS n FROM schema_version').get().n,40);
+  assert.equal(store.db.prepare('SELECT max(version) AS n FROM schema_version').get().n,48);
   const read=store.db.prepare('SELECT rowid AS rowid,* FROM unknown_retained_journal');read.setReadBigInts(true);
   const actual=read.get();assert.equal(actual.rowid,9007199254740993n);assert.deepEqual(actual.data,new Uint8Array([0,255,13,10]));assert.equal(actual.n,123.25);
  }finally{store.close();}
  const originalCurrent=fs.readFileSync(file),created=await createWorkspaceBackup({source,destination:backupCurrent});
- assert.equal(created.databaseSchemaVersion,40);assert.equal(created.integrity,'verified');assert.equal(created.restoration,'not_tested');
+ assert.equal(created.databaseSchemaVersion,48);assert.equal(created.integrity,'verified');assert.equal(created.restoration,'not_tested');
  assert.deepEqual(fs.readFileSync(path.join(backupCurrent,'payload/workbench.sqlite')),originalCurrent);
  assert.deepEqual(await verifyWorkspaceBackup({directory:backupCurrent}),created);
  await assert.rejects(restoreWorkspaceBackup({directory:backupCurrent,destination}),{code:'WORKSPACE_RESTORE_SOURCE_SCHEMA_UNSUPPORTED'});

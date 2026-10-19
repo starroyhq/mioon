@@ -12,13 +12,13 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient, discoverSchema} from '@mioon/client';
 import {operationEffect} from '@mioon/contracts';
 import {AUDIO_PREVIEW_PROFILE} from '@mioon/contracts/timeline-audio-preview';
-import {startServer} from '../apps/server/src/index.mjs';
+import {startServer} from '../apps/server/src/index.ts';
 import {continuousAudioQuery, CONTINUOUS_AUDIO_ENDPOINT, CONTINUOUS_AUDIO_PROFILE} from '../packages/contracts/src/timeline-audio-continuous.ts';
-import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
-import {onMediaProcess, hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.mjs';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.mjs';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.mjs';
-import {TIMELINE_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-edit-tool-policy.mjs';
+import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
+import {onMediaProcess, hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.ts';
+import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
+import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
+import {TIMELINE_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-edit-tool-policy.ts';
 import {TIMELINE_GAIN_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-gain-tool-policy.ts';
 
 const execute = promisify(execFile), operation = 'timeline.audioPreview.continuousPlan';
@@ -54,11 +54,11 @@ test('real HTTP RPC, CLI and official MCP expose the same strict read-only conti
     assert.ok(tools.every(tool => !/audioPreview|audio_preview|audition/i.test(tool.name)), 'No built-in Agent execution authority');
   const plan = await client.rpc(operation, input);
   assert.equal(plan.schemaVersion, 2); assert.equal(plan.profileId, CONTINUOUS_AUDIO_PROFILE); assert.equal(plan.durationFrames, 3);
-  const cli = await execute(process.execPath, [path.join(repo, 'apps/cli/src/index.mjs'), ...operation.split('.'), '--input', JSON.stringify(input)],
+  const cli = await execute(process.execPath, [path.join(repo, 'apps/cli/src/index.ts'), ...operation.split('.'), '--input', JSON.stringify(input)],
     {cwd: repo, env, timeout: 15000, maxBuffer: 1024 * 1024});
   assert.deepEqual(JSON.parse(cli.stdout), {ok: true, data: plan});
   mcp = new Client({name: 'continuous-audio-test', version: '1.0.0'}, {capabilities: {}});
-  const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.mjs')], cwd: repo, env, stderr: 'pipe'});
+  const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.ts')], cwd: repo, env, stderr: 'pipe'});
   let stderr = ''; transport.stderr?.setEncoding('utf8').on('data', value => {stderr += value;});
   await mcp.connect(transport);
   const tool = (await mcp.listTools()).tools.find(value => value.name === 'timeline_audioPreview_continuousPlan');

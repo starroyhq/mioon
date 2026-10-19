@@ -7,11 +7,11 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {crc32, deflateSync} from 'node:zlib';
 import {Worker} from 'node:worker_threads';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {createProviderRegistry} from '../packages/business/src/provider-registry.mjs';
-import {startWorker} from '../packages/business/src/jobs.mjs';
-import {createArkProvider} from '../packages/business/src/providers/ark.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
+import {startWorker} from '../packages/business/src/jobs.ts';
+import {createArkProvider} from '../packages/business/src/providers/ark.ts';
 
 // All inputs are locally constructed pixels; no original media or live providers.
 function png(width=36,height=64,color=85) {
@@ -134,7 +134,7 @@ test('concurrent duplicate requests apply once and competing bindings reject wit
 test('independent SQLite connections serialize the exact reference request without double mutation',async t=>{
  const f=await fixture(t),{node}=await f.image(),shot=await f.shot(),input=attach(f,node,shot);
  const source=`const {parentPort,workerData}=require('node:worker_threads');(async()=>{const {openStore}=await import(workerData.db);const {createServices}=await import(workerData.services);const store=openStore(workerData.root,{lock:false});parentPort.postMessage({ready:true});parentPort.once('message',async()=>{try{parentPort.postMessage({result:await createServices(store,new Map(),{env:{}}).call('reference.attach',workerData.input)});}catch(error){parentPort.postMessage({error:error.code||error.message});}finally{store.close();}});})();`;
- const workers=Array.from({length:4},()=>new Worker(source,{eval:true,workerData:{root:f.root,input,db:new URL('../packages/business/src/db.mjs',import.meta.url).href,services:new URL('../packages/business/src/services.mjs',import.meta.url).href}}));
+ const workers=Array.from({length:4},()=>new Worker(source,{eval:true,workerData:{root:f.root,input,db:new URL('../packages/business/src/db.ts',import.meta.url).href,services:new URL('../packages/business/src/services.ts',import.meta.url).href}}));
  t.after(()=>Promise.all(workers.map(worker=>worker.terminate())));
  await Promise.all(workers.map(worker=>new Promise((resolve,reject)=>{worker.once('message',resolve);worker.once('error',reject);})));const pending=workers.map(worker=>new Promise((resolve,reject)=>{worker.once('message',resolve);worker.once('error',reject);}));workers.forEach(worker=>worker.postMessage('go'));
  const results=await Promise.all(pending);results.forEach(value=>{assert.ok(!value.error,value.error);assert.deepEqual(value.result,results[0].result);});assert.equal(f.store.list('edges').length,1);assert.equal(f.store.get('shots',shot.id).revision,shot.revision+1);

@@ -24,7 +24,7 @@ function harness(patch = {}) {
   const module={exports:{}};
   Function('require','module','exports','fetch',transformSync(readFileSync(new URL('../apps/web/src/ExportFileActions.tsx',import.meta.url),'utf8'),{loader:'tsx',format:'cjs',jsx:'transform'}).code)(name=>{
     if(name==='react')return react;
-    if(name.endsWith('workspace-visibility.jsx'))return{useWorkspaceVisibility:()=>visible};
+    if(name.endsWith('workspace-visibility.tsx'))return{useWorkspaceVisibility:()=>visible};
     if(name.endsWith('I18nProvider.tsx'))return i18nTestModule();
     if(name.endsWith('export-file-recovery.ts'))return{exportFileStatusSchema};
     if(name==='@mioon/ui/components/workbench-controls')return{WorkbenchButton:'Button',WorkbenchAlert:'Alert'};

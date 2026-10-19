@@ -1,8 +1,9 @@
 import test from 'node:test';
 import http from 'node:http';
 import assert from 'node:assert/strict';
-import {mkdtemp,readFile,writeFile,mkdir,stat} from 'node:fs/promises';
+import {mkdtemp,readFile,writeFile,mkdir,stat, realpath} from 'node:fs/promises';
 import path from 'node:path';
+import {tmpdir} from 'node:os';
 import {startServer} from '@mioon/server';
 
 const token = 'synthetic-server-lifecycle-test-token';
@@ -12,7 +13,7 @@ const rpc = async (service, operation, input = {}, headers = {}) => {
 };
 
 test('exported server supports ephemeral loopback port, independent lifecycle and durable data', async () => {
-  const root = await mkdtemp('/tmp/wb-lifecycle-');
+  const root = await mkdtemp(path.join(await realpath(tmpdir()),'wb-lifecycle-'));
   const dist = path.join(root,'renderer');
   await mkdir(dist);await writeFile(path.join(dist,'index.html'),'<html>isolated renderer fixture</html>');
   let service = await startServer({dataDir:path.join(root,'data'),port:0,token,distDir:dist});
@@ -33,7 +34,7 @@ test('exported server supports ephemeral loopback port, independent lifecycle an
 });
 
 test('refactored transport retains authorization, origin and host checks, without exposing token',async () => {
-  const dataDir = await mkdtemp('/tmp/wb-auth-');
+  const dataDir = await mkdtemp(path.join(await realpath(tmpdir()),'wb-auth-'));
   const service = await startServer({dataDir,port:0,token});
   try {
     const unauthenticated = await fetch(service.url+'/api/rpc',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({operation:'project.list',input:{}})});
@@ -51,7 +52,7 @@ test('refactored transport retains authorization, origin and host checks, withou
 });
 
 test('token remains private at rest, invalid startup releases lock for a corrected retry',async () => {
-  const root = await mkdtemp('/tmp/wb-token-');
+  const root = await mkdtemp(path.join(await realpath(tmpdir()),'wb-token-'));
   let service = await startServer({dataDir:root,port:0});
   assert.equal((await stat(service.tokenFile)).mode & 0o777,0o600);
   assert.equal((await readFile(service.tokenFile,'utf8')).trim(),service.token);

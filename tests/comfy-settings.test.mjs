@@ -4,11 +4,11 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {mkdtemp, mkdir, readFile, writeFile, readdir, rm, chmod, stat, symlink, link} from 'node:fs/promises';
 import {DEFAULT_COMFY_IMAGE_CONFIGURATION, COMFY_SETTINGS_NAMESPACE, COMFY_SETTINGS_LIMITS,
-  comfyImageCheckRequestSchema, isComfyImageSettingsResult} from '../packages/contracts/src/comfy-images.mjs';
+  comfyImageCheckRequestSchema, isComfyImageSettingsResult} from '../packages/contracts/src/comfy-images.ts';
 import {createComfySettings, createComfySettingsFile, parseComfyConfiguration, parseComfySettingsUpdate,
   sanitizeComfySettingsResult, validateComfySettingsEnvelope, comfySettingsError, sanitizeComfySettingsError,
-  COMFY_SETTINGS_READ_CURRENT, COMFY_SETTINGS_ASSERT_CURRENT} from '../packages/business/src/comfy/settings.mjs';
-import {IMAGE_SETTINGS_READ_CURRENT, IMAGE_SETTINGS_ASSERT_CURRENT} from '../packages/business/src/images/settings.mjs';
+  COMFY_SETTINGS_READ_CURRENT, COMFY_SETTINGS_ASSERT_CURRENT} from '../packages/business/src/comfy/settings.ts';
+import {IMAGE_SETTINGS_READ_CURRENT, IMAGE_SETTINGS_ASSERT_CURRENT} from '../packages/business/src/images/settings.ts';
 
 const SENTINEL = 'synthetic-private-value-never-an-actual-key';
 const reservedPorts = () => [4318, 4319];

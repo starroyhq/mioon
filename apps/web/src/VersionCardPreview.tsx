@@ -2,7 +2,7 @@ import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { WorkbenchButton } from '@mioon/ui/components/workbench-controls';
 import { WorkbenchPopover, WorkbenchPopoverTrigger, WorkbenchPopoverTitle, WorkbenchPopoverClose, WorkbenchPopoverContent } from '@mioon/ui/components/workbench-popover';
 import { Play, X } from '@mioon/ui/components/workbench-icons';
-import { useWorkspaceVisibility, WorkspaceVisibilityProvider } from './workspace-visibility.jsx';
+import { useWorkspaceVisibility, WorkspaceVisibilityProvider } from './workspace-visibility.tsx';
 import { useI18n } from './i18n/I18nProvider.tsx';
 
 /** A compact card keeps a full, explicit player available in an owned portal. */

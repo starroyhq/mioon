@@ -5,9 +5,9 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { transformSync } from 'esbuild';
 import { isTimelineMutationResponse } from '@mioon/contracts';
-import { createEditTaskClient, isDurableEditOperation } from '../apps/web/src/edit-task-client.js';
-import { workspaceOriginScope } from '../apps/web/src/workspace-origin.js';
-import { createEditTaskController } from '../apps/web/src/edit-task-controller.js';
+import { createEditTaskClient, isDurableEditOperation } from '../apps/web/src/edit-task-client.ts';
+import { workspaceOriginScope } from '../apps/web/src/workspace-origin.ts';
+import { createEditTaskController } from '../apps/web/src/edit-task-controller.ts';
 
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 import * as currentApplyState from '../apps/web/src/timeline-loudness-apply-state.ts';
@@ -16,7 +16,10 @@ import * as mixState from '../apps/web/src/timeline-mix-loudness-state.ts';
 import { timelineMixLoudnessViewState } from '../apps/web/src/timeline-mix-loudness-state.ts';
 import { submitTimelineLoudnessApply } from '../apps/web/src/timeline-loudness-apply-submit.ts';
 import { fixture, deferred, id, projectId, timelineId } from './helpers/timeline-mix-loudness-ui-fixture.mjs';
+import { message as messageKey, renderMessage } from './helpers/i18n.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 // Frozen pre-fix sources exercise the identical causal test without changing
 // the worktree. Only these four non-secret renderer files are substituted.
 const sourcePath = filename => process.env.MIOON_LOUDNESS_CLOSE_SOURCE_ROOT
@@ -32,7 +35,7 @@ if (process.env.MIOON_LOUDNESS_CLOSE_SOURCE_ROOT) {
   });
   applyState = module.exports;
 }
-const app = readFileSync(sourcePath('App.jsx'), 'utf8');
+const app = readFileSync(sourcePath('App.tsx'), 'utf8');
 const part = (start, end) => app.slice(app.indexOf(start), app.indexOf(end, app.indexOf(start)));
 const durable = part('  async function run(', '  async function runSession(');
 const mutate = part('  async function mutateTimeline(', '  async function selectClip(');
@@ -87,6 +90,8 @@ async function harness(t, { lose = 'execute' } = {}) {
   const currentProject = { current: projectId }, dataRef = { current: { project: { id: projectId }, timeline: { id: timelineId, revision: 4 }, timelineHistory: { revision: 4 } } };
   let keys = 0, epoch = 0;
   const env = {
+    application: null, clipDraftRef: { current: null }, setSubjectRefresh: () => undefined, msg: messageKey,
+    localizedError: value => Object.assign(new Error(renderMessage('zh-Hans', value)), { displayMessage: value }),
     workspaceOriginScope, workspaceRef: { current: { restored: false } }, preferenceScope: { current: 'a'.repeat(64) },
     lastProjectRef: { current: { getState: () => ({ identityBlocked: false }) } }, timelineLoudnessApplyRecoveryScope: currentApplyState.timelineLoudnessApplyRecoveryScope, isDurableEditOperation, isTimelineMutationResponse, submitTimelineLoudnessApply, tasksRef: { current: tasks }, currentProject, dataRef,
     nativeCloseRegistry: { current: registry }, timelineLoudnessApplyRef: { current: null },
@@ -94,7 +99,7 @@ async function harness(t, { lose = 'execute' } = {}) {
     timelinePending: false, requestId: () => { requestKeys++; return `close-original-key-${++keys}`; }, context: () => ({ projectId: currentProject.current, epoch }), isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === epoch,
     captureTaskWorkspaceIntent: () => () => false, readTaskRevealContext: () => ({}), pendingForProject: () => [], isMutationOperation: () => false,
     isBusy: key => busy.has(key), markBusy: (_owner, key, value) => { if (value) busy.add(key); else busy.delete(key); observation.set({ pending: value }); transitions.push(value); },
-    requestCounter: { current: 0 }, setData: update => { dataRef.current = update(dataRef.current); }, refresh: async () => undefined,
+    requestCounter: { current: 0 }, clipConnectionBlocked: { current: false }, setData: update => { dataRef.current = update(dataRef.current); }, refresh: async () => undefined,
     notify: () => undefined, openTasks: () => undefined, setAuth: () => undefined, readableError: error => error.message,
     runSession: () => assert.fail('No legacy session mutation'), timelineFormatRef: { current: null }, subtitlesRef: { current: null },
     useTimelineLoudnessApply: options => hook.render(options), confirm: async message => { confirms.push(message); if (confirmGate) { const gate = confirmGate; confirmGate = null; gate.started.resolve(); return gate.wait.promise; } return true; },

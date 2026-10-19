@@ -13,28 +13,30 @@ import { transformSync } from 'esbuild';
 import * as contracts from '@mioon/contracts';
 import * as mixLoudnessRpc from '../apps/web/src/timeline-mix-loudness-rpc.ts';
 import * as mixLoudnessContracts from '@mioon/contracts/timeline-mix-loudness';
-import * as workspaceOrigin from '../apps/web/src/workspace-origin.js';
-import * as restoredWorkspace from '../apps/web/src/restored-workspace.js';
+import * as workspaceOrigin from '../apps/web/src/workspace-origin.ts';
+import * as restoredWorkspace from '../apps/web/src/restored-workspace.ts';
 import * as projectOpening from '../apps/web/src/project-open-state.ts';
-import { rpc as realRpc } from '../apps/web/src/api.js';
-import * as feedback from '../apps/web/src/import-feedback.js';
+import { rpc as realRpc } from '../apps/web/src/api.ts';
+import * as feedback from '../apps/web/src/import-feedback.ts';
 import { createEditorWindowInputs } from '../apps/web/src/editor-window-inputs.ts';
 
-const appSource = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
-const apiSource = readFileSync(new URL('../apps/web/src/api.js', import.meta.url), 'utf8');
-const importSource = appSource.slice(appSource.indexOf('  async function importFiles(files) {'), appSource.indexOf('  async function saveShot('));
-const errorSource = appSource.slice(appSource.indexOf('function localizedError(displayMessage) {'), appSource.indexOf('function Modal('));
-assert.ok(importSource.startsWith('  async function importFiles(files) {'), 'Exercise the actual App importFiles function');
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
+const appSource = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
+const apiSource = readFileSync(new URL('../apps/web/src/api.ts', import.meta.url), 'utf8');
+const importSource = appSource.slice(appSource.indexOf('  async function importFiles(files?: FileList | File[]): Promise<void> {'), appSource.indexOf('  async function saveShot('));
+const errorSource = appSource.slice(appSource.indexOf('function localizedError(displayMessage: AppMessage | null | undefined): Error & {displayMessage: AppMessage} {'), appSource.indexOf('function Modal('));
+assert.ok(importSource.startsWith('  async function importFiles(files?: FileList | File[]): Promise<void> {'), 'Exercise the actual App importFiles function');
 const projectId = '00000000-0000-4000-8000-000000000001';
 const file = (name, patch = {}) => ({ name, type: 'image/png', size: 4, ...patch });
 const ack = input => ({ id: '00000000-0000-4000-8000-000000000010', projectId: input.projectId, name: input.name, mimeType: input.mimeType });
 const defer = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const flush = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
-const lifecycleSource = appSource.slice(appSource.indexOf('  const importSession ='), appSource.indexOf('  const currentProject ='));
+const lifecycleSource = appSource.slice(appSource.indexOf('  const importSession = useRef<'), appSource.indexOf('  const currentProject ='));
 const refreshSource = appSource.slice(appSource.indexOf('  const refresh = useCallback('), appSource.indexOf('  async function revealImageAsset('));
 function actualApiDependency(name) {
   if (name === '@mioon/contracts') return contracts;
-  if (name === './workspace-origin.js') return workspaceOrigin;
+  if (name === './workspace-origin.ts') return workspaceOrigin;
   if (name === './timeline-loudness-apply-rpc.ts') return loudnessApplyRpc;
   if (name === './timeline-clip-loudness-rpc.ts') return clipLoudnessRpc;
   if (name === '@mioon/contracts/timeline-clip-loudness') return clipLoudnessContracts;
@@ -48,7 +50,7 @@ function harness({ fetchImpl, readerImpl, refreshImpl, rpcImpl, actualRefresh = 
   const currentProject = { current: projectId }, navigationEpoch = { current: 0 }, projectEpoch = { current: 0 }, requestCounter = { current: 0 };
   const data = { project: { id: projectId }, assets: [] }, dataRef = { current: data };
   const apiModule = { exports: {} }, workspaceRef = { current: workspace };
-  Function('module', 'exports', 'require', 'fetch', transformSync(apiSource, { format: 'cjs' }).code)(apiModule, apiModule.exports, actualApiDependency, async (url, options) => {
+  Function('module', 'exports', 'require', 'fetch', transformSync(apiSource, { format: 'cjs', loader: 'ts' }).code)(apiModule, apiModule.exports, actualApiDependency, async (url, options) => {
     const body = JSON.parse(options.body);
     return fetchImpl ? fetchImpl(url, options, body, requests.length) : Response.json({ ok: true, data: ack(body.input) });
   });
@@ -307,7 +309,7 @@ test('real loopback HTTP and imported rpc: socket loss after observed POST stays
 
 // Execute the actual App polling effect including the H1 loaded-project gate. Only browser scheduling/event
 // plumbing is controlled; callbacks call the actual App refresh implementation.
-const pollSource = appSource.slice(appSource.indexOf('  useEffect(() => {\n    if (!auth || !workbenchReady || !data.project?.id) return;'), appSource.indexOf('  async function run(key,'));
+const pollSource = appSource.slice(appSource.indexOf('  useEffect(() => {\n    if (!auth || !workbenchReady || !data.project?.id) return;'), appSource.indexOf('  async function run(key'));
 assert.ok(pollSource.startsWith('  useEffect(() => {\n    if (!auth || !workbenchReady || !data.project?.id) return;'));
 function mountActualPolling(h, workbenchReady = true) {
   let timer, cleanup, cleared = false;
@@ -418,8 +420,8 @@ test('home presentation never starts project polling or performs the loaded-proj
 });
 
 test('actual API harness loads the exact current real dependencies and rejects any unlisted module', () => {
-  const names = [...apiSource.matchAll(/^import .+ from ['"]([^'"]+)['"];$/gm)].map(match => match[1]);
-  const expected = [['./timeline-clip-loudness-rpc.ts', clipLoudnessRpc], ['@mioon/contracts/timeline-clip-loudness', clipLoudnessContracts], ['./timeline-loudness-apply-rpc.ts', loudnessApplyRpc], ['@mioon/contracts', contracts], ['./opacity-candidate-client-binding.ts', opacityClientBinding], ['./workspace-origin.js', workspaceOrigin], ['./timeline-mix-loudness-rpc.ts', mixLoudnessRpc], ['@mioon/contracts/timeline-mix-loudness', mixLoudnessContracts]];
+  const names = [...new Set([...apiSource.matchAll(/^import .+ from ['"]([^'"]+)['"];$/gm)].map(match => match[1]))];
+  const expected = [['./timeline-clip-loudness-rpc.ts', clipLoudnessRpc], ['@mioon/contracts/timeline-clip-loudness', clipLoudnessContracts], ['./timeline-loudness-apply-rpc.ts', loudnessApplyRpc], ['@mioon/contracts', contracts], ['./opacity-candidate-client-binding.ts', opacityClientBinding], ['./workspace-origin.ts', workspaceOrigin], ['./timeline-mix-loudness-rpc.ts', mixLoudnessRpc], ['@mioon/contracts/timeline-mix-loudness', mixLoudnessContracts]];
   assert.deepEqual(names, expected.map(([name]) => name));
   for (const [name, module] of expected) assert.equal(actualApiDependency(name), module);
   for (const name of ['./timeline-loudness-apply-rpc.js', './timeline-mix-loudness-rpc.js', './arbitrary.ts', '@mioon/contracts/arbitrary', 'node:fs']) {

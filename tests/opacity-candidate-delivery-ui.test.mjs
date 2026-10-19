@@ -24,13 +24,13 @@ before(() => {
   const fixtures = {exported, preview, named, invalid, fakeUrl};
   const fixture = `import React from 'react';
     import {renderToStaticMarkup} from 'react-dom/server.browser';
-    import Preview from './src/Preview.jsx';
-    import ExportHistoryList from './src/ExportHistoryList.jsx';
+    import Preview from './src/Preview.tsx';
+    import ExportHistoryList from './src/ExportHistoryList.tsx';
     import ExportPreview from './src/ExportPreview.tsx';
     import {createOpacityCandidateApplication, readOpacityCandidateApplication} from './src/opacity-candidate-application.ts';
     import * as contracts from '@mioon/contracts';
-    import {rpc} from './src/api.js';
-    import {createEditTaskClient} from './src/edit-task-client.js';
+    import {rpc} from './src/api.ts';
+    import {createEditTaskClient} from './src/edit-task-client.ts';
     import {exportPreviewResult} from './src/export-preview-state.ts';
     const f = ${JSON.stringify(fixtures)}, projectId = ${JSON.stringify(projectId)};
     const token = createOpacityCandidateApplication({...contracts,rpc,createEditTaskClient}, () => {throw Error('presentation must not fetch');});
@@ -64,7 +64,7 @@ before(() => {
       malformed:exportPreviewResult(attempt,[{...f.named,snapshot:f.invalid.snapshot}],context).url};`;
   const script = `import {build} from 'esbuild';
     globalThis.fetch = () => {throw Error('presentation must never fetch');};
-    const {outputFiles} = await build({stdin:{contents:${JSON.stringify(fixture)},loader:'jsx',resolveDir:${JSON.stringify(path.join(root,'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,loader:{'.css':'empty'},jsx:'automatic',define:{'process.env.NODE_ENV':'"production"'}});
+    const {outputFiles} = await build({stdin:{contents:${JSON.stringify(fixture)},loader:'tsx',resolveDir:${JSON.stringify(path.join(root,'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,loader:{'.css':'empty'},jsx:'automatic',define:{'process.env.NODE_ENV':'"production"'}});
     const result = await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64')).catch(error=>{process.stderr.write(error.stack.replace(/data:text\\/javascript;base64,[A-Za-z0-9+/=]+/g,'<bundle>'));process.exit(1);});
     await new Promise(resolve=>process.stdout.write(JSON.stringify({html:result.html,state:result.state}),resolve));process.exit(0);`;
   rendered = JSON.parse(execFileSync(process.execPath,['--input-type=module'],{cwd:root,input:script,encoding:'utf8',timeout:30000}));

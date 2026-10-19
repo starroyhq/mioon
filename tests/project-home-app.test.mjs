@@ -10,16 +10,18 @@ import { buildSync, transformSync } from 'esbuild';
 import * as opening from '../apps/web/src/project-open-state.ts';
 import { editorInitialSelection, revealNativeProjects } from '../apps/web/src/editor-native-window.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
-import { workspaceOriginScope, retainWorkspaceIdentity } from '../apps/web/src/workspace-origin.js';
-import { validateProjectWorkspace } from '../apps/web/src/restored-workspace.js';
-import { defaultWorkspaceState } from '../apps/web/src/workspace-state.js';
+import { workspaceOriginScope, retainWorkspaceIdentity } from '../apps/web/src/workspace-origin.ts';
+import { validateProjectWorkspace } from '../apps/web/src/restored-workspace.ts';
+import { defaultWorkspaceState } from '../apps/web/src/workspace-state.ts';
 import { chooseInitialProject, retainLastProjectScope, createProjectBootGuard, assertLastProjectBootIdentity } from '../apps/web/src/last-project-navigation.ts';
 import {observeClipAudioRoleCapability} from '../apps/web/src/clip-audio-role-state.ts';
 import {canEditTimelineAudioRole, isWorkspaceRestoreInspection} from '@mioon/contracts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const root = fileURLToPath(new URL('../', import.meta.url));
 // The same assertions can run against an independently extracted baseline App.
-const app = readFileSync(process.env.MIOON_HOME_APP_SOURCE || join(root, 'apps/web/src/App.jsx'), 'utf8');
+const app = readFileSync(process.env.MIOON_HOME_APP_SOURCE || join(root, 'apps/web/src/App.tsx'), 'utf8');
 const id = n => `77000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projects = [1, 2].map(n => ({ id: id(n), name: `项目 ${n}`, updatedAt: '2026-10-13T00:00:00.000Z' }));
 const snapshot = projectId => ({ project: { id: projectId, name: '已核对项目' }, shots: [], nodes: [], edges: [], assets: [], versions: [], jobs: [], exports: [] });
@@ -106,11 +108,11 @@ function environment(options = {}) {
 function harness(options = {}) {
   const { env, calls, registry } = environment(options);
   const source = [section('  function projectSessionReady()', '  const workbenchReady ='),
-    section('  const context = () =>', '  taskWorkspaceState.current ='),
+    section('  const context = (): CapturedContext =>', '  taskWorkspaceState.current ='),
     section('  async function prepareSettingsDeparture()', '  async function changeMode('),
     section('  const refresh = useCallback(', '  async function revealImageAsset('),
     section('  async function selectProject(', '  async function reloadPreferences('),
-    section('  async function boot() {', '  useEffect(() => {\n    bootGuard.current.activate();'),
+    section('  async function boot(): Promise<void> {', '  useEffect(() => {\n    bootGuard.current!.activate();'),
     section('  async function createProject(', '  async function addShot(')].join('\n');
   // A live lexical environment models React rerenders without reimplementing the
   // production functions. Only external services and unrelated draft guards are fakes.
@@ -393,11 +395,11 @@ function boundaryRenderer() {
     import { ConfirmationProvider } from '@mioon/ui/components/workbench-confirm';
     import { Button } from '@mioon/ui/components/button';
     export { React, renderToStaticMarkup, ProjectHome, ProjectHomeConnections, EditorWindowOpening, SettingsNavigationSlot, LastProjectStatus, WebSettingsCenter, ConfirmationProvider, Button };`;
-  const result = buildSync({ stdin: { contents: fixture, loader: 'jsx', resolveDir: join(root, 'apps/web') }, bundle: true, platform: 'node', format: 'cjs',
+  const result = buildSync({ stdin: { contents: fixture, loader: 'tsx', resolveDir: join(root, 'apps/web') }, bundle: true, platform: 'node', format: 'cjs',
     write: false, jsx: 'automatic', loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '"production"' } });
   const module = { exports: {} }; Function('require', 'module', 'exports', result.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
   const ui = module.exports;
-  const body = transformSync(`function renderBoundary() { ${renderSource} }`, { loader: 'jsx', format: 'cjs', jsx: 'transform' }).code;
+  const body = transformSync(`function renderBoundary() { ${renderSource} }`, { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code;
   presentation = h => {
     const mounted = [];
     const stub = name => () => { mounted.push(name); return ui.React.createElement('section', { 'data-stub': name }); };

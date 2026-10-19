@@ -265,10 +265,10 @@ export const commandMessages = {
     "ja": "復元先をオフラインで安全に確認できないか、指定された復元の紐付け情報と一致しません。確認前にバックエンドを終了してください。既存のロック、リンク、付随ファイルの修復は行っていません"
   },
   "backup.error.VALIDATION_ERROR": {
-    "zh-Hans": "请只使用一个受支持的命令及其文档中列出的选项。运行 node apps/cli/src/backup.mjs --help 查看用法",
-    "zh-Hant": "請只使用一個受支援的命令及其文件中列出的選項。執行 node apps/cli/src/backup.mjs --help 查看用法",
-    "en": "Use exactly one supported command and its documented options. Run node apps/cli/src/backup.mjs --help for usage",
-    "ja": "対応するコマンドを一つだけ、文書に記載されたオプションとともに使用してください。使用方法は node apps/cli/src/backup.mjs --help で確認できます"
+    "zh-Hans": "请只使用一个受支持的命令及其文档中列出的选项。运行 node apps/cli/src/backup.ts --help 查看用法",
+    "zh-Hant": "請只使用一個受支援的命令及其文件中列出的選項。執行 node apps/cli/src/backup.ts --help 查看用法",
+    "en": "Use exactly one supported command and its documented options. Run node apps/cli/src/backup.ts --help for usage",
+    "ja": "対応するコマンドを一つだけ、文書に記載されたオプションとともに使用してください。使用方法は node apps/cli/src/backup.ts --help で確認できます"
   },
   "backup.error.WORKSPACE_BACKUP_INVALID_PATH": {
     "zh-Hans": "请明确指定规范化的绝对目录路径，源目录与目标目录不能重叠",

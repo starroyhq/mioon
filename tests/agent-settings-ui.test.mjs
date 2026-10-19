@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as navigation from '../apps/web/src/settings-navigation-state.ts';
-import * as logic from '../apps/web/src/agent-settings.js';
+import * as logic from '../apps/web/src/agent-settings.ts';
 
 const { agentBindingChanged, agentSettingsCanSave, agentSettingsIssue, createAgentSettingsClient, createAgentSettingsSession, safeAgentSettings } = logic;
 const configuration = { presetId: 'openai', platformId: 'global', baseUrl: 'https://api.example.com/v1', model: 'example-model', protocol: 'chat_completions' };
@@ -187,8 +187,8 @@ test('late initial read, late save and late reconciliation cannot publish or wri
   }
 });
 
-const source = readFileSync(new URL('../apps/web/src/AgentSettings.jsx', import.meta.url), 'utf8');
-const transformed = transformSync(source, { loader: 'jsx', format: 'cjs' }).code;
+const source = readFileSync(new URL('../apps/web/src/AgentSettings.tsx', import.meta.url), 'utf8');
+const transformed = transformSync(source, { loader: 'tsx', format: 'cjs' }).code;
 const element = (type, props = {}, ...children) => ({ type, props: { ...props, children: children.length === 1 ? children[0] : children } });
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
 const depsEqual = (a, b) => a?.length === b?.length && a.every((value, i) => Object.is(value, b[i]));
@@ -207,10 +207,10 @@ function uiHarness(client) {
     if (id === 'react') return react;
     if (id === './settings-navigation-state.ts') return navigation;
     if (id === './AgentAuthorizations.tsx') return {__esModule:true,default:'AgentAuthorizations'};
-    if (id === './agent-settings.js') return { ...logic, createAgentSettingsSession: options => logic.createAgentSettingsSession({ ...options, client }) };
-    if (id === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
-    if (id === './icons.jsx') return { default: 'Icon' };
-    if (id.startsWith('@mioon/ui/') || id === './WorkspaceControls.jsx') return primitive;
+    if (id === './agent-settings.ts') return { ...logic, createAgentSettingsSession: options => logic.createAgentSettingsSession({ ...options, client }) };
+    if (id === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => visible };
+    if (id === './icons.tsx') return { default: 'Icon' };
+    if (id.startsWith('@mioon/ui/') || id === './WorkspaceControls.tsx') return primitive;
     throw Error(id);
   });
   const h = {
@@ -254,9 +254,9 @@ test('actual UI leaves the settings page during a pending save and old callbacks
 });
 
 test('settings integration stays in the shared dock, uses local controls and has no modal or provider probe', () => {
-  const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   assert.match(app, /<AgentWorkspace/); assert.match(app, /data-testid="agent-settings-open"/);
-  assert.match(source, /from '\.\/WorkspaceControls\.jsx'/); assert.doesNotMatch(source, /DialogContent|<Dialog/);
+  assert.match(source, /from '\.\/WorkspaceControls\.tsx'/); assert.doesNotMatch(source, /DialogContent|<Dialog/);
   assert.match(localizedSource(source), /连接设置不会发起模型请求；每次发送都需确认聊天文字、项目只读检查、选中镜头或片段提议范围/);
   assert.doesNotMatch(source, /尚无工具执行/); assert.match(localizedSource(source), /尚未验证连接/);
   assert.doesNotMatch(source, /localStorage|sessionStorage|rpc\(|fetch\(|测试连接|立即连接|type="text"[^\n]*agent-settings-key/);

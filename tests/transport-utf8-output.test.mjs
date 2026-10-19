@@ -97,6 +97,7 @@ const textSites = {
   "tests/helpers/workspace-restore-offline-fixture.mjs": 2,
   "tests/workspace-origin-transports.test.mjs": 2,
   "tests/workspace-backup-cli.test.mjs": 2,
+  "tests/opacity-candidate-backup-cli.test.mjs": 2,
   "tests/workspace-backup-inspection-transports.test.mjs": 3,
   "tests/agent-chat-durable-crash.test.mjs": 1,
   "tests/agent-edit-scope.test.mjs": 1,
@@ -120,6 +121,7 @@ const textSites = {
   "tests/frame-transports.test.mjs": 3,
   "tests/generation-input-transports.test.mjs": 4,
   "tests/helpers/agent-edit-wire-lifecycle.ts": 3,
+  "tests/helpers/inspection-wire-lifecycle.mjs": 3,
   "tests/helpers/agent-edit-wire-lifecycle-cases.ts": 1,
   "tests/helpers/edit-tasks-http-fixture.mjs": 1,
   "tests/http-file-shutdown.test.mjs": 2,
@@ -129,7 +131,6 @@ const textSites = {
   "tests/image-edit-transports.test.mjs": 5,
   "tests/image-profile-discovery.test.mjs": 3,
   "tests/inspection-wire.test.mjs": 3,
-  "tests/helpers/inspection-wire-lifecycle.mjs": 3,
   "tests/integration.test.mjs": 2,
   "tests/keychain-timeout-audit.test.mjs": 1,
   "tests/mcp-v4.test.mjs": 1,
@@ -166,7 +167,14 @@ const textSites = {
   // Actual CLI stdout/stderr and official MCP stderr are bounded UTF-8 text.
   'tests/timeline-loudness-apply-transports.test.mjs': 3,
   // Only SDK stderr has a direct listener; CLI execFile owns UTF-8 decoding, SDK owns JSON stdout.
-  'tests/timeline-mix-loudness-real-transports.test.mjs': 1
+  'tests/timeline-mix-loudness-real-transports.test.mjs': 1,
+  'tests/opacity-upgrade-cli.test.mjs': 2,
+  'tests/timeline-audio-role-transports.test.mjs': 5,
+  'tests/timeline-ripple-transports.test.mjs': 2,
+};
+// Byte-preserving passthrough forwarders: no text concatenation or decoding.
+const passthroughSites = {
+  'tests/fixtures/workspace-restore-electron/main.ts': 2,
 };
 const binarySites = {
   'tests/http-streams-qa-native.mjs': 1,
@@ -183,6 +191,11 @@ const binarySites = {
 // These are not appendFile loggers or streaming text decoders. Keep each exact
 // Buffer collection and final sink explicit: no directory/file-wide exemption.
 const bufferedSites = {
+  'tests/project-lifecycle-transports.test.mjs': {
+    count: 1, kind: 'diagnostic-string',
+    registration: "child.stderr.on('data',chunk=>{stderr+=chunk;});",
+    sink: "assert.equal(outcome[1],'SIGKILL',stderr);",
+  },
   'tests/desktop-exit-backend.test.mjs': {
     count: 1, kind: 'complete-message',
     registration: "child.stdout.on('data', chunk => chunks.push(chunk))",
@@ -228,7 +241,7 @@ test('every inventoried test/QA text collector configures continuous decoding at
     const sites = [...source.matchAll(registrationPattern)];
     if (!sites.length) continue;
     found[name] = sites.length;
-    assert.ok(Object.hasOwn(textSites, name) || Object.hasOwn(binarySites, name) || Object.hasOwn(bufferedSites, name), `${name}: classify each newly introduced stream consumer`);
+    assert.ok(Object.hasOwn(textSites, name) || Object.hasOwn(binarySites, name) || Object.hasOwn(passthroughSites, name) || Object.hasOwn(bufferedSites, name), `${name}: classify each newly introduced stream consumer`);
     if (Object.hasOwn(bufferedSites, name)) {
       const specification = bufferedSites[name];
       assert.equal(sites.length, specification.count, name);
@@ -237,6 +250,11 @@ test('every inventoried test/QA text collector configures continuous decoding at
         assert.equal(site.groups.decode, undefined, `${name}: retain Buffer bytes until the final sink`);
         assert.ok(source.startsWith(specification.registration, site.index), `${name}: exact audited Buffer collector, not per-chunk string coercion`);
       }
+      continue;
+    }
+    if (Object.hasOwn(passthroughSites, name)) {
+      assert.equal(sites.length, passthroughSites[name], name);
+      for (const site of sites) assert.equal(site.groups.decode, undefined, `${name}: keep raw byte passthrough`);
       continue;
     }
     if (Object.hasOwn(binarySites, name)) {
@@ -267,5 +285,5 @@ test('every inventoried test/QA text collector configures continuous decoding at
       if (site.groups.access === '?.') assert.doesNotThrow(() => register({}, () => {}), location);
     }
   }
-  assert.deepEqual(found, Object.fromEntries(Object.entries({...textSites, ...binarySites, ...Object.fromEntries(Object.entries(bufferedSites).map(([name, value]) => [name, value.count]))}).sort(([a], [b]) => a.localeCompare(b))), 'all inventoried helper and raw-file sites are present');
+  assert.deepEqual(found, Object.fromEntries(Object.entries({...textSites, ...binarySites, ...passthroughSites, ...Object.fromEntries(Object.entries(bufferedSites).map(([name, value]) => [name, value.count]))}).sort(([a], [b]) => a.localeCompare(b))), 'all inventoried helper and raw-file sites are present');
 });

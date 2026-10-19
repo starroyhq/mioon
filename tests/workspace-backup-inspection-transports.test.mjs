@@ -8,13 +8,13 @@ import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.mjs';
-import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {createClient,operationDefinition} from '@mioon/client';
 const root=fileURLToPath(new URL('..',import.meta.url)),token='synthetic-backup-inspection-token-only';
 const bounded=async(promise,label,ms=10000)=>{let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(label+' timed out')),ms);})]);}finally{clearTimeout(timer);}};
 async function cli(args,env){
- const child=spawn(process.execPath,['apps/cli/src/index.mjs',...args],{cwd:root,env:{...mediaEnvironment(),...env},stdio:['ignore','pipe','pipe']});
+ const child=spawn(process.execPath,['apps/cli/src/index.ts',...args],{cwd:root,env:{...mediaEnvironment(),...env},stdio:['ignore','pipe','pipe']});
  let stdout='',stderr='',error;child.on('error',value=>{error=value;});
  const closed=new Promise(resolve=>child.once('close',(code,signal)=>resolve({code,signal})));
  child.stdout.setEncoding('utf8').on('data',text=>{stdout+=text;if(Buffer.byteLength(stdout)>256*1024){error=Error('CLI stdout bound');if(child.exitCode===null&&!child.signalCode)child.kill('SIGKILL');}});
@@ -35,7 +35,7 @@ test('actual authenticated HTTP, CLI and official MCP share exact non-path inspe
   const schema=await cli(['schema','workspace.backup.inspect'],{});assert.equal(schema.code,0);assert.deepEqual(schema.envelope.data,operationDefinition('workspace.backup.inspect'));
   const invalid=await cli(['workspace','backup','inspect','--input','{"directory":"SYNTHETIC_PRIVATE_PATH"}'],env);assert.equal(invalid.code,2);assert.equal(invalid.envelope.ok,false);
   client=new Client({name:'backup-inspection-test',version:'1.0.0'},{capabilities:{}});
-  transport=new StdioClientTransport({command:process.execPath,args:['apps/mcp/src/index.mjs'],cwd:root,env:{...mediaEnvironment(),...env},stderr:'pipe'});let stderr='';
+  transport=new StdioClientTransport({command:process.execPath,args:['apps/mcp/src/index.ts'],cwd:root,env:{...mediaEnvironment(),...env},stderr:'pipe'});let stderr='';
   transport.stderr?.setEncoding('utf8').on('data',text=>{stderr=(stderr+text).slice(-65536);});
   await bounded(client.connect(transport),'MCP connect');const listed=await client.listTools();const tool=listed.tools.find(value=>value.name==='workspace_backup_inspect');assert.ok(tool);assert.equal(tool.annotations.readOnlyHint,true);assert.equal(tool.inputSchema.additionalProperties,false);
   assert.equal(listed.tools.some(value=>/^workspace_backup_(create|verify|restore)$/.test(value.name)),false);

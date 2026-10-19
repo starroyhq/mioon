@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {isTimelineRecord} from '../packages/contracts/src/timeline-replacement.mjs';
+import {isTimelineRecord} from '../packages/contracts/src/timeline-replacement.ts';
 import {TIMELINE_LOUDNESS_CANDIDATE_VERSION, timelineLoudnessApplyInputSchema, isTimelineLoudnessApplyInput,
   canonicalTimelineLoudnessCandidate, timelineLoudnessCandidateDigest, isTimelineLoudnessApplicableReport,
   createTimelineLoudnessApplyContracts,hasTimelineLoudnessApplyNotAppliedProof} from '../packages/contracts/src/timeline-loudness-apply.ts';

@@ -1,15 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createEditTaskController } from '../apps/web/src/edit-task-controller.js';
-import { createEditTaskClient } from '../apps/web/src/edit-task-client.js';
-import * as pending from '../apps/web/src/submissions.js';
-import { pinNewWorkspaceIntent, assertWorkspaceIntent, workspacePendingKey, retainWorkspaceIdentity } from '../apps/web/src/workspace-origin.js';
-import { validateProjectWorkspace } from '../apps/web/src/restored-workspace.js';
-import { rpc } from '../apps/web/src/api.js';
-import { createWorkspacePreferences, durableWorkspaceState } from '../apps/web/src/workspace-preferences.js';
-import { defaultWorkspaceState } from '../apps/web/src/workspace-state.js';
-import { createExportPreflightController } from '../apps/web/src/export-preflight-state.js';
-import { createWaveformController, waveformKey } from '../apps/web/src/waveform-state.js';
+import { createEditTaskController } from '../apps/web/src/edit-task-controller.ts';
+import { createEditTaskClient } from '../apps/web/src/edit-task-client.ts';
+import * as pending from '../apps/web/src/submissions.ts';
+import { pinNewWorkspaceIntent, assertWorkspaceIntent, workspacePendingKey, retainWorkspaceIdentity } from '../apps/web/src/workspace-origin.ts';
+import { validateProjectWorkspace } from '../apps/web/src/restored-workspace.ts';
+import { rpc } from '../apps/web/src/api.ts';
+import { createWorkspacePreferences, durableWorkspaceState } from '../apps/web/src/workspace-preferences.ts';
+import { defaultWorkspaceState } from '../apps/web/src/workspace-state.ts';
+import { createExportPreflightController } from '../apps/web/src/export-preflight-state.ts';
+import { createWaveformController, waveformKey } from '../apps/web/src/waveform-state.ts';
 import { resolveTimelineExportDelivery, WAVEFORM_ALGORITHM } from '@mioon/contracts';
 
 const id = n => `92000000-0000-4000-8000-${String(n).padStart(12, '0')}`;

@@ -1,10 +1,10 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
-import {schemas,operationEffect} from '../packages/contracts/src/index.mjs';
+import {schemas,operationEffect} from '../packages/contracts/src/index.ts';
 import {lutImportInputSchema,lutResourceSchema,lutListResponseSchema,lutRestorePolicy,LUT_RESOURCE_LIMITS} from '../packages/contracts/src/lut-resources.ts';
 import {isLutRpcResponse} from '../packages/client/src/lut-resources.ts';
-import {createClient,discoverSchema} from '../packages/client/src/index.mjs';
+import {createClient,discoverSchema} from '../packages/client/src/index.ts';
 import {ReadBuffer,STDIO_DEFAULT_MAX_BUFFER_SIZE} from '../node_modules/@modelcontextprotocol/sdk/dist/esm/shared/stdio.js';
 const projectId='11111111-1111-4111-8111-111111111111',id='22222222-2222-4222-8222-222222222222';
 const bytes=Buffer.from('LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n');

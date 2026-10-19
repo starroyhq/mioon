@@ -4,7 +4,7 @@ import http from 'node:http';
 import {EventEmitter} from 'node:events';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {callObservedRpc} from '../apps/server/src/rpc-observation.mjs';
+import {callObservedRpc} from '../apps/server/src/rpc-observation.ts';
 import {schemas, operationEffect} from '@mioon/contracts';
 import {readFile} from 'node:fs/promises';
 
@@ -66,7 +66,7 @@ test('real HTTP render disconnect does not cancel or retry its business operatio
 for (const operation of ['timeline.export.preflight', 'timeline.export.capabilities']) test(`actual CLI Ctrl+C revokes only its ${operation} observer and never resubmits`, {timeout: 10000}, async t => {
   const f = await fixture(t, operation);
   const input = {projectId: '11111111-1111-4111-8111-111111111111', expectedRevision: 1, ...(operation.endsWith('capabilities') ? {exportSettings: {profileId: 'mp4_h264_v1', resolution: 'native', rateControl: {mode: 'crf', quality: 'standard'}}} : {})};
-  const child = spawn(process.execPath, [fileURLToPath(new URL('../apps/cli/src/index.mjs', import.meta.url)),
+  const child = spawn(process.execPath, [fileURLToPath(new URL('../apps/cli/src/index.ts', import.meta.url)),
     ...operation.split('.'), '--input', JSON.stringify(input)], {
     stdio: ['ignore', 'pipe', 'pipe'], env: {PATH: process.env.PATH || '', MIOON_BASE_URL: f.url,
       MIOON_TOKEN: 'preflight-cli-public-synthetic-only-token', MIOON_ENABLE_LIVE_PROVIDER: '0'},
@@ -117,7 +117,7 @@ test('only six explicit advisory operations observe disconnect; private capabili
 });
 
 test('observer policy rejects every other file writer and future business/network/paid capability effects', async () => {
-  const source = await readFile(new URL('../apps/server/src/rpc-observation.mjs', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../apps/server/src/rpc-observation.ts', import.meta.url), 'utf8');
   const importLine = "import {operationEffect} from '@mioon/contracts';";
   assert.equal(source.split(importLine).length, 2, 'one exact metadata dependency, actual observer function remains intact');
   const cases = [

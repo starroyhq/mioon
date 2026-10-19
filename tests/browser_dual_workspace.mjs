@@ -7,8 +7,8 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { openStore } from '../packages/business/src/db.mjs';
-import { createServices } from '../packages/business/src/services.mjs';
+import { openStore } from '../packages/business/src/db.ts';
+import { createServices } from '../packages/business/src/services.ts';
 export async function runDualWorkspaceAcceptance({tab,fixture,outDir}) {
  assert.ok(fixture.runtime.endsWith('/evidence/dual-workspace/runtime'));
  const store=openStore(path.join(fixture.runtime,'workspace'),{lock:false}),s=createServices(store,new Map(),{env:{}});

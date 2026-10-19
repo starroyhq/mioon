@@ -9,11 +9,11 @@ import {fileURLToPath} from 'node:url';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createFrameServices,safeFrameServiceError} from '../packages/business/src/frames.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createFrameServices,safeFrameServiceError} from '../packages/business/src/frames.ts';
 import {AppError} from '@mioon/contracts';
-import {spawnMedia,hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.mjs';
-import {FRAME_PROFILE_ID,FRAME_SELECTION_RULE,FRAME_LIMITS,canonicalFrameInput} from '../packages/contracts/src/frame-extraction.mjs';
+import {spawnMedia,hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.ts';
+import {FRAME_PROFILE_ID,FRAME_SELECTION_RULE,FRAME_LIMITS,canonicalFrameInput} from '../packages/contracts/src/frame-extraction.ts';
 
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex'),error=code=>cause=>cause.code===code&&!JSON.stringify(cause).includes('PRIVATE_SENTINEL');
 const deferred=()=>{let resolve;const promise=new Promise(yes=>{resolve=yes;});return {promise,resolve};};
@@ -100,7 +100,7 @@ test('stopping aborts and fences a late decoder result; reopening never resumes 
 for(const phase of ['after_acceptance','after_start_fence','after_result_manifest','after_result_receipt','after_media_publication','before_result_commit'])test(`actual process crash at ${phase} is reconciled without startup decode`,async t=>{
  const f=fixture(t),input=f.input();await f.close();
  const business=fileURLToPath(new URL('../packages/business/src/',import.meta.url));
- const script=`import {openStore} from ${JSON.stringify(path.join(business,'db.mjs'))};import {createFrameServices} from ${JSON.stringify(path.join(business,'frames.mjs'))};
+ const script=`import {openStore} from ${JSON.stringify(path.join(business,'db.mjs'))};import {createFrameServices} from ${JSON.stringify(path.join(business,'frames.ts'))};
  const store=openStore(${JSON.stringify(f.root)});const service=createFrameServices(store,{decode:async input=>{input.beforeSpawn(input.signal);return {bytes:Buffer.from(${JSON.stringify(bytes.toString('base64'))},'base64'),provenance:${JSON.stringify(provenance(f.asset,0))}};},fault:label=>{if(label===${JSON.stringify(phase)})process.exit(86);}});await service.handlers['frame.extract'](${JSON.stringify(input)});`;
  const child=spawn(process.execPath,['--input-type=module','-e',script],{stdio:['ignore','pipe','pipe']});let stderr='';child.stderr.setEncoding('utf8').on('data',value=>{stderr+=value;});const [exitCode]=await once(child,'close');assert.equal(exitCode,86,stderr);f.start();
  const receipt=await f.call('frame.request.get',{projectId:f.project.id,requestId:input.requestId}),current=await f.get(receipt.response.id);assert.equal(current.state,'interrupted');assert.equal(current.started,phase!=='after_acceptance');assert.equal(f.calls,0);assert.equal(count(f.store.db,'assets'),1);

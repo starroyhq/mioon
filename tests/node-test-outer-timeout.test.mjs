@@ -5,7 +5,7 @@ import {promisify} from 'node:util';
 import {mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {toolingEnvironment} from '../scripts/lib/local-tooling.mjs';
+import {toolingEnvironment} from '../scripts/lib/local-tooling.ts';
 import {inheritedTestCompileCache} from '../scripts/lib/test-compile-cache.ts';
 
 const execute = promisify(execFile);

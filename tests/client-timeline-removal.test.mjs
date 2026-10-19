@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
 import {clipRemovalKey,displayTimelineFrame} from '../apps/web/src/timeline-removal.ts';
-import {timelineHistoryState} from '../apps/web/src/timeline-history.js';
+import {timelineHistoryState} from '../apps/web/src/timeline-history.ts';
 import {i18nTestModule} from './helpers/i18n.ts';
 import {stepPreviewMedia,previewProgress} from '../apps/web/src/preview-playback.ts';
 import {timelinePointerFrame} from '../apps/web/src/timeline-view-geometry.ts';

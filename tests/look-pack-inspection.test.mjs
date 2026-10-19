@@ -16,13 +16,13 @@ import {createLookPackInspectionServices} from '../packages/business/src/look-pa
 import {LOOK_PACK_START,LOOK_PACK_END} from '../packages/contracts/src/look-pack.ts';
 import {lookPackInspectInputSchema,lookPackInspectResponseSchema,isLookPackInspectResponse} from '../packages/contracts/src/look-pack-inspection.ts';
 import {LUT_RESOURCE_PROFILE,lutRestorePolicy} from '../packages/contracts/src/lut-resources.ts';
-import {schemas,operationEffect,effectAnnotations} from '../packages/contracts/src/index.mjs';
-import {createClient,discoverSchema} from '../packages/client/src/index.mjs';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.mjs';
-import {RESTORE_READ_OPERATIONS} from '../packages/business/src/workspace-restore-policy.mjs';
+import {schemas,operationEffect,effectAnnotations} from '../packages/contracts/src/index.ts';
+import {createClient,discoverSchema} from '../packages/client/src/index.ts';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
+import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
+import {RESTORE_READ_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
 
 const body=Buffer.from('# Original lexical Cube\r\nTITLE "Look original"\r\nLUT_3D_SIZE 2\r\n0 0 0\r\n1 0 0\r\n0 1 0\r\n1 1 0\r\n0 0 1\r\n1 0 1\r\n0 1 1\r\n1 1 1');
 const hash=value=>createHash('sha256').update(value).digest('hex');
@@ -150,7 +150,7 @@ test('API CLI MCP share discovery and read-only effects; built-in Agent tool aut
  assert.deepEqual(definition.inputSchema.required,['projectId','lutId']);assert.equal(definition.inputSchema.additionalProperties,false);
  assert.deepEqual(effectAnnotations(operationEffect('lut.look.inspect')),{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false});
  for(const key of ['databaseWrite','fileWrite','externalIO','localProcess','paidGeneration'])assert.equal(definition.effects[key],false);
- for(const file of ['read-tool-policy.mjs','read-tool-runner.mjs','tool-wire.mjs'])assert.equal(readFileSync(new URL('../packages/business/src/agent/'+file,import.meta.url),'utf8').includes('lut.look.inspect'),false);
+ for(const file of ['read-tool-policy.ts','read-tool-runner.ts','tool-wire.ts'])assert.equal(readFileSync(new URL('../packages/business/src/agent/'+file,import.meta.url),'utf8').includes('lut.look.inspect'),false);
  const implementation=readFileSync(new URL('../packages/business/src/look-pack-inspection.ts',import.meta.url),'utf8');
  for(const forbidden of ['node:fs','node:child_process','node:http','node:https','fetch(','INSERT INTO','UPDATE main.','DELETE FROM'])assert.equal(implementation.includes(forbidden),false,forbidden);
 });
@@ -178,10 +178,10 @@ test('real shared service and cold restore31 return awaited metadata and preserv
 
 test('actual CLI schema and official MCP discovery expose identical bounded read without a backend',async()=>{
  const repo=fileURLToPath(new URL('../',import.meta.url)),env={PATH:process.env.PATH??'',NODE_ENV:'test'};
- const cli=await promisify(execFile)(process.execPath,['apps/cli/src/index.mjs','schema','lut.look.inspect'],{cwd:repo,env,timeout:10000,maxBuffer:128*1024});
+ const cli=await promisify(execFile)(process.execPath,['apps/cli/src/index.ts','schema','lut.look.inspect'],{cwd:repo,env,timeout:10000,maxBuffer:128*1024});
  const envelope=JSON.parse(cli.stdout);assert.equal(envelope.ok,true);assert.equal(envelope.data.operation,'lut.look.inspect');
  assert.deepEqual(envelope.data.inputSchema,discoverSchema({operation:'lut.look.inspect'}).inputSchema);
- const transport=new StdioClientTransport({command:process.execPath,args:['apps/mcp/src/index.mjs'],cwd:repo,env,stderr:'pipe'});
+ const transport=new StdioClientTransport({command:process.execPath,args:['apps/mcp/src/index.ts'],cwd:repo,env,stderr:'pipe'});
  const client=new Client({name:'look-pack-discovery-test',version:'1.0.0'},{capabilities:{}});
  try{
   await client.connect(transport);const listing=await client.listTools();const tool=listing.tools.find(row=>row.name==='lut_look_inspect');assert.ok(tool);

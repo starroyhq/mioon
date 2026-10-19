@@ -4,13 +4,13 @@ import {randomUUID} from 'node:crypto';
 import {mkdtemp,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {createProviderRegistry,usesInputProfiles,registerInputProfileWrapper,normalizedCapabilities} from '../packages/business/src/provider-registry.mjs';
-import {startWorker} from '../packages/business/src/jobs.mjs';
-import {createJsonRequest} from '../packages/business/src/providers/live-common.mjs';
-import {createVeoProvider} from '../packages/business/src/providers/veo.mjs';
-import {INPUT_PROFILE_VERSION,getCapabilityProfile,getLegacyCapabilityProfile} from '../packages/contracts/src/index.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createProviderRegistry,usesInputProfiles,registerInputProfileWrapper,normalizedCapabilities} from '../packages/business/src/provider-registry.ts';
+import {startWorker} from '../packages/business/src/jobs.ts';
+import {createJsonRequest} from '../packages/business/src/providers/live-common.ts';
+import {createVeoProvider} from '../packages/business/src/providers/veo.ts';
+import {INPUT_PROFILE_VERSION,getCapabilityProfile,getLegacyCapabilityProfile} from '../packages/contracts/src/index.ts';
 
 async function fixture(t,{providerId='mock',date='2026-10-10',image=false}={}){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-input-boundary-')),store=openStore(root);

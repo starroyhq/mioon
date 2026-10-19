@@ -3,10 +3,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {chooseInitialProject,retainLastProjectScope,createProjectBootGuard,preferenceCacheIdentity,assertLastProjectBootIdentity} from '../apps/web/src/last-project-navigation.ts';
-import {createWorkspacePreferences} from '../apps/web/src/workspace-preferences.js';
-import {defaultWorkspaceState,writeWorkspaceState,reconcileWorkspaceState} from '../apps/web/src/workspace-state.js';
-import {validateProjectWorkspace} from '../apps/web/src/restored-workspace.js';
-import {workspaceOriginScope} from '../apps/web/src/workspace-origin.js';
+import {createWorkspacePreferences} from '../apps/web/src/workspace-preferences.ts';
+import {defaultWorkspaceState,writeWorkspaceState,reconcileWorkspaceState} from '../apps/web/src/workspace-state.ts';
+import {validateProjectWorkspace} from '../apps/web/src/restored-workspace.ts';
+import {workspaceOriginScope} from '../apps/web/src/workspace-origin.ts';
 import {projectOpenAttempt,canPublishProjectOpen,projectResponseMatches,hasProjectResponseOriginMismatch,projectOpenFailureKind} from '../apps/web/src/project-open-state.ts';
 import {observeClipAudioRoleCapability} from '../apps/web/src/clip-audio-role-state.ts';
 import {isWorkspaceRestoreInspection,canEditTimelineAudioRole} from '@mioon/contracts';
@@ -14,12 +14,14 @@ import {createSettingsNavigationRegistry} from '../apps/web/src/settings-navigat
 import {createLastProjectController} from '../apps/web/src/last-project-state.ts';
 import {editorInitialSelection} from '../apps/web/src/editor-native-window.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const id=n=>`77000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const scope='a'.repeat(64),otherScope='b'.repeat(64),stamp='2026-10-12T00:00:00.000Z';
 const envelope={supported:true,workspaceScope:scope,instanceId:id(9),revision:1,projectId:id(2),updatedAt:stamp,targetStatus:'matching'};
 const projects=[{id:id(1)},{id:id(2)}];
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return{promise,resolve,reject};};
-const app=readFileSync(new URL('../apps/web/src/App.jsx',import.meta.url),'utf8');
+const app=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');
 function section(start,end){const a=app.indexOf(start),b=app.indexOf(end,a+start.length);assert.ok(a>=0&&b>a);assert.equal(app.indexOf(start,a+start.length),-1);return app.slice(a,b);}
 const refreshSource=section('  const refresh = useCallback(', '  async function revealImageAsset(');
 const readySource=section('  function projectSessionReady()', '  const workbenchReady =');
@@ -27,7 +29,7 @@ const settingsSource=section('  async function prepareSettingsDeparture()', '  a
 const guardSource=section('  async function guardNavigation(', '  async function guardProjectNavigation(');
 const projectGuardSource=section('  async function guardProjectNavigation(', '  async function prepareSettingsDeparture(');
 const selectSource=section('  async function selectProject(', '  async function reloadPreferences(');
-const bootSource=section('  async function boot() {','  useEffect(() => {\n    bootGuard.current.activate();');
+const bootSource=section('  async function boot(): Promise<void> {','  useEffect(() => {\n    bootGuard.current!.activate();');
 const compile=(code,name,env)=>Function(...Object.keys(env),`${code}\nreturn ${name};`)(...Object.values(env));
 
 test('initial choice uses valid explicit URL then valid locator then ordinary fallback without mutation',()=>{

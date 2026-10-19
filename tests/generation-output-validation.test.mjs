@@ -4,10 +4,10 @@ import {mkdtemp,copyFile,rm} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {randomUUID} from 'node:crypto';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {startWorker} from '../packages/business/src/jobs.mjs';
-import {run} from '../packages/business/src/media.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {startWorker} from '../packages/business/src/jobs.ts';
+import {run} from '../packages/business/src/media.ts';
 
 for(const [dimensions,expected] of [['128x128','cancelled'],['144x256','succeeded']])test(`decoded live output ${dimensions} validates actual ratio before version publication`,async t=>{
  const root=await mkdtemp(path.join(tmpdir(),'wb-output-contract-')),store=openStore(root);

@@ -1,4 +1,4 @@
-import { comfyConnectorAvailabilityDescriptor } from '../apps/web/src/comfy-image-settings.js';
+import { comfyConnectorAvailabilityDescriptor } from '../apps/web/src/comfy-image-settings.ts';
 import { creationTestDependency } from './helpers/creation-i18n.ts';
 import * as nativeCloseSources from '../apps/web/src/native-close-sources.ts';
 import * as imageEditIntent from '../apps/web/src/image-edit-intent.ts';
@@ -7,10 +7,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { transformSync } from 'esbuild';
-import * as contracts from '../packages/contracts/src/index.mjs';
-import * as logic from '../apps/web/src/image-generation.js';
-import { createImageReviewClient, imageReviewIdentity } from '../apps/web/src/image-review.js';
-import { ApiError } from '../apps/web/src/api.js';
+import * as contracts from '../packages/contracts/src/index.ts';
+import * as logic from '../apps/web/src/image-generation.ts';
+import { createImageReviewClient, imageReviewIdentity } from '../apps/web/src/image-review.ts';
+import { ApiError } from '../apps/web/src/api.ts';
 const { canonicalImageInput: canonical, IMAGE_FIXED_OPTIONS: options, IMAGE_MODELS: models, DEFAULT_IMAGE_CONFIGURATION, IMAGE_REVIEW_POLICY, IMAGE_EDIT_REVIEW_DESTINATION } = contracts;
 const id = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), groupId = id(2), assetId = id(3), taskId = id(4), requestId = id(5), at = '2026-10-11T12:00:00.000Z';
@@ -124,7 +124,7 @@ test('private edit approval body contains only bound review identity and verifie
 
 // Execute the real component and handlers with deterministic hook slots. No DOM
 // string/source matching substitutes for these stale-callback assertions.
-const component = readFileSync(new URL('../apps/web/src/ImageGeneration.jsx', import.meta.url), 'utf8');
+const component = readFileSync(new URL('../apps/web/src/ImageGeneration.tsx', import.meta.url), 'utf8');
 const element = (type, props = {}, ...children) => ({ type, props: { ...props, children } });
 // This legacy consumer does not supply a navigation registry. The actual Slot
 // transparency/handler contract is exercised in settings-navigation-slot.test.
@@ -147,19 +147,19 @@ function renderer(f) {
     }
     if (name === 'react') return react;
     if (name === '@mioon/contracts') return contracts;
-    if (name === './image-generation.js') return { ...logic, createImageGenerationSession: value => logic.createImageGenerationSession({ ...value, api: f.api, storage: f.storage, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) };
-    if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
-    if (name === './ImageSettings.jsx' || name === './ComfyImageSettings.jsx') return { __esModule: true, default: name };
+    if (name === './image-generation.ts') return { ...logic, createImageGenerationSession: value => logic.createImageGenerationSession({ ...value, api: f.api, storage: f.storage, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) };
+    if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => visible };
+    if (name === './ImageSettings.tsx' || name === './ComfyImageSettings.tsx') return { __esModule: true, default: name };
     if (name === './SettingsNavigationSlot.tsx') return { __esModule: true, default: 'SettingsNavigationSlot' };
-    if (name === './ComfyImageDetails.jsx') return primitive;
-    if (name === './image-settings.js') return { createImageSettingsClient: value => value?.slot === 'custom' ? f.customSettingsClient : f.settingsClient };
-    if (name === './comfy-image-settings.js') return { comfyConnectorAvailabilityDescriptor, createComfyImageSettingsClient: () => ({ read: async () => { throw Error('Not configured'); } }) };
-    if (name === './icons.jsx') return { default: 'Icon' };
+    if (name === './ComfyImageDetails.tsx') return primitive;
+    if (name === './image-settings.ts') return { createImageSettingsClient: value => value?.slot === 'custom' ? f.customSettingsClient : f.settingsClient };
+    if (name === './comfy-image-settings.ts') return { comfyConnectorAvailabilityDescriptor, createComfyImageSettingsClient: () => ({ read: async () => { throw Error('Not configured'); } }) };
+    if (name === './icons.tsx') return { default: 'Icon' };
     if (name.endsWith('.css')) return {};
-    if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.jsx') return primitive;
+    if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return primitive;
     throw Error(name);
   };
-  Function('module', 'exports', 'require', transformSync(component, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, require);
+  Function('module', 'exports', 'require', transformSync(component, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, require);
   const harness = { render(next = owner) { owner = next; index = 0; effects = []; tree = module.exports.default({ projectId: owner, projectName: 'Project', projectAssets: [sourceAsset(), sourceAsset({ id: id(21), sha256: 'b'.repeat(64), name: 'Second.png' })], reviewClient: f.reviewClient, settingsClient: f.settingsClient, customSettingsClient: f.customSettingsClient, onDirtyChange: value => { dirty = value; } }); for (const slot of effects) { slots[slot].cleanup?.(); slots[slot].cleanup = slots[slot].fn(); } return tree; }, find(id) { return nodes(tree).find(node => node.props['data-testid'] === id); }, click(id) { harness.find(id).props.onClick?.(); harness.render(); }, change(id, value) { harness.find(id).props.onChange({ target: { value } }); harness.render(); }, hide(value) { visible = !value; harness.render(); }, get dirty() { return dirty; }, unmount() { for (const slot of slots) slot.cleanup?.(); } }; return harness;
 }
 async function uiCompose(ui) { ui.render(); await flush(); ui.render(); ui.change('image-generation-name', input().name); ui.change('image-generation-prompt', input().prompt); ui.click('image-provider-openai'); ui.click('image-mode-edit'); ui.change('image-source-asset', `${assetId}:${'a'.repeat(64)}`); }

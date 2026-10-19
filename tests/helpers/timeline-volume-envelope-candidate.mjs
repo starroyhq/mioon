@@ -1,6 +1,6 @@
 import {isProxy} from 'node:util/types';
-import {isTimelineRecord, TIMELINE_RESPONSE_BYTES} from '../../packages/contracts/src/timeline-replacement.mjs';
-import {isTimelineMutationResponse} from '../../packages/contracts/src/timeline-acknowledgement.mjs';
+import {isTimelineRecord, TIMELINE_RESPONSE_BYTES} from '../../packages/contracts/src/timeline-replacement.ts';
+import {isTimelineMutationResponse} from '../../packages/contracts/src/timeline-acknowledgement.ts';
 import {VOLUME_ENVELOPE_PROFILE, validateVolumeEnvelope, splitVolumeEnvelopeFields} from '../../packages/contracts/src/timeline-volume-envelope.ts';
 import {captureVolumeEnvelopeCandidateIntent, volumeEnvelopeCandidateIntentDigest} from './timeline-volume-envelope-candidate-intent.mjs';
 

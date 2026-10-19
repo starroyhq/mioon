@@ -6,8 +6,8 @@ import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {Worker} from 'node:worker_threads';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 const domain = timeline => clone({tracks:timeline.tracks, clips:timeline.clips, durationFrames:timeline.durationFrames});
@@ -141,7 +141,7 @@ test('independent SQLite connections serialize duplicate undo requests without d
  for(let i=0;i<2;i++)timeline=await f.call('timeline.track.update',input(projectId,timeline,{trackId:timeline.tracks[0].id,patch:{name:`Step ${i}`}}));
  const params=input(projectId,timeline);
  const source=`const {parentPort,workerData}=require('node:worker_threads');(async()=>{const {openStore}=await import(workerData.db);const {createServices}=await import(workerData.services);const store=openStore(workerData.root,{lock:false});try{parentPort.postMessage({ready:true});parentPort.once('message',async()=>{try{parentPort.postMessage({result:await createServices(store,new Map()).call('timeline.undo',workerData.input)});}catch(error){parentPort.postMessage({error:error.code||error.message});}finally{store.close();}});}catch(error){store.close();throw error;}})();`;
- const workers=Array.from({length:4},()=>new Worker(source,{eval:true,workerData:{root:f.root,input:params,db:new URL('../packages/business/src/db.mjs',import.meta.url).href,services:new URL('../packages/business/src/services.mjs',import.meta.url).href}}));
+ const workers=Array.from({length:4},()=>new Worker(source,{eval:true,workerData:{root:f.root,input:params,db:new URL('../packages/business/src/db.ts',import.meta.url).href,services:new URL('../packages/business/src/services.ts',import.meta.url).href}}));
  t.after(()=>Promise.all(workers.map(worker=>worker.terminate())));
  await Promise.all(workers.map(worker=>new Promise((resolve,reject)=>{worker.once('message',resolve);worker.once('error',reject);})));
  const results=workers.map(worker=>new Promise((resolve,reject)=>{worker.once('message',resolve);worker.once('error',reject);}));workers.forEach(worker=>worker.postMessage('go'));
@@ -189,7 +189,7 @@ test('history metadata and project snapshots stay coherent during independent SQ
  const f=await fixture(t),projectId=f.projectId;let timeline=await f.call('timeline.get',{projectId});
  timeline=await f.call('timeline.track.add',input(projectId,timeline,{kind:'audio'}));
  const source=`const {parentPort,workerData}=require('node:worker_threads');(async()=>{const {openStore}=await import(workerData.db);const {createServices}=await import(workerData.services);const store=openStore(workerData.root,{lock:false});const services=createServices(store,new Map());try{parentPort.postMessage({ready:true});parentPort.once('message',async()=>{try{let timeline=await services.call('timeline.get',{projectId:workerData.projectId});for(let i=0;i<120;i++){timeline=await services.call(i%2===0?'timeline.undo':'timeline.redo',{projectId:workerData.projectId,expectedRevision:timeline.revision,requestId:'snapshot-race-'+i});}parentPort.postMessage({done:true});}catch(error){parentPort.postMessage({error:error.code||error.message});}finally{store.close();}});}catch(error){store.close();throw error;}})();`;
- const worker=new Worker(source,{eval:true,workerData:{root:f.root,projectId,db:new URL('../packages/business/src/db.mjs',import.meta.url).href,services:new URL('../packages/business/src/services.mjs',import.meta.url).href}});
+ const worker=new Worker(source,{eval:true,workerData:{root:f.root,projectId,db:new URL('../packages/business/src/db.ts',import.meta.url).href,services:new URL('../packages/business/src/services.ts',import.meta.url).href}});
  t.after(()=>worker.terminate());await new Promise((resolve,reject)=>{worker.once('message',resolve);worker.once('error',reject);});
  const done=new Promise((resolve,reject)=>{worker.once('message',resolve);worker.once('error',reject);});worker.postMessage('go');
  for(let index=0;index<160;index++){

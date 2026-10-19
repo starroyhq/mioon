@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {parseBackupArguments} from '../apps/cli/src/backup.mjs';
+import {parseBackupArguments} from '../apps/cli/src/backup.ts';
 const root=fileURLToPath(new URL('..',import.meta.url)),read=file=>fs.readFileSync(path.join(root,file),'utf8');
 
 test('restore instructions use actual strict offline flags for known-ID and total-output-loss observation',()=>{
- const help=read('apps/cli/src/backup.mjs'),docs=read('docs/CLI.md');
+ const help=read('apps/cli/src/backup.ts'),docs=read('docs/CLI.md');
  assert.deepEqual(parseBackupArguments(['restore-status','--directory','/original-backup','--destination','/new-workspace']),{command:'restore-status',directory:'/original-backup',destination:'/new-workspace'});
  const restorationId='10000000-0000-4000-8000-000000000001',sourceBackupId='20000000-0000-4000-8000-000000000001',manifestHash='a'.repeat(64),sourceDbHash='b'.repeat(64);
  const args=['restore-status','--destination','/new-workspace','--restoration-id',restorationId,'--backup-id',sourceBackupId,'--manifest-hash',manifestHash,'--source-db-hash',sourceDbHash];

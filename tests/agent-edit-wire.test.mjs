@@ -325,7 +325,7 @@ for (const protocol of ['chat_completions','responses']) for (const boundary of 
 test('MCP discovery and calls expose no proposal/approval/recovery authority', {timeout: 30000}, async t => {
   const f = await editWireFixture(t, 'responses'), {project, shot} = await f.setup(), {proposal} = await f.propose(project.id, shot), before = tableSnapshot(f.root);
   const client = new Client({name: 'synthetic-edit-boundary-audit', version: '1.0.0'}, {capabilities: {}});
-  const transport = new StdioClientTransport({command: process.execPath, args: [path.join(REPO, 'apps/mcp/src/index.mjs')], cwd: REPO,
+  const transport = new StdioClientTransport({command: process.execPath, args: [path.join(REPO, 'apps/mcp/src/index.ts')], cwd: REPO,
     env: {...f.testRuntimeEnvironment, PATH: process.env.PATH || '', HOME: f.root, MIOON_BASE_URL: f.process.url, MIOON_TOKEN: EDIT_WIRE_TOKEN}, stderr: 'pipe'});
   f.deferCleanup(() => client.close()); await client.connect(transport);
   const listing = await client.listTools(); assert.equal(listing.tools.some(tool => /agent.*edit|propose_shot|edit.*approve|edit.*recover/u.test(tool.name)), false);

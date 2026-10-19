@@ -4,9 +4,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import * as subtitles from '../apps/web/src/subtitle-state.js';
-import { timelineHistoryState } from '../apps/web/src/timeline-history.js';
+import * as subtitles from '../apps/web/src/subtitle-state.ts';
+import { timelineHistoryState } from '../apps/web/src/timeline-history.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const id = n => `95000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), timelineId = id(2), cueId = id(3), secondId = id(4);
 const cue = (patch = {}) => ({ id: cueId, text: '你好，世界！\nHello!', startFrame: 0, durationFrames: 30, ...patch });
@@ -138,15 +140,15 @@ function componentHarness(filename, imports = {}) {
   let slots = [], cursor = 0, visible = true, props, tree, confirm = async () => true;
   const hooks = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), useRef: value => { const i = cursor++; return slots[i] ||= { current: value }; }, useLayoutEffect: (fn, deps) => { const i = cursor++, prior = slots[i]; if (!prior || deps.some((value, n) => value !== prior.deps[n])) { prior?.cleanup?.(); slots[i] = { deps, cleanup: fn() }; } } };
   const source = readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8'), module = { exports: {} };
-  const require = name => name === './i18n/I18nProvider.tsx' ? i18nTestModule() : name.endsWith('packages/i18n/src/index.ts') ? i18n : name === 'react' ? { ...hooks, default: hooks } : name.endsWith('workbench-confirm') ? { useConfirmation: () => (...args) => confirm(...args) } : name.endsWith('workspace-visibility.jsx') ? { useWorkspaceVisibility: () => visible } : name.endsWith('subtitle-state.js') ? subtitles : name.endsWith('.css') ? {} : imports[name] || new Proxy({}, { get: (_, key) => String(key) });
-  Function('require', 'module', 'exports', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(require, module, module.exports);
+  const require = name => name === './i18n/I18nProvider.tsx' ? i18nTestModule() : name.endsWith('packages/i18n/src/index.ts') ? i18n : name === 'react' ? { ...hooks, default: hooks } : name.endsWith('workbench-confirm') ? { useConfirmation: () => (...args) => confirm(...args) } : name.endsWith('workspace-visibility.tsx') ? { useWorkspaceVisibility: () => visible } : name.endsWith('subtitle-state.ts') ? subtitles : name.endsWith('.css') ? {} : imports[name] || new Proxy({}, { get: (_, key) => String(key) });
+  Function('require', 'module', 'exports', transformSync(source, { loader: 'tsx', format: 'cjs' }).code)(require, module, module.exports);
   const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
   return { render(next = props) { props = next; cursor = 0; tree = module.exports.default(props); return tree; }, find: testId => nodes(tree).find(node => node.props?.['data-testid'] === testId), nodes: () => nodes(tree),
     visible(value) { visible = value; }, confirm(fn) { confirm = fn; }, unmount() { slots.forEach(slot => slot.cleanup?.()); slots = []; }, source };
 }
 
 test('actual Inspector input/save/discard handlers preserve literal text, reachable footer and stale render status', async () => {
-  const h = fixture(), ui = componentHarness('SubtitleInspector.jsx'); h.controller.select(cueId);
+  const h = fixture(), ui = componentHarness('SubtitleInspector.tsx'); h.controller.select(cueId);
   const props = () => ({ state: h.controller.getState(), controller: h.controller, renderJob: { timelineRevision: 6 }, onBack() {}, onOpenTasks() {} });
   ui.render(props()); ui.find('subtitle-text').props.onChange({ target: { value: '原样 {a}%\\\nEnglish' } }); ui.render(props());
   assert.equal(ui.find('subtitle-save').props.disabled, false); await ui.find('subtitle-save').props.onClick(); assert.equal(h.intents[0].input.patch.text, '原样 {a}%\\\nEnglish');
@@ -157,7 +159,7 @@ test('actual Inspector input/save/discard handlers preserve literal text, reacha
 });
 
 test('actual Inspector retained handlers reject hidden, changed selection, unmount, and late remove confirmation', async () => {
-  const h = fixture(), ui = componentHarness('SubtitleInspector.jsx'); h.controller.select(cueId);
+  const h = fixture(), ui = componentHarness('SubtitleInspector.tsx'); h.controller.select(cueId);
   const props = () => ({ state: h.controller.getState(), controller: h.controller, onBack() {}, onOpenTasks() {} });
   ui.render(props()); const edit = ui.find('subtitle-text').props.onChange; h.controller.select(secondId); ui.render(props()); edit({ target: { value: 'wrong' } }); assert.equal(h.controller.getState().draft.text, '第二条');
   const second = ui.find('subtitle-text').props.onChange; ui.visible(false); ui.render(props()); second({ target: { value: 'hidden' } }); assert.equal(h.controller.getState().draft.text, '第二条');
@@ -166,7 +168,7 @@ test('actual Inspector retained handlers reject hidden, changed selection, unmou
 });
 
 test('actual lane buttons select and add once, reject hidden/unmounted and superseded timeline handlers', () => {
-  const ui = componentHarness('SubtitleLane.jsx'), calls = [], saved = timeline();
+  const ui = componentHarness('SubtitleLane.tsx'), calls = [], saved = timeline();
   const props = { timeline: saved, pixelsPerFrame: 2, pixelsPerSecond: 60, width: 780, playhead: 120, visible: true, onSelect: cueId => calls.push(['select', cueId]), onAdd: frame => calls.push(['add', frame]), onSeek: frame => calls.push(['seek', frame]) };
   ui.render(props); ui.find('subtitle-add').props.onClick(); ui.find(`subtitle-cue-${cueId}`).props.onClick({ stopPropagation() {} }); assert.deepEqual(calls, [['add', 120], ['select', cueId]]);
   calls.length = 0; const old = ui.find('subtitle-add').props.onClick; ui.render({ ...props, timeline: timeline({ revision: 8 }) }); old(); assert.deepEqual(calls, []);
@@ -174,7 +176,7 @@ test('actual lane buttons select and add once, reject hidden/unmounted and super
   ui.render(props); const last = ui.find('subtitle-add').props.onClick; ui.unmount(); last(); assert.deepEqual(calls, []);
 });
 
-const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const section = (start, end) => app.slice(app.indexOf(start), app.indexOf(end));
 const compile = (source, name, scope) => { const env = { msg: message, ...scope }; return Function(...Object.keys(env), `${source}; return ${name};`)(...Object.values(env)); };
 

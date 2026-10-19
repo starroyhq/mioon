@@ -5,7 +5,7 @@ import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 import {Buffer} from 'node:buffer';
 import {AGENT_PROTOCOLS, deriveAgentEndpoint} from '../../packages/contracts/src/agent-protocol.ts';
-import {AGENT_PROTOCOLS as legacyProtocols, deriveAgentEndpoint as legacyEndpoint} from '../../packages/contracts/src/agent-protocol.mjs';
+import {AGENT_PROTOCOLS as legacyProtocols, deriveAgentEndpoint as legacyEndpoint} from '../../packages/contracts/src/agent-protocol.ts';
 import type {AgentEndpointConfiguration, AgentProtocol} from '../../packages/contracts/src/agent-protocol.ts';
 
 type IsAny<T> = 0 extends (1 & T) ? true : false;

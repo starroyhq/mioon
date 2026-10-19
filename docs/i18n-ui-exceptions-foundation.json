@@ -2,63 +2,63 @@
   "version": 1,
   "exceptions": [
     {
-      "file": "apps/desktop/src/backend.mjs",
+      "file": "apps/desktop/src/backend.ts",
       "category": "cjk-source",
       "hash": "6be3ed0e69ecdc34c2785f7104c3e4f9c5ea2540e8f0ad51372e958c9794bce4",
       "owner": "foundation",
       "reason": "Preserved backend protocol diagnostic, not display copy. main.mjs maps lifecycle state to native.* safety templates; unexpected fatal detail is shown only under native.originalDiagnostic. User-owned diagnostics work remains separate."
     },
     {
-      "file": "apps/desktop/src/backend.mjs",
+      "file": "apps/desktop/src/backend.ts",
       "category": "cjk-source",
       "hash": "58da76c63c6be9647c198b99920ef4d6f8a42ace22496ec036d89e6437906ee3",
       "owner": "foundation",
       "reason": "Preserved backend protocol diagnostic, not display copy. main.mjs maps lifecycle state to native.* safety templates; unexpected fatal detail is shown only under native.originalDiagnostic. User-owned diagnostics work remains separate."
     },
     {
-      "file": "apps/desktop/src/config.mjs",
+      "file": "apps/desktop/src/config.ts",
       "category": "cjk-source",
       "hash": "17374dd80e9c13e6e610c87b92fc60351ad2e07defa1d1fdf9b6c7025b31fdee",
       "owner": "foundation",
       "reason": "Original tool validation diagnostic remains byte-compatible. main.mjs toolsFromUser supplies native.toolsMessage/native.toolsDetail and labels the unchanged diagnostic through native.originalDiagnostic."
     },
     {
-      "file": "apps/desktop/src/config.mjs",
+      "file": "apps/desktop/src/config.ts",
       "category": "cjk-source",
       "hash": "31538636b478fbee02a90dcc86d0fc476e15e1af54cf9b8d88ce894342b3724c",
       "owner": "foundation",
       "reason": "Original tool validation diagnostic remains byte-compatible. main.mjs toolsFromUser supplies native.toolsMessage/native.toolsDetail and labels the unchanged diagnostic through native.originalDiagnostic."
     },
     {
-      "file": "apps/desktop/src/config.mjs",
+      "file": "apps/desktop/src/config.ts",
       "category": "cjk-source",
       "hash": "0c0c93d7d46a6258710d9133a9739f767da0dc498e691649b403d7a93e0393ee",
       "owner": "foundation",
       "reason": "Original tool validation diagnostic remains byte-compatible. main.mjs toolsFromUser supplies native.toolsMessage/native.toolsDetail and labels the unchanged diagnostic through native.originalDiagnostic."
     },
     {
-      "file": "apps/desktop/src/config.mjs",
+      "file": "apps/desktop/src/config.ts",
       "category": "cjk-source",
       "hash": "bf0765bb936b65c54656350d360794df35c7f1f354db780f3941117db584613c",
       "owner": "foundation",
       "reason": "Original tool validation diagnostic remains byte-compatible. main.mjs toolsFromUser supplies native.toolsMessage/native.toolsDetail and labels the unchanged diagnostic through native.originalDiagnostic."
     },
     {
-      "file": "apps/desktop/src/main.mjs",
+      "file": "apps/desktop/src/main.ts",
       "category": "cjk-source",
       "hash": "1e1ebb4da6e7ebe03635eb46a8e40d32f8e240b96fda310867e2993a43679ec8",
       "owner": "foundation",
       "reason": "Internal cancellation/selection exception, not a UI label. Native startup/fatal recovery uses native.* primary templates and labels any retained exception through native.originalDiagnostic."
     },
     {
-      "file": "apps/desktop/src/main.mjs",
+      "file": "apps/desktop/src/main.ts",
       "category": "cjk-source",
       "hash": "811793b135babef683bf86c0536b7a14150ffc5b63c495a55452c12461cd2878",
       "owner": "foundation",
       "reason": "Internal cancellation/selection exception, not a UI label. Native startup/fatal recovery uses native.* primary templates and labels any retained exception through native.originalDiagnostic."
     },
     {
-      "file": "apps/desktop/src/main.mjs",
+      "file": "apps/desktop/src/main.ts",
       "category": "cjk-source",
       "hash": "249289acdcc016be8728b101b35ed52ec2e37b8a0f913c5e0b1893cbbcbd7947",
       "owner": "foundation",
@@ -72,91 +72,91 @@
       "reason": "Internal BACKEND_START_EXITED diagnostic. main.mjs supplies localized native startup/recovery primary messages; it does not substitute raw exception text into primary controls."
     },
     {
-      "file": "apps/desktop/src/shutdown.mjs",
+      "file": "apps/desktop/src/shutdown.ts",
       "category": "cjk-source",
       "hash": "b5bb4c497cc440b6b23f5c19e818f006027a18deecd5cb988c42a990b1cecae5",
       "owner": "foundation",
       "reason": "Original stable-code lifecycle diagnostic is preserved. main.mjs quitFailed maps BACKEND_MEDIA_EXIT_UNCONFIRMED and cleanup state to native.mediaExit*/native.cleanup* templates rather than displaying this string."
     },
     {
-      "file": "apps/desktop/src/shutdown.mjs",
+      "file": "apps/desktop/src/shutdown.ts",
       "category": "cjk-source",
       "hash": "6be3ed0e69ecdc34c2785f7104c3e4f9c5ea2540e8f0ad51372e958c9794bce4",
       "owner": "foundation",
       "reason": "Original stable-code lifecycle diagnostic is preserved. main.mjs quitFailed maps BACKEND_MEDIA_EXIT_UNCONFIRMED and cleanup state to native.mediaExit*/native.cleanup* templates rather than displaying this string."
     },
     {
-      "file": "apps/desktop/src/smoke-checks.mjs",
+      "file": "apps/desktop/src/smoke-checks.ts",
       "category": "cjk-source",
       "hash": "d09b063dcb7fc8a8bf253fda6c87d2dd1f2adf6a9644d9d6834461a10ab09fac",
       "owner": "foundation",
       "reason": "Test-only Simplified fixture assertion in an existing opt-in desktop smoke harness, not rendered application copy. It is not executed as native language acceptance and is not a translation key."
     },
     {
-      "file": "apps/desktop/src/startup.mjs",
+      "file": "apps/desktop/src/startup.ts",
       "category": "cjk-source",
       "hash": "249289acdcc016be8728b101b35ed52ec2e37b8a0f913c5e0b1893cbbcbd7947",
       "owner": "foundation",
       "reason": "Original BACKEND_START_CANCELLED diagnostic is internal control flow. Native startup/fatal presentation uses localized native.* templates, with raw details explicitly labelled where shown."
     },
     {
-      "file": "apps/desktop/src/supervisor.mjs",
+      "file": "apps/desktop/src/supervisor.ts",
       "category": "cjk-source",
       "hash": "24125cde4ce0fb06b517c547a2d2aacaa032db4ad45f98530a50dde4514c8404",
       "owner": "foundation",
       "reason": "Preserved internal lifecycle diagnostic. main.mjs backendFailed/quitFailed/fatal select localized native.* summaries, and fatal raw details use native.originalDiagnostic. No user-owned backend lifecycle source is changed by localization."
     },
     {
-      "file": "apps/desktop/src/supervisor.mjs",
+      "file": "apps/desktop/src/supervisor.ts",
       "category": "cjk-source",
       "hash": "bba25bac41c5905e8ba87b53bcfb4d3ee309092c3a3bee6a6fc369081aae631f",
       "owner": "foundation",
       "reason": "Preserved internal lifecycle diagnostic. main.mjs backendFailed/quitFailed/fatal select localized native.* summaries, and fatal raw details use native.originalDiagnostic. No user-owned backend lifecycle source is changed by localization."
     },
     {
-      "file": "apps/desktop/src/supervisor.mjs",
+      "file": "apps/desktop/src/supervisor.ts",
       "category": "cjk-source",
       "hash": "e0543fa08068c83a5e7b67b48fa9438a842d5ab79d02871fde3a0042492e8146",
       "owner": "foundation",
       "reason": "Preserved internal lifecycle diagnostic. main.mjs backendFailed/quitFailed/fatal select localized native.* summaries, and fatal raw details use native.originalDiagnostic. No user-owned backend lifecycle source is changed by localization."
     },
     {
-      "file": "apps/desktop/src/supervisor.mjs",
+      "file": "apps/desktop/src/supervisor.ts",
       "category": "cjk-source",
       "hash": "e30149ca84945b0c382c18b1291afe6004d56c10a1c2dba478a672cfabff641d",
       "owner": "foundation",
       "reason": "Preserved internal lifecycle diagnostic. main.mjs backendFailed/quitFailed/fatal select localized native.* summaries, and fatal raw details use native.originalDiagnostic. No user-owned backend lifecycle source is changed by localization."
     },
     {
-      "file": "apps/desktop/src/supervisor.mjs",
+      "file": "apps/desktop/src/supervisor.ts",
       "category": "cjk-source",
       "hash": "c6abb15e38573425af187241d197771bb7e0c3e789037d3a9a0cf0bda7f1e2b5",
       "owner": "foundation",
       "reason": "Preserved internal lifecycle diagnostic. main.mjs backendFailed/quitFailed/fatal select localized native.* summaries, and fatal raw details use native.originalDiagnostic. No user-owned backend lifecycle source is changed by localization."
     },
     {
-      "file": "apps/desktop/src/supervisor.mjs",
+      "file": "apps/desktop/src/supervisor.ts",
       "category": "cjk-source",
       "hash": "b4802b48dcf401a4cdb3434003d8c312cafb4b7f3d74d7aa6b1404f20967db81",
       "owner": "foundation",
       "reason": "Preserved internal lifecycle diagnostic. main.mjs backendFailed/quitFailed/fatal select localized native.* summaries, and fatal raw details use native.originalDiagnostic. No user-owned backend lifecycle source is changed by localization."
     },
     {
-      "file": "apps/desktop/src/supervisor.mjs",
+      "file": "apps/desktop/src/supervisor.ts",
       "category": "cjk-source",
       "hash": "f23696139cd15595d943b19342754376b79d1a988ce8376c32fa453240344942",
       "owner": "foundation",
       "reason": "Preserved internal lifecycle diagnostic. main.mjs backendFailed/quitFailed/fatal select localized native.* summaries, and fatal raw details use native.originalDiagnostic. No user-owned backend lifecycle source is changed by localization."
     },
     {
-      "file": "apps/desktop/src/supervisor.mjs",
+      "file": "apps/desktop/src/supervisor.ts",
       "category": "cjk-source",
       "hash": "0f61f8d98fdfc24a96fce4817ae037be524d6e97b3eb5426af685c26c33b3b12",
       "owner": "foundation",
       "reason": "Preserved internal lifecycle diagnostic. main.mjs backendFailed/quitFailed/fatal select localized native.* summaries, and fatal raw details use native.originalDiagnostic. No user-owned backend lifecycle source is changed by localization."
     },
     {
-      "file": "apps/desktop/src/supervisor.mjs",
+      "file": "apps/desktop/src/supervisor.ts",
       "category": "cjk-source",
       "hash": "94bb6312325d86216385af638b9c0b408f73d534d983c1eaf9d17ae9c900f2a7",
       "owner": "foundation",

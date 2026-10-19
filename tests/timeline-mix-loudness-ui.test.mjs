@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 import * as stateModule from '../apps/web/src/timeline-mix-loudness-state.ts';
 import { timelineAudioPreviewSourceIdentity } from '../apps/web/src/use-timeline-audio-preview.ts';
-import { workspaceOriginScope, pinNewWorkspaceIntent } from '../apps/web/src/workspace-origin.js';
+import { workspaceOriginScope, pinNewWorkspaceIntent } from '../apps/web/src/workspace-origin.ts';
 import { fixture, context, input, report, draft, id, projectId, timelineId, sourceId } from './helpers/timeline-mix-loudness-ui-fixture.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const source = name => readFileSync(new URL(`../apps/web/src/${name}`, import.meta.url), 'utf8');
@@ -42,7 +42,7 @@ before(async () => {
     const values = ${JSON.stringify(values)};
     const controller = {prepare(){throw Error('No automatic read');},setDraft(){throw Error('No automatic edit');},cancel(){throw Error('No automatic cancellation');}};
     export const html=Object.fromEntries(Object.entries(values).map(([name,state])=>[name,renderToStaticMarkup(<TimelineMixLoudness loudness={{state,controller}}/>)]));`;
-  const script = `import {build} from 'esbuild'; const {outputFiles}=await build({stdin:{contents:${JSON.stringify(fixtures)},loader:'jsx',resolveDir:${JSON.stringify(path.join(root,'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,jsx:'transform',define:{'process.env.NODE_ENV':'"production"'}});
+  const script = `import {build} from 'esbuild'; const {outputFiles}=await build({stdin:{contents:${JSON.stringify(fixtures)},loader:'tsx',resolveDir:${JSON.stringify(path.join(root,'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,jsx:'transform',define:{'process.env.NODE_ENV':'"production"'}});
     const result=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));process.stdout.write(JSON.stringify(result.html));process.exit(0);`;
   rendered = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30000 }));
 });
@@ -103,7 +103,7 @@ test('actual details close clears a report or pending observation, and reopening
   f.reads[1].resolve(report(f.calls[1].input)); await pending; assert.equal(f.state().report, null);
 });
 test('actual App wiring reads saved snapshot, pinned workspace and live draft controllers without crossing export extractor markers', async () => {
-  const app = source('App.jsx'), first = app.indexOf('  function timelineMixLoudnessContext()'), end = app.indexOf('  const nativePreviewPause =', first);
+  const app = source('App.tsx'), first = app.indexOf('  function timelineMixLoudnessContext()'), end = app.indexOf('  const nativePreviewPause =', first);
   assert.ok(first > 0 && end > first); assert.ok(end < app.indexOf('  function checkTimelineExport('));
   assert.match(app, /<TimelineMixLoudness loudness=\{timelineMixLoudness\} /);
   const saved = { id: timelineId, projectId, revision: 4, durationFrames: 60, fps: 30,

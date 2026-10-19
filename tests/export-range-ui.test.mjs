@@ -2,10 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createExportRangeController, exportRangeContextFields, rangeFields } from '../apps/web/src/export-range-state.ts';
-import { createExportPreflightController } from '../apps/web/src/export-preflight-state.js';
+import { createExportPreflightController } from '../apps/web/src/export-preflight-state.ts';
 import { TIMELINE_EXPORT_DEFAULT_SETTINGS, resolveTimelineExportDelivery } from '@mioon/contracts';
 import { component, nodes, textOf } from './fixtures/export-range-ui-harness.mjs';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const id = n => `db000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), timelineId = id(2), hash = 'a'.repeat(64), stamp = '2026-10-13T00:00:00.000Z';
 const range = { startFrame: 30, endFrame: 90 };
@@ -120,7 +122,7 @@ test('range controls use labelled shared inputs, half-open semantics, session di
 });
 
 test('preflight shows frozen selected duration separately from full composition and checks all source scope', () => {
-  const View = component('TimelineExportPreflight.jsx').default;
+  const View = component('TimelineExportPreflight.tsx').default;
   const tree = View({ state: { phase: 'ready', report: report(range), binding: {} }, exportRange: { startFrame: 0, endFrame: 1 }, rangeDraft: draft('0', '1'), canCheck: true });
   const frozen = nodes(tree).find(node => node.props['data-testid'] === 'preflight-export-range'); assert.match(textOf(frozen), /第 30 帧.*第 90 帧.*60 帧.*2.00 秒/);
   assert.match(textOf(tree), /完整时间线时长.*120 帧/); assert.match(textOf(tree), /范围外素材/);
@@ -128,7 +130,7 @@ test('preflight shows frozen selected duration separately from full composition 
 });
 
 test('named and unnamed export history display immutable range while absent and preview rows remain unchanged', () => {
-  const View = component('ExportHistoryList.jsx').default;
+  const View = component('ExportHistoryList.tsx').default;
   const timeline = { width: 720, height: 1280, fps: 30, durationFrames: 120 };
   const base = { id: id(10), mode: 'timeline', purpose: 'export', timelineRevision: 4, createdAt: stamp, status: 'succeeded', assetId: id(11), snapshot: { timeline, exportRange: range } };
   for (const named of [false, true]) {
@@ -142,7 +144,7 @@ test('named and unnamed export history display immutable range while absent and 
   }
 });
 
-const appSource = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const appSource = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 function actualAppFunction(start, end, env) {
   const first = appSource.indexOf(start), last = appSource.indexOf(end, first);
   assert.ok(first >= 0 && last > first);
@@ -194,7 +196,7 @@ test('actual local-delivery execution epoch includes range version even after ch
 
 
 test('only malformed range-present rows suppress file actions; valid selected and absent history retain exact inspection inputs', () => {
-  const View = component('ExportHistoryList.jsx').default;
+  const View = component('ExportHistoryList.tsx').default;
   const timeline = { width: 720, height: 1280, fps: 30, durationFrames: 120 };
   const base = { id: id(10), projectId, mode: 'timeline', purpose: 'export', timelineRevision: 4, createdAt: stamp, status: 'succeeded', url: '/media/original-file', assetId: id(11), snapshot: { timeline, exportRange: range } };
   const actions = tree => nodes(tree).filter(node => node.type === 'ExportFileActions');

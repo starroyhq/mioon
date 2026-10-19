@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCipheriv, createDecipheriv, randomBytes} from 'node:crypto';
 import {DEFAULT_IMAGE_CONFIGURATION, IMAGE_SETTINGS_NAMESPACE, IMAGE_SETTINGS_BASE_URL, IMAGE_SETTINGS_LIMITS,
-  imageSettingsUpdateSchema, imageSettingsResultSchema, isImageSettingsResult} from '../packages/contracts/src/image-settings.mjs';
+  imageSettingsUpdateSchema, imageSettingsResultSchema, isImageSettingsResult} from '../packages/contracts/src/image-settings.ts';
 import {createImageSettings, parseImageConfiguration, parseImageSettingsUpdate, imageSettingsError, sanitizeImageSettingsError,
   sanitizeImageSettingsResult, parseImageCredentialRequest, sanitizeImageCredentialResult, validateImageSettingsEnvelope,
-  validateImageSecretPlaintext, IMAGE_CREDENTIAL_ACQUIRE, IMAGE_SETTINGS_ASSERT_CURRENT, IMAGE_SETTINGS_READ_CURRENT} from '../packages/business/src/images/settings.mjs';
-import {AGENT_CREDENTIAL_ACQUIRE} from '../packages/business/src/agent/settings.mjs';
+  validateImageSecretPlaintext, IMAGE_CREDENTIAL_ACQUIRE, IMAGE_SETTINGS_ASSERT_CURRENT, IMAGE_SETTINGS_READ_CURRENT} from '../packages/business/src/images/settings.ts';
+import {AGENT_CREDENTIAL_ACQUIRE} from '../packages/business/src/agent/settings.ts';
 
 const configuration = (enabled = true) => ({...structuredClone(DEFAULT_IMAGE_CONFIGURATION), enabled});
 const input = (expectedRevision = 0, secret = {action: 'keep'}, config = configuration()) => ({expectedRevision, configuration: config, secret});

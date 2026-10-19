@@ -6,16 +6,17 @@
   "description": "Mioon secure Electron desktop host",
   "main": "build/main.cjs",
   "scripts": {
-    "build": "node scripts/build.mjs",
+    "build": "node scripts/build.ts",
+    "prepare:builder-config": "node scripts/prepare-builder-config.ts",
     "start": "electron build",
-    "package:linux": "node ../../scripts/tooling.mjs build --channel=production && electron-builder --config electron-builder.cjs --linux --publish never",
-    "package:dir": "node ../../scripts/tooling.mjs build --channel=production && electron-builder --config electron-builder.cjs --linux --dir --publish never",
-    "package:mac": "node ../../scripts/tooling.mjs build --channel=production && electron-builder --config electron-builder.cjs --mac --publish never",
-    "smoke": "node scripts/smoke.mjs",
-    "build:production": "node scripts/build.mjs --channel=production",
-    "package:linux:dev": "node ../../scripts/tooling.mjs build --channel=development && electron-builder --config electron-builder.dev.cjs --linux --publish never",
-    "package:dir:dev": "node ../../scripts/tooling.mjs build --channel=development && electron-builder --config electron-builder.dev.cjs --linux --dir --publish never",
-    "package:mac:dev": "node ../../scripts/tooling.mjs build --channel=development && electron-builder --config electron-builder.dev.cjs --mac --publish never"
+    "package:linux": "node ../../scripts/tooling.ts build --channel=production && electron-builder --config .generated/electron-builder.cjs --linux --publish never",
+    "package:dir": "node ../../scripts/tooling.ts build --channel=production && electron-builder --config .generated/electron-builder.cjs --linux --dir --publish never",
+    "package:mac": "node ../../scripts/tooling.ts build --channel=production && electron-builder --config .generated/electron-builder.cjs --mac --publish never",
+    "smoke": "node scripts/smoke.ts",
+    "build:production": "node scripts/build.ts --channel=production",
+    "package:linux:dev": "node ../../scripts/tooling.ts build --channel=development && electron-builder --config .generated/electron-builder.dev.cjs --linux --publish never",
+    "package:dir:dev": "node ../../scripts/tooling.ts build --channel=development && electron-builder --config .generated/electron-builder.dev.cjs --linux --dir --publish never",
+    "package:mac:dev": "node ../../scripts/tooling.ts build --channel=development && electron-builder --config .generated/electron-builder.dev.cjs --mac --publish never"
   },
   "dependencies": {
     "@mioon/contracts": "workspace:*",

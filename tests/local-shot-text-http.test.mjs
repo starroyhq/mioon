@@ -46,8 +46,8 @@ test('execution response cap preserves the existing 1 MiB shot boundary and reje
   assert.equal(LOCAL_SHOT_TEXT_LIMITS.executeResponseBytes,1024*1024+256*1024);
 });
 test('production route is placed behind existing Host/Origin and authentication checks, absent from RPC and Agent declarations',()=>{
-  const server=readFileSync(new URL('../apps/server/src/index.mjs',import.meta.url),'utf8');
+  const server=readFileSync(new URL('../apps/server/src/index.ts',import.meta.url),'utf8');
   const route=server.indexOf('await localShotTextHttp(req, res, url)');assert.ok(route>0);assert.ok(server.indexOf('ORIGIN_REJECTED')<route);assert.ok(server.indexOf('if (!auth(req))')<route);
-  const contracts=readFileSync(new URL('../packages/contracts/src/index.mjs',import.meta.url),'utf8');assert.equal(contracts.includes("'local-shot-text'"),false);
-  const mcp=readFileSync(new URL('../apps/mcp/src/index.mjs',import.meta.url),'utf8');assert.equal(mcp.includes('local-shot-text'),false);
+  const contracts=readFileSync(new URL('../packages/contracts/src/index.ts',import.meta.url),'utf8');assert.equal(contracts.includes("'local-shot-text'"),false);
+  const mcp=readFileSync(new URL('../apps/mcp/src/index.ts',import.meta.url),'utf8');assert.equal(mcp.includes('local-shot-text'),false);
 });

@@ -194,6 +194,7 @@ export interface ProjectWindowQuitRouterOptions<W extends ProjectQuitWindow> {
 /** Main's sole Quit entry point. A Quit arriving during backend restart is a
  * retained request, never a dropped click or a second concurrent stop/start.
  * This object holds no renderer permission: source permits never cross await. */
+export type ProjectWindowQuitRouter<W extends ProjectQuitWindow> = ReturnType<typeof createProjectWindowQuitRouter<W>>;
 export function createProjectWindowQuitRouter<W extends ProjectQuitWindow>(options: ProjectWindowQuitRouterOptions<W>) {
   let isPending = false, pending: Promise<boolean> | undefined;
   function mark(value: boolean) {

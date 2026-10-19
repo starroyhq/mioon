@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAgentChatSession, agentChatCanSend } from '../apps/web/src/agent-chat.js';
-import { createImageGenerationSession, imageDraftDirty } from '../apps/web/src/image-generation.js';
+import { createAgentChatSession, agentChatCanSend } from '../apps/web/src/agent-chat.ts';
+import { createImageGenerationSession, imageDraftDirty } from '../apps/web/src/image-generation.ts';
 import { createEditorSettingsScope } from '../apps/web/src/editor-settings-scope.ts';
 import { createNativeCloseAdmission, createNativeCloseRegistry } from '../apps/web/src/native-close-state.ts';
 import { createAgentChatCloseReporter, createImageGenerationCloseReporter } from '../apps/web/src/native-close-sources.ts';

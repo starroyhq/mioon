@@ -4,9 +4,9 @@ import {
   REFERENCE_SOURCE_HANDLE, REFERENCE_TARGET_HANDLE, VISUAL_SOURCE_HANDLE, VISUAL_TARGET_HANDLE,
   isReferenceEdge, referenceForShot, isReferenceOperation, hasPendingReference,
   isImageReferenceNode, referenceAttachIssue, canvasEdge,
-} from '../apps/web/src/reference-connections.js';
-import { prepareSubmission, readPending, clearPending, pendingForProject, reconcilePending } from '../apps/web/src/submissions.js';
-import { generationSelection } from '../apps/web/src/generation-settings.js';
+} from '../apps/web/src/reference-connections.ts';
+import { prepareSubmission, readPending, clearPending, pendingForProject, reconcilePending } from '../apps/web/src/submissions.ts';
+import { generationSelection } from '../apps/web/src/generation-settings.ts';
 
 const projectId = 'project-a';
 const asset = { id: 'image-a', projectId, mimeType: 'image/png', url: '/media/image-a' };

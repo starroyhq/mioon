@@ -10,17 +10,17 @@ import {promisify} from 'node:util';
 import {once} from 'node:events';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.mjs';
-import {openStore} from '../packages/business/src/db.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {openStore} from '../packages/business/src/db.ts';
 const repo=fileURLToPath(new URL('../',import.meta.url)),run=promisify(execFile);
 
 test('HTTP, CLI and MCP share rename CAS and permanent-delete receipts',{timeout:60000},async t=>{
   const root=realpathSync(mkdtempSync(path.join(tmpdir(),'mioon-project-wire-'))),token='synthetic-project-lifecycle-token';
   const server=await startServer({dataDir:root,port:0,token}),client=new Client({name:'project-lifecycle-test',version:'1'},{capabilities:{}});
   t.after(async()=>{await client.close();await server.close();rmSync(root,{recursive:true,force:true});});
-  const env={PATH:process.env.PATH||'',MIOON_BASE_URL:server.url,MIOON_TOKEN:token,MIOON_ENABLE_LIVE_PROVIDER:'0'},transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.mjs')],cwd:repo,env,stderr:'pipe'});transport.stderr?.resume();await client.connect(transport);
+  const env={PATH:process.env.PATH||'',MIOON_BASE_URL:server.url,MIOON_TOKEN:token,MIOON_ENABLE_LIVE_PROVIDER:'0'},transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.ts')],cwd:repo,env,stderr:'pipe'});transport.stderr?.resume();await client.connect(transport);
   const http=async(operation,input={})=>{const response=await fetch(server.url+'/api/rpc',{method:'POST',headers:{authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({operation,input})}),body=await response.json();assert.equal(response.status,200,JSON.stringify(body));assert.equal(body.ok,true);return body.data;};
-  const cli=async(operation,input)=>{const result=await run(process.execPath,[path.join(repo,'apps/cli/src/index.mjs'),...operation.split('.'),'--input',JSON.stringify(input)],{cwd:repo,env,timeout:20000});const body=JSON.parse(result.stdout);assert.equal(body.ok,true,JSON.stringify(body));return body.data;};
+  const cli=async(operation,input)=>{const result=await run(process.execPath,[path.join(repo,'apps/cli/src/index.ts'),...operation.split('.'),'--input',JSON.stringify(input)],{cwd:repo,env,timeout:20000});const body=JSON.parse(result.stdout);assert.equal(body.ok,true,JSON.stringify(body));return body.data;};
   const mcp=async(operation,input)=>{const result=await client.callTool({name:operation.replaceAll('.','_'),arguments:input});assert.equal(result.isError,false,JSON.stringify(result));return result.structuredContent.data;};
   const project=await http('project.create',{name:'Original'}),rename={requestId:randomUUID(),projectId:project.id,expectedRevision:1,name:'Renamed through CLI'},renamed=await cli('project.rename',rename);
   assert.equal(renamed.name,rename.name);assert.deepEqual(await mcp('project.rename',rename),renamed);assert.deepEqual(await http('project.rename',rename),renamed);
@@ -37,7 +37,7 @@ test('SIGKILL after the delete commit leaves a durable cleanup manifest that ord
   store.put('projects',{id:projectId,name:'Private terminal project',description:'',revision:1,createdAt:'2026-10-19T00:00:00.000Z',updatedAt:'2026-10-19T00:00:00.000Z'});store.put('assets',{id:assetId,projectId,name:'Managed file',relativePath,sha256:'a'.repeat(64),mimeType:'image/png',createdAt:'2026-10-19T00:00:00.000Z'});writeFileSync(file,'exclusive managed bytes',{mode:0o600});store.close();
   t.after(()=>rmSync(root,{recursive:true,force:true}));
   const source=`import {existsSync} from 'node:fs';import path from 'node:path';
-import {openStore,ownsStoreLock,getWorkspaceRestoreContext} from './packages/business/src/db.mjs';
+import {openStore,ownsStoreLock,getWorkspaceRestoreContext} from './packages/business/src/db.ts';
 import {createProjectLifecycleServices} from './packages/business/src/project-lifecycle.ts';
 import {validateManagedFile,validateManagedDirectory} from '@mioon/contracts/private-storage';
 const root=process.env.PROJECT_TEST_ROOT,store=openStore(root);

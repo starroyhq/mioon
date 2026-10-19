@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {schemas,isTimelineRecord,isTimelineMutationResponse,isTimelineRenderRecord,hasRequestNotAppliedProof,isEditTask,EDIT_TASK_LIMITS} from '../packages/contracts/src/index.mjs';
+import {schemas,isTimelineRecord,isTimelineMutationResponse,isTimelineRenderRecord,hasRequestNotAppliedProof,isEditTask,EDIT_TASK_LIMITS} from '../packages/contracts/src/index.ts';
 import {VOLUME_ENVELOPE_PROFILE as profileId} from '../packages/contracts/src/timeline-volume-envelope.ts';
 const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const clone=value=>JSON.parse(JSON.stringify(value));

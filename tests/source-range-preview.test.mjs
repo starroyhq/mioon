@@ -4,11 +4,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import * as exportSettings from '../apps/web/src/export-settings-state.js';
-import * as ranges from '../apps/web/src/source-range-state.js';
+import * as exportSettings from '../apps/web/src/export-settings-state.ts';
+import * as ranges from '../apps/web/src/source-range-state.ts';
 
-const source = readFileSync(new URL('../apps/web/src/Preview.jsx', import.meta.url), 'utf8');
-const code = transformSync(source, { loader: 'jsx', format: 'cjs' }).code;
+const source = readFileSync(new URL('../apps/web/src/Preview.tsx', import.meta.url), 'utf8');
+const code = transformSync(source, { loader: 'tsx', format: 'cjs' }).code;
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
 function harness() {
   const slots = [], elements = new Map(); let cursor = 0, effects = [], layouts = [], tree;
@@ -17,7 +17,7 @@ function harness() {
   const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), useRef: value => { const i = cursor++; return slots[i] ||= { current: value }; }, useEffect: (fn, deps) => effect(effects, fn, deps), useLayoutEffect: (fn, deps) => effect(layouts, fn, deps) };
   react.default = react;
   const module = { exports: {} };
-  const require = id => id === './i18n/I18nProvider.tsx' ? i18nTestModule() : id === './creation-i18n.ts' ? creationI18n : id === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : id === 'react' ? react : id === './export-settings-state.js' ? exportSettings : id === './source-range-state.js' ? ranges : id === './api.js' ? { assetUrl: asset => asset?.url || '', statusText: value => value } : id === './Timeline.jsx' ? { assetKind: asset => asset?.mimeType.split('/')[0], framesLabel: String } : id === './workspace-visibility.jsx' ? { useWorkspaceVisibility: () => h.visible } : id === './Nodes.jsx' ? { disposeMedia: element => { element.pause(); element.removeAttribute('src'); element.load(); } } : id === './icons.jsx' ? { default: 'Icon', __esModule: true } : new Proxy({}, { get: (_, key) => String(key) });
+  const require = id => id === './i18n/I18nProvider.tsx' ? i18nTestModule() : id === './creation-i18n.ts' ? creationI18n : id === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : id === 'react' ? react : id === './export-settings-state.ts' ? exportSettings : id === './source-range-state.ts' ? ranges : id === './api.ts' ? { assetUrl: asset => asset?.url || '', statusText: value => value } : id === './Timeline.tsx' ? { assetKind: asset => asset?.mimeType.split('/')[0], framesLabel: String } : id === './workspace-visibility.tsx' ? { useWorkspaceVisibility: () => h.visible } : id === './Nodes.tsx' ? { disposeMedia: element => { element.pause(); element.removeAttribute('src'); element.load(); } } : id === './icons.tsx' ? { default: 'Icon', __esModule: true } : new Proxy({}, { get: (_, key) => String(key) });
   Function('require', 'module', 'exports', code)(require, module, module.exports);
   const flush = queue => { for (const i of queue) { slots[i].cleanup?.(); slots[i].cleanup = slots[i].fn(); } };
   h.render = props => {

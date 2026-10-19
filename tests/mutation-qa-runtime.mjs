@@ -6,10 +6,10 @@ import {mkdir, readFile, writeFile, appendFile, unlink, readdir, access} from 'n
 import {createHash, randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
-import {migrateData} from '../apps/desktop/scripts/migrate-data.mjs';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {startServer} from '../apps/server/src/index.mjs';
+import {migrateData} from '../apps/desktop/scripts/migrate-data.ts';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {startServer} from '../apps/server/src/index.ts';
 
 export const mutationQaRoot = path.resolve('evidence/mutation-replay');
 export const mutationRuntime = path.join(mutationQaRoot, 'browser-runtime');

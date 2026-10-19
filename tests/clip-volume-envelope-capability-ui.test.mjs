@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import { isWorkspaceRestoreInspection, canEditTimelineVolumeEnvelope } from '../packages/contracts/src/workspace-restore.mjs';
+import { isWorkspaceRestoreInspection, canEditTimelineVolumeEnvelope } from '../packages/contracts/src/workspace-restore.ts';
 import { VOLUME_ENVELOPE_PROFILE } from '../packages/contracts/src/timeline-volume-envelope.ts';
 import { clipVolumeEnvelopeCapabilityMatches, observeClipVolumeEnvelopeCapability } from '../apps/web/src/clip-volume-envelope-capability.ts';
 import { validateCatalogs, translate } from '../packages/i18n/src/index.ts';
@@ -15,6 +15,8 @@ import * as imeSubmitGuard from '../apps/web/src/opacity-ime-submit-guard.ts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
 import * as removalState from '../apps/web/src/timeline-removal.ts';
 import {hasOpenWorkbenchModal} from '../apps/web/src/workbench-modal-state.ts';
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const capability={profileId:VOLUME_ENVELOPE_PROFILE,editable:true};
 const normal={restored:false};
 const id=n=>`a1000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
@@ -58,7 +60,7 @@ function inspector(locale='en', eligible=true, supported=true){
   if(name.startsWith('@mioon/ui/'))return new Proxy({}, {get:(_,key)=>stub(key)});
   return assert.fail(name);
  },removalModule,removalModule.exports);
- const module={exports:{}};Function('require','module','exports',transformSync(readFileSync(new URL('../apps/web/src/TimelineInspector.jsx',import.meta.url),'utf8'),{loader:'jsx',format:'cjs'}).code)(name=>{
+ const module={exports:{}};Function('require','module','exports',transformSync(readFileSync(new URL('../apps/web/src/TimelineInspector.tsx',import.meta.url),'utf8'),{loader:'tsx',format:'cjs'}).code)(name=>{
   if(name==='react')return react;
   if(name==='./UiPreferencesProvider.tsx')return {useUiPreferences:()=>({preferences:DEFAULT_UI_PREFERENCES})};
   if(name==='./timeline-removal.ts')return removalState;
@@ -67,7 +69,7 @@ function inspector(locale='en', eligible=true, supported=true){
   if(name.includes('i18n/src/index'))return {message:(key)=>({key})};
   if(name.includes('workbench-confirm'))return {useConfirmation:()=>async()=>{calls.push('confirm');return true;}};
   if(name==='@mioon/contracts')return {sourceFrameCount:()=>10,isTimelineRecord:()=>true};
-  if(name.endsWith('/Timeline.jsx'))return {assetKind:a=>a.mimeType.split('/')[0],framesLabel:String};
+  if(name.endsWith('/Timeline.tsx'))return {assetKind:a=>a.mimeType.split('/')[0],framesLabel:String};
   if(name.endsWith('clip-draft-hook.ts'))return {useClipDraft:()=>({state,controller})};
   if(name.endsWith('clip-draft-state.ts'))return {clipDraftRaw:clip=>({...raw,volumeEnvelope:clip.volumeEnvelope}),clipDraftSource:()=>({}),clipDraftPatch:()=>({})};
   if(name.endsWith('clip-volume-envelope-state.ts'))return {rawVolumeEnvelopeChanged};
@@ -75,9 +77,9 @@ function inspector(locale='en', eligible=true, supported=true){
   if(name.endsWith('clip-opacity-candidate-assembly.ts'))return opacityAssembly;
   if(name.endsWith('opacity-ime-submit-guard.ts'))return imeSubmitGuard;
   if(name.endsWith('clip-audio-role-state.ts'))return {clipAudioRoleChanged:()=>false};
-  if(name.endsWith('clip-audio-state.js'))return {clipAudioIssue:()=>''};
-  if(name.endsWith('timeline-format-state.js'))return {timelineRectIssue:()=>'',timelineRectMessage:()=>''};
-  if(name.endsWith('workspace-visibility.jsx'))return {useWorkspaceVisibility:()=>true};
+  if(name.endsWith('clip-audio-state.ts'))return {clipAudioIssue:()=>''};
+  if(name.endsWith('timeline-format-state.ts'))return {timelineRectIssue:()=>'',timelineRectMessage:()=>''};
+  if(name.endsWith('workspace-visibility.tsx'))return {useWorkspaceVisibility:()=>true};
   if(name.endsWith('.css'))return {};
   if(name.startsWith('@mioon/ui/'))return new Proxy({}, {get:(_,key)=>stub(key)});
   return {__esModule:true,default:stub(name)};
@@ -133,7 +135,7 @@ test('unsupported or silent assets retain visible recovered envelope and localiz
  }
 });
 test('App navigation refuses composition before confirmation and rechecks after async confirmation',async()=>{
- const source=readFileSync(new URL('../apps/web/src/App.jsx',import.meta.url),'utf8');
+ const source=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');
  const body=source.slice(source.indexOf('  async function guardNavigation('),source.indexOf('  async function guardProjectNavigation('));
  let pending=true,confirmCount=0,discardCount=0;
  const clip={capture:()=>({}),hasUnsaved:()=>true,hasPendingComposition:()=>pending,isCurrent:()=>true,discard:async()=>{discardCount++;return true;}};
@@ -143,7 +145,7 @@ test('App navigation refuses composition before confirmation and rechecks after 
  pending=false;assert.equal(await guard(),false);assert.equal(confirmCount,1);assert.equal(discardCount,0);
 });
 test('App optional envelope probe is connection-scoped rather than project boot-scoped',()=>{
- const source=readFileSync(new URL('../apps/web/src/App.jsx',import.meta.url),'utf8');
+ const source=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');
  const probe=source.slice(source.indexOf('  // Optional feature discovery'),source.indexOf('  async function boot()'));
  assert.match(probe,/includeVolumeEnvelopeCapability: true/);assert.match(probe,/\[workspace, online, auth\]/);assert.doesNotMatch(probe,/bootGuard|projectEpoch/);
  assert.match(source,/volumeEnvelopeObservation\.epoch === volumeEnvelopeProbeEpoch\.current/);
@@ -174,8 +176,8 @@ test('retained Inspector adapter keeps exact composing owner across auth loss, m
  result=retainClipInspector(result,replacement,{pending:false,dirty:false,connected:true});assert.equal(result.snapshot,replacement);assert.equal(result.retained,false);
 });
 test('late App boot inspect response cannot adopt workspace or project after composition begins',async()=>{
- const source=readFileSync(new URL('../apps/web/src/App.jsx',import.meta.url),'utf8');
- const start=source.indexOf('  async function boot() {'),end=source.indexOf('  useEffect(() => {',start);
+ const source=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');
+ const start=source.indexOf('  async function boot(): Promise<void> {'),end=source.indexOf('  useEffect(() => {',start);
  const body=source.slice(start,end);let pending=false,resolve,adopted=0;
  const oldWorkspace={restored:false};
  const dependencies={clipDraftRef:{current:{hasPendingComposition:()=>pending,hasUnsaved:()=>pending}},bootGuard:{current:{begin:()=>({}),isCurrent:()=>true}},preferenceScope:{current:'old'},audioRoleProbe:{current:null},audioRoleProbeEpoch:{current:1},setAudioRoleCapability:()=>{},migrateBrowserStorage:()=>{},rpc:()=>new Promise(r=>resolve=r),retainWorkspaceIdentity:()=>oldWorkspace,workspaceRef:{current:oldWorkspace},setWorkspace:()=>adopted++,setAuth:()=>{},notify:()=>{},readableError:String};
@@ -185,7 +187,7 @@ test('late App boot inspect response cannot adopt workspace or project after com
  dependencies.preferenceScope.current='retained';await boot();assert.equal(dependencies.preferenceScope.current,'retained');
 });
 test('retained auth interruption blocks App mutation/recovery entrypoints and keeps login/home from replacing owner',async()=>{
- const source=readFileSync(new URL('../apps/web/src/App.jsx',import.meta.url),'utf8');
+ const source=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');
  for(const name of ['run','runDurable','recoverTask','adoptLegacyTask','runSession']){
   const start=source.indexOf(`  async function ${name}(`),line=source.slice(start,source.indexOf('\n',start)),next=source.slice(source.indexOf('\n',start)+1).split('\n')[0];
   assert.match(next,/if \(clipConnectionBlocked.current\) return null/);

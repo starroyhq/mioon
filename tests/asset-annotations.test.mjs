@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';import {mkdtemp,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import path from 'node:path';
-import {openStore} from '../packages/business/src/db.mjs';import {createServices,canonical} from '../packages/business/src/services.mjs';
+import {openStore} from '../packages/business/src/db.ts';import {createServices,canonical} from '../packages/business/src/services.ts';
 import {assetAnnotationSchemas,isAssetAnnotationResponse,isAssetAnnotationListResponse} from '../packages/contracts/src/asset-annotations.ts';
 async function fixture(t){const root=await mkdtemp(path.join(tmpdir(),'annotations-'));let store=openStore(root),services=createServices(store,new Map());const f={root,get store(){return store;},call:(...args)=>services.call(...args),restart(){store.close();store=openStore(root);services=createServices(store,new Map());},asset(owner=f.project.id){return store.put('assets',{id:randomUUID(),projectId:owner,name:'sentinel',mimeType:'image/png'});},input(asset,patch={}){return {projectId:asset.projectId,assetId:asset.id,expectedRevision:0,requestId:randomUUID(),tags:['标签','Review'],note:'literal <b>hello</b>\n\t日本語',...patch};}};t.after(async()=>{store.close();await rm(root,{recursive:true,force:true});});f.project=await f.call('project.create',{name:'annotations'});return f;}
 const list=(f,assets)=>f.call('asset.annotation.list',{projectId:f.project.id,assetIds:assets.map(a=>a.id)});

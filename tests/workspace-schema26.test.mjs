@@ -7,7 +7,7 @@ import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {fileURLToPath} from 'node:url';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {initializeWorkspaceSchema26, validateWorkspaceSchema26, validateWorkspaceSchema24For26Migration} from '../packages/business/src/workspace-schema-v26.ts';
 import {open, fixture, snapshot, preserved, populate, task, insert, probe, facade, operations24, columns, assertBoundedSequenceProjection} from './workspace-schema26-fixtures.mjs';
 
@@ -65,7 +65,7 @@ test('ordinary26 preserves all19 legacy operations, all states, raw BLOB/TEXT an
 for (const sequence of [null, 0n, 8000n, 9007199254741999n]) {
   test(`ordinary26 preserves empty sequence ${sequence ?? 'absence'} including original rowid`, t => {
     const db = database(t, 'ordinary-24');
-    if (sequence !== null) db.prepare("INSERT INTO sqlite_sequence(rowid,name,seq) VALUES(?,'edit_tasks',?)").run(9007199254741991n, sequence);
+    if (sequence !== null) {const sequenceInsert=db.prepare("INSERT INTO sqlite_sequence(rowid,name,seq) VALUES(?,'edit_tasks',?)");sequenceInsert.setReadBigInts(true);sequenceInsert.run(9007199254741991n, sequence);}
     const before = snapshot(db); initializeWorkspaceSchema26(db); preserved(db, before);
     probe(db, () => {
       const value = task(db); insert(db, 'edit_tasks', value);

@@ -90,7 +90,7 @@ async function fixture(t) {
     for (const child of children) if (child.exitCode === null && child.signalCode === null) { child.kill('SIGKILL'); await once(child, 'close'); }
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
   });
-  async function cli(args, entry = 'apps/cli/src/index.mjs') {
+  async function cli(args, entry = 'apps/cli/src/index.ts') {
     const child = spawn(process.execPath, [entry, ...args], { cwd: root, env: childEnv, stdio: ['ignore', 'pipe', 'pipe'] }); children.push(child);
     let stdout = '', stderr = ''; child.stdout.setEncoding('utf8').on('data', data => { stdout += data; }); child.stderr.setEncoding('utf8').on('data', data => { stderr += data; });
     const timer = setTimeout(() => child.kill('SIGKILL'), 10000);
@@ -127,7 +127,7 @@ test('official MCP pins launch origin across real endpoint reload without adding
   delete childEnv.MIOON_BASE_URL; delete childEnv.MIOON_TOKEN;
   const mcp = new Client({ name: 'origin-pin-test', version: '1.0' }, { capabilities: {} });
   const closed = new Promise(resolve => { mcp.onclose = resolve; });
-  const transport = new StdioClientTransport({ command: process.execPath, args: ['apps/mcp/src/index.mjs', '--workspace-origin', origin], cwd: root, env: childEnv, stderr: 'pipe' });
+  const transport = new StdioClientTransport({ command: process.execPath, args: ['apps/mcp/src/index.ts', '--workspace-origin', origin], cwd: root, env: childEnv, stderr: 'pipe' });
   t.after(async () => { await mcp.close(); await closed; });
   await mcp.connect(transport);
   const catalog = await mcp.listTools();

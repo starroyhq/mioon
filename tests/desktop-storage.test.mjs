@@ -5,11 +5,11 @@ import {mkdtemp, mkdir, chmod, stat, lstat, writeFile, readFile, readdir, rm, sy
 import {lstatSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import desktopIdentity from '../apps/desktop/identity.cjs';
+import desktopIdentity from '../apps/desktop/identity.ts';
 import {dataPaths, prepareDesktopStorage, showStorageStartupFailure, storageFailureDialog, ensureDataIdentity,
-  readToolConfig, saveToolConfig, writeConnection, removeConnection, removeConnectionOnShutdown} from '../apps/desktop/src/config.mjs';
-import {createDesktopAgentSettings} from '../apps/desktop/src/secret-store.mjs';
-import {QuitCoordinator} from '../apps/desktop/src/lifecycle.mjs';
+  readToolConfig, saveToolConfig, writeConnection, removeConnection, removeConnectionOnShutdown} from '../apps/desktop/src/config.ts';
+import {createDesktopAgentSettings} from '../apps/desktop/src/secret-store.ts';
+import {QuitCoordinator} from '../apps/desktop/src/lifecycle.ts';
 
 const identity = desktopIdentity.identityForChannel('development');
 const privateError = error => error.code === 'STORAGE_PRIVATE_REQUIRED';
@@ -216,7 +216,7 @@ test('diagnostic cleanup preserves a replacement directory instead of deleting a
 });
 
 test('main isolates fatal storage handling from lock acquisition and normal readiness', async () => {
-  const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
+  const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
   assert.match(main, /try \{ paths = prepareDesktopStorage\(/);
   assert.match(main, /if \(startupStorageError\) void showStorageStartupFailure\(app, dialog, startupStorageError\);\s*else if \(!app\.requestSingleInstanceLock\(\)\)/);
   assert.doesNotMatch(main, /mkdirSync\(paths\.userData|app\.setPath\('userData', paths\.userData\)/);
@@ -250,7 +250,7 @@ test('quit preserves newly unsafe discovery, warns once without secrets and stil
   assert.deepEqual(await snapshot(f.userData), before);
   assert.deepEqual(warnings, ['DESKTOP_DISCOVERY_CLEANUP_SKIPPED: Discovery files were preserved because storage privacy checks failed.']);
   assert.doesNotMatch(warnings[0], /synthetic-never-log-token|mcp-token|user-data|127\.0\.0\.1/);
-  const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
+  const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
   assert.match(main, /await backend\?\.stop\(\);\s*await cleanupStoppedBackend\(\);/);
   assert.match(main, /async function cleanupStoppedBackend\(\)\s*\{\s*await removeConnectionOnShutdown\(paths\);\s*await activeSession\?\.clearStorageData\(\);\s*activeSession = null;\s*ready = null;/);
 });

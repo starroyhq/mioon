@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.mjs"
+    ".": "./src/index.ts"
   },
   "scripts": {
-    "start": "node src/cli.mjs"
+    "start": "node src/cli.ts"
   },
   "dependencies": {
     "@mioon/business": "workspace:*",

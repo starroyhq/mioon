@@ -22,7 +22,7 @@ const start = async message => {
   root = message.dataDir;
   startupPhase('module-loading');
   const [{startServer}, {createAgentSettings, AGENT_CREDENTIAL_ACQUIRE}, {createAgentSettingsFile}] = await Promise.all([
-    import('../../apps/server/src/index.mjs'), import('../../packages/business/src/agent/settings.mjs'), import('../../packages/business/src/agent/settings-file.mjs'),
+    import('../../apps/server/src/index.ts'), import('../../packages/business/src/agent/settings.ts'), import('../../packages/business/src/agent/settings-file.ts'),
   ]);
   startupPhase('module-loaded');
   if (!active()) return;

@@ -7,10 +7,10 @@ import {fileURLToPath} from 'node:url';
 import {spawn} from 'node:child_process';
 import {randomUUID,createHash} from 'node:crypto';
 import {mkdtemp,mkdir,writeFile,readFile,readdir,rm} from 'node:fs/promises';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
-import {callObservedRpc} from '../apps/server/src/rpc-observation.mjs';
-import {onMediaProcess,hasUnconfirmedMediaProcesses,waitForMediaProcesses} from '../packages/business/src/media-processes.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {callObservedRpc} from '../apps/server/src/rpc-observation.ts';
+import {onMediaProcess,hasUnconfirmedMediaProcesses,waitForMediaProcesses} from '../packages/business/src/media-processes.ts';
 
 // Real loopback HTTP, shared services/admission and the production bounded child
 // runner. The only synthetic tool is this test's own locally authored executable:
@@ -100,7 +100,7 @@ test('real HTTP disconnect aborts active v2 capability MOV child, cleans owned s
 
 test('actual CLI Ctrl+C reaches active v2 capability lifecycle without business mutation or retry',{timeout:20000},async t=>{
  if(process.platform==='win32'){t.skip('POSIX signals and installed executable fixture; no native Windows claim');return;}
- const f=await fixture(t),child=spawn(process.execPath,[fileURLToPath(new URL('../apps/cli/src/index.mjs',import.meta.url)),'timeline','export','capabilities','--input',JSON.stringify(f.input)],
+ const f=await fixture(t),child=spawn(process.execPath,[fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url)),'timeline','export','capabilities','--input',JSON.stringify(f.input)],
   {stdio:['ignore','pipe','pipe'],shell:false,env:{PATH:process.env.PATH||'',MIOON_BASE_URL:f.url,MIOON_TOKEN:TOKEN,MIOON_ENABLE_LIVE_PROVIDER:'0'}});
  let stdout='',stderr='',bytes=0;
  // One audited text registration site; UTF-8 decoding survives arbitrary chunk boundaries.

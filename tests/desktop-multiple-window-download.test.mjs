@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
-import {installSessionPolicy} from '../apps/desktop/src/security.mjs';
+import {installSessionPolicy} from '../apps/desktop/src/security.ts';
 
 const origin = 'http://127.0.0.1:41923';
 const a = '11111111-1111-4111-8111-111111111111';

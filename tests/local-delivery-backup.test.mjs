@@ -9,12 +9,12 @@ import path from 'node:path';
 import {randomUUID,randomBytes} from 'node:crypto';
 import {schemas,isTimelineMutationResponse,hasRequestNotAppliedProof,publicValue} from '@mioon/contracts';
 import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
-import {openStore,ownsStoreLock,getWorkspaceRestoreContext} from '../packages/business/src/db.mjs';
-import {createServices,hash} from '../packages/business/src/services.mjs';
+import {openStore,ownsStoreLock,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {createServices,hash} from '../packages/business/src/services.ts';
 import {createLocalDelivery,LOCAL_DELIVERY_FILENAME} from '../packages/business/src/local-delivery.ts';
-import {createTimelineRecoveryBoundary,readTimelineReceipt} from '../packages/business/src/timeline-recovery.mjs';
-import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.mjs';
+import {createTimelineRecoveryBoundary,readTimelineReceipt} from '../packages/business/src/timeline-recovery.ts';
+import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
+import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import {restoreFixture,tree,logical} from './helpers/workspace-restore-offline-fixture.mjs';
 
 const authority=value=>({workspaceScope:value.workspaceScope,instanceId:value.instanceId,projectId:value.projectId});
@@ -66,7 +66,7 @@ test('actual cold backup excludes delivery draft, immutable intent and atomic te
  assert.deepEqual(tree(f.source),sourceBefore,'Backup and verify must preserve all source bytes and modes, including excluded files');
  assert.deepEqual(tree(f.backup),originalBackupBefore);
  const backupBefore=tree(backup),restored=await restoreWorkspaceBackup({directory:backup,destination:f.destination});
- assert.equal(restored.publication,'confirmed');assert.equal(restored.sourceSchema,36);assert.equal(restored.databaseSchemaVersion,37);assert.equal(restored.profile,'restored-local-v7');
+ assert.equal(restored.publication,'confirmed');assert.equal(restored.sourceSchema,48);assert.equal(restored.databaseSchemaVersion,49);assert.equal(restored.profile,'restored-local-v13');
  assert.equal(fs.existsSync(path.join(f.destination,LOCAL_DELIVERY_FILENAME)),false);assert.equal(fs.existsSync(path.join(f.destination,temporary)),false);
  assert.deepEqual(tree(f.source),sourceBefore);assert.deepEqual(tree(backup),backupBefore);
  const restoredStore=openStore(f.destination),restoredServices=createServices(restoredStore,new Map());

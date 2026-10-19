@@ -22,7 +22,7 @@ function environment(extra = {}) {
 }
 async function bridge(t, env = {}) {
   const client = new Client({name:'v4-protocol-regression', version:'1.0.0'}, {capabilities:{}});
-  const transport = new StdioClientTransport({command:process.execPath, args:[path.join(repo,'apps/mcp/src/index.mjs')], cwd:repo, env:environment(env), stderr:'pipe'});
+  const transport = new StdioClientTransport({command:process.execPath, args:[path.join(repo,'apps/mcp/src/index.ts')], cwd:repo, env:environment(env), stderr:'pipe'});
   let stderr = '';
   transport.stderr.setEncoding('utf8').on('data', bytes => stderr += bytes);
   t.after(() => client.close());

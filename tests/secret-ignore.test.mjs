@@ -41,7 +41,7 @@ test('git ignores exact runtime credential/discovery/settings fixtures at custom
   execFileSync('git', ['init', '--quiet', '--template='], options);
   const secretFiles = ['', 'local-profile/', 'apps/desktop/custom-user-data/'].flatMap(prefix => runtimeNames.map(name => prefix + name));
   const sourceFiles = [
-    '.env.example', 'apps/server/.env.example', 'docs/mcp-token.md', 'packages/client/src/connection.mjs',
+    '.env.example', 'apps/server/.env.example', 'docs/mcp-token.md', 'packages/client/src/connection.ts',
     'tests/client-storage.test.mjs', 'tests/fixtures/mcp-connection.example.json', 'tests/fixtures/settings.json',
     'tests/fixtures/agent-settings/settings.example.json', 'tests/fixtures/source.tmp', 'apps/web/src/settings.js',
   ];
@@ -59,7 +59,7 @@ test('git ignores exact runtime credential/discovery/settings fixtures at custom
 
 test('desktop packaging allowlist excludes synthetic custom userData without scanning real secrets or building', async t => {
   const root = await temporaryDirectory(t, 'wb-secret-package-');
-  const buildConfig = createRequire(import.meta.url)('../apps/desktop/builder-config.cjs');
+  const { builderConfig: buildConfig } = createRequire(import.meta.url)('../apps/desktop/builder-config.ts');
   const packageFiles = ['main.cjs', 'backend.cjs', 'preload.cjs', 'package.json', 'web/index.html', 'web/assets/app.js', 'icons/icon.png', 'licenses/NOTICE.md'];
   const secretFiles = runtimeNames.flatMap(name => [name, `custom-user-data/${name}`, `custom-user-data/workspace/${name}`]);
   const excludedFiles = [...secretFiles, '.env', 'custom-user-data/workspace/workbench.sqlite', 'node_modules/synthetic/index.js'];

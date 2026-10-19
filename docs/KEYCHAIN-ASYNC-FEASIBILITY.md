@@ -66,13 +66,13 @@
 
 ## appId 与旧密文兼容
 
-**应用内绑定与 OS 密钥库身份是两个不同层面。**项目 `secret-store.mjs` 的加密明文包装仍应保持 `{version: 1, appId, plaintext}`、严格字段／大小／base64 校验，Images namespace/profile 与 Agent binding 验证也应保留。生产 `app.starroy.mioon` 和开发 `app.starroy.mioon.dev` 不可互相接受。
+**应用内绑定与 OS 密钥库身份是两个不同层面。**项目 `secret-store.ts` 的加密明文包装仍应保持 `{version: 1, appId, plaintext}`、严格字段／大小／base64 校验，Images namespace/profile 与 Agent binding 验证也应保留。生产 `app.starroy.mioon` 和开发 `app.starroy.mioon.dev` 不可互相接受。
 
 macOS 系统取钥名称来自 Electron app name：初始化设置 service 为 `N Safe Storage`、基础 account 为 `N`。[Electron browser 初始化][browser-main]。应用名可由 app.setName 覆盖；本项目在 ready 前设置为 `Mioon`／`Mioon Dev`。Electron 的 [MAS 补丁][mas-patch]还会将实际 account 变为普通 darwin 的 `N Key`、MAS 的 `N App Store Key`；旧无后缀账户可能被复制迁移并删除。不能只读补丁前言或将非 MAS 描述为没有后缀。
 
 同一进程内改用 async 共用该 KeychainPassword 组件，macOS provider 明确按同步实现兼容设计：共同密钥、v10 前缀、相同派生参数与 AES-128-CBC 格式。[provider 声明][provider-header]、[provider 实现][provider]、[同步恢复补丁][sync-patch]。上游 [safeStorage spec][upstream-spec]包含 sync→async 和 async→sync 两个互操作用例；**本轮仅阅读这些测试，没有执行，更没有验证用户旧密文。**
 
-保持 appId 字符串不足以保证 Keychain 访问权相同；还要保持应用名称、bundle/signing identity、entitlements、darwin/MAS 渠道及原钥访问权限。官方特别提醒有效且一致的代码签名；本项目 `builder-config.cjs` 当前 `mac.identity: null`，签名／原生 QA 未验收。helper 共享同一个 service/account 字符串也不能证明 OS 允许访问。[签名说明][api]
+保持 appId 字符串不足以保证 Keychain 访问权相同；还要保持应用名称、bundle/signing identity、entitlements、darwin/MAS 渠道及原钥访问权限。官方特别提醒有效且一致的代码签名；本项目 `builder-config.ts` 当前 `mac.identity: null`，签名／原生 QA 未验收。helper 共享同一个 service/account 字符串也不能证明 OS 允许访问。[签名说明][api]
 
 以上兼容依据针对固定版本的 macOS 默认 provider；不能外推到所有 Linux provider、Windows、更旧／更新 Electron、修改 feature 或不同签名的构建。
 
@@ -80,9 +80,9 @@ macOS 系统取钥名称来自 Electron app name：初始化设置 service 为 `
 
 后续若授权实施，先选**保留原 main 身份、切换官方 async 三项操作**的受控方案，不先加 native helper；但本报告不将其批准为满足全部退出／恢复要求的最终实现。
 
-1. `apps/desktop/src/secret-store.mjs` 与 `image-secret-store.mjs`：status/encrypt/decrypt 全链路异步，正确提取解密 `result`，保留外层格式、校验和公开错误语义；不以同步 status 前置检查重新引入 Keychain 阻塞，也不以 async status true 单独承诺可写。
-2. `image-secret-broker.mjs` 当前微任务直接校验同步返回值，必须有界 await，并在完成后重新检查关闭／所属 utility／请求有效性；保持容量、去重、关闭后拒绝与迟到结果隔离。仅将底层函数改成 async 会让现有返回值校验失败。
-3. Agent codec 调用已有 await，但 `packages/business/src/agent/settings.mjs` 的 capabilities/storage 回调同步；需协调状态快照与刷新语义。覆盖 main 在 supervisor 启动前的 Agent 初始解密、后续 acquire/put/close，避免只修 Images。
+1. `apps/desktop/src/secret-store.ts` 与 `image-secret-store.ts`：status/encrypt/decrypt 全链路异步，正确提取解密 `result`，保留外层格式、校验和公开错误语义；不以同步 status 前置检查重新引入 Keychain 阻塞，也不以 async status true 单独承诺可写。
+2. `image-secret-broker.ts` 当前微任务直接校验同步返回值，必须有界 await，并在完成后重新检查关闭／所属 utility／请求有效性；保持容量、去重、关闭后拒绝与迟到结果隔离。仅将底层函数改成 async 会让现有返回值校验失败。
+3. Agent codec 调用已有 await，但 `packages/business/src/agent/settings.ts` 的 capabilities/storage 回调同步；需协调状态快照与刷新语义。覆盖 main 在 supervisor 启动前的 Agent 初始解密、后续 acquire/put/close，避免只修 Images。
 4. 明确本地等待 deadline、底层在途请求、拒绝后恢复与停机边界；保持心跳与退出处理可调度，同时保留“正常进程退出仍可能等线程池”的限制。不得通过无限重试、错误时回退同步或弱加密消除表面失败。
 5. 不自动迁移密文、schema、appId 或签名策略。若最终要求 Keychain 永久阻塞时仍有退出硬期限／同进程可靠重新授权，内建 async 单独不足；需另行审查隔离单元及其身份兼容。
 

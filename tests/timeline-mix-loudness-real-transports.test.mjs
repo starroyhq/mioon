@@ -15,9 +15,9 @@ import {createClient,discoverSchema} from '@mioon/client';
 import {readTimelineMixLoudnessEnvelope} from '@mioon/client/timeline-mix-loudness';
 import {isTimelineMixLoudnessResponse,TIMELINE_MIX_LOUDNESS_PROFILE} from '@mioon/contracts/timeline-mix-loudness';
 import {EXPORT_LOUDNESS_PROFILE} from '@mioon/contracts/export-loudness';
-import {startServer} from '../apps/server/src/index.mjs';
-import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
+import {startServer} from '../apps/server/src/index.ts';
+import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 
 const execute=promisify(execFile),repo=fileURLToPath(new URL('..',import.meta.url));
 const operation='timeline.loudness.prepare',sha=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -48,7 +48,7 @@ async function manifest(root,relative=''){
 }
 async function cli(url,token,args){
   // execFile continuously decodes UTF-8, bounds both outputs and reaps its child.
-  const {stdout,stderr}=await execute(process.execPath,[path.join(repo,'apps/cli/src/index.mjs'),...args],
+  const {stdout,stderr}=await execute(process.execPath,[path.join(repo,'apps/cli/src/index.ts'),...args],
     {cwd:repo,env:environment(url,token),encoding:'utf8',timeout:20000,maxBuffer:1024*1024});
   assert.ok(!stdout.includes(token)&&!stderr.includes(token),'CLI must not expose its local token');
   assert.equal(stdout.trim().split('\n').length,1);assert.ok(!stdout.includes('\ufffd'));
@@ -56,7 +56,7 @@ async function cli(url,token,args){
 }
 async function official(url,token){
   const client=new Client({name:'timeline-mix-loudness-real-service',version:'1.0.0'},{capabilities:{}});
-  const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.mjs')],
+  const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.ts')],
     cwd:repo,env:environment(url,token),stderr:'pipe'});
   let stderr='',overflow=false;
   transport.stderr?.setEncoding('utf8').on('data',part=>{stderr+=part;if(Buffer.byteLength(stderr)>65536){overflow=true;void client.close();}});

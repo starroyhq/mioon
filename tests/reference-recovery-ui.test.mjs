@@ -4,17 +4,19 @@ import { transformSync } from 'esbuild';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
-import * as submissions from '../apps/web/src/submissions.js';
-import * as mutations from '../apps/web/src/mutation-submissions.js';
-import * as workspaceOrigin from '../apps/web/src/workspace-origin.js';
-import * as restoredWorkspace from '../apps/web/src/restored-workspace.js';
+import * as submissions from '../apps/web/src/submissions.ts';
+import * as mutations from '../apps/web/src/mutation-submissions.ts';
+import * as workspaceOrigin from '../apps/web/src/workspace-origin.ts';
+import * as restoredWorkspace from '../apps/web/src/restored-workspace.ts';
 import * as projectOpening from '../apps/web/src/project-open-state.ts';
-import { defaultWorkspaceState, reconcileWorkspaceState } from '../apps/web/src/workspace-state.js';
+import { defaultWorkspaceState, reconcileWorkspaceState } from '../apps/web/src/workspace-state.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const taskIntentModule = { exports: {} };
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
 const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
-const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const runSource = source.slice(source.indexOf('async function runSession('), source.indexOf('async function inspect(')).replace('async function runSession(', 'async function run(');
 const refreshSource = source.slice(source.indexOf('const refresh = useCallback('), source.indexOf('async function selectProject('));
 const id = number => `83000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
@@ -63,7 +65,7 @@ function harness(dispatch, { projectSnapshot } = {}) {
     isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === state.epoch,
     isBusy: (name, owner) => busy.has(`${owner}:${name}`),
     markBusy: (owner, name, value) => value ? busy.add(`${owner}:${name}`) : busy.delete(`${owner}:${name}`),
-    requestCounter: { current: 0 }, setData: update => { dataRef.current = typeof update === 'function' ? update(dataRef.current) : update; state.dataWrites.push(clone(dataRef.current)); },
+    requestCounter: { current: 0 }, clipConnectionBlocked: { current: false }, setData: update => { dataRef.current = typeof update === 'function' ? update(dataRef.current) : update; state.dataWrites.push(clone(dataRef.current)); },
     setPending: entries => { state.pending = entries; state.pendingUpdates.push(clone(entries)); },
     openTasks: (canReveal = () => true) => { if (canReveal()) state.jobs = true; }, setAuth: value => { state.auth = value; },
     readableError: error => error.message, clipReplacementErrorDescriptor: error => error.message,
@@ -75,7 +77,7 @@ function harness(dispatch, { projectSnapshot } = {}) {
     },
   };
   if (projectSnapshot) {
-    const refreshScope = { ...scope, ...projectOpening, projectSessionReady: () => state.projectReady, importSession: { current: { active: true } }, useCallback: callback => callback, emptyData: {}, projectEpoch,
+    const refreshScope = { ...scope, ...projectOpening, application: null, clipDraftRef: { current: null }, projectSessionReady: () => state.projectReady, importSession: { current: { active: true } }, useCallback: callback => callback, emptyData: {}, projectEpoch,
       setProviders() {}, setLastSync() {}, setOnline() {}, reconcileWorkspaceState, viewRef, viewReady: { current: true },
       setView: value => { viewRef.current = value; }, preferencesRef: { current: { update: (...args) => state.preferenceWrites.push(args) } } };
     delete refreshScope.refresh;

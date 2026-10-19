@@ -4,11 +4,11 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { LOCALES, translate, renderMessage, validateCatalogs } from '../packages/i18n/src/index.ts';
 import { creationMessages } from '../packages/i18n/src/catalogs/creation.ts';
-import { agentChatErrorDescriptor, agentChatPromptIssue, agentChatPromptIssueDescriptor } from '../apps/web/src/agent-chat.js';
-import { agentEditStatusDescriptor } from '../apps/web/src/agent-edits.js';
-import { imageTaskLabelDescriptor, imageTaskMessageDescriptor, imageInputIssue, imageInputIssueDescriptor } from '../apps/web/src/image-generation.js';
+import { agentChatErrorDescriptor, agentChatPromptIssue, agentChatPromptIssueDescriptor } from '../apps/web/src/agent-chat.ts';
+import { agentEditStatusDescriptor } from '../apps/web/src/agent-edits.ts';
+import { imageTaskLabelDescriptor, imageTaskMessageDescriptor, imageInputIssue, imageInputIssueDescriptor } from '../apps/web/src/image-generation.ts';
 import { jobStatusDescriptor, taskErrorDescriptor, safeTaskErrorCode, providerDisplayName } from '../apps/web/src/creation-i18n.ts';
-import { providerAvailabilityDescriptor, generationInputIssueDescriptor } from '../apps/web/src/generation-settings.js';
+import { providerAvailabilityDescriptor, generationInputIssueDescriptor } from '../apps/web/src/generation-settings.ts';
 
 test('creation catalog has complete four-language templates with exact placeholder parity', () => {
   assert.deepEqual(validateCatalogs(creationMessages), []);
@@ -54,7 +54,7 @@ test('generation provider display ignores backend translated labels and instruct
 });
 
 test('creation renderer text and lifecycle dependencies are locale-safe', () => {
-  for (const filename of ['AgentPanel.jsx', 'AgentRunActivity.jsx', 'AgentEditProposal.jsx', 'AgentTimelineGain.tsx', 'AgentWorkspace.jsx', 'ImageGeneration.jsx', 'ComfyImageDetails.jsx', 'GenerationInputSummary.jsx', 'ProviderSettings.jsx', 'TaskCenter.jsx', 'TaskWorkspace.tsx', 'PendingSubmission.jsx']) {
+  for (const filename of ['AgentPanel.tsx', 'AgentRunActivity.tsx', 'AgentEditProposal.tsx', 'AgentTimelineGain.tsx', 'AgentWorkspace.tsx', 'ImageGeneration.tsx', 'ComfyImageDetails.tsx', 'GenerationInputSummary.tsx', 'ProviderSettings.tsx', 'TaskCenter.tsx', 'TaskWorkspace.tsx', 'PendingSubmission.tsx']) {
     const source = readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8');
     const ast = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true, filename.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.JSX);
     const visit = node => {
@@ -87,9 +87,9 @@ test('actual provider renders creation details in all four locales and escapes u
     import React from 'react';
     import { renderToStaticMarkup } from 'react-dom/server.browser';
     import { I18nProvider, createLanguageStore } from './i18n/I18nProvider.tsx';
-    import ProviderSettings from './ProviderSettings.jsx';
-    import { ComfyImageTaskDetails } from './ComfyImageDetails.jsx';
-    import { AgentEditDiff } from './AgentEditProposal.jsx';
+    import ProviderSettings from './ProviderSettings.tsx';
+    import { ComfyImageTaskDetails } from './ComfyImageDetails.tsx';
+    import { AgentEditDiff } from './AgentEditProposal.tsx';
     import TaskWorkspace from './TaskWorkspace.tsx';
     export async function renderAll() {
       const result = {};
@@ -114,7 +114,7 @@ test('actual provider renders creation details in all four locales and escapes u
   // renderer tests so a successful read-only render cannot retain the test worker.
   const script = `
     import { build } from 'esbuild';
-    const { outputFiles } = await build({ stdin: { contents: ${JSON.stringify(source)}, loader: 'jsx', resolveDir: ${JSON.stringify(resolve(root, 'apps/web/src'))} }, bundle: true, format: 'esm', platform: 'browser', write: false, loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '\"production\"' }, logLevel: 'silent' });
+    const { outputFiles } = await build({ stdin: { contents: ${JSON.stringify(source)}, loader: 'tsx', resolveDir: ${JSON.stringify(resolve(root, 'apps/web/src'))} }, bundle: true, format: 'esm', platform: 'browser', write: false, loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '\"production\"' }, logLevel: 'silent' });
     const fixture = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].text).toString('base64'));
     process.stdout.write(JSON.stringify(await fixture.renderAll())); process.exit(0);
   `;

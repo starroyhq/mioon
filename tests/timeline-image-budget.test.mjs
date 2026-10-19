@@ -13,18 +13,18 @@ import {
   openStore, installCurrentWorkspaceRestoreSchema, validateCurrentWorkspaceRestoreSchema,
   getWorkspaceRestoreContext,
   classifyCurrentWorkspaceSchema,
-} from '../packages/business/src/db.mjs';
-import {createServices, hash} from '../packages/business/src/services.mjs';
-import {createTimelineServices} from '../packages/business/src/timeline.mjs';
-import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+} from '../packages/business/src/db.ts';
+import {createServices, hash} from '../packages/business/src/services.ts';
+import {createTimelineServices} from '../packages/business/src/timeline.ts';
+import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
 import {initializeWorkspaceSchema28} from '../packages/business/src/workspace-schema-v28.ts';
 import {initializeWorkspaceSchema30} from '../packages/business/src/workspace-schema-v30.ts';
 import {initializeWorkspaceSchema32} from '../packages/business/src/workspace-schema-v32.ts';
 import {timelineImageResponseBudgetIssue} from '../packages/business/src/timeline-image-budget.ts';
-import {createWorkspaceBackup, verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.mjs';
+import {createWorkspaceBackup, verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
+import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import {parseCube3D} from '../packages/business/src/cube-lut.ts';
 import {lutInputHash} from '../packages/business/src/lut-resource-validation.ts';
 import {png, imageColour, sha, stamp} from './helpers/timeline-image-fixtures.mjs';

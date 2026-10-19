@@ -6,12 +6,12 @@ import {readdirSync,writeFileSync,renameSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {TIMELINE_EXPORT_DEFAULT_SETTINGS,isTimelineRenderRecord,isExportPreflightResponse,hasRequestNotAppliedProof} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices,hash} from '../packages/business/src/services.mjs';
-import {createTimelinePreflightServices,timelineSnapshotHash} from '../packages/business/src/timeline-preflight.mjs';
-import {readTimelinePreflightSnapshot} from '../packages/business/src/timeline-sources.mjs';
-import {startWorker} from '../packages/business/src/jobs.mjs';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices,hash} from '../packages/business/src/services.ts';
+import {createTimelinePreflightServices,timelineSnapshotHash} from '../packages/business/src/timeline-preflight.ts';
+import {readTimelinePreflightSnapshot} from '../packages/business/src/timeline-sources.ts';
+import {startWorker} from '../packages/business/src/jobs.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 
 async function fixture(t,{empty=false}={}){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-export-range-'));let store=openStore(root),probes=0,services;
@@ -65,7 +65,7 @@ test('range-only identity cannot be removed or changed on receipt/export before 
 
 
 async function syntheticRangeMedia(t,f){
- const binary=path.join(f.root,'synthetic-range-media.mjs'),saved={MIOON_FFMPEG_PATH:process.env.MIOON_FFMPEG_PATH,MIOON_FFPROBE_PATH:process.env.MIOON_FFPROBE_PATH};
+ const binary=path.join(f.root,'synthetic-range-media.ts'),saved={MIOON_FFMPEG_PATH:process.env.MIOON_FFMPEG_PATH,MIOON_FFPROBE_PATH:process.env.MIOON_FFPROBE_PATH};
  const source={streams:[{index:0,codec_type:'video',codec_name:'h264',width:720,height:1280,r_frame_rate:'30/1',avg_frame_rate:'30/1',nb_frames:'60'}],format:{duration:'2'}},rendered={streams:[{index:0,codec_type:'video',codec_name:'h264',width:f.timeline.width,height:f.timeline.height,r_frame_rate:'30/1',avg_frame_rate:'30/1',nb_frames:'38',start_pts:0,start_time:'0',sample_aspect_ratio:'1:1',pix_fmt:'yuv420p',has_b_frames:0,time_base:'1/30000',duration:String(38/30)},{index:1,codec_type:'audio',codec_name:'aac',sample_rate:'48000',channels:2,channel_layout:'stereo',time_base:'1/48000',start_pts:0,start_time:'0',duration:String(38/30)}],format:{format_name:'mov,mp4',duration:String(38/30),start_time:'0'}};
  await writeFile(binary,`#!${process.execPath}\nimport {writeFileSync} from 'node:fs';const args=process.argv.slice(2);if(args.includes('-show_streams'))process.stdout.write(JSON.stringify(args.at(-1).endsWith('source.mp4')?${JSON.stringify(source)}:${JSON.stringify(rendered)}));else writeFileSync(args.at(-1),'synthetic selected output',{flag:args.includes('-n')?'wx':'w'});\n`,{mode:0o700});
  process.env.MIOON_FFMPEG_PATH=binary;process.env.MIOON_FFPROBE_PATH=binary;t.after(()=>{for(const [key,value]of Object.entries(saved))if(value===undefined)delete process.env[key];else process.env[key]=value;});

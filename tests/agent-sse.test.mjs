@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseAgentSse} from '../packages/business/src/agent/sse.mjs';
+import {parseAgentSse} from '../packages/business/src/agent/sse.ts';
 const collect = async (source, options) => { const result = []; for await (const event of parseAgentSse(source, options)) result.push(event); return result; };
 const bytes = text => [Buffer.from(text)];
 

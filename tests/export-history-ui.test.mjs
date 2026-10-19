@@ -25,7 +25,7 @@ let rendered, actions, fileActions, unchanged;
 before(() => {
   const fixture = `import React from 'react';
     import {renderToStaticMarkup} from 'react-dom/server.browser';
-    import ExportHistoryList from './src/ExportHistoryList.jsx';
+    import ExportHistoryList from './src/ExportHistoryList.tsx';
     import ActualExportFileActions from 'test:actual-export-file-actions';
     const fixtures = ${JSON.stringify(fixtures)};
     function freeze(value) {if (value && typeof value === 'object') {Object.values(value).forEach(freeze); Object.freeze(value);} return value;}
@@ -47,10 +47,10 @@ before(() => {
   // short-lived child avoids retaining browser-SSR scheduling handles in tests.
   const script = `import {build} from 'esbuild';
     globalThis.fetch = () => {throw Error('Pure presentation must not request data');};
-    const {outputFiles} = await build({stdin: {contents: ${JSON.stringify(fixture)}, loader: 'jsx', resolveDir: ${JSON.stringify(path.join(root, 'apps/web'))}}, bundle: true, format: 'esm', platform: 'browser', write: false, define: {'process.env.NODE_ENV': '"production"'}, plugins: [{name:'capture-file-action-props', setup(build) {
+    const {outputFiles} = await build({stdin: {contents: ${JSON.stringify(fixture)}, loader: 'tsx', resolveDir: ${JSON.stringify(path.join(root, 'apps/web'))}}, bundle: true, format: 'esm', platform: 'browser', write: false, define: {'process.env.NODE_ENV': '"production"'}, plugins: [{name:'capture-file-action-props', setup(build) {
       build.onResolve({filter:/^test:actual-export-file-actions$/}, () => ({path:${JSON.stringify(path.join(root, 'apps/web/src/ExportFileActions.tsx'))}}));
       build.onResolve({filter:/ExportFileActions\\.tsx$/}, () => ({path:'capture', namespace:'file-action-capture'}));
-      build.onLoad({filter:/.*/, namespace:'file-action-capture'}, () => ({contents:${JSON.stringify(capture)}, loader:'jsx', resolveDir:${JSON.stringify(path.join(root, 'apps/web'))}}));
+      build.onLoad({filter:/.*/, namespace:'file-action-capture'}, () => ({contents:${JSON.stringify(capture)}, loader:'tsx', resolveDir:${JSON.stringify(path.join(root, 'apps/web'))}}));
     }}]});
     const result = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].text).toString('base64'));
     process.stdout.write(JSON.stringify(result.result)); process.exit(0);`;
@@ -114,11 +114,11 @@ test('presentation uses supplied order and never mutates frozen input rows', () 
   assert.deepEqual(actions.order.map(action => action.downloadHref), ['/media/order-first', '/media/order-second']);
   assert.ok(rendered.order.indexOf('data-export-id="first"') < rendered.order.indexOf('data-export-id="second"'));
   assert.ok(Object.values(unchanged).every(Boolean));
-  const source = readFileSync(path.join(root, 'apps/web/src/ExportHistoryList.jsx'), 'utf8');
+  const source = readFileSync(path.join(root, 'apps/web/src/ExportHistoryList.tsx'), 'utf8');
   assert.doesNotMatch(source, /useState|useEffect|useRef|\bfetch\s*\(|\brpc\s*\(|\.sort\s*\(|navigationEpoch|requestId/);
 });
 test('App keeps history in the controlled export dialog with visibility, recovery and immutable identity inputs', () => {
-  const app = readFileSync(path.join(root, 'apps/web/src/App.jsx'), 'utf8');
+  const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
   assert.match(app, /const orderedExports = \[\.\.\.data\.exports\]\.sort\(\(a, b\) => b\.createdAt\.localeCompare\(a\.createdAt\)\);/);
   assert.match(app, /<DeliveryWorkspace page=\{showExports \? 'history' : 'compose'\}/);
   assert.match(app, /<AgentDockPane id="delivery-history-pane" labelledBy="delivery-history-tab" visible=\{showExports\}/);

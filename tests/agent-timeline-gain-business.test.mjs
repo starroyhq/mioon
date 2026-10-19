@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
 import {AppError, isAgentTimelineGainProposal, TIMELINE_RESPONSE_BYTES} from '@mioon/contracts';
-import {canonical} from '../packages/business/src/services.mjs';
+import {canonical} from '../packages/business/src/services.ts';
 import {agentTimelineGainFixture} from './helpers/agent-timeline-gain-fixture.mjs';
 const code = expected => error => error.code === expected;
 const fields = (f, extra = {}) => ({projectId: f.project.id, expectedRevision: f.current().revision, requestId: randomUUID(), ...extra});

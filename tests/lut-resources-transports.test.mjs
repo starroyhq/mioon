@@ -161,7 +161,7 @@ async function fixture(t) {
     MIOON_INSPECTION_WIRE_GUARD: '1', MIOON_INSPECTION_WIRE_ALLOWED_ORIGIN: base,
     MIOON_INSPECTION_WIRE_AUDIT: audit});
   async function cli(operation, input, expectedError, {file, base = url} = {}) {
-    const args = ['--import', guard, path.join(repo, 'apps/cli/src/index.mjs'), ...operation.split('.'),
+    const args = ['--import', guard, path.join(repo, 'apps/cli/src/index.ts'), ...operation.split('.'),
       '--input', JSON.stringify(input), ...(file ? ['--file', file] : [])];
     const run = ownedProcess(args, connectionEnv(base));
     children.push({label: `cli-${children.length}-${operation.replaceAll('.', '-')}`, run});
@@ -184,7 +184,7 @@ async function fixture(t) {
     const label = `mcp-${mcpChildren.length}`;
     const client = new Client({name: 'lut-resource-wire-acceptance', version: '1.0.0'}, {capabilities: {}});
     const transport = new StdioClientTransport({command: process.execPath, cwd: repo, stderr: 'pipe',
-      args: ['--import', guard, path.join(repo, 'apps/mcp/src/index.mjs')], env: connectionEnv(base)});
+      args: ['--import', guard, path.join(repo, 'apps/mcp/src/index.ts')], env: connectionEnv(base)});
     const child = {label, client, transport, stderr: ''};
     mcpChildren.push(child);
     transport.stderr.setEncoding('utf8').on('data', chunk => { child.stderr += chunk; });

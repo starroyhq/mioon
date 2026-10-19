@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { LOCALES, renderMessage } from '../packages/i18n/src/index.ts';
-import { readPending, writePending, prepareSubmission, prepareRequestReplay } from '../apps/web/src/submissions.js';
-import { assertMutationOwner, prepareMutation, validateMutationResponse } from '../apps/web/src/mutation-submissions.js';
-import { taskProtocolError } from '../apps/web/src/edit-task-client.js';
-import { createEditTaskController } from '../apps/web/src/edit-task-controller.js';
+import { readPending, writePending, prepareSubmission, prepareRequestReplay } from '../apps/web/src/submissions.ts';
+import { assertMutationOwner, prepareMutation, validateMutationResponse } from '../apps/web/src/mutation-submissions.ts';
+import { taskProtocolError } from '../apps/web/src/edit-task-client.ts';
+import { createEditTaskController } from '../apps/web/src/edit-task-controller.ts';
 
 class Storage {
   values = new Map(); writes = 0;
@@ -78,7 +78,7 @@ test('task controller errors remain descriptors across relabeling with no extra 
 });
 
 test('every retained local task diagnostic has an adjacent explicit display descriptor', () => {
-  for (const file of ['submissions.js', 'mutation-submissions.js', 'edit-task-client.js', 'edit-task-controller.js']) {
+  for (const file of ['submissions.ts', 'mutation-submissions.ts', 'edit-task-client.ts', 'edit-task-controller.ts']) {
     const source = readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8');
     const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
     let diagnostics = 0;

@@ -4,7 +4,7 @@ import {spawnSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {LOCALES, translate, catalogs, validateCatalogs} from '../packages/i18n/src/index.ts';
-import {parseBackupArguments} from '../apps/cli/src/backup.mjs';
+import {parseBackupArguments} from '../apps/cli/src/backup.ts';
 import {backupDiagnostic} from '../apps/cli/src/backup-presentation.ts';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const secret = 'synthetic-PRIVATE-path-token-error-must-not-appear';
@@ -15,8 +15,8 @@ function run(entry, args, hook) {
   assert.equal(result.signal,null);
   return result;
 }
-const backup = (args, hook) => run('apps/cli/src/backup.mjs', args, hook);
-const mcp = (args, hook) => run('apps/mcp/src/index.mjs', args, hook);
+const backup = (args, hook) => run('apps/cli/src/backup.ts', args, hook);
+const mcp = (args, hook) => run('apps/mcp/src/index.ts', args, hook);
 
 test('backup explicit locale translates only help prose and preserves legacy help/version', {timeout:180000}, () => {
   assert.deepEqual(validateCatalogs(catalogs),[]);
@@ -96,7 +96,7 @@ test('backup fixed code diagnostics are exhaustive and machine error, cleanup, p
     for(const locale of LOCALES)assert.equal(backupDiagnostic(code,secret,locale),translate(locale,key));
     assert.equal(backupDiagnostic(code,secret),secret);
   }
-  const failure = `import {registerHooks} from 'node:module'; registerHooks({load(url,context,next){if(url.endsWith('/packages/business/src/workspace-backup.mjs'))return {format:'module',shortCircuit:true,source:${JSON.stringify(`export async function verifyWorkspaceBackup(options){if(Object.hasOwn(options,'locale'))throw Error('locale leaked'); throw Object.assign(new Error('${secret}'),{code:'WORKSPACE_BACKUP_IO',cleanupUnconfirmed:true});} export const createWorkspaceBackup=verifyWorkspaceBackup;`)}};return next(url,context);}});`;
+  const failure = `import {registerHooks} from 'node:module'; registerHooks({load(url,context,next){if(url.endsWith('/packages/business/src/workspace-backup.ts'))return {format:'module',shortCircuit:true,source:${JSON.stringify(`export async function verifyWorkspaceBackup(options){if(Object.hasOwn(options,'locale'))throw Error('locale leaked'); throw Object.assign(new Error('${secret}'),{code:'WORKSPACE_BACKUP_IO',cleanupUnconfirmed:true});} export const createWorkspaceBackup=verifyWorkspaceBackup;`)}};return next(url,context);}});`;
   const legacy=backup(['verify','--directory','/absolute/backup'],failure);
   assert.deepEqual(JSON.parse(legacy.stdout).error.details,{sourceLockRelease:'unconfirmed'});
   for(const locale of LOCALES) {
@@ -111,7 +111,7 @@ test('backup restored publication provenance and unknown error fallback never de
   const publication={restorationId:'11111111-1111-4111-8111-111111111111',workspaceOrigin:'22222222-2222-4222-8222-222222222222',sourceBackupId:'33333333-3333-4333-8333-333333333333',manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64)};
   for (const code of ['WORKSPACE_RESTORE_PUBLICATION_UNCONFIRMED', 'UNTRUSTED_CODE']) {
     const source=`export async function restoreWorkspaceBackup(options){if(Object.hasOwn(options,'locale'))throw Error('locale leaked'); throw Object.assign(new Error('${secret}'),{code:'${code}',cleanupUnconfirmed:true,publication:${JSON.stringify(publication)}});} export const inspectWorkspaceRestorePublication=restoreWorkspaceBackup;`;
-    const hook=`import {registerHooks} from 'node:module'; registerHooks({load(url,context,next){if(url.endsWith('/packages/business/src/workspace-restore.mjs'))return {format:'module',shortCircuit:true,source:${JSON.stringify(source)}};return next(url,context);}});`;
+    const hook=`import {registerHooks} from 'node:module'; registerHooks({load(url,context,next){if(url.endsWith('/packages/business/src/workspace-restore.ts'))return {format:'module',shortCircuit:true,source:${JSON.stringify(source)}};return next(url,context);}});`;
     const args=['restore','--directory','/absolute/backup','--destination','/absolute/destination'];
     const legacy=backup(args,hook), error=JSON.parse(legacy.stdout).error;
     assert.equal(error.code,code==='UNTRUSTED_CODE'?'WORKSPACE_BACKUP_IO':code);

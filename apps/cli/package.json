@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "bin": {
-    "mioon": "./src/index.mjs"
+    "mioon": "./src/index.ts"
   },
   "scripts": {
-    "start": "node src/index.mjs"
+    "start": "node src/index.ts"
   },
   "dependencies": {
     "@mioon/client": "workspace:*",

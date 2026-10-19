@@ -80,7 +80,7 @@ function launch(t, args, env = {}, ipc = false) {
 }
 
 async function runCli(t, args, env, expectedError) {
-  const run = launch(t, ['--import', helper, path.join(repo, 'apps/cli/src/index.mjs'), ...args], env);
+  const run = launch(t, ['--import', helper, path.join(repo, 'apps/cli/src/index.ts'), ...args], env);
   const {code, signal} = await run.finish();
   assert.equal(signal, null, run.stderr);
   const results = run.lines();
@@ -147,7 +147,7 @@ async function backendFixture(t) {
 async function mcpFixture(t, env) {
   const client = new Client({name: 'mutation-wire-acceptance', version: '1.0.0'}, {capabilities: {}});
   const transport = new StdioClientTransport({command: process.execPath,
-    args: ['--import', helper, path.join(repo, 'apps/mcp/src/index.mjs')], cwd: repo, env: environment(env), stderr: 'pipe'});
+    args: ['--import', helper, path.join(repo, 'apps/mcp/src/index.ts')], cwd: repo, env: environment(env), stderr: 'pipe'});
   let stderr = '', timer;
   transport.stderr?.setEncoding('utf8').on('data', chunk => { stderr += chunk; });
   t.after(() => client.close());

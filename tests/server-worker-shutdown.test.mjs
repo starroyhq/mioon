@@ -5,7 +5,7 @@ import {mkdtemp,rm,readdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {startServer} from '@mioon/server';
-import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {syntheticPng} from './helpers/runway-unknown-fixture.mjs';
 import {deferred} from './helpers/worker-shutdown-fixture.mjs';
 

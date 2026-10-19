@@ -5,8 +5,8 @@ import {transformSync} from 'esbuild';
 import {i18nTestModule} from './helpers/i18n.ts';
 import * as geometry from '../apps/web/src/timeline-view-geometry.ts';
 import {displayTimelineFrame} from '../apps/web/src/timeline-removal.ts';
-import {timelineDropPreview} from '../apps/web/src/timeline-snapping.js';
-import {rulerFrameForKey} from '../apps/web/src/timeline-keyboard.js';
+import {timelineDropPreview} from '../apps/web/src/timeline-snapping.ts';
+import {rulerFrameForKey} from '../apps/web/src/timeline-keyboard.ts';
 
 const nodes=tree=>Array.isArray(tree)?tree.flatMap(nodes):tree&&typeof tree==='object'?[tree,...nodes(tree.props?.children)]:[];
 function harness(){
@@ -14,24 +14,24 @@ function harness(){
  const layout=(callback,deps)=>{const index=cursor++,prior=slots[index];if(!prior||deps===undefined||deps.some((v,i)=>v!==prior.deps?.[i])){slots[index]={deps};layouts.push(()=>{prior?.cleanup?.();slots[index].cleanup=callback();});}};
  const react={createElement:(type,props,...children)=>({type,props:{...props,children}}),useRef:initial=>slots[cursor++]||=( {current:initial}),useState:initial=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return[slots[index],next=>{slots[index]=typeof next==='function'?next(slots[index]):next;}];},useLayoutEffect:layout,useEffect:()=>{cursor++;}};react.default=react;
  const mark=name=>({__esModule:true,default:name}),module={exports:{}};
- Function('require','module','exports',transformSync(readFileSync(new URL('../apps/web/src/Timeline.jsx',import.meta.url),'utf8'),{loader:'jsx',format:'cjs'}).code)(name=>{
+ Function('require','module','exports',transformSync(readFileSync(new URL('../apps/web/src/Timeline.tsx',import.meta.url),'utf8'),{loader:'tsx',format:'cjs'}).code)(name=>{
   if(name==='react')return react;
   if(name==='./i18n/I18nProvider.tsx')return i18nTestModule();
   if(name==='./UiPreferencesProvider.tsx')return{useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})};
   if(name==='./timeline-view-geometry.ts')return geometry;
   if(name==='./timeline-removal.ts')return{displayTimelineFrame};
-  if(name==='./timeline-keyboard.js')return{rulerFrameForKey};
-  if(name==='./timeline-snapping.js')return{timelineDropPreview};
+  if(name==='./timeline-keyboard.ts')return{rulerFrameForKey};
+  if(name==='./timeline-snapping.ts')return{timelineDropPreview};
   if(name==='./timeline-source-freshness.ts')return{staleSourceSentence:()=>''};
-  if(name==='./api.js')return{assetUrl:asset=>asset?.url||''};
-  if(name==='./Nodes.jsx')return{Media:'Media'};
+  if(name==='./api.ts')return{assetUrl:asset=>asset?.url||''};
+  if(name==='./Nodes.tsx')return{Media:'Media'};
   if(name==='./ClipRemovalControls.tsx')return{ClipActionsMenu:'ClipActionsMenu',TimelineRemovalShortcuts:'TimelineRemovalShortcuts',useClipRemoval:options=>{removal=options;return{request:mode=>calls.push(['remove',mode]),dialog:null};}};
-  if(name==='./use-timeline-waveforms.js')return{useTimelineWaveforms:options=>{lastWaveform=options;return{windows:[],entries:new Map(),setEnabled:value=>calls.push(['waveform',value]),retry:()=>calls.push(['retry'])};}};
-  if(name==='./waveform-state.js')return{WAVEFORM_LIMITS:{entries:20}};
-  if(name==='./TimelineWaveform.jsx')return{__esModule:true,default:'TimelineWaveform',TimelineWaveformControls:'TimelineWaveformControls'};
+  if(name==='./use-timeline-waveforms.ts')return{useTimelineWaveforms:options=>{lastWaveform=options;return{windows:[],entries:new Map(),setEnabled:value=>calls.push(['waveform',value]),retry:()=>calls.push(['retry'])};}};
+  if(name==='./waveform-state.ts')return{WAVEFORM_LIMITS:{entries:20}};
+  if(name==='./TimelineWaveform.tsx')return{__esModule:true,default:'TimelineWaveform',TimelineWaveformControls:'TimelineWaveformControls'};
   if(name.endsWith('.css'))return{};
   if(name.startsWith('@mioon/ui/'))return new Proxy({},{get:(_,key)=>String(key)});
-  if(['./icons.jsx','./TimelineToolbar.tsx','./TimelineHistoryControls.jsx','./TimelineSplitControls.jsx','./SubtitleLane.jsx'].includes(name))return mark(name.slice(2).split('.')[0]);
+  if(['./icons.tsx','./TimelineToolbar.tsx','./TimelineHistoryControls.tsx','./TimelineSplitControls.tsx','./SubtitleLane.tsx'].includes(name))return mark(name.slice(2).split('.')[0]);
   throw Error(name);
  },module,module.exports);
  const timeline={id:'t1',projectId:'p1',revision:2,fps:30,width:1080,height:1920,durationFrames:60,tracks:[{id:'v1',kind:'video',name:'Video1',orderIndex:0},{id:'a1',kind:'audio',name:'Audio1',orderIndex:1}],clips:[{id:'c1',trackId:'v1',assetId:'asset1',name:'Clip',startFrame:0,durationFrames:60,sourceInFrame:0,gain:1}]};
