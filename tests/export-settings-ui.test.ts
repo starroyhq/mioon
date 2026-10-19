@@ -2,6 +2,7 @@ import * as creationI18n from '../apps/web/src/creation-i18n.ts';
 import * as exportDisplay from '../apps/web/src/export-display.ts';
 import * as i18n from './helpers/i18n.ts';
 import test from 'node:test';
+import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
@@ -15,33 +16,45 @@ import { isDurableEditOperation } from '../apps/web/src/edit-task-client.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
-const id = n => `79000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+type Loose = Record<string, unknown>;
+interface DeferredTask {promise: Promise<unknown>; resolve: (value: unknown)=>void; reject: (reason?: unknown)=>void}
+interface CallRecord {operation: string; input: Loose; options?: {signal?: AbortSignal}}
+interface UIState {binding?: Loose|null; uncheckedIntent?: Loose|null; report?: unknown; error?: string; phase?: string; capabilityPhase?: string; checkingStep?: string; attempted?: boolean; settingsVersion?: number; [key: string]: unknown}
+interface LiveContext extends Loose {scope: string; projectId: string; timelineId: string; revision: number; connected: boolean; exportSettings: Loose; settingsVersion: number; enabled?: boolean}
+interface Fixture {
+  controller: {setContext: (value: unknown)=>void; setVisible: (value: boolean)=>void; check: ()=>Promise<unknown>; getState: ()=>UIState;
+    takeExportBinding: (value: unknown)=>Loose|null; takeUncheckedExportIntent: (value: unknown)=>Loose|null};
+  calls: CallRecord[]; capabilities: DeferredTask[]; reads: DeferredTask[]; auth: boolean[];
+  live: LiveContext; state: ()=>UIState; set: (patch: Loose, notify?: boolean)=>void; ready: (value?: unknown)=>Promise<UIState>;
+}
+const id = (n: number|string): string => `79000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), timelineId = id(2), hash = 'a'.repeat(64);
 const timeline = { id: timelineId, projectId, revision: 4, width: 720, height: 1280, fps: 30, clips: [{ id: id(3) }] };
-const settings = patch => ({ ...structuredClone(TIMELINE_EXPORT_DEFAULT_SETTINGS), ...patch });
-const context = patch => ({ scope: 'project:epoch1', projectId, timelineId, revision: 4, connected: true, exportSettings: settings(), settingsVersion: 1, ...patch });
-const capability = (selection = settings(), patch = {}) => ({ projectId, timelineId, expectedRevision: 4, timelineRevision: 4, exportSettings: selection,
+const settings = (patch: Loose = {}): Loose => ({ ...structuredClone(TIMELINE_EXPORT_DEFAULT_SETTINGS), ...patch });
+const context = (patch: Loose = {}): LiveContext => ({ scope: 'project:epoch1', projectId, timelineId, revision: 4, connected: true, exportSettings: settings(), settingsVersion: 1, ...patch } as unknown as LiveContext);
+const capability = (selection: Loose = settings(), patch: Loose = {}): Loose => ({ projectId, timelineId, expectedRevision: 4, timelineRevision: 4, exportSettings: selection,
   delivery: resolveTimelineExportDelivery(timeline, selection), checkedAt: '2026-10-11T18:00:00.000Z', status: 'available', issues: [], ...patch });
-const report = (selection = settings(), patch = {}) => ({ projectId, timelineId, expectedRevision: 4, timelineRevision: 4, snapshotHash: hash, checkedAt: '2026-10-11T18:00:00.000Z', status: 'ready',
+const report = (selection: Loose = settings(), patch: Loose = {}): Loose => ({ projectId, timelineId, expectedRevision: 4, timelineRevision: 4, snapshotHash: hash, checkedAt: '2026-10-11T18:00:00.000Z', status: 'ready',
   summary: { width: 720, height: 1280, fps: 30, durationFrames: 60, trackCount: 1, clipCount: 1, assetCount: 1, visualClipCount: 1, audibleClipCount: 0, mutedTrackCount: 0, hiddenVideoTrackCount: 0, delivery: resolveTimelineExportDelivery(timeline, selection) },
   checks: { totalAssets: 1, checkedAssets: 1, bytesHashed: 128, fullDecode: false }, issues: [], ...patch });
-const incompleteReport = selection => report(selection, { status: 'incomplete', timelineId: null, timelineRevision: null, snapshotHash: null, summary: null,
+const incompleteReport = (selection: Loose = settings()): Loose => report(selection, { status: 'incomplete', timelineId: null, timelineRevision: null, snapshotHash: null, summary: null,
   checks: { totalAssets: 0, checkedAssets: 0, bytesHashed: 0, fullDecode: false }, issues: [{ code: 'PREFLIGHT_SNAPSHOT_BUDGET', severity: 'warning', message: 'Bounded ownership read incomplete' }] });
-const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
-function fixture(patch = {}) {
-  let live = context(patch); const calls = [], capabilities = [], reads = [], auth = [];
+const deferred = (): DeferredTask => { let resolve: (value: unknown)=>void = ()=>{}; let reject: (reason?: unknown)=>void = ()=>{}; const promise = new Promise<unknown>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
+function fixture(patch: Loose = {}): Fixture {
+  let live: LiveContext = context(patch); const calls: CallRecord[] = [], capabilities: DeferredTask[] = [], reads: DeferredTask[] = [], auth: boolean[] = [];
   const controller = preflightState.createExportPreflightController({ getContext: () => live,
-    readCapabilities(input, options) { const task = deferred(); capabilities.push(task); calls.push({ operation: 'timeline.export.capabilities', input, options }); return task.promise; },
-    read(input, options) { const task = deferred(); reads.push(task); calls.push({ operation: 'timeline.export.preflight', input, options }); return task.promise; }, onUnauthorized: () => auth.push(false) });
+    readCapabilities(input: Loose, options?: {signal?: AbortSignal}) { const task = deferred(); capabilities.push(task); calls.push({ operation: 'timeline.export.capabilities', input, options }); return task.promise; },
+    read(input: Loose, options?: {signal?: AbortSignal}) { const task = deferred(); reads.push(task); calls.push({ operation: 'timeline.export.preflight', input, options }); return task.promise; }, onUnauthorized: () => auth.push(false) });
   controller.setContext(live); controller.setVisible(true);
   return { controller, calls, capabilities, reads, auth, get live() { return live; }, state: () => controller.getState(),
-    set(patch, notify = true) { live = { ...live, ...patch }; if (notify) controller.setContext(live); },
-    async ready(value = report(live.exportSettings)) { const waiting = controller.check(); capabilities.at(-1).resolve(capability(live.exportSettings)); await Promise.resolve(); assert.equal(calls.at(-1).operation, 'timeline.export.preflight'); reads.at(-1).resolve(value); await waiting; return controller.getState(); } };
+    set(patch: Loose, notify = true) { live = { ...live, ...patch }; if (notify) controller.setContext(live); },
+    async ready(value: unknown = report(live.exportSettings)) { const waiting = controller.check(); capabilities.at(-1)!.resolve(capability(live.exportSettings)); await Promise.resolve(); assert.equal(calls.at(-1)!.operation, 'timeline.export.preflight'); reads.at(-1)!.resolve(value); await waiting; return controller.getState(); } } as unknown as Fixture;
 }
 
 test('settings use semantic identities, retain legacy omission, and freeze nested values', () => {
   const input = settings(), frozen = settingsState.freezeExportSettings(input);
-  input.rateControl.quality = 'high'; assert.equal(frozen.rateControl.quality, 'standard');
+  (input.rateControl as {quality: string}).quality = 'high'; if(!frozen)throw Error('missing frozen settings');
+  assert.equal((frozen.rateControl as {quality: string}).quality, 'standard');
   assert.ok(Object.isFrozen(frozen)); assert.ok(Object.isFrozen(frozen.rateControl));
   assert.equal(settingsState.exportSettingsKey(settings()), settingsState.exportSettingsKey({ rateControl: { quality: 'standard', mode: 'crf' }, resolution: 'native', profileId: 'mp4_h264_v1' }));
   assert.notEqual(settingsState.exportSettingsKey(undefined), settingsState.exportSettingsKey(settings()));
@@ -62,11 +75,11 @@ test('ephemeral choices reset by project epoch, never rewrite geometry, and reje
   live = { scope: 'a:2', enabled: true }; controller.setContext(live); assert.deepEqual(controller.getSettings('a:2'), settings());
 });
 
-for (const [width, height, expected] of [[720, 1280, [[720,1280],[360,640],[1080,1920]]], [1280,720,[[1280,720],[640,360],[1920,1080]]], [720,720,[[720,720],[360,360],[1080,1080]]]]) {
+for (const [width, height, expected] of ([[720,1280,[[720,1280],[360,640],[1080,1920]]],[1280,720,[[1280,720],[640,360],[1920,1080]]],[720,720,[[720,720],[360,360],[1080,1080]]]] as Array<[number,number,number[][]]>)) {
   test(`UI describes all output dimensions separately from ${width}×${height} editing geometry`, () => {
     for (const [index, resolution] of ['native', 'short_360', 'short_1080'].entries()) {
-      const saved = { ...timeline, width, height }, copy = structuredClone(saved), description = settingsState.selectedExportDelivery(saved, settings({ resolution }));
-      assert.deepEqual([description.width, description.height], expected[index]); assert.equal(description.upscale, resolution === 'short_1080'); assert.deepEqual(saved, copy);
+      const saved = { ...timeline, width, height }, copy = structuredClone(saved), description = settingsState.selectedExportDelivery(saved, settings({ resolution }) as never);if(!description)throw Error('missing description');
+      assert.deepEqual([description.width, description.height], expected[index]!); assert.equal(description.upscale, resolution === 'short_1080'); assert.deepEqual(saved, copy);
     }
   });
 }
@@ -77,13 +90,13 @@ test('one explicit check sequences capability computation then read-only media p
   const waiting = f.controller.check(); assert.equal(f.calls.length, 1); assert.equal(f.state().checkingStep, 'capability');
   assert.equal(f.reads.length, 0); assert.equal(f.state().binding, null);
   f.capabilities[0].resolve(capability(f.live.exportSettings)); await Promise.resolve();
-  assert.equal(f.state().checkingStep, 'media'); assert.equal(f.calls.length, 2); assert.deepEqual(f.calls[0].input, f.calls[1].input);
-  assert.deepEqual(f.calls[0].input, { projectId, expectedRevision: 4, exportSettings: f.live.exportSettings });
-  assert.equal(f.calls[0].options.signal, f.calls[1].options.signal);
+  assert.equal(f.state().checkingStep, 'media'); assert.equal(f.calls.length, 2); assert.deepEqual(f.calls[0]!.input, f.calls[1]!.input);
+  assert.deepEqual(f.calls[0]!.input, { projectId, expectedRevision: 4, exportSettings: f.live.exportSettings });
+  assert.equal(f.calls[0]!.options!.signal, f.calls[1]!.options!.signal);
   f.reads[0].resolve(report(f.live.exportSettings)); await waiting;
   assert.equal(f.state().phase, 'ready'); assert.equal(f.state().capabilityPhase, 'available'); assert.equal(f.state().attempted, false);
   assert.deepEqual(f.state().binding, { projectId, expectedRevision: 4, preflightSnapshotHash: hash, exportSettings: f.live.exportSettings });
-  assert.ok(Object.isFrozen(f.state().binding.exportSettings.rateControl));
+  assert.ok(Object.isFrozen(((f.state().binding as Loose).exportSettings as Loose).rateControl));
 });
 
 for (const [status, code] of [['unavailable','EXPORT_CAPABILITY_UNSUPPORTED'],['incomplete','EXPORT_CAPABILITY_TIMEOUT'],['incomplete','EXPORT_CAPABILITY_FAILED'],['incomplete','EXPORT_CAPABILITY_BUSY'],['blocked','INVALID_TIMELINE_SNAPSHOT'],['stale','EXPORT_CAPABILITY_STALE']]) {
@@ -100,7 +113,7 @@ for (const [status, code] of [['unavailable','EXPORT_CAPABILITY_UNSUPPORTED'],['
 test('capability unknown is distinct from unavailable and transport failures expose no raw paths', async () => {
   const f = fixture(), waiting = f.controller.check(); f.capabilities[0].reject(Error('/private/ffmpeg --token=secret')); await waiting;
   assert.equal(f.state().phase, 'error'); assert.equal(f.state().capabilityPhase, 'incomplete'); assert.equal(f.calls.length, 1);
-  assert.doesNotMatch(f.state().error, /private|token|ffmpeg|secret/);
+  assert.doesNotMatch(String(f.state().error), /private|token|ffmpeg|secret/);
   assert.match(preflightState.exportCapabilityMessage('incomplete'), /尚未确认/);
   assert.match(preflightState.exportCapabilityMessage('unavailable'), /缺少/);
 });
@@ -113,8 +126,8 @@ for (const patch of [{ exportSettings: settings({ resolution: 'short_360' }) }, 
 }
 
 test('settings changes abort capability observation and obsolete authorization errors never log out the new owner', async () => {
-  const f = fixture(), waiting = f.controller.check(), signal = f.calls[0].options.signal;
-  f.set({ exportSettings: settings({ resolution: 'short_360' }), settingsVersion: 2 }); assert.equal(signal.aborted, true);
+  const f = fixture(), waiting = f.controller.check(), signal = f.calls[0]!.options!.signal!;
+  f.set({ exportSettings: settings({ resolution: 'short_360' }), settingsVersion: 2 }); assert.equal(signal!.aborted, true);
   f.capabilities[0].reject(Object.assign(Error('Late authorization'), { code: 'UNAUTHORIZED' })); await waiting;
   assert.equal(f.reads.length, 0); assert.equal(f.auth.length, 0); assert.equal(f.state().binding, null); assert.equal(f.state().error, '');
 });
@@ -122,7 +135,7 @@ test('settings changes abort capability observation and obsolete authorization e
 test('same-revision settings changes abort media reads and keep late responses from binding', async () => {
   const f = fixture(), waiting = f.controller.check(); f.capabilities[0].resolve(capability()); await Promise.resolve();
   f.set({ exportSettings: settings({ rateControl: { mode: 'crf', quality: 'high' } }), settingsVersion: 2 });
-  assert.equal(f.calls[1].options.signal.aborted, true); f.reads[0].resolve(report()); await waiting;
+  assert.equal(f.calls[1]!.options!.signal!.aborted, true); f.reads[0].resolve(report()); await waiting;
   assert.equal(f.state().binding, null); assert.equal(f.state().report, null); assert.equal(f.state().attempted, false);
 });
 
@@ -131,7 +144,7 @@ for (const step of ['capability', 'media']) {
     const f = fixture(), waiting = f.controller.check();
     if (step === 'media') { f.capabilities[0].resolve(capability()); await Promise.resolve(); }
     const task = step === 'media' ? f.reads[0] : f.capabilities[0], count = f.calls.length;
-    f.controller.setVisible(false); assert.equal(f.calls.at(-1).options.signal.aborted, true);
+    f.controller.setVisible(false); assert.equal(f.calls.at(-1)!.options!.signal!.aborted, true);
     task.resolve(step === 'media' ? report() : capability()); await waiting; f.controller.setVisible(true);
     assert.equal(f.calls.length, count); assert.equal(f.state().binding, null); assert.equal(f.state().uncheckedIntent, null);
   });
@@ -140,22 +153,22 @@ for (const step of ['capability', 'media']) {
 for (const unchecked of [false, true]) {
   test(`${unchecked ? 'unchecked' : 'checked'} export is settings-bound, one-use, and synchronously rejects stale live closures`, async () => {
     const f = fixture(); await f.ready(unchecked ? incompleteReport() : report());
-    const take = value => unchecked ? f.controller.takeUncheckedExportIntent(value) : f.controller.takeExportBinding(value);
-    const old = unchecked ? f.state().uncheckedIntent : f.state().binding; assert.ok(old);
+    const take = (value: unknown) => unchecked ? f.controller.takeUncheckedExportIntent(value) : f.controller.takeExportBinding(value);
+    const old = (unchecked ? f.state().uncheckedIntent : f.state().binding) as Loose; assert.ok(old);
     assert.deepEqual(old.exportSettings, settings()); assert.equal(take({ ...old }), null);
     f.set({ exportSettings: settings({ resolution: 'short_360' }), settingsVersion: 2 }, false);
     assert.equal(take(old), null, 'live settings change fences before React effect');
     await f.ready(unchecked ? incompleteReport(f.live.exportSettings) : report(f.live.exportSettings));
     const current = unchecked ? f.state().uncheckedIntent : f.state().binding;
     assert.equal(take(current), current); assert.equal(take(current), null); assert.equal(f.state().attempted, true);
-    assert.equal(Object.hasOwn(current, 'preflightSnapshotHash'), !unchecked);
+    assert.equal(Object.hasOwn(current as Loose, 'preflightSnapshotHash'), !unchecked);
   });
 }
 
 test('A→B→A settings version invalidates late checks and old checked closures even if semantic values match', async () => {
   const f = fixture(); await f.ready(); const old = f.state().binding;
   f.set({ settingsVersion: 3 }, false); assert.equal(f.controller.takeExportBinding(old), null);
-  const waiting = f.controller.check(); f.set({ settingsVersion: 5 }, false); f.capabilities.at(-1).resolve(capability()); await waiting;
+  const waiting = f.controller.check(); f.set({ settingsVersion: 5 }, false); f.capabilities.at(-1)!.resolve(capability()); await waiting;
   assert.equal(f.state().binding, null); assert.equal(f.state().settingsVersion, 5);
 });
 
@@ -166,31 +179,33 @@ test('equivalent settings objects do not invalidate a checked binding or issue a
 });
 
 const appSource = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
-function appFunction(begin, end, scope) { const start = appSource.indexOf(begin), stop = appSource.indexOf(end, start); assert.ok(start >= 0 && stop > start); return Function(...Object.keys(scope), `return (${appSource.slice(start, stop).trim()});`)(...Object.values(scope)); }
-function appHarness(f, { restored = false, localState = { baselineConflict: false, candidate: null } } = {}) {
-  const calls = [], panels = [], notices = [], pending = [], submitOptions = []; let ids = 0;
-  const environment = { clipDraftRef:{current:null}, markPanelIntent(){}, setShowTasks:value=>panels.push(['tasks',value]), setShowImage:value=>panels.push(['image',value]), setShowDelivery:value=>panels.push(['delivery',value]), msg: i18n.message, t: i18n.i18nTestModule().useI18n().t, panelIntent: { current: 0 }, setDeliveryAttempt() {}, setShowExports() {}, openExportHistory() {}, workspaceRef: { current: { restored } }, deliveryNameRef: { current: null }, exportPreflight: { controller: f.controller }, exportCheckContext: () => f.live, dataRef: { current: { project: { id: projectId }, timeline } }, currentProject: { current: projectId },
-    setRightDockTab: value => panels.push(value), setPanelOpen: (...args) => panels.push(args), isBusy: () => false, pendingForProject: () => pending,
-    notify: (...args) => notices.push(args), openTasks() {}, setShowExports() {}, updateView() {}, setPreviewKind() {},
-    context: () => ({ scope: f.live.scope, projectId: environment.currentProject.current }), isCurrent: captured => captured.scope === f.live.scope && captured.projectId === environment.currentProject.current,
-    localDeliveryRef: { current: { controller: { getState: () => localState, canPrepare: () => true, submit: async (input, options) => { calls.push(['local-delivery.submit', input]); submitOptions.push(options); return { id: id(20) }; } } } },
-    requestId: () => { ids++; return 'frozen-render-id'; }, run: async (...args) => { calls.push(args); return { id: id(20) }; } };
+function appFunction(begin: string, end: string, scope: Loose): (...args: unknown[])=>unknown { const start = appSource.indexOf(begin), stop = appSource.indexOf(end, start); assert.ok(start >= 0 && stop > start); const factory=Function(...Object.keys(scope), `return (${appSource.slice(start, stop).trim()});`) as (...args: unknown[])=>unknown; return factory(...Object.values(scope)) as (...args: unknown[])=>unknown; }
+interface Element {type: unknown; props: Loose}
+interface Harness {calls: Array<[string, ...Loose[]]>; panels: unknown[]; pending: Loose[]; submitOptions: Array<{canExecute: ()=>boolean; nameCapture?: unknown; [key: string]: unknown}>; ids: ()=>number; open: ()=>unknown; check: (viewed?: Loose)=>Promise<unknown>; render: (mode: string, binding?: Loose)=>Promise<unknown>; [key: string]: unknown}
+function appHarness(f: Fixture, { restored = false, localState = { baselineConflict: false, candidate: null } }: {restored?: boolean; localState?: Loose} = {}): Harness {
+  const calls: Array<[string, ...Loose[]]> = [], panels: unknown[] = [], notices: unknown[] = [], pending: Loose[] = [], submitOptions: Array<{canExecute: ()=>boolean; nameCapture?: unknown; [key: string]: unknown}> = []; let ids = 0;
+  const environment = { clipDraftRef:{current:null}, markPanelIntent(){}, setShowTasks:(value: unknown)=>panels.push(['tasks',value]), setShowImage:(value: unknown)=>panels.push(['image',value]), setShowDelivery:(value: unknown)=>panels.push(['delivery',value]), msg: i18n.message, t: i18n.i18nTestModule().useI18n().t, panelIntent: { current: 0 }, setDeliveryAttempt() {}, setShowExports() {}, openExportHistory() {}, workspaceRef: { current: { restored } }, deliveryNameRef: { current: null }, exportPreflight: { controller: f.controller }, exportCheckContext: () => f.live, dataRef: { current: { project: { id: projectId }, timeline } }, currentProject: { current: projectId },
+    setRightDockTab: (value: unknown) => panels.push(value), setPanelOpen: (...args: unknown[]) => panels.push(args), isBusy: () => false, pendingForProject: () => pending,
+    notify: (...args: unknown[]) => notices.push(args), openTasks() {}, updateView() {}, setPreviewKind() {},
+    context: () => ({ scope: f.live.scope, projectId: environment.currentProject.current }), isCurrent: (captured: Loose) => captured.scope === f.live.scope && captured.projectId === environment.currentProject.current,
+    localDeliveryRef: { current: { controller: { getState: () => localState, canPrepare: () => true, submit: async (input: unknown, options: Loose) => { calls.push(['local-delivery.submit', input as Loose]); submitOptions.push(options as {canExecute: ()=>boolean; nameCapture?: unknown; [key: string]: unknown}); return { id: id(20) }; } } } },
+    requestId: () => { ids++; return 'frozen-render-id'; }, run: async (...args: unknown[]) => { calls.push(args as unknown as [string, ...Loose[]]); return { id: id(20) }; } };
   return { calls, panels, pending, submitOptions, ids: () => ids,
     open: appFunction('  function openTimelineExport(', '  const historyState', environment),
     // The adjacent passive loudness hook is a separate declaration, not part
     // of the function under test. All original capability/intent assertions stay.
-    check: appFunction('  function checkTimelineExport(', '  const exportLoudness =', environment),
-    render: appFunction('  async function renderTimeline(', '  async function previewSource(', environment) };
+    check: appFunction('  function checkTimelineExport(', '  const exportLoudness =', environment) as unknown as ()=>Promise<unknown>,
+    render: appFunction('  async function renderTimeline(', '  async function previewSource(', environment) as unknown as (mode: string, binding?: Loose)=>Promise<unknown> };
 }
 
 test('actual App open is passive, explicit Check performs both operations, and export freezes exactly one selected request', async () => {
   const f = fixture({ exportSettings: settings({ resolution: 'short_360', rateControl: { mode: 'bitrate', targetKbps: 2000 } }) }), h = appHarness(f);
   h.open(); assert.deepEqual(h.panels, [['tasks',false],['image',false],['delivery',true]]); assert.equal(f.calls.length, 0); assert.equal(h.calls.length, 0);
   const waiting = h.check(); f.capabilities[0].resolve(capability(f.live.exportSettings)); await Promise.resolve(); f.reads[0].resolve(report(f.live.exportSettings)); await waiting;
-  const binding = f.state().binding; await h.render('export', binding); await h.render('export', binding);
+  const binding = f.state().binding as Loose; await h.render('export', binding); await h.render('export', binding);
   assert.equal(h.ids(), 1); assert.deepEqual(h.calls, [['local-delivery.submit', { ...binding, requestId: 'frozen-render-id', purpose: 'export' }]]);
   assert.equal(h.submitOptions[0].canExecute(), true); assert.equal(h.submitOptions[0].nameCapture, undefined);
-  f.set({ exportSettings: settings(), settingsVersion: 2 }); assert.deepEqual(h.calls[0][1].exportSettings, binding.exportSettings);
+  f.set({ exportSettings: settings(), settingsVersion: 2 }); assert.deepEqual((h.calls[0]![1] as Loose).exportSettings, binding.exportSettings);
 });
 
 test('actual Check rejects unresolved local candidate and saved-baseline conflict before any preflight work', async () => {
@@ -203,7 +218,7 @@ test('actual Check rejects unresolved local candidate and saved-baseline conflic
 });
 
 test('restored export retains exact checked settings on the original session runner', async () => {
-  const f = fixture(), h = appHarness(f, { restored: true }); await f.ready(); const binding = f.state().binding;
+  const f = fixture(), h = appHarness(f, { restored: true }); await f.ready(); const binding = f.state().binding as Loose;
   await h.render('export', binding);
   assert.deepEqual(h.calls, [['timeline:render:export', 'timeline.render', { ...binding, requestId: 'frozen-render-id', purpose: 'export' }]]);
   assert.equal(h.submitOptions.length, 0); assert.equal(h.ids(), 1);
@@ -211,15 +226,15 @@ test('restored export retains exact checked settings on the original session run
 
 test('actual App pending export cannot be replaced by settings or another confirmation; preview retains omission', async () => {
   const f = fixture(), h = appHarness(f); await f.ready(); h.pending.push({ key: 'timeline:render:export', input: { requestId: 'old' } });
-  await h.render('export', f.state().binding); assert.equal(h.calls.length, 0); assert.equal(h.ids(), 0); assert.equal(f.state().attempted, false);
+  await h.render('export', f.state().binding as Loose); assert.equal(h.calls.length, 0); assert.equal(h.ids(), 0); assert.equal(f.state().attempted, false);
   await h.render('preview'); assert.equal(h.calls.length, 1); assert.equal(Object.hasOwn(h.calls[0][2], 'exportSettings'), false);
   assert.equal(isDurableEditOperation('timeline.render'), false);
 });
 
-class Storage { values = new Map(); get length() { return this.values.size; } key(index) { return [...this.values.keys()][index] ?? null; } getItem(key) { return this.values.get(key) ?? null; } setItem(key, value) { this.values.set(key, String(value)); } removeItem(key) { this.values.delete(key); } }
-test('session render receipts retain exact bytes and key across new settings, reconciliation and explicit recovery', t => {
+class Storage { values = new Map<string, string>(); get length() { return this.values.size; } key(index: number) { return [...this.values.keys()][index] ?? null; } getItem(key: string) { return this.values.get(key) ?? null; } setItem(key: string, value: unknown) { this.values.set(key, String(value)); } removeItem(key: string) { this.values.delete(key); } }
+test('session render receipts retain exact bytes and key across new settings, reconciliation and explicit recovery', (t: Pick<TestContext,'after'>) => {
   const prior = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage'), storage = new Storage(); Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: storage });
-  t.after(() => prior ? Object.defineProperty(globalThis, 'sessionStorage', prior) : delete globalThis.sessionStorage);
+  t.after(() => prior ? Object.defineProperty(globalThis, 'sessionStorage', prior) : delete (globalThis as Loose).sessionStorage);
   const entry = { projectId, key: 'timeline:render:export', operation: 'timeline.render', input: { projectId, expectedRevision: 4, requestId: 'original-id', purpose: 'export', exportSettings: settings({ resolution: 'short_1080' }) } };
   const original = prepareSubmission(entry), before = [...storage.values.entries()];
   prepareSubmission({ ...entry, input: { ...entry.input, requestId: 'replacement-id', exportSettings: settings({ resolution: 'short_360' }) } });
@@ -228,25 +243,25 @@ test('session render receipts retain exact bytes and key across new settings, re
   assert.throws(() => prepareRequestReplay({ ...original, input: { ...original.input, exportSettings: settings() } }), { code: 'MUTATION_REPLAY_MISMATCH' });
 });
 
-const element = (type, props, ...children) => ({ type, props: { ...props, children } });
-const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : !tree || typeof tree !== 'object' ? [] : [tree, ...nodes(tree.props?.children)];
-const textOf = tree => Array.isArray(tree) ? tree.map(textOf).join('') : tree && typeof tree === 'object' ? textOf(tree.props?.children) : tree ?? '';
-function component(file, extra = {}) {
-  const module = { exports: {} }, react = { createElement: element, useRef: current => ({ current }), useEffect() {}, useLayoutEffect() {}, useState: value => [value, () => {}] }; react.default = react;
+const element = (type: unknown, props: Loose, ...children: unknown[]): Element => ({ type, props: { ...props, children } });
+const nodes = (tree: unknown): Element[] => Array.isArray(tree) ? tree.flatMap(nodes) : !tree || typeof tree !== 'object' ? [] : [{type: (tree as Element).type, props: (tree as Element).props}, ...nodes((tree as Element).props?.children)];
+const textOf = (tree: unknown): string => Array.isArray(tree) ? tree.map(textOf).join('') : tree && typeof tree === 'object' ? textOf((tree as Element).props?.children) : String(tree ?? '');
+function component(file: string, extra: Loose = {}): (props: Loose)=>Element {
+  const module: {exports: {default?: unknown}} = { exports: {} }, react: Loose = { createElement: element, useRef: (current: unknown) => ({ current }), useEffect() {}, useLayoutEffect() {}, useState: (value: unknown) => [value, () => {}] }; react.default = react;
   const source = readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8');
-  Function('module', 'exports', 'require', 'fetch', transformSync(source, { loader: file.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code)(module, module.exports, name => name === './i18n/I18nProvider.tsx' ? i18n.i18nTestModule() : name === '../../../packages/i18n/src/index.ts' ? i18n : name === 'react' ? extra.react || react : name === './creation-i18n.ts' ? creationI18n : name === './export-display.ts' ? exportDisplay : name === './export-settings-state.ts' ? settingsState : name === './export-delivery-state.ts' ? deliveryState : name === './export-range-state.ts' ? rangeState : name === './export-preflight-state.ts' ? preflightState : name === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : name === './api.ts' ? { statusText: String } : extra[name] || { __esModule: true, default: 'Stub', Button: 'Button', WorkbenchButton: 'WorkbenchButton', WorkbenchAlert: 'WorkbenchAlert', Label: 'Label', WorkbenchSelect: 'Select', Badge: 'Badge' }, extra.fetch || globalThis.fetch);
-  return module.exports.default;
+  Function('module', 'exports', 'require', 'fetch', transformSync(source, { loader: file.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code)(module, module.exports, (name: string) => name === './i18n/I18nProvider.tsx' ? i18n.i18nTestModule() : name === '../../../packages/i18n/src/index.ts' ? i18n : name === 'react' ? extra.react || react : name === './creation-i18n.ts' ? creationI18n : name === './export-display.ts' ? exportDisplay : name === './export-settings-state.ts' ? settingsState : name === './export-delivery-state.ts' ? deliveryState : name === './export-range-state.ts' ? rangeState : name === './export-preflight-state.ts' ? preflightState : name === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : name === './api.ts' ? { statusText: String } : extra[name] || { __esModule: true, default: 'Stub', Button: 'Button', WorkbenchButton: 'WorkbenchButton', WorkbenchAlert: 'WorkbenchAlert', Label: 'Label', WorkbenchSelect: 'Select', Badge: 'Badge' }, extra.fetch || globalThis.fetch);
+  return module.exports.default as (props: Loose)=>Element;
 }
 
 test('actual selectors show separate editing/output dimensions, explicit CRF and bitrate semantics, upscale warning and fixed audio/timebase', () => {
-  const View = component('TimelineExportSettings.tsx'), changes = []; const choice = settings({ resolution: 'short_1080' });
-  let tree = View({ timeline, value: choice, disabled: false, onChange: value => changes.push(value) });
+  const View = component('TimelineExportSettings.tsx'), changes: Loose[] = []; const choice = settings({ resolution: 'short_1080' });
+  let tree = View({ timeline, value: choice, disabled: false, onChange: (value: Loose) => changes.push(value) });
   const text = textOf(tree); for (const expected of ['720 × 1280','1080 × 1920','CRF 23','30 fps','AAC 128 kb/s','不增加原始画面细节','不更改时间线或编辑预览']) assert.ok(text.includes(expected), expected);
-  nodes(tree).find(node => node.props['data-testid'] === 'export-rate-mode').props.onChange({ target: { value: 'bitrate' } });
+  const mode=(nodes(tree).find(node => node.props['data-testid'] === 'export-rate-mode')!.props.onChange as (value: unknown)=>void);mode({ target: { value: 'bitrate' } });
   assert.deepEqual(changes[0], settings({ resolution: 'short_1080', rateControl: { mode: 'bitrate', targetKbps: 4000 } }));
   tree = View({ timeline, value: changes[0], disabled: true, onChange() {} });
   assert.match(textOf(tree), /单遍编码/); assert.match(textOf(tree), /不保证文件大小/);
-  assert.equal(nodes(tree).find(node => node.props['data-testid'] === 'export-bitrate').props.disabled, true);
+  assert.equal(nodes(tree).find(node => node.props['data-testid'] === 'export-bitrate')!.props.disabled, true);
 });
 
 test('actual capability panel labels unknown and unsupported safely and never presents failure as an unchecked export', async () => {
@@ -254,7 +269,7 @@ test('actual capability panel labels unknown and unsupported safely and never pr
   for (const capabilityPhase of ['unavailable','incomplete']) {
     const state = { phase: capabilityPhase === 'unavailable' ? 'blocked' : 'incomplete', capabilityPhase, capability: capability(settings(), { status: capabilityPhase, issues: [{ code: 'EXPORT_CAPABILITY_UNSUPPORTED', message: '/private/secret' }] }) };
     const tree = View({ state, exportSettings: settings(), canCheck: true });
-    assert.equal(nodes(tree).find(node => node.props['data-testid'] === 'preflight-export').props.disabled, true);
+    assert.equal(nodes(tree).find(node => node.props['data-testid'] === 'preflight-export')!.props.disabled, true);
     assert.equal(nodes(tree).some(node => node.props['data-testid'] === 'preflight-export-unchecked'), false);
     assert.doesNotMatch(textOf(tree), /private|secret/); assert.match(textOf(tree), capabilityPhase === 'unavailable' ? /缺少/ : /尚未确认/);
   }
@@ -269,20 +284,21 @@ test('history renders the actual frozen settings and output dimensions; old reco
   assert.match(textOf(oldTree), /时间线导出 · 修订版 4 · 当前/); assert.doesNotMatch(textOf(oldTree), /CRF|AAC|1080/);
   const tree = View({ orderedExports: [custom], projectName: '作品', timelineRevision: 4 });
   assert.match(textOf(tree), /1080 × 1920/); assert.match(textOf(tree), /平均目标 8 Mb\/s/); assert.match(textOf(tree), /放大输出，不增加细节/);
-  assert.equal(nodes(tree).find(node => node.props.exportId === custom.id && typeof node.props.downloadHref === 'string').props.downloadHref, custom.url);
+  assert.equal(nodes(tree).find(node => node.props.exportId === custom.id && typeof node.props.downloadHref === 'string')!.props.downloadHref, custom.url);
 });
 
 test('successful timeline preview keeps its original download and never probes the export-only recovery endpoint', () => {
   const View = component('ExportHistoryList.tsx');
   const preview = { id: id(42), projectId, mode: 'timeline', purpose: 'preview', timelineRevision: 4, status: 'succeeded', createdAt: '2026-10-11T18:00:00.000Z', url: '/media/original-editing-preview', snapshot: { timeline } };
   const tree = View({ orderedExports: [preview], projectId, projectName: '作品', timelineRevision: 4, fileRecoveryEnabled: true });
-  const action = nodes(tree).find(node => node.props.exportId === preview.id && typeof node.props.downloadHref === 'string');
+  const action = nodes(tree).find(node => node.props.exportId === preview.id && typeof node.props.downloadHref === 'string')!;
   assert.equal(action.props.disabled, true); assert.equal(action.props.downloadHref, preview.url);
   let reads = 0;
-  const react = { createElement: element, useRef: current => ({ current }), useState: value => [value, () => {}], useEffect: run => run(), useLayoutEffect: run => run(), useMemo: run => run() };
+  const react = { createElement: element, useRef: (current: unknown) => ({ current }), useState: (value: unknown) => [value, () => {}], useEffect: (run: ()=>unknown) => run(), useLayoutEffect: (run: ()=>unknown) => run(), useMemo: (run: ()=>unknown) => run() };
   const Actions = component('ExportFileActions.tsx', { react, './workspace-visibility.tsx': {useWorkspaceVisibility: () => true}, fetch: () => { reads++; return Promise.reject(new Error('Preview must not use export recovery')); } });
   const download = Actions(action.props);
-  assert.equal(reads, 0); assert.equal(download.props.render.props.href, preview.url); assert.equal(download.props.render.props.download, true);
+  const rendered=((download.props.render as Element).props) as Loose;
+  assert.equal(reads, 0); assert.equal(rendered.href, preview.url); assert.equal(rendered.download, true);
 });
 
 
@@ -291,11 +307,11 @@ test('actual playback keeps the produced artifact URL and shows its frozen dimen
   const delivery = resolveTimelineExportDelivery(timeline, settings({ resolution: 'short_360', rateControl: { mode: 'crf', quality: 'compact' } }));
   const job = { id: id(90), mode: 'timeline', purpose: 'export', timelineRevision: 4, status: 'succeeded', url: '/media/exact-produced-file', snapshot: { timeline, delivery } };
   const tree = View({ kind: 'timeline', timeline: { ...timeline, revision: 5 }, job, playhead: 0 });
-  assert.equal(nodes(tree).find(node => node.props['data-testid'] === 'timeline-preview-video').props.src, job.url);
-  const metadata = nodes(tree).find(node => typeof node.props.metadata === 'string').props.metadata;
-  assert.match(textOf(tree), new RegExp(i18n.translate('zh-Hans', 'timeline.preview.final'))); assert.match(metadata, /360 × 640/); assert.match(metadata, /CRF 28/); assert.doesNotMatch(metadata, /720 × 1280/);
+  assert.equal(nodes(tree).find(node => node.props['data-testid'] === 'timeline-preview-video')!.props.src, job.url);
+  const metadata = nodes(tree).find(node => typeof node.props.metadata === 'string')!.props.metadata as string;
+  assert.match(textOf(tree), new RegExp(String(i18n.translate('zh-Hans', 'timeline.preview.final')))); assert.match(metadata, /360 × 640/); assert.match(metadata, /CRF 28/); assert.doesNotMatch(metadata, /720 × 1280/);
   const preview = View({ kind: 'timeline', timeline, job: { ...job, purpose: 'preview', snapshot: { timeline } }, playhead: 0 });
-  assert.match(textOf(preview), new RegExp(i18n.translate('zh-Hans', 'timeline.preview.editing'))); assert.match(nodes(preview).find(node => typeof node.props.metadata === 'string').props.metadata, /720 × 1280/);
+  assert.match(textOf(preview), new RegExp(String(i18n.translate('zh-Hans', 'timeline.preview.editing')))); assert.match(nodes(preview).find(node => typeof node.props.metadata === 'string')!.props.metadata as string, /720 × 1280/);
 });
 
 

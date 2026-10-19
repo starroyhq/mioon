@@ -35,7 +35,6 @@
   "exclude": [
     "./comfy-business.test.ts",
     "./comfy-connector.test.ts",
-    "./comfy-http.test.ts",
     "./comfy-image-ui.test.ts",
     "./comfy-module-business.test.ts",
     "./export-file-actions-ui.test.ts",
@@ -57,13 +56,7 @@
     "./export-sample-peak-state.test.ts",
     "./export-sample-peak-transports.test.ts",
     "./export-sample-peak-ui.test.ts",
-    "./export-settings-business.test.ts",
-    "./export-settings-capabilities.test.ts",
-    "./export-settings-client.test.ts",
     "./export-settings-media.test.ts",
-    "./export-settings-recovery.test.ts",
-    "./export-settings-transports.test.ts",
-    "./export-settings-ui.test.ts",
     "./fixtures/local-drafts-v1-contracts.ts",
     "./fixtures/local-drafts-v1-reader.ts",
     "./fixtures/opacity-render-authority-pure.ts",
@@ -91,6 +84,7 @@
     "./image-profile-discovery.test.ts",
     "./image-review-business.test.ts",
     "./mcp-v4.test.ts",
-    "./typecheck/**"
+    "./typecheck/**",
+    "./comfy-http.test.ts"
   ]
 }

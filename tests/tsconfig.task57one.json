@@ -1,1 +1,0 @@
-{"extends":"./tsconfig.tests.json","include":["./export-settings-transports.test.ts"],"exclude":["./fixtures/workspace-restore-legacy/**","./fixtures/workspace-restore-v27/legacy-contracts/**"]}
