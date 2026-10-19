@@ -54,7 +54,7 @@ async function withMcp(f: {root: string; env: NodeJS.ProcessEnv},run: (call: (op
   }finally{await client.close();}
 }
 async function fixture(t: TestContext,options: {dropAck?: boolean; hold?: boolean; onCall?: unknown} = {}){
-  const root=await mkdtemp(path.join(tmpdir(),'mioon-comfy-wire-')),comfy=await startComfyFixture({hold:true,...options});
+  const root=await mkdtemp(path.join(tmpdir(),'mioon-comfy-wire-')),comfy=await startComfyFixture({hold:true,...options} as never);
   let server!: Awaited<ReturnType<typeof startServer>>;
   t.after(async()=>{await server?.close();await comfy.close();await rm(root,{recursive:true,force:true});});
   // Production transport: no fake connector, httpRequest, settings or service.
@@ -97,8 +97,8 @@ test('real loopback Comfy protocol crosses production HTTP, CLI and official MCP
   await withMcp(f,async call=>assert.deepEqual(await call('image.review.prepare',prepared),review));
   const ack=await f.approve(review);await f.until(()=>f.task(ack),task=>task.state==='receiving');
   assert.deepEqual(f.comfy.counts(),{posts:1,jobs:0,views:0,all:8});
-  const submitted=f.comfy.calls.find(c=>c.method==='POST').body;
-  assert.equal(submitted.prompt_id,review.execution.promptId);assert.equal(submitted.client_id,review.execution.clientId);assert.deepEqual(submitted.prompt,review.execution.graph);assert.equal(submitted.extra_data.mioon.outputNonce,review.execution.outputNonce);
+  const submitted=f.comfy.calls.find(c=>c.method==='POST')!.body!;
+  assert.equal(submitted.prompt_id,review.execution.promptId);assert.equal(submitted.client_id,review.execution.clientId);assert.deepEqual(submitted.prompt,review.execution.graph);assert.equal((submitted.extra_data as {mioon: {outputNonce: string}}).mioon.outputNonce,review.execution.outputNonce);
   assert.deepEqual(await f.approve(review),ack);assert.deepEqual(await cli('image.generate',input,f.env),ack);
   await withMcp(f,async call=>{assert.deepEqual(await call('image.generate',input),ack);const value=await call('image.task.remote.get',{projectId:project.id,taskId:ack.id}) as {remote: {contentVerified: boolean}};assert.equal(value.remote.contentVerified,false);});
   const beforeRestart=f.comfy.counts();await f.restart();await pause(30);assert.deepEqual(f.comfy.counts(),beforeRestart);assert.equal((await f.task(ack)).state,'outcome_unknown');assert.equal((await f.request('/api/images/comfy-settings')).body.data.readiness.checked,false);
