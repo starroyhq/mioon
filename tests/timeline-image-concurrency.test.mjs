@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {accessSync, constants, realpathSync} from 'node:fs';
 import {mkdtemp, mkdir, readFile, readdir, rm, writeFile} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
+import {DatabaseSync} from 'node:sqlite';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {isExportPreflightResponse} from '@mioon/contracts';
@@ -25,6 +26,7 @@ import {
 import {validateWorkspaceColourRows} from '../packages/business/src/workspace-colour-validation.ts';
 import {snapshot as databaseSnapshot} from './workspace-schema26-fixtures.mjs';
 import {png, sha, imageColour, stamp, timelineFixture} from './helpers/timeline-image-fixtures.ts';
+import {materializeHistoricalWorkspace} from './helpers/historical-workspace.ts';
 
 const code = 'TIMELINE_IMAGE_COMPOSITOR_BUDGET';
 const budgetError = {code, message: TIMELINE_COLOUR_PREFLIGHT_MESSAGES[code]};
@@ -254,8 +256,8 @@ function rewrite(db, table, column, value) {
 
 for (const location of ['export', 'receipt']) {
   test(`restored33 rejects an over-budget frozen ${location} consistently without changing retained evidence`, async t => {
-    const root = await directory(t), store = openStore(root), db = store.db;
-    t.after(() => store.close());
+    const root = await directory(t), frozenRoot = await directory(t), store = openStore(root);
+    t.after(() => { if (store.db.isOpen) store.close(); });
     const f = fixture(intervals(4));
     store.put('projects', {id: f.projectId, name: 'Restored PNG concurrency', createdAt: stamp, updatedAt: stamp});
     f.assets.forEach(asset => store.put('assets', asset));
@@ -265,8 +267,11 @@ for (const location of ['export', 'receipt']) {
       snapshot: f.freeze({exportRange: {startFrame: 9, endFrame: 12}}),
       status: 'queued', assetId: null, url: null, error: null, createdAt: stamp, updatedAt: stamp};
     store.put('exports', rendered);
-    db.prepare('INSERT INTO timeline_requests VALUES(?,?,?)').run(rendered.requestId, 'a'.repeat(64), JSON.stringify(rendered));
-    db.exec('DELETE FROM schema_version WHERE version=34'); // Explicit historical PNG-only fixture.
+    store.db.prepare('INSERT INTO timeline_requests VALUES(?,?,?)').run(rendered.requestId, 'a'.repeat(64), JSON.stringify(rendered));
+    await store.close();// Reviewed historical PNG-only fixture; never relabel or downgrade the current workspace.
+    const frozen = materializeHistoricalWorkspace({root}, frozenRoot, {version: 32, media: false});
+    const db = new DatabaseSync(frozen.dbPath);
+    t.after(() => { if (db.isOpen) db.close(); });
     assert.equal(classifyCurrentWorkspaceSchema(db).schemaVersion, 32);
     assert.equal(installCurrentWorkspaceRestoreSchema(db, {restorationId: randomUUID(),
       workspaceOrigin: randomUUID(), sourceBackupId: randomUUID(), manifestHash: 'a'.repeat(64),

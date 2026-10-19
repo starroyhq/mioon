@@ -4,7 +4,7 @@ import {mkdtemp, readFile, readdir, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {openStore, classifyCurrentWorkspaceSchema, getWorkspaceRestoreContext,
+import {openStore, getWorkspaceRestoreContext,
   validateCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
@@ -15,6 +15,7 @@ import {run, runStreaming} from '../packages/business/src/media-runtime.ts';
 import {probe} from '../packages/business/src/media.ts';
 import {timelineColourInputFilter} from '../packages/business/src/timeline-colour-lut.ts';
 import {png, sha, imageColour, stamp} from './helpers/timeline-image-fixtures.ts';
+import {materializeHistoricalWorkspace} from './helpers/historical-workspace.ts';
 
 const retainedTables = ['projects', 'assets', 'timelines', 'timeline_history',
   'timeline_history_cursors', 'timeline_requests', 'exports'];
@@ -89,7 +90,7 @@ function assertMixedPixels(bytes) {
 test('cold backup32→restored33 explicitly rerenders mixed PNG/video/subtitle with exact decoded parity',
   {timeout: 120000}, async t => {
     const base = await mkdtemp(path.join(tmpdir(), 'mioon-image-restored-render-'));
-    const source = path.join(base, 'source'), backup = path.join(base, 'backup');
+    let source = path.join(base, 'source'), backup = path.join(base, 'backup');
     const restored = path.join(base, 'restored'), videoFile = path.join(base, 'video.mp4');
     let store, services;
     const close = async () => {
@@ -153,9 +154,8 @@ test('cold backup32→restored33 explicitly rerenders mixed PNG/video/subtitle w
     const sourceFiles = new Map([[store.get('assets', video.id).relativePath, videoBytes],
       [store.get('assets', image.id).relativePath, imageBytes],
       [baseline.asset.relativePath, await readFile(baseline.file)]]);
-    store.db.exec('DELETE FROM schema_version WHERE version=34'); // Explicit historical PNG-only fixture.
-    assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 32, profile: 'ordinary'});
-    await close();
+    await close();// Reviewed historical PNG-only fixture; never relabel or downgrade the current workspace.
+    source = materializeHistoricalWorkspace({root: source}, path.join(base, 'source32'), {version: 32}).root;
     const coldDb = await readFile(path.join(source, 'workbench.sqlite'));
 
     const capturedBackup = await createWorkspaceBackup({source, destination: backup});
