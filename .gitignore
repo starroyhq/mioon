@@ -92,3 +92,11 @@ local-delivery-v1.json
 # Private shot title/prompt drafts and fixed local text recovery intents.
 local-shot-text-v1.json
 .local-shot-text-v1.json.*.tmp
+
+# Private local design sources and derived references are never published.
+/designs/
+/docs/verification/mioon-redesign/design-reference/
+/docs/verification/mioon-redesign/design-inventory.json
+/docs/verification/mioon-redesign/design-source-copy.json
+/docs/verification/mioon-redesign/screenshots/board-compare-*.png
+/docs/verification/mioon-redesign/screenshots/u6-comparison-*.png
