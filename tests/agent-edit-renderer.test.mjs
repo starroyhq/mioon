@@ -196,7 +196,7 @@ function harness(file, options = {}) {
     if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return new Proxy({}, { get: (_, key) => String(key) });
     throw Error(name);
   };
-  const load = name => { const module = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL(`../apps/web/src/${name}.tsx`, import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, resolve); return module.exports; };
+  const load = name => { const module = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL(`../apps/web/src/${name}.tsx`, import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, resolve); return module.exports; };
   const component = load(file).default;
   const h = {
     render(patch = {}) { props = { ...props, ...patch }; cursor = 0; effects = []; tree = component(props); for (const index of effects) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].fn(); } return tree; },

@@ -89,7 +89,9 @@ function harness(file, initial) {
       if (name === './Nodes.tsx') return { Media: 'Media' };
       if (name === './Timeline.tsx') return { dragAsset() {} };
       if (name.endsWith('.css')) return {};
-      if (name.endsWith('.jsx')) return { default: name, __esModule: true };
+      if (name === './icons.tsx') return { __esModule: true, default: 'Icon' };
+      if (name === './SubjectVideoSummary.tsx') return { __esModule: true, default: 'SubjectVideoSummary' };
+      if (name.endsWith('.jsx') || name.endsWith('.tsx')) return { default: name, __esModule: true };
       throw Error(`Unexpected dependency ${name}`);
     });
     modules.set(filename, module.exports); return module.exports;

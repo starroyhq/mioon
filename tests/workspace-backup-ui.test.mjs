@@ -123,7 +123,7 @@ const primitive = new Proxy({ __esModule: true, default: 'Component' }, { get: (
 function component(visible = true) {
   const react = { createElement: element, useLayoutEffect() {}, useRef: current => ({ current }), useState: value => [value, () => {}] }; react.default = react;
   const module = { exports: {} };
-  Function('module', 'exports', 'require', transformSync(read('WorkspaceBackupPanel.tsx'), { loader: 'jsx', format: 'cjs' }).code)(module, module.exports,
+  Function('module', 'exports', 'require', transformSync(read('WorkspaceBackupPanel.tsx'), { loader: 'tsx', format: 'cjs' }).code)(module, module.exports,
     key => key === './i18n/I18nProvider.tsx' ? i18n.i18nTestModule() : key === '../../../packages/i18n/src/index.ts' ? i18n : key === 'react' ? react : key === './workspace-backup-ui.ts' ? backup : key === './workspace-visibility.tsx' ? { useWorkspaceVisibility: () => visible } : key.endsWith('.md?raw') ? { __esModule: true, default: 'Bundled offline backup guide' } : primitive);
   return module.exports;
 }
@@ -185,7 +185,7 @@ test('workspace settings keep one backup owner with an exact read-only dispatch 
   const render = (connectionsAvailable, visible, page) => {
     const module = { exports: {} };
     Function('module', 'React', 'WorkspaceBackupPanel', 'connectionsAvailable', 'visible', 'page', 'productionRpc',
-      transformSync(`module.exports = ${jsx};`, { loader: 'jsx', format: 'cjs' }).code)(module, { createElement: element }, 'Backup', connectionsAvailable, visible, page,
+      transformSync(`module.exports = ${jsx};`, { loader: 'tsx', format: 'cjs' }).code)(module, { createElement: element }, 'Backup', connectionsAvailable, visible, page,
       async (...args) => { calls.push(args); return inspection(); });
     return module.exports.props;
   };
@@ -195,5 +195,5 @@ test('workspace settings keep one backup owner with an exact read-only dispatch 
   assert.deepEqual(calls, [['workspace.backup.inspect', {}, options]]);
   assert.doesNotMatch(jsx, /setSelected|setPropertiesPage|discardDraft|runDurable|requestId|setToast|setInspectorEpoch|confirm\(/);
   assert.match(app + readFileSync(new URL('../apps/web/src/TaskPopover.tsx', import.meta.url), 'utf8'), /data-testid="right-dock-tab-tasks"/);
-  transformSync(app, { loader: 'jsx', format: 'esm' });
+  transformSync(app, { loader: 'tsx', format: 'esm' });
 });

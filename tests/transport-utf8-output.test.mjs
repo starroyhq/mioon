@@ -172,6 +172,10 @@ const textSites = {
   'tests/timeline-audio-role-transports.test.mjs': 5,
   'tests/timeline-ripple-transports.test.mjs': 2,
 };
+// Byte-preserving passthrough forwarders: no text concatenation or decoding.
+const passthroughSites = {
+  'tests/fixtures/workspace-restore-electron/main.ts': 2,
+};
 const binarySites = {
   'tests/http-streams-qa-native.mjs': 1,
   'tests/mutation-qa-native.mjs': 1,
@@ -237,7 +241,7 @@ test('every inventoried test/QA text collector configures continuous decoding at
     const sites = [...source.matchAll(registrationPattern)];
     if (!sites.length) continue;
     found[name] = sites.length;
-    assert.ok(Object.hasOwn(textSites, name) || Object.hasOwn(binarySites, name) || Object.hasOwn(bufferedSites, name), `${name}: classify each newly introduced stream consumer`);
+    assert.ok(Object.hasOwn(textSites, name) || Object.hasOwn(binarySites, name) || Object.hasOwn(passthroughSites, name) || Object.hasOwn(bufferedSites, name), `${name}: classify each newly introduced stream consumer`);
     if (Object.hasOwn(bufferedSites, name)) {
       const specification = bufferedSites[name];
       assert.equal(sites.length, specification.count, name);
@@ -246,6 +250,11 @@ test('every inventoried test/QA text collector configures continuous decoding at
         assert.equal(site.groups.decode, undefined, `${name}: retain Buffer bytes until the final sink`);
         assert.ok(source.startsWith(specification.registration, site.index), `${name}: exact audited Buffer collector, not per-chunk string coercion`);
       }
+      continue;
+    }
+    if (Object.hasOwn(passthroughSites, name)) {
+      assert.equal(sites.length, passthroughSites[name], name);
+      for (const site of sites) assert.equal(site.groups.decode, undefined, `${name}: keep raw byte passthrough`);
       continue;
     }
     if (Object.hasOwn(binarySites, name)) {
@@ -276,5 +285,5 @@ test('every inventoried test/QA text collector configures continuous decoding at
       if (site.groups.access === '?.') assert.doesNotThrow(() => register({}, () => {}), location);
     }
   }
-  assert.deepEqual(found, Object.fromEntries(Object.entries({...textSites, ...binarySites, ...Object.fromEntries(Object.entries(bufferedSites).map(([name, value]) => [name, value.count]))}).sort(([a], [b]) => a.localeCompare(b))), 'all inventoried helper and raw-file sites are present');
+  assert.deepEqual(found, Object.fromEntries(Object.entries({...textSites, ...binarySites, ...passthroughSites, ...Object.fromEntries(Object.entries(bufferedSites).map(([name, value]) => [name, value.count]))}).sort(([a], [b]) => a.localeCompare(b))), 'all inventoried helper and raw-file sites are present');
 });

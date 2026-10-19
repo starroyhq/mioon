@@ -197,7 +197,7 @@ test('actual library reveal respects newer project, navigation and panel choices
   assert.match(app, /setShowTasks\(false\); setShowDelivery\(false\); setShowImage\(true\)/);
   assert.doesNotMatch(app, /rightDockTab === 'image'/);
   assert.doesNotMatch(source, /node\.create|setPreviewAsset|image\.generate/);
-  assert.doesNotThrow(() => transformSync(app, { loader: 'jsx', format: 'esm' }));
+  assert.doesNotThrow(() => transformSync(app, { loader: 'tsx', format: 'esm' }));
 });
 
 test('input limits match contract and state copy distinguishes unknown, failure, cancellation and local failure', () => {
@@ -208,7 +208,7 @@ test('input limits match contract and state copy distinguishes unknown, failure,
 
 test('renderer remains an extracted dock with explicit providers, fixed paid disclosure and local previews', () => {
   const source = readFileSync(new URL('../apps/web/src/ImageGeneration.tsx', import.meta.url), 'utf8');
-  assert.doesNotThrow(() => transformSync(source, { loader: 'jsx', format: 'esm' }));
+  assert.doesNotThrow(() => transformSync(source, { loader: 'tsx', format: 'esm' }));
   const displayCopy = source + Object.entries(creationUiMessages).filter(([key]) => source.includes(`'${key}'`)).map(([, value]) => JSON.stringify(value['zh-Hans'])).join('\n');
   for (const text of ['useWorkspaceVisibility', 'image-provider-openai', '真实调用尚未验证', '确定性测试图案', '未加密', 'image-paid-warning', 'image-review-approve', 'image-review-reject', 'image-draft-guard', 'image-edit-version', 'image-version-preview', 'image-reveal-asset', 'image-cancel-queued', 'image-recover-result']) assert.ok(displayCopy.includes(text), text);
   assert.match(source, /composerVisible \? `\/media\/\$\{encodeURIComponent\(version.assetId\)\}` : undefined/);
@@ -256,7 +256,7 @@ function renderer(f, options = {}) {
     if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return primitive;
     throw Error(name);
   };
-  Function('module', 'exports', 'require', transformSync(componentSource, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, require);
+  Function('module', 'exports', 'require', transformSync(componentSource, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, require);
   const harness = {
     render(owner = currentProject) { currentProject = owner; index = 0; effects = []; tree = module.exports.default({ projectId: owner, projectName: 'Test project', reviewClient: f.reviewClient, settingsClient: f.settingsClient, customSettingsClient: f.customSettingsClient, onDirtyChange: value => { dirty = value; }, onRevealAsset: options.onRevealAsset, projectAssets: options.projectAssets || [], editIntent: options.editIntent || null, isEditIntentCurrent: options.isEditIntentCurrent }); for (const slot of effects) { slots[slot].cleanup?.(); slots[slot].cleanup = slots[slot].callback(); } return tree; },
     find(id) { return nodes(tree).find(node => node.props['data-testid'] === id); },

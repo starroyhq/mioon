@@ -1,3 +1,4 @@
+declare module '*.md?raw' { const content: string; export default content; }
 import { useI18n } from './i18n/I18nProvider.tsx';
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '@mioon/ui/components/button';

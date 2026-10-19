@@ -58,7 +58,7 @@ function inspector(locale='en', eligible=true, supported=true){
   if(name.startsWith('@mioon/ui/'))return new Proxy({}, {get:(_,key)=>stub(key)});
   return assert.fail(name);
  },removalModule,removalModule.exports);
- const module={exports:{}};Function('require','module','exports',transformSync(readFileSync(new URL('../apps/web/src/TimelineInspector.tsx',import.meta.url),'utf8'),{loader:'jsx',format:'cjs'}).code)(name=>{
+ const module={exports:{}};Function('require','module','exports',transformSync(readFileSync(new URL('../apps/web/src/TimelineInspector.tsx',import.meta.url),'utf8'),{loader:'tsx',format:'cjs'}).code)(name=>{
   if(name==='react')return react;
   if(name==='./UiPreferencesProvider.tsx')return {useUiPreferences:()=>({preferences:DEFAULT_UI_PREFERENCES})};
   if(name==='./timeline-removal.ts')return removalState;

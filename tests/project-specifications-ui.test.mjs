@@ -399,7 +399,7 @@ test('actual format save callback uses only the existing durable timeline lane a
 });
 
 test('App keeps both Properties subpages mounted and keeps format dirtiness outside inspector reset logic', () => {
-  transformSync(app, { loader: 'jsx', format: 'esm' });
+  transformSync(app, { loader: 'tsx', format: 'esm' });
   for (const id of ['properties-inspector-pane', 'properties-format-pane', 'properties-subtitle-pane']) assert.ok(app.includes(`<AgentDockPane id="${id}"`));
   const {WorkbenchInspectorTabs}=component('WorkbenchShell.tsx');
   for(const [mode,expected] of [['canvas',['properties','versions','agent']],['editing',['properties','agent']]]) {
@@ -471,7 +471,7 @@ test('actual hook keeps the project draft across visibility and polling without 
     useLayoutEffect(callback, dependencies) { const i = cursor++, old = slots[i]; if (old && dependencies.every((value, index) => Object.is(value, old.dependencies[index]))) return; slots[i] = { dependencies, callback, cleanup: old?.cleanup }; effects.push(i); },
   };
   const module = { exports: {} };
-  Function('module', 'exports', 'require', transformSync(read('use-timeline-format.ts'), { loader: 'js', format: 'cjs' }).code)(module, module.exports, name => name === 'react' ? react : format);
+  Function('module', 'exports', 'require', transformSync(read('use-timeline-format.ts'), { loader: 'ts', format: 'cjs' }).code)(module, module.exports, name => name === 'react' ? react : format);
   function render(patch = {}) {
     props = { ...props, ...patch }; cursor = 0; effects = [];
     const value = module.exports.useTimelineFormat({ ...props, getContext: () => props,

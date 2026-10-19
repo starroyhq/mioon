@@ -114,7 +114,7 @@ test('history controls render shared Base UI buttons with disabled states, label
   const script = `
     import { build } from 'esbuild';
     import assert from 'node:assert/strict';
-    const { outputFiles } = await build({ stdin: { contents: ${JSON.stringify(fixtureSource)}, loader: 'jsx', resolveDir: ${JSON.stringify(resolve(root, 'apps/web'))} }, bundle: true, format: 'esm', platform: 'browser', write: false, define: { 'process.env.NODE_ENV': '\"production\"' } });
+    const { outputFiles } = await build({ stdin: { contents: ${JSON.stringify(fixtureSource)}, loader: 'tsx', resolveDir: ${JSON.stringify(resolve(root, 'apps/web'))} }, bundle: true, format: 'esm', platform: 'browser', write: false, define: { 'process.env.NODE_ENV': '\"production\"' } });
     const { ready, pending } = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].text).toString('base64'));
     assert.equal((ready.match(/<button/g) || []).length, 2);
     assert.equal((ready.match(/data-slot="button"/g) || []).length, 2);

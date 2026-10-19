@@ -63,10 +63,10 @@ before(async () => {
   }`;
   const script = `import {build} from 'esbuild';
     globalThis.fetch = () => {throw Error('History presentation must never request data');};
-    const {outputFiles} = await build({stdin:{contents:${JSON.stringify(fixtures)},loader:'jsx',resolveDir:${JSON.stringify(path.join(root, 'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,jsx:'transform',define:{'process.env.NODE_ENV':'"production"'},plugins:[{name:'capture-file-action-props',setup(build){
+    const {outputFiles} = await build({stdin:{contents:${JSON.stringify(fixtures)},loader:'tsx',resolveDir:${JSON.stringify(path.join(root, 'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,jsx:'transform',define:{'process.env.NODE_ENV':'"production"'},plugins:[{name:'capture-file-action-props',setup(build){
       build.onResolve({filter:/^test:actual-export-file-actions$/},()=>({path:${JSON.stringify(path.join(root,'apps/web/src/ExportFileActions.tsx'))}}));
       build.onResolve({filter:/ExportFileActions\\.tsx$/},()=>({path:'capture',namespace:'file-action-capture'}));
-      build.onLoad({filter:/.*/,namespace:'file-action-capture'},()=>({contents:${JSON.stringify(capture)},loader:'jsx',resolveDir:${JSON.stringify(path.join(root,'apps/web'))}}));
+      build.onLoad({filter:/.*/,namespace:'file-action-capture'},()=>({contents:${JSON.stringify(capture)},loader:'tsx',resolveDir:${JSON.stringify(path.join(root,'apps/web'))}}));
     }}]});
     const result = await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));process.stdout.write(JSON.stringify({html:result.html,actions:result.actions,actualFileActions:result.actualFileActions}));process.exit(0);`;
   ({html:rendered, actions:fileActions, actualFileActions} = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30000 })));

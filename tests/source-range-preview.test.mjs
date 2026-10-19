@@ -8,7 +8,7 @@ import * as exportSettings from '../apps/web/src/export-settings-state.ts';
 import * as ranges from '../apps/web/src/source-range-state.ts';
 
 const source = readFileSync(new URL('../apps/web/src/Preview.tsx', import.meta.url), 'utf8');
-const code = transformSync(source, { loader: 'jsx', format: 'cjs' }).code;
+const code = transformSync(source, { loader: 'tsx', format: 'cjs' }).code;
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
 function harness() {
   const slots = [], elements = new Map(); let cursor = 0, effects = [], layouts = [], tree;

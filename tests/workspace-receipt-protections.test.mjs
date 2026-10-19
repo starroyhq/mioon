@@ -53,7 +53,7 @@ function seedRaw(db){
  for(const table of tables){
   const put=db.prepare(`INSERT INTO ${table}(rowid,requestId,requestHash,response) VALUES(?,?,?,?)`);
   for(const [index,response]of [' \n{"escaped":"\\u754c","n":2.00}\n ','null','false','0','[]','invalid JSON',Buffer.from([0,255,13,10]),' '.repeat(70000)].entries())
-   put.run(9007199254740993n+BigInt(index),`${table}-${index}`,index%2?Buffer.from([0,254,10]):'hash',response);
+   put.setReadBigInts(true);put.run(9007199254740993n+BigInt(index),`${table}-${index}`,index%2?Buffer.from([0,254,10]):'hash',response);
  }
 }
 function assertFixed(db){assert.deepEqual(protections(db),fixed.toSorted((a,b)=>a.name.localeCompare(b.name)));}
@@ -235,7 +235,7 @@ function seedRetainedState(db){
   .run(9007199254742002n,randomUUID(),projectId,1,'timeline.clip.update','raw-time',' {"gain":0.5000} ',' {"gain":0.2500} ');
  db.prepare('INSERT INTO timeline_history_cursors(projectId,position) VALUES(?,?)').run(projectId,1);
  db.exec("DELETE FROM sqlite_sequence WHERE name='edit_tasks'");
- db.prepare("INSERT INTO sqlite_sequence(rowid,name,seq) VALUES(?,'edit_tasks',?)").run(9007199254742003n,9007199254740991);
+ const sequenceInsert=db.prepare("INSERT INTO sqlite_sequence(rowid,name,seq) VALUES(?,'edit_tasks',?)");sequenceInsert.setReadBigInts(true);sequenceInsert.run(9007199254742003n,9007199254740991);
 }
 
 test('independent historical repair inventory is exactly36 non-task triggers plus active-chat uniqueness',()=>{

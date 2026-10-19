@@ -10,7 +10,7 @@ import * as layout from '../apps/web/src/workspace-layout.ts';
 
 // Deterministic component-level lifecycle tests, not a substitute for browser
 // keyboard, pointer-capture, or real Base UI portal acceptance.
-const code = transformSync(readFileSync(new URL('../apps/web/src/WorkspacePanels.tsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code;
+const code = transformSync(readFileSync(new URL('../apps/web/src/WorkspacePanels.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
 const noop = () => {};
 class Element {
   constructor() { this.isConnected = true; this.scrollLeft = 0; this.scrollTop = 0; this.focuses = 0; this.children = new Set(); this.captures = new Set(); this.dataset = {}; this.selectors = new Map(); }
@@ -351,7 +351,7 @@ test('real React and Base UI render separator, inert boundary, recall button, an
   `;
   const script = `
     import { build } from 'esbuild';
-    const { outputFiles } = await build({ stdin: { contents: ${JSON.stringify(fixture)}, loader: 'jsx', resolveDir: ${JSON.stringify(resolveDir)} }, bundle: true, format: 'esm', platform: 'browser', write: false, define: { 'process.env.NODE_ENV': '\"production\"' }, logLevel: 'silent' });
+    const { outputFiles } = await build({ stdin: { contents: ${JSON.stringify(fixture)}, loader: 'tsx', resolveDir: ${JSON.stringify(resolveDir)} }, bundle: true, format: 'esm', platform: 'browser', write: false, define: { 'process.env.NODE_ENV': '\"production\"' }, logLevel: 'silent' });
     const { html } = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].text).toString('base64'));
     process.stdout.write(html); process.exit(0);
   `;
@@ -463,7 +463,7 @@ test('actual App rail overlay and pin callbacks use presentation state without p
     markPanelIntent(){marks++;},setPanelOverlay(value){overlay=typeof value==='function'?value(overlay):value;},updateView:(...args)=>persisted.push(args),updateModeLayout:(...args)=>persisted.push(args),
     mobilePanel:'canvas',setMobilePanel(){assert.fail('Compact desktop must not enter the old mobile single-panel flow');},workspaceMode:'canvas',data:{project:{id:'p'}},useEffect(){},assetsCollapsed:geometry.effective.assetsCollapsed,inspectorCollapsed:geometry.effective.inspectorCollapsed,timelineCollapsed:false,panelOverlay:overlay,loading:false,
     PanelResizeHandle:'Resize',React:{createElement(){}},panelScope:'p:canvas',defaultWorkspaceLayout:layout.defaultWorkspaceLayout};
-    return Function('env',`with(env){${transformSync(source.slice(start,end),{loader:'jsx'}).code};return{setPanelOpen,togglePanelOverlay,panelVisible};}`)(env);};
+    return Function('env',`with(env){${transformSync(source.slice(start,end),{loader:'tsx'}).code};return{setPanelOpen,togglePanelOverlay,panelVisible};}`)(env);};
   let actions=invoke();assert.equal(actions.panelVisible('assets'),false);assert.equal(actions.panelVisible('inspector'),false);assert.equal(actions.panelVisible('canvas'),true);
   actions.togglePanelOverlay('assets');actions=invoke();assert.equal(actions.panelVisible('assets'),true);assert.equal(overlay,'assets');assert.deepEqual(persisted,[]);
   actions.setPanelOpen('assets',true);geometry=h.render({...props,scope:'p:canvas:1'});actions=invoke();assert.equal(overlay,null);assert.equal(actions.panelVisible('assets'),true);assert.equal(actions.panelVisible('inspector'),false);assert.deepEqual(persisted,[]);
@@ -488,7 +488,7 @@ test('actual App desktop collapse retains the toolbar container, hides body and 
       markPanelIntent(){marks++;},setPanelOverlay(){},updateView(section,patch){writes.push([section,patch]);Object.assign(viewRef.current[section],patch);},updateModeLayout(...args){sizes.push(args);},
       setMobilePanel(){},defaultWorkspaceLayout:layout.defaultWorkspaceLayout,useEffect(){},PanelResizeHandle:'Resize',panelScope:'project-one:editing',
       React:{createElement:(type,props)=>({type,props})}};
-    return Function('env',`with(env){${transformSync(source.slice(start,end),{loader:'jsx'}).code};return{toggleTimelinePanel,panelVisible,timelineContainerVisible,resizeHandle};}`)(env);
+    return Function('env',`with(env){${transformSync(source.slice(start,end),{loader:'tsx'}).code};return{toggleTimelinePanel,panelVisible,timelineContainerVisible,resizeHandle};}`)(env);
   }
   const collapsed = render(), retainedToggle = collapsed.toggleTimelinePanel;
   assert.equal(collapsed.timelineContainerVisible,true,'Desktop toolbar remains in its existing PanelBoundary');

@@ -3,10 +3,8 @@ import { Button } from '@mioon/ui/components/button';
 import Icon from './icons.tsx';
 import { useI18n } from './i18n/I18nProvider.tsx';
 
-interface TimelineSplitState {
-  clipSelected?: boolean; clipName: string; canSplit?: boolean; atFrame: number; leftDuration: number; rightDuration: number;
-  blockedMessage?: import('../../../packages/i18n/src/index.ts').DisplayMessage | null;
-}
+import type {timelineSplitState} from './timeline-split.ts';
+type TimelineSplitState = ReturnType<typeof timelineSplitState>;
 export default function TimelineSplitControls({ state, onSplit }: {state: TimelineSplitState; onSplit: () => void}) {
   const { t, renderMessage } = useI18n();
   const blocked = renderMessage(state.blockedMessage), name = state.clipSelected === false ? t('timeline.split.unselected') : state.clipName;

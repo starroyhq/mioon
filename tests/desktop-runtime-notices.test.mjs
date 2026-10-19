@@ -7,8 +7,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const require = createRequire(import.meta.url);
-const builderConfig = require('../apps/desktop/builder-config.cjs');
-const { NOTICE_FILES, PLIST_MAX_BYTES } = require('../apps/desktop/runtime-notices.cjs');
+const { builderConfig } = require('../apps/desktop/builder-config.ts');
+const { NOTICE_FILES, PLIST_MAX_BYTES } = require('../apps/desktop/runtime-notices.ts');
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const plist = version => `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -224,6 +224,6 @@ test('generated notice locates both runtime files outside ASAR without loading h
   assert.match(build, /LICENSE\.electron\.txt and LICENSES\.chromium\.html/);
   assert.match(build, /Contents\/Resources\/licenses/);
   assert.match(build, /on Linux they are beside the executable/);
-  const helper = await readFile(new URL('../apps/desktop/runtime-notices.cjs', import.meta.url), 'utf8');
+  const helper = await readFile(new URL('../apps/desktop/runtime-notices.ts', import.meta.url), 'utf8');
   assert.doesNotMatch(helper, /require\(['"]electron['"]\)|node_modules|child_process|fetch\(/);
 });

@@ -114,7 +114,7 @@ test('actual provider renders creation details in all four locales and escapes u
   // renderer tests so a successful read-only render cannot retain the test worker.
   const script = `
     import { build } from 'esbuild';
-    const { outputFiles } = await build({ stdin: { contents: ${JSON.stringify(source)}, loader: 'jsx', resolveDir: ${JSON.stringify(resolve(root, 'apps/web/src'))} }, bundle: true, format: 'esm', platform: 'browser', write: false, loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '\"production\"' }, logLevel: 'silent' });
+    const { outputFiles } = await build({ stdin: { contents: ${JSON.stringify(source)}, loader: 'tsx', resolveDir: ${JSON.stringify(resolve(root, 'apps/web/src'))} }, bundle: true, format: 'esm', platform: 'browser', write: false, loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '\"production\"' }, logLevel: 'silent' });
     const fixture = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].text).toString('base64'));
     process.stdout.write(JSON.stringify(await fixture.renderAll())); process.exit(0);
   `;

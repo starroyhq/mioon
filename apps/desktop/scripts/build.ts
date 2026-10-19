@@ -6,12 +6,15 @@ import { fileURLToPath } from 'node:url';
 import desktopIdentity from '../identity.ts';
 import desktopBuildMetadata from '../build-metadata.ts';
 import {main as checkTypes} from '../../../scripts/tooling.ts';
+import {prepareBuilderConfig} from './prepare-builder-config.ts';
 import {localRequireBundlePlugin} from './bundle-local-require.ts';
 const identity = desktopIdentity.identityForChannel(desktopIdentity.buildChannel(process.argv.slice(2)));
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const { appVersion, desktopPackage: pkg } = desktopBuildMetadata.readBuildMetadata(root);
 // Every direct desktop/package entry checks real TS before replacing staging.
 if (await checkTypes(['typecheck']) !== 0) throw new Error('Type checking failed; desktop staging was not replaced.');
+// Keep the ignored electron-builder CJS entrypoints derived from typed source.
+await prepareBuilderConfig();
 const desktop = path.join(root, 'apps/desktop');
 const output = path.join(desktop, 'build');
 const web = path.join(root, 'apps/web/dist');
@@ -34,7 +37,7 @@ await cp(web, path.join(output, 'web'), { recursive: true, dereference: true });
 await mkdir(path.join(output, 'icons'));
 await cp(path.join(desktop, 'resources/icon.png'), path.join(output, 'icons/icon.png'));
 const subtitleSource=path.join(root,'packages/business/resources/subtitles');
-const {verifySubtitleResources,SUBTITLE_RESOURCE_FILES}=createRequire(import.meta.url)('../subtitle-resources.cjs');
+import {verifySubtitleResources,SUBTITLE_RESOURCE_FILES} from '../subtitle-resources.ts';
 await verifySubtitleResources(subtitleSource);
 await mkdir(path.join(output,'subtitles'));
 for(const file of SUBTITLE_RESOURCE_FILES)await cp(path.join(subtitleSource,file),path.join(output,'subtitles',file));

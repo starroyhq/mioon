@@ -227,7 +227,7 @@ test('actual App annotation recovery preserves the exact session intent and rere
 const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
 function controlHarness() {
   const source = readFileSync(new URL('../apps/web/src/AssetDispositionControls.tsx', import.meta.url), 'utf8');
-  const code = transformSync(source, { loader: 'jsx', format: 'cjs' }).code, slots = [];
+  const code = transformSync(source, { loader: 'tsx', format: 'cjs' }).code, slots = [];
   let cursor = 0, effects = []; const h = { visible: true };
   const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
     useRef: value => { const index = cursor++; return slots[index] ||= { current: value }; },
@@ -259,7 +259,7 @@ test('mark controls are accessible and reject retained hidden, re-shown, project
 
 test('shared library keeps an excluded source editable and resets filters without touching source selection or range scope', () => {
   const source = readFileSync(new URL('../apps/web/src/AssetLibrary.tsx', import.meta.url), 'utf8');
-  const code = transformSync(source, { loader: 'jsx', format: 'cjs' }).code, module = { exports: {} };
+  const code = transformSync(source, { loader: 'tsx', format: 'cjs' }).code, module = { exports: {} };
   let local = { scope: `${projectId}:1`, value: 'favorite' }; const changes = [], slots = [], effects = new Map();
   let cursor = 0;
   const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),

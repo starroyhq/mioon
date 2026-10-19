@@ -267,7 +267,7 @@ test('actual TaskCenter does not render an empty-list claim when loading or erro
     if (name === './i18n/I18nProvider.tsx') return i18n;
     assert.equal(name, 'react'); return { ...react, default: react };
   }, disclosure, disclosure.exports);
-  Function('require', 'module', 'exports', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(name => name === 'react' ? { ...react, default: react }
+  Function('require', 'module', 'exports', transformSync(source, { loader: 'tsx', format: 'cjs' }).code)(name => name === 'react' ? { ...react, default: react }
     : name === './i18n/I18nProvider.tsx' ? i18n
     : name === './creation-i18n.ts' ? { creationParameter }
     : name === '@mioon/contracts' ? { DURABLE_EDIT_OPERATIONS }

@@ -121,7 +121,7 @@ test('result reveal re-reads current task, preserves draft refusal, and rejects 
   assert.equal(await pending, false); assert.equal(reveals, 1);
 });
 
-const code = transformSync(readFileSync(new URL('../apps/web/src/FrameExtractionPanel.tsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code;
+const code = transformSync(readFileSync(new URL('../apps/web/src/FrameExtractionPanel.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
 const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
 function panelHarness(controller) {
   let cursor = 0, tree, visible = true, effects = [], layouts = []; const slots = [];

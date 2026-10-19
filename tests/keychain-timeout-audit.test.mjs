@@ -6,7 +6,7 @@ import {spawn} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import builderConfig from '../apps/desktop/builder-config.cjs';
+import builderConfig from '../apps/desktop/builder-config.ts';
 
 // Historical regression evidence only. These immutable 9e9598d source bytes
 // intentionally reproduce the old synchronous defect. Current macOS async

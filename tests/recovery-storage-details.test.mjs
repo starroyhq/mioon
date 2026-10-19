@@ -51,7 +51,7 @@ before(() => {
     globalThis.fetch = () => { throw Error('Passive disclosure fetched'); };
     for (const key of ['localStorage', 'sessionStorage']) Object.defineProperty(globalThis, key, { get() { throw Error('Passive disclosure accessed browser storage'); } });
     const { outputFiles } = await build({
-      stdin: { contents: ${JSON.stringify(fixture)}, loader: 'jsx', resolveDir: ${JSON.stringify(path.join(root, 'apps/web'))} },
+      stdin: { contents: ${JSON.stringify(fixture)}, loader: 'tsx', resolveDir: ${JSON.stringify(path.join(root, 'apps/web'))} },
       bundle: true, format: 'esm', platform: 'browser', write: false, jsx: 'automatic',
       define: { 'process.env.NODE_ENV': '"production"' }, logLevel: 'silent',
     });

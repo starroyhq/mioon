@@ -27,7 +27,7 @@ function hooksHarness(source, imports, exportName = 'default', extra = {}) {
     useMemo: (fn, deps) => { const i = cursor++, previous = slots[i]; if (!previous || !deps.every((item, j) => Object.is(item, previous.deps[j]))) slots[i] = { deps, value: fn() }; return slots[i].value; },
     useLayoutEffect: (fn, deps) => effect(layouts, fn, deps), useEffect: (fn, deps) => effect(effects, fn, deps),
   }; react.default = react;
-  const module = { exports: {} }, code = transformSync(source, { loader: 'jsx', format: 'cjs' }).code;
+  const module = { exports: {} }, code = transformSync(source, { loader: 'tsx', format: 'cjs' }).code;
   Function('require', 'module', 'exports', ...Object.keys(extra), code)(key => key === 'react' ? react : imports[key] || new Proxy({}, { get: (_, key) => String(key) }), module, module.exports, ...Object.values(extra));
   const flush = queue => { for (const i of queue) { slots[i].cleanup?.(); slots[i].cleanup = slots[i].fn(); } };
   return {
@@ -143,7 +143,7 @@ test('actual source inspector children slot exposes frame history for video and 
   for (const mimeType of ['video/mp4', 'image/png']) {
     const child = { type: 'FrameHistory', props: { 'data-testid': 'retained-frame-history' } }, asset = { ...sourceAsset, mimeType };
     const controller = { snapshot: () => null, getState: () => ({ scope: sourceScope }) };
-    const h = hooksHarness(text('SourceRangeInspector.tsx'), { './source-range-state.ts': ranges, './workspace-visibility.tsx': { useWorkspaceVisibility: () => true } });
+    const h = hooksHarness(text('SourceRangeInspector.tsx'), { './source-range-state.ts': ranges, './workspace-visibility.tsx': { useWorkspaceVisibility: () => true }, './i18n/I18nProvider.tsx': { useI18n: () => ({ t: key => key, renderMessage: value => (value && typeof value === 'object' ? String(value.key ?? '') : String(value ?? '')), formatNumber: value => String(value), formatDate: value => String(value) }) } });
     const tree = h.render({ asset, state: { scope: sourceScope, row: null, draft: { inFrame: 20, outFrame: 60 }, dirty: true, position: 30 }, controller, timeline: { projectId, tracks: [], clips: [] }, children: child });
     const all = nodes(tree), scroll = all.find(node => node.type === 'ScrollArea');
     assert.ok(nodes(scroll).includes(child)); assert.equal(all.filter(node => node.props?.['data-testid'] === 'source-range-save').length, mimeType.startsWith('video') ? 1 : 0);
@@ -172,7 +172,7 @@ test('hidden Properties unsubscribes and cancels its read timer while source con
   controller.configure({ projectId, sourceScope, sourceAsset, assets: [sourceAsset], visible: true }); await controller.refreshTasks();
   let visible = true, serial = 0, subscriptions = 0; const timers = new Map(), subscribe = controller.subscribe;
   controller.subscribe = listener => { subscriptions++; const release = subscribe(listener); return () => { subscriptions--; release(); }; };
-  const h = hooksHarness(text('FrameExtractionPanel.tsx'), { './frame-extraction.ts': frame, './workspace-visibility.tsx': { useWorkspaceVisibility: () => visible } }, 'default', {
+  const h = hooksHarness(text('FrameExtractionPanel.tsx'), { './frame-extraction.ts': frame, './workspace-visibility.tsx': { useWorkspaceVisibility: () => visible }, './i18n/I18nProvider.tsx': { useI18n: () => ({ t: key => key, renderMessage: value => (value && typeof value === 'object' ? String(value.key ?? '') : String(value ?? '')), formatNumber: value => String(value), formatDate: value => String(value) }) } }, 'default', {
     setTimeout: fn => { const id = ++serial; timers.set(id, fn); return id; }, clearTimeout: id => timers.delete(id),
   });
   h.render({ controller }); await tick(); h.render(); assert.equal(timers.size, 1); assert.equal(subscriptions, 1);

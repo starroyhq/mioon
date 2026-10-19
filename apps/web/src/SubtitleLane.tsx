@@ -14,7 +14,7 @@ export interface SubtitleLaneProps {
   pixelsPerSecond: number;
   width: number | string;
   playhead: number;
-  selectedCueId: string | null;
+  selectedCueId?: string | null;
   onSelect: (cueId: string) => unknown;
   onAdd: (frame: number) => unknown;
   onSeek: (frame: number) => unknown;

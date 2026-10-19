@@ -6,7 +6,7 @@ import {mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {CLI_PROCESS_TIMEOUT_MS, InspectionProcessError, runInspectionProcess} from './helpers/inspection-wire-lifecycle.ts';
+import {CLI_PROCESS_TIMEOUT_MS, InspectionProcessError, runInspectionProcess} from './helpers/inspection-wire-lifecycle.mjs';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const preload = path.join(repo, 'tests/helpers/inspection-wire-fixture.mjs');

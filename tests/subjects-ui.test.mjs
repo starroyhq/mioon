@@ -222,7 +222,7 @@ function harness(filename) {
   const modules = {};
   function load(file) {
     if (modules[file]) return modules[file];
-    const source = readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'), code = transformSync(source, { loader: file.endsWith('jsx') ? 'jsx' : 'js', format: 'cjs' }).code, module = { exports: {} };
+    const source = readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'), code = transformSync(source, { loader: file.endsWith('.tsx') ? 'tsx' : file.endsWith('.ts') ? 'ts' : 'jsx', format: 'cjs' }).code, module = { exports: {} };
     Function('require', 'module', 'exports', code)(name => name === 'react' ? { ...react, default: react } : name === './i18n/I18nProvider.tsx' ? { useI18n: () => i18nTestModule(h.locale).useI18n() } : name.endsWith('subject-state.ts') ? subjectState : name.endsWith('workspace-visibility.tsx') ? { useWorkspaceVisibility: () => h.visible } : name.endsWith('use-subjects.ts') ? load('use-subjects.ts') : name.endsWith('api.ts') ? { assetUrl: asset => `/media/${asset.id}` } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
     return modules[file] = module.exports;
   }

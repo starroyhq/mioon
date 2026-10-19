@@ -83,7 +83,7 @@ test('actual AssetLibrary composes saved tag, type, name, disposition and unused
   let stateIndex = 0, captured;
   const react = { createElement: (type, props, ...children) => ({ type, props: props || {}, children }), useState: () => [ [{ scope: projectId, value: 'assets' }, { scope: 's', value: 'favorite' }, { scope: 'owner', value: 'tag' }][stateIndex++], () => {} ] };
   const module = { exports: {} }, primitives = new Proxy({}, { get: (_, key) => String(key) });
-  const code = transformSync(readFileSync(new URL('../apps/web/src/AssetLibrary.tsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code;
+  const code = transformSync(readFileSync(new URL('../apps/web/src/AssetLibrary.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
   Function('module', 'exports', 'require', code)(module, module.exports, name => {
     if (name === 'react') return react;
     if (name.includes('I18nProvider')) return { useI18n: () => ({ t: (key, params) => translate('en', key, params), renderMessage: value => renderMessage('en', value), formatNumber: value => String(value) }) };

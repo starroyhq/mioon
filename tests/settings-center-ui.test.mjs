@@ -141,7 +141,7 @@ function renderPresentation(locale, page) {
         const panes = Object.fromEntries(['agent', 'official', 'custom', 'comfy'].map(slot => [slot, <form data-owner={slot}><input defaultValue={'draft-' + slot} /></form>]));
         return renderToStaticMarkup(<I18nProvider store={store}><ProjectHomeConnections selected="agent" page={page} onSelect={() => {}} onPage={() => {}} panes={panes} /></I18nProvider>);
       }`;
-    const built = buildSync({ stdin: { contents: fixture, loader: 'jsx', resolveDir: join(root, 'apps/web') }, bundle: true,
+    const built = buildSync({ stdin: { contents: fixture, loader: 'tsx', resolveDir: join(root, 'apps/web') }, bundle: true,
       platform: 'node', format: 'cjs', write: false, jsx: 'automatic', loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '"production"' } });
     const module = { exports: {} }; Function('require', 'module', 'exports', built.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
     presentation = module.exports.render;

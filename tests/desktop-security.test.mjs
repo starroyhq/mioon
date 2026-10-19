@@ -102,7 +102,7 @@ test('window blocks webviews, popups, subframes and navigations', () => {
 });
 
 test('package configuration disables runtime injection and cannot publish by default', async () => {
-  const require = createRequire(import.meta.url), config = require('../apps/desktop/electron-builder.cjs');
+  const require = createRequire(import.meta.url), config = require('../apps/desktop/builder-config.ts').builderConfig('production');
   assert.equal(config.asar, true); assert.equal(config.publish, null);
   assert.ok(config.files.includes('!node_modules/**/*'));
   assert.equal(config.electronFuses.runAsNode, false);

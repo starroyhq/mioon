@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import builderConfig from '../apps/desktop/builder-config.cjs';
+import builderConfig from '../apps/desktop/builder-config.ts';
 import { secureWebPreferences } from '../apps/desktop/src/security.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));

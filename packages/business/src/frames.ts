@@ -215,14 +215,14 @@ export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode
      if(value.row.state!=='running'||!value.row.started)fail('FRAME_STATE_CONFLICT');return value;
     });original=started;fault('after_start_fence',{taskId:started.row.id});
    };
-   const started=original as FrameTaskView;
-   const result=await decode({root,asset:before.asset,file:verified.file,info:verified.info as unknown as Record<string,unknown>,requestedFrame:started.input.sourceFrame,signal,beforeSpawn});
-   sourceFence(started,verified.info);if(started.row.state!=='running'||!started.row.started||!registeredSignal)invalid();
+   const queuedTask=original as FrameTaskView;
+   const result=await decode({root,asset:before.asset,file:verified.file,info:verified.info as unknown as Record<string,unknown>,requestedFrame:queuedTask.input.sourceFrame,signal,beforeSpawn});
+   const runningTask=original as FrameTaskView;
+   sourceFence(runningTask,verified.info);if(runningTask.row.state!=='running'||!runningTask.row.started||!registeredSignal)invalid();
    const receipt=await storage.stage(stageTask(original),result,()=>{sourceFence(original as FrameTaskView,verified.info);},{signal});fault('after_result_manifest',{taskId:original.row.id});
    original=tx(()=>{sourceFence(original as FrameTaskView,verified.info);return change(original as FrameTaskView,{state:'persisting',stagedReceipt:canonical(receipt),errorCode:null});});fault('after_result_receipt',{taskId:original.row.id});
    await finalize(original,verified.info);
   }catch(cause){
-   console.error('FRAME_EXEC_FAIL',cause);
    if(original)try{
     const checked=current(original,{allowStopped:true});if(!['queued','running','persisting'].includes(checked.row.state))return;
     let receipt=checked.receipt;try{receipt??=storage.readReceipt(stageTask(checked));}catch{/* malformed retained receipt is a local result error */}
@@ -232,7 +232,7 @@ export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode
      else if(stopped||signal.aborted||property(cause,'terminationUnconfirmed')||(typeof causeCode==='string'&&['MEDIA_CANCELLED','FRAME_INTERRUPTED','FRAME_SERVICE_STOPPED'].includes(causeCode)))change(checked,{state:'interrupted',errorCode:'FRAME_INTERRUPTED'},{allowStopped:true});
      else change(checked,{state:'failed',errorCode:typeof causeCode==='string'&&Object.hasOwn(messages,causeCode)?causeCode:causeCode==='MANAGED_SOURCE_CHANGED'?'FRAME_SOURCE_CHANGED':'FRAME_STORAGE_FAILED'},{allowStopped:true});
     });
-   }catch(cause2){console.error('FRAME_EXEC_RECORD_FAIL',cause2);diagnose();}
+   }catch{diagnose();}
   }finally{
    // A decoder error is not evidence of child close. This exact registered
    // attempt owns the resource slot until every owned handle emits close.

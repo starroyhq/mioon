@@ -18,7 +18,7 @@ import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.t
 // and animation-frame boundaries. These tests intentionally do not claim DOM
 // or browser playback coverage; browser acceptance covers the integrated UI.
 const componentCode = new Map(['workspace-visibility.tsx', 'Nodes.tsx', 'Preview.tsx', 'Inspector.tsx'].map(file => [file,
-  transformSync(readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs', sourcefile: file }).code,
+  transformSync(readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs', sourcefile: file }).code,
 ]));
 const noop = () => {};
 function makeElement(src = null) {

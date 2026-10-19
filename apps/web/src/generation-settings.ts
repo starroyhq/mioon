@@ -71,7 +71,8 @@ export function providerModels(provider: GenerationProvider | null | undefined):
   return (provider?.models || []).map(model => typeof model === 'string' ? { id: model, name: model } : { ...model, id: model.id || model.name });
 }
 
-export interface GenerationInputRoleRule { implemented?: boolean; min?: unknown; max?: unknown; mimeTypes?: unknown; maxBytes?: unknown; [key: string]: unknown }
+export interface GenerationInputDimensions { min?: unknown; max?: unknown; matchAspectRatio?: unknown; minAspectRatio?: unknown; maxAspectRatio?: unknown; [key: string]: unknown }
+export interface GenerationInputRoleRule { implemented?: boolean; min?: unknown; max?: unknown; mimeTypes?: unknown; maxBytes?: unknown; maxDataUriBytes?: unknown; dimensions?: GenerationInputDimensions | null; [key: string]: unknown }
 export interface GenerationInputProfile {
   providerId?: unknown;
   model?: unknown;
@@ -80,6 +81,8 @@ export interface GenerationInputProfile {
   profileId?: unknown;
   apiFamily?: unknown;
   inputs?: { roles?: Record<string, GenerationInputRoleRule>; combinations?: readonly (readonly string[])[]; minReferences?: unknown; maxReferences?: unknown; [key: string]: unknown };
+  reviewedOn?: string;
+  lifecycle?: { checkedOn?: unknown; earliestShutdownDate?: unknown; source?: unknown; [key: string]: unknown } | null;
   [key: string]: unknown;
 }
 export interface GenerationInputEvaluation { profileId?: string; evaluatedAsOf?: string; issues?: readonly GenerationIssue[]; warnings?: readonly GenerationIssue[]; ok?: boolean; [key: string]: unknown }

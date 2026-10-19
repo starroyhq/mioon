@@ -48,7 +48,7 @@ function view(kind) {
     function DirectComponent(props) { let tree; function Probe() { tree = Component(props); return null; } renderToStaticMarkup(<Probe />); return tree; }
     export { DirectComponent as Component, React, Button, renderToStaticMarkup };
     export const render = props => renderToStaticMarkup(<Component {...props} />);`;
-  const result = buildSync({ stdin: { contents: fixture, loader: 'jsx', resolveDir: path.join(root, 'apps/web') },
+  const result = buildSync({ stdin: { contents: fixture, loader: 'tsx', resolveDir: path.join(root, 'apps/web') },
     bundle: true, platform: 'node', format: 'cjs', write: false, jsx: 'automatic',
     define: { 'process.env.NODE_ENV': '"production"' } });
   const module = { exports: {} };
@@ -156,7 +156,7 @@ function appElement(env) {
   const actual = view('extracted');
   if (!projectElement) {
     const code = transformSync(`function project({ online, busy, inspectorDirty, formatDirty, annotations = { state: null }, lastSync, preferenceStatus, preferencesRef, currentProject, reloadPreferences }) { return ${callsite}; }`,
-      { loader: 'jsx', jsx: 'transform' }).code;
+      { loader: 'tsx', jsx: 'transform' }).code;
     projectElement = compile(code, 'project', { React: actual.React, TopbarSaveStatus: actual.Component });
   }
   return projectElement(env);

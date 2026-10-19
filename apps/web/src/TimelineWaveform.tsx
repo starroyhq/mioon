@@ -8,8 +8,8 @@ export interface WaveformControlsState {
   entries: ReadonlyMap<string, WaveformEntry>;
   windows: readonly WaveformWindow[];
   enabled: boolean;
-  readOnly: boolean;
-  autoLimitReached: boolean;
+  readOnly?: boolean;
+  autoLimitReached?: boolean;
   retryable: boolean;
   setEnabled(value: boolean): void;
   retry(): void;

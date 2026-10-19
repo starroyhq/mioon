@@ -60,10 +60,10 @@ before(() => {
   }`;
   const script = `import {build} from 'esbuild';
     globalThis.fetch = () => { throw Error('Delivery presentation must never fetch'); };
-    const {outputFiles} = await build({stdin: {contents: ${JSON.stringify(fixture)}, loader: 'jsx', resolveDir: ${JSON.stringify(path.join(root, 'apps/web'))}}, bundle: true, format: 'esm', platform: 'browser', write: false, jsx: 'automatic', define: {'process.env.NODE_ENV': '"production"'}, plugins: [{name:'capture-file-action-props', setup(build) {
+    const {outputFiles} = await build({stdin: {contents: ${JSON.stringify(fixture)}, loader: 'tsx', resolveDir: ${JSON.stringify(path.join(root, 'apps/web'))}}, bundle: true, format: 'esm', platform: 'browser', write: false, jsx: 'automatic', define: {'process.env.NODE_ENV': '"production"'}, plugins: [{name:'capture-file-action-props', setup(build) {
       build.onResolve({filter:/^test:actual-export-file-actions$/}, () => ({path:${JSON.stringify(path.join(root, 'apps/web/src/ExportFileActions.tsx'))}}));
       build.onResolve({filter:/ExportFileActions\\.tsx$/}, () => ({path:'capture', namespace:'file-action-capture'}));
-      build.onLoad({filter:/.*/, namespace:'file-action-capture'}, () => ({contents:${JSON.stringify(capture)}, loader:'jsx', resolveDir:${JSON.stringify(path.join(root, 'apps/web'))}}));
+      build.onLoad({filter:/.*/, namespace:'file-action-capture'}, () => ({contents:${JSON.stringify(capture)}, loader:'tsx', resolveDir:${JSON.stringify(path.join(root, 'apps/web'))}}));
     }}]});
     const result = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].text).toString('base64'));
     process.stdout.write(JSON.stringify(result.result)); process.exit(0);`;

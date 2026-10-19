@@ -13,6 +13,7 @@ import { WorkspaceVisibilityProvider } from './workspace-visibility.tsx';
 import { Media } from './Nodes.tsx';
 import { assetKind, dragAsset } from './Timeline.tsx';
 import AssetDispositionControls, { useDispositionInteraction } from './AssetDispositionControls.tsx';
+import type { DispositionController, DispositionState } from './AssetDispositionControls.tsx';
 import { dispositionCounts, dispositionFilters, filterLibraryAssets } from './asset-disposition-state.ts';
 import AssetTimelineUsage, { AssetTimelineUsageFilters, useAssetTimelineUsageFilter } from './AssetTimelineUsage.tsx';
 import type { UsageSnapshot } from './timeline-asset-usage.ts';
@@ -23,19 +24,14 @@ import './asset-annotations.css';
 import AssetLibraryToolbar, { useAssetLibraryLayout } from './AssetLibraryToolbar.tsx';
 import './asset-library-redesign.css';
 import { annotationMatches, annotationTags, annotationRow } from './asset-annotation-state.ts';
+import type { AnnotationState } from './asset-annotation-state.ts';
+import type { TimelineAssetUse } from './timeline-asset-usage.ts';
+import type { SubjectsBundle } from './SubjectLibrary.tsx';
 
 type SelectChange = {target: {value: string}};
-interface DispositionStateLike {
-  scope: string | null;
-  entries?: Record<string, {phase?: string} | undefined>;
-  loading: boolean;
-  savingAssetId?: string | null;
-  mutationError?: DisplayMessage | null;
-  uncertain?: boolean;
-}
-interface DispositionControllerLike {read(): unknown}
-interface Dispositions {state: DispositionStateLike | null; controller: DispositionControllerLike}
-interface Annotations {state: {scope?: unknown; ownerScope?: unknown} | null}
+interface LibraryDispositionState extends DispositionState {loading?: boolean; mutationError?: DisplayMessage | null; uncertain?: boolean}
+interface Dispositions {state: LibraryDispositionState | null; controller: DispositionController & {read(): unknown}}
+interface Annotations {state: AnnotationState | null}
 type FilterChip = {key: string; label: string; remove: () => void};
 const filterKeys = [['all', 'assets.all'], ['image', 'assets.image'], ['video', 'assets.video'], ['audio', 'assets.audio']] as const;
 // Asset disposition labels are already-localized descriptors from the typed state module.
@@ -60,15 +56,15 @@ export interface AssetLibraryProps {
   versions?: AppVersion[];
   shots?: AppShot[];
   dispositions?: Dispositions;
-  dispositionBlocked?: unknown;
+  dispositionBlocked?: boolean;
   selectedAsset?: AppAsset | null;
   inUseAssetIds?: ReadonlySet<string>;
   onShowTasks?: (() => void) | undefined;
-  subjects?: unknown;
-  subjectBlocked?: unknown;
+  subjects?: SubjectsBundle | null;
+  subjectBlocked?: boolean;
   onInspectShot?: ((shotId: string) => void) | undefined;
   timelineUsage?: UsageSnapshot;
-  onLocateTimelineUse?: unknown;
+  onLocateTimelineUse?: ((use: TimelineAssetUse, isStillCurrent: () => boolean) => void) | undefined;
   annotations?: Annotations;
   annotationBlocked?: unknown;
   restored?: unknown;
@@ -94,8 +90,10 @@ export default function AssetLibrary({ mutationDisabled = false, assets, filter,
   const libraryFilters = { type: filter, search, disposition: dispositionFilter, state };
   const usageFilter = useAssetTimelineUsageFilter({ ...usageProps, assets: filterLibraryAssets(assets.filter(asset => asset.projectId === project?.id && annotationMatches(annotations?.state, asset.id, tagFilter)), libraryFilters) });
   const resetFilters = () => interaction.admit(() => { setLocalFilter({ scope: state?.scope, value: 'all' }); usageFilter.reset(); setTagChoice({ scope: annotations?.state?.ownerScope, value: '' }); onFilter('all'); onSearch(''); });
-  const visible = usageFilter.visibleAssets;
-  const visibleIds = new Set<string>(visible.map((asset: {id: string}) => asset.id)), counts = dispositionCounts(state, assets);
+  // The usage filter is generic over the asset identity; the filtered array is the
+  // caller's own AppAsset records.
+  const visible = usageFilter.visibleAssets as readonly AppAsset[];
+  const visibleIds = new Set<string>(visible.map((asset: {id: string}) => asset.id)), counts = dispositionCounts(state, assets) as unknown as Readonly<Record<string, number>>;
   const failed = assets.filter(asset => state?.entries?.[asset.id]?.phase === 'error').length;
   const hiddenUsed = assets.filter(asset => inUseAssetIds.has(asset.id) && !visibleIds.has(asset.id)).length;
   const outsideSelected = selectedAsset && selectedAsset.projectId === project?.id && !visibleIds.has(selectedAsset.id) ? selectedAsset : null;
@@ -138,12 +136,12 @@ export default function AssetLibrary({ mutationDisabled = false, assets, filter,
             {state?.uncertain && <Button variant="ghost" className="text-button" type="button" onClick={() => interaction.admit(() => onShowTasks?.())}>{t('assets.viewPending')}</Button>}
             {hiddenUsed > 0 && <p data-testid="asset-filter-hidden-used">{t('assets.hiddenUsed', { count: hiddenUsed })}</p>}
           </div>}
-          {outsideSelected && <section className="asset-disposition-selected" data-testid="asset-filter-selected-outside" aria-label={t('assets.selectedHidden')}><strong title={outsideSelected.name}>{outsideSelected.name}</strong><p>{t('assets.selectedHiddenHint')}</p><Button variant="ghost" className="text-button" type="button" data-testid="asset-filter-show-selected" onClick={resetFilters}>{t('assets.showAllKeepSelection')}</Button><AssetDispositionControls asset={outsideSelected} state={state} controller={controller} blocked={dispositionBlocked} prefix="selected-asset" /></section>}
+          {outsideSelected && <section className="asset-disposition-selected" data-testid="asset-filter-selected-outside" aria-label={t('assets.selectedHidden')}><strong title={outsideSelected.name}>{outsideSelected.name}</strong><p>{t('assets.selectedHiddenHint')}</p><Button variant="ghost" className="text-button" type="button" data-testid="asset-filter-show-selected" onClick={resetFilters}>{t('assets.showAllKeepSelection')}</Button><AssetDispositionControls asset={outsideSelected} state={state!} controller={controller!} blocked={dispositionBlocked} prefix="selected-asset" /></section>}
           {visible.map((asset: AppAsset) => { const kind = assetKind(asset); const version = versions.find(item => item.assetId === asset.id); const shot = version ? shots.find(item => item.id === version.shotId) : null; return <div className={`asset-card ${kind} ${selectedAsset?.id === asset.id ? 'selected' : ''}`} key={asset.id} data-testid={`asset-card-${asset.id}`} draggable={!mutationDisabled} onPointerDownCapture={(event: PointerEvent<HTMLDivElement>) => { event.currentTarget.draggable = !mutationDisabled && !(event.target as Element).closest?.('[data-no-asset-drag]'); }} onPointerUp={(event: PointerEvent<HTMLDivElement>) => { event.currentTarget.draggable = !mutationDisabled; }} onPointerCancel={(event: PointerEvent<HTMLDivElement>) => { event.currentTarget.draggable = !mutationDisabled; }} onDragStart={(e: DragEvent) => { if (mutationDisabled || (e.target as Element).closest?.('[data-no-asset-drag]')) { e.preventDefault(); return; } dragAsset(e, asset.id); }}>
             <Button variant="ghost" className="asset-thumbnail" onClick={() => onPreview(asset)} aria-label={t('assets.previewNamed', { name: asset.name })}><Media asset={asset} /><span className="asset-kind" title={t(`assets.${kind}` as MessageKey)}><Icon name={kind === 'video' ? 'play' : kind === 'audio' ? 'music' : 'image'} size={11} />{kind === 'image' ? t('assets.image') : `${kind === 'audio' ? t('assets.audio') : t('assets.video')} · ${asset.duration ? formatNumber(Number(asset.duration), { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + 's' : '—'}`}</span>{Number(asset.duration) > 0 && <span className="asset-duration">{formatNumber(Number(asset.duration), { maximumFractionDigits: 0 })}s</span>}</Button>
             <div className="asset-card-meta"><div><strong title={asset.name}>{asset.name}</strong><span>{asset.width && asset.height ? `${asset.width} × ${asset.height}` : `${formatNumber(asset.sizeBytes / 1024, { maximumFractionDigits: 0 })} KB`}</span>{version && <span className="asset-generated-badge" data-testid={`generated-badge-${asset.id}`} title={t('assets.generatedVersion', { name: shot?.title || t('assets.generatedShot'), number: version.number })}><Icon name="sparkle" size={10} /><span>{shot?.title || t('assets.generatedShot')} · V{version.number}</span>{shot?.selectedVersionId === version.id && <b>{t('assets.selected')}</b>}</span>}</div></div>
             {annotations && !annotationRow(annotations.state, asset.id) && <p className="annotation-unverified" data-testid={`annotation-unverified-${asset.id}`}>{t('annotations.unknown')}</p>}
-            {dispositions && <AssetDispositionControls asset={asset} state={state} controller={controller} blocked={dispositionBlocked} compact={layout === 'grid'} />}
+            {dispositions && <AssetDispositionControls asset={asset} state={state!} controller={controller!} blocked={dispositionBlocked} compact={layout === 'grid'} />}
             <AssetTimelineUsage {...usageProps} compact={layout === 'grid'} assetId={asset.id} assetName={asset.name} onLocate={onLocateTimelineUse} />
             <div className="asset-card-actions">{onCanvas && <WorkbenchTooltip content={t('assets.addCanvasHint')}><Button variant="ghost" className={!editing ? 'mode-primary-action' : ''} data-testid={`asset-to-canvas-${asset.id}`} aria-label={t('assets.addCanvasNamed', { name: asset.name })} onClick={() => onCanvas(kind, asset)}><Icon name="grid" size={12} />{t('assets.addToCanvas')}</Button></WorkbenchTooltip>}<WorkbenchTooltip content={t('assets.addTimelineHint')}><Button variant="ghost" className={editing ? 'mode-primary-action' : ''} aria-label={t('assets.addTimelineNamed', { name: asset.name })} data-testid={`asset-to-timeline-${asset.id}`} disabled={mutationDisabled || !project || busy.timeline || typeof onTimeline !== 'function'} onClick={() => { if (!mutationDisabled && typeof onTimeline === 'function') onTimeline(asset.id); }}><Icon name="plus" size={12} />{t('assets.addToEditing')}</Button></WorkbenchTooltip></div>
           </div>; })}

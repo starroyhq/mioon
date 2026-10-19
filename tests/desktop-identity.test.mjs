@@ -42,7 +42,8 @@ test('runtime identity is embedded and never selected from packaged state or a l
 });
 
 test('both package configs retain security and separate identities, names and output directories', () => {
-  const prod = require('../apps/desktop/electron-builder.cjs'), dev = require('../apps/desktop/electron-builder.dev.cjs');
+  const builderConfig = require('../apps/desktop/builder-config.ts').builderConfig;
+  const prod = builderConfig('production'), dev = builderConfig('development');
   for (const [config, identity] of [[prod, production], [dev, development]]) {
     assert.equal(config.appId, identity.appId);
     assert.equal(config.productName, identity.productName);
@@ -63,7 +64,7 @@ test('packaging refuses missing or opposite-channel staging, including packaged 
   const { appVersion } = require('../apps/desktop/build-metadata.ts').readBuildMetadata();
   try {
     for (const identity of [production, development]) {
-      const config = require(identity.channel === 'production' ? '../apps/desktop/electron-builder.cjs' : '../apps/desktop/electron-builder.dev.cjs');
+      const config = require('../apps/desktop/builder-config.ts').builderConfig(identity.channel);
       const context = { packager: { info: { appDir: root } } };
       await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'mioon-desktop', version: appVersion,
         main: 'main.cjs', private: true, desktopName: `${identity.appId}.desktop`, dependencies: {}, mioonDesktop: identity }));
@@ -82,7 +83,7 @@ test('package commands explicitly rebuild the correct channel before electron-bu
     const build = 'node ../../scripts/tooling.ts build';
     const targetFlags = target === 'dir' ? '--linux --dir' : `--${target}`;
     for (const [suffix, channel, config] of [['', 'production', 'electron-builder.cjs'], [':dev', 'development', 'electron-builder.dev.cjs']]) {
-      assert.equal(pkg.scripts[`package:${target}${suffix}`], `${build} --channel=${channel} && electron-builder --config ${config} ${targetFlags} --publish never`);
+      assert.equal(pkg.scripts[`package:${target}${suffix}`], `${build} --channel=${channel} && electron-builder --config .generated/${config} ${targetFlags} --publish never`);
     }
   }
 });

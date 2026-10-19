@@ -16,7 +16,7 @@ function entry(candidate) {
   let rendered, calls = 0, token;
   const rpc = async () => {throw Error('Entry must not issue RPC while rendering.');};
   const react = {createElement: element, StrictMode: 'StrictMode'};
-  const code = transformSync(source, {loader: 'jsx', format: 'cjs', define: {__MIOON_INTERNAL_OPACITY_CANDIDATE__: String(candidate)}}).code;
+  const code = transformSync(source, {loader: 'tsx', format: 'cjs', define: {__MIOON_INTERNAL_OPACITY_CANDIDATE__: String(candidate)}}).code;
   const module = {exports: {}};
   Function('require', 'module', 'exports', 'document', 'navigator', code)(name => {
     if (name === 'react') return {...react, default: react};

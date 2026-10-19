@@ -121,7 +121,7 @@ test('wired ProviderSettings renders accessible compact summaries and all role d
   `;
   const script = `
     import { build } from 'esbuild';
-    const { outputFiles } = await build({ stdin: { contents: ${JSON.stringify(fixtureSource)}, loader: 'jsx', resolveDir: ${JSON.stringify(resolve(root, 'apps/web/src'))} }, bundle: true, format: 'esm', platform: 'browser', write: false, loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '\"production\"' }, logLevel: 'silent' });
+    const { outputFiles } = await build({ stdin: { contents: ${JSON.stringify(fixtureSource)}, loader: 'tsx', resolveDir: ${JSON.stringify(resolve(root, 'apps/web/src'))} }, bundle: true, format: 'esm', platform: 'browser', write: false, loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '\"production\"' }, logLevel: 'silent' });
     const { markup } = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].text).toString('base64'));
     process.stdout.write(JSON.stringify(markup)); process.exit(0);
   `;
@@ -161,7 +161,7 @@ test('wired ProviderSettings renders accessible compact summaries and all role d
 // Focused callback/effect checks; these are not a browser-layout claim.
 function disclosureHarness() {
   const source = readFileSync(resolve(root, 'apps/web/src/GenerationInputSummary.tsx'), 'utf8');
-  const code = transformSync(source, { loader: 'jsx', format: 'cjs' }).code;
+  const code = transformSync(source, { loader: 'tsx', format: 'cjs' }).code;
   const slots = []; let cursor = 0, layouts = [], tree;
   const equal = (a, b) => a?.length === b?.length && a.every((value, i) => Object.is(value, b[i]));
   const h = { visible: true };

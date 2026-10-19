@@ -24,7 +24,7 @@ test('provider readiness uses compact, safe, collapsed Base UI controls for ever
   const script = `
     import { build } from 'esbuild';
     const { outputFiles } = await build({
-      stdin: { contents: ${JSON.stringify(fixture)}, loader: 'jsx', resolveDir: ${JSON.stringify(resolve(root, 'apps/web/src'))} },
+      stdin: { contents: ${JSON.stringify(fixture)}, loader: 'tsx', resolveDir: ${JSON.stringify(resolve(root, 'apps/web/src'))} },
       bundle: true, format: 'esm', platform: 'browser', write: false, loader: { '.css': 'empty' },
       define: { 'process.env.NODE_ENV': '\"production\"' }, logLevel: 'silent',
     });

@@ -202,7 +202,7 @@ test('actual controls disclose whole-timeline adoption, source-ungraded status a
 });
 
 test('actual source Preview visibly discloses unprocessed audio and image while rendered timeline output does not', () => {
-  const code = transformSync(readFileSync(new URL('../apps/web/src/Preview.tsx', import.meta.url), 'utf8'), {loader:'jsx', format:'cjs'}).code;
+  const code = transformSync(readFileSync(new URL('../apps/web/src/Preview.tsx', import.meta.url), 'utf8'), {loader:'tsx', format:'cjs'}).code;
   for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) {
     const noop = () => {}, module = {exports:{}};
     // Only render-phase wiring is exercised here; the existing playback and

@@ -45,7 +45,7 @@ before(() => {
       </AgentDockPane>)]));`;
   const script = `import {build} from 'esbuild';
     globalThis.fetch = () => { throw Error('Task presentation may not request data'); };
-    const {outputFiles} = await build({stdin: {contents: ${JSON.stringify(fixture)}, loader: 'jsx', resolveDir: ${JSON.stringify(path.join(root, 'apps/web'))}}, bundle: true, format: 'esm', platform: 'browser', write: false, outfile: 'task-dock-fixture.js', define: {'process.env.NODE_ENV': '"production"'}});
+    const {outputFiles} = await build({stdin: {contents: ${JSON.stringify(fixture)}, loader: 'tsx', resolveDir: ${JSON.stringify(path.join(root, 'apps/web'))}}, bundle: true, format: 'esm', platform: 'browser', write: false, outfile: 'task-dock-fixture.js', define: {'process.env.NODE_ENV': '"production"'}});
     const javascript = outputFiles.find(file => file.path.endsWith('.js'));
     if (!javascript) throw Error('Task dock fixture did not emit JavaScript');
     const result = await import('data:text/javascript;base64,' + Buffer.from(javascript.text).toString('base64'));

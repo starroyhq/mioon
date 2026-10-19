@@ -6,7 +6,7 @@ import path from 'node:path';
 import {gzipSync} from 'node:zlib';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import resources from '../apps/desktop/subtitle-resources.cjs';
+import resources from '../apps/desktop/subtitle-resources.ts';
 import {createSubtitleTarVerifier,verifySubtitleResourceTarball} from '../apps/desktop/subtitle-package.ts';
 const base='mioon-0.4.1-linux-x64',prefix=base+'/resources/subtitles',expected=resources.SUBTITLE_RESOURCE_MANIFEST;
 const source=new URL('../packages/business/resources/subtitles/',import.meta.url);

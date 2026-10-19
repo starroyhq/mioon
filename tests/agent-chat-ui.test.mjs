@@ -9,6 +9,7 @@ import * as gainContext from '../apps/web/src/agent-timeline-gain-context.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { stripSourceTypes } from './helpers/eval-source.mjs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
@@ -180,7 +181,7 @@ test('late load, acknowledgement and stop cannot publish into a disposed project
 });
 
 const source = readFileSync(new URL('../apps/web/src/AgentPanel.tsx', import.meta.url), 'utf8');
-const transformed = transformSync(source, { loader: 'jsx', format: 'cjs' }).code;
+const transformed = transformSync(source, { loader: 'tsx', format: 'cjs' }).code;
 const element = (type, props = {}, ...children) => { const properties = { ...props, children: children.length === 1 ? children[0] : children }; return typeof type === 'function' && type.name === 'AgentRunActivity' ? type(properties) : { type, props: properties }; };
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
 const depsEqual = (a, b) => a?.length === b?.length && a.every((value, i) => Object.is(value, b[i]));
@@ -204,7 +205,7 @@ function uiHarness(client, receipts = memoryReceipts(), languageStore) {
     if (id === './agent-chat.ts') return { ...logic, createAgentChatSession: options => componentSession = logic.createAgentChatSession({ ...options, client, receipts, requestId: () => requestId }) };
     if (id === './agent-tool-state.ts') return toolLogic;
     if (id === './AgentEditProposal.tsx') return { __esModule: true, default: 'AgentEditProposal' };
-    if (id === './AgentRunActivity.tsx') { const child = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/AgentRunActivity.tsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code)(child, child.exports, resolve); return child.exports; }
+    if (id === './AgentRunActivity.tsx') { const child = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/AgentRunActivity.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(child, child.exports, resolve); return child.exports; }
     if (id === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => visible };
     if (id === './icons.tsx') return { default: 'Icon' };
     if (id === './agent-chat-history.css') return {};
@@ -251,7 +252,7 @@ test('actual project change makes all previous close, submit, edit and terminal 
 test('integration preserves settings entry, the shared right dock, bounded history and app-local controls', () => {
   const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   assert.match(app + readFileSync(new URL('../apps/web/src/WorkbenchShell.tsx', import.meta.url), 'utf8'), /data-testid="agent-chat-open"/); assert.match(app, /data-testid="agent-settings-open"/); assert.match(app, /<AgentWorkspace[^>]*nativeSettingsScope={nativeSettingsScope} nativeCloseRegistry={nativeCloseRegistry\.current} navigationRegistry={settingsNavigation\.current} projectId={data.project\?\.id}/);
-  assert.match(source, /from '\.\/WorkspaceControls\.jsx'/); assert.match(source, /data-testid="agent-chat-authorization-dialog"/);
+  assert.match(source, /from '\.\/WorkspaceControls\.tsx'/); assert.match(source, /data-testid="agent-chat-authorization-dialog"/);
   assert.match(source, /inspecting \? t\('agent.chat.inspectionScope'\)/);
   const displayCopy = source + Object.entries(creationUiMessages).filter(([key]) => source.includes(`'${key}'`)).map(([, value]) => JSON.stringify(value['zh-Hans'])).join('\n');
   for (const copy of ['新消息范围：当前项目只读检查', '新消息范围：仅文字聊天', '不会发送', '保存在本地应用数据库', '并非密钥保险库加密', '请勿输入密钥或其他秘密']) assert.ok(displayCopy.includes(copy), copy);
@@ -456,7 +457,7 @@ function projectNavigation({ draft = true, imageDraft = false, dirty = false, co
   const context = () => ({ projectId: currentProject.current, epoch: navigationEpoch.current, workspace: workspaceRef.current });
   const guardEnv = { message, msg: message, ...createI18nTestContext(), nativeWindow: null, localDeliveryRef: { current: null }, shotTextRef: { current: null }, clipDraftRef: { current: null }, deliveryNameRef: { current: null }, subtitlesRef: { current: { controller: { getState: () => null, hasUnsaved: () => false, discardDraft: () => calls.push(['discardSubtitles']) } } }, setSubtitleDirty: value => calls.push(['subtitleDirty', value]), context, dirtyRef, timelineFormatRef: { current: { controller: { getState: () => formatState, hasUnsaved: () => false, discardDraft: () => calls.push(['discardFormat']) } } }, confirm: async message => { calls.push(['confirm', message]); return confirmation; }, isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === navigationEpoch.current && workspaceOriginScope(captured.workspace) === workspaceOriginScope(workspaceRef.current),
     setShotDirty: value => calls.push(['shotDirty', value]), setClipDirty: value => calls.push(['clipDirty', value]), setSourceDirty: value => calls.push(['sourceDirty', value]), setSubjectDirty: value => calls.push(['subjectDirty', value]), subjectsRef: { current: { state: { scope: 'fixture-subject-scope' }, controller: { discardDrafts: scope => calls.push(['discardSubjects', scope]) } } }, setInspectorEpoch: () => calls.push(['inspectorEpoch']) };
-  const { guardNavigation, guardProjectNavigation } = Function(...Object.keys(guardEnv), `${guardSource}\n${projectGuardSource}\nreturn { guardNavigation, guardProjectNavigation };`)(...Object.values(guardEnv));
+  const { guardNavigation, guardProjectNavigation } = Function(...Object.keys(guardEnv), `${stripSourceTypes(guardSource,{loader:'tsx'})}\n${stripSourceTypes(projectGuardSource,{loader:'tsx'})}\nreturn { guardNavigation, guardProjectNavigation };`)(...Object.values(guardEnv));
   const restored = { activeMode: 'canvas', canvas: { selectedId: null, viewport: { zoom: 1 } } };
   const env = { message, msg: message, ...createI18nTestContext(), application: null, nativeWindow: null, nativeProjectEntry: null, workspaceRef, workspaceOriginScope, projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind,
     context, isCurrent: guardEnv.isCurrent, confirm: guardEnv.confirm, notify: (...args) => calls.push(['notify', ...args]), readableError: error => error.message,
@@ -464,9 +465,9 @@ function projectNavigation({ draft = true, imageDraft = false, dirty = false, co
     loading: false, importSession: { current: { active: true, selection: 0 } }, lastProjectRef: { current: { invalidateNavigation: () => {}, rememberOpened: () => {} } }, tasksRef: { current: { getState: () => ({ phase: 'idle', items: [] }), load: async id => { calls.push(['loadTasks', id]); } } }, currentProject, agentDraft: { current: draft }, imageDraft: { current: imageDraft }, guardNavigation, guardProjectNavigation, navigationEpoch, projectEpoch, requestCounter: { current: 0 }, preferencesRef: { current: { flush: () => calls.push(['flush']), load: async id => { calls.push(['load', id]); return restored; }, getStatus: () => ({ phase: 'ready' }) } }, viewReady: { current: true }, dataRef: { current: { project: { id: navigationProjectId } } }, emptyData: {}, pendingForProject: () => [], dragging: { current: false }, viewRef: { current: restored }, updateView: () => {}, URL,
     window: { location: { href: 'https://workbench.example.com/' }, history: { pushState: () => calls.push(['history']), replaceState: () => calls.push(['history']) } }, localStorage: { setItem: () => {} }, ...Object.fromEntries(['setProjectOpening', 'setHomePage', 'setAuth', 'setPropertiesPage', 'setTaskState', 'setPreferenceStatus', 'setPending', 'setShowProjects', 'setData', 'setNodes', 'setLoading', 'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setRightDockTab', 'setShowExports', 'setPanelOverlay', 'setShowTasks', 'setShowDelivery', 'setShowImage', 'setShowProjectChooser', 'setComparisonId', 'setPreviewAsset', 'setRealConfirm', 'setToast', 'setMobilePanel', 'setView', 'setZoom'].map(name => [name, value => calls.push([name, value])])) };
   env.refresh = async (id, _quiet, options) => { assert.equal(options?.opening, true); env.dataRef.current = { project: { id }, shots: [], nodes: [] }; return env.dataRef.current; };
-  env.prepareSettingsDeparture = () => Function(...Object.keys(env), `${settingsDepartureSource}\nreturn prepareSettingsDeparture();`)(...Object.values(env));
-  env.projectSessionReady = () => Function(...Object.keys(env), `${sessionReadySource}\nreturn projectSessionReady();`)(...Object.values(env));
-  const selectProject = Function(...Object.keys(env), `return (${projectSource});`)(...Object.values(env));
+  env.prepareSettingsDeparture = () => Function(...Object.keys(env), `${stripSourceTypes(settingsDepartureSource,{loader:'tsx'})}\nreturn prepareSettingsDeparture();`)(...Object.values(env));
+  env.projectSessionReady = () => Function(...Object.keys(env), `${stripSourceTypes(sessionReadySource,{loader:'tsx'})}\nreturn projectSessionReady();`)(...Object.values(env));
+  const selectProject = Function(...Object.keys(env), `return (${stripSourceTypes(projectSource,{loader:'tsx'})});`)(...Object.values(env));
   return { selectProject, guardNavigation, calls, currentProject, navigationEpoch, env };
 }
 
@@ -522,7 +523,7 @@ function workspaceHarness(exportName = 'default') {
   const slots = []; let cursor = 0, effects = [], visible = true;
   const react = { createElement: (type, props, ...children) => type === 'SettingsNavigationSlot' ? children[0](() => {}) : element(type, props, ...children), useRef: value => slots[cursor++] ||= { current: value }, useLayoutEffect(callback, deps) { const i = cursor++, old = slots[i]; if (old && depsEqual(deps, old.deps)) return; slots[i] = { deps, callback }; effects.push(i); } }; react.default = react;
   const module = { exports: {} };
-  Function('module', 'exports', 'require', transformSync(workspaceSource, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, id => creationTestDependency(id) || (id === 'react' ? react : id === './AgentPanel.tsx' ? { __esModule: true, default: 'AgentPanel' } : id === './AgentSettings.tsx' ? { __esModule: true, default: 'AgentSettings' } : id === './SettingsNavigationSlot.tsx' ? { __esModule: true, default: 'SettingsNavigationSlot' } : { useWorkspaceVisibility: () => visible, WorkspaceVisibilityProvider: 'VisibilityProvider' }));
+  Function('module', 'exports', 'require', transformSync(workspaceSource, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, id => creationTestDependency(id) || (id === 'react' ? react : id === './AgentPanel.tsx' ? { __esModule: true, default: 'AgentPanel' } : id === './AgentSettings.tsx' ? { __esModule: true, default: 'AgentSettings' } : id === './SettingsNavigationSlot.tsx' ? { __esModule: true, default: 'SettingsNavigationSlot' } : { useWorkspaceVisibility: () => visible, WorkspaceVisibilityProvider: 'VisibilityProvider' }));
   return { render(props) { cursor = 0; effects = []; const tree = module.exports[exportName](props); for (const i of effects) slots[i].callback(); return tree; }, setAncestorVisible(value) { visible = value; } };
 }
 
@@ -546,7 +547,7 @@ test('actual nested dock page combines ancestor visibility, keeps children and m
 });
 
 test('App right-dock tabs preserve existing layout, resize and Inspector subtree and ordinary selection never changes tabs', () => {
-  assert.match(appSource, /rightDockTab, setRightDockTabState\] = useState\('properties'\)/); assert.match(appSource, /const setRightDockTab = value => \{ if \(!clipDraftRef\.current\?\.hasPendingComposition\(\)\) setRightDockTabState\(value\); \}/);
+  assert.match(appSource, /rightDockTab, setRightDockTabState\] = useState\('properties'\)/); assert.match(appSource, /const setRightDockTab = \(value: string\) => \{ if \(!clipDraftRef\.current\?\.hasPendingComposition\(\)\) setRightDockTabState\(value\); \}/);
   for (const id of ['right-dock-tab-properties', 'right-dock-tab-agent', 'right-dock-tab-image']) assert.ok((appSource + readFileSync(new URL('../apps/web/src/WorkbenchShell.tsx', import.meta.url), 'utf8') + readFileSync(new URL('../apps/web/src/CanvasToolbar.tsx', import.meta.url), 'utf8')).includes(`data-testid="${id}"`));
   assert.match(appSource, /<AgentDockPane id="right-dock-properties"[^>]+visible={rightDockTab === 'properties'}/);
   assert.match(appSource, /<AgentDockPane id="right-dock-agent"[^>]+visible={rightDockTab === 'agent'}/);

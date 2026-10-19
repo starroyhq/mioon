@@ -26,7 +26,7 @@ const savedTimeline = (clip, revision = 1) => ({ id: id(2), projectId: id(1), re
 const nodes = tree => !tree || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(nodes) : [tree, ...nodes(tree.props?.children)];
 const text = tree => Array.isArray(tree) ? tree.map(text).join('') : tree && typeof tree === 'object' ? text(tree.props?.children) : tree == null || typeof tree === 'boolean' ? '' : String(tree);
 const tick = () => new Promise(resolve => setImmediate(resolve));
-const inspectorCode = transformSync(readFileSync(new URL('../apps/web/src/TimelineInspector.tsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code;
+const inspectorCode = transformSync(readFileSync(new URL('../apps/web/src/TimelineInspector.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
 
 /** Actual Inspector and controller, with inert visual children and a bounded
  * synthetic HTTP CAS transport. No server, browser, provider or media is run. */

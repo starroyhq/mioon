@@ -59,7 +59,7 @@ test('Mac instructions use the real serialized Web-desktop build and existing st
   assert.equal(desktop.scripts.start, 'electron build');
   for (const [name, channel, config] of [['package:mac', 'production', 'electron-builder.cjs'],
     ['package:mac:dev', 'development', 'electron-builder.dev.cjs']]) {
-    assert.equal(desktop.scripts[name], `node ../../scripts/tooling.ts build --channel=${channel} && electron-builder --config ${config} --mac --publish never`);
+    assert.equal(desktop.scripts[name], `node ../../scripts/tooling.ts build --channel=${channel} && electron-builder --config .generated/${config} --mac --publish never`);
     assert.ok(desktopDoc.includes(name));
   }
   assert.equal(nativeReadiness('darwin', 'arm64').ready, false);

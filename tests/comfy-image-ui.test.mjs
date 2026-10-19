@@ -143,7 +143,7 @@ test('observation duplicate, hide and disposal preserve exact durable key withou
 
 test('Comfy UI exposes separate prepare/observe/full graph, shared controls and truthful resource disclosures', () => {
   const read = name => readFileSync(new URL(`../apps/web/src/${name}`, import.meta.url), 'utf8');
-  for (const name of ['ImageGeneration.tsx', 'ComfyImageSettings.tsx', 'ComfyImageDetails.tsx']) assert.doesNotThrow(() => transformSync(read(name), { loader: 'jsx', format: 'esm' }));
+  for (const name of ['ImageGeneration.tsx', 'ComfyImageSettings.tsx', 'ComfyImageDetails.tsx']) assert.doesNotThrow(() => transformSync(read(name), { loader: 'tsx', format: 'esm' }));
   const compose = read('ImageGeneration.tsx'), details = read('ComfyImageDetails.tsx'), settings = read('ComfyImageSettings.tsx');
   for (const text of ['image-provider-comfy', 'prepareComfy()', 'image-observe-remote', 'observeRemote(task)', 'image-recover-result', 'recoverResult', 'ComfyImageReviewDetails', '批准此冻结工作流并运行']) assert.ok((/[\u3400-\u9fff]/.test(text) ? localizedSource(compose) : compose).includes(text), text);
   for (const text of ['execution.seed', 'execution.graphHash', 'JSON.stringify(execution.graph', 'contentVerified', 'remote?.state', 'GPU 工作可能继续', '不保证免费、可信或完全离线']) assert.ok((/[\u3400-\u9fff]/.test(text) ? localizedSource(details) : details).includes(text), text);
@@ -170,7 +170,7 @@ function componentHarness(filename, resolve, props) {
       return settingsModule.exports;
     }
     if (name === './native-close-sources.ts') return nativeCloseSources; if (name === 'react') return react; if (name === './settings-navigation-state.ts') return navigation; if (name === './SettingsNavigationSlot.tsx') return { __esModule: true, default: 'SettingsNavigationSlot' }; if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => ancestor }; if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return primitive; if (name === './icons.tsx') return { default: 'Icon' }; if (name.endsWith('.css')) return {}; return resolve(name); };
-  Function('module', 'exports', 'require', transformSync(readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, require);
+  Function('module', 'exports', 'require', transformSync(readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, require);
   const ui = { render(patch = {}) { currentProps = { ...currentProps, ...patch }; index = 0; effects = []; tree = module.exports.default(currentProps); for (const slot of effects) { slots[slot].cleanup?.(); slots[slot].cleanup = slots[slot].fn(); } return tree; }, find(id) { return nodes(tree).find(node => node.props['data-testid'] === id); }, form() { return nodes(tree).find(node => node.type === 'form'); }, hide(value) { ancestor = !value; return ui.render(); }, change(id, value) { ui.find(id).props.onChange({ target: { value, checked: value } }); ui.render(); }, click(id) { ui.find(id).props.onClick(); ui.render(); }, setLocale(value) { locale = value; return ui.render(); }, unmount() { for (const slot of slots) slot.cleanup?.(); } }; return ui;
 }
 
@@ -187,7 +187,7 @@ test('actual Comfy settings controls use shared components and stale project/hid
 
 test('actual Comfy review shows exact graph, seed, independent status and no OpenAI option claims', () => {
   const source = readFileSync(new URL('../apps/web/src/ComfyImageDetails.tsx', import.meta.url), 'utf8'); const module = { exports: {} }, react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }) }; react.default = react;
-  Function('module', 'exports', 'require', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, name => { if (name === './i18n/I18nProvider.tsx') return { useI18n: () => localeDisplay() }; if (name === '../../../packages/i18n/src/index.ts') return i18n; if (name === './creation-i18n.ts') return creationI18n; assert.equal(name, 'react'); return react; });
+  Function('module', 'exports', 'require', transformSync(source, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, name => { if (name === './i18n/I18nProvider.tsx') return { useI18n: () => localeDisplay() }; if (name === '../../../packages/i18n/src/index.ts') return i18n; if (name === './creation-i18n.ts') return creationI18n; assert.equal(name, 'react'); return react; });
   const saved = review(), tree = module.exports.ComfyImageReviewDetails({ review: saved }); const graph = nodes(tree).find(n => n.props['data-testid'] === 'image-comfy-review-graph'); assert.deepEqual(JSON.parse(graph.props.children.join('')), saved.execution.graph); assert.match(JSON.stringify(tree), /87654/); assert.doesNotMatch(JSON.stringify(tree), /quality|moderation|1024|low/);
   const status = module.exports.ComfyImageTaskDetails({ task: task(), review: saved, remoteState: remoteResponse({ remote: remote({ state: 'running' }) }) }); const text = JSON.stringify(status); assert.match(text, /已找到相同任务 ID/); assert.match(text, /尚未核验；仅任务 ID/); assert.doesNotMatch(text, /已核验与冻结工作流一致/);
 });

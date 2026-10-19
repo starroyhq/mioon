@@ -393,11 +393,11 @@ function boundaryRenderer() {
     import { ConfirmationProvider } from '@mioon/ui/components/workbench-confirm';
     import { Button } from '@mioon/ui/components/button';
     export { React, renderToStaticMarkup, ProjectHome, ProjectHomeConnections, EditorWindowOpening, SettingsNavigationSlot, LastProjectStatus, WebSettingsCenter, ConfirmationProvider, Button };`;
-  const result = buildSync({ stdin: { contents: fixture, loader: 'jsx', resolveDir: join(root, 'apps/web') }, bundle: true, platform: 'node', format: 'cjs',
+  const result = buildSync({ stdin: { contents: fixture, loader: 'tsx', resolveDir: join(root, 'apps/web') }, bundle: true, platform: 'node', format: 'cjs',
     write: false, jsx: 'automatic', loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '"production"' } });
   const module = { exports: {} }; Function('require', 'module', 'exports', result.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
   const ui = module.exports;
-  const body = transformSync(`function renderBoundary() { ${renderSource} }`, { loader: 'jsx', format: 'cjs', jsx: 'transform' }).code;
+  const body = transformSync(`function renderBoundary() { ${renderSource} }`, { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code;
   presentation = h => {
     const mounted = [];
     const stub = name => () => { mounted.push(name); return ui.React.createElement('section', { 'data-stub': name }); };

@@ -54,7 +54,7 @@ function renderer(slot, f, callback, options = {}) {
     useLayoutEffect(fn, deps) { const i = cursor++, old = hooks[i]; if (old && equalDeps(old.deps, deps)) return; hooks[i] = { fn, deps, cleanup: old?.cleanup }; effects.push(i); },
   }; react.default = react;
   const module = { exports: {} }, primitives = new Proxy({}, { get: (_, key) => String(key) });
-  Function('module', 'exports', 'require', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, name => {
+  Function('module', 'exports', 'require', transformSync(source, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, name => {
     if (name === 'react') return react;
     if (name === './i18n/I18nProvider.tsx') return i18nTestModule();
     if (name.includes('packages/i18n/src/index.ts')) return i18nCore;

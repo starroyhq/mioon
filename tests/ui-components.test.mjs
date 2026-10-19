@@ -244,7 +244,7 @@ test('installed Base UI components render semantic controls with real runtime de
 
 test('renderer uses shared components for ordinary controls and modal confirmations', () => {
   const renderer = resolve(root, 'apps/web/src');
-  for (const name of readdirSync(renderer).filter(name => name.endsWith('.jsx'))) {
+  for (const name of readdirSync(renderer).filter(name => name.endsWith('.tsx'))) {
     const source = readFileSync(resolve(renderer, name), 'utf8');
     assert.doesNotMatch(source, /<(?:button|input|textarea|select)\b/, `${name} must consume shared controls`);
     assert.doesNotMatch(source, /window\.confirm\(/, `${name} must use the cancellable confirmation provider`);

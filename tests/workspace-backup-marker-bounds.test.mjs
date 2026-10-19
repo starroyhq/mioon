@@ -68,7 +68,7 @@ test('ordinary24 unknown journal survives startup migration and cold40 archive w
  try{
   db.exec('PRAGMA foreign_keys=ON;PRAGMA trusted_schema=OFF');initializeWorkspaceSchemaThrough24(db);
   db.exec('CREATE TABLE unknown_retained_journal(id TEXT PRIMARY KEY,data BLOB,n REAL)');
-  db.prepare('INSERT INTO unknown_retained_journal(rowid,id,data,n) VALUES(?,?,?,?)').run(9007199254740993n,'opaque-history',Buffer.from([0,255,13,10]),123.25);
+  const retained=db.prepare('INSERT INTO unknown_retained_journal(rowid,id,data,n) VALUES(?,?,?,?)');retained.setReadBigInts(true);retained.run(9007199254740993n,'opaque-history',Buffer.from([0,255,13,10]),123.25);
  }finally{db.close();}
  fs.chmodSync(file,0o600);
  const original24=fs.readFileSync(file);

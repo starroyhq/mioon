@@ -13,12 +13,12 @@ const desktop = path.join(root, 'apps/desktop');
 const manifest = JSON.parse(readFileSync(path.join(desktop, 'package.json'), 'utf8'));
 const rootManifest = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
 const channels = [
-  { script: 'package:linux', channel: 'production', config: 'electron-builder.cjs', appId: 'app.starroy.mioon', targetArgs: ['--linux'] },
-  { script: 'package:dir', channel: 'production', config: 'electron-builder.cjs', appId: 'app.starroy.mioon', targetArgs: ['--linux', '--dir'] },
-  { script: 'package:mac', channel: 'production', config: 'electron-builder.cjs', appId: 'app.starroy.mioon', targetArgs: ['--mac'] },
-  { script: 'package:linux:dev', channel: 'development', config: 'electron-builder.dev.cjs', appId: 'app.starroy.mioon.dev', targetArgs: ['--linux'] },
-  { script: 'package:dir:dev', channel: 'development', config: 'electron-builder.dev.cjs', appId: 'app.starroy.mioon.dev', targetArgs: ['--linux', '--dir'] },
-  { script: 'package:mac:dev', channel: 'development', config: 'electron-builder.dev.cjs', appId: 'app.starroy.mioon.dev', targetArgs: ['--mac'] },
+  { script: 'package:linux', channel: 'production', config: '.generated/electron-builder.cjs', appId: 'app.starroy.mioon', targetArgs: ['--linux'] },
+  { script: 'package:dir', channel: 'production', config: '.generated/electron-builder.cjs', appId: 'app.starroy.mioon', targetArgs: ['--linux', '--dir'] },
+  { script: 'package:mac', channel: 'production', config: '.generated/electron-builder.cjs', appId: 'app.starroy.mioon', targetArgs: ['--mac'] },
+  { script: 'package:linux:dev', channel: 'development', config: '.generated/electron-builder.dev.cjs', appId: 'app.starroy.mioon.dev', targetArgs: ['--linux'] },
+  { script: 'package:dir:dev', channel: 'development', config: '.generated/electron-builder.dev.cjs', appId: 'app.starroy.mioon.dev', targetArgs: ['--linux', '--dir'] },
+  { script: 'package:mac:dev', channel: 'development', config: '.generated/electron-builder.dev.cjs', appId: 'app.starroy.mioon.dev', targetArgs: ['--mac'] },
 ];
 
 // Inspect only the simple, two-command manifest contract. Do not evaluate a
@@ -36,7 +36,7 @@ function packagingPlan(script, expected) {
   assert.equal(options.channel, expected.channel, 'Build must select the expected channel');
   assert.equal(build[3], `--channel=${expected.channel}`, 'Both channels must be explicit, including development');
   assert.deepEqual(builder, ['electron-builder', '--config', expected.config, ...expected.targetArgs, '--publish', 'never'], 'Builder must retain the exact config, target and publication arguments');
-  const config = require(path.resolve(desktop, builder[2]));
+  const config = require(path.resolve(desktop, 'builder-config.ts')).builderConfig(expected.channel);
   // Synthetic Vite path: buildCommands only constructs argv and never reads it.
   const viteEntry = path.join(root, 'node_modules/vite/bin/vite.js');
   const commands = buildCommands(root, { vite: { entry: viteEntry } }, options.channel);
@@ -115,6 +115,7 @@ test('other desktop entrypoints retain their existing behavior', () => {
   const otherScripts = Object.fromEntries(Object.entries(manifest.scripts).filter(([name]) => !channels.some(item => item.script === name)));
   assert.deepEqual(otherScripts, {
     build: 'node scripts/build.ts',
+    'prepare:builder-config': 'node scripts/prepare-builder-config.ts',
     start: 'electron build',
     smoke: 'node scripts/smoke.ts',
     'build:production': 'node scripts/build.ts --channel=production',

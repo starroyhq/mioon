@@ -14,7 +14,7 @@ function harness(){
  const layout=(callback,deps)=>{const index=cursor++,prior=slots[index];if(!prior||deps===undefined||deps.some((v,i)=>v!==prior.deps?.[i])){slots[index]={deps};layouts.push(()=>{prior?.cleanup?.();slots[index].cleanup=callback();});}};
  const react={createElement:(type,props,...children)=>({type,props:{...props,children}}),useRef:initial=>slots[cursor++]||=( {current:initial}),useState:initial=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return[slots[index],next=>{slots[index]=typeof next==='function'?next(slots[index]):next;}];},useLayoutEffect:layout,useEffect:()=>{cursor++;}};react.default=react;
  const mark=name=>({__esModule:true,default:name}),module={exports:{}};
- Function('require','module','exports',transformSync(readFileSync(new URL('../apps/web/src/Timeline.tsx',import.meta.url),'utf8'),{loader:'jsx',format:'cjs'}).code)(name=>{
+ Function('require','module','exports',transformSync(readFileSync(new URL('../apps/web/src/Timeline.tsx',import.meta.url),'utf8'),{loader:'tsx',format:'cjs'}).code)(name=>{
   if(name==='react')return react;
   if(name==='./i18n/I18nProvider.tsx')return i18nTestModule();
   if(name==='./UiPreferencesProvider.tsx')return{useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})};

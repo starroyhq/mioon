@@ -69,7 +69,7 @@ function harness(client) {
     if (name === './AgentRunActivity.tsx') return load(name);
     throw Error(name);
   };
-  const load = name => { const module = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL(`../apps/web/src/${name.slice(2)}`, import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, resolve); return module.exports; };
+  const load = name => { const module = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL(`../apps/web/src/${name.slice(2)}`, import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, resolve); return module.exports; };
   const panel = load('./AgentPanel.tsx').default;
   const h = {
     render(project = owner) { owner = project; cursor = 0; effects = []; tree = panel({ projectId: owner, projectName: 'Chosen project', onClose() {}, onSettings() {} }); for (const i of effects) { slots[i].cleanup?.(); slots[i].cleanup = slots[i].fn(); } return tree; },

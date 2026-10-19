@@ -72,7 +72,7 @@ import { transformSync } from 'esbuild';
 test('actual App conditional retains comparison after its shot disappears, leaving a close path', () => {
   const start = app.indexOf('{comparisonId && <VersionComparison'), end = app.indexOf('/>}', start) + 3;
   assert.ok(start > 0 && end > start);
-  const code = transformSync(`module.exports = () => (${app.slice(start + 1, end - 1)});`, { loader: 'jsx', format: 'cjs' }).code;
+  const code = transformSync(`module.exports = () => (${app.slice(start + 1, end - 1)});`, { loader: 'tsx', format: 'cjs' }).code;
   const module = { exports: {} }, calls = [];
   const env = { React: { createElement: (type, props) => ({ type, props }) }, comparisonId: id(2), VersionComparison: 'comparison', data: { project: { id: id(1) }, shots: [] }, projectEpoch: { current: 1 },
     comparisonContext: () => ({ shot: null }), setComparisonId: value => calls.push(value), useComparedVersion() {}, busy: {}, registerComparisonPreviewPause() {}, audioPreview: { controller: { revoke() {} } }, nativePreviewPause: { current: null }, exportPreviewPause: { current: null } };

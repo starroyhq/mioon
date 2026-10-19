@@ -11,7 +11,7 @@ import {createHash} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {HOSTILE, PRIVATE, TOKEN, IDS, NOW, uuid} from './helpers/inspection-wire-fixture.mjs';
-import {runInspectionProcess} from './helpers/inspection-wire-lifecycle.ts';
+import {runInspectionProcess} from './helpers/inspection-wire-lifecycle.mjs';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const helper = path.join(repo, 'tests/helpers/inspection-wire-fixture.mjs');
@@ -25,7 +25,7 @@ const sourceFiles = [
   'packages/business/src/db.ts', 'packages/business/src/services.ts', 'packages/business/src/inspection.ts',
   'packages/business/src/inspection-query.ts', 'packages/contracts/src/index.ts',
   'packages/contracts/src/inspection.ts', 'packages/contracts/src/operation-effects.ts', 'packages/client/src/index.ts',
-  'tests/inspection-wire.test.mjs', 'tests/helpers/inspection-wire-fixture.mjs', 'tests/helpers/inspection-wire-lifecycle.ts',
+  'tests/inspection-wire.test.mjs', 'tests/helpers/inspection-wire-fixture.mjs', 'tests/helpers/inspection-wire-lifecycle.mjs',
 ];
 const sourceSnapshot = async () => Object.fromEntries(await Promise.all(sourceFiles.map(async file =>
   [file, createHash('sha256').update(await readFile(path.join(repo, file))).digest('hex')])));

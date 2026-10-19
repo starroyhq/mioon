@@ -6,7 +6,7 @@ import { transformSync } from 'esbuild';
 // Exercise the app adapters' real callback/effect code. Actual portal rendering
 // and focus movement are verified separately in browser acceptance.
 const source = readFileSync(new URL('../apps/web/src/WorkspaceControls.tsx', import.meta.url), 'utf8');
-const code = transformSync(source, { loader: 'jsx', format: 'cjs' }).code;
+const code = transformSync(source, { loader: 'tsx', format: 'cjs' }).code;
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
 const element = (type, props = {}, ...children) => ({ type, props: { ...props, children: children.length === 1 ? children[0] : children } });
 const equalDeps = (left, right) => left?.length === right?.length && left.every((value, index) => Object.is(value, right[index]));
@@ -135,7 +135,7 @@ test('Tooltip hides its portal and rejects delayed hover/open callbacks after hi
 test('all panel Select/Tooltip consumers use the app visibility-aware adapters without modifying shared primitives', () => {
   for (const filename of ['App.tsx', 'AssetLibrary.tsx', 'Inspector.tsx', 'ProviderSettings.tsx', 'ReferenceConnections.tsx', 'TimelineInspector.tsx']) {
     const text = readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8');
-    assert.match(text, /from '\.\/WorkspaceControls\.jsx'/, filename);
+    assert.match(text, /from '\.\/WorkspaceControls\.tsx'/, filename);
     assert.doesNotMatch(text, /from '@mioon\/ui\/components\/workbench-(?:select|tooltip)'/, filename);
   }
   assert.match(source, /from '@mioon\/ui\/components\/select'/); assert.match(source, /from '@mioon\/ui\/components\/tooltip'/);

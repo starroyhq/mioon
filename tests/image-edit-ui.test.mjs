@@ -159,7 +159,7 @@ function renderer(f) {
     if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return primitive;
     throw Error(name);
   };
-  Function('module', 'exports', 'require', transformSync(component, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, require);
+  Function('module', 'exports', 'require', transformSync(component, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, require);
   const harness = { render(next = owner) { owner = next; index = 0; effects = []; tree = module.exports.default({ projectId: owner, projectName: 'Project', projectAssets: [sourceAsset(), sourceAsset({ id: id(21), sha256: 'b'.repeat(64), name: 'Second.png' })], reviewClient: f.reviewClient, settingsClient: f.settingsClient, customSettingsClient: f.customSettingsClient, onDirtyChange: value => { dirty = value; } }); for (const slot of effects) { slots[slot].cleanup?.(); slots[slot].cleanup = slots[slot].fn(); } return tree; }, find(id) { return nodes(tree).find(node => node.props['data-testid'] === id); }, click(id) { harness.find(id).props.onClick?.(); harness.render(); }, change(id, value) { harness.find(id).props.onChange({ target: { value } }); harness.render(); }, hide(value) { visible = !value; harness.render(); }, get dirty() { return dirty; }, unmount() { for (const slot of slots) slot.cleanup?.(); } }; return harness;
 }
 async function uiCompose(ui) { ui.render(); await flush(); ui.render(); ui.change('image-generation-name', input().name); ui.change('image-generation-prompt', input().prompt); ui.click('image-provider-openai'); ui.click('image-mode-edit'); ui.change('image-source-asset', `${assetId}:${'a'.repeat(64)}`); }

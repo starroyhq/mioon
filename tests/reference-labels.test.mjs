@@ -106,7 +106,7 @@ function harness(name) {
     useState: () => [selected, value => { selected = value; }],
   };
   react.default = react;
-  const code = transformSync(readFileSync(new URL('../apps/web/src/ReferenceConnections.tsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code;
+  const code = transformSync(readFileSync(new URL('../apps/web/src/ReferenceConnections.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
   const module = { exports: {} };
   Function('module', 'exports', 'require', code)(module, module.exports, id => {
     if (id === 'react') return react;

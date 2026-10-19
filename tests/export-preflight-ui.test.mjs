@@ -197,7 +197,7 @@ const textOf = tree => Array.isArray(tree) ? tree.map(textOf).join('') : tree &&
 const panelSource = readFileSync(new URL('../apps/web/src/TimelineExportPreflight.tsx', import.meta.url), 'utf8');
 function renderPanel(props) {
   const module = { exports: {} }, react = { createElement: element }; react.default = react;
-  Function('module', 'exports', 'require', transformSync(panelSource, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, name => name === './i18n/I18nProvider.tsx' ? i18nTestModule() : name === 'react' ? react : name.endsWith('export-preflight-state.ts') ? preflightState : name.endsWith('icons.tsx') ? { __esModule: true, default: 'Icon' } : { Button: 'Button' });
+  Function('module', 'exports', 'require', transformSync(panelSource, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, name => name === './i18n/I18nProvider.tsx' ? i18nTestModule() : name === 'react' ? react : name.endsWith('export-preflight-state.ts') ? preflightState : name.endsWith('icons.tsx') ? { __esModule: true, default: 'Icon' } : { Button: 'Button' });
   return module.exports.default({ canCheck: true, onCheck() {}, onExport() {}, ...props });
 }
 
@@ -215,7 +215,7 @@ test('accessible topbar export action opens recovery even when a candidate, base
     { localDelivery: { state: { candidate: null, baselineConflict: true } } }, { deliveryName: { error: 'Invalid name' } }, { exportRange: { error: 'Invalid range' } }, { online: false }]) {
     const flags = gate(patch); assert.deepEqual(flags, { canOpenExport: true, canCheckExport: false });
     const f = fixture(), h = appHarness(f), module = { exports: {} };
-    Function('module', 'React', 'WorkbenchButton', 'Icon', 'canOpenExport', 'openTimelineExport', 't', transformSync(`module.exports = (${buttonSource});`, { loader: 'jsx', format: 'cjs' }).code)(module, { createElement: element }, 'WorkbenchButton', 'Icon', flags.canOpenExport, h.open, (key, params) => translate('zh-Hans', key, params));
+    Function('module', 'React', 'WorkbenchButton', 'Icon', 'canOpenExport', 'openTimelineExport', 't', transformSync(`module.exports = (${buttonSource});`, { loader: 'tsx', format: 'cjs' }).code)(module, { createElement: element }, 'WorkbenchButton', 'Icon', flags.canOpenExport, h.open, (key, params) => translate('zh-Hans', key, params));
     const button = module.exports; assert.equal(button.type, 'WorkbenchButton'); assert.equal(button.props.disabled, false); assert.equal(textOf(button), '导出');
     button.props.onClick(); assert.deepEqual(h.panels, [['tasks', false], ['image', false], ['delivery', true]]); assert.deepEqual(h.exports, [false]);
     assert.equal(f.calls.length, 0); assert.equal(h.calls.length, 0);
@@ -307,7 +307,7 @@ function hookHarness() {
     useLayoutEffect(callback, dependencies) { const i = cursor++, old = slots[i]; if (old && dependencies.length === old.dependencies.length && dependencies.every((value, j) => value === old.dependencies[j])) return; slots[i] = { dependencies, callback, cleanup: old?.cleanup }; effects.push(i); },
   };
   const module = { exports: {} }, source = readFileSync(new URL('../apps/web/src/use-export-preflight.ts', import.meta.url), 'utf8');
-  Function('module', 'exports', 'require', transformSync(source, { loader: 'js', format: 'cjs' }).code)(module, module.exports, name => name === 'react' ? react : { createExportPreflightController });
+  Function('module', 'exports', 'require', transformSync(source, { loader: 'ts', format: 'cjs' }).code)(module, module.exports, name => name === 'react' ? react : { createExportPreflightController });
   return {
     tasks,
     render(patch = {}) { cursor = 0; effects = []; const props = { ...context(), projectId, visible: false, read: (input, options) => { const task = deferred(); tasks.push({ ...task, input, options }); return task.promise; }, ...patch }; const result = module.exports.useExportPreflight(props); for (const i of effects) { slots[i].cleanup?.(); slots[i].cleanup = slots[i].callback(); } return result; },

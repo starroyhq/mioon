@@ -25,7 +25,7 @@ before(() => {
       </DeliveryWorkspace>)]));`;
   const script = `import {build} from 'esbuild';
     globalThis.fetch = () => { throw Error('Delivery workspace presentation may not request data'); };
-    const {outputFiles} = await build({stdin: {contents: ${JSON.stringify(fixture)}, loader: 'jsx', resolveDir: ${JSON.stringify(path.join(root, 'apps/web'))}}, bundle: true, format: 'esm', platform: 'browser', write: false, outfile: 'delivery-dock-fixture.js', define: {'process.env.NODE_ENV': '"production"'}});
+    const {outputFiles} = await build({stdin: {contents: ${JSON.stringify(fixture)}, loader: 'tsx', resolveDir: ${JSON.stringify(path.join(root, 'apps/web'))}}, bundle: true, format: 'esm', platform: 'browser', write: false, outfile: 'delivery-dock-fixture.js', define: {'process.env.NODE_ENV': '"production"'}});
     const javascript = outputFiles.find(file => file.path.endsWith('.js'));
     if (!javascript) throw Error('Delivery dock fixture did not emit JavaScript');
     const result = await import('data:text/javascript;base64,' + Buffer.from(javascript.text).toString('base64'));
@@ -70,7 +70,7 @@ test('actual component delegates valid page callbacks without local state, draft
   const react = { createElement: element }; react.default = react;
   const shared = { Tabs: 'Tabs', TabsList: 'TabsList', TabsTrigger: 'TabsTrigger' }, module = { exports: {} };
   Function('module', 'exports', 'require', transformSync(source, { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code)(module, module.exports,
-    name => name === 'react' ? react : name === '@mioon/ui/components/tabs' ? shared : assert.fail(`Unexpected dependency: ${name}`));
+    name => name === 'react' ? react : name === '@mioon/ui/components/tabs' ? shared : name === './i18n/I18nProvider.tsx' ? { useI18n: () => ({ t: key => key, locale: 'zh-Hans', formatDate: value => String(value), formatNumber: value => String(value), renderMessage: value => (value && typeof value === 'object' ? String(value.key ?? '') : String(value ?? '')) }) } : assert.fail(`Unexpected dependency: ${name}`));
   const changes = [], supplied = Object.freeze({ marker: 'App-owned retained panes' });
   const tree = module.exports.default({ page: 'compose', onPage: value => changes.push(value), children: supplied });
   const tabs = tree.props.children.find(child => child?.type === 'Tabs');

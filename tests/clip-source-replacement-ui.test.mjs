@@ -192,7 +192,7 @@ function componentHarness(patch = {}) {
   }; react.default = react;
   const source = readFileSync(new URL('../apps/web/src/ClipSourceReplacement.tsx', import.meta.url), 'utf8');
   const module = { exports: {} };
-  Function('require', 'module', 'exports', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(name => name === 'react' ? react : name === './i18n/I18nProvider.tsx' ? i18nTestModule() : name === './clip-source-replacement.ts' ? replacement : name === './workspace-visibility.tsx' ? { useWorkspaceVisibility: () => visible } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
+  Function('require', 'module', 'exports', transformSync(source, { loader: 'tsx', format: 'cjs' }).code)(name => name === 'react' ? react : name === './i18n/I18nProvider.tsx' ? i18nTestModule() : name === './clip-source-replacement.ts' ? replacement : name === './workspace-visibility.tsx' ? { useWorkspaceVisibility: () => visible } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
   const h = { calls, responses, opened,
     render(next = {}) { props = { ...props, ...next }; let attempts = 0; do { needsRender = false; cursor = 0; effects = []; tree = module.exports.default(props); for (const index of effects) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].callback(); } assert.ok(++attempts < 15); } while (needsRender); return tree; },
     find(testId) { return nodes(tree).find(node => node.props?.['data-testid'] === testId || node.props?.id === testId); },

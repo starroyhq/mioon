@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import desktopIdentity from '../identity.ts';
 import type {DesktopIdentity} from '../identity.ts';
-import subtitleResources from '../subtitle-resources.cjs';
+import subtitleResources from '../subtitle-resources.ts';
 import {verifySubtitleResourceTarball} from '../subtitle-package.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');

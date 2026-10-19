@@ -85,6 +85,10 @@ test('watch errors stop their watcher; safe creation refresh remains available a
 
 test('actual directory watch survives repeated atomic sidecar replacement without mutating the workspace',async t=>{
   const f=fixture(t,{realWatch:true});
+  // Let the OS directory watcher for this freshly created private root arm
+  // before the first atomic replacement; otherwise macOS FSEvents can miss the
+  // initial rename and this test observes only the pre-watch background.
+  await new Promise(resolve=>setTimeout(resolve,100));
   const until=async color=>{const deadline=Date.now()+3000;while(f.windows[0].colors.at(-1)!==color&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,10));assert.equal(f.windows[0].colors.at(-1),color);};
   for(const theme of ['light','dark','light']){
     const staging=path.join(f.root,'.appearance.pending');writeFileSync(staging,JSON.stringify(f.record(theme)),{mode:0o600});renameSync(staging,f.file);await until(WINDOW_BACKGROUNDS[theme]);

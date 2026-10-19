@@ -26,10 +26,10 @@ async function fixture(t, root = rootPackage(), desktop = desktopPackage()) {
 
 async function builderFixture(t) {
   const directory = await fixture(t);
-  for (const name of ['builder-config.cjs', 'subtitle-resources.cjs', 'build-metadata.cjs', 'identity.cjs']) {
+  for (const name of ['builder-config.ts', 'subtitle-resources.ts', 'runtime-notices.ts', 'build-metadata.ts', 'identity.ts']) {
     await copyFile(new URL(`../apps/desktop/${name}`, import.meta.url), path.join(directory, 'apps/desktop', name));
   }
-  return { directory, builderConfig: require(path.join(directory, 'apps/desktop/builder-config.cjs')) };
+  return { directory, builderConfig: require(path.join(directory, 'apps/desktop/builder-config.ts')).builderConfig };
 }
 
 test('metadata uses the root app version and exact Electron pin without changing manifests', () => {

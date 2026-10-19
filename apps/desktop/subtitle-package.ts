@@ -6,7 +6,7 @@ import {createHash} from 'node:crypto';
 import type {Hash} from 'node:crypto';
 import {createGunzip} from 'node:zlib';
 import {pipeline} from 'node:stream/promises';
-import subtitleResources from './subtitle-resources.cjs';
+import subtitleResources from './subtitle-resources.ts';
 
 export interface SubtitleResourceManifestEntry {
   readonly bytes: number;
@@ -33,7 +33,7 @@ interface TarEntry {
   hash?: Hash;
 }
 
-const {SUBTITLE_RESOURCE_MANIFEST:EXPECTED}: {SUBTITLE_RESOURCE_MANIFEST: SubtitleResourceManifest} = subtitleResources;
+const {SUBTITLE_RESOURCE_MANIFEST:EXPECTED} = subtitleResources;
 const CHUNK=64*1024,MAX_METADATA=64*1024,MAX_ARCHIVE=512*1024*1024;
 const fail=(): never=>{throw Error('Delivered subtitle resources failed bounded archive verification.');};
 const utf8=new TextDecoder('utf-8',{fatal:true});

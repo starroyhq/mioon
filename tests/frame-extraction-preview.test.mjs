@@ -18,7 +18,7 @@ import {row as outputRow} from './helpers/export-sample-peak-ui-fixture.mjs';
 
 // Execute Preview and its real capture control with controlled media properties.
 // This tests component/event wiring, not browser decoder or native FFmpeg output.
-const code = transformSync(readFileSync(new URL('../apps/web/src/Preview.tsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code;
+const code = transformSync(readFileSync(new URL('../apps/web/src/Preview.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
 function harness() {
   const components = new Map(), elements = new Map(); let active, cursor = 0, layouts = [], effects = [], tree, control, dirty = false, props;

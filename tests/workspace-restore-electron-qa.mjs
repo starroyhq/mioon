@@ -5,9 +5,10 @@ import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
-import {registerHooks} from 'node:module';
+import {registerHooks,stripTypeScriptTypes} from 'node:module';
 import {DatabaseSync} from 'node:sqlite';
 import {openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
 import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
@@ -70,13 +71,23 @@ async function utility(){
  process.parentPort.on('message',({data})=>{if(data==='report-saved')process.exit(0);});
  process.parentPort.postMessage({ok:true,runtime:{electron:process.versions.electron,node:process.versions.node,sqlite:process.versions.sqlite,type:process.type,parentPort:true},results,scope:'locked utility runtime; exact old openStore source + current relative dependencies + native SQLite spy; Node suite separately covers server downstream probes; not complete old packaged binaries'});
 }
+/** Test-time generation: the tracked fixture is TypeScript; Electron launches a
+ * throwaway CJS copy stripped from it. No generated entry is committed. */
+function materializeFixtureMain(){
+ const source=path.join(repo,'tests/fixtures/workspace-restore-electron/main.ts');
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'mioon-restore-electron-main-'));
+ const file=path.join(directory,'main.cjs');
+ fs.writeFileSync(file,stripTypeScriptTypes(fs.readFileSync(source,'utf8'),{mode:'strip'}),{mode:0o600,flag:'wx'});
+ return {source,file,directory};
+}
 async function launch({headless=false}={}){
+ const fixtureMain=materializeFixtureMain();
  ensurePrivateDirectory(evidence,{create:true});ensurePrivateDirectory(path.join(evidence,'user-data'),{create:true});
  const binary='/workspace/shared/video-workbench/node_modules/electron/dist/electron';
  const version=fs.readFileSync(path.join(path.dirname(binary),'version'),'utf8').trim();assert.equal(version,'44.7.0');
- evidenceFile('binary.json',{version,bytes:fs.statSync(binary).size,sha256:await fileHash(binary),entrySha256:hash(fs.readFileSync(fileURLToPath(import.meta.url))),mainSha256:hash(fs.readFileSync(path.join(repo,'tests/fixtures/workspace-restore-electron/main.cjs'))),mode:headless?'headless main and real utility; not GUI':'graphical main and real utility',args:[...(headless?['--ozone-platform=headless']:[]),path.join(repo,'tests/fixtures/workspace-restore-electron/main.cjs')]});
+ evidenceFile('binary.json',{version,bytes:fs.statSync(binary).size,sha256:await fileHash(binary),entrySha256:hash(fs.readFileSync(fileURLToPath(import.meta.url))),mainSha256:hash(fs.readFileSync(fixtureMain.source)),mode:headless?'headless main and real utility; not GUI':'graphical main and real utility',args:[...(headless?['--ozone-platform=headless']:[]),fixtureMain.file]});
  const env={...process.env};for(const name of ['ELECTRON_RUN_AS_NODE','NODE_OPTIONS','NODE_PATH'])delete env[name];
- const child=spawn(binary,[...(headless?['--ozone-platform=headless']:[]),path.join(repo,'tests/fixtures/workspace-restore-electron/main.cjs')],{env,stdio:['ignore','pipe','pipe']});
+ const child=spawn(binary,[...(headless?['--ozone-platform=headless']:[]),fixtureMain.file],{env,stdio:['ignore','pipe','pipe']});
  const log=fs.createWriteStream(path.join(evidence,'runtime.log'),{flags:'wx',mode:0o600});child.stdout.pipe(log,{end:false});child.stderr.pipe(log,{end:false});
  let termTimer,killTimer,reapTimer,timedOut=false;
  const code=await new Promise((resolve,reject)=>{
@@ -86,6 +97,7 @@ async function launch({headless=false}={}){
   killTimer=setTimeout(()=>{if(child.exitCode===null&&child.signalCode===null)child.kill('SIGKILL');},93000);
   reapTimer=setTimeout(()=>{child.stdout.destroy();child.stderr.destroy();child.unref();reject(Error('QA_PROCESS_CLEANUP_UNCONFIRMED'));},94000);
  });await new Promise(resolve=>log.end(resolve));assert.equal(timedOut,false);assert.equal(code,0);
+ fs.rmSync(fixtureMain.directory,{recursive:true,force:true});
  const report=JSON.parse(fs.readFileSync(path.join(evidence,'utility-report.json'),'utf8'));assert.equal(report.ok,true);
  for(const row of report.results){const db=new DatabaseSync(path.join(row.root,'workbench.sqlite'));assert.equal(hash(snapshot(db)),row.beforeHash);db.exec('BEGIN IMMEDIATE;ROLLBACK;PRAGMA wal_checkpoint(TRUNCATE)');validateWorkspaceRestoreSchema(db);db.close();}
  evidenceFile('post-exit.json',{ok:true,exitCode:code,rowsAndSchemaPreserved:true,walReopenedAfterExplicitQaHandleCleanup:true,retainedLegacyLock:'3446aed QA-owned lock is intentionally preserved; no stale-lock bypass'});

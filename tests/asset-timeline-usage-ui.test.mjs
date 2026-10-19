@@ -69,7 +69,7 @@ function harness() {
     '@mioon/ui/components/collapsible': { Collapsible: 'Collapsible', CollapsibleTrigger: 'CollapsibleTrigger', CollapsibleContent: 'CollapsibleContent' },
     '@mioon/ui/components/scroll-area': { ScrollArea: 'ScrollArea' },
   };
-  h.library = load(librarySource, 'jsx', name => Object.hasOwn(modules, name) ? modules[name] : strictRequire(name)).default;
+  h.library = load(librarySource, 'tsx', name => Object.hasOwn(modules, name) ? modules[name] : strictRequire(name)).default;
   h.render = (component, props) => { let result, iterations = 0; do { cursor = 0; dirty = false; result = component(props); if (++iterations > 10) throw Error('Repeated render update'); } while (dirty); for (const [i, fn] of pending) { slots[i].cleanup?.(); slots[i].cleanup = fn(); } pending.clear(); return result; };
   h.unmount = () => slots.forEach(slot => slot.cleanup?.());
   return h;
@@ -236,7 +236,7 @@ test('real React and shared Button render safe compact HTML without network or s
       renderToStaticMarkup(<AssetTimelineUsageFilters {...props} filter="all" onFilter={() => {}} />)];`;
   const script = `import {build} from 'esbuild'; globalThis.fetch = () => { throw Error('Unexpected network'); };
     for (const key of ['localStorage','sessionStorage']) Object.defineProperty(globalThis, key, {get() { throw Error('Unexpected storage'); }});
-    const {outputFiles} = await build({stdin:{contents:${JSON.stringify(fixture)},loader:'jsx',resolveDir:${JSON.stringify(path.join(root, 'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,jsx:'automatic',define:{'process.env.NODE_ENV':'"production"'},logLevel:'silent'});
+    const {outputFiles} = await build({stdin:{contents:${JSON.stringify(fixture)},loader:'tsx',resolveDir:${JSON.stringify(path.join(root, 'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,jsx:'automatic',define:{'process.env.NODE_ENV':'"production"'},logLevel:'silent'});
     const result = await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64')); process.stdout.write(JSON.stringify(result.html)); process.exit(0);`;
   const [card, filters] = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30000 }));
   assert.match(card, /data-slot="button"/); assert.match(card, /aria-expanded="false"/); assert.match(card, /<ul[^>]*hidden=""/);

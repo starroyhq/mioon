@@ -156,7 +156,7 @@ test('App guards dirty clip before source selection, clears clip selection, and 
 
 test('source range controls use full source bounds and retain timeline caps separately', () => {
   const source = readFileSync(new URL('../apps/web/src/SourceRangeInspector.tsx', import.meta.url), 'utf8');
-  const code = transformSync(source, { loader: 'jsx', format: 'cjs' }).code;
+  const code = transformSync(source, { loader: 'tsx', format: 'cjs' }).code;
   const createElement = (type, props, ...children) => ({ type, props: { ...props, children } });
   const module = { exports: {} };
   const hooks = { createElement, useRef: value => ({ current: value }), useLayoutEffect: fn => fn() };
@@ -176,7 +176,7 @@ test('source range controls use full source bounds and retain timeline caps sepa
 
 test('retained source inspector handlers reject another asset epoch, hidden panes and unmount', async () => {
   const source = readFileSync(new URL('../apps/web/src/SourceRangeInspector.tsx', import.meta.url), 'utf8');
-  const code = transformSync(source, { loader: 'jsx', format: 'cjs' }).code;
+  const code = transformSync(source, { loader: 'tsx', format: 'cjs' }).code;
   const slots = []; let cursor = 0, visible = true, scope = 'asset-a:1', cleanups = [], tree;
   const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), useRef: value => { const i = cursor++; return slots[i] ||= { current: value }; }, useLayoutEffect: (fn, deps) => { const i = cursor++, prior = slots[i]; if (!prior || deps.some((value, n) => value !== prior.deps[n])) { prior?.cleanup?.(); slots[i] = { deps, cleanup: fn() }; cleanups.push(slots[i]); } } };
   const module = { exports: {} }, actions = [];

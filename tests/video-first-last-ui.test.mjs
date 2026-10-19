@@ -56,7 +56,7 @@ function harness(patch = {}) {
   const primitive = new Proxy({}, { get: (_, key) => String(key) });
   function load(filename) {
     if (modules.has(filename)) return modules.get(filename);
-    const code = transformSync(readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code;
+    const code = transformSync(readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
     const module = { exports: {} };
     Function('require', 'module', 'exports', code)(name => {
       if (name === 'react') return react;

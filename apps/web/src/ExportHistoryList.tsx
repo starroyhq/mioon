@@ -15,7 +15,7 @@ import ExportFileActions from './ExportFileActions.tsx';
 import ExportSamplePeak from './ExportSamplePeak.tsx';
 import ExportLoudness from './ExportLoudness.tsx';
 import { opacityCandidateRenderPresentation } from './opacity-candidate-render-presentation.ts';
-import type { ExportSamplePeakView } from './ExportSamplePeak.tsx';
+import type { ExportSamplePeakView } from './export-sample-peak-state.ts';
 import type { ExportLoudnessView } from './export-loudness-state.ts';
 
 export interface ExportHistoryItem {

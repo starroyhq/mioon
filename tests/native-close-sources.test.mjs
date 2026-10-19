@@ -138,7 +138,7 @@ function renderer(filename, fixture, options = {}) {
     if (name.endsWith('.css')) return {};
     throw Error(`Unexpected close test import: ${name}`);
   };
-  Function('module', 'exports', 'require', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, require);
+  Function('module', 'exports', 'require', transformSync(source, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, require);
   const ui = {
     render() {
       cursor = 0; effects = [];
