@@ -252,7 +252,7 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
           // adding recovery guidance: downstream clients could mistake it for proof.
           if (!proven) delete (details as Record<string, unknown>).mutationOutcome;
         }
-        if (body && (FRAME_MUTATION_OPERATIONS as readonly string[]).includes(body.operation)) {
+        if (body && Object.hasOwn(frameSchemas, body.operation)) {
           const mutation = (FRAME_MUTATION_OPERATIONS as readonly string[]).includes(body.operation);
           const proven = mutation && frameNotAccepted(failure, response.status, body.operation, body.input);
           details = {...(details && typeof details === 'object' && !Array.isArray(details) ? details : {}),
