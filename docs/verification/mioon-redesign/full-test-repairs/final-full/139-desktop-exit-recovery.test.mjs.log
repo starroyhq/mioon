@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: desktop afterClaim: controlled worker death retains evidence and explicit restart never redispatches
+ok 1 - desktop afterClaim: controlled worker death retains evidence and explicit restart never redispatches
+  ---
+  duration_ms: 3037.731208
+  type: 'test'
+  ...
+# Subtest: desktop afterBusinessCommit: controlled worker death retains evidence and explicit restart never redispatches
+ok 2 - desktop afterBusinessCommit: controlled worker death retains evidence and explicit restart never redispatches
+  ---
+  duration_ms: 2294.540875
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5675.968959

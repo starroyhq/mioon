@@ -1,5 +1,6 @@
 import { useI18n } from './i18n/I18nProvider.tsx';
 import { message } from '../../../packages/i18n/src/index.ts';
+import AgentAuthorizations from './AgentAuthorizations.tsx';
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '@mioon/ui/components/badge';
 import { Button } from '@mioon/ui/components/button';
@@ -138,6 +139,7 @@ export default function AgentSettings({ onClose, beforeClose, closeLabel, onNavi
               <p className="agent-settings-storage-note" data-testid="agent-settings-storage-status">{storageReason(snapshot.storage, t)} {!hasKey && snapshot.secret.configured && !removesKey ? t('agent.settings.reenterStorage') : ''}</p>
               <div className="agent-settings-key-intent" data-testid="agent-settings-key-intent">{hasKey ? t(snapshot.secret.configured ? 'connections.intentReplace' : 'connections.intentWrite', { storage: storageLabel(state.storage, t) }) : removesKey && snapshot.secret.configured ? t('connections.intentRemove') : snapshot.secret.configured ? t('connections.intentKeep') : draft.presetId === 'ollama' ? t('agent.settings.intentOllama') : t('agent.settings.intentNoKey')}</div>
             </section>
+            <AgentAuthorizations visible={visible}/>
             {state.message && <div className={`agent-settings-message ${error ? 'is-warning' : phase === 'saved' ? 'is-success' : ''}`} role={error ? 'alert' : 'status'} data-testid={error ? 'agent-settings-error' : 'agent-settings-status'} data-phase={phase}><Icon name={phase === 'saved' ? 'check' : 'info'} size={15} /><div><p>{statusMessage}</p>{recovery && <>
               <div className="agent-settings-current" data-testid="agent-settings-current"><span>{t('connections.serverSettings')}</span><strong>{snapshot.configuration.model}</strong><span>{AGENT_PROTOCOLS[snapshot.configuration.protocol].label}</span><span>{agentEndpointPreview(snapshot.configuration)}</span><span>{snapshot.secret.configured ? t('connections.savedKey', { storage: storageLabel(snapshot.secret.storage, t) }) : t('connections.storage.none')}</span></div>
               <div className="agent-settings-recovery-actions">{phase === 'blocked' ? <Button type="button" variant="ghost" className="button small" data-testid="agent-settings-reload" onClick={() => { if (usable()) void session.current?.reload(); }}>{t('agent.settings.reloadState')}</Button> : <><Button type="button" variant="ghost" className="button small" data-testid="agent-settings-review" disabled={busy} onClick={() => { if (usable()) session.current?.acknowledge(); }}>{t('agent.settings.reviewDone')}</Button><Button type="button" variant="ghost" className="text-button" data-testid="agent-settings-use-latest" disabled={busy} onClick={() => withClearKey(() => session.current?.useLatest())}>{t('agent.settings.useServer')}</Button></>}</div>

@@ -1,0 +1,10 @@
+import React from 'react';
+import { WorkbenchBadge, WorkbenchButton, WorkbenchProgress } from '@mioon/ui/components/workbench-controls';
+import { useI18n } from './i18n/I18nProvider.tsx';
+import { statusDescriptor, workspaceHeldDescriptor } from './creation-i18n.ts';
+interface RenderRow {id:string;projectId:string;mode:string;purpose:string;status:string;progress?:number;snapshot?:{deliveryName?:string}}
+const row=(value:unknown,projectId:string):value is RenderRow=>Boolean(value&&typeof value==='object'&&'id'in value&&typeof value.id==='string'&&'projectId'in value&&value.projectId===projectId&&'mode'in value&&value.mode==='timeline'&&'purpose'in value&&(value.purpose==='preview'||value.purpose==='export')&&'status'in value&&typeof value.status==='string');
+export default function TaskRenderList({items,projectId,onHistory,restored=false,heldIds=[]}:{items:readonly unknown[];projectId:string;onHistory?:()=>void;restored?:boolean;heldIds?:readonly string[]}) {
+ const {t,renderMessage}=useI18n();const records=items.filter((value):value is RenderRow=>row(value,projectId));if(!records.length)return null;
+ return <section className="task-render-list" data-testid="task-render-list"><h3>{t('redesign.tasks.rendering')}</h3>{records.map(item=><article className="job-card" key={item.id}><div className="job-title"><strong>{typeof item.snapshot?.deliveryName==='string'?item.snapshot.deliveryName:t(item.purpose==='export'?'redesign.export.step4':'shell.preview')}</strong><WorkbenchBadge tone={item.status==='failed'?'danger':item.status==='succeeded'?'success':'neutral'}>{renderMessage(statusDescriptor(item.status))}</WorkbenchBadge></div>{!restored&&!heldIds.includes(item.id)&&['queued','running'].includes(item.status)&&<WorkbenchProgress value={typeof item.progress==='number'&&Number.isFinite(item.progress)?item.progress:0} label={t('redesign.tasks.rendering')}/>}<p className="helper muted">{restored||heldIds.includes(item.id)?renderMessage(workspaceHeldDescriptor):t('redesign.export.closeKeepsTask')}</p>{onHistory&&<WorkbenchButton variant="ghost" onClick={onHistory}>{t('export.workspace.history')}</WorkbenchButton>}</article>)}</section>;
+}

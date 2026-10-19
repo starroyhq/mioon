@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: fixed42 admits mixed opacity/volume/role/real colour declaration and reopens without rewriting raw evidence
+ok 1 - fixed42 admits mixed opacity/volume/role/real colour declaration and reopens without rewriting raw evidence
+  ---
+  duration_ms: 302.273458
+  type: 'test'
+  ...
+# Subtest: fresh-only42 entry refuses an existing40 and fixed41 refuses genuine42/43
+ok 2 - fresh-only42 entry refuses an existing40 and fixed41 refuses genuine42/43
+  ---
+  duration_ms: 568.241667
+  type: 'test'
+  ...
+# Subtest: raw duplicates, wrong opacity paths, unknown fields, foreign source and render wrappers refuse without writes
+ok 3 - raw duplicates, wrong opacity paths, unknown fields, foreign source and render wrappers refuse without writes
+  ---
+  duration_ms: 633.165583
+  type: 'test'
+  ...
+# Subtest: fixed43 captures actual original bytes and preserves inherited held/unique replacement/epoch guards
+ok 4 - fixed43 captures actual original bytes and preserves inherited held/unique replacement/epoch guards
+  ---
+  duration_ms: 186.407166
+  type: 'test'
+  ...
+# Subtest: 43 install rolls back a failure after guard construction, preserving exact42 catalog and rows
+ok 5 - 43 install rolls back a failure after guard construction, preserving exact42 catalog and rows
+  ---
+  duration_ms: 195.63475
+  type: 'test'
+  ...
+# Subtest: unknown catalog or temporary objects never select an opacity profile
+ok 6 - unknown catalog or temporary objects never select an opacity profile
+  ---
+  duration_ms: 240.432083
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2365.156875

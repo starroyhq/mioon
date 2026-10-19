@@ -1,5 +1,6 @@
 import { useI18n } from './i18n/I18nProvider.tsx';
 import React from 'react';
+import {AudioLines} from '@mioon/ui/components/workbench-icons';
 import { Button } from '@mioon/ui/components/button';
 import { WAVEFORM_LIMITS, waveformCoverageWidth, waveformPath, waveformStatusMessage } from './waveform-state.js';
 
@@ -14,7 +15,7 @@ export function TimelineWaveformControls({ state, disabled }) {
   const issue = visibleEntries.find(entry => ['error', 'interrupted', 'unsupported', 'missing'].includes(entry.status) && entry.phase === 'idle');
   const status = state.readOnly ? t('audio.waveform.readOnly') : !state.enabled ? t('audio.waveform.defaultOff') : state.windows.length > WAVEFORM_LIMITS.entries ? t('audio.waveform.visibleLimit') : state.autoLimitReached && issue?.status === 'missing' ? t('audio.waveform.attemptLimit') : loading ? t('audio.waveform.visibleOnly') : issue ? renderMessage(waveformStatusMessage(issue)) : state.windows.length ? t('audio.waveform.sourceScale') : t('audio.waveform.noAudio');
   return <div className="timeline-waveform-controls">
-    <Button variant="ghost" className={`button small timeline-waveform-toggle ${state.enabled ? 'active' : ''}`} data-testid="timeline-waveform-toggle" aria-pressed={state.enabled} aria-describedby="timeline-waveform-disclosure" disabled={disabled} title={state.readOnly ? status : `${disclosure}. ${background}`} onClick={() => state.setEnabled(!state.enabled)}>{t(state.readOnly ? (state.enabled ? 'audio.waveform.savedOn' : 'audio.waveform.savedOff') : (state.enabled ? 'audio.waveform.on' : 'audio.waveform.off'))}</Button>
+    <Button variant="ghost" className={`button small timeline-waveform-toggle ${state.enabled ? 'active' : ''}`} data-testid="timeline-waveform-toggle" aria-pressed={state.enabled} aria-describedby="timeline-waveform-disclosure" disabled={disabled} title={state.readOnly ? status : `${disclosure}. ${background}`} onClick={() => state.setEnabled(!state.enabled)}><AudioLines size={15} />{t(state.readOnly ? (state.enabled ? 'audio.waveform.savedOn' : 'audio.waveform.savedOff') : (state.enabled ? 'audio.waveform.on' : 'audio.waveform.off'))}</Button>
     <span className="timeline-waveform-status" role="status" aria-live="polite" data-testid="timeline-waveform-status" title={`${status}. ${disclosure}. ${background}`}>{status}</span>
     {state.enabled && clipped && <span className="timeline-waveform-clipped" data-testid="timeline-waveform-clipped" title={t('audio.waveform.clippedHint')}>{t('audio.waveform.clipped')}</span>}
     {state.enabled && state.retryable && <Button variant="ghost" className="button small timeline-waveform-retry" data-testid="timeline-waveform-retry" title={t('audio.waveform.retryHint')} onClick={state.retry}>{t('audio.waveform.retry')}</Button>}

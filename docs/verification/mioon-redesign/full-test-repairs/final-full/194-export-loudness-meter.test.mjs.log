@@ -1,0 +1,94 @@
+TAP version 13
+# Subtest: loudness fixed profile is stereo f32le48k, 600 seconds and 100ms duration tolerance
+ok 1 - loudness fixed profile is stereo f32le48k, 600 seconds and 100ms duration tolerance
+  ---
+  duration_ms: 0.905083
+  type: 'test'
+  ...
+# Subtest: loudness is identical across single-byte, split-float and irregular chunk boundaries
+ok 2 - loudness is identical across single-byte, split-float and irregular chunk boundaries
+  ---
+  duration_ms: 73.003042
+  type: 'test'
+  ...
+# Subtest: 19199/19200/19201 frames respect complete block boundary without padded loudness
+ok 3 - 19199/19200/19201 frames respect complete block boundary without padded loudness
+  ---
+  duration_ms: 19.979
+  type: 'test'
+  ...
+# Subtest: independent causal filter/block oracle verifies absolute and relative gates
+ok 4 - independent causal filter/block oracle verifies absolute and relative gates
+  ---
+  duration_ms: 115.421209
+  type: 'test'
+  ...
+# Subtest: silence, short programme and below-absolute-gate signals remain distinct
+ok 5 - silence, short programme and below-absolute-gate signals remain distinct
+  ---
+  duration_ms: 30.338959
+  type: 'test'
+  ...
+# Subtest: channel energy is summed with independent K filters, never phase cancellation
+ok 6 - channel energy is summed with independent K filters, never phase cancellation
+  ---
+  duration_ms: 18.901042
+  type: 'test'
+  ...
+# Subtest: all polyphase coefficients and EOF delay match full causal convolution
+ok 7 - all polyphase coefficients and EOF delay match full causal convolution
+  ---
+  duration_ms: 0.969042
+  type: 'test'
+  ...
+# Subtest: first and final frame peaks, including EOF-only intersample peaks, survive
+ok 8 - first and final frame peaks, including EOF-only intersample peaks, survive
+  ---
+  duration_ms: 0.167625
+  type: 'test'
+  ...
+# Subtest: 4x interpolation resolves phased intersample peaks without clipping float amplitudes
+ok 9 - 4x interpolation resolves phased intersample peaks without clipping float amplitudes
+  ---
+  duration_ms: 10.731291
+  type: 'test'
+  ...
+# Subtest: all finite float32 amplitudes remain finite and subnormals are not called silence
+ok 10 - all finite float32 amplitudes remain finite and subnormals are not called silence
+  ---
+  duration_ms: 18.142958
+  type: 'test'
+  ...
+# Subtest: nonfinite samples in either channel poison all later writes and finish
+ok 11 - nonfinite samples in either channel poison all later writes and finish
+  ---
+  duration_ms: 13.250334
+  type: 'test'
+  ...
+# Subtest: empty, incomplete byteframes and invalid write values never yield partial reports
+ok 12 - empty, incomplete byteframes and invalid write values never yield partial reports
+  ---
+  duration_ms: 9.665833
+  type: 'test'
+  ...
+# Subtest: 100ms decoded-duration allowance is inclusive and counts no EOF drain zeros
+ok 13 - 100ms decoded-duration allowance is inclusive and counts no EOF drain zeros
+  ---
+  duration_ms: 16.001916
+  type: 'test'
+  ...
+# Subtest: 600-second streaming cap includes residual bytes and is terminal
+ok 14 - 600-second streaming cap includes residual bytes and is terminal
+  ---
+  duration_ms: 6201.476167
+  type: 'test'
+  ...
+1..14
+# tests 14
+# suites 0
+# pass 14
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 6727.847167

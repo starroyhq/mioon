@@ -36,7 +36,7 @@ const errors = {
   AGENT_CHAT_SESSION_EXPIRED: [409, '对话服务已重新启动，请重新读取已保存记录；不会自动重新发送。'],
   AGENT_CHAT_CONVERSATION_CONFLICT: [409, '对话已被另一个窗口更新，请重新读取后确认发送。'],
   AGENT_CHAT_SETTINGS_CONFLICT: [409, '连接设置已改变，请重新读取并确认目标和模型。'],
-  AGENT_CHAT_CONSENT_REQUIRED: [409, '读取范围、连接目标或调用限额已改变，请重新确认本轮发送。'],
+  AGENT_CHAT_CONSENT_REQUIRED: [409, '目标、模型或发送范围尚未授权，或当前请求范围已变化，请核对授权与发送内容。'],
   AGENT_CHAT_ACTIVE_RUN: [409, '此项目已有回复正在生成，请等待或停止后再发送。'],
   AGENT_CHAT_IDEMPOTENCY_CONFLICT: [409, '此发送标识已用于不同请求；未重复发送。'],
   AGENT_CHAT_RUN_EXPIRED: [410, '这次对话已离开本次服务的有限缓存；不会自动重新发送。'],
@@ -85,7 +85,7 @@ function bounded(operation, signal, ms = 10000) {
  * work, bounded uncommitted text batches and subscribers are process-local.
  * Gateway/limit injection is trusted synthetic QA, never HTTP/env input. */
 export function createChatRuntime({store, agentSettings, gateway = streamAgentResponse, selfPort,
-  mode = 'provider', journalLimits, inspection = createInspectionServices(store), editService}) {
+  mode = 'provider', journalLimits, inspection = createInspectionServices(store), editService, authorizations}) {
  if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();
   const instanceId = randomUUID(), active = new Map(), watchers = new Map(), publications = [];
   const modeName = mode === 'simulated' ? 'simulated' : 'provider';
@@ -224,10 +224,21 @@ export function createChatRuntime({store, agentSettings, gateway = streamAgentRe
     try { validateAgentGatewayConfiguration(configuration, {selfPort: selfPort(), readTools: {phase: 'request', scope: AGENT_TIMELINE_GAIN_CONTEXT}}); return true; }
     catch { return false; }
   }
+  function requireAuthorization(configuration, scope) {
+    if(!authorizations)throw chatRuntimeError('AGENT_CHAT_CONSENT_REQUIRED');
+    try{authorizations.assertAuthorized({destination:deriveAgentEndpoint(configuration),model:configuration.model,scope});}
+    catch(error){
+      if(error?.code==='AGENT_AUTHORIZATION_REQUIRED')throw chatRuntimeError('AGENT_CHAT_CONSENT_REQUIRED');
+      throw agentChatError('AGENT_CHAT_STORAGE_UNAVAILABLE');
+    }
+  }
   async function execute(state, configuration, messages, expectedSettingsRevision) {
     let apiKey = null;
-    const beforeSubmit = state.execution?.policy.context === AGENT_TIMELINE_GAIN_CONTEXT ? createAgentGainContextFence({
+    const gainFence = state.execution?.policy.context === AGENT_TIMELINE_GAIN_CONTEXT ? createAgentGainContextFence({
       live: () => live(state), checkTarget: () => editService.assertTimelineGainTarget(state.execution.target)}) : undefined;
+    // A saved grant never authorizes later steps after revocation. This same
+    // fence runs after async credential acquisition and at each model POST.
+    const beforeSubmit=()=>{requireAuthorization(configuration,state.authorizationScope);gainFence?.();};
     try {
       validateAgentGatewayConfiguration(configuration, {selfPort: selfPort(), ...(state.execution ? {readTools: {phase: 'request', ...(state.execution.target ? {scope: state.execution.policy.context} : {})}} : {})});
       const expected = {expectedRevision: expectedSettingsRevision, configuration};
@@ -240,7 +251,7 @@ export function createChatRuntime({store, agentSettings, gateway = streamAgentRe
         }, state.controller.signal), expected);
         beforeSubmit?.();
       } catch (error) {
-        if (beforeSubmit && ['AGENT_CHAT_CONTEXT_CHANGED', 'AGENT_CHAT_ABORTED'].includes(error?.code)) throw error;
+        if (['AGENT_CHAT_CONTEXT_CHANGED', 'AGENT_CHAT_ABORTED', 'AGENT_CHAT_CONSENT_REQUIRED', 'AGENT_CHAT_STORAGE_UNAVAILABLE'].includes(error?.code)) throw error;
         if (error?.code === 'AGENT_SETTINGS_CONFLICT') throw chatRuntimeError('AGENT_CHAT_SETTINGS_CONFLICT');
         throw chatRuntimeError('AGENT_CHAT_CREDENTIAL_UNAVAILABLE');
       }
@@ -261,10 +272,11 @@ export function createChatRuntime({store, agentSettings, gateway = streamAgentRe
       }
       access(() => journal.dispatch(state.id));
       if (!live(state)) return;
+      beforeSubmit();
       let done = false;
       // Exactly one invocation, after the conservative local dispatch boundary
       // committed. A boundary does not prove provider acceptance or billing.
-      for await (const item of gateway({configuration: {...configuration}, apiKey, messages: structuredClone(messages), signal: state.controller.signal, selfPort: selfPort()})) {
+      for await (const item of gateway({configuration: {...configuration}, apiKey, messages: structuredClone(messages), signal: state.controller.signal, selfPort: selfPort(), beforeSubmit})) {
         if (!live(state)) return;
         if (item?.type === 'done') {
           if (item.finishReason === 'length') throw agentChatError('AGENT_CHAT_TRUNCATED');
@@ -317,6 +329,7 @@ export function createChatRuntime({store, agentSettings, gateway = streamAgentRe
       catch { checkOpen(); throw chatRuntimeError('AGENT_CHAT_CREDENTIAL_UNAVAILABLE'); }
       const page = historyPage(projectId);
       return {...page, scope: editService?.pinTimelineTarget ? 'chat_and_reviewed_timeline_edits' : editService ? 'chat_and_reviewed_shot_edits' : 'chat_and_project_inspection', persistence: 'local_database', mode: modeName, settings,
+        authorization:authorizations?authorizations.snapshot(settings.configuration):{revision:0,scopes:[]},
         inspection: readToolCapability(inspectionAvailable(projectId, settings.configuration)),
         edit: editToolCapability(editAvailable(projectId, settings.configuration)),
         timelineEdit: timelineEditToolCapability(timelineEditAvailable(projectId, settings.configuration)),
@@ -357,13 +370,14 @@ export function createChatRuntime({store, agentSettings, gateway = streamAgentRe
         const target = useTimelineGain ? editService.pinTimelineGainTarget(projectId, {timelineId: input.consent.timelineId, clipId: input.consent.clipId, expectedRevision: input.consent.expectedRevision}) : useTimelineEdit ? editService.pinTimelineTarget(projectId, {timelineId: input.consent.timelineId, clipId: input.consent.clipId, expectedRevision: input.consent.expectedRevision}) :
           useEdit ? editService.pinTarget(projectId, {shotId: input.consent.shotId, expectedRevision: input.consent.expectedRevision}) : undefined;
         if (useTimelineGain && !isDeepStrictEqual(input.consent.reviewTarget, agentTimelineGainReviewTarget(target))) throw chatRuntimeError('AGENT_CHAT_CONSENT_REQUIRED');
+        requireAuthorization(configuration,input.consent.context);
         const {messages, sourceRunIds} = selectChatContext(access(() => journal.page(projectId)).runs, input.message, input.consent.context, CHAT_LIMITS, target);
         const execution = useInspection || useProposal ? {version: 1, policy: useTimelineGain ? timelineGainEditToolPolicy(projectId) : useTimelineEdit ? timelineEditToolPolicy(projectId) : useEdit ? editToolPolicy(projectId) : readToolPolicy(projectId), ...(useProposal ? {target} : {}), request: {protocol: configuration.protocol,
           body: buildAgentRequest({configuration, messages, readTools: {phase: 'request', ...(useProposal ? {scope: input.consent.context} : {})}, selfPort: selfPort()}).body,
           context: messages, provenance: {category: useTimelineGain ? AGENT_TIMELINE_GAIN_PROVENANCE : useTimelineEdit ? AGENT_TIMELINE_MOVE_PROVENANCE : useEdit ? 'project_selected_shot_text' : 'project_saved_text_metadata', projectId, sourceRunIds}}} : undefined;
         const saved = access(() => journal.accept({projectId, requestId: input.requestId, fingerprint, instanceId, configuration, messages, consent: input.consent, input, ...(execution ? {execution} : {})}));
         const state = {id: saved.run.id, projectId, controller: new AbortController(), fenced: false,
-          pending: '', pendingBytes: 0, receivedBytes: 0, timer: null, flushTimer: null, execution};
+          pending: '', pendingBytes: 0, receivedBytes: 0, timer: null, flushTimer: null, execution, authorizationScope:input.consent.context};
         active.set(state.id, state);
         publish(saved.events);
         state.timer = setTimeout(() => { if (live(state)) terminal(state, 'failed', agentChatError('AGENT_CHAT_TIMEOUT')); }, CHAT_LIMITS.runMs);

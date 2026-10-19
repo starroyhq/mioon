@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: chat_completions: actual SIGKILL at committed-intent preserves evidence and startup never resumes
+ok 1 - chat_completions: actual SIGKILL at committed-intent preserves evidence and startup never resumes
+  ---
+  duration_ms: 1292.297
+  type: 'test'
+  ...
+# Subtest: chat_completions: actual SIGKILL at after-read-before-capture preserves evidence and startup never resumes
+ok 2 - chat_completions: actual SIGKILL at after-read-before-capture preserves evidence and startup never resumes
+  ---
+  duration_ms: 963.065042
+  type: 'test'
+  ...
+# Subtest: chat_completions: actual SIGKILL at before-continuation-post preserves evidence and startup never resumes
+ok 3 - chat_completions: actual SIGKILL at before-continuation-post preserves evidence and startup never resumes
+  ---
+  duration_ms: 983.454166
+  type: 'test'
+  ...
+# Subtest: responses: actual SIGKILL at committed-intent preserves evidence and startup never resumes
+ok 4 - responses: actual SIGKILL at committed-intent preserves evidence and startup never resumes
+  ---
+  duration_ms: 1028.188542
+  type: 'test'
+  ...
+# Subtest: responses: actual SIGKILL at after-read-before-capture preserves evidence and startup never resumes
+ok 5 - responses: actual SIGKILL at after-read-before-capture preserves evidence and startup never resumes
+  ---
+  duration_ms: 1009.853958
+  type: 'test'
+  ...
+# Subtest: responses: actual SIGKILL at before-continuation-post preserves evidence and startup never resumes
+ok 6 - responses: actual SIGKILL at before-continuation-post preserves evidence and startup never resumes
+  ---
+  duration_ms: 998.603083
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 6568.243292

@@ -1,0 +1,15 @@
+{
+  "files": [
+    "tests/named-delivery-app.test.mjs",
+    "tests/video-first-last-ui.test.mjs",
+    "tests/workspace-visibility.test.mjs"
+  ],
+  "concurrency": 1,
+  "timeoutSeconds": 900,
+  "separateProcesses": true,
+  "source": "real directory enumeration; no exclusions",
+  "nodeFlags": [
+    "--test",
+    "--test-reporter=tap"
+  ]
+}

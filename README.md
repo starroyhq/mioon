@@ -39,7 +39,7 @@ pnpm start
 cat data/access-token
 ```
 
-默认只监听回环地址，不是公网网站。云端开发时显示的 localhost 只属于开发环境；下载本项目后在自己的电脑执行上述命令才可在自己的浏览器打开。Electron 的 macOS 打包配置已提供；本轮运行在 Linux 云电脑，不能据此声称 Mac 原生运行、签名或公证通过。
+默认只监听回环地址，不是公网网站。云端开发时显示的 localhost 只属于开发环境；下载本项目后在自己的电脑执行上述命令才可在自己的浏览器打开。本次改版在 macOS 使用新构建运行 Electron，已验证隔离、重启、合成与视频解码等22项；详细范围与未验证项见[改版验收](docs/verification/mioon-redesign/STATUS.md)。签名、公证及安装包未验收。
 
 操作说明见 `docs/WORKSPACE-GUIDE.zh-CN.md`；实际截图见 `evidence/v3-browser/deliverable-region-guide.png`。
 
@@ -73,7 +73,7 @@ Skill 包仅供手动安装/发现，不自动修改任何 agent 全局配置；
 
 本版窄范围适配：Runway Gen-4 Turbo；Seedance 2.5；Gemini Veo 3.1 preview；MiniMax H3 V2；Vidu Q3 Turbo。以 `provider list` 的实时能力为准，详见 [官方文档与实现矩阵](docs/PROVIDERS.md)。MiniMax/Vidu 的 `global` 与 `cn` 区域由后端明确配置，绝不跨区回退。Vidu 未找到可验证的默认输出 CDN，因此还需独立核实并配置精确的 `VIDU_OUTPUT_HOSTS` 后才能提交。
 
-所有真实调用默认关闭。启用前须另行确认服务商/模型、提示词与素材范围、次数、总金额上限，并安全设置后端密钥。`*_MAX_GENERATIONS` 是当前数据目录内的保守次数上限，不能保证美元支出；账户计费和预算也须核实。官方历史 Sora API 已停用，本版不暴露假装可用的 Sora 适配器。
+所有真实调用默认关闭。启用前须另行确认服务商/模型、提示词与素材范围、次数、总金额上限，并安全设置后端密钥。应用不设置生成次数上限，也不提供账户金额硬上限；账户计费和预算须在服务商侧核实。官方历史 Sora API 已停用，本版不暴露假装可用的 Sora 适配器。
 
 独立的图像生成另有[Images 设置与逐次付费确认](docs/IMAGE-ACTIVATION.md)：固定 OpenAI 预设及独立密钥在 2026-10-10 基线 `4e66a96` 已通过受影响测试、构建、Linux 原生合成网络验收和全量检查 2758 项（2756 通过、2 跳过、0 失败）。[自定义 Images](docs/IMAGE-COMPATIBLE.md) 已实现：独立设置/密钥槽、公开 HTTPS 目的地及固定单张 PNG 协议，仍须逐次由用户在 UI 确认付费；其受影响测试、新构建及 Linux 原生合成网络验收已通过，独立全量为 2857 项（2855 通过、2 跳过、0 失败）。这些历史验收不证明真实供应商或 macOS/Windows 可用。
 
@@ -92,11 +92,11 @@ Skill 包仅供手动安装/发现，不自动修改任何 agent 全局配置；
 
 参考图编辑可从右侧图像页明确选择一张项目内 PNG，保留原图并产生新版本。Mock 只验证流程；固定 OpenAI 的真实编辑仍需配置及逐次用户确认，尚未真实联调。首版限制与验收状态见[单 PNG 编辑](docs/IMAGE-EDITING.md)。
 
-时间线固定30fps，初始空白时间线可选择720×1280、1280×720或720×720输出（默认竖屏，见[时间线输出规格](docs/TIMELINE-OUTPUT-FORMATS.md)），默认两条画面轨和一条音频轨。视频轨可放图片/视频，音频轨可放WAV/MP3/M4A。同轨片段不能重叠，跨轨可叠放；画面轨层级越高越靠上。预览由真实FFmpeg渲染，和多轨导出使用相同合成器；修改后需要更新预览，旧快照会明确提示。
+时间线固定30fps，新项目默认1080×1920，初始空白时间线可选择1080×1920、1920×1080或1080×1080输出（默认竖屏，见[时间线输出规格](docs/TIMELINE-OUTPUT-FORMATS.md)），默认两条画面轨和一条音频轨。视频轨可放图片/视频，音频轨可放WAV/MP3/M4A。同轨片段不能重叠，跨轨可叠放；画面轨层级越高越靠上。预览由真实FFmpeg渲染，和多轨导出使用相同合成器；修改后需要更新预览，旧快照会明确提示。
 
 选择一个片段，将播放头移到片段内部的整数帧，然后点击“分割”或按 Cmd/Ctrl+B。只分割所选片段，左段保留原 ID，右段拥有固定新 ID；源范围、画面位置、音量和素材版本保持不变，总时长不变，不移动其他片段。可一次撤销/重做。起止边界、未保存修改、待确认请求、离线或同步期间禁用；输入框、输入法和弹窗保留自己的快捷键。详见[分割验收](docs/ACCEPTANCE-CLIP-SPLIT.md)。
 
-时间线导出可在右侧交付页选择本次 MP4/H.264 画质或平均目标码率，以及原始合成尺寸、短边360或1080。先明确检查本机编码能力与素材，再确认导出；设置固定在该次成片快照中。1080是放大现有720合成，不增加原始细节；时间线与编辑预览规格不变。详见[导出设置](docs/EXPORT-SETTINGS.md)。
+时间线导出可从剪辑顶栏打开分步弹窗，选择本次 MP4/H.264 画质或平均目标码率，以及原始合成尺寸、短边720或360；旧720项目保留短边1080放大选项。先明确检查本机编码能力与素材，再确认导出；设置固定在该次成片快照中。1080项目原生合成，不经720中间画布；旧720项目的1080选项仍为放大。尺寸选择不改时间线或编辑预览规格。详见[导出设置](docs/EXPORT-SETTINGS.md)。
 
 时间线工具栏支持持久化撤销/重做与 Cmd/Ctrl+Z、Cmd/Ctrl+Shift+Z（Ctrl+Y）。轨道、片段及从分镜导入的编辑均可恢复，重启后保留历史；撤销不影响生成任务、已选版本、素材或导出，也不会撤销服务商花费。CLI/MCP 使用相同的时间线历史服务。
 
@@ -109,7 +109,7 @@ Skill 包仅供手动安装/发现，不自动修改任何 agent 全局配置；
 3. 拖拽/缩放画布；拖动位置不会改变成片顺序，用镜头顺序控件排序
 4. 选择模拟供应商生成，等待真实测试 MP4 落盘；模拟片带明显水印
 5. 重新生成保留旧版本，比较两个视频，选择想要的版本
-6. 每个镜头选定一个版本后导出，按镜头顺序生成720×1280、H.264/AAC MP4；素材有声音则保留并统一格式，无声段补静音
+6. 每个镜头选定一个版本后导出，按镜头顺序生成项目规格（未设置时1080×1920）的H.264/AAC MP4；素材有声音则保留并统一格式，无声段补静音
 
 支持文本、图片、视频、音频节点与连线。任务失败可以显式重试；提交结果未知时不会自动重新发起生成。停止等待仅停止本地轮询，不表示供应商任务已取消。
 
@@ -168,9 +168,9 @@ Web入口的业务数据在 `MIOON_DATA_DIR`（默认 `data/`）：SQLite WAL、
 
 ## 当前边界
 
-单用户本地应用；无云同步、复杂转场、关键帧动画、变速、多人协作或账号支付。支持最多12条轨道、100个片段、10分钟的轻量多轨合成；时间线输出提供竖屏、横屏和方屏三种720规格，固定30fps；仅初始空白时间线可切换，分镜导出仍为720×1280。时间线预览需要渲染，不是实时任意效果编辑器。真实生成可能产生成本；本地模拟与下游供应商费用不同。密钥只由后端读取，业务JSON中没有密钥。
+单用户本地应用；无云同步、复杂转场、关键帧动画、变速、多人协作或账号支付。支持最多12条轨道、100个片段、10分钟的轻量多轨合成；时间线新项目提供竖屏、横屏和方屏三种原生1080规格，固定30fps；旧720项目及记录保留，仅初始空白时间线可切换。新分镜导出冻结项目规格，未设置时为1080×1920。时间线预览需要渲染，不是实时任意效果编辑器。真实生成可能产生成本；本地模拟与下游供应商费用不同。密钥只由后端读取，业务JSON中没有密钥。
 
-架构已明确采用 Electron。本版包含 Linux 本地桌面构建及 macOS 构建配置；Mac 原生运行、签名、公证、系统密钥库与自动升级仍需真实 macOS 环境和另行授权验证。没有自动发布、部署、签名或上传应用。
+架构已明确采用 Electron。本版包含 Linux 本地桌面构建及 macOS 构建配置；本次 macOS 开发构建已有有限原生运行证据，系统保存对话框、系统密钥库、签名、公证、安装与自动升级仍未验收。没有自动发布、部署、签名或上传应用。
 
 For a prebuilt example, first copy the closed sample into a new private workspace using the commands in [examples/README.md](examples/README.md), then start that copy. A broadly readable sample directory is intentionally refused; existing data is never chmodded automatically. The delivered sample contains no login token or API key. See [private-storage recovery](docs/PRIVATE-STORAGE.md).
 
@@ -213,3 +213,5 @@ Alt for free placement. The live span/guide is exactly the dropped integer frame
 red overlap/type-invalid destinations never submit. Known media lengths and the
 explicit 90-frame image default support asset drops; unknown-duration media cannot
 be inserted. Explicit CLI/MCP frames are unchanged. [Acceptance and limits](docs/ACCEPTANCE-TIMELINE-SNAPPING.md).
+
+本轮改版的源码、真实媒体验证、四语言截图、基线差异和剩余环境限制统一记录于[改版验收](docs/verification/mioon-redesign/STATUS.md)。项目菜单“视图”管理面板；顶栏任务提供摘要与全部任务；设置中心汇集工作区、视频工具和服务连接。旧720项目与历史快照保留，浅色候选在截图确认前不随系统启用。

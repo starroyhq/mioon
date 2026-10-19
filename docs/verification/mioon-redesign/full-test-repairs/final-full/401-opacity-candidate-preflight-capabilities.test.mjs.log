@@ -1,0 +1,183 @@
+TAP version 13
+# Subtest: candidate custom delivery capability uses the raw render freezer and existing bounded admission without writes
+ok 1 - candidate custom delivery capability uses the raw render freezer and existing bounded admission without writes
+  ---
+  duration_ms: 640.686375
+  type: 'test'
+  ...
+# Subtest: candidate capabilities RPC is actually assembled, strict and read-only even before any tool check
+ok 2 - candidate capabilities RPC is actually assembled, strict and read-only even before any tool check
+  ---
+  duration_ms: 212.829792
+  type: 'test'
+  ...
+# Subtest: candidate capability admission cannot be invoked with a forged fence or borrowed invocation
+ok 3 - candidate capability admission cannot be invoked with a forged fence or borrowed invocation
+  ---
+  duration_ms: 343.730542
+  type: 'test'
+  ...
+# Subtest: candidate capability report becomes stale on raw opacity, source metadata, ownership and content drift
+    # Subtest: opacity
+    ok 1 - opacity
+      ---
+      duration_ms: 287.344875
+      type: 'test'
+      ...
+    # Subtest: revision
+    ok 2 - revision
+      ---
+      duration_ms: 288.039875
+      type: 'test'
+      ...
+    # Subtest: metadata
+    ok 3 - metadata
+      ---
+      duration_ms: 274.57275
+      type: 'test'
+      ...
+    # Subtest: sha256
+    ok 4 - sha256
+      ---
+      duration_ms: 271.293708
+      type: 'test'
+      ...
+    # Subtest: assetOwner
+    ok 5 - assetOwner
+      ---
+      duration_ms: 251.411458
+      type: 'test'
+      ...
+    # Subtest: timelineOwner
+    ok 6 - timelineOwner
+      ---
+      duration_ms: 231.547917
+      type: 'test'
+      ...
+    1..6
+ok 4 - candidate capability report becomes stale on raw opacity, source metadata, ownership and content drift
+  ---
+  duration_ms: 1604.999667
+  type: 'test'
+  ...
+# Subtest: candidate ownership and invalid raw opacity are blocked before capability work
+    # Subtest: assetOwner
+    ok 1 - assetOwner
+      ---
+      duration_ms: 189.317
+      type: 'test'
+      ...
+    # Subtest: opacity
+    ok 2 - opacity
+      ---
+      duration_ms: 189.892792
+      type: 'test'
+      ...
+    1..2
+ok 5 - candidate ownership and invalid raw opacity are blocked before capability work
+  ---
+  duration_ms: 379.474083
+  type: 'test'
+  ...
+# Subtest: candidate capabilities preserves finite actual source/LUT refusal codes through the real service without inspection or writes
+    # Subtest: lut
+    ok 1 - lut
+      ---
+      duration_ms: 275.258208
+      type: 'test'
+      ...
+    # Subtest: bounds
+    ok 2 - bounds
+      ---
+      duration_ms: 307.530083
+      type: 'test'
+      ...
+    # Subtest: fade
+    ok 3 - fade
+      ---
+      duration_ms: 300.180708
+      type: 'test'
+      ...
+    1..3
+ok 6 - candidate capabilities preserves finite actual source/LUT refusal codes through the real service without inspection or writes
+  ---
+  duration_ms: 883.365041
+  type: 'test'
+  ...
+# Subtest: candidate capability failure results are validated and sanitized by existing admission
+ok 7 - candidate capability failure results are validated and sanitized by existing admission
+  ---
+  duration_ms: 927.071833
+  type: 'test'
+  ...
+# Subtest: 43 capability service requires exact origin and leaves captured exports and receipts held
+ok 8 - 43 capability service requires exact origin and leaves captured exports and receipts held
+  ---
+  duration_ms: 1223.312625
+  type: 'test'
+  ...
+# Subtest: 43 cancelled capability invocation expires its fence and cannot publish an available report
+ok 9 - 43 cancelled capability invocation expires its fence and cannot publish an available report
+  ---
+  duration_ms: 408.895833
+  type: 'test'
+  ...
+# Subtest: candidate capability read catches preserve real lease revocation before and after the inspector await
+    # Subtest: 42 initial
+    ok 1 - 42 initial
+      ---
+      duration_ms: 230.0555
+      type: 'test'
+      ...
+    # Subtest: 42 final
+    ok 2 - 42 final
+      ---
+      duration_ms: 268.023333
+      type: 'test'
+      ...
+    # Subtest: 43 initial
+    ok 3 - 43 initial
+      ---
+      duration_ms: 303.283709
+      type: 'test'
+      ...
+    # Subtest: 43 final
+    ok 4 - 43 final
+      ---
+      duration_ms: 390.8495
+      type: 'test'
+      ...
+    1..4
+ok 10 - candidate capability read catches preserve real lease revocation before and after the inspector await
+  ---
+  duration_ms: 1192.680833
+  type: 'test'
+  ...
+# Subtest: candidate capability read catches preserve a live cross-store authority refusal at both reads
+    # Subtest: initial
+    ok 1 - initial
+      ---
+      duration_ms: 379.653333
+      type: 'test'
+      ...
+    # Subtest: final
+    ok 2 - final
+      ---
+      duration_ms: 534.452167
+      type: 'test'
+      ...
+    1..2
+ok 11 - candidate capability read catches preserve a live cross-store authority refusal at both reads
+  ---
+  duration_ms: 914.385917
+  type: 'test'
+  ...
+1..11
+# tests 28
+# suites 0
+# pass 28
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 9068.023708

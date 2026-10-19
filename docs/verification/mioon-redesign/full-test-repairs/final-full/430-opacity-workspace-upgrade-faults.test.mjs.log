@@ -1,0 +1,304 @@
+TAP version 13
+# Subtest: synchronous afterValidation failure publishes nothing and removes only owned staging
+ok 1 - synchronous afterValidation failure publishes nothing and removes only owned staging
+  ---
+  duration_ms: 1210.346292
+  type: 'test'
+  ...
+# Subtest: synchronous afterDatabase failure publishes nothing and removes only owned staging
+ok 2 - synchronous afterDatabase failure publishes nothing and removes only owned staging
+  ---
+  duration_ms: 1299.083084
+  type: 'test'
+  ...
+# Subtest: synchronous afterMedia failure publishes nothing and removes only owned staging
+ok 3 - synchronous afterMedia failure publishes nothing and removes only owned staging
+  ---
+  duration_ms: 1173.043
+  type: 'test'
+  ...
+# Subtest: synchronous beforePublish failure publishes nothing and removes only owned staging
+ok 4 - synchronous beforePublish failure publishes nothing and removes only owned staging
+  ---
+  duration_ms: 1199.087125
+  type: 'test'
+  ...
+# Subtest: an afterPublish failure preserves the published42 bytes and exact uncertainty proof
+ok 5 - an afterPublish failure preserves the published42 bytes and exact uncertainty proof
+  ---
+  duration_ms: 1221.414208
+  type: 'test'
+  ...
+# Subtest: afterValidation database same-inode-change is detected before publication and the external change is preserved
+ok 6 - afterValidation database same-inode-change is detected before publication and the external change is preserved
+  ---
+  duration_ms: 1014.689958
+  type: 'test'
+  ...
+# Subtest: afterValidation database same-bytes-new-inode is detected before publication and the external change is preserved
+ok 7 - afterValidation database same-bytes-new-inode is detected before publication and the external change is preserved
+  ---
+  duration_ms: 1225.186708
+  type: 'test'
+  ...
+# Subtest: afterValidation media same-inode-change is detected before publication and the external change is preserved
+ok 8 - afterValidation media same-inode-change is detected before publication and the external change is preserved
+  ---
+  duration_ms: 973.969167
+  type: 'test'
+  ...
+# Subtest: afterValidation media same-bytes-new-inode is detected before publication and the external change is preserved
+ok 9 - afterValidation media same-bytes-new-inode is detected before publication and the external change is preserved
+  ---
+  duration_ms: 1050.907959
+  type: 'test'
+  ...
+# Subtest: afterValidation companion same-inode-change is detected before publication and the external change is preserved
+ok 10 - afterValidation companion same-inode-change is detected before publication and the external change is preserved
+  ---
+  duration_ms: 1052.207791
+  type: 'test'
+  ...
+# Subtest: afterValidation companion same-bytes-new-inode is detected before publication and the external change is preserved
+ok 11 - afterValidation companion same-bytes-new-inode is detected before publication and the external change is preserved
+  ---
+  duration_ms: 1006.930542
+  type: 'test'
+  ...
+# Subtest: beforePublish database same-inode-change is detected before publication and the external change is preserved
+ok 12 - beforePublish database same-inode-change is detected before publication and the external change is preserved
+  ---
+  duration_ms: 1048.684667
+  type: 'test'
+  ...
+# Subtest: beforePublish database same-bytes-new-inode is detected before publication and the external change is preserved
+ok 13 - beforePublish database same-bytes-new-inode is detected before publication and the external change is preserved
+  ---
+  duration_ms: 1039.055875
+  type: 'test'
+  ...
+# Subtest: beforePublish media same-inode-change is detected before publication and the external change is preserved
+ok 14 - beforePublish media same-inode-change is detected before publication and the external change is preserved
+  ---
+  duration_ms: 2250.637291
+  type: 'test'
+  ...
+# Subtest: beforePublish media same-bytes-new-inode is detected before publication and the external change is preserved
+ok 15 - beforePublish media same-bytes-new-inode is detected before publication and the external change is preserved
+  ---
+  duration_ms: 2302.911583
+  type: 'test'
+  ...
+# Subtest: beforePublish companion same-inode-change is detected before publication and the external change is preserved
+ok 16 - beforePublish companion same-inode-change is detected before publication and the external change is preserved
+  ---
+  duration_ms: 1755.078916
+  type: 'test'
+  ...
+# Subtest: beforePublish companion same-bytes-new-inode is detected before publication and the external change is preserved
+ok 17 - beforePublish companion same-bytes-new-inode is detected before publication and the external change is preserved
+  ---
+  duration_ms: 1126.874
+  type: 'test'
+  ...
+# Subtest: afterValidation detects previously missing local-drafts-v1.json appearing without migrating or deleting it
+ok 18 - afterValidation detects previously missing local-drafts-v1.json appearing without migrating or deleting it
+  ---
+  duration_ms: 1127.246167
+  type: 'test'
+  ...
+# Subtest: afterValidation detects previously missing local-delivery-v1.json appearing without migrating or deleting it
+ok 19 - afterValidation detects previously missing local-delivery-v1.json appearing without migrating or deleting it
+  ---
+  duration_ms: 1053.234625
+  type: 'test'
+  ...
+# Subtest: afterValidation detects previously missing local-shot-text-v1.json appearing without migrating or deleting it
+ok 20 - afterValidation detects previously missing local-shot-text-v1.json appearing without migrating or deleting it
+  ---
+  duration_ms: 1522.713542
+  type: 'test'
+  ...
+# Subtest: afterValidation detects previously missing local-drafts-v3.json appearing without migrating or deleting it
+ok 21 - afterValidation detects previously missing local-drafts-v3.json appearing without migrating or deleting it
+  ---
+  duration_ms: 950.07975
+  type: 'test'
+  ...
+# Subtest: afterValidation detects previously missing local-drafts-restored43-v1.json appearing without migrating or deleting it
+ok 22 - afterValidation detects previously missing local-drafts-restored43-v1.json appearing without migrating or deleting it
+  ---
+  duration_ms: 1040.682292
+  type: 'test'
+  ...
+# Subtest: beforePublish detects previously missing local-drafts-v1.json appearing without migrating or deleting it
+ok 23 - beforePublish detects previously missing local-drafts-v1.json appearing without migrating or deleting it
+  ---
+  duration_ms: 1553.129333
+  type: 'test'
+  ...
+# Subtest: beforePublish detects previously missing local-delivery-v1.json appearing without migrating or deleting it
+ok 24 - beforePublish detects previously missing local-delivery-v1.json appearing without migrating or deleting it
+  ---
+  duration_ms: 1086.643791
+  type: 'test'
+  ...
+# Subtest: beforePublish detects previously missing local-shot-text-v1.json appearing without migrating or deleting it
+ok 25 - beforePublish detects previously missing local-shot-text-v1.json appearing without migrating or deleting it
+  ---
+  duration_ms: 1709.975042
+  type: 'test'
+  ...
+# Subtest: beforePublish detects previously missing local-drafts-v3.json appearing without migrating or deleting it
+ok 26 - beforePublish detects previously missing local-drafts-v3.json appearing without migrating or deleting it
+  ---
+  duration_ms: 1360.081
+  type: 'test'
+  ...
+# Subtest: beforePublish detects previously missing local-drafts-restored43-v1.json appearing without migrating or deleting it
+ok 27 - beforePublish detects previously missing local-drafts-restored43-v1.json appearing without migrating or deleting it
+  ---
+  duration_ms: 1213.54825
+  type: 'test'
+  ...
+# Subtest: a replaced target staging database is retained while cleanup refuses the foreign inode
+ok 28 - a replaced target staging database is retained while cleanup refuses the foreign inode
+  ---
+  duration_ms: 1091.139459
+  type: 'test'
+  ...
+# Subtest: cleanup retains an unknown target file and marks incomplete removal instead of deleting foreign contents
+ok 29 - cleanup retains an unknown target file and marks incomplete removal instead of deleting foreign contents
+  ---
+  duration_ms: 1459.345166
+  type: 'test'
+  ...
+# Subtest: the final publication fence refuses an unknown target file appearing at beforePublish
+ok 30 - the final publication fence refuses an unknown target file appearing at beforePublish
+  ---
+  duration_ms: 1620.535875
+  type: 'test'
+  ...
+# Subtest: the final fence refuses a same-bytes replacement of the target candidate inode
+ok 31 - the final fence refuses a same-bytes replacement of the target candidate inode
+  ---
+  duration_ms: 1634.1565
+  type: 'test'
+  ...
+# Subtest: the final fence refuses a same-bytes replacement of the target media inode
+ok 32 - the final fence refuses a same-bytes replacement of the target media inode
+  ---
+  duration_ms: 1428.260584
+  type: 'test'
+  ...
+# Subtest: the final fence refuses a same-bytes replacement of the target proof inode
+ok 33 - the final fence refuses a same-bytes replacement of the target proof inode
+  ---
+  duration_ms: 1365.444458
+  type: 'test'
+  ...
+# Subtest: a competing destination lease is retained after the owned lease is revoked
+ok 34 - a competing destination lease is retained after the owned lease is revoked
+  ---
+  duration_ms: 1323.579875
+  type: 'test'
+  ...
+# Subtest: a replaced destination root is retained without deleting files in the foreign directory
+ok 35 - a replaced destination root is retained without deleting files in the foreign directory
+  ---
+  duration_ms: 1034.493583
+  type: 'test'
+  ...
+# Subtest: candidate fsync failure before publication removes verified owned staging and leaves source and archive intact
+ok 36 - candidate fsync failure before publication removes verified owned staging and leaves source and archive intact
+  ---
+  duration_ms: 1004.633458
+  type: 'test'
+  ...
+# Subtest: proof-file fsync failure before publication removes the file created by this operation
+ok 37 - proof-file fsync failure before publication removes the file created by this operation
+  ---
+  duration_ms: 1483.827292
+  type: 'test'
+  ...
+# Subtest: publication directory fsync failure retains42 with uncertainty proof and no automatic retry
+ok 38 - publication directory fsync failure retains42 with uncertainty proof and no automatic retry
+  ---
+  duration_ms: 1237.755041
+  type: 'test'
+  ...
+# Subtest: publication link reports EIO before linking remains uncertain and preserves evidence
+ok 39 - publication link reports EIO before linking remains uncertain and preserves evidence
+  ---
+  duration_ms: 1513.066042
+  type: 'test'
+  ...
+# Subtest: publication link succeeds then reports failure remains uncertain and preserves evidence
+ok 40 - publication link succeeds then reports failure remains uncertain and preserves evidence
+  ---
+  duration_ms: 1176.412458
+  type: 'test'
+  ...
+# Subtest: no-clobber EEXIST retains the competing canonical file and never overwrites or unlinks it
+ok 41 - no-clobber EEXIST retains the competing canonical file and never overwrites or unlinks it
+  ---
+  duration_ms: 1076.975583
+  type: 'test'
+  ...
+# Subtest: publication unlink failure leaves both same-inode paths and reports uncertainty without rollback
+ok 42 - publication unlink failure leaves both same-inode paths and reports uncertainty without rollback
+  ---
+  duration_ms: 1650.482458
+  type: 'test'
+  ...
+# Subtest: already aborted input creates no destination and does not touch the source or archive
+ok 43 - already aborted input creates no destination and does not touch the source or archive
+  ---
+  duration_ms: 1140.261792
+  type: 'test'
+  ...
+# Subtest: cancellation at afterValidation stops before publication and removes owned staging
+ok 44 - cancellation at afterValidation stops before publication and removes owned staging
+  ---
+  duration_ms: 1436.677709
+  type: 'test'
+  ...
+# Subtest: cancellation at afterDatabase stops before publication and removes owned staging
+ok 45 - cancellation at afterDatabase stops before publication and removes owned staging
+  ---
+  duration_ms: 1144.709541
+  type: 'test'
+  ...
+# Subtest: cancellation at afterMedia stops before publication and removes owned staging
+ok 46 - cancellation at afterMedia stops before publication and removes owned staging
+  ---
+  duration_ms: 1171.089375
+  type: 'test'
+  ...
+# Subtest: cancellation at beforePublish stops before publication and removes owned staging
+ok 47 - cancellation at beforePublish stops before publication and removes owned staging
+  ---
+  duration_ms: 1654.325042
+  type: 'test'
+  ...
+# Subtest: cancellation during streamed media copying closes and removes the partially copied owned file
+ok 48 - cancellation during streamed media copying closes and removes the partially copied owned file
+  ---
+  duration_ms: 1646.475791
+  type: 'test'
+  ...
+# Subtest: cancellation after durable publication does not roll back the completed target
+ok 49 - cancellation after durable publication does not roll back the completed target
+  ---
+  duration_ms: 1148.379334
+  type: 'test'
+  ...
+1..49
+# tests 49
+# suites 0
+# pass 49
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 64376.317916

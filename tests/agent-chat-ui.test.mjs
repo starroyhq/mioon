@@ -1,3 +1,4 @@
+import {createAgentAuthorizationUiMock} from './helpers/agent-authorization-ui.mjs';
 import { creationUiMessages } from '../packages/i18n/src/catalogs/creation-ui.ts';
 import { createLanguageStore } from '../apps/web/src/i18n/language-store.ts';
 import { createI18nTestContext, message } from './helpers/i18n.ts';
@@ -24,7 +25,7 @@ const runId = '22222222-2222-4222-8222-222222222222', requestId = '33333333-3333
 const configuration = { presetId: 'openai', platformId: 'global', baseUrl: 'https://api.example.com/v1', model: 'gpt-4.1-mini', protocol: 'chat_completions' };
 const settings = (patch = {}) => ({ revision: 0, configuration: { ...configuration }, secret: { configured: true, storage: 'session' }, storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY' }, presets: [{ id: 'openai', label: 'OpenAI', platforms: [{ id: 'global', label: 'Global', defaultProtocol: 'chat_completions', availableProtocols: ['chat_completions', 'responses'], ...configuration }] }], scope: 'settings_only', verification: 'not_tested', ...patch });
 const run = (patch = {}) => ({ id: runId, requestId, threadId, projectId, status: 'running', userText: 'A typed question', assistantText: '', configuration: { ...configuration }, createdAt: '2026-10-09T00:00:00Z', updatedAt: '2026-10-09T00:00:00Z', lastEventId: 1, ...patch });
-const snapshot = (patch = {}) => ({ instanceId, threadId, projectId, revision: 0, historyCursor: null, scope: 'chat_only', persistence: 'local_database', mode: 'simulated', settings: settings(), runs: [], ...patch });
+const snapshot = (patch = {}) => ({ instanceId, threadId, projectId, revision: 0, historyCursor: null, authorization:{revision:0,scopes:[]}, scope: 'chat_only', persistence: 'local_database', mode: 'simulated', settings: settings(), runs: [], ...patch });
 const envelope = (value = run(), revision = 1) => ({ instanceId, threadId, projectId, revision, run: value });
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const flush = async () => { for (let i = 0; i < 24; i++) await Promise.resolve(); };
@@ -33,7 +34,7 @@ const memoryReceipts = () => { const data = new Map(); return { get: id => data.
 function fixture({ initial = snapshot(), read, start, stop, getRun, lookup, history, stream, receipts = memoryReceipts(), owner = projectId } = {}) {
   const calls = [], events = [], changes = [];
   const client = {
-    read: async (...args) => { calls.push(['read', ...args]); return read ? read(...args) : structuredClone(initial); },
+    ...createAgentAuthorizationUiMock(async (...args) => { calls.push(['read', ...args]); return read ? read(...args) : structuredClone(initial); }),
     lookup: async (...args) => { calls.push(['lookup', ...args]); if (lookup) return lookup(...args); throw error('AGENT_CHAT_NOT_FOUND'); },
     history: async (...args) => { calls.push(['history', ...args]); return history ? history(...args) : { instanceId, threadId, projectId: owner, revision: 0, runs: [], historyCursor: null }; },
     start: async (...args) => { calls.push(['start', ...args]); return start ? start(...args) : envelope(run({ userText: args[1].message })); },
@@ -44,7 +45,7 @@ function fixture({ initial = snapshot(), read, start, stop, getRun, lookup, hist
   const session = createAgentChatSession({ projectId: owner, client, receipts, requestId: () => requestId, onChange: next => changes.push(structuredClone(next)) });
   return { client, session, calls, events, changes, receipts };
 }
-const ready = async f => { await f.session.load(); f.session.edit('A typed question'); f.session.approve(true); };
+const ready = async f => { await f.session.load(); f.session.edit('A typed question'); await f.session.approve(true); };
 const frame = (patch = {}) => ({ id: 2, type: 'delta', instanceId, threadId, projectId, runId, revision: 1, text: 'Hello', ...patch });
 
 test('safe DTO excludes arbitrary error bodies, internals and credentials, bounds output/history and enforces ownership', () => {
@@ -90,20 +91,20 @@ test('SSE parser handles every UTF-8 byte split, CRLF, comments and duplicate fr
   await assert.rejects(readAgentChatSSE(broken, () => assert.fail('incomplete frame dispatched')));
 });
 
-test('first send requires explicit revision-bound consent and forwards only exact typed text', async () => {
+test('first send requires a saved destination/model/scope authorization and forwards only exact typed text', async () => {
   const f = fixture(); await f.session.load(); f.session.edit('A typed question'); assert.equal(await f.session.send(), false);
-  f.session.approve(true); assert.equal(agentChatCanSend(f.session.getState()), true); await f.session.send();
+  await f.session.approve(true); assert.equal(agentChatCanSend(f.session.getState()), true); await f.session.send();
   const input = f.calls.find(call => call[0] === 'start')[2];
   assert.deepEqual(Object.keys(input).sort(), ['consent', 'expectedConversationRevision', 'expectedSettingsRevision', 'instanceId', 'message', 'requestId']);
   assert.deepEqual(input.consent, { destination: `${configuration.baseUrl}/chat/completions`, protocol: configuration.protocol, model: configuration.model, context: 'typed_chat_only' });
   assert.equal(input.message, 'A typed question'); assert.equal(f.session.getState().draft, ''); f.session.dispose();
 });
 
-test('double send is synchronously blocked and consent must be renewed after completion', async () => {
+test('double send is synchronously blocked and saved permission remains valid after completion', async () => {
   const held = deferred(), f = fixture({ start: () => held.promise }); await ready(f); const first = f.session.send(); assert.equal(await f.session.send(), false);
   assert.equal(f.calls.filter(call => call[0] === 'start').length, 1); held.resolve(envelope()); await first;
   f.events[0].onEvent(frame()); f.events[0].onEvent(frame({ id: 3, type: 'terminal', revision: 2, run: run({ status: 'completed', assistantText: 'Hello', lastEventId: 3 }) }));
-  f.session.edit('next'); assert.equal(agentChatCanSend(f.session.getState()), false); assert.equal(f.session.getState().phase, 'ready'); f.session.dispose();
+  f.session.edit('next'); assert.equal(agentChatCanSend(f.session.getState()), true); assert.equal(f.session.getState().phase, 'ready'); f.session.dispose();
 });
 
 test('duplicate SSE frames never duplicate output and out-of-order or cross-project callbacks cannot change another run', async () => {
@@ -130,7 +131,7 @@ test('missing acknowledgement plus failed safe read stays blocked across dismiss
   const receipts = memoryReceipts(); let reads = 0;
   const f = fixture({ receipts, read: async () => { if (++reads > 1) throw error('NETWORK'); return snapshot(); }, start: async () => { throw error('NETWORK'); } }); await ready(f); await f.session.send();
   assert.equal(f.session.getState().phase, 'unknown'); assert.equal(agentChatCanSend(f.session.getState()), false); f.session.dispose();
-  const g = fixture({ receipts }); await g.session.load(); assert.equal(g.session.getState().phase, 'unknown'); assert.match(g.session.getState().message, /不能证明请求未被接受/); assert.match(g.session.getState().message, /当前页面会话内保留，后端重启后仍可核对/); assert.doesNotMatch(g.session.getState().message, /跨重启保留/); assert.match(g.session.getState().message, /计费/); assert.equal(g.session.approve(true), false); assert.equal(await g.session.send(), false); assert.equal(g.calls.some(call => call[0] === 'start'), false); g.session.dispose();
+  const g = fixture({ receipts }); await g.session.load(); assert.equal(g.session.getState().phase, 'unknown'); assert.match(g.session.getState().message, /不能证明请求未被接受/); assert.match(g.session.getState().message, /当前页面会话内保留，后端重启后仍可核对/); assert.doesNotMatch(g.session.getState().message, /跨重启保留/); assert.match(g.session.getState().message, /计费/); assert.equal(await g.session.approve(true), false); assert.equal(await g.session.send(), false); assert.equal(g.calls.some(call => call[0] === 'start'), false); g.session.dispose();
 });
 
 test('receipt storage contains identities only and survives new reader without text or configuration', () => {
@@ -184,7 +185,7 @@ const element = (type, props = {}, ...children) => { const properties = { ...pro
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
 const depsEqual = (a, b) => a?.length === b?.length && a.every((value, i) => Object.is(value, b[i]));
 function uiHarness(client, receipts = memoryReceipts(), languageStore) {
-  const slots = [], dom = new Map(); let cursor = 0, effects = [], tree, closes = 0, settingsOpened = 0, currentProject = projectId, visible = true, hasDraft = false;
+  const slots = [], dom = new Map(); let cursor = 0, effects = [], tree, closes = 0, settingsOpened = 0, currentProject = projectId, visible = true, hasDraft = false, componentSession;
   const react = { createElement: element,
     useState(initial) { const i = cursor++; slots[i] ||= { value: typeof initial === 'function' ? initial() : initial }; return [slots[i].value, next => { slots[i].value = typeof next === 'function' ? next(slots[i].value) : next; }]; },
     useMemo(callback, deps) { const i = cursor++; if (!slots[i] || !depsEqual(deps, slots[i].deps)) slots[i] = { value: callback(), deps }; return slots[i].value; },
@@ -200,7 +201,7 @@ function uiHarness(client, receipts = memoryReceipts(), languageStore) {
     if (id === './editor-settings-scope.ts') { const scope = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/editor-settings-scope.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(scope, scope.exports, resolve); return scope.exports; }
     if (id === './native-close-sources.ts') return nativeCloseSources;
     if (id === 'react') return react;
-    if (id === './agent-chat.js') return { ...logic, createAgentChatSession: options => logic.createAgentChatSession({ ...options, client, receipts, requestId: () => requestId }) };
+    if (id === './agent-chat.js') return { ...logic, createAgentChatSession: options => componentSession = logic.createAgentChatSession({ ...options, client, receipts, requestId: () => requestId }) };
     if (id === './agent-tool-state.js') return toolLogic;
     if (id === './AgentEditProposal.jsx') return { __esModule: true, default: 'AgentEditProposal' };
     if (id === './AgentRunActivity.jsx') { const child = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/AgentRunActivity.jsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code)(child, child.exports, resolve); return child.exports; }
@@ -215,8 +216,9 @@ function uiHarness(client, receipts = memoryReceipts(), languageStore) {
     render(owner = currentProject) { currentProject = owner; cursor = 0; effects = []; tree = module.exports.default({ projectId: currentProject, projectName: 'Private Local Project', onClose: () => { closes++; }, onSettings: () => { settingsOpened++; }, onDraftChange: value => { hasDraft = value; } }); for (const node of nodes(tree)) if (node.props.ref) { const id = node.props.id || node.props['data-testid']; if (!dom.has(id)) dom.set(id, { value: '', scrollHeight: 100, scrollTop: 0 }); node.props.ref.current = dom.get(id); } for (const i of effects) { slots[i].cleanup?.(); slots[i].cleanup = slots[i].callback(); } return tree; },
     find(id) { return nodes(tree).find(node => node.props['data-testid'] === id); },
     form() { return nodes(tree).find(node => node.type === 'form'); },
-    change(id, value) { h.find(id).props.onChange({ target: { value, checked: value } }); h.render(); },
+    change(id, value) { if(id==='agent-chat-consent'&&value){h.find('agent-chat-authorization-open')?.props.onClick();h.render();} h.find(id).props.onChange({ target: { value, checked: value } }); h.render(); if(id==='agent-chat-consent'&&value){h.find('agent-chat-authorization-confirm').props.onClick();h.render();} },
     setVisible(value) { visible = value; h.render(); },
+    reload() { return componentSession.load(); },
     get hasDraft() { return hasDraft; },
     get closes() { return closes; }, get settingsOpened() { return settingsOpened; },
     unmount() { for (const slot of slots) slot.cleanup?.(); },
@@ -227,19 +229,19 @@ test('actual component requires checkbox consent, shows simulated/local-only sco
   const f = fixture({ initial: snapshot({ revision: 2, runs: [run({ status: 'completed', assistantText: '<script>alert(1)</script> https://example.com', lastEventId: 3 })] }) }), h = uiHarness(f.client);
   h.render(); await flush(); h.render(); assert.ok(h.find('agent-chat-simulated')); assert.equal(h.find('agent-chat-send').props.disabled, true);
   assert.equal(h.find('agent-chat-response').props.children, '<script>alert(1)</script> https://example.com');
-  h.change('agent-chat-prompt', 'A typed question'); h.change('agent-chat-consent', true); assert.equal(h.find('agent-chat-send').props.disabled, false);
+  h.change('agent-chat-prompt', 'A typed question'); h.change('agent-chat-consent', true); await flush(); h.render(); assert.equal(h.find('agent-chat-send').props.disabled, false);
   h.form().props.onSubmit({ preventDefault() {} }); await flush(); h.render(); assert.equal(f.calls.filter(call => call[0] === 'start').length, 1); h.unmount();
 });
 
 test('actual component collapse and settings transition invalidate old callbacks before parent navigation', async () => {
-  const held = deferred(), f = fixture({ start: () => held.promise }), h = uiHarness(f.client); h.render(); await flush(); h.render(); h.change('agent-chat-prompt', 'A typed question'); h.change('agent-chat-consent', true);
+  const held = deferred(), f = fixture({ start: () => held.promise }), h = uiHarness(f.client); h.render(); await flush(); h.render(); h.change('agent-chat-prompt', 'A typed question'); h.change('agent-chat-consent', true); await flush(); h.render();
   const submit = h.form().props.onSubmit; submit({ preventDefault() {} }); h.render(); const oldClose = h.find('agent-chat-close').props.onClick;
-  h.find('agent-chat-settings').props.onClick(); assert.equal(h.settingsOpened, 1); assert.equal(h.closes, 0);
+  h.find('agent-chat-settings').props.onClick(); await flush(); assert.equal(h.settingsOpened, 1); assert.equal(h.closes, 0);
   oldClose(); submit({ preventDefault() {} }); held.resolve(envelope()); await flush(); assert.equal(h.settingsOpened, 1); assert.equal(h.closes, 0); assert.equal(f.calls.filter(call => call[0] === 'start').length, 1); h.unmount();
 });
 
 test('actual project change makes all previous close, submit, edit and terminal callbacks inert', async () => {
-  const f = fixture({ read: async owner => snapshot({ projectId: owner }) }), h = uiHarness(f.client); h.render(); await flush(); h.render(); h.change('agent-chat-prompt', 'A typed question'); h.change('agent-chat-consent', true);
+  const f = fixture({ read: async owner => snapshot({ projectId: owner }) }), h = uiHarness(f.client); h.render(); await flush(); h.render(); h.change('agent-chat-prompt', 'A typed question'); h.change('agent-chat-consent', true); await flush(); h.render();
   const oldSubmit = h.form().props.onSubmit, oldClose = h.find('agent-chat-close').props.onClick, oldEdit = h.find('agent-chat-prompt').props.onChange;
   oldSubmit({ preventDefault() {} }); await flush(); h.render(); const event = f.events.at(-1).onEvent;
   h.render('project-two'); await flush(); h.render(); oldSubmit({ preventDefault() {} }); oldClose(); oldEdit({ target: { value: 'wrong project' } }); event(frame()); h.render();
@@ -248,8 +250,8 @@ test('actual project change makes all previous close, submit, edit and terminal 
 
 test('integration preserves settings entry, the shared right dock, bounded history and app-local controls', () => {
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
-  assert.match(app, /data-testid="agent-chat-open"/); assert.match(app, /data-testid="agent-settings-open"/); assert.match(app, /<AgentWorkspace nativeSettingsScope={nativeSettingsScope} nativeCloseRegistry={nativeCloseRegistry\.current} navigationRegistry={settingsNavigation\.current} projectId={data.project\?\.id}/);
-  assert.match(source, /from '\.\/WorkspaceControls\.jsx'/); assert.doesNotMatch(source, /DialogContent|<Dialog/);
+  assert.match(app + readFileSync(new URL('../apps/web/src/WorkbenchShell.tsx', import.meta.url), 'utf8'), /data-testid="agent-chat-open"/); assert.match(app, /data-testid="agent-settings-open"/); assert.match(app, /<AgentWorkspace[^>]*nativeSettingsScope={nativeSettingsScope} nativeCloseRegistry={nativeCloseRegistry\.current} navigationRegistry={settingsNavigation\.current} projectId={data.project\?\.id}/);
+  assert.match(source, /from '\.\/WorkspaceControls\.jsx'/); assert.match(source, /data-testid="agent-chat-authorization-dialog"/);
   assert.match(source, /inspecting \? t\('agent.chat.inspectionScope'\)/);
   const displayCopy = source + Object.entries(creationUiMessages).filter(([key]) => source.includes(`'${key}'`)).map(([, value]) => JSON.stringify(value['zh-Hans'])).join('\n');
   for (const copy of ['新消息范围：当前项目只读检查', '新消息范围：仅文字聊天', '不会发送', '保存在本地应用数据库', '并非密钥保险库加密', '请勿输入密钥或其他秘密']) assert.ok(displayCopy.includes(copy), copy);
@@ -280,15 +282,69 @@ test('hiding during POST acknowledgement preserves receipt/identity and does not
 });
 
 
-test('consent uses the shared Input checkbox and Label with explicit true/false native checked events', async () => {
+test('first authorization uses shared controls and saved permission can only be revoked in Settings', async () => {
   const f = fixture(), h = uiHarness(f.client); h.render(); await flush(); h.render();
   const control = h.find('agent-chat-consent');
   assert.equal(control.type, 'Input'); assert.equal(control.props.type, 'checkbox'); assert.equal(control.props.checked, false);
   assert.ok(nodes(h.render()).some(node => node.type === 'Label' && node.props.htmlFor === control.props.id));
-  h.change('agent-chat-prompt', 'A typed question'); h.change('agent-chat-consent', true);
+  h.change('agent-chat-prompt', 'A typed question'); h.change('agent-chat-consent', true); await flush(); h.render();
   assert.equal(h.find('agent-chat-consent').props.checked, true); assert.equal(h.find('agent-chat-send').props.disabled, false);
-  h.change('agent-chat-consent', false); assert.equal(h.find('agent-chat-consent').props.checked, false); assert.equal(h.find('agent-chat-send').props.disabled, true);
-  h.form().props.onSubmit({ preventDefault() {} }); assert.equal(f.calls.some(call => call[0] === 'start'), false); h.unmount();
+  h.change('agent-chat-consent', false); assert.equal(h.find('agent-chat-consent').props.checked, true); assert.equal(h.find('agent-chat-consent').props.disabled, true);
+  assert.equal(f.calls.some(call => call[0] === 'start'), false); h.unmount();
+});
+
+const inspectedComposer = (patch = {}) => snapshot({ scope: 'chat_and_project_inspection',
+  inspection: { available: true, ...toolLogic.AGENT_INSPECTION_LIMITS, catalogHash: 'b'.repeat(64) }, ...patch });
+const composerGrants = { revision: 1, scopes: [logic.AGENT_TYPED_CONTEXT, logic.AGENT_PROJECT_CONTEXT] };
+const composerOptions = h => h.find('agent-chat-composer-options').props;
+const toggleComposer = (h, expanded) => { h.find('agent-chat-target-disclosure').props.onOpenChange(expanded); h.render(); };
+
+test('actual composer fully discloses five scopes until approval, then compacts without sending', async () => {
+  const f = fixture({ initial: inspectedComposer() }), h = uiHarness(f.client); h.render(); await flush(); h.render();
+  assert.equal(composerOptions(h).hidden, false); assert.equal(composerOptions(h).inert, false); assert.equal(composerOptions(h).keepMounted, true);
+  assert.equal(h.find('agent-chat-options-toggle'), undefined); assert.equal(nodes(h.render()).filter(node => node.props.type === 'radio' && node.props.name === 'agent-chat-context-mode').length, 5);
+  assert.ok(JSON.stringify(h.find('agent-chat-destination')).includes(logic.deriveAgentEndpoint(configuration)));
+  toggleComposer(h, false); assert.equal(composerOptions(h).hidden, false, 'unapproved disclosure cannot be compacted');
+  h.change('agent-chat-consent', true); await flush(); h.render();
+  assert.equal(composerOptions(h).hidden, true); assert.equal(composerOptions(h).inert, true); assert.equal(composerOptions(h)['aria-hidden'], true);
+  const summary = JSON.stringify(h.find('agent-chat-options-toggle')); assert.ok(summary.includes(configuration.model)); assert.ok(summary.includes(logic.deriveAgentEndpoint(configuration))); assert.ok(summary.includes('仅对话文字'));
+  toggleComposer(h, true); assert.equal(composerOptions(h).hidden, false); toggleComposer(h, false); assert.equal(composerOptions(h).hidden, true);
+  assert.equal(f.calls.some(call => call[0] === 'start'), false); h.unmount();
+});
+
+test('retained permission initially compacts but mounted granted model, endpoint and scope changes disclose again', async () => {
+  let current = inspectedComposer({ authorization: composerGrants }); const f = fixture({ read: async () => current }), h = uiHarness(f.client); h.render(); await flush(); h.render();
+  assert.equal(composerOptions(h).hidden, true);
+  for (const configured of [{ ...configuration, model: 'changed-model' }, { ...configuration, baseUrl: 'https://changed.example.test/v1' }]) {
+    current = inspectedComposer({ authorization: composerGrants, settings: settings({ configuration: configured }) });
+    await h.reload(); h.render(); assert.equal(composerOptions(h).hidden, false); assert.equal(h.find('agent-chat-authorization-open'), undefined, 'retained grant remains domain state');
+    assert.ok(JSON.stringify(h.find('agent-chat-destination')).includes(logic.deriveAgentEndpoint(configured))); toggleComposer(h, false); assert.equal(composerOptions(h).hidden, true);
+  }
+  toggleComposer(h, true); h.change('agent-chat-mode-project', true); assert.equal(h.find('agent-chat-mode-project').props.checked, true); assert.equal(composerOptions(h).hidden, false);
+  assert.ok(JSON.stringify(h.find('agent-chat-options-toggle')).includes('项目文字与元数据')); assert.equal(f.calls.some(call => call[0] === 'start'), false); h.unmount();
+});
+
+test('revoked permission reopens the actual options and restores authorization review', async () => {
+  let current = inspectedComposer({ authorization: composerGrants }); const f = fixture({ read: async () => current }), h = uiHarness(f.client); h.render(); await flush(); h.render();
+  assert.equal(composerOptions(h).hidden, true); current = inspectedComposer({ authorization: { revision: 2, scopes: [] } });
+  await h.reload(); h.render(); assert.equal(composerOptions(h).hidden, false); assert.equal(composerOptions(h).inert, false); assert.ok(h.find('agent-chat-authorization-open')); assert.equal(h.find('agent-chat-options-toggle'), undefined);
+  assert.equal(f.calls.some(call => call[0] === 'start'), false); h.unmount();
+});
+
+test('hidden options and their retired scope callbacks stay inert after reopening', async () => {
+  const f = fixture({ initial: inspectedComposer({ authorization: composerGrants }) }), h = uiHarness(f.client); h.render(); await flush(); h.render();
+  toggleComposer(h, true); const oldScope = h.find('agent-chat-mode-project').props.onChange;
+  toggleComposer(h, false); oldScope({ target: { checked: true } }); h.find('agent-chat-mode-project').props.onChange({ target: { checked: true } }); h.render(); assert.equal(h.find('agent-chat-mode-typed').props.checked, true);
+  toggleComposer(h, true); oldScope({ target: { checked: true } }); h.render(); assert.equal(h.find('agent-chat-mode-typed').props.checked, true);
+  h.change('agent-chat-mode-project', true); assert.equal(h.find('agent-chat-mode-project').props.checked, true, 'fresh visible option still changes scope'); assert.equal(f.calls.some(call => call[0] === 'start'), false); h.unmount();
+});
+
+test('composer options retire their callbacks on panel hide, owner replacement and unmount', async () => {
+  const f = fixture({ read: async owner => inspectedComposer({ projectId: owner, authorization: composerGrants }) }), h = uiHarness(f.client); h.render(); await flush(); h.render(); toggleComposer(h, true);
+  const oldScope = h.find('agent-chat-mode-project').props.onChange, oldToggle = h.find('agent-chat-target-disclosure').props.onOpenChange;
+  h.setVisible(false); oldScope({ target: { checked: true } }); oldToggle(true); h.setVisible(true); await flush(); h.render(); assert.equal(h.find('agent-chat-mode-typed').props.checked, true); assert.equal(composerOptions(h).hidden, true);
+  h.render('project-two'); await flush(); h.render(); oldScope({ target: { checked: true } }); oldToggle(true); h.render(); assert.equal(h.find('agent-chat-mode-typed').props.checked, true); assert.equal(composerOptions(h).hidden, true);
+  h.unmount(); oldScope({ target: { checked: true } }); oldToggle(true); assert.equal(f.calls.some(call => call[0] === 'start'), false);
 });
 
 test('real shared Input preserves accessible native checkbox markup, checked state and disabling', () => {
@@ -318,7 +374,7 @@ test('missing or malformed protocol fails closed in settings, runs and SSE snaps
     assert.throws(() => safeAgentChatSnapshot(snapshot({ settings: settings({ configuration: invalid }) }), projectId));
     assert.throws(() => logic.safeAgentChatEvent(frame({ type: 'snapshot', id: 1, run: run({ configuration: invalid }) }), { type: 'snapshot', id: '1' }, projectId, instanceId, runId));
     const f = fixture({ initial: snapshot({ settings: settings({ configuration: invalid }) }) }); await f.session.load();
-    assert.equal(f.session.getState().phase, 'load_error'); assert.equal(f.session.approve(true), false); assert.equal(await f.session.send(), false); assert.equal(f.calls.some(call => call[0] === 'start'), false); f.session.dispose();
+    assert.equal(f.session.getState().phase, 'load_error'); assert.equal(await f.session.approve(true), false); assert.equal(await f.session.send(), false); assert.equal(f.calls.some(call => call[0] === 'start'), false); f.session.dispose();
   }
 });
 
@@ -329,7 +385,7 @@ for (const protocol of ['chat_completions', 'responses']) {
     h.render(); await flush(); h.render();
     const destination = JSON.stringify(h.find('agent-chat-destination'));
     assert.ok(destination.includes(logic.deriveAgentEndpoint(configured))); assert.equal(h.find('agent-chat-protocol').props.children, logic.AGENT_PROTOCOLS[protocol].label);
-    h.change('agent-chat-prompt', 'A typed question'); assert.equal(h.find('agent-chat-send').props.disabled, true); h.change('agent-chat-consent', true);
+    h.change('agent-chat-prompt', 'A typed question'); assert.equal(h.find('agent-chat-send').props.disabled, false); h.change('agent-chat-consent', true); await flush(); h.render();
     h.form().props.onSubmit({ preventDefault() {} }); await flush(); h.render();
     const sends = f.calls.filter(call => call[0] === 'start'); assert.equal(sends.length, 1);
     assert.deepEqual(sends[0][2].consent, { destination: logic.deriveAgentEndpoint(configured), protocol, model: configured.model, context: 'typed_chat_only' });
@@ -341,18 +397,18 @@ for (const protocol of ['chat_completions', 'responses']) {
     const f = fixture({ read: async () => ++reads === 1 ? snapshot({ settings: settings({ configuration: configured }) }) : snapshot({ revision: 1, settings: settings({ configuration: configured }), runs: [active] }), start: async () => { throw error('NETWORK'); } });
     await ready(f); await f.session.send(); assert.equal(f.session.getState().pending, null);
     const listener = f.events[0]; f.session.setVisible(false); listener.onEvent(frame()); f.session.setVisible(true); await flush();
-    assert.equal(f.calls.filter(call => call[0] === 'start').length, 1); assert.equal(f.session.getState().snapshot.runs[0].configuration.protocol, protocol); assert.equal(f.session.getState().consent, null); f.session.dispose();
+    assert.equal(f.calls.filter(call => call[0] === 'start').length, 1); assert.equal(f.session.getState().snapshot.runs[0].configuration.protocol, protocol); assert.notEqual(f.session.getState().consent, null); f.session.dispose();
   });
 }
 
 test('consent binds full configuration and protocol-only revision change requires a fresh explicit confirmation', async () => {
   const first = snapshot(), changed = snapshot({ settings: settings({ revision: 1, configuration: { ...configuration, protocol: 'responses' } }) });
   assert.notEqual(logic.agentChatConsentKey(first), logic.agentChatConsentKey(changed));
-  assert.notEqual(logic.agentChatConsentKey(first), logic.agentChatConsentKey(snapshot({ settings: settings({ configuration: { ...configuration, presetId: 'custom' } }) })));
+  assert.equal(logic.agentChatConsentKey(first), logic.agentChatConsentKey(snapshot({ settings: settings({ configuration: { ...configuration, presetId: 'custom' } }) })));
   let reads = 0; const f = fixture({ read: async () => ++reads === 1 ? first : changed, start: async () => { throw error('AGENT_CHAT_SETTINGS_CONFLICT'); } });
   await ready(f); const previousConsent = f.session.getState().consent; await f.session.send();
   assert.equal(f.session.getState().snapshot.settings.configuration.protocol, 'responses'); assert.equal(f.session.getState().consent, null); assert.equal(await f.session.send(), false); assert.equal(f.session.getState().draft, 'A typed question');
-  f.session.approve(true); assert.notEqual(f.session.getState().consent, previousConsent); assert.equal(f.calls.filter(call => call[0] === 'start').length, 1); f.session.dispose();
+  await f.session.approve(true); assert.notEqual(f.session.getState().consent, previousConsent); assert.equal(f.calls.filter(call => call[0] === 'start').length, 1); f.session.dispose();
 });
 
 test('wrong accepted protocol is not silently accepted, retried or substituted while reconciliation remains unresolved', async () => {
@@ -372,12 +428,12 @@ test('accepted Responses run stays immutable while settings change to CC; stale 
 });
 
 test('inline chat keeps unsent draft across tabs, settings, collapse and reveal, with stale hidden callbacks inert', async () => {
-  const f = fixture(), h = uiHarness(f.client); h.render(); await flush(); h.render(); h.change('agent-chat-prompt', 'Keep this draft'); h.change('agent-chat-consent', true); assert.equal(h.hasDraft, true);
+  const f = fixture(), h = uiHarness(f.client); h.render(); await flush(); h.render(); h.change('agent-chat-prompt', 'Keep this draft'); h.change('agent-chat-consent', true); await flush(); h.render(); assert.equal(h.hasDraft, true);
   const oldEdit = h.find('agent-chat-prompt').props.onChange, oldSubmit = h.form().props.onSubmit, oldClose = h.find('agent-chat-close').props.onClick;
   h.setVisible(false); assert.equal(h.find('agent-chat-page').props.inert, true); assert.equal(h.find('agent-chat-prompt').props.disabled, true);
   oldEdit({ target: { value: 'stale' } }); oldSubmit({ preventDefault() {} }); oldClose();
   h.setVisible(true); await flush(); h.render(); oldEdit({ target: { value: 'still stale' } }); oldSubmit({ preventDefault() {} }); oldClose(); h.render();
-  assert.equal(h.find('agent-chat-prompt').props.value, 'Keep this draft'); assert.equal(h.find('agent-chat-consent').props.checked, false); assert.equal(h.hasDraft, true); assert.equal(h.closes, 0); assert.equal(f.calls.some(call => call[0] === 'start'), false); h.unmount();
+  assert.equal(h.find('agent-chat-prompt').props.value, 'Keep this draft'); assert.equal(h.find('agent-chat-consent').props.checked, true); assert.equal(h.hasDraft, true); assert.equal(h.closes, 0); assert.equal(f.calls.some(call => call[0] === 'start'), false); h.unmount();
 });
 
 test('inline hidden POST acknowledgement preserves original response without attaching a hidden stream', async () => {
@@ -393,7 +449,7 @@ const guardSource = actualFunction('  async function guardNavigation(', '  async
 const projectGuardSource = actualFunction('  async function guardProjectNavigation(', '  async function prepareSettingsDeparture(');
 const settingsDepartureSource = actualFunction('  async function prepareSettingsDeparture()', '  async function changeHomePage(');
 const sessionReadySource = actualFunction('  function projectSessionReady()', '  const workbenchReady =');
-const projectSource = actualFunction('  async function selectProject(', '  async function reloadPreferences(');
+const projectSource = actualFunction('  async function selectProject(', '  async function showProjectHome(');
 const navigationProjectId = '77000000-0000-4000-8000-000000000001', navigationNextId = '77000000-0000-4000-8000-000000000002', navigationLaterId = '77000000-0000-4000-8000-000000000003';
 function projectNavigation({ draft = true, imageDraft = false, dirty = false, confirmation = true } = {}) {
   const calls = [], currentProject = { current: navigationProjectId }, navigationEpoch = { current: 0 }, projectEpoch = { current: 0 }, dirtyRef = { current: dirty }, formatState = {}, workspaceRef = { current: { restored: false } };
@@ -402,11 +458,11 @@ function projectNavigation({ draft = true, imageDraft = false, dirty = false, co
     setShotDirty: value => calls.push(['shotDirty', value]), setClipDirty: value => calls.push(['clipDirty', value]), setSourceDirty: value => calls.push(['sourceDirty', value]), setSubjectDirty: value => calls.push(['subjectDirty', value]), subjectsRef: { current: { state: { scope: 'fixture-subject-scope' }, controller: { discardDrafts: scope => calls.push(['discardSubjects', scope]) } } }, setInspectorEpoch: () => calls.push(['inspectorEpoch']) };
   const { guardNavigation, guardProjectNavigation } = Function(...Object.keys(guardEnv), `${guardSource}\n${projectGuardSource}\nreturn { guardNavigation, guardProjectNavigation };`)(...Object.values(guardEnv));
   const restored = { activeMode: 'canvas', canvas: { selectedId: null, viewport: { zoom: 1 } } };
-  const env = { message, msg: message, ...createI18nTestContext(), nativeWindow: null, nativeProjectEntry: null, workspaceRef, workspaceOriginScope, projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind,
+  const env = { message, msg: message, ...createI18nTestContext(), application: null, nativeWindow: null, nativeProjectEntry: null, workspaceRef, workspaceOriginScope, projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind,
     context, isCurrent: guardEnv.isCurrent, confirm: guardEnv.confirm, notify: (...args) => calls.push(['notify', ...args]), readableError: error => error.message,
     openedProject: { current: projectOpenAttempt(navigationProjectId, 0, 'normal') }, settingsNavigation: { current: createSettingsNavigationRegistry() },
     loading: false, importSession: { current: { active: true, selection: 0 } }, lastProjectRef: { current: { invalidateNavigation: () => {}, rememberOpened: () => {} } }, tasksRef: { current: { getState: () => ({ phase: 'idle', items: [] }), load: async id => { calls.push(['loadTasks', id]); } } }, currentProject, agentDraft: { current: draft }, imageDraft: { current: imageDraft }, guardNavigation, guardProjectNavigation, navigationEpoch, projectEpoch, requestCounter: { current: 0 }, preferencesRef: { current: { flush: () => calls.push(['flush']), load: async id => { calls.push(['load', id]); return restored; }, getStatus: () => ({ phase: 'ready' }) } }, viewReady: { current: true }, dataRef: { current: { project: { id: navigationProjectId } } }, emptyData: {}, pendingForProject: () => [], dragging: { current: false }, viewRef: { current: restored }, updateView: () => {}, URL,
-    window: { location: { href: 'https://workbench.example.com/' }, history: { pushState: () => calls.push(['history']), replaceState: () => calls.push(['history']) } }, localStorage: { setItem: () => {} }, ...Object.fromEntries(['setProjectOpening', 'setHomePage', 'setAuth', 'setPropertiesPage', 'setTaskState', 'setPreferenceStatus', 'setPending', 'setShowProjects', 'setData', 'setNodes', 'setLoading', 'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setRightDockTab', 'setShowExports', 'setComparisonId', 'setPreviewAsset', 'setRealConfirm', 'setToast', 'setMobilePanel', 'setView', 'setZoom'].map(name => [name, value => calls.push([name, value])])) };
+    window: { location: { href: 'https://workbench.example.com/' }, history: { pushState: () => calls.push(['history']), replaceState: () => calls.push(['history']) } }, localStorage: { setItem: () => {} }, ...Object.fromEntries(['setProjectOpening', 'setHomePage', 'setAuth', 'setPropertiesPage', 'setTaskState', 'setPreferenceStatus', 'setPending', 'setShowProjects', 'setData', 'setNodes', 'setLoading', 'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setRightDockTab', 'setShowExports', 'setPanelOverlay', 'setShowTasks', 'setShowDelivery', 'setShowImage', 'setShowProjectChooser', 'setComparisonId', 'setPreviewAsset', 'setRealConfirm', 'setToast', 'setMobilePanel', 'setView', 'setZoom'].map(name => [name, value => calls.push([name, value])])) };
   env.refresh = async (id, _quiet, options) => { assert.equal(options?.opening, true); env.dataRef.current = { project: { id }, shots: [], nodes: [] }; return env.dataRef.current; };
   env.prepareSettingsDeparture = () => Function(...Object.keys(env), `${settingsDepartureSource}\nreturn prepareSettingsDeparture();`)(...Object.values(env));
   env.projectSessionReady = () => Function(...Object.keys(env), `${sessionReadySource}\nreturn projectSessionReady();`)(...Object.values(env));
@@ -490,11 +546,11 @@ test('actual nested dock page combines ancestor visibility, keeps children and m
 });
 
 test('App right-dock tabs preserve existing layout, resize and Inspector subtree and ordinary selection never changes tabs', () => {
-  assert.match(appSource, /rightDockTab, setRightDockTab\] = useState\('properties'\)/);
-  for (const id of ['right-dock-tab-properties', 'right-dock-tab-agent', 'right-dock-tab-image']) assert.ok(appSource.includes(`data-testid="${id}"`));
+  assert.match(appSource, /rightDockTab, setRightDockTabState\] = useState\('properties'\)/); assert.match(appSource, /const setRightDockTab = value => \{ if \(!clipDraftRef\.current\?\.hasPendingComposition\(\)\) setRightDockTabState\(value\); \}/);
+  for (const id of ['right-dock-tab-properties', 'right-dock-tab-agent', 'right-dock-tab-image']) assert.ok((appSource + readFileSync(new URL('../apps/web/src/WorkbenchShell.tsx', import.meta.url), 'utf8') + readFileSync(new URL('../apps/web/src/CanvasToolbar.tsx', import.meta.url), 'utf8')).includes(`data-testid="${id}"`));
   assert.match(appSource, /<AgentDockPane id="right-dock-properties"[^>]+visible={rightDockTab === 'properties'}/);
   assert.match(appSource, /<AgentDockPane id="right-dock-agent"[^>]+visible={rightDockTab === 'agent'}/);
-  assert.match(appSource, /<AgentDockPane id="right-dock-image"[^>]+visible={rightDockTab === 'image'}/);
+  assert.match(appSource, /<AgentDockPane id="right-dock-image"[^>]+visible={showImage}/);
   assert.match(appSource, /resizeHandle\('inspector', 'inspectorWidth'\)/);
   const inspectStart = appSource.indexOf('  async function inspect('), inspectEnd = appSource.indexOf('\n  async function ', inspectStart + 1);
   assert.ok(inspectStart > 0 && inspectEnd > inspectStart); assert.doesNotMatch(appSource.slice(inspectStart, inspectEnd), /setRightDockTab|setAgentPage/);
@@ -550,7 +606,7 @@ for (const protocol of ['chat_completions', 'responses']) test(`${protocol} lost
     start: async () => { throw error('NETWORK'); }, lookup: async () => ({ ...envelope(saved, 40), instanceId: nextInstance }) });
   await ready(f); await f.session.send(); const state = f.session.getState();
   assert.equal(state.pending, null); assert.equal(state.draft, ''); assert.equal(state.phase, 'ready'); assert.equal(state.sessionLost, true); assert.equal(state.recoveredRun.id, runId);
-  assert.deepEqual(state.snapshot.runs.map(run => run.id), latest.map(run => run.id)); assert.equal(state.snapshot.runs.length, 16); assert.equal(state.consent, null);
+  assert.deepEqual(state.snapshot.runs.map(run => run.id), latest.map(run => run.id)); assert.equal(state.snapshot.runs.length, 16); assert.notEqual(state.consent, null);
   assert.equal(f.calls.filter(call => call[0] === 'lookup').length, 1); assert.equal(f.calls.filter(call => call[0] === 'start').length, 1); assert.equal(f.calls.some(call => ['stream', 'stop'].includes(call[0])), false); f.session.dispose();
 });
 
@@ -560,7 +616,7 @@ test('restart with a still-missing request retains receipt and draft until expli
   assert.equal(f.receipts.get(projectId).requestId, requestId); assert.equal(await f.session.send(), false);
   assert.equal(f.session.abandonPending(requestId), false); f.session.confirmAbandonPending(true); f.session.confirmAbandonPending(false); assert.equal(f.session.abandonPending(requestId), false);
   f.session.confirmAbandonPending(true); assert.equal(f.session.abandonPending(durableId(999)), false); assert.equal(f.session.abandonPending(requestId), true);
-  assert.equal(f.session.getState().pending, null); assert.equal(f.session.getState().draft, 'A typed question'); assert.equal(f.session.getState().consent, null); assert.equal(await f.session.send(), false);
+  assert.equal(f.session.getState().pending, null); assert.equal(f.session.getState().draft, 'A typed question'); assert.notEqual(f.session.getState().consent, null); assert.equal(agentChatCanSend(f.session.getState()), true);
   assert.match(f.session.getState().message, /重复回复或费用/); assert.equal(f.receipts.get(projectId).requestId, undefined); assert.equal(f.calls.filter(call => call[0] === 'start').length, 1); f.session.dispose();
 });
 
@@ -594,20 +650,20 @@ test('late acknowledgement or read recovery never clears a newer typed draft', a
     const held = deferred(), f = fixture({ initial: snapshot({ revision: 1 }), start: () => held.promise, lookup: async () => envelope(run({ status: 'completed' })) }); await ready(f);
     const sending = f.session.send(); f.session.edit('A newer unsent draft');
     if (lost) held.reject(error('NETWORK')); else held.resolve(envelope(run({ status: 'completed' })));
-    await sending; assert.equal(f.session.getState().draft, 'A newer unsent draft'); assert.equal(f.session.getState().pending, null); assert.equal(f.session.getState().consent, null); f.session.dispose();
+    await sending; assert.equal(f.session.getState().draft, 'A newer unsent draft'); assert.equal(f.session.getState().pending, null); assert.notEqual(f.session.getState().consent, null); f.session.dispose();
   }
 });
 
-test('durable read, reconnect and backend epoch changes retain unsent drafts and revoke consent', async () => {
+test('durable read, reconnect and backend epoch changes retain drafts and saved destination permission', async () => {
   let reads = 0; const f = fixture({ read: async () => snapshot({ instanceId: ++reads >= 3 ? nextInstance : instanceId }) }); await ready(f);
-  await f.session.load(); assert.equal(f.session.getState().draft, 'A typed question'); assert.equal(f.session.getState().consent, null);
-  f.session.approve(true); f.session.setVisible(false); f.session.setVisible(true); await flush();
-  assert.equal(f.session.getState().draft, 'A typed question'); assert.equal(f.session.getState().sessionLost, true); assert.equal(f.session.getState().consent, null); assert.equal(f.calls.some(call => call[0] === 'start'), false); f.session.dispose();
+  await f.session.load(); assert.equal(f.session.getState().draft, 'A typed question'); assert.notEqual(f.session.getState().consent, null);
+  await f.session.approve(true); f.session.setVisible(false); f.session.setVisible(true); await flush();
+  assert.equal(f.session.getState().draft, 'A typed question'); assert.equal(f.session.getState().sessionLost, true); assert.notEqual(f.session.getState().consent, null); assert.equal(f.calls.some(call => call[0] === 'start'), false); f.session.dispose();
 });
 
-test('storage limit preserves draft, requires renewed consent and never automatically retries', async () => {
+test('storage limit preserves draft and saved permission without automatically retrying', async () => {
   const f = fixture({ start: async () => { throw error('AGENT_CHAT_STORAGE_LIMIT'); } }); await ready(f); await f.session.send();
-  assert.equal(f.session.getState().draft, 'A typed question'); assert.equal(f.session.getState().pending, null); assert.equal(f.session.getState().consent, null); assert.match(f.session.getState().message, /数据库容量已满/); assert.equal(await f.session.send(), false); assert.equal(f.calls.filter(call => call[0] === 'start').length, 1); f.session.dispose();
+  assert.equal(f.session.getState().draft, 'A typed question'); assert.equal(f.session.getState().pending, null); assert.notEqual(f.session.getState().consent, null); assert.match(f.session.getState().message, /数据库容量已满/); assert.equal(agentChatCanSend(f.session.getState()), true); assert.equal(f.calls.filter(call => call[0] === 'start').length, 1); f.session.dispose();
 });
 
 test('storage-unavailable acknowledgement is uncertain admission and read-reconciles without retry', async () => {
@@ -669,15 +725,15 @@ test('actual archive controls preserve composer and live history, and stale hidd
 });
 
 test('actual pending release explains duplicate cost and requires explicit confirmation without sending', async () => {
-  const f = fixture({ start: async () => { throw error('NETWORK'); } }), h = uiHarness(f.client); h.render(); await flush(); h.render(); h.change('agent-chat-prompt', 'A typed question'); h.change('agent-chat-consent', true); h.form().props.onSubmit({ preventDefault() {} }); await flush(); h.render();
+  const f = fixture({ start: async () => { throw error('NETWORK'); } }), h = uiHarness(f.client); h.render(); await flush(); h.render(); h.change('agent-chat-prompt', 'A typed question'); h.change('agent-chat-consent', true); await flush(); h.render(); h.form().props.onSubmit({ preventDefault() {} }); await flush(); h.render();
   h.find('agent-chat-pending-reset').props.onClick(); h.render(); assert.match(JSON.stringify(h.find('agent-chat-pending-reset-warning')), /重复回复或计费/); h.find('agent-chat-pending-reset-cancel').props.onClick(); h.render(); assert.ok(h.find('agent-chat-pending'));
-  h.find('agent-chat-pending-reset').props.onClick(); h.render(); h.find('agent-chat-pending-reset-confirm').props.onClick(); h.render(); assert.equal(h.find('agent-chat-pending'), undefined); assert.equal(h.find('agent-chat-send').props.disabled, true); assert.equal(h.find('agent-chat-prompt').props.value, 'A typed question'); assert.equal(f.calls.filter(call => call[0] === 'start').length, 1); h.unmount();
+  h.find('agent-chat-pending-reset').props.onClick(); h.render(); h.find('agent-chat-pending-reset-confirm').props.onClick(); h.render(); assert.equal(h.find('agent-chat-pending'), undefined); assert.equal(h.find('agent-chat-send').props.disabled, false); assert.equal(h.find('agent-chat-prompt').props.value, 'A typed question'); assert.equal(f.calls.filter(call => call[0] === 'start').length, 1); h.unmount();
 });
 
 test('lookup cannot hide a running request outside latest history and accidentally unlock another send', async () => {
   const receipts = memoryReceipts(); receipts.set(projectId, { instanceId, requestId });
   const f = fixture({ receipts, initial: snapshot({ revision: 1 }), lookup: async () => envelope(run()) }); await f.session.load();
-  assert.equal(f.session.getState().phase, 'unknown'); assert.equal(f.session.getState().pending.requestId, requestId); assert.equal(f.session.getState().recoveredRun, null); assert.equal(f.session.approve(true), false); assert.equal(await f.session.send(), false); f.session.dispose();
+  assert.equal(f.session.getState().phase, 'unknown'); assert.equal(f.session.getState().pending.requestId, requestId); assert.equal(f.session.getState().recoveredRun, null); assert.equal(await f.session.approve(true), false); assert.equal(await f.session.send(), false); f.session.dispose();
 });
 
 test('actual project switch during an older-page read discards the old result and makes its handlers inert', async () => {
@@ -692,7 +748,7 @@ test('four-language changes relabel the mounted Agent without clearing exact typ
   const f = fixture(), h = uiHarness(f.client, memoryReceipts(), store);
   h.render(); await flush(); h.render();
   const prompt = '  原文 / exact <script> / 日本語\n不改写  ';
-  h.change('agent-chat-prompt', prompt); h.change('agent-chat-consent', true);
+  h.change('agent-chat-prompt', prompt); h.change('agent-chat-consent', true); await flush(); h.render();
   const before = f.calls.map(call => [...call]);
   for (const locale of ['zh-Hant', 'en', 'ja', 'zh-Hans']) {
     await store.setPreference(locale); h.render(); await flush(); h.render();

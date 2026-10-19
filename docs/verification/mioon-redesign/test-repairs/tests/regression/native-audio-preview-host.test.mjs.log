@@ -1,0 +1,160 @@
+TAP version 13
+# Subtest: B waits for exact renderer AND backend retirement; stale A release cannot retire B
+ok 1 - B waits for exact renderer AND backend retirement; stale A release cannot retire B
+  ---
+  duration_ms: 7.685584
+  type: 'test'
+  ...
+# Subtest: proof is bound to actual frame/current document/lease and only fixed canonical PCM request
+ok 2 - proof is bound to actual frame/current document/lease and only fixed canonical PCM request
+  ---
+  duration_ms: 3.338458
+  type: 'test'
+  ...
+# Subtest: cancelled B never receives a late grant after A retires
+ok 3 - cancelled B never receives a late grant after A retires
+  ---
+  duration_ms: 1.170084
+  type: 'test'
+  ...
+# Subtest: unknown renderer cleanup blocks B until actual destruction of exact A window
+ok 4 - unknown renderer cleanup blocks B until actual destruction of exact A window
+  ---
+  duration_ms: 1.114875
+  type: 'test'
+  ...
+# Subtest: duplicate B acquire joins one exact handoff even when owner lookup returns new snapshots
+ok 5 - duplicate B acquire joins one exact handoff even when owner lookup returns new snapshots
+  ---
+  duration_ms: 0.804792
+  type: 'test'
+  ...
+# Subtest: shutdown fences acquisition but still accepts the exact renderer cleanup and waits for backend
+ok 6 - shutdown fences acquisition but still accepts the exact renderer cleanup and waits for backend
+  ---
+  duration_ms: 0.951083
+  type: 'test'
+  ...
+# Subtest: shutdown observation timeout never treats window closure as destruction or frees old capacity
+ok 7 - shutdown observation timeout never treats window closure as destruction or frees old capacity
+  ---
+  duration_ms: 1.073333
+  type: 'test'
+  ...
+# Subtest: shutdown during provisional reserve retires its original lease and never grants the late result
+ok 8 - shutdown during provisional reserve retires its original lease and never grants the late result
+  ---
+  duration_ms: 0.696625
+  type: 'test'
+  ...
+# Subtest: broker timeout is only an uncertainty observation; exact late reply settles the original request
+ok 9 - broker timeout is only an uncertainty observation; exact late reply settles the original request
+  ---
+  duration_ms: 0.868916
+  type: 'test'
+  ...
+# Subtest: late retirement after a blocked notification cannot revive cancelled B
+ok 10 - late retirement after a blocked notification cannot revive cancelled B
+  ---
+  duration_ms: 0.662625
+  type: 'test'
+  ...
+# Subtest: exact supervisor exit repairs only backend proof after broker loss; renderer still must retire
+ok 11 - exact supervisor exit repairs only backend proof after broker loss; renderer still must retire
+  ---
+  duration_ms: 0.74125
+  type: 'test'
+  ...
+# Subtest: renderer destruction alone cannot substitute for unconfirmed backend media exit
+ok 12 - renderer destruction alone cannot substitute for unconfirmed backend media exit
+  ---
+  duration_ms: 0.266416
+  type: 'test'
+  ...
+# Subtest: requesting revokes audition without revoking cleanup identity; same editor cannot acquire until cancellation
+ok 13 - requesting revokes audition without revoking cleanup identity; same editor cannot acquire until cancellation
+  ---
+  duration_ms: 0.5535
+  type: 'test'
+  ...
+# Subtest: late reservation cannot publish while admission is disallowed, even with the same trusted document
+ok 14 - late reservation cannot publish while admission is disallowed, even with the same trusted document
+  ---
+  duration_ms: 0.387
+  type: 'test'
+  ...
+# Subtest: admission gate denies fresh and repeated source signatures while cancellation and retirement still work
+ok 15 - admission gate denies fresh and repeated source signatures while cancellation and retirement still work
+  ---
+  duration_ms: 0.442542
+  type: 'test'
+  ...
+# Subtest: cancelled interaction fence never revives a waiting B action after A finally retires
+ok 16 - cancelled interaction fence never revives a waiting B action after A finally retires
+  ---
+  duration_ms: 0.585375
+  type: 'test'
+  ...
+# Subtest: actual destroyed A retires without calling dead contents and still waits for exact backend proof
+ok 17 - actual destroyed A retires without calling dead contents and still waits for exact backend proof
+  ---
+  duration_ms: 0.614334
+  type: 'test'
+  ...
+# Subtest: destroyed waiting B never receives late blocked notifications and never acquires after A retirement
+ok 18 - destroyed waiting B never receives late blocked notifications and never acquires after A retirement
+  ---
+  duration_ms: 0.496666
+  type: 'test'
+  ...
+# Subtest: incidental navigation cannot use a stale document ACK as renderer retirement proof
+ok 19 - incidental navigation cannot use a stale document ACK as renderer retirement proof
+  ---
+  duration_ms: 0.710291
+  type: 'test'
+  ...
+# Subtest: normal reload retirement waits both exact halves and fences new audio through the later P0 decision
+ok 20 - normal reload retirement waits both exact halves and fences new audio through the later P0 decision
+  ---
+  duration_ms: 1.079917
+  type: 'test'
+  ...
+# Subtest: reload observer cancellation never releases unknown cleanup or a newer reload fence
+ok 21 - reload observer cancellation never releases unknown cleanup or a newer reload fence
+  ---
+  duration_ms: 0.644917
+  type: 'test'
+  ...
+# Subtest: idle reload fences only its exact document and an already aborted reload creates no fence
+ok 22 - idle reload fences only its exact document and an already aborted reload creates no fence
+  ---
+  duration_ms: 0.352416
+  type: 'test'
+  ...
+# Subtest: stale reload owner and late observer cannot retire a newer document lease
+ok 23 - stale reload owner and late observer cannot retire a newer document lease
+  ---
+  duration_ms: 0.27
+  type: 'test'
+  ...
+# Subtest: reload cancels only its waiting action and cannot turn its late reservation into a grant
+ok 24 - reload cancels only its waiting action and cannot turn its late reservation into a grant
+  ---
+  duration_ms: 1.294917
+  type: 'test'
+  ...
+# Subtest: disposed audio host refuses reload retirement without inspecting dead contents or issuing commands
+ok 25 - disposed audio host refuses reload retirement without inspecting dead contents or issuing commands
+  ---
+  duration_ms: 0.228834
+  type: 'test'
+  ...
+1..25
+# tests 25
+# suites 0
+# pass 25
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 300.859041

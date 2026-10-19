@@ -1,0 +1,189 @@
+{
+  "schemaVersion": 1,
+  "at": "2026-10-16T07:46:56.698Z",
+  "status": "passed-final-state-audit",
+  "scope": "Final fixed-admission read audit of task-owned source42/restored43 only; no server, listener, task, codec or process signal is created.",
+  "seed": "seed.json",
+  "source": "/private/tmp/mioon-opacity-language-20261016-x0bK0C/source42",
+  "target": "/private/tmp/mioon-opacity-language-20261016-x0bK0C/restored43",
+  "checks": {
+    "drafts": {
+      "sourcePresent": true,
+      "sourceVersion": 3,
+      "sourceEntries": 1,
+      "sourceBytes": 841,
+      "sourceSha256": "ef671f5bb9ab9236e67e733ec641341888bf824b03ecd5e25a84e8584ae09428",
+      "targetAbsent": true,
+      "policy": "excluded"
+    },
+    "restoration": {
+      "restorationId": "ec3bc7a4-f8e2-4812-9890-4f2888865bb7",
+      "workspaceOrigin": "34fbc351-f706-4ad9-9905-4ec5945893b7",
+      "sourceBackupId": "1910d2b6-84ba-4075-b42a-967bc5907470",
+      "manifestHash": "f6a695d32c3972c1f6e0ec993d527a476ce5fa9c00637b17ade0daa85180fc74",
+      "sourceDbHash": "444f5f1f981e07b09e43338a2534a8d4969d1eefabb63071182aa9d2ec50864a",
+      "createdAt": "2026-10-16T07:33:59.442Z",
+      "schemaVersion": 43,
+      "profile": "restored-local-v10",
+      "sourceSchema": 42,
+      "heldCounts": {
+        "agent_chat_quota": 1,
+        "edit_tasks": 1,
+        "timeline_requests": 2
+      },
+      "heldRecordsTotal": 4,
+      "unchangedFromSeed": true
+    },
+    "timelines": {
+      "source42": {
+        "timelineId": "73540e48-93e8-4feb-80ea-b1760579f0db",
+        "projectId": "95705f61-5867-42bd-aa5f-5791bf3f4c37",
+        "clipId": "167c1978-e717-4a0f-bfed-a42846d39e4d",
+        "revision": 2,
+        "opacityEnvelope": {
+          "profileId": "mioon-clip-linear-opacity-v1",
+          "points": [
+            {
+              "frame": 0,
+              "opacity": 0.25
+            },
+            {
+              "frame": 10,
+              "opacity": 1
+            }
+          ]
+        }
+      },
+      "restored43": {
+        "timelineId": "73540e48-93e8-4feb-80ea-b1760579f0db",
+        "projectId": "95705f61-5867-42bd-aa5f-5791bf3f4c37",
+        "clipId": "167c1978-e717-4a0f-bfed-a42846d39e4d",
+        "revision": 5,
+        "opacityEnvelope": {
+          "profileId": "mioon-clip-linear-opacity-v1",
+          "points": [
+            {
+              "frame": 0,
+              "opacity": 0.43
+            },
+            {
+              "frame": 10,
+              "opacity": 1
+            }
+          ]
+        }
+      }
+    },
+    "heldTask": {
+      "id": "66fd55cc-f24e-47fc-ac3f-eea2c4cd4376",
+      "status": "prepared",
+      "acknowledged": 0,
+      "executionEpoch": "captured",
+      "digest": "15f5302b4b0ff37db1334aeba25dc31065a0b2a4d9db6febd5e44c2139e54ad9",
+      "inputSha256": "e6107402bd3d61f938c2576dfeb3cdb93740f5a51f0189217081e9b5d2ae864d",
+      "sourceRawInputUnchanged": true
+    },
+    "newOriginTasks": [
+      {
+        "id": "48a6ac29-46fb-4760-a952-786060fba33d",
+        "operation": "timeline.clip.update",
+        "status": "applied",
+        "acknowledged": 1,
+        "executionEpoch": "34fbc351-f706-4ad9-9905-4ec5945893b7"
+      },
+      {
+        "id": "a88ada6a-888e-4901-8bfe-2b78c03d4042",
+        "operation": "timeline.clip.update",
+        "status": "applied",
+        "acknowledged": 1,
+        "executionEpoch": "34fbc351-f706-4ad9-9905-4ec5945893b7"
+      },
+      {
+        "id": "b1c198be-4f1c-4175-a259-b8e7c801c8fb",
+        "operation": "timeline.clip.update",
+        "status": "applied",
+        "acknowledged": 1,
+        "executionEpoch": "34fbc351-f706-4ad9-9905-4ec5945893b7"
+      }
+    ],
+    "media": [
+      {
+        "workspace": "source42",
+        "projectId": "95705f61-5867-42bd-aa5f-5791bf3f4c37",
+        "assetId": "09e5595a-798f-4ff3-b2e6-beb93ed4abef",
+        "provenance": "user-import",
+        "bytes": 165,
+        "sha256": "260d48846b0b0901bf8da934571961ab8319154c7163a1e8dbe8a88958574827"
+      },
+      {
+        "workspace": "source42",
+        "projectId": "0787c901-2957-430d-8e1c-9e1ee84115bf",
+        "assetId": "f008647d-3602-450d-ae54-2e747889d6b5",
+        "provenance": "user-import",
+        "bytes": 165,
+        "sha256": "260d48846b0b0901bf8da934571961ab8319154c7163a1e8dbe8a88958574827"
+      },
+      {
+        "workspace": "restored43",
+        "projectId": "95705f61-5867-42bd-aa5f-5791bf3f4c37",
+        "assetId": "09e5595a-798f-4ff3-b2e6-beb93ed4abef",
+        "provenance": "user-import",
+        "bytes": 165,
+        "sha256": "260d48846b0b0901bf8da934571961ab8319154c7163a1e8dbe8a88958574827"
+      },
+      {
+        "workspace": "restored43",
+        "projectId": "0787c901-2957-430d-8e1c-9e1ee84115bf",
+        "assetId": "f008647d-3602-450d-ae54-2e747889d6b5",
+        "provenance": "user-import",
+        "bytes": 165,
+        "sha256": "260d48846b0b0901bf8da934571961ab8319154c7163a1e8dbe8a88958574827"
+      }
+    ],
+    "emptyExecutionQueues": {
+      "source42": {
+        "exports": 0,
+        "jobs": 0
+      },
+      "restored43": {
+        "exports": 0,
+        "jobs": 0
+      }
+    },
+    "readOnlyLogicalSnapshotsUnchanged": true,
+    "sourceDraftBytesUnchanged": true
+  },
+  "gui": {
+    "lastRootObservedLanguagePreference": "ja",
+    "observationSource": "root GUI report",
+    "jaGUIAndIMEAcceptance": "unconfirmed after CUA Transport closed",
+    "windowClosure": "unconfirmed",
+    "serviceExitCode": "unconfirmed after exec-session transport disconnect",
+    "serviceShutdown": "not claimed; exact owned PID absence and no listener are recorded separately by root"
+  },
+  "lifecycle": {
+    "before": {
+      "source42": {
+        "lockExists": false
+      },
+      "restored43": {
+        "lockExists": false
+      }
+    },
+    "after": {
+      "source42": {
+        "lockExists": false
+      },
+      "restored43": {
+        "lockExists": false
+      }
+    },
+    "sourceLeaseOwned": true,
+    "targetLeaseOwned": true,
+    "targetStoreClose": "normal",
+    "sourceStoreClose": "normal"
+  },
+  "mediaEvents": [],
+  "forbiddenAttempts": 0,
+  "finishedAt": "2026-10-16T07:46:57.557Z"
+}

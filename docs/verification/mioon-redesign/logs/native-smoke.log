@@ -1,0 +1,23 @@
+sandbox_extension_issue_file_to_process failed for /Users/kouzen/Documents/data/mioon/node_modules/electron/dist/Electron.app: 1 (Operation not permitted)
+Desktop smoke: embedded-app-identity-and-data-ownership
+Desktop smoke: bundled-electron-utility-node-sqlite
+Desktop smoke: renderer-sandbox-context-isolation-no-node
+Desktop smoke: native-macos-traffic-light-position
+Desktop smoke: native-fixed-workspace-tools-and-real-channel
+Desktop smoke: no-node-no-bridge-no-readable-cookie-no-url-secret
+Desktop smoke: secure-httponly-strict-memory-cookie
+Desktop smoke: authenticated-loopback-fetch-with-secure-cookie
+Desktop smoke: v4-six-provider-catalog-safe-status
+Desktop smoke: anonymous-loopback-denied
+Desktop smoke: new-window-denied
+Desktop smoke: external-network-denied
+Desktop smoke: permission-denied
+Desktop smoke: external-navigation-denied
+Desktop smoke: reload-preserves-session
+Desktop smoke: private-mcp-discovery-files
+Desktop smoke: graceful-backend-restart-persists-data-rotates-auth
+Desktop smoke: crashed-backend-recovery-clears-stale-lock
+Desktop smoke: real-shared-ffmpeg-layered-render-and-authenticated-media
+Desktop smoke: graceful-restart-interrupts-and-recovers-active-render
+Desktop smoke: actual-renderer-beforeunload-cancel-preserves-window-and-service
+Desktop smoke: shared-react-ui-stable-and-real-timeline-video-decoded

@@ -1,8 +1,8 @@
-.restored-workspace-banner { flex: 0 0 auto; max-height: 230px; overflow: auto; padding: 8px 14px; border-bottom: 1px solid #6b6040; background: #29271e; color: #e7dec6; font-size: 12px; line-height: 1.5; }
+.restored-workspace-banner { flex: 0 0 auto; max-height: 230px; overflow: auto; padding: 8px 14px; border-bottom: 1px solid var(--wb-line-strong); background: var(--wb-raised); color: var(--wb-warning); font-size: 12px; line-height: 1.5; }
 .restored-workspace-banner > div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; }
 .restored-workspace-banner p { margin: 3px 0; overflow-wrap: anywhere; }
 .restored-workspace-banner details { margin-top: 2px; }
 .restored-workspace-banner summary { cursor: pointer; }
 .restored-unavailable { margin: 12px; padding: 12px; overflow-wrap: anywhere; }
 .restored-unavailable p { margin: 8px 0 0; }
-.restored-held-label { display: inline-flex; margin: 4px 0; color: #dfc789; font-size: 12px; }
+.restored-held-label { display: inline-flex; margin: 4px 0; color: var(--wb-warning); font-size: 12px; }

@@ -1,0 +1,217 @@
+TAP version 13
+# Subtest: real applied task restores held; get/list/replay retain original ACK after clip removal without media remeasurement
+not ok 1 - real applied task restores held; get/list/replay retain original ACK after clip removal without media remeasurement
+  ---
+  duration_ms: 2580.404292
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:95:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    48 !== 26
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 26
+  actual: 48
+  operator: 'strictEqual'
+  stack: |-
+    restored (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:79:9)
+    async TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:96:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: real source ACK corrupted to wrong operation remains archived but cannot replay
+not ok 2 - real source ACK corrupted to wrong operation remains archived but cannot replay
+  ---
+  duration_ms: 2184.772375
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:122:2'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    48 !== 26
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 26
+  actual: 48
+  operator: 'strictEqual'
+  stack: |-
+    restored (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:79:9)
+    async TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:123:11)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: real source ACK corrupted to wrong project remains archived but cannot replay
+not ok 3 - real source ACK corrupted to wrong project remains archived but cannot replay
+  ---
+  duration_ms: 2173.340291
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:122:2'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    48 !== 26
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 26
+  actual: 48
+  operator: 'strictEqual'
+  stack: |-
+    restored (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:79:9)
+    async TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:123:11)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: real source ACK corrupted to wrong request remains archived but cannot replay
+not ok 4 - real source ACK corrupted to wrong request remains archived but cannot replay
+  ---
+  duration_ms: 2063.727417
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:122:2'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    48 !== 26
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 26
+  actual: 48
+  operator: 'strictEqual'
+  stack: |-
+    restored (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:79:9)
+    async TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:123:11)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: real source ACK corrupted to wrong bare timeline remains archived but cannot replay
+not ok 5 - real source ACK corrupted to wrong bare timeline remains archived but cannot replay
+  ---
+  duration_ms: 2078.831125
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:122:2'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    48 !== 26
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 26
+  actual: 48
+  operator: 'strictEqual'
+  stack: |-
+    restored (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:79:9)
+    async TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:123:11)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: held apply replay still requires database ownership: foreign asset owner
+not ok 6 - held apply replay still requires database ownership: foreign asset owner
+  ---
+  duration_ms: 2071.456167
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:131:2'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    48 !== 26
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 26
+  actual: 48
+  operator: 'strictEqual'
+  stack: |-
+    restored (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:79:9)
+    async TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:132:11)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: held apply replay still requires database ownership: missing current timeline
+not ok 7 - held apply replay still requires database ownership: missing current timeline
+  ---
+  duration_ms: 2066.35325
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:131:2'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    48 !== 26
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 26
+  actual: 48
+  operator: 'strictEqual'
+  stack: |-
+    restored (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:79:9)
+    async TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:132:11)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: held apply replay still requires database ownership: different current timeline id
+not ok 8 - held apply replay still requires database ownership: different current timeline id
+  ---
+  duration_ms: 2094.514125
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:131:2'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    48 !== 26
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 26
+  actual: 48
+  operator: 'strictEqual'
+  stack: |-
+    restored (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:79:9)
+    async TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:132:11)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: held apply replay still requires database ownership: current revision behind ACK
+not ok 9 - held apply replay still requires database ownership: current revision behind ACK
+  ---
+  duration_ms: 2084.320042
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:131:2'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    48 !== 26
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 26
+  actual: 48
+  operator: 'strictEqual'
+  stack: |-
+    restored (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:79:9)
+    async TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-restore-apply-replay.test.mjs:132:11)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 0
+# fail 9
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 19732.144583

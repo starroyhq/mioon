@@ -1,0 +1,310 @@
+TAP version 13
+# Subtest: load and reconnect discover drafts without restoring, writing or exporting
+ok 1 - load and reconnect discover drafts without restoring, writing or exporting
+  ---
+  duration_ms: 11.825291
+  type: 'test'
+  ...
+# Subtest: restore replaces only explicitly selected raw input and retains original timeline baseline
+ok 2 - restore replaces only explicitly selected raw input and retains original timeline baseline
+  ---
+  duration_ms: 0.654708
+  type: 'test'
+  ...
+# Subtest: keep current is explicit CAS overwrite and explicit baseline change
+ok 3 - keep current is explicit CAS overwrite and explicit baseline change
+  ---
+  duration_ms: 1.299667
+  type: 'test'
+  ...
+# Subtest: blank, invalid and over-render-limit names save exactly, over storage limit does not truncate
+ok 4 - blank, invalid and over-render-limit names save exactly, over storage limit does not truncate
+  ---
+  duration_ms: 1.037333
+  type: 'test'
+  ...
+# Subtest: saved title is durable unsent input; it does not trap quit as unsaved persistence
+ok 5 - saved title is durable unsent input; it does not trap quit as unsaved persistence
+  ---
+  duration_ms: 0.4415
+  type: 'test'
+  ...
+# Subtest: draft capacity refusal is distinct from unknown and explicit leave never cancels intent
+ok 6 - draft capacity refusal is distinct from unknown and explicit leave never cancels intent
+  ---
+  duration_ms: 0.489791
+  type: 'test'
+  ...
+# Subtest: lost draft write ACK plus empty reread cannot resume autosave or discard uncertainty
+ok 7 - lost draft write ACK plus empty reread cannot resume autosave or discard uncertainty
+  ---
+  duration_ms: 0.572458
+  type: 'test'
+  ...
+# Subtest: fresh export is durably prepared before execute; strict ACK preserves exact blank omission
+ok 8 - fresh export is durably prepared before execute; strict ACK preserves exact blank omission
+  ---
+  duration_ms: 2.253292
+  type: 'test'
+  ...
+# Subtest: named request binds exact durable raw and accepted response cleans only exact current field
+ok 9 - named request binds exact durable raw and accepted response cleans only exact current field
+  ---
+  duration_ms: 1.00325
+  type: 'test'
+  ...
+# Subtest: lost prepare ACK forbids dispatch and later empty GET cannot erase reservation uncertainty
+ok 10 - lost prepare ACK forbids dispatch and later empty GET cannot erase reservation uncertainty
+  ---
+  duration_ms: 0.649625
+  type: 'test'
+  ...
+# Subtest: confirmed prepare capacity rejection releases only this unaccepted reservation
+ok 11 - confirmed prepare capacity rejection releases only this unaccepted reservation
+  ---
+  duration_ms: 0.29125
+  type: 'test'
+  ...
+# Subtest: newer name, timeline, hidden tab, or parent navigation during prepare wins over late ACK
+ok 12 - newer name, timeline, hidden tab, or parent navigation during prepare wins over late ACK
+  ---
+  duration_ms: 1.876333
+  type: 'test'
+  ...
+# Subtest: late execution ACK cannot clean newer name or restore old context
+ok 13 - late execution ACK cannot clean newer name or restore old context
+  ---
+  duration_ms: 0.720917
+  type: 'test'
+  ...
+# Subtest: a malformed accepted response remains pending and cannot acknowledge the current name
+ok 14 - a malformed accepted response remains pending and cannot acknowledge the current name
+  ---
+  duration_ms: 0.757708
+  type: 'test'
+  ...
+# Subtest: explicit recover after restart executes exactly saved identity without cleaning current draft
+ok 15 - explicit recover after restart executes exactly saved identity without cleaning current draft
+  ---
+  duration_ms: 0.916209
+  type: 'test'
+  ...
+# Subtest: discard stored title neither resets newer text nor mutates pending intent
+ok 16 - discard stored title neither resets newer text nor mutates pending intent
+  ---
+  duration_ms: 0.288959
+  type: 'test'
+  ...
+# Subtest: navigation abandonment suppresses autosaving the parent reset
+ok 17 - navigation abandonment suppresses autosaving the parent reset
+  ---
+  duration_ms: 0.225917
+  type: 'test'
+  ...
+# Subtest: restored branch stays unsupported while controller makes no sidecar writes or execute calls
+ok 18 - restored branch stays unsupported while controller makes no sidecar writes or execute calls
+  ---
+  duration_ms: 0.312916
+  type: 'test'
+  ...
+# Subtest: client uses fixed same-origin endpoints and classifies only exact refusal code/status pairs
+ok 19 - client uses fixed same-origin endpoints and classifies only exact refusal code/status pairs
+  ---
+  duration_ms: 15.094334
+  type: 'test'
+  ...
+# Subtest: explicit recovery retries only the retained unacknowledged preparation then recovers the same input
+ok 20 - explicit recovery retries only the retained unacknowledged preparation then recovers the same input
+  ---
+  duration_ms: 1.093834
+  type: 'test'
+  ...
+# Subtest: newer edit during explicit prepare recovery keeps the pending original without dispatch
+ok 21 - newer edit during explicit prepare recovery keeps the pending original without dispatch
+  ---
+  duration_ms: 0.556666
+  type: 'test'
+  ...
+# Subtest: a later refused retry cannot erase evidence of the earlier unknown preparation
+ok 22 - a later refused retry cannot erase evidence of the earlier unknown preparation
+  ---
+  duration_ms: 0.390125
+  type: 'test'
+  ...
+# Subtest: retained uncertain preparation cannot adopt another workspace with coincident project UUID
+ok 23 - retained uncertain preparation cannot adopt another workspace with coincident project UUID
+  ---
+  duration_ms: 0.423208
+  type: 'test'
+  ...
+# Subtest: late discard during explicit baseline replacement cannot replace newer current input
+ok 24 - late discard during explicit baseline replacement cannot replace newer current input
+  ---
+  duration_ms: 0.298875
+  type: 'test'
+  ...
+# Subtest: accepted fresh title remains clean through parent refresh and later name acknowledgement
+ok 25 - accepted fresh title remains clean through parent refresh and later name acknowledgement
+  ---
+  duration_ms: 1.167416
+  type: 'test'
+  ...
+# Subtest: explicit recovery accepts terminal outcome revealed at the masked pending revision
+ok 26 - explicit recovery accepts terminal outcome revealed at the masked pending revision
+  ---
+  duration_ms: 1.763667
+  type: 'test'
+  ...
+# Subtest: restart can reveal same-revision terminal metadata read-only without acknowledging newer title
+ok 27 - restart can reveal same-revision terminal metadata read-only without acknowledging newer title
+  ---
+  duration_ms: 0.81175
+  type: 'test'
+  ...
+# Subtest: unconfirmed preparation fences newer title persistence without changing original draft CAS
+ok 28 - unconfirmed preparation fences newer title persistence without changing original draft CAS
+  ---
+  duration_ms: 0.917875
+  type: 'test'
+  ...
+# Subtest: malformed not-applied code from a read or execution cannot release pending original
+ok 29 - malformed not-applied code from a read or execution cannot release pending original
+  ---
+  duration_ms: 0.953583
+  type: 'test'
+  ...
+# Subtest: invalid local title can be corrected and explicitly saved without sending invalid input or exporting
+ok 30 - invalid local title can be corrected and explicitly saved without sending invalid input or exporting
+  ---
+  duration_ms: 0.545333
+  type: 'test'
+  ...
+# Subtest: corrected title retries against the unchanged known row without another candidate overwrite prompt
+ok 31 - corrected title retries against the unchanged known row without another candidate overwrite prompt
+  ---
+  duration_ms: 0.471125
+  type: 'test'
+  ...
+# Subtest: timeout after PUT publication and later GET-null retain exact PUT until explicit idempotent retry
+ok 32 - timeout after PUT publication and later GET-null retain exact PUT until explicit idempotent retry
+  ---
+  duration_ms: 0.497542
+  type: 'test'
+  ...
+# Subtest: retry confirms original raw while preserving newer input until a second explicit current save
+ok 33 - retry confirms original raw while preserving newer input until a second explicit current save
+  ---
+  duration_ms: 0.613
+  type: 'test'
+  ...
+# Subtest: newer edit during PUT retry cannot be replaced or automatically saved by old ACK
+ok 34 - newer edit during PUT retry cannot be replaced or automatically saved by old ACK
+  ---
+  duration_ms: 0.464792
+  type: 'test'
+  ...
+# Subtest: explicit original PUT retry may refresh only same-workspace server nonce
+ok 35 - explicit original PUT retry may refresh only same-workspace server nonce
+  ---
+  duration_ms: 0.695875
+  type: 'test'
+  ...
+# Subtest: later refused retry cannot erase earlier PUT uncertainty or authorize leaving as a confirmed refusal
+ok 36 - later refused retry cannot erase earlier PUT uncertainty or authorize leaving as a confirmed refusal
+  ---
+  duration_ms: 0.381625
+  type: 'test'
+  ...
+# Subtest: unknown DELETE is not reissued by retry or reread and does not become a new PUT
+ok 37 - unknown DELETE is not reissued by retry or reread and does not become a new PUT
+  ---
+  duration_ms: 0.326125
+  type: 'test'
+  ...
+# Subtest: client finite header deadline rejects unknown and cancels late response body
+ok 38 - client finite header deadline rejects unknown and cancels late response body
+  ---
+  duration_ms: 6.48075
+  type: 'test'
+  ...
+# Subtest: client whole-request deadline includes hanging body and cancels the reader
+ok 39 - client whole-request deadline includes hanging body and cancels the reader
+  ---
+  duration_ms: 6.416209
+  type: 'test'
+  ...
+# Subtest: client bounds normal and execution bodies before JSON parsing, including streamed oversize
+ok 40 - client bounds normal and execution bodies before JSON parsing, including streamed oversize
+  ---
+  duration_ms: 1.24925
+  type: 'test'
+  ...
+# Subtest: client rejects oversized declared body immediately and decodes split UTF-8 strictly
+ok 41 - client rejects oversized declared body immediately and decodes split UTF-8 strictly
+  ---
+  duration_ms: 1.869167
+  type: 'test'
+  ...
+# Subtest: execution timeout is finite and remains uncertainty rather than business cancellation
+ok 42 - execution timeout is finite and remains uncertainty rather than business cancellation
+  ---
+  duration_ms: 5.564042
+  type: 'test'
+  ...
+# Subtest: unconfirmed title PUT survives A to B to A and GET-null with original CAS
+ok 43 - unconfirmed title PUT survives A to B to A and GET-null with original CAS
+  ---
+  duration_ms: 0.87575
+  type: 'test'
+  ...
+# Subtest: a newer edit while retry rereads aborts the old retry before any PUT
+ok 44 - a newer edit while retry rereads aborts the old retry before any PUT
+  ---
+  duration_ms: 0.53825
+  type: 'test'
+  ...
+# Subtest: late refused PUT from old project epoch cannot erase a newer retry uncertainty
+ok 45 - late refused PUT from old project epoch cannot erase a newer retry uncertainty
+  ---
+  duration_ms: 0.428708
+  type: 'test'
+  ...
+# Subtest: late refused prepare from old epoch cannot erase newer explicit preparation retry
+ok 46 - late refused prepare from old epoch cannot erase newer explicit preparation retry
+  ---
+  duration_ms: 0.47125
+  type: 'test'
+  ...
+# Subtest: actual name-controller pre-layout hydration remains passive with no blank title sidecar
+ok 47 - actual name-controller pre-layout hydration remains passive with no blank title sidecar
+  ---
+  duration_ms: 7.044166
+  type: 'test'
+  ...
+# Subtest: actual name-controller user clearing a name remains a dirty blank edit and saves exactly
+ok 48 - actual name-controller user clearing a name remains a dirty blank edit and saves exactly
+  ---
+  duration_ms: 1.774292
+  type: 'test'
+  ...
+# Subtest: explicit restoration of an already-empty name stays dirty despite passive name-controller revision updates
+ok 49 - explicit restoration of an already-empty name stays dirty despite passive name-controller revision updates
+  ---
+  duration_ms: 1.55025
+  type: 'test'
+  ...
+# Subtest: wire errors cannot impersonate local-only no-request validation or retry-limit evidence
+ok 50 - wire errors cannot impersonate local-only no-request validation or retry-limit evidence
+  ---
+  duration_ms: 0.679542
+  type: 'test'
+  ...
+1..50
+# tests 50
+# suites 0
+# pass 50
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 334.760625

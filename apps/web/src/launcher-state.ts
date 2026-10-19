@@ -4,6 +4,7 @@ import { isProjectWindowId } from '../../desktop/src/project-window-protocol.ts'
 import type { ProjectWindowContext } from './desktop-window-client.ts';
 import type { ProjectHomeProject } from './ProjectHome.tsx';
 import type { SettingsNavigationCapture, SettingsNavigationRegistry } from './settings-navigation-state.ts';
+import { TIMELINE_CURRENT_OUTPUT_PRESETS } from '../../../packages/contracts/src/timeline-output-geometry.ts';
 
 export type LauncherOperation = 'workspace.restore.inspect' | 'project.list' | 'project.create';
 export type LauncherRpc = (operation: LauncherOperation, input?: Readonly<Record<string, unknown>>, options?: { readonly expectedWorkspaceOrigin?: string }) => Promise<unknown>;
@@ -57,12 +58,12 @@ export function createLauncherClient(rpc: LauncherRpc, checks: LauncherContractC
     async list(workspace: LauncherWorkspace): Promise<readonly LauncherProject[]> {
       return parseLauncherProjects(await rpc('project.list', {}, workspace.workspaceOrigin ? { expectedWorkspaceOrigin: workspace.workspaceOrigin } : {}));
     },
-    async create(name: string, description: string): Promise<LauncherProject> {
-      let input: { name: string; description: string };
+    async create(name: string, description: string, timelinePresetId?: string): Promise<LauncherProject> {
+      let input: { name: string; description: string; timelinePresetId?: string };
       try {
-        const value: unknown = checks.parseCreateInput({ name, description });
-        if (!record(value) || typeof value.name !== 'string' || value.name.length < 1 || value.name.length > 150 || typeof value.description !== 'string' || value.description.length > 2000 || Object.keys(value).some(key => key !== 'name' && key !== 'description')) throw protocol();
-        input = { name: value.name, description: value.description };
+        const value: unknown = checks.parseCreateInput({ name, description, ...(timelinePresetId === undefined ? {} : { timelinePresetId }) });
+        if (!record(value) || typeof value.name !== 'string' || value.name.length < 1 || value.name.length > 150 || typeof value.description !== 'string' || value.description.length > 2000 || Object.keys(value).some(key => !['name', 'description', 'timelinePresetId'].includes(key)) || timelinePresetId !== undefined && (value.timelinePresetId !== timelinePresetId || !TIMELINE_CURRENT_OUTPUT_PRESETS.some(item => item.id === timelinePresetId)) || timelinePresetId === undefined && value.timelinePresetId !== undefined) throw protocol();
+        input = { name: value.name, description: value.description, ...(timelinePresetId === undefined ? {} : { timelinePresetId }) };
       } catch { throw new LauncherCreateError('rejected'); }
       let response: unknown;
       try { response = await rpc('project.create', input); }

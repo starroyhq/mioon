@@ -6,6 +6,7 @@ import {ownsStoreLock} from './db.mjs';
 // This catalogue is an execution boundary, not an inference from readOnly hints
 // or operation suffixes. New local effects require a live pinned invocation.
 export const RESTORE_READ_OPERATIONS = Object.freeze([
+ 'project.summary.list',
  'asset.annotation.list', 'workspace.restore.inspect', 'project.list', 'project.get', 'asset.list', 'lut.list', 'lut.inspect', 'lut.look.inspect',
  'job.get', 'job.list', 'version.list', 'export.get', 'timeline.get',
  'timeline.history.get', 'timeline.format.get', 'project.inspect', 'asset.inspect',
@@ -14,10 +15,12 @@ export const RESTORE_READ_OPERATIONS = Object.freeze([
  'image.request.get','image.task.get','image.task.list','image.group.get','image.group.list','image.version.list','frame.request.get','frame.task.get','frame.task.list',
 ]);
 export const RESTORE_LOCAL_OPERATIONS = Object.freeze([
+ 'timeline.clip.rippleRemove',
  'project.create','asset.import','shot.create','shot.update','shot.reorder','node.create','node.update','edge.create','edge.delete','reference.attach','reference.detach','version.select','export.create',
  'timeline.format.set','timeline.undo','timeline.redo','timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.replaceSource','timeline.clip.remove','timeline.clip.split','timeline.seed','timeline.render','timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove','timeline.export.capabilities','timeline.export.preflight','asset.range.set','asset.disposition.set','subject.create','subject.version.add','subject.binding.set',
 ]);
 export const RESTORE_DENIED_OPERATIONS = Object.freeze([
+ 'agent.authorization.list','agent.authorization.grant','agent.authorization.revoke','project.rename','project.delete',
  'asset.annotation.set', 'lut.import',
  'timeline.audioPreview.continuousPlan','timeline.colour.source.inspect','timeline.colour.image.inspect','timeline.colour.jpeg.inspect',
  'timeline.clip.loudness','timeline.loudness.prepare','timeline.loudness.apply','timeline.audioPreview.plan','timeline.export.samplePeak','timeline.export.loudness','workspace.backup.inspect','provider.list','generation.submit','job.retry','job.cancel','job.reconcile','asset.waveform.request',
@@ -53,7 +56,9 @@ const targets=Object.freeze({
  'image.task.observeRemote':['image_tasks','taskId'],
 });
 export function refuseRestoredOperation(store,operation,input) {
- if(!getWorkspaceRestoreContext(store))return;
+ const context=getWorkspaceRestoreContext(store);
+ if(!context)return;
+ if(operation==='timeline.clip.rippleRemove'&&![45,49].includes(context.schemaVersion))throw workspaceRestoreError();
  if(RESTORE_LOCAL_OPERATIONS.includes(operation)||operation==='timeline.get'||operation==='workspace.preferences.put'){
   assertRestoreInvocation(store,operation,input);
   assertRestoreRequestVacant(store,operation,input);

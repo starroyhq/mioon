@@ -1,0 +1,34 @@
+{
+  "node": {
+    "executable": "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+    "observedVersion": "v24.21.0"
+  },
+  "command": "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node --test tests/local-drafts-app.test.mjs",
+  "before": {
+    "exitCode": 1,
+    "total": 17,
+    "passed": 16,
+    "failed": 1,
+    "failingTest": "actual App draft discard leaves the original pending timeline request and its blocking path untouched",
+    "error": "ReferenceError: application is not defined",
+    "evidenceSource": "Actual tool execution during this agent turn; raw before-output was not saved to a file."
+  },
+  "change": {
+    "file": "tests/local-drafts-app.test.mjs",
+    "scope": "Inject application: null into the extracted mutateTimeline callback fixture, matching the actual ordinary App entry's absent candidate capability.",
+    "existingAssertions": "All preserved without edits.",
+    "runtimeChanges": false
+  },
+  "after": {
+    "exitCode": 0,
+    "total": 17,
+    "passed": 17,
+    "failed": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0,
+    "rawOutput": "local-drafts-app-after.txt",
+    "outputCapture": "Actual stdout/stderr saved unchanged as .txt because the reporter was the Node default spec format."
+  },
+  "limits": "Targeted synthetic App callback/controller regression only; no GUI, listener, provider, real media or user project exercised."
+}

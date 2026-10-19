@@ -1,0 +1,438 @@
+{
+  "attempt": 2,
+  "previousAttempt": "http-media-qualification-attempt1.json",
+  "kind": "real localhost HTTP + actual media; GUI explicitly partial",
+  "baseCommit": "ea6885d50e03026e6ec62c7709e690c369da9963",
+  "runtime": "v26.9.0",
+  "workspace": "/private/tmp/mioon-opacity42-manual-20261016",
+  "projectId": "bfd45da5-6a2c-46cc-8655-db84156fafce",
+  "startedAt": "2026-10-16T06:27:42.589Z",
+  "steps": [
+    {
+      "type": "started-existing-owned-workspace",
+      "time": "2026-10-16T06:27:43.126Z",
+      "url": "http://127.0.0.1:4319"
+    },
+    {
+      "type": "resume-existing-owned-test-data",
+      "time": "2026-10-16T06:27:43.246Z",
+      "assetId": "ec59034c-312b-4b3c-9af3-e80e54750a63",
+      "revision": 3
+    },
+    {
+      "type": "actual-opacity-task-ACK",
+      "time": "2026-10-16T06:27:43.246Z",
+      "revision": 3,
+      "durationFrames": 10,
+      "curve": {
+        "profileId": "mioon-clip-linear-opacity-v1",
+        "points": [
+          {
+            "frame": 0,
+            "opacity": 0.25
+          },
+          {
+            "frame": 10,
+            "opacity": 1
+          }
+        ]
+      }
+    },
+    {
+      "type": "normal-close",
+      "time": "2026-10-16T06:27:43.462Z",
+      "activeMedia": 0,
+      "lockExists": false
+    },
+    {
+      "type": "started-existing-owned-workspace",
+      "time": "2026-10-16T06:27:43.559Z",
+      "url": "http://127.0.0.1:4319"
+    },
+    {
+      "type": "HTTP-draft-reopen-and-discard",
+      "time": "2026-10-16T06:27:43.793Z",
+      "scopePreserved": true,
+      "newInstance": true,
+      "incompleteTextRecovered": true,
+      "savedCurveUnchanged": true
+    },
+    {
+      "type": "HTTP-undo-redo",
+      "time": "2026-10-16T06:27:44.624Z",
+      "revision": 5
+    },
+    {
+      "type": "real-preflight-ready",
+      "time": "2026-10-16T06:27:45.037Z",
+      "purpose": "preview",
+      "checks": {
+        "totalAssets": 1,
+        "checkedAssets": 1,
+        "bytesHashed": 165,
+        "fullDecode": false
+      }
+    },
+    {
+      "type": "real-render-delivery-decode-passed",
+      "time": "2026-10-16T06:27:49.196Z",
+      "purpose": "preview",
+      "exportId": "e4ae3e56-0409-41c7-b26c-fe46adbe6b1c",
+      "assetId": "e2f6b6e1-5fbc-4364-b6a0-46f0d5da18bb",
+      "status": "succeeded",
+      "bytes": 5519,
+      "sha256": "4b8aecf4c7489f69db9e0492c1d90839a408da0d6096e83dfdc50bdb3e623e6d",
+      "width": 720,
+      "height": 1280,
+      "duration": 0.333333,
+      "frames": 10,
+      "firstPixel": [
+        23,
+        10,
+        23
+      ],
+      "lastPixel": [
+        86,
+        39,
+        86
+      ],
+      "guardedHTTP": true
+    },
+    {
+      "type": "real-preflight-ready",
+      "time": "2026-10-16T06:27:49.579Z",
+      "purpose": "export",
+      "checks": {
+        "totalAssets": 1,
+        "checkedAssets": 1,
+        "bytesHashed": 165,
+        "fullDecode": false
+      }
+    },
+    {
+      "type": "real-render-delivery-decode-passed",
+      "time": "2026-10-16T06:27:54.273Z",
+      "purpose": "export",
+      "exportId": "a13a0eb8-3199-47db-ab98-baf1a70d97c4",
+      "assetId": "3e24fadf-2bf9-4af9-bd0a-7627d584ae08",
+      "status": "succeeded",
+      "bytes": 5519,
+      "sha256": "4b8aecf4c7489f69db9e0492c1d90839a408da0d6096e83dfdc50bdb3e623e6d",
+      "width": 720,
+      "height": 1280,
+      "duration": 0.333333,
+      "frames": 10,
+      "firstPixel": [
+        23,
+        10,
+        23
+      ],
+      "lastPixel": [
+        86,
+        39,
+        86
+      ],
+      "guardedHTTP": true,
+      "downloadByteEquality": true
+    },
+    {
+      "type": "normal-close",
+      "time": "2026-10-16T06:27:54.276Z",
+      "activeMedia": 0,
+      "lockExists": false
+    }
+  ],
+  "media": [
+    {
+      "type": "started",
+      "pid": 91025,
+      "kind": "ffprobe",
+      "time": "2026-10-16T06:27:44.848Z"
+    },
+    {
+      "type": "exited",
+      "pid": 91025,
+      "kind": "ffprobe",
+      "time": "2026-10-16T06:27:44.881Z",
+      "durationMs": 33
+    },
+    {
+      "type": "started",
+      "pid": 91112,
+      "kind": "ffprobe",
+      "time": "2026-10-16T06:27:45.794Z"
+    },
+    {
+      "type": "exited",
+      "pid": 91112,
+      "kind": "ffprobe",
+      "time": "2026-10-16T06:27:45.825Z",
+      "durationMs": 31
+    },
+    {
+      "type": "started",
+      "pid": 91177,
+      "kind": "ffmpeg",
+      "time": "2026-10-16T06:27:46.490Z"
+    },
+    {
+      "type": "exited",
+      "pid": 91177,
+      "kind": "ffmpeg",
+      "time": "2026-10-16T06:27:47.668Z",
+      "durationMs": 1178
+    },
+    {
+      "type": "started",
+      "pid": 91303,
+      "kind": "ffmpeg",
+      "time": "2026-10-16T06:27:48.156Z"
+    },
+    {
+      "type": "exited",
+      "pid": 91303,
+      "kind": "ffmpeg",
+      "time": "2026-10-16T06:27:48.195Z",
+      "durationMs": 39
+    },
+    {
+      "type": "started",
+      "pid": 91316,
+      "kind": "ffprobe",
+      "time": "2026-10-16T06:27:48.315Z"
+    },
+    {
+      "type": "exited",
+      "pid": 91316,
+      "kind": "ffprobe",
+      "time": "2026-10-16T06:27:48.349Z",
+      "durationMs": 34
+    },
+    {
+      "type": "started",
+      "pid": 91342,
+      "kind": "ffprobe",
+      "time": "2026-10-16T06:27:48.604Z"
+    },
+    {
+      "type": "exited",
+      "pid": 91342,
+      "kind": "ffprobe",
+      "time": "2026-10-16T06:27:48.672Z",
+      "durationMs": 68
+    },
+    {
+      "type": "started",
+      "pid": 91384,
+      "kind": "ffprobe",
+      "time": "2026-10-16T06:27:49.121Z"
+    },
+    {
+      "type": "exited",
+      "pid": 91384,
+      "kind": "ffprobe",
+      "time": "2026-10-16T06:27:49.154Z",
+      "durationMs": 33
+    },
+    {
+      "type": "started",
+      "pid": 91386,
+      "kind": "ffmpeg",
+      "time": "2026-10-16T06:27:49.155Z"
+    },
+    {
+      "type": "exited",
+      "pid": 91386,
+      "kind": "ffmpeg",
+      "time": "2026-10-16T06:27:49.195Z",
+      "durationMs": 40
+    },
+    {
+      "type": "started",
+      "pid": 91399,
+      "kind": "ffprobe",
+      "time": "2026-10-16T06:27:49.396Z"
+    },
+    {
+      "type": "exited",
+      "pid": 91399,
+      "kind": "ffprobe",
+      "time": "2026-10-16T06:27:49.428Z",
+      "durationMs": 32
+    },
+    {
+      "type": "started",
+      "pid": 91549,
+      "kind": "ffprobe",
+      "time": "2026-10-16T06:27:50.713Z"
+    },
+    {
+      "type": "exited",
+      "pid": 91549,
+      "kind": "ffprobe",
+      "time": "2026-10-16T06:27:50.784Z",
+      "durationMs": 71
+    },
+    {
+      "type": "started",
+      "pid": 91618,
+      "kind": "ffmpeg",
+      "time": "2026-10-16T06:27:51.423Z"
+    },
+    {
+      "type": "exited",
+      "pid": 91618,
+      "kind": "ffmpeg",
+      "time": "2026-10-16T06:27:52.614Z",
+      "durationMs": 1191
+    },
+    {
+      "type": "started",
+      "pid": 91787,
+      "kind": "ffmpeg",
+      "time": "2026-10-16T06:27:53.120Z"
+    },
+    {
+      "type": "exited",
+      "pid": 91787,
+      "kind": "ffmpeg",
+      "time": "2026-10-16T06:27:53.154Z",
+      "durationMs": 34
+    },
+    {
+      "type": "started",
+      "pid": 91804,
+      "kind": "ffprobe",
+      "time": "2026-10-16T06:27:53.277Z"
+    },
+    {
+      "type": "exited",
+      "pid": 91804,
+      "kind": "ffprobe",
+      "time": "2026-10-16T06:27:53.310Z",
+      "durationMs": 33
+    },
+    {
+      "type": "started",
+      "pid": 91832,
+      "kind": "ffprobe",
+      "time": "2026-10-16T06:27:53.560Z"
+    },
+    {
+      "type": "exited",
+      "pid": 91832,
+      "kind": "ffprobe",
+      "time": "2026-10-16T06:27:53.600Z",
+      "durationMs": 40
+    },
+    {
+      "type": "started",
+      "pid": 91899,
+      "kind": "ffprobe",
+      "time": "2026-10-16T06:27:54.096Z"
+    },
+    {
+      "type": "exited",
+      "pid": 91899,
+      "kind": "ffprobe",
+      "time": "2026-10-16T06:27:54.129Z",
+      "durationMs": 33
+    },
+    {
+      "type": "started",
+      "pid": 91904,
+      "kind": "ffmpeg",
+      "time": "2026-10-16T06:27:54.130Z"
+    },
+    {
+      "type": "exited",
+      "pid": 91904,
+      "kind": "ffmpeg",
+      "time": "2026-10-16T06:27:54.170Z",
+      "durationMs": 40
+    }
+  ],
+  "outputs": [
+    {
+      "purpose": "preview",
+      "exportId": "e4ae3e56-0409-41c7-b26c-fe46adbe6b1c",
+      "assetId": "e2f6b6e1-5fbc-4364-b6a0-46f0d5da18bb",
+      "status": "succeeded",
+      "bytes": 5519,
+      "sha256": "4b8aecf4c7489f69db9e0492c1d90839a408da0d6096e83dfdc50bdb3e623e6d",
+      "width": 720,
+      "height": 1280,
+      "duration": 0.333333,
+      "frames": 10,
+      "firstPixel": [
+        23,
+        10,
+        23
+      ],
+      "lastPixel": [
+        86,
+        39,
+        86
+      ],
+      "guardedHTTP": true
+    },
+    {
+      "purpose": "export",
+      "exportId": "a13a0eb8-3199-47db-ab98-baf1a70d97c4",
+      "assetId": "3e24fadf-2bf9-4af9-bd0a-7627d584ae08",
+      "status": "succeeded",
+      "bytes": 5519,
+      "sha256": "4b8aecf4c7489f69db9e0492c1d90839a408da0d6096e83dfdc50bdb3e623e6d",
+      "width": 720,
+      "height": 1280,
+      "duration": 0.333333,
+      "frames": 10,
+      "firstPixel": [
+        23,
+        10,
+        23
+      ],
+      "lastPixel": [
+        86,
+        39,
+        86
+      ],
+      "guardedHTTP": true,
+      "downloadByteEquality": true
+    }
+  ],
+  "normalCloses": [
+    {
+      "time": "2026-10-16T06:27:43.462Z",
+      "activeMedia": 0,
+      "lockExists": false
+    },
+    {
+      "time": "2026-10-16T06:27:54.276Z",
+      "activeMedia": 0,
+      "lockExists": false
+    }
+  ],
+  "gui": {
+    "passed": [
+      "native Safari27.0.1 navigation",
+      "login",
+      "create/open project"
+    ],
+    "blocked": [
+      "image picker onward: CUA transport closed; browser provider chrome unavailable"
+    ],
+    "notClaimed": [
+      "GUI image import",
+      "GUI opacity Save/Cancel",
+      "GUI Inspector reopen/draft restore",
+      "GUI Undo/Redo",
+      "GUI playback/download",
+      "four-language GUI/IME"
+    ]
+  },
+  "status": "passed-HTTP-media-partial-GUI",
+  "finishedAt": "2026-10-16T06:27:54.276Z",
+  "activeMediaAtEnd": 0,
+  "lockExistsAtEnd": false
+}

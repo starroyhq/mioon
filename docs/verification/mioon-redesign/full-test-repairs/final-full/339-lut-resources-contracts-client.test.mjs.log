@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: shared strict RPC discovery separates resources from media and grading
+ok 1 - shared strict RPC discovery separates resources from media and grading
+  ---
+  duration_ms: 3.273625
+  type: 'test'
+  ...
+# Subtest: Node ACK guard independently hashes submitted exact bytes, rejecting mismatched identity
+ok 2 - Node ACK guard independently hashes submitted exact bytes, rejecting mismatched identity
+  ---
+  duration_ms: 0.719666
+  type: 'test'
+  ...
+# Subtest: inspect and listing guards enforce requested scope, sorted unique page and cursor
+ok 3 - inspect and listing guards enforce requested scope, sorted unique page and cursor
+  ---
+  duration_ms: 0.363708
+  type: 'test'
+  ...
+# Subtest: full maximum MCP message including worst escaped fields remains under unchanged10MiB cap
+ok 4 - full maximum MCP message including worst escaped fields remains under unchanged10MiB cap
+  ---
+  duration_ms: 26.575291
+  type: 'test'
+  ...
+# Subtest: shared client rejects bad ACK with exact request recovery, and never retries on failure
+ok 5 - shared client rejects bad ACK with exact request recovery, and never retries on failure
+  ---
+  duration_ms: 11.71525
+  type: 'test'
+  ...
+# Subtest: restored LUT disclosure is profile-specific; import is unavailable and no media/effect backdoor exists
+ok 6 - restored LUT disclosure is profile-specific; import is unavailable and no media/effect backdoor exists
+  ---
+  duration_ms: 0.536041
+  type: 'test'
+  ...
+# Subtest: explicit uncertain server result retains exact request recovery information
+ok 7 - explicit uncertain server result retains exact request recovery information
+  ---
+  duration_ms: 0.475125
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 295.666917

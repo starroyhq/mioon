@@ -1,0 +1,112 @@
+TAP version 13
+# Subtest: exit classification preserves the triggering fault and requires confirmed successful shutdown for normal
+ok 1 - exit classification preserves the triggering fault and requires confirmed successful shutdown for normal
+  ---
+  duration_ms: 0.547958
+  type: 'test'
+  ...
+# Subtest: exit diagnostics persist only fixed lifecycle fields with generated run and version metadata
+ok 2 - exit diagnostics persist only fixed lifecycle fields with generated run and version metadata
+  ---
+  duration_ms: 18.725875
+  type: 'test'
+  ...
+# Subtest: unknown and invalid fields never persist private strings or caller supplied identity
+ok 3 - unknown and invalid fields never persist private strings or caller supplied identity
+  ---
+  duration_ms: 7.448833
+  type: 'test'
+  ...
+# Subtest: metadata is optional and only bounded exact versions and known channels are retained
+ok 4 - metadata is optional and only bounded exact versions and known channels are retained
+  ---
+  duration_ms: 46.516083
+  type: 'test'
+  ...
+# Subtest: rotation bounds every file and total retained bytes across repeated factories
+ok 5 - rotation bounds every file and total retained bytes across repeated factories
+  ---
+  duration_ms: 5141.32725
+  type: 'test'
+  ...
+# Subtest: an oversized preexisting diagnostic is removed before bounded append
+ok 6 - an oversized preexisting diagnostic is removed before bounded append
+  ---
+  duration_ms: 7.354875
+  type: 'test'
+  ...
+# Subtest: unavailable storage and malformed inputs return false without changing lifecycle
+ok 7 - unavailable storage and malformed inputs return false without changing lifecycle
+  ---
+  duration_ms: 1.774208
+  type: 'test'
+  ...
+# Subtest: diagnostic storage refuses symlink files and directories
+ok 8 - diagnostic storage refuses symlink files and directories
+  ---
+  duration_ms: 2.556584
+  type: 'test'
+  ...
+# Subtest: only safe integer exit codes and true booleans are retained
+ok 9 - only safe integer exit codes and true booleans are retained
+  ---
+  duration_ms: 61.341459
+  type: 'test'
+  ...
+# Subtest: diagnostics inspect only explicit fields and snapshot each exit code once
+ok 10 - diagnostics inspect only explicit fields and snapshot each exit code once
+  ---
+  duration_ms: 33.36
+  type: 'test'
+  ...
+# Subtest: diagnostic current hardlink cannot change another file's bytes or permissions
+ok 11 - diagnostic current hardlink cannot change another file's bytes or permissions
+  ---
+  duration_ms: 2.189292
+  type: 'test'
+  ...
+# Subtest: diagnostic .1 hardlink cannot change another file's bytes or permissions
+ok 12 - diagnostic .1 hardlink cannot change another file's bytes or permissions
+  ---
+  duration_ms: 1.788375
+  type: 'test'
+  ...
+# Subtest: diagnostic .2 hardlink cannot change another file's bytes or permissions
+ok 13 - diagnostic .2 hardlink cannot change another file's bytes or permissions
+  ---
+  duration_ms: 1.856875
+  type: 'test'
+  ...
+# Subtest: diagnostic rotation slot .1 refuses symlinks without changing the target
+ok 14 - diagnostic rotation slot .1 refuses symlinks without changing the target
+  ---
+  duration_ms: 1.370792
+  type: 'test'
+  ...
+# Subtest: diagnostic rotation slot .2 refuses symlinks without changing the target
+ok 15 - diagnostic rotation slot .2 refuses symlinks without changing the target
+  ---
+  duration_ms: 1.353833
+  type: 'test'
+  ...
+# Subtest: file replacement at open is refused before chmod or append
+ok 16 - file replacement at open is refused before chmod or append
+  ---
+  duration_ms: 6.848625
+  type: 'test'
+  ...
+# Subtest: rotation rechecks all slot identities after permission inspection
+ok 17 - rotation rechecks all slot identities after permission inspection
+  ---
+  duration_ms: 2.582041
+  type: 'test'
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5495.229083

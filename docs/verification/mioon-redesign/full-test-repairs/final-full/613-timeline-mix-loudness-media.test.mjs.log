@@ -1,0 +1,67 @@
+TAP version 13
+# Subtest: real full mixed float PCM matches original export graph exactly at every image/muted/zero/silent seam
+ok 1 - real full mixed float PCM matches original export graph exactly at every image/muted/zero/silent seam
+  ---
+  duration_ms: 2553.889417
+  type: 'test'
+  ...
+# {"segmentCount":11,"sampleFrames":57600,"decodeWorkFrames":119,"referenceMaxAbsError":0,"actualMaximumChildren":1,"pcmHash":"8f956b583446598e1a529a46d57fbeaa4983ee117292a597cc21f2ff74e51a9d"}
+# Subtest: real headroom stays above one and fully silent compositions keep exact natural EOF
+ok 2 - real headroom stays above one and fully silent compositions keep exact natural EOF
+  ---
+  duration_ms: 110.010833
+  type: 'test'
+  ...
+# Subtest: real malformed AAC and missing selected audio cannot be hidden by the silence-first pad
+ok 3 - real malformed AAC and missing selected audio cannot be hidden by the silence-first pad
+  ---
+  duration_ms: 310.205667
+  type: 'test'
+  ...
+# Subtest: real queued probe cancellation and active child cancellation never leave an owned process
+ok 4 - real queued probe cancellation and active child cancellation never leave an owned process
+  ---
+  duration_ms: 46.254042
+  type: 'test'
+  ...
+# Subtest: real stored video audio-presence parity rejects both mismatches and verifies genuine silence
+ok 5 - real stored video audio-presence parity rejects both mismatches and verifies genuine silence
+  ---
+  duration_ms: 221.644959
+  type: 'test'
+  ...
+# Subtest: complete v1 and float-v2 render argv and final MP4 bytes match the reconstructed baseline exactly
+not ok 6 - complete v1 and float-v2 render argv and final MP4 bytes match the reconstructed baseline exactly
+  ---
+  duration_ms: 38.988916
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-mix-loudness-media.test.mjs:174:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    reconstructed renderer is the exact b9e7d1e source, without invoking git
+    + actual - expected
+    
+    + '40e94dad5380199ae86a285f323bb56b34e3037f02d1017bfd41a9e3e9ef10a2'
+    - 'c1586a7dc67f2e0c44ff5a4cc97262e71181f258a0fc66646fc5bac83e25fa95'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'c1586a7dc67f2e0c44ff5a4cc97262e71181f258a0fc66646fc5bac83e25fa95'
+  actual: '40e94dad5380199ae86a285f323bb56b34e3037f02d1017bfd41a9e3e9ef10a2'
+  operator: 'strictEqual'
+  stack: |-
+    originalRendererSource (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-mix-loudness-media.test.mjs:145:10)
+    instrumentedRenderers (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-mix-loudness-media.test.mjs:166:107)
+    async TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-mix-loudness-media.test.mjs:184:87)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 5
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3494.231583

@@ -11,12 +11,14 @@ assert.equal(app.indexOf('  useEffect(() => {\n    const controller = preference
 const effect = app.slice(start, end + '\n  }, []);'.length);
 const deferred = () => Promise.withResolvers();
 
-function fixture({ native = false, restored = false, pending = true, result = true, held = null, viewHeld = null, composing = false } = {}) {
-  const calls = [], listeners = new Map(), global = {}, workspaceRef = { current: { restored } };
+function fixture({ native = false, restored = false, restoredPersistence = false, pending = true, result = true, held = null, viewHeld = null, composing = false } = {}) {
+  const origin = 'bc000000-0000-4000-8000-000000000001';
+  const calls = [], listeners = new Map(), global = {}, workspaceRef = { current: { restored, ...(restored ? {workspaceOrigin: origin} : {}) } };
   let serial = 1, cleanup;
   const clip = {
     hasUnpersisted: () => pending,
     hasPendingComposition: () => composing,
+    supportsRestoredPersistence: workspaceOrigin => restoredPersistence && (workspaceOrigin === undefined || workspaceOrigin === origin),
     capture: () => serial,
     isCurrent: value => value === serial,
     flushForClose: async () => { calls.push('clip'); const saved = held ? await held.promise : result; if (saved) pending = false; return saved; },
@@ -70,6 +72,41 @@ for (const change of ['replacement owner', 'new input', 'restored scope']) {
 test('actual App restored branch skips local draft I/O and preserves the original view drain', async () => {
   const f = fixture({ restored: true });
   assert.equal(await f.drain(), true); assert.deepEqual(f.calls, ['view']);
+});
+
+test('actual App exact43 persistence drains only its clip and readonly view, then checks owner and origin after the ACK', async () => {
+  const gate = deferred(), f = fixture({restored: true, restoredPersistence: true, held: gate});
+  const closing = f.drain(); await new Promise(setImmediate);
+  assert.deepEqual(f.calls, ['view', 'clip']);
+  gate.resolve(true); assert.equal(await closing, true);
+  for (const change of ['origin', 'owner', 'input']) {
+    const held = deferred(), next = fixture({restored: true, restoredPersistence: true, held});
+    const pending = next.drain(); await new Promise(setImmediate);
+    if (change === 'origin') next.workspaceRef.current = {...next.workspaceRef.current, workspaceOrigin: 'bc000000-0000-4000-8000-000000000002'};
+    if (change === 'owner') next.clipDraftRef.current = {...next.clip};
+    if (change === 'input') next.changed();
+    held.resolve(true); assert.equal(await pending, false, change);
+  }
+});
+
+test('actual43 browser beforeunload blocks unconfirmed input while pagehide remains best-effort', async () => {
+  for (const pending of [false, true]) {
+    const gate = deferred(), f = fixture({restored: true, restoredPersistence: true, pending, held: gate});
+    let prevented = false; const event = {type: 'beforeunload', preventDefault() {prevented = true;}};
+    f.listeners.get('window:beforeunload')(event);
+    assert.equal(prevented, pending); assert.equal(event.returnValue, pending ? '' : undefined);
+    assert.deepEqual(f.calls, pending ? ['view', 'clip'] : ['view']);
+    gate.resolve(false); await new Promise(setImmediate);
+  }
+  const gate = deferred(), f = fixture({restored: true, restoredPersistence: true, held: gate});
+  const event = {type: 'pagehide', preventDefault() {assert.fail('pagehide cannot be presented as cancellable');}};
+  f.listeners.get('window:pagehide')(event); assert.deepEqual(f.calls, ['view', 'clip']);
+  assert.equal(f.clip.hasUnpersisted(), true, 'dispatch alone is not a durable confirmation');
+  gate.resolve(false); await new Promise(setImmediate); assert.equal(f.clip.hasUnpersisted(), true);
+  const stale = fixture({restored: true, restoredPersistence: true});stale.workspaceRef.current.workspaceOrigin = 'bc000000-0000-4000-8000-000000000002';
+  assert.equal(await stale.drain(), false);assert.deepEqual(stale.calls, [], 'a retained original controller cannot flush into a new origin');
+  let blocked = false;stale.listeners.get('window:beforeunload')({type: 'beforeunload', preventDefault() {blocked = true;}});
+  assert.equal(blocked, true);assert.deepEqual(stale.calls, ['view']);
 });
 
 test('actual App rechecks clip input after the slower unrelated view drain settles', async () => {

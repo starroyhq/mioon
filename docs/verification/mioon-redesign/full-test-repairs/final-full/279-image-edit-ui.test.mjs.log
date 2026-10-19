@@ -1,0 +1,112 @@
+TAP version 13
+# Subtest: edit chooser uses metadata only and rejects unsupported formats, size, geometry, ownership and identity
+ok 1 - edit chooser uses metadata only and rejects unsupported formats, size, geometry, ownership and identity
+  ---
+  duration_ms: 2.669125
+  type: 'test'
+  ...
+# Subtest: Mock edit sends exactly purpose/inputImage with original prompt and no source authority or bytes
+ok 2 - Mock edit sends exactly purpose/inputImage with original prompt and no source authority or bytes
+  ---
+  duration_ms: 10.217916
+  type: 'test'
+  ...
+# Subtest: official edit preparation never approves, freezes descriptor, and only explicit approval sends original identity
+ok 3 - official edit preparation never approves, freezes descriptor, and only explicit approval sends original identity
+  ---
+  duration_ms: 7.819792
+  type: 'test'
+  ...
+# Subtest: current source, prompt, mode and provider bind old paid authorization and edit review approval
+ok 4 - current source, prompt, mode and provider bind old paid authorization and edit review approval
+  ---
+  duration_ms: 3.320625
+  type: 'test'
+  ...
+# Subtest: external edit review explicitly stages immutable source and dirty draft replacement requires confirmation
+ok 5 - external edit review explicitly stages immutable source and dirty draft replacement requires confirmation
+  ---
+  duration_ms: 0.935
+  type: 'test'
+  ...
+# Subtest: hidden preparation completion and remount retain source identity without automatically approving or replaying
+ok 6 - hidden preparation completion and remount retain source identity without automatically approving or replaying
+  ---
+  duration_ms: 2.596417
+  type: 'test'
+  ...
+# Subtest: late old-project approval cannot clear retained intent or change another project
+ok 7 - late old-project approval cannot clear retained intent or change another project
+  ---
+  duration_ms: 3.558209
+  type: 'test'
+  ...
+# Subtest: unknown Mock edit receipt cannot clear against changed source or changed backend source descriptor
+ok 8 - unknown Mock edit receipt cannot clear against changed source or changed backend source descriptor
+  ---
+  duration_ms: 1.723208
+  type: 'test'
+  ...
+# Subtest: paid approval and recovered receipts reject changed source metadata even when asset id and hash are unchanged
+ok 9 - paid approval and recovered receipts reject changed source metadata even when asset id and hash are unchanged
+  ---
+  duration_ms: 2.91675
+  type: 'test'
+  ...
+# Subtest: old text-only pending receipts remain readable and never acquire edit fields
+ok 10 - old text-only pending receipts remain readable and never acquire edit fields
+  ---
+  duration_ms: 0.5765
+  type: 'test'
+  ...
+# Subtest: private edit approval body contains only bound review identity and verifies server source metadata
+ok 11 - private edit approval body contains only bound review identity and verifies server source metadata
+  ---
+  duration_ms: 0.929333
+  type: 'test'
+  ...
+# Subtest: actual source handlers retain dirty selection and reject late clicks after source change, tab change and project change
+ok 12 - actual source handlers retain dirty selection and reject late clicks after source change, tab change and project change
+  ---
+  duration_ms: 29.09375
+  type: 'test'
+  ...
+# Subtest: actual edit composer prepares first, renders immutable source disclosure, and requires a fresh explicit approval handler
+ok 13 - actual edit composer prepares first, renders immutable source disclosure, and requires a fresh explicit approval handler
+  ---
+  duration_ms: 17.884334
+  type: 'test'
+  ...
+# Subtest: source rejection never releases a request based on error, fabricated proof or null lookup
+ok 14 - source rejection never releases a request based on error, fabricated proof or null lookup
+  ---
+  duration_ms: 2.60375
+  type: 'test'
+  ...
+# Subtest: source-change approval stays pending until an explicit verified rejection, then source can change
+ok 15 - source-change approval stays pending until an explicit verified rejection, then source can change
+  ---
+  duration_ms: 5.909875
+  type: 'test'
+  ...
+# Subtest: unsupported edit providers cannot prepare and chosen group revision is never silently replaced
+ok 16 - unsupported edit providers cannot prepare and chosen group revision is never silently replaced
+  ---
+  duration_ms: 1.014375
+  type: 'test'
+  ...
+# Subtest: invalid Mock PNG keeps an actionable unknown record across remount, never claims rejection or releases the key
+ok 17 - invalid Mock PNG keeps an actionable unknown record across remount, never claims rejection or releases the key
+  ---
+  duration_ms: 0.882667
+  type: 'test'
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 353.789666

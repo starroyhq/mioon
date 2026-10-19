@@ -3,21 +3,34 @@
 Date: 2026-10-11. Implementation baseline: `eac925c9698d78f43eda2617af6505fe16ea1dc3`.
 Status: implementation, focused checks, fresh builds, Linux native acceptance and the independent parent aggregate passed. Final commit is pending; Mac/Windows remain unverified.
 
-## First slice
+## Current output presets
 
-The right Properties workspace offers three closed timeline-output presets:
+New projects default to `portrait_1080`. The format picker offers these closed
+native output presets, while an existing 720 project keeps its saved size:
 
 | presetId | Shape | Output | Editing clock |
 | --- | --- | --- | --- |
-| `portrait_720` | 9:16 | 720×1280 | 30 fps |
-| `landscape_720` | 16:9 | 1280×720 | 30 fps |
-| `square_720` | 1:1 | 720×720 | 30 fps |
+| `portrait_1080` | 9:16 | 1080×1920 | 30 fps |
+| `landscape_1080` | 16:9 | 1920×1080 | 30 fps |
+| `square_1080` | 1:1 | 1080×1080 | 30 fps |
 
-These are dimension pairs, not independent width/height menus. Arbitrary resolutions and other frame rates are not implemented. New/default projects retain portrait compatibility. Source ranges, extracted-frame timepoints, audio fades and waveforms keep the existing 30-fps editing clock; they are not reinterpreted as native/VFR frame indexes.
+The public contract also continues to read `portrait_720` (720×1280),
+`landscape_720` (1280×720) and `square_720` (720×720). Existing projects,
+receipts, previews, exports and restored backups are not rewritten. An old
+project can select 1080 only when it meets the same pristine-empty rule below.
 
-The setting applies to the project's **timeline preview and timeline export**. Shot-generation aspect ratios, imported/original pixels and Images model options remain separate. Legacy **storyboard export stays 720×1280 / 30 fps / 9:16**. The interface labels that distinction; do not call this a global format switch for every project output.
+These are dimension pairs, not independent width/height menus. Arbitrary resolutions and other frame rates are not implemented. Source ranges, extracted-frame timepoints, audio fades and waveforms keep the existing 30-fps editing clock; they are not reinterpreted as native/VFR frame indexes.
 
-Per-export [delivery scaling and quality](EXPORT-SETTINGS.md) are separate from these editing presets. A delivery-size choice does not change timeline geometry or the 30fps clock; 1080 short-edge output upscales the existing composition.
+The setting applies to the project's **timeline preview and timeline export**.
+Shot-generation aspect ratios, imported/original pixels and Images model options
+remain separate. New storyboard exports freeze the saved project geometry, or
+1080×1920 when no timeline exists. Queued historical storyboard exports without
+an output-geometry field retain 720×1280; completed files are unchanged.
+
+Per-export [delivery scaling and quality](EXPORT-SETTINGS.md) are separate from
+these editing presets. Native 1080 projects are composed directly at 1080;
+short-edge 720/360 are downscales. Legacy 720 projects retain their explicit
+1080-upscale option. A delivery choice does not change saved timeline geometry.
 
 
 ## Shared service contract

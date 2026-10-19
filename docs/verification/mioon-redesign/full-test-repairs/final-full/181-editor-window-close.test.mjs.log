@@ -1,0 +1,142 @@
+TAP version 13
+# Subtest: clip pure close reads have no sync, callbacks, transport or timer effects
+ok 1 - clip pure close reads have no sync, callbacks, transport or timer effects
+  ---
+  duration_ms: 9.361959
+  type: 'test'
+  ...
+# Subtest: shot pure close reads have no sync, callbacks, transport or timer effects
+ok 2 - shot pure close reads have no sync, callbacks, transport or timer effects
+  ---
+  duration_ms: 3.290542
+  type: 'test'
+  ...
+# Subtest: delivery pure close reads have no sync, callbacks, transport or timer effects
+ok 3 - delivery pure close reads have no sync, callbacks, transport or timer effects
+  ---
+  duration_ms: 2.618791
+  type: 'test'
+  ...
+# Subtest: clip same-dirty programmatic input and owner replacement invalidate identity
+ok 4 - clip same-dirty programmatic input and owner replacement invalidate identity
+  ---
+  duration_ms: 0.741292
+  type: 'test'
+  ...
+# Subtest: shot same-dirty programmatic input and owner replacement invalidate identity
+ok 5 - shot same-dirty programmatic input and owner replacement invalidate identity
+  ---
+  duration_ms: 1.845
+  type: 'test'
+  ...
+# Subtest: delivery same-dirty programmatic input and owner replacement invalidate identity
+ok 6 - delivery same-dirty programmatic input and owner replacement invalidate identity
+  ---
+  duration_ms: 0.81375
+  type: 'test'
+  ...
+# Subtest: clip exact sidecar ACK permits stable input identity but does not waive dirty confirmation
+ok 7 - clip exact sidecar ACK permits stable input identity but does not waive dirty confirmation
+  ---
+  duration_ms: 0.686292
+  type: 'test'
+  ...
+# Subtest: shot exact sidecar ACK permits stable input identity but does not waive dirty confirmation
+ok 8 - shot exact sidecar ACK permits stable input identity but does not waive dirty confirmation
+  ---
+  duration_ms: 1.799625
+  type: 'test'
+  ...
+# Subtest: delivery exact sidecar ACK permits stable input identity but does not waive dirty confirmation
+ok 9 - delivery exact sidecar ACK permits stable input identity but does not waive dirty confirmation
+  ---
+  duration_ms: 0.668833
+  type: 'test'
+  ...
+# Subtest: delivery lost preparation blocks even when legacy hasUnsaved is false, and explicit recovery releases it
+ok 10 - delivery lost preparation blocks even when legacy hasUnsaved is false, and explicit recovery releases it
+  ---
+  duration_ms: 4.9675
+  type: 'test'
+  ...
+# Subtest: delivery hidden project retained write remains blocked and same-request retry supplies the existing clear path
+ok 11 - delivery hidden project retained write remains blocked and same-request retry supplies the existing clear path
+  ---
+  duration_ms: 0.910833
+  type: 'test'
+  ...
+# Subtest: delivery active delete is blocked and unknown delete is not erased by input abandonment
+ok 12 - delivery active delete is blocked and unknown delete is not erased by input abandonment
+  ---
+  duration_ms: 0.4525
+  type: 'test'
+  ...
+# Subtest: shot retained hidden-slot identity catches one-for-one replacement and never contains draft text
+ok 13 - shot retained hidden-slot identity catches one-for-one replacement and never contains draft text
+  ---
+  duration_ms: 0.599875
+  type: 'test'
+  ...
+# Subtest: shot lost preparation remains blocked after abandonment and resolves only through exact recovery
+ok 14 - shot lost preparation remains blocked after abandonment and resolves only through exact recovery
+  ---
+  duration_ms: 2.0715
+  type: 'test'
+  ...
+# Subtest: shot pending deletion survives abandonment; exact deletion retry releases retained owner
+ok 15 - shot pending deletion survives abandonment; exact deletion retry releases retained owner
+  ---
+  duration_ms: 0.897958
+  type: 'test'
+  ...
+# Subtest: late shot PUT ACK cannot acknowledge a newer same-dirty programmatic edit
+ok 16 - late shot PUT ACK cannot acknowledge a newer same-dirty programmatic edit
+  ---
+  duration_ms: 0.559542
+  type: 'test'
+  ...
+# Subtest: clip live write, deletion and uncertain deletion survive dirty-false abandonment
+ok 17 - clip live write, deletion and uncertain deletion survive dirty-false abandonment
+  ---
+  duration_ms: 0.61325
+  type: 'test'
+  ...
+# Subtest: read-only transport failure without local owner does not invent an unresolved mutation
+ok 18 - read-only transport failure without local owner does not invent an unresolved mutation
+  ---
+  duration_ms: 0.548458
+  type: 'test'
+  ...
+# Subtest: App-injected import and mutation identities block create/update/delete uncertainty independently of dirty
+ok 19 - App-injected import and mutation identities block create/update/delete uncertainty independently of dirty
+  ---
+  duration_ms: 0.12925
+  type: 'test'
+  ...
+# Subtest: real export settings and range retain ephemeral edits and exact version while accepted jobs are absent
+ok 20 - real export settings and range retain ephemeral edits and exact version while accepted jobs are absent
+  ---
+  duration_ms: 0.538333
+  type: 'test'
+  ...
+# Subtest: retained identity is bounded at contract slot limit while overflow stays blocked
+ok 21 - retained identity is bounded at contract slot limit while overflow stays blocked
+  ---
+  duration_ms: 0.501375
+  type: 'test'
+  ...
+# Subtest: known refusal is an ordinary dirty decision, but a later refusal cannot erase an earlier unknown write
+ok 22 - known refusal is an ordinary dirty decision, but a later refusal cannot erase an earlier unknown write
+  ---
+  duration_ms: 0.76675
+  type: 'test'
+  ...
+1..22
+# tests 22
+# suites 0
+# pass 22
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 343.559042

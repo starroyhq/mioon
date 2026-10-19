@@ -49,7 +49,7 @@ For exact tested versions, use the lockfile and the V3 acceptance evidence. Sour
 
 The provider registry constructs mock, Runway, Ark Seedance, Gemini Veo, MiniMax and Vidu without network calls. `provider.list` returns per-model input modes, reference constraints, durations, ratios and safe configuration state; no secret values are included. The pure contract capability checker is shared with the renderer, then provider-specific validation and backend authorization gates run before a job is queued. Reference byte hashes, approved-media checks and fixed provider origins are enforced at dispatch.
 
-MiniMax/Vidu regions are explicit fixed-origin choices, never fallback destinations. Environment names are maintained by the registry and used in the desktop utility allowlist. Credentials remain only in the backend environment. The generation count cap is scoped to this data directory, conservative and separate from a financial spending limit.
+MiniMax/Vidu regions are explicit fixed-origin choices, never fallback destinations. Environment names are maintained by the registry and used in the desktop utility allowlist. Credentials remain only in the backend environment. The application imposes no generation-count cap and no currency-spending cap. Explicit live enablement, per-reference authorization, regional boundaries and unknown-outcome reconciliation remain enforced.
 
 CLI, MCP and UI all observe the same immutable jobs, versions and timelines. CLI asset paths are read only by the local client; the HTTP backend receives bytes. Known task polling/downloads cannot generate another paid request. A downloaded live result with the wrong aspect ratio is quarantined in `output_review_required`: no public version is published and no generation is repeated.
 

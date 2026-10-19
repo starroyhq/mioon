@@ -1,0 +1,26 @@
+{
+  "baseline": "1e95a4492633dd2f4e1db16793f5b86dabdcabe3",
+  "reviewer": "restored43_backend_survey",
+  "method": "read-only code-review Standards and Spec axes; independent synthetic replay",
+  "standardsUnresolved": 0,
+  "specUnresolved": 0,
+  "initialFinding": {
+    "priority": "P2",
+    "description": "Initial uncommitted IME fence retained Process229 confirmation after mouse focus to name, blocking ordinary Enter Save.",
+    "state": "fixed-before-commit",
+    "fix": "Typed current-owner submit guard releases endedProcess/229 and subsequent new actions; same confirmation Enter/repeat remains blocked."
+  },
+  "validation": {
+    "tests": 36,
+    "pass": 36,
+    "exitCode": 0,
+    "counts": "IME15 +legacy volume10 +candidate Inspector11; additional reviewer15 overlap not added"
+  },
+  "notRun": [
+    "nativeGUI",
+    "realOSIME",
+    "listener",
+    "media"
+  ],
+  "result": "no unresolved findings"
+}

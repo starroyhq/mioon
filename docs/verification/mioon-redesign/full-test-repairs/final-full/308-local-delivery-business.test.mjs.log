@@ -1,0 +1,178 @@
+TAP version 13
+# Subtest: GET and draft-only writes are bounded, private, noncreating reads with unchanged SQLite bytes and schemas
+ok 1 - GET and draft-only writes are bounded, private, noncreating reads with unchanged SQLite bytes and schemas
+  ---
+  duration_ms: 724.429375
+  type: 'test'
+  ...
+# Subtest: immutable preparation precedes dispatch; one pending reservation rejects competing windows
+ok 2 - immutable preparation precedes dispatch; one pending reservation rejects competing windows
+  ---
+  duration_ms: 653.539416
+  type: 'test'
+  ...
+# Subtest: actual shared render accepts once, atomically clears only its captured draft and retains exact original receipt
+ok 3 - actual shared render accepts once, atomically clears only its captured draft and retains exact original receipt
+  ---
+  duration_ms: 664.528291
+  type: 'test'
+  ...
+# Subtest: overlapping execute/recover shares one promise while a newer title survives the exact accepted callback
+ok 4 - overlapping execute/recover shares one promise while a newer title survives the exact accepted callback
+  ---
+  duration_ms: 671.806833
+  type: 'test'
+  ...
+# Subtest: lost response after actual shared acceptance reconciles from original receipt without another render
+ok 5 - lost response after actual shared acceptance reconciles from original receipt without another render
+  ---
+  duration_ms: 990.722791
+  type: 'test'
+  ...
+# Subtest: ambiguous transport remains pending through reload and only explicit recover executes original input
+ok 6 - ambiguous transport remains pending through reload and only explicit recover executes original input
+  ---
+  duration_ms: 687.509625
+  type: 'test'
+  ...
+# Subtest: actual shared revision rejection is terminal, never retried after timeline restoration, and permits exact new-intent CAS
+ok 7 - actual shared revision rejection is terminal, never retried after timeline restoration, and permits exact new-intent CAS
+  ---
+  duration_ms: 687.019917
+  type: 'test'
+  ...
+# Subtest: prepare failure at beforePersist produces zero render calls
+ok 8 - prepare failure at beforePersist produces zero render calls
+  ---
+  duration_ms: 594.259875
+  type: 'test'
+  ...
+# Subtest: prepare failure at afterPersist produces zero render calls
+ok 9 - prepare failure at afterPersist produces zero render calls
+  ---
+  duration_ms: 588.067625
+  type: 'test'
+  ...
+# Subtest: prepare failure at beforeDirectorySync produces zero render calls
+ok 10 - prepare failure at beforeDirectorySync produces zero render calls
+  ---
+  duration_ms: 597.737417
+  type: 'test'
+  ...
+# Subtest: prepare failure at afterDirectorySync produces zero render calls
+ok 11 - prepare failure at afterDirectorySync produces zero render calls
+  ---
+  duration_ms: 596.624125
+  type: 'test'
+  ...
+# Subtest: outcome failure at beforeOutcomePersist never permits a fresh intent; explicit recovery uses original receipt
+ok 12 - outcome failure at beforeOutcomePersist never permits a fresh intent; explicit recovery uses original receipt
+  ---
+  duration_ms: 667.063708
+  type: 'test'
+  ...
+# Subtest: outcome failure at beforePersist never permits a fresh intent; explicit recovery uses original receipt
+ok 13 - outcome failure at beforePersist never permits a fresh intent; explicit recovery uses original receipt
+  ---
+  duration_ms: 664.645708
+  type: 'test'
+  ...
+# Subtest: outcome failure at afterPersist never permits a fresh intent; explicit recovery uses original receipt
+ok 14 - outcome failure at afterPersist never permits a fresh intent; explicit recovery uses original receipt
+  ---
+  duration_ms: 646.925417
+  type: 'test'
+  ...
+# Subtest: outcome failure at beforeDirectorySync never permits a fresh intent; explicit recovery uses original receipt
+ok 15 - outcome failure at beforeDirectorySync never permits a fresh intent; explicit recovery uses original receipt
+  ---
+  duration_ms: 649.700292
+  type: 'test'
+  ...
+# Subtest: outcome failure at afterDirectorySync never permits a fresh intent; explicit recovery uses original receipt
+ok 16 - outcome failure at afterDirectorySync never permits a fresh intent; explicit recovery uses original receipt
+  ---
+  duration_ms: 662.387792
+  type: 'test'
+  ...
+# Subtest: postrename not-applied uncertainty rechecks its terminal marker without ever calling render again
+ok 17 - postrename not-applied uncertainty rechecks its terminal marker without ever calling render again
+  ---
+  duration_ms: 647.83
+  type: 'test'
+  ...
+# Subtest: foreign or malformed proof and forged acknowledgement cannot release pending reservation
+ok 18 - foreign or malformed proof and forged acknowledgement cannot release pending reservation
+  ---
+  duration_ms: 2494.726416
+  type: 'test'
+  ...
+# Subtest: late original timeline replacement, source-owner transfer and lease loss cannot save terminal outcome
+ok 19 - late original timeline replacement, source-owner transfer and lease loss cannot save terminal outcome
+  ---
+  duration_ms: 1890.090459
+  type: 'test'
+  ...
+# Subtest: reentrant before-persist edit trips full-file CAS and preserves the newer draft
+ok 20 - reentrant before-persist edit trips full-file CAS and preserves the newer draft
+  ---
+  duration_ms: 626.623458
+  type: 'test'
+  ...
+# Subtest: restart, copied scope, other build channel, strict input and unsafe files all fail closed without repair
+ok 21 - restart, copied scope, other build channel, strict input and unsafe files all fail closed without repair
+  ---
+  duration_ms: 1275.771
+  type: 'test'
+  ...
+# Subtest: restored mode returns unsupported before touching sidecar, lock, timeline or render
+ok 22 - restored mode returns unsupported before touching sidecar, lock, timeline or render
+  ---
+  duration_ms: 0.451
+  type: 'test'
+  ...
+# Subtest: historical receipt recovery survives later source duration metadata without changing the original receipt
+ok 23 - historical receipt recovery survives later source duration metadata without changing the original receipt
+  ---
+  duration_ms: 710.809375
+  type: 'test'
+  ...
+# Subtest: a failed pre-dispatch fence makes zero service calls and keeps the reservation pending
+ok 24 - a failed pre-dispatch fence makes zero service calls and keeps the reservation pending
+  ---
+  duration_ms: 636.994
+  type: 'test'
+  ...
+# Subtest: late abort or restored-profile transition cannot publish an ordinary terminal sidecar
+ok 25 - late abort or restored-profile transition cannot publish an ordinary terminal sidecar
+  ---
+  duration_ms: 1290.227292
+  type: 'test'
+  ...
+# Subtest: capacity counts retained tombstones without eviction and wrong deletion identity never receives an ACK
+ok 26 - capacity counts retained tombstones without eviction and wrong deletion identity never receives an ACK
+  ---
+  duration_ms: 663.019583
+  type: 'test'
+  ...
+# Subtest: actual shared asynchronous capability admission is single-flight and preserves exact optional settings
+ok 27 - actual shared asynchronous capability admission is single-flight and preserves exact optional settings
+  ---
+  duration_ms: 759.513042
+  type: 'test'
+  ...
+# Subtest: actual shared capability rejection is a fixed terminal proof and explicit recovery does not retry it
+ok 28 - actual shared capability rejection is a fixed terminal proof and explicit recovery does not retry it
+  ---
+  duration_ms: 709.513
+  type: 'test'
+  ...
+1..28
+# tests 28
+# suites 0
+# pass 28
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 22796.576917

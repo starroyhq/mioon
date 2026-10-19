@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: deletion waits for the response finish and releases both lifecycle listeners
+ok 1 - deletion waits for the response finish and releases both lifecycle listeners
+  ---
+  duration_ms: 0.793292
+  type: 'test'
+  ...
+# Subtest: deletion waits for the response close and releases both lifecycle listeners
+ok 2 - deletion waits for the response close and releases both lifecycle listeners
+  ---
+  duration_ms: 0.125125
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 157.055583

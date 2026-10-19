@@ -1,0 +1,292 @@
+TAP version 13
+# Subtest: lexical limits are atomic admission, not numeric validation or normalization
+ok 1 - lexical limits are atomic admission, not numeric validation or normalization
+  ---
+  duration_ms: 1.097459
+  type: 'test'
+  ...
+# Subtest: preserves absent/null/value and requires complete ordered attenuation on proposed duration
+ok 2 - preserves absent/null/value and requires complete ordered attenuation on proposed duration
+  ---
+  duration_ms: 4.759875
+  type: 'test'
+  ...
+# Subtest: unchanged comparison is independent of key insertion order but not raw strings or absence
+ok 3 - unchanged comparison is independent of key insertion order but not raw strings or absence
+  ---
+  duration_ms: 0.690125
+  type: 'test'
+  ...
+# Subtest: Number-to-string round trips extremes and deterministic doubles without display rounding
+ok 4 - Number-to-string round trips extremes and deterministic doubles without display rounding
+  ---
+  duration_ms: 202.573083
+  type: 'test'
+  ...
+# Subtest: fade preset helper is bounded, exact and returns independent raw replacement curves
+ok 5 - fade preset helper is bounded, exact and returns independent raw replacement curves
+  ---
+  duration_ms: 3.748792
+  type: 'test'
+  ...
+# Subtest: preset curves retain linear endpoint limits and half-open playback samples
+ok 6 - preset curves retain linear endpoint limits and half-open playback samples
+  ---
+  duration_ms: 0.986625
+  type: 'test'
+  ...
+# Subtest: all four locales expose explicit replacement presets, fixed frame choices and Save disclosure
+ok 7 - all four locales expose explicit replacement presets, fixed frame choices and Save disclosure
+  ---
+  duration_ms: 201.053625
+  type: 'test'
+  ...
+# Subtest: real preset buttons replace every point only on click and leave point editing available
+ok 8 - real preset buttons replace every point only on click and leave point editing available
+  ---
+  duration_ms: 11.147042
+  type: 'test'
+  ...
+# Subtest: too-long and invalid-duration presets refuse clicks without clamping or clearing the draft
+not ok 9 - too-long and invalid-duration presets refuse clicks without clamping or clearing the draft
+  ---
+  duration_ms: 7.285833
+  type: 'test'
+  location: '/Users/kouzen/Documents/data/mioon/tests/clip-volume-envelope-foundation.test.mjs:111:1'
+  failureType: 'testCodeFailure'
+  error: 'Invalid message parameter: duration'
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    file:///Users/kouzen/Documents/data/mioon/packages/i18n/src/index.ts:45:89
+    String.replace (<anonymous>)
+    formatTemplate (file:///Users/kouzen/Documents/data/mioon/packages/i18n/src/index.ts:42:16)
+    translate (file:///Users/kouzen/Documents/data/mioon/packages/i18n/src/index.ts:57:10)
+    t (file:///Users/kouzen/Documents/data/mioon/tests/helpers/i18n.ts:7:72)
+    Object.ClipVolumeEnvelopeControls (eval at harness (file:///Users/kouzen/Documents/data/mioon/tests/clip-volume-envelope-foundation.test.mjs:59:2), <anonymous>:81:506)
+    Object.render (file:///Users/kouzen/Documents/data/mioon/tests/clip-volume-envelope-foundation.test.mjs:61:110)
+    TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/clip-volume-envelope-foundation.test.mjs:113:23)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+  ...
+# Subtest: preset event guards synchronously reject disabled, IME-pending and retained old-render actions
+ok 10 - preset event guards synchronously reject disabled, IME-pending and retained old-render actions
+  ---
+  duration_ms: 11.385166
+  type: 'test'
+  ...
+# Subtest: four locales render text inputs, accessible labels, bounded rows and non-submit buttons
+ok 11 - four locales render text inputs, accessible labels, bounded rows and non-submit buttons
+  ---
+  duration_ms: 51.073583
+  type: 'test'
+  ...
+# Subtest: whole pasted events reject visibly, preserve prior value, allow malformed intermediate
+ok 12 - whole pasted events reject visibly, preserve prior value, allow malformed intermediate
+  ---
+  duration_ms: 387.404792
+  type: 'test'
+  ...
+# Subtest: IME transient stays observable, guards structure synchronously, commits before releasing pending
+ok 13 - IME transient stays observable, guards structure synchronously, commits before releasing pending
+  ---
+  duration_ms: 8.162333
+  type: 'test'
+  ...
+# Subtest: IME rejection rolls back completely; platform cancellation keeps the original value; disabled guard
+ok 14 - IME rejection rolls back completely; platform cancellation keeps the original value; disabled guard
+  ---
+  duration_ms: 17.177292
+  type: 'test'
+  ...
+# Subtest: trailing input events after composition settlement preserve accepted or rejected values
+ok 15 - trailing input events after composition settlement preserve accepted or rejected values
+  ---
+  duration_ms: 20.200916
+  type: 'test'
+  ...
+# Subtest: exact raw field bound and complete legacy slot counterexamples do not widen any caps
+ok 16 - exact raw field bound and complete legacy slot counterexamples do not widen any caps
+  ---
+  duration_ms: 2.583667
+  type: 'test'
+  ...
+# {"rawFieldBytes":1182,"legacySlotBytes":5430,"boundedCombinedBytes":6611,"unboundedEnvelopeCounterexampleBytes":15187,"fullLegalLegacyBytes":8192,"boundedOverflowBytes":9373}
+# Subtest: retained old control handlers cannot edit or end a newer same-row composition
+ok 17 - retained old control handlers cannot edit or end a newer same-row composition
+  ---
+  duration_ms: 13.540583
+  type: 'test'
+  ...
+# Subtest: composition start and end can settle synchronously before pending rerender
+ok 18 - composition start and end can settle synchronously before pending rerender
+  ---
+  duration_ms: 19.30275
+  type: 'test'
+  ...
+# Subtest: real in preset edits only the draft until ordinary Save, preserving gain and legacy fades
+ok 19 - real in preset edits only the draft until ordinary Save, preserving gain and legacy fades
+  ---
+  duration_ms: 249.949375
+  type: 'test'
+  ...
+# Subtest: real out preset edits only the draft until ordinary Save, preserving gain and legacy fades
+ok 20 - real out preset edits only the draft until ordinary Save, preserving gain and legacy fades
+  ---
+  duration_ms: 31.41775
+  type: 'test'
+  ...
+# Subtest: preset draft recovery is explicit and Cancel restores the original curve without business Save
+not ok 21 - preset draft recovery is explicit and Cancel restores the original curve without business Save
+  ---
+  duration_ms: 15.061833
+  type: 'test'
+  location: '/Users/kouzen/Documents/data/mioon/tests/clip-volume-envelope-integration.test.mjs:45:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      {
+        points: [
+          {
+    +       frame: 0,
+    +       multiplier: 1
+    -       frame: '0',
+    -       multiplier: '1'
+          },
+          {
+    +       frame: 120,
+    +       multiplier: 0.5
+    -       frame: '120',
+    -       multiplier: '0.5'
+          }
+        ],
+        profileId: 'mioon-clip-linear-attenuation-v1'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    profileId: 'mioon-clip-linear-attenuation-v1'
+    points:
+      0:
+        frame: '0'
+        multiplier: '1'
+      1:
+        frame: '120'
+        multiplier: '0.5'
+  actual:
+    profileId: 'mioon-clip-linear-attenuation-v1'
+    points:
+      0:
+        frame: 0
+        multiplier: 1
+      1:
+        frame: 120
+        multiplier: 0.5
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/clip-volume-envelope-integration.test.mjs:48:86)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: raw projection, proposed shrink, explicit replacement and clear preserve envelope presence
+ok 22 - raw projection, proposed shrink, explicit replacement and clear preserve envelope presence
+  ---
+  duration_ms: 0.254833
+  type: 'test'
+  ...
+# Subtest: bounded invalid intermediates persist exactly without becoming business Save
+ok 23 - bounded invalid intermediates persist exactly without becoming business Save
+  ---
+  duration_ms: 1.0855
+  type: 'test'
+  ...
+# Subtest: composition is controller-owned dirty close/navigation protection and cannot persist transient text
+ok 24 - composition is controller-owned dirty close/navigation protection and cannot persist transient text
+  ---
+  duration_ms: 0.6375
+  type: 'test'
+  ...
+# Subtest: composition settlement retains admitted input under capability loss and disconnect
+ok 25 - composition settlement retains admitted input under capability loss and disconnect
+  ---
+  duration_ms: 0.335292
+  type: 'test'
+  ...
+# Subtest: old owner/token cannot update form or release a later composition
+ok 26 - old owner/token cannot update form or release a later composition
+  ---
+  duration_ms: 0.215625
+  type: 'test'
+  ...
+# Subtest: business ACK checks omitted unchanged envelope absent
+ok 27 - business ACK checks omitted unchanged envelope absent
+  ---
+  duration_ms: 0.412542
+  type: 'test'
+  ...
+# Subtest: business ACK checks omitted unchanged envelope null
+ok 28 - business ACK checks omitted unchanged envelope null
+  ---
+  duration_ms: 0.316375
+  type: 'test'
+  ...
+# Subtest: business ACK checks omitted unchanged envelope value
+ok 29 - business ACK checks omitted unchanged envelope value
+  ---
+  duration_ms: 0.304
+  type: 'test'
+  ...
+# Subtest: exact business ACK clears exact sidecar and saves numeric envelope through ordinary Save
+ok 30 - exact business ACK clears exact sidecar and saves numeric envelope through ordinary Save
+  ---
+  duration_ms: 3.298042
+  type: 'test'
+  ...
+# Subtest: changed recovered unsupported curve remains visible and blocked
+ok 31 - changed recovered unsupported curve remains visible and blocked
+  ---
+  duration_ms: 0.744375
+  type: 'test'
+  ...
+# Subtest: late business ACK cannot delete newer curve input
+ok 32 - late business ACK cannot delete newer curve input
+  ---
+  duration_ms: 0.555584
+  type: 'test'
+  ...
+# Subtest: restored explicit capable business edits remain available without local companion IO
+ok 33 - restored explicit capable business edits remain available without local companion IO
+  ---
+  duration_ms: 0.283708
+  type: 'test'
+  ...
+# Subtest: capability loss during flush cancels business submission without stripping saved draft
+ok 34 - capability loss during flush cancels business submission without stripping saved draft
+  ---
+  duration_ms: 0.300875
+  type: 'test'
+  ...
+# Subtest: over-budget accepted form stays in memory with explicit refusal and close protection, no fetch
+ok 35 - over-budget accepted form stays in memory with explicit refusal and close protection, no fetch
+  ---
+  duration_ms: 0.6255
+  type: 'test'
+  ...
+# Subtest: external owner-context replacement retains original pending composition and freezes effects
+ok 36 - external owner-context replacement retains original pending composition and freezes effects
+  ---
+  duration_ms: 0.204625
+  type: 'test'
+  ...
+1..36
+# tests 36
+# suites 0
+# pass 34
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3279.504667

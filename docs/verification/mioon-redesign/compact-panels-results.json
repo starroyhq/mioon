@@ -1,0 +1,56 @@
+{
+  "scope": "Real geometry hooks and App callbacks; actual browser acceptance follows final build.",
+  "files": [
+    {
+      "file": "tests/workspace-panels.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/workspace-panels.test.mjs"
+      ],
+      "exitCode": 0,
+      "tests": 43,
+      "pass": 43,
+      "fail": 0,
+      "skipped": 0,
+      "durationMs": 667.991458,
+      "revalidatedAfter": "U10 compact desktop rails and embedded home presentation"
+    },
+    {
+      "file": "tests/workbench-shell.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/workbench-shell.test.mjs"
+      ],
+      "exitCode": 0,
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "skipped": 0,
+      "durationMs": 132.342,
+      "revalidatedAfter": "U10 compact desktop rails and embedded home presentation"
+    },
+    {
+      "file": "tests/project-home-app.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/project-home-app.test.mjs"
+      ],
+      "exitCode": 0,
+      "tests": 36,
+      "pass": 36,
+      "fail": 0,
+      "skipped": 0,
+      "durationMs": 505.304083,
+      "revalidatedAfter": "U10 compact desktop rails and embedded home presentation"
+    }
+  ],
+  "tests": 84,
+  "pass": 84,
+  "fail": 0
+}

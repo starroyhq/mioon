@@ -1,0 +1,16 @@
+{
+  "executable": "/opt/homebrew/Cellar/ffmpeg/9.0.2_1/bin/ffmpeg",
+  "version": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+  "successfulClose": true,
+  "events": [
+    {
+      "type": "started",
+      "kind": "/opt/homebrew/Cellar/ffmpeg/9.0.2_1/bin/ffmpeg"
+    },
+    {
+      "type": "exited",
+      "kind": "/opt/homebrew/Cellar/ffmpeg/9.0.2_1/bin/ffmpeg"
+    }
+  ],
+  "unconfirmed": false
+}

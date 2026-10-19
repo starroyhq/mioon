@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: home summaries never initialize timelines and atomically created formats keep their saved geometry
+ok 1 - home summaries never initialize timelines and atomically created formats keep their saved geometry
+  ---
+  duration_ms: 658.377
+  type: 'test'
+  ...
+# Subtest: cover, duration and content update derive from owned saved records without touching the project
+ok 2 - cover, duration and content update derive from owned saved records without touching the project
+  ---
+  duration_ms: 758.163333
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1757.172084

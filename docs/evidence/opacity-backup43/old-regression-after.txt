@@ -1,0 +1,97 @@
+✔ fixed42 archive DTO inherits format1 paths, roles, inventory and strict fields without widening old schemas (3.440333ms)
+✔ fixed42 manifest retains unique sorted paths, one database and aggregate payload bound (1.13075ms)
+✔ fixed43 offline results require exact42/43 pair and explicit exclusion with original publication semantics (0.780875ms)
+✔ whole SQLite bytes, unknown journals and canonical assets survive while settings/token/browser data are excluded (158.600917ms)
+✔ disk receipt preserves task-bound final PNG before asset registration, plus partial PNG without invented recovery (192.198666ms)
+✔ DB receipt alone retains a final PNG and reports missing durable manifest (115.032083ms)
+✔ valid receipt with no staged or final PNG is explicitly incomplete (136.746791ms)
+✔ known unfinished video and export files are evidence; arbitrary files and renderer directories are excluded (164.444958ms)
+✔ issues distinguish missing and mismatched registered bytes, malformed and oversized metadata (148.405375ms)
+✔ issue detail is capped without concealing total issues or asserting completeness (249.168167ms)
+✔ inconsistent image input/snapshot cannot attest a receipt-derived final path (120.778208ms)
+✔ frame disk receipt binds exact input, snapshot and final result before asset commit (236.004625ms)
+✔ verification refuses payload-corrupt (110.053916ms)
+✔ verification refuses extra-file (122.918292ms)
+✔ verification refuses extra-directory (131.318917ms)
+✔ verification refuses missing-marker (119.86225ms)
+✔ verification refuses manifest-corrupt (94.886709ms)
+✔ verification refuses marker-corrupt (142.350458ms)
+✔ database inventory enumeration stops at its fixed global row bound (2810.972375ms)
+✔ nonempty SQLite -wal is refused and never repaired (294.87525ms)
+✔ nonempty SQLite -journal is refused and never repaired (308.961791ms)
+✔ empty sidecars are accepted, excluded and unchanged; safe legacy modes are retained (488.382ms)
+✔ selected source symlink is rejected without changing target (413.225834ms)
+✔ selected source hardlink is rejected without changing target (399.549208ms)
+✔ selected source broad-mode is rejected without changing target (355.035875ms)
+✔ selected source foreign-owner is rejected without changing target (298.833791ms)
+✔ selected source fifo is rejected without changing target (356.80025ms)
+✔ an unrecognized symlink in managed media is rejected rather than silently followed or copied (246.948292ms)
+✔ invalid destination relative is never reused or repaired (186.81125ms)
+✔ invalid destination nested is never reused or repaired (182.81525ms)
+✔ invalid destination existing is never reused or repaired (251.023375ms)
+✔ invalid destination symlink-parent is never reused or repaired (210.027375ms)
+✔ fixed database byte limit rejects sparse oversize input before streaming media (218.124833ms)
+✔ fixed single-file byte limit rejects sparse oversize input before streaming media (299.019459ms)
+✔ fixed total byte limit rejects sparse oversize input before streaming media (314.106667ms)
+✔ cancellation during chunked capture leaves no COMPLETE and releases only its own lease (201.005ms)
+✔ source replacement after capture starts is fenced before completion (196.849625ms)
+✔ new backup parent fsync failure is fatal before publication and source is unchanged (242.649416ms)
+✔ publication failure removes only owned marker and fsyncs rollback (252.008625ms)
+✔ publication never adopts and deletes a substituted marker inode (214.379584ms)
+✔ verify rejects linked payload and does not create SQLite sidecars beside completed database (389.543334ms)
+✔ capture rehashes stored destination bytes before claiming verified integrity (335.426875ms)
+✔ completed backup stays verified with explicit lock cleanup warning after unlink (348.277375ms)
+✔ completed backup stays verified with explicit lock cleanup warning after metadata (282.214917ms)
+✔ completed backup stays verified with explicit lock cleanup warning after replacement (319.349084ms)
+✔ cancelled backup retains cancellation and explicitly reports uncertain source lock cleanup (199.408208ms)
+✔ restored backup capture refuses before output creation and preserves the whole source (574.188084ms)
+✔ partial restore evidence cannot pass backup capture as an ordinary workspace (393.720375ms)
+✖ ordinary capture still retains unknown non-restoration data and creates a verifiable original backup (482.831084ms)
+✔ offline restore preserves every original SQL value, source/backup byte and mode, stage file and held unknown outcome (1064.348333ms)
+✔ same original backup produces distinct server-created independent origins and ids (923.940625ms)
+✔ existing destination, lock, overlap and unsafe links refuse without changing old contents or permissions (397.415958ms)
+✔ restore refuses changed-payload with no final activation and leaves backup unchanged (285.345166ms)
+✔ restore refuses missing-complete with no final activation and leaves backup unchanged (227.310625ms)
+✔ restore refuses unknown-sql with no final activation and leaves backup unchanged (224.41975ms)
+✔ restore refuses malicious-trigger with no final activation and leaves backup unchanged (264.365833ms)
+✔ restore refuses schema25 with no final activation and leaves backup unchanged (297.367416ms)
+✔ restore refuses invalid-identity with no final activation and leaves backup unchanged (330.606875ms)
+✔ cancellation before work creates no destination; exact offline status declines wrong binding and live lock without repairs (480.182959ms)
+✔ actual frozen baseline openStore refuses a SQLite-only copy of offline restored output (672.932209ms)
+✔ backup-bound publication discovery rejects different-backup without target/source changes (649.714792ms)
+✔ backup-bound publication discovery rejects corrupt-backup without target/source changes (450.622834ms)
+✔ backup-bound publication discovery rejects ordinary-target without target/source changes (559.694917ms)
+✔ backup-bound publication discovery rejects partial-target without target/source changes (524.005416ms)
+✔ backup-bound publication discovery rejects locked-target without target/source changes (436.543916ms)
+✔ backup-bound publication discovery rejects sidecar-target without target/source changes (346.565083ms)
+✔ backup-bound publication discovery rejects absent-target without target/source changes (364.536166ms)
+✔ backup-bound publication discovery rejects mixed-mode without target/source changes (347.428916ms)
+✔ restore rejects a new descendant of the original workspace without changing any original path, bytes or modes (338.688333ms)
+✔ destination ancestor lock and symbolic fixed marker are fail-closed without deletion or recursive scanning (163.086791ms)
+ℹ tests 70
+ℹ suites 0
+ℹ pass 69
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9736.870542
+
+✖ failing tests:
+
+test at tests/workspace-restore-backup-boundary.test.mjs:41:1
+✖ ordinary capture still retains unknown non-restoration data and creates a verifiable original backup (482.831084ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  40 !== 36
+
+      at TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-restore-backup-boundary.test.mjs:45:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 40,
+    expected: 36,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

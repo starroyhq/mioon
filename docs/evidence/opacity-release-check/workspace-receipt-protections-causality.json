@@ -1,0 +1,58 @@
+{
+  "runtime": "v24.21.0",
+  "base": "ff85c9a8daaa35bff080d0979fe2faa3683cd3b5",
+  "scope": "fixed26 historical receipt repair over independent golden24/26 and25/27 data; separate actual current40 dispatch checks",
+  "causality": [
+    "Original fixture and assertions require exact ordinary26 and only marker26 addition. Current production dispatch correctly continues migration through40.",
+    "Seeded raw BLOB, malformed JSON and oversized receipt cells intentionally test historical byte/type preservation; they do not satisfy the current volume40 feature admission.",
+    "All runtime modules, fixed constructors, receipt repair implementation and shared independent fixture helper were unchanged since the release base."
+  ],
+  "unchanged": [
+    {
+      "file": "packages/business/src/workspace-schema-dispatch.ts",
+      "baseSha256": "fc60f85cdb26accbe747dbec6d05e0ecbfceb67332cb114cb85359cb7c4b06bc",
+      "currentSha256": "fc60f85cdb26accbe747dbec6d05e0ecbfceb67332cb114cb85359cb7c4b06bc",
+      "unchanged": true
+    },
+    {
+      "file": "packages/business/src/workspace-volume-envelope-validation.ts",
+      "baseSha256": "1face8429869dd619ccb83214998537d103d9e70c1974e7b85b29bf83361ef09",
+      "currentSha256": "1face8429869dd619ccb83214998537d103d9e70c1974e7b85b29bf83361ef09",
+      "unchanged": true
+    },
+    {
+      "file": "packages/business/src/workspace-schema-v26.ts",
+      "baseSha256": "3731061a64f2ce71ca5deddda9d8972e73e5e6d3a2743d5923f60bd4af9a41cd",
+      "currentSha256": "3731061a64f2ce71ca5deddda9d8972e73e5e6d3a2743d5923f60bd4af9a41cd",
+      "unchanged": true
+    },
+    {
+      "file": "packages/business/src/workspace-receipt-protections.ts",
+      "baseSha256": "583bf38fccc75bcfaa8a135e9cd799e5583ccacf0b026f7d9b5583582571ed2d",
+      "currentSha256": "583bf38fccc75bcfaa8a135e9cd799e5583ccacf0b026f7d9b5583582571ed2d",
+      "unchanged": true
+    },
+    {
+      "file": "tests/workspace-schema26-fixtures.mjs",
+      "baseSha256": "0953dcc895ce2d16f8c679025fb602be7a0f2e77793a2e23bff327bf714d2050",
+      "currentSha256": "0953dcc895ce2d16f8c679025fb602be7a0f2e77793a2e23bff327bf714d2050",
+      "unchanged": true
+    }
+  ],
+  "originalAssertionLinesRetained": true,
+  "originalAssertionLines": 60,
+  "changedRuntime": false,
+  "changedSharedHelper": false,
+  "adapterPolicy": "Select fixed initializer26 or fixed validators25/27 only. No exception swallowing, data repair, normalization or derived expected evidence. Existing golden/SQL/raw/trigger/fault assertions retained.",
+  "addedCurrentChecks": [
+    "Real current dispatcher boots ordinary40 with fixed receipt protections",
+    "Real current dispatcher rejects intentionally raw historical fixture before writes and preserves exact snapshot"
+  ],
+  "red": {
+    "tests": 394,
+    "pass": 128,
+    "fail": 266,
+    "log": "workspace-receipt-protections-red.tap"
+  },
+  "greenLog": "workspace-receipt-protections-green.tap"
+}

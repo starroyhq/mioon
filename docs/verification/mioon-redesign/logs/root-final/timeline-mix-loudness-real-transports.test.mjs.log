@@ -1,0 +1,17 @@
+TAP version 13
+# Subtest: real saved full mix matches across HTTP, CLI and official MCP without rows/files/receipt changes or retained observation listeners
+ok 1 - real saved full mix matches across HTTP, CLI and official MCP without rows/files/receipt changes or retained observation listeners
+  ---
+  duration_ms: 5014.156542
+  type: 'test'
+  ...
+# {"observations":3,"sampleFrames":91200,"originalLufs":-19.071062091309354,"candidateLufs":-30.000000186221296,"candidateTruePeakDbtp":-25.459541526517224,"counts":[{"channel":"HTTP","probeCount":2,"decodeCount":8,"maximumChildren":1},{"channel":"CLI","probeCount":2,"decodeCount":8,"maximumChildren":1},{"channel":"MCP","probeCount":2,"decodeCount":8,"maximumChildren":1}],"listeners":[{"baseline":{"request":0,"response":0},"remaining":{"request":0,"response":0}},{"baseline":{"request":0,"response":0},"remaining":{"request":0,"response":0}},{"baseline":{"request":0,"response":0},"remaining":{"request":0,"response":0}}],"allRowsAndFilesUnchanged":true}
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5472.70125

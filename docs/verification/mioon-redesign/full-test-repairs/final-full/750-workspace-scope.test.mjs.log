@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: frozen identity vectors preserve exact SHA-256 field order and encodings
+ok 1 - frozen identity vectors preserve exact SHA-256 field order and encodings
+  ---
+  duration_ms: 0.745958
+  type: 'test'
+  ...
+# Subtest: number and bigint IDs, absent birthtime and lexical path resolution retain legacy behavior
+ok 2 - number and bigint IDs, absent birthtime and lexical path resolution retain legacy behavior
+  ---
+  duration_ms: 0.264625
+  type: 'test'
+  ...
+# Subtest: filesystem identity survives reopen and in-place writes, but not copied or replaced database
+ok 3 - filesystem identity survives reopen and in-place writes, but not copied or replaced database
+  ---
+  duration_ms: 3.789916
+  type: 'test'
+  ...
+# Subtest: replacement directory changes identity even when original database inode is retained
+ok 4 - replacement directory changes identity even when original database inode is retained
+  ---
+  duration_ms: 1.244
+  type: 'test'
+  ...
+# Subtest: draft and last-project services share legacy identity without weakening caller guards
+ok 5 - draft and last-project services share legacy identity without weakening caller guards
+  ---
+  duration_ms: 5.786333
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 187.494167

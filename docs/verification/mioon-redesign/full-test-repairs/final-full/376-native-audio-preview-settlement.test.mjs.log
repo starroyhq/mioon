@@ -1,0 +1,388 @@
+TAP version 13
+# Subtest: V1 GET: resource → transport → invocation with response finish requires all three settlement proofs
+ok 1 - V1 GET: resource → transport → invocation with response finish requires all three settlement proofs
+  ---
+  duration_ms: 15.439458
+  type: 'test'
+  ...
+# Subtest: V1 GET: resource → invocation → transport with response finish requires all three settlement proofs
+ok 2 - V1 GET: resource → invocation → transport with response finish requires all three settlement proofs
+  ---
+  duration_ms: 3.068167
+  type: 'test'
+  ...
+# Subtest: V1 GET: transport → resource → invocation with response finish requires all three settlement proofs
+ok 3 - V1 GET: transport → resource → invocation with response finish requires all three settlement proofs
+  ---
+  duration_ms: 1.866459
+  type: 'test'
+  ...
+# Subtest: V1 GET: transport → invocation → resource with response finish requires all three settlement proofs
+ok 4 - V1 GET: transport → invocation → resource with response finish requires all three settlement proofs
+  ---
+  duration_ms: 1.5545
+  type: 'test'
+  ...
+# Subtest: V1 GET: invocation → resource → transport with response finish requires all three settlement proofs
+ok 5 - V1 GET: invocation → resource → transport with response finish requires all three settlement proofs
+  ---
+  duration_ms: 1.694125
+  type: 'test'
+  ...
+# Subtest: V1 GET: invocation → transport → resource with response finish requires all three settlement proofs
+ok 6 - V1 GET: invocation → transport → resource with response finish requires all three settlement proofs
+  ---
+  duration_ms: 1.656625
+  type: 'test'
+  ...
+# Subtest: V1 GET: resource → transport → invocation with response close requires all three settlement proofs
+ok 7 - V1 GET: resource → transport → invocation with response close requires all three settlement proofs
+  ---
+  duration_ms: 1.2305
+  type: 'test'
+  ...
+# Subtest: V1 GET: resource → invocation → transport with response close requires all three settlement proofs
+ok 8 - V1 GET: resource → invocation → transport with response close requires all three settlement proofs
+  ---
+  duration_ms: 0.989167
+  type: 'test'
+  ...
+# Subtest: V1 GET: transport → resource → invocation with response close requires all three settlement proofs
+ok 9 - V1 GET: transport → resource → invocation with response close requires all three settlement proofs
+  ---
+  duration_ms: 1.908625
+  type: 'test'
+  ...
+# Subtest: V1 GET: transport → invocation → resource with response close requires all three settlement proofs
+ok 10 - V1 GET: transport → invocation → resource with response close requires all three settlement proofs
+  ---
+  duration_ms: 1.934625
+  type: 'test'
+  ...
+# Subtest: V1 GET: invocation → resource → transport with response close requires all three settlement proofs
+ok 11 - V1 GET: invocation → resource → transport with response close requires all three settlement proofs
+  ---
+  duration_ms: 1.079542
+  type: 'test'
+  ...
+# Subtest: V1 GET: invocation → transport → resource with response close requires all three settlement proofs
+ok 12 - V1 GET: invocation → transport → resource with response close requires all three settlement proofs
+  ---
+  duration_ms: 1.327375
+  type: 'test'
+  ...
+# Subtest: V1 GET: response error only cancels and still needs exact transport proof
+ok 13 - V1 GET: response error only cancels and still needs exact transport proof
+  ---
+  duration_ms: 0.951
+  type: 'test'
+  ...
+# Subtest: V1 GET: duplicate registration retains the original resource proof and blocks retirement
+ok 14 - V1 GET: duplicate registration retains the original resource proof and blocks retirement
+  ---
+  duration_ms: 1.434375
+  type: 'test'
+  ...
+# Subtest: V1 GET: invalid undefined registration fails closed
+ok 15 - V1 GET: invalid undefined registration fails closed
+  ---
+  duration_ms: 0.943917
+  type: 'test'
+  ...
+# Subtest: V1 GET: invalid null registration fails closed
+ok 16 - V1 GET: invalid null registration fails closed
+  ---
+  duration_ms: 1.327833
+  type: 'test'
+  ...
+# Subtest: V1 GET: invalid plain object registration fails closed
+ok 17 - V1 GET: invalid plain object registration fails closed
+  ---
+  duration_ms: 0.908959
+  type: 'test'
+  ...
+# Subtest: V1 GET: invalid thenable registration fails closed
+ok 18 - V1 GET: invalid thenable registration fails closed
+  ---
+  duration_ms: 2.17125
+  type: 'test'
+  ...
+# Subtest: V1 GET: resource rejection remains blocked after all other settlement proofs
+ok 19 - V1 GET: resource rejection remains blocked after all other settlement proofs
+  ---
+  duration_ms: 0.802125
+  type: 'test'
+  ...
+# Subtest: V1 GET: finish before resource acquisition remains compatible and needs the response proof
+ok 20 - V1 GET: finish before resource acquisition remains compatible and needs the response proof
+  ---
+  duration_ms: 0.683875
+  type: 'test'
+  ...
+# Subtest: V1 GET: registration after finish fails closed before response settlement
+ok 21 - V1 GET: registration after finish fails closed before response settlement
+  ---
+  duration_ms: 0.667375
+  type: 'test'
+  ...
+# Subtest: V2 GET: resource → transport → invocation with response finish requires all three settlement proofs
+ok 22 - V2 GET: resource → transport → invocation with response finish requires all three settlement proofs
+  ---
+  duration_ms: 1.855875
+  type: 'test'
+  ...
+# Subtest: V2 GET: resource → invocation → transport with response finish requires all three settlement proofs
+ok 23 - V2 GET: resource → invocation → transport with response finish requires all three settlement proofs
+  ---
+  duration_ms: 1.829458
+  type: 'test'
+  ...
+# Subtest: V2 GET: transport → resource → invocation with response finish requires all three settlement proofs
+ok 24 - V2 GET: transport → resource → invocation with response finish requires all three settlement proofs
+  ---
+  duration_ms: 0.869209
+  type: 'test'
+  ...
+# Subtest: V2 GET: transport → invocation → resource with response finish requires all three settlement proofs
+ok 25 - V2 GET: transport → invocation → resource with response finish requires all three settlement proofs
+  ---
+  duration_ms: 1.114167
+  type: 'test'
+  ...
+# Subtest: V2 GET: invocation → resource → transport with response finish requires all three settlement proofs
+ok 26 - V2 GET: invocation → resource → transport with response finish requires all three settlement proofs
+  ---
+  duration_ms: 0.866625
+  type: 'test'
+  ...
+# Subtest: V2 GET: invocation → transport → resource with response finish requires all three settlement proofs
+ok 27 - V2 GET: invocation → transport → resource with response finish requires all three settlement proofs
+  ---
+  duration_ms: 1.55875
+  type: 'test'
+  ...
+# Subtest: V2 GET: resource → transport → invocation with response close requires all three settlement proofs
+ok 28 - V2 GET: resource → transport → invocation with response close requires all three settlement proofs
+  ---
+  duration_ms: 1.120083
+  type: 'test'
+  ...
+# Subtest: V2 GET: resource → invocation → transport with response close requires all three settlement proofs
+ok 29 - V2 GET: resource → invocation → transport with response close requires all three settlement proofs
+  ---
+  duration_ms: 1.096834
+  type: 'test'
+  ...
+# Subtest: V2 GET: transport → resource → invocation with response close requires all three settlement proofs
+ok 30 - V2 GET: transport → resource → invocation with response close requires all three settlement proofs
+  ---
+  duration_ms: 1.279541
+  type: 'test'
+  ...
+# Subtest: V2 GET: transport → invocation → resource with response close requires all three settlement proofs
+ok 31 - V2 GET: transport → invocation → resource with response close requires all three settlement proofs
+  ---
+  duration_ms: 1.032708
+  type: 'test'
+  ...
+# Subtest: V2 GET: invocation → resource → transport with response close requires all three settlement proofs
+ok 32 - V2 GET: invocation → resource → transport with response close requires all three settlement proofs
+  ---
+  duration_ms: 0.944916
+  type: 'test'
+  ...
+# Subtest: V2 GET: invocation → transport → resource with response close requires all three settlement proofs
+ok 33 - V2 GET: invocation → transport → resource with response close requires all three settlement proofs
+  ---
+  duration_ms: 1.134958
+  type: 'test'
+  ...
+# Subtest: V2 GET: response error only cancels and still needs exact transport proof
+ok 34 - V2 GET: response error only cancels and still needs exact transport proof
+  ---
+  duration_ms: 0.840375
+  type: 'test'
+  ...
+# Subtest: V2 GET: duplicate registration retains the original resource proof and blocks retirement
+ok 35 - V2 GET: duplicate registration retains the original resource proof and blocks retirement
+  ---
+  duration_ms: 0.785625
+  type: 'test'
+  ...
+# Subtest: V2 GET: invalid undefined registration fails closed
+ok 36 - V2 GET: invalid undefined registration fails closed
+  ---
+  duration_ms: 1.219792
+  type: 'test'
+  ...
+# Subtest: V2 GET: invalid null registration fails closed
+ok 37 - V2 GET: invalid null registration fails closed
+  ---
+  duration_ms: 0.780791
+  type: 'test'
+  ...
+# Subtest: V2 GET: invalid plain object registration fails closed
+ok 38 - V2 GET: invalid plain object registration fails closed
+  ---
+  duration_ms: 0.753875
+  type: 'test'
+  ...
+# Subtest: V2 GET: invalid thenable registration fails closed
+ok 39 - V2 GET: invalid thenable registration fails closed
+  ---
+  duration_ms: 0.70825
+  type: 'test'
+  ...
+# Subtest: V2 GET: resource rejection remains blocked after all other settlement proofs
+ok 40 - V2 GET: resource rejection remains blocked after all other settlement proofs
+  ---
+  duration_ms: 0.957167
+  type: 'test'
+  ...
+# Subtest: V2 GET: finish before resource acquisition remains compatible and needs the response proof
+ok 41 - V2 GET: finish before resource acquisition remains compatible and needs the response proof
+  ---
+  duration_ms: 0.679042
+  type: 'test'
+  ...
+# Subtest: V2 GET: registration after finish fails closed before response settlement
+ok 42 - V2 GET: registration after finish fails closed before response settlement
+  ---
+  duration_ms: 0.75925
+  type: 'test'
+  ...
+# Subtest: V2 DELETE: resource → transport → invocation with response finish requires all three settlement proofs
+ok 43 - V2 DELETE: resource → transport → invocation with response finish requires all three settlement proofs
+  ---
+  duration_ms: 0.797458
+  type: 'test'
+  ...
+# Subtest: V2 DELETE: resource → invocation → transport with response finish requires all three settlement proofs
+ok 44 - V2 DELETE: resource → invocation → transport with response finish requires all three settlement proofs
+  ---
+  duration_ms: 0.7175
+  type: 'test'
+  ...
+# Subtest: V2 DELETE: transport → resource → invocation with response finish requires all three settlement proofs
+ok 45 - V2 DELETE: transport → resource → invocation with response finish requires all three settlement proofs
+  ---
+  duration_ms: 0.968333
+  type: 'test'
+  ...
+# Subtest: V2 DELETE: transport → invocation → resource with response finish requires all three settlement proofs
+ok 46 - V2 DELETE: transport → invocation → resource with response finish requires all three settlement proofs
+  ---
+  duration_ms: 0.750916
+  type: 'test'
+  ...
+# Subtest: V2 DELETE: invocation → resource → transport with response finish requires all three settlement proofs
+ok 47 - V2 DELETE: invocation → resource → transport with response finish requires all three settlement proofs
+  ---
+  duration_ms: 0.72475
+  type: 'test'
+  ...
+# Subtest: V2 DELETE: invocation → transport → resource with response finish requires all three settlement proofs
+ok 48 - V2 DELETE: invocation → transport → resource with response finish requires all three settlement proofs
+  ---
+  duration_ms: 1.36775
+  type: 'test'
+  ...
+# Subtest: V2 DELETE: resource → transport → invocation with response close requires all three settlement proofs
+ok 49 - V2 DELETE: resource → transport → invocation with response close requires all three settlement proofs
+  ---
+  duration_ms: 3.757708
+  type: 'test'
+  ...
+# Subtest: V2 DELETE: resource → invocation → transport with response close requires all three settlement proofs
+ok 50 - V2 DELETE: resource → invocation → transport with response close requires all three settlement proofs
+  ---
+  duration_ms: 0.907083
+  type: 'test'
+  ...
+# Subtest: V2 DELETE: transport → resource → invocation with response close requires all three settlement proofs
+ok 51 - V2 DELETE: transport → resource → invocation with response close requires all three settlement proofs
+  ---
+  duration_ms: 0.854833
+  type: 'test'
+  ...
+# Subtest: V2 DELETE: transport → invocation → resource with response close requires all three settlement proofs
+ok 52 - V2 DELETE: transport → invocation → resource with response close requires all three settlement proofs
+  ---
+  duration_ms: 0.682916
+  type: 'test'
+  ...
+# Subtest: V2 DELETE: invocation → resource → transport with response close requires all three settlement proofs
+ok 53 - V2 DELETE: invocation → resource → transport with response close requires all three settlement proofs
+  ---
+  duration_ms: 0.686625
+  type: 'test'
+  ...
+# Subtest: V2 DELETE: invocation → transport → resource with response close requires all three settlement proofs
+ok 54 - V2 DELETE: invocation → transport → resource with response close requires all three settlement proofs
+  ---
+  duration_ms: 1.196917
+  type: 'test'
+  ...
+# Subtest: V2 DELETE: response error only cancels and still needs exact transport proof
+ok 55 - V2 DELETE: response error only cancels and still needs exact transport proof
+  ---
+  duration_ms: 0.848083
+  type: 'test'
+  ...
+# Subtest: V2 DELETE: duplicate registration retains the original resource proof and blocks retirement
+ok 56 - V2 DELETE: duplicate registration retains the original resource proof and blocks retirement
+  ---
+  duration_ms: 0.931125
+  type: 'test'
+  ...
+# Subtest: V2 DELETE: invalid undefined registration fails closed
+ok 57 - V2 DELETE: invalid undefined registration fails closed
+  ---
+  duration_ms: 0.601333
+  type: 'test'
+  ...
+# Subtest: V2 DELETE: invalid null registration fails closed
+ok 58 - V2 DELETE: invalid null registration fails closed
+  ---
+  duration_ms: 0.644
+  type: 'test'
+  ...
+# Subtest: V2 DELETE: invalid plain object registration fails closed
+ok 59 - V2 DELETE: invalid plain object registration fails closed
+  ---
+  duration_ms: 0.598541
+  type: 'test'
+  ...
+# Subtest: V2 DELETE: invalid thenable registration fails closed
+ok 60 - V2 DELETE: invalid thenable registration fails closed
+  ---
+  duration_ms: 0.545583
+  type: 'test'
+  ...
+# Subtest: V2 DELETE: resource rejection remains blocked after all other settlement proofs
+ok 61 - V2 DELETE: resource rejection remains blocked after all other settlement proofs
+  ---
+  duration_ms: 0.501333
+  type: 'test'
+  ...
+# Subtest: V2 DELETE: finish before resource acquisition remains compatible and needs the response proof
+ok 62 - V2 DELETE: finish before resource acquisition remains compatible and needs the response proof
+  ---
+  duration_ms: 0.514916
+  type: 'test'
+  ...
+# Subtest: V2 DELETE: registration after finish fails closed before response settlement
+ok 63 - V2 DELETE: registration after finish fails closed before response settlement
+  ---
+  duration_ms: 0.643
+  type: 'test'
+  ...
+1..63
+# tests 63
+# suites 0
+# pass 63
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 274.428208

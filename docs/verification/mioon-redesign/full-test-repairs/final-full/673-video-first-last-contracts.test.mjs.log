@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: optional last frame preserves omitted shape and explicitly records null without changing first-edge DTOs
+ok 1 - optional last frame preserves omitted shape and explicitly records null without changing first-edge DTOs
+  ---
+  duration_ms: 2.139625
+  type: 'test'
+  ...
+# Subtest: strict historical acknowledgements accept only the optional tail and preserve every old byte
+ok 2 - strict historical acknowledgements accept only the optional tail and preserve every old byte
+  ---
+  duration_ms: 0.450333
+  type: 'test'
+  ...
+# Subtest: new-shot selection appends an explicit tail without reinterpreting historical first-only arrays
+ok 3 - new-shot selection appends an explicit tail without reinterpreting historical first-only arrays
+  ---
+  duration_ms: 0.358958
+  type: 'test'
+  ...
+# Subtest: active discovery is unique, exact archived v1/v2 profiles remain immutable, and pin misses never fall back
+ok 4 - active discovery is unique, exact archived v1/v2 profiles remain immutable, and pin misses never fall back
+  ---
+  duration_ms: 3.218375
+  type: 'test'
+  ...
+# Subtest: legacy no-pin frozen selection and exact pinned v1 plan preserve historical adapter bytes
+ok 5 - legacy no-pin frozen selection and exact pinned v1 plan preserve historical adapter bytes
+  ---
+  duration_ms: 1.5545
+  type: 'test'
+  ...
+# Subtest: only exact active Ark and Mock permit the existing frame combinations with explicit canonical roles
+ok 6 - only exact active Ark and Mock permit the existing frame combinations with explicit canonical roles
+  ---
+  duration_ms: 1.62975
+  type: 'test'
+  ...
+# Subtest: each Ark role independently enforces PNG/JPEG, 10 MiB, dimensions and selected exact ratio
+ok 7 - each Ark role independently enforces PNG/JPEG, 10 MiB, dimensions and selected exact ratio
+  ---
+  duration_ms: 0.749875
+  type: 'test'
+  ...
+# Subtest: Mock preserves the complete v1 single-input limits, scenarios and simulation flags in v2
+ok 8 - Mock preserves the complete v1 single-input limits, scenarios and simulation flags in v2
+  ---
+  duration_ms: 1.213625
+  type: 'test'
+  ...
+# Subtest: snapshot bridge keeps the full typed pair and first-edge provenance, rejecting malformed pins and unknown role metadata
+ok 9 - snapshot bridge keeps the full typed pair and first-edge provenance, rejecting malformed pins and unknown role metadata
+  ---
+  duration_ms: 1.712125
+  type: 'test'
+  ...
+# Subtest: selection and canonical validation reject accessors without evaluating them
+ok 10 - selection and canonical validation reject accessors without evaluating them
+  ---
+  duration_ms: 0.261833
+  type: 'test'
+  ...
+# Subtest: old first-only calls retain count failure before prompt or advanced-parameter errors
+ok 11 - old first-only calls retain count failure before prompt or advanced-parameter errors
+  ---
+  duration_ms: 0.971084
+  type: 'test'
+  ...
+# Subtest: explicit tail mutations require exact owned acknowledgements while legacy callers retain minimum guards
+ok 12 - explicit tail mutations require exact owned acknowledgements while legacy callers retain minimum guards
+  ---
+  duration_ms: 0.348542
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 225.020875

@@ -1,0 +1,148 @@
+TAP version 13
+# Subtest: exact immutable profiles expose only implemented active routes and preserve archived v1/v2 routes
+ok 1 - exact immutable profiles expose only implemented active routes and preserve archived v1/v2 routes
+  ---
+  duration_ms: 2.932083
+  type: 'test'
+  ...
+# Subtest: fixed endpoints and regional providers never guess missing regions
+ok 2 - fixed endpoints and regional providers never guess missing regions
+  ---
+  duration_ms: 0.133459
+  type: 'test'
+  ...
+# Subtest: runway: actual adapter model, ratio, duration and input policy parity without IO
+ok 3 - runway: actual adapter model, ratio, duration and input policy parity without IO
+  ---
+  duration_ms: 3.707833
+  type: 'test'
+  ...
+# Subtest: ark: actual adapter model, ratio, duration and input policy parity without IO
+ok 4 - ark: actual adapter model, ratio, duration and input policy parity without IO
+  ---
+  duration_ms: 1.021292
+  type: 'test'
+  ...
+# Subtest: veo: actual adapter model, ratio, duration and input policy parity without IO
+ok 5 - veo: actual adapter model, ratio, duration and input policy parity without IO
+  ---
+  duration_ms: 0.545
+  type: 'test'
+  ...
+# Subtest: minimax: actual adapter model, ratio, duration and input policy parity without IO
+ok 6 - minimax: actual adapter model, ratio, duration and input policy parity without IO
+  ---
+  duration_ms: 0.474458
+  type: 'test'
+  ...
+# Subtest: vidu: actual adapter model, ratio, duration and input policy parity without IO
+ok 7 - vidu: actual adapter model, ratio, duration and input policy parity without IO
+  ---
+  duration_ms: 0.552583
+  type: 'test'
+  ...
+# Subtest: mock: actual adapter model, ratio, duration and input policy parity without IO
+ok 8 - mock: actual adapter model, ratio, duration and input policy parity without IO
+  ---
+  duration_ms: 0.498875
+  type: 'test'
+  ...
+# Subtest: existing adapter-specific dimensional and MIME validators agree on advertised policy
+ok 9 - existing adapter-specific dimensional and MIME validators agree on advertised policy
+  ---
+  duration_ms: 0.768375
+  type: 'test'
+  ...
+# Subtest: all unsupported roles, duplicates and complete multi-reference combinations fail closed
+ok 10 - all unsupported roles, duplicates and complete multi-reference combinations fail closed
+  ---
+  duration_ms: 1.173833
+  type: 'test'
+  ...
+# Subtest: managed byte caps and exact Runway full-data-URI caps include the MIME prefix
+ok 11 - managed byte caps and exact Runway full-data-URI caps include the MIME prefix
+  ---
+  duration_ms: 0.560833
+  type: 'test'
+  ...
+# Subtest: missing or invalid metadata is explicit, never inferred from a URL, hash or old snapshot
+ok 12 - missing or invalid metadata is explicit, never inferred from a URL, hash or old snapshot
+  ---
+  duration_ms: 0.375292
+  type: 'test'
+  ...
+# Subtest: hostile arrays, records, getters and oversized selections are rejected without invoking accessors
+ok 13 - hostile arrays, records, getters and oversized selections are rejected without invoking accessors
+  ---
+  duration_ms: 0.341792
+  type: 'test'
+  ...
+# Subtest: Veo uses an explicit current server date and never substitutes the retired preview
+ok 14 - Veo uses an explicit current server date and never substitutes the retired preview
+  ---
+  duration_ms: 0.275667
+  type: 'test'
+  ...
+# Subtest: mock explicitly does not depict either prompt or references, including text-only simulation
+ok 15 - mock explicitly does not depict either prompt or references, including text-only simulation
+  ---
+  duration_ms: 0.13675
+  type: 'test'
+  ...
+# Subtest: adapter plan is immutable, preserves complete identity/hash metadata and omits paths
+ok 16 - adapter plan is immutable, preserves complete identity/hash metadata and omits paths
+  ---
+  duration_ms: 0.133084
+  type: 'test'
+  ...
+# Subtest: shot bridge preserves all IDs and pinned role/edge identity rather than filtering missing assets
+ok 17 - shot bridge preserves all IDs and pinned role/edge identity rather than filtering missing assets
+  ---
+  duration_ms: 0.822292
+  type: 'test'
+  ...
+# Subtest: missing/unknown model-profile-region discovery fails closed without provider union fallback
+ok 18 - missing/unknown model-profile-region discovery fails closed without provider union fallback
+  ---
+  duration_ms: 0.228417
+  type: 'test'
+  ...
+# Subtest: legacy capability API keeps old fixture identity, errors, messages and validation ordering
+ok 19 - legacy capability API keeps old fixture identity, errors, messages and validation ordering
+  ---
+  duration_ms: 1.525125
+  type: 'test'
+  ...
+# Subtest: generation.submit public schema does not admit inputBindings or a browser region
+ok 20 - generation.submit public schema does not admit inputBindings or a browser region
+  ---
+  duration_ms: 1.329375
+  type: 'test'
+  ...
+# Subtest: legacy wrapper also rejects sparse/accessor reference arrays without evaluating them
+ok 21 - legacy wrapper also rejects sparse/accessor reference arrays without evaluating them
+  ---
+  duration_ms: 0.280083
+  type: 'test'
+  ...
+# Subtest: profiled wrapper matches the identical legacy-then-canonical first issue without stricter legacy reconstruction
+ok 22 - profiled wrapper matches the identical legacy-then-canonical first issue without stricter legacy reconstruction
+  ---
+  duration_ms: 7.579875
+  type: 'test'
+  ...
+# Subtest: profile lookup retains exact model display metadata including output resolutions
+ok 23 - profile lookup retains exact model display metadata including output resolutions
+  ---
+  duration_ms: 0.247834
+  type: 'test'
+  ...
+1..23
+# tests 23
+# suites 0
+# pass 23
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 240.239417

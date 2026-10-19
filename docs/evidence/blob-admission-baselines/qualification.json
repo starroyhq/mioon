@@ -1,0 +1,30 @@
+{
+  "nodeExecutable": "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+  "nodeVersion": "v24.21.0",
+  "base": "d52f50fc83b5cad99512853cb041e9eb4d977638",
+  "branch": "codex/blob-fixture-diagnosis",
+  "code": 1,
+  "signal": null,
+  "counts": {
+    "tests": 18,
+    "pass": 12,
+    "fail": 6,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "scope": "Only original six profile reopen/repair expectations plus12 new independent TEXT/BLOB causal controls; not whole repository.",
+  "log": "combined-current.tap",
+  "namePattern": "frozen ordinary24(?:-mock)?-seeded reopens|independent frozen restored25(?:-mock)?-seeded opens|ordinary runtime retains baseline repair eligibility for (?:known-marker-gap|initial-markers-absent)|separate initial TEXT|original golden BLOB",
+  "newBoundaryTestSha256": "ac2551f15b2499f715a0f41aa0414d4bcf22336e9f5c0593047402c5175f24e8",
+  "compatibilityFixed": false,
+  "oldSixCasesKept": true,
+  "runtimeChanged": false,
+  "baselineConfirmed": "Each of four exact native snapshots has the same6 failures; earliest tested c2000a1, first introduction not located.",
+  "frozenBoundary": "Runtime part stopped; needs separately approved historical admission policy, not automatic-review denial.",
+  "typecheck": {
+    "code": 0,
+    "log": "current-node24-typecheck.txt"
+  },
+  "build": "Not rerun; existing Node24 native-addon Team ID block retained, no signing or system-security change.",
+  "newTestPhysicalImmutabilityLimit": "Initial WAL fixture only; not a DELETE-header guarantee."
+}

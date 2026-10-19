@@ -96,11 +96,11 @@ function harness(languageStore) {
       if (name === 'react') return react;
       if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => h.visible };
       if (name === './TaskWorkspace.css') return {};
-      if (['./TaskWorkspace.tsx', './PendingSubmission.jsx', './RecoveryStorageDetails.tsx'].includes(name)) return load(name.slice(2));
+      if (['./TaskWorkspace.tsx', './PendingSubmission.jsx', './RecoveryStorageDetails.tsx', './TaskRenderList.tsx'].includes(name)) return load(name.slice(2));
       const business = { '@mioon/contracts': contracts, './api.js': api, './submissions.js': submissions, './mutation-submissions.js': mutations, './edit-task-client.js': editTasks, './workspace-origin.js': workspaceOrigin, './reference-connections.js': references };
       if (business[name]) return business[name];
       if (['./icons.jsx', './SubjectVideoSummary.jsx'].includes(name)) return { __esModule: true, default: name };
-      const primitives = { '@mioon/ui/components/badge': ['Badge'], '@mioon/ui/components/button': ['Button'], '@mioon/ui/components/input': ['Input'], '@mioon/ui/components/label': ['Label'] };
+      const primitives = { '@mioon/ui/components/workbench-controls': ['WorkbenchBadge', 'WorkbenchButton', 'WorkbenchProgress'], '@mioon/ui/components/badge': ['Badge'], '@mioon/ui/components/button': ['Button'], '@mioon/ui/components/input': ['Input'], '@mioon/ui/components/label': ['Label'] };
       if (primitives[name]) return Object.fromEntries(primitives[name].map(key => [key, key]));
       assert.fail(`Unexpected TaskCenter dependency: ${name}`);
     };

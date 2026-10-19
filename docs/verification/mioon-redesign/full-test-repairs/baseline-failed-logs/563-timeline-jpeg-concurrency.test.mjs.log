@@ -1,0 +1,68 @@
+TAP version 13
+# Subtest: the shared two-image budget admits PNG plus JPEG and rejects either format as the third input
+ok 1 - the shared two-image budget admits PNG plus JPEG and rejects either format as the third input
+  ---
+  duration_ms: 14.586
+  type: 'test'
+  ...
+# Subtest: mixed-format interval accounting is end-exclusive and independent of source ordering
+ok 2 - mixed-format interval accounting is end-exclusive and independent of source ordering
+  ---
+  duration_ms: 2.951292
+  type: 'test'
+  ...
+# Subtest: production renderer opens only active combined image inputs: PNG plus JPEG with hidden PNG/JPEG
+not ok 3 - production renderer opens only active combined image inputs: PNG plus JPEG with hidden PNG/JPEG
+  ---
+  duration_ms: 396.31975
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-jpeg-concurrency.test.mjs:154:3'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    ChildProcess._handle.onexit (node:internal/child_process:305:5)
+  ...
+# Subtest: production renderer opens only active combined image inputs: six nonoverlapping alternating sources
+not ok 4 - production renderer opens only active combined image inputs: six nonoverlapping alternating sources
+  ---
+  duration_ms: 493.624667
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-jpeg-concurrency.test.mjs:154:3'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    ChildProcess._handle.onexit (node:internal/child_process:305:5)
+  ...
+# Subtest: preflight rejects a combined third image before probing or writes, even when the selected range is safe
+ok 5 - preflight rejects a combined third image before probing or writes, even when the selected range is safe
+  ---
+  duration_ms: 212.164167
+  type: 'test'
+  ...
+# Subtest: renderer independently rejects an over-budget mixed snapshot before decoding or staging
+ok 6 - renderer independently rejects an over-budget mixed snapshot before decoding or staging
+  ---
+  duration_ms: 3.151583
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 4
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1442.848125

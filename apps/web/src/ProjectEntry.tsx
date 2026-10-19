@@ -3,7 +3,7 @@ import React from 'react';
 import type { ReactNode } from 'react';
 import { Button } from '@mioon/ui/components/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@mioon/ui/components/dialog';
-import ProjectHome from './ProjectHome.tsx';
+import ProjectHome from './ProjectHomeScreen.tsx';
 import type { ProjectEntryController } from './project-entry-state.ts';
 import type { ProjectWindowSettingsSlot } from './desktop-window-client.ts';
 
@@ -25,7 +25,7 @@ export default function ProjectEntry({ controller, status, onSettings, editor = 
       <DialogDescription>{t('projects.separateWindow')}</DialogDescription>
       <Button type="button" variant="ghost" disabled={state.creating || state.sealed || state.createUnknown || state.openUnknown} onClick={() => { void controller.dismiss(); }}>{t('projects.closeSelection')}</Button></div>}
     {state.openUnknown && <div className="project-home-notice" role="status"><p>{t('projects.checkOriginalOpen')}</p><Button type="button" variant="outline" onClick={() => { void controller.reconcileOpen(); }}>{t('projects.checkWindow')}</Button></div>}
-    <ProjectHome projects={state.projects} phase={state.phase} openingName={state.projects.find(project => project.id === state.openingProjectId)?.name}
+    <ProjectHome presentation={editor ? 'embedded' : 'page'} summaryEnabled={Boolean(state.workspace && !state.workspace.restored)} active={state.shown && !context.quitting} summaryScope={context.backendId} projects={state.projects} phase={state.phase} openingName={state.projects.find(project => project.id === state.openingProjectId)?.name}
       error={state.error} notice={state.notice} busy={state.creating || state.sealed || context.quitting} listBusy={state.listBusy} listError={state.listError}
       page="projects" onPage={page => { if (page === 'settings') onSettings('agent'); }} onOpen={id => { void controller.open(id); }}
       onRetry={() => { if (state.openUnknown) void controller.reconcileOpen(); else if (state.openingProjectId) void controller.open(state.openingProjectId); }}
@@ -40,6 +40,6 @@ export default function ProjectEntry({ controller, status, onSettings, editor = 
     details.cancel(); void controller.dismiss();
   }}>
     <DialogContent keepMounted showCloseButton={false} hidden={!state.shown} inert={!state.shown}
-      className="modal project-entry-dialog" style={{ width: 'min(980px, 94vw)', maxWidth: 'min(980px, 94vw)', maxHeight: '90vh', overflow: 'auto', ...(!state.shown ? { display: 'none' } : {}) }}>{contents}</DialogContent>
+      className="modal project-entry-dialog" data-testid="project-entry-dialog" style={!state.shown ? { display: 'none' } : undefined}>{contents}</DialogContent>
   </Dialog>;
 }

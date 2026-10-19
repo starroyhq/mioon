@@ -1,0 +1,27 @@
+[
+  {
+    "file": "export-history-ui.test.mjs",
+    "code": 1,
+    "seconds": 0.83
+  },
+  {
+    "file": "named-delivery-ui.test.mjs",
+    "code": 1,
+    "seconds": 0.83
+  },
+  {
+    "file": "i18n-command-unit.test.mjs",
+    "code": 1,
+    "seconds": 0.38
+  },
+  {
+    "file": "i18n-catalog-integrity.test.mjs",
+    "code": 1,
+    "seconds": 1.08
+  },
+  {
+    "file": "desktop-media-shutdown.test.mjs",
+    "code": 1,
+    "seconds": 1.48
+  }
+]

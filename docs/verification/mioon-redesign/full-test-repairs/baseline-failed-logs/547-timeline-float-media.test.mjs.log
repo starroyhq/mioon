@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: actual v2 retains 1.4/1.6 float headroom and rejects before creating final AAC artifact
+ok 1 - actual v2 retains 1.4/1.6 float headroom and rejects before creating final AAC artifact
+  ---
+  duration_ms: 972.550209
+  type: 'test'
+  ...
+# Subtest: actual quiet v2 whole/range uses exact sample counts across muted segment edges, global fades and mono44.1k conversion
+ok 2 - actual quiet v2 whole/range uses exact sample counts across muted segment edges, global fades and mono44.1k conversion
+  ---
+  duration_ms: 1510.591583
+  type: 'test'
+  ...
+# Subtest: omitted and explicit v1 preserve byte-identical integer rendering with no audioCheck field
+ok 3 - omitted and explicit v1 preserve byte-identical integer rendering with no audioCheck field
+  ---
+  duration_ms: 342.928416
+  type: 'test'
+  ...
+# Subtest: actual complete within-limit check survives a subsequent AAC spawn failure as owned evidence
+ok 4 - actual complete within-limit check survives a subsequent AAC spawn failure as owned evidence
+  ---
+  duration_ms: 438.856708
+  type: 'test'
+  ...
+# Subtest: actual selected v2 preserves global subtitle timing and exact float envelope, with observed intermediate storage tradeoff
+not ok 5 - actual selected v2 preserves global subtitle timing and exact float envelope, with observed intermediate storage tradeoff
+  ---
+  duration_ms: 382.325208
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-float-media.test.mjs:101:1'
+  failureType: 'testCodeFailure'
+  error: 'ifError got unwanted exception: Local media tool failed.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: ~
+  actual:
+  error: 'Local media tool failed.'
+  stack: |-
+    mediaError (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    Socket.<anonymous> (node:internal/child_process:497:11)
+    Socket.emit (node:events:514:20)
+    Pipe.<anonymous> (node:net:362:12)
+  operator: 'ifError'
+  stack: |-
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-float-media.test.mjs:109:118)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+    mediaError (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    Socket.<anonymous> (node:internal/child_process:497:11)
+    Socket.emit (node:events:514:20)
+    Pipe.<anonymous> (node:net:362:12)
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 4
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3942.106958

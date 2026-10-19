@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: clip colour is strict and nullable, with no silent conversion or unknown controls
+ok 1 - clip colour is strict and nullable, with no silent conversion or unknown controls
+  ---
+  duration_ms: 6.966167
+  type: 'test'
+  ...
+# Subtest: projection is deterministic and side-effect-free; frozen plan binds every identity and LUT parameter
+ok 2 - projection is deterministic and side-effect-free; frozen plan binds every identity and LUT parameter
+  ---
+  duration_ms: 3.697584
+  type: 'test'
+  ...
+# Subtest: legacy omission/null never acquire a plan or defaults, while unsupported opt-in fails closed
+ok 3 - legacy omission/null never acquire a plan or defaults, while unsupported opt-in fails closed
+  ---
+  duration_ms: 1.344583
+  type: 'test'
+  ...
+# Subtest: timeline, clip update/add, split and replacement acknowledgements preserve exact colour intent
+ok 4 - timeline, clip update/add, split and replacement acknowledgements preserve exact colour intent
+  ---
+  duration_ms: 1.359292
+  type: 'test'
+  ...
+# Subtest: render acknowledgements require the exact non-null managed colour plan
+ok 5 - render acknowledgements require the exact non-null managed colour plan
+  ---
+  duration_ms: 1.495958
+  type: 'test'
+  ...
+# Subtest: source inspection is bounded, read-only local compute and exactly request-bound
+ok 6 - source inspection is bounded, read-only local compute and exactly request-bound
+  ---
+  duration_ms: 0.911917
+  type: 'test'
+  ...
+# Subtest: purposeful preflight blockers are explicit and restored LUT reading stays pair-bound
+ok 7 - purposeful preflight blockers are explicit and restored LUT reading stays pair-bound
+  ---
+  duration_ms: 0.1535
+  type: 'test'
+  ...
+# Subtest: definitive colour edit rejection proofs bind the exact request and do not admit read-only inspection failures
+ok 8 - definitive colour edit rejection proofs bind the exact request and do not admit read-only inspection failures
+  ---
+  duration_ms: 0.532583
+  type: 'test'
+  ...
+# Subtest: colour-only render receipt identity prevents removal from selecting the legacy path
+ok 9 - colour-only render receipt identity prevents removal from selecting the legacy path
+  ---
+  duration_ms: 0.72125
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 242.545416

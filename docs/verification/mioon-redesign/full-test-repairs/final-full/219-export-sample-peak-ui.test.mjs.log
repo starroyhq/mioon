@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: App wires one explicit historical-file observer with live project/workspace/navigation fences
+ok 1 - App wires one explicit historical-file observer with live project/workspace/navigation fences
+  ---
+  duration_ms: 528.779583
+  type: 'test'
+  ...
+# Subtest: classic TSX real shared controls show exact feature name with compact explicit action and polite status
+ok 2 - classic TSX real shared controls show exact feature name with compact explicit action and polite status
+  ---
+  duration_ms: 0.21075
+  type: 'test'
+  ...
+# Subtest: ready shows overall and distinct left/right decoded peaks plus verified hash and timestamp
+ok 3 - ready shows overall and distinct left/right decoded peaks plus verified hash and timestamp
+  ---
+  duration_ms: 0.181417
+  type: 'test'
+  ...
+# Subtest: silence uses explicit minus-infinity while over-one warning remains advisory and textual
+ok 4 - silence uses explicit minus-infinity while over-one warning remains advisory and textual
+  ---
+  duration_ms: 0.148333
+  type: 'test'
+  ...
+# Subtest: all row actions reflect busy; cancel is explicit and only appears on the checked row
+ok 5 - all row actions reflect busy; cancel is explicit and only appears on the checked row
+  ---
+  duration_ms: 0.152959
+  type: 'test'
+  ...
+# Subtest: nonready statuses keep numeric claims absent and explicit recheck available
+ok 6 - nonready statuses keep numeric claims absent and explicit recheck available
+  ---
+  duration_ms: 0.1305
+  type: 'test'
+  ...
+# Subtest: historical peak actions leave immutable file inspection inputs intact while preview keeps its original download
+ok 7 - historical peak actions leave immutable file inspection inputs intact while preview keeps its original download
+  ---
+  duration_ms: 0.730583
+  type: 'test'
+  ...
+# Subtest: new TSX imports React explicitly and scopes wrapping to narrow existing delivery dock
+ok 8 - new TSX imports React explicitly and scopes wrapping to narrow existing delivery dock
+  ---
+  duration_ms: 0.708916
+  type: 'test'
+  ...
+# Subtest: actual App context uses current refs, transport option shape, and frozen rows rather than current timeline
+ok 9 - actual App context uses current refs, transport option shape, and frozen rows rather than current timeline
+  ---
+  duration_ms: 2.87925
+  type: 'test'
+  ...
+# Subtest: actual action and cancel callbacks do no work until clicked and retain checked target/scope
+ok 10 - actual action and cancel callbacks do no work until clicked and retain checked target/scope
+  ---
+  duration_ms: 34.003792
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 876.402875

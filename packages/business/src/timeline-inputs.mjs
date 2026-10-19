@@ -12,9 +12,8 @@ function invalid(message){throw Object.assign(Error(message),{code:'INVALID_TIME
 // Defense in depth for recovered, persisted jobs. The service performs the same
 // public validation, but the renderer must never interpret arbitrary effects.
 export function validateTimeline(timeline,assets,{structureOnly=false}={}){
- // Preserve the legacy rejection wording for malformed legacy inputs. The
- // accepted output set is still the closed shared preset list above.
- if(!timelineOutputPreset(timeline))invalid('Timeline output must be 720×1280 at 30 fps');
+ // Keep the accepted geometry closed, including readable legacy 720 records.
+ if(!timelineOutputPreset(timeline))invalid('Timeline output must match a supported 720 or 1080 preset at 30 fps');
  const WIDTH=timeline.width,HEIGHT=timeline.height;
  if(!Array.isArray(timeline.tracks)||timeline.tracks.length>12||!Array.isArray(timeline.clips)||!timeline.clips.length||timeline.clips.length>100)invalid('Timeline requires 1–100 clips and at most 12 tracks');
  const tracks=new Map();
@@ -60,7 +59,7 @@ export function freezeTimelineSnapshot(timeline,assets,exportSettings,deliveryIn
  return snapshot;
 }
 
-export const TIMELINE_LIMITS=Object.freeze({fps:30,width:720,height:1280,tracks:12,clips:100,durationFrames:18000});
+export const TIMELINE_LIMITS=Object.freeze({fps:30,width:1080,height:1920,tracks:12,clips:100,durationFrames:18000});
 const visualTypes=new Set(['image/png','image/jpeg','image/webp','video/mp4','video/webm']);
 const audioTypes=new Set(['audio/mpeg','audio/wav','audio/mp4']);
 export function validateSavedTimeline(timeline,{track,asset}){

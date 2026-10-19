@@ -1,0 +1,576 @@
+TAP version 13
+# Subtest: GET/list are noncreating and draft writes retain raw text without changing business schemas or records
+ok 1 - GET/list are noncreating and draft writes retain raw text without changing business schemas or records
+  ---
+  duration_ms: 723.751917
+  type: 'test'
+  ...
+# Subtest: exact latest PUT/DELETE retries, two-window CAS and tombstones prevent ABA
+ok 2 - exact latest PUT/DELETE retries, two-window CAS and tombstones prevent ABA
+  ---
+  duration_ms: 1157.69425
+  type: 'test'
+  ...
+# Subtest: scope survives store reopen but old instance requests cannot write; copied sidecars and other channels fail closed
+ok 3 - scope survives store reopen but old instance requests cannot write; copied sidecars and other channels fail closed
+  ---
+  duration_ms: 1207.193625
+  type: 'test'
+  ...
+# Subtest: persisted baseline/source never rebase; deleted target draft stays discoverable and explicitly discardable
+ok 4 - persisted baseline/source never rebase; deleted target draft stays discoverable and explicitly discardable
+  ---
+  duration_ms: 909.35575
+  type: 'test'
+  ...
+# Subtest: unreadable/corrupt/unknown-format storage never means empty and never gets overwritten
+ok 5 - unreadable/corrupt/unknown-format storage never means empty and never gets overwritten
+  ---
+  duration_ms: 696.073583
+  type: 'test'
+  ...
+# Subtest: historical source ownership is required after clip removal before draft/name/revision disclosure or mutation
+ok 6 - historical source ownership is required after clip removal before draft/name/revision disclosure or mutation
+  ---
+  duration_ms: 621.493125
+  type: 'test'
+  ...
+# Subtest: strict fields reject credentials, paths, getters, proxies, malformed raw and oversized text without writing
+ok 7 - strict fields reject credentials, paths, getters, proxies, malformed raw and oversized text without writing
+  ---
+  duration_ms: 519.523625
+  type: 'test'
+  ...
+# Subtest: existing 200-character clip names remain exact while another raw field changes
+ok 8 - existing 200-character clip names remain exact while another raw field changes
+  ---
+  duration_ms: 489.141666
+  type: 'test'
+  ...
+# Subtest: unsafe sidecar files and unavailable storage refuse without repairing permissions or replacing links
+ok 9 - unsafe sidecar files and unavailable storage refuse without repairing permissions or replacing links
+  ---
+  duration_ms: 363.915458
+  type: 'test'
+  ...
+# Subtest: lock:false stores cannot write companion files
+ok 10 - lock:false stores cannot write companion files
+  ---
+  duration_ms: 277.757375
+  type: 'test'
+  ...
+# Subtest: duplicate slot identities and oversized companion files remain intact and unavailable
+ok 11 - duplicate slot identities and oversized companion files remain intact and unavailable
+  ---
+  duration_ms: 349.867166
+  type: 'test'
+  ...
+# Subtest: malformed UTF-8 in an otherwise valid draft envelope is preserved as corrupt evidence
+ok 12 - malformed UTF-8 in an otherwise valid draft envelope is preserved as corrupt evidence
+  ---
+  duration_ms: 402.58225
+  type: 'test'
+  ...
+# Subtest: restored profile is explicit unsupported without filesystem/project/provider access
+ok 13 - restored profile is explicit unsupported without filesystem/project/provider access
+  ---
+  duration_ms: 0.207459
+  type: 'test'
+  ...
+# Subtest: failure at beforePersist preserves either old or exact newly-published bytes without domain work
+ok 14 - failure at beforePersist preserves either old or exact newly-published bytes without domain work
+  ---
+  duration_ms: 419.074791
+  type: 'test'
+  ...
+# Subtest: failure at afterPersist preserves either old or exact newly-published bytes without domain work
+ok 15 - failure at afterPersist preserves either old or exact newly-published bytes without domain work
+  ---
+  duration_ms: 474.9295
+  type: 'test'
+  ...
+# Subtest: failure at afterDirectorySync preserves either old or exact newly-published bytes without domain work
+ok 16 - failure at afterDirectorySync preserves either old or exact newly-published bytes without domain work
+  ---
+  duration_ms: 344.740125
+  type: 'test'
+  ...
+# Subtest: logical slot capacity includes tombstones, refuses new slot without eviction
+ok 17 - logical slot capacity includes tombstones, refuses new slot without eviction
+  ---
+  duration_ms: 465.889917
+  type: 'test'
+  ...
+# Subtest: exact PUT and DELETE retries require a successful durability checkpoint after an uncertain publication
+ok 18 - exact PUT and DELETE retries require a successful durability checkpoint after an uncertain publication
+  ---
+  duration_ms: 533.842709
+  type: 'test'
+  ...
+# Subtest: SDR colour drafts survive actual sidecar reopen without normalizing omitted, null or source-invalidated looks
+ok 19 - SDR colour drafts survive actual sidecar reopen without normalizing omitted, null or source-invalidated looks
+  ---
+  duration_ms: 965.834958
+  type: 'test'
+  ...
+# Subtest: put: owner revoked at beforePersist refuses publication and preserves old bytes
+ok 20 - put: owner revoked at beforePersist refuses publication and preserves old bytes
+  ---
+  duration_ms: 448.427083
+  type: 'test'
+  ...
+# Subtest: put: abort revoked at beforePersist refuses publication and preserves old bytes
+ok 21 - put: abort revoked at beforePersist refuses publication and preserves old bytes
+  ---
+  duration_ms: 456.7035
+  type: 'test'
+  ...
+# Subtest: put: scope revoked at beforePersist refuses publication and preserves old bytes
+ok 22 - put: scope revoked at beforePersist refuses publication and preserves old bytes
+  ---
+  duration_ms: 496.868792
+  type: 'test'
+  ...
+# Subtest: discard: owner revoked at beforePersist refuses publication and preserves old bytes
+ok 23 - discard: owner revoked at beforePersist refuses publication and preserves old bytes
+  ---
+  duration_ms: 550.572833
+  type: 'test'
+  ...
+# Subtest: discard: abort revoked at beforePersist refuses publication and preserves old bytes
+ok 24 - discard: abort revoked at beforePersist refuses publication and preserves old bytes
+  ---
+  duration_ms: 483.83375
+  type: 'test'
+  ...
+# Subtest: discard: scope revoked at beforePersist refuses publication and preserves old bytes
+ok 25 - discard: scope revoked at beforePersist refuses publication and preserves old bytes
+  ---
+  duration_ms: 578.386208
+  type: 'test'
+  ...
+# Subtest: first PUT: owner revoked at beforePersist does not create a companion
+ok 26 - first PUT: owner revoked at beforePersist does not create a companion
+  ---
+  duration_ms: 394.416833
+  type: 'test'
+  ...
+# Subtest: first PUT: abort revoked at beforePersist does not create a companion
+ok 27 - first PUT: abort revoked at beforePersist does not create a companion
+  ---
+  duration_ms: 331.549625
+  type: 'test'
+  ...
+# Subtest: first PUT: scope revoked at beforePersist does not create a companion
+ok 28 - first PUT: scope revoked at beforePersist does not create a companion
+  ---
+  duration_ms: 307.535125
+  type: 'test'
+  ...
+# Subtest: put: owner revoked at afterPersist reports uncertain after exactly one publication
+ok 29 - put: owner revoked at afterPersist reports uncertain after exactly one publication
+  ---
+  duration_ms: 424.305583
+  type: 'test'
+  ...
+# Subtest: put: abort revoked at afterPersist reports uncertain after exactly one publication
+ok 30 - put: abort revoked at afterPersist reports uncertain after exactly one publication
+  ---
+  duration_ms: 643.307709
+  type: 'test'
+  ...
+# Subtest: put: scope revoked at afterPersist reports uncertain after exactly one publication
+ok 31 - put: scope revoked at afterPersist reports uncertain after exactly one publication
+  ---
+  duration_ms: 640.719
+  type: 'test'
+  ...
+# Subtest: put: owner revoked at beforeDirectorySync reports uncertain after exactly one publication
+ok 32 - put: owner revoked at beforeDirectorySync reports uncertain after exactly one publication
+  ---
+  duration_ms: 500.341708
+  type: 'test'
+  ...
+# Subtest: put: abort revoked at beforeDirectorySync reports uncertain after exactly one publication
+ok 33 - put: abort revoked at beforeDirectorySync reports uncertain after exactly one publication
+  ---
+  duration_ms: 468.713375
+  type: 'test'
+  ...
+# Subtest: put: scope revoked at beforeDirectorySync reports uncertain after exactly one publication
+ok 34 - put: scope revoked at beforeDirectorySync reports uncertain after exactly one publication
+  ---
+  duration_ms: 429.3225
+  type: 'test'
+  ...
+# Subtest: put: owner revoked at afterDirectorySync reports uncertain after exactly one publication
+ok 35 - put: owner revoked at afterDirectorySync reports uncertain after exactly one publication
+  ---
+  duration_ms: 395.160208
+  type: 'test'
+  ...
+# Subtest: put: abort revoked at afterDirectorySync reports uncertain after exactly one publication
+ok 36 - put: abort revoked at afterDirectorySync reports uncertain after exactly one publication
+  ---
+  duration_ms: 396.81625
+  type: 'test'
+  ...
+# Subtest: put: scope revoked at afterDirectorySync reports uncertain after exactly one publication
+ok 37 - put: scope revoked at afterDirectorySync reports uncertain after exactly one publication
+  ---
+  duration_ms: 353.250792
+  type: 'test'
+  ...
+# Subtest: discard: owner revoked at afterPersist reports uncertain after exactly one publication
+ok 38 - discard: owner revoked at afterPersist reports uncertain after exactly one publication
+  ---
+  duration_ms: 409.82775
+  type: 'test'
+  ...
+# Subtest: discard: abort revoked at afterPersist reports uncertain after exactly one publication
+ok 39 - discard: abort revoked at afterPersist reports uncertain after exactly one publication
+  ---
+  duration_ms: 396.327
+  type: 'test'
+  ...
+# Subtest: discard: scope revoked at afterPersist reports uncertain after exactly one publication
+ok 40 - discard: scope revoked at afterPersist reports uncertain after exactly one publication
+  ---
+  duration_ms: 607.442125
+  type: 'test'
+  ...
+# Subtest: discard: owner revoked at beforeDirectorySync reports uncertain after exactly one publication
+ok 41 - discard: owner revoked at beforeDirectorySync reports uncertain after exactly one publication
+  ---
+  duration_ms: 412.673583
+  type: 'test'
+  ...
+# Subtest: discard: abort revoked at beforeDirectorySync reports uncertain after exactly one publication
+ok 42 - discard: abort revoked at beforeDirectorySync reports uncertain after exactly one publication
+  ---
+  duration_ms: 385.190458
+  type: 'test'
+  ...
+# Subtest: discard: scope revoked at beforeDirectorySync reports uncertain after exactly one publication
+ok 43 - discard: scope revoked at beforeDirectorySync reports uncertain after exactly one publication
+  ---
+  duration_ms: 431.155375
+  type: 'test'
+  ...
+# Subtest: discard: owner revoked at afterDirectorySync reports uncertain after exactly one publication
+ok 44 - discard: owner revoked at afterDirectorySync reports uncertain after exactly one publication
+  ---
+  duration_ms: 451.558166
+  type: 'test'
+  ...
+# Subtest: discard: abort revoked at afterDirectorySync reports uncertain after exactly one publication
+ok 45 - discard: abort revoked at afterDirectorySync reports uncertain after exactly one publication
+  ---
+  duration_ms: 507.897917
+  type: 'test'
+  ...
+# Subtest: discard: scope revoked at afterDirectorySync reports uncertain after exactly one publication
+ok 46 - discard: scope revoked at afterDirectorySync reports uncertain after exactly one publication
+  ---
+  duration_ms: 926.90375
+  type: 'test'
+  ...
+# Subtest: exact put retry: owner revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot
+ok 47 - exact put retry: owner revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot
+  ---
+  duration_ms: 598.265083
+  type: 'test'
+  ...
+# Subtest: exact put retry: abort revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot
+ok 48 - exact put retry: abort revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot
+  ---
+  duration_ms: 375.276208
+  type: 'test'
+  ...
+# Subtest: exact put retry: scope revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot
+ok 49 - exact put retry: scope revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot
+  ---
+  duration_ms: 854.151458
+  type: 'test'
+  ...
+# Subtest: exact put retry: owner revoked at afterDirectorySync cannot ACK or rewrite the accepted slot
+ok 50 - exact put retry: owner revoked at afterDirectorySync cannot ACK or rewrite the accepted slot
+  ---
+  duration_ms: 1109.111959
+  type: 'test'
+  ...
+# Subtest: exact put retry: abort revoked at afterDirectorySync cannot ACK or rewrite the accepted slot
+ok 51 - exact put retry: abort revoked at afterDirectorySync cannot ACK or rewrite the accepted slot
+  ---
+  duration_ms: 1177.325834
+  type: 'test'
+  ...
+# Subtest: exact put retry: scope revoked at afterDirectorySync cannot ACK or rewrite the accepted slot
+ok 52 - exact put retry: scope revoked at afterDirectorySync cannot ACK or rewrite the accepted slot
+  ---
+  duration_ms: 957.703125
+  type: 'test'
+  ...
+# Subtest: exact discard retry: owner revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot
+ok 53 - exact discard retry: owner revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot
+  ---
+  duration_ms: 633.706459
+  type: 'test'
+  ...
+# Subtest: exact discard retry: abort revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot
+ok 54 - exact discard retry: abort revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot
+  ---
+  duration_ms: 981.031125
+  type: 'test'
+  ...
+# Subtest: exact discard retry: scope revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot
+ok 55 - exact discard retry: scope revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot
+  ---
+  duration_ms: 504.309916
+  type: 'test'
+  ...
+# Subtest: exact discard retry: owner revoked at afterDirectorySync cannot ACK or rewrite the accepted slot
+ok 56 - exact discard retry: owner revoked at afterDirectorySync cannot ACK or rewrite the accepted slot
+  ---
+  duration_ms: 578.529625
+  type: 'test'
+  ...
+# Subtest: exact discard retry: abort revoked at afterDirectorySync cannot ACK or rewrite the accepted slot
+ok 57 - exact discard retry: abort revoked at afterDirectorySync cannot ACK or rewrite the accepted slot
+  ---
+  duration_ms: 446.763292
+  type: 'test'
+  ...
+# Subtest: exact discard retry: scope revoked at afterDirectorySync cannot ACK or rewrite the accepted slot
+ok 58 - exact discard retry: scope revoked at afterDirectorySync cannot ACK or rewrite the accepted slot
+  ---
+  duration_ms: 530.374667
+  type: 'test'
+  ...
+# Subtest: fresh PUT: final response identity failure stays uncertain
+ok 59 - fresh PUT: final response identity failure stays uncertain
+  ---
+  duration_ms: 657.672875
+  type: 'test'
+  ...
+# Subtest: exact PUT retry: final response identity failure stays uncertain
+ok 60 - exact PUT retry: final response identity failure stays uncertain
+  ---
+  duration_ms: 619.058333
+  type: 'test'
+  ...
+# Subtest: fresh PUT: final response owner revocation cannot ACK
+ok 61 - fresh PUT: final response owner revocation cannot ACK
+  ---
+  duration_ms: 562.4175
+  type: 'test'
+  ...
+# Subtest: fresh PUT: final response abort revocation cannot ACK
+ok 62 - fresh PUT: final response abort revocation cannot ACK
+  ---
+  duration_ms: 424.663208
+  type: 'test'
+  ...
+# Subtest: exact PUT retry: final response owner revocation cannot ACK
+ok 63 - exact PUT retry: final response owner revocation cannot ACK
+  ---
+  duration_ms: 478.60225
+  type: 'test'
+  ...
+# Subtest: exact PUT retry: final response abort revocation cannot ACK
+ok 64 - exact PUT retry: final response abort revocation cannot ACK
+  ---
+  duration_ms: 642.908333
+  type: 'test'
+  ...
+# Subtest: put: uncertain publication and failed exact retries preserve CAS, raw fields and tombstones
+ok 65 - put: uncertain publication and failed exact retries preserve CAS, raw fields and tombstones
+  ---
+  duration_ms: 926.966
+  type: 'test'
+  ...
+# Subtest: discard: uncertain publication and failed exact retries preserve CAS, raw fields and tombstones
+ok 66 - discard: uncertain publication and failed exact retries preserve CAS, raw fields and tombstones
+  ---
+  duration_ms: 1078.754458
+  type: 'test'
+  ...
+# Subtest: directory checkpoint rejects a real opened descriptor with identity mismatch before fsync
+ok 67 - directory checkpoint rejects a real opened descriptor with identity mismatch before fsync
+  ---
+  duration_ms: 1183.773333
+  type: 'test'
+  ...
+# Subtest: directory checkpoint rejects a real opened descriptor with type mismatch before fsync
+ok 68 - directory checkpoint rejects a real opened descriptor with type mismatch before fsync
+  ---
+  duration_ms: 883.477375
+  type: 'test'
+  ...
+# Subtest: directory checkpoint rejects a real opened descriptor with private-mode mismatch before fsync
+ok 69 - directory checkpoint rejects a real opened descriptor with private-mode mismatch before fsync
+  ---
+  duration_ms: 766.201333
+  type: 'test'
+  ...
+# Subtest: put: owner revoked by the final prepublication identity read refuses the write
+ok 70 - put: owner revoked by the final prepublication identity read refuses the write
+  ---
+  duration_ms: 568.877333
+  type: 'test'
+  ...
+# Subtest: put: abort revoked by the final prepublication identity read refuses the write
+ok 71 - put: abort revoked by the final prepublication identity read refuses the write
+  ---
+  duration_ms: 437.751625
+  type: 'test'
+  ...
+# Subtest: discard: owner revoked by the final prepublication identity read refuses the write
+ok 72 - discard: owner revoked by the final prepublication identity read refuses the write
+  ---
+  duration_ms: 343.252625
+  type: 'test'
+  ...
+# Subtest: discard: abort revoked by the final prepublication identity read refuses the write
+ok 73 - discard: abort revoked by the final prepublication identity read refuses the write
+  ---
+  duration_ms: 322.410291
+  type: 'test'
+  ...
+# Subtest: fresh PUT: response source lookup failure after directory sync stays uncertain
+ok 74 - fresh PUT: response source lookup failure after directory sync stays uncertain
+  ---
+  duration_ms: 826.816
+  type: 'test'
+  ...
+# Subtest: exact PUT retry: response source lookup failure after directory sync stays uncertain
+ok 75 - exact PUT retry: response source lookup failure after directory sync stays uncertain
+  ---
+  duration_ms: 543.915
+  type: 'test'
+  ...
+# Subtest: strict raw schema retains bounded editing strings and absent/null independently
+ok 76 - strict raw schema retains bounded editing strings and absent/null independently
+  ---
+  duration_ms: 7.350458
+  type: 'test'
+  ...
+# Subtest: v1 read is byte-preserving; legacy PUT stays v1; explicit null promotes all rows atomically; v2 never downgrades
+ok 77 - v1 read is byte-preserving; legacy PUT stays v1; explicit null promotes all rows atomically; v2 never downgrades
+  ---
+  duration_ms: 187.006166
+  type: 'test'
+  ...
+# Subtest: actual frozen old service reads v1 but rejects v2 GET/list/PUT/DELETE without replacing bytes
+ok 78 - actual frozen old service reads v1 but rejects v2 GET/list/PUT/DELETE without replacing bytes
+  ---
+  duration_ms: 66.995458
+  type: 'test'
+  ...
+# Subtest: strict v1 rejects envelope presence and strict v2 rejects future fields without repair
+ok 79 - strict v1 rejects envelope presence and strict v2 rejects future fields without repair
+  ---
+  duration_ms: 57.428292
+  type: 'test'
+  ...
+# Subtest: arrays only admitted at exact points path and all descriptors inspected without getters/proxy traps
+ok 80 - arrays only admitted at exact points path and all descriptors inspected without getters/proxy traps
+  ---
+  duration_ms: 41.692083
+  type: 'test'
+  ...
+# Subtest: promotion beforePersist retains old bytes or exact new bytes and supports qualified retry
+ok 81 - promotion beforePersist retains old bytes or exact new bytes and supports qualified retry
+  ---
+  duration_ms: 61.345416
+  type: 'test'
+  ...
+# Subtest: promotion afterPersist retains old bytes or exact new bytes and supports qualified retry
+ok 82 - promotion afterPersist retains old bytes or exact new bytes and supports qualified retry
+  ---
+  duration_ms: 44.509334
+  type: 'test'
+  ...
+# Subtest: promotion beforeDirectorySync retains old bytes or exact new bytes and supports qualified retry
+ok 83 - promotion beforeDirectorySync retains old bytes or exact new bytes and supports qualified retry
+  ---
+  duration_ms: 44.569042
+  type: 'test'
+  ...
+# Subtest: published limits stay unchanged
+ok 84 - published limits stay unchanged
+  ---
+  duration_ms: 0.133125
+  type: 'test'
+  ...
+# Subtest: complete ordinary6611/adversarial9373 fixtures qualify aggregate rows, requests and success wrappers
+ok 85 - complete ordinary6611/adversarial9373 fixtures qualify aggregate rows, requests and success wrappers
+  ---
+  duration_ms: 50.42675
+  type: 'test'
+  ...
+# {"legacySlotBytes":5430,"ordinaryEnvelopeSlotBytes":6611,"adversarialEnvelopeSlotBytes":9373,"completePutBytes":6706,"completeSuccessBytes":6817,"maximumRowSuccessBytes":8398}
+# Subtest: serialized complete row 8191: inclusive real service read boundary and evidence preservation
+ok 86 - serialized complete row 8191: inclusive real service read boundary and evidence preservation
+  ---
+  duration_ms: 16.9175
+  type: 'test'
+  ...
+# Subtest: serialized complete row 8192: inclusive real service read boundary and evidence preservation
+ok 87 - serialized complete row 8192: inclusive real service read boundary and evidence preservation
+  ---
+  duration_ms: 7.810333
+  type: 'test'
+  ...
+# Subtest: serialized complete row 8193: inclusive real service read boundary and evidence preservation
+ok 88 - serialized complete row 8193: inclusive real service read boundary and evidence preservation
+  ---
+  duration_ms: 8.045917
+  type: 'test'
+  ...
+# Subtest: actual HTTP handler accepts12287/12288 and refuses12289 bytes before mutation for declared and streamed requests
+ok 89 - actual HTTP handler accepts12287/12288 and refuses12289 bytes before mutation for declared and streamed requests
+  ---
+  duration_ms: 93.920125
+  type: 'test'
+  ...
+# Subtest: complete 128 maximum rows and mixed tombstones fit disk accounting; no 129th slot eviction
+ok 90 - complete 128 maximum rows and mixed tombstones fit disk accounting; no 129th slot eviction
+  ---
+  duration_ms: 121.205667
+  type: 'test'
+  ...
+# {"max128RowsDiskBytes":1048814,"mixed127RowsOneTombstoneBytes":1040815,"tombstoneBytes":193,"metadataCommasNewlineBytes":238}
+# Subtest: actual companion file 2097151 bytes: whitespace counts toward disk read cap
+ok 91 - actual companion file 2097151 bytes: whitespace counts toward disk read cap
+  ---
+  duration_ms: 25.618208
+  type: 'test'
+  ...
+# Subtest: actual companion file 2097152 bytes: whitespace counts toward disk read cap
+ok 92 - actual companion file 2097152 bytes: whitespace counts toward disk read cap
+  ---
+  duration_ms: 22.776125
+  type: 'test'
+  ...
+# Subtest: actual companion file 2097153 bytes: whitespace counts toward disk read cap
+ok 93 - actual companion file 2097153 bytes: whitespace counts toward disk read cap
+  ---
+  duration_ms: 43.468833
+  type: 'test'
+  ...
+# Subtest: maximum-row success wrapper accepts12287/12288 and rejects12289 actual client response bytes
+ok 94 - maximum-row success wrapper accepts12287/12288 and rejects12289 actual client response bytes
+  ---
+  duration_ms: 112.132
+  type: 'test'
+  ...
+1..94
+# tests 94
+# suites 0
+# pass 94
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 47279.968125

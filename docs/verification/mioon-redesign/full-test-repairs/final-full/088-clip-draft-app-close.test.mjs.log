@@ -1,0 +1,118 @@
+TAP version 13
+# Subtest: actual App close drain immediately waits for the registered clip draft instead of its debounce
+ok 1 - actual App close drain immediately waits for the registered clip draft instead of its debounce
+  ---
+  duration_ms: 5.143291
+  type: 'test'
+  ...
+# Subtest: actual App close refusal remains false without retry, deletion or business submission
+ok 2 - actual App close refusal remains false without retry, deletion or business submission
+  ---
+  duration_ms: 0.149792
+  type: 'test'
+  ...
+# Subtest: actual App late close ACK cannot approve replacement owner
+ok 3 - actual App late close ACK cannot approve replacement owner
+  ---
+  duration_ms: 0.52725
+  type: 'test'
+  ...
+# Subtest: actual App late close ACK cannot approve new input
+ok 4 - actual App late close ACK cannot approve new input
+  ---
+  duration_ms: 0.227667
+  type: 'test'
+  ...
+# Subtest: actual App late close ACK cannot approve restored scope
+ok 5 - actual App late close ACK cannot approve restored scope
+  ---
+  duration_ms: 0.200166
+  type: 'test'
+  ...
+# Subtest: actual App restored branch skips local draft I/O and preserves the original view drain
+ok 6 - actual App restored branch skips local draft I/O and preserves the original view drain
+  ---
+  duration_ms: 0.207334
+  type: 'test'
+  ...
+# Subtest: actual App exact43 persistence drains only its clip and readonly view, then checks owner and origin after the ACK
+ok 7 - actual App exact43 persistence drains only its clip and readonly view, then checks owner and origin after the ACK
+  ---
+  duration_ms: 0.608542
+  type: 'test'
+  ...
+# Subtest: actual43 browser beforeunload blocks unconfirmed input while pagehide remains best-effort
+ok 8 - actual43 browser beforeunload blocks unconfirmed input while pagehide remains best-effort
+  ---
+  duration_ms: 0.439125
+  type: 'test'
+  ...
+# Subtest: actual App rechecks clip input after the slower unrelated view drain settles
+ok 9 - actual App rechecks clip input after the slower unrelated view drain settles
+  ---
+  duration_ms: 0.224875
+  type: 'test'
+  ...
+# Subtest: actual App initially missing clip cannot acknowledge a newly mounted owner
+ok 10 - actual App initially missing clip cannot acknowledge a newly mounted owner
+  ---
+  duration_ms: 0.240875
+  type: 'test'
+  ...
+# Subtest: actual App checks renewed persistence uncertainty after clip ACK while other drains wait
+ok 11 - actual App checks renewed persistence uncertainty after clip ACK while other drains wait
+  ---
+  duration_ms: 0.239417
+  type: 'test'
+  ...
+# Subtest: actual App hidden/pagehide/beforeunload paths flush only unpersisted clip input
+ok 12 - actual App hidden/pagehide/beforeunload paths flush only unpersisted clip input
+  ---
+  duration_ms: 0.523666
+  type: 'test'
+  ...
+# Subtest: actual lifecycle cleanup retains a newer registered global close handler
+ok 13 - actual lifecycle cleanup retains a newer registered global close handler
+  ---
+  duration_ms: 0.085583
+  type: 'test'
+  ...
+# Subtest: desktop close warning describes unconfirmed local drafts and view without promising cancellation
+ok 14 - desktop close warning describes unconfirmed local drafts and view without promising cancellation
+  ---
+  duration_ms: 1.200084
+  type: 'test'
+  ...
+# Subtest: native editor close drains its own clip and view while the launcher exclusively drains the shared locator
+ok 15 - native editor close drains its own clip and view while the launcher exclusively drains the shared locator
+  ---
+  duration_ms: 0.066417
+  type: 'test'
+  ...
+# Subtest: actual App composition blocks close drain and beforeunload for restored=false
+ok 16 - actual App composition blocks close drain and beforeunload for restored=false
+  ---
+  duration_ms: 0.080125
+  type: 'test'
+  ...
+# Subtest: actual App composition blocks close drain and beforeunload for restored=true
+ok 17 - actual App composition blocks close drain and beforeunload for restored=true
+  ---
+  duration_ms: 0.031458
+  type: 'test'
+  ...
+# Subtest: actual App composition beginning during another drain rejects late close approval
+ok 18 - actual App composition beginning during another drain rejects late close approval
+  ---
+  duration_ms: 0.042584
+  type: 'test'
+  ...
+1..18
+# tests 18
+# suites 0
+# pass 18
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 216.746583

@@ -1,0 +1,34 @@
+{
+  "evidenceSource": "Actual commands and results returned during this agent turn; original TAP output was not saved to a file.",
+  "node": {
+    "executable": "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+    "observedVersion": "v24.21.0",
+    "versionCommand": "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node --version"
+  },
+  "regression": {
+    "runtimeFile": "apps/web/src/App.jsx",
+    "testFile": "tests/clip-opacity-retained-app.test.mjs",
+    "defect": "The retained-input ancestor capture guard cancelled native Enter/Escape defaults in opacity composition after disconnection because its allowlist included volume input but omitted opacity input.",
+    "fix": "Add the existing clip-opacity-envelope section to the same retained-input allowlist."
+  },
+  "beforeFix": {
+    "command": "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node --test tests/clip-opacity-retained-app.test.mjs",
+    "exitCode": 1,
+    "total": 9,
+    "passed": 3,
+    "failed": 6,
+    "failureScope": "Enter and Escape in ordinary42, restored43 memory fallback, and restored43 new-origin persistence each failed the native-default-preservation assertion."
+  },
+  "afterFix": {
+    "command": "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node --test tests/clip-opacity-retained-app.test.mjs tests/clip-opacity-ime-session.test.mjs tests/opacity-restored-draft-ime.test.mjs tests/clip-draft-app-close.test.mjs",
+    "exitCode": 0,
+    "newRegression": {"total": 9, "passed": 9, "failed": 0},
+    "relatedSuite": {"total": 48, "passed": 48, "failed": 0, "cancelled": 0, "skipped": 0, "todo": 0},
+    "scope": "Actual App ancestor guard and actual Inspector/opacity-control/controller synthetic event routing; disconnected composition settlement, no business Save or draft write, volume/abandon allowance, unrelated-action interception, existing IME and close-drain regressions."
+  },
+  "limitations": [
+    "Synthetic event routing and attribute-only ancestor matching; no real browser DOM or operating-system input method was exercised.",
+    "Does not establish real Chinese/Japanese IME acceptance, GUI window closure/reopen, native desktop integration, or media/render qualification.",
+    "No listener, provider, real media, user project, dependency installation, or environment modification was used."
+  ]
+}

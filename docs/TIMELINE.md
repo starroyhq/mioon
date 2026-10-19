@@ -1,5 +1,7 @@
 # Durable multitrack timeline
 
+波纹删除使用独立的 `timeline.clip.rippleRemove`，仅关闭同轨被删片段的区间，保留普通删除语义；操作、恢复兼容和传输示例见 [波纹删除](TIMELINE-RIPPLE-DELETE.md)。
+
 Each project has one independent timeline. `project.get` includes it, and
 `timeline.get {projectId}` reads it directly. On the first read of an existing
 project the database adds an empty timeline with Video 1, Video 2 and Audio 1.

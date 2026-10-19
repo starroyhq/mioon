@@ -1,0 +1,792 @@
+{
+  "base": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-ordinary40-upgrade-bpWdiN",
+  "source": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-ordinary40-upgrade-bpWdiN/source40",
+  "backup": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-ordinary40-upgrade-bpWdiN/backup40",
+  "destination": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-ordinary40-upgrade-bpWdiN/candidate42",
+  "projectId": "e7c1df79-bfb1-4fbb-b3d9-7c665b2ab21a",
+  "clipId": "0e12b081-8d86-4963-b22a-4c892084d12a",
+  "relativePath": "media/3f6c45a6-56e6-4782-b7dc-ecf5e23d70e2.mp4",
+  "mediaSha256": "1965086ea8c985e3891bdce896452f4da4f420a2fa2b0c7c6b4235cf30fbcb16",
+  "sourceDbHash": "643a7996b6446c68b8a9ec970c7dd851a68543c0f37da879f923b1477d0d8715",
+  "preservation": {
+    "agent_chat_events": {
+      "columns": [
+        "runId",
+        "seq",
+        "data",
+        "bytes"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "agent_chat_quota": {
+      "columns": [
+        "id",
+        "runs",
+        "bytes",
+        "reservedBytes"
+      ],
+      "digest": "e3e6aa01c192fe339ff891cc597743d8a7f77209e38e13e9f4fb2ee7f6f44d3f",
+      "rows": 1
+    },
+    "agent_chat_requests": {
+      "columns": [
+        "requestId",
+        "projectId",
+        "threadId",
+        "runId",
+        "fingerprint",
+        "acceptance",
+        "bytes"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "agent_chat_runs": {
+      "columns": [
+        "id",
+        "projectId",
+        "threadId",
+        "requestId",
+        "position",
+        "status",
+        "data",
+        "bytes"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "agent_chat_steps": {
+      "columns": [
+        "id",
+        "runId",
+        "projectId",
+        "position",
+        "kind",
+        "status",
+        "data",
+        "bytes"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "agent_chat_threads": {
+      "columns": [
+        "id",
+        "projectId",
+        "revision",
+        "nextPosition"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "agent_edit_proposals": {
+      "columns": [
+        "position",
+        "id",
+        "projectId",
+        "runId",
+        "shotId",
+        "targetKind",
+        "clipId",
+        "timelineId",
+        "digest",
+        "definition",
+        "status",
+        "approval",
+        "outcome",
+        "createdAt",
+        "updatedAt",
+        "bytes"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "asset_annotation_requests": {
+      "columns": [
+        "requestId",
+        "operation",
+        "projectId",
+        "canonicalInput",
+        "response"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "asset_annotations": {
+      "columns": [
+        "assetId",
+        "projectId",
+        "revision",
+        "tags",
+        "note"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "asset_disposition_requests": {
+      "columns": [
+        "requestId",
+        "operation",
+        "projectId",
+        "canonicalInput",
+        "response"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "asset_dispositions": {
+      "columns": [
+        "assetId",
+        "projectId",
+        "revision",
+        "disposition"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "asset_range_requests": {
+      "columns": [
+        "requestId",
+        "operation",
+        "projectId",
+        "canonicalInput",
+        "response"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "asset_ranges": {
+      "columns": [
+        "assetId",
+        "projectId",
+        "revision",
+        "inFrame",
+        "outFrame"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "assets": {
+      "columns": [
+        "id",
+        "projectId",
+        "data"
+      ],
+      "digest": "c6d8a2dc28be43fc6625988cbb898d5418c9a91366bfe2fa6a7bc19d93092cb5",
+      "rows": 1
+    },
+    "edges": {
+      "columns": [
+        "id",
+        "projectId",
+        "data"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "edit_tasks": {
+      "columns": [
+        "position",
+        "id",
+        "projectId",
+        "operation",
+        "input",
+        "requestId",
+        "digest",
+        "lane",
+        "origin",
+        "status",
+        "revision",
+        "acknowledged",
+        "claim",
+        "claimInstance",
+        "receiptDigest",
+        "errorCode",
+        "createdAt",
+        "updatedAt",
+        "bytes"
+      ],
+      "digest": "03b810b2f4f9a06dd72619cce12f79e737d0017ab35177008631d5af4982ba4e",
+      "rows": 1
+    },
+    "exports": {
+      "columns": [
+        "id",
+        "projectId",
+        "data"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "frame_requests": {
+      "columns": [
+        "requestId",
+        "operation",
+        "projectId",
+        "taskId",
+        "inputHash",
+        "canonicalInput",
+        "response"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "frame_tasks": {
+      "columns": [
+        "id",
+        "projectId",
+        "requestId",
+        "inputHash",
+        "input",
+        "snapshot",
+        "state",
+        "revision",
+        "started",
+        "stagedReceipt",
+        "assetId",
+        "errorCode",
+        "createdAt",
+        "updatedAt"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "idempotency": {
+      "columns": [
+        "scope",
+        "requestId",
+        "requestHash",
+        "resourceId"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "image_groups": {
+      "columns": [
+        "id",
+        "projectId",
+        "name",
+        "revision",
+        "headVersionId",
+        "activeTaskId",
+        "createdAt",
+        "updatedAt"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "image_remote_observations": {
+      "columns": [
+        "requestId",
+        "id",
+        "projectId",
+        "taskId",
+        "inputHash",
+        "canonicalInput",
+        "response",
+        "state",
+        "revision",
+        "remoteRevision",
+        "errorCode",
+        "createdAt",
+        "updatedAt"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "image_remote_runs": {
+      "columns": [
+        "taskId",
+        "projectId",
+        "reviewId",
+        "promptId",
+        "clientId",
+        "outputNonce",
+        "filenamePrefix",
+        "workflowId",
+        "workflowVersion",
+        "comfyVersion",
+        "seed",
+        "baseUrl",
+        "graphHash",
+        "rawGraph",
+        "state",
+        "revision",
+        "contentVerified",
+        "outputDescriptor",
+        "resultSha256",
+        "resultBytes",
+        "errorCode",
+        "createdAt",
+        "updatedAt",
+        "lastObservedAt"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "image_requests": {
+      "columns": [
+        "requestId",
+        "operation",
+        "projectId",
+        "inputHash",
+        "canonicalInput",
+        "response"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "image_reviews": {
+      "columns": [
+        "id",
+        "projectId",
+        "requestId",
+        "inputHash",
+        "canonicalInput",
+        "intentHash",
+        "canonicalIntent",
+        "state",
+        "revision",
+        "taskId",
+        "postAttempts",
+        "createdAt",
+        "updatedAt",
+        "approvedAt",
+        "rejectedAt",
+        "dispatchedAt"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "image_tasks": {
+      "columns": [
+        "id",
+        "projectId",
+        "groupId",
+        "requestId",
+        "inputHash",
+        "input",
+        "snapshot",
+        "state",
+        "revision",
+        "dispatched",
+        "stagedReceipt",
+        "versionId",
+        "errorCode",
+        "createdAt",
+        "updatedAt"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "image_versions": {
+      "columns": [
+        "id",
+        "projectId",
+        "groupId",
+        "taskId",
+        "number",
+        "assetId",
+        "data"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "job_events": {
+      "columns": [
+        "id",
+        "jobId",
+        "event",
+        "createdAt"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "jobs": {
+      "columns": [
+        "id",
+        "projectId",
+        "data"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "lut_import_requests": {
+      "columns": [
+        "requestId",
+        "projectId",
+        "inputHash",
+        "resourceId"
+      ],
+      "digest": "edc0978bcbbee5036edc6596cf413eb7cade872990e44742f57d7681107b8a42",
+      "rows": 1
+    },
+    "mutation_requests": {
+      "columns": [
+        "requestId",
+        "operation",
+        "projectId",
+        "canonicalInput",
+        "response"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "nodes": {
+      "columns": [
+        "id",
+        "projectId",
+        "data"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "project_lut_resources": {
+      "columns": [
+        "id",
+        "projectId",
+        "name",
+        "sha256",
+        "sizeBytes",
+        "profile",
+        "metadata",
+        "content",
+        "createdAt"
+      ],
+      "digest": "9b13247fdfda1b2de76042af98c2132a9d0e86c2da971acb60ccc4dc6bc64cf6",
+      "rows": 1
+    },
+    "projects": {
+      "columns": [
+        "id",
+        "data"
+      ],
+      "digest": "0cce841a02451551648151fd11b5cbeeaa27a8daeceb67fb59b66c883459e762",
+      "rows": 1
+    },
+    "reference_requests": {
+      "columns": [
+        "requestId",
+        "requestHash",
+        "response"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "schema_version": {
+      "columns": [
+        "version"
+      ],
+      "digest": "161e5941407436704fed10985bc3674deec13ff6dce783355ded97fe4f6f9589",
+      "rows": 32
+    },
+    "shots": {
+      "columns": [
+        "id",
+        "projectId",
+        "data"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "sqlite_sequence": {
+      "columns": [
+        "name",
+        "seq"
+      ],
+      "digest": "1010a234d11cbcfe0717cbd5b4948277ef8224fc26c966cb8365e2615db662b4",
+      "rows": 1
+    },
+    "subject_bindings": {
+      "columns": [
+        "id",
+        "projectId",
+        "shotId",
+        "subjectId",
+        "role",
+        "revision",
+        "subjectVersionId",
+        "reviewedHeadVersionId",
+        "createdAt",
+        "updatedAt"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "subject_requests": {
+      "columns": [
+        "requestId",
+        "operation",
+        "projectId",
+        "canonicalInput",
+        "response"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "subject_versions": {
+      "columns": [
+        "id",
+        "projectId",
+        "subjectId",
+        "number",
+        "assetId",
+        "data"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "subjects": {
+      "columns": [
+        "id",
+        "projectId",
+        "kind",
+        "name",
+        "revision",
+        "headVersionId",
+        "createdAt",
+        "updatedAt"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "timeline_format_requests": {
+      "columns": [
+        "requestId",
+        "projectId",
+        "input"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "timeline_history": {
+      "columns": [
+        "id",
+        "projectId",
+        "position",
+        "operation",
+        "createdAt",
+        "beforeSnapshot",
+        "afterSnapshot"
+      ],
+      "digest": "f8cf9d59f0c865258bd94b57d4210a20609bee703aef4cba9abeb4af047e39e4",
+      "rows": 2
+    },
+    "timeline_history_cursors": {
+      "columns": [
+        "projectId",
+        "position"
+      ],
+      "digest": "d9bc034ba664ee29def448201f78bf4b8eb6a22340f13309c8d3ff771cbd2fbc",
+      "rows": 1
+    },
+    "timeline_requests": {
+      "columns": [
+        "requestId",
+        "requestHash",
+        "response"
+      ],
+      "digest": "4aa5d4ad506c78d7c83b4527e43a1501d740f24cda994e0ffc63946fbf89857a",
+      "rows": 1
+    },
+    "timelines": {
+      "columns": [
+        "id",
+        "projectId",
+        "data"
+      ],
+      "digest": "b10bd08e35a461065bab9428c25bcd9807276e5d834cce15c6c3a7b493be1540",
+      "rows": 1
+    },
+    "versions": {
+      "columns": [
+        "id",
+        "projectId",
+        "jobId",
+        "data"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "waveform_cache": {
+      "columns": [
+        "position",
+        "cacheKey",
+        "projectId",
+        "sourceSha256",
+        "algorithm",
+        "status",
+        "attemptId",
+        "data",
+        "bytes",
+        "reservedBytes"
+      ],
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "workspace_preferences": {
+      "columns": [
+        "projectId",
+        "revision",
+        "state"
+      ],
+      "digest": "aaebf341fac92cc9a8f08f0bc0a4c264b665be7edc2176ede0160754016d6e17",
+      "rows": 1
+    }
+  },
+  "lastProject": {
+    "version": 1,
+    "workspaceScope": "94b97295ebbe056ff798d590c6007dbd6850299ebf8d881081a91cf80606206f",
+    "revision": 7,
+    "projectId": "e7c1df79-bfb1-4fbb-b3d9-7c665b2ab21a",
+    "updatedAt": "2026-10-16T00:00:00.000Z"
+  },
+  "backupResult": {
+    "format": "mioon-workspace-backup",
+    "formatVersion": 1,
+    "backupId": "f749f289-7495-4b95-be02-7eb9848081c8",
+    "integrity": "verified",
+    "restoration": "not_tested",
+    "databaseSchemaVersion": 40,
+    "fileCount": 2,
+    "payloadBytes": 860195,
+    "inventory": {
+      "complete": true,
+      "totalIssues": 0,
+      "issues": [],
+      "truncated": false
+    }
+  },
+  "sourceTree": [
+    [
+      "",
+      {
+        "mode": 16832
+      }
+    ],
+    [
+      "last-project-v1.json",
+      {
+        "mode": 33152,
+        "bytes": 201,
+        "sha256": "8ce19efb0c38fb3862d6fa292fe5938fb104a3797ae38e5c3e1b8d1a5a70d9b9"
+      }
+    ],
+    [
+      "local-drafts-v1.json",
+      {
+        "mode": 33152,
+        "bytes": 289,
+        "sha256": "3d0596e3a234fa1eb2fdf03abafbe88075e1689e7b2e4e1942bfe0494d951fef"
+      }
+    ],
+    [
+      "media",
+      {
+        "mode": 16832
+      }
+    ],
+    [
+      "media/3f6c45a6-56e6-4782-b7dc-ecf5e23d70e2.mp4",
+      {
+        "mode": 33152,
+        "bytes": 35,
+        "sha256": "1965086ea8c985e3891bdce896452f4da4f420a2fa2b0c7c6b4235cf30fbcb16"
+      }
+    ],
+    [
+      "workbench.sqlite",
+      {
+        "mode": 33188,
+        "bytes": 860160,
+        "sha256": "643a7996b6446c68b8a9ec970c7dd851a68543c0f37da879f923b1477d0d8715"
+      }
+    ]
+  ],
+  "backupTree": [
+    [
+      "",
+      {
+        "mode": 16832
+      }
+    ],
+    [
+      "COMPLETE.json",
+      {
+        "mode": 33152,
+        "bytes": 223,
+        "sha256": "35281c43f7c898d99c7e31a79043557cf652cea33ec03db52b5aa2077bebc2cb"
+      }
+    ],
+    [
+      "manifest.json",
+      {
+        "mode": 33152,
+        "bytes": 625,
+        "sha256": "5a87a4cc9593fae6469add137706affe7b9cd8182d5e2a769df2154667147f4d"
+      }
+    ],
+    [
+      "payload",
+      {
+        "mode": 16832
+      }
+    ],
+    [
+      "payload/media",
+      {
+        "mode": 16832
+      }
+    ],
+    [
+      "payload/media/3f6c45a6-56e6-4782-b7dc-ecf5e23d70e2.mp4",
+      {
+        "mode": 33152,
+        "bytes": 35,
+        "sha256": "1965086ea8c985e3891bdce896452f4da4f420a2fa2b0c7c6b4235cf30fbcb16"
+      }
+    ],
+    [
+      "payload/workbench.sqlite",
+      {
+        "mode": 33152,
+        "bytes": 860160,
+        "sha256": "643a7996b6446c68b8a9ec970c7dd851a68543c0f37da879f923b1477d0d8715"
+      }
+    ]
+  ],
+  "seed": {
+    "pid": 61274,
+    "passed": true,
+    "sourceClosed": true
+  },
+  "audit": {
+    "pid": 65289,
+    "passed": true,
+    "normal42ReopenAndClose": true,
+    "projectGet": true,
+    "allRawRowsPreserved": true,
+    "sourceAndBackupUnchanged": true,
+    "lastProjectValuesPreservedAndScopeRebound": true,
+    "emptyDraftExplicitlyExcluded": true,
+    "noListenNativeExternalAttempts": 0,
+    "mediaProcesses": 0,
+    "result": {
+      "sourceVersion": 40,
+      "targetVersion": 42,
+      "profile": "ordinary",
+      "sourceBackupId": "f749f289-7495-4b95-be02-7eb9848081c8",
+      "manifestHash": "5a87a4cc9593fae6469add137706affe7b9cd8182d5e2a769df2154667147f4d",
+      "sourceDbHash": "643a7996b6446c68b8a9ec970c7dd851a68543c0f37da879f923b1477d0d8715",
+      "targetDbHash": "3d709dcd77afb5ed421158c405f7ab7ffdf86535d308a7ff0093588180352654",
+      "fileCount": 2,
+      "payloadBytes": 860195,
+      "preferencePolicy": "preserved",
+      "draftPolicy": "excluded-empty-only",
+      "taskPolicy": "settled-only",
+      "sourcePolicy": "unchanged",
+      "publication": "confirmed"
+    }
+  }
+}

@@ -1,0 +1,100 @@
+TAP version 13
+# Subtest: reference attach binds one managed image and detach removes only its owned reference
+ok 1 - reference attach binds one managed image and detach removes only its owned reference
+  ---
+  duration_ms: 938.724083
+  type: 'test'
+  ...
+# Subtest: exact reference request responses survive detach, new bindings and store restart
+ok 2 - exact reference request responses survive detach, new bindings and store restart
+  ---
+  duration_ms: 1182.719959
+  type: 'test'
+  ...
+# Subtest: manual selections are protected even when the same asset is being attached
+ok 3 - manual selections are protected even when the same asset is being attached
+  ---
+  duration_ms: 806.974667
+  type: 'test'
+  ...
+# Subtest: typed binding prevents hidden reference changes but permits exact refs and unrelated shot edits
+ok 4 - typed binding prevents hidden reference changes but permits exact refs and unrelated shot edits
+  ---
+  duration_ms: 1015.490042
+  type: 'test'
+  ...
+# Subtest: legacy decorative edges do not bind, collide with, or detach a typed reference
+ok 5 - legacy decorative edges do not bind, collide with, or detach a typed reference
+  ---
+  duration_ms: 1092.600875
+  type: 'test'
+  ...
+# Subtest: reference source and target must be existing same-project image node and shot
+ok 6 - reference source and target must be existing same-project image node and shot
+  ---
+  duration_ms: 1031.445709
+  type: 'test'
+  ...
+# Subtest: attach checks both expected revisions; detach checks current target revision and project
+ok 7 - attach checks both expected revisions; detach checks current target revision and project
+  ---
+  duration_ms: 1738.205125
+  type: 'test'
+  ...
+# Subtest: concurrent duplicate requests apply once and competing bindings reject without mixed state
+ok 8 - concurrent duplicate requests apply once and competing bindings reject without mixed state
+  ---
+  duration_ms: 758.514
+  type: 'test'
+  ...
+# Subtest: independent SQLite connections serialize the exact reference request without double mutation
+ok 9 - independent SQLite connections serialize the exact reference request without double mutation
+  ---
+  duration_ms: 3138.090125
+  type: 'test'
+  ...
+# Subtest: generation freezes connection provenance and adapter inputs across detach, rebinding, edits and retry
+ok 10 - generation freezes connection provenance and adapter inputs across detach, rebinding, edits and retry
+  ---
+  duration_ms: 1163.776208
+  type: 'test'
+  ...
+# Subtest: manual generation references keep working without invented connection provenance
+ok 11 - manual generation references keep working without invented connection provenance
+  ---
+  duration_ms: 1031.349917
+  type: 'test'
+  ...
+# Subtest: durable response failures roll back attach and detach together with their shot changes
+ok 12 - durable response failures roll back attach and detach together with their shot changes
+  ---
+  duration_ms: 765.028041
+  type: 'test'
+  ...
+# Subtest: inconsistent stored bindings fail closed without erasing manual data or queuing a generation
+ok 13 - inconsistent stored bindings fail closed without erasing manual data or queuing a generation
+  ---
+  duration_ms: 793.93075
+  type: 'test'
+  ...
+# Subtest: additive reference migration does not rewrite legacy decorative edges or manual selections
+ok 14 - additive reference migration does not rewrite legacy decorative edges or manual selections
+  ---
+  duration_ms: 893.24225
+  type: 'test'
+  ...
+# Subtest: bound image reaches the real Ark adapter first-frame payload through an injected HTTP transport only
+ok 15 - bound image reaches the real Ark adapter first-frame payload through an injected HTTP transport only
+  ---
+  duration_ms: 735.129167
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 17589.012792

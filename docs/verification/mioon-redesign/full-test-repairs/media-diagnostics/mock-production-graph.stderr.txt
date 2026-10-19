@@ -1,0 +1,3 @@
+[AVFilterGraph @ 0x74cd018200] No such filter: 'drawtext'
+Error opening output file -.
+Error opening output files: Filter not found

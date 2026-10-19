@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: desktop data location is stable and independent of working directory
+ok 1 - desktop data location is stable and independent of working directory
+  ---
+  duration_ms: 1.118917
+  type: 'test'
+  ...
+# Subtest: utility process inherits only required provider configuration and explicit tools
+ok 2 - utility process inherits only required provider configuration and explicit tools
+  ---
+  duration_ms: 0.131458
+  type: 'test'
+  ...
+# Subtest: FFmpeg config contains paths only, explicit env wins, and relative binaries fail
+ok 3 - FFmpeg config contains paths only, explicit env wins, and relative binaries fail
+  ---
+  duration_ms: 16.710375
+  type: 'test'
+  ...
+# Subtest: MCP discovery uses private rotating files and cleanup
+ok 4 - MCP discovery uses private rotating files and cleanup
+  ---
+  duration_ms: 38.337125
+  type: 'test'
+  ...
+# Subtest: supervisor starts only a bundled utility and stops gracefully without host Node
+ok 5 - supervisor starts only a bundled utility and stops gracefully without host Node
+  ---
+  duration_ms: 3.435708
+  type: 'test'
+  ...
+# Subtest: supervisor rejects wrong-origin handshakes and terminates that child
+ok 6 - supervisor rejects wrong-origin handshakes and terminates that child
+  ---
+  duration_ms: 0.383875
+  type: 'test'
+  ...
+# Subtest: supervisor bounds startup timeout and leaves a restartable failed state
+ok 7 - supervisor bounds startup timeout and leaves a restartable failed state
+  ---
+  duration_ms: 11.811583
+  type: 'test'
+  ...
+# Subtest: supervisor reports unexpected utility crash instead of silently restarting submissions
+ok 8 - supervisor reports unexpected utility crash instead of silently restarting submissions
+  ---
+  duration_ms: 0.67075
+  type: 'test'
+  ...
+# Subtest: supervisor safely rejects a synchronous utility spawn failure
+ok 9 - supervisor safely rejects a synchronous utility spawn failure
+  ---
+  duration_ms: 0.254083
+  type: 'test'
+  ...
+# Subtest: utility crash preserves unknown media ownership without killing a possibly reused PID
+ok 10 - utility crash preserves unknown media ownership without killing a possibly reused PID
+  ---
+  duration_ms: 0.558792
+  type: 'test'
+  ...
+# Subtest: cancelled dirty-window quit keeps backend running and permits a later successful quit
+ok 11 - cancelled dirty-window quit keeps backend running and permits a later successful quit
+  ---
+  duration_ms: 0.277125
+  type: 'test'
+  ...
+# Subtest: repeated quit requests drain backend only once after renderer closes
+ok 12 - repeated quit requests drain backend only once after renderer closes
+  ---
+  duration_ms: 0.343917
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 433.84875

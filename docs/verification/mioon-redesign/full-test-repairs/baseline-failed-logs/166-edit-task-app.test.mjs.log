@@ -1,0 +1,390 @@
+TAP version 13
+# Subtest: actual App routes only the twenty explicit writes into Task prepare/execute while excluded and legacy paths remain session based
+not ok 1 - actual App routes only the twenty explicit writes into Task prepare/execute while excluded and legacy paths remain session based
+  ---
+  duration_ms: 1.648166
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:59:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:55:21), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:61:25)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: actual App rejects stale owner and existing legacy lane before creating any new identity
+not ok 2 - actual App rejects stale owner and existing legacy lane before creating any new identity
+  ---
+  duration_ms: 0.421958
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:72:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:55:21), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:74:11)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App keeps drafts and durable identity after unknown loss, and recovery never installs historical ACK into Inspector
+not ok 3 - actual App keeps drafts and durable identity after unknown loss, and recovery never installs historical ACK into Inspector
+  ---
+  duration_ms: 0.270416
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:82:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:55:21), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:85:24)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App format recovery notifies the current draft owner only after the exact durable request is confirmed
+not ok 4 - actual App format recovery notifies the current draft owner only after the exact durable request is confirmed
+  ---
+  duration_ms: 0.23575
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:98:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:55:21), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:102:24)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: format rejected recovery also notifies its owner, while an unconfirmed acknowledgment never releases its draft fence
+not ok 5 - format rejected recovery also notifies its owner, while an unconfirmed acknowledgment never releases its draft fence
+  ---
+  duration_ms: 1.099417
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:115:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.recoverTask (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:55:21), <anonymous>:66:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:118:96)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App preserves fresh-save navigation fences and only refreshes the current project
+not ok 6 - actual App preserves fresh-save navigation fences and only refreshes the current project
+  ---
+  duration_ms: 0.273917
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:127:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:55:21), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:129:20)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App same-project fresh save may acknowledge its mounted editor but suppresses old navigation message
+not ok 7 - actual App same-project fresh save may acknowledge its mounted editor but suppresses old navigation message
+  ---
+  duration_ms: 0.195
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:135:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:55:21), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:137:20)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App preparation finishing after navigation is durable but does not execute from the obsolete view
+not ok 8 - actual App preparation finishing after navigation is durable but does not execute from the obsolete view
+  ---
+  duration_ms: 0.175542
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:141:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:55:21), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:143:20)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App respects a replaced subject draft fence after durable prepare without dispatching it
+not ok 9 - actual App respects a replaced subject draft fence after durable prepare without dispatching it
+  ---
+  duration_ms: 0.172459
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:148:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:55:21), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:151:20)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App recovery finishing lookup after project change leaves unknown untouched and does not execute
+not ok 10 - actual App recovery finishing lookup after project change leaves unknown untouched and does not execute
+  ---
+  duration_ms: 0.537209
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:158:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.recoverTask (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:55:21), <anonymous>:66:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:161:24)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App acknowledges only fresh bound not_applied state; ordinary 4xx cannot clear unknown
+not ok 11 - actual App acknowledges only fresh bound not_applied state; ordinary 4xx cannot clear unknown
+  ---
+  duration_ms: 0.171791
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:168:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:55:21), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:171:11)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App terminal close rereads after a dropped ACK and releases the lane without retrying stale acknowledgment
+not ok 12 - actual App terminal close rereads after a dropped ACK and releases the lane without retrying stale acknowledgment
+  ---
+  duration_ms: 0.12725
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:178:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:55:21), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:180:11)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App terminal close observes another window ACK and never executes a changed nonterminal response
+not ok 13 - actual App terminal close observes another window ACK and never executes a changed nonterminal response
+  ---
+  duration_ms: 0.109959
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:189:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.run (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:55:21), <anonymous>:4:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:191:11)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App explicit adoption alone removes exact old session receipt only after strict server ACK
+not ok 14 - actual App explicit adoption alone removes exact old session receipt only after strict server ACK
+  ---
+  duration_ms: 0.671584
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:203:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.adoptLegacyTask (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:55:21), <anonymous>:88:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:206:11)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual App malformed adoption and race with a newer receipt never clear original or newer storage
+not ok 15 - actual App malformed adoption and race with a newer receipt never clear original or newer storage
+  ---
+  duration_ms: 0.155458
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:213:1'
+  failureType: 'testCodeFailure'
+  error: 'clipConnectionBlocked is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    Object.adoptLegacyTask (eval at harness (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:55:21), <anonymous>:88:5)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:216:11)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: TaskCenter separates durable, legacy and generation details, retains generation recovery/cancel/retry controls
+not ok 16 - TaskCenter separates durable, legacy and generation details, retains generation recovery/cancel/retry controls
+  ---
+  duration_ms: 1.711125
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:226:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /<h2 id="task-workspace-heading">任务中心<\/h2>/. Input:
+    
+    "import { useI18n } from './i18n/I18nProvider.tsx';\n" +
+      "import { creationParameter } from './creation-i18n.ts';\n" +
+      "import React, { useLayoutEffect, useMemo, useRef } from 'react';\n" +
+      "import type { ReactNode } from 'react';\n" +
+      '\n' +
+      'export type TaskViewCurrent = () => boolean;\n' +
+      'export type CaptureTaskView = () => TaskViewCurrent | null;\n' +
+      '\n' +
+      "/** App fences project/navigation/intent; this hook fences the rendered pane's\n" +
+      ' * lifetime. A retained handler cannot revive after a hide/show or scope change. */\n' +
+      'export function useTaskWorkspaceInteraction(captureView: CaptureTaskView, scope: string, visible: boolean) {\n' +
+      '  const token = useMemo(() => ({ scope, visible }), [scope, visible]);\n' +
+      '  const live = useRef<typeof token | null>(null);\n' +
+      '  useLayoutEffect(() => {\n' +
+      '    live.current = token;\n' +
+      '    return () => { live.current = null; };\n' +
+      '  }, [token]);\n' +
+      '  return {\n' +
+      '    visible,\n' +
+      '    capture(): TaskViewCurrent | null {\n' +
+      '      if (!visible || !scope || live.current !== token) return null;\n' +
+      '      const currentView = captureView();\n' +
+      '      if (!currentView || !currentView()) return null;\n' +
+      '      return () => live.current === token && visible && currentView();\n' +
+      '    },\n' +
+      '  };\n' +
+      '}\n' +
+      '\n' +
+      'export interface TaskWorkspaceProps {\n' +
+      '  activeCount: number;\n' +
+      '  children: ReactNode;\n' +
+      '}\n' +
+      '\n' +
+      '/** Inline presentation only. App owns the shared dock tabs and collapse action;\n' +
+      ' * task storage details and existing cards remain in this one scroll body. */\n' +
+      'export default function TaskWorkspace({ activeCount, children }: TaskWorkspaceProps) {\n' +
+      '  const { t, renderMessage, formatDate, formatNumber } = useI18n();\n' +
+      '  return <section className="task-workspace" data-testid="task-workspace" aria-labelledby="task-workspace-heading">\n' +
+      '    <header className="task-workspace-heading">\n' +
+      `      <h2 id="task-workspace-heading">{t('tasks.workspace.heading')}</h2>\n` +
+      `      <p role="status">{activeCount ? t('tasks.workspace.activeTasks', { count: activeCount }) : t('tasks.workspace.traceableSubmissions')}</p>\n` +
+      '    </header>\n' +
+      `    <div className="task-workspace-body" data-testid="task-workspace-body" role="region" aria-label={t('tasks.workspace.recordsAria')} tabIndex={0}>{children}</div>\n` +
+      `    <footer className="task-workspace-note">{t('tasks.workspace.durableState')}</footer>\n` +
+      '  </section>;\n' +
+      '}\n'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: |-
+    import { useI18n } from './i18n/I18nProvider.tsx';
+    import { creationParameter } from './creation-i18n.ts';
+    import React, { useLayoutEffect, useMemo, useRef } from 'react';
+    import type { ReactNode } from 'react';
+    
+    export type TaskViewCurrent = () => boolean;
+    export type CaptureTaskView = () => TaskViewCurrent | null;
+    
+    /** App fences project/navigation/intent; this hook fences the rendered pane's
+     * lifetime. A retained handler cannot revive after a hide/show or scope change. */
+    export function useTaskWorkspaceInteraction(captureView: CaptureTaskView, scope: string, visible: boolean) {
+      const token = useMemo(() => ({ scope, visible }), [scope, visible]);
+      const live = useRef<typeof token | null>(null);
+      useLayoutEffect(() => {
+        live.current = token;
+        return () => { live.current = null; };
+      }, [token]);
+      return {
+        visible,
+        capture(): TaskViewCurrent | null {
+          if (!visible || !scope || live.current !== token) return null;
+          const currentView = captureView();
+          if (!currentView || !currentView()) return null;
+          return () => live.current === token && visible && currentView();
+        },
+      };
+    }
+    
+    export interface TaskWorkspaceProps {
+      activeCount: number;
+      children: ReactNode;
+    }
+    
+    /** Inline presentation only. App owns the shared dock tabs and collapse action;
+     * task storage details and existing cards remain in this one scroll body. */
+    export default function TaskWorkspace({ activeCount, children }: TaskWorkspaceProps) {
+      const { t, renderMessage, formatDate, formatNumber } = useI18n();
+      return <section className="task-workspace" data-testid="task-workspace" aria-labelledby="task-workspace-heading">
+        <header className="task-workspace-heading">
+          <h2 id="task-workspace-heading">{t('tasks.workspace.heading')}</h2>
+          <p role="status">{activeCount ? t('tasks.workspace.activeTasks', { count: activeCount }) : t('tasks.workspace.traceableSubmissions')}</p>
+        </header>
+        <div className="task-workspace-body" data-testid="task-workspace-body" role="region" aria-label={t('tasks.workspace.recordsAria')} tabIndex={0}>{children}</div>
+        <footer className="task-workspace-note">{t('tasks.workspace.durableState')}</footer>
+      </section>;
+    }
+    
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:231:10)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: actual TaskCenter does not render an empty-list claim when loading or error and keeps unknown card visible
+not ok 17 - actual TaskCenter does not render an empty-list claim when loading or error and keeps unknown card visible
+  ---
+  duration_ms: 2.242917
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:242:1'
+  failureType: 'testCodeFailure'
+  error: 'Unexpected TaskWorkspace dependency: ./i18n/I18nProvider.tsx'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  operator: 'fail'
+  stack: |-
+    file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:249:12
+    eval (eval at <anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:247:3), <anonymous>:36:27)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/edit-task-app.test.mjs:247:182)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 0
+# fail 17
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 329.685041

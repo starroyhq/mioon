@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: delivery/recovery catalog has complete four-language entries and parameter parity
+ok 1 - delivery/recovery catalog has complete four-language entries and parameter parity
+  ---
+  duration_ms: 21.519625
+  type: 'test'
+  ...
+# Subtest: mounted range controls switch all labels while preserving raw numeric draft, version, IDs and handlers
+ok 2 - mounted range controls switch all labels while preserving raw numeric draft, version, IDs and handlers
+  ---
+  duration_ms: 27.279541
+  type: 'test'
+  ...
+# Subtest: mounted delivery title keeps literal user text and the same draft/capture across real store switches
+ok 3 - mounted delivery title keeps literal user text and the same draft/capture across real store switches
+  ---
+  duration_ms: 2.590209
+  type: 'test'
+  ...
+# Subtest: mounted delivery workspace retains child identity and selected page without navigation on language change
+ok 4 - mounted delivery workspace retains child identity and selected page without navigation on language change
+  ---
+  duration_ms: 2.280041
+  type: 'test'
+  ...
+# Subtest: mounted recovery disclosures relabel without opening, reading, restoring or executing
+ok 5 - mounted recovery disclosures relabel without opening, reading, restoring or executing
+  ---
+  duration_ms: 5.201708
+  type: 'test'
+  ...
+# Subtest: mounted restored-workspace notice preserves original provenance and held records in every locale
+ok 6 - mounted restored-workspace notice preserves original provenance and held records in every locale
+  ---
+  duration_ms: 7.302542
+  type: 'test'
+  ...
+# Subtest: offline backup guide translations preserve every command and immutable safety marker
+ok 7 - offline backup guide translations preserve every command and immutable safety marker
+  ---
+  duration_ms: 1.791583
+  type: 'test'
+  ...
+# Subtest: delivery retained local-validation relabels in place with unchanged controller, raw draft and request identity
+ok 8 - delivery retained local-validation relabels in place with unchanged controller, raw draft and request identity
+  ---
+  duration_ms: 6.119625
+  type: 'test'
+  ...
+# Subtest: delivery retained unknown-preparation relabels in place with unchanged controller, raw draft and request identity
+ok 9 - delivery retained unknown-preparation relabels in place with unchanged controller, raw draft and request identity
+  ---
+  duration_ms: 4.236709
+  type: 'test'
+  ...
+# Subtest: shot-text retained local-validation relabels in place with unchanged controller, raw draft and request identity
+ok 10 - shot-text retained local-validation relabels in place with unchanged controller, raw draft and request identity
+  ---
+  duration_ms: 4.743083
+  type: 'test'
+  ...
+# Subtest: shot-text retained unknown-preparation relabels in place with unchanged controller, raw draft and request identity
+ok 11 - shot-text retained unknown-preparation relabels in place with unchanged controller, raw draft and request identity
+  ---
+  duration_ms: 3.7505
+  type: 'test'
+  ...
+# Subtest: typed plural templates render count one and other without changing source counts
+ok 12 - typed plural templates render count one and other without changing source counts
+  ---
+  duration_ms: 1.087041
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 433.447541

@@ -1,0 +1,76 @@
+TAP version 13
+# Subtest: owned fixture tries every disposer, retains errors, and closes exactly once
+ok 1 - owned fixture tries every disposer, retains errors, and closes exactly once
+  ---
+  duration_ms: 1.300958
+  type: 'test'
+  ...
+# Subtest: late acquisition is disposed and cannot reopen a closing fixture
+ok 2 - late acquisition is disposed and cannot reopen a closing fixture
+  ---
+  duration_ms: 0.504458
+  type: 'test'
+  ...
+# Subtest: context cancellation interrupts pending waits without dropping original cleanup failure
+ok 3 - context cancellation interrupts pending waits without dropping original cleanup failure
+  ---
+  duration_ms: 0.352584
+  type: 'test'
+  ...
+# Subtest: pre-readiness owned backend is reaped on cancellation, never published later
+ok 4 - pre-readiness owned backend is reaped on cancellation, never published later
+  ---
+  duration_ms: 8.644209
+  type: 'test'
+  ...
+# Subtest: a spawn error is consumed without an unhandled readiness rejection
+ok 5 - a spawn error is consumed without an unhandled readiness rejection
+  ---
+  duration_ms: 1.042083
+  type: 'test'
+  ...
+# Subtest: actual CLI child is reaped even when a different disposer throws first
+ok 6 - actual CLI child is reaped even when a different disposer throws first
+  ---
+  duration_ms: 2.697333
+  type: 'test'
+  ...
+# Subtest: synchronous cancellation listeners see the same pending close promise
+ok 7 - synchronous cancellation listeners see the same pending close promise
+  ---
+  duration_ms: 0.642125
+  type: 'test'
+  ...
+# Subtest: close awaits late acquisition disposal and retains its exact failure
+ok 8 - close awaits late acquisition disposal and retains its exact failure
+  ---
+  duration_ms: 0.487583
+  type: 'test'
+  ...
+# Subtest: backend startup owns a parent IPC disconnect at start-send until every acquired resource closes
+ok 9 - backend startup owns a parent IPC disconnect at start-send until every acquired resource closes
+  ---
+  duration_ms: 181.733084
+  type: 'test'
+  ...
+# Subtest: backend startup owns a parent IPC disconnect at server-starting until every acquired resource closes
+ok 10 - backend startup owns a parent IPC disconnect at server-starting until every acquired resource closes
+  ---
+  duration_ms: 1213.577458
+  type: 'test'
+  ...
+# Subtest: readiness failure retains a fixed startup phase without copying child labels or secrets
+ok 11 - readiness failure retains a fixed startup phase without copying child labels or secrets
+  ---
+  duration_ms: 124.9145
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1721.116125

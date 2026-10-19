@@ -1,0 +1,5 @@
+[AVFilterGraph @ 0x7c80c14080] No option name near '/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/subtitle-work/sample.srt'
+[AVFilterGraph @ 0x7c80c14080] Error parsing a filter description around: 
+[AVFilterGraph @ 0x7c80c14080] Error parsing filterchain 'subtitles=/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/subtitle-work/sample.srt' around: 
+Error opening output file -.
+Error opening output files: Invalid argument

@@ -67,8 +67,8 @@ export function canvasEdge(edge, selected = false, locale = 'zh-Hans') {
     label: reference ? t('assets.reference.firstFrame') : t('shell.node.visualOnly'),
     ariaLabel: reference ? t('shell.referenceLink') : t('assets.reference.visualOnlyAria'),
     className: reference ? 'reference-edge' : 'visual-edge',
-    style: { stroke: reference ? '#b8d68f' : '#758296', strokeWidth: reference ? 2.5 : 1.5, ...(reference ? {} : { strokeDasharray: '5 5' }) },
-    labelStyle: { fill: reference ? '#d5ebbb' : '#a9b5c5', fontSize: 10 },
-    labelBgStyle: { fill: '#202830', fillOpacity: .96 }, labelBgPadding: [7, 4], labelBgBorderRadius: 4,
+    style: { stroke: reference ? 'var(--wb-accent-line)' : 'var(--wb-soft)', strokeWidth: reference ? 2 : 1, ...(reference ? {} : { strokeDasharray: '5 5' }) },
+    labelStyle: { fill: reference ? 'var(--wb-text)' : 'var(--wb-muted)', fontSize: 10 },
+    labelBgStyle: { fill: 'var(--wb-panel)', fillOpacity: .96 }, labelBgPadding: [7, 4], labelBgBorderRadius: 4,
   };
 }

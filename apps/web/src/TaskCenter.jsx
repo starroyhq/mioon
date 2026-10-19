@@ -1,3 +1,4 @@
+import TaskRenderList from './TaskRenderList.tsx';
 import { message } from '../../../packages/i18n/src/index.ts';
 import { jobStatusDescriptor, outputReviewDescriptor, workspaceHeldDescriptor, taskErrorDescriptor, safeTaskErrorCode } from './creation-i18n.ts';
 import { useI18n } from './i18n/I18nProvider.tsx';
@@ -40,11 +41,11 @@ function DurableTask({ task, uncertain, busy, held = false, onRecover, onAcknowl
   </div>;
 }
 
-export default function TaskCenter({ workspace, activeCount, pending, busy, jobs, data, reconcileIds, setReconcileIds, run, retryGeneration, onInspectJob, context, confirm, isCurrent, captureView, taskViewScope, tasks, onRecover, onReload, onAdopt }) {
+export default function TaskCenter({ workspace, activeCount, pending, busy, jobs, data, reconcileIds, setReconcileIds, run, retryGeneration, onInspectJob, context, confirm, isCurrent, captureView, taskViewScope, tasks, onRecover, onReload, onAdopt, onOpenExportHistory }) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const restored = workspace?.restored === true;
   const interaction = useTaskWorkspaceInteraction(captureView, taskViewScope, Boolean(useWorkspaceVisibility()));
-  return <TaskWorkspace activeCount={activeCount}><h3>{t('tasks.center.localEditRequests')}</h3><p className="helper muted" data-testid="durable-task-storage">{t('tasks.center.durableStorage', { length: creationParameter(DURABLE_EDIT_OPERATIONS.length) })}</p>
+  return <TaskWorkspace activeCount={activeCount}><TaskRenderList items={data.exports || []} projectId={data.project?.id || ''} restored={restored} heldIds={data.restore?.heldExportIds || []} onHistory={onOpenExportHistory ? () => { if (interaction.capture()) onOpenExportHistory(); } : undefined} /><h3>{t('tasks.center.localEditRequests')}</h3><p className="helper muted" data-testid="durable-task-storage">{t('tasks.center.durableStorage', { length: creationParameter(DURABLE_EDIT_OPERATIONS.length) })}</p>
       <RecoveryStorageDetails domain="task-center" durableOperationCount={DURABLE_EDIT_OPERATIONS.length} />
       {tasks.phase !== 'ready' && <div className="notice warning" role="status" data-testid="task-list-unavailable">{tasks.phase === 'loading' ? t('tasks.center.loadingRecoveryRecords') : t('tasks.center.recoveryListUnavailable')}{tasks.phase !== 'loading' && tasks.error?.displayMessage && <p data-testid="task-list-error-detail">{renderMessage(tasks.error.displayMessage)}</p>}<Button variant="ghost" className="button small" disabled={tasks.phase === 'loading'} onClick={() => { if (interaction.capture()) onReload(); }}>{t('tasks.center.reloadTasks')}</Button></div>}
       {tasks.items.map(task => <DurableTask key={task.id} task={task} held={tasks.heldIds?.includes(task.id)} uncertain={tasks.uncertain.includes(task.id)} busy={busy[`task:${task.id}`] || tasks.busy.includes(task.id) || tasks.busy.includes(task.lane)} onRecover={() => { const stillCurrent = interaction.capture(); if (stillCurrent) onRecover(task, false, stillCurrent); }} onAcknowledge={() => { const stillCurrent = interaction.capture(); if (stillCurrent) onRecover(task, true, stillCurrent); }} />)}

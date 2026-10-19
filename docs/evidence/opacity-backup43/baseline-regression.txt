@@ -1,0 +1,433 @@
+✔ nonempty SQLite -wal is refused and never repaired (217.57075ms)
+✔ nonempty SQLite -journal is refused and never repaired (178.181709ms)
+✖ empty sidecars are accepted, excluded and unchanged; safe legacy modes are retained (224.266417ms)
+✖ selected source symlink is rejected without changing target (203.061708ms)
+✖ selected source hardlink is rejected without changing target (203.636416ms)
+✖ selected source broad-mode is rejected without changing target (195.304458ms)
+✖ selected source foreign-owner is rejected without changing target (186.3755ms)
+✖ selected source fifo is rejected without changing target (178.945208ms)
+✖ an unrecognized symlink in managed media is rejected rather than silently followed or copied (230.53525ms)
+✔ invalid destination relative is never reused or repaired (241.059625ms)
+✔ invalid destination nested is never reused or repaired (216.995833ms)
+✔ invalid destination existing is never reused or repaired (205.278291ms)
+✔ invalid destination symlink-parent is never reused or repaired (214.144125ms)
+✔ fixed database byte limit rejects sparse oversize input before streaming media (186.626833ms)
+✖ fixed single-file byte limit rejects sparse oversize input before streaming media (186.541542ms)
+✖ fixed total byte limit rejects sparse oversize input before streaming media (188.253958ms)
+✖ cancellation during chunked capture leaves no COMPLETE and releases only its own lease (175.819417ms)
+(node:92255) PromiseRejectionHandledWarning: Promise rejection was handled asynchronously (rejection id: 7)
+(Use `node --trace-warnings ...` to show where the warning was created)
+✖ source replacement after capture starts is fenced before completion (179.815917ms)
+✔ new backup parent fsync failure is fatal before publication and source is unchanged (177.870791ms)
+✔ publication failure removes only owned marker and fsyncs rollback (161.859041ms)
+✔ publication never adopts and deletes a substituted marker inode (152.378542ms)
+✖ verify rejects linked payload and does not create SQLite sidecars beside completed database (168.930875ms)
+✖ capture rehashes stored destination bytes before claiming verified integrity (168.572292ms)
+✖ completed backup stays verified with explicit lock cleanup warning after unlink (172.004042ms)
+✖ completed backup stays verified with explicit lock cleanup warning after metadata (187.956333ms)
+✖ completed backup stays verified with explicit lock cleanup warning after replacement (177.099458ms)
+✖ cancelled backup retains cancellation and explicitly reports uncertain source lock cleanup (206.28675ms)
+(node:92255) PromiseRejectionHandledWarning: Promise rejection was handled asynchronously (rejection id: 9)
+✖ restored backup capture refuses before output creation and preserves the whole source (464.168542ms)
+✖ partial restore evidence cannot pass backup capture as an ordinary workspace (214.5265ms)
+✖ ordinary capture still retains unknown non-restoration data and creates a verifiable original backup (201.155875ms)
+ℹ tests 30
+ℹ suites 0
+ℹ pass 10
+ℹ fail 20
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5482.291834
+
+✖ failing tests:
+
+test at tests/workspace-backup-storage.test.mjs:24:1
+✖ empty sidecars are accepted, excluded and unchanged; safe legacy modes are retained (224.266417ms)
+  Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+      at backupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:27:58)
+      at safeBackupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:32:9)
+      at createWorkspaceBackup (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup.mjs:157:31)
+      at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-backup-storage.test.mjs:27:2)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    code: 'WORKSPACE_BACKUP_IO'
+  }
+
+test at tests/workspace-backup-storage.test.mjs:30:78
+✖ selected source symlink is rejected without changing target (203.061708ms)
+  AssertionError [ERR_ASSERTION]: The validation function is expected to return "true". Received false
+
+  Caught error:
+
+  Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+      at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-backup-storage.test.mjs:38:6)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+        at backupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:27:58)
+        at safeBackupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:32:9)
+        at createWorkspaceBackup (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup.mjs:157:31)
+        at async waitForActual (node:assert:615:5)
+        at async strict.rejects (node:assert:738:25)
+        at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-backup-storage.test.mjs:38:6)
+        at async Test.run (node:internal/test_runner/test:1409:7)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:974:7),
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at tests/workspace-backup-storage.test.mjs:30:78
+✖ selected source hardlink is rejected without changing target (203.636416ms)
+  AssertionError [ERR_ASSERTION]: The validation function is expected to return "true". Received false
+
+  Caught error:
+
+  Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+      at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-backup-storage.test.mjs:38:6)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+        at backupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:27:58)
+        at safeBackupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:32:9)
+        at createWorkspaceBackup (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup.mjs:157:31)
+        at async waitForActual (node:assert:615:5)
+        at async strict.rejects (node:assert:738:25)
+        at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-backup-storage.test.mjs:38:6)
+        at async Test.run (node:internal/test_runner/test:1409:7)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:974:7),
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at tests/workspace-backup-storage.test.mjs:30:78
+✖ selected source broad-mode is rejected without changing target (195.304458ms)
+  AssertionError [ERR_ASSERTION]: The validation function is expected to return "true". Received false
+
+  Caught error:
+
+  Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+      at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-backup-storage.test.mjs:38:6)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+        at backupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:27:58)
+        at safeBackupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:32:9)
+        at createWorkspaceBackup (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup.mjs:157:31)
+        at async waitForActual (node:assert:615:5)
+        at async strict.rejects (node:assert:738:25)
+        at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-backup-storage.test.mjs:38:6)
+        at async Test.run (node:internal/test_runner/test:1409:7)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:974:7),
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at tests/workspace-backup-storage.test.mjs:30:78
+✖ selected source foreign-owner is rejected without changing target (186.3755ms)
+  AssertionError [ERR_ASSERTION]: The validation function is expected to return "true". Received false
+
+  Caught error:
+
+  Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+      at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-backup-storage.test.mjs:38:6)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+        at backupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:27:58)
+        at safeBackupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:32:9)
+        at createWorkspaceBackup (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup.mjs:157:31)
+        at async waitForActual (node:assert:615:5)
+        at async strict.rejects (node:assert:738:25)
+        at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-backup-storage.test.mjs:38:6)
+        at async Test.run (node:internal/test_runner/test:1409:7)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:974:7),
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at tests/workspace-backup-storage.test.mjs:30:78
+✖ selected source fifo is rejected without changing target (178.945208ms)
+  AssertionError [ERR_ASSERTION]: The validation function is expected to return "true". Received false
+
+  Caught error:
+
+  Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+      at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-backup-storage.test.mjs:38:6)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+        at backupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:27:58)
+        at safeBackupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:32:9)
+        at createWorkspaceBackup (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup.mjs:157:31)
+        at async waitForActual (node:assert:615:5)
+        at async strict.rejects (node:assert:738:25)
+        at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-backup-storage.test.mjs:38:6)
+        at async Test.run (node:internal/test_runner/test:1409:7)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:974:7),
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at tests/workspace-backup-storage.test.mjs:41:1
+✖ an unrecognized symlink in managed media is rejected rather than silently followed or copied (230.53525ms)
+  AssertionError [ERR_ASSERTION]: The validation function is expected to return "true". Received false
+
+  Caught error:
+
+  Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+      at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-backup-storage.test.mjs:43:2)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+        at backupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:27:58)
+        at safeBackupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:32:9)
+        at createWorkspaceBackup (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup.mjs:157:31)
+        at async waitForActual (node:assert:615:5)
+        at async strict.rejects (node:assert:738:25)
+        at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-backup-storage.test.mjs:43:2)
+        at async Test.run (node:internal/test_runner/test:1409:7)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:974:7),
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at tests/workspace-backup-storage.test.mjs:53:54
+✖ fixed single-file byte limit rejects sparse oversize input before streaming media (186.541542ms)
+  AssertionError [ERR_ASSERTION]: The validation function is expected to return "true". Received false
+
+  Caught error:
+
+  Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+      at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-backup-storage.test.mjs:58:2)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+        at backupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:27:58)
+        at safeBackupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:32:9)
+        at createWorkspaceBackup (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup.mjs:157:31)
+        at async waitForActual (node:assert:615:5)
+        at async strict.rejects (node:assert:738:25)
+        at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-backup-storage.test.mjs:58:2)
+        at async Test.run (node:internal/test_runner/test:1409:7)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:974:7),
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at tests/workspace-backup-storage.test.mjs:53:54
+✖ fixed total byte limit rejects sparse oversize input before streaming media (188.253958ms)
+  AssertionError [ERR_ASSERTION]: The validation function is expected to return "true". Received false
+
+  Caught error:
+
+  Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+      at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-backup-storage.test.mjs:58:2)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+        at backupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:27:58)
+        at safeBackupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:32:9)
+        at createWorkspaceBackup (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup.mjs:157:31)
+        at async waitForActual (node:assert:615:5)
+        at async strict.rejects (node:assert:738:25)
+        at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-backup-storage.test.mjs:58:2)
+        at async Test.run (node:internal/test_runner/test:1409:7)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:974:7),
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at tests/workspace-backup-storage.test.mjs:60:1
+✖ cancellation during chunked capture leaves no COMPLETE and releases only its own lease (175.819417ms)
+  Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+      at backupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:27:58)
+      at safeBackupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:32:9)
+      at createWorkspaceBackup (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup.mjs:157:31)
+      at runNextTicks (node:internal/process/task_queues:65:5)
+      at process.processImmediate (node:internal/timers:541:9) {
+    code: 'WORKSPACE_BACKUP_IO'
+  }
+
+test at tests/workspace-backup-storage.test.mjs:64:1
+✖ source replacement after capture starts is fenced before completion (179.815917ms)
+  Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+      at backupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:27:58)
+      at safeBackupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:32:9)
+      at createWorkspaceBackup (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup.mjs:157:31)
+      at runNextTicks (node:internal/process/task_queues:65:5)
+      at process.processImmediate (node:internal/timers:541:9) {
+    code: 'WORKSPACE_BACKUP_IO'
+  }
+
+test at tests/workspace-backup-storage.test.mjs:86:1
+✖ verify rejects linked payload and does not create SQLite sidecars beside completed database (168.930875ms)
+  Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+      at backupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:27:58)
+      at safeBackupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:32:9)
+      at createWorkspaceBackup (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup.mjs:157:31)
+      at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-backup-storage.test.mjs:87:51)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    code: 'WORKSPACE_BACKUP_IO'
+  }
+
+test at tests/workspace-backup-storage.test.mjs:93:1
+✖ capture rehashes stored destination bytes before claiming verified integrity (168.572292ms)
+  AssertionError [ERR_ASSERTION]: The validation function is expected to return "true". Received false
+
+  Caught error:
+
+  Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+      at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-backup-storage.test.mjs:102:6)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+        at backupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:27:58)
+        at safeBackupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:32:9)
+        at createWorkspaceBackup (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup.mjs:157:31)
+        at async waitForActual (node:assert:615:5)
+        at async strict.rejects (node:assert:738:25)
+        at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-backup-storage.test.mjs:102:6)
+        at async Test.run (node:internal/test_runner/test:1409:7)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:974:7),
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at tests/workspace-backup-storage.test.mjs:106:56
+✖ completed backup stays verified with explicit lock cleanup warning after unlink (172.004042ms)
+  Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+      at backupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:27:58)
+      at safeBackupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:32:9)
+      at createWorkspaceBackup (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup.mjs:157:31)
+      at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-backup-storage.test.mjs:116:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    code: 'WORKSPACE_BACKUP_IO',
+    cleanupUnconfirmed: true
+  }
+
+test at tests/workspace-backup-storage.test.mjs:106:56
+✖ completed backup stays verified with explicit lock cleanup warning after metadata (187.956333ms)
+  Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+      at backupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:27:58)
+      at safeBackupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:32:9)
+      at createWorkspaceBackup (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup.mjs:157:31)
+      at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-backup-storage.test.mjs:116:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    code: 'WORKSPACE_BACKUP_IO'
+  }
+
+test at tests/workspace-backup-storage.test.mjs:106:56
+✖ completed backup stays verified with explicit lock cleanup warning after replacement (177.099458ms)
+  Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+      at backupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:27:58)
+      at safeBackupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:32:9)
+      at createWorkspaceBackup (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup.mjs:157:31)
+      at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-backup-storage.test.mjs:116:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    code: 'WORKSPACE_BACKUP_IO'
+  }
+
+test at tests/workspace-backup-storage.test.mjs:120:1
+✖ cancelled backup retains cancellation and explicitly reports uncertain source lock cleanup (206.28675ms)
+  Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+      at backupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:27:58)
+      at safeBackupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:32:9)
+      at createWorkspaceBackup (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup.mjs:157:31)
+      at runNextTicks (node:internal/process/task_queues:65:5)
+      at process.processImmediate (node:internal/timers:541:9) {
+    code: 'WORKSPACE_BACKUP_IO',
+    cleanupUnconfirmed: true
+  }
+
+test at tests/workspace-restore-backup-boundary.test.mjs:22:1
+✖ restored backup capture refuses before output creation and preserves the whole source (464.168542ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+    Comparison {
+  +   code: 'WORKSPACE_BACKUP_IO'
+  -   code: 'RESTORE_BACKUP_UNAVAILABLE'
+    }
+
+      at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-restore-backup-boundary.test.mjs:26:2)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+        at backupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:27:58)
+        at safeBackupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:32:9)
+        at createWorkspaceBackup (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup.mjs:157:31)
+        at async waitForActual (node:assert:615:5)
+        at async strict.rejects (node:assert:738:25)
+        at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-restore-backup-boundary.test.mjs:26:2)
+        at async Test.run (node:internal/test_runner/test:1409:7)
+        at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3),
+    expected: { code: 'RESTORE_BACKUP_UNAVAILABLE' },
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at tests/workspace-restore-backup-boundary.test.mjs:33:1
+✖ partial restore evidence cannot pass backup capture as an ordinary workspace (214.5265ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+    Comparison {
+  +   code: 'WORKSPACE_BACKUP_IO'
+  -   code: 'RESTORE_BACKUP_UNAVAILABLE'
+    }
+
+      at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-restore-backup-boundary.test.mjs:37:2)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+        at backupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:27:58)
+        at safeBackupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:32:9)
+        at createWorkspaceBackup (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup.mjs:157:31)
+        at async waitForActual (node:assert:615:5)
+        at async strict.rejects (node:assert:738:25)
+        at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-restore-backup-boundary.test.mjs:37:2)
+        at async Test.run (node:internal/test_runner/test:1409:7)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:974:7),
+    expected: { code: 'RESTORE_BACKUP_UNAVAILABLE' },
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at tests/workspace-restore-backup-boundary.test.mjs:41:1
+✖ ordinary capture still retains unknown non-restoration data and creates a verifiable original backup (201.155875ms)
+  Error: The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.
+      at backupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:27:58)
+      at safeBackupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:32:9)
+      at createWorkspaceBackup (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup.mjs:157:31)
+      at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-restore-backup-boundary.test.mjs:44:46)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    code: 'WORKSPACE_BACKUP_IO'
+  }

@@ -6,6 +6,7 @@ import {createLocalDeliveryController} from '../apps/web/src/local-delivery-stat
 import {createTimelineDeliveryNameController} from '../apps/web/src/export-delivery-state.ts';
 import {createExportRangeController} from '../apps/web/src/export-range-state.ts';
 import {readNativeLegacyClose} from '../apps/web/src/native-close-legacy.ts';
+import {message as msg} from '../packages/i18n/src/index.ts';
 
 const source=readFileSync(new URL('../apps/web/src/App.jsx',import.meta.url),'utf8');
 function actual(start,end,environment){
@@ -22,7 +23,7 @@ function nameFixture(context={scope:`${id}:1`,projectId:id,enabled:true}){
 function projectGuard(f,confirmation=async()=>true){
  const reference={current:{controller:f.controller}},events=[],formatState={};
  const guard=actual('  async function guardProjectNavigation(','  async function prepareSettingsDeparture(',{
-  nativeWindow:null,localDeliveryRef:{current:null},deliveryNameRef:reference,timelineFormatRef:{current:{controller:{getState:()=>formatState,hasUnsaved:()=>false,discardDraft:()=>events.push('discard-format')}}},
+  nativeWindow:null,clipDraftRef:{current:null},localDeliveryRef:{current:null},deliveryNameRef:reference,timelineFormatRef:{current:{controller:{getState:()=>formatState,hasUnsaved:()=>false,discardDraft:()=>events.push('discard-format')}}},
   guardNavigation:async(message,dirty)=>{events.push({message,dirty});return confirmation();},
  });
  return {guard,reference,events};
@@ -49,12 +50,12 @@ test('actual project guard rejects new typing and replacement controller during 
 function renderHarness(f,{pending=false,submit,run,restored=false,canPrepare=true}={}){
  const calls=[],dataRef={current:{timeline:{id:'timeline',revision:7,clips:[{id:'clip'}]}}};
  const binding={projectId:id,expectedRevision:7,preflightSnapshotHash:'a'.repeat(64),deliveryName:'版本 A'};
- const environment={panelIntent:{current:0},openExportHistory:()=>calls.push(['history',true]),deliveryNameRef:{current:{controller:f.controller}},workspaceRef:{current:{restored}},dataRef,currentProject:{current:id},
+ const environment={msg,panelIntent:{current:0},openExportHistory:()=>calls.push(['history',true]),deliveryNameRef:{current:{controller:f.controller}},workspaceRef:{current:{restored}},dataRef,currentProject:{current:id},
   exportCheckContext:()=>({scope:f.live.scope,projectId:id}),exportPreflight:{controller:{setContext(){},takeExportBinding(value){return value===binding?binding:null;},takeUncheckedExportIntent(){return null;}}},
   isBusy:()=>false,pendingForProject:()=>pending?[{key:'timeline:render:export'}]:[],notify:(...args)=>calls.push(['notify',...args]),openTasks:(canReveal=()=>true)=>{if(canReveal())calls.push(['jobs',true]);},
   localDeliveryRef:{current:{controller:{canPrepare:()=>canPrepare,submit:async(...args)=>{calls.push(['submit',...args]);return submit?.(...args);}}}},
   context:()=>({scope:f.live.scope,projectId:environment.currentProject.current}),isCurrent:captured=>captured.scope===f.live.scope&&captured.projectId===environment.currentProject.current,
-  requestId:()=> 'named-app-key-0001',run:async(...args)=>{calls.push(['run',...args]);return run?.(...args);},updateView(){},setPreviewKind(){},setShowExports:value=>calls.push(['history',value]),
+  requestId:()=> 'named-app-key-0001',run:async(...args)=>{calls.push(['run',...args]);return run?.(...args);},updateView(){},setPreviewKind(){},setShowExports:value=>calls.push(['history',value]),setDeliveryAttempt:value=>calls.push(['deliveryAttempt',value]),
  };
  return {render:actual('  async function renderTimeline(','  async function previewSource(',environment),binding,calls,environment};
 }
@@ -87,7 +88,7 @@ async function coordinatedRenderHarness(t,{preparation,execution,refreshing,proj
   async recover(){assert.fail('Fresh export must not replay through recovery');},
  };
  const rangeController=createExportRangeController();rangeController.setContext({scope:f.live.scope,projectId:id,timelineId:h.environment.dataRef.current.timeline.id,revision:7,durationFrames:30,enabled:true});
- const localEnvironment={...h.environment,projectSessionReady:()=>projectReady,workbenchReady:projectReady,projectEpoch:{current:1},navigationEpoch:{current:0},exportSettings:{controller:{getVersion:()=>1}},exportRange:{controller:rangeController},online:true,auth:true,loading:false,rightDockTab:'delivery',showExports:false,panelVisible:()=>true,deliveryName:{controller:f.controller}};
+ const localEnvironment={...h.environment,projectSessionReady:()=>projectReady,workbenchReady:projectReady,projectEpoch:{current:1},navigationEpoch:{current:0},exportSettings:{controller:{getVersion:()=>1}},exportRange:{controller:rangeController},online:true,auth:true,loading:false,showDelivery:true,showExports:false,deliveryName:{controller:f.controller}};
  let contextCallback=actual('  function localDeliveryContext(','  const localDelivery = useLocalDelivery(',localEnvironment);
  const localDeliveryContext=()=>contextCallback();
  const setDeliveryView=patch=>{Object.assign(localEnvironment,patch);contextCallback=actual('  function localDeliveryContext(','  const localDelivery = useLocalDelivery(',localEnvironment);};
@@ -111,7 +112,7 @@ test('actual App options and real coordinator preserve the exact original render
  assert.deepEqual(h.transportCalls.find(call=>call.method==='prepare').input.input,exact);
  assert.deepEqual(h.refreshes,[id]);assert.equal(h.calls.some(row=>row[0]==='run'),false);
  assert.equal(h.local.controller.getState().intent.outcome.status,'accepted');assert.equal(h.f.controller.hasUnsaved(),false);
- assert.equal(h.f.controller.getName(h.f.live.scope),'版本 A');assert.ok(h.calls.some(row=>row[0]==='history'));
+ assert.equal(h.f.controller.getName(h.f.live.scope),'版本 A');assert.deepEqual(h.calls.filter(row=>row[0]==='deliveryAttempt'),[['deliveryAttempt',{projectId:id,id:fixtureId(2)}]]);
 });
 
 test('actual named-delivery coordinator cannot read or submit before project opening is accepted',async t=>{
@@ -123,16 +124,16 @@ test('actual named-delivery coordinator cannot read or submit before project ope
  assert.equal(h.f.controller.getName(h.f.live.scope),'版本 A');assert.equal(h.f.controller.hasUnsaved(),true);
 });
 
-for(const transition of ['panel hide/show','history/compose'])test(`real App execution epoch blocks prepared export after ${transition} returns to the same view`,async t=>{
+for(const transition of ['dialog hide/show','history/compose'])test(`real App execution epoch blocks prepared export after ${transition} returns to the same view`,async t=>{
  const preparation=deferred(),h=await coordinatedRenderHarness(t,{preparation});
  const before=h.localContext(),result=h.render('export',h.binding);
  await tickUntil(()=>h.transportCalls.some(call=>call.method==='prepare'));
  const prepared=structuredClone(h.transportCalls.find(call=>call.method==='prepare').input);
  h.environment.panelIntent.current++;
- h.setDeliveryView(transition==='panel hide/show'?{panelVisible:()=>false}:{showExports:true});
+ h.setDeliveryView(transition==='dialog hide/show'?{showDelivery:false}:{showExports:true});
  assert.equal(h.localContext().visible,false);
  h.environment.panelIntent.current++;
- h.setDeliveryView(transition==='panel hide/show'?{panelVisible:()=>true}:{showExports:false});
+ h.setDeliveryView(transition==='dialog hide/show'?{showDelivery:true}:{showExports:false});
  const returned=h.localContext();assert.equal(returned.visible,true);
  assert.notEqual(returned.executionEpoch,before.executionEpoch);
  assert.equal(returned.deliveryName,before.deliveryName);assert.equal(returned.nameVersion,before.nameVersion);
@@ -145,7 +146,7 @@ for(const transition of ['panel hide/show','history/compose'])test(`real App exe
  assert.equal(state.intent.intentId,prepared.intentId);assert.deepEqual(state.intent.input,prepared.input);
  assert.deepEqual(state.intent.draft,prepared.draft);assert.equal(state.intent.outcome.status,'pending');assert.equal(state.pending,true);
  assert.equal(h.local.controller.canPrepare(),false);assert.deepEqual(h.refreshes,[]);
- assert.equal(h.calls.some(row=>row[0]==='run'||row[0]==='history'),false);
+ assert.equal(h.calls.some(row=>row[0]==='run'||row[0]==='history'||row[0]==='deliveryAttempt'),false);
  assert.equal(h.f.controller.getName(h.f.live.scope),'版本 A');assert.equal(h.f.controller.hasUnsaved(),true);
  await h.render('export',h.binding);
  assert.equal(h.calls.filter(row=>row[0]==='submit').length,1);assert.deepEqual(h.transportCalls.map(call=>call.method),['get','put','prepare']);
@@ -162,7 +163,7 @@ for(const changeAt of ['execution','refresh'])test(`real coordinator ACK refresh
  assert.deepEqual(h.local.controller.getState().intent.input,original);assert.deepEqual(h.refreshes,[id]);
  assert.equal(h.f.controller.getName(h.f.live.scope),'更新的草稿');assert.equal(h.f.controller.hasUnsaved(),true);
  h.local.controller.capture();assert.equal(h.local.controller.getState().dirty,true);
- assert.equal(h.calls.some(row=>row[0]==='history'||row[0]==='run'),false);
+ assert.equal(h.calls.some(row=>row[0]==='history'||row[0]==='run'||row[0]==='deliveryAttempt'),false);
  assert.equal(h.calls.filter(row=>row[0]==='submit').length,1);
 });
 
@@ -259,27 +260,32 @@ test('late accepted render cannot reopen delivery history after a newer panel or
   if(change==='project')h.environment.currentProject.current='another-project';
   if(change==='name')f.choose('新草稿');
   waiting.resolve(accepted());await result;
-  assert.ok(!h.calls.some(row=>row[0]==='history'),change);
+  assert.ok(!h.calls.some(row=>row[0]==='history'||row[0]==='deliveryAttempt'),change);
   assert.equal(h.calls.filter(row=>row[0]==='submit').length,1);
  }
 });
 
-test('actual history opener only changes the shared dock, and compose reopen keeps the name draft',()=>{
+test('actual history and compose open the independent dialog and keep the name draft',()=>{
  const f=nameFixture();f.choose('留在右栏的草稿');const calls=[];
- const environment={setShowExports:value=>calls.push(['history',value]),setRightDockTab:value=>calls.push(['tab',value]),setPanelOpen:(...args)=>calls.push(['panel',...args]),exportPreflight:{controller:{setVisible:value=>calls.push(['visible',value])}}};
+ const environment={clipDraftRef:{current:null},markPanelIntent:()=>calls.push(['intent']),setShowTasks:value=>calls.push(['tasks',value]),setShowImage:value=>calls.push(['image',value]),setShowExports:value=>calls.push(['history',value]),setShowDelivery:value=>calls.push(['dialog',value]),exportPreflight:{controller:{setVisible:value=>calls.push(['visible',value])}}};
  const open=actual('  function openExportHistory(','  async function createExport(',environment);
  const compose=actual('  function openTimelineExport(','  const historyState',environment);
  open();compose();
- assert.deepEqual(calls,[['history',true],['tab','delivery'],['panel','inspector',true],['history',false],['tab','delivery'],['panel','inspector',true],['visible',true]]);
+ assert.deepEqual(calls,[['intent'],['tasks',false],['image',false],['history',true],['dialog',true],['intent'],['tasks',false],['image',false],['history',false],['dialog',true],['visible',true]]);
  assert.equal(f.controller.getName(f.live.scope),'留在右栏的草稿');assert.equal(f.controller.hasUnsaved(),true);
 });
 
 test('delivery pages retain both forms with inherited visibility and never submit on open/hide',()=>{
- assert.match(source,/visible: workbenchReady && rightDockTab === 'delivery' && !showExports && panelVisible\('inspector'\)/);
+ assert.match(source,/visible: workbenchReady && showDelivery && !showExports/);
  assert.match(source,/<AgentDockPane id="delivery-compose-pane"[^>]*visible=\{!showExports\}/);
  assert.match(source,/<AgentDockPane id="delivery-history-pane"[^>]*visible=\{showExports\}/);
  assert.match(source,/onPage=\{page => \{ markPanelIntent\(\); setShowExports\(page === 'history'\); \}\}/);
  assert.doesNotMatch(source,/showExports && <Modal|<Modal title="导出记录"/);
  const open=source.slice(source.indexOf('  function openExportHistory('),source.indexOf('  async function createExport('));
  assert.doesNotMatch(open,/rpc|run\(|requestId|acknowledge|discardDraft|choose\(|\.check\(/);
+ const closeSource=source.match(/<Dialog open=\{showDelivery\} onOpenChange=\{(open => \{.*?\})\}><WorkbenchDialogContent/);
+ assert.ok(closeSource,'the retained delivery dialog must expose its actual close handler');
+ const calls=[],close=Function('markPanelIntent','setShowDelivery','exportPreviewPause',`return (${closeSource[1]});`)(()=>calls.push('intent'),value=>calls.push(['dialog',value]),{current:()=>calls.push('pause-preview')});
+ close(true);assert.deepEqual(calls,[]);close(false);assert.deepEqual(calls,['intent',['dialog',false],'pause-preview']);
+ assert.doesNotMatch(closeSource[1],/cancel|abort|discard|submit|execute|rpc|run\(/i,'closing only hides presentation and pauses playback, never cancels accepted work');
 });

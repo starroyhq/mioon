@@ -1,0 +1,90 @@
+{
+  "date": "2026-10-16",
+  "baseCommit": "b6e2543cf117be0f32bdfabc462b5ca4abac6657",
+  "runtime": "v26.9.0",
+  "scope": "Explicit internal existing ordinary42 application reopen; default40/41 and43 permissions unchanged",
+  "tests": {
+    "command": "TMPDIR=/private/tmp node --test tests/*opacity*.test.mjs tests/export-preflight-ui.test.mjs tests/project-specifications-preflight.test.mjs tests/subtitles-preflight.test.mjs tests/export-settings-business.test.mjs tests/workspace-preferences.test.mjs",
+    "tests": 332,
+    "passed": 332,
+    "failed": 0,
+    "skipped": 0,
+    "cancelled": 0,
+    "summary": "tests-summary.txt",
+    "targetedReopenAndServerTests": 10,
+    "note": "Targeted10 overlap the332 regression; do not add counts."
+  },
+  "build": {
+    "command": "node scripts/tooling.mjs build",
+    "exitCode": 0,
+    "strictFoundationAndBrowser": true,
+    "sourceLanguageGuard": true,
+    "web": true,
+    "developmentDesktopStaging": true,
+    "summary": "build-summary.txt",
+    "legacyAllowlistChanged": false
+  },
+  "admission": [
+    "existing private root and managed database required",
+    "same exclusive lease across readOnly exact42 classification and RW reclassification",
+    "DB dev/inode and lease rechecked before and after opening RW",
+    "no ordinary40/restored41/restored43 or empty/unknown database admission",
+    "generic candidate opening still grants no application marker",
+    "mutually exclusive fixed --new-workspace and --open-workspace factories; no payload/env profile switch"
+  ],
+  "actualHandlerPersistence": [
+    "same project/timeline/opacity/history",
+    "workspace preferences revision and state",
+    "v3 incomplete opacity raw text and same workspaceScope",
+    "new instanceId; old instance PUT refused",
+    "pending local delivery intent retained without execution",
+    "undo/redo after reopen uses actual durable tasks and ACK"
+  ],
+  "rejectionChecks": [
+    "missing root/DB is not created",
+    "40/41/43 database bytes unchanged",
+    "unknown catalog/corrupt/empty SQLite bytes unchanged",
+    "active owner lock not removed or replaced",
+    "symbolic-link database not followed or repaired",
+    "foreign opacity source ownership rejected"
+  ],
+  "review": {
+    "independentReadOnly": true,
+    "blockingFindings": 0,
+    "minorHelpTextFixed": true
+  },
+  "frozen": {
+    "originalManifestChanged": false,
+    "originalHashesRetained": 63,
+    "approvedRendererExceptionSha256": "db497b44160a3d5c3b398fb5be795a0aecfdd8df23e54d00c1dcbdc6ccb0e9ee"
+  },
+  "execution": {
+    "userProjectsTouched": false,
+    "userDataBackupOrRestoreOperations": 0,
+    "listenerAttempts": 0,
+    "guiSessions": 0,
+    "mediaProcesses": 0,
+    "providerProcesses": 0,
+    "dependenciesInstalled": 0,
+    "push": false
+  },
+  "limits": [
+    "Read-only SQLite WAL may create sidecars; no claim of zero filesystem side effects",
+    "Existing stale-lock and same-user pathname threat model retained",
+    "Media bytes/probes remain checked on use; metadata reopen is not media qualification",
+    "GUI/listener authorization still pending; no earlier denied operation retried",
+    "Node24/product fixed FFmpeg acceptance remains pending"
+  ],
+  "backupRestore": {
+    "status": "design only; no implementation or user data operation",
+    "plan": "../../OPACITY-CANDIDATE-REOPEN.md",
+    "strategy": "fixed candidate42 offline DTO/entry, reuse lock/hash/inventory/COMPLETE/copy/publish/status; fixed43 constructor preserves raw evidence/held/epoch; frozen defaults unchanged"
+  },
+  "sourceSha256": {
+    "packages/business/src/opacity-candidate-store.ts": "8b826b6112bd2dbbf4db884f58778e38968329ddbf57391c9ca80cbc456a602e",
+    "apps/server/src/opacity-candidate-launch.ts": "bbcf641ae6d531d69749b5fe801208bba63dd43409edad85baa43ca7c8019cab",
+    "apps/server/src/opacity-candidate-cli.ts": "bcf9e98147d06c4769690a826273068d3f9e2b3367ac056984b7e89db30b508e",
+    "tests/opacity-candidate-reopen.test.mjs": "82cfafc796be93125d892a1a756a8860daf2f8ad48aa12e333f21821b90e38f0",
+    "tests/opacity-candidate-application-server.test.mjs": "ae213a015b5e5aceab1325c3b0198e7e73b54a104b36ce612590e782298b3c9c"
+  }
+}

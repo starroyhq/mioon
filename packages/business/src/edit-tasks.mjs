@@ -1,8 +1,11 @@
 import {assertTimelineVolumeEnvelopeWorkspace} from './timeline-volume-envelope-admission.ts';
 import {assertTimelineAudioRoleWorkspace} from './workspace-schema-dispatch.ts';
-import {getWorkspaceRestoreContext} from './workspace-restore-schema.mjs';
-import {refuseRestoredTask,safeWorkspaceRestoreError,assertWorkspaceRestoreOrigin,assertRestoreRequestVacant} from './workspace-restore-policy.mjs';
-import {withRestoreTaskInvocation} from './workspace-restore-invocation.mjs';
+import {getWorkspaceRestoreContext as legacyRestoreContext} from './workspace-restore-schema.mjs';
+import {refuseRestoredTask as legacyRefuseTask,safeWorkspaceRestoreError,assertWorkspaceRestoreOrigin as legacyAssertOrigin,assertRestoreRequestVacant as legacyRequestVacant} from './workspace-restore-policy.mjs';
+import {withRestoreTaskInvocation as legacyTaskInvocation} from './workspace-restore-invocation.mjs';
+import {getOpacityCandidateAssembly} from './opacity-candidate-store.ts';
+import {createOpacityCandidateDomain} from './opacity-candidate-domain.ts';
+import {isOpacityCandidateServicesForStore} from './opacity-candidate-services.ts';
 import {randomUUID} from 'node:crypto';
 import {withTimelineFormatTaskDispatch} from './timeline-format-task-context.mjs';
 import {isProxy} from 'node:util/types';
@@ -10,7 +13,7 @@ import {AppError, schemas, publicValue, DURABLE_EDIT_OPERATIONS, EDIT_TASK_LIMIT
 import {hash} from './services.mjs';
 import {ownsStoreLock} from './db.mjs';
 import {createOwnedMediaGraphReader} from './inspection.mjs';
-import {readTimelineReceipt, createTimelineRecoveryBoundary} from './timeline-recovery.mjs';
+import {readTimelineReceipt, createTimelineRecoveryBoundary as legacyTimelineBoundary} from './timeline-recovery.mjs';
 import {readReferenceReceipt, createReferenceRecoveryBoundary} from './reference-recovery.mjs';
 import {readSubjectReceipt} from './subject-recovery.mjs';
 import {createSubjectRecoveryBoundary} from './subjects.mjs';
@@ -89,7 +92,14 @@ function prepareFields(value) {
  * service outside a coordinator transaction. No model/RPC capability is added. */
 export function createEditTasks({store, services, fault = () => {}, limits = {}}) {
  if (!store?.db || typeof store.tx !== 'function' || typeof services?.call !== 'function' || typeof fault !== 'function') corrupt();
- const restored=getWorkspaceRestoreContext(store);
+ const opacity=getOpacityCandidateAssembly(store),domain=opacity?createOpacityCandidateDomain(store):null;
+ if(opacity&&!isOpacityCandidateServicesForStore(store,services))corrupt();
+ const restored=opacity?opacity.getRestoreContext():legacyRestoreContext(store);
+ const refuseRestoredTask=opacity?(_store,taskId,projectId)=>opacity.refuseTask(taskId,projectId):legacyRefuseTask;
+ const assertWorkspaceRestoreOrigin=opacity?(_store,context)=>opacity.assertOrigin(context):legacyAssertOrigin;
+ const assertRestoreRequestVacant=opacity?(_store,operation,input)=>opacity.assertRequestVacant(operation,input):legacyRequestVacant;
+ const withRestoreTaskInvocation=opacity?(_store,row,options,callback)=>opacity.withTaskInvocation(row,options,callback):legacyTaskInvocation;
+ const createTimelineRecoveryBoundary=domain?(_db,input)=>domain.boundary(input):legacyTimelineBoundary;
  const select=`SELECT ${columns}${restored?',executionEpoch':''} FROM edit_tasks`;
  const {db} = store, bounds = {...EDIT_TASK_LIMITS,...limits};
  for (const key of Object.keys(EDIT_TASK_LIMITS)) if (!integer(bounds[key]) || bounds[key] > EDIT_TASK_LIMITS[key]) invalid();
@@ -97,7 +107,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
  let life = lifetimes.get(db); if (!life) { life = {instanceId:randomUUID(), active:new Set()}; lifetimes.set(db,life); }
  const {instanceId} = life, active = new Set(), lifetime=new AbortController(); let closing = false;
  const open = () => { if (closing) corrupt(); };
- const owner = () => { if (!ownsStoreLock(store)) fail('EDIT_TASK_OWNER_REQUIRED'); };
+ const owner = () => { if (!(opacity?opacity.ownsLock():ownsStoreLock(store))) fail('EDIT_TASK_OWNER_REQUIRED'); };
  const inject = label => { const result = fault(label); if (result && typeof result.then === 'function') { result.catch?.(()=>{}); corrupt(); } };
  const guarded = fn => { try { return fn(); } catch (error) { throw editTaskError(error?.code); } };
  const readOnly = fn => {
@@ -107,11 +117,13 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
  const project = projectId => { if (!uuid(projectId)) invalid(); if (!db.prepare('SELECT 1 FROM projects WHERE id=?').get(projectId)) fail('EDIT_TASK_NOT_FOUND'); createOwnedMediaGraphReader(db,projectId); };
  function parseIntent(operation, input, projectId) {
   if (!DURABLE_EDIT_OPERATIONS.includes(operation) || !uuid(projectId)) invalid();
-  const exact = plain(input,0,{nodes:0},envelopeArrayPath(operation)), text = JSON.stringify(exact);
+  let exact;
+  if(domain){try{exact=domain.captureIntent(operation,input).input;}catch{invalid();}}
+  else exact=plain(input,0,{nodes:0},envelopeArrayPath(operation));
+  const text = JSON.stringify(exact);
   if (Buffer.byteLength(text) > bounds.inputBytes) fail('EDIT_TASK_LIMIT');
-  if (!schemas[operation].safeParse(exact).success || exact.projectId !== projectId) invalid();
-  assertTimelineAudioRoleWorkspace(db,exact);
-  assertTimelineVolumeEnvelopeWorkspace(db,exact);
+  if (exact.projectId !== projectId || !domain&&!schemas[operation].safeParse(exact).success) invalid();
+  if(!domain){assertTimelineAudioRoleWorkspace(db,exact);assertTimelineVolumeEnvelopeWorkspace(db,exact);}
   return {input:exact,text,requestId:exact.requestId,digest:hash({operation,input:exact}),lane:editTaskLane(operation)};
  }
  function decode(row, projectId) {
@@ -123,7 +135,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
   const task = {id:row.id,projectId:row.projectId,operation:row.operation,input,requestId:row.requestId,digest:row.digest,lane:row.lane,
    status:row.status,revision:row.revision,createdAt:row.createdAt,updatedAt:row.updatedAt,acknowledged:row.acknowledged===1,origin:row.origin,
    ...(row.errorCode===null?{}:{errorCode:row.errorCode})};
-  if (!isEditTask(task) || !integer(row.position) || row.bytes!==EDIT_TASK_LIMITS.rowBytes || ![0,1].includes(row.acknowledged) ||
+  if (!(domain?domain.isTask(task):isEditTask(task)) || !integer(row.position) || row.bytes!==EDIT_TASK_LIMITS.rowBytes || ![0,1].includes(row.acknowledged) ||
       intent.digest!==row.digest || intent.requestId!==row.requestId || intent.lane!==row.lane ||
       (row.claim===null)!==(row.claimInstance===null) || row.claim!==null&&(!uuid(row.claim)||!uuid(row.claimInstance)) ||
       (row.status==='applied')!==(row.receiptDigest!==null) || row.receiptDigest!==null&&!digest(row.receiptDigest) ||
@@ -208,6 +220,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
    case 'timeline.clip.update': return services.call('timeline.clip.update',input);
    case 'timeline.clip.replaceSource': return services.call('timeline.clip.replaceSource',input);
    case 'timeline.clip.remove': return services.call('timeline.clip.remove',input);
+   case 'timeline.clip.rippleRemove': return services.call('timeline.clip.rippleRemove',input);
    case 'timeline.clip.split': return services.call('timeline.clip.split',input);
    case 'timeline.seed': return services.call('timeline.seed',input);
    case 'timeline.undo': return services.call('timeline.undo',input);
@@ -222,8 +235,10 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
  }
  const methods = {
   prepare(input,context={}) { return guarded(()=>{
-   open();owner();const args=prepareFields(input);
+   open();owner();let args;
+   if(domain){try{args=domain.capturePrepare(input);}catch{invalid();}}else args=prepareFields(input);
    if(!['new','legacy_session'].includes(args.origin))invalid();
+   if(restored&&args.operation==='timeline.clip.rippleRemove'&&(opacity?!opacity.rippleRemove:![45,49].includes(restored.schemaVersion)))refuseRestoredTask(store);
    const intent=parseIntent(args.operation,args.input,args.projectId);
    if(restored){project(args.projectId);assertWorkspaceRestoreOrigin(store,context);if(args.origin!=='new')refuseRestoredTask(store);assertRestoreRequestVacant(store,args.operation,intent.input);if(args.operation==='timeline.loudness.apply')refuseRestoredTask(store);}
    const result=store.tx(()=>{

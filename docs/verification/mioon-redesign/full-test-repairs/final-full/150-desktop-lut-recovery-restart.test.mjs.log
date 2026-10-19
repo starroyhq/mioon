@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: desktop recovery after independent backend process restart: committed receipt survives lost ACK and replays without duplication
+ok 1 - desktop recovery after independent backend process restart: committed receipt survives lost ACK and replays without duplication
+  ---
+  duration_ms: 1992.262542
+  type: 'test'
+  ...
+# Subtest: desktop recovery after independent backend process restart: uncommitted transport failure creates exactly one resource and receipt on retry
+ok 2 - desktop recovery after independent backend process restart: uncommitted transport failure creates exactly one resource and receipt on retry
+  ---
+  duration_ms: 1911.540792
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4165.309291

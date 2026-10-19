@@ -25,7 +25,7 @@ import {floatSnapshotSha256} from '../packages/business/src/timeline-float-outco
 // FFmpeg ebur128 is an independent implementation comparison, not certification.
 const execute = promisify(execFile), token = 'synthetic-export-loudness-media-token';
 const repo = fileURLToPath(new URL('..', import.meta.url));
-const clientEnvironment = url => ({...mediaEnvironment(), MIOON_BASE_URL: url, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAY_MAX_GENERATIONS: '0'});
+const clientEnvironment = url => ({...mediaEnvironment(), MIOON_BASE_URL: url, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0'});
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const options = () => ({beforeEffect() {}, remainingMs: () => 120000});

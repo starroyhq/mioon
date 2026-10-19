@@ -1,0 +1,11 @@
+Command: TMPDIR=/private/tmp node --test tests/*opacity*.test.mjs tests/export-preflight-ui.test.mjs tests/project-specifications-preflight.test.mjs tests/subtitles-preflight.test.mjs tests/export-settings-business.test.mjs
+
+✔ unknown catalog or temporary objects never select an opacity profile (407.884083ms)
+ℹ tests 277
+ℹ suites 0
+ℹ pass 277
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 38202.377709

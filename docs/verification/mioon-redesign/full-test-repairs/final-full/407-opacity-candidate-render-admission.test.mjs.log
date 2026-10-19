@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: actual candidate services persist raw planned preview/export ACKs and replay exact receipts after reopen
+ok 1 - actual candidate services persist raw planned preview/export ACKs and replay exact receipts after reopen
+  ---
+  duration_ms: 1060.527416
+  type: 'test'
+  ...
+# Subtest: candidate render preserves absent/null fields and refuses stale preflight before writes or media
+ok 2 - candidate render preserves absent/null fields and refuses stale preflight before writes or media
+  ---
+  duration_ms: 792.627542
+  type: 'test'
+  ...
+# Subtest: render replay binds persisted export/rawsnapshot and current source identity
+ok 3 - render replay binds persisted export/rawsnapshot and current source identity
+  ---
+  duration_ms: 412.20225
+  type: 'test'
+  ...
+# Subtest: candidate custom delivery reuses two-phase existing admission and CAS around a pure bounded-check stand-in
+ok 4 - candidate custom delivery reuses two-phase existing admission and CAS around a pure bounded-check stand-in
+  ---
+  duration_ms: 666.358791
+  type: 'test'
+  ...
+# Subtest: candidate delivery admission rechecks source metadata after await and commits no stale export or receipt
+ok 5 - candidate delivery admission rechecks source metadata after await and commits no stale export or receipt
+  ---
+  duration_ms: 547.59225
+  type: 'test'
+  ...
+# Subtest: 43 fresh render requires the exact origin and captured render receipts stay held
+ok 6 - 43 fresh render requires the exact origin and captured render receipts stay held
+  ---
+  duration_ms: 837.3045
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4670.737083

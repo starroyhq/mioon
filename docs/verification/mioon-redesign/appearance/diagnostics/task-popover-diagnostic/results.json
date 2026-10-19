@@ -1,0 +1,3936 @@
+{
+  "stages": [
+    {
+      "name": "1440-home-before-screenshot",
+      "state": {
+        "owner": null,
+        "expanded": null,
+        "popup": false,
+        "button": false,
+        "active": "BODY",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": null
+      }
+    },
+    {
+      "name": "1440-home-after-screenshot",
+      "state": {
+        "owner": null,
+        "expanded": null,
+        "popup": false,
+        "button": false,
+        "active": "BODY",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": null
+      }
+    },
+    {
+      "name": "1440-new-project-before-screenshot",
+      "state": {
+        "owner": null,
+        "expanded": null,
+        "popup": false,
+        "button": false,
+        "active": "project-home-name",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": null
+      }
+    },
+    {
+      "name": "1440-new-project-after-screenshot",
+      "state": {
+        "owner": null,
+        "expanded": null,
+        "popup": false,
+        "button": false,
+        "active": "project-home-name",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": null
+      }
+    },
+    {
+      "name": "1050-home-before-screenshot",
+      "state": {
+        "owner": null,
+        "expanded": null,
+        "popup": false,
+        "button": false,
+        "active": "BODY",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": null
+      }
+    },
+    {
+      "name": "1050-home-after-screenshot",
+      "state": {
+        "owner": null,
+        "expanded": null,
+        "popup": false,
+        "button": false,
+        "active": "BODY",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": null
+      }
+    },
+    {
+      "name": "1050-new-project-before-screenshot",
+      "state": {
+        "owner": null,
+        "expanded": null,
+        "popup": false,
+        "button": false,
+        "active": "project-home-name",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": null
+      }
+    },
+    {
+      "name": "1050-new-project-after-screenshot",
+      "state": {
+        "owner": null,
+        "expanded": null,
+        "popup": false,
+        "button": false,
+        "active": "project-home-name",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": null
+      }
+    },
+    {
+      "name": "1440-canvas-before-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:4:0",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:4:0",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:4:0",
+                "visible": true
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "workspace-canvas",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-canvas-after-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:4:0",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:4:0",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:4:0",
+                "visible": true
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "workspace-canvas",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-editing-before-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+                "visible": true
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "timeline-clip-e21fa5f4-12a8-42ba-acc1-af44eb1b1f8c",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-editing-after-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+                "visible": true
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "timeline-clip-e21fa5f4-12a8-42ba-acc1-af44eb1b1f8c",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-before-open",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+                "visible": true
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "timeline-clip-e21fa5f4-12a8-42ba-acc1-af44eb1b1f8c",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-task-popover-before-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+          "visible": true,
+          "hooks": [
+            true,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+                "visible": true
+              }
+            }
+          ]
+        },
+        "expanded": "true",
+        "popup": true,
+        "button": true,
+        "active": "task-overview-all",
+        "buttonRect": {
+          "x": 1166.59375,
+          "y": 172,
+          "width": 104.40625,
+          "height": 28
+        },
+        "hit": "task-overview-all",
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-task-popover-after-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+          "visible": true,
+          "hooks": [
+            true,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+                "visible": true
+              }
+            }
+          ]
+        },
+        "expanded": "true",
+        "popup": true,
+        "button": true,
+        "active": "task-overview-all",
+        "buttonRect": {
+          "x": 1166.59375,
+          "y": 172,
+          "width": 104.40625,
+          "height": 28
+        },
+        "hit": "task-overview-all",
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-before-click-all",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+          "visible": true,
+          "hooks": [
+            true,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+                "visible": true
+              }
+            }
+          ]
+        },
+        "expanded": "true",
+        "popup": true,
+        "button": true,
+        "active": "task-overview-all",
+        "buttonRect": {
+          "x": 1166.59375,
+          "y": 172,
+          "width": 104.40625,
+          "height": 28
+        },
+        "hit": "task-overview-all",
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-after-click-all",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:1",
+          "visible": false,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:1",
+                "visible": false
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:1",
+                "visible": false
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "task-workspace-body",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-tasks-before-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:1",
+          "visible": false,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:1",
+                "visible": false
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:1",
+                "visible": false
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "task-workspace-body",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-tasks-after-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:1",
+          "visible": false,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:1",
+                "visible": false
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:1",
+                "visible": false
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "task-workspace-body",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-settings-general-before-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": false
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "settings-category-general",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-settings-general-after-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": false
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "settings-category-general",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-settings-workspace-before-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": false
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "settings-category-workspace",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-settings-workspace-after-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": false
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "settings-category-workspace",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-settings-video-tools-before-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": false
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "settings-category-video-tools",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-settings-video-tools-after-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": false
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "settings-category-video-tools",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-settings-models-before-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": false
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "settings-category-models",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-settings-models-after-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": false
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "settings-category-models",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-settings-agent-before-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": false
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "settings-category-agent",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-settings-agent-after-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": false
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "settings-category-agent",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-settings-extensions-before-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": false
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "settings-category-extensions",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-settings-extensions-after-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": false
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "settings-category-extensions",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-settings-shortcuts-before-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": false
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "settings-category-shortcuts",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-settings-shortcuts-after-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": false
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "settings-category-shortcuts",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-settings-about-before-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": false
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "settings-category-about",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-settings-about-after-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+                "visible": false
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "settings-category-about",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-export-before-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:3",
+          "visible": false,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:3",
+                "visible": false
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:3",
+                "visible": false
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "delivery-page-compose",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1440-export-after-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:3",
+          "visible": false,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:3",
+                "visible": false
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:3",
+                "visible": false
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "delivery-page-compose",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "false"
+      }
+    },
+    {
+      "name": "1050-canvas-before-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:7:4",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:7:4",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:7:4",
+                "visible": true
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "workspace-canvas",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "true"
+      }
+    },
+    {
+      "name": "1050-canvas-after-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:7:4",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:7:4",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:7:4",
+                "visible": true
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "workspace-canvas",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "true"
+      }
+    },
+    {
+      "name": "1050-editing-before-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:8:4",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:8:4",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:8:4",
+                "visible": true
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "timeline-clip-e21fa5f4-12a8-42ba-acc1-af44eb1b1f8c",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "true"
+      }
+    },
+    {
+      "name": "1050-editing-after-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:8:4",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:8:4",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:8:4",
+                "visible": true
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "timeline-clip-e21fa5f4-12a8-42ba-acc1-af44eb1b1f8c",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "true"
+      }
+    },
+    {
+      "name": "1050-before-open",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:8:4",
+          "visible": true,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:8:4",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:8:4",
+                "visible": true
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "timeline-clip-e21fa5f4-12a8-42ba-acc1-af44eb1b1f8c",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "true"
+      }
+    },
+    {
+      "name": "1050-task-popover-before-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:4",
+          "visible": true,
+          "hooks": [
+            true,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:4",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:4",
+                "visible": true
+              }
+            }
+          ]
+        },
+        "expanded": "true",
+        "popup": true,
+        "button": true,
+        "active": "jobs-button",
+        "buttonRect": {
+          "x": 776.59375,
+          "y": 172,
+          "width": 104.40625,
+          "height": 28
+        },
+        "hit": "task-overview-all",
+        "theme": "light",
+        "compact": "true"
+      }
+    },
+    {
+      "name": "1050-task-popover-after-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:4",
+          "visible": true,
+          "hooks": [
+            true,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:4",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:4",
+                "visible": true
+              }
+            }
+          ]
+        },
+        "expanded": "true",
+        "popup": true,
+        "button": true,
+        "active": "task-overview-all",
+        "buttonRect": {
+          "x": 776.59375,
+          "y": 172,
+          "width": 104.40625,
+          "height": 28
+        },
+        "hit": "task-overview-all",
+        "theme": "light",
+        "compact": "true"
+      }
+    },
+    {
+      "name": "1050-before-click-all",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:4",
+          "visible": true,
+          "hooks": [
+            true,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:4",
+                "visible": true
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:4",
+                "visible": true
+              }
+            }
+          ]
+        },
+        "expanded": "true",
+        "popup": true,
+        "button": true,
+        "active": "task-overview-all",
+        "buttonRect": {
+          "x": 776.59375,
+          "y": 172,
+          "width": 104.40625,
+          "height": 28
+        },
+        "hit": "task-overview-all",
+        "theme": "light",
+        "compact": "true"
+      }
+    },
+    {
+      "name": "1050-after-click-all",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:5",
+          "visible": false,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:5",
+                "visible": false
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:5",
+                "visible": false
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "task-workspace-body",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "true"
+      }
+    },
+    {
+      "name": "1050-tasks-before-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:5",
+          "visible": false,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:5",
+                "visible": false
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:5",
+                "visible": false
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "task-workspace-body",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "true"
+      }
+    },
+    {
+      "name": "1050-tasks-after-screenshot",
+      "state": {
+        "owner": {
+          "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:5",
+          "visible": false,
+          "hooks": [
+            false,
+            {
+              "token": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:5",
+                "visible": false
+              }
+            },
+            {
+              "current": {
+                "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:5",
+                "visible": false
+              }
+            }
+          ]
+        },
+        "expanded": "false",
+        "popup": false,
+        "button": false,
+        "active": "task-workspace-body",
+        "buttonRect": null,
+        "hit": null,
+        "theme": "light",
+        "compact": "true"
+      }
+    }
+  ],
+  "errors": [],
+  "requests": [
+    {
+      "at": 831325.099720708,
+      "method": "POST",
+      "path": "/api/rpc"
+    },
+    {
+      "at": 831325.099918083,
+      "method": "GET",
+      "path": "/api/ui-preferences"
+    },
+    {
+      "at": 831325.184611333,
+      "method": "POST",
+      "path": "/api/login"
+    },
+    {
+      "at": 831325.194070041,
+      "method": "POST",
+      "path": "/api/rpc"
+    },
+    {
+      "at": 831325.195781041,
+      "method": "POST",
+      "path": "/api/rpc"
+    },
+    {
+      "at": 831325.196031875,
+      "method": "POST",
+      "path": "/api/rpc"
+    },
+    {
+      "at": 831325.196154625,
+      "method": "GET",
+      "path": "/api/last-project"
+    },
+    {
+      "at": 831325.196361583,
+      "method": "POST",
+      "path": "/api/rpc"
+    },
+    {
+      "at": 831325.203337458,
+      "method": "GET",
+      "path": "/api/workspace-preferences/13ef0b54-7c49-4778-8300-7aca1ba95e76"
+    },
+    {
+      "at": 831325.242988625,
+      "method": "POST",
+      "path": "/api/rpc"
+    },
+    {
+      "at": 831325.243216708,
+      "method": "GET",
+      "path": "/api/workspace-info"
+    },
+    {
+      "at": 831325.243436166,
+      "method": "GET",
+      "path": "/api/ui-preferences"
+    },
+    {
+      "at": 831325.243580833,
+      "method": "POST",
+      "path": "/api/rpc"
+    },
+    {
+      "at": 831325.248385625,
+      "method": "POST",
+      "path": "/api/rpc"
+    },
+    {
+      "at": 831325.248669875,
+      "method": "POST",
+      "path": "/api/rpc"
+    },
+    {
+      "at": 831325.259301833,
+      "method": "POST",
+      "path": "/api/ui-preferences/opened"
+    },
+    {
+      "at": 831325.259460583,
+      "method": "GET",
+      "path": "/api/tasks"
+    },
+    {
+      "at": 831325.355456166,
+      "method": "GET",
+      "path": "/api/local-drafts/clip"
+    },
+    {
+      "at": 831325.355783916,
+      "method": "GET",
+      "path": "/api/agent/chat/13ef0b54-7c49-4778-8300-7aca1ba95e76"
+    },
+    {
+      "at": 831325.35593775,
+      "method": "GET",
+      "path": "/api/local-delivery"
+    },
+    {
+      "at": 831325.356054666,
+      "method": "POST",
+      "path": "/api/rpc"
+    },
+    {
+      "at": 831325.356143125,
+      "method": "POST",
+      "path": "/api/rpc"
+    },
+    {
+      "at": 831325.35625225,
+      "method": "POST",
+      "path": "/api/rpc"
+    },
+    {
+      "at": 831325.536723416,
+      "method": "POST",
+      "path": "/api/rpc"
+    },
+    {
+      "at": 831325.536906458,
+      "method": "POST",
+      "path": "/api/rpc"
+    },
+    {
+      "at": 831325.537110416,
+      "method": "GET",
+      "path": "/api/workspace-info"
+    },
+    {
+      "at": 831325.542053708,
+      "method": "POST",
+      "path": "/api/rpc"
+    },
+    {
+      "at": 831325.941167166,
+      "method": "POST",
+      "path": "/api/rpc"
+    },
+    {
+      "at": 831325.941457041,
+      "method": "POST",
+      "path": "/api/rpc"
+    },
+    {
+      "at": 831325.944568583,
+      "method": "POST",
+      "path": "/api/ui-preferences/opened"
+    },
+    {
+      "at": 831325.944790083,
+      "method": "GET",
+      "path": "/api/tasks"
+    },
+    {
+      "at": 831325.944976708,
+      "method": "PUT",
+      "path": "/api/last-project"
+    },
+    {
+      "at": 831325.990446833,
+      "method": "GET",
+      "path": "/api/local-drafts/clip"
+    },
+    {
+      "at": 831325.990591,
+      "method": "GET",
+      "path": "/api/agent/chat/13ef0b54-7c49-4778-8300-7aca1ba95e76"
+    },
+    {
+      "at": 831325.990795791,
+      "method": "GET",
+      "path": "/api/local-delivery"
+    },
+    {
+      "at": 831325.990938125,
+      "method": "POST",
+      "path": "/api/rpc"
+    },
+    {
+      "at": 831325.991081666,
+      "method": "POST",
+      "path": "/api/rpc"
+    },
+    {
+      "at": 831325.991224125,
+      "method": "POST",
+      "path": "/api/rpc"
+    },
+    {
+      "at": 831326.181821291,
+      "method": "GET",
+      "path": "/api/local-shot-text"
+    },
+    {
+      "at": 831326.182052291,
+      "method": "POST",
+      "path": "/api/rpc"
+    },
+    {
+      "at": 831326.182160291,
+      "method": "PUT",
+      "path": "/api/workspace-preferences/13ef0b54-7c49-4778-8300-7aca1ba95e76"
+    },
+    {
+      "at": 831326.399730166,
+      "method": "GET",
+      "path": "/api/local-drafts/clip"
+    },
+    {
+      "at": 831326.399944916,
+      "method": "PUT",
+      "path": "/api/workspace-preferences/13ef0b54-7c49-4778-8300-7aca1ba95e76"
+    },
+    {
+      "at": 831327.133462625,
+      "method": "GET",
+      "path": "/api/workspace-info"
+    },
+    {
+      "at": 831327.231429708,
+      "method": "GET",
+      "path": "/api/workspace-info"
+    },
+    {
+      "at": 831327.335452666,
+      "method": "POST",
+      "path": "/api/rpc"
+    },
+    {
+      "at": 831327.45416625,
+      "method": "GET",
+      "path": "/api/agent/settings"
+    },
+    {
+      "at": 831327.463744083,
+      "method": "POST",
+      "path": "/api/rpc"
+    },
+    {
+      "at": 831327.798930291,
+      "method": "GET",
+      "path": "/api/workspace-info"
+    },
+    {
+      "at": 831328.205593875,
+      "method": "GET",
+      "path": "/api/local-shot-text"
+    },
+    {
+      "at": 831328.205847,
+      "method": "PUT",
+      "path": "/api/workspace-preferences/13ef0b54-7c49-4778-8300-7aca1ba95e76"
+    },
+    {
+      "at": 831328.348371916,
+      "method": "GET",
+      "path": "/api/local-drafts/clip"
+    },
+    {
+      "at": 831328.348646166,
+      "method": "PUT",
+      "path": "/api/workspace-preferences/13ef0b54-7c49-4778-8300-7aca1ba95e76"
+    },
+    {
+      "at": 831328.471154,
+      "method": "POST",
+      "path": "/api/rpc"
+    },
+    {
+      "at": 831328.471296625,
+      "method": "POST",
+      "path": "/api/rpc"
+    }
+  ],
+  "passed": true,
+  "probe": [
+    {
+      "at": 18.59999990463257,
+      "kind": "state",
+      "owner": null,
+      "expanded": null,
+      "popup": false,
+      "button": false,
+      "active": "BODY",
+      "buttonRect": null,
+      "hit": null,
+      "theme": null,
+      "compact": null
+    },
+    {
+      "at": 158.19999992847443,
+      "kind": "state",
+      "owner": null,
+      "expanded": null,
+      "popup": false,
+      "button": false,
+      "active": "BODY",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "dark",
+      "compact": null
+    },
+    {
+      "at": 168.89999997615814,
+      "kind": "focus-call",
+      "target": "access-token",
+      "stack": [
+        "    at HTMLElement.focus (<anonymous>:5:134)",
+        "    at pD (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:95220)",
+        "    at gD (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:99168)",
+        "    at Kd (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:107548)",
+        "    at gD (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:98567)",
+        "    at Kd (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:107548)"
+      ]
+    },
+    {
+      "at": 179.39999997615814,
+      "kind": "focusin",
+      "target": "access-token",
+      "related": null
+    },
+    {
+      "at": 182.59999990463257,
+      "kind": "state",
+      "owner": null,
+      "expanded": null,
+      "popup": false,
+      "button": false,
+      "active": "access-token",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "dark",
+      "compact": null
+    },
+    {
+      "at": 237.89999997615814,
+      "kind": "pointerdown",
+      "target": "login-submit",
+      "related": null
+    },
+    {
+      "at": 238,
+      "kind": "focusout",
+      "target": "access-token",
+      "related": "login-submit"
+    },
+    {
+      "at": 238.29999995231628,
+      "kind": "focusin",
+      "target": "login-submit",
+      "related": "access-token"
+    },
+    {
+      "at": 238.29999995231628,
+      "kind": "pointerup",
+      "target": "login-submit",
+      "related": null
+    },
+    {
+      "at": 238.39999997615814,
+      "kind": "click",
+      "target": "login-submit",
+      "related": null
+    },
+    {
+      "at": 250.79999995231628,
+      "kind": "focusout",
+      "target": "login-submit",
+      "related": null
+    },
+    {
+      "at": 251.09999990463257,
+      "kind": "state",
+      "owner": null,
+      "expanded": null,
+      "popup": false,
+      "button": false,
+      "active": "BODY",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "dark",
+      "compact": null
+    },
+    {
+      "at": 314.7999999523163,
+      "kind": "state",
+      "owner": null,
+      "expanded": null,
+      "popup": false,
+      "button": false,
+      "active": "BODY",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": null
+    },
+    {
+      "at": 427.59999990463257,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:1:1:0",
+        "visible": true,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:1:1:0",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:1:1:0",
+              "visible": true
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "BODY",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "false"
+    },
+    {
+      "at": 553,
+      "kind": "pointerdown",
+      "target": "workbench",
+      "related": null
+    },
+    {
+      "at": 553,
+      "kind": "focusin",
+      "target": "workbench",
+      "related": null
+    },
+    {
+      "at": 553.0999999046326,
+      "kind": "pointerup",
+      "target": "workbench",
+      "related": null
+    },
+    {
+      "at": 553.0999999046326,
+      "kind": "click",
+      "target": "workbench",
+      "related": null
+    },
+    {
+      "at": 579.7999999523163,
+      "kind": "focusout",
+      "target": "workbench",
+      "related": null
+    },
+    {
+      "at": 596.2999999523163,
+      "kind": "state",
+      "owner": null,
+      "expanded": null,
+      "popup": false,
+      "button": false,
+      "active": "BODY",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": null
+    },
+    {
+      "at": 703,
+      "kind": "pointerdown",
+      "target": "project-home-create-toggle",
+      "related": null
+    },
+    {
+      "at": 703.1999999284744,
+      "kind": "focusin",
+      "target": "project-home-create-toggle",
+      "related": null
+    },
+    {
+      "at": 703.2999999523163,
+      "kind": "pointerup",
+      "target": "project-home-create-toggle",
+      "related": null
+    },
+    {
+      "at": 703.2999999523163,
+      "kind": "click",
+      "target": "project-home-create-toggle",
+      "related": null
+    },
+    {
+      "at": 705.6999999284744,
+      "kind": "focus-call",
+      "target": "project-home-name",
+      "stack": [
+        "    at HTMLElement.focus (<anonymous>:5:134)",
+        "    at pD (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:95220)",
+        "    at gD (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:99168)",
+        "    at Kd (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:107548)",
+        "    at gD (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:98567)",
+        "    at Kd (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:107548)"
+      ]
+    },
+    {
+      "at": 708.2999999523163,
+      "kind": "focusout",
+      "target": "project-home-create-toggle",
+      "related": "project-home-name"
+    },
+    {
+      "at": 708.5,
+      "kind": "focusin",
+      "target": "project-home-name",
+      "related": "project-home-create-toggle"
+    },
+    {
+      "at": 718.5999999046326,
+      "kind": "state",
+      "owner": null,
+      "expanded": null,
+      "popup": false,
+      "button": false,
+      "active": "project-home-name",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": null
+    },
+    {
+      "at": 802.2999999523163,
+      "kind": "pointerdown",
+      "target": "project-home-create-cancel",
+      "related": null
+    },
+    {
+      "at": 802.6999999284744,
+      "kind": "focusout",
+      "target": "project-home-name",
+      "related": "project-home-create-cancel"
+    },
+    {
+      "at": 803.0999999046326,
+      "kind": "focusin",
+      "target": "project-home-create-cancel",
+      "related": "project-home-name"
+    },
+    {
+      "at": 803.1999999284744,
+      "kind": "pointerup",
+      "target": "project-home-create-cancel",
+      "related": null
+    },
+    {
+      "at": 803.3999999761581,
+      "kind": "click",
+      "target": "project-home-create-cancel",
+      "related": null
+    },
+    {
+      "at": 804.1999999284744,
+      "kind": "focusout",
+      "target": "project-home-create-cancel",
+      "related": null
+    },
+    {
+      "at": 804.7999999523163,
+      "kind": "focus-call",
+      "target": "DIV",
+      "stack": [
+        "    at HTMLElement.focus (<anonymous>:5:134)",
+        "    at http://127.0.0.1:60152/assets/index-CaHM43li.js:1:77845"
+      ]
+    },
+    {
+      "at": 816.7999999523163,
+      "kind": "focus-call",
+      "target": "DIV",
+      "stack": [
+        "    at HTMLElement.focus (<anonymous>:5:134)",
+        "    at http://127.0.0.1:60152/assets/index-CaHM43li.js:1:77886",
+        "    at Array.<anonymous> (http://127.0.0.1:60152/assets/index-CaHM43li.js:1:59462)",
+        "    at tick (http://127.0.0.1:60152/assets/index-CaHM43li.js:1:58926)"
+      ]
+    },
+    {
+      "at": 817.6999999284744,
+      "kind": "state",
+      "owner": null,
+      "expanded": null,
+      "popup": false,
+      "button": false,
+      "active": "BODY",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": null
+    },
+    {
+      "at": 868.2999999523163,
+      "kind": "pointerdown",
+      "target": "project-home-create-toggle",
+      "related": null
+    },
+    {
+      "at": 868.3999999761581,
+      "kind": "focusin",
+      "target": "project-home-create-toggle",
+      "related": null
+    },
+    {
+      "at": 868.3999999761581,
+      "kind": "pointerup",
+      "target": "project-home-create-toggle",
+      "related": null
+    },
+    {
+      "at": 868.3999999761581,
+      "kind": "click",
+      "target": "project-home-create-toggle",
+      "related": null
+    },
+    {
+      "at": 870.1999999284744,
+      "kind": "focus-call",
+      "target": "project-home-name",
+      "stack": [
+        "    at HTMLElement.focus (<anonymous>:5:134)",
+        "    at pD (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:95220)",
+        "    at gD (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:99168)",
+        "    at Kd (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:107548)",
+        "    at gD (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:98567)",
+        "    at Kd (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:107548)"
+      ]
+    },
+    {
+      "at": 871.6999999284744,
+      "kind": "focusout",
+      "target": "project-home-create-toggle",
+      "related": "project-home-name"
+    },
+    {
+      "at": 871.8999999761581,
+      "kind": "focusin",
+      "target": "project-home-name",
+      "related": "project-home-create-toggle"
+    },
+    {
+      "at": 884,
+      "kind": "state",
+      "owner": null,
+      "expanded": null,
+      "popup": false,
+      "button": false,
+      "active": "project-home-name",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": null
+    },
+    {
+      "at": 951.5,
+      "kind": "pointerdown",
+      "target": "project-home-create-cancel",
+      "related": null
+    },
+    {
+      "at": 951.6999999284744,
+      "kind": "focusout",
+      "target": "project-home-name",
+      "related": "project-home-create-cancel"
+    },
+    {
+      "at": 951.8999999761581,
+      "kind": "focusin",
+      "target": "project-home-create-cancel",
+      "related": "project-home-name"
+    },
+    {
+      "at": 952.0999999046326,
+      "kind": "pointerup",
+      "target": "project-home-create-cancel",
+      "related": null
+    },
+    {
+      "at": 952.0999999046326,
+      "kind": "click",
+      "target": "project-home-create-cancel",
+      "related": null
+    },
+    {
+      "at": 952.8999999761581,
+      "kind": "focusout",
+      "target": "project-home-create-cancel",
+      "related": null
+    },
+    {
+      "at": 953.5,
+      "kind": "focus-call",
+      "target": "DIV",
+      "stack": [
+        "    at HTMLElement.focus (<anonymous>:5:134)",
+        "    at http://127.0.0.1:60152/assets/index-CaHM43li.js:1:77845"
+      ]
+    },
+    {
+      "at": 966.5999999046326,
+      "kind": "focus-call",
+      "target": "DIV",
+      "stack": [
+        "    at HTMLElement.focus (<anonymous>:5:134)",
+        "    at http://127.0.0.1:60152/assets/index-CaHM43li.js:1:77886",
+        "    at Array.<anonymous> (http://127.0.0.1:60152/assets/index-CaHM43li.js:1:59462)",
+        "    at tick (http://127.0.0.1:60152/assets/index-CaHM43li.js:1:58926)"
+      ]
+    },
+    {
+      "at": 967,
+      "kind": "state",
+      "owner": null,
+      "expanded": null,
+      "popup": false,
+      "button": false,
+      "active": "BODY",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": null
+    },
+    {
+      "at": 985.5,
+      "kind": "pointerdown",
+      "target": "project-home-open-13ef0b54-7c49-4778-8300-7aca1ba95e76",
+      "related": null
+    },
+    {
+      "at": 985.5999999046326,
+      "kind": "focusin",
+      "target": "project-home-open-13ef0b54-7c49-4778-8300-7aca1ba95e76",
+      "related": null
+    },
+    {
+      "at": 985.5999999046326,
+      "kind": "pointerup",
+      "target": "project-home-open-13ef0b54-7c49-4778-8300-7aca1ba95e76",
+      "related": null
+    },
+    {
+      "at": 985.6999999284744,
+      "kind": "click",
+      "target": "project-home-open-13ef0b54-7c49-4778-8300-7aca1ba95e76",
+      "related": null
+    },
+    {
+      "at": 1000.5,
+      "kind": "focusout",
+      "target": "project-home-open-13ef0b54-7c49-4778-8300-7aca1ba95e76",
+      "related": null
+    },
+    {
+      "at": 1054.0999999046326,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:3:0",
+        "visible": true,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:3:0",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:3:0",
+              "visible": true
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "BODY",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "true"
+    },
+    {
+      "at": 1153.8999999761581,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:3:0",
+        "visible": true,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:3:0",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:3:0",
+              "visible": true
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "BODY",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "false"
+    },
+    {
+      "at": 1159.0999999046326,
+      "kind": "pointerdown",
+      "target": "workspace-canvas",
+      "related": null
+    },
+    {
+      "at": 1159.1999999284744,
+      "kind": "focusin",
+      "target": "workspace-canvas",
+      "related": null
+    },
+    {
+      "at": 1160,
+      "kind": "pointerup",
+      "target": "workspace-canvas",
+      "related": null
+    },
+    {
+      "at": 1160.0999999046326,
+      "kind": "click",
+      "target": "workspace-canvas",
+      "related": null
+    },
+    {
+      "at": 1258.1999999284744,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:4:0",
+        "visible": true,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:4:0",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:4:0",
+              "visible": true
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "workspace-canvas",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "false"
+    },
+    {
+      "at": 1402.1999999284744,
+      "kind": "pointerdown",
+      "target": "workspace-editing",
+      "related": null
+    },
+    {
+      "at": 1402.2999999523163,
+      "kind": "focusout",
+      "target": "workspace-canvas",
+      "related": "workspace-editing"
+    },
+    {
+      "at": 1402.3999999761581,
+      "kind": "focusin",
+      "target": "workspace-editing",
+      "related": "workspace-canvas"
+    },
+    {
+      "at": 1402.6999999284744,
+      "kind": "pointerup",
+      "target": "workspace-editing",
+      "related": null
+    },
+    {
+      "at": 1402.7999999523163,
+      "kind": "click",
+      "target": "workspace-editing",
+      "related": null
+    },
+    {
+      "at": 1461.5999999046326,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+        "visible": true,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+              "visible": true
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "workspace-editing",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "false"
+    },
+    {
+      "at": 1520.5999999046326,
+      "kind": "pointerdown",
+      "target": "timeline-clip-e21fa5f4-12a8-42ba-acc1-af44eb1b1f8c",
+      "related": null
+    },
+    {
+      "at": 1520.6999999284744,
+      "kind": "focusout",
+      "target": "workspace-editing",
+      "related": "timeline-clip-e21fa5f4-12a8-42ba-acc1-af44eb1b1f8c"
+    },
+    {
+      "at": 1520.8999999761581,
+      "kind": "focusin",
+      "target": "timeline-clip-e21fa5f4-12a8-42ba-acc1-af44eb1b1f8c",
+      "related": "workspace-editing"
+    },
+    {
+      "at": 1521,
+      "kind": "pointerup",
+      "target": "timeline-clip-e21fa5f4-12a8-42ba-acc1-af44eb1b1f8c",
+      "related": null
+    },
+    {
+      "at": 1521.0999999046326,
+      "kind": "click",
+      "target": "timeline-clip-e21fa5f4-12a8-42ba-acc1-af44eb1b1f8c",
+      "related": null
+    },
+    {
+      "at": 1534.8999999761581,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+        "visible": true,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+              "visible": true
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "timeline-clip-e21fa5f4-12a8-42ba-acc1-af44eb1b1f8c",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "false"
+    },
+    {
+      "at": 1651.8999999761581,
+      "kind": "pointerdown",
+      "target": "right-dock-tab-tasks",
+      "related": null
+    },
+    {
+      "at": 1652.1999999284744,
+      "kind": "focusout",
+      "target": "timeline-clip-e21fa5f4-12a8-42ba-acc1-af44eb1b1f8c",
+      "related": "jobs-button"
+    },
+    {
+      "at": 1652.2999999523163,
+      "kind": "focusin",
+      "target": "jobs-button",
+      "related": "timeline-clip-e21fa5f4-12a8-42ba-acc1-af44eb1b1f8c"
+    },
+    {
+      "at": 1652.5,
+      "kind": "pointerup",
+      "target": "right-dock-tab-tasks",
+      "related": null
+    },
+    {
+      "at": 1652.5,
+      "kind": "click",
+      "target": "right-dock-tab-tasks",
+      "related": null
+    },
+    {
+      "at": 1665.6999999284744,
+      "kind": "focus-call",
+      "target": "task-overview-all",
+      "stack": [
+        "    at HTMLElement.focus (<anonymous>:5:134)",
+        "    at i (http://127.0.0.1:60152/assets/index-CaHM43li.js:1:66039)"
+      ]
+    },
+    {
+      "at": 1665.6999999284744,
+      "kind": "focusout",
+      "target": "jobs-button",
+      "related": "task-overview-all"
+    },
+    {
+      "at": 1665.7999999523163,
+      "kind": "focusin",
+      "target": "task-overview-all",
+      "related": "jobs-button"
+    },
+    {
+      "at": 1668.2999999523163,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+        "visible": true,
+        "hooks": [
+          true,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:5:0",
+              "visible": true
+            }
+          }
+        ]
+      },
+      "expanded": "true",
+      "popup": true,
+      "button": true,
+      "active": "task-overview-all",
+      "buttonRect": {
+        "x": 1166.59375,
+        "y": 172,
+        "width": 104.40625,
+        "height": 28
+      },
+      "hit": "task-overview-all",
+      "theme": "light",
+      "compact": "false"
+    },
+    {
+      "at": 1753.0999999046326,
+      "kind": "pointerdown",
+      "target": "task-overview-all",
+      "related": null
+    },
+    {
+      "at": 1753.2999999523163,
+      "kind": "pointerup",
+      "target": "task-overview-all",
+      "related": null
+    },
+    {
+      "at": 1753.3999999761581,
+      "kind": "click",
+      "target": "task-overview-all",
+      "related": null
+    },
+    {
+      "at": 1781.2999999523163,
+      "kind": "focusout",
+      "target": "task-overview-all",
+      "related": null
+    },
+    {
+      "at": 1781.8999999761581,
+      "kind": "focus-call",
+      "target": "DIV",
+      "stack": [
+        "    at HTMLElement.focus (<anonymous>:5:134)",
+        "    at http://127.0.0.1:60152/assets/index-CaHM43li.js:1:77845"
+      ]
+    },
+    {
+      "at": 1785.8999999761581,
+      "kind": "focus-call",
+      "target": "task-workspace-body",
+      "stack": [
+        "    at HTMLElement.focus (<anonymous>:5:134)",
+        "    at i (http://127.0.0.1:60152/assets/index-CaHM43li.js:1:66039)"
+      ]
+    },
+    {
+      "at": 1786.0999999046326,
+      "kind": "focusin",
+      "target": "task-workspace-body",
+      "related": null
+    },
+    {
+      "at": 1787.2999999523163,
+      "kind": "focus-call",
+      "target": "DIV",
+      "stack": [
+        "    at HTMLElement.focus (<anonymous>:5:134)",
+        "    at http://127.0.0.1:60152/assets/index-CaHM43li.js:1:77886",
+        "    at Array.<anonymous> (http://127.0.0.1:60152/assets/index-CaHM43li.js:1:59462)",
+        "    at tick (http://127.0.0.1:60152/assets/index-CaHM43li.js:1:58926)"
+      ]
+    },
+    {
+      "at": 1787.7999999523163,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:1",
+        "visible": false,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:1",
+              "visible": false
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:1",
+              "visible": false
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "task-workspace-body",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "false"
+    },
+    {
+      "at": 1864.2999999523163,
+      "kind": "focus-call",
+      "target": "right-dock-tab-properties",
+      "stack": [
+        "    at HTMLElement.focus (<anonymous>:5:134)",
+        "    at http://127.0.0.1:60152/assets/index-CaHM43li.js:33:79303",
+        "    at Vb (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:94000)",
+        "    at gD (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:98580)",
+        "    at Kd (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:107548)",
+        "    at gD (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:99145)"
+      ]
+    },
+    {
+      "at": 1868.1999999284744,
+      "kind": "focusout",
+      "target": "task-workspace-body",
+      "related": "right-dock-tab-properties"
+    },
+    {
+      "at": 1868.5999999046326,
+      "kind": "focusin",
+      "target": "right-dock-tab-properties",
+      "related": "task-workspace-body"
+    },
+    {
+      "at": 1887.5,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+        "visible": true,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+              "visible": true
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "right-dock-tab-properties",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "false"
+    },
+    {
+      "at": 1936.5,
+      "kind": "pointerdown",
+      "target": "global-settings-open",
+      "related": null
+    },
+    {
+      "at": 1936.5,
+      "kind": "focusout",
+      "target": "right-dock-tab-properties",
+      "related": "global-settings-open"
+    },
+    {
+      "at": 1936.7999999523163,
+      "kind": "focusin",
+      "target": "global-settings-open",
+      "related": "right-dock-tab-properties"
+    },
+    {
+      "at": 1936.8999999761581,
+      "kind": "pointerup",
+      "target": "global-settings-open",
+      "related": null
+    },
+    {
+      "at": 1936.8999999761581,
+      "kind": "click",
+      "target": "global-settings-open",
+      "related": null
+    },
+    {
+      "at": 1965,
+      "kind": "focus-call",
+      "target": "settings-center-close",
+      "stack": [
+        "    at HTMLElement.focus (<anonymous>:5:134)",
+        "    at i (http://127.0.0.1:60152/assets/index-CaHM43li.js:1:66039)"
+      ]
+    },
+    {
+      "at": 1965,
+      "kind": "focusout",
+      "target": "global-settings-open",
+      "related": "settings-center-close"
+    },
+    {
+      "at": 1965.2999999523163,
+      "kind": "focusin",
+      "target": "settings-center-close",
+      "related": "global-settings-open"
+    },
+    {
+      "at": 1967.5999999046326,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+        "visible": true,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+              "visible": false
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "settings-center-close",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "false"
+    },
+    {
+      "at": 2086.1999999284744,
+      "kind": "pointerdown",
+      "target": "settings-category-general",
+      "related": null
+    },
+    {
+      "at": 2086.5,
+      "kind": "focusout",
+      "target": "settings-center-close",
+      "related": "settings-category-general"
+    },
+    {
+      "at": 2086.5999999046326,
+      "kind": "focusin",
+      "target": "settings-category-general",
+      "related": "settings-center-close"
+    },
+    {
+      "at": 2086.6999999284744,
+      "kind": "pointerup",
+      "target": "settings-category-general",
+      "related": null
+    },
+    {
+      "at": 2086.6999999284744,
+      "kind": "click",
+      "target": "settings-category-general",
+      "related": null
+    },
+    {
+      "at": 2100.7999999523163,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+        "visible": true,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+              "visible": false
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "settings-category-general",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "false"
+    },
+    {
+      "at": 2186.5999999046326,
+      "kind": "pointerdown",
+      "target": "settings-category-workspace",
+      "related": null
+    },
+    {
+      "at": 2186.6999999284744,
+      "kind": "focusout",
+      "target": "settings-category-general",
+      "related": "settings-category-workspace"
+    },
+    {
+      "at": 2186.7999999523163,
+      "kind": "focusin",
+      "target": "settings-category-workspace",
+      "related": "settings-category-general"
+    },
+    {
+      "at": 2187,
+      "kind": "pointerup",
+      "target": "settings-category-workspace",
+      "related": null
+    },
+    {
+      "at": 2187,
+      "kind": "click",
+      "target": "settings-category-workspace",
+      "related": null
+    },
+    {
+      "at": 2200.5,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+        "visible": true,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+              "visible": false
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "settings-category-workspace",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "false"
+    },
+    {
+      "at": 2285,
+      "kind": "pointerdown",
+      "target": "settings-category-video-tools",
+      "related": null
+    },
+    {
+      "at": 2285.1999999284744,
+      "kind": "focusout",
+      "target": "settings-category-workspace",
+      "related": "settings-category-video-tools"
+    },
+    {
+      "at": 2285.399999976158,
+      "kind": "focusin",
+      "target": "settings-category-video-tools",
+      "related": "settings-category-workspace"
+    },
+    {
+      "at": 2285.5,
+      "kind": "pointerup",
+      "target": "settings-category-video-tools",
+      "related": null
+    },
+    {
+      "at": 2285.5,
+      "kind": "click",
+      "target": "settings-category-video-tools",
+      "related": null
+    },
+    {
+      "at": 2300.0999999046326,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+        "visible": true,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+              "visible": false
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "settings-category-video-tools",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "false"
+    },
+    {
+      "at": 2385.0999999046326,
+      "kind": "pointerdown",
+      "target": "settings-category-models",
+      "related": null
+    },
+    {
+      "at": 2385.1999999284744,
+      "kind": "focusout",
+      "target": "settings-category-video-tools",
+      "related": "settings-category-models"
+    },
+    {
+      "at": 2385.2999999523163,
+      "kind": "focusin",
+      "target": "settings-category-models",
+      "related": "settings-category-video-tools"
+    },
+    {
+      "at": 2385.5,
+      "kind": "pointerup",
+      "target": "settings-category-models",
+      "related": null
+    },
+    {
+      "at": 2385.5,
+      "kind": "click",
+      "target": "settings-category-models",
+      "related": null
+    },
+    {
+      "at": 2401,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+        "visible": true,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+              "visible": false
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "settings-category-models",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "false"
+    },
+    {
+      "at": 2501.5,
+      "kind": "pointerdown",
+      "target": "settings-category-agent",
+      "related": null
+    },
+    {
+      "at": 2501.5999999046326,
+      "kind": "focusout",
+      "target": "settings-category-models",
+      "related": "settings-category-agent"
+    },
+    {
+      "at": 2501.6999999284744,
+      "kind": "focusin",
+      "target": "settings-category-agent",
+      "related": "settings-category-models"
+    },
+    {
+      "at": 2501.899999976158,
+      "kind": "pointerup",
+      "target": "settings-category-agent",
+      "related": null
+    },
+    {
+      "at": 2501.899999976158,
+      "kind": "click",
+      "target": "settings-category-agent",
+      "related": null
+    },
+    {
+      "at": 2518.5999999046326,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+        "visible": true,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+              "visible": false
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "settings-category-agent",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "false"
+    },
+    {
+      "at": 2619.1999999284744,
+      "kind": "pointerdown",
+      "target": "settings-category-extensions",
+      "related": null
+    },
+    {
+      "at": 2619.2999999523163,
+      "kind": "focusout",
+      "target": "settings-category-agent",
+      "related": "settings-category-extensions"
+    },
+    {
+      "at": 2619.5,
+      "kind": "focusin",
+      "target": "settings-category-extensions",
+      "related": "settings-category-agent"
+    },
+    {
+      "at": 2619.5,
+      "kind": "pointerup",
+      "target": "settings-category-extensions",
+      "related": null
+    },
+    {
+      "at": 2619.5999999046326,
+      "kind": "click",
+      "target": "settings-category-extensions",
+      "related": null
+    },
+    {
+      "at": 2633,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+        "visible": true,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+              "visible": false
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "settings-category-extensions",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "false"
+    },
+    {
+      "at": 2735.2999999523163,
+      "kind": "pointerdown",
+      "target": "settings-category-shortcuts",
+      "related": null
+    },
+    {
+      "at": 2735.399999976158,
+      "kind": "focusout",
+      "target": "settings-category-extensions",
+      "related": "settings-category-shortcuts"
+    },
+    {
+      "at": 2735.5999999046326,
+      "kind": "focusin",
+      "target": "settings-category-shortcuts",
+      "related": "settings-category-extensions"
+    },
+    {
+      "at": 2735.7999999523163,
+      "kind": "pointerup",
+      "target": "settings-category-shortcuts",
+      "related": null
+    },
+    {
+      "at": 2735.7999999523163,
+      "kind": "click",
+      "target": "settings-category-shortcuts",
+      "related": null
+    },
+    {
+      "at": 2754.5,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+        "visible": true,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+              "visible": false
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "settings-category-shortcuts",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "false"
+    },
+    {
+      "at": 2852.6999999284744,
+      "kind": "pointerdown",
+      "target": "settings-category-about",
+      "related": null
+    },
+    {
+      "at": 2852.7999999523163,
+      "kind": "focusout",
+      "target": "settings-category-shortcuts",
+      "related": "settings-category-about"
+    },
+    {
+      "at": 2852.899999976158,
+      "kind": "focusin",
+      "target": "settings-category-about",
+      "related": "settings-category-shortcuts"
+    },
+    {
+      "at": 2852.899999976158,
+      "kind": "pointerup",
+      "target": "settings-category-about",
+      "related": null
+    },
+    {
+      "at": 2853.0999999046326,
+      "kind": "click",
+      "target": "settings-category-about",
+      "related": null
+    },
+    {
+      "at": 2866.899999976158,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+        "visible": true,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+              "visible": false
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "settings-category-about",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "false"
+    },
+    {
+      "at": 2951.7999999523163,
+      "kind": "pointerdown",
+      "target": "settings-center-close",
+      "related": null
+    },
+    {
+      "at": 2951.899999976158,
+      "kind": "focusout",
+      "target": "settings-category-about",
+      "related": "settings-center-close"
+    },
+    {
+      "at": 2952,
+      "kind": "focusin",
+      "target": "settings-center-close",
+      "related": "settings-category-about"
+    },
+    {
+      "at": 2952.1999999284744,
+      "kind": "pointerup",
+      "target": "settings-center-close",
+      "related": null
+    },
+    {
+      "at": 2952.1999999284744,
+      "kind": "click",
+      "target": "settings-center-close",
+      "related": null
+    },
+    {
+      "at": 2970.899999976158,
+      "kind": "focus-call",
+      "target": "global-settings-open",
+      "stack": [
+        "    at HTMLElement.focus (<anonymous>:5:134)",
+        "    at http://127.0.0.1:60152/assets/index-CaHM43li.js:1:80985"
+      ]
+    },
+    {
+      "at": 2970.899999976158,
+      "kind": "focusout",
+      "target": "settings-center-close",
+      "related": "global-settings-open"
+    },
+    {
+      "at": 2971.899999976158,
+      "kind": "focusin",
+      "target": "global-settings-open",
+      "related": "settings-center-close"
+    },
+    {
+      "at": 2973.1999999284744,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+        "visible": true,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:2",
+              "visible": true
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "global-settings-open",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "false"
+    },
+    {
+      "at": 3002.0999999046326,
+      "kind": "pointerdown",
+      "target": "right-dock-tab-delivery",
+      "related": null
+    },
+    {
+      "at": 3002.1999999284744,
+      "kind": "focusout",
+      "target": "global-settings-open",
+      "related": "export-timeline"
+    },
+    {
+      "at": 3002.2999999523163,
+      "kind": "focusin",
+      "target": "export-timeline",
+      "related": "global-settings-open"
+    },
+    {
+      "at": 3002.2999999523163,
+      "kind": "pointerup",
+      "target": "right-dock-tab-delivery",
+      "related": null
+    },
+    {
+      "at": 3002.399999976158,
+      "kind": "click",
+      "target": "right-dock-tab-delivery",
+      "related": null
+    },
+    {
+      "at": 3030.1999999284744,
+      "kind": "focus-call",
+      "target": "delivery-page-compose",
+      "stack": [
+        "    at HTMLElement.focus (<anonymous>:5:134)",
+        "    at i (http://127.0.0.1:60152/assets/index-CaHM43li.js:1:66039)"
+      ]
+    },
+    {
+      "at": 3030.1999999284744,
+      "kind": "focusout",
+      "target": "export-timeline",
+      "related": "delivery-page-compose"
+    },
+    {
+      "at": 3030.399999976158,
+      "kind": "focusin",
+      "target": "delivery-page-compose",
+      "related": "export-timeline"
+    },
+    {
+      "at": 3032.899999976158,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:3",
+        "visible": false,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:3",
+              "visible": false
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:3",
+              "visible": false
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "delivery-page-compose",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "false"
+    },
+    {
+      "at": 3119.7999999523163,
+      "kind": "focus-call",
+      "target": "right-dock-tab-properties",
+      "stack": [
+        "    at HTMLElement.focus (<anonymous>:5:134)",
+        "    at http://127.0.0.1:60152/assets/index-CaHM43li.js:33:79303",
+        "    at Vb (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:94000)",
+        "    at gD (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:98580)",
+        "    at Kd (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:107548)",
+        "    at gD (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:99145)"
+      ]
+    },
+    {
+      "at": 3123.7999999523163,
+      "kind": "focusout",
+      "target": "delivery-page-compose",
+      "related": "right-dock-tab-properties"
+    },
+    {
+      "at": 3124,
+      "kind": "focusin",
+      "target": "right-dock-tab-properties",
+      "related": "delivery-page-compose"
+    },
+    {
+      "at": 3144.6999999284744,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:4",
+        "visible": true,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:4",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:4",
+              "visible": true
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "right-dock-tab-properties",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "false"
+    },
+    {
+      "at": 3184.2999999523163,
+      "kind": "focus-call",
+      "target": "reopen-inspector",
+      "stack": [
+        "    at HTMLElement.focus (<anonymous>:5:134)",
+        "    at http://127.0.0.1:60152/assets/index-CaHM43li.js:277:81365",
+        "    at Vb (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:94000)",
+        "    at gD (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:98580)",
+        "    at Kd (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:107548)",
+        "    at gD (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:99145)"
+      ]
+    },
+    {
+      "at": 3184.399999976158,
+      "kind": "focusout",
+      "target": "right-dock-tab-properties",
+      "related": "reopen-inspector"
+    },
+    {
+      "at": 3184.5,
+      "kind": "focusin",
+      "target": "reopen-inspector",
+      "related": "right-dock-tab-properties"
+    },
+    {
+      "at": 3189.2999999523163,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:4",
+        "visible": true,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:4",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:6:4",
+              "visible": true
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "reopen-inspector",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "true"
+    },
+    {
+      "at": 3218.5,
+      "kind": "pointerdown",
+      "target": "workspace-canvas",
+      "related": null
+    },
+    {
+      "at": 3218.5999999046326,
+      "kind": "focusout",
+      "target": "reopen-inspector",
+      "related": "workspace-canvas"
+    },
+    {
+      "at": 3218.6999999284744,
+      "kind": "focusin",
+      "target": "workspace-canvas",
+      "related": "reopen-inspector"
+    },
+    {
+      "at": 3219.1999999284744,
+      "kind": "pointerup",
+      "target": "workspace-canvas",
+      "related": null
+    },
+    {
+      "at": 3219.2999999523163,
+      "kind": "click",
+      "target": "workspace-canvas",
+      "related": null
+    },
+    {
+      "at": 3268.1999999284744,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:7:4",
+        "visible": true,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:7:4",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:7:4",
+              "visible": true
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "workspace-canvas",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "true"
+    },
+    {
+      "at": 3368.6999999284744,
+      "kind": "pointerdown",
+      "target": "workspace-editing",
+      "related": null
+    },
+    {
+      "at": 3368.7999999523163,
+      "kind": "focusout",
+      "target": "workspace-canvas",
+      "related": "workspace-editing"
+    },
+    {
+      "at": 3368.7999999523163,
+      "kind": "focusin",
+      "target": "workspace-editing",
+      "related": "workspace-canvas"
+    },
+    {
+      "at": 3369.1999999284744,
+      "kind": "pointerup",
+      "target": "workspace-editing",
+      "related": null
+    },
+    {
+      "at": 3369.2999999523163,
+      "kind": "click",
+      "target": "workspace-editing",
+      "related": null
+    },
+    {
+      "at": 3409.5999999046326,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:8:4",
+        "visible": true,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:8:4",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:8:4",
+              "visible": true
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "workspace-editing",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "true"
+    },
+    {
+      "at": 3453,
+      "kind": "pointerdown",
+      "target": "timeline-clip-e21fa5f4-12a8-42ba-acc1-af44eb1b1f8c",
+      "related": null
+    },
+    {
+      "at": 3453.1999999284744,
+      "kind": "focusout",
+      "target": "workspace-editing",
+      "related": "timeline-clip-e21fa5f4-12a8-42ba-acc1-af44eb1b1f8c"
+    },
+    {
+      "at": 3453.2999999523163,
+      "kind": "focusin",
+      "target": "timeline-clip-e21fa5f4-12a8-42ba-acc1-af44eb1b1f8c",
+      "related": "workspace-editing"
+    },
+    {
+      "at": 3453.399999976158,
+      "kind": "pointerup",
+      "target": "timeline-clip-e21fa5f4-12a8-42ba-acc1-af44eb1b1f8c",
+      "related": null
+    },
+    {
+      "at": 3453.5,
+      "kind": "click",
+      "target": "timeline-clip-e21fa5f4-12a8-42ba-acc1-af44eb1b1f8c",
+      "related": null
+    },
+    {
+      "at": 3466.399999976158,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:8:4",
+        "visible": true,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:8:4",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:8:4",
+              "visible": true
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "timeline-clip-e21fa5f4-12a8-42ba-acc1-af44eb1b1f8c",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "true"
+    },
+    {
+      "at": 3548.399999976158,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:4",
+        "visible": true,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:4",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:4",
+              "visible": true
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "timeline-clip-e21fa5f4-12a8-42ba-acc1-af44eb1b1f8c",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "true"
+    },
+    {
+      "at": 3553.399999976158,
+      "kind": "pointerdown",
+      "target": "right-dock-tab-tasks",
+      "related": null
+    },
+    {
+      "at": 3553.5,
+      "kind": "focusout",
+      "target": "timeline-clip-e21fa5f4-12a8-42ba-acc1-af44eb1b1f8c",
+      "related": "jobs-button"
+    },
+    {
+      "at": 3553.5999999046326,
+      "kind": "focusin",
+      "target": "jobs-button",
+      "related": "timeline-clip-e21fa5f4-12a8-42ba-acc1-af44eb1b1f8c"
+    },
+    {
+      "at": 3553.5999999046326,
+      "kind": "pointerup",
+      "target": "right-dock-tab-tasks",
+      "related": null
+    },
+    {
+      "at": 3553.6999999284744,
+      "kind": "click",
+      "target": "right-dock-tab-tasks",
+      "related": null
+    },
+    {
+      "at": 3566.0999999046326,
+      "kind": "focus-call",
+      "target": "task-overview-all",
+      "stack": [
+        "    at HTMLElement.focus (<anonymous>:5:134)",
+        "    at i (http://127.0.0.1:60152/assets/index-CaHM43li.js:1:66039)"
+      ]
+    },
+    {
+      "at": 3566.0999999046326,
+      "kind": "focusout",
+      "target": "jobs-button",
+      "related": "task-overview-all"
+    },
+    {
+      "at": 3566.2999999523163,
+      "kind": "focusin",
+      "target": "task-overview-all",
+      "related": "jobs-button"
+    },
+    {
+      "at": 3567.899999976158,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:4",
+        "visible": true,
+        "hooks": [
+          true,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:4",
+              "visible": true
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:4",
+              "visible": true
+            }
+          }
+        ]
+      },
+      "expanded": "true",
+      "popup": true,
+      "button": true,
+      "active": "task-overview-all",
+      "buttonRect": {
+        "x": 776.59375,
+        "y": 172,
+        "width": 104.40625,
+        "height": 28
+      },
+      "hit": "task-overview-all",
+      "theme": "light",
+      "compact": "true"
+    },
+    {
+      "at": 3669.0999999046326,
+      "kind": "pointerdown",
+      "target": "task-overview-all",
+      "related": null
+    },
+    {
+      "at": 3669.2999999523163,
+      "kind": "pointerup",
+      "target": "task-overview-all",
+      "related": null
+    },
+    {
+      "at": 3669.2999999523163,
+      "kind": "click",
+      "target": "task-overview-all",
+      "related": null
+    },
+    {
+      "at": 3693,
+      "kind": "focusout",
+      "target": "task-overview-all",
+      "related": null
+    },
+    {
+      "at": 3693.399999976158,
+      "kind": "focus-call",
+      "target": "DIV",
+      "stack": [
+        "    at HTMLElement.focus (<anonymous>:5:134)",
+        "    at http://127.0.0.1:60152/assets/index-CaHM43li.js:1:77845"
+      ]
+    },
+    {
+      "at": 3695.7999999523163,
+      "kind": "focus-call",
+      "target": "task-workspace-body",
+      "stack": [
+        "    at HTMLElement.focus (<anonymous>:5:134)",
+        "    at i (http://127.0.0.1:60152/assets/index-CaHM43li.js:1:66039)"
+      ]
+    },
+    {
+      "at": 3695.7999999523163,
+      "kind": "focusin",
+      "target": "task-workspace-body",
+      "related": null
+    },
+    {
+      "at": 3696.7999999523163,
+      "kind": "state",
+      "owner": {
+        "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:5",
+        "visible": false,
+        "hooks": [
+          false,
+          {
+            "token": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:5",
+              "visible": false
+            }
+          },
+          {
+            "current": {
+              "scope": "13ef0b54-7c49-4778-8300-7aca1ba95e76:3:9:5",
+              "visible": false
+            }
+          }
+        ]
+      },
+      "expanded": "false",
+      "popup": false,
+      "button": false,
+      "active": "task-workspace-body",
+      "buttonRect": null,
+      "hit": null,
+      "theme": "light",
+      "compact": "true"
+    },
+    {
+      "at": 3699.6999999284744,
+      "kind": "focus-call",
+      "target": "DIV",
+      "stack": [
+        "    at HTMLElement.focus (<anonymous>:5:134)",
+        "    at http://127.0.0.1:60152/assets/index-CaHM43li.js:1:77886",
+        "    at Array.<anonymous> (http://127.0.0.1:60152/assets/index-CaHM43li.js:1:59462)",
+        "    at tick (http://127.0.0.1:60152/assets/index-CaHM43li.js:1:58926)"
+      ]
+    },
+    {
+      "at": 3796.0999999046326,
+      "kind": "focus-call",
+      "target": "right-dock-tab-properties",
+      "stack": [
+        "    at HTMLElement.focus (<anonymous>:5:134)",
+        "    at http://127.0.0.1:60152/assets/index-CaHM43li.js:33:79303",
+        "    at Vb (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:94000)",
+        "    at gD (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:98580)",
+        "    at Kd (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:107548)",
+        "    at gD (http://127.0.0.1:60152/assets/index-CaHM43li.js:21:99145)"
+      ]
+    },
+    {
+      "at": 3812.6999999284744,
+      "kind": "focus-call",
+      "target": "jobs-button",
+      "stack": [
+        "    at HTMLElement.focus (<anonymous>:5:134)",
+        "    at http://127.0.0.1:60152/assets/index-CaHM43li.js:1:80985"
+      ]
+    },
+    {
+      "at": 3812.7999999523163,
+      "kind": "focusout",
+      "target": "task-workspace-body",
+      "related": "jobs-button"
+    },
+    {
+      "at": 3813.1999999284744,
+      "kind": "focusin",
+      "target": "jobs-button",
+      "related": "task-workspace-body"
+    }
+  ]
+}

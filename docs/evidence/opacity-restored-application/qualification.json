@@ -1,0 +1,249 @@
+{
+  "date": "2026-10-16",
+  "baseCommit": "5df70103ffc636d9cbc2d32f516af8ebab3c1519",
+  "status": "passed-scoped-restored43-application",
+  "scope": "Explicit isolated restored43 application for actual cold42 archive products; existing project/clip editing and new preview/export only.",
+  "authorization": "Trusted user approval covers localhost4319, fresh task-only temporary42/43 directories, generated10-frame media and GUI. No permission pending; no push authorized for this task.",
+  "implemented": [
+    "separate non-copyable43 application admission; same owner lease RO-to-RW inode validation",
+    "exact restored inspection and project snapshot contracts; ordinary API remains historical",
+    "shared App Save/Cancel/Undo/Redo and neworigin preview/export; held source tasks remain captured",
+    "managed source and new output media gates retain origin, receipt, identity and late file checks",
+    "v3 excluded/source retained; current43 draft and view memory only; preferences PUT refuses",
+    "four-language copy: Simplified Chinese, region-neutral Traditional Chinese, English, Japanese"
+  ],
+  "versions": {
+    "node": "v26.9.0",
+    "safari": "27.0.1",
+    "ffmpeg": "9.0.2",
+    "ffprobe": "9.0.2",
+    "ffmpegPath": "/opt/homebrew/bin/ffmpeg",
+    "ffprobePath": "/opt/homebrew/bin/ffprobe"
+  },
+  "tests": {
+    "aggregate": {
+      "file": "aggregate-summary.json",
+      "pass": 124,
+      "total": 124,
+      "uniqueFiles": 18,
+      "exitCode": 0
+    },
+    "adjacentPreferences": {
+      "file": "preferences-regression-summary.json",
+      "pass": 12,
+      "total": 12,
+      "allCommandsExitCode": 0,
+      "countPolicy": "separate; not added to aggregate"
+    },
+    "fullRepositorySuite": false
+  },
+  "gates": [
+    {
+      "command": [
+        "node",
+        "scripts/tooling.mjs",
+        "typecheck"
+      ],
+      "exitCode": 0,
+      "log": "typecheck-fixed.txt"
+    },
+    {
+      "command": [
+        "node",
+        "scripts/tooling.mjs",
+        "build"
+      ],
+      "exitCode": 0,
+      "log": "build-summary.txt",
+      "scope": "canonical type/source guards, default Web and development Desktop stage; not installer"
+    },
+    {
+      "cwd": "apps/web",
+      "command": [
+        "node",
+        "node_modules/vite/bin/vite.js",
+        "build",
+        "--mode",
+        "opacity-candidate"
+      ],
+      "exitCode": 0,
+      "log": "candidate-build-summary.txt"
+    }
+  ],
+  "initialFailures": [
+    {
+      "log": "typecheck-initial-failure.txt",
+      "reason": "New browser import of old contracts barrel pulled legacy JS closure into strict TS; replaced with pure TS contract seam. Typecheck configuration and allowlist unchanged."
+    },
+    {
+      "files": [
+        "http-media-qualification-attempt1.json",
+        "http-media-qualification-attempt2.json"
+      ],
+      "reason": "Temporary audit script initially hashed public export DTO and later read omitted asset path. Corrected harness to use original DB records; native codec did not need rerunning; product unchanged."
+    },
+    {
+      "file": "preferences-regression-attempt1-summary.json",
+      "reason": "Inherited macOS TMPDIR used /var symlink, correctly refused before preferences logic. Set this test subprocess TMPDIR to new task-owned canonical /private/tmp; no rule/runtime/test change."
+    }
+  ],
+  "workspace": "/private/tmp/mioon-opacity43-app-qualification-20261016",
+  "seed": "seed.json",
+  "gui": {
+    "file": "gui-acceptance.json",
+    "passed": "Safari login/open/Save/Cancel/Undo/Redo/preview/preflight/explicit export/playback/normal reopen",
+    "locale": "system-selected region-neutral Traditional Chinese",
+    "GUIdefaultDownloads": false,
+    "fullFourLanguageAndIME": false,
+    "screenshotsSaved": false
+  },
+  "media": {
+    "file": "http-media-qualification.json",
+    "sourceBytes": 165,
+    "frames": 10,
+    "fps": 30,
+    "outputs": [
+      {
+        "purpose": "preview",
+        "bytes": 4477,
+        "sha256": "b24242e78b4bd498cd83f31fe28e7c742bc9bd74e2aa43d0d51ddd6e5ce36626",
+        "firstRGB": [
+          37,
+          17,
+          37
+        ],
+        "lastRGB": [
+          88,
+          39,
+          88
+        ],
+        "brightnessRatio": 2.3626373626373627
+      },
+      {
+        "purpose": "export",
+        "bytes": 4477,
+        "sha256": "b24242e78b4bd498cd83f31fe28e7c742bc9bd74e2aa43d0d51ddd6e5ce36626",
+        "firstRGB": [
+          37,
+          17,
+          37
+        ],
+        "lastRGB": [
+          88,
+          39,
+          88
+        ],
+        "brightnessRatio": 2.3626373626373627
+      }
+    ],
+    "serviceProcessesStarted": 17,
+    "serviceProcessesExited": 17,
+    "serviceKinds": {
+      "ffprobe": 7,
+      "ffmpeg": 10
+    },
+    "serviceMaxObservedMs": 3277,
+    "auditChildren": 4,
+    "auditAllClosed": true,
+    "activeAtEnd": 0,
+    "precheckedProductBounds": {
+      "stdoutBytes": 4194304,
+      "stderrBytes": 1048576,
+      "timeoutMs": 120000,
+      "inputThreads": 1,
+      "filterComplexThreads": 1,
+      "defaultX264Threads": 2,
+      "terminationOwnedDirectChildrenOnly": true,
+      "graceMs": 2000,
+      "reapMs": 1000
+    },
+    "harnessBounds": {
+      "serviceChildWatchdogMs": 15000,
+      "serverLifetimeMs": 1200000,
+      "watchdogTriggered": false,
+      "auditChildTimeoutMs": 5000,
+      "auditRGBBytes": 30,
+      "auditStderrBytes": 65536
+    }
+  },
+  "reopen": {
+    "before": "reopen-before.json",
+    "after": "reopen-after.json",
+    "sameOrigin": true,
+    "newInstance": true,
+    "savedCurveAndExportsRetained": true,
+    "capturedPendingStillHeld": true
+  },
+  "exit": "final-exit-check.json",
+  "review": "independent-review.json",
+  "frozen": "frozen-check.json",
+  "newFrozenExceptions": 0,
+  "notVerified": [
+    "full four-language GUI/IME",
+    "GUI download into default browser directory",
+    "native Electron and installable packages",
+    "Node24",
+    "product-pinned FFmpeg",
+    "long-media resource and cancellation qualification",
+    "cross-platform or live providers"
+  ],
+  "remainingProductLimits": [
+    "43 draft/view state is memory-only; ordinary dirty close may lose input",
+    "no43 recursive backup or persistent companion",
+    "no43 new project/import/track or clip structural mutations",
+    "default40/41 opacity activation and migration not granted"
+  ],
+  "nextDeliverable": "A separate bounded43 draft persistence/recovery design and compatibility decision, or full four-language/IME/native acceptance; neither is included in this slice.",
+  "blockers": [],
+  "deniedOperations": [],
+  "pendingApprovals": [],
+  "historicalUncertainty": "Earlier42 original CLI exit/window state remains documented separately; no old PID/window/chooser operation performed.",
+  "mutationBoundaries": {
+    "userProjects": false,
+    "dependenciesInstalled": false,
+    "credentialsChanged": false,
+    "paidServices": false,
+    "providersStarted": false,
+    "githubPush": false
+  },
+  "recordedAt": "2026-10-16T07:25:16.348573+00:00",
+  "temporaryHarnesses": [
+    {
+      "path": "/tmp/mioon-opacity43-runtime-qualification.mjs",
+      "sha256": "c132a39c3d86bb390e10598cba3b4a6c0cf373e08ee028d0c4053ebeb42640e7"
+    },
+    {
+      "path": "/tmp/mioon-opacity43-reopen-inspect.mjs",
+      "sha256": "b8bfb789a8daf351e245338bb45bf10f0591d691d9933cc6b953bdc56a1e015f"
+    }
+  ],
+  "evidenceSha256": {
+    "aggregate-selection.json": "b10fc1edec6f6e1f0d39f1ebd2c03efc502bd760f7e146bea3e8ae631cd7c00e",
+    "aggregate-summary.json": "21da809bd36cd018a1c48b1b419c29056d35227857c76c38fe7699c2267ff47f",
+    "aggregate-tests.tap": "cf39f3bfadb48937e365ac6f2ea516417b9dbb3a7b3c64f819687298a613e7d6",
+    "browser-versions.json": "7fcd13e161853ee35a79c50d9e25b6946e591e4fca6de5ff29632efd92918ef9",
+    "build-summary.txt": "e8340a519a27c00a921e8a975f23652d443ad91cae5406a2e037fb2e175eb1b3",
+    "candidate-build-summary.txt": "b47798fbed09d385d479d023d26923f6e18c13eb2233824a812118e2e8534307",
+    "export-10frames.mp4": "b24242e78b4bd498cd83f31fe28e7c742bc9bd74e2aa43d0d51ddd6e5ce36626",
+    "final-exit-check.json": "5a9c00d0557d654e7c39125c50aae1de32667adafd4d3c188272f7dfa50b36c6",
+    "frozen-check.json": "c2d24e6271aeeb3ed251a2bd1791d6417e407878769217b5f77a4c30757e13e0",
+    "gui-acceptance.json": "8c896b0d19ab43e6f3d384ee375204926671912d6359b04537d2dc4c0a502506",
+    "http-media-qualification-attempt1.json": "e436a1bd69d25f5300faf47f9843e8e97115f7110d2556498d3069e4a23b22e0",
+    "http-media-qualification-attempt2.json": "c9e9528468b0dfae2e2ef7d559d359ff64a8979008c891f7156bbc68ae269d84",
+    "http-media-qualification.json": "aa0a15b3a3372b51ffb5ccf3a65dcba2921b89fd24f7beb9a502c266c36c4b64",
+    "independent-review.json": "4b1ab328d5a5e49fa4580a7852b6eaf200ef8c4796ce9b16212d95ad765d0fff",
+    "lifecycle.jsonl": "230bb46b50f0964e990e999f0e0c262b5ff39fee7507afaa08db4bc91abc9e70",
+    "media-durations.jsonl": "3c91726e78f3675a3740e8dd35ced3f75d912f7e90e7f563e7c90fcd6951bf38",
+    "media-events.jsonl": "1642728922c29fc9365044cf8466cbb3291e01ec3bfc115228cac9295b24cd5c",
+    "preferences-regression-attempt1-summary.json": "047e3e60b873fd25d39658562f6b9ebebe5995d661d64ac9c754a7e534cb345d",
+    "preferences-regression-attempt1.tap": "e3add70c58d13b74aff945cdefba1fa6dc759f4e60e128ca4e3e1d98172ac2b6",
+    "preferences-regression-summary.json": "9ac22acc3b9da82ec8ac252c0c5538fa491d0c056bbaee36f174dbffa632b3a7",
+    "preferences-regression.tap": "4d340e565c243c0f9396ed6dbdecd0515bbc68cc88eec481fe388ef4ee9ec703",
+    "preview-10frames.mp4": "b24242e78b4bd498cd83f31fe28e7c742bc9bd74e2aa43d0d51ddd6e5ce36626",
+    "reopen-after.json": "b9bba4adccc2afa606b6cfa5ad6598d42ade3a148b63fe7596fb7a2f694980d1",
+    "reopen-before.json": "e6f06a2a75ec9b7faeb815608fd339f52787f7129fe7d0b8a6fe566b085825d3",
+    "seed.json": "9d509439a092071ac0d856267a1951ad52a7b7801b88eedfb59d087bdd545ff6",
+    "typecheck-fixed.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "typecheck-initial-failure.txt": "9893966f801e3ba13b3ab4c5f2e96729bec9e7efadc28840ff79f0562faa9564"
+  }
+}

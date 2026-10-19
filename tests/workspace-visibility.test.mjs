@@ -9,6 +9,10 @@ import * as contracts from '@mioon/contracts';
 import { LOCAL_SHOT_TEXT_LIMITS } from '@mioon/contracts/local-shot-text';
 import * as exportSettings from '../apps/web/src/export-settings-state.js';
 import * as sourceRanges from '../apps/web/src/source-range-state.js';
+import * as previewPlayback from '../apps/web/src/preview-playback.ts';
+import * as candidatePresentation from '../apps/web/src/opacity-candidate-render-presentation.ts';
+import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
+import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.js';
 
 // Exercise the real component functions with deterministic hook, ref, media,
 // and animation-frame boundaries. These tests intentionally do not claim DOM
@@ -70,6 +74,17 @@ function createHarness(file, exportName = 'default') {
       return { state: {}, controller: { setContext() {} } };
     }, mergeFreshShotTextAck: () => { assert.fail('No shot-text acknowledgement is expected in this fixture'); } },
     './ShotTextDraftRecovery.tsx': { default: 'ShotTextDraftRecovery', __esModule: true },
+    './AssetAnnotations.tsx': { default: 'AssetAnnotations', __esModule: true },
+    './CanvasOverview.tsx': { default: 'CanvasOverview', __esModule: true },
+    './BoardInspectorGroup.tsx': { default: 'BoardInspectorGroup', __esModule: true },
+    './VersionCardPreview.tsx': { default: 'VersionCardPreview', __esModule: true },
+    './CompactNodePlayer.tsx': { default: 'CompactNodePlayer', __esModule: true },
+    './PreviewPlaybackControls.tsx': { default: 'PreviewPlaybackControls', __esModule: true },
+    './PreviewRenderProgress.tsx': { default: 'PreviewRenderProgress', __esModule: true },
+    './preview-playback.ts': previewPlayback,
+    './opacity-candidate-render-presentation.ts': candidatePresentation,
+    './UiPreferencesProvider.tsx': {useUiPreferences:()=>({preferences:DEFAULT_UI_PREFERENCES})},
+    './image-generation.js': {imageEditSourceIssueDescriptor},
     './source-range-state.js': sourceRanges,
     './export-settings-state.js': exportSettings,
     '@xyflow/react': { Handle: 'Handle', Position: { Left: 'left', Right: 'right' } },
@@ -93,6 +108,7 @@ function createHarness(file, exportName = 'default') {
     const module = { exports: {} }; modules.set(filename, module);
     const require = id => {
       if (mocks[id]) return mocks[id];
+      if (id.endsWith('.css')) return {};
       if (id.startsWith('@mioon/ui/')) return ui;
       if (componentCode.has(id.replace('./', ''))) return load(id.replace('./', ''));
       throw Error(`Unexpected component dependency: ${id}`);

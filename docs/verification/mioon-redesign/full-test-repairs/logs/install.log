@@ -1,0 +1,29 @@
+Scope: all 11 workspace projects
+✓ Lockfile passes supply-chain policies (verified 2d ago)
+Lockfile is up to date, resolution step is skipped
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +397
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Packages are cloned from the content-addressable store to the virtual store.
+  Content-addressable store is at: /Users/kouzen/Library/pnpm/store/v11
+  Virtual store is at:             node_modules/.pnpm
+Progress: resolved 397, reused 397, downloaded 0, added 36
+Progress: resolved 397, reused 397, downloaded 0, added 394
+Progress: resolved 397, reused 397, downloaded 0, added 397, done
+
+devDependencies:
++ @mioon/business 0.4.0 <- packages/business
++ @mioon/cli 0.4.0 <- apps/cli
++ @mioon/client 0.4.0 <- packages/client
++ @mioon/contracts 0.4.0 <- packages/contracts
++ @mioon/server 0.4.0 <- apps/server
++ @modelcontextprotocol/sdk 1.32.1
++ @types/node 24.19.1
++ @types/react 19.2.18
++ @types/react-dom 19.2.7
++ electron 44.7.0
++ electron-builder 26.15.3
++ esbuild 0.27.7
++ typescript 6.0.3
+
+Done in 4.4s using pnpm v11.25.0

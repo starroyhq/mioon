@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: subtitle schemas accept exactly three keyed manual operations and preserve the historical16 prefix
+ok 1 - subtitle schemas accept exactly three keyed manual operations and preserve the historical16 prefix
+  ---
+  duration_ms: 4.490084
+  type: 'test'
+  ...
+# Subtest: one shared text validator keeps manual line breaks and rejects unsupported Unicode with scalar positions
+ok 2 - one shared text validator keeps manual line breaks and rejects unsupported Unicode with scalar positions
+  ---
+  duration_ms: 0.332083
+  type: 'test'
+  ...
+# Subtest: subtitle intervals are strict nonoverlapping exclusive-end ranges within media duration
+ok 3 - subtitle intervals are strict nonoverlapping exclusive-end ranges within media duration
+  ---
+  duration_ms: 2.115584
+  type: 'test'
+  ...
+# Subtest: complete saved acknowledgements match exact subtitle operation intent and reject partial responses
+ok 4 - complete saved acknowledgements match exact subtitle operation intent and reject partial responses
+  ---
+  duration_ms: 1.122292
+  type: 'test'
+  ...
+# Subtest: new proof requires every exact identity field and never treats missing cue or stale revision as an unscoped signal
+ok 5 - new proof requires every exact identity field and never treats missing cue or stale revision as an unscoped signal
+  ---
+  duration_ms: 0.423959
+  type: 'test'
+  ...
+# Subtest: snapshot profile and exact font hash are required only for nonempty cues; old shape stays byte-identical
+ok 6 - snapshot profile and exact font hash are required only for nonempty cues; old shape stays byte-identical
+  ---
+  duration_ms: 1.136625
+  type: 'test'
+  ...
+# Subtest: maximal escaped legitimate aggregate fits the unified256KiB budget while model and render budgets remain independent
+ok 7 - maximal escaped legitimate aggregate fits the unified256KiB budget while model and render budgets remain independent
+  ---
+  duration_ms: 4.934334
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 273.044584

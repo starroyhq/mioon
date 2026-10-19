@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: real HTTP CLI and official MCP lose attach/detach acknowledgements, retain ownership uncertainty and replay historical exact responses
+ok 1 - real HTTP CLI and official MCP lose attach/detach acknowledgements, retain ownership uncertainty and replay historical exact responses
+  ---
+  duration_ms: 6909.6525
+  type: 'test'
+  ...
+# Subtest: real malformed reference HTTP client CLI MCP successes retain exact request identity and recover without duplicate changes
+ok 2 - real malformed reference HTTP client CLI MCP successes retain exact request identity and recover without duplicate changes
+  ---
+  duration_ms: 3149.1345
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 10576.995

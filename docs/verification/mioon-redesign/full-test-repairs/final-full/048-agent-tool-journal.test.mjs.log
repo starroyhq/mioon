@@ -1,0 +1,160 @@
+TAP version 13
+# Subtest: chat_completions: complete bounded workflow commits exact wire artifacts and immutable snapshot history
+ok 1 - chat_completions: complete bounded workflow commits exact wire artifacts and immutable snapshot history
+  ---
+  duration_ms: 978.450417
+  type: 'test'
+  ...
+# Subtest: responses: complete bounded workflow commits exact wire artifacts and immutable snapshot history
+ok 2 - responses: complete bounded workflow commits exact wire artifacts and immutable snapshot history
+  ---
+  duration_ms: 621.3865
+  type: 'test'
+  ...
+# Subtest: legacy acceptance and stored runs remain typed-only with zero step rows
+ok 3 - legacy acceptance and stored runs remain typed-only with zero step rows
+  ---
+  duration_ms: 592.813166
+  type: 'test'
+  ...
+# Subtest: ordering rejects early tool intent, undisbursed completion, legacy dispatch bypass and false run completion
+ok 4 - ordering rejects early tool intent, undisbursed completion, legacy dispatch bypass and false run completion
+  ---
+  duration_ms: 583.465459
+  type: 'test'
+  ...
+# Subtest: lost acknowledgement, duplicate intent and two journal instances never repeat an observed read
+ok 5 - lost acknowledgement, duplicate intent and two journal instances never repeat an observed read
+  ---
+  duration_ms: 607.180542
+  type: 'test'
+  ...
+# Subtest: capture result rollback retains durable dispatch boundary and never permits retry
+ok 6 - capture result rollback retains durable dispatch boundary and never permits retry
+  ---
+  duration_ms: 617.359625
+  type: 'test'
+  ...
+# Subtest: callback throws, asynchronous callback, thenable and mismatched exact result fail closed
+ok 7 - callback throws, asynchronous callback, thenable and mismatched exact result fail closed
+  ---
+  duration_ms: 2964.848125
+  type: 'test'
+  ...
+# Subtest: reopen at accepted interrupts without repeating model or read work
+ok 8 - reopen at accepted interrupts without repeating model or read work
+  ---
+  duration_ms: 603.547958
+  type: 'test'
+  ...
+# Subtest: reopen at first-dispatch interrupts without repeating model or read work
+ok 9 - reopen at first-dispatch interrupts without repeating model or read work
+  ---
+  duration_ms: 595.049042
+  type: 'test'
+  ...
+# Subtest: reopen at first-complete interrupts without repeating model or read work
+ok 10 - reopen at first-complete interrupts without repeating model or read work
+  ---
+  duration_ms: 589.608417
+  type: 'test'
+  ...
+# Subtest: reopen at intent interrupts without repeating model or read work
+ok 11 - reopen at intent interrupts without repeating model or read work
+  ---
+  duration_ms: 608.808333
+  type: 'test'
+  ...
+# Subtest: reopen at capture-started interrupts without repeating model or read work
+ok 12 - reopen at capture-started interrupts without repeating model or read work
+  ---
+  duration_ms: 624.9755
+  type: 'test'
+  ...
+# Subtest: reopen at observed interrupts without repeating model or read work
+ok 13 - reopen at observed interrupts without repeating model or read work
+  ---
+  duration_ms: 603.439625
+  type: 'test'
+  ...
+# Subtest: reopen at prepared interrupts without repeating model or read work
+ok 14 - reopen at prepared interrupts without repeating model or read work
+  ---
+  duration_ms: 623.22575
+  type: 'test'
+  ...
+# Subtest: reopen at second-dispatch interrupts without repeating model or read work
+ok 15 - reopen at second-dispatch interrupts without repeating model or read work
+  ---
+  duration_ms: 612.339292
+  type: 'test'
+  ...
+# Subtest: Stop revokes future reads and continuation; later callbacks cannot reopen terminal state
+ok 16 - Stop revokes future reads and continuation; later callbacks cannot reopen terminal state
+  ---
+  duration_ms: 562.257291
+  type: 'test'
+  ...
+# Subtest: continuation rejects changed context, substituted call IDs/results and tool-enabled third round
+ok 17 - continuation rejects changed context, substituted call IDs/results and tool-enabled third round
+  ---
+  duration_ms: 595.776
+  type: 'test'
+  ...
+# Subtest: step IDs and provenance cannot cross projects or foreign accepted runs
+ok 18 - step IDs and provenance cannot cross projects or foreign accepted runs
+  ---
+  duration_ms: 576.712958
+  type: 'test'
+  ...
+# Subtest: immutable evidence cannot be rewritten/deleted and no credential-shaped fields are accepted
+ok 19 - immutable evidence cannot be rewritten/deleted and no credential-shaped fields are accepted
+  ---
+  duration_ms: 584.483
+  type: 'test'
+  ...
+# Subtest: missing inspection fields cannot downgrade accepted inspection into legacy typed chat
+ok 20 - missing inspection fields cannot downgrade accepted inspection into legacy typed chat
+  ---
+  duration_ms: 571.474417
+  type: 'test'
+  ...
+# Subtest: malformed durable activity and mismatched SQL step identity fail closed on read/replay
+ok 21 - malformed durable activity and mismatched SQL step identity fail closed on read/replay
+  ---
+  duration_ms: 1800.551916
+  type: 'test'
+  ...
+# Subtest: acceptance quota rollback leaves no partial run, step, event or reservation
+ok 22 - acceptance quota rollback leaves no partial run, step, event or reservation
+  ---
+  duration_ms: 603.811458
+  type: 'test'
+  ...
+# Subtest: result quota failure keeps read non-retryable and terminal reserve remains usable
+ok 23 - result quota failure keeps read non-retryable and terminal reserve remains usable
+  ---
+  duration_ms: 586.432958
+  type: 'test'
+  ...
+# Subtest: project consent without execution is rejected before acceptance and cannot be read as legacy
+ok 24 - project consent without execution is rejected before acceptance and cannot be read as legacy
+  ---
+  duration_ms: 681.364209
+  type: 'test'
+  ...
+# Subtest: persisted replay snapshots cannot lose provenance or substitute activity identities
+ok 25 - persisted replay snapshots cannot lose provenance or substitute activity identities
+  ---
+  duration_ms: 1484.581917
+  type: 'test'
+  ...
+1..25
+# tests 25
+# suites 0
+# pass 25
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 20159.811875

@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: restored launch is explicit, mutually exclusive and never creates missing roots or databases
+ok 1 - restored launch is explicit, mutually exclusive and never creates missing roots or databases
+  ---
+  duration_ms: 844.601542
+  type: 'test'
+  ...
+# Subtest: restored admission refuses ordinary40/restored41/ordinary42 before changing database bytes
+ok 2 - restored admission refuses ordinary40/restored41/ordinary42 before changing database bytes
+  ---
+  duration_ms: 1091.753542
+  type: 'test'
+  ...
+# Subtest: real cold backup restores a separately admitted read surface with held history and explicit draft policy
+ok 3 - real cold backup restores a separately admitted read surface with held history and explicit draft policy
+  ---
+  duration_ms: 1285.728791
+  type: 'test'
+  ...
+# Subtest: new origin edits and durable tasks work while all captured pending task actions remain held
+ok 4 - new origin edits and durable tasks work while all captured pending task actions remain held
+  ---
+  duration_ms: 2206.854125
+  type: 'test'
+  ...
+# Subtest: registered43 proofs are one-shot and copies or a generic43 handle confer no application authority
+ok 5 - registered43 proofs are one-shot and copies or a generic43 handle confer no application authority
+  ---
+  duration_ms: 1138.045958
+  type: 'test'
+  ...
+# Subtest: bad restored evidence or catalog is rejected before RW open and its original bytes are preserved
+ok 6 - bad restored evidence or catalog is rejected before RW open and its original bytes are preserved
+  ---
+  duration_ms: 1029.017584
+  type: 'test'
+  ...
+# Subtest: restored admission refuses database inode replacement between read-only validation and RW open
+ok 7 - restored admission refuses database inode replacement between read-only validation and RW open
+  ---
+  duration_ms: 992.704459
+  type: 'test'
+  ...
+# Subtest: active owner and symlinked root/database/media paths are refused without taking over or repairing
+ok 8 - active owner and symlinked root/database/media paths are refused without taking over or repairing
+  ---
+  duration_ms: 1052.062708
+  type: 'test'
+  ...
+# Subtest: pre-aborted restored actions make no writes and a forged fresh output cannot be disclosed
+ok 9 - pre-aborted restored actions make no writes and a forged fresh output cannot be disclosed
+  ---
+  duration_ms: 1003.034625
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 10970.607166

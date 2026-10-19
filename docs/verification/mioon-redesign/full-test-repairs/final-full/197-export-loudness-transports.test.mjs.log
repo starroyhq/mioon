@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: actual CLI and official MCP discover the exact strict loudness input and unchanged annotations offline
+ok 1 - actual CLI and official MCP discover the exact strict loudness input and unchanged annotations offline
+  ---
+  duration_ms: 1353.75725
+  type: 'test'
+  ...
+# Subtest: actual HTTP, CLI and official MCP carry identical ephemeral reports, validate identity and never retry
+ok 2 - actual HTTP, CLI and official MCP carry identical ephemeral reports, validate identity and never retry
+  ---
+  duration_ms: 1585.483042
+  type: 'test'
+  ...
+# Subtest: actual HTTP cancellation disconnects only loudness observation and leaves server healthy
+ok 3 - actual HTTP cancellation disconnects only loudness observation and leaves server healthy
+  ---
+  duration_ms: 10.999959
+  type: 'test'
+  ...
+# Subtest: actual CLI cancellation disconnects only loudness observation and leaves server healthy
+ok 4 - actual CLI cancellation disconnects only loudness observation and leaves server healthy
+  ---
+  duration_ms: 392.721375
+  type: 'test'
+  ...
+# Subtest: actual MCP cancellation disconnects only loudness observation and leaves server healthy
+ok 5 - actual MCP cancellation disconnects only loudness observation and leaves server healthy
+  ---
+  duration_ms: 387.293292
+  type: 'test'
+  ...
+# Subtest: actual HTTP, CLI and official MCP preserve explicit custom target and reject altered source or suggestion
+ok 6 - actual HTTP, CLI and official MCP preserve explicit custom target and reject altered source or suggestion
+  ---
+  duration_ms: 1450.364333
+  type: 'test'
+  ...
+# Subtest: HTTP rejects extra paths and authority while CLI/MCP reject before dispatch, including arbitrary filename flags
+ok 7 - HTTP rejects extra paths and authority while CLI/MCP reject before dispatch, including arbitrary filename flags
+  ---
+  duration_ms: 2468.421083
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 7963.175958

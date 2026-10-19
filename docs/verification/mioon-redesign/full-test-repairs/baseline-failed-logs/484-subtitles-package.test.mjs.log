@@ -1,0 +1,67 @@
+TAP version 13
+# Subtest: delivered resource parser verifies exact five members in bounded arbitrary chunks
+ok 1 - delivered resource parser verifies exact five members in bounded arbitrary chunks
+  ---
+  duration_ms: 11.541417
+  type: 'test'
+  ...
+# Subtest: delivered resource parser rejects missing, duplicate, unknown, link, changed and wrong-sized members
+ok 2 - delivered resource parser rejects missing, duplicate, unknown, link, changed and wrong-sized members
+  ---
+  duration_ms: 80.181417
+  type: 'test'
+  ...
+# Subtest: bounded GNU/PAX names resolve to exact members and cannot hide duplicates or wrong sizes
+ok 3 - bounded GNU/PAX names resolve to exact members and cannot hide duplicates or wrong sizes
+  ---
+  duration_ms: 56.228792
+  type: 'test'
+  ...
+# Subtest: gzip verifier streams >10MiB font, detects corruption/missing files, and reads GNU tar output
+not ok 4 - gzip verifier streams >10MiB font, detects corruption/missing files, and reads GNU tar output
+  ---
+  duration_ms: 653.696166
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/subtitles-package.test.mjs:62:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Command failed: tar --format=gnu -czf /private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/tmp/mioon-subtitle-package-kSi0Tt/gnu.tar.gz -C /private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/tmp/mioon-subtitle-package-kSi0Tt mioon-0.4.1-linux-x64
+    Can't use format gnu: No such format 'gnu'
+    Usage:
+      List:    tar -tf <archive-filename>
+      Extract: tar -xf <archive-filename>
+      Create:  tar -cf <archive-filename> [filenames...]
+      Help:    tar --help
+    
+  code: 1
+  stack: |-
+    genericNodeError (node:internal/errors:999:15)
+    wrappedFn (node:internal/errors:544:14)
+    ChildProcess.exithandler (node:child_process:417:12)
+    ChildProcess.emit (node:events:514:20)
+    maybeClose (node:internal/child_process:1125:16)
+    Socket.<anonymous> (node:internal/child_process:497:11)
+    Socket.emit (node:events:514:20)
+    Pipe.<anonymous> (node:net:362:12)
+  ...
+# Subtest: package inspector retains legacy ASAR ceiling and validates external delivered resources
+ok 5 - package inspector retains legacy ASAR ceiling and validates external delivered resources
+  ---
+  duration_ms: 1.084208
+  type: 'test'
+  ...
+# Subtest: actual ASAR root allowlist adds current preload and icons while preserving historical v3 exclusions
+ok 6 - actual ASAR root allowlist adds current preload and icons while preserving historical v3 exclusions
+  ---
+  duration_ms: 0.704833
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 5
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 942.34325

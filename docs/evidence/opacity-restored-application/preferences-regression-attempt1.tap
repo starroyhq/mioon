@@ -1,0 +1,265 @@
+# Qualification command 1: ["node", "--import", "/private/tmp/mioon-restored43-preferences-guard-56fbbeha/guard.mjs", "--test", "--test-reporter=tap", "tests/workspace-preferences.test.mjs"]
+TAP version 13
+# Subtest: preference reads have no writes, require an existing project, and are absent from RPC schemas
+not ok 1 - preference reads have no writes, require an existing project, and are absent from RPC schemas
+  ---
+  duration_ms: 3.069834
+  type: 'test'
+  location: '/Users/kouzen/Documents/data/mioon/tests/workspace-preferences.test.mjs:34:1'
+  failureType: 'testCodeFailure'
+  error: 'Private storage cannot traverse symbolic links. Select a canonical directory path.'
+  code: 'STORAGE_PRIVATE_REQUIRED'
+  name: 'PrivateStorageError'
+  stack: |-
+    fail (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:21:43)
+    directoryType (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:71:32)
+    ancestor (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:81:5)
+    walkAncestors (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:110:12)
+    file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:117:65
+    safe (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:23:16)
+    ensurePrivateDirectory (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:117:12)
+    validatePrivateDirectory (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:120:12)
+    validateWorkspaceStorage (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:60:6)
+    openStore (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:81:2)
+  ...
+# Subtest: the full bounded whitelist rejects missing, unknown, free-text, unsafe and malformed values atomically
+not ok 2 - the full bounded whitelist rejects missing, unknown, free-text, unsafe and malformed values atomically
+  ---
+  duration_ms: 1.045208
+  type: 'test'
+  location: '/Users/kouzen/Documents/data/mioon/tests/workspace-preferences.test.mjs:53:1'
+  failureType: 'testCodeFailure'
+  error: 'Private storage cannot traverse symbolic links. Select a canonical directory path.'
+  code: 'STORAGE_PRIVATE_REQUIRED'
+  name: 'PrivateStorageError'
+  stack: |-
+    fail (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:21:43)
+    directoryType (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:71:32)
+    ancestor (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:81:5)
+    walkAncestors (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:110:12)
+    file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:117:65
+    safe (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:23:16)
+    ensurePrivateDirectory (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:117:12)
+    validatePrivateDirectory (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:120:12)
+    validateWorkspaceStorage (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:60:6)
+    openStore (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:81:2)
+  ...
+# Subtest: legacy stored v1 preferences normalize and replay canonically without changing bytes or revisions
+not ok 3 - legacy stored v1 preferences normalize and replay canonically without changing bytes or revisions
+  ---
+  duration_ms: 0.791875
+  type: 'test'
+  location: '/Users/kouzen/Documents/data/mioon/tests/workspace-preferences.test.mjs:96:1'
+  failureType: 'testCodeFailure'
+  error: 'Private storage cannot traverse symbolic links. Select a canonical directory path.'
+  code: 'STORAGE_PRIVATE_REQUIRED'
+  name: 'PrivateStorageError'
+  stack: |-
+    fail (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:21:43)
+    directoryType (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:71:32)
+    ancestor (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:81:5)
+    walkAncestors (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:110:12)
+    file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:117:65
+    safe (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:23:16)
+    ensurePrivateDirectory (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:117:12)
+    validatePrivateDirectory (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:120:12)
+    validateWorkspaceStorage (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:60:6)
+    openStore (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:81:2)
+  ...
+# Subtest: legacy v1 magnet input still rejects every undocumented omission and unknown field
+not ok 4 - legacy v1 magnet input still rejects every undocumented omission and unknown field
+  ---
+  duration_ms: 1.514166
+  type: 'test'
+  location: '/Users/kouzen/Documents/data/mioon/tests/workspace-preferences.test.mjs:134:1'
+  failureType: 'testCodeFailure'
+  error: 'Private storage cannot traverse symbolic links. Select a canonical directory path.'
+  code: 'STORAGE_PRIVATE_REQUIRED'
+  name: 'PrivateStorageError'
+  stack: |-
+    fail (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:21:43)
+    directoryType (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:71:32)
+    ancestor (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:81:5)
+    walkAncestors (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:110:12)
+    file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:117:65
+    safe (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:23:16)
+    ensurePrivateDirectory (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:117:12)
+    validatePrivateDirectory (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:120:12)
+    validateWorkspaceStorage (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:60:6)
+    openStore (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:81:2)
+  ...
+# Subtest: whole-layout legacy migration preserves raw bytes and revisions on GET and exact replay
+not ok 5 - whole-layout legacy migration preserves raw bytes and revisions on GET and exact replay
+  ---
+  duration_ms: 0.564583
+  type: 'test'
+  location: '/Users/kouzen/Documents/data/mioon/tests/workspace-preferences.test.mjs:154:1'
+  failureType: 'testCodeFailure'
+  error: 'Private storage cannot traverse symbolic links. Select a canonical directory path.'
+  code: 'STORAGE_PRIVATE_REQUIRED'
+  name: 'PrivateStorageError'
+  stack: |-
+    fail (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:21:43)
+    directoryType (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:71:32)
+    ancestor (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:81:5)
+    walkAncestors (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:110:12)
+    file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:117:65
+    safe (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:23:16)
+    ensurePrivateDirectory (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:117:12)
+    validatePrivateDirectory (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:120:12)
+    validateWorkspaceStorage (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:60:6)
+    openStore (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:81:2)
+  ...
+# Subtest: strict layout input never repairs a supplied partial layout, even for otherwise legacy records
+ok 6 - strict layout input never repairs a supplied partial layout, even for otherwise legacy records
+  ---
+  duration_ms: 0.65325
+  type: 'test'
+  ...
+# Subtest: independent CAS revisions replay only the latest exact write and never overwrite stale state
+not ok 7 - independent CAS revisions replay only the latest exact write and never overwrite stale state
+  ---
+  duration_ms: 0.470667
+  type: 'test'
+  location: '/Users/kouzen/Documents/data/mioon/tests/workspace-preferences.test.mjs:204:1'
+  failureType: 'testCodeFailure'
+  error: 'Private storage cannot traverse symbolic links. Select a canonical directory path.'
+  code: 'STORAGE_PRIVATE_REQUIRED'
+  name: 'PrivateStorageError'
+  stack: |-
+    fail (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:21:43)
+    directoryType (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:71:32)
+    ancestor (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:81:5)
+    walkAncestors (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:110:12)
+    file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:117:65
+    safe (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:23:16)
+    ensurePrivateDirectory (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:117:12)
+    validatePrivateDirectory (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:120:12)
+    validateWorkspaceStorage (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:60:6)
+    openStore (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:81:2)
+  ...
+# Subtest: selection IDs can outlive entities, project preferences stay isolated, and business/history bytes are untouched
+not ok 8 - selection IDs can outlive entities, project preferences stay isolated, and business/history bytes are untouched
+  ---
+  duration_ms: 0.581541
+  type: 'test'
+  location: '/Users/kouzen/Documents/data/mioon/tests/workspace-preferences.test.mjs:229:1'
+  failureType: 'testCodeFailure'
+  error: 'Private storage cannot traverse symbolic links. Select a canonical directory path.'
+  code: 'STORAGE_PRIVATE_REQUIRED'
+  name: 'PrivateStorageError'
+  stack: |-
+    fail (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:21:43)
+    directoryType (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:71:32)
+    ancestor (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:81:5)
+    walkAncestors (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:110:12)
+    file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:117:65
+    safe (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:23:16)
+    ensurePrivateDirectory (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:117:12)
+    validatePrivateDirectory (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:120:12)
+    validateWorkspaceStorage (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:60:6)
+    openStore (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:81:2)
+  ...
+# Subtest: additive v5 migration preserves legacy records, immutable requests, history and bytes
+not ok 9 - additive v5 migration preserves legacy records, immutable requests, history and bytes
+  ---
+  duration_ms: 156.259042
+  type: 'test'
+  location: '/Users/kouzen/Documents/data/mioon/tests/workspace-preferences.test.mjs:264:1'
+  failureType: 'testCodeFailure'
+  error: 'Private storage cannot traverse symbolic links. Select a canonical directory path.'
+  code: 'STORAGE_PRIVATE_REQUIRED'
+  name: 'PrivateStorageError'
+  stack: |-
+    fail (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:21:43)
+    directoryType (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:71:32)
+    ancestor (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:81:5)
+    walkAncestors (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:110:12)
+    file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:117:65
+    safe (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:23:16)
+    ensurePrivateDirectory (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:117:12)
+    validatePrivateDirectory (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:120:12)
+    validateWorkspaceStorage (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:60:6)
+    openStore (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:81:2)
+  ...
+# Subtest: competing database connections commit one CAS winner and deduplicate simultaneous exact retries
+not ok 10 - competing database connections commit one CAS winner and deduplicate simultaneous exact retries
+  ---
+  duration_ms: 0.777334
+  type: 'test'
+  location: '/Users/kouzen/Documents/data/mioon/tests/workspace-preferences.test.mjs:310:1'
+  failureType: 'testCodeFailure'
+  error: 'Private storage cannot traverse symbolic links. Select a canonical directory path.'
+  code: 'STORAGE_PRIVATE_REQUIRED'
+  name: 'PrivateStorageError'
+  stack: |-
+    fail (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:21:43)
+    directoryType (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:71:32)
+    ancestor (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:81:5)
+    walkAncestors (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:110:12)
+    file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:117:65
+    safe (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:23:16)
+    ensurePrivateDirectory (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:117:12)
+    validatePrivateDirectory (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:120:12)
+    validateWorkspaceStorage (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:60:6)
+    openStore (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:81:2)
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 1
+# fail 9
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 616.770333
+# Qualification command 2: ["node", "--import", "/private/tmp/mioon-restored43-preferences-guard-56fbbeha/guard.mjs", "--test", "--test-reporter=tap", "--test-name-pattern=^restored preference writes require explicit origin and share the existing strict revision boundary$", "tests/workspace-restore-local-execution.test.mjs"]
+TAP version 13
+# Subtest: restored preference writes require explicit origin and share the existing strict revision boundary
+not ok 1 - restored preference writes require explicit origin and share the existing strict revision boundary
+  ---
+  duration_ms: 1.622667
+  type: 'test'
+  location: '/Users/kouzen/Documents/data/mioon/tests/workspace-restore-local-execution.test.mjs:198:1'
+  failureType: 'testCodeFailure'
+  error: 'Private storage cannot traverse symbolic links. Select a canonical directory path.'
+  code: 'STORAGE_PRIVATE_REQUIRED'
+  name: 'PrivateStorageError'
+  stack: |-
+    fail (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:21:43)
+    directoryType (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:71:32)
+    ancestor (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:81:5)
+    walkAncestors (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:110:12)
+    file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:117:65
+    safe (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:23:16)
+    ensurePrivateDirectory (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:117:12)
+    validatePrivateDirectory (file:///Users/kouzen/Documents/data/mioon/packages/contracts/src/private-storage.mjs:120:12)
+    validateWorkspaceStorage (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:60:6)
+    openStore (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:81:2)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 408.031334
+# Qualification command 3: ["node", "--import", "/private/tmp/mioon-restored43-preferences-guard-56fbbeha/guard.mjs", "--test", "--test-reporter=tap", "--test-name-pattern=^restored preferences never bootstrap a PUT and explicit queued writes keep their origin$", "tests/workspace-restore-renderer.test.mjs"]
+TAP version 13
+# Subtest: restored preferences never bootstrap a PUT and explicit queued writes keep their origin
+ok 1 - restored preferences never bootstrap a PUT and explicit queued writes keep their origin
+  ---
+  duration_ms: 3.27
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 339.464792

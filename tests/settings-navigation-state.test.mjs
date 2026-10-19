@@ -63,6 +63,9 @@ function renderer(slot, f, callback, options = {}) {
     if (name === './image-settings.js') return image;
     if (name === './comfy-image-settings.js') return comfy;
     if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
+    // Authorization management is a separate presentation leaf; this fixture
+    // executes the settings session and its navigation callbacks.
+    if (name === './AgentAuthorizations.tsx') return { default: 'AgentAuthorizations', __esModule: true };
     if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.jsx') return primitives;
     if (name === './icons.jsx') return { default: 'Icon' };
     if (name.endsWith('.css')) return {};

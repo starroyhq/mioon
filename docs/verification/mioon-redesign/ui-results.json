@@ -1,0 +1,661 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-18T20:24:06.562221+00:00",
+  "snapshot": "/private/tmp/mioon-redesign-2_80wkck/verify",
+  "scope": "Final focused UI and explicitly assigned native ownership/layout checks; historical failing rounds excluded.",
+  "groups": [
+    {
+      "id": "ui-final",
+      "files": [
+        {
+          "file": "tests/ui-preferences-client.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/ui-preferences-client.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 4,
+          "pass": 4,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 180.407583
+        },
+        {
+          "file": "tests/export-workflow.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/export-workflow.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 3,
+          "pass": 3,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 244.759166
+        },
+        {
+          "file": "tests/export-preflight-ui.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/export-preflight-ui.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 48,
+          "pass": 48,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 368.934209
+        },
+        {
+          "file": "tests/export-settings-ui.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/export-settings-ui.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 37,
+          "pass": 37,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 317.226333
+        },
+        {
+          "file": "tests/export-range-app.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/export-range-app.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 12,
+          "pass": 12,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 295.531291
+        },
+        {
+          "file": "tests/export-preview-app.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/export-preview-app.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 4,
+          "pass": 4,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 253.864625
+        },
+        {
+          "file": "tests/settings-center-ui.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/settings-center-ui.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 21,
+          "pass": 21,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 386.278375
+        },
+        {
+          "file": "tests/project-home-panel.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/project-home-panel.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 21,
+          "pass": 21,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 453.569958,
+          "revalidatedAfter": "embedded native picker presentation and CSS correction"
+        },
+        {
+          "file": "tests/desktop-launcher-root.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/desktop-launcher-root.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 17,
+          "pass": 17,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 440.098459,
+          "revalidatedAfter": "embedded native picker presentation and CSS correction"
+        },
+        {
+          "file": "tests/project-home-app.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/project-home-app.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 36,
+          "pass": 36,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 505.304083,
+          "revalidatedAfter": "U10 compact desktop rails and embedded home presentation"
+        },
+        {
+          "file": "tests/task-center-app.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/task-center-app.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 25,
+          "pass": 25,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 213.920541
+        },
+        {
+          "file": "tests/task-center-dock-ui.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/task-center-dock-ui.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 8,
+          "pass": 8,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 883.521792
+        },
+        {
+          "file": "tests/task-recovery-disclosure.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/task-recovery-disclosure.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 6,
+          "pass": 6,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 341.968
+        },
+        {
+          "file": "tests/redesign-entry-task-ui.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/redesign-entry-task-ui.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 4,
+          "pass": 4,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 242.136417
+        },
+        {
+          "file": "tests/workbench-controls.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/workbench-controls.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 1,
+          "pass": 1,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 360.70475
+        },
+        {
+          "file": "tests/workbench-shell.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/workbench-shell.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 5,
+          "pass": 5,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 143.625167
+        },
+        {
+          "file": "tests/ui-components.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/ui-components.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 29,
+          "pass": 29,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 532.647416
+        },
+        {
+          "file": "tests/agent-chat-ui.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/agent-chat-ui.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 74,
+          "pass": 74,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 603.706208,
+          "wallSeconds": 0.75,
+          "sourceRun": "/private/tmp/mioon-redesign-2_80wkck/focused-agent-composer-final2"
+        },
+        {
+          "file": "tests/workspace-panels.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/workspace-panels.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 44,
+          "pass": 44,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 627.632084
+        },
+        {
+          "file": "tests/image-edit-entry-app.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/image-edit-entry-app.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 2,
+          "pass": 2,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 156.325291
+        },
+        {
+          "file": "tests/import-feedback.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/import-feedback.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 37,
+          "pass": 37,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 415.811833
+        },
+        {
+          "file": "tests/timeline-recovery-audit.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/timeline-recovery-audit.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 26,
+          "pass": 26,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 9911.691
+        },
+        {
+          "file": "tests/i18n-shell.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/i18n-shell.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 6,
+          "pass": 6,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 234.820666
+        },
+        {
+          "file": "tests/asset-disposition-ui.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/asset-disposition-ui.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 18,
+          "pass": 18,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 319.503875
+        },
+        {
+          "file": "tests/workspace-backup-ui.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/workspace-backup-ui.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 26,
+          "pass": 26,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 333.405875
+        },
+        {
+          "file": "tests/project-specifications-ui.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/project-specifications-ui.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 43,
+          "pass": 43,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 373.185416
+        },
+        {
+          "file": "tests/image-generation-ui.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/image-generation-ui.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 57,
+          "pass": 57,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 488.794209
+        }
+      ],
+      "exitCode": 0,
+      "tests": 614,
+      "pass": 614,
+      "fail": 0,
+      "durationMs": 19629.374621999996
+    },
+    {
+      "id": "native-window-ownership",
+      "files": [
+        {
+          "file": "tests/desktop-window-ownership.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/desktop-window-ownership.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 43,
+          "pass": 43,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 349.486417
+        }
+      ],
+      "exitCode": 0,
+      "tests": 43,
+      "pass": 43,
+      "fail": 0,
+      "durationMs": 349.486417
+    },
+    {
+      "id": "web-layout-polish",
+      "files": [
+        {
+          "file": "tests/web-layout-polish.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/web-layout-polish.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 6,
+          "pass": 6,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 214.166042
+        }
+      ],
+      "exitCode": 0,
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "durationMs": 214.166042
+    },
+    {
+      "id": "native-project-entry",
+      "files": [
+        {
+          "file": "tests/project-entry-dialog.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/project-entry-dialog.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 5,
+          "pass": 5,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 335.291375,
+          "revalidatedAfter": "embedded native picker presentation and CSS correction"
+        },
+        {
+          "file": "tests/desktop-launcher-state.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/desktop-launcher-state.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 16,
+          "pass": 16,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 243.428666,
+          "revalidatedAfter": "embedded native picker presentation and CSS correction"
+        }
+      ],
+      "exitCode": 0,
+      "tests": 21,
+      "pass": 21,
+      "fail": 0,
+      "durationMs": 578.720041
+    },
+    {
+      "id": "export-file-actions",
+      "files": [
+        {
+          "file": "tests/export-file-actions-ui.test.mjs",
+          "exitCode": 0,
+          "tests": 9,
+          "pass": 9,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 272.508125,
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/export-file-actions-ui.test.mjs"
+          ]
+        }
+      ],
+      "exitCode": 0,
+      "tests": 9,
+      "pass": 9,
+      "fail": 0,
+      "durationMs": 272.508125
+    },
+    {
+      "id": "right-dock-final",
+      "files": [
+        {
+          "file": "tests/right-dock-layout.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/right-dock-layout.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 6,
+          "pass": 6,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 210.453
+        }
+      ],
+      "exitCode": 0,
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "durationMs": 210.453
+    },
+    {
+      "id": "timeline-collapsed-presentation",
+      "files": [
+        {
+          "file": "tests/timeline-collapsed-presentation.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/timeline-collapsed-presentation.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 4,
+          "pass": 4,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 294.794584
+        }
+      ],
+      "exitCode": 0,
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "durationMs": 294.794584
+    }
+  ],
+  "totals": {
+    "uniqueFiles": 34,
+    "tests": 703,
+    "pass": 703,
+    "fail": 0
+  },
+  "additionalChecks": [
+    {
+      "id": "browser-entry-navigation",
+      "file": "browser-entry-results.json",
+      "exitCode": 0,
+      "checks": 5,
+      "dispatchedCreativeWork": false
+    },
+    {
+      "id": "browser-script-syntax",
+      "files": [
+        "tests/browser-workbench-actions.mjs",
+        "tests/browser_workbench_actions.py",
+        "tests/browser_flow.py",
+        "tests/browser_first_trial.py",
+        "tests/browser_timeline.py"
+      ],
+      "exitCode": 0,
+      "commands": [
+        "node --check tests/browser-workbench-actions.mjs",
+        "python3 ast.parse of four Python files"
+      ],
+      "fullMockFlow": "not run; FFmpeg drawtext environment limitation remains"
+    },
+    {
+      "id": "embedded-home-layout",
+      "file": "embedded-home-layout-results.json",
+      "exitCode": 0,
+      "cases": 2,
+      "scope": "Real HomeScreen SSR + renderer CSS fixture, not a substitute for actual Electron recapture"
+    },
+    {
+      "id": "export-file-actions-browser-types",
+      "exitCode": 0,
+      "command": "node node_modules/typescript/bin/tsc --project tests/typecheck/tsconfig.browser.json --pretty false"
+    },
+    {
+      "id": "compact-panels-real-browser",
+      "file": "compact-panels-browser-results.json",
+      "exitCode": 0,
+      "checks": 6,
+      "pageErrors": 0,
+      "workspacePreferenceWrites": 0,
+      "creativeMutations": 0
+    },
+    {
+      "id": "compact-special-visual-real-browser",
+      "file": "compact-visual/results.json",
+      "exitCode": 0,
+      "checks": 7,
+      "screenshots": 11,
+      "pageErrors": 0,
+      "globalPreferenceWrites": 0,
+      "creativeMutations": 0,
+      "projectLayoutScope": "separate synthetic project only",
+      "note": "Final49506 actual CSS. Both editing overlays have real content width, controls hit-test/click normally and remain within preview row; full collapsed toolbar, playhead/snap, inert hidden body and retained DOM/scroll/selection/160px verified.",
+      "url": "http://127.0.0.1:49506",
+      "runtimeStyleInjection": false
+    }
+  ]
+}

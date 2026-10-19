@@ -1,0 +1,101 @@
+[
+  {
+    "file": "tests/agent-timeline-gain-wire.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 106.95,
+    "tapSummary": {
+      "tests": 37,
+      "suites": 0,
+      "pass": 37,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-root-final/005-agent-timeline-gain-wire.test.mjs.log",
+    "sha256": "d99a89055e98ffc0fad3b5bbaf54277142f83894dea3556710906ea0b3aebd20",
+    "sourceSha256": "d50fd5641b20c6cd047cf1c8ebfca6d8f16fbc59e979e486191697a5b22ec4fa",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/frame-extraction-preview.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.6,
+    "tapSummary": {
+      "tests": 10,
+      "suites": 0,
+      "pass": 10,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-root-final/001-frame-extraction-preview.test.mjs.log",
+    "sha256": "3c99665d5aa5a6304f4cab39787184e46f2a5fc631d4b71840e022b6a6106fdd",
+    "sourceSha256": "e0431e8e9593bc361f4db2db7dca24800cefd76526b80981967155e20ca97522",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/inspection-contracts.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 2.75,
+    "tapSummary": {
+      "tests": 5,
+      "suites": 0,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-root-final/002-inspection-contracts.test.mjs.log",
+    "sha256": "81f9d7fdc33feda3ed39990a70e5ef89e14cc7ab5405323240418799a465ed16",
+    "sourceSha256": "a0e476755a340a0e156cb557717ef3d0cd2d3d694d2a69a44e08d3f8c51178c5",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/mioon-brand-assets.test.mjs",
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 0.39,
+    "tapSummary": {
+      "tests": 5,
+      "suites": 0,
+      "pass": 4,
+      "fail": 1,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-root-final/004-mioon-brand-assets.test.mjs.log",
+    "sha256": "298b900cb34762aeefa625b46dfa459183112b4478fd2a75c9887124566003f7",
+    "sourceSha256": "1ad7e3995a8e35d1a3cf675774b61516f6d6fc43287cdc1981102a033dd919fd",
+    "failedSubtests": [
+      "actual shared window factory adds the local icon while retaining the secure preload and owned session"
+    ]
+  },
+  {
+    "file": "tests/mioon-branding.test.mjs",
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 0.49,
+    "tapSummary": {
+      "tests": 4,
+      "suites": 0,
+      "pass": 3,
+      "fail": 1,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-root-final/003-mioon-branding.test.mjs.log",
+    "sha256": "75c7bea190f3c45575b3fa4ae64aec4e66cb3f71e61db27db0bd77ba872e17e4",
+    "sourceSha256": "79f9e5028debc96b1261d858b4a62b6a71ebd89e1e69023b615dec3d64b831a4",
+    "failedSubtests": [
+      "login, loading, header and browser title display Mioon rather than prior branding"
+    ]
+  }
+]

@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: existing lut.import stores and replays exact pack bytes; inspection is metadata only and changes no row
+ok 1 - existing lut.import stores and replays exact pack bytes; inspection is metadata only and changes no row
+  ---
+  duration_ms: 9.997459
+  type: 'test'
+  ...
+# Subtest: ordinary Cube gets explicit not_pack, never a fabricated manifest or extra persistence
+ok 2 - ordinary Cube gets explicit not_pack, never a fabricated manifest or extra persistence
+  ---
+  duration_ms: 1.349333
+  type: 'test'
+  ...
+# Subtest: malformed reserved markers and hash-mismatched declarations fail explicitly without ordinary fallback
+ok 3 - malformed reserved markers and hash-mismatched declarations fail explicitly without ordinary fallback
+  ---
+  duration_ms: 10.514167
+  type: 'test'
+  ...
+# Subtest: foreign and absent resources disclose nothing; invalid storage hash or parser metadata fails closed
+ok 4 - foreign and absent resources disclose nothing; invalid storage hash or parser metadata fails closed
+  ---
+  duration_ms: 4.607708
+  type: 'test'
+  ...
+# Subtest: bounded SQL refuses over-limit blobs before materialization
+ok 5 - bounded SQL refuses over-limit blobs before materialization
+  ---
+  duration_ms: 4.8645
+  type: 'test'
+  ...
+# Subtest: plain input guard rejects getters, symbols, proxies, inherited and extra fields without invoking them
+ok 6 - plain input guard rejects getters, symbols, proxies, inherited and extra fields without invoking them
+  ---
+  duration_ms: 1.723
+  type: 'test'
+  ...
+# Subtest: lease, cancellation and resource identity are rechecked after asynchronous verification
+ok 7 - lease, cancellation and resource identity are rechecked after asynchronous verification
+  ---
+  duration_ms: 4.387833
+  type: 'test'
+  ...
+# Subtest: read availability is limited to restored29/31; old restored profiles refuse before resource disclosure
+ok 8 - read availability is limited to restored29/31; old restored profiles refuse before resource disclosure
+  ---
+  duration_ms: 3.757875
+  type: 'test'
+  ...
+# Subtest: client validates input scope, strict response shape, claims and pack-to-resource binding without retry
+ok 9 - client validates input scope, strict response shape, claims and pack-to-resource binding without retry
+  ---
+  duration_ms: 9.704542
+  type: 'test'
+  ...
+# Subtest: API CLI MCP share discovery and read-only effects; built-in Agent tool authority stays unchanged
+ok 10 - API CLI MCP share discovery and read-only effects; built-in Agent tool authority stays unchanged
+  ---
+  duration_ms: 1.223875
+  type: 'test'
+  ...
+# Subtest: real shared service and cold restore31 return awaited metadata and preserve exact bytes without file or timeline mutations
+ok 11 - real shared service and cold restore31 return awaited metadata and preserve exact bytes without file or timeline mutations
+  ---
+  duration_ms: 2341.457916
+  type: 'test'
+  ...
+# Subtest: actual CLI schema and official MCP discovery expose identical bounded read without a backend
+ok 12 - actual CLI schema and official MCP discovery expose identical bounded read without a backend
+  ---
+  duration_ms: 585.045625
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3423.158958

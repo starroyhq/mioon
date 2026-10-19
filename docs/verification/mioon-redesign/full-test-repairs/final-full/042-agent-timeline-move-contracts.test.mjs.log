@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: closed timeline policy keeps the old shot policy and catalog bytes unchanged
+ok 1 - closed timeline policy keeps the old shot policy and catalog bytes unchanged
+  ---
+  duration_ms: 1.223
+  type: 'test'
+  ...
+# Subtest: complete argument parser rejects extra fields, duplicate and escaped keys, coercion and oversized input
+ok 2 - complete argument parser rejects extra fields, duplicate and escaped keys, coercion and oversized input
+  ---
+  duration_ms: 0.744291
+  type: 'test'
+  ...
+# Subtest: private target reuses complete saved clip rules without normalizing any source fields
+ok 3 - private target reuses complete saved clip rules without normalizing any source fields
+  ---
+  duration_ms: 1.188708
+  type: 'test'
+  ...
+# Subtest: target rejects malformed clip schema, unsupported output, private extras and inconsistent numeric context
+ok 4 - target rejects malformed clip schema, unsupported output, private extras and inconsistent numeric context
+  ---
+  duration_ms: 3.344166
+  type: 'test'
+  ...
+# Subtest: strict data guard does not invoke getters or accept symbols, sparse arrays, prototypes or cycles
+ok 5 - strict data guard does not invoke getters or accept symbols, sparse arrays, prototypes or cycles
+  ---
+  duration_ms: 1.623458
+  type: 'test'
+  ...
+# Subtest: public projections are detached, exact and retain timing without media identity
+ok 6 - public projections are detached, exact and retain timing without media identity
+  ---
+  duration_ms: 0.718792
+  type: 'test'
+  ...
+# Subtest: outbound model projection includes only approved selected human names and numeric timing
+ok 7 - outbound model projection includes only approved selected human names and numeric timing
+  ---
+  duration_ms: 0.544833
+  type: 'test'
+  ...
+# Subtest: diff is same-track non-ripple with immutable duration, and rejects noop, overlap, endpoints and subtitle shrink
+ok 8 - diff is same-track non-ripple with immutable duration, and rejects noop, overlap, endpoints and subtitle shrink
+  ---
+  duration_ms: 0.503958
+  type: 'test'
+  ...
+# Subtest: public proposal union guards all statuses, exact immutable diff and request-bound compact outcomes
+ok 9 - public proposal union guards all statuses, exact immutable diff and request-bound compact outcomes
+  ---
+  duration_ms: 5.920334
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 226.063959

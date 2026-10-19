@@ -1,0 +1,9 @@
+{
+  "completedFiles": 6,
+  "totalFiles": 6,
+  "passedFiles": 6,
+  "failedFiles": 0,
+  "timeoutFiles": 0,
+  "seconds": 78.26,
+  "last": "tests/mock-renderer-capability-fences.test.mjs"
+}

@@ -12,7 +12,10 @@ export const taskProtocolError = () => Object.assign(new ApiError('任务确认�
 // A 200 is not an acknowledgment. Bind every reply to the exact persisted
 // identity before it is allowed to release an edit lane or a legacy receipt.
 export function validateTaskEnvelope(value, expected = {}) {
-  if (!isEditTaskEnvelope(value)) throw taskProtocolError();
+  return checkTaskEnvelope(value, expected, isEditTaskEnvelope);
+}
+function checkTaskEnvelope(value, expected, validate) {
+  if (!validate(value)) throw taskProtocolError();
   const task = value.task;
   for (const [field, actual] of Object.entries({ projectId: task.projectId, taskId: task.id, operation: task.operation, digest: task.digest, origin: task.origin }))
     if (expected[field] !== undefined && expected[field] !== actual) throw taskProtocolError();
@@ -21,11 +24,22 @@ export function validateTaskEnvelope(value, expected = {}) {
   return value;
 }
 export function validateTaskList(value, projectId, { pendingOnly = true } = {}) {
-  if (!isEditTaskListEnvelope(value) || value.items.some(task => task.projectId !== projectId || pendingOnly && task.acknowledged)) throw taskProtocolError();
+  return checkTaskList(value, projectId, {pendingOnly}, isEditTaskListEnvelope);
+}
+function checkTaskList(value, projectId, {pendingOnly}, validate) {
+  if (!validate(value) || value.items.some(task => task.projectId !== projectId || pendingOnly && task.acknowledged)) throw taskProtocolError();
   return value;
 }
 
-export function createEditTaskClient({ fetcher = (...args) => fetch(...args) } = {}) {
+import {readOpacityCandidateClientBinding} from './opacity-candidate-client-binding.ts';
+const clientValidation = new WeakMap();
+export function editTaskClientValidation(client) {
+  return clientValidation.get(client) ?? {validateTaskEnvelope, validateTaskList};
+}
+export function createEditTaskClient({ fetcher = (...args) => fetch(...args), opacityBinding } = {}) {
+  const selected = readOpacityCandidateClientBinding(opacityBinding);
+  const validateTaskEnvelope = selected ? (value, expected = {}) => checkTaskEnvelope(value, expected, selected.isTaskEnvelope) : (value, expected = {}) => checkTaskEnvelope(value, expected, isEditTaskEnvelope);
+  const validateTaskList = selected ? (value, projectId, options = {}) => checkTaskList(value, projectId, {pendingOnly: options.pendingOnly ?? true}, selected.isTaskList) : (value, projectId, options = {}) => checkTaskList(value, projectId, {pendingOnly: options.pendingOnly ?? true}, isEditTaskListEnvelope);
   async function request(path, body, options = {}) {
     const invocation = workspaceOriginOptions(options.expectedWorkspaceOrigin);
     const loudness = options.operation === 'timeline.loudness.apply' ? await readLoudnessApplyRpc(path, body ? { ...body, ...invocation } : undefined, { fetcher }) : null;
@@ -39,7 +53,7 @@ export function createEditTaskClient({ fetcher = (...args) => fetch(...args) } =
     return payload.data;
   }
   const endpoint = taskId => `/api/tasks/${encodeURIComponent(taskId)}`;
-  return {
+  const client = {
     async prepare(input, options) { return validateTaskEnvelope(await request('/api/tasks/prepare', input, { ...options, operation: input.operation }), input); },
     async list({ projectId, limit = 50, cursor, pendingOnly = true }) {
       const query = new URLSearchParams({ projectId, pendingOnly: String(pendingOnly), limit: String(limit), ...(cursor ? { cursor } : {}) });
@@ -50,4 +64,6 @@ export function createEditTaskClient({ fetcher = (...args) => fetch(...args) } =
     async reconcile({ taskId, ...body }, options) { return validateTaskEnvelope(await request(`${endpoint(taskId)}/reconcile`, body, options), { ...body, taskId }); },
     async acknowledge({ taskId, ...body }, options) { return validateTaskEnvelope(await request(`${endpoint(taskId)}/acknowledge`, body, options), { ...body, taskId }); },
   };
+  if (selected) clientValidation.set(client, Object.freeze({validateTaskEnvelope, validateTaskList}));
+  return client;
 }

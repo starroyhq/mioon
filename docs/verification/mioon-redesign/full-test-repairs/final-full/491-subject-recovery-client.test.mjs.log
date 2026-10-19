@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: subject.create strict client ACK retains exact key on malformed success without retries
+ok 1 - subject.create strict client ACK retains exact key on malformed success without retries
+  ---
+  duration_ms: 4.763
+  type: 'test'
+  ...
+# Subtest: subject.version.add strict client ACK retains exact key on malformed success without retries
+ok 2 - subject.version.add strict client ACK retains exact key on malformed success without retries
+  ---
+  duration_ms: 1.099167
+  type: 'test'
+  ...
+# Subtest: subject.binding.set strict client ACK retains exact key on malformed success without retries
+ok 3 - subject.binding.set strict client ACK retains exact key on malformed success without retries
+  ---
+  duration_ms: 1.054166
+  type: 'test'
+  ...
+# Subtest: subject rollback requires operation/project/key and subject-specific code; ambiguous errors retain identity
+ok 4 - subject rollback requires operation/project/key and subject-specific code; ambiguous errors retain identity
+  ---
+  duration_ms: 1.701209
+  type: 'test'
+  ...
+# Subtest: subject controller prepares before dispatch and blocks only its explicit third lane until acknowledgement
+ok 5 - subject controller prepares before dispatch and blocks only its explicit third lane until acknowledgement
+  ---
+  duration_ms: 8.946458
+  type: 'test'
+  ...
+# Subtest: lost preparation survives controller replacement and backend restart with no automatic execution
+ok 6 - lost preparation survives controller replacement and backend restart with no automatic execution
+  ---
+  duration_ms: 1.379375
+  type: 'test'
+  ...
+# Subtest: two window rediscovery and malformed ACK retain the persisted subject request instead of new draft values
+ok 7 - two window rediscovery and malformed ACK retain the persisted subject request instead of new draft values
+  ---
+  duration_ms: 0.357792
+  type: 'test'
+  ...
+# Subtest: subject task HTTP client rejects wrong-lane and malformed 200 without retrying prepare
+ok 8 - subject task HTTP client rejects wrong-lane and malformed 200 without retrying prepare
+  ---
+  duration_ms: 0.371208
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 293.828834

@@ -1,0 +1,174 @@
+{
+  "states": [
+    {
+      "lang": "zh-Hans",
+      "width": 1440,
+      "height": 900,
+      "dialog": {
+        "x": 440,
+        "y": 228.5234375,
+        "width": 560,
+        "height": 442.953125
+      },
+      "confirmationDisabled": true,
+      "computed": {
+        "width": 560,
+        "title": 18,
+        "buttons": [
+          36,
+          36
+        ],
+        "checkbox": 24
+      }
+    },
+    {
+      "lang": "zh-Hans",
+      "width": 1050,
+      "height": 680,
+      "dialog": {
+        "x": 245,
+        "y": 118.5234375,
+        "width": 560,
+        "height": 442.953125
+      },
+      "confirmationDisabled": true,
+      "computed": {
+        "width": 560,
+        "title": 18,
+        "buttons": [
+          36,
+          36
+        ],
+        "checkbox": 24
+      }
+    },
+    {
+      "lang": "zh-Hant",
+      "width": 1440,
+      "height": 900,
+      "dialog": {
+        "x": 440,
+        "y": 228.5234375,
+        "width": 560,
+        "height": 442.953125
+      },
+      "confirmationDisabled": true,
+      "computed": {
+        "width": 560,
+        "title": 18,
+        "buttons": [
+          36,
+          36
+        ],
+        "checkbox": 24
+      }
+    },
+    {
+      "lang": "zh-Hant",
+      "width": 1050,
+      "height": 680,
+      "dialog": {
+        "x": 245,
+        "y": 118.5234375,
+        "width": 560,
+        "height": 442.953125
+      },
+      "confirmationDisabled": true,
+      "computed": {
+        "width": 560,
+        "title": 18,
+        "buttons": [
+          36,
+          36
+        ],
+        "checkbox": 24
+      }
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "height": 900,
+      "dialog": {
+        "x": 440,
+        "y": 217.4765625,
+        "width": 560,
+        "height": 465.046875
+      },
+      "confirmationDisabled": true,
+      "computed": {
+        "width": 560,
+        "title": 18,
+        "buttons": [
+          36,
+          36
+        ],
+        "checkbox": 24
+      }
+    },
+    {
+      "lang": "en",
+      "width": 1050,
+      "height": 680,
+      "dialog": {
+        "x": 245,
+        "y": 107.4765625,
+        "width": 560,
+        "height": 465.046875
+      },
+      "confirmationDisabled": true,
+      "computed": {
+        "width": 560,
+        "title": 18,
+        "buttons": [
+          36,
+          36
+        ],
+        "checkbox": 24
+      }
+    },
+    {
+      "lang": "ja",
+      "width": 1440,
+      "height": 900,
+      "dialog": {
+        "x": 440,
+        "y": 217.4765625,
+        "width": 560,
+        "height": 465.046875
+      },
+      "confirmationDisabled": true,
+      "computed": {
+        "width": 560,
+        "title": 18,
+        "buttons": [
+          36,
+          36
+        ],
+        "checkbox": 24
+      }
+    },
+    {
+      "lang": "ja",
+      "width": 1050,
+      "height": 680,
+      "dialog": {
+        "x": 245,
+        "y": 107.4765625,
+        "width": 560,
+        "height": 465.046875
+      },
+      "confirmationDisabled": true,
+      "computed": {
+        "width": 560,
+        "title": 18,
+        "buttons": [
+          36,
+          36
+        ],
+        "checkbox": 24
+      }
+    }
+  ],
+  "errors": [],
+  "forbiddenRequests": []
+}

@@ -1,3 +1,4 @@
+import {getTimelineOpacityRenderBinding} from './timeline-opacity-render-binding.ts';
 import {prepareTimelineImageLayers} from './timeline-image-staging.ts';
 import {validateTimelineImageSourceInterpretation} from './timeline-image-source.ts';
 import {mkdtemp,writeFile,rm,open} from 'node:fs/promises';
@@ -81,6 +82,8 @@ function ownedTimelineWork(destination,beforeEffect,signal){
 // inputs at once. PCM intermediate audio avoids encoder delay at segment edges;
 // the final AAC stream is encoded once. H264 video is concatenated losslessly.
 export async function renderTimeline(snapshot,assets,destination,{signal,beforeEncode,beforeEffect,readLut}={}){
+ const opacity=getTimelineOpacityRenderBinding(snapshot,assets);
+ if(opacity){snapshot=opacity.validationSnapshot;beforeEffect=opacity.effectFence(beforeEffect);readLut=opacity.readLut;signal=opacity.signal&&signal&&opacity.signal!==signal?AbortSignal.any([opacity.signal,signal]):opacity.signal??signal;}
  checkMediaEffect(beforeEffect,signal);
  const timeline=snapshot?.timeline,tracks=validateTimeline(timeline,assets);
  validateSubtitleSnapshotProfile(snapshot);
@@ -155,11 +158,12 @@ export async function renderTimeline(snapshot,assets,destination,{signal,beforeE
      const {x,y,width,height}=clip.rect,label=`v${input}`,next=`layer${input}`;
      // rgba padding preserves the lower layers in the letterbox/pillarbox area.
      const planned=colourClips.get(clip.id),image=planned?.kind==='image';
+     const opacityStage=opacity?.filterForSegment(clip.id,begin,frames,image?'premultiplied':'straight')??'';
      if(image){
-      filters.push(`[${input}:v:0]format=rgba,setsar=1,fps=${FPS},tpad=stop_mode=clone:stop_duration=${seconds(frames)},trim=end_frame=${frames},setpts=N/(${FPS}*TB)[${label}]`);
+      filters.push(`[${input}:v:0]format=rgba,setsar=1,fps=${FPS},tpad=stop_mode=clone:stop_duration=${seconds(frames)},trim=end_frame=${frames},setpts=N/(${FPS}*TB)${opacityStage?`,${opacityStage}`:''}[${label}]`);
      }else{
       const colourInput=colour?`${timelineColourInputFilter(planned.range)},${colourStage.filter(clip.id)}`:'';
-      filters.push(`[${input}:${asset.videoStreamIndex??'v:0'}]setpts=PTS-STARTPTS,${colourInput}scale=${width}:${height}:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1,fps=${FPS},format=rgba,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,tpad=stop_mode=clone:stop_duration=${seconds(frames)},trim=end_frame=${frames},setpts=N/(${FPS}*TB)[${label}]`);
+      filters.push(`[${input}:${asset.videoStreamIndex??'v:0'}]setpts=PTS-STARTPTS,${colourInput}scale=${width}:${height}:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1,fps=${FPS},format=rgba,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,tpad=stop_mode=clone:stop_duration=${seconds(frames)},trim=end_frame=${frames},setpts=N/(${FPS}*TB)${opacityStage?`,${opacityStage}`:''}[${label}]`);
      }
      filters.push(`[${visual}][${label}]overlay=x=${x}:y=${y}:eof_action=pass:repeatlast=0:shortest=0${colour?':format=rgb':''}${image?':alpha=premultiplied':''}[${next}]`);visual=next;
     }
@@ -172,13 +176,13 @@ export async function renderTimeline(snapshot,assets,destination,{signal,beforeE
    const captioned=timelineSubtitleFilters(subtitles,begin,end,visual);filters.push(...captioned.filters);visual=captioned.visual;
    // Scale the completed editing-canvas composition, including captions. Clip
    // rectangles, subtitle layout/cues, source sampling and audio stay untouched.
-   // 1080 short edge is a 1.5x upscale of the fixed 720-short-edge composition.
+   // Delivery scaling is independent of the project's native composition size.
    const scale=delivery&&(delivery.effective.width!==width||delivery.effective.height!==height)
     ?`scale=${delivery.effective.width}:${delivery.effective.height}:flags=${delivery.effective.scaling},setsar=1,`:'';
    filters.push(`[${visual}]${scale}trim=end_frame=${frames},${selected.videoOutputTrim}setpts=N/(${FPS}*TB),${colour?TIMELINE_COLOUR_OUTPUT_FILTER:'format=yuv420p'}[outv]`);
    const segmentFile=path.join(work,`segment-${String(segment).padStart(3,'0')}.mov`);
    const filterArgs=['-filter_complex',filters.join(';')];
-   if(subtitles||colour){const script=path.join(work,`segment-${segment}.filter`);checkMediaEffect(effect,signal);await (owned?owned.writeOwnedFile(script,filters.join(';')):writeFile(script,filters.join(';'),{flag:'wx',mode:0o600}));checkMediaEffect(effect,signal);filterArgs.splice(0,2,'-filter_complex_script',script);}
+   if(subtitles||colour){const script=path.join(work,`segment-${segment}.filter`);checkMediaEffect(effect,signal);await (owned?owned.writeOwnedFile(script,filters.join(';')):writeFile(script,filters.join(';'),{flag:'wx',mode:0o600}));checkMediaEffect(effect,signal);filterArgs.splice(0,2,'-/filter_complex',script);}
    const videoArgs=delivery?timelineExportVideoArgs(delivery):['-c:v','libx264','-preset','veryfast','-crf','23','-threads','2','-bf','0','-g','60','-pix_fmt','yuv420p','-r',String(FPS),'-video_track_timescale','30000'];
    args.push(...filterArgs,'-map','[outv]','-map','[outa]',...videoArgs,...(colour?TIMELINE_COLOUR_OUTPUT_ARGS:[]),'-c:a',floatChecked?'pcm_f32le':'pcm_s16le','-ar','48000','-ac','2','-t',seconds(selected.outputFrames),segmentFile);
    owned?.reserve(segmentFile);

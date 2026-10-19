@@ -1,0 +1,59 @@
+TAP version 13
+# Subtest: saved source ranges have exact HTTP, real CLI and official MCP semantics without media work
+    # Subtest: catalog, required keys and effect hints match every public discovery surface
+    ok 1 - catalog, required keys and effect hints match every public discovery surface
+      ---
+      duration_ms: 828.257625
+      type: 'test'
+      ...
+    # Subtest: unsaved video/audio reads are non-creating, project scoped and use complete 30fps frames
+    ok 2 - unsaved video/audio reads are non-creating, project scoped and use complete 30fps frames
+      ---
+      duration_ms: 1158.093667
+      type: 'test'
+      ...
+    # Subtest: lost committed response replays byte-for-byte after newer save and actual backend restart
+    ok 3 - lost committed response replays byte-for-byte after newer save and actual backend restart
+      ---
+      duration_ms: 1571.312458
+      type: 'test'
+      ...
+    # Subtest: changed reuse, stale revision, missing keys and invalid bounds never write
+    ok 4 - changed reuse, stale revision, missing keys and invalid bounds never write
+      ---
+      duration_ms: 5261.756875
+      type: 'test'
+      ...
+    # Subtest: safe ownership and unsupported-media errors agree on all actual transports
+    ok 5 - safe ownership and unsupported-media errors agree on all actual transports
+      ---
+      duration_ms: 4017.079625
+      type: 'test'
+      ...
+    # Subtest: saved audio and long-source ranges are independent metadata and shared replay keys are global
+    ok 6 - saved audio and long-source ranges are independent metadata and shared replay keys are global
+      ---
+      duration_ms: 863.276708
+      type: 'test'
+      ...
+    # Subtest: legacy clip insertion copies explicit numeric bounds and later saved ranges cannot change clips
+    ok 7 - legacy clip insertion copies explicit numeric bounds and later saved ranges cannot change clips
+      ---
+      duration_ms: 17.624458
+      type: 'test'
+      ...
+    1..7
+ok 1 - saved source ranges have exact HTTP, real CLI and official MCP semantics without media work
+  ---
+  duration_ms: 15400.08475
+  type: 'test'
+  ...
+1..1
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 15684.286333

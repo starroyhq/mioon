@@ -42,7 +42,8 @@
     "./timeline-loudness-apply.consumer.mts",
     "./comfy-availability.consumer.mts",
     "./i18n.consumer.mts",
-    "./timeline-clip-loudness.consumer.mts"
+    "./timeline-clip-loudness.consumer.mts",
+    "./opacity-envelope.consumer.mts"
   ],
   "include": [
     "../../packages/*/src/**/*.ts",

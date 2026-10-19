@@ -1,0 +1,196 @@
+TAP version 13
+# Subtest: start edge snaps to another clip's start boundary
+ok 1 - start edge snaps to another clip's start boundary
+  ---
+  duration_ms: 0.659
+  type: 'test'
+  ...
+# Subtest: start edge snaps to another clip's end boundary
+ok 2 - start edge snaps to another clip's end boundary
+  ---
+  duration_ms: 0.066459
+  type: 'test'
+  ...
+# Subtest: end edge snaps to another clip's start boundary
+ok 3 - end edge snaps to another clip's start boundary
+  ---
+  duration_ms: 0.085583
+  type: 'test'
+  ...
+# Subtest: end edge snaps to another clip's end boundary
+ok 4 - end edge snaps to another clip's end boundary
+  ---
+  duration_ms: 0.059042
+  type: 'test'
+  ...
+# Subtest: clip boundaries are available across tracks and media types
+ok 5 - clip boundaries are available across tracks and media types
+  ---
+  duration_ms: 0.095334
+  type: 'test'
+  ...
+# Subtest: moving clip excludes both its own boundaries, but retains other coincident boundaries
+ok 6 - moving clip excludes both its own boundaries, but retains other coincident boundaries
+  ---
+  duration_ms: 0.07175
+  type: 'test'
+  ...
+# Subtest: zero and playhead are targets for eligible moving edges
+ok 7 - zero and playhead are targets for eligible moving edges
+  ---
+  duration_ms: 0.072875
+  type: 'test'
+  ...
+# Subtest: the snap radius remains exactly eight screen pixels at 28 px/sec
+ok 8 - the snap radius remains exactly eight screen pixels at 28 px/sec
+  ---
+  duration_ms: 0.178167
+  type: 'test'
+  ...
+# Subtest: the snap radius remains exactly eight screen pixels at 76 px/sec
+ok 9 - the snap radius remains exactly eight screen pixels at 76 px/sec
+  ---
+  duration_ms: 0.112375
+  type: 'test'
+  ...
+# Subtest: the snap radius remains exactly eight screen pixels at 220 px/sec
+ok 10 - the snap radius remains exactly eight screen pixels at 220 px/sec
+  ---
+  duration_ms: 0.297084
+  type: 'test'
+  ...
+# Subtest: nearest distance wins before edge preference, with deterministic equal-distance edge ties
+ok 11 - nearest distance wins before edge preference, with deterministic equal-distance edge ties
+  ---
+  duration_ms: 0.139167
+  type: 'test'
+  ...
+# Subtest: equal-distance candidates prefer earlier targets, then target kind, then stable clip ID
+ok 12 - equal-distance candidates prefer earlier targets, then target kind, then stable clip ID
+  ---
+  duration_ms: 7.719708
+  type: 'test'
+  ...
+# Subtest: fractional grab offsets are preserved until final position rounding or snapping
+ok 13 - fractional grab offsets are preserved until final position rounding or snapping
+  ---
+  duration_ms: 0.115625
+  type: 'test'
+  ...
+# Subtest: lane-relative viewport coordinates preserve clip placement through horizontal scroll and zoom
+ok 14 - lane-relative viewport coordinates preserve clip placement through horizontal scroll and zoom
+  ---
+  duration_ms: 0.098166
+  type: 'test'
+  ...
+# Subtest: free placement clamps the whole duration within zero and 18000 frames
+ok 15 - free placement clamps the whole duration within zero and 18000 frames
+  ---
+  duration_ms: 2.052375
+  type: 'test'
+  ...
+# Subtest: snap candidates cannot pull the clip before zero or past its duration-aware upper limit
+ok 16 - snap candidates cannot pull the clip before zero or past its duration-aware upper limit
+  ---
+  duration_ms: 0.091875
+  type: 'test'
+  ...
+# Subtest: Alt and the persisted toggle independently bypass snapping without bypassing frame clamps
+ok 17 - Alt and the persisted toggle independently bypass snapping without bypassing frame clamps
+  ---
+  duration_ms: 0.079291
+  type: 'test'
+  ...
+# Subtest: invalid pixel scales and malformed target frames cannot create snap candidates
+ok 18 - invalid pixel scales and malformed target frames cannot create snap candidates
+  ---
+  duration_ms: 0.077125
+  type: 'test'
+  ...
+# Subtest: a colliding nearest snap stays invalid instead of silently choosing a nearby free candidate
+ok 19 - a colliding nearest snap stays invalid instead of silently choosing a nearby free candidate
+  ---
+  duration_ms: 0.2045
+  type: 'test'
+  ...
+# Subtest: type-incompatible drop retains its exact selected position and reports why it is invalid
+ok 20 - type-incompatible drop retains its exact selected position and reports why it is invalid
+  ---
+  duration_ms: 0.120084
+  type: 'test'
+  ...
+# Subtest: same-track overlap is strict: touching boundaries and overlap on another track remain legal
+ok 21 - same-track overlap is strict: touching boundaries and overlap on another track remain legal
+  ---
+  duration_ms: 0.087291
+  type: 'test'
+  ...
+# Subtest: unchanged means the same clip start and track; self-overlap is excluded
+ok 22 - unchanged means the same clip start and track; self-overlap is excluded
+  ---
+  duration_ms: 0.079375
+  type: 'test'
+  ...
+# Subtest: images use a known 90-frame default even when duration metadata is absent or misleading
+ok 23 - images use a known 90-frame default even when duration metadata is absent or misleading
+  ---
+  duration_ms: 0.054833
+  type: 'test'
+  ...
+# Subtest: known audio and video durations use source-safe 30-fps flooring, not rounding up
+ok 24 - known audio and video durations use source-safe 30-fps flooring, not rounding up
+  ---
+  duration_ms: 0.085209
+  type: 'test'
+  ...
+# Subtest: unknown or unusable source durations show a 60-frame illustration and honestly forbid placement
+ok 25 - unknown or unusable source durations show a 60-frame illustration and honestly forbid placement
+  ---
+  duration_ms: 0.17725
+  type: 'test'
+  ...
+# Subtest: moving an existing trimmed clip retains its duration and source metadata rather than resetting defaults
+ok 26 - moving an existing trimmed clip retains its duration and source metadata rather than resetting defaults
+  ---
+  duration_ms: 0.336792
+  type: 'test'
+  ...
+# Subtest: overlong sources and the 100-clip add limit are invalid, while moving existing clips stays allowed
+ok 27 - overlong sources and the 100-clip add limit are invalid, while moving existing clips stays allowed
+  ---
+  duration_ms: 0.244375
+  type: 'test'
+  ...
+# Subtest: missing drop dependencies are invalid, and previewing never mutates supplied state
+ok 28 - missing drop dependencies are invalid, and previewing never mutates supplied state
+  ---
+  duration_ms: 0.076542
+  type: 'test'
+  ...
+# Subtest: Timeline integration uses lane-relative fractional coordinates, live Alt state and an accessible toggle
+ok 29 - Timeline integration uses lane-relative fractional coordinates, live Alt state and an accessible toggle
+  ---
+  duration_ms: 0.2235
+  type: 'test'
+  ...
+# Subtest: Timeline commits the displayed frame once, with unchanged, invalid, payload and stale-gesture gates
+ok 30 - Timeline commits the displayed frame once, with unchanged, invalid, payload and stale-gesture gates
+  ---
+  duration_ms: 0.094667
+  type: 'test'
+  ...
+# Subtest: App forwards exact displayed position, duration and revision through existing durable timeline mutations
+ok 31 - App forwards exact displayed position, duration and revision through existing durable timeline mutations
+  ---
+  duration_ms: 0.21275
+  type: 'test'
+  ...
+1..31
+# tests 31
+# suites 0
+# pass 31
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 249.089375

@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: explicit custom profile sends exact model/prompt with fixed conservative JSON bytes
+ok 1 - explicit custom profile sends exact model/prompt with fixed conservative JSON bytes
+  ---
+  duration_ms: 4.608416
+  type: 'test'
+  ...
+# Subtest: official body remains byte-identical and cannot inherit custom model or activation
+ok 2 - official body remains byte-identical and cannot inherit custom model or activation
+  ---
+  duration_ms: 0.18375
+  type: 'test'
+  ...
+# Subtest: custom adapter has no transport, environment or official fallback by default
+ok 3 - custom adapter has no transport, environment or official fallback by default
+  ---
+  duration_ms: 0.194458
+  type: 'test'
+  ...
+# Subtest: custom adapter fences exactly once and uses the shared validated single-PNG response decoder
+ok 4 - custom adapter fences exactly once and uses the shared validated single-PNG response decoder
+  ---
+  duration_ms: 123.480041
+  type: 'test'
+  ...
+# Subtest: URL/multiple results, extra fields, duplicate keys and malformed PNG fail once after dispatch without download/fallback
+ok 5 - URL/multiple results, extra fields, duplicate keys and malformed PNG fail once after dispatch without download/fallback
+  ---
+  duration_ms: 1.808833
+  type: 'test'
+  ...
+# Subtest: custom validation and cancellation before transport do not pass a fence or send
+ok 6 - custom validation and cancellation before transport do not pass a fence or send
+  ---
+  duration_ms: 0.236417
+  type: 'test'
+  ...
+# Subtest: custom unknown transport errors and malformed responses stay dispatched and never cause retries
+ok 7 - custom unknown transport errors and malformed responses stay dispatched and never cause retries
+  ---
+  duration_ms: 0.132834
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 293.113708

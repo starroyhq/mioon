@@ -1,0 +1,9 @@
+{
+  "completedFiles": 64,
+  "totalFiles": 754,
+  "passedFiles": 55,
+  "failedFiles": 9,
+  "timeoutFiles": 0,
+  "seconds": 122.62,
+  "last": "tests/cli-client-security.test.mjs"
+}

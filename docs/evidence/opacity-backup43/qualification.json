@@ -1,0 +1,309 @@
+{
+  "date": "2026-10-16",
+  "baseCommit": "9732bbe9291b99a0671908e8c5dab1a169bc11b5",
+  "runtime": "v26.9.0",
+  "status": "passed fixed42 cold-backup to offline43 product entry",
+  "entry": "node apps/cli/src/opacity-backup.ts",
+  "commands": [
+    "create",
+    "verify",
+    "restore",
+    "restore-status"
+  ],
+  "locales": [
+    "zh-Hans",
+    "zh-Hant",
+    "en",
+    "ja"
+  ],
+  "defaultLocale": "zh-Hans",
+  "draftPolicy": "excluded; explicit help/results and create/restore success notice; source v3 bytes retained",
+  "assembly": {
+    "archiveFormatVersion": 1,
+    "sourceSchema": 42,
+    "restoredSchema": 43,
+    "restoredProfile": "restored-local-v10",
+    "sharedCopyInventoryHashAndPublication": true,
+    "fixedInternalProfileIdentityOnly": true,
+    "legacyVersionsUnchanged": true,
+    "legacyDTOsUnchanged": true,
+    "constructor": "existing installWorkspaceRestoreSchemaV43; complete source42 classifier and independent43 validation",
+    "markerConversion": false,
+    "application43Admission": false,
+    "runtimeLanguage": "new runtime TS; existing JS extended only at fixed seams and owned cleanup"
+  },
+  "preservation": [
+    "whole source SQLite bytes in archive",
+    "original SQL typed cells and rowids",
+    "raw timeline opacity",
+    "raw task inputs and receipts",
+    "raw history/cursors and immutable capture",
+    "managed asset bytes",
+    "old pending status/ack/claim retained with held and captured executionEpoch",
+    "new restorationId and workspaceOrigin with exact original permission rules"
+  ],
+  "restoredAuthority": {
+    "unchangedSourceHashes": "frozen-check.json",
+    "localOperations": [
+      "timeline.clip.update",
+      "timeline.undo",
+      "timeline.redo",
+      "timeline.render"
+    ],
+    "testedNewOrigin": [
+      "timeline.clip.update through actual coordinator and ACK",
+      "timeline.undo",
+      "timeline.redo"
+    ],
+    "oldPendingExecuted": false,
+    "capturedTaskExecuteRejected": true,
+    "ordinaryApplicationCapabilityGranted": false
+  },
+  "standalone": {
+    "directory": "/private/tmp/mioon-opacity-backup43-qualification-20261016",
+    "ownedNewWorkspaceOnly": true,
+    "realStoreServicesDrainedAndClosed": true,
+    "fiveActualCLICommandsExit0": true,
+    "commandResults": "cli-commands.json",
+    "verification": "standalone-verification.json",
+    "sourceDbSha256": "19844d04c75bae3a3fb1e15bc3c789ecbdab05e86c9ebb1ca62bf9612fa43d7b",
+    "sourceAssetBytes": 27,
+    "sourceAssetSha256": "e89a2641ad53443817634d38e4c06e8d66bb6de0bcd169750ef51ad9d0499212",
+    "sourceDraftSha256": "67f5c2f9105567cc3b3415b0f05596a19f2497bca056486f4a191b55082f5ae8",
+    "restorationId": "570f44a2-6461-48ee-9b03-37b70f4429c8",
+    "workspaceOrigin": "570da27f-8544-487a-aa92-dad81d9676f5",
+    "mediaDecodedOrRendered": false,
+    "note": "Opaque synthetic bytes exercise archive preservation only, not media usability"
+  },
+  "tests": {
+    "finalTargeted": {
+      "command": "TMPDIR=/private/tmp node --test tests/opacity-candidate-backup*.test.mjs tests/workspace-restore-disposable-cleanup.test.mjs tests/workspace-restore-integrity-source-guard.test.mjs tests/workspace-opacity-candidate.test.mjs tests/workspace-opacity-profiles.test.mjs tests/opacity-candidate-store.test.mjs tests/workspace-backup-contracts.test.mjs",
+      "summary": {
+        "tests": 160,
+        "pass": 160,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "exitCode": 0,
+      "file": "final-targeted-tests.txt"
+    },
+    "oldRegression": {
+      "command": "TMPDIR=/private/tmp node --test tests/opacity-candidate-backup-contracts.test.mjs tests/workspace-backup-business.test.mjs tests/workspace-backup-storage.test.mjs tests/workspace-restore-offline.test.mjs tests/workspace-restore-backup-boundary.test.mjs",
+      "summary": {
+        "tests": 70,
+        "pass": 70,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "exitCode": 0,
+      "file": "old-regression-final.txt"
+    },
+    "countsOverlapDoNotAdd": true,
+    "featureFileCounts": {
+      "backupContract": 3,
+      "boundaries": 38,
+      "roundtrip": 5,
+      "actualCLI": 8,
+      "disposableCleanup": 5
+    },
+    "coverage": [
+      "active owner lock and unclean WAL/journal rejection",
+      "new/nonempty/ancestor/overlap target rejection",
+      "source/archive/media/target symbolic links and traversal",
+      "corrupt payload/manifest/COMPLETE",
+      "rehash metadata42 with actual40 DB still refused",
+      "copied/null/inherited/callback profile refused before paths",
+      "copy/DDL/independent validation faults publish no workbench.sqlite",
+      "post-publication fsync/link acknowledgement uncertainty and safe status",
+      "old40-to41 source and restore DTOs separated",
+      "actual new-origin edit/Undo/Redo with held old pending refused"
+    ],
+    "cliChildOfflineGuards": "no network/listen/media/subprocess/provider-module/credential access violations; only owned Node CLI children launched by tests"
+  },
+  "walCleanup": {
+    "problem": "SQLite read-only WAL inspection close evolves original SHM ctime; old sameFile snapshot rejects removal and outer ENOTEMPTY masks it",
+    "fix": "After close inspect only previously captured fixed sidecar paths; require original dev/ino then strict full-current-identity removal. Unknown/replacement files preserved; no recursive cleanup.",
+    "causalFailure": "wal-cleanup-before.txt",
+    "causalObservation": "wal-cleanup-causality.txt",
+    "sourceAndArchiveOpenedBySQLite": false,
+    "oldBaselineComparison": {
+      "initialCandidate": {
+        "tests": 70,
+        "passed": 50,
+        "failed": 20
+      },
+      "baselineOriginalRuntime": {
+        "tests": 30,
+        "passed": 10,
+        "failed": 20
+      },
+      "failureTitlesIdentical": true,
+      "baselineFilesLoadedFromExactGitObjects": "workspace-backup.mjs, workspace-backup-inventory.mjs, workspace-restore.mjs, apps/cli/src/backup.mjs at9732bbe",
+      "afterCleanupBeforeFixtureRepair": {
+        "tests": 70,
+        "passed": 69,
+        "failed": 1,
+        "file": "old-regression-after.txt"
+      },
+      "fixtureRepair": "Only existing assertion expected36→40; frozen default already40. No version or schema change."
+    }
+  },
+  "build": {
+    "command": "node scripts/tooling.mjs build",
+    "exitCode": 0,
+    "strictFoundationAndBrowser": true,
+    "sourceLanguageGuard": true,
+    "defaultWeb": true,
+    "developmentDesktopStaging": true,
+    "file": "build-summary.txt",
+    "installerOrNativeQualification": false
+  },
+  "frozen": "frozen-check.json",
+  "review": {
+    "independentReadOnly": true,
+    "blockingFindings": 0,
+    "includesCleanupAndCLI": true
+  },
+  "limits": [
+    "No full-suite or Node24 runtime qualification",
+    "No media decoding/rendering or GUI/listener in this slice",
+    "43 application launcher remains unavailable; offline restore does not activate inherited work",
+    "Status observes guarded bytes, not prior unconfirmed fsync durability",
+    "Same-user pathname threat model remains original; no repair of unsafe files",
+    "v3 drafts/token/settings/connection files excluded and source retained",
+    "Initial Safari/CLI exit uncertainty preserved; no old PID/window operations or stopped picker retry"
+  ],
+  "execution": {
+    "userProjectsTouched": false,
+    "source40or41Upgraded": false,
+    "userDataBackupOrRestore": false,
+    "newTemporary42To43Operations": true,
+    "listenerStarts": 0,
+    "mediaProcesses": 0,
+    "providerCalls": 0,
+    "credentialsModified": false,
+    "dependenciesInstalled": 0,
+    "systemSettingsModified": false,
+    "push": false
+  },
+  "sourceSha256": {
+    "apps/cli/src/backup.mjs": "47003d27fbdbe3e82eb56be904ef987789ce8675713ce8998a551379bc13bc73",
+    "apps/cli/src/opacity-backup.ts": "29794f0275b872662fef39d8100aae9aac6949cb2425ae9d70d8b3074e338138",
+    "packages/business/src/workspace-backup.mjs": "3eef66d130226eea56b8ea146588dcec45d82735af648dc2dffc88c474f95e72",
+    "packages/business/src/workspace-backup-inventory.mjs": "16e729c41eac4b1621762c57f4b3827ed7064b5497f3025dd15dab4ea284e83b",
+    "packages/business/src/workspace-restore.mjs": "2a791339c450da2a1c2b1e66bcaf1ce3c29cb45691f8f9c18f2046d78550bffb",
+    "packages/business/src/opacity-candidate-backup-profile.ts": "23c3ab8e94520bb3365c16156f830d7c96bed2121b41fb7773f69282f192a72b",
+    "packages/business/src/opacity-candidate-backup.ts": "9fcb003233fe5123580b00f4c1227ea948de280f65b8aaffd8541a71010de453",
+    "packages/contracts/src/opacity-candidate-backup.ts": "a00d7ed92b8c843278489905608bb37c42a0ad1dfd79f81b6dd0d7faf2dbb171"
+  },
+  "evidenceFiles": {
+    "baseline-regression.txt": {
+      "bytes": 29801,
+      "sha256": "e53ce57271186a3c06ab9befbc477148907e696fff63ac4e833d88d181736736"
+    },
+    "build-summary.txt": {
+      "bytes": 110909,
+      "sha256": "45fa6d328dd671b4876abf81e482181dc081d1f8fe89a2976277c9f80905edad"
+    },
+    "cli-commands.json": {
+      "bytes": 711,
+      "sha256": "dc3b299e8010ce4db2dec1cc89c55152500f426683dde0dcff6ec13b69f5380d"
+    },
+    "cli-create.json": {
+      "bytes": 337,
+      "sha256": "63a912642fac55197222f87592e8de76ec44eb87543b855f6c01044ad51b379d"
+    },
+    "cli-create.stderr": {
+      "bytes": 126,
+      "sha256": "ec2bba1afec407e251b25d817603dd3fac5af8fee58db3b4bd1d78fe99d2f0b4"
+    },
+    "cli-restore.json": {
+      "bytes": 768,
+      "sha256": "d2502b7176584d86faf646d78bbbf88ec0ba68c4de6da8d7a5fa98c1fd16f57f"
+    },
+    "cli-restore.stderr": {
+      "bytes": 126,
+      "sha256": "ec2bba1afec407e251b25d817603dd3fac5af8fee58db3b4bd1d78fe99d2f0b4"
+    },
+    "cli-status-exact.json": {
+      "bytes": 630,
+      "sha256": "3ef87f466722429e523ceabd3b5a25e1d5a7d22394dfa1bf37774a75775f22b8"
+    },
+    "cli-status-exact.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "cli-status.json": {
+      "bytes": 630,
+      "sha256": "3ef87f466722429e523ceabd3b5a25e1d5a7d22394dfa1bf37774a75775f22b8"
+    },
+    "cli-status.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "cli-verify.json": {
+      "bytes": 337,
+      "sha256": "63a912642fac55197222f87592e8de76ec44eb87543b855f6c01044ad51b379d"
+    },
+    "cli-verify.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "final-targeted-tests.txt": {
+      "bytes": 19528,
+      "sha256": "d5177517173365dabf5ad3aeff0b121bc30edc2e16f5f603c4db42a12220049d"
+    },
+    "frozen-check.json": {
+      "bytes": 782,
+      "sha256": "46e61e07595be259e067ecba09350e7ad911604fe7582722ba881db155184062"
+    },
+    "initial-regression.txt": {
+      "bytes": 33873,
+      "sha256": "adf9d1630edfed44d0a67f6eeb1127af855208dd0322b18394a3504756b9d737"
+    },
+    "old-regression-after.txt": {
+      "bytes": 7669,
+      "sha256": "a235276a6e7017d90fc47fe90fc8364ff9df62fa1705f9acfd8cc3864b39ffe7"
+    },
+    "old-regression-final.txt": {
+      "bytes": 6957,
+      "sha256": "7561e506f3db22262e86426120cfa5e1f41f4bea9fd4e0065a441472a2476cd1"
+    },
+    "qualification-seed.json": {
+      "bytes": 1741,
+      "sha256": "6bcc8a8ec9cba2b41fdf971b544b852c5ea3c072d16eb2e92b57ad3a2d8ca5c5"
+    },
+    "standalone-verification.json": {
+      "bytes": 2458,
+      "sha256": "a0ecfd330f7e25ae6ac06c7bea3c3b1d0bb434bacdf3cd0e58e57f7c906b952d"
+    },
+    "wal-cleanup-after.txt": {
+      "bytes": 4945,
+      "sha256": "daa51b2c7eedb1f0a01fcf37075a18cde00c9fb9bec530ba71a1f6e4130c2b3a"
+    },
+    "wal-cleanup-before.txt": {
+      "bytes": 1371,
+      "sha256": "abf08c6721c1c724fee866ca1534b8fd21e00d64c90bbc6ab9986b37418b954c"
+    },
+    "wal-cleanup-causality.txt": {
+      "bytes": 753,
+      "sha256": "3ea34f12921882696c094ee6515bb21d9695f28a12f0a26fee11c6835aad26f1"
+    }
+  },
+  "evidenceLogNormalization": {
+    "initial-regression.txt": {
+      "originalSha256": "55aa2ea73e5c8e578fc37a5de9060368aeebe72c8673ea317036c62d9f4019ec",
+      "normalization": "remove trailing whitespace from copied text logs only"
+    },
+    "baseline-regression.txt": {
+      "originalSha256": "0912f66be3cfbf03a8b841fdfd6adc0d9065906f4780bd9aca8a51be4011a1d0",
+      "normalization": "remove trailing whitespace from copied text logs only"
+    },
+    "old-regression-after.txt": {
+      "originalSha256": "8976d1ca8c1cbfacc1f44bc44b99ef181283b42beadf90e4c462672273bfc4a9",
+      "normalization": "remove trailing whitespace from copied text logs only"
+    }
+  }
+}

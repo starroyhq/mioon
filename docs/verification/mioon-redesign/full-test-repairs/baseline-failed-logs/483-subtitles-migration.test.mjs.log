@@ -1,0 +1,252 @@
+TAP version 13
+# Subtest: startup SQL normalization rejects missing, duplicate, extra and isolated loudness expansion
+ok 1 - startup SQL normalization rejects missing, duplicate, extra and isolated loudness expansion
+  ---
+  duration_ms: 34.127417
+  type: 'test'
+  ...
+# Subtest: schema22 changes only operation CHECK preserving independently frozen schema21 bytes, rowids and all legacy states
+ok 2 - schema22 changes only operation CHECK preserving independently frozen schema21 bytes, rowids and all legacy states
+  ---
+  duration_ms: 71.009167
+  type: 'test'
+  ...
+# Subtest: real schema21 startup equals fresh schema26 and repeated restart preserves every retained byte
+not ok 3 - real schema21 startup equals fresh schema26 and repeated restart preserves every retained byte
+  ---
+  duration_ms: 539.165292
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/subtitles-migration.test.mjs:211:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    ... Skipped lines
+    
+      [
+        1,
+        2,
+        3,
+        4,
+    ...
+        26,
+    +   28,
+    +   30,
+    +   32,
+    +   34,
+    +   36,
+    +   38,
+    +   40
+      ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: 1
+    1: 2
+    2: 3
+    3: 4
+    4: 5
+    5: 6
+    6: 7
+    7: 8
+    8: 9
+    9: 10
+    10: 11
+    11: 12
+    12: 13
+    13: 14
+    14: 15
+    15: 16
+    16: 17
+    17: 18
+    18: 19
+    19: 20
+    20: 21
+    21: 22
+    22: 23
+    23: 24
+    24: 26
+  actual:
+    0: 1
+    1: 2
+    2: 3
+    3: 4
+    4: 5
+    5: 6
+    6: 7
+    7: 8
+    8: 9
+    9: 10
+    10: 11
+    11: 12
+    12: 13
+    13: 14
+    14: 15
+    15: 16
+    16: 17
+    17: 18
+    18: 19
+    19: 20
+    20: 21
+    21: 22
+    22: 23
+    23: 24
+    24: 26
+    25: 28
+    26: 30
+    27: 32
+    28: 34
+    29: 36
+    30: 38
+    31: 40
+  operator: 'deepStrictEqual'
+  stack: |-
+    assertNarrowExpansion (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/subtitles-migration.test.mjs:181:9)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/subtitles-migration.test.mjs:214:32)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: schema22 retains empty sequence absence
+ok 4 - schema22 retains empty sequence absence
+  ---
+  duration_ms: 25.673833
+  type: 'test'
+  ...
+# Subtest: schema22 retains empty sequence 0
+ok 5 - schema22 retains empty sequence 0
+  ---
+  duration_ms: 48.910334
+  type: 'test'
+  ...
+# Subtest: schema22 retains empty sequence 9123
+ok 6 - schema22 retains empty sequence 9123
+  ---
+  duration_ms: 31.941917
+  type: 'test'
+  ...
+# Subtest: failed schema22 marker rolls back raw rebuild, schema objects and sequence, then startup retries safely
+not ok 7 - failed schema22 marker rolls back raw rebuild, schema objects and sequence, then startup retries safely
+  ---
+  duration_ms: 596.65075
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/subtitles-migration.test.mjs:224:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    ... Skipped lines
+    
+      [
+        1,
+        2,
+        3,
+        4,
+    ...
+        26,
+    +   28,
+    +   30,
+    +   32,
+    +   34,
+    +   36,
+    +   38,
+    +   40
+      ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: 1
+    1: 2
+    2: 3
+    3: 4
+    4: 5
+    5: 6
+    6: 7
+    7: 8
+    8: 9
+    9: 10
+    10: 11
+    11: 12
+    12: 13
+    13: 14
+    14: 15
+    15: 16
+    16: 17
+    17: 18
+    18: 19
+    19: 20
+    20: 21
+    21: 22
+    22: 23
+    23: 24
+    24: 26
+  actual:
+    0: 1
+    1: 2
+    2: 3
+    3: 4
+    4: 5
+    5: 6
+    6: 7
+    7: 8
+    8: 9
+    9: 10
+    10: 11
+    11: 12
+    12: 13
+    13: 14
+    14: 15
+    15: 16
+    16: 17
+    17: 18
+    18: 19
+    19: 20
+    20: 21
+    21: 22
+    22: 23
+    23: 24
+    24: 26
+    25: 28
+    26: 30
+    27: 32
+    28: 34
+    29: 36
+    30: 38
+    31: 40
+  operator: 'deepStrictEqual'
+  stack: |-
+    assertNarrowExpansion (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/subtitles-migration.test.mjs:181:9)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/subtitles-migration.test.mjs:228:175)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: subtitle migration refuses invalid preconditions and no-ops when operation CHECK is already expanded
+ok 8 - subtitle migration refuses invalid preconditions and no-ops when operation CHECK is already expanded
+  ---
+  duration_ms: 26.259583
+  type: 'test'
+  ...
+# Subtest: subtitle allowlist retains lane, immutable identities, pending reservation and terminal capacity protections
+ok 9 - subtitle allowlist retains lane, immutable identities, pending reservation and terminal capacity protections
+  ---
+  duration_ms: 27.488208
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 7
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1706.371041

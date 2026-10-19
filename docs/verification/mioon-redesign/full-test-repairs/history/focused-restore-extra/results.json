@@ -1,0 +1,61 @@
+[
+  {
+    "file": "tests/workspace-restore-execution.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 5.14,
+    "tapSummary": {
+      "tests": 8,
+      "suites": 0,
+      "pass": 8,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-restore-extra/001-workspace-restore-execution.test.mjs.log",
+    "sha256": "adb3213b61e8688ef851c43ac88b27014ce74d8169fff3d8018591b2b4961680",
+    "sourceSha256": "7d49b1a9d84f300175da3c61c75b507658dee348f87cf52327248ea124e2d08a",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/workspace-restore-integrity-source-guard.test.mjs",
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 0.28,
+    "tapSummary": {
+      "tests": 76,
+      "suites": 0,
+      "pass": 75,
+      "fail": 1,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-restore-extra/003-workspace-restore-integrity-source-guard.test.mjs.log",
+    "sha256": "a34c22bf535d5335b7b35217e43c31970735af6b66620bb91f9416c2f1ebf231",
+    "sourceSha256": "94ff613ad2cd6808a42d0fcf25585ab16de82908173a43341e7bf4161f2d4f28",
+    "failedSubtests": [
+      "fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/agent-timeline-gain.ts"
+    ]
+  },
+  {
+    "file": "tests/workspace-restore-schema.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 5.63,
+    "tapSummary": {
+      "tests": 19,
+      "suites": 0,
+      "pass": 19,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-restore-extra/002-workspace-restore-schema.test.mjs.log",
+    "sha256": "f04f4cec97340e86ec5290f80ad897fdbdf77d656ee9cf302d452e8b103bd278",
+    "sourceSha256": "71d39923a32ff76dd4ec1c9cdfca7bdf9eccca458b9f567696eca0626085ca02",
+    "failedSubtests": []
+  }
+]

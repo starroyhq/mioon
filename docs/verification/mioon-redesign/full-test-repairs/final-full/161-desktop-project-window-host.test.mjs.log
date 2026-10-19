@@ -1,0 +1,262 @@
+TAP version 13
+# Subtest: different projects get immutable editors and the launcher hides at first reservation
+ok 1 - different projects get immutable editors and the launcher hides at first reservation
+  ---
+  duration_ms: 2.606709
+  type: 'test'
+  ...
+# Subtest: v2 requires exact sender, main frame, context and fixed project URL
+ok 2 - v2 requires exact sender, main frame, context and fixed project URL
+  ---
+  duration_ms: 0.553708
+  type: 'test'
+  ...
+# Subtest: a blocked foreign navigation start retains the assigned live document but never trusts a foreign commit
+ok 3 - a blocked foreign navigation start retains the assigned live document but never trusts a foreign commit
+  ---
+  duration_ms: 0.509292
+  type: 'test'
+  ...
+# Subtest: an assigned reload retires the previous document before its replacement commits
+ok 4 - an assigned reload retires the previous document before its replacement commits
+  ---
+  duration_ms: 0.224042
+  type: 'test'
+  ...
+# Subtest: same project including uppercase UUID focuses its exact existing owner without another load
+ok 5 - same project including uppercase UUID focuses its exact existing owner without another load
+  ---
+  duration_ms: 0.288958
+  type: 'test'
+  ...
+# Subtest: one sealed token has one consume/reservation and a readable historical receipt after target closes
+ok 6 - one sealed token has one consume/reservation and a readable historical receipt after target closes
+  ---
+  duration_ms: 0.349
+  type: 'test'
+  ...
+# Subtest: unknown or busy launcher admission refuses all first reservations without hiding it
+ok 7 - unknown or busy launcher admission refuses all first reservations without hiding it
+  ---
+  duration_ms: 0.21
+  type: 'test'
+  ...
+# Subtest: stale document or a quit fence crossing admission cannot reserve, hide or replay
+ok 8 - stale document or a quit fence crossing admission cannot reserve, hide or replay
+  ---
+  duration_ms: 0.322125
+  type: 'test'
+  ...
+# Subtest: late A admission/readiness does not steal focus from newer B
+ok 9 - late A admission/readiness does not steal focus from newer B
+  ---
+  duration_ms: 0.323584
+  type: 'test'
+  ...
+# Subtest: settings is one independent owner and entry intents target an editor rather than reveal launcher
+ok 10 - settings is one independent owner and entry intents target an editor rather than reveal launcher
+  ---
+  duration_ms: 1.162958
+  type: 'test'
+  ...
+# Subtest: actual last editor closure reveals launcher once and preserves settings
+ok 11 - actual last editor closure reveals launcher once and preserves settings
+  ---
+  duration_ms: 0.636958
+  type: 'test'
+  ...
+# Subtest: reload rotates exact document capture but never immutable project binding
+ok 12 - reload rotates exact document capture but never immutable project binding
+  ---
+  duration_ms: 0.201708
+  type: 'test'
+  ...
+# Subtest: failed editor owns a visible failure surface while launcher remains hidden
+ok 13 - failed editor owns a visible failure surface while launcher remains hidden
+  ---
+  duration_ms: 5.298667
+  type: 'test'
+  ...
+# Subtest: reload supersedes late initial load rejection without changing current ready state
+ok 14 - reload supersedes late initial load rejection without changing current ready state
+  ---
+  duration_ms: 0.417583
+  type: 'test'
+  ...
+# Subtest: latest explicit ready selection alone reaches the launcher locator and closing/reload revoke it
+ok 15 - latest explicit ready selection alone reaches the launcher locator and closing/reload revoke it
+  ---
+  duration_ms: 0.247167
+  type: 'test'
+  ...
+# Subtest: quit fence rejects creation/reveal immediately but does not revoke native owner identity
+ok 16 - quit fence rejects creation/reveal immediately but does not revoke native owner identity
+  ---
+  duration_ms: 0.183375
+  type: 'test'
+  ...
+# Subtest: superseded backend identity rejects stale load and bridge callbacks
+ok 17 - superseded backend identity rejects stale load and bridge callbacks
+  ---
+  duration_ms: 0.137625
+  type: 'test'
+  ...
+# Subtest: Quit closes source synchronously first, waits for every actual closed, then stops exactly once
+ok 18 - Quit closes source synchronously first, waits for every actual closed, then stops exactly once
+  ---
+  duration_ms: 0.312959
+  type: 'test'
+  ...
+# Subtest: unrelated or replaced owner cancellation cannot cancel the active exact-window quit
+ok 19 - unrelated or replaced owner cancellation cannot cancel the active exact-window quit
+  ---
+  duration_ms: 0.1925
+  type: 'test'
+  ...
+# Subtest: a remaining owner veto cancels quit and retains the backend after source already closed
+ok 20 - a remaining owner veto cancels quit and retains the backend after source already closed
+  ---
+  duration_ms: 0.135042
+  type: 'test'
+  ...
+# Subtest: P0 confirmed-gone Exit consumes only the source permit synchronously in multiwindow Quit
+ok 21 - P0 confirmed-gone Exit consumes only the source permit synchronously in multiwindow Quit
+  ---
+  duration_ms: 0.631375
+  type: 'test'
+  ...
+# Subtest: failed stop does not finish or create windows; invalid source cannot start quit
+ok 22 - failed stop does not finish or create windows; invalid source cannot start quit
+  ---
+  duration_ms: 0.144292
+  type: 'test'
+  ...
+# Subtest: destroyed handles awaiting actual closed retain slots and keep backend Quit fenced
+ok 23 - destroyed handles awaiting actual closed retain slots and keep backend Quit fenced
+  ---
+  duration_ms: 0.182167
+  type: 'test'
+  ...
+# Subtest: restart uses P0 closure order, stops after actual closed and starts only after stop resolves
+ok 24 - restart uses P0 closure order, stops after actual closed and starts only after stop resolves
+  ---
+  duration_ms: 1.08675
+  type: 'test'
+  ...
+# Subtest: Quit can synchronously supersede a requesting restart, without parallel stop/start
+ok 25 - Quit can synchronously supersede a requesting restart, without parallel stop/start
+  ---
+  duration_ms: 0.199292
+  type: 'test'
+  ...
+# Subtest: restart cancellation is exact-window scoped and never stops a remaining owner
+ok 26 - restart cancellation is exact-window scoped and never stops a remaining owner
+  ---
+  duration_ms: 0.132
+  type: 'test'
+  ...
+# Subtest: Quit during restart stop is retained, coalesced, and prevents replacement startup before serialized quit
+ok 27 - Quit during restart stop is retained, coalesced, and prevents replacement startup before serialized quit
+  ---
+  duration_ms: 1.032167
+  type: 'test'
+  ...
+# Subtest: Quit during an already-running restart start immediately fences UI and serializes backend quit
+ok 28 - Quit during an already-running restart start immediately fences UI and serializes backend quit
+  ---
+  duration_ms: 0.279417
+  type: 'test'
+  ...
+# Subtest: Quit router preserves synchronous source-first P0 close while superseding requesting restart
+ok 29 - Quit router preserves synchronous source-first P0 close while superseding requesting restart
+  ---
+  duration_ms: 0.258875
+  type: 'test'
+  ...
+# Subtest: queued Quit survives failed restart stop, then reports its own failure and clears the pending fence
+ok 30 - queued Quit survives failed restart stop, then reports its own failure and clears the pending fence
+  ---
+  duration_ms: 0.162541
+  type: 'test'
+  ...
+# Subtest: fresh entry intents advance only their target entry version and never settings form state
+ok 31 - fresh entry intents advance only their target entry version and never settings form state
+  ---
+  duration_ms: 0.089084
+  type: 'test'
+  ...
+# Subtest: out-of-order independent entry admissions preserve newer focus and selection intent
+ok 32 - out-of-order independent entry admissions preserve newer focus and selection intent
+  ---
+  duration_ms: 0.2165
+  type: 'test'
+  ...
+# Subtest: cancelled Quit does not revive pre-fence readiness; fresh selection may reveal again
+ok 33 - cancelled Quit does not revive pre-fence readiness; fresh selection may reveal again
+  ---
+  duration_ms: 0.133334
+  type: 'test'
+  ...
+# Subtest: P0 close metadata follows its real pending admission and exact cancellation
+ok 34 - P0 close metadata follows its real pending admission and exact cancellation
+  ---
+  duration_ms: 0.986458
+  type: 'test'
+  ...
+# Subtest: activation focuses the exact editor without opening a picker or revealing launcher
+ok 35 - activation focuses the exact editor without opening a picker or revealing launcher
+  ---
+  duration_ms: 0.301458
+  type: 'test'
+  ...
+# Subtest: locator metadata has one exact launcher owner and settings forwards one version-bound action
+ok 36 - locator metadata has one exact launcher owner and settings forwards one version-bound action
+  ---
+  duration_ms: 0.355458
+  type: 'test'
+  ...
+# Subtest: locator reload revokes old status/action/selection and stale frames cannot republish
+ok 37 - locator reload revokes old status/action/selection and stale frames cannot republish
+  ---
+  duration_ms: 0.210333
+  type: 'test'
+  ...
+# Subtest: audio invalidation snapshots precede rotation and only real contents destruction proves owner loss
+ok 38 - audio invalidation snapshots precede rotation and only real contents destruction proves owner loss
+  ---
+  duration_ms: 0.168292
+  type: 'test'
+  ...
+# Subtest: a pre-consume Quit refusal has an exact negative receipt even when invoke ACK is lost
+ok 39 - a pre-consume Quit refusal has an exact negative receipt even when invoke ACK is lost
+  ---
+  duration_ms: 0.098166
+  type: 'test'
+  ...
+# Subtest: security or P0 preparation failure retains failed owner without loading application code
+ok 40 - security or P0 preparation failure retains failed owner without loading application code
+  ---
+  duration_ms: 0.159959
+  type: 'test'
+  ...
+# Subtest: destroyed BrowserWindow getter cannot interrupt exact editor closure or release a sibling
+ok 41 - destroyed BrowserWindow getter cannot interrupt exact editor closure or release a sibling
+  ---
+  duration_ms: 0.335208
+  type: 'test'
+  ...
+# Subtest: late contents destroyed after host disposal uses its captured owner without a native getter
+ok 42 - late contents destroyed after host disposal uses its captured owner without a native getter
+  ---
+  duration_ms: 0.219292
+  type: 'test'
+  ...
+1..42
+# tests 42
+# suites 0
+# pass 42
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 191.943958

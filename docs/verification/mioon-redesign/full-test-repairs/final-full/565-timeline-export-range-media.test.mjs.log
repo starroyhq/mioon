@@ -1,0 +1,78 @@
+TAP version 13
+# Subtest: phase fixture: selected 24fps video and resampled faded audio match a decoded full-reference crop
+not ok 1 - phase fixture: selected 24fps video and resampled faded audio match a decoded full-reference crop
+  ---
+  duration_ms: 1143.295125
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-export-range-media.test.mjs:116:1'
+  failureType: 'testCodeFailure'
+  error: 'Mean RGB error 1.2282986111111112'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    compareVideo (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-export-range-media.test.mjs:62:9)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-export-range-media.test.mjs:124:165)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# {"video":{"worst":1.4696180555555556,"mean":0.09717308700209643},"audio":{"rmse":0.0011128794540974755,"peak":0.006148662359919399}}
+# Subtest: fractional CFR and VFR B-frame sources retain original presentation phase for interior cuts
+ok 2 - fractional CFR and VFR B-frame sources retain original presentation phase for interior cuts
+  ---
+  duration_ms: 2432.811209
+  type: 'test'
+  ...
+# cfr30: {"worst":1.4036458333333333,"mean":0.6441769416099773}
+# fractional: {"worst":1.4036458333333333,"mean":0.6441769416099773}
+# vfr: {"worst":1.3072916666666667,"mean":0.5210636337868481}
+# Subtest: selected final-output trims preserve every float-PCM fade sample across original segment seams
+ok 3 - selected final-output trims preserve every float-PCM fade sample across original segment seams
+  ---
+  duration_ms: 300.838833
+  type: 'test'
+  ...
+# {"rate":48000,"worstReference":0,"worstEnvelope":3.715356189371022e-9,"worstDryRipple":0,"seams":[12800,156800]}
+# {"rate":44100,"worstReference":0,"worstEnvelope":3.7251350754052837e-9,"worstDryRipple":0.0000013560056686401367,"seams":[12800,156800]}
+# Subtest: three canvas presets preserve subtitle exclusive edges, overlapping layers, gaps and existing delivery scales
+not ok 4 - three canvas presets preserve subtitle exclusive edges, overlapping layers, gaps and existing delivery scales
+  ---
+  duration_ms: 500.763583
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/timeline-export-range-media.test.mjs:214:1'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    Socket.<anonymous> (node:internal/child_process:497:11)
+    Socket.emit (node:events:514:20)
+    Pipe.<anonymous> (node:net:362:12)
+  ...
+# Subtest: malformed range and range-only owner fence fail before scratch or media work
+ok 5 - malformed range and range-only owner fence fail before scratch or media work
+  ---
+  duration_ms: 2.04275
+  type: 'test'
+  ...
+# Subtest: cancelling a range at original-segment preroll startup joins the child and cleans staging
+ok 6 - cancelling a range at original-segment preroll startup joins the child and cleans staging
+  ---
+  duration_ms: 54.222042
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 4
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4739.964583

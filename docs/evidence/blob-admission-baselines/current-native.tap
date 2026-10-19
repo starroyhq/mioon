@@ -1,0 +1,133 @@
+TAP version 13
+# Subtest: frozen ordinary24-seeded reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+not ok 1 - frozen ordinary24-seeded reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+  ---
+  duration_ms: 49.555917
+  type: 'test'
+  location: '/private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-schema-profiles.test.mjs:350:3'
+  failureType: 'testCodeFailure'
+  error: 'Volume envelopes require an exact supported workspace profile.'
+  code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  stack: |-
+    invalid (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/workspace-volume-envelope-validation.ts:21:62)
+    validateWorkspaceVolumeEnvelopeRows (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/workspace-volume-envelope-validation.ts:178:66)
+    Object.initialize (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/workspace-schema-dispatch.ts:205:5)
+    openStore (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/db.mjs:97:40)
+    TestContext.<anonymous> (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-schema-profiles.test.mjs:352:19)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.start (node:internal/test_runner/test:1262:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+  ...
+# Subtest: independent frozen restored25-seeded opens and validates without ordinary bootstrap or evidence rewrites
+not ok 2 - independent frozen restored25-seeded opens and validates without ordinary bootstrap or evidence rewrites
+  ---
+  duration_ms: 48.303083
+  type: 'test'
+  location: '/private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-schema-profiles.test.mjs:375:3'
+  failureType: 'testCodeFailure'
+  error: 'Volume envelopes require an exact supported workspace profile.'
+  code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  stack: |-
+    invalid (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/workspace-volume-envelope-validation.ts:21:62)
+    validateWorkspaceVolumeEnvelopeRows (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/workspace-volume-envelope-validation.ts:178:66)
+    validateRestore (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/workspace-schema-dispatch.ts:188:5)
+    Object.initialize (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/workspace-schema-dispatch.ts:204:329)
+    openStore (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/db.mjs:97:40)
+    TestContext.<anonymous> (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-schema-profiles.test.mjs:377:19)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+  ...
+# Subtest: frozen ordinary24-mock-seeded reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+not ok 3 - frozen ordinary24-mock-seeded reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+  ---
+  duration_ms: 73.93575
+  type: 'test'
+  location: '/private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-schema-profiles.test.mjs:350:3'
+  failureType: 'testCodeFailure'
+  error: 'Volume envelopes require an exact supported workspace profile.'
+  code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  stack: |-
+    invalid (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/workspace-volume-envelope-validation.ts:21:62)
+    validateWorkspaceVolumeEnvelopeRows (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/workspace-volume-envelope-validation.ts:178:66)
+    Object.initialize (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/workspace-schema-dispatch.ts:205:5)
+    openStore (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/db.mjs:97:40)
+    TestContext.<anonymous> (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-schema-profiles.test.mjs:352:19)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+  ...
+# Subtest: independent frozen restored25-mock-seeded opens and validates without ordinary bootstrap or evidence rewrites
+not ok 4 - independent frozen restored25-mock-seeded opens and validates without ordinary bootstrap or evidence rewrites
+  ---
+  duration_ms: 55.923875
+  type: 'test'
+  location: '/private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-schema-profiles.test.mjs:375:3'
+  failureType: 'testCodeFailure'
+  error: 'Volume envelopes require an exact supported workspace profile.'
+  code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  stack: |-
+    invalid (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/workspace-volume-envelope-validation.ts:21:62)
+    validateWorkspaceVolumeEnvelopeRows (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/workspace-volume-envelope-validation.ts:178:66)
+    validateRestore (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/workspace-schema-dispatch.ts:188:5)
+    Object.initialize (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/workspace-schema-dispatch.ts:204:329)
+    openStore (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/db.mjs:97:40)
+    TestContext.<anonymous> (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-schema-profiles.test.mjs:377:19)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+  ...
+# Subtest: ordinary runtime retains baseline repair eligibility for known-marker-gap; offline classification stays strict
+not ok 5 - ordinary runtime retains baseline repair eligibility for known-marker-gap; offline classification stays strict
+  ---
+  duration_ms: 450.767792
+  type: 'test'
+  location: '/private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-schema-profiles.test.mjs:390:3'
+  failureType: 'testCodeFailure'
+  error: 'Volume envelopes require an exact supported workspace profile.'
+  code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  stack: |-
+    invalid (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/workspace-volume-envelope-validation.ts:21:62)
+    validateWorkspaceVolumeEnvelopeRows (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/workspace-volume-envelope-validation.ts:178:66)
+    Object.initialize (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/workspace-schema-dispatch.ts:205:5)
+    openStore (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/db.mjs:97:40)
+    TestContext.<anonymous> (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-schema-profiles.test.mjs:402:19)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: ordinary runtime retains baseline repair eligibility for initial-markers-absent; offline classification stays strict
+not ok 6 - ordinary runtime retains baseline repair eligibility for initial-markers-absent; offline classification stays strict
+  ---
+  duration_ms: 104.071333
+  type: 'test'
+  location: '/private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-schema-profiles.test.mjs:390:3'
+  failureType: 'testCodeFailure'
+  error: 'Volume envelopes require an exact supported workspace profile.'
+  code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  stack: |-
+    invalid (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/workspace-volume-envelope-validation.ts:21:62)
+    validateWorkspaceVolumeEnvelopeRows (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/workspace-volume-envelope-validation.ts:178:66)
+    Object.initialize (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/workspace-schema-dispatch.ts:205:5)
+    openStore (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/packages/business/src/db.mjs:97:40)
+    TestContext.<anonymous> (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-schema-profiles.test.mjs:402:19)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 0
+# fail 6
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1744.9815

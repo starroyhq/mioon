@@ -1,0 +1,23 @@
+[
+  {
+    "name": "typecheck-release-candidate",
+    "command": [
+      "node",
+      "scripts/tooling.mjs",
+      "typecheck"
+    ],
+    "exitCode": 0,
+    "seconds": 9.83
+  },
+  {
+    "name": "build-release-candidate",
+    "command": [
+      "node",
+      "scripts/tooling.mjs",
+      "build",
+      "--channel=development"
+    ],
+    "exitCode": 0,
+    "seconds": 25.32
+  }
+]

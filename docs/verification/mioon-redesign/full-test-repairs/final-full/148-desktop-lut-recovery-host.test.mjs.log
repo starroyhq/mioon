@@ -1,0 +1,76 @@
+TAP version 13
+# Subtest: shared requests are exact metadata-only envelopes and reject getters without invoking them
+ok 1 - shared requests are exact metadata-only envelopes and reject getters without invoking them
+  ---
+  duration_ms: 2.880291
+  type: 'test'
+  ...
+# Subtest: shared response parser refuses extra data, getters, wrong scope and metadata from writes
+ok 2 - shared response parser refuses extra data, getters, wrong scope and metadata from writes
+  ---
+  duration_ms: 0.212792
+  type: 'test'
+  ...
+# Subtest: host rejects unowned editor, wrong project and workspace before reading or mutating store
+ok 3 - host rejects unowned editor, wrong project and workspace before reading or mutating store
+  ---
+  duration_ms: 0.488375
+  type: 'test'
+  ...
+# Subtest: queued requests capture the old document and reject invalidation before store access
+ok 4 - queued requests capture the old document and reject invalidation before store access
+  ---
+  duration_ms: 0.160875
+  type: 'test'
+  ...
+# Subtest: host queue isolates guards and drains after failures without exposing raw diagnostics
+ok 5 - host queue isolates guards and drains after failures without exposing raw diagnostics
+  ---
+  duration_ms: 0.16525
+  type: 'test'
+  ...
+# Subtest: host rechecks ownership after synchronous read and store guard before publication
+ok 6 - host rechecks ownership after synchronous read and store guard before publication
+  ---
+  duration_ms: 0.200542
+  type: 'test'
+  ...
+# Subtest: host rechecks ownership after synchronous reserve and store guard before publication
+ok 7 - host rechecks ownership after synchronous reserve and store guard before publication
+  ---
+  duration_ms: 0.139625
+  type: 'test'
+  ...
+# Subtest: host rechecks ownership after synchronous verify and store guard before publication
+ok 8 - host rechecks ownership after synchronous verify and store guard before publication
+  ---
+  duration_ms: 0.1205
+  type: 'test'
+  ...
+# Subtest: host rechecks ownership after synchronous complete and store guard before publication
+ok 9 - host rechecks ownership after synchronous complete and store guard before publication
+  ---
+  duration_ms: 0.141916
+  type: 'test'
+  ...
+# Subtest: host returns only recognized application codes and validates store read metadata
+ok 10 - host returns only recognized application codes and validates store read metadata
+  ---
+  duration_ms: 0.365416
+  type: 'test'
+  ...
+# Subtest: host snapshots mutable requests before queueing and uses the captured document owner
+ok 11 - host snapshots mutable requests before queueing and uses the captured document owner
+  ---
+  duration_ms: 0.21575
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 178.941833

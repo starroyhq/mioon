@@ -1,0 +1,267 @@
+TAP version 13
+# Subtest: ordered bounded reads confirm absent neutral revision zero without writes, rows or lazy timeline creation
+ok 1 - ordered bounded reads confirm absent neutral revision zero without writes, rows or lazy timeline creation
+  ---
+  duration_ms: 351.1925
+  type: 'test'
+  ...
+# Subtest: favorite/rejected/neutral edits retain independent revisions and leave all asset bytes, names, relationships and timelines unchanged
+ok 2 - favorite/rejected/neutral edits retain independent revisions and leave all asset bytes, names, relationships and timelines unchanged
+  ---
+  duration_ms: 207.281125
+  type: 'test'
+  ...
+# Subtest: exact replay precedes CAS after current ownership validation and survives later labels, reset and restart without writes
+ok 3 - exact replay precedes CAS after current ownership validation and survives later labels, reset and restart without writes
+  ---
+  duration_ms: 190.712875
+  type: 'test'
+  ...
+# Subtest: schema-valid non-BMP request keys retain existing UTF-16 length semantics across save and replay
+ok 4 - schema-valid non-BMP request keys retain existing UTF-16 length semantics across save and replay
+  ---
+  duration_ms: 190.699958
+  type: 'test'
+  ...
+# Subtest: missing and foreign batches fail all-or-nothing uniformly, including exact replay, without foreign JSON decoding
+ok 5 - missing and foreign batches fail all-or-nothing uniformly, including exact replay, without foreign JSON decoding
+  ---
+  duration_ms: 160.202792
+  type: 'test'
+  ...
+# Subtest: bounded asset/project identity JSON and malformed saved metadata fail closed without current state disclosure
+ok 6 - bounded asset/project identity JSON and malformed saved metadata fail closed without current state disclosure
+  ---
+  duration_ms: 196.580042
+  type: 'test'
+  ...
+# Subtest: malformed retained responses, lost metadata and deleted assets never expose or replay historical acknowledgements
+ok 7 - malformed retained responses, lost metadata and deleted assets never expose or replay historical acknowledgements
+  ---
+  duration_ms: 157.193417
+  type: 'test'
+  ...
+# Subtest: metadata, receipts and trigger-induced reassignment roll back together; scope denial never releases the pending request
+ok 8 - metadata, receipts and trigger-induced reassignment roll back together; scope denial never releases the pending request
+  ---
+  duration_ms: 154.675917
+  type: 'test'
+  ...
+# Subtest: safe revision limit and stale writes fail without mutation; independent range updates cannot conflict with disposition revisions
+ok 9 - safe revision limit and stale writes fail without mutation; independent range updates cannot conflict with disposition revisions
+  ---
+  duration_ms: 162.073167
+  type: 'test'
+  ...
+# Subtest: shot.create: all other mutation writers reject its key globally after any required ownership checks
+ok 10 - shot.create: all other mutation writers reject its key globally after any required ownership checks
+  ---
+  duration_ms: 189.44475
+  type: 'test'
+  ...
+# Subtest: shot.update: all other mutation writers reject its key globally after any required ownership checks
+ok 11 - shot.update: all other mutation writers reject its key globally after any required ownership checks
+  ---
+  duration_ms: 191.763083
+  type: 'test'
+  ...
+# Subtest: shot.reorder: all other mutation writers reject its key globally after any required ownership checks
+ok 12 - shot.reorder: all other mutation writers reject its key globally after any required ownership checks
+  ---
+  duration_ms: 489.123
+  type: 'test'
+  ...
+# Subtest: node.create: all other mutation writers reject its key globally after any required ownership checks
+ok 13 - node.create: all other mutation writers reject its key globally after any required ownership checks
+  ---
+  duration_ms: 209.223375
+  type: 'test'
+  ...
+# Subtest: node.update: all other mutation writers reject its key globally after any required ownership checks
+ok 14 - node.update: all other mutation writers reject its key globally after any required ownership checks
+  ---
+  duration_ms: 199.037834
+  type: 'test'
+  ...
+# Subtest: version.select: all other mutation writers reject its key globally after any required ownership checks
+ok 15 - version.select: all other mutation writers reject its key globally after any required ownership checks
+  ---
+  duration_ms: 501.605125
+  type: 'test'
+  ...
+# Subtest: asset.range.set: all other mutation writers reject its key globally after any required ownership checks
+ok 16 - asset.range.set: all other mutation writers reject its key globally after any required ownership checks
+  ---
+  duration_ms: 331.406584
+  type: 'test'
+  ...
+# Subtest: asset.disposition.set: all other mutation writers reject its key globally after any required ownership checks
+ok 17 - asset.disposition.set: all other mutation writers reject its key globally after any required ownership checks
+  ---
+  duration_ms: 295.58325
+  type: 'test'
+  ...
+# Subtest: asset.annotation.set: all other mutation writers reject its key globally after any required ownership checks
+ok 18 - asset.annotation.set: all other mutation writers reject its key globally after any required ownership checks
+  ---
+  duration_ms: 609.262833
+  type: 'test'
+  ...
+# Subtest: subject.create: all other mutation writers reject its key globally after any required ownership checks
+ok 19 - subject.create: all other mutation writers reject its key globally after any required ownership checks
+  ---
+  duration_ms: 882.779792
+  type: 'test'
+  ...
+# Subtest: subject.version.add: all other mutation writers reject its key globally after any required ownership checks
+ok 20 - subject.version.add: all other mutation writers reject its key globally after any required ownership checks
+  ---
+  duration_ms: 220.153791
+  type: 'test'
+  ...
+# Subtest: subject.binding.set: all other mutation writers reject its key globally after any required ownership checks
+ok 21 - subject.binding.set: all other mutation writers reject its key globally after any required ownership checks
+  ---
+  duration_ms: 322.994625
+  type: 'test'
+  ...
+# Subtest: immutable companion receipts cannot be updated, deleted or replaced; SQL collision triggers guard every table direction
+ok 22 - immutable companion receipts cannot be updated, deleted or replaced; SQL collision triggers guard every table direction
+  ---
+  duration_ms: 307.3615
+  type: 'test'
+  ...
+# Subtest: duplicate presence and corrupted wrong-table placement fail closed for all writers and cannot release a receipt
+ok 23 - duplicate presence and corrupted wrong-table placement fail closed for all writers and cannot release a receipt
+  ---
+  duration_ms: 297.412208
+  type: 'test'
+  ...
+# Subtest: v12 upgrade preserves all old records and response bytes and has identical fresh schema invariants on repeated restart
+not ok 24 - v12 upgrade preserves all old records and response bytes and has identical fresh schema invariants on repeated restart
+  ---
+  duration_ms: 425.443459
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/asset-dispositions.test.mjs:268:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    ... Skipped lines
+    
+      [
+        1,
+        2,
+        3,
+        4,
+    ...
+        36,
+    +   38,
+    +   40
+      ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: 1
+    1: 2
+    2: 3
+    3: 4
+    4: 5
+    5: 6
+    6: 7
+    7: 8
+    8: 9
+    9: 10
+    10: 11
+    11: 12
+    12: 13
+    13: 14
+    14: 15
+    15: 16
+    16: 17
+    17: 18
+    18: 19
+    19: 20
+    20: 21
+    21: 22
+    22: 23
+    23: 24
+    24: 26
+    25: 28
+    26: 30
+    27: 32
+    28: 34
+    29: 36
+  actual:
+    0: 1
+    1: 2
+    2: 3
+    3: 4
+    4: 5
+    5: 6
+    6: 7
+    7: 8
+    8: 9
+    9: 10
+    10: 11
+    11: 12
+    12: 13
+    13: 14
+    14: 15
+    15: 16
+    16: 17
+    17: 18
+    18: 19
+    19: 20
+    20: 21
+    21: 22
+    22: 23
+    23: 24
+    24: 26
+    25: 28
+    26: 30
+    27: 32
+    28: 34
+    29: 36
+    30: 38
+    31: 40
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/asset-dispositions.test.mjs:287:9)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: two-process namespace race: asset.disposition.set wins and shot.create conflicts
+ok 25 - two-process namespace race: asset.disposition.set wins and shot.create conflicts
+  ---
+  duration_ms: 766.560166
+  type: 'test'
+  ...
+# Subtest: two-process namespace race: shot.create wins and asset.disposition.set conflicts
+ok 26 - two-process namespace race: shot.create wins and asset.disposition.set conflicts
+  ---
+  duration_ms: 760.138125
+  type: 'test'
+  ...
+# Subtest: two-process namespace race: asset.disposition.set wins and asset.range.set conflicts
+ok 27 - two-process namespace race: asset.disposition.set wins and asset.range.set conflicts
+  ---
+  duration_ms: 922.117166
+  type: 'test'
+  ...
+# Subtest: two-process namespace race: asset.range.set wins and asset.disposition.set conflicts
+ok 28 - two-process namespace race: asset.range.set wins and asset.disposition.set conflicts
+  ---
+  duration_ms: 672.072292
+  type: 'test'
+  ...
+1..28
+# tests 28
+# suites 0
+# pass 27
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 10890.919833

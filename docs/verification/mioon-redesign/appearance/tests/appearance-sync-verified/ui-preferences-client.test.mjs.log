@@ -1,0 +1,34 @@
+TAP version 13
+# Subtest: private preference reads and writes use cookie authentication and validate exact acknowledgements
+ok 1 - private preference reads and writes use cookie authentication and validate exact acknowledgements
+  ---
+  duration_ms: 16.115708
+  type: 'test'
+  ...
+# Subtest: invalid writes never reach HTTP and malformed or unrelated acknowledgements fail closed
+ok 2 - invalid writes never reach HTTP and malformed or unrelated acknowledgements fail closed
+  ---
+  duration_ms: 1.613208
+  type: 'test'
+  ...
+# Subtest: recent-opened requests require the requested UUID in the response and do not change display preferences
+ok 3 - recent-opened requests require the requested UUID in the response and do not change display preferences
+  ---
+  duration_ms: 0.693917
+  type: 'test'
+  ...
+# Subtest: untrusted failures expose only bounded codes and oversized responses are rejected
+ok 4 - untrusted failures expose only bounded codes and oversized responses are rejected
+  ---
+  duration_ms: 1.210625
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 178.820084

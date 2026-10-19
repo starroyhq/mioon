@@ -1,6 +1,9 @@
 import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage } from './helpers/i18n.ts';
 import * as i18nCore from '../packages/i18n/src/index.ts';
 import * as loudnessApplyRpc from '../apps/web/src/timeline-loudness-apply-rpc.ts';
+import * as clipLoudnessRpc from '../apps/web/src/timeline-clip-loudness-rpc.ts';
+import * as clipLoudnessContracts from '@mioon/contracts/timeline-clip-loudness';
+import * as opacityClientBinding from '../apps/web/src/opacity-candidate-client-binding.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -20,7 +23,7 @@ import { createEditorWindowInputs } from '../apps/web/src/editor-window-inputs.t
 const appSource = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
 const apiSource = readFileSync(new URL('../apps/web/src/api.js', import.meta.url), 'utf8');
 const importSource = appSource.slice(appSource.indexOf('  async function importFiles(files) {'), appSource.indexOf('  async function saveShot('));
-const errorSource = appSource.slice(appSource.indexOf('function localizedError(displayMessage) {'), appSource.indexOf('function Login('));
+const errorSource = appSource.slice(appSource.indexOf('function localizedError(displayMessage) {'), appSource.indexOf('function Modal('));
 assert.ok(importSource.startsWith('  async function importFiles(files) {'), 'Exercise the actual App importFiles function');
 const projectId = '00000000-0000-4000-8000-000000000001';
 const file = (name, patch = {}) => ({ name, type: 'image/png', size: 4, ...patch });
@@ -33,6 +36,9 @@ function actualApiDependency(name) {
   if (name === '@mioon/contracts') return contracts;
   if (name === './workspace-origin.js') return workspaceOrigin;
   if (name === './timeline-loudness-apply-rpc.ts') return loudnessApplyRpc;
+  if (name === './timeline-clip-loudness-rpc.ts') return clipLoudnessRpc;
+  if (name === '@mioon/contracts/timeline-clip-loudness') return clipLoudnessContracts;
+  if (name === './opacity-candidate-client-binding.ts') return opacityClientBinding;
   if (name === './timeline-mix-loudness-rpc.ts') return mixLoudnessRpc;
   if (name === '@mioon/contracts/timeline-mix-loudness') return mixLoudnessContracts;
   throw new Error(`Unexpected API dependency ${name}`);
@@ -56,7 +62,7 @@ function harness({ fetchImpl, readerImpl, refreshImpl, rpcImpl, actualRefresh = 
   let effect, cleanup;
   const importSession = Function('useRef', 'useEffect', 'requestCounter', `${lifecycleSource}\nreturn importSession;`)(
     value => ({ current: value }), fn => { effect = fn; cleanup = fn(); }, requestCounter);
-  const scope = { msg, renderCoreMessage, nativeWindow: null, editorInputs: { current: createEditorWindowInputs() }, ...workspaceOrigin, ...restoredWorkspace, ...projectOpening, projectSessionReady: () => projectReady, workspaceRef, data, dataRef, currentProject, navigationEpoch, projectEpoch, requestCounter, importSession, busyRef: { current: busy }, ...feedback,
+  const scope = { application: null, msg, renderCoreMessage, nativeWindow: null, editorInputs: { current: createEditorWindowInputs() }, ...workspaceOrigin, ...restoredWorkspace, ...projectOpening, projectSessionReady: () => projectReady, workspaceRef, data, dataRef, currentProject, navigationEpoch, projectEpoch, requestCounter, importSession, busyRef: { current: busy }, ...feedback,
     setShowCreate: value => stateWrites.push(['create', value]), context: () => ({ projectId: currentProject.current, epoch: navigationEpoch.current, workspace: workspaceRef.current }),
     isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === navigationEpoch.current && workspaceOrigin.workspaceOriginScope(captured.workspace) === workspaceOrigin.workspaceOriginScope(workspaceRef.current),
     isBusy: key => busy.has(`${currentProject.current}:${key}`), markBusy: (owner, key, value) => { busyWrites.push({ owner, key, value }); if (value) busy.add(`${owner}:${key}`); else busy.delete(`${owner}:${key}`); },
@@ -411,14 +417,11 @@ test('home presentation never starts project polling or performs the loaded-proj
   assert.deepEqual(h.requests, []); assert.deepEqual(h.stateWrites, []); assert.equal(poll.listeners.size, 0); poll.cleanup();
 });
 
-test('actual API harness loads five exact real dependencies and rejects any unlisted module', () => {
+test('actual API harness loads the exact current real dependencies and rejects any unlisted module', () => {
   const names = [...apiSource.matchAll(/^import .+ from ['"]([^'"]+)['"];$/gm)].map(match => match[1]);
-  assert.deepEqual(names, ['./timeline-loudness-apply-rpc.ts', '@mioon/contracts', './workspace-origin.js', './timeline-mix-loudness-rpc.ts', '@mioon/contracts/timeline-mix-loudness']);
-  assert.equal(actualApiDependency(names[0]), loudnessApplyRpc);
-  assert.equal(actualApiDependency(names[1]), contracts);
-  assert.equal(actualApiDependency(names[2]), workspaceOrigin);
-  assert.equal(actualApiDependency(names[3]), mixLoudnessRpc);
-  assert.equal(actualApiDependency(names[4]), mixLoudnessContracts);
+  const expected = [['./timeline-clip-loudness-rpc.ts', clipLoudnessRpc], ['@mioon/contracts/timeline-clip-loudness', clipLoudnessContracts], ['./timeline-loudness-apply-rpc.ts', loudnessApplyRpc], ['@mioon/contracts', contracts], ['./opacity-candidate-client-binding.ts', opacityClientBinding], ['./workspace-origin.js', workspaceOrigin], ['./timeline-mix-loudness-rpc.ts', mixLoudnessRpc], ['@mioon/contracts/timeline-mix-loudness', mixLoudnessContracts]];
+  assert.deepEqual(names, expected.map(([name]) => name));
+  for (const [name, module] of expected) assert.equal(actualApiDependency(name), module);
   for (const name of ['./timeline-loudness-apply-rpc.js', './timeline-mix-loudness-rpc.js', './arbitrary.ts', '@mioon/contracts/arbitrary', 'node:fs']) {
     assert.throws(() => actualApiDependency(name), { message: `Unexpected API dependency ${name}` });
   }

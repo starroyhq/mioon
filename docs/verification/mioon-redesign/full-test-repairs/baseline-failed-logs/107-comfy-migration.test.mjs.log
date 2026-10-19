@@ -1,0 +1,145 @@
+TAP version 13
+# Subtest: frozen independent schema18 upgrade retains every old row/rowid/raw string and all but the one narrowly extended trigger
+ok 1 - frozen independent schema18 upgrade retains every old row/rowid/raw string and all but the one narrowly extended trigger
+  ---
+  duration_ms: 29.623834
+  type: 'test'
+  ...
+# Subtest: copy/drop/remote-schema/marker interruptions roll the complete schema19 transaction back
+ok 2 - copy/drop/remote-schema/marker interruptions roll the complete schema19 transaction back
+  ---
+  duration_ms: 57.844333
+  type: 'test'
+  ...
+# Subtest: schema19 admits bound local review/remote identity and keeps graph and journal immutable
+ok 3 - schema19 admits bound local review/remote identity and keeps graph and journal immutable
+  ---
+  duration_ms: 15.877709
+  type: 'test'
+  ...
+# Subtest: only a bound running observation of content-verified local failure can close an unknown image task
+ok 4 - only a bound running observation of content-verified local failure can close an unknown image task
+  ---
+  duration_ms: 14.871833
+  type: 'test'
+  ...
+# Subtest: completed local result pins descriptor, hash and byte count before any later local recovery
+ok 5 - completed local result pins descriptor, hash and byte count before any later local recovery
+  ---
+  duration_ms: 11.878625
+  type: 'test'
+  ...
+# Subtest: normal startup upgrades frozen schema18 once and restarts without rewriting retained bytes
+not ok 6 - normal startup upgrades frozen schema18 once and restarts without rewriting retained bytes
+  ---
+  duration_ms: 239.924541
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/comfy-migration.test.mjs:144:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    ... Skipped lines
+    
+      [
+        1,
+        2,
+        3,
+        4,
+    ...
+        34,
+    +   36,
+    +   38,
+    +   40
+      ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: 1
+    1: 2
+    2: 3
+    3: 4
+    4: 5
+    5: 6
+    6: 7
+    7: 8
+    8: 9
+    9: 10
+    10: 11
+    11: 12
+    12: 13
+    13: 14
+    14: 15
+    15: 16
+    16: 17
+    17: 18
+    18: 19
+    19: 20
+    20: 21
+    21: 22
+    22: 23
+    23: 24
+    24: 26
+    25: 28
+    26: 30
+    27: 32
+    28: 34
+  actual:
+    0: 1
+    1: 2
+    2: 3
+    3: 4
+    4: 5
+    5: 6
+    6: 7
+    7: 8
+    8: 9
+    9: 10
+    10: 11
+    11: 12
+    12: 13
+    13: 14
+    14: 15
+    15: 16
+    16: 17
+    17: 18
+    18: 19
+    19: 20
+    20: 21
+    21: 22
+    22: 23
+    23: 24
+    24: 26
+    25: 28
+    26: 30
+    27: 32
+    28: 34
+    29: 36
+    30: 38
+    31: 40
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/comfy-migration.test.mjs:146:149)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: unsafe local settings fail preflight before SQLite or backend-owned files are created
+ok 7 - unsafe local settings fail preflight before SQLite or backend-owned files are created
+  ---
+  duration_ms: 2.718667
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 6
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 618.420292

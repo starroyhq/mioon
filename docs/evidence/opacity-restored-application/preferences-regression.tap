@@ -1,0 +1,106 @@
+# Initial attempt retained in preferences-regression-attempt1.tap. This run changes only TMPDIR to an owned canonical private directory; runtime and tests are unchanged.
+# Qualification command 1: ["node", "--import", "/private/tmp/mioon-restored43-preferences-guard-56fbbeha/guard.mjs", "--test", "--test-reporter=tap", "tests/workspace-preferences.test.mjs"]
+TAP version 13
+# Subtest: preference reads have no writes, require an existing project, and are absent from RPC schemas
+ok 1 - preference reads have no writes, require an existing project, and are absent from RPC schemas
+  ---
+  duration_ms: 242.362125
+  type: 'test'
+  ...
+# Subtest: the full bounded whitelist rejects missing, unknown, free-text, unsafe and malformed values atomically
+ok 2 - the full bounded whitelist rejects missing, unknown, free-text, unsafe and malformed values atomically
+  ---
+  duration_ms: 290.793625
+  type: 'test'
+  ...
+# Subtest: legacy stored v1 preferences normalize and replay canonically without changing bytes or revisions
+ok 3 - legacy stored v1 preferences normalize and replay canonically without changing bytes or revisions
+  ---
+  duration_ms: 390.366708
+  type: 'test'
+  ...
+# Subtest: legacy v1 magnet input still rejects every undocumented omission and unknown field
+ok 4 - legacy v1 magnet input still rejects every undocumented omission and unknown field
+  ---
+  duration_ms: 224.174542
+  type: 'test'
+  ...
+# Subtest: whole-layout legacy migration preserves raw bytes and revisions on GET and exact replay
+ok 5 - whole-layout legacy migration preserves raw bytes and revisions on GET and exact replay
+  ---
+  duration_ms: 312.451167
+  type: 'test'
+  ...
+# Subtest: strict layout input never repairs a supplied partial layout, even for otherwise legacy records
+ok 6 - strict layout input never repairs a supplied partial layout, even for otherwise legacy records
+  ---
+  duration_ms: 0.485417
+  type: 'test'
+  ...
+# Subtest: independent CAS revisions replay only the latest exact write and never overwrite stale state
+ok 7 - independent CAS revisions replay only the latest exact write and never overwrite stale state
+  ---
+  duration_ms: 314.016875
+  type: 'test'
+  ...
+# Subtest: selection IDs can outlive entities, project preferences stay isolated, and business/history bytes are untouched
+ok 8 - selection IDs can outlive entities, project preferences stay isolated, and business/history bytes are untouched
+  ---
+  duration_ms: 404.668375
+  type: 'test'
+  ...
+# Subtest: additive v5 migration preserves legacy records, immutable requests, history and bytes
+ok 9 - additive v5 migration preserves legacy records, immutable requests, history and bytes
+  ---
+  duration_ms: 375.846666
+  type: 'test'
+  ...
+# Subtest: competing database connections commit one CAS winner and deduplicate simultaneous exact retries
+ok 10 - competing database connections commit one CAS winner and deduplicate simultaneous exact retries
+  ---
+  duration_ms: 2283.6915
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5374.771833
+# Qualification command 2: ["node", "--import", "/private/tmp/mioon-restored43-preferences-guard-56fbbeha/guard.mjs", "--test", "--test-reporter=tap", "--test-name-pattern=^restored preference writes require explicit origin and share the existing strict revision boundary$", "tests/workspace-restore-local-execution.test.mjs"]
+TAP version 13
+# Subtest: restored preference writes require explicit origin and share the existing strict revision boundary
+ok 1 - restored preference writes require explicit origin and share the existing strict revision boundary
+  ---
+  duration_ms: 987.306334
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1661.024708
+# Qualification command 3: ["node", "--import", "/private/tmp/mioon-restored43-preferences-guard-56fbbeha/guard.mjs", "--test", "--test-reporter=tap", "--test-name-pattern=^restored preferences never bootstrap a PUT and explicit queued writes keep their origin$", "tests/workspace-restore-renderer.test.mjs"]
+TAP version 13
+# Subtest: restored preferences never bootstrap a PUT and explicit queued writes keep their origin
+ok 1 - restored preferences never bootstrap a PUT and explicit queued writes keep their origin
+  ---
+  duration_ms: 7.040167
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 548.747

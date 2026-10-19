@@ -1,0 +1,62 @@
+{
+  "base": "/private/tmp/mioon-opacity43-app-qualification-20261016",
+  "source": "/private/tmp/mioon-opacity43-app-qualification-20261016/source42",
+  "backup": "/private/tmp/mioon-opacity43-app-qualification-20261016/backup42",
+  "target": "/private/tmp/mioon-opacity43-app-qualification-20261016/restored43",
+  "projectId": "7773d16c-b298-46d7-ac81-d27076160ce8",
+  "timelineId": "c5f3b7c2-2183-4f14-9024-102727349e47",
+  "clipId": "be41252d-d2f6-464b-9dd1-48d453808b13",
+  "assetId": "a5f4cd71-66a3-4771-9929-b7ed19614175",
+  "sourceRevision": 2,
+  "heldTaskId": "046d6a64-292d-4e4f-a002-98e004e857f9",
+  "heldTaskDigest": "8dcf3554440a5dfc6167f54642a336eccc4e675ef378d2f14c3011c4b47a557a",
+  "pngSha256": "260d48846b0b0901bf8da934571961ab8319154c7163a1e8dbe8a88958574827",
+  "pngBytes": 165,
+  "durationFrames": 10,
+  "captured": {
+    "format": "mioon-workspace-backup",
+    "formatVersion": 1,
+    "backupId": "bdd0a9af-4a49-47ea-b669-090f1dba2a12",
+    "integrity": "verified",
+    "restoration": "not_tested",
+    "databaseSchemaVersion": 42,
+    "fileCount": 2,
+    "payloadBytes": 860325,
+    "inventory": {
+      "complete": true,
+      "totalIssues": 0,
+      "issues": [],
+      "truncated": false
+    },
+    "draftPolicy": "excluded"
+  },
+  "restored": {
+    "restorationId": "9decd635-3182-4fde-b372-24f4cdcb9ae7",
+    "workspaceOrigin": "c8c2e7c9-ba6e-49d5-a17c-1c209000712b",
+    "sourceBackupId": "bdd0a9af-4a49-47ea-b669-090f1dba2a12",
+    "manifestHash": "ba92aefd0d8640e8ca3ea32c7328ab810e011f54841478ffe54487c12d1b548f",
+    "sourceDbHash": "89acf43acae76f96da94d26a84f2e68a4527277f18325d80d2a398608e7e5878",
+    "profile": "restored-local-v10",
+    "sourceSchema": 42,
+    "databaseSchemaVersion": 43,
+    "publication": "confirmed",
+    "createdAt": "2026-10-16T07:10:10.465Z",
+    "fileCount": 2,
+    "payloadBytes": 860325,
+    "databaseBytes": 966656,
+    "additionalDiskBytesEstimate": 2215452837,
+    "inventory": {
+      "complete": true,
+      "totalIssues": 0,
+      "issues": [],
+      "truncated": false
+    },
+    "heldCounts": {
+      "agent_chat_quota": 1,
+      "edit_tasks": 1,
+      "timeline_requests": 1
+    },
+    "draftPolicy": "excluded"
+  },
+  "sourceClosed": true
+}

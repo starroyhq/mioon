@@ -1,0 +1,78 @@
+TAP version 13
+# Subtest: restored companion rejects corrupt UTF8/JSON, duplicate decoded keys, foreign metadata and unknown versions without resetting bytes
+ok 1 - restored companion rejects corrupt UTF8/JSON, duplicate decoded keys, foreign metadata and unknown versions without resetting bytes
+  ---
+  duration_ms: 4212.832958
+  type: 'test'
+  ...
+# Subtest: new43 file never reads or upgrades v1/v3; copied valid43 disk cannot acquire another restoration origin
+ok 2 - new43 file never reads or upgrades v1/v3; copied valid43 disk cannot acquire another restoration origin
+  ---
+  duration_ms: 1552.44675
+  type: 'test'
+  ...
+# Subtest: private restored companion rejects symlink, hardlink, public mode and directory targets without touching referents
+ok 3 - private restored companion rejects symlink, hardlink, public mode and directory targets without touching referents
+  ---
+  duration_ms: 5127.139333
+  type: 'test'
+  ...
+# Subtest: 8KiB row boundary and complete success envelope retain every byte, while 8193 is refused
+ok 4 - 8KiB row boundary and complete success envelope retain every byte, while 8193 is refused
+  ---
+  duration_ms: 1719.216708
+  type: 'test'
+  ...
+# Subtest: 128 complete8KiB slots fit disk and preserve tombstones; a129th slot cannot evict retained evidence
+ok 5 - 128 complete8KiB slots fit disk and preserve tombstones; a129th slot cannot evict retained evidence
+  ---
+  duration_ms: 5624.768625
+  type: 'test'
+  ...
+# {"maximum128RowsDiskBytes":1048917,"mixed127RowsAndTombstoneBytes":1040918,"tombstoneBytes":193}
+# Subtest: 2MiB private disk admission counts original whitespace and never rewrites padded or oversized files
+ok 6 - 2MiB private disk admission counts original whitespace and never rewrites padded or oversized files
+  ---
+  duration_ms: 2117.941792
+  type: 'test'
+  ...
+# Subtest: full134-node43 request keeps old132-node admission unchanged; node135 and12KiB overflow never persist
+ok 7 - full134-node43 request keeps old132-node admission unchanged; node135 and12KiB overflow never persist
+  ---
+  duration_ms: 901.263625
+  type: 'test'
+  ...
+# {"requestNodes":134,"requestBytes":7673,"requestDepth":5,"rowBytes":8192,"httpBytes":12288,"diskBytes":2097152,"slots":128}
+# Subtest: PUT and discard preserve prepublication bytes and expose postpublication faults as uncertain with exact replay
+ok 8 - PUT and discard preserve prepublication bytes and expose postpublication faults as uncertain with exact replay
+  ---
+  duration_ms: 14015.598291
+  type: 'test'
+  ...
+# Subtest: first unpublished PUT cannot create a file; uncertain ACK survives reopen and stale instance cannot overwrite it
+ok 9 - first unpublished PUT cannot create a file; uncertain ACK survives reopen and stale instance cannot overwrite it
+  ---
+  duration_ms: 2285.297292
+  type: 'test'
+  ...
+# Subtest: directory fsync failure is uncertain even when atomic helper already returned; exact replay also rechecks durability
+ok 10 - directory fsync failure is uncertain even when atomic helper already returned; exact replay also rechecks durability
+  ---
+  duration_ms: 2223.040833
+  type: 'test'
+  ...
+# Subtest: atomic writer refuses replaced destination and staged inode, preserving foreign replacement instead of cleanup
+ok 11 - atomic writer refuses replaced destination and staged inode, preserving foreign replacement instead of cleanup
+  ---
+  duration_ms: 3125.352792
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 43203.222334

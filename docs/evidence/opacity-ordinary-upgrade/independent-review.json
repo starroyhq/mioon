@@ -1,0 +1,41 @@
+{
+  "baseline": "4607947c2ff7a3e8f44b20f2a157224c3641d78b",
+  "reviewer": "/root/ordinary40_upgrade_review",
+  "standards": {
+    "findings": 0,
+    "scope": [
+      "New runtime TypeScript",
+      "Legacy JS only exports existing publication helpers",
+      "No frozen constructor, default entrypoint, JS allowlist or typecheck changes"
+    ]
+  },
+  "spec": {
+    "findings": 0,
+    "scope": [
+      "Cold ordinary40 source with existing verified40 archive",
+      "Source SQLite never opened; backup inspected only through disposable copies",
+      "Settled/ACK task and receipt validation; unsupported families rejected",
+      "Canonical imported assets and verified timeline export history",
+      "Raw storage class/rowid/cell/sequence/LUT/history/receipt/preferences preservation",
+      "Companion refusal and explicit empty policy; last-project scope rebinding",
+      "Atomic metadata, mandatory directory fsync, no-clobber and uncertain publication"
+    ]
+  },
+  "independentTests": {
+    "files": [
+      "tests/opacity-upgrade-database.test.mjs",
+      "tests/opacity-upgrade-companions.test.mjs"
+    ],
+    "tests": 62,
+    "pass": 62,
+    "fail": 0,
+    "skipped": 0,
+    "note": "Reviewer-reported run overlaps aggregate; no addition to its total."
+  },
+  "remaining": [
+    "Production default enablement",
+    "Real GUI and installer workflows",
+    "Unsupported legacy asset/export/task families"
+  ],
+  "blockers": []
+}

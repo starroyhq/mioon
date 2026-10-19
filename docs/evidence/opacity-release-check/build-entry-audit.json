@@ -1,0 +1,16 @@
+{
+  "source": "Node26.9.0 auxiliary source builds only; not formal Node24 or packaged-product acceptance",
+  "defaultEntry": "apps/web/dist/index.html",
+  "defaultHasCandidateMarker": false,
+  "defaultHasCandidateHtml": false,
+  "candidateEntry": "apps/web/dist-opacity-candidate/opacity-candidate.html",
+  "candidateMarker": {
+    "schemaVersion": 1,
+    "profileId": "mioon-workspace-v42",
+    "entry": "opacity-candidate.html"
+  },
+  "candidateMarkerSha256": "1f0c69633af03c81b941c053be1d04c156ca2b1ca939923859198b9441699f88",
+  "desktopChannelObservedInBuildLog": "development",
+  "desktopIdentityIfPresent": null,
+  "status": "passed"
+}

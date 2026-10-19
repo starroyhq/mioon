@@ -1,0 +1,262 @@
+TAP version 13
+# Subtest: explicit human apply binds scalar intent, shared report digest and fixed review; attach and polling are passive
+ok 1 - explicit human apply binds scalar intent, shared report digest and fixed review; attach and polling are passive
+  ---
+  duration_ms: 18.062
+  type: 'test'
+  ...
+# Subtest: late digest after project cannot dispatch or recreate an apply
+ok 2 - late digest after project cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.534708
+  type: 'test'
+  ...
+# Subtest: late confirm after project cannot dispatch or recreate an apply
+ok 3 - late confirm after project cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.719083
+  type: 'test'
+  ...
+# Subtest: late digest after scope cannot dispatch or recreate an apply
+ok 4 - late digest after scope cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.320416
+  type: 'test'
+  ...
+# Subtest: late confirm after scope cannot dispatch or recreate an apply
+ok 5 - late confirm after scope cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.473125
+  type: 'test'
+  ...
+# Subtest: late digest after revision cannot dispatch or recreate an apply
+ok 6 - late digest after revision cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.488
+  type: 'test'
+  ...
+# Subtest: late confirm after revision cannot dispatch or recreate an apply
+ok 7 - late confirm after revision cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.8135
+  type: 'test'
+  ...
+# Subtest: late digest after timeline cannot dispatch or recreate an apply
+ok 8 - late digest after timeline cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.604916
+  type: 'test'
+  ...
+# Subtest: late confirm after timeline cannot dispatch or recreate an apply
+ok 9 - late confirm after timeline cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.458041
+  type: 'test'
+  ...
+# Subtest: late digest after source cannot dispatch or recreate an apply
+ok 10 - late digest after source cannot dispatch or recreate an apply
+  ---
+  duration_ms: 1.038667
+  type: 'test'
+  ...
+# Subtest: late confirm after source cannot dispatch or recreate an apply
+ok 11 - late confirm after source cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.417875
+  type: 'test'
+  ...
+# Subtest: late digest after panel intent cannot dispatch or recreate an apply
+ok 12 - late digest after panel intent cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.20975
+  type: 'test'
+  ...
+# Subtest: late confirm after panel intent cannot dispatch or recreate an apply
+ok 13 - late confirm after panel intent cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.407125
+  type: 'test'
+  ...
+# Subtest: late digest after tab cannot dispatch or recreate an apply
+ok 14 - late digest after tab cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.193
+  type: 'test'
+  ...
+# Subtest: late confirm after tab cannot dispatch or recreate an apply
+ok 15 - late confirm after tab cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.314584
+  type: 'test'
+  ...
+# Subtest: late digest after offline cannot dispatch or recreate an apply
+ok 16 - late digest after offline cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.157625
+  type: 'test'
+  ...
+# Subtest: late confirm after offline cannot dispatch or recreate an apply
+ok 17 - late confirm after offline cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.526167
+  type: 'test'
+  ...
+# Subtest: late digest after draft cannot dispatch or recreate an apply
+ok 18 - late digest after draft cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.240083
+  type: 'test'
+  ...
+# Subtest: late confirm after draft cannot dispatch or recreate an apply
+ok 19 - late confirm after draft cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.33475
+  type: 'test'
+  ...
+# Subtest: late digest after pending cannot dispatch or recreate an apply
+ok 20 - late digest after pending cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.182708
+  type: 'test'
+  ...
+# Subtest: late confirm after pending cannot dispatch or recreate an apply
+ok 21 - late confirm after pending cannot dispatch or recreate an apply
+  ---
+  duration_ms: 1.039291
+  type: 'test'
+  ...
+# Subtest: late digest after restore cannot dispatch or recreate an apply
+ok 22 - late digest after restore cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.241167
+  type: 'test'
+  ...
+# Subtest: late confirm after restore cannot dispatch or recreate an apply
+ok 23 - late confirm after restore cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.250125
+  type: 'test'
+  ...
+# Subtest: late digest after target cannot dispatch or recreate an apply
+ok 24 - late digest after target cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.149042
+  type: 'test'
+  ...
+# Subtest: late confirm after target cannot dispatch or recreate an apply
+ok 25 - late confirm after target cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.228458
+  type: 'test'
+  ...
+# Subtest: late digest after window close cannot dispatch or recreate an apply
+ok 26 - late digest after window close cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.152792
+  type: 'test'
+  ...
+# Subtest: late confirm after window close cannot dispatch or recreate an apply
+ok 27 - late confirm after window close cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.234167
+  type: 'test'
+  ...
+# Subtest: late digest after dispose cannot dispatch or recreate an apply
+ok 28 - late digest after dispose cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.177958
+  type: 'test'
+  ...
+# Subtest: late confirm after dispose cannot dispatch or recreate an apply
+ok 29 - late confirm after dispose cannot dispatch or recreate an apply
+  ---
+  duration_ms: 0.254583
+  type: 'test'
+  ...
+# Subtest: duplicate clicks, cancel confirmation and obsolete render callbacks create no mutations
+ok 30 - duplicate clicks, cancel confirmation and obsolete render callbacks create no mutations
+  ---
+  duration_ms: 0.435542
+  type: 'test'
+  ...
+# Subtest: durable preparation pending permits only its captured execution; unknown retains original key until exact recovery
+ok 31 - durable preparation pending permits only its captured execution; unknown retains original key until exact recovery
+  ---
+  duration_ms: 0.616334
+  type: 'test'
+  ...
+# Subtest: revision, source, target and window changes during durable preparation veto late execute
+ok 32 - revision, source, target and window changes during durable preparation veto late execute
+  ---
+  duration_ms: 1.594333
+  type: 'test'
+  ...
+# Subtest: definitive stale or unsafe rejection requires explicit new prepare, with no automatic retry
+ok 33 - definitive stale or unsafe rejection requires explicit new prepare, with no automatic retry
+  ---
+  duration_ms: 3.389875
+  type: 'test'
+  ...
+# Subtest: failed, unchanged, restored and unsafe observations cannot become apply authority
+ok 34 - failed, unchanged, restored and unsafe observations cannot become apply authority
+  ---
+  duration_ms: 0.859542
+  type: 'test'
+  ...
+# Subtest: a delayed original terminal outcome settles only its restored pending owner after navigation or effect cleanup
+ok 35 - a delayed original terminal outcome settles only its restored pending owner after navigation or effect cleanup
+  ---
+  duration_ms: 1.242375
+  type: 'test'
+  ...
+# Subtest: unavailable recovery identity stops before digest, confirmation, request ID or pending owner
+ok 36 - unavailable recovery identity stops before digest, confirmation, request ID or pending owner
+  ---
+  duration_ms: 0.256292
+  type: 'test'
+  ...
+# Subtest: unavailable recovery identity stops before digest, confirmation, request ID or pending owner
+ok 37 - unavailable recovery identity stops before digest, confirmation, request ID or pending owner
+  ---
+  duration_ms: 0.217
+  type: 'test'
+  ...
+# Subtest: unavailable recovery identity stops before digest, confirmation, request ID or pending owner
+ok 38 - unavailable recovery identity stops before digest, confirmation, request ID or pending owner
+  ---
+  duration_ms: 0.186
+  type: 'test'
+  ...
+# Subtest: unavailable recovery identity stops before digest, confirmation, request ID or pending owner
+ok 39 - unavailable recovery identity stops before digest, confirmation, request ID or pending owner
+  ---
+  duration_ms: 0.205375
+  type: 'test'
+  ...
+# Subtest: recovery identity change during hashing ends review before key minting and never leaves busy
+ok 40 - recovery identity change during hashing ends review before key minting and never leaves busy
+  ---
+  duration_ms: 0.197417
+  type: 'test'
+  ...
+# Subtest: identity change after submission retains the original pending owner through unknown
+ok 41 - identity change after submission retains the original pending owner through unknown
+  ---
+  duration_ms: 0.552125
+  type: 'test'
+  ...
+# Subtest: identity change after submission retains the original pending owner through applied
+ok 42 - identity change after submission retains the original pending owner through applied
+  ---
+  duration_ms: 0.478541
+  type: 'test'
+  ...
+1..42
+# tests 42
+# suites 0
+# pass 42
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 265.885166

@@ -1,3 +1,4 @@
+import {createTestAuthorizations,authorizeTestScope} from './helpers/agent-authorizations.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -35,12 +36,14 @@ async function fixture(t, protocol = 'chat_completions', options = {}) {
     if (args.readTools?.phase === 'request') yield toolDone(protocol);
     else { yield {type: 'delta', text: args.readTools ? 'PROJECT_DERIVED_ANSWER' : 'TYPED_ANSWER'}; yield {type: 'done', finishReason: 'stop'}; }
   };
-  let runtime = createChatRuntime({store, agentSettings: suppliedSettings, inspection, gateway, selfPort: () => 4318, mode: 'simulated'});
+  const authorizations=createTestAuthorizations(store,settings);
+  let runtime = createChatRuntime({store,authorizations, agentSettings: suppliedSettings, inspection, gateway, selfPort: () => 4318, mode: 'simulated'});
   t.after(async () => {runtime.close(); await settings.close(); store.close(); await rm(root, {recursive: true, force: true});});
   return {root, store, services, project, other, calls, reads, acquisitions, settings,
     get runtime() { return runtime; },
-    restart() { runtime.close(); runtime = createChatRuntime({store, agentSettings: suppliedSettings, inspection, gateway, selfPort: () => 4318, mode: 'simulated'}); },
+    restart() { runtime.close(); runtime = createChatRuntime({store,authorizations, agentSettings: suppliedSettings, inspection, gateway, selfPort: () => 4318, mode: 'simulated'}); },
     async input(mode = 'project_inspection', patch = {}) {
+      await authorizeTestScope(authorizations,mode);
       const snap = await runtime.snapshot(project.id), config = snap.settings.configuration;
       const {available, ...policy} = snap.inspection;
       return {requestId: randomUUID(), instanceId: snap.instanceId, expectedSettingsRevision: snap.settings.revision,

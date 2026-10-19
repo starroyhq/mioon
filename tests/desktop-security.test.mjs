@@ -116,7 +116,30 @@ test('package configuration disables runtime injection and cannot publish by def
   assert.ok(!main.includes('shell.openExternal'));
   assert.match(main, /ipcMain\.handle\(PROJECT_WINDOW_CHANNEL,/);
   assert.deepEqual([...main.matchAll(/ipcMain\s*\.\s*handle\s*\(\s*([^,]+),/g)].map(match => match[1].trim()).sort(),
-    ['APP_LANGUAGE_CHANNEL', 'NATIVE_AUDIO_CHANNEL', 'PROJECT_WINDOW_CHANNEL']);
+    ['APP_LANGUAGE_CHANNEL', 'CLIP_LUT_RECOVERY_CHANNEL', 'NATIVE_AUDIO_CHANNEL', 'PROJECT_WINDOW_CHANNEL', 'WORKSPACE_TOOLS_CHANNEL']);
+  assert.match(main, /^import \{ CLIP_LUT_RECOVERY_CHANNEL \} from '\.\.\/\.\.\/\.\.\/packages\/contracts\/src\/clip-lut-recovery\.ts';$/m);
+  assert.match(main, /^ipcMain\.handle\(CLIP_LUT_RECOVERY_CHANNEL, \(event, request\) => lutRecoveryHost\?\.dispatch\(event, request\) \?\? \{ ok: false, code: 'LUT_RECOVERY_UNAVAILABLE' \}\);$/m);
+  // Restrict these checks to LUT wiring so another host cannot satisfy its authority guards.
+  const lutAuthorityStart = main.indexOf('    const currentLutWorkspaceScope = () => {');
+  const lutAuthorityEnd = main.indexOf('\n\n    activeSession.webRequest.onBeforeSendHeaders', lutAuthorityStart);
+  assert.ok(lutAuthorityStart >= 0 && lutAuthorityEnd > lutAuthorityStart, 'LUT host authority wiring must remain explicit');
+  const lutAuthority = main.slice(lutAuthorityStart, lutAuthorityEnd);
+  for (const boundary of [
+    'if (!ownsWindowContext(context) || backend !== ownedBackend || !quitRouter.allowsWindows || context.incident.failed || backendExitObserved) throw',
+    'const directory = validatePrivateDirectory(paths.dataDir);',
+    "const db = validateManagedFile(path.join(paths.dataDir, 'workbench.sqlite'), { root: paths.dataDir });",
+    'if (!directory || !db) throw',
+    'return calculateWorkspaceScope({ channel: identity.channel, root: paths.dataDir, directory, db });',
+    'const lutWorkspaceScope = currentLutWorkspaceScope();',
+    'currentWorkspaceScope: () => {',
+    'const scope = currentLutWorkspaceScope();',
+    'if (scope !== lutWorkspaceScope) throw',
+    'const owner = windowHost?.ownerForContents(event.sender);',
+    "if (!owner || owner.role !== 'editor' || !owner.projectId || event.senderFrame !== owner.frame || event.senderFrame !== event.sender.mainFrame || event.senderFrame?.url !== owner.url) return null;",
+    'return { projectId: owner.projectId, isCurrent: () => ownsWindowContext(context) && owner.isCurrent() &&',
+    'event.senderFrame === owner.frame && event.senderFrame === event.sender.mainFrame && event.senderFrame?.url === owner.url };',
+    'createStore: guard => createDesktopLutRecoveryStore({ userData: paths.userData, guard,',
+  ]) assert.ok(lutAuthority.includes(boundary), `Missing LUT authority boundary: ${boundary}`);
   assert.match(main, /languageHost\.dispatch\(event, request\)/);
   assert.match(main, /event\.senderFrame === window\.webContents\.mainFrame/);
   assert.match(main, /event\.senderFrame === owner\.frame/);

@@ -1,0 +1,17 @@
+{
+  "files": [
+    "tests/opacity-candidate-backup-boundaries.test.mjs",
+    "tests/opacity-candidate-backup-contracts.test.mjs",
+    "tests/opacity-candidate-backup-roundtrip.test.mjs",
+    "tests/opacity-candidate-reopen.test.mjs",
+    "tests/opacity-candidate-store.test.mjs",
+    "tests/opacity-upgrade-cli.test.mjs",
+    "tests/opacity-upgrade-companions.test.mjs",
+    "tests/opacity-upgrade-database.test.mjs",
+    "tests/opacity-workspace-upgrade-faults.test.mjs",
+    "tests/opacity-workspace-upgrade.test.mjs",
+    "tests/workspace-backup-contracts.test.mjs"
+  ],
+  "concurrency": 4,
+  "scope": "Five new offline-upgrade files plus six neighboring fixed42/store/backup and default backup contract regressions. Actual CLI starts only Node offline code. No listeners, GUI, media decoding or providers."
+}

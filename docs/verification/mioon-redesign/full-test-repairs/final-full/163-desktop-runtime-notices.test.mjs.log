@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: both channels preserve each Mac target notice byte-for-byte through cleanup and bundle rename
+ok 1 - both channels preserve each Mac target notice byte-for-byte through cleanup and bundle rename
+  ---
+  duration_ms: 267.330708
+  type: 'test'
+  ...
+# Subtest: source validation independently rejects either missing, empty, nonregular, symlinked, hardlinked or oversized notice before copying
+ok 2 - source validation independently rejects either missing, empty, nonregular, symlinked, hardlinked or oversized notice before copying
+  ---
+  duration_ms: 38.026541
+  type: 'test'
+  ...
+# Subtest: bounded Chromium notice copying supports files larger than the unchanged ASAR inspector buffer
+ok 3 - bounded Chromium notice copying supports files larger than the unchanged ASAR inspector buffer
+  ---
+  duration_ms: 73.127042
+  type: 'test'
+  ...
+# Subtest: target versions fail closed using original plist and framework/config metadata
+ok 4 - target versions fail closed using original plist and framework/config metadata
+  ---
+  duration_ms: 32.400375
+  type: 'test'
+  ...
+# Subtest: target path and architecture validation rejects traversal and unsupported contexts
+ok 5 - target path and architecture validation rejects traversal and unsupported contexts
+  ---
+  duration_ms: 12.078541
+  type: 'test'
+  ...
+# Subtest: source and destination directory symlinks and preexisting destination files fail closed
+ok 6 - source and destination directory symlinks and preexisting destination files fail closed
+  ---
+  duration_ms: 12.797208
+  type: 'test'
+  ...
+# Subtest: post-package inspector independently detects either missing or changed notice
+ok 7 - post-package inspector independently detects either missing or changed notice
+  ---
+  duration_ms: 323.238791
+  type: 'test'
+  ...
+# Subtest: post-package inspector requires provenance from the same target extraction
+ok 8 - post-package inspector requires provenance from the same target extraction
+  ---
+  duration_ms: 55.55675
+  type: 'test'
+  ...
+# Subtest: non-Mac runtime notices remain a no-op; external fonts verify with unchanged security envelope
+ok 9 - non-Mac runtime notices remain a no-op; external fonts verify with unchanged security envelope
+  ---
+  duration_ms: 154.625208
+  type: 'test'
+  ...
+# Subtest: generated notice locates both runtime files outside ASAR without loading host Electron
+ok 10 - generated notice locates both runtime files outside ASAR without loading host Electron
+  ---
+  duration_ms: 1.018292
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1102.447625

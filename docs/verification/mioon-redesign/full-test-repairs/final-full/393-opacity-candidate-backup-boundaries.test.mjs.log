@@ -1,0 +1,238 @@
+TAP version 13
+# Subtest: candidate cold capture refuses an active owner lease without changing its identity or source
+ok 1 - candidate cold capture refuses an active owner lease without changing its identity or source
+  ---
+  duration_ms: 291.621125
+  type: 'test'
+  ...
+# Subtest: candidate capture refuses nonempty -wal and never repairs it
+ok 2 - candidate capture refuses nonempty -wal and never repairs it
+  ---
+  duration_ms: 157.142167
+  type: 'test'
+  ...
+# Subtest: candidate capture refuses nonempty -journal and never repairs it
+ok 3 - candidate capture refuses nonempty -journal and never repairs it
+  ---
+  duration_ms: 158.868167
+  type: 'test'
+  ...
+# Subtest: candidate backup and restore never reuse an existing empty target
+ok 4 - candidate backup and restore never reuse an existing empty target
+  ---
+  duration_ms: 261.888208
+  type: 'test'
+  ...
+# Subtest: candidate backup and restore never reuse an existing nonempty target
+ok 5 - candidate backup and restore never reuse an existing nonempty target
+  ---
+  duration_ms: 255.086
+  type: 'test'
+  ...
+# Subtest: candidate restore refuses an existing workspace ancestor workbench.sqlite
+ok 6 - candidate restore refuses an existing workspace ancestor workbench.sqlite
+  ---
+  duration_ms: 219.950458
+  type: 'test'
+  ...
+# Subtest: candidate restore refuses an existing workspace ancestor server.lock
+ok 7 - candidate restore refuses an existing workspace ancestor server.lock
+  ---
+  duration_ms: 252.207041
+  type: 'test'
+  ...
+# Subtest: candidate capture refuses source-root symlinks without following or changing their targets
+ok 8 - candidate capture refuses source-root symlinks without following or changing their targets
+  ---
+  duration_ms: 173.410791
+  type: 'test'
+  ...
+# Subtest: candidate capture refuses source-database symlinks without following or changing their targets
+ok 9 - candidate capture refuses source-database symlinks without following or changing their targets
+  ---
+  duration_ms: 154.570542
+  type: 'test'
+  ...
+# Subtest: candidate capture refuses source-media symlinks without following or changing their targets
+ok 10 - candidate capture refuses source-media symlinks without following or changing their targets
+  ---
+  duration_ms: 206.456833
+  type: 'test'
+  ...
+# Subtest: candidate capture refuses source-media-directory symlinks without following or changing their targets
+ok 11 - candidate capture refuses source-media-directory symlinks without following or changing their targets
+  ---
+  duration_ms: 161.061875
+  type: 'test'
+  ...
+# Subtest: candidate restore refuses archive-root symlinks and preserves source/archive bytes
+ok 12 - candidate restore refuses archive-root symlinks and preserves source/archive bytes
+  ---
+  duration_ms: 229.527167
+  type: 'test'
+  ...
+# Subtest: candidate restore refuses archive-database symlinks and preserves source/archive bytes
+ok 13 - candidate restore refuses archive-database symlinks and preserves source/archive bytes
+  ---
+  duration_ms: 214.575375
+  type: 'test'
+  ...
+# Subtest: candidate restore refuses archive-media symlinks and preserves source/archive bytes
+ok 14 - candidate restore refuses archive-media symlinks and preserves source/archive bytes
+  ---
+  duration_ms: 229.801125
+  type: 'test'
+  ...
+# Subtest: candidate restore refuses target-root symlinks and preserves source/archive bytes
+ok 15 - candidate restore refuses target-root symlinks and preserves source/archive bytes
+  ---
+  duration_ms: 231.148375
+  type: 'test'
+  ...
+# Subtest: candidate restore refuses target-parent symlinks and preserves source/archive bytes
+ok 16 - candidate restore refuses target-parent symlinks and preserves source/archive bytes
+  ---
+  duration_ms: 226.869541
+  type: 'test'
+  ...
+# Subtest: canonical path checks reject traversal and overlapping offline operations
+ok 17 - canonical path checks reject traversal and overlapping offline operations
+  ---
+  duration_ms: 229.00375
+  type: 'test'
+  ...
+# Subtest: candidate archive rejects rehashed path traversal "payload/../outside"
+ok 18 - candidate archive rejects rehashed path traversal "payload/../outside"
+  ---
+  duration_ms: 275.871167
+  type: 'test'
+  ...
+# Subtest: candidate archive rejects rehashed path traversal "payload/media/../../outside"
+ok 19 - candidate archive rejects rehashed path traversal "payload/media/../../outside"
+  ---
+  duration_ms: 272.112292
+  type: 'test'
+  ...
+# Subtest: candidate archive rejects rehashed path traversal "/payload/workbench.sqlite"
+ok 20 - candidate archive rejects rehashed path traversal "/payload/workbench.sqlite"
+  ---
+  duration_ms: 231.333875
+  type: 'test'
+  ...
+# Subtest: candidate archive rejects rehashed path traversal "payload\\\\workbench.sqlite"
+ok 21 - candidate archive rejects rehashed path traversal "payload\\\\workbench.sqlite"
+  ---
+  duration_ms: 271.025833
+  type: 'test'
+  ...
+# Subtest: candidate verification and restore refuse damaged database without publication
+ok 22 - candidate verification and restore refuse damaged database without publication
+  ---
+  duration_ms: 260.786708
+  type: 'test'
+  ...
+# Subtest: candidate verification and restore refuse damaged media without publication
+ok 23 - candidate verification and restore refuse damaged media without publication
+  ---
+  duration_ms: 221.279208
+  type: 'test'
+  ...
+# Subtest: candidate verification and restore refuse damaged manifest without publication
+ok 24 - candidate verification and restore refuse damaged manifest without publication
+  ---
+  duration_ms: 270.88475
+  type: 'test'
+  ...
+# Subtest: candidate verification and restore refuse damaged complete without publication
+ok 25 - candidate verification and restore refuse damaged complete without publication
+  ---
+  duration_ms: 290.864916
+  type: 'test'
+  ...
+# Subtest: candidate verification and restore refuse damaged missing-complete without publication
+ok 26 - candidate verification and restore refuse damaged missing-complete without publication
+  ---
+  duration_ms: 234.938625
+  type: 'test'
+  ...
+# Subtest: candidate verification and restore refuse damaged extra-file without publication
+ok 27 - candidate verification and restore refuse damaged extra-file without publication
+  ---
+  duration_ms: 244.573709
+  type: 'test'
+  ...
+# Subtest: candidate metadata requires the explicit excluded draft policy (undefined)
+ok 28 - candidate metadata requires the explicit excluded draft policy (undefined)
+  ---
+  duration_ms: 219.72375
+  type: 'test'
+  ...
+# Subtest: candidate metadata requires the explicit excluded draft policy (included)
+ok 29 - candidate metadata requires the explicit excluded draft policy (included)
+  ---
+  duration_ms: 223.956042
+  type: 'test'
+  ...
+# Subtest: candidate metadata requires the explicit excluded draft policy (restored)
+ok 30 - candidate metadata requires the explicit excluded draft policy (restored)
+  ---
+  duration_ms: 209.52825
+  type: 'test'
+  ...
+# Subtest: metadata42 cannot authorize a schema40 database even with recomputed payload, manifest and COMPLETE hashes
+ok 31 - metadata42 cannot authorize a schema40 database even with recomputed payload, manifest and COMPLETE hashes
+  ---
+  duration_ms: 409.380958
+  type: 'test'
+  ...
+# Subtest: candidate42 stays excluded from default backup/verify and old40 stays excluded from candidate capture
+ok 32 - candidate42 stays excluded from default backup/verify and old40 stays excluded from candidate capture
+  ---
+  duration_ms: 413.769458
+  type: 'test'
+  ...
+# Subtest: copied, inherited, null and callback profiles are rejected before any path or database action
+ok 33 - copied, inherited, null and callback profiles are rejected before any path or database action
+  ---
+  duration_ms: 0.766583
+  type: 'test'
+  ...
+# Subtest: candidate restore copy failure retains only an unpublished candidate and leaves originals unchanged
+ok 34 - candidate restore copy failure retains only an unpublished candidate and leaves originals unchanged
+  ---
+  duration_ms: 264.322375
+  type: 'test'
+  ...
+# Subtest: candidate restore ddl failure retains only an unpublished candidate and leaves originals unchanged
+ok 35 - candidate restore ddl failure retains only an unpublished candidate and leaves originals unchanged
+  ---
+  duration_ms: 512.357375
+  type: 'test'
+  ...
+# Subtest: candidate restore validation failure retains only an unpublished candidate and leaves originals unchanged
+ok 36 - candidate restore validation failure retains only an unpublished candidate and leaves originals unchanged
+  ---
+  duration_ms: 346.793417
+  type: 'test'
+  ...
+# Subtest: candidate directory-sync failure reports uncertain publication without rollback or automatic repair
+ok 37 - candidate directory-sync failure reports uncertain publication without rollback or automatic repair
+  ---
+  duration_ms: 438.947292
+  type: 'test'
+  ...
+# Subtest: candidate link-ack failure reports uncertain publication without rollback or automatic repair
+ok 38 - candidate link-ack failure reports uncertain publication without rollback or automatic repair
+  ---
+  duration_ms: 436.150875
+  type: 'test'
+  ...
+1..38
+# tests 38
+# suites 0
+# pass 38
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 9971.775708

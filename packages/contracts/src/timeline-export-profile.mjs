@@ -5,6 +5,7 @@ import {isTimelineExportRangeSnapshot} from './timeline-export-range.ts';
 import {isTimelineDeliveryNameSnapshot} from './timeline-delivery.ts';
 import {z} from 'zod';
 import {timelineOutputPreset} from './timeline-format.mjs';
+import {TIMELINE_OUTPUT_PRESETS,timelineDeliveryGeometry} from './timeline-output-geometry.ts';
 import {TIMELINE_EXPORT_FLOAT_PROFILE_ID,timelineExportFloatSettingsSchema,timelineExportFloatDeliverySchema,resolveTimelineExportFloatDelivery} from './timeline-export-float.ts';
 export * from './timeline-export-float.ts';
 
@@ -14,7 +15,7 @@ export const TIMELINE_EXPORT_PROFILE_ID='mp4_h264_v1';
 export const TIMELINE_EXPORT_DEFAULT_SETTINGS=Object.freeze({profileId:TIMELINE_EXPORT_PROFILE_ID,resolution:'native',rateControl:Object.freeze({mode:'crf',quality:'standard'})});
 const bitrate=z.union([z.literal(2000),z.literal(4000),z.literal(8000)]);
 const timelineExportV1SettingsSchema=z.object({
- profileId:z.literal(TIMELINE_EXPORT_PROFILE_ID),resolution:z.enum(['native','short_360','short_1080']),
+ profileId:z.literal(TIMELINE_EXPORT_PROFILE_ID),resolution:z.enum(['native','short_360','short_720','short_1080']),
  rateControl:z.discriminatedUnion('mode',[
   z.object({mode:z.literal('crf'),quality:z.enum(['compact','standard','high'])}).strict(),
   z.object({mode:z.literal('bitrate'),targetKbps:bitrate}).strict(),
@@ -38,10 +39,11 @@ const invalid=()=>{throw Object.assign(Error('Invalid timeline export delivery p
 export function resolveTimelineExportDelivery(timeline,exportSettings){
  if(!timelineOutputPreset(timeline)||!timelineExportSettingsSchema.safeParse(exportSettings).success)invalid();
  if(exportSettings.profileId===TIMELINE_EXPORT_FLOAT_PROFILE_ID)return resolveTimelineExportFloatDelivery(timeline,exportSettings);
- const short=exportSettings.resolution==='native'?720:exportSettings.resolution==='short_360'?360:1080;
+ const geometry=timelineDeliveryGeometry(timeline,exportSettings.resolution);
+ if(!geometry)invalid();
  const rate=exportSettings.rateControl;
  return {exportSettings:JSON.parse(JSON.stringify(exportSettings)),effective:{
-  profileId:TIMELINE_EXPORT_PROFILE_ID,container:'mp4',width:timeline.width*short/720,height:timeline.height*short/720,fps:30,
+  profileId:TIMELINE_EXPORT_PROFILE_ID,container:'mp4',width:geometry.width,height:geometry.height,fps:30,
   videoCodec:'libx264',pixelFormat:'yuv420p',preset:'veryfast',
   rateControl:rate.mode==='crf'?{mode:'crf',crf:{compact:28,standard:23,high:18}[rate.quality]}:{mode:'bitrate',targetKbps:rate.targetKbps},
   bFrames:0,gopFrames:60,videoTrackTimescale:30000,scaling:'lanczos',audioCodec:'aac',audioKbps:128,audioSampleRate:48000,audioChannels:2,movflags:'faststart',
@@ -84,9 +86,9 @@ export const timelineExportCapabilitiesResponseSchema=z.object({
  const fail=()=>context.addIssue({code:'custom',message:'Invalid project-bound capability report'});
  if((value.timelineId===null)!==(value.timelineRevision===null))fail();
  if(value.delivery){
-  const scale=value.exportSettings.resolution==='native'?1:value.exportSettings.resolution==='short_360'?0.5:1.5;
-  const timeline={fps:30,width:value.delivery.effective.width/scale,height:value.delivery.effective.height/scale};
-  if(!isTimelineExportDelivery(value.delivery,timeline,value.exportSettings)||value.timelineId===null)fail();
+  // A downscaled report cannot distinguish a 720 from a 1080 source. Require
+  // an exact delivery from one supported native preset instead of guessing it.
+  if(!TIMELINE_OUTPUT_PRESETS.some(timeline=>isTimelineExportDelivery(value.delivery,timeline,value.exportSettings))||value.timelineId===null)fail();
  }
  if(['available','unavailable','incomplete'].includes(value.status)){
   if(!value.delivery||value.timelineId===null||value.timelineRevision!==value.expectedRevision)fail();

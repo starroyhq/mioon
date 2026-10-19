@@ -1,0 +1,203 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-10-16T09:16:35.507545+00:00",
+  "kind": "neighboring-fixture-portability-and-stale-current-expectation-repair",
+  "files": [
+    "tests/workspace-backup-readiness.test.mjs",
+    "tests/workspace-preferences.test.mjs",
+    "tests/workspace-schema-profiles.test.mjs",
+    "tests/workspace-backup-marker-bounds.test.mjs"
+  ],
+  "scope": "Three inline fixtures resolve tmpdir before mkdtemp. Current openStore schema expectations updated to exact40; ordinary24 frozen fixtures and assertions are retained. Existing immutable baseline annotation catalog pin validates all20 additions plus both complete empty layouts before comparison with original24 golden. No shared helper, runtime, frozen constructor, storage policy, golden.json or manifest edits.",
+  "stages": [
+    {
+      "phase": "red",
+      "tests": 74,
+      "passed": 14,
+      "failed": 60,
+      "exitCode": 1,
+      "metadata": "workspace-portable-fixture-red.json"
+    },
+    {
+      "phase": "canonical-temp-only",
+      "tests": 74,
+      "passed": 38,
+      "failed": 36,
+      "exitCode": 1,
+      "metadata": "workspace-portable-fixture-canonical-stage.json"
+    },
+    {
+      "phase": "canonical-temp-and-current-schema-expectations",
+      "tests": 74,
+      "passed": 68,
+      "failed": 6,
+      "skipped": 0,
+      "cancelled": 0,
+      "exitCode": 1,
+      "metadata": "workspace-portable-fixture-final.json",
+      "note": "Final stage failed:68 passed,6 failed; no passing-gate claim."
+    }
+  ],
+  "provenance": "workspace-portable-fixture-provenance.json",
+  "remainingVerificationFailures": [
+    {
+      "test": "frozen ordinary24-seeded reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence",
+      "location": "'/Users/kouzen/Documents/data/mioon/tests/workspace-schema-profiles.test.mjs:350:3'",
+      "code": "RESTORE_SCHEMA_UNSUPPORTED",
+      "actualReason": "Volume envelopes require an exact supported workspace profile."
+    },
+    {
+      "test": "independent frozen restored25-seeded opens and validates without ordinary bootstrap or evidence rewrites",
+      "location": "'/Users/kouzen/Documents/data/mioon/tests/workspace-schema-profiles.test.mjs:375:3'",
+      "code": "RESTORE_SCHEMA_UNSUPPORTED",
+      "actualReason": "Volume envelopes require an exact supported workspace profile."
+    },
+    {
+      "test": "frozen ordinary24-mock-seeded reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence",
+      "location": "'/Users/kouzen/Documents/data/mioon/tests/workspace-schema-profiles.test.mjs:350:3'",
+      "code": "RESTORE_SCHEMA_UNSUPPORTED",
+      "actualReason": "Volume envelopes require an exact supported workspace profile."
+    },
+    {
+      "test": "independent frozen restored25-mock-seeded opens and validates without ordinary bootstrap or evidence rewrites",
+      "location": "'/Users/kouzen/Documents/data/mioon/tests/workspace-schema-profiles.test.mjs:375:3'",
+      "code": "RESTORE_SCHEMA_UNSUPPORTED",
+      "actualReason": "Volume envelopes require an exact supported workspace profile."
+    },
+    {
+      "test": "ordinary runtime retains baseline repair eligibility for known-marker-gap; offline classification stays strict",
+      "location": "'/Users/kouzen/Documents/data/mioon/tests/workspace-schema-profiles.test.mjs:390:3'",
+      "code": "RESTORE_SCHEMA_UNSUPPORTED",
+      "actualReason": "Volume envelopes require an exact supported workspace profile."
+    },
+    {
+      "test": "ordinary runtime retains baseline repair eligibility for initial-markers-absent; offline classification stays strict",
+      "location": "'/Users/kouzen/Documents/data/mioon/tests/workspace-schema-profiles.test.mjs:390:3'",
+      "code": "RESTORE_SCHEMA_UNSUPPORTED",
+      "actualReason": "Volume envelopes require an exact supported workspace profile."
+    }
+  ],
+  "seededEvidence": [
+    {
+      "profile": "ordinary-24-seeded",
+      "table": "timeline_requests",
+      "rowid": "88",
+      "field": "response",
+      "storageClass": "blob",
+      "hexBytes": "00FF0D0A"
+    },
+    {
+      "profile": "ordinary-24-mock-seeded",
+      "table": "timeline_requests",
+      "rowid": "88",
+      "field": "response",
+      "storageClass": "blob",
+      "hexBytes": "00FF0D0A"
+    },
+    {
+      "profile": "restored-25-seeded",
+      "table": "timeline_requests",
+      "rowid": "88",
+      "field": "response",
+      "storageClass": "blob",
+      "hexBytes": "00FF0D0A"
+    },
+    {
+      "profile": "restored-25-mock-seeded",
+      "table": "timeline_requests",
+      "rowid": "88",
+      "field": "response",
+      "storageClass": "blob",
+      "hexBytes": "00FF0D0A"
+    }
+  ],
+  "remainingBoundary": {
+    "action": "openStore on task-owned reconstructed frozen seeded24/25 fixtures and marker-repair variants",
+    "target": "timeline_requests.response rowid88 retained BLOB00ff0d0a",
+    "result": "runtime rejected with RESTORE_SCHEMA_UNSUPPORTED before migration/old restored open",
+    "reason": "The unchanged volume-envelope historical evidence scanner selects non-TEXT retained JSON cells and rejects them even without envelope keys. The original24/25 independent golden intentionally retains the BLOB.",
+    "baselineStatus": "\u5c1a\u672a\u8bc1\u5b9e\u57fa\u7ebf\u95ee\u9898\uff1avalidator/dispatcher\u4e0eff85\u5b57\u8282\u4e00\u81f4\uff0c\u4f46\u672a\u5728\u7cbe\u786eff85\u5b8c\u6574\u5feb\u7167\u6267\u884c\u8fd96case\u3002a7\u7684current40 fixture\u4fee\u6b63\u4e0d\u7b49\u540c\u4e8e\u672c\u6b21\u65e724/25 golden case\u3002",
+    "decision": "Reported to root; no runtime repair, golden rewrite, raw assertion removal, or blind rerun. This remains an unpassed compatibility gate.",
+    "constrainedByFrozenCompatibilityBoundary": true,
+    "autoReviewDenied": false,
+    "retryPlanned": false,
+    "unchangedBaselineSources": [
+      {
+        "path": "packages/business/src/workspace-schema-dispatch.ts",
+        "baselineSha256": "fc60f85cdb26accbe747dbec6d05e0ecbfceb67332cb114cb85359cb7c4b06bc",
+        "currentSha256": "fc60f85cdb26accbe747dbec6d05e0ecbfceb67332cb114cb85359cb7c4b06bc",
+        "unchanged": true
+      },
+      {
+        "path": "packages/business/src/workspace-volume-envelope-validation.ts",
+        "baselineSha256": "1face8429869dd619ccb83214998537d103d9e70c1974e7b85b29bf83361ef09",
+        "currentSha256": "1face8429869dd619ccb83214998537d103d9e70c1974e7b85b29bf83361ef09",
+        "unchanged": true
+      }
+    ],
+    "supportStatus": "\u53d7\u652f\u6301\u6027\u5f85\u5b9a\uff1b\u672a\u8bc1\u5b9e\u771f\u5b9e\u7528\u6237\u6570\u636e\u56de\u5f52\uff0c\u4ea6\u672a\u8ba4\u5b9a\u53ea\u662f\u8fc7\u65f6fixture\u3002"
+  },
+  "remainingBlockers": [
+    "Six seeded historical-profile runtime admission checks remain failed; parent must preserve this limit or authorize a separately reviewed runtime repair."
+  ],
+  "toolPermissionDenials": [],
+  "pendingActions": [],
+  "uncertainOutcomes": [],
+  "commitPerformed": false,
+  "filesStable": true,
+  "baselineReproduction": {
+    "status": "not_reproduced_on_exact_baseline",
+    "statusZh": "\u5c1a\u672a\u8bc1\u5b9e\u57fa\u7ebf\u95ee\u9898",
+    "baselineCommit": "ff85c9a8daaa35bff080d0979fe2faa3683cd3b5",
+    "exactBaselineSixCasesExecuted": false,
+    "newBaselineEnvironmentConstructed": false,
+    "evidenceAvailable": "Current-checkout failures and byte-identical validator/dispatcher to ff85 are recorded. This establishes source equality only, not a complete baseline reproduction or a real user-data regression.",
+    "relatedPriorFixIsNotReproductionOfTheseCases": true
+  },
+  "priorFixComparison": {
+    "priorFixCommit": "a7fcf74199ed7ca54c5be408e6c67cd33b19b645",
+    "priorFixParentCommit": "c2000a1118c57585cc94a42f53ff6febf86bbec9",
+    "sourcePath": "tests/workspace-restore-schema.test.mjs",
+    "sourceSha256AtFix": "77b4959b91043e8a469c5039b2ac08b26ca81c09ccd8711109c96c91f6e7f931",
+    "originalLegacySeedUnchangedByFix": true,
+    "legacySeedSliceSha256": "d38587e5d065c1ae34732cf07a7e060627fd0a07939524ec343a089ed335ee6d",
+    "sameExactFixture": false,
+    "sameTestFile": false,
+    "sameBroadEvidenceFamily": true,
+    "sameBroadEvidenceFamilyBasis": "Both retain an opaque00FF0D0A BLOB timeline_requests.response. The schema-profiles manifest lists workspace-restore-schema.test.mjs as a reused regression lane, but does not prove its golden generator directly calls seed(db).",
+    "priorFixDetails": {
+      "positiveCase": "ordinary current-schema reopen keeps raw schema/rows/receipts and source profile classification intact",
+      "positiveSeed": "new seedOrdinary(db,receipt), TEXT JSON inserted at initial construction; no BLOB-to-TEXT mutation",
+      "negativeCase": "ordinary current-schema reopen rejects legacy BLOB receipt without changing schema or retained rows",
+      "negativeSeed": "unchanged seed(db), Buffer.from([0,255,13,10]) in timeline_requests.response",
+      "rowid": "seed(db) does not specify rowid; exact generated rowid was not established in this read-only audit",
+      "startingRole": "ordinary-40",
+      "rejectionCode": "WORKSPACE_VOLUME_ENVELOPE_INVALID",
+      "runtimeValidationChangedByFix": false
+    },
+    "currentSixCaseDifference": {
+      "source": "independent frozen golden fixtures loaded by loadFixture(), with explicit rowid88",
+      "startingRoles": "historical ordinary24/restored25, plus two ordinary24 marker-repair variants",
+      "rejectionCode": "RESTORE_SCHEMA_UNSUPPORTED",
+      "reasonCodesDiffer": "Current40 admission allows envelope family validation and reports invalid evidence; the historical24/25 path disallows the family and rejects selected non-TEXT cells before migration/reopen.",
+      "a7ChangedTheseFixturesOrTests": false
+    },
+    "historicalCommittedQualificationScope": "The a7 report records exact c2000a parent reproduction for its named current-reopen test and catalogue case, then a bounded267/267 gate. It did not include workspace-schema-profiles.test.mjs or reproduce these six cases on ff85."
+  },
+  "supportAssessment": {
+    "historicalRetentionEvidence": {
+      "status": "bounded_evidence_exists",
+      "basis": "The independent synthetic24/25 golden retains the BLOB and frozen table DDL. In the already-recorded current targeted run, through24 checkpoints and direct restore25 construction for seeded and mock-seeded profiles passed with raw retention assertions. This concerns historical construction/validation, not current openStore admission."
+    },
+    "currentOrdinary40": {
+      "status": "documented_text_admission_and_blob_rejection",
+      "basis": "a7 source/comment/negative test and docs/RESTORE-REGRESSION-REPAIRS.md explicitly distinguish TEXT-positive current40 reopen from retained BLOB rejection without changing production validation. This was inspected; those a7 tests were not rerun by this read-only subtask."
+    },
+    "historical24ToCurrent40MigrationAndCurrentRestored25Reopen": {
+      "status": "undetermined",
+      "statusZh": "\u53d7\u652f\u6301\u6027\u5f85\u5b9a",
+      "basis": "The six historical tests expect positive current-open raw retention, while the current dispatcher rejects their synthetic BLOB cell. No reviewed product contract found here explicitly resolves this exact old24/25 current-admission promise. Do not classify them conclusively as supported-user-data regressions or as merely obsolete fixtures."
+    },
+    "realUserDataRegressionEstablished": false
+  }
+}

@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: restore origin is optional only by omission and never normalized or coerced
+ok 1 - restore origin is optional only by omission and never normalized or coerced
+  ---
+  duration_ms: 1.344833
+  type: 'test'
+  ...
+# Subtest: restore inspection is a strict non-path public read and does not grant effects
+ok 2 - restore inspection is a strict non-path public read and does not grant effects
+  ---
+  duration_ms: 1.472917
+  type: 'test'
+  ...
+# Subtest: restore disclosure is bounded, excludes arbitrary fields and reports backup unavailable
+ok 3 - restore disclosure is bounded, excludes arbitrary fields and reports backup unavailable
+  ---
+  duration_ms: 2.916
+  type: 'test'
+  ...
+# Subtest: ordinary task and ACK shapes remain byte-identical with optional outer restored projection
+ok 4 - ordinary task and ACK shapes remain byte-identical with optional outer restored projection
+  ---
+  duration_ms: 0.505959
+  type: 'test'
+  ...
+# Subtest: restore task page projection must match every returned identity in order
+ok 5 - restore task page projection must match every returned identity in order
+  ---
+  duration_ms: 0.358333
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 226.298209

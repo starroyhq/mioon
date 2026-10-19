@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: unknown imports remain exact window-local evidence across successful refresh or later imports
+ok 1 - unknown imports remain exact window-local evidence across successful refresh or later imports
+  ---
+  duration_ms: 1.126041
+  type: 'test'
+  ...
+# Subtest: only transient nondefault export selections are dirty, not hydration versions or backend jobs
+ok 2 - only transient nondefault export selections are dirty, not hydration versions or backend jobs
+  ---
+  duration_ms: 0.157208
+  type: 'test'
+  ...
+# Subtest: navigation excludes only local orchestration latches while close still waits for the flow
+ok 3 - navigation excludes only local orchestration latches while close still waits for the flow
+  ---
+  duration_ms: 0.094667
+  type: 'test'
+  ...
+# Subtest: pure reads never synchronize or write controller state and unknown DELETE is separate from dirty
+ok 4 - pure reads never synchronize or write controller state and unknown DELETE is separate from dirty
+  ---
+  duration_ms: 0.12125
+  type: 'test'
+  ...
+# Subtest: native settings entry synchronously suspends consent before IPC and retains drafts across focus return
+ok 5 - native settings entry synchronously suspends consent before IPC and retains drafts across focus return
+  ---
+  duration_ms: 0.188209
+  type: 'test'
+  ...
+# Subtest: late failed settings request cannot reactivate a subsequently blurred/replaced interaction
+ok 6 - late failed settings request cannot reactivate a subsequently blurred/replaced interaction
+  ---
+  duration_ms: 0.076625
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 234.204958

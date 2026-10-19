@@ -14,6 +14,7 @@ import * as submissions from '../apps/web/src/submissions.js';
 import * as mutations from '../apps/web/src/mutation-submissions.js';
 import { RESTORE_DISABLED_REASON } from '../apps/web/src/restored-workspace.js';
 import { referenceForShot } from '../apps/web/src/reference-connections.js';
+import { imageEditSourceIssueDescriptor } from '../apps/web/src/image-generation.js';
 
 const taskIntentModule = { exports: {} };
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
@@ -67,6 +68,10 @@ function harness(patch = {}) {
         return { state: {}, controller: { setContext() {} } };
       }, mergeFreshShotTextAck: () => { assert.fail('No shot-text acknowledgement is expected in this fixture'); } };
       if (name === './ShotTextDraftRecovery.tsx') return { default: 'ShotTextDraftRecovery', __esModule: true };
+      // These passive leaves do not participate in saved frame drafts or their
+      // confirmation epochs; keep the actual Inspector/frame controls below.
+      if (['./AssetAnnotations.tsx','./CanvasOverview.tsx','./BoardInspectorGroup.tsx','./VersionCardPreview.tsx'].includes(name)) return { default: name, __esModule: true };
+      if (name === './image-generation.js') return { imageEditSourceIssueDescriptor };
       if (name === '@mioon/contracts') return contracts;
       if (name === '@mioon/contracts/local-shot-text') return { LOCAL_SHOT_TEXT_LIMITS };
       if (name === './generation-settings.js') return settings;
@@ -328,7 +333,7 @@ function mutationRunner(t, result) {
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
   const code = app.slice(app.indexOf('  async function runSession('), app.indexOf('  async function inspect('));
   const state = { result, calls: [], notices: [], pending: [] }, locks = new Set();
-  const scope = { msg, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), ...contracts, ...submissions, ...mutations, shotTextRef: { current: null }, dataRef: { current: { project: { id: projectId }, shots: [shot()], nodes: [] } }, currentProject: { current: projectId },
+  const scope = { msg, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), ...contracts, ...submissions, ...mutations, clipConnectionBlocked:{current:false},shotTextRef: { current: null }, dataRef: { current: { project: { id: projectId }, shots: [shot()], nodes: [] } }, currentProject: { current: projectId },
     context: () => ({ projectId, epoch: 1 }), isCurrent: () => true,
     isBusy: key => locks.has(key), markBusy: (_, key, busy) => busy ? locks.add(key) : locks.delete(key),
     setPending: value => { state.pending = value; }, rpc: async (operation, input) => { state.calls.push({ operation, input: structuredClone(input) }); return state.result; },

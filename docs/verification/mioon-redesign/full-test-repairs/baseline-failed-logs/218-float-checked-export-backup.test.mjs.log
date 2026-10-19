@@ -1,0 +1,32 @@
+TAP version 13
+# Subtest: cold backup verify and offline restore preserve v2 queued failed succeeded raw reports and keep inherited work held
+not ok 1 - cold backup verify and offline restore preserve v2 queued failed succeeded raw reports and keep inherited work held
+  ---
+  duration_ms: 852.599709
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/float-checked-export-backup.test.mjs:30:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    41 !== 27
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 27
+  actual: 41
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/float-checked-export-backup.test.mjs:94:59)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1281.155416

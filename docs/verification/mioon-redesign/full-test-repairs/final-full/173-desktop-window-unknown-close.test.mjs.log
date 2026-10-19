@@ -1,0 +1,124 @@
+TAP version 13
+# Subtest: unknown keeps the original window and all evidence unless separately approved
+ok 1 - unknown keeps the original window and all evidence unless separately approved
+  ---
+  duration_ms: 3.081208
+  type: 'test'
+  ...
+# Subtest: separate unknown-risk approval closes once with zero drains and no evidence changes
+ok 2 - separate unknown-risk approval closes once with zero drains and no evidence changes
+  ---
+  duration_ms: 0.810834
+  type: 'test'
+  ...
+# Subtest: unknown plus other dirty inputs needs both dialogs and still performs no drain
+ok 3 - unknown plus other dirty inputs needs both dialogs and still performs no drain
+  ---
+  duration_ms: 1.001167
+  type: 'test'
+  ...
+# Subtest: busy plus unknown never reaches risk approval or ordinary discard
+ok 4 - busy plus unknown never reaches risk approval or ordinary discard
+  ---
+  duration_ms: 0.478125
+  type: 'test'
+  ...
+# Subtest: unknown result cannot reload, including a malformed renderer that offers an unknown close disposition
+ok 5 - unknown result cannot reload, including a malformed renderer that offers an unknown close disposition
+  ---
+  duration_ms: 0.846
+  type: 'test'
+  ...
+# Subtest: new busy during unknown dialog rejects the stale approval
+ok 6 - new busy during unknown dialog rejects the stale approval
+  ---
+  duration_ms: 2.32425
+  type: 'test'
+  ...
+# Subtest: new busy after commit is vetoed synchronously without native override
+ok 7 - new busy after commit is vetoed synchronously without native override
+  ---
+  duration_ms: 1.328375
+  type: 'test'
+  ...
+# Subtest: new unknown operation during unknown dialog rejects the stale approval
+ok 8 - new unknown operation during unknown dialog rejects the stale approval
+  ---
+  duration_ms: 0.994709
+  type: 'test'
+  ...
+# Subtest: new unknown operation after commit is vetoed synchronously without native override
+ok 9 - new unknown operation after commit is vetoed synchronously without native override
+  ---
+  duration_ms: 1.727625
+  type: 'test'
+  ...
+# Subtest: owner replacement during unknown dialog rejects the stale approval
+ok 10 - owner replacement during unknown dialog rejects the stale approval
+  ---
+  duration_ms: 1.312167
+  type: 'test'
+  ...
+# Subtest: owner replacement after commit is vetoed synchronously without native override
+ok 11 - owner replacement after commit is vetoed synchronously without native override
+  ---
+  duration_ms: 0.822
+  type: 'test'
+  ...
+# Subtest: late acknowledgement during unknown dialog rejects the stale approval
+ok 12 - late acknowledgement during unknown dialog rejects the stale approval
+  ---
+  duration_ms: 0.510625
+  type: 'test'
+  ...
+# Subtest: late acknowledgement after commit is vetoed synchronously without native override
+ok 13 - late acknowledgement after commit is vetoed synchronously without native override
+  ---
+  duration_ms: 0.569084
+  type: 'test'
+  ...
+# Subtest: new input during unknown dialog rejects the stale approval
+ok 14 - new input during unknown dialog rejects the stale approval
+  ---
+  duration_ms: 0.775792
+  type: 'test'
+  ...
+# Subtest: new input after commit is vetoed synchronously without native override
+ok 15 - new input after commit is vetoed synchronously without native override
+  ---
+  duration_ms: 0.765042
+  type: 'test'
+  ...
+# Subtest: new unknown during the second dirty confirmation cannot reuse the first risk decision
+ok 16 - new unknown during the second dirty confirmation cannot reuse the first risk decision
+  ---
+  duration_ms: 1.456417
+  type: 'test'
+  ...
+# Subtest: cancelled risk decision cannot be reused by a later close
+ok 17 - cancelled risk decision cannot be reused by a later close
+  ---
+  duration_ms: 0.692
+  type: 'test'
+  ...
+# Subtest: throwing risk confirmation retains the original window and zero-write state
+ok 18 - throwing risk confirmation retains the original window and zero-write state
+  ---
+  duration_ms: 0.530667
+  type: 'test'
+  ...
+# Subtest: ordinary clean and dirty paths still drain without consulting the unknown dialog
+ok 19 - ordinary clean and dirty paths still drain without consulting the unknown dialog
+  ---
+  duration_ms: 1.103167
+  type: 'test'
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 185.235625

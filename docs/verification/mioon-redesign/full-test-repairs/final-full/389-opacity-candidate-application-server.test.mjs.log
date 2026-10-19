@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: candidate launch is explicit, one-shot, fresh-only and requires the isolated build
+ok 1 - candidate launch is explicit, one-shot, fresh-only and requires the isolated build
+  ---
+  duration_ms: 825.851208
+  type: 'test'
+  ...
+# Subtest: actual shared handler serves candidate page, authenticates and excludes provider runtimes
+ok 2 - actual shared handler serves candidate page, authenticates and excludes provider runtimes
+  ---
+  duration_ms: 227.156042
+  type: 'test'
+  ...
+# Subtest: actual project, timeline, task ACK, v3 draft and delivery endpoints retain opacity
+ok 3 - actual project, timeline, task ACK, v3 draft and delivery endpoints retain opacity
+  ---
+  duration_ms: 2942.885292
+  type: 'test'
+  ...
+# Subtest: ordinary startServer rejects forged candidate proof before opening a directory or listening
+ok 4 - ordinary startServer rejects forged candidate proof before opening a directory or listening
+  ---
+  duration_ms: 160.745875
+  type: 'test'
+  ...
+# Subtest: actual shared file response guards preview and export GET/HEAD/Range and refuses raw exports
+ok 5 - actual shared file response guards preview and export GET/HEAD/Range and refuses raw exports
+  ---
+  duration_ms: 1484.718375
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 6061.677583

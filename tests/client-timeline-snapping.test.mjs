@@ -352,12 +352,15 @@ const timelineSource = readFileSync(new URL('../apps/web/src/Timeline.jsx', impo
 const appSource = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
 
 test('Timeline integration uses lane-relative fractional coordinates, live Alt state and an accessible toggle', () => {
-  assert.match(timelineSource, /pointerFrame: \(event\.clientX - event\.currentTarget\.getBoundingClientRect\(\)\.left\) \/ pxFrame/);
-  assert.match(timelineSource, /const grabFrame = Math\.max\(0, \(e\.clientX - e\.currentTarget\.getBoundingClientRect\(\)\.left\) \/ pxFrame\)/);
+  assert.match(timelineSource, /const pointerFrame=timelinePointerFrameAtElement\(event.clientX,event.currentTarget,pxFrame\)/);
+  assert.match(timelineSource, /timelinePointerFrameAtElement\(e.clientX,e.currentTarget,pxFrame\)/);
+  assert.match(timelineSource, /const grabFrame = Math.max\(0,pointerFrame\)/);
   assert.match(timelineSource, /grabFrame: drag\.grabFrame \|\| 0/);
   assert.match(timelineSource, /enabled: snappingEnabled, altKey: event\.altKey/);
-  assert.match(timelineSource, /data-testid="timeline-snapping" aria-pressed=\{snappingEnabled\}/);
-  assert.match(timelineSource, /updateViewState\(\{ snappingEnabled: !snappingEnabled \}\)/);
+  const toolbar = readFileSync(new URL('../apps/web/src/TimelineToolbar.tsx', import.meta.url), 'utf8');
+  assert.match(toolbar, /data-testid="timeline-snapping"/);
+  assert.match(toolbar, /aria-pressed=\{props.snapping\}/);
+  assert.match(timelineSource, /updateViewState\(\{snappingEnabled: !snappingEnabled\}\)/);
   assert.match(timelineSource, /window\.addEventListener\('keydown', modifier\); window\.addEventListener\('keyup', modifier\)/);
 });
 

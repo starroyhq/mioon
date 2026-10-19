@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: an initial unconfirmed reader cancellation rejects both preparation and the exact resource settlement
+ok 1 - an initial unconfirmed reader cancellation rejects both preparation and the exact resource settlement
+  ---
+  duration_ms: 8.389167
+  type: 'test'
+  ...
+# Subtest: invalid headers and bounded error bodies normalize failed cancellation to an unconfirmed resource proof
+ok 2 - invalid headers and bounded error bodies normalize failed cancellation to an unconfirmed resource proof
+  ---
+  duration_ms: 0.597917
+  type: 'test'
+  ...
+# Subtest: a locally cancelled response starts the retry in a new cursor generation after the server already advanced
+ok 3 - a locally cancelled response starts the retry in a new cursor generation after the server already advanced
+  ---
+  duration_ms: 10.34375
+  type: 'test'
+  ...
+# Subtest: a cancellation before network dispatch leaves a sequence gap without reusing an old generation
+ok 4 - a cancellation before network dispatch leaves a sequence gap without reusing an old generation
+  ---
+  duration_ms: 4.752375
+  type: 'test'
+  ...
+# Subtest: metadata timeout returns promptly while its ignored late acknowledgment retains the exact resource fence
+ok 5 - metadata timeout returns promptly while its ignored late acknowledgment retains the exact resource fence
+  ---
+  duration_ms: 11.264084
+  type: 'test'
+  ...
+# Subtest: metadata cancellation rejects promptly, never reserves sound on a late reply, and settles only after that reply
+ok 6 - metadata cancellation rejects promptly, never reserves sound on a late reply, and settles only after that reply
+  ---
+  duration_ms: 0.513917
+  type: 'test'
+  ...
+# Subtest: a timed out initial response with unconfirmed late body cancellation cannot release the resource fence
+ok 7 - a timed out initial response with unconfirmed late body cancellation cannot release the resource fence
+  ---
+  duration_ms: 11.263125
+  type: 'test'
+  ...
+# Subtest: transferred initial PCM is collectable while its session remains open
+ok 8 - transferred initial PCM is collectable while its session remains open
+  ---
+  duration_ms: 261.453125
+  type: 'test'
+  ...
+# Subtest: pcm cancellation asks the exact reader to release before Fetch can error its stream
+ok 9 - pcm cancellation asks the exact reader to release before Fetch can error its stream
+  ---
+  duration_ms: 6.999417
+  type: 'test'
+  ...
+# Subtest: real local HTTP slow pcm body cancellation confirms reader and server retirement without a false cleanup failure
+ok 10 - real local HTTP slow pcm body cancellation confirms reader and server retirement without a false cleanup failure
+  ---
+  duration_ms: 34.805
+  type: 'test'
+  ...
+# Subtest: error cancellation asks the exact reader to release before Fetch can error its stream
+ok 11 - error cancellation asks the exact reader to release before Fetch can error its stream
+  ---
+  duration_ms: 4.044625
+  type: 'test'
+  ...
+# Subtest: real local HTTP slow error body cancellation confirms reader and server retirement without a false cleanup failure
+ok 12 - real local HTTP slow error body cancellation confirms reader and server retirement without a false cleanup failure
+  ---
+  duration_ms: 11.020583
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 585.810041

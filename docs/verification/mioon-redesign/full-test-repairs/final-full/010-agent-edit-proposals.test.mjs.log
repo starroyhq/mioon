@@ -1,0 +1,268 @@
+TAP version 13
+# Subtest: creation pins exact saved fields; proposals do not mutate; null preserves and empty prompt clears
+ok 1 - creation pins exact saved fields; proposals do not mutate; null preserves and empty prompt clears
+  ---
+  duration_ms: 708.365917
+  type: 'test'
+  ...
+# Subtest: approval is durable before dispatch and exact immutable request is the shared receipt
+ok 2 - approval is durable before dispatch and exact immutable request is the shared receipt
+  ---
+  duration_ms: 707.329375
+  type: 'test'
+  ...
+# Subtest: approval requires successful terminal proposal-bearing final model result
+ok 3 - approval requires successful terminal proposal-bearing final model result
+  ---
+  duration_ms: 664.582708
+  type: 'test'
+  ...
+# Subtest: failed invalidates unapproved proposal durably and never grants approval
+ok 4 - failed invalidates unapproved proposal durably and never grants approval
+  ---
+  duration_ms: 918.451
+  type: 'test'
+  ...
+# Subtest: stopped invalidates unapproved proposal durably and never grants approval
+ok 5 - stopped invalidates unapproved proposal durably and never grants approval
+  ---
+  duration_ms: 694.537709
+  type: 'test'
+  ...
+# Subtest: interrupted invalidates unapproved proposal durably and never grants approval
+ok 6 - interrupted invalidates unapproved proposal durably and never grants approval
+  ---
+  duration_ms: 912.205833
+  type: 'test'
+  ...
+# Subtest: Stop cancellation participates in caller transaction and rolls back together
+ok 7 - Stop cancellation participates in caller transaction and rolls back together
+  ---
+  duration_ms: 787.383458
+  type: 'test'
+  ...
+# Subtest: restart at beforeApproval never dispatches automatically; explicit recovery keeps exact key
+ok 8 - restart at beforeApproval never dispatches automatically; explicit recovery keeps exact key
+  ---
+  duration_ms: 671.66575
+  type: 'test'
+  ...
+# Subtest: restart at afterApproval never dispatches automatically; explicit recovery keeps exact key
+ok 9 - restart at afterApproval never dispatches automatically; explicit recovery keeps exact key
+  ---
+  duration_ms: 615.273375
+  type: 'test'
+  ...
+# Subtest: restart at beforeDispatch never dispatches automatically; explicit recovery keeps exact key
+ok 10 - restart at beforeDispatch never dispatches automatically; explicit recovery keeps exact key
+  ---
+  duration_ms: 609.691625
+  type: 'test'
+  ...
+# Subtest: restart at afterDispatchStarted never dispatches automatically; explicit recovery keeps exact key
+ok 11 - restart at afterDispatchStarted never dispatches automatically; explicit recovery keeps exact key
+  ---
+  duration_ms: 604.353417
+  type: 'test'
+  ...
+# Subtest: restart at afterDispatch never dispatches automatically; explicit recovery keeps exact key
+ok 12 - restart at afterDispatch never dispatches automatically; explicit recovery keeps exact key
+  ---
+  duration_ms: 616.102875
+  type: 'test'
+  ...
+# Subtest: restart at afterOutcome never dispatches automatically; explicit recovery keeps exact key
+ok 13 - restart at afterOutcome never dispatches automatically; explicit recovery keeps exact key
+  ---
+  duration_ms: 609.658042
+  type: 'test'
+  ...
+# Subtest: restart at beforeAcknowledgement never dispatches automatically; explicit recovery keeps exact key
+ok 14 - restart at beforeAcknowledgement never dispatches automatically; explicit recovery keeps exact key
+  ---
+  duration_ms: 675.966917
+  type: 'test'
+  ...
+# Subtest: lost dispatch response reconciles receipt and repeated approve/recover never repeats the mutation
+ok 15 - lost dispatch response reconciles receipt and repeated approve/recover never repeats the mutation
+  ---
+  duration_ms: 618.619166
+  type: 'test'
+  ...
+# Subtest: unknown dispatch retains explicit uncertainty until recovery, without a new approval or key
+ok 16 - unknown dispatch retains explicit uncertainty until recovery, without a new approval or key
+  ---
+  duration_ms: 750.06375
+  type: 'test'
+  ...
+# Subtest: stale revision stays a rejected exact diff; recovery never rebases or changes key
+ok 17 - stale revision stays a rejected exact diff; recovery never rebases or changes key
+  ---
+  duration_ms: 861.38
+  type: 'test'
+  ...
+# Subtest: two windows arbitrate reject/approve atomically and repeated in-flight approval never redispatches
+ok 18 - two windows arbitrate reject/approve atomically and repeated in-flight approval never redispatches
+  ---
+  duration_ms: 636.703417
+  type: 'test'
+  ...
+# Subtest: invalid/no-op proposal is not persisted: {"title":null,"prompt":null}
+ok 19 - invalid/no-op proposal is not persisted: {"title":null,"prompt":null}
+  ---
+  duration_ms: 618.253958
+  type: 'test'
+  ...
+# Subtest: invalid/no-op proposal is not persisted: {"title":"","prompt":null}
+ok 20 - invalid/no-op proposal is not persisted: {"title":"","prompt":null}
+  ---
+  duration_ms: 585.611959
+  type: 'test'
+  ...
+# Subtest: invalid/no-op proposal is not persisted: {"title":" ","prompt":null}
+ok 21 - invalid/no-op proposal is not persisted: {"title":" ","prompt":null}
+  ---
+  duration_ms: 570.230542
+  type: 'test'
+  ...
+# Subtest: invalid/no-op proposal is not persisted: {"title":"Saved title","prompt":null}
+ok 22 - invalid/no-op proposal is not persisted: {"title":"Saved title","prompt":null}
+  ---
+  duration_ms: 576.52425
+  type: 'test'
+  ...
+# Subtest: invalid/no-op proposal is not persisted: {"title":null,"prompt":"Saved prompt"}
+ok 23 - invalid/no-op proposal is not persisted: {"title":null,"prompt":"Saved prompt"}
+  ---
+  duration_ms: 602.302084
+  type: 'test'
+  ...
+# Subtest: invalid/no-op proposal is not persisted: {"title":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ok 24 - invalid/no-op proposal is not persisted: {"title":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  ---
+  duration_ms: 580.2705
+  type: 'test'
+  ...
+# Subtest: invalid/no-op proposal is not persisted: {"title":null,"prompt":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ok 25 - invalid/no-op proposal is not persisted: {"title":null,"prompt":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  ---
+  duration_ms: 574.727166
+  type: 'test'
+  ...
+# Subtest: invalid/no-op proposal is not persisted: {"title":null,"prompt":"\\ud800"}
+ok 26 - invalid/no-op proposal is not persisted: {"title":null,"prompt":"\\ud800"}
+  ---
+  duration_ms: 581.730709
+  type: 'test'
+  ...
+# Subtest: invalid/no-op proposal is not persisted: {"title":null,"prompt":"\\u0000bad"}
+ok 27 - invalid/no-op proposal is not persisted: {"title":null,"prompt":"\\u0000bad"}
+  ---
+  duration_ms: 587.681
+  type: 'test'
+  ...
+# Subtest: invalid/no-op proposal is not persisted: {"title":null,"prompt":"valid","duration":5}
+ok 28 - invalid/no-op proposal is not persisted: {"title":null,"prompt":"valid","duration":5}
+  ---
+  duration_ms: 737.508833
+  type: 'test'
+  ...
+# Subtest: capture rollback leaves no proposal, partial approval, receipt or business edit
+ok 29 - capture rollback leaves no proposal, partial approval, receipt or business edit
+  ---
+  duration_ms: 673.034125
+  type: 'test'
+  ...
+# Subtest: shared receipt insertion rollback is unknown and explicit recovery uses the original operation
+ok 30 - shared receipt insertion rollback is unknown and explicit recovery uses the original operation
+  ---
+  duration_ms: 606.442625
+  type: 'test'
+  ...
+# Subtest: limits reject new rows without eviction; immutable proposal/approval identities resist overwrite/delete
+ok 31 - limits reject new rows without eviction; immutable proposal/approval identities resist overwrite/delete
+  ---
+  duration_ms: 608.691917
+  type: 'test'
+  ...
+# Subtest: unresolved pagination filters first and binds cursors to project/view
+ok 32 - unresolved pagination filters first and binds cursors to project/view
+  ---
+  duration_ms: 698.780125
+  type: 'test'
+  ...
+# Subtest: changed digest/id/project and missing/foreign target return safe errors without dispatch
+ok 33 - changed digest/id/project and missing/foreign target return safe errors without dispatch
+  ---
+  duration_ms: 638.085875
+  type: 'test'
+  ...
+# Subtest: applied DTO cannot expose saved receipt with deleted-target
+ok 34 - applied DTO cannot expose saved receipt with deleted-target
+  ---
+  duration_ms: 592.662334
+  type: 'test'
+  ...
+# Subtest: applied DTO cannot expose saved receipt with target-json-owner
+ok 35 - applied DTO cannot expose saved receipt with target-json-owner
+  ---
+  duration_ms: 570.801083
+  type: 'test'
+  ...
+# Subtest: applied DTO cannot expose saved receipt with project-json-identity
+ok 36 - applied DTO cannot expose saved receipt with project-json-identity
+  ---
+  duration_ms: 587.818083
+  type: 'test'
+  ...
+# Subtest: applied DTO cannot expose saved receipt with saved-receipt-relation
+ok 37 - applied DTO cannot expose saved receipt with saved-receipt-relation
+  ---
+  duration_ms: 604.117375
+  type: 'test'
+  ...
+# Subtest: serialized byte budget bytes rejects before persistence
+ok 38 - serialized byte budget bytes rejects before persistence
+  ---
+  duration_ms: 567.655583
+  type: 'test'
+  ...
+# Subtest: serialized byte budget definitionBytes rejects before persistence
+ok 39 - serialized byte budget definitionBytes rejects before persistence
+  ---
+  duration_ms: 563.927542
+  type: 'test'
+  ...
+# Subtest: serialized byte budget rowBytes rejects before persistence
+ok 40 - serialized byte budget rowBytes rejects before persistence
+  ---
+  duration_ms: 577.648042
+  type: 'test'
+  ...
+# Subtest: list/get are read-only and completed pending review survives entirely new service instances
+ok 41 - list/get are read-only and completed pending review survives entirely new service instances
+  ---
+  duration_ms: 611.271167
+  type: 'test'
+  ...
+# Subtest: a proposal never rebases when the target changes while the model is preparing its reply
+ok 42 - a proposal never rebases when the target changes while the model is preparing its reply
+  ---
+  duration_ms: 593.713375
+  type: 'test'
+  ...
+# Subtest: saved proposal digest and immutable accepted target detect corrupt intent without exposing text
+ok 43 - saved proposal digest and immutable accepted target detect corrupt intent without exposing text
+  ---
+  duration_ms: 588.9195
+  type: 'test'
+  ...
+1..43
+# tests 43
+# suites 0
+# pass 43
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 28127.182125

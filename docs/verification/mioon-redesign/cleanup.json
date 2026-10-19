@@ -1,0 +1,28 @@
+{
+  "verifiedAt": "2026-10-18T20:33:11.780716+00:00",
+  "removedOwnedDirectories": [
+    "verify",
+    "preview-workspace",
+    "agent-ui-workspace",
+    "home-workspace",
+    "electron-user-data"
+  ],
+  "baselineCloneAlreadyRemoved": true,
+  "activeOwnedProcessesBeforeRemoval": 0,
+  "remainingOwnedTestTmpDirectories": [],
+  "retained": [
+    "managed worktree",
+    "ignored development build",
+    "durable verification evidence",
+    "private raw logs and harness scripts"
+  ],
+  "originalWorkspaceTrackedChanges": [],
+  "originalWorkspaceUntrackedPaths": [
+    "docs/MIOON-详细待办-2026-10-16.md"
+  ],
+  "commitsCreated": 0,
+  "pushes": 0,
+  "providerCalls": 0,
+  "appearanceFollowupCleanup": "appearance/cleanup.json",
+  "appearanceFollowupVerifiedAt": "2026-10-19T00:42:48.327771+00:00"
+}

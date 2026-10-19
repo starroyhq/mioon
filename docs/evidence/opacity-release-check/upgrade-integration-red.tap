@@ -1,0 +1,78 @@
+✖ upgraded web last-project opens and saves in the actual development candidate application (1091.105ms)
+✖ upgraded production last-project opens and saves in the actual development candidate application (575.188ms)
+✔ upgraded development last-project opens and saves in the actual development candidate application (740.596709ms)
+✔ target development binding does not relax source companion channel validation (321.584208ms)
+✖ acknowledged terminal timeline.clip.split is explicitly unsupported before any42 publication (529.856959ms)
+✖ acknowledged terminal timeline.clip.replaceSource is explicitly unsupported before any42 publication (621.934834ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 2
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4331.159
+
+✖ failing tests:
+
+test at tests/opacity-upgrade-application-integration.test.mjs:48:67
+✖ upgraded web last-project opens and saves in the actual development candidate application (1091.105ms)
+  AssertionError [ERR_ASSERTION]: {"ok":false,"error":{"code":"LAST_PROJECT_SCOPE_MISMATCH","message":"上次项目属于另一个工作区或渠道，已停止读取和写入。","details":{},"retryable":false}}
+  
+  409 !== 200
+  
+      at TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/opacity-upgrade-application-integration.test.mjs:56:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 409,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/opacity-upgrade-application-integration.test.mjs:48:67
+✖ upgraded production last-project opens and saves in the actual development candidate application (575.188ms)
+  AssertionError [ERR_ASSERTION]: {"ok":false,"error":{"code":"LAST_PROJECT_SCOPE_MISMATCH","message":"上次项目属于另一个工作区或渠道，已停止读取和写入。","details":{},"retryable":false}}
+  
+  409 !== 200
+  
+      at TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/opacity-upgrade-application-integration.test.mjs:56:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 409,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/opacity-upgrade-application-integration.test.mjs:84:81
+✖ acknowledged terminal timeline.clip.split is explicitly unsupported before any42 publication (529.856959ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/opacity-upgrade-application-integration.test.mjs:98:3)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: { code: 'WORKSPACE_UPGRADE_SOURCE_UNSUPPORTED' },
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at tests/opacity-upgrade-application-integration.test.mjs:84:81
+✖ acknowledged terminal timeline.clip.replaceSource is explicitly unsupported before any42 publication (621.934834ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/opacity-upgrade-application-integration.test.mjs:98:3)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: { code: 'WORKSPACE_UPGRADE_SOURCE_UNSUPPORTED' },
+    operator: 'rejects',
+    diff: 'simple'
+  }

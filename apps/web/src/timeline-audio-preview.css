@@ -1,8 +1,8 @@
-.timeline-audio-preview{flex:0 1 auto;max-height:48%;overflow:auto;padding:9px 14px;border-bottom:1px solid #2a353e;background:#171e25;font-size:11px;line-height:1.5;scrollbar-gutter:stable}
+.timeline-audio-preview{flex:0 1 auto;max-height:48%;overflow:auto;padding:9px 14px;border-bottom:1px solid var(--wb-line);background:var(--wb-card);font-size:11px;line-height:1.5;scrollbar-gutter:stable}
 .timeline-audio-preview p{margin:5px 0;overflow-wrap:anywhere}
 .timeline-audio-preview-heading{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 12px}
-.timeline-audio-preview-heading>span{color:#91a5b4}
+.timeline-audio-preview-heading>span{color:var(--wb-soft)}
 .timeline-audio-preview-actions{margin:7px 0}
 .timeline-audio-preview-position{margin-top:7px}
 .timeline-audio-preview-position>output{font-variant-numeric:tabular-nums;white-space:nowrap}
-.timeline-audio-preview .input-hint{font-size:10px;color:#91a5b4}
+.timeline-audio-preview .input-hint{font-size:10px;color:var(--wb-soft)}

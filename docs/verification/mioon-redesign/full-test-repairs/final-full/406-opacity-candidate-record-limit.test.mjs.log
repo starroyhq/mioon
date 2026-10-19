@@ -1,0 +1,16 @@
+TAP version 13
+# Subtest: actual42 accepts revision digit growth from 262143 to the complete 262144-byte record limit
+ok 1 - actual42 accepts revision digit growth from 262143 to the complete 262144-byte record limit
+  ---
+  duration_ms: 788.700459
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1129.946833

@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: float profile has identical complete offline CLI and official MCP discovery with no new Agent tool
+ok 1 - float profile has identical complete offline CLI and official MCP discovery with no new Agent tool
+  ---
+  duration_ms: 1870.978083
+  type: 'test'
+  ...
+# Subtest: actual HTTP CLI MCP reject caller report/attempt authority, extra audio controls and preview v2 before effects
+ok 2 - actual HTTP CLI MCP reject caller report/attempt authority, extra audio controls and preview v2 before effects
+  ---
+  duration_ms: 8978.854833
+  type: 'test'
+  ...
+# Subtest: actual transports bind v2 profile/name/range preflight and preserve original lost-ACK bytes after revision drift
+ok 3 - actual transports bind v2 profile/name/range preflight and preserve original lost-ACK bytes after revision drift
+  ---
+  duration_ms: 6097.295125
+  type: 'test'
+  ...
+# Subtest: durable private delivery intent binds exact v2 input and blocks profile replacement across lost ACK and restart
+ok 4 - durable private delivery intent binds exact v2 input and blocks profile replacement across lost ACK and restart
+  ---
+  duration_ms: 767.397208
+  type: 'test'
+  ...
+# Subtest: HTTP CLI MCP expose one bounded terminal report while exact ACK remains queued; clients refuse tampered wire report
+ok 5 - HTTP CLI MCP expose one bounded terminal report while exact ACK remains queued; clients refuse tampered wire report
+  ---
+  duration_ms: 3153.795666
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 21336.178875

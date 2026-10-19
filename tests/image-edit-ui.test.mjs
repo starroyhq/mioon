@@ -1,6 +1,7 @@
 import { comfyConnectorAvailabilityDescriptor } from '../apps/web/src/comfy-image-settings.js';
 import { creationTestDependency } from './helpers/creation-i18n.ts';
 import * as nativeCloseSources from '../apps/web/src/native-close-sources.ts';
+import * as imageEditIntent from '../apps/web/src/image-edit-intent.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -137,6 +138,7 @@ function renderer(f) {
   const require = name => {
     const i18nDependency = creationTestDependency(name); if (i18nDependency) return i18nDependency;
     if (name === './native-close-sources.ts') return nativeCloseSources;
+    if (name === './image-edit-intent.ts') return imageEditIntent;
     if (name === './editor-settings-scope.ts') {
       const settingsModule = { exports: {} };
       const code = transformSync(readFileSync(new URL('../apps/web/src/editor-settings-scope.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code;

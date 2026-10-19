@@ -29,7 +29,7 @@ const operation='timeline.loudness.apply',toolName='timeline_loudness_apply';
 const token='synthetic-loudness-apply-public-transport-token';
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-const environment=url=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',RUNWAY_MAX_GENERATIONS:'0',
+const environment=url=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',
   ...(url?{MIOON_BASE_URL:url,MIOON_TOKEN:token}:{})});
 async function bounded(promise,label,ms=20000){let timer;try{
   return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(label+' timed out')),ms);})]);
@@ -93,7 +93,9 @@ async function fixture(t,{saved=true}={}){
   finally{capture.mock.restore();}
   const requests=[],observe=(request,response)=>{if(request.url==='/api/rpc')requests.push({request,response,
     baseline:{request:request.listenerCount('aborted'),response:response.listenerCount('close')}});};
-  server.prependListener('request',observe);cleanups.push(()=>server.removeListener('request',observe));
+  // Capture the normal authenticated-response lifetime guard before observing
+  // media work, so only new per-operation cancellation listeners are compared.
+  server.on('request',observe);cleanups.push(()=>server.removeListener('request',observe));
   const client=createClient({env:environment(backend.url)});
   db=new DatabaseSync(path.join(root,'workbench.sqlite'),{readOnly:true});mcp=await official(t,backend.url);
   const f={root,backend,db,mcp,client,requests,cleanups,async http(op,input,{signal}={}){

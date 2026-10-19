@@ -1,0 +1,172 @@
+TAP version 13
+# Subtest: tooling CLI entry handles canonical and aliased script paths identically
+ok 1 - tooling CLI entry handles canonical and aliased script paths identically
+  ---
+  duration_ms: 507.060667
+  type: 'test'
+  ...
+# Subtest: tooling module import does not run the CLI for unrelated or missing entry paths
+ok 2 - tooling module import does not run the CLI for unrelated or missing entry paths
+  ---
+  duration_ms: 666.280875
+  type: 'test'
+  ...
+# Subtest: pnpm metadata observation distinguishes exact pin and mismatch without executing the command
+ok 3 - pnpm metadata observation distinguishes exact pin and mismatch without executing the command
+  ---
+  duration_ms: 37.319333
+  type: 'test'
+  ...
+# Subtest: missing and unrecognized pnpm remain distinct; the first wrapper shadows a later installation
+ok 4 - missing and unrecognized pnpm remain distinct; the first wrapper shadows a later installation
+  ---
+  duration_ms: 11.301125
+  type: 'test'
+  ...
+# Subtest: Corepack, invalid versions and mismatched bin declarations never masquerade as verified pnpm
+ok 5 - Corepack, invalid versions and mismatched bin declarations never masquerade as verified pnpm
+  ---
+  duration_ms: 20.684042
+  type: 'test'
+  ...
+# Subtest: doctor observes pnpm separately without changing direct Node build prerequisites or native gates
+ok 6 - doctor observes pnpm separately without changing direct Node build prerequisites or native gates
+  ---
+  duration_ms: 17.689458
+  type: 'test'
+  ...
+# Subtest: tooling options are explicit and bounded; no shell or arbitrary command arguments
+ok 7 - tooling options are explicit and bounded; no shell or arbitrary command arguments
+  ---
+  duration_ms: 0.913792
+  type: 'test'
+  ...
+# Subtest: native readiness never conflates prerequisite success with OS release verification
+ok 8 - native readiness never conflates prerequisite success with OS release verification
+  ---
+  duration_ms: 0.06175
+  type: 'test'
+  ...
+# Subtest: child environment excludes secrets/proxies/loader injection and supports Windows aliases
+ok 9 - child environment excludes secrets/proxies/loader injection and supports Windows aliases
+  ---
+  duration_ms: 0.157042
+  type: 'test'
+  ...
+# Subtest: installed packages verify exact metadata and fixed regular entrypoints in local node_modules
+ok 10 - installed packages verify exact metadata and fixed regular entrypoints in local node_modules
+  ---
+  duration_ms: 20.894167
+  type: 'test'
+  ...
+# Subtest: installed dependency version mismatch and unexpected Vite entrypoint fail before execution
+ok 11 - installed dependency version mismatch and unexpected Vite entrypoint fail before execution
+  ---
+  duration_ms: 10.697625
+  type: 'test'
+  ...
+# Subtest: missing dependency and declaration ranges fail actionably without install fallback
+ok 12 - missing dependency and declaration ranges fail actionably without install fallback
+  ---
+  duration_ms: 9.642083
+  type: 'test'
+  ...
+# Subtest: preflight checks SQLite only in memory and separates native and build readiness
+ok 13 - preflight checks SQLite only in memory and separates native and build readiness
+  ---
+  duration_ms: 13.722209
+  type: 'test'
+  ...
+# Subtest: media probe failure is sanitized and cannot become a build or native success claim
+ok 14 - media probe failure is sanitized and cannot become a build or native success claim
+  ---
+  duration_ms: 14.670833
+  type: 'test'
+  ...
+# Subtest: doctor identifies each media failure and provides safe next steps without hiding the other tool
+ok 15 - doctor identifies each media failure and provides safe next steps without hiding the other tool
+  ---
+  duration_ms: 17.286292
+  type: 'test'
+  ...
+# Subtest: old Node and mismatched application versions fail preflight
+ok 16 - old Node and mismatched application versions fail preflight
+  ---
+  duration_ms: 10.972125
+  type: 'test'
+  ...
+# Subtest: portable manifest is explicit, sorted, present and not broadened by filename guesses
+ok 17 - portable manifest is explicit, sorted, present and not broadened by filename guesses
+  ---
+  duration_ms: 6.786792
+  type: 'test'
+  ...
+# Subtest: missing portable test fails rather than silently skipping it
+ok 18 - missing portable test fails rather than silently skipping it
+  ---
+  duration_ms: 5.308667
+  type: 'test'
+  ...
+# Subtest: build and test plans retain spaces, Unicode and Windows executable path as exact argv
+ok 19 - build and test plans retain spaces, Unicode and Windows executable path as exact argv
+  ---
+  duration_ms: 0.245042
+  type: 'test'
+  ...
+# Subtest: launcher forwards owned-child signals, latches interruption and removes handlers after close
+ok 20 - launcher forwards owned-child signals, latches interruption and removes handlers after close
+  ---
+  duration_ms: 0.307292
+  type: 'test'
+  ...
+# Subtest: launcher preserves nonzero child exit and safely rejects spawn failure
+ok 21 - launcher preserves nonzero child exit and safely rejects spawn failure
+  ---
+  duration_ms: 0.13525
+  type: 'test'
+  ...
+# Subtest: real shell-free Node child handles a spaced Unicode script path and nonzero exit
+ok 22 - real shell-free Node child handles a spaced Unicode script path and nonzero exit
+  ---
+  duration_ms: 122.215209
+  type: 'test'
+  ...
+# Subtest: tooling preserves compatibility protocol values and does not invoke packaging or network setup
+ok 23 - tooling preserves compatibility protocol values and does not invoke packaging or network setup
+  ---
+  duration_ms: 0.508375
+  type: 'test'
+  ...
+# Subtest: dependency containment is segment-aware for POSIX and Windows drive/case rules
+ok 24 - dependency containment is segment-aware for POSIX and Windows drive/case rules
+  ---
+  duration_ms: 0.189875
+  type: 'test'
+  ...
+# Subtest: real child receives only the explicit environment and live calls remain disabled
+ok 25 - real child receives only the explicit environment and live calls remain disabled
+  ---
+  duration_ms: 122.69775
+  type: 'test'
+  ...
+# Subtest: launcher preserves spontaneous signal termination and cleans up asynchronous spawn failures
+ok 26 - launcher preserves spontaneous signal termination and cleans up asynchronous spawn failures
+  ---
+  duration_ms: 0.318958
+  type: 'test'
+  ...
+# Subtest: dependency pins share strict SemVer validation with application build metadata
+ok 27 - dependency pins share strict SemVer validation with application build metadata
+  ---
+  duration_ms: 8.335
+  type: 'test'
+  ...
+1..27
+# tests 27
+# suites 0
+# pass 27
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1791.231833

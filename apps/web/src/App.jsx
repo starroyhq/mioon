@@ -1,3 +1,14 @@
+import TaskPopover from './TaskPopover.tsx';
+import Login from './LoginScreen.tsx';
+import CanvasToolbar from './CanvasToolbar.tsx';
+import CanvasEmptyState from './CanvasEmptyState.tsx';
+import StoryboardStrip from './StoryboardStrip.tsx';
+import SettingsWorkspace from './SettingsWorkspace.tsx';
+import SettingsVideoTools from './SettingsVideoTools.tsx';
+import SettingsAppearance, { UiPreferencesNotice } from './SettingsAppearance.tsx';
+import { useUiPreferences } from './UiPreferencesProvider.tsx';
+import { WorkbenchTopbar, WorkbenchInspectorTabs } from './WorkbenchShell.tsx';
+import { WorkbenchButton, WorkbenchDialogContent } from '@mioon/ui/components/workbench-controls';
 import { savedClipLoudnessFields } from './timeline-clip-loudness-context.ts';
 import './version-comparison.css';
 import VersionComparison from './VersionComparison.tsx';
@@ -11,7 +22,7 @@ import ImageSettings from './ImageSettings.jsx';
 import AgentSettings from './AgentSettings.jsx';
 import SettingsNavigationSlot from './SettingsNavigationSlot.tsx';
 import ProjectHomeConnections from './ProjectHomeConnections.tsx';
-import { providerDisplayName } from './creation-i18n.ts';
+import { providerDisplayName, jobStatusDescriptor, statusDescriptor } from './creation-i18n.ts';
 import { message as msg, renderMessage as renderCoreMessage } from '../../../packages/i18n/src/index.ts';
 import LanguageControl from './LanguageControl.tsx';
 import WebSettingsCenter from './WebSettingsCenter.tsx';
@@ -36,7 +47,7 @@ import { assertWorkspaceOperation, validateProjectWorkspace, RESTORE_DISABLED_ME
 import { Badge } from '@mioon/ui/components/badge';
 import { useConfirmation } from '@mioon/ui/components/workbench-confirm';
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogClose } from '@mioon/ui/components/dialog';
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator } from '@mioon/ui/components/dropdown-menu';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuCheckboxItem, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from '@mioon/ui/components/dropdown-menu';
 import { Tabs, TabsList, TabsTrigger } from '@mioon/ui/components/tabs';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@mioon/ui/components/collapsible';
 import { WorkbenchTooltip } from './WorkspaceControls.jsx';
@@ -46,13 +57,16 @@ import { Textarea } from '@mioon/ui/components/textarea';
 import { Label } from '@mioon/ui/components/label';
 import { WorkbenchSelect } from './WorkspaceControls.jsx';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { schemas, TIMELINE_EXPORT_DEFAULT_SETTINGS, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, isTimelineRenderRecord, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, isSubjectGenerationResponse, isSubjectGenerationRetryResponse } from '@mioon/contracts';
+import { schemas as productionSchemas, TIMELINE_EXPORT_DEFAULT_SETTINGS, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse as productionTimelineMutationResponse, isTimelineRenderRecord as productionTimelineRenderRecord, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, isSubjectGenerationResponse, isSubjectGenerationRetryResponse } from '@mioon/contracts';
+import { readOpacityCandidateApplication } from './opacity-candidate-application.ts';
+import OpacityRestoredNotice from './OpacityRestoredNotice.tsx';
 import { ReactFlow, Background, BackgroundVariant, MiniMap, applyNodeChanges, useReactFlow } from '@xyflow/react';
 import { measuredFitPadding } from './canvas-fit.ts';
+import { chooseCanvasPosition } from './canvas-position.ts';
 import { staleClipSources } from './timeline-source-freshness.ts';
 import Icon from './icons.jsx';
 import BrandMark from './BrandMark.tsx';
-import ProjectHome from './ProjectHome.tsx';
+import ProjectHome from './ProjectHomeScreen.tsx';
 import './project-home.css';
 import { createNativeCloseRegistry, installNativeCloseAdmission } from './native-close-state.ts';
 import { readNativeLegacyClose } from './native-close-legacy.ts';
@@ -69,6 +83,7 @@ import { isDurableEditOperation, taskInputKey } from './edit-task-client.js';
 import AgentWorkspace, { AgentDockPane } from './AgentWorkspace.jsx';
 import { makeAgentTimelineClipSelection, makeAgentTimelineGainSelection, agentTimelineGainBlockedReason, agentTimelineGainBlockedDescriptor } from './agent-timeline-context.js';
 import ImageGeneration from './ImageGeneration.jsx';
+import { captureImageEditIntent, imageEditIntentSource } from './image-edit-intent.ts';
 import AssetLibrary from './AssetLibrary.jsx';
 import { useSubjects } from './use-subjects.js';
 import { useAssetAnnotations } from './use-asset-annotations.ts';
@@ -114,7 +129,7 @@ import { frameCaptureBusy } from './frame-extraction.js';
 import { useSourceRange } from './use-source-range.js';
 import { sourceRangeAddPlan, sameSourceSnapshot } from './source-range-state.js';
 import { Media, nodeTypes } from './Nodes.jsx';
-import { rpc, requestId, activeJob, assetUrl, versionUrl } from './api.js';
+import { rpc as productionRpc, requestId, activeJob, assetUrl, versionUrl } from './api.js';
 import { importAcknowledged, importBusyFeedback, importFeedback, renderImportFeedback } from './import-feedback.js';
 import { generationSelection, generationInputIssue, providerAvailabilityIssue, inputModeLabel, inputModeDescriptor, generationInputIssueDescriptor, providerAvailabilityDescriptor, generationReferences, generationReferenceIdentity } from './generation-settings.js';
 import { pendingForProject, prepareSubmission, prepareRequestReplay, readPending, clearPending, reconcilePending, isSubjectRetryPending } from './submissions.js';
@@ -131,7 +146,7 @@ import { timelineHistoryActionForKey, timelineSplitActionForKey } from './timeli
 import { timelineSplitState } from './timeline-split.js';
 import { assetTimelineDuration } from './timeline-snapping.js';
 import { defaultWorkspaceLayout } from './workspace-layout.js';
-import { PanelBoundary, PanelRecall, PanelResizeHandle, PanelsMenu, usePanelGeometry } from './WorkspacePanels.jsx';
+import { PanelBoundary, PanelRecall, PanelResizeHandle, usePanelGeometry } from './WorkspacePanels.jsx';
 import { REFERENCE_SOURCE_HANDLE, REFERENCE_TARGET_HANDLE, isReferenceEdge, referenceForShot, isReferenceOperation, hasPendingReference, isImageReferenceNode, referenceAttachIssueDescriptor, canvasEdge } from './reference-connections.js';
 
 const emptyData = { project: null, assets: [], shots: [], nodes: [], edges: [], jobs: [], versions: [], exports: [], timeline: null, timelineHistory: null };
@@ -154,21 +169,6 @@ function readableError(error) {
   if (error?.code === 'LAST_PROJECT_SCOPE_MISMATCH') return msg('shell.error.lastProjectScope');
   return msg('shell.error.incomplete');
 }
-function Login({ onLogin }) {
-  const { t, renderMessage, formatDate, formatNumber } = useI18n();
-  const [token, setToken] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  async function submit(e) {
-    e.preventDefault(); setLoading(true); setError('');
-    try {
-      const result = await fetch('/api/login', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) });
-      if (!result.ok) throw localizedError(msg('shell.login.invalidToken'));
-      setToken(''); await onLogin();
-    } catch (err) { setError(readableError(err)); } finally { setLoading(false); }
-  }
-  return <div className="login-page"><div className="login-atmosphere" /><div className="login-visual"><div className="brand large"><span className="brand-mark"><BrandMark /></span>Mioon</div><div className="login-headline"><div className="eyebrow">{t('shell.login.eyebrow')}</div><h1>{t('shell.login.headline')}</h1><p>{t('shell.login.description')}</p></div><div className="login-footnote"><span className="status-dot green" />{t('shell.login.footnote')}</div></div><div className="login-form-wrap"><LanguageControl /><form className="login-form" onSubmit={submit}><span className="login-icon"><Icon name="lock" size={23} /></span><h2>{t('shell.login.title')}</h2><p>{t('shell.login.hint')}</p><Label className="field-label" htmlFor="access-token">{t('shell.login.token')}</Label><Input id="access-token" type="password" autoComplete="current-password" value={token} onChange={e => setToken(e.target.value)} placeholder={t('shell.login.placeholder')} required autoFocus />{error && <div className="notice error" role="alert">{renderMessage(error)}</div>}<Button variant="ghost" className="button primary full" type="submit" disabled={loading || !token}>{loading ? <span className="spinner" /> : <Icon name="arrow" size={16} />}{t('shell.login.enter')}</Button><div className="login-security"><Icon name="lock" size={13} />{t('shell.login.secrets')}</div></form></div></div>;
-}
 function Modal({ title, subtitle, children, onClose, wide = false }) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }}><DialogContent className={`modal ${wide ? 'wide' : ''}`} showCloseButton={false}><header className="modal-header"><div><DialogTitle>{title}</DialogTitle><DialogDescription className={subtitle ? '' : 'sr-only'}>{subtitle || title}</DialogDescription></div><DialogClose render={<Button variant="ghost" className="icon-button" aria-label={t('shell.closeDialog')} />}><Icon name="close" /></DialogClose></header>{children}</DialogContent></Dialog>;
@@ -179,20 +179,33 @@ function CreateProject({ onClose, onCreate, busy }) {
   return <Modal title={t('projects.newStory')} subtitle={t('projects.newStoryHint')} onClose={onClose}><form className="modal-form" onSubmit={e => { e.preventDefault(); onCreate(name.trim(), description.trim()); }}><Label className="field-label" htmlFor="project-name">{t('projects.name')}</Label><Input id="project-name" data-testid="project-name" value={name} onChange={e => setName(e.target.value)} placeholder={t('projects.namePlaceholder')} maxLength={150} required autoFocus /><Label className="field-label" htmlFor="project-description">{t('projects.direction')}<span className="optional">{t('shell.optional')}</span></Label><Textarea id="project-description" rows={3} maxLength={2000} value={description} onChange={e => setDescription(e.target.value)} placeholder={t('projects.directionPlaceholder')} /><Button variant="ghost" className="button primary full" data-testid="create-project-submit" disabled={!name.trim() || busy} type="submit"><Icon name="plus" size={16} />{t('projects.create')}</Button></form></Modal>;
 }
 
-export function SettingsConnectionForms({ selected, page, visible, registry, onSelect, onPage, general, connectionsAvailable = true, beforeClose, onClose }) { const { t } = useI18n(); return <ProjectHomeConnections selected={selected} page={page} connectionsAvailable={connectionsAvailable} onSelect={onSelect} onPage={onPage} general={general} panes={{
+export function SettingsConnectionForms({ selected, page, visible, registry, onSelect, onPage, general, connectionsAvailable = true, beforeClose, onClose }) { const { t } = useI18n(); return <ProjectHomeConnections active={visible} workspace={<SettingsWorkspace active={visible && page === 'workspace'}><WorkspaceVisibilityProvider visible={visible && page === 'workspace'}><WorkspaceBackupPanel scope="settings:workspace" getScope={() => 'settings:workspace'} connected={connectionsAvailable && visible && page === 'workspace'} read={(input, options) => productionRpc('workspace.backup.inspect', input, options)} /></WorkspaceVisibilityProvider></SettingsWorkspace>} videoTools={<SettingsNavigationSlot registry={registry} slot="home:video-tools">{report => <SettingsVideoTools active={visible && page === 'video-tools'} onNavigationStateChange={report} />}</SettingsNavigationSlot>} selected={selected} page={page} connectionsAvailable={connectionsAvailable} onSelect={onSelect} onPage={onPage} general={<>{general}<SettingsNavigationSlot registry={registry} slot="home:appearance">{report => <SettingsAppearance active={visible && page === 'general'} onNavigationStateChange={report} />}</SettingsNavigationSlot></>} panes={{
   agent: <AgentDockPane visible={visible && connectionsAvailable && page === 'agent'}><SettingsNavigationSlot registry={registry} slot="home:agent">{report => <AgentSettings closeLabel={t('common.closeSettings')} beforeClose={beforeClose} onClose={onClose} onNavigationStateChange={report} />}</SettingsNavigationSlot></AgentDockPane>,
   official: <AgentDockPane visible={visible && connectionsAvailable && page === 'official'}><SettingsNavigationSlot registry={registry} slot="home:official">{report => <ImageSettings active={visible && connectionsAvailable && page === 'official'} contextKey="native-settings" closeLabel={t('common.closeSettings')} slot="official" onSelectSlot={onSelect} onRequestSelectSlot={onSelect} beforeClose={beforeClose} onClose={onClose} onNavigationStateChange={report} />}</SettingsNavigationSlot></AgentDockPane>,
   custom: <AgentDockPane visible={visible && connectionsAvailable && page === 'custom'}><SettingsNavigationSlot registry={registry} slot="home:custom">{report => <ImageSettings active={visible && connectionsAvailable && page === 'custom'} contextKey="native-settings" closeLabel={t('common.closeSettings')} slot="custom" onSelectSlot={onSelect} onRequestSelectSlot={onSelect} beforeClose={beforeClose} onClose={onClose} onNavigationStateChange={report} />}</SettingsNavigationSlot></AgentDockPane>,
   comfy: <AgentDockPane visible={visible && connectionsAvailable && page === 'comfy'}><SettingsNavigationSlot registry={registry} slot="home:comfy">{report => <ComfyImageSettings active={visible && connectionsAvailable && page === 'comfy'} contextKey="native-settings" closeLabel={t('common.closeSettings')} onSelectSlot={onSelect} onRequestSelectSlot={onSelect} beforeClose={beforeClose} onClose={onClose} onNavigationStateChange={report} />}</SettingsNavigationSlot></AgentDockPane>,
 }} />; }
 
-export default function App({ nativeWindow = null, nativeProjectEntry = null } = {}) {
+export default function App({ nativeWindow = null, nativeProjectEntry = null, opacityApplication = null } = {}) {
+  // This capability comes only from the isolated build entry. Server payloads,
+  // URL parameters and copied profile metadata cannot select candidate codecs.
+  const requestedApplication = readOpacityCandidateApplication(opacityApplication);
+  const applicationOwner = useRef(requestedApplication);
+  const application = applicationOwner.current;
+  if (application !== requestedApplication) throw new TypeError('Application entry cannot change while mounted.');
+  const rpc = application?.rpc ?? productionRpc;
+  const schemas = application?.schemas ?? productionSchemas;
+  const isTimelineMutationResponse = application?.isTimelineMutationResponse ?? productionTimelineMutationResponse;
+  const isTimelineRenderRecord = application?.isTimelineRenderRecord ?? productionTimelineRenderRecord;
   const { locale, t, renderMessage, formatDate, formatNumber } = useI18n();
+  const { resolvedTheme } = useUiPreferences();
+  const isWorkspaceInspection = application?.isWorkspaceInspection ?? isWorkspaceRestoreInspection;
   const confirm = useConfirmation();
   const nativeSettingsScope = useEditorSettingsScope(nativeWindow);
   const [nativeProjectLocation] = useState(() => nativeWindow ? createNativeProjectLocation(window, nativeWindow.context.initialProjectId) : null);
   const [nativeAudioAdmission] = useState(() => nativeWindow ? createNativeAudioPreviewAdmission(window.__mioonNativeAudioPreview ?? null) : null);
   const [auth, setAuth] = useState(null);
+  useEffect(() => { if (auth === true) void window.__mioonUiPreferences?.reload?.(); }, [auth]);
   const [data, setData] = useState(emptyData);
   const [workspace, setWorkspace] = useState(null);
   const workspaceRef = useRef(null);
@@ -201,6 +214,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
   const audioRoleProbe = useRef(null);
   const audioRoleProbeEpoch = useRef(0);
   const restored = workspace?.restored === true;
+  const opacityRestored = Boolean(application?.isRestoredWorkspace(workspace));
   const generationUnavailableReason = restored ? RESTORE_DISABLED_MESSAGE : '';
   const dataRef = useRef(data); dataRef.current = data;
   const [projects, setProjects] = useState([]);
@@ -231,6 +245,13 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
 
   const [showProjects, setShowProjects] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [showProjectChooser, setShowProjectChooser] = useState(false);
+  const [showTasks, setShowTasks] = useState(false);
+  const [showDelivery, setShowDelivery] = useState(false);
+  const [deliveryAttempt, setDeliveryAttempt] = useState(null);
+  const [deliveryReviewVersion, setDeliveryReviewVersion] = useState(0);
+  const [showImage, setShowImage] = useState(false);
+  const [panelOverlay, setPanelOverlay] = useState(null);
   const [rightDockTab, setRightDockTabState] = useState('properties');
   const setRightDockTab = value => { if (!clipDraftRef.current?.hasPendingComposition()) setRightDockTabState(value); };
   const [propertiesPage, setPropertiesPageState] = useState('inspector');
@@ -261,13 +282,15 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
   const agentDraft = useRef(false);
   const onAgentDraftChange = useCallback(value => { agentDraft.current = value; }, []);
   const imageDraft = useRef(false);
+  const [imageEditIntent, updateImageEditIntent] = useState(null), imageEditIntentRef = useRef(null);
+  const setImageEditIntent = intent => { imageEditIntentRef.current = intent; updateImageEditIntent(intent); };
   const onImageDraftChange = useCallback(value => { imageDraft.current = value; }, []);
   const [showExports, setShowExports] = useState(false);
   const [comparisonId, updateComparisonId] = useState(null);
   const comparisonIdRef = useRef(null);
   const [previewAsset, updatePreviewAsset] = useState(null);
-  const previewAssetRef = useRef(null), clipLoudnessEpoch = useRef(0);
-  const setPreviewAsset = value => { previewAssetRef.current = value; clipLoudnessEpoch.current++; updatePreviewAsset(value); };
+  const previewAssetRef = useRef(null), canvasAssetSelectionRef = useRef(null), clipLoudnessEpoch = useRef(0);
+  const setPreviewAsset = value => { previewAssetRef.current = value; if (value) canvasAssetSelectionRef.current = { id: value.id, projectId: currentProject.current, epoch: projectEpoch.current }; clipLoudnessEpoch.current++; updatePreviewAsset(value); };
   const [realConfirm, setRealConfirm] = useState(null);
   const realConfirmRef = useRef(null);
   const generationReviewScope = useRef(null);
@@ -314,10 +337,11 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
   const currentProject = useRef(null);
   const [taskState, setTaskState] = useState({ phase: 'idle', items: [], uncertain: [], busy: [], error: null });
   const tasksRef = useRef(null);
-  if (!tasksRef.current) tasksRef.current = createEditTaskController({ getWorkspace: () => workspaceRef.current, onChange: (projectId, snapshot) => {
+  if (!tasksRef.current) tasksRef.current = createEditTaskController({ ...(application ? { client: application.taskClient } : {}), getWorkspace: () => workspaceRef.current, onChange: (projectId, snapshot) => {
     if (currentProject.current === projectId) setTaskState(snapshot);
   } });
   const navigationEpoch = useRef(0);
+  const [, setNavigationPresentation] = useState(0);
   const projectEpoch = useRef(0);
   const preferenceScope = useRef(null);
   const locatorIdentity = useRef(null);
@@ -352,7 +376,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     if (JSON.stringify(next) === JSON.stringify(previous)) return;
     if (next.activeMode !== previous.activeMode || ['selectedClipId', 'quickAssetId', 'previewKind'].some(key => next.editing[key] !== previous.editing[key])) clipLoudnessEpoch.current++;
     viewRef.current = next; setView(next);
-    if (currentProject.current) {
+    if (currentProject.current && !application?.isRestoredWorkspace(workspaceRef.current)) {
       const frequent = ['viewport', 'playhead', 'pixelsPerSecond', 'scrollLeft', 'scrollTop', 'assetSearch'];
       const immediate = section === 'activeMode' || Object.keys(value).some(key => !frequent.includes(key));
       preferencesRef.current.update(currentProject.current, next, { immediate, ...(!passive && workspaceRef.current?.restored ? pinNewWorkspaceIntent({}, workspaceRef.current) : {}) });
@@ -367,14 +391,14 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
   const { assetFilter, assetSearch } = view.shared;
   const workspaceMode = view.activeMode;
   const modeLayout = view.layout[workspaceMode];
-  const { assetsCollapsed, inspectorCollapsed } = modeLayout;
   function projectSessionReady() { return canPublishProjectOpen(openedProject.current, { active: importSession.current.active, currentProjectId: currentProject.current, epoch: projectEpoch.current, workspaceScope: workspaceOriginScope(workspaceRef.current) || '', preferencesReady: viewReady.current, dataProjectId: dataRef.current.project?.id || null, loading: false }); }
   const workbenchReady = auth === true && projectSessionReady() && !loading;
   useEditorWindowStatus(nativeWindow, currentProject.current, projectOpening.phase, workbenchReady);
   const panelSurface = useRef(null), panelIntent = useRef(0), taskWorkspaceState = useRef(null), taskShotAttempt = useRef(0);
   const [panelChange, setPanelChange] = useState(0);
   const panelScope = `${currentProject.current}:${projectEpoch.current}:${workspaceMode}:${panelChange}`;
-  const geometry = usePanelGeometry(panelSurface, modeLayout, workspaceMode, panelScope, auth === true && workbenchReady);
+  const geometry = usePanelGeometry(panelSurface, modeLayout, workspaceMode, panelScope, auth === true && workbenchReady, `${currentProject.current}:${projectEpoch.current}:${workspaceMode}`);
+  const { assetsCollapsed, inspectorCollapsed } = geometry.effective;
   const markPanelIntent = () => { panelIntent.current++; setPanelChange(value => value + 1); };
   const layoutOwner = currentProject.current, layoutOwnerEpoch = projectEpoch.current;
   function updateModeLayout(mode, patch) {
@@ -382,10 +406,11 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     updateView('layout', previous => ({ [mode]: { ...previous[mode], ...patch } }));
   }
   function setPanelOpen(name, open, mode = viewRef.current.activeMode) {
-    if (clipDraftRef.current?.hasPendingComposition()) return;
-    markPanelIntent();
+    if (clipDraftRef.current?.hasPendingComposition() || layoutOwner !== currentProject.current || layoutOwnerEpoch !== projectEpoch.current) return;
+    markPanelIntent(); setPanelOverlay(null);
     if (name === 'timeline') updateView('editing', { timelineCollapsed: !open });
     else if (name === 'storyboard') updateView('canvas', { storyboardOpen: open });
+    else if (geometry.compact && mode === viewRef.current.activeMode) geometry.pinPanel(name, open);
     else updateModeLayout(mode, { [name === 'assets' ? 'assetsCollapsed' : 'inspectorCollapsed']: !open });
     if (geometry.narrow && mode === viewRef.current.activeMode && name !== 'storyboard') {
       if (open) setMobilePanel(name); else if (mobilePanel === name) setMobilePanel('canvas');
@@ -393,16 +418,23 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
   }
   function resetPanelLayout() {
     if (clipDraftRef.current?.hasPendingComposition()) return;
-    markPanelIntent(); updateView('layout', { [workspaceMode]: defaultWorkspaceLayout()[workspaceMode] });
+    markPanelIntent(); setPanelOverlay(null); geometry.resetPins(); updateView('layout', { [workspaceMode]: defaultWorkspaceLayout()[workspaceMode] });
     if (workspaceMode === 'canvas') updateView('canvas', { storyboardOpen: false });
     else updateView('editing', { timelineCollapsed: false });
     setMobilePanel('canvas');
   }
   function resizePanel(field, value) { markPanelIntent(); updateModeLayout(workspaceMode, { [field]: value }); }
-  const panelVisible = name => name === 'canvas' ? !geometry.narrow || mobilePanel === 'canvas' : !(name === 'assets' ? assetsCollapsed : name === 'inspector' ? inspectorCollapsed : timelineCollapsed) && (!geometry.narrow || mobilePanel === name);
+  function togglePanelOverlay(name) { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setPanelOverlay(value => value === name ? null : name); }
+  useEffect(() => { setPanelOverlay(null); }, [workspaceMode, data.project?.id, geometry.compact, geometry.narrow]);
+  const panelVisible = name => name === panelOverlay || (name === 'canvas' ? !geometry.narrow || mobilePanel === 'canvas' : !(name === 'assets' ? assetsCollapsed : name === 'inspector' ? inspectorCollapsed : timelineCollapsed) && (!geometry.narrow || mobilePanel === name));
+  const timelineContainerVisible = panelVisible('timeline') || !geometry.narrow && timelineCollapsed;
+  function toggleTimelinePanel() {
+    if (workspaceMode !== 'editing' || viewRef.current.activeMode !== 'editing') return;
+    setPanelOpen('timeline', Boolean(viewRef.current.editing.timelineCollapsed), 'editing');
+  }
   function mobileNavigate(name) { if (clipDraftRef.current?.hasPendingComposition()) return; if (name === 'canvas') { markPanelIntent(); setMobilePanel('canvas'); } else setPanelOpen(name, true); }
   const panelFallback = name => geometry.narrow ? `[data-testid=mobile-panel-${name}]` : `[data-testid=reopen-${name}]`;
-  const resizeHandle = (name, field) => <PanelResizeHandle name={name} field={field} value={geometry.effective[field]} max={geometry.maxima[field]} scope={`${panelScope}:${geometry.size.width}:${geometry.size.height}`} enabled={!geometry.narrow && panelVisible(name) && !loading} onPreview={geometry.preview} onCommit={resizePanel} />;
+  const resizeHandle = (name, field) => <PanelResizeHandle name={name} field={field} value={geometry.effective[field]} max={geometry.maxima[field]} scope={`${panelScope}:${geometry.size.width}:${geometry.size.height}`} enabled={!geometry.narrow && (name !== 'timeline' || !timelineCollapsed) && panelOverlay !== name && panelVisible(name) && !loading} onPreview={geometry.preview} onCommit={resizePanel} />;
   const setSelectedId = field('canvas', 'selectedId'), setSelectedEdgeId = field('canvas', 'selectedEdgeId'), setTab = field('canvas', 'inspectorTab'), setSequenceOpen = field('canvas', 'storyboardOpen'), setMiniMap = field('canvas', 'miniMap');
   const setSelectedClipId = field('editing', 'selectedClipId'), setQuickAssetId = field('editing', 'quickAssetId'), setPreviewKind = field('editing', 'previewKind'), setPlayhead = field('editing', 'playhead'), setTimelineCollapsed = field('editing', 'timelineCollapsed');
   const setAssetFilter = field('shared', 'assetFilter'), setAssetSearch = field('shared', 'assetSearch');
@@ -411,8 +443,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
   if (generationReviewScope.current?.key !== generationReviewKey) generationReviewScope.current = { key: generationReviewKey };
   const context = () => ({ projectId: currentProject.current, epoch: navigationEpoch.current, workspace: workspaceRef.current });
   const isCurrent = captured => captured.projectId === currentProject.current && captured.epoch === navigationEpoch.current && workspaceOriginScope(captured.workspace) === workspaceOriginScope(workspaceRef.current);
-  taskWorkspaceState.current = { visible: workbenchReady && rightDockTab === 'tasks' && panelVisible('inspector'), connected: workbenchReady && online && auth === true && !loading };
-  const taskViewScope = JSON.stringify([currentProject.current, projectEpoch.current, navigationEpoch.current, panelIntent.current, workspaceMode, rightDockTab, panelVisible('inspector'), workspaceOriginScope(workspaceRef.current)]);
+  taskWorkspaceState.current = { visible: workbenchReady && showTasks, connected: workbenchReady && online && auth === true && !loading };
+  const taskViewScope = JSON.stringify([currentProject.current, projectEpoch.current, navigationEpoch.current, panelIntent.current, workspaceMode, showTasks, workspaceOriginScope(workspaceRef.current)]);
   const isBusy = (key, projectId = currentProject.current) => busyRef.current.has(`${projectId || 'none'}:${key}`);
   function markBusy(projectId, key, value) {
     const scope = projectId || 'none';
@@ -484,7 +516,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     }
   }
   async function changeMode(mode) {
-    if (!viewReady.current || loading || !['canvas', 'editing'].includes(mode) || mode === viewRef.current.activeMode) return;
+    if (application || !viewReady.current || loading || !['canvas', 'editing'].includes(mode) || mode === viewRef.current.activeMode) return;
     if (!await guardNavigation()) return;
     navigationEpoch.current++; dragging.current = false;
     updateView('activeMode', mode); setMobilePanel('canvas');
@@ -511,11 +543,12 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
       if (capturedWorkspace?.restored && hasProjectResponseOriginMismatch(next, capturedWorkspace.workspaceOrigin)) throw Object.assign(localizedError(msg('shell.error.restoreIdentity')), { code: 'RESTORE_WORKSPACE_ORIGIN_MISMATCH' });
       validateProjectWorkspace(next, capturedWorkspace);
       if (!projectResponseMatches(next, projectId)) throw Object.assign(localizedError(msg('shell.error.projectIdentity')), { code: 'BACKEND_PROTOCOL_ERROR' });
+      if (application && !application.validateProjectSnapshot(next, projectId)) throw Object.assign(localizedError(msg('shell.error.projectIdentity')), { code: 'BACKEND_PROTOCOL_ERROR' });
       reconcilePending(projectId, next, { workspace: capturedWorkspace });
       dataRef.current = { ...emptyData, ...next }; setData(dataRef.current); setProviders(caps); setLastSync(new Date()); setOnline(true); setPending(pendingForProject(projectId));
       const retainClipSelection = clipDraftRef.current?.hasPendingComposition() || clipDraftRef.current?.hasUnsaved();
       const reconciled = retainClipSelection ? viewRef.current : reconcileWorkspaceState(viewRef.current, next);
-      if (viewReady.current && JSON.stringify(reconciled) !== JSON.stringify(viewRef.current)) { viewRef.current = reconciled; setView(reconciled); preferencesRef.current.update(projectId, reconciled, { immediate: true }); }
+      if (viewReady.current && JSON.stringify(reconciled) !== JSON.stringify(viewRef.current)) { viewRef.current = reconciled; setView(reconciled); if (!application?.isRestoredWorkspace(capturedWorkspace)) preferencesRef.current.update(projectId, reconciled, { immediate: true }); }
       return next;
     } catch (e) {
       if (importSession.current.active && currentProject.current === projectId && epoch === projectEpoch.current && call === requestCounter.current && workspaceOriginScope(capturedWorkspace) === workspaceOriginScope(workspaceRef.current)) { if (e.code === 'UNAUTHORIZED') setAuth(false); setOnline(false); if (!quiet) notify(readableError(e), 'error'); }
@@ -559,7 +592,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     viewReady.current = false;
     setPreferenceStatus({ phase: 'loading', pending: false });
     setPending(pendingForProject(id)); setShowProjects(false); setData(emptyData); dataRef.current = emptyData; setNodes([]); setLoading(true); dragging.current = false;
-    setShotDirty(false); setClipDirty(false); setSourceDirty(false); setSubjectDirty(false); setSubtitleDirty(false); setInspectorEpoch(value => value + 1); setRightDockTab(value => value === 'tasks' ? 'properties' : value); setShowExports(false); setComparisonId(null); setPreviewAsset(null); setRealConfirm(null); setToast(null); setMobilePanel('canvas');
+    setShotDirty(false); setClipDirty(false); setSourceDirty(false); setSubjectDirty(false); setSubtitleDirty(false); setInspectorEpoch(value => value + 1); setRightDockTab(value => value === 'tasks' ? 'properties' : value); setPanelOverlay(null); setShowTasks(false); setShowDelivery(false); setShowImage(false); setShowProjectChooser(false); setShowExports(false); setComparisonId(null); setPreviewAsset(null); setRealConfirm(null); setToast(null); setMobilePanel('canvas');
     const url = new URL(window.location.href); url.searchParams.set('project', id);
     if (!nativeWindow && !fromHistory) window.history[initial ? 'replaceState' : 'pushState']({ projectId: id }, '', url);
     // Wait for authoritative preferences (or a safe local fallback) before the
@@ -570,7 +603,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     if (!restored) throw Object.assign(localizedError(msg('shell.error.viewNotReady')), { code: 'PROJECT_VIEW_UNAVAILABLE' });
     const preferenceError = preferencesRef.current.getStatus(id)?.error;
     if (preferenceError && projectOpenFailureKind(preferenceError) !== 'project') throw preferenceError;
-    viewRef.current = restored; setView(restored); viewReady.current = true;
+    const editorView = application ? { ...restored, activeMode: 'editing' } : restored;
+    viewRef.current = editorView; setView(editorView); viewReady.current = true;
     setZoom(Math.round((restored.canvas.viewport?.zoom || 1) * 100));
     setPreferenceStatus(preferencesRef.current.getStatus(id));
     const next = await refresh(id, false, { opening: true });
@@ -578,6 +612,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     setLoading(false);
     if (!projectResponseMatches(next, id) || !canPublishProjectOpen(attempt, { active: importSession.current.active, currentProjectId: currentProject.current, epoch: projectEpoch.current, workspaceScope: workspaceOriginScope(workspaceRef.current), preferencesReady: viewReady.current, dataProjectId: next?.project?.id || null, loading: false })) throw Object.assign(localizedError(msg('shell.error.selectionNotReady')), { code: 'BACKEND_PROTOCOL_ERROR' });
     openedProject.current = attempt; setProjectOpening({ phase: 'ready', projectId: id, error: '' });
+    if (!workspaceRef.current?.restored) void window.__mioonUiPreferences?.markOpened?.(id);
     void tasksRef.current.load(id);
     if (!nativeWindow && !initial && !reloadPreferences && !workspaceRef.current?.restored) lastProjectRef.current.rememberOpened(id, epoch);
     if (next && !viewRef.current.canvas.selectedId) { const first = [...next.shots].sort((a, b) => a.orderIndex - b.orderIndex)[0] || next.nodes.find(n => n.type !== 'text') || next.nodes[0]; if (first) updateView('canvas', { selectedId: first.id }, { passive: true }); }
@@ -595,6 +630,26 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
       if (importSession.current.active && currentProject.current === id && projectEpoch.current === epoch && workspaceOriginScope(workspaceRef.current) === attempt.workspaceScope) setLoading(false);
     }
   }
+  async function showProjectHome(fromHistory = false) {
+    if (nativeWindow) { await nativeProjectEntry?.show('open'); return false; }
+    if (loading || projectCreateFlight.current || clipDraftRef.current?.hasPendingComposition()) return false;
+    const captured = context(), lifetime = importSession.current.selection, ticket = await prepareSettingsDeparture();
+    const current = () => Boolean(ticket && importSession.current.active && importSession.current.selection === lifetime && isCurrent(captured) && settingsNavigation.current.canLeave(ticket));
+    if (!current()) return false;
+    const message = imageDraft.current ? msg(agentDraft.current ? 'shell.confirm.unsentBoth' : 'shell.confirm.unsentImage') : agentDraft.current ? msg('shell.confirm.unsentAgent') : msg('shell.confirm.switchProject');
+    if (!await guardProjectNavigation(message, agentDraft.current || imageDraft.current, current) || !current()) return false;
+    navigationEpoch.current++; const epoch = ++projectEpoch.current; requestCounter.current++; lastProjectRef.current.invalidateNavigation(epoch);
+    if (currentProject.current) void preferencesRef.current.flush({ projectId: currentProject.current, keepalive: true });
+    currentProject.current = null; openedProject.current = null; viewReady.current = false;
+    dataRef.current = emptyData; setData(emptyData); setNodes([]); setLoading(false); dragging.current = false;
+    setProjectOpening({ phase: 'home', projectId: null, error: '' }); setHomePage('projects');
+    setShotDirty(false); setClipDirty(false); setSourceDirty(false); setSubjectDirty(false); setSubtitleDirty(false);
+    setShowProjects(false); setPanelOverlay(null); setShowTasks(false); setShowDelivery(false); setShowImage(false); setShowProjectChooser(false); setShowExports(false); setComparisonId(null); setPreviewAsset(null); setRealConfirm(null); setToast(null);
+    const url = new URL(window.location.href); url.searchParams.delete('project');
+    if (!fromHistory) window.history.pushState({ projectId: null }, '', url);
+    void refreshHomeProjects();
+    return true;
+  }
   async function reloadPreferences() {
     const captured = context();
     if (!await confirm(msg('shell.confirm.loadSavedView'))) return;
@@ -609,7 +664,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     if (!online || auth !== true || !workspace || clipInspectorRetention.current.retained) return;
     return observeClipVolumeEnvelopeCapability(workspace,
       signal => rpc('workspace.restore.inspect', { includeVolumeEnvelopeCapability: true }, { signal }),
-      isWorkspaceRestoreInspection, canEditTimelineVolumeEnvelope,
+      isWorkspaceInspection, canEditTimelineVolumeEnvelope,
       () => volumeEnvelopeProbeEpoch.current === epoch && workspaceRef.current === workspace && !clipInspectorRetention.current.retained,
       publish);
   }, [workspace, online, auth]);
@@ -628,7 +683,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
       // Never adopt/reconnect an authority while original input is retained.
       if (clipDraftRef.current?.hasPendingComposition() || clipDraftRef.current?.hasUnsaved()) return;
       workspaceRef.current = verifiedWorkspace; setWorkspace(verifiedWorkspace);
-      audioRoleProbe.current = observeClipAudioRoleCapability(verifiedWorkspace, signal => rpc('workspace.restore.inspect', { includeAudioRoleCapability: true }, { signal }), isWorkspaceRestoreInspection, canEditTimelineAudioRole,
+      audioRoleProbe.current = observeClipAudioRoleCapability(verifiedWorkspace, signal => rpc('workspace.restore.inspect', { includeAudioRoleCapability: true }, { signal }), isWorkspaceInspection, canEditTimelineAudioRole,
         () => audioRoleProbeEpoch.current === roleEpoch && importSession.current.active && workspaceRef.current === verifiedWorkspace, setAudioRoleCapability);
       const [list, caps, locator] = await Promise.all([
         rpc('project.list'), verifiedWorkspace.restored ? [] : rpc('provider.list'),
@@ -654,21 +709,37 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
   useEffect(() => {
     const controller = preferencesRef.current;
     const locator = lastProjectRef.current;
-    const flush = event => { if (clipDraftRef.current?.hasPendingComposition()) { if (event?.type === 'beforeunload') { event.preventDefault(); event.returnValue = ''; } return; } if (window.__mioonNativeCloseAdmission?.suppressLifecycleFlush?.(event) === true) return; void controller.flush({ keepalive: true }); if (!workspaceRef.current?.restored) { if (!nativeWindow) void locator.flush(); if (localDeliveryRef.current?.controller.hasUnsaved()) void localDeliveryRef.current.controller.flush(); if (shotTextRef.current?.hasUnpersisted()) void shotTextRef.current.flush(); if (clipDraftRef.current?.hasUnpersisted()) void clipDraftRef.current.flushForClose(); } };
+    const flush = event => {
+      const clip = clipDraftRef.current;
+      if (clip?.hasPendingComposition()) { if (event?.type === 'beforeunload') { event.preventDefault(); event.returnValue = ''; } return; }
+      if (window.__mioonNativeCloseAdmission?.suppressLifecycleFlush?.(event) === true) return;
+      void controller.flush({ keepalive: true });
+      const restored = Boolean(workspaceRef.current?.restored);
+      const restoredOwner = restored && clip?.supportsRestoredPersistence();
+      const restoredClip = restoredOwner && typeof workspaceRef.current?.workspaceOrigin === 'string' && clip.supportsRestoredPersistence(workspaceRef.current.workspaceOrigin);
+      if (restoredOwner && clip.hasUnpersisted() && event?.type === 'beforeunload') { event.preventDefault(); event.returnValue = ''; }
+      if (!restored) { if (!nativeWindow) void locator.flush(); if (localDeliveryRef.current?.controller.hasUnsaved()) void localDeliveryRef.current.controller.flush(); if (shotTextRef.current?.hasUnpersisted()) void shotTextRef.current.flush(); }
+      // Lifecycle events offer only a best-effort flush. beforeunload still
+      // blocks unconfirmed43 input; pagehide cannot guarantee its durability.
+      if ((!restored || restoredClip) && clip?.hasUnpersisted()) void clip.flushForClose();
+    };
     const onHidden = event => { if (document.visibilityState === 'hidden') flush(event); };
     // An unprivileged lifecycle function: desktop main may await this fixed
     // function before closing; it exposes no Electron/IPC/native capability.
     const drain = async () => {
       if (clipDraftRef.current?.hasPendingComposition()) return false;
-      const restored = Boolean(workspaceRef.current?.restored), clip = restored ? null : clipDraftRef.current, clipCapture = clip?.capture();
+      const restored = Boolean(workspaceRef.current?.restored), workspaceOrigin = workspaceRef.current?.workspaceOrigin;
+      const clipOwner = clipDraftRef.current;
+      if (restored && clipOwner?.supportsRestoredPersistence() && (typeof workspaceOrigin !== 'string' || !clipOwner.supportsRestoredPersistence(workspaceOrigin))) return false;
+      const clip = !restored || clipOwner?.supportsRestoredPersistence(workspaceOrigin) ? clipOwner : null, clipCapture = clip?.capture();
       const [, remembered, titleSaved, shotSaved, clipSaved] = await Promise.all([
         controller.flush({ keepalive: true }), restored || nativeWindow ? true : locator.flush(),
         restored || !localDeliveryRef.current?.controller.hasUnsaved() ? true : localDeliveryRef.current.controller.flush(),
         restored || !shotTextRef.current?.hasUnpersisted() ? true : shotTextRef.current.flush(),
         clip ? clip.flushForClose() : true,
       ]);
-      return !clipDraftRef.current?.hasPendingComposition() && !controller.hasUnsaved() && remembered && titleSaved && shotSaved && clipSaved && restored === Boolean(workspaceRef.current?.restored)
-        && (restored || clip === clipDraftRef.current && (!clip || clip.isCurrent(clipCapture) && !clip.hasUnpersisted()));
+      return !clipDraftRef.current?.hasPendingComposition() && !controller.hasUnsaved() && remembered && titleSaved && shotSaved && clipSaved && restored === Boolean(workspaceRef.current?.restored) && workspaceOrigin === workspaceRef.current?.workspaceOrigin
+        && clipOwner === clipDraftRef.current && (!clip || clip.isCurrent(clipCapture) && !clip.hasUnpersisted());
     };
     globalThis.__mioonFlushWorkspacePreferences = drain;
     window.addEventListener('beforeunload', flush);
@@ -683,7 +754,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     };
   }, []);
   useEffect(() => {
-    const onPop = async () => { if (nativeProjectLocation) { nativeProjectLocation.restore(); return; } const id = new URLSearchParams(window.location.search).get('project'); if (!id || id === currentProject.current) return; const accepted = await selectProject(id, false, true); if (!accepted) { const url = new URL(window.location.href); url.searchParams.set('project', currentProject.current); window.history.pushState({ projectId: currentProject.current }, '', url); } };
+    const onPop = async () => { if (nativeProjectLocation) { nativeProjectLocation.restore(); return; } const id = new URLSearchParams(window.location.search).get('project'); if (id === currentProject.current) return; const accepted = id ? await selectProject(id, false, true) : await showProjectHome(true); if (!accepted) { const url = new URL(window.location.href); url.searchParams.set('project', currentProject.current); window.history.pushState({ projectId: currentProject.current }, '', url); } };
     window.addEventListener('popstate', onPop); return () => window.removeEventListener('popstate', onPop);
   });
   function readEditorWindowInputs(navigation = false) {
@@ -747,7 +818,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
       if (response.task.status === 'not_applied') {
         rejected = true;
         await tasksRef.current.acknowledge(response.task);
-        throw Object.assign(localizedError(msg('shell.error.notApplied')), { code: response.task.errorCode || 'TASK_NOT_APPLIED' });
+        const code = response.task.errorCode || 'TASK_NOT_APPLIED', reason = readableError({ code });
+        throw Object.assign(localizedError(reason.key === 'shell.error.incomplete' ? msg('shell.error.notApplied') : reason), { code });
       }
       if (response.task.status !== 'applied') {
         if (isCurrent(captured)) { notify(msg('shell.requestSaved'), 'warning'); openTasks(canRevealTasks); }
@@ -911,7 +983,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
   }
   // Picking a shot, node or clip means "show me its properties". The Tasks and Delivery pages are reference views
   // (Tasks even opens by itself after a generation), so they give way; Agent and Image keep following the selection.
-  function leaveReferencePage() { setRightDockTab(value => value === 'tasks' || value === 'delivery' ? 'properties' : value); }
+  function leaveReferencePage() { setShowTasks(false); setShowDelivery(false); }
   async function inspect(id, nextTab = 'settings', versionId = null, { reveal = false } = {}) {
     const captured = context(), panelChoice = panelIntent.current, timelineId = dataRef.current.timeline?.id, timelineRevision = dataRef.current.timeline?.revision;
     const canDiscard = () => isCurrent(captured) && panelChoice === panelIntent.current && timelineId === dataRef.current.timeline?.id && timelineRevision === dataRef.current.timeline?.revision && [...dataRef.current.shots, ...dataRef.current.nodes].some(record => record.id === id);
@@ -989,7 +1061,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     if (stale) { notify(msg('shell.generationInputsChanged'), 'warning'); return; }
     submitGeneration(args);
   }
-  async function createProject(name, description) {
+  async function createProject(name, description, timelinePresetId) {
+    if (application?.isRestoredWorkspace(workspaceRef.current)) return false;
     if (nativeWindow) { void nativeProjectEntry?.show('new'); return false; }
     if (projectCreateFlight.current) return false;
     if (nativeWindow && !editorInputs.current.canCreateProject()) { notify(msg('projects.previousCreateKeep'), 'warning'); return false; }
@@ -1004,7 +1077,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
       const settingsCurrent = () => current() && settingsTicket && settingsNavigation.current.canLeave(settingsTicket);
       if (!settingsCurrent() || !await guardProjectNavigation(msg('shell.confirm.createProject'), false, settingsCurrent) || !settingsCurrent()) return false;
       if (nativeWindow) { nativeCreate = editorInputs.current.beginProjectCreate(captured.projectId); if (!nativeCreate) return false; }
-      const created = await run('project-create', 'project.create', { name, description }, ...(nativeCreate ? [undefined, {
+      const created = await run('project-create', 'project.create', { name, description, ...(timelinePresetId === undefined ? {} : { timelinePresetId }) }, ...(nativeCreate ? [undefined, {
         validateResponse: result => editorInputs.current.validateProjectCreate(nativeCreate, result, name, description),
         onFailure: (_error, outcome) => editorInputs.current.failProjectCreate(nativeCreate, outcome),
       }] : []));
@@ -1032,7 +1105,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     if (!data.project) return setShowCreate(true);
     if (!await guardNavigation(msg('shell.confirm.createShot'))) return;
     const state = dataRef.current, count = state.shots.length;
-    const shot = await run('shot-create', 'shot.create', { projectId: state.project.id, title: t('projects.default.shot', { number: String(count + 1).padStart(2, '0') }), prompt: '', duration: 2, aspectRatio: '9:16', referenceAssetIds: [], position: { x: 350 + (count % 3) * 330, y: Math.floor(count / 3) * 430 + 80 } });
+    const position = chooseCanvasPosition([...state.shots, ...state.nodes], { x: 350 + (count % 3) * 330, y: Math.floor(count / 3) * 430 + 80 });
+    const shot = await run('shot-create', 'shot.create', { projectId: state.project.id, title: t('projects.default.shot', { number: String(count + 1).padStart(2, '0') }), prompt: '', duration: 2, aspectRatio: '9:16', referenceAssetIds: [], position });
     if (shot && await inspect(shot.id)) revealCanvas(shot.id);
   }
   async function addStructure() {
@@ -1062,10 +1136,11 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     if (type !== 'text' && !asset) { asset = state.assets.find(a => a.mimeType.startsWith(`${type}/`)); if (!asset) { notify(msg(type === 'image' ? 'assets.importImageFirst' : type === 'audio' ? 'assets.importAudioFirst' : 'assets.importVideoFirst'), 'warning'); fileInput.current?.click(); return; } }
     const saved = viewRef.current.canvas.viewport;
     const location = dropPosition || (workspaceMode === 'canvas' ? flow.screenToFlowPosition({ x: window.innerWidth * .43, y: window.innerHeight * .35 }) : { x: saved ? (300 - saved.x) / saved.zoom : 100, y: saved ? (200 - saved.y) / saved.zoom : 100 });
-    const node = await run('node-create', 'node.create', { projectId: state.project.id, type, label: type === 'text' ? t('projects.default.note') : asset.name, ...(type === 'text' ? { text: '' } : { assetId: asset.id }), position: location });
+    const node = await run('node-create', 'node.create', { projectId: state.project.id, type, label: type === 'text' ? t('projects.default.note') : asset.name, ...(type === 'text' ? { text: '' } : { assetId: asset.id }), position: chooseCanvasPosition([...state.shots, ...state.nodes], location) });
     if (node && await inspect(node.id)) revealCanvas(node.id);
   }
   async function importFiles(files) {
+    if (application?.isRestoredWorkspace(workspaceRef.current)) return;
     if (!importSession.current.active || !files?.length) return;
     const selection = ++importSession.current.selection;
     ++requestCounter.current; // Invalidate an older batch's pending refresh.
@@ -1208,8 +1283,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
   }
   function captureTaskView() { return captureTaskWorkspaceIntent(readTaskViewContext); }
   function openTasks(canReveal = () => true) {
-    if (!canReveal() || !currentProject.current || !viewReady.current) return false;
-    setRightDockTab('tasks'); setPanelOpen('inspector', true); return true;
+    if (clipDraftRef.current?.hasPendingComposition() || !canReveal() || !currentProject.current || !viewReady.current) return false;
+    markPanelIntent(); setShowDelivery(false); setShowImage(false); setShowTasks(true); return true;
   }
   function inspectTaskJob(job, stillCurrent) {
     const attempt = ++taskShotAttempt.current;
@@ -1221,14 +1296,14 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
         dataRef.current.shots.some(item => item.id === selected.shotId && item.projectId === selected.projectId),
       guard: canNavigate => guardNavigation(msg('shell.confirm.viewTaskShot'), false, canNavigate),
       reveal: selected => {
-        navigationEpoch.current++;
+        navigationEpoch.current++; setShowTasks(false);
         updateView('canvas', { selectedId: selected.shotId, inspectorTab: selected.tab, highlightedVersionId: null });
         updateView('activeMode', 'canvas'); setPropertiesPage('inspector'); setRightDockTab('properties');
         setPanelOpen('inspector', true, 'canvas');
       },
     });
   }
-  function openExportHistory() { setShowExports(true); setRightDockTab('delivery'); setPanelOpen('inspector', true); }
+  function openExportHistory() { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setShowTasks(false); setShowImage(false); setShowExports(true); setShowDelivery(true); }
   async function createExport() { const panelChoice = panelIntent.current, projectId = currentProject.current; const result = await run('export', 'export.create', { projectId: data.project.id, requestId: requestId() }); if (result) { if (panelChoice === panelIntent.current && projectId === currentProject.current) openExportHistory(); notify(msg('shell.storyboardExportCreated')); } }
   const timeline = data.timeline;
   const timelinePending = taskState.phase !== 'ready' || activeTasks.some(task => task.lane === 'timeline:mutation') || activePending.some(entry => entry.operation.startsWith('timeline.') && entry.operation !== 'timeline.render');
@@ -1281,7 +1356,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     return { status: tasksRef.current.blocked(intent.projectId) || failure?.dispatched && !failure.rejected ? 'unknown' : 'rejected', error: failure?.error };
   }
   const timelineFormat = useTimelineFormat({ ...timelineFormatContext(), getContext: timelineFormatContext,
-    visible: workbenchReady && propertiesPage === 'format' && rightDockTab === 'properties' && panelVisible('inspector'),
+    visible: !application && workbenchReady && propertiesPage === 'format' && rightDockTab === 'properties' && panelVisible('inspector'),
     refreshKey: `${lastSync?.getTime() || 0}:${taskState.phase}:${taskState.items.map(task => `${task.id}:${task.revision}`).join(',')}`,
     read: (input, options) => rpc('timeline.format.get', input, options), submit: saveTimelineFormat, createRequestId: requestId,
     onUnauthorized: () => setAuth(false) });
@@ -1353,7 +1428,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
   exportSettingsRef.current = exportSettings.controller;
   function exportRangeContext() {
     const base = exportSettingsContext(), local = localDeliveryRef.current?.controller.getState();
-    return { ...base, enabled: base.enabled && rightDockTab === 'delivery' && !showExports && panelVisible('inspector') && !(local?.scope === base.scope && (local.busy || local.pending)),
+    return { ...base, enabled: base.enabled && showDelivery && !showExports && !(local?.scope === base.scope && (local.busy || local.pending)),
       projectId: projectSessionReady() && dataRef.current.project?.id === currentProject.current ? currentProject.current : null,
       timelineId: dataRef.current.timeline?.id || null, revision: dataRef.current.timeline?.revision || null,
       durationFrames: dataRef.current.timeline?.durationFrames ?? null };
@@ -1368,7 +1443,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     return { scope, projectId: projectSessionReady() && dataRef.current.project?.id === currentProject.current ? currentProject.current : null,
       timelineId: dataRef.current.timeline?.id || null, timelineRevision: dataRef.current.timeline?.revision || null,
       restored: Boolean(workspaceRef.current?.restored), connected: workbenchReady && online && auth === true && !loading,
-      visible: workbenchReady && rightDockTab === 'delivery' && !showExports && panelVisible('inspector'), busy: isBusy('timeline:render:export'),
+      visible: workbenchReady && showDelivery && !showExports, busy: isBusy('timeline:render:export'),
       executionEpoch: `${navigationEpoch.current}:${panelIntent.current}:${exportSettings.controller.getVersion(scope)}:${exportRange.controller.getVersion(scope)}`,
       deliveryName: deliveryName.controller.getName(scope), nameVersion: deliveryName.controller.getVersion(scope), dirty: deliveryName.controller.hasUnsaved(scope) };
   }
@@ -1387,7 +1462,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
       deliveryName: deliveryName.controller.getName(`${currentProject.current}:${projectEpoch.current}`), deliveryNameVersion: deliveryName.controller.getVersion(`${currentProject.current}:${projectEpoch.current}`) };
   }
   const exportCheckView = exportCheckContext();
-  const exportPreflight = useExportPreflight({ ...exportCheckView, getContext: exportCheckContext, getInvocation: () => pinNewWorkspaceIntent({}, workspaceRef.current), visible: workbenchReady && rightDockTab === 'delivery' && !showExports && panelVisible('inspector'),
+  const exportPreflight = useExportPreflight({ ...exportCheckView, getContext: exportCheckContext, getInvocation: () => pinNewWorkspaceIntent({}, workspaceRef.current), visible: workbenchReady && showDelivery && !showExports,
     read: (input, options) => rpc('timeline.export.preflight', input, options),
     readCapabilities: (input, options) => rpc('timeline.export.capabilities', input, options), onUnauthorized: () => setAuth(false) });
   const canOpenExport = Boolean(data.project && timeline?.id && !loading);
@@ -1410,7 +1485,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     if (range) chooseSampleExportRange({ startText: String(range.startFrame), endText: String(range.endFrame) });
   }
   const sampleExportView = sampleExportContext();
-  const sampleExportPreflight = useExportPreflight({ ...sampleExportView, getContext: sampleExportContext, getInvocation: () => pinNewWorkspaceIntent({}, workspaceRef.current), visible: workbenchReady && rightDockTab === 'delivery' && !showExports && panelVisible('inspector'),
+  const sampleExportPreflight = useExportPreflight({ ...sampleExportView, getContext: sampleExportContext, getInvocation: () => pinNewWorkspaceIntent({}, workspaceRef.current), visible: workbenchReady && showDelivery && !showExports,
     read: (input, options) => rpc('timeline.export.preflight', input, options),
     readCapabilities: (input, options) => rpc('timeline.export.capabilities', input, options), onUnauthorized: () => setAuth(false) });
   function clipLoudnessContext() {
@@ -1434,7 +1509,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
       sourceIdentity: timelineAudioPreviewSourceIdentity(saved, dataRef.current.assets),
       executionScope: `${navigationEpoch.current}:${panelIntent.current}:${viewRef.current.activeMode}`,
       connected: projectSessionReady() && workspaceScope !== null && online && auth === true && !loading,
-      visible: workbenchReady && rightDockTab === 'delivery' && !showExports && panelVisible('inspector'),
+      visible: !application && workbenchReady && showDelivery && !showExports,
       restored: workspaceRef.current?.restored === true,
       hasUnsavedDrafts: clipDirty || subtitleDirty || formatDirty || Boolean(clipDraftRef.current?.hasUnsaved() || clipDraftRef.current?.getState().candidate || subtitlesRef.current?.controller.hasUnsaved() || timelineFormatRef.current?.controller.hasUnsaved()),
       pending: timelineBusy || isBusy('timeline:mutation') };
@@ -1488,7 +1563,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
       timelineId: saved?.id || null, revision: saved?.revision || null, durationFrames: saved?.durationFrames || 0,
       sourceIdentity: timelineAudioPreviewSourceIdentity(saved, dataRef.current.assets),
       connected: projectSessionReady() && workspaceScope !== null && online && auth === true && !loading,
-      visible: workbenchReady && workspaceMode === 'editing' && previewKind === 'timeline' && panelVisible('canvas') && !previewAsset && !comparisonIdRef.current,
+      visible: !application && workbenchReady && workspaceMode === 'editing' && previewKind === 'timeline' && panelVisible('canvas') && !previewAsset && !comparisonIdRef.current,
       restored: workspaceRef.current?.restored === true, hasUnsavedDrafts: clipDirty || subtitleDirty || formatDirty || Boolean(clipDraftRef.current?.getState().candidate) };
   }
   const audioPreview = useTimelineAudioPreview({ ...(nativeAudioAdmission ? { nativeAdmission: nativeAudioAdmission } : {}), context: soundAuditionContext(), getContext: soundAuditionContext,
@@ -1518,7 +1593,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
       projectId: projectSessionReady() && dataRef.current.project?.id === currentProject.current ? currentProject.current : null,
       executionScope: `${navigationEpoch.current}:${panelIntent.current}:${viewRef.current.activeMode}`,
       connected: projectSessionReady() && workspaceScope !== null && online && auth === true && !loading,
-      visible: workbenchReady && rightDockTab === 'delivery' && showExports && panelVisible('inspector'), restored: workspaceRef.current?.restored === true,
+      visible: workbenchReady && showDelivery && showExports, restored: workspaceRef.current?.restored === true,
       exports: dataRef.current.exports, assets: dataRef.current.assets };
   }
   const exportSamplePeak = useExportSamplePeak({ context: exportSamplePeakContext(), getContext: exportSamplePeakContext,
@@ -1535,13 +1610,15 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     isRenderRecord: isTimelineRenderRecord, getInvocation: () => pinNewWorkspaceIntent({}, workspaceRef.current),
     read: (input, options) => rpc('timeline.export.loudness', input, options), onUnauthorized: () => setAuth(false) });
   function openTimelineExport() {
-    setShowExports(false); setRightDockTab('delivery'); setPanelOpen('inspector', true);
+    if (clipDraftRef.current?.hasPendingComposition()) return;
+    markPanelIntent(); setShowTasks(false); setShowImage(false); setShowExports(false); setShowDelivery(true);
     exportPreflight.controller.setVisible(true);
     // Opening is passive. Only the explicit Check action runs capability/media work.
   }
   const historyState = timelineHistoryState({ projectId: data.project?.id, timeline, history: data.timelineHistory, busy: Boolean(busy['timeline:mutation']), pending: timelinePending, dirty: clipDirty || subtitleDirty, online: online && auth === true && !loading });
   const splitState = timelineSplitState({ projectId: data.project?.id, timeline, history: data.timelineHistory, busy: Boolean(busy['timeline:mutation']), pending: timelinePending, dirty: clipDirty || subtitleDirty, online: online && auth === true && !loading, selectedClipId: propertiesPage === 'subtitle' ? null : selectedClipId, playhead: effectivePlayhead, mode: workspaceMode });
   async function splitTimelineClip() {
+    if (application) return null;
     if (currentProject.current !== dataRef.current.project?.id) return null;
     const latest = timelineSplitState({ projectId: currentProject.current, timeline: dataRef.current.timeline, history: dataRef.current.timelineHistory, busy: isBusy('timeline:mutation'), pending: timelinePending, dirty: clipDirty || subtitleDirty, online: online && auth === true && !loading, selectedClipId: propertiesPage === 'subtitle' ? null : viewRef.current.editing.selectedClipId, playhead: timelineAudioPreviewPosition(audioPreview, viewRef.current.editing.playhead), mode: viewRef.current.activeMode });
     if (!latest.canSplit) return null;
@@ -1560,7 +1637,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     const onKeyDown = event => {
       if (viewRef.current.activeMode !== 'editing') return;
       const guards = { modalOpen: hasOpenWorkbenchModal(document) };
-      if (timelineSplitActionForKey(event, guards)) {
+      if (!application && timelineSplitActionForKey(event, guards)) {
         if (splitState.canSplit) { event.preventDefault(); splitTimelineClip(); }
         return;
       }
@@ -1573,6 +1650,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     return () => window.removeEventListener('keydown', onKeyDown);
   });
   async function mutateTimeline(operation, input = {}, expectedRevision, options) {
+    if (application?.isRestoredWorkspace(workspaceRef.current) && !['timeline.clip.update', 'timeline.undo', 'timeline.redo'].includes(operation)) return null;
     if (clipDraftRef.current?.hasPendingComposition()) return null;
     if (!dataRef.current.timeline) return null;
     if (tasksRef.current.blocked(currentProject.current, 'timeline:mutation') || timelinePending) { notify(msg('shell.timelinePending'), 'warning'); openTasks(); return null; }
@@ -1586,11 +1664,15 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     const clip = dataRef.current.timeline?.clips.find(c => c.id === id); if (!canDiscard() || !clip) return;
     setPropertiesPage('inspector');
     navigationEpoch.current++;
+    // Re-selecting the same clip can leave every view patch unchanged. Publish
+    // its new epoch before another popup binds to the previous render's scope.
+    setNavigationPresentation(value => value + 1);
     leaveReferencePage();
     updateView('editing', { selectedClipId: id, quickAssetId: null, playhead: clip.startFrame, ...(showPreview ? { previewKind: 'source' } : {}) });
     updateView('activeMode', 'editing'); setMobilePanel('canvas');
   }
   async function addTimelineAsset(assetId, trackId, startFrame, dropSnapshot) {
+    if (application?.isRestoredWorkspace(workspaceRef.current)) return;
     const panelChoice = panelIntent.current;
     if (dropSnapshot && dropSnapshot.projectId !== currentProject.current) return;
     if (!await guardNavigation(msg('shell.confirm.addTimeline'))) return;
@@ -1617,6 +1699,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
   }
   async function returnToSource(assetId) {
     const source = sourceForAsset(dataRef.current, assetId); if (!source) return;
+    if (application) return previewSource(source.asset);
     if (source.shot) { if (await inspect(source.shot.id, 'versions', source.version.id, { reveal: true })) revealCanvas(source.shot.id); }
     else if (source.node) { if (await inspect(source.node.id, 'settings', null, { reveal: true })) revealCanvas(source.node.id); }
     else {
@@ -1666,11 +1749,20 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
       ? await localDeliveryRef.current.controller.submit(input, { canExecute: () => isCurrent(captured) && (!sample || sampleContextKey === sampleExportContextKey()), nameCapture: deliveryCapture })
       : await run(`timeline:render:${purpose}`, 'timeline.render', input);
     if (sample) setExportPreviewAttempt(previous => previous?.input.requestId === input.requestId ? { ...previous, submitting: false, ...(result && isTimelineRenderRecord(result, input) ? { exportId: result.id, receipt: result } : {}) } : previous);
-    if (result) { const matchingDelivery = !deliveryCapture || deliveryNameRef.current?.controller.acknowledge(deliveryCapture, result); if (purpose === 'preview') { updateView('activeMode', 'editing'); setPreviewKind('timeline'); } else if (!sample && matchingDelivery && deliveryPanelChoice === panelIntent.current && deliveryProjectId === currentProject.current && deliveryRangeVersion === exportCheckContext().rangeVersion) openExportHistory(); notify(purpose === 'preview' ? msg('shell.previewRendering') : msg('shell.timelineExportStarted')); }
+    if (result) { const matchingDelivery = !deliveryCapture || deliveryNameRef.current?.controller.acknowledge(deliveryCapture, result); if (purpose === 'preview') { updateView('activeMode', 'editing'); setPreviewKind('timeline'); } else if (!sample && matchingDelivery && deliveryPanelChoice === panelIntent.current && deliveryProjectId === currentProject.current && deliveryRangeVersion === exportCheckContext().rangeVersion) { setDeliveryAttempt({ projectId: deliveryProjectId, id: result.id }); setShowExports(false); } notify(purpose === 'preview' ? msg('shell.previewRendering') : msg('shell.timelineExportStarted')); }
   }
   async function previewSource(asset) {
-    if (viewRef.current.activeMode === 'canvas') { setPreviewAsset(asset); return; }
     const owner = context();
+    if (viewRef.current.activeMode === 'canvas') {
+      const choice = panelIntent.current;
+      const current = () => isCurrent(owner) && viewRef.current.activeMode === 'canvas' && choice === panelIntent.current && dataRef.current.assets.some(item => item.id === asset.id && item.projectId === owner.projectId);
+      if (!current() || !await guardNavigation(msg('shell.confirm.viewCanvasSource'), false, current) || !current()) return;
+      navigationEpoch.current++;
+      leaveReferencePage(); setPropertiesPage('inspector');
+      updateView('canvas', { selectedId: null, selectedEdgeId: null, inspectorTab: 'settings', highlightedVersionId: null });
+      setPreviewAsset(asset); setPanelOpen('inspector', true, 'canvas');
+      return;
+    }
     if ((viewRef.current.editing.quickAssetId !== asset.id || subtitlesRef.current?.controller.hasUnsaved()) && !await guardNavigation(msg('shell.confirm.changeSource'))) return;
     if (!isCurrent(owner) || !dataRef.current.assets.some(item => item.id === asset.id && item.projectId === owner.projectId)) return;
     navigationEpoch.current++;
@@ -1701,7 +1793,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
   const chosenShot = data.shots.find(s => s.id === selectedId);
   const chosenNode = data.nodes.find(n => n.id === selectedId);
   const chosenClip = timeline?.clips.find(c => c.id === selectedClipId);
-  const liveClipInspector = chosenClip ? { key: `${data.project?.id}:${chosenClip.id}:${inspectorEpoch}`, scope: `${currentProject.current}:${projectEpoch.current}:${inspectorEpoch}`, projectId: currentProject.current, clip: chosenClip, timeline, asset: data.assets.find(a => a.id === chosenClip.assetId), restored } : null;
+  const liveClipInspector = chosenClip ? { key: `${data.project?.id}:${chosenClip.id}:${inspectorEpoch}`, scope: `${currentProject.current}:${projectEpoch.current}:${inspectorEpoch}`, projectId: currentProject.current, clip: chosenClip, timeline, asset: data.assets.find(a => a.id === chosenClip.assetId), restored, workspaceOrigin: workspace?.workspaceOrigin } : null;
   clipInspectorRetention.current = retainClipInspector(clipInspectorRetention.current, liveClipInspector, { pending: clipCompositionPending || Boolean(clipDraftRef.current?.hasPendingComposition()), dirty: clipDirty, connected: online && auth === true && !loading });
   const displayedClipInspector = clipInspectorRetention.current.snapshot;
   const clipInspectorRetained = clipInspectorRetention.current.retained;
@@ -1728,26 +1820,26 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
   const rangeSelectionEpoch = useRef({ key: null, serial: 0 });
   if (rangeSelectionEpoch.current.key !== rangeSelectionKey) rangeSelectionEpoch.current = { key: rangeSelectionKey, serial: rangeSelectionEpoch.current.serial + 1 };
   const sourceRangeScope = `${rangeSelectionKey}:${rangeSelectionEpoch.current.serial}`;
-  const sourceRanges = useSourceRange({ scope: sourceRangeScope, projectId: workbenchReady ? data.project?.id : null, asset: rangeAsset,
+  const sourceRanges = useSourceRange({ scope: sourceRangeScope, projectId: !application && workbenchReady ? data.project?.id : null, asset: rangeAsset,
     read: input => rpc('asset.range.get', input),
     save: input => run(`source-range:${input.assetId}`, 'asset.range.set', input, msg('shell.sourceRangeSaved'), { returnAfterNavigation: true }),
     refreshGeneration: sourceRangeRefresh[`${data.project?.id}:${rangeAsset?.id}`] || 0, onDirtyChange: setSourceDirty });
   const sourceRangeBlocked = !online || loading || Boolean(busy['canvas:mutation'] || timelineBusy || activePending.some(entry => isMutationOperation(entry.operation)));
-  const frameExtraction = useFrameExtraction({ projectId: workbenchReady ? data.project?.id : null, sourceScope: sourceRangeScope, sourceAsset: rangeAsset, assets: data.assets,
-    visible: workbenchReady && workspaceMode === 'editing' && Boolean(quickAssetId && rangeAsset) && (panelVisible('canvas') || panelVisible('inspector') && rightDockTab === 'properties'),
+  const frameExtraction = useFrameExtraction({ projectId: !application && workbenchReady ? data.project?.id : null, sourceScope: sourceRangeScope, sourceAsset: rangeAsset, assets: data.assets,
+    visible: !application && workbenchReady && workspaceMode === 'editing' && Boolean(quickAssetId && rangeAsset) && (panelVisible('canvas') || panelVisible('inspector') && rightDockTab === 'properties'),
     blocked: restored || sourceRangeBlocked || Object.values(busy).some(Boolean), rpc, createRequestId: requestId,
     onResult: projectId => { if (currentProject.current === projectId) void refresh(projectId); }, revealAsset: revealImageAsset });
 
   const dispositionScope = `${currentProject.current}:${projectEpoch.current}`;
   const dispositionBlocked = !online || loading || Boolean(busy['canvas:mutation'] || activePending.some(entry => isMutationOperation(entry.operation)));
-  const dispositions = useAssetDispositions({ scope: dispositionScope, projectId: workbenchReady ? data.project?.id : null, assets: data.assets,
+  const dispositions = useAssetDispositions({ scope: dispositionScope, projectId: !application && workbenchReady ? data.project?.id : null, assets: data.assets,
     read: input => rpc('asset.disposition.list', input),
     save: input => run(dispositionKey(input.assetId), 'asset.disposition.set', input, msg('shell.assetMarkSaved'), { returnAfterNavigation: true }),
     hasPending: projectId => pendingForProject(projectId, { strict: true, workspace: context().workspace || { restored: false }, activeOnly: true }).some(entry => isMutationOperation(entry.operation)),
     pendingState: activePending.some(entry => isMutationOperation(entry.operation)), blocked: dispositionBlocked, refreshGeneration: dispositionRefresh[data.project?.id] || 0 });
   const annotationScope = `${workspaceOriginScope(workspace)}:${currentProject.current}:${projectEpoch.current}`;
   const annotationBlocked = restored || !online || auth !== true || loading || dispositionBlocked;
-  const annotations = useAssetAnnotations({ scope: annotationScope, ownerScope: JSON.stringify([workspaceOriginScope(workspace), currentProject.current]), projectId: workbenchReady ? data.project?.id : null, assets: data.assets,
+  const annotations = useAssetAnnotations({ scope: annotationScope, ownerScope: JSON.stringify([workspaceOriginScope(workspace), currentProject.current]), projectId: !application && workbenchReady ? data.project?.id : null, assets: data.assets,
     read: input => rpc('asset.annotation.list', input),
     save: async input => { let failure; const result = await run(annotationKey(input.assetId), 'asset.annotation.set', input, msg('annotations.savedToast'), { returnAfterNavigation: true, errorMessage: annotationError, onFailure: (error, outcome) => { failure = { error, ...outcome }; } }); return { result, failure }; },
     canSave: () => !annotationBlocked,
@@ -1756,13 +1848,14 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     pendingState: activePending, refreshGeneration: annotationRefresh[data.project?.id] || 0, registry: nativeCloseRegistry.current });
   const subjectScope = `${currentProject.current}:${projectEpoch.current}:${inspectorEpoch}`;
   const subjectBlocked = !online || loading || tasksRef.current.blocked(currentProject.current, 'subject:mutation');
-  const subjects = useSubjects({ scope: subjectScope, projectId: workbenchReady ? data.project?.id : null, assets: data.assets, shotIds: data.shots.map(shot => shot.id),
+  const subjects = useSubjects({ scope: subjectScope, projectId: !application && workbenchReady ? data.project?.id : null, assets: data.assets, shotIds: data.shots.map(shot => shot.id),
     read: (operation, input) => rpc(operation, input),
     save: (operation, input, options) => runDurable('subject:mutation', operation, input, msg('shell.planningLinkSaved'), { ...options, returnAfterNavigation: true }),
     hasPending: projectId => tasksRef.current.blocked(projectId, 'subject:mutation'), blocked: subjectBlocked,
     pendingState: taskState, refreshGeneration: subjectRefresh[data.project?.id] || 0, onDirtyChange: setSubjectDirty });
   subjectsRef.current = subjects;
-  const librarySource = workspaceMode === 'editing' ? sourceAsset : previewAsset || data.assets.find(asset => asset.id === (chosenNode?.assetId || chosenVersion?.assetId || chosenShot?.referenceAssetIds?.[0]));
+  const selectedCanvasAsset = chosenNode?.assetId || chosenVersion?.assetId || chosenShot?.referenceAssetIds?.[0] || (!chosenNode && !chosenShot && canvasAssetSelectionRef.current?.projectId === currentProject.current && canvasAssetSelectionRef.current?.epoch === projectEpoch.current ? canvasAssetSelectionRef.current.id : null);
+  const librarySource = workspaceMode === 'editing' ? sourceAsset : previewAsset || data.assets.find(asset => asset.id === selectedCanvasAsset);
   const inUseAssetIds = new Set([...(timeline?.clips || []).map(clip => clip.assetId), ...data.nodes.map(node => node.assetId), ...data.shots.flatMap(shot => generationReferences(shot).references.map(reference => reference.assetId)), ...data.shots.map(shot => data.versions.find(version => version.id === shot.selectedVersionId)?.assetId)].filter(Boolean));
 
   const timelineJobs = [...data.exports].filter(e => e.mode === 'timeline').sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -1770,7 +1863,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
   const latestRender = timelineJobs.find(item => !data.restore?.heldExportIds.includes(item.id));
   const jobs = useMemo(() => [...data.jobs].sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [data.jobs]);
   const activeCount = restored ? 0 : jobs.filter(activeJob).length;
-  const taskCount = activeCount + activePending.length + activeTasks.length;
+  const activeRenderCount = restored ? 0 : timelineJobs.filter(item => ['queued','running'].includes(item.status) && !data.restore?.heldExportIds?.includes(item.id)).length;
+  const taskCount = activeCount + activeRenderCount + activePending.length + activeTasks.length;
   const selectedCount = data.shots.filter(s => s.selectedVersionId).length;
   const orderedExports = [...data.exports].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   useEffect(() => {
@@ -1783,62 +1877,79 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
   const visibleAssets = data.assets.filter(a => (assetFilter === 'all' || a.mimeType?.startsWith(`${assetFilter}/`)) && a.name.toLowerCase().includes(assetSearch.toLowerCase()));
   const guardRetainedInputInteraction = event => {
     if (!clipConnectionBlocked.current || !retainWorkbenchForClip) return;
-    if (event.target?.closest?.('[data-testid="clip-volume-envelope"], [data-retained-input-action]')) return;
+    if (event.target?.closest?.('[data-testid="clip-volume-envelope"], [data-testid="clip-opacity-envelope"], [data-retained-input-action]')) return;
     event.preventDefault(); event.stopPropagation();
   };
+  function imageEditScope() { return `${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}:${panelIntent.current}:${workspaceOriginScope(workspaceRef.current)}`; }
+  function isImageEditIntentCurrent(intent) {
+    return intent === imageEditIntentRef.current && !application && !restored && online && auth === true && !loading && projectSessionReady() && showImage && !webSettingsOpen &&
+      Boolean(imageEditIntentSource(intent, { scope: imageEditScope(), projectId: currentProject.current, assets: dataRef.current.assets }));
+  }
+  async function openImageEdit(asset) {
+    if (application || restored || !online || auth !== true || loading || !projectSessionReady() || clipDraftRef.current?.hasPendingComposition()) return false;
+    const captured = context(), epoch = projectEpoch.current, choice = panelIntent.current;
+    const intent = captureImageEditIntent({ id: requestId(), scope: imageEditScope(), projectId: currentProject.current, asset });
+    const current = () => Boolean(intent && isCurrent(captured) && epoch === projectEpoch.current && choice === panelIntent.current && !application && !restored && online && auth === true && !loading && projectSessionReady() && imageEditIntentSource(intent, { scope: imageEditScope(), projectId: currentProject.current, assets: dataRef.current.assets }));
+    if (!current() || !await guardNavigation(msg('shell.confirm.viewCanvasSource'), false, current) || !current()) return false;
+    // The image session owns its exact form-version guard. Opening only presents
+    // this source intent; existing image drafts still require its explicit choice.
+    markPanelIntent(); setShowTasks(false); setShowDelivery(false); setShowImage(true);
+    const next = captureImageEditIntent({ id: intent.id, scope: imageEditScope(), projectId: intent.projectId, asset });
+    if (!next) return false;
+    setImageEditIntent(next); return true;
+  }
   if (auth === false && !retainWorkbenchForClip) return <Login onLogin={boot} />;
   if ((auth === null || auth === 'error') && !retainWorkbenchForClip) return <div className="boot-page"><LanguageControl /><div className="brand"><span className="brand-mark"><BrandMark /></span>Mioon</div>{auth === null ? <><span className="spinner" /><p>{t('shell.connecting')}</p></> : <><h2>{t('shell.connectFailed')}</h2><p>{toast?.message ? renderImportFeedback(locale, toast.message) : t('shell.checkServer')}</p><Button variant="ghost" className="button primary" onClick={() => { setAuth(null); boot(); }}><Icon name="refresh" />{t('shell.reconnect')}</Button></>}</div>;
   if (nativeWindow && !workbenchReady && !retainWorkbenchForClip) return <EditorWindowOpening error={projectOpening.error} onRetry={() => { void selectProject(currentProject.current || nativeWindow.context.initialProjectId, false, true); }} onProjects={() => { void nativeProjectEntry?.show('open'); }} />;
-  const webSettingsCenter = nativeWindow ? null : <WebSettingsCenter key="global-settings-center" request={webSettingsRequest} registry={settingsNavigation.current} onOpenChange={setWebSettingsOpen} connectionsAvailable={!restored} renderSettings={props => <SettingsConnectionForms {...props} />} />;
-  if (!workbenchReady && !retainWorkbenchForClip) return <>{webSettingsCenter}<ProjectHome projects={projects} phase={projectOpening.phase === 'error' ? 'error' : loading || projectOpening.phase === 'opening' ? 'opening' : 'home'} openingName={projects.find(item => item.id === projectOpening.projectId)?.name || t('projects.project')} error={projectOpening.error} notice={toast?.message} busy={Boolean(busy['project-create'] || busy['project-create-flow'])} listBusy={projectListStatus.busy} listError={projectListStatus.error} page={homePage} onPage={changeHomePage} onOpen={id => { void selectProject(id); }} onRetry={() => { if (projectOpening.projectId) void selectProject(projectOpening.projectId, false, true); }} onRefresh={refreshHomeProjects} onCreate={createProject} status={<><LastProjectStatus state={lastProjectStatus || lastProjectRef.current.getState()} controller={lastProjectRef.current} restored={restored} />{restored && <RestoredUnavailable title={t('shell.restoredScope')} />}</>} settings={null} /></>;
-  return <>{webSettingsCenter}<main className={`workbench workbench-v2 dock-workbench ${geometry.narrow ? 'dock-narrow' : ''} mode-${workspaceMode} mobile-${mobilePanel} ${assetsCollapsed ? 'assets-collapsed' : ''} ${inspectorCollapsed ? 'inspector-collapsed' : ''} ${timelineCollapsed ? 'timeline-collapsed' : ''}`} data-testid="workbench" onClickCapture={guardRetainedInputInteraction} onKeyDownCapture={guardRetainedInputInteraction} onSubmitCapture={guardRetainedInputInteraction} data-workspace-mode={workspaceMode} data-narrow={geometry.narrow ? 'true' : 'false'} style={geometry.style}>
+  const webSettingsCenter = nativeWindow ? null : <WebSettingsCenter key="global-settings-center" request={webSettingsRequest} registry={settingsNavigation.current} onOpenChange={setWebSettingsOpen} connectionsAvailable={!application && !restored} renderSettings={props => <SettingsConnectionForms {...props} />} />;
+  if (!workbenchReady && !retainWorkbenchForClip) return <>{webSettingsCenter}<ProjectHome summaryEnabled={!application && !restored} summaryScope={preferenceScope.current || workspaceOriginScope(workspace)} projects={projects} phase={projectOpening.phase === 'error' ? 'error' : loading || projectOpening.phase === 'opening' ? 'opening' : 'home'} openingName={projects.find(item => item.id === projectOpening.projectId)?.name || t('projects.project')} error={projectOpening.error} notice={toast?.message} busy={Boolean(busy['project-create'] || busy['project-create-flow'])} listBusy={projectListStatus.busy} listError={projectListStatus.error} page={homePage} onPage={changeHomePage} onOpen={id => { void selectProject(id); }} onRetry={() => { if (projectOpening.projectId) void selectProject(projectOpening.projectId, false, true); }} onRefresh={refreshHomeProjects} onCreate={createProject} createDisabledReason={opacityRestored ? t('opacity.restored.createUnavailable') : ''} status={<><LastProjectStatus state={lastProjectStatus || lastProjectRef.current.getState()} controller={lastProjectRef.current} restored={restored} />{opacityRestored ? <OpacityRestoredNotice draftsPersistent={application?.supportsRestoredClipDrafts(workspace)} /> : restored && <RestoredUnavailable title={t('shell.restoredScope')} />}</>} settings={null} /></>;
+  return <>{webSettingsCenter}<main className={`workbench workbench-v2 dock-workbench shell-redesign ${geometry.narrow ? 'dock-narrow' : ''} ${geometry.compact ? 'dock-compact' : ''} mode-${workspaceMode} mobile-${mobilePanel} ${assetsCollapsed ? 'assets-collapsed' : ''} ${inspectorCollapsed ? 'inspector-collapsed' : ''} ${timelineCollapsed ? 'timeline-collapsed' : ''}`} data-testid="workbench" onClickCapture={guardRetainedInputInteraction} onKeyDownCapture={guardRetainedInputInteraction} onSubmitCapture={guardRetainedInputInteraction} data-workspace-mode={workspaceMode} data-narrow={geometry.narrow ? 'true' : 'false'} data-compact={geometry.compact ? 'true' : 'false'} style={geometry.style}>
     {retainWorkbenchForClip && clipConnectionBlocked.current && <div className="notice warning" role="status" data-testid="retained-clip-connection"><p>{t('volume.envelope.connectionRetained')}</p></div>}
     <WorkspaceVisibilityProvider visible={!comparisonId}>
-    <Input ref={fileInput} className="sr-only" type="file" accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,audio/mpeg,audio/wav,audio/mp4,.mp3,.wav,.m4a" multiple aria-label={t('assets.importLocal')} data-testid="asset-upload" onChange={e => importFiles(Array.from(e.target.files))} />
-    <header className="topbar"><a className="brand" href={window.location.pathname} onClick={nativeWindow ? event => { event.preventDefault(); void nativeProjectEntry?.show('open'); } : undefined} aria-label={t('shell.title')}><span className="brand-mark"><BrandMark /></span><span className="brand-name">Mioon</span></a><span className="topbar-divider" /><DropdownMenu open={showProjects} onOpenChange={setShowProjects}><DropdownMenuTrigger render={<Button variant="ghost" className="project-trigger" data-testid="project-switcher" />}><Icon name="folder" size={16} /><span>{data.project?.name || t('projects.choose')}</span><Icon name="down" size={13} /></DropdownMenuTrigger><DropdownMenuContent align="start" className="workbench-project-menu"><DropdownMenuGroup><DropdownMenuLabel>{t('projects.yourProjects')}</DropdownMenuLabel>{projects.map(p => <DropdownMenuItem key={p.id} onClick={() => nativeWindow ? nativeProjectEntry?.open(p.id) : selectProject(p.id)}><Icon name="folder" size={15} /><span>{p.name}</span>{p.id === data.project?.id && <Icon name="check" size={14} />}</DropdownMenuItem>)}</DropdownMenuGroup><DropdownMenuSeparator />{nativeWindow && <DropdownMenuItem onClick={() => { setShowProjects(false); void nativeProjectEntry?.show('open'); }}><Icon name="folder" size={15} />{t('projects.openWorkspace')}</DropdownMenuItem>}<DropdownMenuItem data-testid="timeline-format-open" disabled={!data.project || loading} onClick={openTimelineFormat}><Icon name="settings" size={15} />{t('shell.timelineOutput')}</DropdownMenuItem><DropdownMenuItem className="new-project-menu" onClick={() => { setShowProjects(false); if (nativeWindow) { void nativeProjectEntry?.show('new'); return; } setShowCreate(true); }}><Icon name="plus" size={15} />{t('projects.createNew')}</DropdownMenuItem></DropdownMenuContent></DropdownMenu><Tabs value={workspaceMode} onValueChange={changeMode} className="topbar-workspace"><TabsList className="segmented workspace-tabs" aria-label={t('shell.workspaceMode')} tabIndex={!data.project && !loading && workspaceMode === 'canvas' ? 0 : undefined} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined}><TabsTrigger value="canvas" disabled={loading || !data.project} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined} data-testid="workspace-canvas">{t('shell.canvas')}</TabsTrigger><TabsTrigger value="editing" disabled={loading || !data.project} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined} data-testid="workspace-editing">{t('shell.editing')}</TabsTrigger></TabsList></Tabs><details className="topbar-status" data-testid="topbar-status"><summary aria-label={t('shell.statusDetails')} title={t('shell.statusDetails')}><span className={`status-dot ${!online || ['error', 'conflict'].includes(preferenceStatus.phase) ? 'red' : inspectorDirty || formatDirty || annotations.state?.dirtyCount || preferenceStatus.pending ? 'orange' : 'green'}`} /><span className="topbar-status-label">{t('shell.status')}</span><Icon name="down" size={12} /></summary><div className="topbar-status-content"><TopbarSaveStatus online={online} syncing={Object.values(busy).some(Boolean)} dirty={inspectorDirty || formatDirty || Boolean(annotations.state?.dirtyCount)} lastSync={lastSync} preferenceStatus={preferenceStatus} onRetry={() => preferencesRef.current.flush({ projectId: currentProject.current })} onReload={reloadPreferences} /><>{nativeWindow ? <NativeLocatorStatus context={nativeWindow.context} bridge={nativeWindow.bridge} /> : <LastProjectStatus state={lastProjectStatus || lastProjectRef.current.getState()} controller={lastProjectRef.current} restored={workspace?.restored === true} />}</></div></details><div className="topbar-actions">
-      <Button type="button" variant="ghost" className="button quiet" data-testid="global-settings-open" onClick={() => openGlobalSettings()}><Icon name="settings" size={15} />{t('settings.title')}</Button>
-      <PanelsMenu mode={workspaceMode} assetsCollapsed={assetsCollapsed} inspectorCollapsed={inspectorCollapsed} timelineCollapsed={timelineCollapsed} storyboardOpen={sequenceOpen} onPanel={setPanelOpen} onReset={resetPanelLayout} disabled={loading || !data.project} />
-      <DropdownMenu><DropdownMenuTrigger render={<Button variant="ghost" className="button quiet workbench-actions-trigger" data-testid="workbench-actions" />}><Icon name="grid" size={15} /><span>{t('shell.actions')}</span>{taskCount > 0 && <span className="count-pill">{taskCount}</span>}<Icon name="down" size={13} /></DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="workbench-actions-menu">
-          <DropdownMenuGroup><DropdownMenuLabel>{t('shell.actions')}</DropdownMenuLabel>
-            <DropdownMenuItem data-testid="agent-chat-open" disabled={!data.project || loading} onClick={() => { setRightDockTab('agent'); setAgentPage('chat'); setPanelOpen('inspector', true); }}><Icon name="sparkle" size={15} />{t('shell.agentChat')}</DropdownMenuItem>
-            <DropdownMenuItem data-testid="agent-settings-open" onClick={() => openGlobalSettings('agent')}><Icon name="settings" size={14} />{t('shell.agentConnections')}</DropdownMenuItem>
-            <DropdownMenuItem data-testid="region-guide-toggle" aria-expanded={showGuide} onClick={() => setShowGuide(!showGuide)}><Icon name="info" size={15} />{t('shell.regionGuide')}</DropdownMenuItem>
-            <DropdownMenuItem data-testid="jobs-button" onClick={() => openTasks()}><Icon name="clock" size={16} />{t('shell.tasks')}{taskCount > 0 && <span className="count-pill">{taskCount}</span>}{data.project && taskState.phase !== 'ready' && <span className="count-pill" aria-label={t('shell.recoveryUnchecked')}>…</span>}</DropdownMenuItem>
-          </DropdownMenuGroup><DropdownMenuSeparator />
-          <DropdownMenuGroup><DropdownMenuLabel>{t('shell.exportTimeline')}</DropdownMenuLabel>
-            <DropdownMenuItem data-testid="export-history" onClick={openExportHistory}><Icon name="layers" size={16} />{t('shell.viewExports')}</DropdownMenuItem>
-            <DropdownMenuItem data-testid="export-button" disabled={!data.shots.length || selectedCount !== data.shots.length || busy.export} title={selectedCount !== data.shots.length ? t('shell.generateAllShots') : t('shell.exportStoryboardHint')} onClick={createExport}><Icon name="download" size={16} />{t('shell.exportStoryboard')}</DropdownMenuItem>
-            <DropdownMenuItem data-testid="export-timeline" disabled={!canOpenExport} onClick={openTimelineExport}><Icon name="download" size={15} />{t('shell.exportTimeline')}</DropdownMenuItem>
-          </DropdownMenuGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div></header>
+    <Input ref={fileInput} className="sr-only" type="file" disabled={opacityRestored} accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,audio/mpeg,audio/wav,audio/mp4,.mp3,.wav,.m4a" multiple aria-label={t('assets.importLocal')} data-testid="asset-upload" onChange={e => importFiles(Array.from(e.target.files))} />
+    <WorkbenchTopbar brand={<a className="brand" href={window.location.pathname} onClick={event => { event.preventDefault(); void showProjectHome(); }} aria-label={t('shell.title')}><span className="brand-name">Mioon</span></a>} projectMenu={<DropdownMenu open={showProjects} onOpenChange={setShowProjects}><DropdownMenuTrigger render={<Button variant="ghost" className="project-trigger" data-testid="project-switcher" />}><Icon name="folder" size={16} /><span>{data.project?.name || t('projects.choose')}</span><Icon name="down" size={13} /></DropdownMenuTrigger><DropdownMenuContent align="start" className="workbench-project-menu"><DropdownMenuGroup><DropdownMenuLabel>{t('projects.yourProjects')}</DropdownMenuLabel>{projects.map(p => <DropdownMenuItem key={p.id} onClick={() => nativeWindow ? nativeProjectEntry?.open(p.id) : selectProject(p.id)}><Icon name="folder" size={15} /><span>{p.name}</span>{p.id === data.project?.id && <Icon name="check" size={14} />}</DropdownMenuItem>)}</DropdownMenuGroup><DropdownMenuSeparator /><DropdownMenuItem onClick={() => { setShowProjects(false); if (nativeWindow) void nativeProjectEntry?.show('open'); else setShowProjectChooser(true); }}><Icon name="folder" size={15} />{t('projects.openWorkspace')}</DropdownMenuItem><DropdownMenuSub><DropdownMenuSubTrigger data-testid="panels-menu" disabled={loading || !data.project}><Icon name="grid" size={15} />{t('redesign.shell.view')}</DropdownMenuSubTrigger><DropdownMenuSubContent className="workspace-panels-menu"><DropdownMenuGroup><DropdownMenuLabel>{t('redesign.shell.view')}</DropdownMenuLabel>
+      <DropdownMenuCheckboxItem checked={!assetsCollapsed} data-testid="menu-panel-assets" onCheckedChange={open => setPanelOpen('assets', open)}>{t('assets.library')}</DropdownMenuCheckboxItem>
+      <DropdownMenuCheckboxItem checked={!inspectorCollapsed} data-testid="menu-panel-inspector" onCheckedChange={open => setPanelOpen('inspector', open)}>{t('shell.properties')}</DropdownMenuCheckboxItem>
+      {workspaceMode === 'editing' ? <DropdownMenuCheckboxItem checked={!timelineCollapsed} data-testid="menu-panel-timeline" onCheckedChange={open => setPanelOpen('timeline', open)}>{t('shell.panel.multitrack')}</DropdownMenuCheckboxItem> : <DropdownMenuCheckboxItem checked={sequenceOpen} data-testid="menu-panel-storyboard" onCheckedChange={open => setPanelOpen('storyboard', open)}>{t('storyboard.order')}</DropdownMenuCheckboxItem>}
+      </DropdownMenuGroup><DropdownMenuSeparator /><DropdownMenuItem data-testid="reset-panel-layout" onClick={resetPanelLayout}><Icon name="refresh" size={14} />{t('shell.panel.reset')}</DropdownMenuItem></DropdownMenuSubContent></DropdownMenuSub>
+      <DropdownMenuItem data-testid="export-button" disabled={Boolean(application) || !data.shots.length || selectedCount !== data.shots.length || busy.export} title={selectedCount !== data.shots.length ? t('shell.generateAllShots') : t('shell.exportStoryboardHint')} onClick={createExport}><Icon name="download" size={16} />{t('shell.exportStoryboard')}</DropdownMenuItem><DropdownMenuItem data-testid="timeline-format-open" disabled={Boolean(application) || !data.project || loading} onClick={openTimelineFormat}><Icon name="settings" size={15} />{t('shell.timelineOutput')}</DropdownMenuItem><DropdownMenuItem className="new-project-menu" disabled={opacityRestored} onClick={() => { setShowProjects(false); if (nativeWindow) { void nativeProjectEntry?.show('new'); return; } setShowCreate(true); }}><Icon name="plus" size={15} />{t('projects.createNew')}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>} modeSwitch={<Tabs value={workspaceMode} onValueChange={changeMode} className="topbar-workspace"><TabsList className="segmented workspace-tabs" aria-label={t('shell.workspaceMode')} tabIndex={!data.project && !loading && workspaceMode === 'canvas' ? 0 : undefined} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined}><TabsTrigger value="canvas" disabled={Boolean(application) || loading || !data.project} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined} data-testid="workspace-canvas">{t('shell.canvas')}</TabsTrigger><TabsTrigger value="editing" disabled={loading || !data.project} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined} data-testid="workspace-editing">{t('shell.editing')}</TabsTrigger></TabsList></Tabs>} status={<details className="topbar-status" data-testid="topbar-status"><summary aria-label={t('shell.statusDetails')} title={t('shell.statusDetails')}><span className={`status-dot ${!online || ['error', 'conflict'].includes(preferenceStatus.phase) ? 'red' : inspectorDirty || formatDirty || annotations.state?.dirtyCount || preferenceStatus.pending ? 'orange' : 'green'}`} /><span className="topbar-status-label">{t(!online ? 'redesign.shell.offline' : inspectorDirty || formatDirty || preferenceStatus.pending ? 'redesign.shell.draft' : 'redesign.shell.saved')}</span><Icon name="down" size={12} /></summary><div className="topbar-status-content"><TopbarSaveStatus online={online} syncing={Object.values(busy).some(Boolean)} dirty={inspectorDirty || formatDirty || Boolean(annotations.state?.dirtyCount)} lastSync={lastSync} preferenceStatus={preferenceStatus} onRetry={() => preferencesRef.current.flush({ projectId: currentProject.current })} onReload={reloadPreferences} /><UiPreferencesNotice /><>{nativeWindow ? <NativeLocatorStatus context={nativeWindow.context} bridge={nativeWindow.bridge} /> : <LastProjectStatus state={lastProjectStatus || lastProjectRef.current.getState()} controller={lastProjectRef.current} restored={workspace?.restored === true} />}</></div></details>} actions={<>
+      <TaskPopover scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}:${panelIntent.current}`} visible={!showTasks && !showDelivery && !showImage && !webSettingsOpen && !comparisonId} count={taskCount} uncertain={taskState.phase !== 'ready' || activePending.length > 0 || activeTasks.some(task => !['applied','not_applied'].includes(task.status))} items={[...jobs.slice(0,3).map(job => ({id:job.id,label:data.shots.find(shot=>shot.id===job.shotId)?.title || t('tasks.center.shotTask'),status:renderMessage(jobStatusDescriptor(job)),progress:!restored&&activeJob(job)?job.progress:undefined,tone:job.status==='failed'?'danger':job.status==='succeeded'?'success':'neutral'})),...orderedExports.filter(item=>item.mode==='timeline').slice(0,2).map(item=>({id:item.id,label:typeof item.snapshot?.deliveryName === 'string' ? item.snapshot.deliveryName : t('redesign.tasks.rendering'),status:renderMessage(statusDescriptor(item.status)),progress:!restored&&!data.restore?.heldExportIds?.includes(item.id)&&['queued','running'].includes(item.status)?item.progress:undefined,tone:item.status==='failed'?'danger':item.status==='succeeded'?'success':'neutral'}))]} onOpenTasks={() => openTasks()} />
+      <DropdownMenu><DropdownMenuTrigger render={<Button variant="ghost" className="icon-button" data-testid="workbench-actions" aria-label={t('redesign.shell.help')} title={t('redesign.shell.help')} />}><Icon name="info" size={16} /></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem data-testid="region-guide-toggle" aria-expanded={showGuide} onClick={() => setShowGuide(!showGuide)}><Icon name="info" size={15} />{t('shell.regionGuide')}</DropdownMenuItem><DropdownMenuItem data-testid="agent-settings-open" disabled={Boolean(application)} onClick={() => openGlobalSettings('agent')}><Icon name="settings" size={15} />{t('shell.agentConnections')}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
+      <Button type="button" variant="ghost" className="icon-button" data-testid="global-settings-open" aria-label={t('settings.title')} title={t('settings.title')} onClick={() => openGlobalSettings()}><Icon name="settings" size={16} /></Button>
+      {workspaceMode === 'editing' && <WorkbenchButton variant="primary" id="right-dock-delivery-tab" data-testid="export-timeline" disabled={!canOpenExport} onClick={openTimelineExport}><span data-testid="right-dock-tab-delivery">{t('redesign.shell.export')}</span></WorkbenchButton>}
+    </>} />
     {showGuide && <section className="region-guide" role="region" aria-label={t('shell.regionGuide')} data-testid="region-guide"><header><strong>{t('shell.guideTitle')}</strong><Button variant="ghost" className="icon-button" aria-label={t('shell.closeGuide')} onClick={() => setShowGuide(false)}><Icon name="close" size={16} /></Button></header><div><p><b>{t('shell.canvas')}</b>{t('shell.guideCanvas')}</p><p><b>{t('shell.editing')}</b>{t('shell.guideEditing')}</p><p><b>{t('shell.sharedAssets')}</b>{t('shell.guideAssets')}</p><p><b>{t('shell.guideTransitionTitle')}</b>{t('shell.guideTransition')}</p></div><footer>{t('shell.guideVersions')}</footer></section>}
     <div className="workspace-surface" ref={panelSurface} data-testid="workspace-surface">
-    {assetsCollapsed && <PanelRecall name="assets" label={t('assets.library')} icon="folder" onClick={() => setPanelOpen('assets', true)} />}
-    <PanelBoundary name="assets" visible={panelVisible('assets')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus={panelFallback('assets')}>
-    <AssetLibrary annotations={annotations} annotationBlocked={annotationBlocked} restored={restored} confirm={confirm} timelineUsage={timelineUsage} onLocateTimelineUse={locateAssetUse} subjects={subjects} subjectBlocked={subjectBlocked} onInspectShot={id => inspect(id, 'settings', null, { reveal: true })} onShowTasks={() => openTasks()} dispositions={dispositions} dispositionBlocked={dispositionBlocked} selectedAsset={librarySource} inUseAssetIds={inUseAssetIds} mode={workspaceMode} versions={data.versions} shots={data.shots} assets={data.assets} filter={assetFilter} onFilter={setAssetFilter} search={assetSearch} onSearch={setAssetSearch} onImport={() => data.project ? fileInput.current?.click() : setShowCreate(true)} onFiles={importFiles} onPreview={previewSource} onCanvas={addNode} onTimeline={addTimelineAsset} busy={{ ...busy, timeline: timelineBusy }} collapsed={assetsCollapsed} onCollapse={() => setAssetsCollapsed(true)} project={data.project} />
+    {assetsCollapsed && <PanelRecall name="assets" label={t('assets.library')} icon="folder" expanded={panelOverlay === 'assets'} onClick={() => togglePanelOverlay('assets')} />}
+    <PanelBoundary name="assets" className={panelOverlay === 'assets' ? 'panel-overlay' : ''} visible={panelVisible('assets')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus={panelFallback('assets')}>
+    <AssetLibrary mutationDisabled={opacityRestored} annotations={application ? undefined : annotations} annotationBlocked={annotationBlocked} restored={restored} confirm={confirm} timelineUsage={timelineUsage} onLocateTimelineUse={locateAssetUse} subjects={application ? undefined : subjects} subjectBlocked={subjectBlocked} onInspectShot={id => inspect(id, 'settings', null, { reveal: true })} onShowTasks={() => openTasks()} dispositions={application ? undefined : dispositions} dispositionBlocked={dispositionBlocked} selectedAsset={librarySource} inUseAssetIds={inUseAssetIds} mode={workspaceMode} versions={data.versions} shots={data.shots} assets={data.assets} filter={assetFilter} onFilter={setAssetFilter} search={assetSearch} onSearch={setAssetSearch} onImport={opacityRestored ? undefined : () => data.project ? fileInput.current?.click() : setShowCreate(true)} onFiles={opacityRestored ? undefined : importFiles} onPreview={previewSource} onCanvas={application ? undefined : addNode} onTimeline={opacityRestored ? undefined : addTimelineAsset} busy={{ ...busy, timeline: timelineBusy }} collapsed={assetsCollapsed && panelOverlay !== 'assets'} onCollapse={() => panelOverlay === 'assets' ? setPanelOverlay(null) : setAssetsCollapsed(true)} project={data.project} />
+    {panelOverlay === 'assets' && <div className="panel-overlay-tools"><Button variant="ghost" className="icon-button" data-testid="pin-assets" aria-label={t('redesign.shell.pin')} title={t('redesign.shell.pin')} onClick={() => setPanelOpen('assets', true)}><Icon name="lock" size={15} /></Button><Button variant="ghost" className="icon-button" aria-label={t('common.close')} onClick={() => setPanelOverlay(null)}><Icon name="close" size={15} /></Button></div>}
     {resizeHandle('assets', 'assetsWidth')}</PanelBoundary>
     <PanelBoundary name="canvas" visible={panelVisible('canvas')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus="[data-testid=mobile-panel-canvas]">
-    <section className="canvas-area" aria-label={workspaceMode === 'canvas' ? t('shell.canvasWorkspace') : t('shell.editingWorkspace')} data-testid="active-workspace">{workspaceMode === 'canvas' && <div className="canvas-heading"><div className="region-title"><h2>{t('shell.canvas')}</h2></div><div className="canvas-tools"><Button variant="ghost" className="button small" data-testid="add-text-node" onClick={() => addNode('text')}><Icon name="text" size={14} /><span>{t('shell.text')}</span></Button><Button variant="ghost" className="button small" data-testid="add-image-node" onClick={() => addNode('image')}><Icon name="image" size={14} /><span>{t('assets.image')}</span></Button><Button variant="ghost" className="button small" data-testid="add-video-node" onClick={() => addNode('video')}><Icon name="film" size={14} /><span>{t('assets.video')}</span></Button><Button variant="ghost" className="button small accent-outline" data-testid="add-shot" disabled={busy['shot-create']} onClick={addShot}><Icon name="plus" size={15} />{t('projects.addShot')}</Button></div></div>}
-      <div className="main-stage">{loading ? <div className="canvas-loading" data-testid="workspace-loading"><span className="spinner" />{t('projects.opening')}</div> : workspaceMode === 'canvas' ? <div className="flow-wrap" data-testid="canvas-drop-zone" onDragOver={e => { if (e.dataTransfer.types.includes(ASSET_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }} onDrop={canvasDrop}><ReactFlow key={data.project?.id || 'empty'} nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={changes => setNodes(ns => applyNodeChanges(changes, ns))} onNodeClick={(_, node) => inspect(node.id)} onNodeDoubleClick={(_, node) => { const record = dataRef.current.nodes.find(n => n.id === node.id); const shot = dataRef.current.shots.find(s => s.id === node.id); const version = dataRef.current.versions.find(v => v.id === shot?.selectedVersionId); const asset = dataRef.current.assets.find(a => a.id === (record?.assetId || version?.assetId || shot?.referenceAssetIds?.[0])); if (asset) previewSource(asset); }} onNodeDragStart={() => { dragging.current = true; }} onNodeDragStop={savePosition} onConnect={connect} onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)} onPaneClick={() => setSelectedEdgeId(null)} onEdgesDelete={deleted => { setSelectedEdgeId(null); deleted.filter(edge => !isReferenceEdge(dataRef.current.edges.find(item => item.id === edge.id))).forEach(edge => run(`delete-edge:${edge.id}`, 'edge.delete', { edgeId: edge.id })); }} onBeforeDelete={beforeDeleteEdges} onMove={(_, viewport) => setZoom(Math.round(viewport.zoom * 100))} onMoveEnd={(event, viewport) => { if (viewRef.current.activeMode === 'canvas' && data.project?.id === currentProject.current) updateView('canvas', { viewport }, { passive: !event }); }} defaultViewport={view.canvas.viewport || { x: 0, y: 0, zoom: 1 }} onInit={instance => { const captured = context(), saved = viewRef.current.canvas.viewport; requestAnimationFrame(() => { if (isCurrent(captured) && viewRef.current.activeMode === 'canvas') { if (saved) instance.setViewport(saved); else instance.fitView({ padding: canvasFitPadding(.16), minZoom: .65, maxZoom: 1 }); } }); }} fitView={!view.canvas.viewport} fitViewOptions={{ padding: 0.16, minZoom: .65, maxZoom: 1 }} minZoom={0.2} maxZoom={1.75} snapToGrid snapGrid={[12, 12]} defaultEdgeOptions={{ type: 'smoothstep' }} proOptions={{ hideAttribution: true }} deleteKeyCode={['Backspace', 'Delete']} colorMode="dark"><Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#34363b" />{miniMap && <MiniMap nodeColor={n => n.type === 'shot' ? '#b6c783' : '#6c7180'} maskColor="rgba(12,13,15,.8)" pannable zoomable />}</ReactFlow>
-      <div className="canvas-connection-legend" data-testid="connection-legend"><span><i className="reference-swatch" />{t('shell.referenceParticipates')}</span><span><i className="visual-swatch" />{t('shell.visualLinkOnly')}</span></div>
+    <section className="canvas-area" aria-label={workspaceMode === 'canvas' ? t('shell.canvasWorkspace') : t('shell.editingWorkspace')} data-testid="active-workspace">{workspaceMode === 'canvas' && <CanvasToolbar scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}`} visible={panelVisible('canvas')} addingShot={Boolean(busy['shot-create'])} imageDisabled={Boolean(application)} onAddShot={addShot} onAddText={() => addNode('text')} onAddImage={() => addNode('image')} onAddVideo={() => addNode('video')} onGenerateImage={() => { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setShowTasks(false); setShowDelivery(false); setShowImage(true); }} />}
+      <div className="main-stage">{loading ? <div className="canvas-loading" data-testid="workspace-loading"><span className="spinner" />{t('projects.opening')}</div> : workspaceMode === 'canvas' ? <div className="flow-wrap" data-testid="canvas-drop-zone" onDragOver={e => { if (e.dataTransfer.types.includes(ASSET_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }} onDrop={canvasDrop}><ReactFlow key={data.project?.id || 'empty'} nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={changes => setNodes(ns => applyNodeChanges(changes, ns))} onNodeClick={(_, node) => inspect(node.id)} onNodeDoubleClick={(_, node) => { const record = dataRef.current.nodes.find(n => n.id === node.id); const shot = dataRef.current.shots.find(s => s.id === node.id); const version = dataRef.current.versions.find(v => v.id === shot?.selectedVersionId); const asset = dataRef.current.assets.find(a => a.id === (record?.assetId || version?.assetId || shot?.referenceAssetIds?.[0])); if (asset) previewSource(asset); }} onNodeDragStart={() => { dragging.current = true; }} onNodeDragStop={savePosition} onConnect={connect} onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)} onPaneClick={() => setSelectedEdgeId(null)} onEdgesDelete={deleted => { setSelectedEdgeId(null); deleted.filter(edge => !isReferenceEdge(dataRef.current.edges.find(item => item.id === edge.id))).forEach(edge => run(`delete-edge:${edge.id}`, 'edge.delete', { edgeId: edge.id })); }} onBeforeDelete={beforeDeleteEdges} onMove={(_, viewport) => setZoom(Math.round(viewport.zoom * 100))} onMoveEnd={(event, viewport) => { if (viewRef.current.activeMode === 'canvas' && data.project?.id === currentProject.current) updateView('canvas', { viewport }, { passive: !event }); }} defaultViewport={view.canvas.viewport || { x: 0, y: 0, zoom: 1 }} onInit={instance => { const captured = context(), saved = viewRef.current.canvas.viewport; requestAnimationFrame(() => { if (isCurrent(captured) && viewRef.current.activeMode === 'canvas') { if (saved) instance.setViewport(saved); else instance.fitView({ padding: canvasFitPadding(.16), minZoom: .65, maxZoom: 1 }); } }); }} fitView={!view.canvas.viewport} fitViewOptions={{ padding: 0.16, minZoom: .65, maxZoom: 1 }} minZoom={0.2} maxZoom={1.75} snapToGrid snapGrid={[12, 12]} defaultEdgeOptions={{ type: 'smoothstep' }} proOptions={{ hideAttribution: true }} deleteKeyCode={['Backspace', 'Delete']} colorMode={resolvedTheme}><Background variant={BackgroundVariant.Dots} gap={24} size={1} color="var(--wb-line-subtle)" />{miniMap && <MiniMap nodeColor={n => n.type === 'shot' ? 'var(--wb-video-edge)' : 'var(--wb-muted)'} maskColor="var(--wb-overlay)" pannable zoomable />}</ReactFlow>
       {selectedEdge && <div className="selected-edge-note" data-testid="selected-edge-note">{isReferenceEdge(selectedEdge) ? <><Icon name="link" size={13} /><span>{t('shell.referenceLink')}</span><Button variant="ghost" size="sm" onClick={() => inspect(selectedEdge.target)}>{t('shell.viewDisconnect')}</Button></> : <><span>{t('shell.visualLinkNoGeneration')}</span><span className="muted">{t('shell.deleteKey')}</span></>}</div>}
-      {!data.project && !loading && <div className="canvas-empty"><div className="empty-composition"><div className="empty-mini-card"><Icon name="text" size={19} /><span>{t('shell.emptyIdea')}</span></div><span className="empty-connector" /><div className="empty-main-card"><Icon name="film" size={39} /><span>{t('shell.emptyPossibilities')}</span></div><span className="empty-connector" /><div className="empty-mini-card"><Icon name="sparkle" size={19} /><span>{t('shell.emptyFilm')}</span></div></div><div className="eyebrow">{t('shell.emptyEyebrow')}</div><h1>{t('shell.emptyTitle')}</h1><p id="workspace-mode-help">{t('shell.emptyCreateHint')}</p><Button variant="ghost" className="button primary" data-testid="empty-create-project" aria-describedby="workspace-mode-help" onClick={() => setShowCreate(true)}><Icon name="plus" size={16} />{t('projects.createFirst')}</Button></div>}
-      {data.project && !nodes.length && !loading && <div className="canvas-empty"><div className="empty-canvas-symbol"><Icon name="film" size={35} /><span className="small-plus">+</span></div><div className="eyebrow">{t('shell.blankEyebrow')}</div><h1>{t('projects.shotEmptyTitle')}</h1><p>{t('projects.shotEmptyHint')}</p><div className="empty-actions"><Button variant="ghost" className="button primary" onClick={addShot}><Icon name="plus" size={16} />{t('projects.createShot')}</Button><Button variant="ghost" className="button" data-testid="create-three-shots" disabled={busy.structure} onClick={addStructure}><Icon name="layers" size={16} />{t('projects.createStructure')}</Button></div></div>}
+      {(!data.project || !nodes.length) && !loading && <CanvasEmptyState hasProject={Boolean(data.project)} onAddShot={addShot} onCreateProject={() => setShowCreate(true)} onCreateStructure={addStructure} structureBusy={Boolean(busy.structure)} onImportReference={opacityRestored ? undefined : () => fileInput.current?.click()} onGenerateImage={() => { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setShowTasks(false); setShowDelivery(false); setShowImage(true); }} imageDisabled={Boolean(application)} />}
       {loading && <div className="canvas-loading"><span className="spinner" />{t('projects.opening')}</div>}
       <div className="canvas-controls"><WorkbenchTooltip content={t('shell.zoomOutCanvas')}><Button variant="ghost" className="icon-button" aria-label={t('shell.zoomOut')} onClick={() => flow.zoomOut({ duration: 150 })}><Icon name="minus" size={16} /></Button></WorkbenchTooltip><span>{zoom}%</span><WorkbenchTooltip content={t('shell.zoomInCanvas')}><Button variant="ghost" className="icon-button" aria-label={t('shell.zoomIn')} onClick={() => flow.zoomIn({ duration: 150 })}><Icon name="plus" size={16} /></Button></WorkbenchTooltip><i /><WorkbenchTooltip content={t('shell.fitCanvasHint')}><Button variant="ghost" className="icon-button" aria-label={t('shell.fitCanvas')} data-testid="fit-canvas" onClick={() => flow.fitView({ padding: canvasFitPadding(0.18), duration: 350, maxZoom: 1 })}><Icon name="zoom" size={16} /></Button></WorkbenchTooltip><Button variant="ghost" className={`icon-button ${miniMap ? 'active' : ''}`} aria-label={t('shell.showMinimap')} aria-pressed={miniMap} onClick={() => setMiniMap(!miniMap)}><Icon name="grid" size={16} /></Button></div><div className="canvas-hint"><Icon name="link" size={12} />{t('shell.canvasInteractionHint')}</div>
-      </div> : <div className="preview-tab-panel">{restored && <p className="helper muted" role="status">{t('shell.restoredFrameUnavailable')}</p>}<Preview onBeforePlay={beforeMainPreviewPlay} audioPreview={audioPreview} onRegisterMediaPause={registerNativePreviewPause} key={data.project?.id || 'empty'} visible={panelVisible('canvas')} kind={previewKind} onKind={kind => { navigationEpoch.current++; setPreviewKind(kind); }} asset={sourceAsset} clip={quickAssetId ? null : chosenClip} timeline={timeline} job={previewJob} pendingJob={latestRender} playhead={playhead} onSeek={setPlayhead} sourceScope={sourceRangeScope} sourcePosition={sourceRanges.state?.position ?? 0} sourceSeek={sourceRanges.state?.seek} onSourcePosition={(frame, scope) => sourceRanges.controller.position(frame, scope)} onCaptureFrame={frameExtraction.controller.capture} captureBusy={frameCaptureBusy(frameExtraction.state)} onRender={renderTimeline} busy={Boolean(busy['timeline:render:preview'])} onCanvas={() => changeMode('canvas')} onImport={() => data.project ? fileInput.current?.click() : setShowCreate(true)} canSeed={Boolean(sortedShots.length && selectedCount === sortedShots.length)} seedBusy={timelineBusy} onSeed={() => mutateTimeline('timeline.seed', {}, timeline?.revision)} /></div>}</div>
-    {workspaceMode === 'canvas' && <Collapsible open={sequenceOpen} onOpenChange={setSequenceOpen} className={`storyboard ${sequenceOpen ? '' : 'sequence-collapsed'}`} render={<section aria-label={t('storyboard.order')} />}><header><div><Icon name="film" size={16} /><h2>{t('storyboard.title')}</h2><span className="storyboard-summary">{t('storyboard.summary', { count: sortedShots.length, seconds: formatNumber(sortedShots.reduce((sum, s) => sum + Number(data.versions.find(v => v.id === s.selectedVersionId)?.snapshot?.duration || s.duration), 0)) })}</span></div><span className="order-hint"><Icon name="grip" size={13} />{t('storyboard.dragHint')}</span><Button variant="ghost" className="text-button" onClick={addShot}><Icon name="plus" size={14} />{t('shell.add')}</Button><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label={sequenceOpen ? t('storyboard.collapse') : t('storyboard.expand')} />}><Icon name={sequenceOpen ? 'minus' : 'plus'} size={14} /></CollapsibleTrigger></header><CollapsibleContent keepMounted className="storyboard-track" data-testid="storyboard">{sortedShots.map((shot, index) => { const v = data.versions.find(v => v.id === shot.selectedVersionId); const a = data.assets.find(a => a.id === shot.referenceAssetIds?.[0]); return <div key={shot.id} className={`storyboard-shot ${selectedId === shot.id ? 'selected' : ''} ${sequenceDrag === shot.id ? 'dragging' : ''}`} data-testid={`storyboard-shot-${shot.id}`} draggable={!busy.reorder} onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', shot.id); if (v?.assetId) e.dataTransfer.setData(ASSET_DRAG, v.assetId); e.dataTransfer.effectAllowed = 'copyMove'; setSequenceDrag(shot.id); }} onDragEnd={() => setSequenceDrag(null)} onDragOver={e => { if (sequenceDrag) e.preventDefault(); }} onDrop={e => { if (sequenceDrag) { e.preventDefault(); reorder(sequenceDrag, index); setSequenceDrag(null); } }}><Button variant="ghost" className="storyboard-preview" onClick={async () => { if (!await inspect(shot.id)) return; flow.fitView({ nodes: [{ id: shot.id }], padding: canvasFitPadding(.1), duration: 250, maxZoom: 1 }); }} aria-label={t('storyboard.select', { name: `${index + 1} ${shot.title}` })}><Media version={v} asset={a} /><span className="storyboard-index">{String(index + 1).padStart(2, '0')}</span><span className="storyboard-duration">{v?.snapshot?.duration || shot.duration}s</span>{v && <span className="storyboard-version">V{v.number}</span>}</Button><div className="storyboard-shot-meta"><span title={shot.title}>{shot.title}</span><div><Button variant="ghost" aria-label={t('storyboard.moveEarlier', { name: shot.title })} disabled={index === 0 || busy.reorder} onClick={() => reorder(shot.id, index - 1)}><Icon name="left" size={11} /></Button><Button variant="ghost" aria-label={t('storyboard.moveLater', { name: shot.title })} disabled={index === sortedShots.length - 1 || busy.reorder} onClick={() => reorder(shot.id, index + 1)}><Icon name="arrow" size={11} /></Button></div></div></div>; })}{!sortedShots.length ? <div className="storyboard-empty"><Icon name="film" size={22} /><span>{t('storyboard.empty')}</span></div> : <Button variant="ghost" className="storyboard-add" aria-label={t('storyboard.addNext')} onClick={addShot}><Icon name="plus" size={22} /><span>{t('storyboard.nextAct')}</span></Button>}</CollapsibleContent></Collapsible>}
+      </div> : <div className="preview-tab-panel">{restored && <p className="helper muted" role="status">{t('shell.restoredFrameUnavailable')}</p>}<Preview candidateConnected={online && auth === true && workbenchReady && !loading} opacityApplication={opacityApplication} heldExportIds={data.restore?.heldExportIds} onBeforePlay={beforeMainPreviewPlay} audioPreview={application ? undefined : audioPreview} onRegisterMediaPause={registerNativePreviewPause} key={data.project?.id || 'empty'} visible={panelVisible('canvas')} kind={previewKind} onKind={kind => { navigationEpoch.current++; setPreviewKind(kind); }} asset={sourceAsset} clip={quickAssetId ? null : chosenClip} timeline={timeline} job={previewJob} pendingJob={latestRender} playhead={playhead} onSeek={setPlayhead} sourceScope={sourceRangeScope} sourcePosition={sourceRanges.state?.position ?? 0} sourceSeek={sourceRanges.state?.seek} onSourcePosition={(frame, scope) => sourceRanges.controller.position(frame, scope)} onCaptureFrame={application ? undefined : frameExtraction.controller.capture} captureBusy={frameCaptureBusy(frameExtraction.state)} onRender={renderTimeline} busy={Boolean(busy['timeline:render:preview'])} onCanvas={application ? undefined : () => changeMode('canvas')} onImport={opacityRestored ? undefined : () => data.project ? fileInput.current?.click() : setShowCreate(true)} canSeed={!application && Boolean(sortedShots.length && selectedCount === sortedShots.length)} seedBusy={timelineBusy} onSeed={() => mutateTimeline('timeline.seed', {}, timeline?.revision)} /></div>}</div>
+    {workspaceMode === 'canvas' && <StoryboardStrip scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}`} open={sequenceOpen} onOpenChange={setSequenceOpen} shots={sortedShots} versions={data.versions} selectedId={selectedId || null} reordering={Boolean(busy.reorder)} assetDragType={ASSET_DRAG} onSelect={async shotId => { if (!await inspect(shotId)) return; flow.fitView({ nodes: [{ id: shotId }], padding: canvasFitPadding(.1), duration: 250, maxZoom: 1 }); }} onReorder={reorder} onAddShot={addShot} renderThumbnail={shot => <Media version={data.versions.find(version => version.id === shot.selectedVersionId)} asset={data.assets.find(asset => asset.id === shot.referenceAssetIds?.[0])} />} />}
     </section></PanelBoundary>
-    {inspectorCollapsed && <PanelRecall name="inspector" label={rightDockTab === 'agent' ? 'Agent' : rightDockTab === 'image' ? t('shell.images') : rightDockTab === 'delivery' ? t('shell.deliveryChecks') : rightDockTab === 'tasks' ? t('shell.tasks') : t('shell.properties')} icon="settings" onClick={() => setPanelOpen('inspector', true)} />}
-    <PanelBoundary name="inspector" visible={panelVisible('inspector')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus={panelFallback('inspector')}>
-    <Collapsible open={!inspectorCollapsed} onOpenChange={open => setInspectorCollapsed(!open)} className={`inspector-region ${inspectorCollapsed ? 'panel-collapsed' : ''}`} render={<section aria-label={t('shell.inspectorTabs')} />}><header className="inspector-region-heading"><Tabs value={rightDockTab} onValueChange={value => { if (['properties', 'agent', 'image', 'delivery', 'tasks'].includes(value)) { markPanelIntent(); setRightDockTab(value); } }} className="right-dock-tabs"><TabsList aria-label={t('shell.rightWorkspace')} className="segmented"><TabsTrigger id="right-dock-properties-tab" value="properties" data-testid="right-dock-tab-properties" aria-controls="right-dock-properties">{t('shell.properties')}</TabsTrigger><TabsTrigger id="right-dock-agent-tab" value="agent" data-testid="right-dock-tab-agent" aria-controls="right-dock-agent"><Icon name="sparkle" size={12} />{t('shell.agentLabel')}</TabsTrigger><TabsTrigger id="right-dock-image-tab" value="image" data-testid="right-dock-tab-image" aria-controls="right-dock-image">{t('shell.images')}</TabsTrigger><TabsTrigger id="right-dock-delivery-tab" value="delivery" data-testid="right-dock-tab-delivery" aria-controls="right-dock-delivery">{t('shell.deliveryChecks')}</TabsTrigger><TabsTrigger id="right-dock-tasks-tab" value="tasks" data-testid="right-dock-tab-tasks" aria-controls="right-dock-tasks">{t('shell.tasks')}</TabsTrigger></TabsList></Tabs><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label={t('shell.collapseInspector')} title={t('shell.collapseInspector')} data-testid="toggle-inspector" />}><Icon name="minus" size={16} /></CollapsibleTrigger></header><RestoredWorkspace workspace={workspace} /><CollapsibleContent keepMounted className="inspector-region-content"><AgentDockPane id="right-dock-properties" labelledBy="right-dock-properties-tab" visible={rightDockTab === 'properties'} fallbackFocus="[data-testid=right-dock-tab-agent]"><AgentDockPane id="properties-inspector-pane" visible={propertiesPage === 'inspector' || propertiesPage === 'subtitle' && workspaceMode === 'canvas'} fallbackFocus="[data-testid=timeline-format-back]">{workspaceMode === 'canvas' ? <div className="inspector-container">
-    <Inspector shotTextContext={{ ...shotTextContext(), getCurrent: shotTextContext }} onShotTextController={registerShotText} onShotTextAccepted={({ response }) => { if (currentProject.current === response.projectId) void refresh(response.projectId); }} generationUnavailableReason={generationUnavailableReason} actionScopeKey={`${rightDockTab}:${propertiesPage}`} subjects={subjects} subjectBlocked={subjectBlocked} key={`${data.project?.id}:${selectedId || 'empty'}:${inspectorEpoch}`} highlightedVersionId={highlightedVersionId} shot={chosenShot} node={chosenNode} project={data.project} assets={data.assets} versions={data.versions} jobs={jobs} providers={providers} generationOptions={generationOptions[selectedId]} onGenerationOptionsChange={updateGenerationOptions} tab={tab} setTab={setTab} busy={busy} onSave={saveShot} onNodeSave={saveNode} onGenerate={generate} onSelectVersion={selectVersion} onCompare={setComparisonId} onOpenJobs={() => openTasks()} onDirtyChange={setShotDirty} shots={sortedShots} nodes={data.nodes} edges={data.edges} referenceBusy={referenceBusy} referencePending={referencePending} onAttachReference={attachReference} onDetachReference={detachReference} onInspect={(id, nextTab) => inspect(id, nextTab, null, { reveal: true })} onAddVersion={assetId => addTimelineAsset(assetId)} />
-    </div> : quickAssetId && sourceAsset ? <SourceRangeInspector asset={sourceAsset} state={sourceRanges.state} controller={sourceRanges.controller} timeline={timeline} blocked={sourceRangeBlocked} onAdd={addSavedSourceRange}>{restored ? <RestoredUnavailable title={t('shell.restoredFramesRetained')} /> : <FrameExtractionPanel controller={frameExtraction.controller} />}</SourceRangeInspector> : displayedClipInspector ? <TimelineInspector key={displayedClipInspector.key} loudnessContext={clipLoudnessContext} loudnessInvocation={() => pinNewWorkspaceIntent({}, workspaceRef.current)} onLoudnessUnauthorized={() => setAuth(false)} onReturnToSource={!clipInspectorRetained && clipSource ? () => returnToSource(displayedClipInspector.clip.assetId) : undefined} sourceDescription={clipSource?.version && displayedClipInspector.clip.versionId === clipSource.version.id ? `${clipSource.shot.title} · V${clipSource.version.number}` : clipSource?.asset.name} replacementContext={clipReplacementContext()} staleSource={staleClips.get(displayedClipInspector.clip.id)} onReplaceSource={replaceTimelineClipSource} onOpenRequests={() => openTasks()} clip={displayedClipInspector.clip} timeline={displayedClipInspector.timeline} asset={displayedClipInspector.asset} draftContext={{ scope: displayedClipInspector.scope, projectId: displayedClipInspector.projectId, restored: displayedClipInspector.restored, audioRoleEditable, audioRoleCapability, volumeEnvelopeEditable: !clipInspectorRetained && volumeEnvelopeEditable && online && auth === true, volumeEnvelopeCapability }} draftConnected={!clipInspectorRetained && online && auth === true && !loading} onCompositionPendingChange={setClipCompositionPending} onDraftController={registerClipDraft} onReviewBlockedChange={setAgentClipDraftBlocked} onSave={(clipId, patch, revision, draftOptions) => mutateTimeline('timeline.clip.update', { clipId, patch }, revision, { returnAfterNavigation: true, canExecute: draftOptions?.canExecute })} onRemove={async clipId => { const result = await mutateTimeline('timeline.clip.remove', { clipId }); if (result) setSelectedClipId(null); }} onDirtyChange={setClipDirty} busy={timelineBusy} onPreview={() => { setQuickAssetId(null); setPreviewKind('source'); }} /> : <aside className="inspector" data-testid="editing-inspector-empty"><header className="inspector-heading"><Icon name="layers" /><span>{t('shell.clipProperties')}</span></header><div className="inspector-empty"><h3>{t('shell.selectTimelineClip')}</h3><p>{t('shell.clipPropertiesHint')}</p></div></aside>}</AgentDockPane><AgentDockPane id="properties-subtitle-pane" visible={propertiesPage === 'subtitle' && workspaceMode === 'editing'} fallbackFocus="[data-testid=right-dock-tab-properties]"><SubtitleInspector state={subtitles.state} controller={subtitles.controller} renderJob={previewJob} onBack={() => setPropertiesPage('inspector')} onOpenTasks={() => openTasks()} /></AgentDockPane><AgentDockPane id="properties-format-pane" visible={propertiesPage === 'format'} fallbackFocus="[data-testid=right-dock-tab-properties]"><TimelineFormatPanel state={timelineFormat.state} controller={timelineFormat.controller} onBack={() => setPropertiesPage('inspector')} onOpenTasks={() => openTasks()} /></AgentDockPane>{restored ? <RestoredUnavailable title={t('shell.restoredNoBackup')} backup /> : <WorkspaceBackupPanel scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}`} getScope={() => `${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}`} connected={online && auth === true && !loading} read={(input, options) => rpc('workspace.backup.inspect', input, options)} onUnauthorized={() => setAuth(false)} />}</AgentDockPane><AgentDockPane id="right-dock-agent" labelledBy="right-dock-agent-tab" visible={rightDockTab === 'agent'} fallbackFocus="[data-testid=right-dock-tab-properties]">{restored ? <RestoredUnavailable title={t('shell.restoredAgentHistory')} /> : <AgentWorkspace onOpenSettings={openGlobalSettings} settingsOverlayOpen={webSettingsOpen} nativeSettingsScope={nativeSettingsScope} nativeCloseRegistry={nativeCloseRegistry.current} navigationRegistry={settingsNavigation.current} projectId={data.project?.id} projectName={data.project?.name} selectedShot={chosenShot ? { id: chosenShot.id, revision: chosenShot.revision, title: chosenShot.title, prompt: chosenShot.prompt || '' } : null} selectedTimelineClip={agentTimelineSelection} timelineEditBlockedReason={agentTimelineBlockedReason} timelineEditBlockedDescriptor={agentTimelineBlockedDescriptor} selectedTimelineGainClip={agentTimelineGainSelection} timelineGainBlockedReason={gainBlockedReason} timelineGainBlockedDescriptor={gainBlockedDescriptor} onApplied={projectId => { if (currentProject.current === projectId) void refresh(projectId); }} page={agentPage} onPage={setAgentPage} onCollapse={() => setPanelOpen('inspector', false)} onDraftChange={onAgentDraftChange} />}</AgentDockPane><AgentDockPane id="right-dock-image" labelledBy="right-dock-image-tab" visible={rightDockTab === 'image'} fallbackFocus="[data-testid=right-dock-tab-properties]">{restored ? <RestoredUnavailable title={t('shell.restoredImageHistory')} /> : <ImageGeneration onOpenSettings={openGlobalSettings} settingsOverlayOpen={webSettingsOpen} nativeSettingsScope={nativeSettingsScope} nativeCloseRegistry={nativeCloseRegistry.current} navigationRegistry={settingsNavigation.current} key={data.project?.id || 'no-project'} projectId={data.project?.id} projectName={data.project?.name} projectAssets={data.assets} onDirtyChange={onImageDraftChange} onGenerated={projectId => { if (currentProject.current === projectId) void refresh(projectId); }} onRevealAsset={revealImageAsset} />}</AgentDockPane><AgentDockPane id="right-dock-delivery" labelledBy="right-dock-delivery-tab" visible={rightDockTab === 'delivery'} fallbackFocus="[data-testid=right-dock-tab-properties]"><DeliveryWorkspace page={showExports ? 'history' : 'compose'} onPage={page => { markPanelIntent(); setShowExports(page === 'history'); }}><AgentDockPane id="delivery-compose-pane" labelledBy="delivery-compose-tab" visible={!showExports} fallbackFocus="[data-testid=delivery-page-history]"><TimelineExportPreflight preview={<ExportPreview
+    {inspectorCollapsed && <PanelRecall name="inspector" label={rightDockTab === 'agent' ? t('redesign.shell.agent') : t('shell.properties')} icon="settings" expanded={panelOverlay === 'inspector'} onClick={() => togglePanelOverlay('inspector')} />}
+    <PanelBoundary name="inspector" className={panelOverlay === 'inspector' ? 'panel-overlay' : ''} visible={panelVisible('inspector')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus={panelFallback('inspector')}>
+    <Collapsible open={!inspectorCollapsed || panelOverlay === 'inspector'} onOpenChange={open => { if (!open && panelOverlay === 'inspector') setPanelOverlay(null); else setInspectorCollapsed(!open); }} className={`inspector-region ${inspectorCollapsed && panelOverlay !== 'inspector' ? 'panel-collapsed' : ''}`} render={<section aria-label={t('shell.inspectorTabs')} />}><header className="inspector-region-heading"><WorkbenchInspectorTabs mode={workspaceMode} value={rightDockTab === 'agent' ? 'agent' : workspaceMode === 'canvas' && tab === 'versions' ? 'versions' : 'properties'} agentDisabled={Boolean(application)} labels={{ workspace: t('shell.rightWorkspace'), properties: t('shell.properties'), versions: t('redesign.shell.versions'), agent: t('redesign.shell.agent') }} onValueChange={value => { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); if (value === 'agent') { setRightDockTab('agent'); setAgentPage('chat'); } else { setRightDockTab('properties'); if (workspaceMode === 'canvas') setTab(value === 'versions' ? 'versions' : 'settings'); } }} /><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label={t('shell.collapseInspector')} title={t('shell.collapseInspector')} data-testid="toggle-inspector" />}><Icon name="minus" size={16} /></CollapsibleTrigger></header><RestoredWorkspace workspace={workspace} />{opacityRestored && <OpacityRestoredNotice draftsPersistent={application?.supportsRestoredClipDrafts(workspace)} />}<CollapsibleContent keepMounted className="inspector-region-content"><AgentDockPane id="right-dock-properties" labelledBy="right-dock-properties-tab" visible={rightDockTab === 'properties'} fallbackFocus="[data-testid=right-dock-tab-agent]"><AgentDockPane id="properties-inspector-pane" visible={propertiesPage === 'inspector' || propertiesPage === 'subtitle' && workspaceMode === 'canvas'} fallbackFocus="[data-testid=timeline-format-back]">{workspaceMode === 'canvas' ? <div className="inspector-container">
+    <Inspector onEditImage={!application && !restored ? openImageEdit : undefined} annotations={application ? undefined : annotations} annotationAsset={librarySource} annotationBlocked={annotationBlocked} restored={restored} onShowTasks={() => openTasks()} shotTextContext={{ ...shotTextContext(), getCurrent: shotTextContext }} onShotTextController={registerShotText} onShotTextAccepted={({ response }) => { if (currentProject.current === response.projectId) void refresh(response.projectId); }} generationUnavailableReason={generationUnavailableReason} actionScopeKey={`${rightDockTab}:${propertiesPage}`} subjects={application ? undefined : subjects} subjectBlocked={subjectBlocked} key={`${data.project?.id}:${selectedId || 'empty'}:${inspectorEpoch}`} highlightedVersionId={highlightedVersionId} shot={chosenShot} node={chosenNode} project={data.project} assets={data.assets} versions={data.versions} jobs={jobs} providers={providers} generationOptions={generationOptions[selectedId]} onGenerationOptionsChange={updateGenerationOptions} tab={tab} setTab={setTab} busy={busy} onSave={saveShot} onNodeSave={saveNode} onGenerate={generate} onSelectVersion={selectVersion} onCompare={setComparisonId} onOpenJobs={() => openTasks()} onDirtyChange={setShotDirty} shots={sortedShots} nodes={data.nodes} edges={data.edges} referenceBusy={referenceBusy} referencePending={referencePending} onAttachReference={attachReference} onDetachReference={detachReference} onInspect={(id, nextTab) => inspect(id, nextTab, null, { reveal: true })} onAddVersion={assetId => addTimelineAsset(assetId)} />
+    </div> : quickAssetId && sourceAsset ? application ? <aside className="inspector" data-testid="candidate-source-inspector"><header className="inspector-heading"><Icon name="film" /><span>{sourceAsset.name}</span></header><div className="inspector-scroll"><Button data-testid="candidate-source-add" disabled={opacityRestored || timelineBusy} onClick={() => addTimelineAsset(sourceAsset.id)}>{t('assets.addToEditing')}</Button></div></aside> : <SourceRangeInspector asset={sourceAsset} state={sourceRanges.state} controller={sourceRanges.controller} timeline={timeline} blocked={sourceRangeBlocked} onAdd={addSavedSourceRange}>{restored ? <RestoredUnavailable title={t('shell.restoredFramesRetained')} /> : <FrameExtractionPanel controller={frameExtraction.controller} />}</SourceRangeInspector> : displayedClipInspector ? <TimelineInspector key={displayedClipInspector.key} loudnessContext={clipLoudnessContext} loudnessInvocation={() => pinNewWorkspaceIntent({}, workspaceRef.current)} onLoudnessUnauthorized={() => setAuth(false)} onReturnToSource={!clipInspectorRetained && clipSource ? () => returnToSource(displayedClipInspector.clip.assetId) : undefined} sourceDescription={clipSource?.version && displayedClipInspector.clip.versionId === clipSource.version.id ? `${clipSource.shot.title} · V${clipSource.version.number}` : clipSource?.asset.name} replacementContext={clipReplacementContext()} staleSource={staleClips.get(displayedClipInspector.clip.id)} opacityCandidate={application?.inspectorBinding} onReplaceSource={application ? undefined : replaceTimelineClipSource} onOpenRequests={() => openTasks()} clip={displayedClipInspector.clip} timeline={displayedClipInspector.timeline} asset={displayedClipInspector.asset} draftContext={{ scope: displayedClipInspector.scope, projectId: displayedClipInspector.projectId, restored: displayedClipInspector.restored, workspaceOrigin: displayedClipInspector.workspaceOrigin, audioRoleEditable, audioRoleCapability, volumeEnvelopeEditable: !clipInspectorRetained && volumeEnvelopeEditable && online && auth === true, volumeEnvelopeCapability }} draftConnected={!clipInspectorRetained && online && auth === true && !loading} onCompositionPendingChange={setClipCompositionPending} onDraftController={registerClipDraft} onReviewBlockedChange={setAgentClipDraftBlocked} onSave={(clipId, patch, revision, draftOptions) => mutateTimeline('timeline.clip.update', { clipId, patch }, revision, { returnAfterNavigation: true, canExecute: draftOptions?.canExecute })} onRemove={opacityRestored ? undefined : async clipId => { const result = await mutateTimeline('timeline.clip.remove', { clipId }); if (result) setSelectedClipId(null); }} onRippleRemove={opacityRestored ? undefined : async clipId => { const result = await mutateTimeline('timeline.clip.rippleRemove', { clipId }); if (result) setSelectedClipId(null); }} onDirtyChange={setClipDirty} busy={timelineBusy} onPreview={() => { setQuickAssetId(null); setPreviewKind('source'); }} /> : <aside className="inspector" data-testid="editing-inspector-empty"><header className="inspector-heading"><Icon name="layers" /><span>{t('shell.clipProperties')}</span></header><div className="inspector-empty"><h3>{t('shell.selectTimelineClip')}</h3><p>{t('shell.clipPropertiesHint')}</p></div></aside>}</AgentDockPane><AgentDockPane id="properties-subtitle-pane" visible={propertiesPage === 'subtitle' && workspaceMode === 'editing'} fallbackFocus="[data-testid=right-dock-tab-properties]"><SubtitleInspector state={subtitles.state} controller={subtitles.controller} renderJob={previewJob} onBack={() => setPropertiesPage('inspector')} onOpenTasks={() => openTasks()} /></AgentDockPane><AgentDockPane id="properties-format-pane" visible={propertiesPage === 'format'} fallbackFocus="[data-testid=right-dock-tab-properties]"><TimelineFormatPanel state={timelineFormat.state} controller={timelineFormat.controller} onBack={() => setPropertiesPage('inspector')} onOpenTasks={() => openTasks()} /></AgentDockPane></AgentDockPane><AgentDockPane id="right-dock-agent" labelledBy="right-dock-agent-tab" visible={rightDockTab === 'agent'} fallbackFocus="[data-testid=right-dock-tab-properties]">{restored ? <RestoredUnavailable title={t('shell.restoredAgentHistory')} /> : !application && <AgentWorkspace onOpenSettings={openGlobalSettings} settingsOverlayOpen={webSettingsOpen} nativeSettingsScope={nativeSettingsScope} nativeCloseRegistry={nativeCloseRegistry.current} navigationRegistry={settingsNavigation.current} projectId={data.project?.id} projectName={data.project?.name} selectedShot={chosenShot ? { id: chosenShot.id, revision: chosenShot.revision, title: chosenShot.title, prompt: chosenShot.prompt || '' } : null} selectedTimelineClip={agentTimelineSelection} timelineEditBlockedReason={agentTimelineBlockedReason} timelineEditBlockedDescriptor={agentTimelineBlockedDescriptor} selectedTimelineGainClip={agentTimelineGainSelection} timelineGainBlockedReason={gainBlockedReason} timelineGainBlockedDescriptor={gainBlockedDescriptor} onApplied={projectId => { if (currentProject.current === projectId) void refresh(projectId); }} page={agentPage} onPage={setAgentPage} onCollapse={() => setPanelOpen('inspector', false)} onDraftChange={onAgentDraftChange} />}</AgentDockPane></CollapsibleContent></Collapsible>
+    {panelOverlay === 'inspector' && <div className="panel-overlay-tools"><Button variant="ghost" className="icon-button" data-testid="pin-inspector" aria-label={t('redesign.shell.pin')} title={t('redesign.shell.pin')} onClick={() => setPanelOpen('inspector', true)}><Icon name="lock" size={15} /></Button><Button variant="ghost" className="icon-button" aria-label={t('common.close')} onClick={() => setPanelOverlay(null)}><Icon name="close" size={15} /></Button></div>}
+    {resizeHandle('inspector', 'inspectorWidth')}</PanelBoundary>
+    {workspaceMode === 'editing' && data.project && !loading && <><PanelBoundary name="timeline" visible={timelineContainerVisible} scope={`${currentProject.current}:editing`} fallbackFocus={panelFallback('timeline')}>{resizeHandle('timeline', 'timelineHeight')}<Timeline basicEditingOnly={Boolean(application)} structureReadOnly={opacityRestored} sessionViewOnly={opacityRestored} staleClips={staleClips} waveformReadOnly={Boolean(application) || restored} workspaceOrigin={workspace?.workspaceOrigin} key={data.project.id} viewState={view.editing} onViewStateChange={(patch, options) => { if (data.project?.id === currentProject.current && viewRef.current.activeMode === 'editing') updateView('editing', patch, options); }} timeline={timeline} historyState={historyState} onHistory={changeTimelineHistory} splitState={splitState} onSplit={splitTimelineClip} assets={data.assets} selectedClipId={propertiesPage === 'subtitle' ? null : selectedClipId} selectedCueId={propertiesPage === 'subtitle' ? subtitles.state?.cueId : null} onSelectSubtitle={cueId => openSubtitle(cueId)} onAddSubtitle={frame => openSubtitle(null, frame)} subtitleBlocked={!subtitles.state?.connected} onSelectClip={selectClip} onAddAsset={addTimelineAsset} onMoveClip={moveTimelineClip} removalBlocked={clipDirty || subtitleDirty || formatDirty || timelinePending || !online || loading || auth !== true} onRemove={opacityRestored ? undefined : async clipId => { const result = await mutateTimeline('timeline.clip.remove', { clipId }); if (result) setSelectedClipId(null); }} onRippleRemove={opacityRestored ? undefined : async clipId => { const result = await mutateTimeline('timeline.clip.rippleRemove', { clipId }); if (result) setSelectedClipId(null); }} onTrackAdd={kind => mutateTimeline('timeline.track.add', { kind })} onTrackUpdate={(trackId, patch) => mutateTimeline('timeline.track.update', { trackId, patch })} onSeed={() => mutateTimeline('timeline.seed', {}, timeline?.revision)} onRender={renderTimeline} onSeek={seekTimelineSound} playhead={effectivePlayhead} presentationVisible={timelineContainerVisible} visible={panelVisible('timeline')} collapsed={timelineCollapsed} onCollapse={toggleTimelinePanel} busy={timelineBusy} canSeed={!application && Boolean(sortedShots.length && selectedCount === sortedShots.length)} renderJob={latestRender} /></PanelBoundary>{timelineCollapsed && geometry.narrow && <PanelRecall name="timeline" label={t('shell.timeline')} icon="layers" onClick={() => setPanelOpen('timeline', true)} />}</>}
+    </div>
+    <nav className="mobile-nav" aria-label={t('shell.mobileNavigation')}>{[['assets', 'folder', t('assets.assets')], ['canvas', workspaceMode === 'canvas' ? 'grid' : 'play', workspaceMode === 'canvas' ? t('shell.canvas') : t('shell.preview')], ['inspector', rightDockTab === 'agent' ? 'sparkle' : 'settings', rightDockTab === 'agent' ? t('redesign.shell.agent') : t('shell.properties')], ...(workspaceMode === 'editing' ? [['timeline', 'layers', t('shell.timeline')]] : [])].map(([id, icon, label]) => <Button variant="ghost" className={mobilePanel === id ? 'active' : ''} key={id} data-testid={`mobile-panel-${id}`} aria-pressed={mobilePanel === id} onClick={() => mobileNavigate(id)}><Icon name={icon} size={17} />{label}</Button>)}</nav>
+
+    <Dialog open={showImage} onOpenChange={open => { if (!open) { markPanelIntent(); setShowImage(false); } }}><WorkbenchDialogContent title={t('shell.images')} size="large" keepMounted hidden={!showImage} inert={!showImage} data-testid="image-generation-dialog"><AgentDockPane id="right-dock-image" labelledBy="right-dock-image-tab" visible={showImage} fallbackFocus="[data-testid=right-dock-tab-properties]">{restored ? <RestoredUnavailable title={t('shell.restoredImageHistory')} /> : !application && <ImageGeneration editIntent={imageEditIntent} isEditIntentCurrent={isImageEditIntentCurrent} onOpenSettings={openGlobalSettings} settingsOverlayOpen={webSettingsOpen} nativeSettingsScope={nativeSettingsScope} nativeCloseRegistry={nativeCloseRegistry.current} navigationRegistry={settingsNavigation.current} key={data.project?.id || 'no-project'} projectId={data.project?.id} projectName={data.project?.name} projectAssets={data.assets} onDirtyChange={onImageDraftChange} onGenerated={projectId => { if (currentProject.current === projectId) void refresh(projectId); }} onRevealAsset={revealImageAsset} />}</AgentDockPane></WorkbenchDialogContent></Dialog>
+    <Dialog open={showDelivery} onOpenChange={open => { if (!open) { markPanelIntent(); setShowDelivery(false); exportPreviewPause.current?.(); } }}><WorkbenchDialogContent title={t('redesign.shell.export')} size="large" keepMounted hidden={!showDelivery} inert={!showDelivery} data-testid="timeline-export-dialog"><AgentDockPane id="right-dock-delivery" labelledBy="right-dock-delivery-tab" visible={showDelivery} fallbackFocus="[data-testid=right-dock-tab-properties]"><DeliveryWorkspace page={showExports ? 'history' : 'compose'} onPage={page => { markPanelIntent(); setShowExports(page === 'history'); }}><AgentDockPane id="delivery-compose-pane" labelledBy="delivery-compose-tab" visible={!showExports} fallbackFocus="[data-testid=delivery-page-history]"><TimelineExportPreflight preview={<ExportPreview
       result={exportPreviewResult(exportPreviewAttempt, data.exports, { scope: exportCheckView.scope, contextKey: sampleExportContextKey(), connected: exportCheckView.connected, isRenderRecord: isTimelineRenderRecord, heldExportIds: data.restore?.heldExportIds })}
-      visible={!comparisonId && workbenchReady && rightDockTab === 'delivery' && !showExports && panelVisible('inspector')}
+      visible={!comparisonId && workbenchReady && showDelivery && !showExports}
       canSelect={exportRangeContext().enabled && !localDelivery.state.busy && !pendingTimelineExport}
       canGenerate={Boolean(sampleExportPreflight.state?.binding && ['ready', 'incomplete'].includes(sampleExportPreflight.state.phase) && !sampleExportPreflight.state.attempted && !busy['timeline:render:export'] && !localDelivery.state.busy && !pendingTimelineExport && !dirtyRef.current && !formatDirty && isExportPreviewRange(sampleExportView.exportRange, timeline?.durationFrames))}
       rangeDraft={sampleRangeDraft?.scope === exportCheckView.scope ? sampleRangeDraft : null} onRangeChange={chooseSampleExportRange}
@@ -1852,18 +1963,16 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
       onCheck={() => { sampleExportPreflight.controller.setContext(sampleExportContext()); sampleExportPreflight.controller.check(); }}
       onSelect={selectSampleExportRange} onGenerate={() => renderTimeline('export', sampleExportPreflight.state?.binding, undefined, true)}
       onRegisterMediaPause={registerExportPreviewPause} onBeforePlay={beforeExportPreviewPlay}
-    />} recovery={<><DeliveryDraftRecovery state={localDelivery.state} controller={localDelivery.controller} disabled={!online || auth !== true || loading} /><TimelineMixLoudness loudness={timelineMixLoudness} onRevokeApply={() => timelineLoudnessApply.controller.revoke()} apply={<TimelineLoudnessApply apply={timelineLoudnessApply} observation={timelineMixLoudness.state} onOpenTasks={() => openTasks()} />} /></>} state={exportPreflight.state} timeline={timeline} deliveryName={deliveryName.value} deliveryNameError={deliveryName.error} deliveryNameDisabled={!deliveryNameContext().enabled} onDeliveryNameChange={value => { if (deliveryName.controller.choose(value, deliveryName.scope, deliveryName.version)) exportPreflight.controller.setContext(exportCheckContext()); }} rangeDraft={exportRange.draft} exportRange={exportRange.value} rangeError={exportRange.error} rangeDisabled={!exportRangeContext().enabled} onRangeChange={draft => { if (exportRange.controller.chooseRange(draft, exportRange.scope, exportRange.version)) exportPreflight.controller.setContext(exportCheckContext()); }} exportSettings={exportSettings.value} settingsDisabled={!exportSettingsContext().enabled} onSettingsChange={value => { if (exportSettings.controller.choose(value, exportSettings.scope, exportSettings.version)) exportPreflight.controller.setContext(exportCheckContext()); }} projectName={data.project?.name} canCheck={canCheckExport} exportBusy={Boolean(busy['timeline:render:export']) || localDelivery.state.busy} pendingExport={pendingTimelineExport} dirty={inspectorDirty || formatDirty} onCheck={() => checkTimelineExport(exportCheckView)} onExport={binding => renderTimeline('export', binding)} onUncheckedExport={renderUncheckedTimeline} /></AgentDockPane><AgentDockPane id="delivery-history-pane" labelledBy="delivery-history-tab" visible={showExports} fallbackFocus="[data-testid=delivery-page-compose]"><ExportHistoryList samplePeak={exportSamplePeak} loudness={exportLoudness} heldExportIds={data.restore?.heldExportIds} orderedExports={orderedExports} projectName={data.project?.name} timelineRevision={timeline?.revision} /></AgentDockPane></DeliveryWorkspace></AgentDockPane><AgentDockPane id="right-dock-tasks" labelledBy="right-dock-tasks-tab" visible={rightDockTab === 'tasks'} fallbackFocus="[data-testid=right-dock-tab-properties]"><TaskCenter taskViewScope={taskViewScope} captureView={captureTaskView} workspace={workspace} activeCount={activeCount} pending={pending} busy={busy} jobs={jobs} data={data} reconcileIds={reconcileIds} setReconcileIds={setReconcileIds} run={run} retryGeneration={retryGeneration} onInspectJob={inspectTaskJob} context={context} confirm={confirm} isCurrent={isCurrent} tasks={taskState} onRecover={recoverTask} onReload={() => tasksRef.current.load(currentProject.current)} onAdopt={adoptLegacyTask} /></AgentDockPane></CollapsibleContent></Collapsible>
-    {resizeHandle('inspector', 'inspectorWidth')}</PanelBoundary>
-    {workspaceMode === 'editing' && data.project && !loading && <><PanelBoundary name="timeline" visible={panelVisible('timeline')} scope={`${currentProject.current}:editing`} fallbackFocus={panelFallback('timeline')}>{resizeHandle('timeline', 'timelineHeight')}<Timeline staleClips={staleClips} waveformReadOnly={restored} workspaceOrigin={workspace?.workspaceOrigin} key={data.project.id} viewState={view.editing} onViewStateChange={(patch, options) => { if (data.project?.id === currentProject.current && viewRef.current.activeMode === 'editing') updateView('editing', patch, options); }} timeline={timeline} historyState={historyState} onHistory={changeTimelineHistory} splitState={splitState} onSplit={splitTimelineClip} assets={data.assets} selectedClipId={propertiesPage === 'subtitle' ? null : selectedClipId} selectedCueId={propertiesPage === 'subtitle' ? subtitles.state?.cueId : null} onSelectSubtitle={cueId => openSubtitle(cueId)} onAddSubtitle={frame => openSubtitle(null, frame)} subtitleBlocked={!subtitles.state?.connected} onSelectClip={selectClip} onAddAsset={addTimelineAsset} onMoveClip={moveTimelineClip} onTrackAdd={kind => mutateTimeline('timeline.track.add', { kind })} onTrackUpdate={(trackId, patch) => mutateTimeline('timeline.track.update', { trackId, patch })} onSeed={() => mutateTimeline('timeline.seed', {}, timeline?.revision)} onRender={renderTimeline} onSeek={seekTimelineSound} playhead={effectivePlayhead} visible={panelVisible('timeline')} collapsed={timelineCollapsed} onCollapse={() => setPanelOpen('timeline', false)} busy={timelineBusy} canSeed={Boolean(sortedShots.length && selectedCount === sortedShots.length)} renderJob={latestRender} /></PanelBoundary>{timelineCollapsed && <PanelRecall name="timeline" label={t('shell.timeline')} icon="layers" onClick={() => setPanelOpen('timeline', true)} />}</>}
-    </div>
-    <nav className="mobile-nav" aria-label={t('shell.mobileNavigation')}>{[['assets', 'folder', t('assets.assets')], ['canvas', workspaceMode === 'canvas' ? 'grid' : 'play', workspaceMode === 'canvas' ? t('shell.canvas') : t('shell.preview')], ['inspector', rightDockTab === 'agent' ? 'sparkle' : rightDockTab === 'image' ? 'image' : rightDockTab === 'tasks' ? 'clock' : 'settings', rightDockTab === 'agent' ? 'Agent' : rightDockTab === 'image' ? t('shell.images') : rightDockTab === 'delivery' ? t('shell.deliveryChecks') : rightDockTab === 'tasks' ? t('shell.tasks') : t('shell.properties')], ...(workspaceMode === 'editing' ? [['timeline', 'layers', t('shell.timeline')]] : [])].map(([id, icon, label]) => <Button variant="ghost" className={mobilePanel === id ? 'active' : ''} key={id} data-testid={`mobile-panel-${id}`} aria-pressed={mobilePanel === id} onClick={() => mobileNavigate(id)}><Icon name={icon} size={17} />{label}</Button>)}</nav>
-    {toast && <div className={`toast ${toast.type}`} role={toast.type === 'error' ? 'alert' : 'status'}><Icon name={toast.type === 'success' ? 'check' : 'info'} size={17} /><span>{renderImportFeedback(locale, toast.message)}</span><Button variant="ghost" className="icon-button small" aria-label={t('shell.dismissNotice')} onClick={() => setToast(null)}><Icon name="close" size={15} /></Button></div>}
-    {!nativeWindow && showCreate && <CreateProject onClose={() => { navigationEpoch.current++; setShowCreate(false); }} onCreate={createProject} busy={busy['project-create'] || busy['project-create-flow']} />}
+    />} recovery={<><DeliveryDraftRecovery state={localDelivery.state} controller={localDelivery.controller} disabled={!online || auth !== true || loading} />{!application && <TimelineMixLoudness loudness={timelineMixLoudness} onRevokeApply={() => timelineLoudnessApply.controller.revoke()} apply={<TimelineLoudnessApply apply={timelineLoudnessApply} observation={timelineMixLoudness.state} onOpenTasks={() => openTasks()} />} />}</>} state={exportPreflight.state} timeline={timeline} deliveryName={deliveryName.value} deliveryNameError={deliveryName.error} deliveryNameDisabled={!deliveryNameContext().enabled} onDeliveryNameChange={value => { if (deliveryName.controller.choose(value, deliveryName.scope, deliveryName.version)) exportPreflight.controller.setContext(exportCheckContext()); }} rangeDraft={exportRange.draft} exportRange={exportRange.value} rangeError={exportRange.error} rangeDisabled={!exportRangeContext().enabled} onRangeChange={draft => { if (exportRange.controller.chooseRange(draft, exportRange.scope, exportRange.version)) exportPreflight.controller.setContext(exportCheckContext()); }} exportSettings={exportSettings.value} settingsDisabled={!exportSettingsContext().enabled} onSettingsChange={value => { if (exportSettings.controller.choose(value, exportSettings.scope, exportSettings.version)) exportPreflight.controller.setContext(exportCheckContext()); }} projectName={data.project?.name} canCheck={canCheckExport} exportBusy={Boolean(busy['timeline:render:export']) || localDelivery.state.busy} pendingExport={pendingTimelineExport} dirty={inspectorDirty || formatDirty} onCheck={() => checkTimelineExport(exportCheckView)} onExport={binding => renderTimeline('export', binding)} onUncheckedExport={renderUncheckedTimeline} reviewVersion={deliveryReviewVersion} downloadEnabled={!application && !data.restore?.heldExportIds?.includes(deliveryAttempt?.id)} renderRecord={deliveryAttempt?.projectId === data.project?.id ? orderedExports.find(item => item.id === deliveryAttempt.id) : null} onTasks={() => openTasks()} /></AgentDockPane><AgentDockPane id="delivery-history-pane" labelledBy="delivery-history-tab" visible={showExports} fallbackFocus="[data-testid=delivery-page-compose]"><ExportHistoryList fileRecoveryEnabled={!restored && !application} onReexport={() => { if (clipDraftRef.current?.hasPendingComposition() || !canOpenExport) return; setDeliveryAttempt(null); setDeliveryReviewVersion(value => value + 1); openTimelineExport(); }} candidateConnected={online && auth === true && workbenchReady && !loading} opacityApplication={opacityApplication} projectId={data.project?.id} samplePeak={application ? undefined : exportSamplePeak} loudness={application ? undefined : exportLoudness} heldExportIds={data.restore?.heldExportIds} orderedExports={orderedExports} projectName={data.project?.name} timelineRevision={timeline?.revision} /></AgentDockPane></DeliveryWorkspace></AgentDockPane></WorkbenchDialogContent></Dialog>
+    <Dialog open={showTasks} onOpenChange={open => { if (!open) { markPanelIntent(); setShowTasks(false); } }}><WorkbenchDialogContent title={t('shell.tasks')} size="large" keepMounted hidden={!showTasks} inert={!showTasks} data-testid="task-center-dialog"><AgentDockPane id="right-dock-tasks" labelledBy="right-dock-tasks-tab" visible={showTasks} fallbackFocus="[data-testid=right-dock-tab-properties]"><TaskCenter taskViewScope={taskViewScope} onOpenExportHistory={openExportHistory} captureView={captureTaskView} workspace={workspace} activeCount={activeCount + activeRenderCount} pending={pending} busy={busy} jobs={jobs} data={data} reconcileIds={reconcileIds} setReconcileIds={setReconcileIds} run={run} retryGeneration={retryGeneration} onInspectJob={inspectTaskJob} context={context} confirm={confirm} isCurrent={isCurrent} tasks={taskState} onRecover={recoverTask} onReload={() => tasksRef.current.load(currentProject.current)} onAdopt={adoptLegacyTask} /></AgentDockPane></WorkbenchDialogContent></Dialog>
+    {showProjectChooser && <Modal title={t('projects.openWorkspace')} onClose={() => setShowProjectChooser(false)}><div className="project-chooser-list">{projects.map(project => <Button variant="ghost" key={project.id} onClick={async () => { if (await selectProject(project.id)) setShowProjectChooser(false); }}><Icon name="folder" size={16} />{project.name}</Button>)}</div></Modal>}
+    {toast && <div className={`workbench-toast ${toast.type}`} data-testid="global-toast" role={toast.type === 'error' ? 'alert' : 'status'}><Icon name={toast.type === 'success' ? 'check' : 'info'} size={17} /><span>{renderImportFeedback(locale, toast.message)}</span><Button variant="ghost" className="icon-button small" aria-label={t('shell.dismissNotice')} onClick={() => setToast(null)}><Icon name="close" size={15} /></Button></div>}
+    {!nativeWindow && !opacityRestored && showCreate && <CreateProject onClose={() => { navigationEpoch.current++; setShowCreate(false); }} onCreate={createProject} busy={busy['project-create'] || busy['project-create-flow']} />}
     {previewAsset && <Modal title={previewAsset.name} subtitle={`${previewAsset.mimeType} · ${formatNumber(previewAsset.sizeBytes / 1024 / 1024, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MB`} onClose={() => setPreviewAsset(null)} wide><div className="asset-preview-large"><Media asset={previewAsset} controls /></div><div className="modal-footer"><Button variant="ghost" className="button primary" onClick={() => { addNode(assetKind(previewAsset), previewAsset); setPreviewAsset(null); }}><Icon name="plus" size={16} />{t('assets.addCanvas')}</Button></div></Modal>}
     {realConfirm && <Modal title={t('shell.generationConfirmTitle')} subtitle={t('shell.generationCosts')} onClose={() => { realConfirmRef.current = null; setRealConfirm(null); }}><div className="modal-form"><div className="confirmation-summary"><strong>{providerDisplayName(providers.find(p => p.id === realConfirm.providerId) || { id: realConfirm.providerId }, t)}</strong>{realConfirm.retryJobId && <p>{t('shell.generationRetryScope')}</p>}<span>{t('shell.generationReviewParameters', { model: realConfirm.model, mode: renderMessage(inputModeDescriptor(realConfirm.inputMode)), seconds: realConfirm.shot.duration, ratio: realConfirm.shot.aspectRatio })}</span><p>{t('shell.generationDataScope', { count: generationReferences(realConfirm.shot, { frozen: Boolean(realConfirm.retryJobId), subjectReference: realConfirm.subjectReference }).references.length })}</p>{(realConfirm.subjectReference || realConfirm.shot.subjectReference) ? <><SubjectVideoSummary reference={realConfirm.subjectReference || realConfirm.shot.subjectReference} assets={realConfirm.referenceAssets} latestSubject={subjects?.state?.subjects[(realConfirm.subjectReference || realConfirm.shot.subjectReference).subjectVersion.subjectId]} /><p className="subject-warning" data-testid="paid-subject-face-warning">{renderMessage(realConfirm.providerId === 'ark' ? ARK_SUBJECT_WARNING_MESSAGE : MOCK_SUBJECT_WARNING_MESSAGE)}</p><p className="muted">{t('shell.generationSubjectScope')}</p></> : <VideoFrameSummary shot={realConfirm.shot} assets={realConfirm.referenceAssets} frozen={Boolean(realConfirm.retryJobId)} />}<p className="muted">{t('shell.generationBudgetScope')}</p><p className="muted">{t('shell.generationUnknownNoRetry')}</p></div><Button variant="ghost" className="button primary full" data-testid="confirm-live-generation" onClick={() => confirmGeneration(realConfirm)}>{t('shell.generationConfirmSend')}</Button></div></Modal>}
     </WorkspaceVisibilityProvider>
     {comparisonId && <VersionComparison key={`${data.project?.id}:${projectEpoch.current}:${comparisonId}`} context={comparisonContext()} getContext={comparisonContext}
-      onClose={() => setComparisonId(null)} onUse={useComparedVersion} busy={Boolean(busy[`version:${comparisonId}`])}
+      onClose={() => setComparisonId(null)} onUse={useComparedVersion} onAdd={binding => { if (!timelineBusy && comparisonCurrent(binding, comparisonContext()) && !isBusy(`version:${binding.shotId}`)) addTimelineAsset(binding.assetId); }} busy={Boolean(busy[`version:${comparisonId}`])}
       onRegisterMediaPause={registerComparisonPreviewPause} onBeforePlay={() => { audioPreview.controller.revoke(); nativePreviewPause.current?.(); exportPreviewPause.current?.(); }} />}
   </main></>;
 }

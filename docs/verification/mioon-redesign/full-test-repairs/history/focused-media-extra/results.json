@@ -1,0 +1,61 @@
+[
+  {
+    "file": "tests/opacity-restored-application-server.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 12.08,
+    "tapSummary": {
+      "tests": 8,
+      "suites": 0,
+      "pass": 8,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-media-extra/002-opacity-restored-application-server.test.mjs.log",
+    "sha256": "0c0918a0a1e942207d82b7722ab89dcd8b2e0333f4d509f1d3517f30b2d8ec3c",
+    "sourceSha256": "61ae2cd15769eded4b9b1d028afc3004e2c1e34e8261d8fb39d45844cacd71d6",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/storyboard-multistream-media.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 3.5,
+    "tapSummary": {
+      "tests": 6,
+      "suites": 0,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-media-extra/001-storyboard-multistream-media.test.mjs.log",
+    "sha256": "ad4b490740cb7947207346b846c72349296dec5cc216638210f7779e4306c2c9",
+    "sourceSha256": "b9aa6731b159813d09416853c295635d4677d5d23b7eeb12dcd0c9f9d12da071",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/subject-video-provider.test.mjs",
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 0.73,
+    "tapSummary": {
+      "tests": 127,
+      "suites": 0,
+      "pass": 126,
+      "fail": 1,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-media-extra/003-subject-video-provider.test.mjs.log",
+    "sha256": "5ce876e5cc6cd6b449122b09c043719a2905c34239fc2139e614232d215d0864",
+    "sourceSha256": "54a6589e701c9e634fa319910354f2bd2bc1dbbc80789c9de458b389367cc842",
+    "failedSubtests": [
+      "Mock persists the full subject snapshot and advertises a metadata-only test pattern"
+    ]
+  }
+]

@@ -1,3 +1,4 @@
+import {authorizeHttpSnapshot} from './agent-authorizations.mjs';
 /** Gain-only extension of the owned timeline HTTP/SSE fixture. Reuses its
  * continuous UTF-8 process collectors and metadata-only managed media graph. */
 import assert from 'node:assert/strict';
@@ -15,6 +16,7 @@ export async function gainWireFixture(t, protocol) {
   const f = await timelineWireFixture(t, protocol);
   f.input = async (projectId, selection, {message = GAIN_MESSAGE, consent: overrides, ...changes} = {}) => {
     const snapshot = await f.data(chatRoute(projectId)), configuration = snapshot.settings.configuration;
+    await authorizeHttpSnapshot((...args)=>f.request(...args),snapshot,AGENT_TIMELINE_GAIN_CONTEXT);
     assert.equal(snapshot.timelineGainEdit?.available, true, JSON.stringify(snapshot.timelineGainEdit));
     const {available, ...capability} = snapshot.timelineGainEdit;
     const timeline = selection.timeline ?? selection;

@@ -1,5 +1,7 @@
 # Conversational streaming increment
 
+Current sending permission follows [persistent destination/model/scope authorization](AGENT-AUTHORIZATION.md). The original increment below is historical: per-turn confirmation is superseded by a workspace-local grant, while each request still pins its current context and retains unknown-result/no-resend protections.
+
 Date: 2026-10-09 (UTC)
 Feature baseline: `66a0193` (secure Agent settings); integration baseline: `80334cf` (roadmap-only follow-up)
 Status: historical acceptance for increment 2A, committed as `3db1a02`: Chat-Completions-only conversational transport. [Increment 2B](AGENT-RESPONSES.md) adds Responses and replaces these modal screenshots with the shared right workspace. Neither increment is a completed project-tool Agent.

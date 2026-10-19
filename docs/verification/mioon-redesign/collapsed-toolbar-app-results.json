@@ -1,0 +1,53 @@
+{
+  "scope": "Actual extracted App callbacks and layout/source checks; not whole-page browser acceptance. Timeline leaf verifies independently.",
+  "files": [
+    {
+      "file": "tests/workspace-panels.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/workspace-panels.test.mjs"
+      ],
+      "exitCode": 0,
+      "tests": 44,
+      "pass": 44,
+      "fail": 0,
+      "skipped": 0,
+      "durationMs": 627.632084
+    },
+    {
+      "file": "tests/workbench-shell.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/workbench-shell.test.mjs"
+      ],
+      "exitCode": 0,
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "skipped": 0,
+      "durationMs": 143.625167
+    },
+    {
+      "file": "tests/web-layout-polish.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/web-layout-polish.test.mjs"
+      ],
+      "exitCode": 0,
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "skipped": 0,
+      "durationMs": 208.416958
+    }
+  ],
+  "totalTests": 55,
+  "pass": 55,
+  "fail": 0
+}

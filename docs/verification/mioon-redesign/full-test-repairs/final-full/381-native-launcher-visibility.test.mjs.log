@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: returning native launcher refreshes A/B to A/B/C after the last editor closes without a manual click
+ok 1 - returning native launcher refreshes A/B to A/B/C after the last editor closes without a manual click
+  ---
+  duration_ms: 3.9965
+  type: 'test'
+  ...
+# Subtest: first reveal keeps the initial boot read and its one-time auto-open instead of superseding it
+ok 2 - first reveal keeps the initial boot read and its one-time auto-open instead of superseding it
+  ---
+  duration_ms: 1.514042
+  type: 'test'
+  ...
+# Subtest: editor visibility alone never boots or refreshes its retained project picker
+ok 3 - editor visibility alone never boots or refreshes its retained project picker
+  ---
+  duration_ms: 0.783084
+  type: 'test'
+  ...
+# Subtest: an initially hidden launcher whose boot is complete refreshes on its first actual reveal
+ok 4 - an initially hidden launcher whose boot is complete refreshes on its first actual reveal
+  ---
+  duration_ms: 0.586542
+  type: 'test'
+  ...
+# Subtest: a later launcher reveal owns its catalog and ignores a superseded success or failure
+ok 5 - a later launcher reveal owns its catalog and ignores a superseded success or failure
+  ---
+  duration_ms: 0.880292
+  type: 'test'
+  ...
+# Subtest: disposed visibility subscriptions and old lifetime replies cannot mutate a reactivated owner
+ok 6 - disposed visibility subscriptions and old lifetime replies cannot mutate a reactivated owner
+  ---
+  duration_ms: 0.556416
+  type: 'test'
+  ...
+# Subtest: visibility refresh may show a created row but never acknowledges unknown creation or releases its draft
+ok 7 - visibility refresh may show a created row but never acknowledges unknown creation or releases its draft
+  ---
+  duration_ms: 0.804333
+  type: 'test'
+  ...
+# Subtest: failed return refresh retains the old catalog and dirty input and can recover on the next return
+ok 8 - failed return refresh retains the old catalog and dirty input and can recover on the next return
+  ---
+  duration_ms: 0.577375
+  type: 'test'
+  ...
+# Subtest: return refresh does not acknowledge an unknown open or consume its sealed permit again
+ok 9 - return refresh does not acknowledge an unknown open or consume its sealed permit again
+  ---
+  duration_ms: 0.604625
+  type: 'test'
+  ...
+# Subtest: entering quit invalidates a pending catalog read even after quit cancellation and suppresses new reads
+ok 10 - entering quit invalidates a pending catalog read even after quit cancellation and suppresses new reads
+  ---
+  duration_ms: 1.01825
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 292.412209

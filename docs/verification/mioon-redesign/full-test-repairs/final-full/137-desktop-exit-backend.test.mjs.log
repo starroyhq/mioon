@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: backend stop reports its first fixed exit intent once and preserves normal cleanup
+ok 1 - backend stop reports its first fixed exit intent once and preserves normal cleanup
+  ---
+  duration_ms: 3.058875
+  type: 'test'
+  ...
+# Subtest: backend lease distinguishes expiry from a recent ping without restarting work
+ok 2 - backend lease distinguishes expiry from a recent ping without restarting work
+  ---
+  duration_ms: 1.012458
+  type: 'test'
+  ...
+# Subtest: backend SIGTERM reports the explicit signal source
+ok 3 - backend SIGTERM reports the explicit signal source
+  ---
+  duration_ms: 0.784458
+  type: 'test'
+  ...
+# Subtest: backend SIGINT reports the explicit signal source
+ok 4 - backend SIGINT reports the explicit signal source
+  ---
+  duration_ms: 0.644125
+  type: 'test'
+  ...
+# Subtest: backend server close failure adds a fixed failure notice
+ok 5 - backend server close failure adds a fixed failure notice
+  ---
+  duration_ms: 0.65125
+  type: 'test'
+  ...
+# Subtest: backend agent-settings close failure adds a fixed failure notice
+ok 6 - backend agent-settings close failure adds a fixed failure notice
+  ---
+  duration_ms: 0.508667
+  type: 'test'
+  ...
+# Subtest: backend image-secret close failure adds a fixed failure notice
+ok 7 - backend image-secret close failure adds a fixed failure notice
+  ---
+  duration_ms: 0.553375
+  type: 'test'
+  ...
+# Subtest: backend startup failure reports only a fixed category before nonzero exit
+ok 8 - backend startup failure reports only a fixed category before nonzero exit
+  ---
+  duration_ms: 0.966291
+  type: 'test'
+  ...
+# Subtest: backend monitors fatal origins without registering a handler that suppresses Node exit
+ok 9 - backend monitors fatal origins without registering a handler that suppresses Node exit
+  ---
+  duration_ms: 0.483
+  type: 'test'
+  ...
+# Subtest: unavailable diagnostic IPC cannot cause a new failure or turn a clean stop into an error
+ok 10 - unavailable diagnostic IPC cannot cause a new failure or turn a clean stop into an error
+  ---
+  duration_ms: 0.787417
+  type: 'test'
+  ...
+# Subtest: real Node uncaught-exception retains fatal exit behavior with the backend monitor
+ok 11 - real Node uncaught-exception retains fatal exit behavior with the backend monitor
+  ---
+  duration_ms: 108.574292
+  type: 'test'
+  ...
+# Subtest: real Node unhandled-rejection retains fatal exit behavior with the backend monitor
+ok 12 - real Node unhandled-rejection retains fatal exit behavior with the backend monitor
+  ---
+  duration_ms: 110.061709
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 385.142458

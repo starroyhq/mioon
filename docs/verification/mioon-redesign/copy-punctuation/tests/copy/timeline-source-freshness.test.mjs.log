@@ -1,0 +1,28 @@
+TAP version 13
+# Subtest: only clips frozen on a version their shot no longer selects are reported
+ok 1 - only clips frozen on a version their shot no longer selects are reported
+  ---
+  duration_ms: 1.303209
+  type: 'test'
+  ...
+# Subtest: the selected version is offered as a candidate only when it can replace the clip source
+ok 2 - the selected version is offered as a candidate only when it can replace the clip source
+  ---
+  duration_ms: 0.555417
+  type: 'test'
+  ...
+# Subtest: the timeline marks stale clips and the inspector offers the pre-filled review
+ok 3 - the timeline marks stale clips and the inspector offers the pre-filled review
+  ---
+  duration_ms: 0.709667
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 264.024625

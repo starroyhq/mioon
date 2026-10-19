@@ -1,22 +1,66 @@
 # Mioon approved product roadmap
 
-Updated: 2026-10-15 UTC. Current index checked against local integration checkpoint
-`ad72c8f4be6abb5f351c05ebf3fc5ea089dd57cd`, preserving the accepted
-`41f09c3` integration ancestry. This document distinguishes implemented
+Updated: 2026-10-16 UTC. Current index checked against application integration
+`ff85c9a8daaa35bff080d0979fe2faa3683cd3b5`, last verified on GitHub main,
+and local-only test-fixture repair `25609e98b8990eaa121124f35242f0bcf4a4b3ae`.
+The local opacity index below includes completed follow-ups through `256cfd3`.
+Earlier accepted integration ancestry is preserved. This document distinguishes implemented
 slices, their actual acceptance boundaries and remaining approved scope. It does
 not promote a WIP checkpoint, certify the combined native application, or grant
-new execution, spending or publication authority. This documentation-only review
-reran no product tests, native acceptance or stopped issue investigations.
+new execution, spending or publication authority. The earlier documentation-only
+review reran no product tests; current local opacity qualification is linked below.
+Later bounded Safari/short-media evidence is indexed below; stopped issue investigations remain stopped.
 
-## Current UI iteration (2026-10-15)
+## Current UI iteration (2026-10-16)
 
-- **Settings center: implemented locally in `92add7e`.** One explicit Settings
+- **Clip opacity keyframes: local fresh42 application slice after `ec01753`.**
+  The same App now has an explicit independent development entry with project
+  creation/import, durable task ACKs, Inspector v3 drafts, raw opacity saves,
+  preview/export preparation and guarded media delivery. Default40/41 and
+  historical constructors remain unchanged. [Application scope and evidence](OPACITY-CANDIDATE-APPLICATION.md)
+  separate pure/synthetic qualification from [partial Safari and actual10-frame
+  media acceptance](OPACITY-CANDIDATE-NATIVE-ACCEPTANCE.md): login/project creation
+  passed, while CUA disconnected at the import picker. Actual HTTP persistence,
+  Undo/Redo, FFmpeg preview/export and guarded downloads passed; later GUI items
+  in that earlier42 run remain unverified. It also records [explicit ordinary42 reopening](OPACITY-CANDIDATE-REOPEN.md)
+  and the implemented [fixed42 cold-backup→offline43 entry](OPACITY-CANDIDATE-BACKUP-RESTORE.md),
+  with raw evidence/held/epoch/origin retained and v3 drafts explicitly excluded.
+  The subsequent [restored43 application entry](OPACITY-RESTORED-APPLICATION.md)
+  now supports existing-project editing/Undo/Redo and new preview/export requests
+  under the original origin/held/epoch rules. That initial43 slice kept unsaved
+  input and views in memory; source42 v3 drafts remain excluded and preserved.
+  Its124/124 focused tests and separate12/12 preference checks, canonical builds,
+  actual Safari Save/Cancel/Undo/Redo,10-frame preview/export/playback and normal
+  close/reopen passed. Guarded HTTP download and RGB decode passed; full
+  four-language/IME and packaging/platform gates remain. Ordinary42 creation/import
+  permissions and40/41 migration are not granted to43. No push or release.
+  A later [language/IME follow-up](OPACITY-LANGUAGE-IME-ACCEPTANCE.md) repairs
+  composition-Enter and Cancel/Save races (241/241 plus separate5/5 checks).
+  Its partial43 GUI covers three locales on the prior build; CUA disconnected
+  after Japanese settings. Real IME and final fixed-build/native acceptance
+  remain open; no push or release.
+  The subsequent [new-origin43 clip-draft slice](OPACITY-RESTORED-DRAFTS.md)
+  (`4607947`) permits explicit cold recovery after durable ACK only with exact
+  `localClipDrafts` capability; source42 v3 is not migrated. Older43 without
+  that capability and restored view state retain memory fallback; unconfirmed
+  input and composition still block safe close. The [explicit ordinary40→42
+  offline copy upgrade](OPACITY-ORDINARY-UPGRADE.md) (`256cfd3`) preserves an
+  eligible source and verified backup, refuses unresolved tasks/active drafts,
+  and requires a new target.41 and default production admission remain unchanged.
+  [Batch integration/release checks](OPACITY-RELEASE-CHECK.md) repaired four
+  product regressions; the final121-file aggregate retains6 historical BLOB
+  expectation failures. The [isolated baseline follow-up](BLOB-ADMISSION-BASELINES.md) reproduced
+  them before a7 and on ff85/d52; historical BLOB startup compatibility still
+  requires a frozen-boundary decision. Node24 strict types passed, its native build was blocked by
+  macOS Team IDs, and Node26 auxiliary builds do not qualify the product runtime.
+
+- **Settings center: implemented in `92add7e`, integrated through `ff85c9a`.** One explicit Settings
   entry now groups General, Models & services, and Extensions in all four GUI
   languages. Existing connection forms, retained drafts, transient-secret
   handling, busy/recovery guards and close confirmation are preserved; project,
   clip and export options remain contextual. This is not plugin install,
   uninstall or dynamic-loading support, nor full native/platform acceptance.
-- **Sample export preview: implemented locally in `5a3751b`.** A
+- **Sample export preview: implemented in `5a3751b`, integrated through `ff85c9a`.** A
   separate 1–300-frame trial range uses current export settings, its own checks,
   the existing durable export path and an exact-output player with stale-result
   blocking. It does not change the final range or cancel a render when closed.
@@ -57,7 +101,49 @@ reran no product tests, native acceptance or stopped issue investigations.
   15-second CLI qualification failure remains unresolved; a diagnostic 30-second
   pass is not acceptance of that gate.
 
-## Current delivery and remaining work (2026-10-15)
+- **Four-language presentation: implemented and integrated.** GUI/native copy,
+  main-CLI and bounded backup/MCP diagnostics retain the distinct scopes below.
+  Exhaustive four-language native acceptance is unfinished.
+- **Volume-envelope backend and row editor: implemented and integrated through
+  `dc7a057` and `ff85c9a`.** Existing Save/history/replay/draft ownership carries
+  ordered points; there is no second persistence owner. The earlier
+  [editor checkpoint](VOLUME-ENVELOPE-EDITOR-INTEGRATION.md) and its 721 TS
+  diagnostics are historical: [canonical conformance repair](evidence/volume-envelope-canonical-repair/qualification.md)
+  resolved the blocker, and canonical TS plus a production source build passed
+  on `ff85c9a`. Native Save/Undo/Redo and normal close passed on `dc7a057`;
+  Inspector reopen, CJK IME and four-language native acceptance remain unfinished.
+  The [fade-preset follow-up](AUDIO-EFFECTS-PLAN.md) is locally implemented:
+  a 15/30/60-frame selector (30fps, default 30) and explicit Replace with fade-in /
+  fade-out buttons replace all draft points before ordinary Save; manual editing,
+  Cancel, local drafts and Undo/Redo retain their existing ownership. Oversized
+  presets are refused. This slice covers ordinary 40/restored 41 only, preserves
+  audio/capability/IME guards and existing gain/fade multiplication, and adds no
+  DSP, schema or 42/43 capability. Node24 focused tests passed 51/51 plus 40/40
+  related regressions; canonical strict types and the auxiliary Node26 default
+  Web/development Desktop source build passed. Independent review found no
+  blocker. [Evidence and limits](evidence/volume-fade-presets/qualification.json)
+  retain previous release-check failures and formal Node24 build/GUI/native gaps;
+  this is not a completed release qualification.
+  Manual interval reduction is locally implemented: user-set
+  start/end frames, target linear multiplier (0 mute, 1 unity), and entry/recovery
+  lengths generate at most four existing envelope points. The selected interval
+  includes both ramps; invalid, overlapping or discontinuous interior ramps are
+  refused without clamping. Only an explicit Apply to draft and replace all
+  keyframes action replaces the curve, which remains editable through the same
+  Save/Cancel, draft recovery and Undo/Redo flow. Tool parameters are temporary
+  panel input until applied and may be lost on switch/close. This ordinary 40 /
+  restored 41 slice retains audio/capability/IME/owner guards and gain/fade
+  multiplication; it adds no voice detection, loudness analysis, DSP, schema,
+  frozen-history change or 42/43 permission. Node24 focused tests passed 82/82
+  (21 new), with 73/73 disjoint related regressions and no skips; canonical
+  strict types and the auxiliary Node26 default Web/development Desktop source
+  build passed. Independent review found no remaining issue. [Evidence](evidence/manual-ducking/qualification.json)
+  preserves actual GUI, OS IME and listening gaps, the formal Node24 Team ID
+  blocker and six historical compatibility failures. Source-driven voice-range
+  analysis and candidate review remain later ducking work; manual editing does
+  not complete automatic detection or dialogue loudness matching.
+
+## Current delivery and remaining work (2026-10-16)
 
 1. **Editing, audio and loudness.** Independent project home/windows, managed
    media/source ranges, favorite/reject and current-timeline usage, raw-source
@@ -84,10 +170,18 @@ reran no product tests, native acceptance or stopped issue investigations.
    incomplete/failing regression evidence. Do not describe these as wholly
    unimplemented or as fully accepted. Selected-clip read-only measurement and
    explicit editorial roles are now delivered within the limits indexed above;
-   they do not complete per-clip/dialogue loudness matching. Volume keyframes
-   remain outside production: a pure volume-envelope prototype is underway, with
-   no production integration or final support decision.
-   Crossfades, ducking, limiter/EQ/noise reduction and scoped proxy performance
+   they do not complete per-clip/dialogue loudness matching. The volume-envelope
+   backend and row editor are implemented and integrated; their remaining native
+   acceptance is indexed above. Do not restart the earlier pure prototype.
+   Opacity keyframes now have the isolated fresh42 and restored43 slices above,
+   including fixed cold backup/restore and explicit separate application admission.
+   Exact-capability43 new clip drafts now support explicit cold recovery after
+   durable ACK, while source42 v3 stays excluded and older43/views keep memory
+   fallback; see [draft scope](OPACITY-RESTORED-DRAFTS.md). The explicit
+   [ordinary40→42 copy upgrade](OPACITY-ORDINARY-UPGRADE.md) and remaining
+   [release gates](OPACITY-RELEASE-CHECK.md) retain their separate boundaries. Other visual
+   keyframes/transitions, audio crossfades, source-driven ducking analysis, limiter/EQ/noise
+   reduction and scoped proxy performance
    remain separate work; local media tags/notes are no longer pending. No automatic
    target or AAC loudness/true-peak guarantee is implied.
 2. **Colour and Looks.** Project-owned LUT resources (`a78abb0`) and the versioned
@@ -103,6 +197,23 @@ reran no product tests, native acceptance or stopped issue investigations.
    evidence, but exact-file reselection/explicit retry and the complete native
    restart gate remain unaccepted. This is not verified closure of
    [issue #2](https://github.com/starroyhq/mioon/issues/2).
+   The [source-colour information follow-up](SDR-CLIP-LUT.md) is locally implemented:
+   it exposes bit depth from the existing explicit source inspection and
+   distinguishes unchecked state, user declaration, probe evidence and processing
+   limits in four languages. A probe reporting no HDR side data does not prove SDR;
+   filename, brand or 10-bit depth cannot identify Log. Imported assets do not
+   persist these tags. A future media-library observation needs a bounded
+   hash/stream/method binding; vendor Log parameters, frame-level HDR SEI,
+   luminance payloads and finer bit-depth provenance are not collected here.
+   Selecting a clip does not probe it; the explicit settings entry uses existing
+   checks, and the display adds no calls, acquisition, persistence, DTO or permission. Future input
+   identification → technical conversion (separate from creative LUT looks) →
+   working space → monitoring → output metadata remains unimplemented; current
+   encoded RGB8 plus transient float buffers is not an HDR compositor. Bounded
+   tests passed 58/58 feature plus 54/54 related checks (112 distinct, including
+   23 new); Node24 strict types and auxiliary Node26 source builds passed.
+   [Evidence and limits](evidence/source-colour-info/qualification.json) retain
+   unverified real GUI/HDR-display acceptance and the known Node24 Team ID build gap.
 3. **Export, creation and versions.** Preflight, MP4/H.264 settings, named export
    history, selected-range export, decoded sample-peak checks and backend opt-in
    float-checked export retain their own evidence. Further codecs/containers,
@@ -150,6 +261,16 @@ reran no product tests, native acceptance or stopped issue investigations.
    signing, real-provider configuration/media/budget gates and release publication
    remain separate. Incremental TS migration or safety-boundary extraction should
    address a concrete reproduced need, not duplicate completed features.
+
+The current `ff85c9a` source integration passed 217 focused checks, canonical
+TypeScript/source-language guards and one production source build. Its known
+44 LUT fixture failures were reproduced on clean `a7fcf741`; local-only
+`25609e9` subsequently repairs the two stale test fixtures, passing 53/53 original
+checks plus 11/11 pure-memory host checks. The extra preload bundling case was
+blocked by an esbuild subprocess guard (command exit 1), not passed. No current
+full-suite, new installer or all-platform gate is claimed. `ff85c9a` was pushed
+and verified on GitHub main; `25609e9` remains unpushed. No CI runs/checks/statuses
+were visible at the publication query; this documentation refresh does not requery.
 
 The earlier combined `41f09c3` integration has 915/915 focused checks across 63 files,
 strict typecheck and an actual production-channel build passing. Source hashes
@@ -209,21 +330,20 @@ Continue approved local feature work when a separate acceptance or publication
 step is blocked; a blocked item does not pause the whole project. Preserve each
 item's evidence and permission boundary rather than silently treating it as done.
 
-1. Keep volume keyframes in planning/prototype scope: a pure volume-envelope
-   prototype is underway, not integrated into production. Define saved-clip
-   timing, interpolation, compatibility, history/replay and preview/export parity
-   boundaries before production integration or a final support decision. This
-   queue is not a feature completion or support commitment.
+1. Preserve the implemented volume-envelope backend/row editor and its documented
+   remaining acceptance gates. The earlier pure prototype is historical; its
+   production integration is complete, while full native acceptance remains open.
 2. Keep the completed bounded export preview, tags/notes, shot-video A/B,
    selected-clip measurement and audio-role slices closed at their documented
    source gates; do not restart them because older roadmap entries say pending.
    Broader comparison modes, loudness matching/application and effects need their
    own bounded implementation and acceptance.
-3. Preserve the bounded native outcome above without inferring an import cause
-   or feature acceptance. Native GUI acceptance, 600-second real-time audio
-   qualification, the role CLI gap and LUT reselection/restart acceptance remain
-   independent unresolved gates, not
-   implicit permission to rerun stopped investigations or widen deadlines.
+3. Keep native results attributed to their exact builds: `dc7a057` covers
+   Save/Undo/Redo and normal close, while Inspector reopen, CJK IME and four-language
+   native acceptance remain open. The earlier one-shot import outcome, 600-second
+   real-time audio qualification, role CLI gap and LUT reselection/restart remain
+   independent unresolved gates. Do not infer a cause, restart stopped
+   investigations or widen deadlines from this queue.
 
 The dated feature checkpoints record each slice’s actual implementation and
 acceptance; this queue grants no permission for broader external actions. Audio

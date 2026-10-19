@@ -1,0 +1,97 @@
+[
+  {
+    "file": "tests/opacity-candidate-app-entry.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.43,
+    "tapSummary": {
+      "tests": 6,
+      "suites": 0,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-extra-first/001-opacity-candidate-app-entry.test.mjs.log",
+    "sha256": "f8f6ee92186eba4cc25e35fbb35cb3584c8aa96dad9d95286421141dea1fc1b4",
+    "sourceSha256": "b0f7ec054da8f2fad0ac50145fd9804cb44a97746fc032c64027d115ed8a0be7",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/settings-navigation-state.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.6,
+    "tapSummary": {
+      "tests": 47,
+      "suites": 0,
+      "pass": 47,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-extra-first/002-settings-navigation-state.test.mjs.log",
+    "sha256": "70a5bf6ef6dc028696fd3c4a0a0271ed114ddc727a33366bec25991ce8d68a08",
+    "sourceSha256": "0c534c9008a55b78484df4907abe8e7e966e9239b19f49cea0b42b46a73dc8bc",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/subject-video-ui.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.54,
+    "tapSummary": {
+      "tests": 15,
+      "suites": 0,
+      "pass": 15,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-extra-first/003-subject-video-ui.test.mjs.log",
+    "sha256": "c2634097455689b685178d4e31606b436a596271b13505a8d414c84b3cee24c6",
+    "sourceSha256": "8d46a00cc267104fc716210cb9f1dc8987d71a8df4752bc7f5fa5beae194cfb9",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/timeline-fades-ui.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.69,
+    "tapSummary": {
+      "tests": 19,
+      "suites": 0,
+      "pass": 19,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-extra-first/004-timeline-fades-ui.test.mjs.log",
+    "sha256": "2be65f92016dcac7776284ccb66b0956be7201de955d6588f734e9060770b41a",
+    "sourceSha256": "033d30dc56ccc1d0851c79cfef9934a9bb0fcc09cbab63a389b253932a4a9a65",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/waveform-ui.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.47,
+    "tapSummary": {
+      "tests": 23,
+      "suites": 0,
+      "pass": 23,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-extra-first/005-waveform-ui.test.mjs.log",
+    "sha256": "bf7ea6e23de4db2f91b84376f4d628813596b8c798e660d25eb04afbd93f8779",
+    "sourceSha256": "9320e3da86345d495dcca335f1ec679c657f535552028d2a17c6e62e717aee2a",
+    "failedSubtests": []
+  }
+]

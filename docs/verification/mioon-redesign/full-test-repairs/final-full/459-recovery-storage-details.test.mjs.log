@@ -1,0 +1,94 @@
+TAP version 13
+# Subtest: all four domains use one native, initially collapsed disclosure with an accessible summary
+ok 1 - all four domains use one native, initially collapsed disclosure with an accessible summary
+  ---
+  duration_ms: 0.853292
+  type: 'test'
+  ...
+# Subtest: disclosures have no custom actions, state, network, storage, or unsafe type escape
+not ok 2 - disclosures have no custom actions, state, network, storage, or unsafe type escape
+  ---
+  duration_ms: 1.2655
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/recovery-storage-details.test.mjs:79:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      [
+    +   './i18n/I18nProvider.tsx',
+        'react'
+      ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: 'react'
+  actual:
+    0: './i18n/I18nProvider.tsx'
+    1: 'react'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/recovery-storage-details.test.mjs:84:10)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: every domain discloses plaintext privacy, unconfirmed input loss, backup exclusion and restored limits
+ok 3 - every domain discloses plaintext privacy, unconfirmed input loss, backup exclusion and restored limits
+  ---
+  duration_ms: 0.141792
+  type: 'test'
+  ...
+# Subtest: clip capacity counts cumulative target slots and retained cleared revisions without inventing its own intent
+ok 4 - clip capacity counts cumulative target slots and retained cleared revisions without inventing its own intent
+  ---
+  duration_ms: 0.095167
+  type: 'test'
+  ...
+# Subtest: delivery distinguishes raw name from retained exact export parameters and captured-name retention
+ok 5 - delivery distinguishes raw name from retained exact export parameters and captured-name retention
+  ---
+  duration_ms: 0.078458
+  type: 'test'
+  ...
+# Subtest: shot text distinguishes original text, retained exact save intent and unchanged non-text fields
+ok 6 - shot text distinguishes original text, retained exact save intent and unchanged non-text fields
+  ---
+  duration_ms: 0.066625
+  type: 'test'
+  ...
+# Subtest: task center keeps injected operation counts separate from the retained SQL identity quota
+ok 7 - task center keeps injected operation counts separate from the retained SQL identity quota
+  ---
+  duration_ms: 0.216875
+  type: 'test'
+  ...
+# Subtest: task center explains sidecar exceptions without claiming complete recovery coverage or automatic dispatch
+ok 8 - task center explains sidecar exceptions without claiming complete recovery coverage or automatic dispatch
+  ---
+  duration_ms: 0.10925
+  type: 'test'
+  ...
+# Subtest: last-project remains one overwritten location, separate from all three bounded draft domains
+ok 9 - last-project remains one overwritten location, separate from all three bounded draft domains
+  ---
+  duration_ms: 0.1635
+  type: 'test'
+  ...
+# Subtest: all three actual recovery panels mount their domain disclosure once and preserve existing status regions
+ok 10 - all three actual recovery panels mount their domain disclosure once and preserve existing status regions
+  ---
+  duration_ms: 0.167291
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 9
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 627.788792

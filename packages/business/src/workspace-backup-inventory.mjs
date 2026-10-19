@@ -1,4 +1,6 @@
 import {readWorkspaceBackupSchemaVersion} from './workspace-backup-schema-versions.ts';
+import {OPACITY_CANDIDATE_BACKUP_PROFILE} from './opacity-candidate-backup-profile.ts';
+import {OPACITY_RIPPLE_CANDIDATE_BACKUP_PROFILE} from './opacity-ripple-candidate-backup-profile.ts';
 // All SQL here targets a private disposable copy, never the source workspace or
 // completed payload. Unknown tables/rows are retained byte-for-byte in SQLite.
 import path from 'node:path';
@@ -24,7 +26,8 @@ export function createIssueCollector(){
  return {add(code,relative){totalIssues++;if(issues.length<BACKUP_IO_LIMITS.issues){const candidate=relative?.startsWith('payload/')?relative:`payload/${relative}`;issues.push({code,...(typeof candidate==='string'&&/^payload\/(?:media|image-staging|frame-staging)\/[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/.test(candidate)?{path:candidate}:{})});}},
   result:()=>({complete:totalIssues===0,totalIssues,issues:[...issues],truncated:totalIssues>issues.length})};
 }
-export function inspectDatabase(db){
+export function inspectDatabase(db,fixedProfile){
+ if(fixedProfile!==undefined&&fixedProfile!==OPACITY_CANDIDATE_BACKUP_PROFILE&&fixedProfile!==OPACITY_RIPPLE_CANDIDATE_BACKUP_PROFILE)fail('DATABASE_INVALID');
  db.exec('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF; PRAGMA foreign_keys=ON;');
  const checked=db.prepare('PRAGMA quick_check(1)').get();
  if(!checked||Object.values(checked)[0]!=='ok')fail('DATABASE_INVALID');
@@ -36,12 +39,12 @@ export function inspectDatabase(db){
  if(!tables.has('schema_version')||!tables.has('assets'))fail('DATABASE_INVALID');
  const ordinary=name=>{if(tables.has(name)&&/^CREATE\s+VIRTUAL\s+TABLE/i.test(tables.get(name)||''))fail('DATABASE_INVALID');};
  for(const table of ['schema_version','assets','jobs','exports','image_tasks','frame_tasks','image_reviews','image_remote_runs'])ordinary(table);
- const version=readWorkspaceBackupSchemaVersion(db);
+ const version=fixedProfile?fixedProfile.readSchemaVersion(db):readWorkspaceBackupSchemaVersion(db);
  return {tables,version};
 }
 
-export async function buildWorkspaceInventory({db,source,signal,check,issues,databaseEntry}){
- const {tables,version}=inspectDatabase(db),plan=new Map(),jobs=new Set(),exports=new Set(),budget={count:0};let rows=0,totalBytes=databaseEntry.bytes;
+export async function buildWorkspaceInventory({db,source,signal,check,issues,databaseEntry},fixedProfile){
+ const {tables,version}=inspectDatabase(db,fixedProfile),plan=new Map(),jobs=new Set(),exports=new Set(),budget={count:0};let rows=0,totalBytes=databaseEntry.bytes;
  const consume=()=>{checkCancelled(signal);check();if(++rows>MAX_ROWS)fail('LIMIT');};
  const add=(relative,role,{allowMissing=true,sha256,bytes}={})=>{
   if(!isWorkspaceBackupPayloadPath(`payload/${relative}`))fail('DATABASE_INVALID');

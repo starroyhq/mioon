@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: valid RGB, split IDAT, RGBA and all five row filters decode with exact metadata
+ok 1 - valid RGB, split IDAT, RGBA and all five row filters decode with exact metadata
+  ---
+  duration_ms: 7.709916
+  type: 'test'
+  ...
+# Subtest: signature, every CRC, short chunk framing, oversized lengths and dimensions fail closed
+ok 2 - signature, every CRC, short chunk framing, oversized lengths and dimensions fail closed
+  ---
+  duration_ms: 0.749958
+  type: 'test'
+  ...
+# Subtest: IHDR/PLTE/IDAT/IEND order, duplicates and trailing/polyglot bytes are rejected
+ok 3 - IHDR/PLTE/IDAT/IEND order, duplicates and trailing/polyglot bytes are rejected
+  ---
+  duration_ms: 0.586041
+  type: 'test'
+  ...
+# Subtest: unsupported critical, animation, palette/grayscale/16-bit/interlaced and compressed metadata rejected
+ok 4 - unsupported critical, animation, palette/grayscale/16-bit/interlaced and compressed metadata rejected
+  ---
+  duration_ms: 0.624625
+  type: 'test'
+  ...
+# Subtest: deflate truncation, tail, concatenated streams, checksum, wrong output and bombs rejected
+ok 5 - deflate truncation, tail, concatenated streams, checksum, wrong output and bombs rejected
+  ---
+  duration_ms: 8.241208
+  type: 'test'
+  ...
+# Subtest: RGBA alpha is reconstructed through filters before checking opaque profile
+ok 6 - RGBA alpha is reconstructed through filters before checking opaque profile
+  ---
+  duration_ms: 0.877084
+  type: 'test'
+  ...
+# Subtest: known metadata is checked for lengths, order, duplication, text validity and metadata bound
+ok 7 - known metadata is checked for lengths, order, duplication, text validity and metadata bound
+  ---
+  duration_ms: 91.544458
+  type: 'test'
+  ...
+# Subtest: Mock renderer emits deterministic actual 1024-square PNG and cancellation is local
+ok 8 - Mock renderer emits deterministic actual 1024-square PNG and cancellation is local
+  ---
+  duration_ms: 113.485542
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 356.78575

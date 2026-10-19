@@ -1,0 +1,208 @@
+TAP version 13
+# Subtest: Comfy viewing/saving has no network probe or credential fields; explicit check populates bounded choices
+ok 1 - Comfy viewing/saving has no network probe or credential fields; explicit check populates bounded choices
+  ---
+  duration_ms: 14.842
+  type: 'test'
+  ...
+# Subtest: Comfy blocks non-loopback checks and unknown check outputs, never probing on reopen
+ok 2 - Comfy blocks non-loopback checks and unknown check outputs, never probing on reopen
+  ---
+  duration_ms: 2.731833
+  type: 'test'
+  ...
+# Subtest: Comfy CAS and unknown saves keep draft, require reconciliation, and never repeat a save/check
+ok 3 - Comfy CAS and unknown saves keep draft, require reconciliation, and never repeat a save/check
+  ---
+  duration_ms: 1.067917
+  type: 'test'
+  ...
+# Subtest: Comfy double check, hidden controls and disposed response cannot trigger another action
+ok 4 - Comfy double check, hidden controls and disposed response cannot trigger another action
+  ---
+  duration_ms: 0.290708
+  type: 'test'
+  ...
+# Subtest: Comfy settings transport uses dedicated local routes, preserves definite validation and strips server text
+ok 5 - Comfy settings transport uses dedicated local routes, preserves definite validation and strips server text
+  ---
+  duration_ms: 0.518792
+  type: 'test'
+  ...
+# Subtest: Comfy prepare freezes exact prompt, server seed and full graph but cannot automatically approve
+ok 6 - Comfy prepare freezes exact prompt, server seed and full graph but cannot automatically approve
+  ---
+  duration_ms: 14.548333
+  type: 'test'
+  ...
+# Subtest: Comfy readiness and saved configuration fence generation and stale review approval
+ok 7 - Comfy readiness and saved configuration fence generation and stale review approval
+  ---
+  duration_ms: 6.443834
+  type: 'test'
+  ...
+# Subtest: Comfy hidden prepare completion stays review-only; saved workflow tampering cannot approve
+ok 8 - Comfy hidden prepare completion stays review-only; saved workflow tampering cannot approve
+  ---
+  duration_ms: 3.249666
+  type: 'test'
+  ...
+# Subtest: Comfy prepared intent survives recreation with same graph and never auto-prepares or approves
+ok 9 - Comfy prepared intent survives recreation with same graph and never auto-prepares or approves
+  ---
+  duration_ms: 6.748417
+  type: 'test'
+  ...
+# Subtest: Comfy observation is a distinct explicit remote-CAS action; loading only reads local metadata
+ok 10 - Comfy observation is a distinct explicit remote-CAS action; loading only reads local metadata
+  ---
+  duration_ms: 0.75
+  type: 'test'
+  ...
+# Subtest: lost Comfy observe ACK retains stable key across recreation; only explicit replay uses same bytes
+ok 11 - lost Comfy observe ACK retains stable key across recreation; only explicit replay uses same bytes
+  ---
+  duration_ms: 0.763333
+  type: 'test'
+  ...
+# Subtest: local observation receipt settles pending without external query; foreign or regressed identities fail
+ok 12 - local observation receipt settles pending without external query; foreign or regressed identities fail
+  ---
+  duration_ms: 0.880334
+  type: 'test'
+  ...
+# Subtest: observation duplicate, hide and disposal preserve exact durable key without generation retry
+ok 13 - observation duplicate, hide and disposal preserve exact durable key without generation retry
+  ---
+  duration_ms: 0.290875
+  type: 'test'
+  ...
+# Subtest: Comfy UI exposes separate prepare/observe/full graph, shared controls and truthful resource disclosures
+ok 14 - Comfy UI exposes separate prepare/observe/full graph, shared controls and truthful resource disclosures
+  ---
+  duration_ms: 133.588125
+  type: 'test'
+  ...
+# Subtest: actual Comfy settings controls use shared components and stale project/hidden callbacks cannot check or save
+ok 15 - actual Comfy settings controls use shared components and stale project/hidden callbacks cannot check or save
+  ---
+  duration_ms: 5.973459
+  type: 'test'
+  ...
+# Subtest: actual Comfy review shows exact graph, seed, independent status and no OpenAI option claims
+ok 16 - actual Comfy review shows exact graph, seed, independent status and no OpenAI option claims
+  ---
+  duration_ms: 3.296417
+  type: 'test'
+  ...
+# Subtest: only exact observation rejection proofs release stale CAS/busy intents; no automatic replacement query
+ok 17 - only exact observation rejection proofs release stale CAS/busy intents; no automatic replacement query
+  ---
+  duration_ms: 16.823208
+  type: 'test'
+  ...
+# Subtest: reopened unknown observation reads its exact task before paginated history and retains group selection
+ok 18 - reopened unknown observation reads its exact task before paginated history and retains group selection
+  ---
+  duration_ms: 1.646625
+  type: 'test'
+  ...
+# Subtest: an unknown older observation can replay its receipt after another observer finishes the task
+ok 19 - an unknown older observation can replay its receipt after another observer finishes the task
+  ---
+  duration_ms: 0.448625
+  type: 'test'
+  ...
+# Subtest: actual Comfy composer prepares first and stale hidden approval handlers never run
+ok 20 - actual Comfy composer prepares first and stale hidden approval handlers never run
+  ---
+  duration_ms: 24.279292
+  type: 'test'
+  ...
+# Subtest: observation rejection proof with wrong or absent HTTP status stays uncertain
+ok 21 - observation rejection proof with wrong or absent HTTP status stays uncertain
+  ---
+  duration_ms: 0.982458
+  type: 'test'
+  ...
+# Subtest: browser RPC preserves actual HTTP status without changing legacy ApiError construction
+ok 22 - browser RPC preserves actual HTTP status without changing legacy ApiError construction
+  ---
+  duration_ms: 0.196916
+  type: 'test'
+  ...
+# Subtest: availability has a separate strict local GET contract; existing settings responses stay unchanged
+ok 23 - availability has a separate strict local GET contract; existing settings responses stay unchanged
+  ---
+  duration_ms: 1.359708
+  type: 'test'
+  ...
+# Subtest: unavailable, missing, failed and malformed availability disable checks but preserve local settings and saves
+ok 24 - unavailable, missing, failed and malformed availability disable checks but preserve local settings and saves
+  ---
+  duration_ms: 4.935125
+  type: 'test'
+  ...
+# Subtest: pending availability cannot hold local settings/history reads or revive a disposed session
+ok 25 - pending availability cannot hold local settings/history reads or revive a disposed session
+  ---
+  duration_ms: 1.445541
+  type: 'test'
+  ...
+# Subtest: module absence/unknown never hides retained images, reviews, remote evidence or local-only recovery
+ok 26 - module absence/unknown never hides retained images, reviews, remote evidence or local-only recovery
+  ---
+  duration_ms: 33.123584
+  type: 'test'
+  ...
+# Subtest: module status refresh is explicit and local; automatic reads and visibility changes do not reload or probe it
+ok 27 - module status refresh is explicit and local; automatic reads and visibility changes do not reload or probe it
+  ---
+  duration_ms: 3.728542
+  type: 'test'
+  ...
+# Subtest: closing the old new-generation setting still permits explicit checks and existing-task observations
+ok 28 - closing the old new-generation setting still permits explicit checks and existing-task observations
+  ---
+  duration_ms: 2.540291
+  type: 'test'
+  ...
+# Subtest: saved observation keys remain exact replay intents when the module is absent, not loaded or unknown
+ok 29 - saved observation keys remain exact replay intents when the module is absent, not loaded or unknown
+  ---
+  duration_ms: 1.274667
+  type: 'test'
+  ...
+# Subtest: accepted generation receipt reconciliation survives module absence without approving or submitting again
+ok 30 - accepted generation receipt reconciliation survives module absence without approving or submitting again
+  ---
+  duration_ms: 9.805542
+  type: 'test'
+  ...
+# Subtest: actual settings show independent module status and disabled network buttons while retained configuration is editable
+ok 31 - actual settings show independent module status and disabled network buttons while retained configuration is editable
+  ---
+  duration_ms: 9.309917
+  type: 'test'
+  ...
+# Subtest: actual unavailable-module composer retains old preview/details/recovery and disables new prepare, approval and query
+ok 32 - actual unavailable-module composer retains old preview/details/recovery and disables new prepare, approval and query
+  ---
+  duration_ms: 44.479875
+  type: 'test'
+  ...
+# Subtest: four-language rerenders preserve Comfy draft and never probe, save, or reload on locale changes
+ok 33 - four-language rerenders preserve Comfy draft and never probe, save, or reload on locale changes
+  ---
+  duration_ms: 4.283875
+  type: 'test'
+  ...
+1..33
+# tests 33
+# suites 0
+# pass 33
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 653.343625

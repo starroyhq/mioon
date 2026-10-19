@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "node": "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+  "nodeVersion": "v24.21.0",
+  "checkout": "/private/tmp/mioon-blob-baselines-ni_dc4sm/current",
+  "head": "d52f50fc83b5cad99512853cb041e9eb4d977638",
+  "testFile": "tests/workspace-blob-admission-boundary.test.mjs",
+  "testSha256": "ac2551f15b2499f715a0f41aa0414d4bcf22336e9f5c0593047402c5175f24e8",
+  "exitCode": 0,
+  "counts": {
+    "tests": 12,
+    "pass": 12,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "tap": "boundary-tests.tap",
+  "cases": [
+    "separate initial TEXT ordinary24 enters40 and cold reopens without changing original typed rows",
+    "separate initial TEXT source captured by fixed25 cold reopens with its complete snapshot unchanged",
+    "original golden BLOB ordinary24 remains historically valid and current admission refuses without writes",
+    "original golden BLOB restored25 retains its fixed capture evidence and current admission refuses without writes",
+    "separate initial TEXT ordinary24-mock enters40 and cold reopens without changing original typed rows",
+    "separate initial TEXT source captured by fixed25-mock cold reopens with its complete snapshot unchanged",
+    "original golden BLOB ordinary24-mock remains historically valid and current admission refuses without writes",
+    "original golden BLOB restored25-mock retains its fixed capture evidence and current admission refuses without writes",
+    "separate initial TEXT known-marker-gap admits ordinary40 while preserving original rows and cold reopen",
+    "original golden BLOB known-marker-gap is refused by current admission without snapshot or file-byte changes",
+    "separate initial TEXT initial-markers-absent admits ordinary40 while preserving original rows and cold reopen",
+    "original golden BLOB initial-markers-absent is refused by current admission without snapshot or file-byte changes"
+  ],
+  "sourceIsolation": {
+    "guard": "/private/tmp/mioon-blob-baselines-ni_dc4sm/source-guard.mjs",
+    "importAudit": "boundary-imports.txt",
+    "workspaceSourcesAllInsideOwnCheckout": true,
+    "distinctWorkspaceSources": 105
+  },
+  "sourceChecks": [
+    {
+      "file": "tests/workspace-schema-profiles.test.mjs",
+      "sha256": "6110b32b810bcc9ae10b561ceccdaad218cbf9714954e1cdf31d103a13e24e4d",
+      "equalsExactCheckoutHead": true
+    },
+    {
+      "file": "tests/fixtures/workspace-schema-profiles/golden.json",
+      "sha256": "6e3f8f14199f5a64d2412c647f5db79b2da63bd4702f0a7f88df548a8b06502b",
+      "equalsExactCheckoutHead": true
+    },
+    {
+      "file": "tests/fixtures/workspace-schema-profiles/manifest.json",
+      "sha256": "6c911653232e380764b0f7e476c0523d58271eeb673ef8db39ba0e3091065d7c",
+      "equalsExactCheckoutHead": true
+    },
+    {
+      "file": "tests/workspace-schema26-fixtures.mjs",
+      "sha256": "0953dcc895ce2d16f8c679025fb602be7a0f2e77793a2e23bff327bf714d2050",
+      "equalsExactCheckoutHead": true
+    },
+    {
+      "file": "packages/business/src/workspace-volume-envelope-validation.ts",
+      "sha256": "1face8429869dd619ccb83214998537d103d9e70c1974e7b85b29bf83361ef09",
+      "equalsExactCheckoutHead": true
+    },
+    {
+      "file": "packages/business/src/workspace-schema-dispatch.ts",
+      "sha256": "fc60f85cdb26accbe747dbec6d05e0ecbfceb67332cb114cb85359cb7c4b06bc",
+      "equalsExactCheckoutHead": true
+    },
+    {
+      "file": "packages/business/src/workspace-restore-schema.mjs",
+      "sha256": "35ec2bb60ea012e7a70c3c966a2a8749b15bf5c4433fd1c6499f32ff6a4446b1",
+      "equalsExactCheckoutHead": true
+    },
+    {
+      "file": "packages/business/src/workspace-fixed-schema.mjs",
+      "sha256": "d66be4bb57fdf62fa9fd3bb06da7d0fa502419f6794dc446a0beeca69296315b",
+      "equalsExactCheckoutHead": true
+    },
+    {
+      "file": "packages/business/src/db.mjs",
+      "sha256": "1eeb40162c19c579727830e8b2a92e08022648fa9fbbaa77032414a06dd31964",
+      "equalsExactCheckoutHead": true
+    }
+  ],
+  "policies": {
+    "existingSixTestsUnchanged": true,
+    "goldenAndManifestUnchanged": true,
+    "runtimeAndValidatorsUnchanged": true,
+    "originalBlobNeverConvertedOrUpdated": true,
+    "textInsertedInitially": true,
+    "restoredTextCapturedOnlyAfterInitialInsert": true,
+    "constructorGoldenClaim": false,
+    "preservationOracle": "Complete typed SQLite snapshot before cold reopen; fixed25 independent golden tests remain untouched.",
+    "negativeObservation": "Only a disposable byte-identical copy receives post-refusal SQLite reads; original source bytes and directory are checked before and after.",
+    "journalScope": "All owned file fixtures use WAL from initial construction to match current openStore policy. Byte-identity assertions cover these fixtures; no claim for DELETE-mode header preservation.",
+    "newRuntimePermission": false,
+    "commit": false,
+    "mainTreeWritten": false
+  },
+  "retainedAttempts": [
+    {
+      "log": "boundary-tests-attempt1.tap",
+      "pass": 6,
+      "fail": 6,
+      "reason": "Transcription typo in newly written fixed hold-hash literal (d576f454 vs independent golden d576c454); corrected against original golden."
+    },
+    {
+      "log": "boundary-tests-attempt2.tap",
+      "pass": 6,
+      "fail": 6,
+      "reason": "Post-refusal readOnly observation itself created WAL/SHM beside source. Observation moved to a disposable byte-identical copy; original zero-residue assertions retained."
+    }
+  ],
+  "limitations": [
+    "These additive12 tests do not resolve or replace the six original known-failing BLOB compatibility expectations.",
+    "No GUI, provider, network, actual user workspace or media subprocess qualification."
+  ]
+}

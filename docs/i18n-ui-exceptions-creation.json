@@ -130,13 +130,6 @@
     {
       "file": "apps/web/src/agent-chat.js",
       "category": "cjk-source",
-      "hash": "7dbfe873a789300f859c4b1fb23821939546be0a40de85360c4748941e1c8b2d",
-      "owner": "creation",
-      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. AgentPanel renders state.displayMessage/history.displayMessage; agentChatErrorDescriptor and agentChatPromptIssueDescriptor map stable error/validation branches. Timeline block strings only fence authorization; AgentPanel renders the corresponding blocked descriptor prop. Four-locale counterpart: agent.chat.state.consentChanged."
-    },
-    {
-      "file": "apps/web/src/agent-chat.js",
-      "category": "cjk-source",
       "hash": "4c8e3a4da2c72e80ff07748a83311fd4c8f1ef7e2c0b5d06e7dd737322db55ae",
       "owner": "creation",
       "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. AgentPanel renders state.displayMessage/history.displayMessage; agentChatErrorDescriptor and agentChatPromptIssueDescriptor map stable error/validation branches. Timeline block strings only fence authorization; AgentPanel renders the corresponding blocked descriptor prop. Four-locale counterpart: agent.chat.state.activeRun."
@@ -2415,6 +2408,13 @@
       "hash": "05a2350b10ed30d20fa72d6d0e38b606c96e22dd48cf7e99f0efa76e543024ab",
       "owner": "creation",
       "reason": "Invariant API endpoint suffix /images/generations appended to the exact saved connection base URL. ImageGeneration displays the real generation destination for review; translating or changing the path would misrepresent the actual protocol endpoint and approval target. Surrounding connection state, revision and approval disclosures are localized."
+    },
+    {
+      "file": "apps/web/src/agent-chat.js",
+      "category": "cjk-source",
+      "hash": "e0d4f77831fd29bbd6a86e4cef5920dd9862a1ec143a11d4b6d406d9430dedde",
+      "owner": "creation",
+      "reason": "Retained internal authorization diagnostic, not a display lookup key or translated user content. AgentPanel renders the explicit agent.chat.state.consentChanged descriptor while the original diagnostic remains available for controller compatibility."
     }
   ]
 }

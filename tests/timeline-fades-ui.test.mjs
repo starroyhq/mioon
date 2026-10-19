@@ -1,4 +1,6 @@
 import * as envelopeState from '../apps/web/src/clip-volume-envelope-state.ts';
+import * as opacityState from '../apps/web/src/clip-opacity-envelope-state.ts';
+import * as opacityAssembly from '../apps/web/src/clip-opacity-candidate-assembly.ts';
 import * as roleState from '../apps/web/src/clip-audio-role-state.ts';
 import * as roleContract from '../packages/contracts/src/timeline-audio-role.ts';
 import { i18nTestModule } from './helpers/i18n.ts';
@@ -13,6 +15,9 @@ import * as clipDraft from '../apps/web/src/clip-draft-state.ts';
 import * as clipLut from '../apps/web/src/clip-lut-state.ts';
 import { createClipLutRecovery } from '../apps/web/src/clip-lut-recovery.ts';
 import { isTimelineRecord } from '@mioon/contracts';
+import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
+import * as removalState from '../apps/web/src/timeline-removal.ts';
+import {hasOpenWorkbenchModal} from '../apps/web/src/workbench-modal-state.ts';
 
 const id = n => `77000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const stamp = '2026-10-12T00:00:00.000Z';
@@ -59,12 +64,18 @@ async function inspectorHarness(patch = {}, lutRpc = async () => { throw Error('
     Function('require', 'module', 'exports', code)(id => {
       if (id === 'react') return react;
       if (id === './i18n/I18nProvider.tsx') return i18nTestModule();
+      if (id === './UiPreferencesProvider.tsx') return {useUiPreferences: () => ({preferences: DEFAULT_UI_PREFERENCES})};
+      if (id === './timeline-removal.ts') return removalState;
+      if (id === './ClipRemovalControls.tsx') return load('ClipRemovalControls.tsx');
+      if (id === './workbench-modal-state.ts') return {hasOpenWorkbenchModal};
       if (id === '../../../packages/i18n/src/index.ts') return i18nCore;
       if (id === './clip-audio-state.js') return audio;
       if (id === './timeline-format-state.js') return timelineFormat;
       if (id === './clip-draft-state.ts') return clipDraft;
       if (id === './clip-audio-role-state.ts') return roleState;
       if (id === './clip-volume-envelope-state.ts') return envelopeState;
+      if (id === './clip-opacity-envelope-state.ts') return opacityState;
+      if (id === './clip-opacity-candidate-assembly.ts') return opacityAssembly;
       if (id === '../../../packages/contracts/src/timeline-audio-role.ts') return roleContract;
       if (id === './ClipAudioRoleControls.tsx') return load('ClipAudioRoleControls.tsx');
       if (id === './clip-lut-state.ts') return { ...clipLut, createClipLutController: options => clipLut.createClipLutController({ ...options, recovery: createClipLutRecovery({ storage: () => ({ getItem: () => null, setItem() {}, removeItem() {} }), lock: async (_name, action) => action() }) }) };

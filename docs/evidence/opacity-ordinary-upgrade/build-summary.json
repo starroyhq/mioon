@@ -1,0 +1,29 @@
+{
+  "canonical": {
+    "command": "node scripts/tooling.mjs build",
+    "exitCode": 0,
+    "evidence": "build.txt",
+    "includes": "Canonical strict typecheck, default Web and development Desktop source bundles."
+  },
+  "standaloneTypecheck": {
+    "command": "node scripts/tooling.mjs typecheck",
+    "exitCode": 0,
+    "note": "Earlier source check0; final source also checked by canonical build."
+  },
+  "candidate": {
+    "command": "node node_modules/vite/bin/vite.js build --mode opacity-candidate",
+    "cwd": "apps/web",
+    "exitCode": 0,
+    "evidence": "candidate-build.txt"
+  },
+  "warnings": [
+    "Existing bundle-size warnings; no threshold changed."
+  ],
+  "node": "v26.9.0",
+  "notClaimed": [
+    "Installer build",
+    "Node24",
+    "Cross-platform",
+    "GUI"
+  ]
+}

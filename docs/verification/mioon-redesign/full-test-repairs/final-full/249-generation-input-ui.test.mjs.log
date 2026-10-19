@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: profile selection requires exact server model, region, metadata version and evaluation without fallback
+ok 1 - profile selection requires exact server model, region, metadata version and evaluation without fallback
+  ---
+  duration_ms: 2.026959
+  type: 'test'
+  ...
+# Subtest: lifecycle display and shared preflight use server evaluation date, never browser time
+ok 2 - lifecycle display and shared preflight use server evaluation date, never browser time
+  ---
+  duration_ms: 3.741166
+  type: 'test'
+  ...
+# Subtest: renderer preserves missing/full-reference checks and never converts subject bindings into generation inputs
+ok 3 - renderer preserves missing/full-reference checks and never converts subject bindings into generation inputs
+  ---
+  duration_ms: 3.81825
+  type: 'test'
+  ...
+# Subtest: new profile diagnostics are localized only in the renderer and preserve existing messages
+ok 4 - new profile diagnostics are localized only in the renderer and preserve existing messages
+  ---
+  duration_ms: 0.100333
+  type: 'test'
+  ...
+# Subtest: wired ProviderSettings renders accessible compact summaries and all role details from actual server profiles
+ok 5 - wired ProviderSettings renders accessible compact summaries and all role details from actual server profiles
+  ---
+  duration_ms: 463.668958
+  type: 'test'
+  ...
+# Subtest: input disclosure closes on model/provider changes and ignores stale or hidden callbacks without changing drafts
+ok 6 - input disclosure closes on model/provider changes and ignores stale or hidden callbacks without changing drafts
+  ---
+  duration_ms: 24.176208
+  type: 'test'
+  ...
+# Subtest: input disclosure stays expanded across equivalent polling DTOs and unrelated runtime refreshes
+ok 7 - input disclosure stays expanded across equivalent polling DTOs and unrelated runtime refreshes
+  ---
+  duration_ms: 2.93425
+  type: 'test'
+  ...
+# Subtest: input disclosure closes on meaningful route, role-limit, profile-version and server-evaluation changes
+ok 8 - input disclosure closes on meaningful route, role-limit, profile-version and server-evaluation changes
+  ---
+  duration_ms: 6.085334
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 761.581666

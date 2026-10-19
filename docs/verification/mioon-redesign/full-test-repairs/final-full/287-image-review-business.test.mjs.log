@@ -1,0 +1,124 @@
+TAP version 13
+# Subtest: prepare is retained exact local intent; no approval, task, receipt, or POST is produced
+ok 1 - prepare is retained exact local intent; no approval, task, receipt, or POST is produced
+  ---
+  duration_ms: 850.933625
+  type: 'test'
+  ...
+# Subtest: approval reservation, queued task and original ACK commit or roll back together
+ok 2 - approval reservation, queued task and original ACK commit or roll back together
+  ---
+  duration_ms: 627.5395
+  type: 'test'
+  ...
+# Subtest: lost confirmation ACK and exact repeated approvals recover original key before settings/CAS, without reexecution
+ok 3 - lost confirmation ACK and exact repeated approvals recover original key before settings/CAS, without reexecution
+  ---
+  duration_ms: 1043.478667
+  type: 'test'
+  ...
+# Subtest: only one POST fence is possible; unknown outcome and restart never release or replace reservation
+ok 4 - only one POST fence is possible; unknown outcome and restart never release or replace reservation
+  ---
+  duration_ms: 623.193333
+  type: 'test'
+  ...
+# Subtest: dispatch review fence rolls back atomically with task fence on a synthetic pre-POST fault
+ok 5 - dispatch review fence rolls back atomically with task fence on a synthetic pre-POST fault
+  ---
+  duration_ms: 600.114667
+  type: 'test'
+  ...
+# Subtest: rejection wins approval race and accepted tasks use existing cancelQueued semantics
+ok 6 - rejection wins approval race and accepted tasks use existing cancelQueued semantics
+  ---
+  duration_ms: 879.667166
+  type: 'test'
+  ...
+# Subtest: changed revision, disabled settings and pending configuration fences block before acceptance/POST
+ok 7 - changed revision, disabled settings and pending configuration fences block before acceptance/POST
+  ---
+  duration_ms: 705.208291
+  type: 'test'
+  ...
+# Subtest: stop and abort revoke future transmission; read-only history stays available
+ok 8 - stop and abort revoke future transmission; read-only history stays available
+  ---
+  duration_ms: 1398.634625
+  type: 'test'
+  ...
+# Subtest: project isolation, cursor scope and restart expiration are read-only and bounded
+ok 9 - project isolation, cursor scope and restart expiration are read-only and bounded
+  ---
+  duration_ms: 666.941583
+  type: 'test'
+  ...
+# Subtest: bounded retained capacity rejects new review but exact existing intent remains recoverable
+ok 10 - bounded retained capacity rejects new review but exact existing intent remains recoverable
+  ---
+  duration_ms: 1889.528375
+  type: 'test'
+  ...
+# Subtest: corrupt canonical-input is rejected without prompt leakage, repair, or new work
+ok 11 - corrupt canonical-input is rejected without prompt leakage, repair, or new work
+  ---
+  duration_ms: 650.724083
+  type: 'test'
+  ...
+# Subtest: corrupt intent-hash is rejected without prompt leakage, repair, or new work
+ok 12 - corrupt intent-hash is rejected without prompt leakage, repair, or new work
+  ---
+  duration_ms: 622.941667
+  type: 'test'
+  ...
+# Subtest: corrupt oversized-intent is rejected without prompt leakage, repair, or new work
+ok 13 - corrupt oversized-intent is rejected without prompt leakage, repair, or new work
+  ---
+  duration_ms: 607.633916
+  type: 'test'
+  ...
+# Subtest: corrupt state is rejected without prompt leakage, repair, or new work
+ok 14 - corrupt state is rejected without prompt leakage, repair, or new work
+  ---
+  duration_ms: 580.713834
+  type: 'test'
+  ...
+# Subtest: corrupt reservation is rejected without prompt leakage, repair, or new work
+ok 15 - corrupt reservation is rejected without prompt leakage, repair, or new work
+  ---
+  duration_ms: 565.70875
+  type: 'test'
+  ...
+# Subtest: review identity, exact canonical intent and reservations cannot be replaced, deleted, or edited through SQL
+ok 16 - review identity, exact canonical intent and reservations cannot be replaced, deleted, or edited through SQL
+  ---
+  duration_ms: 580.4265
+  type: 'test'
+  ...
+# Subtest: non-owner may inspect but cannot prepare, approve, reject or consume a POST fence
+ok 17 - non-owner may inspect but cannot prepare, approve, reject or consume a POST fence
+  ---
+  duration_ms: 573.860333
+  type: 'test'
+  ...
+# Subtest: async settings hooks and thenables cannot authorize acceptance or a POST
+ok 18 - async settings hooks and thenables cannot authorize acceptance or a POST
+  ---
+  duration_ms: 562.1215
+  type: 'test'
+  ...
+# Subtest: supplied settings assertions must synchronously return literal true, and HTTP errors are sanitized
+ok 19 - supplied settings assertions must synchronously return literal true, and HTTP errors are sanitized
+  ---
+  duration_ms: 566.04
+  type: 'test'
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 14876.515875

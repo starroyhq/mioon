@@ -1,4 +1,5 @@
 import { message as localizedMessage } from '../../../packages/i18n/src/index.ts';
+import {safeAgentAuthorizationSnapshot,agentAuthorizationKey,agentAuthorizationReceiptSchema} from './agent-authorization-state.ts';
 import { AGENT_PROTOCOLS, deriveAgentEndpoint, agentConfiguration, agentConfigurationEqual, isAgentProtocol, safeAgentSettings } from './agent-settings.js';
 
 import { AGENT_TYPED_CONTEXT, AGENT_PROJECT_CONTEXT, AGENT_EDIT_CONTEXT, AGENT_TIMELINE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT, agentTimelineGainAvailable, safeAgentTimelineGainPolicy, safeAgentTimelineGainTarget, agentTimelineGainTargetPatch, agentTimelineAvailable, safeAgentTimelinePolicy, safeAgentTimelineTarget, agentEditAvailable, safeAgentEditPolicy, safeAgentEditTarget, agentEditTargetKey, agentInspectionAvailable, agentRunContextMode, agentRunProvenanceEqual, agentRunActivityCompatible, safeAgentInspectionPolicy, safeAgentRunInspection, agentChatOutboundConsent } from './agent-tool-state.js';
@@ -23,7 +24,7 @@ export const agentChatErrorText = code => ({
   AGENT_CHAT_INTERRUPTED: '回复因应用或后端中断而结束。已保存的部分文字保留，不会自动续接；远端仍可能已计算或计费。',
   AGENT_CHAT_SETTINGS_CONFLICT: '连接设置已改变。请核对最新协议、地址和模型，再重新确认发送。',
   AGENT_CHAT_CONVERSATION_CONFLICT: '对话已在其他窗口更新。请核对最新内容，再确认发送。',
-  AGENT_CHAT_CONSENT_REQUIRED: '发送目标、对话或项目读取权限已改变，请重新核对并确认。',
+  AGENT_CHAT_CONSENT_REQUIRED: '目标、模型或发送范围尚未授权，或当前请求范围已变化，请核对授权与发送内容。',
   AGENT_CHAT_ACTIVE_RUN: '此项目已有一条回复正在生成，请等待或停止后再发送。',
   AGENT_CHAT_CREDENTIAL_UNAVAILABLE: '当前连接的密钥不可用。请在连接设置中检查；没有自动切换服务。',
   AGENT_CHAT_BUSY: '本次会话的运行或容量已达上限，请等待正在进行的回复结束。',
@@ -83,7 +84,8 @@ export function safeAgentChatSnapshot(value, projectId) {
   const edit = value.edit == null ? null : safeAgentEditPolicy(value.edit);
   const timelineEdit = value.timelineEdit == null ? null : safeAgentTimelinePolicy(value.timelineEdit);
   const timelineGainEdit = value.timelineGainEdit == null ? null : safeAgentTimelineGainPolicy(value.timelineGainEdit);
-  return { instanceId: value.instanceId, threadId: value.threadId, projectId, revision: value.revision, scope: value.scope, inspection, edit, ...(timelineEdit ? { timelineEdit } : {}), ...(timelineGainEdit ? { timelineGainEdit } : {}), persistence: 'local_database', mode: value.mode, settings: safeAgentSettings(value.settings), runs, historyCursor: value.historyCursor };
+  let authorization;try{authorization=safeAgentAuthorizationSnapshot(value.authorization);}catch{throw failure('INVALID_RESPONSE');}
+  return { instanceId: value.instanceId, threadId: value.threadId, projectId, revision: value.revision, scope: value.scope, inspection, edit, ...(timelineEdit ? { timelineEdit } : {}), ...(timelineGainEdit ? { timelineGainEdit } : {}), authorization, persistence: 'local_database', mode: value.mode, settings: safeAgentSettings(value.settings), runs, historyCursor: value.historyCursor };
 }
 export function safeAgentChatHistory(value, projectId, instanceId, threadId, before) {
   identity(value, projectId, instanceId, threadId);
@@ -156,6 +158,10 @@ export function createAgentChatClient({ fetchImpl = (...args) => globalThis.fetc
     finally { clearTimeout(timer); signal?.removeEventListener('abort', cancel); }
   }
   return {
+    authorize: async (snapshot, scope, requestId, signal) => json('/api/rpc','POST',{operation:'agent.authorization.grant',input:{
+      requestId,expectedRevision:snapshot.authorization.revision,expectedSettingsRevision:snapshot.settings.revision,
+      destination:deriveAgentEndpoint(snapshot.settings.configuration),model:snapshot.settings.configuration.model,scope,
+    }},signal),
     read: async (projectId, signal) => safeAgentChatSnapshot(await json(path(projectId), 'GET', undefined, signal), projectId),
     lookup: async (projectId, requestId, signal) => {
       const result = safeRunEnvelope(await json(`${path(projectId)}/requests/${encodeURIComponent(requestId)}`, 'GET', undefined, signal), projectId);
@@ -196,12 +202,12 @@ export function createAgentChatReceipts(storage) {
   };
 }
 const initialHistoryState = () => ({ phase: 'closed', page: null, before: null, trail: [], message: '', displayMessage: null });
-export const initialAgentChatState = () => ({ phase: 'loading', snapshot: null, draft: '', contextMode: AGENT_TYPED_CONTEXT, editTarget: null, timelineTarget: null, timelineBlockedReason: '', timelineGainTarget: null, timelineGainBlockedReason: '', consent: null, message: '', displayMessage: null, sessionLost: false, pending: null, abandonRequest: null, recoveredRun: null, history: initialHistoryState() });
+export const initialAgentChatState = () => ({ phase: 'loading', snapshot: null, draft: '', contextMode: AGENT_TYPED_CONTEXT, editTarget: null, timelineTarget: null, timelineBlockedReason: '', timelineGainTarget: null, timelineGainBlockedReason: '', consent: null, authorizing:false, message: '', displayMessage: null, sessionLost: false, pending: null, abandonRequest: null, recoveredRun: null, history: initialHistoryState() });
 export const activeAgentChatRun = state => state?.snapshot?.runs.find(run => run.status === 'running') || null;
 export function agentChatConsentKey(snapshot, contextMode = AGENT_TYPED_CONTEXT, editTarget) {
   if (!snapshot) return null;
   const configuration = snapshot.settings?.configuration;
-  try { const consent = agentChatOutboundConsent(snapshot, contextMode, deriveAgentEndpoint(configuration), editTarget); return consent ? JSON.stringify([snapshot.instanceId, snapshot.threadId, snapshot.projectId, snapshot.revision, snapshot.settings.revision, configuration.presetId, configuration.platformId, snapshot.inspection, snapshot.edit, ...(contextMode === AGENT_TIMELINE_CONTEXT ? [snapshot.timelineEdit] : contextMode === AGENT_TIMELINE_GAIN_CONTEXT ? [snapshot.timelineGainEdit] : []), [AGENT_EDIT_CONTEXT, AGENT_TIMELINE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT].includes(contextMode) ? editTarget : null, consent]) : null; } catch { return null; }
+  try { const consent = agentChatOutboundConsent(snapshot, contextMode, deriveAgentEndpoint(configuration), editTarget); return consent ? agentAuthorizationKey(configuration,contextMode) : null; } catch { return null; }
 }
 export function agentChatPromptIssue(message) {
   if (typeof message !== 'string' || !message.trim()) return '请输入消息。';
@@ -216,7 +222,7 @@ export const agentChatCanSend = state => Boolean(state?.snapshot && state.phase 
 export function createAgentChatSession({ projectId, client = createAgentChatClient(), receipts = createAgentChatReceipts(), requestId = () => globalThis.crypto.randomUUID(), onChange = () => {} } = {}) {
   let active = true, visible = true, state = initialAgentChatState(), streamAbort = null, serial = 0, historySerial = 0, historyAbort = null;
   const pendingReads = new Set();
-  const publish = patch => { if (active) { state = { ...state, ...patch }; onChange(state); } };
+  const publish = patch => { if (active) { state = { ...state, ...patch };state.consent=visible&&state.snapshot?.authorization?.scopes.includes(state.contextMode)?agentChatConsentKey(state.snapshot,state.contextMode,agentChatCurrentTarget(state)):null;onChange(state); } };
   const detach = () => { serial++; streamAbort?.abort(); streamAbort = null; };
   const request = async action => { const abort = new AbortController(); pendingReads.add(abort); try { return await action(abort.signal); } finally { pendingReads.delete(abort); } };
   const valid = epoch => active && epoch === serial;
@@ -384,7 +390,23 @@ export function createAgentChatSession({ projectId, client = createAgentChatClie
       if (agentEditTargetKey(patch.timelineGainTarget) === agentEditTargetKey(state.timelineGainTarget) && patch.timelineGainBlockedReason === state.timelineGainBlockedReason) return true;
       publish(patch); return true;
     },
-    approve(value) { if (!active || !visible || state.phase !== 'ready' || !state.snapshot) return false; const key = agentChatConsentKey(state.snapshot, state.contextMode, agentChatCurrentTarget(state)); if (value && (!key || (state.contextMode === AGENT_TIMELINE_CONTEXT && state.timelineBlockedReason || state.contextMode === AGENT_TIMELINE_GAIN_CONTEXT && state.timelineGainBlockedReason))) return false; publish({ consent: value ? key : null }); return true; },
+    async approve(value) {
+      if(!value||!active||!visible||state.phase!=='ready'||!state.snapshot||state.authorizing)return false;
+      const snapshot=state.snapshot,contextMode=state.contextMode,key=agentChatConsentKey(snapshot,contextMode,agentChatCurrentTarget(state));
+      if(!key||(contextMode===AGENT_TIMELINE_CONTEXT&&state.timelineBlockedReason||contextMode===AGENT_TIMELINE_GAIN_CONTEXT&&state.timelineGainBlockedReason))return false;
+      if(snapshot.authorization.scopes.includes(contextMode))return true;
+      const epoch=serial,approvalRequestId=requestId();publish({authorizing:true});
+      try{
+        const receipt=agentAuthorizationReceiptSchema.parse(await request(signal=>client.authorize(snapshot,contextMode,approvalRequestId,signal)));
+        if(!valid(epoch))return false;
+        if(receipt.operation!=='grant'||receipt.requestId!==approvalRequestId||receipt.revision!==snapshot.authorization.revision+1||
+          !agentConfigurationEqual(state.snapshot.settings.configuration,snapshot.settings.configuration))throw failure('INVALID_RESPONSE');
+        const next={...state.snapshot,authorization:{revision:receipt.revision,scopes:[...new Set([...snapshot.authorization.scopes,contextMode])]}};
+        publish({snapshot:next,authorizing:false});
+        return key===agentChatConsentKey(next,state.contextMode,agentChatCurrentTarget(state))&&Boolean(state.consent);
+      }catch(error){if(valid(epoch)){publish({authorizing:false,message:agentChatErrorText('AGENT_CHAT_CONSENT_REQUIRED'),displayMessage:agentChatErrorDescriptor('AGENT_CHAT_CONSENT_REQUIRED')});await load();}return false;}
+      finally{if(active)publish({authorizing:false});}
+    },
     async send() {
       if (!active || !visible || !agentChatCanSend(state)) return false;
       detach(); const epoch = serial, snapshot = state.snapshot, id = requestId(), message = state.draft, contextMode = state.contextMode, editTarget = agentChatCurrentTarget(state);

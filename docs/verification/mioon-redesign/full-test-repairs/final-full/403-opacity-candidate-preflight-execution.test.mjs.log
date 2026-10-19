@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: candidate42 actual preflight → raw snapshot hash → shared worker: omitted purpose defaults to export
+ok 1 - candidate42 actual preflight → raw snapshot hash → shared worker: omitted purpose defaults to export
+  ---
+  duration_ms: 4589.761708
+  type: 'test'
+  ...
+# Subtest: candidate42 actual preflight → raw snapshot hash → shared worker: explicit preview
+ok 2 - candidate42 actual preflight → raw snapshot hash → shared worker: explicit preview
+  ---
+  duration_ms: 3155.587375
+  type: 'test'
+  ...
+# Subtest: candidate42 actual preflight → raw snapshot hash → shared worker: explicit export
+ok 3 - candidate42 actual preflight → raw snapshot hash → shared worker: explicit export
+  ---
+  duration_ms: 3646.983125
+  type: 'test'
+  ...
+# Subtest: candidate42 actual preflight → raw snapshot hash → shared worker: selected export range and exact delivery name
+ok 4 - candidate42 actual preflight → raw snapshot hash → shared worker: selected export range and exact delivery name
+  ---
+  duration_ms: 3563.374166
+  type: 'test'
+  ...
+# Subtest: candidate preflight and actual worker both refuse missing source without codec or publication
+ok 5 - candidate preflight and actual worker both refuse missing source without codec or publication
+  ---
+  duration_ms: 1081.507
+  type: 'test'
+  ...
+# Subtest: candidate preflight and actual worker both refuse changed bytes without codec or publication
+ok 6 - candidate preflight and actual worker both refuse changed bytes without codec or publication
+  ---
+  duration_ms: 1036.032416
+  type: 'test'
+  ...
+# Subtest: a real opacity edit makes the original preflight hash stale without queuing an export or receipt
+ok 7 - a real opacity edit makes the original preflight hash stale without queuing an export or receipt
+  ---
+  duration_ms: 3655.790167
+  type: 'test'
+  ...
+# Subtest: candidate43 preflight keeps origin admission and held rows intact through a fresh worker export
+ok 8 - candidate43 preflight keeps origin admission and held rows intact through a fresh worker export
+  ---
+  duration_ms: 8467.549958
+  type: 'test'
+  ...
+# Subtest: actual callObservedRpc disconnect revokes candidate preflight, retains the in-flight gate and never publishes false ready
+ok 9 - actual callObservedRpc disconnect revokes candidate preflight, retains the in-flight gate and never publishes false ready
+  ---
+  duration_ms: 689.171541
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 30361.328584

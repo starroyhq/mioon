@@ -1,0 +1,145 @@
+TAP version 13
+# Subtest: all three timeline aspects deliver native/360/1080 with post-caption scale, exact frame boundaries and identical audio
+not ok 1 - all three timeline aspects deliver native/360/1080 with post-caption scale, exact frame boundaries and identical audio
+  ---
+  duration_ms: 147.868458
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/export-settings-media.test.mjs:71:1'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    Socket.<anonymous> (node:internal/child_process:497:11)
+    Socket.emit (node:events:514:20)
+    Pipe.<anonymous> (node:net:362:12)
+  ...
+# Subtest: remaining fixed quality/bitrate selections encode and malformed frozen delivery fails before media I/O
+ok 2 - remaining fixed quality/bitrate selections encode and malformed frozen delivery fails before media I/O
+  ---
+  duration_ms: 2285.012917
+  type: 'test'
+  ...
+# Subtest: cancellation during a selected-profile worker capability leaves no render scratch or destination
+ok 3 - cancellation during a selected-profile worker capability leaves no render scratch or destination
+  ---
+  duration_ms: 50.543209
+  type: 'test'
+  ...
+# Subtest: fresh worker capability is followed by the owner fence before any subtitle work, scratch or encoding
+ok 4 - fresh worker capability is followed by the owner fence before any subtitle work, scratch or encoding
+  ---
+  duration_ms: 115.961333
+  type: 'test'
+  ...
+# Subtest: worker capability await cannot encode or overwrite a hostile replacement of the accepted delivery record
+ok 5 - worker capability await cannot encode or overwrite a hostile replacement of the accepted delivery record
+  ---
+  duration_ms: 1017.697209
+  type: 'test'
+  ...
+# Subtest: worker rechecks frozen source ownership, retained lineage and identity after the actual capability await
+    # Subtest: asset-sql-owner
+    ok 1 - asset-sql-owner
+      ---
+      duration_ms: 898.422208
+      type: 'test'
+      ...
+    # Subtest: asset-json-owner
+    ok 2 - asset-json-owner
+      ---
+      duration_ms: 873.744708
+      type: 'test'
+      ...
+    # Subtest: version-sql-owner
+    ok 3 - version-sql-owner
+      ---
+      duration_ms: 886.953125
+      type: 'test'
+      ...
+    # Subtest: job-lineage
+    ok 4 - job-lineage
+      ---
+      duration_ms: 876.986542
+      type: 'test'
+      ...
+    # Subtest: shot-sql-owner
+    ok 5 - shot-sql-owner
+      ---
+      duration_ms: 874.948541
+      type: 'test'
+      ...
+    # Subtest: asset-hash
+    ok 6 - asset-hash
+      ---
+      duration_ms: 950.569541
+      type: 'test'
+      ...
+    # Subtest: asset-mime
+    ok 7 - asset-mime
+      ---
+      duration_ms: 1110.318375
+      type: 'test'
+      ...
+    # Subtest: asset-path
+    ok 8 - asset-path
+      ---
+      duration_ms: 891.290083
+      type: 'test'
+      ...
+    1..8
+ok 6 - worker rechecks frozen source ownership, retained lineage and identity after the actual capability await
+  ---
+  duration_ms: 7364.416666
+  type: 'test'
+  ...
+# Subtest: worker publication guards remove only known unpublished output and preserve replaced or uncertain files
+    # Subtest: prepublication
+    ok 1 - prepublication
+      ---
+      duration_ms: 1054.262167
+      type: 'test'
+      ...
+    # Subtest: publication-tx
+    ok 2 - publication-tx
+      ---
+      duration_ms: 1083.26275
+      type: 'test'
+      ...
+    # Subtest: publication-replacement
+    ok 3 - publication-replacement
+      ---
+      duration_ms: 1118.020125
+      type: 'test'
+      ...
+    # Subtest: publication-read-unknown
+    ok 4 - publication-read-unknown
+      ---
+      duration_ms: 1384.855542
+      type: 'test'
+      ...
+    1..4
+ok 7 - worker publication guards remove only known unpublished output and preserve replaced or uncertain files
+  ---
+  duration_ms: 4641.185542
+  type: 'test'
+  ...
+# Subtest: postcommit publication exception preserves the successful custom export and its exact owned output
+ok 8 - postcommit publication exception preserves the successful custom export and its exact owned output
+  ---
+  duration_ms: 1360.998208
+  type: 'test'
+  ...
+1..8
+# tests 20
+# suites 0
+# pass 19
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 17322.444208

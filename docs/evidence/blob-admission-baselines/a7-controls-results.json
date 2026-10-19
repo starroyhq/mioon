@@ -1,0 +1,99 @@
+{
+  "node": "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+  "version": "v24.21.0",
+  "scope": "Only the ordinary-current dynamic seed test changed by a7 and its retained BLOB refusal control; not the independent golden six.",
+  "results": [
+    {
+      "name": "pre-a7",
+      "code": 1,
+      "signal": null,
+      "counts": {
+        "tests": 1,
+        "pass": 0,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+        "--import",
+        "/private/tmp/mioon-blob-baselines-ni_dc4sm/source-guard.mjs",
+        "--test",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "ordinary current-schema reopen (?:keeps raw|rejects legacy BLOB)",
+        "tests/workspace-restore-schema.test.mjs"
+      ],
+      "log": "pre-a7-a7-controls.tap"
+    },
+    {
+      "name": "a7",
+      "code": 0,
+      "signal": null,
+      "counts": {
+        "tests": 2,
+        "pass": 2,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+        "--import",
+        "/private/tmp/mioon-blob-baselines-ni_dc4sm/source-guard.mjs",
+        "--test",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "ordinary current-schema reopen (?:keeps raw|rejects legacy BLOB)",
+        "tests/workspace-restore-schema.test.mjs"
+      ],
+      "log": "a7-a7-controls.tap"
+    },
+    {
+      "name": "ff85",
+      "code": 0,
+      "signal": null,
+      "counts": {
+        "tests": 2,
+        "pass": 2,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+        "--import",
+        "/private/tmp/mioon-blob-baselines-ni_dc4sm/source-guard.mjs",
+        "--test",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "ordinary current-schema reopen (?:keeps raw|rejects legacy BLOB)",
+        "tests/workspace-restore-schema.test.mjs"
+      ],
+      "log": "ff85-a7-controls.tap"
+    },
+    {
+      "name": "current",
+      "code": 0,
+      "signal": null,
+      "counts": {
+        "tests": 2,
+        "pass": 2,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+        "--import",
+        "/private/tmp/mioon-blob-baselines-ni_dc4sm/source-guard.mjs",
+        "--test",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "ordinary current-schema reopen (?:keeps raw|rejects legacy BLOB)",
+        "tests/workspace-restore-schema.test.mjs"
+      ],
+      "log": "current-a7-controls.tap"
+    }
+  ]
+}

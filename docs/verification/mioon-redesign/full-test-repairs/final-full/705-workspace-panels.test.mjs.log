@@ -1,0 +1,274 @@
+TAP version 13
+# Subtest: assets drag previews immediately and commits exactly once only on matching pointer release
+ok 1 - assets drag previews immediately and commits exactly once only on matching pointer release
+  ---
+  duration_ms: 13.886458
+  type: 'test'
+  ...
+# Subtest: inspector drag previews immediately and commits exactly once only on matching pointer release
+ok 2 - inspector drag previews immediately and commits exactly once only on matching pointer release
+  ---
+  duration_ms: 0.25625
+  type: 'test'
+  ...
+# Subtest: timeline drag previews immediately and commits exactly once only on matching pointer release
+ok 3 - timeline drag previews immediately and commits exactly once only on matching pointer release
+  ---
+  duration_ms: 0.207792
+  type: 'test'
+  ...
+# Subtest: panel pointer resize converts physical deltas at 90% and 125% into logical preferred sizes
+ok 4 - panel pointer resize converts physical deltas at 90% and 125% into logical preferred sizes
+  ---
+  duration_ms: 0.667834
+  type: 'test'
+  ...
+# Subtest: resize is inert for disabled handles, secondary buttons, clicks without motion, and unrelated keys
+ok 5 - resize is inert for disabled handles, secondary buttons, clicks without motion, and unrelated keys
+  ---
+  duration_ms: 0.330708
+  type: 'test'
+  ...
+# Subtest: resize Escape cancels the preview without persisting a value
+ok 6 - resize Escape cancels the preview without persisting a value
+  ---
+  duration_ms: 0.154333
+  type: 'test'
+  ...
+# Subtest: resize onPointerCancel cancels the preview without persisting a value
+ok 7 - resize onPointerCancel cancels the preview without persisting a value
+  ---
+  duration_ms: 0.106958
+  type: 'test'
+  ...
+# Subtest: resize onLostPointerCapture cancels the preview without persisting a value
+ok 8 - resize onLostPointerCapture cancels the preview without persisting a value
+  ---
+  duration_ms: 0.089375
+  type: 'test'
+  ...
+# Subtest: resize blur cancels the preview without persisting a value
+ok 9 - resize blur cancels the preview without persisting a value
+  ---
+  duration_ms: 0.098416
+  type: 'test'
+  ...
+# Subtest: resize pagehide cancels the preview without persisting a value
+ok 10 - resize pagehide cancels the preview without persisting a value
+  ---
+  duration_ms: 0.126667
+  type: 'test'
+  ...
+# Subtest: resize disabled cancels the preview without persisting a value
+ok 11 - resize disabled cancels the preview without persisting a value
+  ---
+  duration_ms: 0.140959
+  type: 'test'
+  ...
+# Subtest: scope changes reject stale pointer release before passive cleanup and use only the latest callbacks
+ok 12 - scope changes reject stale pointer release before passive cleanup and use only the latest callbacks
+  ---
+  duration_ms: 0.154167
+  type: 'test'
+  ...
+# Subtest: rerenders during a long drag retain its original pointer origin and do not persist intermediate sizes
+ok 13 - rerenders during a long drag retain its original pointer origin and do not persist intermediate sizes
+  ---
+  duration_ms: 0.909584
+  type: 'test'
+  ...
+# Subtest: unmount removes global resize listeners and makes the old gesture unable to commit
+ok 14 - unmount removes global resize listeners and makes the old gesture unable to commit
+  ---
+  duration_ms: 0.416125
+  type: 'test'
+  ...
+# Subtest: assets separator has bounded accessible values and directional keyboard sizing
+ok 15 - assets separator has bounded accessible values and directional keyboard sizing
+  ---
+  duration_ms: 0.384042
+  type: 'test'
+  ...
+# Subtest: inspector separator has bounded accessible values and directional keyboard sizing
+ok 16 - inspector separator has bounded accessible values and directional keyboard sizing
+  ---
+  duration_ms: 0.224416
+  type: 'test'
+  ...
+# Subtest: timeline separator has bounded accessible values and directional keyboard sizing
+ok 17 - timeline separator has bounded accessible values and directional keyboard sizing
+  ---
+  duration_ms: 0.809083
+  type: 'test'
+  ...
+# Subtest: onKeyDown during a pointer gesture cannot be overwritten by a stale pointer release
+ok 18 - onKeyDown during a pointer gesture cannot be overwritten by a stale pointer release
+  ---
+  duration_ms: 0.150583
+  type: 'test'
+  ...
+# Subtest: onDoubleClick during a pointer gesture cannot be overwritten by a stale pointer release
+ok 19 - onDoubleClick during a pointer gesture cannot be overwritten by a stale pointer release
+  ---
+  duration_ms: 0.092833
+  type: 'test'
+  ...
+# Subtest: PanelBoundary preserves its children and propagates effective visibility through inert semantic markup
+ok 20 - PanelBoundary preserves its children and propagates effective visibility through inert semantic markup
+  ---
+  duration_ms: 0.259334
+  type: 'test'
+  ...
+# Subtest: PanelBoundary returns contained focus on hide but never steals focus after an outside blur
+ok 21 - PanelBoundary returns contained focus on hide but never steals focus after an outside blur
+  ---
+  duration_ms: 0.189375
+  type: 'test'
+  ...
+# Subtest: PanelBoundary restores retained scroll only when visible in the same scope; hidden and stale callbacks are inert
+ok 22 - PanelBoundary restores retained scroll only when visible in the same scope; hidden and stale callbacks are inert
+  ---
+  duration_ms: 0.174375
+  type: 'test'
+  ...
+# Subtest: canvas PanelsMenu uses labelled checkbox primitives and a distinct current-layout reset
+ok 23 - canvas PanelsMenu uses labelled checkbox primitives and a distinct current-layout reset
+  ---
+  duration_ms: 0.303708
+  type: 'test'
+  ...
+# Subtest: editing PanelsMenu uses labelled checkbox primitives and a distinct current-layout reset
+ok 24 - editing PanelsMenu uses labelled checkbox primitives and a distinct current-layout reset
+  ---
+  duration_ms: 1.422042
+  type: 'test'
+  ...
+# Subtest: PanelRecall is a labelled button tied to its collapsed panel
+ok 25 - PanelRecall is a labelled button tied to its collapsed panel
+  ---
+  duration_ms: 0.3415
+  type: 'test'
+  ...
+# Subtest: viewport resize cancels an active gesture through the changed measured-size scope
+ok 26 - viewport resize cancels an active gesture through the changed measured-size scope
+  ---
+  duration_ms: 0.429625
+  type: 'test'
+  ...
+# Subtest: geometry previews are local, viewport-derived sizes never mutate preferences, and returning to an old scope cannot resurrect a canceled drag
+ok 27 - geometry previews are local, viewport-derived sizes never mutate preferences, and returning to an old scope cannot resurrect a canceled drag
+  ---
+  duration_ms: 2.592459
+  type: 'test'
+  ...
+# Subtest: the preview keeps a comfortable height while the timeline keeps one track, and the resize maximum matches the effective cap
+ok 28 - the preview keeps a comfortable height while the timeline keeps one track, and the resize maximum matches the effective cap
+  ---
+  duration_ms: 0.209
+  type: 'test'
+  ...
+# Subtest: double-click restores the durable default even when the viewport maximum is smaller, while keyboard sizing stays constrained
+ok 29 - double-click restores the durable default even when the viewport maximum is smaller, while keyboard sizing stays constrained
+  ---
+  duration_ms: 0.406292
+  type: 'test'
+  ...
+# Subtest: geometry starts measuring after readiness and disconnects its observer on logout or unmount
+ok 30 - geometry starts measuring after readiness and disconnects its observer on logout or unmount
+  ---
+  duration_ms: 0.134208
+  type: 'test'
+  ...
+# Subtest: real React and Base UI render separator, inert boundary, recall button, and closed menu semantics
+ok 31 - real React and Base UI render separator, inert boundary, recall button, and closed menu semantics
+  ---
+  duration_ms: 460.390166
+  type: 'test'
+  ...
+# Subtest: PanelRecall hands focus to the revealed panel when focus is still on body
+ok 32 - PanelRecall hands focus to the revealed panel when focus is still on body
+  ---
+  duration_ms: 0.234166
+  type: 'test'
+  ...
+# Subtest: PanelRecall hands focus to the revealed panel when focus is still on trigger
+ok 33 - PanelRecall hands focus to the revealed panel when focus is still on trigger
+  ---
+  duration_ms: 0.062792
+  type: 'test'
+  ...
+# Subtest: PanelRecall does not steal focus after changed scope
+ok 34 - PanelRecall does not steal focus after changed scope
+  ---
+  duration_ms: 0.272167
+  type: 'test'
+  ...
+# Subtest: PanelRecall does not steal focus after detached panel
+ok 35 - PanelRecall does not steal focus after detached panel
+  ---
+  duration_ms: 0.070208
+  type: 'test'
+  ...
+# Subtest: PanelRecall does not steal focus after still hidden
+ok 36 - PanelRecall does not steal focus after still hidden
+  ---
+  duration_ms: 0.113666
+  type: 'test'
+  ...
+# Subtest: PanelRecall does not steal focus after newer focus
+ok 37 - PanelRecall does not steal focus after newer focus
+  ---
+  duration_ms: 0.082166
+  type: 'test'
+  ...
+# Subtest: PanelRecall does not steal focus after missing panel
+ok 38 - PanelRecall does not steal focus after missing panel
+  ---
+  duration_ms: 0.126417
+  type: 'test'
+  ...
+# Subtest: the supported 1050×680 and larger shell keeps a fixed 44px header without geometry feedback writes
+ok 39 - the supported 1050×680 and larger shell keeps a fixed 44px header without geometry feedback writes
+  ---
+  duration_ms: 0.988833
+  type: 'test'
+  ...
+# Subtest: supported scaled editing windows reserve a 240px physical preview stage without changing saved heights
+ok 40 - supported scaled editing windows reserve a 240px physical preview stage without changing saved heights
+  ---
+  duration_ms: 0.43275
+  type: 'test'
+  ...
+# Subtest: 1050px desktop uses two 44px rails at every supported scale, independently of the very narrow fallback
+ok 41 - 1050px desktop uses two 44px rails at every supported scale, independently of the very narrow fallback
+  ---
+  duration_ms: 0.248958
+  type: 'test'
+  ...
+# Subtest: compact pinning is transient, survives panel intents, and restores the original wide-window preference
+ok 42 - compact pinning is transient, survives panel intents, and restores the original wide-window preference
+  ---
+  duration_ms: 0.170542
+  type: 'test'
+  ...
+# Subtest: actual App rail overlay and pin callbacks use presentation state without persisting an automatic collapse
+ok 43 - actual App rail overlay and pin callbacks use presentation state without persisting an automatic collapse
+  ---
+  duration_ms: 3.585417
+  type: 'test'
+  ...
+# Subtest: actual App desktop collapse retains the toolbar container, hides body and resize, and restores the current timeline view
+ok 44 - actual App desktop collapse retains the toolbar container, hides body and resize, and restores the current timeline view
+  ---
+  duration_ms: 5.255292
+  type: 'test'
+  ...
+1..44
+# tests 44
+# suites 0
+# pass 44
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 755.867583

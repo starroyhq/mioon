@@ -3,6 +3,7 @@ import {floatSnapshotSha256} from './timeline-float-outcome.ts';
 import {createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {timelineDeliveryContentDisposition, timelineRenderDeliveryFields} from '@mioon/contracts/timeline-delivery';
+import {getOpacityCandidateTimelineDeliveryBinding} from './opacity-candidate-delivery.ts';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const RENDER_BYTES = 4 * 1024 * 1024;
@@ -78,10 +79,14 @@ function readTimelineExportOutputCore(
   requested: OutputRequest,
   guards: TimelineDeliveryReadGuards,
   requireName: boolean,
+  playback = false,
 ): TimelineExportOutput | null {
-  const outer = db.isTransaction;
+  let outer = false;
   try {
+    outer = db.isTransaction;
     if (!outer) db.exec('BEGIN DEFERRED');
+    const candidate = getOpacityCandidateTimelineDeliveryBinding(guards);
+    candidate?.assertDatabase(db);
     // Analysis supplies a project scope. The SQL relation is checked before
     // any export payload is read, including a corrupt foreign JSON document.
     if (requested.projectId !== undefined && !db.prepare('SELECT 1 FROM projects WHERE id=? LIMIT 1').get(requested.projectId)) return null;
@@ -91,16 +96,16 @@ function readTimelineExportOutputCore(
     const projectId = row.projectId;
     const record = parse(row.data);
     if (!object(record) || record.id !== requested.exportId || record.projectId !== projectId ||
-        record.mode !== 'timeline' || record.purpose !== 'export' || record.status !== 'succeeded' ||
+        record.mode !== 'timeline' || (record.purpose !== 'export' && !(candidate && playback && record.purpose === 'preview')) || record.status !== 'succeeded' ||
         !uuid(record.assetId) || requested.assetId !== undefined && record.assetId !== requested.assetId || record.url !== `/media/${record.assetId}` ||
         typeof record.requestId !== 'string' || record.requestId.length < 8 || record.requestId.length > 200 ||
         !object(record.snapshot)) return null;
     const assetId = record.assetId;
     const fields = timelineRenderDeliveryFields(record.snapshot);
     if (requireName && typeof fields.deliveryName !== 'string') return null;
-    const input = {projectId, requestId: record.requestId, purpose: 'export', expectedRevision: record.timelineRevision,
+    const input = {projectId, requestId: record.requestId, purpose: record.purpose, expectedRevision: record.timelineRevision,
       exportId: record.id, ...fields};
-    if (!guards.isTimelineRenderRecord(record, input)) return null;
+    if (!guards.isTimelineRenderRecord(record, input) || candidate && !candidate.assertRecord(record)) return null;
 
     const receiptRow: unknown = db.prepare(`SELECT ${bounded('requestId', 800)},${bounded('requestHash', 64)},${bounded('response', RENDER_BYTES)} FROM timeline_requests WHERE requestId=? LIMIT 1`).get(record.requestId);
     if (!object(receiptRow) || receiptRow.requestId !== record.requestId || typeof receiptRow.requestHash !== 'string' || !/^[a-f0-9]{64}$/.test(receiptRow.requestHash)) return null;
@@ -126,7 +131,7 @@ function readTimelineExportOutputCore(
   } catch {
     return null;
   } finally {
-    if (!outer && db.isTransaction) db.exec('COMMIT');
+    if (!outer && db.isOpen && db.isTransaction) db.exec('COMMIT');
   }
 }
 
@@ -140,8 +145,8 @@ export function readTimelineExportOutput(
   return readTimelineExportOutputCore(db, requested, guards, false);
 }
 
-/** Historical named download syntax, filename requirement, digest and headers
- * are unchanged. This route never accepts an unnamed artifact. */
+/** Historical named downloads retain their filename requirement. The exact
+ * fresh42 application adapter also serves unnamed exports with a fixed name. */
 export function readTimelineDeliveryDownload(
   db: DatabaseSync,
   url: URL,
@@ -149,11 +154,13 @@ export function readTimelineDeliveryDownload(
 ): TimelineDeliveryDownload | null {
   const requested = timelineDeliveryDownloadIdentity(url);
   if (!requested) return null;
-  const output = readTimelineExportOutputCore(db, requested, guards, true);
+  let candidate;
+  try {candidate = getOpacityCandidateTimelineDeliveryBinding(guards);} catch {return null;}
+  const output = readTimelineExportOutputCore(db, requested, guards, !candidate);
   if (!output) return null;
   const fields = timelineRenderDeliveryFields(output.snapshot);
-  if (typeof fields.deliveryName !== 'string') return null;
-  const contentDisposition = timelineDeliveryContentDisposition(fields.deliveryName, requested.exportId) +
+  if (typeof fields.deliveryName !== 'string' && !candidate) return null;
+  const contentDisposition = timelineDeliveryContentDisposition(typeof fields.deliveryName === 'string' ? fields.deliveryName : 'export', requested.exportId) +
     `; mioon-export-id="${requested.exportId}"; mioon-asset-id="${requested.assetId}"`;
   return Object.freeze({exportId: requested.exportId, assetId: requested.assetId, projectId: output.projectId,
     relativePath: output.relativePath, mimeType: 'video/mp4', contentDisposition, identityDigest: output.identityDigest});
@@ -193,7 +200,7 @@ export type TimelineExportPreviewMedia = Pick<TimelineExportOutput, 'exportId' |
 export function readTimelineExportPreviewMedia(db: DatabaseSync, url: URL, guards: TimelineDeliveryReadGuards): TimelineExportPreviewMedia | null {
   const requested = timelineExportPreviewIdentity(url);
   if (!requested) return null;
-  const output = readTimelineExportOutputCore(db, requested, guards, false);
+  const output = readTimelineExportOutputCore(db, requested, guards, false, true);
   if (!output) return null;
   return Object.freeze({exportId: output.exportId, assetId: output.assetId, projectId: output.projectId,
     relativePath: output.relativePath, identityDigest: output.identityDigest});

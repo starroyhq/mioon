@@ -1,0 +1,16 @@
+{
+  "files": [
+    "tests/media-filter-files.test.mjs",
+    "tests/timeline-opacity-legacy-render-regression.test.mjs",
+    "tests/timeline-opacity-worker-candidate.test.mjs",
+    "tests/opacity-candidate-preflight-execution.test.mjs"
+  ],
+  "concurrency": 1,
+  "timeoutSeconds": 900,
+  "separateProcesses": true,
+  "source": "real directory enumeration; no exclusions",
+  "nodeFlags": [
+    "--test",
+    "--test-reporter=tap"
+  ]
+}

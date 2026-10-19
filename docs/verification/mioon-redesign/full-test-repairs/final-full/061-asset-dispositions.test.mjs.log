@@ -1,0 +1,397 @@
+TAP version 13
+# Subtest: ordered bounded reads confirm absent neutral revision zero without writes, rows or lazy timeline creation
+ok 1 - ordered bounded reads confirm absent neutral revision zero without writes, rows or lazy timeline creation
+  ---
+  duration_ms: 700.189125
+  type: 'test'
+  ...
+# Subtest: favorite/rejected/neutral edits retain independent revisions and leave all asset bytes, names, relationships and timelines unchanged
+ok 2 - favorite/rejected/neutral edits retain independent revisions and leave all asset bytes, names, relationships and timelines unchanged
+  ---
+  duration_ms: 671.380333
+  type: 'test'
+  ...
+# Subtest: exact replay precedes CAS after current ownership validation and survives later labels, reset and restart without writes
+ok 3 - exact replay precedes CAS after current ownership validation and survives later labels, reset and restart without writes
+  ---
+  duration_ms: 930.995166
+  type: 'test'
+  ...
+# Subtest: schema-valid non-BMP request keys retain existing UTF-16 length semantics across save and replay
+ok 4 - schema-valid non-BMP request keys retain existing UTF-16 length semantics across save and replay
+  ---
+  duration_ms: 626.621834
+  type: 'test'
+  ...
+# Subtest: missing and foreign batches fail all-or-nothing uniformly, including exact replay, without foreign JSON decoding
+ok 5 - missing and foreign batches fail all-or-nothing uniformly, including exact replay, without foreign JSON decoding
+  ---
+  duration_ms: 608.3505
+  type: 'test'
+  ...
+# Subtest: bounded asset/project identity JSON and malformed saved metadata fail closed without current state disclosure
+ok 6 - bounded asset/project identity JSON and malformed saved metadata fail closed without current state disclosure
+  ---
+  duration_ms: 671.823625
+  type: 'test'
+  ...
+# Subtest: malformed retained responses, lost metadata and deleted assets never expose or replay historical acknowledgements
+ok 7 - malformed retained responses, lost metadata and deleted assets never expose or replay historical acknowledgements
+  ---
+  duration_ms: 633.118334
+  type: 'test'
+  ...
+# Subtest: metadata, receipts and trigger-induced reassignment roll back together; scope denial never releases the pending request
+ok 8 - metadata, receipts and trigger-induced reassignment roll back together; scope denial never releases the pending request
+  ---
+  duration_ms: 623.375708
+  type: 'test'
+  ...
+# Subtest: safe revision limit and stale writes fail without mutation; independent range updates cannot conflict with disposition revisions
+ok 9 - safe revision limit and stale writes fail without mutation; independent range updates cannot conflict with disposition revisions
+  ---
+  duration_ms: 591.559625
+  type: 'test'
+  ...
+# Subtest: shot.create: all other mutation writers reject its key globally after any required ownership checks
+ok 10 - shot.create: all other mutation writers reject its key globally after any required ownership checks
+  ---
+  duration_ms: 606.335167
+  type: 'test'
+  ...
+# Subtest: shot.update: all other mutation writers reject its key globally after any required ownership checks
+ok 11 - shot.update: all other mutation writers reject its key globally after any required ownership checks
+  ---
+  duration_ms: 629.378209
+  type: 'test'
+  ...
+# Subtest: shot.reorder: all other mutation writers reject its key globally after any required ownership checks
+ok 12 - shot.reorder: all other mutation writers reject its key globally after any required ownership checks
+  ---
+  duration_ms: 621.747583
+  type: 'test'
+  ...
+# Subtest: node.create: all other mutation writers reject its key globally after any required ownership checks
+ok 13 - node.create: all other mutation writers reject its key globally after any required ownership checks
+  ---
+  duration_ms: 675.258958
+  type: 'test'
+  ...
+# Subtest: node.update: all other mutation writers reject its key globally after any required ownership checks
+ok 14 - node.update: all other mutation writers reject its key globally after any required ownership checks
+  ---
+  duration_ms: 677.844708
+  type: 'test'
+  ...
+# Subtest: version.select: all other mutation writers reject its key globally after any required ownership checks
+ok 15 - version.select: all other mutation writers reject its key globally after any required ownership checks
+  ---
+  duration_ms: 650.878166
+  type: 'test'
+  ...
+# Subtest: asset.range.set: all other mutation writers reject its key globally after any required ownership checks
+ok 16 - asset.range.set: all other mutation writers reject its key globally after any required ownership checks
+  ---
+  duration_ms: 994.331084
+  type: 'test'
+  ...
+# Subtest: asset.disposition.set: all other mutation writers reject its key globally after any required ownership checks
+ok 17 - asset.disposition.set: all other mutation writers reject its key globally after any required ownership checks
+  ---
+  duration_ms: 581.837209
+  type: 'test'
+  ...
+# Subtest: asset.annotation.set: all other mutation writers reject its key globally after any required ownership checks
+ok 18 - asset.annotation.set: all other mutation writers reject its key globally after any required ownership checks
+  ---
+  duration_ms: 588.390166
+  type: 'test'
+  ...
+# Subtest: subject.create: all other mutation writers reject its key globally after any required ownership checks
+ok 19 - subject.create: all other mutation writers reject its key globally after any required ownership checks
+  ---
+  duration_ms: 598.119083
+  type: 'test'
+  ...
+# Subtest: subject.version.add: all other mutation writers reject its key globally after any required ownership checks
+ok 20 - subject.version.add: all other mutation writers reject its key globally after any required ownership checks
+  ---
+  duration_ms: 598.131333
+  type: 'test'
+  ...
+# Subtest: subject.binding.set: all other mutation writers reject its key globally after any required ownership checks
+ok 21 - subject.binding.set: all other mutation writers reject its key globally after any required ownership checks
+  ---
+  duration_ms: 594.35625
+  type: 'test'
+  ...
+# Subtest: immutable companion receipts cannot be updated, deleted or replaced; SQL collision triggers guard every table direction
+ok 22 - immutable companion receipts cannot be updated, deleted or replaced; SQL collision triggers guard every table direction
+  ---
+  duration_ms: 606.556167
+  type: 'test'
+  ...
+# Subtest: duplicate presence and corrupted wrong-table placement fail closed for all writers and cannot release a receipt
+ok 23 - duplicate presence and corrupted wrong-table placement fail closed for all writers and cannot release a receipt
+  ---
+  duration_ms: 605.993583
+  type: 'test'
+  ...
+# Subtest: v12 upgrade preserves all old records and response bytes and has identical fresh schema invariants on repeated restart
+not ok 24 - v12 upgrade preserves all old records and response bytes and has identical fresh schema invariants on repeated restart
+  ---
+  duration_ms: 1186.59375
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/asset-dispositions.test.mjs:268:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    ... Skipped lines
+    
+      {
+        agent_chat_events: [],
+        agent_chat_quota: [
+          [Object: null prototype] {
+            bytes: 0n,
+    ...
+        nodes: [],
+    +   project_deletion_cleanup: [],
+    +   project_deletion_receipts: [],
+    +   project_deletion_scope: [],
+    +   project_mutation_requests: [],
+        projects: [
+          [Object: null prototype] {
+            data: '{"id":"d896a3a5-332c-46b7-8af1-989fa7d187ee","name":"Asset dispositions","description":"","revision":2,"createdAt":"2026-10-19T02:58:57.466Z","updatedAt":"2026-10-19T02:58:57.469Z"}',
+            id: 'd896a3a5-332c-46b7-8af1-989fa7d187ee'
+          },
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    agent_chat_events:
+    agent_chat_quota:
+      0:
+        id: 1n
+        runs: 0n
+        bytes: 0n
+        reservedBytes: 0n
+    agent_chat_requests:
+    agent_chat_runs:
+    agent_chat_steps:
+    agent_chat_threads:
+    agent_edit_proposals:
+    asset_range_requests:
+      0:
+        requestId: '0503c5be-8945-4eef-a9cf-2954cb30bafe'
+        operation: 'asset.range.set'
+        projectId: 'd896a3a5-332c-46b7-8af1-989fa7d187ee'
+        canonicalInput: '{"assetId":"7139bc95-e65c-400f-a6d2-054cd6087d67","expectedRevision":0,"inFrame":0,"outFrame":30,"projectId":"d896a3a5-332c-46b7-8af1-989fa7d187ee"}'
+        response: '{"id":"7139bc95-e65c-400f-a6d2-054cd6087d67","assetId":"7139bc95-e65c-400f-a6d2-054cd6087d67","projectId":"d896a3a5-332c-46b7-8af1-989fa7d187ee","revision":1,"range":{"inFrame":0,"outFrame":30},"sourceFrameCount":60,"fps":30}'
+    asset_ranges:
+      0:
+        assetId: '7139bc95-e65c-400f-a6d2-054cd6087d67'
+        projectId: 'd896a3a5-332c-46b7-8af1-989fa7d187ee'
+        revision: 1n
+        inFrame: 0n
+        outFrame: 30n
+    assets:
+      0:
+        id: '7139bc95-e65c-400f-a6d2-054cd6087d67'
+        projectId: 'd896a3a5-332c-46b7-8af1-989fa7d187ee'
+        data: '{"id":"7139bc95-e65c-400f-a6d2-054cd6087d67","projectId":"d896a3a5-332c-46b7-8af1-989fa7d187ee","name":"Private disposition asset","mimeType":"video/mp4","duration":2,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","relativePath":"media/fixture","url":"/media/fixture"}'
+    edges:
+    edit_tasks:
+    exports:
+    frame_requests:
+    frame_tasks:
+    idempotency:
+      0:
+        scope: 'generation'
+        requestId: '69ae3134-a755-4549-9c72-767e637048dc'
+        requestHash: 'old-hash'
+        resourceId: '473a6236-1f6b-4ecf-b321-754ea7e1766c'
+    image_groups:
+    image_remote_observations:
+    image_remote_runs:
+    image_requests:
+    image_reviews:
+    image_tasks:
+    image_versions:
+    job_events:
+    jobs:
+    mutation_requests:
+      0:
+        requestId: 'ef7d144e-e1b1-41f1-a56a-cad8da2fb17f'
+        operation: 'shot.create'
+        projectId: 'd896a3a5-332c-46b7-8af1-989fa7d187ee'
+        canonicalInput: '{"projectId":"d896a3a5-332c-46b7-8af1-989fa7d187ee","title":"Legacy keyed shot"}'
+        response: '{"id":"697b7cf3-927c-4d71-8436-27443d0c17c1","projectId":"d896a3a5-332c-46b7-8af1-989fa7d187ee","title":"Legacy keyed shot","prompt":"","referenceAssetIds":[],"aspectRatio":"9:16","duration":2,"parameters":{},"position":{"x":80,"y":100},"orderIndex":0,"revision":1,"selectedVersionId":null,"createdAt":"2026-10-19T02:58:57.469Z","updatedAt":"2026-10-19T02:58:57.469Z"}'
+    nodes:
+    projects:
+      0:
+        id: 'd896a3a5-332c-46b7-8af1-989fa7d187ee'
+        data: '{"id":"d896a3a5-332c-46b7-8af1-989fa7d187ee","name":"Asset dispositions","description":"","revision":2,"createdAt":"2026-10-19T02:58:57.466Z","updatedAt":"2026-10-19T02:58:57.469Z"}'
+      1:
+        id: '15e73222-c5a3-4279-954c-4a0add418bcd'
+        data: '{"id":"15e73222-c5a3-4279-954c-4a0add418bcd","name":"Foreign private project","description":"","revision":1,"createdAt":"2026-10-19T02:58:57.467Z","updatedAt":"2026-10-19T02:58:57.467Z"}'
+    reference_requests:
+      0:
+        requestId: 'c3019701-b370-4e67-90fb-22d44740d224'
+        requestHash: 'old-hash'
+        response: ' { "old": true, "preserve": "spacing" } '
+    shots:
+      0:
+        id: '697b7cf3-927c-4d71-8436-27443d0c17c1'
+        projectId: 'd896a3a5-332c-46b7-8af1-989fa7d187ee'
+        data: '{"id":"697b7cf3-927c-4d71-8436-27443d0c17c1","projectId":"d896a3a5-332c-46b7-8af1-989fa7d187ee","title":"Legacy keyed shot","prompt":"","referenceAssetIds":[],"aspectRatio":"9:16","duration":2,"parameters":{},"position":{"x":80,"y":100},"orderIndex":0,"revision":1,"selectedVersionId":null,"createdAt":"2026-10-19T02:58:57.469Z","updatedAt":"2026-10-19T02:58:57.469Z"}'
+    subject_bindings:
+    subject_requests:
+    subject_versions:
+    subjects:
+    timeline_history:
+    timeline_history_cursors:
+    timeline_requests:
+      0:
+        requestId: '4dd8873e-7bc5-47a4-81c6-744e1d59eeb8'
+        requestHash: 'old-hash'
+        response: ' { "old": true, "preserve": "spacing" } '
+    timelines:
+    versions:
+    waveform_cache:
+    workspace_preferences:
+  actual:
+    agent_chat_events:
+    agent_chat_quota:
+      0:
+        id: 1n
+        runs: 0n
+        bytes: 0n
+        reservedBytes: 0n
+    agent_chat_requests:
+    agent_chat_runs:
+    agent_chat_steps:
+    agent_chat_threads:
+    agent_edit_proposals:
+    asset_range_requests:
+      0:
+        requestId: '0503c5be-8945-4eef-a9cf-2954cb30bafe'
+        operation: 'asset.range.set'
+        projectId: 'd896a3a5-332c-46b7-8af1-989fa7d187ee'
+        canonicalInput: '{"assetId":"7139bc95-e65c-400f-a6d2-054cd6087d67","expectedRevision":0,"inFrame":0,"outFrame":30,"projectId":"d896a3a5-332c-46b7-8af1-989fa7d187ee"}'
+        response: '{"id":"7139bc95-e65c-400f-a6d2-054cd6087d67","assetId":"7139bc95-e65c-400f-a6d2-054cd6087d67","projectId":"d896a3a5-332c-46b7-8af1-989fa7d187ee","revision":1,"range":{"inFrame":0,"outFrame":30},"sourceFrameCount":60,"fps":30}'
+    asset_ranges:
+      0:
+        assetId: '7139bc95-e65c-400f-a6d2-054cd6087d67'
+        projectId: 'd896a3a5-332c-46b7-8af1-989fa7d187ee'
+        revision: 1n
+        inFrame: 0n
+        outFrame: 30n
+    assets:
+      0:
+        id: '7139bc95-e65c-400f-a6d2-054cd6087d67'
+        projectId: 'd896a3a5-332c-46b7-8af1-989fa7d187ee'
+        data: '{"id":"7139bc95-e65c-400f-a6d2-054cd6087d67","projectId":"d896a3a5-332c-46b7-8af1-989fa7d187ee","name":"Private disposition asset","mimeType":"video/mp4","duration":2,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","relativePath":"media/fixture","url":"/media/fixture"}'
+    edges:
+    edit_tasks:
+    exports:
+    frame_requests:
+    frame_tasks:
+    idempotency:
+      0:
+        scope: 'generation'
+        requestId: '69ae3134-a755-4549-9c72-767e637048dc'
+        requestHash: 'old-hash'
+        resourceId: '473a6236-1f6b-4ecf-b321-754ea7e1766c'
+    image_groups:
+    image_remote_observations:
+    image_remote_runs:
+    image_requests:
+    image_reviews:
+    image_tasks:
+    image_versions:
+    job_events:
+    jobs:
+    mutation_requests:
+      0:
+        requestId: 'ef7d144e-e1b1-41f1-a56a-cad8da2fb17f'
+        operation: 'shot.create'
+        projectId: 'd896a3a5-332c-46b7-8af1-989fa7d187ee'
+        canonicalInput: '{"projectId":"d896a3a5-332c-46b7-8af1-989fa7d187ee","title":"Legacy keyed shot"}'
+        response: '{"id":"697b7cf3-927c-4d71-8436-27443d0c17c1","projectId":"d896a3a5-332c-46b7-8af1-989fa7d187ee","title":"Legacy keyed shot","prompt":"","referenceAssetIds":[],"aspectRatio":"9:16","duration":2,"parameters":{},"position":{"x":80,"y":100},"orderIndex":0,"revision":1,"selectedVersionId":null,"createdAt":"2026-10-19T02:58:57.469Z","updatedAt":"2026-10-19T02:58:57.469Z"}'
+    nodes:
+    project_deletion_cleanup:
+    project_deletion_receipts:
+    project_deletion_scope:
+    project_mutation_requests:
+    projects:
+      0:
+        id: 'd896a3a5-332c-46b7-8af1-989fa7d187ee'
+        data: '{"id":"d896a3a5-332c-46b7-8af1-989fa7d187ee","name":"Asset dispositions","description":"","revision":2,"createdAt":"2026-10-19T02:58:57.466Z","updatedAt":"2026-10-19T02:58:57.469Z"}'
+      1:
+        id: '15e73222-c5a3-4279-954c-4a0add418bcd'
+        data: '{"id":"15e73222-c5a3-4279-954c-4a0add418bcd","name":"Foreign private project","description":"","revision":1,"createdAt":"2026-10-19T02:58:57.467Z","updatedAt":"2026-10-19T02:58:57.467Z"}'
+    reference_requests:
+      0:
+        requestId: 'c3019701-b370-4e67-90fb-22d44740d224'
+        requestHash: 'old-hash'
+        response: ' { "old": true, "preserve": "spacing" } '
+    shots:
+      0:
+        id: '697b7cf3-927c-4d71-8436-27443d0c17c1'
+        projectId: 'd896a3a5-332c-46b7-8af1-989fa7d187ee'
+        data: '{"id":"697b7cf3-927c-4d71-8436-27443d0c17c1","projectId":"d896a3a5-332c-46b7-8af1-989fa7d187ee","title":"Legacy keyed shot","prompt":"","referenceAssetIds":[],"aspectRatio":"9:16","duration":2,"parameters":{},"position":{"x":80,"y":100},"orderIndex":0,"revision":1,"selectedVersionId":null,"createdAt":"2026-10-19T02:58:57.469Z","updatedAt":"2026-10-19T02:58:57.469Z"}'
+    subject_bindings:
+    subject_requests:
+    subject_versions:
+    subjects:
+    timeline_history:
+    timeline_history_cursors:
+    timeline_requests:
+      0:
+        requestId: '4dd8873e-7bc5-47a4-81c6-744e1d59eeb8'
+        requestHash: 'old-hash'
+        response: ' { "old": true, "preserve": "spacing" } '
+    timelines:
+    versions:
+    waveform_cache:
+    workspace_preferences:
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/asset-dispositions.test.mjs:286:9)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: two-process namespace race: asset.disposition.set wins and shot.create conflicts
+ok 25 - two-process namespace race: asset.disposition.set wins and shot.create conflicts
+  ---
+  duration_ms: 1505.620375
+  type: 'test'
+  ...
+# Subtest: two-process namespace race: shot.create wins and asset.disposition.set conflicts
+ok 26 - two-process namespace race: shot.create wins and asset.disposition.set conflicts
+  ---
+  duration_ms: 1470.660416
+  type: 'test'
+  ...
+# Subtest: two-process namespace race: asset.disposition.set wins and asset.range.set conflicts
+ok 27 - two-process namespace race: asset.disposition.set wins and asset.range.set conflicts
+  ---
+  duration_ms: 1290.418833
+  type: 'test'
+  ...
+# Subtest: two-process namespace race: asset.range.set wins and asset.disposition.set conflicts
+ok 28 - two-process namespace race: asset.range.set wins and asset.disposition.set conflicts
+  ---
+  duration_ms: 1340.710042
+  type: 'test'
+  ...
+1..28
+# tests 28
+# suites 0
+# pass 27
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 22233.735333

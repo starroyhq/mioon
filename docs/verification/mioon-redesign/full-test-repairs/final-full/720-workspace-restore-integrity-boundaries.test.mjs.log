@@ -1,0 +1,106 @@
+TAP version 13
+# Subtest: source24/restored25: valid publication is observed, corrupted startup/status refuse without trusted handles
+ok 1 - source24/restored25: valid publication is observed, corrupted startup/status refuse without trusted handles
+  ---
+  duration_ms: 536.83975
+  type: 'test'
+  ...
+# Subtest: source24/restored25: corrupt private candidate is rejected before publication with public error mapping
+ok 2 - source24/restored25: corrupt private candidate is rejected before publication with public error mapping
+  ---
+  duration_ms: 253.426083
+  type: 'test'
+  ...
+# Subtest: source26/restored27: valid publication is observed, corrupted startup/status refuse without trusted handles
+ok 3 - source26/restored27: valid publication is observed, corrupted startup/status refuse without trusted handles
+  ---
+  duration_ms: 553.78375
+  type: 'test'
+  ...
+# Subtest: source26/restored27: corrupt private candidate is rejected before publication with public error mapping
+ok 4 - source26/restored27: corrupt private candidate is rejected before publication with public error mapping
+  ---
+  duration_ms: 253.997125
+  type: 'test'
+  ...
+# Subtest: source28/restored29: valid publication is observed, corrupted startup/status refuse without trusted handles
+ok 5 - source28/restored29: valid publication is observed, corrupted startup/status refuse without trusted handles
+  ---
+  duration_ms: 546.852
+  type: 'test'
+  ...
+# Subtest: source28/restored29: corrupt private candidate is rejected before publication with public error mapping
+ok 6 - source28/restored29: corrupt private candidate is rejected before publication with public error mapping
+  ---
+  duration_ms: 270.644042
+  type: 'test'
+  ...
+# Subtest: source30/restored31: valid publication is observed, corrupted startup/status refuse without trusted handles
+ok 7 - source30/restored31: valid publication is observed, corrupted startup/status refuse without trusted handles
+  ---
+  duration_ms: 558.007834
+  type: 'test'
+  ...
+# Subtest: source30/restored31: corrupt private candidate is rejected before publication with public error mapping
+ok 8 - source30/restored31: corrupt private candidate is rejected before publication with public error mapping
+  ---
+  duration_ms: 295.785875
+  type: 'test'
+  ...
+# Subtest: source32/restored33: valid publication is observed, corrupted startup/status refuse without trusted handles
+ok 9 - source32/restored33: valid publication is observed, corrupted startup/status refuse without trusted handles
+  ---
+  duration_ms: 568.1415
+  type: 'test'
+  ...
+# Subtest: source32/restored33: corrupt private candidate is rejected before publication with public error mapping
+ok 10 - source32/restored33: corrupt private candidate is rejected before publication with public error mapping
+  ---
+  duration_ms: 295.311542
+  type: 'test'
+  ...
+# Subtest: source34/restored35: valid publication is observed, corrupted startup/status refuse without trusted handles
+ok 11 - source34/restored35: valid publication is observed, corrupted startup/status refuse without trusted handles
+  ---
+  duration_ms: 566.76325
+  type: 'test'
+  ...
+# Subtest: source34/restored35: corrupt private candidate is rejected before publication with public error mapping
+ok 12 - source34/restored35: corrupt private candidate is rejected before publication with public error mapping
+  ---
+  duration_ms: 292.824625
+  type: 'test'
+  ...
+# Subtest: source36/restored37: valid publication is observed, corrupted startup/status refuse without trusted handles
+ok 13 - source36/restored37: valid publication is observed, corrupted startup/status refuse without trusted handles
+  ---
+  duration_ms: 608.107541
+  type: 'test'
+  ...
+# Subtest: source36/restored37: corrupt private candidate is rejected before publication with public error mapping
+ok 14 - source36/restored37: corrupt private candidate is rejected before publication with public error mapping
+  ---
+  duration_ms: 309.168875
+  type: 'test'
+  ...
+# Subtest: source38/restored39: valid publication is observed, corrupted startup/status refuse without trusted handles
+ok 15 - source38/restored39: valid publication is observed, corrupted startup/status refuse without trusted handles
+  ---
+  duration_ms: 632.933375
+  type: 'test'
+  ...
+# Subtest: source38/restored39: corrupt private candidate is rejected before publication with public error mapping
+ok 16 - source38/restored39: corrupt private candidate is rejected before publication with public error mapping
+  ---
+  duration_ms: 333.903458
+  type: 'test'
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 7153.169834

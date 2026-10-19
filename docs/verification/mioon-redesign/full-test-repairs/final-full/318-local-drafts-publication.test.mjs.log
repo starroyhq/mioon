@@ -1,0 +1,346 @@
+TAP version 13
+# Subtest: put: owner revoked at beforePersist refuses publication and preserves old bytes
+ok 1 - put: owner revoked at beforePersist refuses publication and preserves old bytes
+  ---
+  duration_ms: 737.895875
+  type: 'test'
+  ...
+# Subtest: put: abort revoked at beforePersist refuses publication and preserves old bytes
+ok 2 - put: abort revoked at beforePersist refuses publication and preserves old bytes
+  ---
+  duration_ms: 678.236833
+  type: 'test'
+  ...
+# Subtest: put: scope revoked at beforePersist refuses publication and preserves old bytes
+ok 3 - put: scope revoked at beforePersist refuses publication and preserves old bytes
+  ---
+  duration_ms: 690.20425
+  type: 'test'
+  ...
+# Subtest: discard: owner revoked at beforePersist refuses publication and preserves old bytes
+ok 4 - discard: owner revoked at beforePersist refuses publication and preserves old bytes
+  ---
+  duration_ms: 731.5055
+  type: 'test'
+  ...
+# Subtest: discard: abort revoked at beforePersist refuses publication and preserves old bytes
+ok 5 - discard: abort revoked at beforePersist refuses publication and preserves old bytes
+  ---
+  duration_ms: 682.450292
+  type: 'test'
+  ...
+# Subtest: discard: scope revoked at beforePersist refuses publication and preserves old bytes
+ok 6 - discard: scope revoked at beforePersist refuses publication and preserves old bytes
+  ---
+  duration_ms: 645.923084
+  type: 'test'
+  ...
+# Subtest: first PUT: owner revoked at beforePersist does not create a companion
+ok 7 - first PUT: owner revoked at beforePersist does not create a companion
+  ---
+  duration_ms: 607.383583
+  type: 'test'
+  ...
+# Subtest: first PUT: abort revoked at beforePersist does not create a companion
+ok 8 - first PUT: abort revoked at beforePersist does not create a companion
+  ---
+  duration_ms: 677.553541
+  type: 'test'
+  ...
+# Subtest: first PUT: scope revoked at beforePersist does not create a companion
+ok 9 - first PUT: scope revoked at beforePersist does not create a companion
+  ---
+  duration_ms: 1094.507417
+  type: 'test'
+  ...
+# Subtest: put: owner revoked at afterPersist reports uncertain after exactly one publication
+ok 10 - put: owner revoked at afterPersist reports uncertain after exactly one publication
+  ---
+  duration_ms: 857.647208
+  type: 'test'
+  ...
+# Subtest: put: abort revoked at afterPersist reports uncertain after exactly one publication
+ok 11 - put: abort revoked at afterPersist reports uncertain after exactly one publication
+  ---
+  duration_ms: 661.030416
+  type: 'test'
+  ...
+# Subtest: put: scope revoked at afterPersist reports uncertain after exactly one publication
+ok 12 - put: scope revoked at afterPersist reports uncertain after exactly one publication
+  ---
+  duration_ms: 662.96475
+  type: 'test'
+  ...
+# Subtest: put: owner revoked at beforeDirectorySync reports uncertain after exactly one publication
+ok 13 - put: owner revoked at beforeDirectorySync reports uncertain after exactly one publication
+  ---
+  duration_ms: 668.013292
+  type: 'test'
+  ...
+# Subtest: put: abort revoked at beforeDirectorySync reports uncertain after exactly one publication
+ok 14 - put: abort revoked at beforeDirectorySync reports uncertain after exactly one publication
+  ---
+  duration_ms: 639.281583
+  type: 'test'
+  ...
+# Subtest: put: scope revoked at beforeDirectorySync reports uncertain after exactly one publication
+ok 15 - put: scope revoked at beforeDirectorySync reports uncertain after exactly one publication
+  ---
+  duration_ms: 669.239
+  type: 'test'
+  ...
+# Subtest: put: owner revoked at afterDirectorySync reports uncertain after exactly one publication
+ok 16 - put: owner revoked at afterDirectorySync reports uncertain after exactly one publication
+  ---
+  duration_ms: 662.454417
+  type: 'test'
+  ...
+# Subtest: put: abort revoked at afterDirectorySync reports uncertain after exactly one publication
+ok 17 - put: abort revoked at afterDirectorySync reports uncertain after exactly one publication
+  ---
+  duration_ms: 619.260875
+  type: 'test'
+  ...
+# Subtest: put: scope revoked at afterDirectorySync reports uncertain after exactly one publication
+ok 18 - put: scope revoked at afterDirectorySync reports uncertain after exactly one publication
+  ---
+  duration_ms: 686.797208
+  type: 'test'
+  ...
+# Subtest: discard: owner revoked at afterPersist reports uncertain after exactly one publication
+ok 19 - discard: owner revoked at afterPersist reports uncertain after exactly one publication
+  ---
+  duration_ms: 868.428042
+  type: 'test'
+  ...
+# Subtest: discard: abort revoked at afterPersist reports uncertain after exactly one publication
+ok 20 - discard: abort revoked at afterPersist reports uncertain after exactly one publication
+  ---
+  duration_ms: 718.482625
+  type: 'test'
+  ...
+# Subtest: discard: scope revoked at afterPersist reports uncertain after exactly one publication
+ok 21 - discard: scope revoked at afterPersist reports uncertain after exactly one publication
+  ---
+  duration_ms: 661.290375
+  type: 'test'
+  ...
+# Subtest: discard: owner revoked at beforeDirectorySync reports uncertain after exactly one publication
+ok 22 - discard: owner revoked at beforeDirectorySync reports uncertain after exactly one publication
+  ---
+  duration_ms: 628.574708
+  type: 'test'
+  ...
+# Subtest: discard: abort revoked at beforeDirectorySync reports uncertain after exactly one publication
+ok 23 - discard: abort revoked at beforeDirectorySync reports uncertain after exactly one publication
+  ---
+  duration_ms: 671.019625
+  type: 'test'
+  ...
+# Subtest: discard: scope revoked at beforeDirectorySync reports uncertain after exactly one publication
+ok 24 - discard: scope revoked at beforeDirectorySync reports uncertain after exactly one publication
+  ---
+  duration_ms: 767.552708
+  type: 'test'
+  ...
+# Subtest: discard: owner revoked at afterDirectorySync reports uncertain after exactly one publication
+ok 25 - discard: owner revoked at afterDirectorySync reports uncertain after exactly one publication
+  ---
+  duration_ms: 799.634333
+  type: 'test'
+  ...
+# Subtest: discard: abort revoked at afterDirectorySync reports uncertain after exactly one publication
+ok 26 - discard: abort revoked at afterDirectorySync reports uncertain after exactly one publication
+  ---
+  duration_ms: 920.043167
+  type: 'test'
+  ...
+# Subtest: discard: scope revoked at afterDirectorySync reports uncertain after exactly one publication
+ok 27 - discard: scope revoked at afterDirectorySync reports uncertain after exactly one publication
+  ---
+  duration_ms: 958.27925
+  type: 'test'
+  ...
+# Subtest: exact put retry: owner revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot
+ok 28 - exact put retry: owner revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot
+  ---
+  duration_ms: 900.769291
+  type: 'test'
+  ...
+# Subtest: exact put retry: abort revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot
+ok 29 - exact put retry: abort revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot
+  ---
+  duration_ms: 1001.638458
+  type: 'test'
+  ...
+# Subtest: exact put retry: scope revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot
+ok 30 - exact put retry: scope revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot
+  ---
+  duration_ms: 775.227708
+  type: 'test'
+  ...
+# Subtest: exact put retry: owner revoked at afterDirectorySync cannot ACK or rewrite the accepted slot
+ok 31 - exact put retry: owner revoked at afterDirectorySync cannot ACK or rewrite the accepted slot
+  ---
+  duration_ms: 742.738542
+  type: 'test'
+  ...
+# Subtest: exact put retry: abort revoked at afterDirectorySync cannot ACK or rewrite the accepted slot
+ok 32 - exact put retry: abort revoked at afterDirectorySync cannot ACK or rewrite the accepted slot
+  ---
+  duration_ms: 708.863708
+  type: 'test'
+  ...
+# Subtest: exact put retry: scope revoked at afterDirectorySync cannot ACK or rewrite the accepted slot
+ok 33 - exact put retry: scope revoked at afterDirectorySync cannot ACK or rewrite the accepted slot
+  ---
+  duration_ms: 733.044709
+  type: 'test'
+  ...
+# Subtest: exact discard retry: owner revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot
+ok 34 - exact discard retry: owner revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot
+  ---
+  duration_ms: 696.400666
+  type: 'test'
+  ...
+# Subtest: exact discard retry: abort revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot
+ok 35 - exact discard retry: abort revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot
+  ---
+  duration_ms: 726.164834
+  type: 'test'
+  ...
+# Subtest: exact discard retry: scope revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot
+ok 36 - exact discard retry: scope revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot
+  ---
+  duration_ms: 732.737334
+  type: 'test'
+  ...
+# Subtest: exact discard retry: owner revoked at afterDirectorySync cannot ACK or rewrite the accepted slot
+ok 37 - exact discard retry: owner revoked at afterDirectorySync cannot ACK or rewrite the accepted slot
+  ---
+  duration_ms: 862.665417
+  type: 'test'
+  ...
+# Subtest: exact discard retry: abort revoked at afterDirectorySync cannot ACK or rewrite the accepted slot
+ok 38 - exact discard retry: abort revoked at afterDirectorySync cannot ACK or rewrite the accepted slot
+  ---
+  duration_ms: 935.71675
+  type: 'test'
+  ...
+# Subtest: exact discard retry: scope revoked at afterDirectorySync cannot ACK or rewrite the accepted slot
+ok 39 - exact discard retry: scope revoked at afterDirectorySync cannot ACK or rewrite the accepted slot
+  ---
+  duration_ms: 850.438041
+  type: 'test'
+  ...
+# Subtest: fresh PUT: final response identity failure stays uncertain
+ok 40 - fresh PUT: final response identity failure stays uncertain
+  ---
+  duration_ms: 741.936917
+  type: 'test'
+  ...
+# Subtest: exact PUT retry: final response identity failure stays uncertain
+ok 41 - exact PUT retry: final response identity failure stays uncertain
+  ---
+  duration_ms: 804.634291
+  type: 'test'
+  ...
+# Subtest: fresh PUT: final response owner revocation cannot ACK
+ok 42 - fresh PUT: final response owner revocation cannot ACK
+  ---
+  duration_ms: 724.354208
+  type: 'test'
+  ...
+# Subtest: fresh PUT: final response abort revocation cannot ACK
+ok 43 - fresh PUT: final response abort revocation cannot ACK
+  ---
+  duration_ms: 670.287083
+  type: 'test'
+  ...
+# Subtest: exact PUT retry: final response owner revocation cannot ACK
+ok 44 - exact PUT retry: final response owner revocation cannot ACK
+  ---
+  duration_ms: 667.929625
+  type: 'test'
+  ...
+# Subtest: exact PUT retry: final response abort revocation cannot ACK
+ok 45 - exact PUT retry: final response abort revocation cannot ACK
+  ---
+  duration_ms: 694.683375
+  type: 'test'
+  ...
+# Subtest: put: uncertain publication and failed exact retries preserve CAS, raw fields and tombstones
+ok 46 - put: uncertain publication and failed exact retries preserve CAS, raw fields and tombstones
+  ---
+  duration_ms: 759.168166
+  type: 'test'
+  ...
+# Subtest: discard: uncertain publication and failed exact retries preserve CAS, raw fields and tombstones
+ok 47 - discard: uncertain publication and failed exact retries preserve CAS, raw fields and tombstones
+  ---
+  duration_ms: 729.534875
+  type: 'test'
+  ...
+# Subtest: directory checkpoint rejects a real opened descriptor with identity mismatch before fsync
+ok 48 - directory checkpoint rejects a real opened descriptor with identity mismatch before fsync
+  ---
+  duration_ms: 782.826
+  type: 'test'
+  ...
+# Subtest: directory checkpoint rejects a real opened descriptor with type mismatch before fsync
+ok 49 - directory checkpoint rejects a real opened descriptor with type mismatch before fsync
+  ---
+  duration_ms: 946.37375
+  type: 'test'
+  ...
+# Subtest: directory checkpoint rejects a real opened descriptor with private-mode mismatch before fsync
+ok 50 - directory checkpoint rejects a real opened descriptor with private-mode mismatch before fsync
+  ---
+  duration_ms: 795.238167
+  type: 'test'
+  ...
+# Subtest: put: owner revoked by the final prepublication identity read refuses the write
+ok 51 - put: owner revoked by the final prepublication identity read refuses the write
+  ---
+  duration_ms: 644.097542
+  type: 'test'
+  ...
+# Subtest: put: abort revoked by the final prepublication identity read refuses the write
+ok 52 - put: abort revoked by the final prepublication identity read refuses the write
+  ---
+  duration_ms: 623.824125
+  type: 'test'
+  ...
+# Subtest: discard: owner revoked by the final prepublication identity read refuses the write
+ok 53 - discard: owner revoked by the final prepublication identity read refuses the write
+  ---
+  duration_ms: 721.146583
+  type: 'test'
+  ...
+# Subtest: discard: abort revoked by the final prepublication identity read refuses the write
+ok 54 - discard: abort revoked by the final prepublication identity read refuses the write
+  ---
+  duration_ms: 652.35025
+  type: 'test'
+  ...
+# Subtest: fresh PUT: response source lookup failure after directory sync stays uncertain
+ok 55 - fresh PUT: response source lookup failure after directory sync stays uncertain
+  ---
+  duration_ms: 703.520458
+  type: 'test'
+  ...
+# Subtest: exact PUT retry: response source lookup failure after directory sync stays uncertain
+ok 56 - exact PUT retry: response source lookup failure after directory sync stays uncertain
+  ---
+  duration_ms: 707.658584
+  type: 'test'
+  ...
+1..56
+# tests 56
+# suites 0
+# pass 56
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 42099.444458

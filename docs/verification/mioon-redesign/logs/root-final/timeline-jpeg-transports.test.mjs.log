@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: JPEG discovery declares a local decoder but remains read-only, private and outside generic Agent tools
+ok 1 - JPEG discovery declares a local decoder but remains read-only, private and outside generic Agent tools
+  ---
+  duration_ms: 2.09275
+  type: 'test'
+  ...
+# Subtest: JPEG client accepts only exact SHA-bound untagged baseline decoder evidence
+ok 2 - JPEG client accepts only exact SHA-bound untagged baseline decoder evidence
+  ---
+  duration_ms: 3.182583
+  type: 'test'
+  ...
+# Subtest: JPEG client rejects wrong hash, kind, profile, status and unbounded/path-bearing replies without retry
+ok 3 - JPEG client rejects wrong hash, kind, profile, status and unbounded/path-bearing replies without retry
+  ---
+  duration_ms: 3.197875
+  type: 'test'
+  ...
+# Subtest: JPEG inspection refuses caller paths, bytes, decoder options and mutation identities before transport
+ok 4 - JPEG inspection refuses caller paths, bytes, decoder options and mutation identities before transport
+  ---
+  duration_ms: 0.330209
+  type: 'test'
+  ...
+# Subtest: actual authenticated HTTP, CLI and official MCP inspect JPEG without changing rows or managed files
+ok 5 - actual authenticated HTTP, CLI and official MCP inspect JPEG without changing rows or managed files
+  ---
+  duration_ms: 2865.508625
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3309.830584

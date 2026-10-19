@@ -102,6 +102,7 @@ async function allReceipts(f){
  await call('timeline.loudness.apply',await f.loudnessFields(timeline));
  await call('timeline.render',{purpose:'preview'});
  await call('timeline.clip.remove',{clipId});
+ await call('timeline.clip.rippleRemove',{clipId:timeline.clips.find(clip=>clip.startFrame===110).id});
  await call('timeline.undo');
  await call('timeline.redo');
  assert.deepEqual(new Set(receipts.map(x=>x.operation)),new Set(TIMELINE_MUTATION_OPERATIONS));
@@ -135,7 +136,7 @@ test('service-created empty timelines remain writable while a zero-track sentine
  const before=f.capture();assert.deepEqual(await f.call('timeline.track.add',input),added);assert.deepEqual(f.capture(),before);
 });
 
-test('all sixteen retained responses remain exact after removal, branching, render progress and restart',async t=>{
+test('all seventeen retained responses remain exact after removal, branching, render progress and restart',async t=>{
  const f=await fixture(t),result=await allReceipts(f);let timeline=result.timeline;
  for(const clip of [...timeline.clips])timeline=await f.call('timeline.clip.remove',params(f,timeline,{clipId:clip.id}));
  const render=result.receipts.find(x=>x.operation==='timeline.render').response;
@@ -154,7 +155,7 @@ test('all sixteen retained responses remain exact after removal, branching, rend
  assert.deepEqual(f.capture(),before);
 });
 
-test('all sixteen fresh stale-revision rejections carry only transaction-backed not-applied proof',async t=>{
+test('all seventeen fresh stale-revision rejections carry only transaction-backed not-applied proof',async t=>{
  const f=await fixture(t),{receipts,timeline}=await allReceipts(f);
  for(const saved of receipts)await rejected(f,saved.operation,{...saved.input,requestId:randomUUID(),expectedRevision:timeline.revision-1},{code:'REVISION_CONFLICT',proof:true});
  const clip=timeline.clips[0];
@@ -198,7 +199,7 @@ test('lost acknowledgements retain proof absence after project, timeline and his
  });
 });
 
-test('all sixteen malformed, foreign and semantically corrupt durable receipts fail closed unchanged',async t=>{
+test('all seventeen malformed, foreign and semantically corrupt durable receipts fail closed unchanged',async t=>{
  for(const corruption of ['hash','JSON','owner','semantics'])await t.test(corruption,async t=>{
   const f=await fixture(t),{receipts}=await allReceipts(f);f.store.db.exec('DROP TRIGGER immutable_timeline_responses');
   for(const {operation,input,response} of receipts){
@@ -227,6 +228,7 @@ async function prepared(f,operation){
   'timeline.track.add':{kind:'video'},'timeline.track.update':{trackId:timeline.tracks[0].id,patch:{name:'Changed'}},
   'timeline.clip.add':{assetId:generated.asset.id,trackId:timeline.tracks[1].id,startFrame:0,durationFrames:30},
   'timeline.clip.update':{clipId:clip?.id,patch:{gain:.3}},'timeline.clip.remove':{clipId:clip?.id},
+  'timeline.clip.rippleRemove':{clipId:clip?.id},
   'timeline.clip.split':{clipId:clip?.id,atFrame:30},'timeline.clip.replaceSource':{clipId:clip?.id,assetId:f.asset().id},
   'timeline.render':{purpose:'preview'},
   'timeline.subtitle.add':{text:'新增字幕',startFrame:0,durationFrames:30},

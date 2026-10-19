@@ -31,8 +31,8 @@ async function fixture(t,options={}) {
  };return f;
 }
 
-test('legacy FIRST12 prefix remains in the twenty-operation scope; prepare is durable/noncreating and preserves duplicate identity',async t=>{
- const f=await fixture(t);assert.equal(DURABLE_EDIT_OPERATIONS.length,20);assert.equal(DURABLE_EDIT_OPERATIONS.includes('timeline.loudness.apply'),true);assert.equal(DURABLE_EDIT_OPERATIONS.includes('timeline.render'),false);
+test('legacy FIRST12 relative order remains in the twenty-one-operation scope; prepare is durable/noncreating and preserves duplicate identity',async t=>{
+ const f=await fixture(t);assert.equal(DURABLE_EDIT_OPERATIONS.length,21);assert.equal(DURABLE_EDIT_OPERATIONS.includes('timeline.loudness.apply'),true);assert.equal(DURABLE_EDIT_OPERATIONS.includes('timeline.render'),false);
  f.store.db.prepare('DELETE FROM timelines WHERE projectId=?').run(f.project.id);
  const input={projectId:f.project.id,expectedRevision:1,requestId:randomUUID(),kind:'audio'},before=f.snapshot();
  const saved=f.prepare('timeline.track.add',input);assert.equal(saved.task.status,'prepared');assert.equal(f.snapshot(),before);assert.equal(f.calls,0);
@@ -157,7 +157,7 @@ test('drain fences new calls and waits for full execution outcome persistence',a
  release();assert.equal((await executing).task.status,'applied');await draining;assert.equal(f.row(saved.task).status,'applied');
 });
 
-test('all FIRST12 operations use the same retained service receipts',async t=>{
+test('all original FIRST12 operations plus ripple remove use the same retained service receipts',async t=>{
  const f=await fixture(t),seen=new Set(),receipts=[];
  const generated=f.asset({provenance:'generated'}),shot=await f.services.call('shot.create',{projectId:f.project.id,title:'Selected'}),jobId=randomUUID(),versionId=randomUUID();
  f.store.put('jobs',{id:jobId,projectId:f.project.id,shotId:shot.id,versionId,assetId:generated.id,status:'succeeded',snapshot:{projectId:f.project.id,shotId:shot.id}});
@@ -171,15 +171,16 @@ test('all FIRST12 operations use the same retained service receipts',async t=>{
  await edit('timeline.seed');await edit('timeline.track.add',{kind:'audio'});await edit('timeline.track.update',{trackId:timeline.tracks[0].id,patch:{name:'Revised'}});
  const source=f.asset(),replacement=f.asset();await edit('timeline.clip.add',{assetId:source.id,trackId:timeline.tracks[1].id,startFrame:90,durationFrames:60});
  const clipId=timeline.clips.at(-1).id;await edit('timeline.clip.update',{clipId,patch:{gain:.5}});await edit('timeline.clip.split',{clipId,atFrame:120});
- await edit('timeline.clip.replaceSource',{clipId,assetId:replacement.id});await edit('timeline.clip.remove',{clipId});await edit('timeline.undo');await edit('timeline.redo');
+ await edit('timeline.clip.replaceSource',{clipId,assetId:replacement.id});await edit('timeline.clip.remove',{clipId});
+ await edit('timeline.clip.rippleRemove',{clipId:timeline.clips.find(clip=>clip.startFrame===120).id});await edit('timeline.undo');await edit('timeline.redo');
  const image=f.asset({mimeType:'image/png'}),node=await f.services.call('node.create',{projectId:f.project.id,type:'image',assetId:image.id,position:{x:0,y:0}}),referenceShot=await f.services.call('shot.create',{projectId:f.project.id,title:'Reference target'});
  const attach=f.prepare('reference.attach',{projectId:f.project.id,sourceNodeId:node.id,targetShotId:referenceShot.id,expectedSourceRevision:node.revision,expectedShotRevision:referenceShot.revision,requestId:randomUUID(),role:'first_frame'});
  const attached=await f.execute(attach);assert.equal(attached.task.status,'applied');f.ack(attached.task);seen.add('reference.attach');
  const detach=f.prepare('reference.detach',{projectId:f.project.id,edgeId:attached.result.edge.id,expectedShotRevision:attached.result.shot.revision,requestId:randomUUID()});
  const detached=await f.execute(detach);assert.equal(detached.task.status,'applied');f.ack(detached.task);seen.add('reference.detach');
- assert.deepEqual(seen,new Set(DURABLE_EDIT_OPERATIONS.slice(0,12)));assert.equal(f.calls,12);
+ assert.deepEqual(seen,new Set(DURABLE_EDIT_OPERATIONS.slice(0,13)));assert.equal(f.calls,13);
  for(const {saved,result} of receipts)assert.deepEqual(f.tasks.reconcile(f.request(saved.task)).result,result.result);
- assert.equal(f.store.db.prepare('SELECT count(*) n FROM timeline_requests').get().n,10);
+ assert.equal(f.store.db.prepare('SELECT count(*) n FROM timeline_requests').get().n,11);
  assert.equal(f.store.db.prepare('SELECT count(*) n FROM reference_requests').get().n,2);
 });
 

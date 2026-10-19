@@ -120,7 +120,7 @@ test('remaining fixed quality/bitrate selections encode and malformed frozen del
  // expected to attain an exact average bitrate and no such claim is asserted.
  const good=resolveTimelineExportDelivery(saved,selected('native')),events=[],off=onMediaProcess(event=>events.push(event));
  try{
-  for(const delivery of [null,undefined,{...good,effective:{...good.effective,width:1080}},{...good,effective:{...good.effective,rateControl:{mode:'crf',crf:0}}},{...good,effective:{...good.effective,extra:'-filter_complex'}}])
+  for(const delivery of [null,undefined,{...good,effective:{...good.effective,width:good.effective.width+2}},{...good,effective:{...good.effective,rateControl:{mode:'crf',crf:0}}},{...good,effective:{...good.effective,extra:'-filter_complex'}}])
    await assert.rejects(renderTimeline({...snapshot,delivery},assets,path.join(root,'invalid.mp4')),{code:'INVALID_TIMELINE_SNAPSHOT'});
   assert.deepEqual(events,[]);assert.equal((await readdir(root)).includes('invalid.mp4'),false);
  }finally{off();}

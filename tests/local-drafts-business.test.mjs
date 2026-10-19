@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mkdtempSync,rmSync,existsSync,readFileSync,writeFileSync,statSync,copyFileSync,symlinkSync,linkSync,chmodSync} from 'node:fs';
+import {mkdtempSync,realpathSync,rmSync,existsSync,readFileSync,writeFileSync,statSync,copyFileSync,symlinkSync,linkSync,chmodSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {openStore,ownsStoreLock,getWorkspaceRestoreContext} from '../packages/business/src/db.mjs';
@@ -14,7 +14,7 @@ import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validate
 const storage={readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile};
 const code=value=>error=>error.code===value&&!error.message.includes('PRIVATE');
 async function fixture(t){
-  const root=mkdtempSync(path.join(tmpdir(),'mioon-local-draft-'));let store=openStore(root),service=createServices(store,new Map()),drafts,fault=()=>{};
+  const root=mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-local-draft-'));let store=openStore(root),service=createServices(store,new Map()),drafts,fault=()=>{};
   const project=await service.call('project.create',{name:'Local draft'});
   const assetId=randomUUID();const asset=store.put('assets',{id:assetId,projectId:project.id,name:'Synthetic',mimeType:'image/png',width:2,height:2,hasVideo:true,hasAudio:false,provenance:'user-import',sha256:'a'.repeat(64),relativePath:`media/${assetId}.png`,createdAt:new Date().toISOString()});
   let timeline=await service.call('timeline.get',{projectId:project.id});

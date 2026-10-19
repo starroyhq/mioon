@@ -1,0 +1,2386 @@
+TAP version 13
+# Subtest: fixed26 historical receipt repair: fresh real through24 constructor still boots ordinary26 with all fixed receipt protections
+ok 1 - fixed26 historical receipt repair: fresh real through24 constructor still boots ordinary26 with all fixed receipt protections
+  ---
+  duration_ms: 67.003708
+  type: 'test'
+  ...
+# Subtest: current default dispatcher independently boots ordinary40 with the same receipt protections
+ok 2 - current default dispatcher independently boots ordinary40 with the same receipt protections
+  ---
+  duration_ms: 184.628125
+  type: 'test'
+  ...
+# Subtest: current feature admission refuses the intentionally raw historical receipt fixture without changing it
+ok 3 - current feature admission refuses the intentionally raw historical receipt fixture without changing it
+  ---
+  duration_ms: 43.516083
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 startup restores only missing trusted receipts: immutable_timeline_responses,immutable_reference_responses,reject_reference_request_replacement,retain_reference_requests
+ok 4 - fixed26 historical receipt repair: ordinary24 startup restores only missing trusted receipts: immutable_timeline_responses,immutable_reference_responses,reject_reference_request_replacement,retain_reference_requests
+  ---
+  duration_ms: 68.384917
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 startup restores only missing trusted receipts: immutable_timeline_responses
+ok 5 - fixed26 historical receipt repair: ordinary24 startup restores only missing trusted receipts: immutable_timeline_responses
+  ---
+  duration_ms: 41.28825
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 startup restores only missing trusted receipts: immutable_reference_responses
+ok 6 - fixed26 historical receipt repair: ordinary24 startup restores only missing trusted receipts: immutable_reference_responses
+  ---
+  duration_ms: 43.494083
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 startup restores only missing trusted receipts: reject_reference_request_replacement
+ok 7 - fixed26 historical receipt repair: ordinary24 startup restores only missing trusted receipts: reject_reference_request_replacement
+  ---
+  duration_ms: 40.954292
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 startup restores only missing trusted receipts: retain_reference_requests
+ok 8 - fixed26 historical receipt repair: ordinary24 startup restores only missing trusted receipts: retain_reference_requests
+  ---
+  duration_ms: 36.845959
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 startup restores only missing trusted receipts: immutable_timeline_responses,immutable_reference_responses,reject_reference_request_replacement,retain_reference_requests
+ok 9 - fixed26 historical receipt repair: ordinary26 startup restores only missing trusted receipts: immutable_timeline_responses,immutable_reference_responses,reject_reference_request_replacement,retain_reference_requests
+  ---
+  duration_ms: 59.366125
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 startup restores only missing trusted receipts: immutable_timeline_responses
+ok 10 - fixed26 historical receipt repair: ordinary26 startup restores only missing trusted receipts: immutable_timeline_responses
+  ---
+  duration_ms: 60.532958
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 startup restores only missing trusted receipts: immutable_reference_responses
+ok 11 - fixed26 historical receipt repair: ordinary26 startup restores only missing trusted receipts: immutable_reference_responses
+  ---
+  duration_ms: 48.488541
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 startup restores only missing trusted receipts: reject_reference_request_replacement
+ok 12 - fixed26 historical receipt repair: ordinary26 startup restores only missing trusted receipts: reject_reference_request_replacement
+  ---
+  duration_ms: 42.170208
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 startup restores only missing trusted receipts: retain_reference_requests
+ok 13 - fixed26 historical receipt repair: ordinary26 startup restores only missing trusted receipts: retain_reference_requests
+  ---
+  duration_ms: 42.153917
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: actual26 file reopen restores all four protections with raw receipts unchanged
+ok 14 - fixed26 historical receipt repair: actual26 file reopen restores all four protections with raw receipts unchanged
+  ---
+  duration_ms: 54.713792
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses changed known trigger SQL before any receipt or migration DDL
+ok 15 - fixed26 historical receipt repair: ordinary24 refuses changed known trigger SQL before any receipt or migration DDL
+  ---
+  duration_ms: 18.837625
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses known trigger on another table before any receipt or migration DDL
+ok 16 - fixed26 historical receipt repair: ordinary24 refuses known trigger on another table before any receipt or migration DDL
+  ---
+  duration_ms: 18.116375
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses case-only trigger name collision before any receipt or migration DDL
+ok 17 - fixed26 historical receipt repair: ordinary24 refuses case-only trigger name collision before any receipt or migration DDL
+  ---
+  duration_ms: 16.536375
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses table collides with trigger name before any receipt or migration DDL
+ok 18 - fixed26 historical receipt repair: ordinary24 refuses table collides with trigger name before any receipt or migration DDL
+  ---
+  duration_ms: 18.384833
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses view collides with trigger name before any receipt or migration DDL
+ok 19 - fixed26 historical receipt repair: ordinary24 refuses view collides with trigger name before any receipt or migration DDL
+  ---
+  duration_ms: 18.313625
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses index collides with trigger name before any receipt or migration DDL
+ok 20 - fixed26 historical receipt repair: ordinary24 refuses index collides with trigger name before any receipt or migration DDL
+  ---
+  duration_ms: 19.484708
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses changed receipt table before any receipt or migration DDL
+ok 21 - fixed26 historical receipt repair: ordinary24 refuses changed receipt table before any receipt or migration DDL
+  ---
+  duration_ms: 18.249958
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses missing receipt table before any receipt or migration DDL
+ok 22 - fixed26 historical receipt repair: ordinary24 refuses missing receipt table before any receipt or migration DDL
+  ---
+  duration_ms: 18.145
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses view replaces receipt table before any receipt or migration DDL
+ok 23 - fixed26 historical receipt repair: ordinary24 refuses view replaces receipt table before any receipt or migration DDL
+  ---
+  duration_ms: 19.266959
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses temporary receipt table shadow before any receipt or migration DDL
+ok 24 - fixed26 historical receipt repair: ordinary24 refuses temporary receipt table shadow before any receipt or migration DDL
+  ---
+  duration_ms: 18.677209
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses temporary known-name trigger collision before any receipt or migration DDL
+ok 25 - fixed26 historical receipt repair: ordinary24 refuses temporary known-name trigger collision before any receipt or migration DDL
+  ---
+  duration_ms: 16.977125
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses changed known trigger SQL before any receipt or migration DDL
+ok 26 - fixed26 historical receipt repair: ordinary26 refuses changed known trigger SQL before any receipt or migration DDL
+  ---
+  duration_ms: 28.259375
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses known trigger on another table before any receipt or migration DDL
+ok 27 - fixed26 historical receipt repair: ordinary26 refuses known trigger on another table before any receipt or migration DDL
+  ---
+  duration_ms: 33.241333
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses case-only trigger name collision before any receipt or migration DDL
+ok 28 - fixed26 historical receipt repair: ordinary26 refuses case-only trigger name collision before any receipt or migration DDL
+  ---
+  duration_ms: 33.160083
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses table collides with trigger name before any receipt or migration DDL
+ok 29 - fixed26 historical receipt repair: ordinary26 refuses table collides with trigger name before any receipt or migration DDL
+  ---
+  duration_ms: 63.605584
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses view collides with trigger name before any receipt or migration DDL
+ok 30 - fixed26 historical receipt repair: ordinary26 refuses view collides with trigger name before any receipt or migration DDL
+  ---
+  duration_ms: 34.352667
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses index collides with trigger name before any receipt or migration DDL
+ok 31 - fixed26 historical receipt repair: ordinary26 refuses index collides with trigger name before any receipt or migration DDL
+  ---
+  duration_ms: 29.460125
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses changed receipt table before any receipt or migration DDL
+ok 32 - fixed26 historical receipt repair: ordinary26 refuses changed receipt table before any receipt or migration DDL
+  ---
+  duration_ms: 30.124375
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses missing receipt table before any receipt or migration DDL
+ok 33 - fixed26 historical receipt repair: ordinary26 refuses missing receipt table before any receipt or migration DDL
+  ---
+  duration_ms: 28.61475
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses view replaces receipt table before any receipt or migration DDL
+ok 34 - fixed26 historical receipt repair: ordinary26 refuses view replaces receipt table before any receipt or migration DDL
+  ---
+  duration_ms: 25.086417
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses temporary receipt table shadow before any receipt or migration DDL
+ok 35 - fixed26 historical receipt repair: ordinary26 refuses temporary receipt table shadow before any receipt or migration DDL
+  ---
+  duration_ms: 41.931917
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses temporary known-name trigger collision before any receipt or migration DDL
+ok 36 - fixed26 historical receipt repair: ordinary26 refuses temporary known-name trigger collision before any receipt or migration DDL
+  ---
+  duration_ms: 27.336834
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 edit-task schema gate rejects before receipt reconstruction
+ok 37 - fixed26 historical receipt repair: ordinary26 edit-task schema gate rejects before receipt reconstruction
+  ---
+  duration_ms: 24.597042
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: complete24 marker trigger cannot execute via historical bootstrap or repair
+ok 38 - fixed26 historical receipt repair: complete24 marker trigger cannot execute via historical bootstrap or repair
+  ---
+  duration_ms: 17.125583
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: receipt-only repair preserves unrelated custom objects and never invokes their triggers
+ok 39 - fixed26 historical receipt repair: receipt-only repair preserves unrelated custom objects and never invokes their triggers
+  ---
+  duration_ms: 890.193375
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at before immutable_timeline_responses
+ok 40 - fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at before immutable_timeline_responses
+  ---
+  duration_ms: 42.666208
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at after immutable_timeline_responses
+ok 41 - fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at after immutable_timeline_responses
+  ---
+  duration_ms: 41.183875
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at before immutable_reference_responses
+ok 42 - fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at before immutable_reference_responses
+  ---
+  duration_ms: 40.723667
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at after immutable_reference_responses
+ok 43 - fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at after immutable_reference_responses
+  ---
+  duration_ms: 44.231584
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at before reject_reference_request_replacement
+ok 44 - fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at before reject_reference_request_replacement
+  ---
+  duration_ms: 42.578
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at after reject_reference_request_replacement
+ok 45 - fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at after reject_reference_request_replacement
+  ---
+  duration_ms: 42.927208
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at before retain_reference_requests
+ok 46 - fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at before retain_reference_requests
+  ---
+  duration_ms: 45.44575
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at after retain_reference_requests
+ok 47 - fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at after retain_reference_requests
+  ---
+  duration_ms: 151.901875
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at before COMMIT
+ok 48 - fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at before COMMIT
+  ---
+  duration_ms: 63.500584
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at before immutable_timeline_responses
+ok 49 - fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at before immutable_timeline_responses
+  ---
+  duration_ms: 39.704375
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at after immutable_timeline_responses
+ok 50 - fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at after immutable_timeline_responses
+  ---
+  duration_ms: 43.062292
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at before immutable_reference_responses
+ok 51 - fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at before immutable_reference_responses
+  ---
+  duration_ms: 60.824958
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at after immutable_reference_responses
+ok 52 - fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at after immutable_reference_responses
+  ---
+  duration_ms: 64.797583
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at before reject_reference_request_replacement
+ok 53 - fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at before reject_reference_request_replacement
+  ---
+  duration_ms: 54.613958
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at after reject_reference_request_replacement
+ok 54 - fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at after reject_reference_request_replacement
+  ---
+  duration_ms: 40.348375
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at before retain_reference_requests
+ok 55 - fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at before retain_reference_requests
+  ---
+  duration_ms: 39.542834
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at after retain_reference_requests
+ok 56 - fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at after retain_reference_requests
+  ---
+  duration_ms: 40.022625
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at before COMMIT
+ok 57 - fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at before COMMIT
+  ---
+  duration_ms: 41.818959
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: restored25 valid reopen stays unchanged without ordinary receipt repair
+ok 58 - fixed26 historical receipt repair: restored25 valid reopen stays unchanged without ordinary receipt repair
+  ---
+  duration_ms: 151.90225
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: restored25 missing guards are refused without ordinary receipt repair
+ok 59 - fixed26 historical receipt repair: restored25 missing guards are refused without ordinary receipt repair
+  ---
+  duration_ms: 29.595625
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: restored27 valid reopen stays unchanged without ordinary receipt repair
+ok 60 - fixed26 historical receipt repair: restored27 valid reopen stays unchanged without ordinary receipt repair
+  ---
+  duration_ms: 220.624625
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: restored27 missing guards are refused without ordinary receipt repair
+ok 61 - fixed26 historical receipt repair: restored27 missing guards are refused without ordinary receipt repair
+  ---
+  duration_ms: 221.55925
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 restores missing historical mutation receipt guards: reject_mutation_request_replacement,immutable_mutation_requests,retain_mutation_requests
+ok 62 - fixed26 historical receipt repair: ordinary24 restores missing historical mutation receipt guards: reject_mutation_request_replacement,immutable_mutation_requests,retain_mutation_requests
+  ---
+  duration_ms: 46.752542
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 restores missing historical mutation receipt guards: reject_mutation_request_replacement
+ok 63 - fixed26 historical receipt repair: ordinary24 restores missing historical mutation receipt guards: reject_mutation_request_replacement
+  ---
+  duration_ms: 49.447667
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 restores missing historical mutation receipt guards: immutable_mutation_requests
+ok 64 - fixed26 historical receipt repair: ordinary24 restores missing historical mutation receipt guards: immutable_mutation_requests
+  ---
+  duration_ms: 45.958041
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 restores missing historical mutation receipt guards: retain_mutation_requests
+ok 65 - fixed26 historical receipt repair: ordinary24 restores missing historical mutation receipt guards: retain_mutation_requests
+  ---
+  duration_ms: 46.962666
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 restores missing historical mutation receipt guards: reject_mutation_request_replacement,immutable_mutation_requests,retain_mutation_requests
+ok 66 - fixed26 historical receipt repair: ordinary26 restores missing historical mutation receipt guards: reject_mutation_request_replacement,immutable_mutation_requests,retain_mutation_requests
+  ---
+  duration_ms: 49.890375
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 restores missing historical mutation receipt guards: reject_mutation_request_replacement
+ok 67 - fixed26 historical receipt repair: ordinary26 restores missing historical mutation receipt guards: reject_mutation_request_replacement
+  ---
+  duration_ms: 55.347583
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 restores missing historical mutation receipt guards: immutable_mutation_requests
+ok 68 - fixed26 historical receipt repair: ordinary26 restores missing historical mutation receipt guards: immutable_mutation_requests
+  ---
+  duration_ms: 71.98475
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 restores missing historical mutation receipt guards: retain_mutation_requests
+ok 69 - fixed26 historical receipt repair: ordinary26 restores missing historical mutation receipt guards: retain_mutation_requests
+  ---
+  duration_ms: 68.413375
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: independent historical repair inventory is exactly36 non-task triggers plus active-chat uniqueness
+ok 70 - fixed26 historical receipt repair: independent historical repair inventory is exactly36 non-task triggers plus active-chat uniqueness
+  ---
+  duration_ms: 0.136666
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_versions with exact frozen SQL
+ok 71 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_versions with exact frozen SQL
+  ---
+  duration_ms: 57.663042
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_timeline_responses with exact frozen SQL
+ok 72 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_timeline_responses with exact frozen SQL
+  ---
+  duration_ms: 41.7635
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_timeline_render_snapshot with exact frozen SQL
+ok 73 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_timeline_render_snapshot with exact frozen SQL
+  ---
+  duration_ms: 37.950208
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_timeline_history with exact frozen SQL
+ok 74 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_timeline_history with exact frozen SQL
+  ---
+  duration_ms: 38.295667
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_reference_responses with exact frozen SQL
+ok 75 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_reference_responses with exact frozen SQL
+  ---
+  duration_ms: 45.041167
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection reject_reference_request_replacement with exact frozen SQL
+ok 76 - fixed26 historical receipt repair: ordinary24 repairs additive protection reject_reference_request_replacement with exact frozen SQL
+  ---
+  duration_ms: 40.11325
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection retain_reference_requests with exact frozen SQL
+ok 77 - fixed26 historical receipt repair: ordinary24 repairs additive protection retain_reference_requests with exact frozen SQL
+  ---
+  duration_ms: 38.276583
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_agent_chat_requests with exact frozen SQL
+ok 78 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_agent_chat_requests with exact frozen SQL
+  ---
+  duration_ms: 38.856541
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection retain_agent_chat_requests with exact frozen SQL
+ok 79 - fixed26 historical receipt repair: ordinary24 repairs additive protection retain_agent_chat_requests with exact frozen SQL
+  ---
+  duration_ms: 37.184458
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_agent_chat_run_identity with exact frozen SQL
+ok 80 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_agent_chat_run_identity with exact frozen SQL
+  ---
+  duration_ms: 42.019583
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_agent_chat_events with exact frozen SQL
+ok 81 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_agent_chat_events with exact frozen SQL
+  ---
+  duration_ms: 43.016042
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection retain_agent_chat_events with exact frozen SQL
+ok 82 - fixed26 historical receipt repair: ordinary24 repairs additive protection retain_agent_chat_events with exact frozen SQL
+  ---
+  duration_ms: 43.935541
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_agent_chat_step_payload with exact frozen SQL
+ok 83 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_agent_chat_step_payload with exact frozen SQL
+  ---
+  duration_ms: 44.49425
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection retain_agent_chat_steps with exact frozen SQL
+ok 84 - fixed26 historical receipt repair: ordinary24 repairs additive protection retain_agent_chat_steps with exact frozen SQL
+  ---
+  duration_ms: 47.742583
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_agent_chat_inspection_context with exact frozen SQL
+ok 85 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_agent_chat_inspection_context with exact frozen SQL
+  ---
+  duration_ms: 43.279334
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection reject_mutation_request_replacement with exact frozen SQL
+ok 86 - fixed26 historical receipt repair: ordinary24 repairs additive protection reject_mutation_request_replacement with exact frozen SQL
+  ---
+  duration_ms: 46.302541
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_mutation_requests with exact frozen SQL
+ok 87 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_mutation_requests with exact frozen SQL
+  ---
+  duration_ms: 50.21475
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection retain_mutation_requests with exact frozen SQL
+ok 88 - fixed26 historical receipt repair: ordinary24 repairs additive protection retain_mutation_requests with exact frozen SQL
+  ---
+  duration_ms: 45.331667
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection reject_agent_edit_replacement with exact frozen SQL
+ok 89 - fixed26 historical receipt repair: ordinary24 repairs additive protection reject_agent_edit_replacement with exact frozen SQL
+  ---
+  duration_ms: 39.934083
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_agent_edit_intent with exact frozen SQL
+ok 90 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_agent_edit_intent with exact frozen SQL
+  ---
+  duration_ms: 43.477459
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection guard_agent_edit_transition with exact frozen SQL
+ok 91 - fixed26 historical receipt repair: ordinary24 repairs additive protection guard_agent_edit_transition with exact frozen SQL
+  ---
+  duration_ms: 37.735
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection retain_agent_edit_proposals with exact frozen SQL
+ok 92 - fixed26 historical receipt repair: ordinary24 repairs additive protection retain_agent_edit_proposals with exact frozen SQL
+  ---
+  duration_ms: 42.611459
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_agent_chat_edit_target with exact frozen SQL
+ok 93 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_agent_chat_edit_target with exact frozen SQL
+  ---
+  duration_ms: 38.60175
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_asset_range_identity with exact frozen SQL
+ok 94 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_asset_range_identity with exact frozen SQL
+  ---
+  duration_ms: 37.512334
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection reject_asset_range_request_replacement with exact frozen SQL
+ok 95 - fixed26 historical receipt repair: ordinary24 repairs additive protection reject_asset_range_request_replacement with exact frozen SQL
+  ---
+  duration_ms: 37.338833
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_asset_range_requests with exact frozen SQL
+ok 96 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_asset_range_requests with exact frozen SQL
+  ---
+  duration_ms: 39.71625
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection retain_asset_range_requests with exact frozen SQL
+ok 97 - fixed26 historical receipt repair: ordinary24 repairs additive protection retain_asset_range_requests with exact frozen SQL
+  ---
+  duration_ms: 42.7825
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection reject_asset_range_cross_request with exact frozen SQL
+ok 98 - fixed26 historical receipt repair: ordinary24 repairs additive protection reject_asset_range_cross_request with exact frozen SQL
+  ---
+  duration_ms: 39.709667
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection reject_mutation_cross_range_request with exact frozen SQL
+ok 99 - fixed26 historical receipt repair: ordinary24 repairs additive protection reject_mutation_cross_range_request with exact frozen SQL
+  ---
+  duration_ms: 39.719333
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_asset_disposition_identity with exact frozen SQL
+ok 100 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_asset_disposition_identity with exact frozen SQL
+  ---
+  duration_ms: 35.659167
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection reject_asset_disposition_request_replacement with exact frozen SQL
+ok 101 - fixed26 historical receipt repair: ordinary24 repairs additive protection reject_asset_disposition_request_replacement with exact frozen SQL
+  ---
+  duration_ms: 35.976042
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_asset_disposition_requests with exact frozen SQL
+ok 102 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_asset_disposition_requests with exact frozen SQL
+  ---
+  duration_ms: 45.713959
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection retain_asset_disposition_requests with exact frozen SQL
+ok 103 - fixed26 historical receipt repair: ordinary24 repairs additive protection retain_asset_disposition_requests with exact frozen SQL
+  ---
+  duration_ms: 35.848792
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection reject_asset_disposition_cross_request with exact frozen SQL
+ok 104 - fixed26 historical receipt repair: ordinary24 repairs additive protection reject_asset_disposition_cross_request with exact frozen SQL
+  ---
+  duration_ms: 34.717333
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection reject_mutation_cross_disposition_request with exact frozen SQL
+ok 105 - fixed26 historical receipt repair: ordinary24 repairs additive protection reject_mutation_cross_disposition_request with exact frozen SQL
+  ---
+  duration_ms: 34.869959
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection reject_asset_range_cross_disposition_request with exact frozen SQL
+ok 106 - fixed26 historical receipt repair: ordinary24 repairs additive protection reject_asset_range_cross_disposition_request with exact frozen SQL
+  ---
+  duration_ms: 35.935792
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs additive protection agent_chat_one_active with exact frozen SQL
+ok 107 - fixed26 historical receipt repair: ordinary24 repairs additive protection agent_chat_one_active with exact frozen SQL
+  ---
+  duration_ms: 34.240625
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_versions with exact frozen SQL
+ok 108 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_versions with exact frozen SQL
+  ---
+  duration_ms: 40.441958
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_timeline_responses with exact frozen SQL
+ok 109 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_timeline_responses with exact frozen SQL
+  ---
+  duration_ms: 42.026916
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_timeline_render_snapshot with exact frozen SQL
+ok 110 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_timeline_render_snapshot with exact frozen SQL
+  ---
+  duration_ms: 42.507667
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_timeline_history with exact frozen SQL
+ok 111 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_timeline_history with exact frozen SQL
+  ---
+  duration_ms: 44.336166
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_reference_responses with exact frozen SQL
+ok 112 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_reference_responses with exact frozen SQL
+  ---
+  duration_ms: 47.6615
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection reject_reference_request_replacement with exact frozen SQL
+ok 113 - fixed26 historical receipt repair: ordinary26 repairs additive protection reject_reference_request_replacement with exact frozen SQL
+  ---
+  duration_ms: 55.028541
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection retain_reference_requests with exact frozen SQL
+ok 114 - fixed26 historical receipt repair: ordinary26 repairs additive protection retain_reference_requests with exact frozen SQL
+  ---
+  duration_ms: 46.0995
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_agent_chat_requests with exact frozen SQL
+ok 115 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_agent_chat_requests with exact frozen SQL
+  ---
+  duration_ms: 56.0465
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection retain_agent_chat_requests with exact frozen SQL
+ok 116 - fixed26 historical receipt repair: ordinary26 repairs additive protection retain_agent_chat_requests with exact frozen SQL
+  ---
+  duration_ms: 51.730542
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_agent_chat_run_identity with exact frozen SQL
+ok 117 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_agent_chat_run_identity with exact frozen SQL
+  ---
+  duration_ms: 58.99075
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_agent_chat_events with exact frozen SQL
+ok 118 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_agent_chat_events with exact frozen SQL
+  ---
+  duration_ms: 59.11675
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection retain_agent_chat_events with exact frozen SQL
+ok 119 - fixed26 historical receipt repair: ordinary26 repairs additive protection retain_agent_chat_events with exact frozen SQL
+  ---
+  duration_ms: 64.025459
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_agent_chat_step_payload with exact frozen SQL
+ok 120 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_agent_chat_step_payload with exact frozen SQL
+  ---
+  duration_ms: 54.769042
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection retain_agent_chat_steps with exact frozen SQL
+ok 121 - fixed26 historical receipt repair: ordinary26 repairs additive protection retain_agent_chat_steps with exact frozen SQL
+  ---
+  duration_ms: 61.915125
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_agent_chat_inspection_context with exact frozen SQL
+ok 122 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_agent_chat_inspection_context with exact frozen SQL
+  ---
+  duration_ms: 49.429625
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection reject_mutation_request_replacement with exact frozen SQL
+ok 123 - fixed26 historical receipt repair: ordinary26 repairs additive protection reject_mutation_request_replacement with exact frozen SQL
+  ---
+  duration_ms: 49.302708
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_mutation_requests with exact frozen SQL
+ok 124 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_mutation_requests with exact frozen SQL
+  ---
+  duration_ms: 50.504833
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection retain_mutation_requests with exact frozen SQL
+ok 125 - fixed26 historical receipt repair: ordinary26 repairs additive protection retain_mutation_requests with exact frozen SQL
+  ---
+  duration_ms: 45.317
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection reject_agent_edit_replacement with exact frozen SQL
+ok 126 - fixed26 historical receipt repair: ordinary26 repairs additive protection reject_agent_edit_replacement with exact frozen SQL
+  ---
+  duration_ms: 47.185958
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_agent_edit_intent with exact frozen SQL
+ok 127 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_agent_edit_intent with exact frozen SQL
+  ---
+  duration_ms: 46.774916
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection guard_agent_edit_transition with exact frozen SQL
+ok 128 - fixed26 historical receipt repair: ordinary26 repairs additive protection guard_agent_edit_transition with exact frozen SQL
+  ---
+  duration_ms: 44.69075
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection retain_agent_edit_proposals with exact frozen SQL
+ok 129 - fixed26 historical receipt repair: ordinary26 repairs additive protection retain_agent_edit_proposals with exact frozen SQL
+  ---
+  duration_ms: 49.595083
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_agent_chat_edit_target with exact frozen SQL
+ok 130 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_agent_chat_edit_target with exact frozen SQL
+  ---
+  duration_ms: 58.256667
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_asset_range_identity with exact frozen SQL
+ok 131 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_asset_range_identity with exact frozen SQL
+  ---
+  duration_ms: 57.58275
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection reject_asset_range_request_replacement with exact frozen SQL
+ok 132 - fixed26 historical receipt repair: ordinary26 repairs additive protection reject_asset_range_request_replacement with exact frozen SQL
+  ---
+  duration_ms: 51.743333
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_asset_range_requests with exact frozen SQL
+ok 133 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_asset_range_requests with exact frozen SQL
+  ---
+  duration_ms: 56.447208
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection retain_asset_range_requests with exact frozen SQL
+ok 134 - fixed26 historical receipt repair: ordinary26 repairs additive protection retain_asset_range_requests with exact frozen SQL
+  ---
+  duration_ms: 48.857208
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection reject_asset_range_cross_request with exact frozen SQL
+ok 135 - fixed26 historical receipt repair: ordinary26 repairs additive protection reject_asset_range_cross_request with exact frozen SQL
+  ---
+  duration_ms: 45.673375
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection reject_mutation_cross_range_request with exact frozen SQL
+ok 136 - fixed26 historical receipt repair: ordinary26 repairs additive protection reject_mutation_cross_range_request with exact frozen SQL
+  ---
+  duration_ms: 50.75975
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_asset_disposition_identity with exact frozen SQL
+ok 137 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_asset_disposition_identity with exact frozen SQL
+  ---
+  duration_ms: 49.041209
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection reject_asset_disposition_request_replacement with exact frozen SQL
+ok 138 - fixed26 historical receipt repair: ordinary26 repairs additive protection reject_asset_disposition_request_replacement with exact frozen SQL
+  ---
+  duration_ms: 74.835917
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_asset_disposition_requests with exact frozen SQL
+ok 139 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_asset_disposition_requests with exact frozen SQL
+  ---
+  duration_ms: 69.51175
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection retain_asset_disposition_requests with exact frozen SQL
+ok 140 - fixed26 historical receipt repair: ordinary26 repairs additive protection retain_asset_disposition_requests with exact frozen SQL
+  ---
+  duration_ms: 47.689125
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection reject_asset_disposition_cross_request with exact frozen SQL
+ok 141 - fixed26 historical receipt repair: ordinary26 repairs additive protection reject_asset_disposition_cross_request with exact frozen SQL
+  ---
+  duration_ms: 52.27675
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection reject_mutation_cross_disposition_request with exact frozen SQL
+ok 142 - fixed26 historical receipt repair: ordinary26 repairs additive protection reject_mutation_cross_disposition_request with exact frozen SQL
+  ---
+  duration_ms: 47.160417
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection reject_asset_range_cross_disposition_request with exact frozen SQL
+ok 143 - fixed26 historical receipt repair: ordinary26 repairs additive protection reject_asset_range_cross_disposition_request with exact frozen SQL
+  ---
+  duration_ms: 51.647708
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs additive protection agent_chat_one_active with exact frozen SQL
+ok 144 - fixed26 historical receipt repair: ordinary26 repairs additive protection agent_chat_one_active with exact frozen SQL
+  ---
+  duration_ms: 50.568042
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 repairs all additive guards together while preserving raw receipts, gains, history and REAL sequence
+ok 145 - fixed26 historical receipt repair: ordinary24 repairs all additive guards together while preserving raw receipts, gains, history and REAL sequence
+  ---
+  duration_ms: 807.931292
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 repairs all additive guards together while preserving raw receipts, gains, history and REAL sequence
+ok 146 - fixed26 historical receipt repair: ordinary26 repairs all additive guards together while preserving raw receipts, gains, history and REAL sequence
+  ---
+  duration_ms: 778.037541
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_versions without mutation
+ok 147 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_versions without mutation
+  ---
+  duration_ms: 21.450791
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_timeline_responses without mutation
+ok 148 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_timeline_responses without mutation
+  ---
+  duration_ms: 23.53
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_timeline_render_snapshot without mutation
+ok 149 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_timeline_render_snapshot without mutation
+  ---
+  duration_ms: 22.692625
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_timeline_history without mutation
+ok 150 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_timeline_history without mutation
+  ---
+  duration_ms: 22.510541
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_reference_responses without mutation
+ok 151 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_reference_responses without mutation
+  ---
+  duration_ms: 20.133625
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_reference_request_replacement without mutation
+ok 152 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_reference_request_replacement without mutation
+  ---
+  duration_ms: 19.379209
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection retain_reference_requests without mutation
+ok 153 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection retain_reference_requests without mutation
+  ---
+  duration_ms: 23.925542
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_agent_chat_requests without mutation
+ok 154 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_agent_chat_requests without mutation
+  ---
+  duration_ms: 19.805375
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection retain_agent_chat_requests without mutation
+ok 155 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection retain_agent_chat_requests without mutation
+  ---
+  duration_ms: 23.099333
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_agent_chat_run_identity without mutation
+ok 156 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_agent_chat_run_identity without mutation
+  ---
+  duration_ms: 23.930125
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_agent_chat_events without mutation
+ok 157 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_agent_chat_events without mutation
+  ---
+  duration_ms: 21.291417
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection retain_agent_chat_events without mutation
+ok 158 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection retain_agent_chat_events without mutation
+  ---
+  duration_ms: 21.193333
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_agent_chat_step_payload without mutation
+ok 159 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_agent_chat_step_payload without mutation
+  ---
+  duration_ms: 20.933667
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection retain_agent_chat_steps without mutation
+ok 160 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection retain_agent_chat_steps without mutation
+  ---
+  duration_ms: 23.243708
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_agent_chat_inspection_context without mutation
+ok 161 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_agent_chat_inspection_context without mutation
+  ---
+  duration_ms: 21.646875
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_mutation_request_replacement without mutation
+ok 162 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_mutation_request_replacement without mutation
+  ---
+  duration_ms: 24.777584
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_mutation_requests without mutation
+ok 163 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_mutation_requests without mutation
+  ---
+  duration_ms: 32.150708
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection retain_mutation_requests without mutation
+ok 164 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection retain_mutation_requests without mutation
+  ---
+  duration_ms: 23.504959
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_agent_edit_replacement without mutation
+ok 165 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_agent_edit_replacement without mutation
+  ---
+  duration_ms: 28.455292
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_agent_edit_intent without mutation
+ok 166 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_agent_edit_intent without mutation
+  ---
+  duration_ms: 21.703792
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection guard_agent_edit_transition without mutation
+ok 167 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection guard_agent_edit_transition without mutation
+  ---
+  duration_ms: 25.115125
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection retain_agent_edit_proposals without mutation
+ok 168 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection retain_agent_edit_proposals without mutation
+  ---
+  duration_ms: 20.034167
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_agent_chat_edit_target without mutation
+ok 169 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_agent_chat_edit_target without mutation
+  ---
+  duration_ms: 20.636792
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_asset_range_identity without mutation
+ok 170 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_asset_range_identity without mutation
+  ---
+  duration_ms: 22.400875
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_asset_range_request_replacement without mutation
+ok 171 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_asset_range_request_replacement without mutation
+  ---
+  duration_ms: 25.283125
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_asset_range_requests without mutation
+ok 172 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_asset_range_requests without mutation
+  ---
+  duration_ms: 19.294291
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection retain_asset_range_requests without mutation
+ok 173 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection retain_asset_range_requests without mutation
+  ---
+  duration_ms: 22.022083
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_asset_range_cross_request without mutation
+ok 174 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_asset_range_cross_request without mutation
+  ---
+  duration_ms: 18.517
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_mutation_cross_range_request without mutation
+ok 175 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_mutation_cross_range_request without mutation
+  ---
+  duration_ms: 18.561875
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_asset_disposition_identity without mutation
+ok 176 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_asset_disposition_identity without mutation
+  ---
+  duration_ms: 21.35225
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_asset_disposition_request_replacement without mutation
+ok 177 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_asset_disposition_request_replacement without mutation
+  ---
+  duration_ms: 19.608959
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_asset_disposition_requests without mutation
+ok 178 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_asset_disposition_requests without mutation
+  ---
+  duration_ms: 21.49225
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection retain_asset_disposition_requests without mutation
+ok 179 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection retain_asset_disposition_requests without mutation
+  ---
+  duration_ms: 19.035666
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_asset_disposition_cross_request without mutation
+ok 180 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_asset_disposition_cross_request without mutation
+  ---
+  duration_ms: 20.195
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_mutation_cross_disposition_request without mutation
+ok 181 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_mutation_cross_disposition_request without mutation
+  ---
+  duration_ms: 20.0085
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_asset_range_cross_disposition_request without mutation
+ok 182 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_asset_range_cross_disposition_request without mutation
+  ---
+  duration_ms: 17.300833
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection agent_chat_one_active without mutation
+ok 183 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection agent_chat_one_active without mutation
+  ---
+  duration_ms: 19.3215
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_versions without mutation
+ok 184 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_versions without mutation
+  ---
+  duration_ms: 29.876792
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_timeline_responses without mutation
+ok 185 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_timeline_responses without mutation
+  ---
+  duration_ms: 32.874834
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_timeline_render_snapshot without mutation
+ok 186 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_timeline_render_snapshot without mutation
+  ---
+  duration_ms: 36.891917
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_timeline_history without mutation
+ok 187 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_timeline_history without mutation
+  ---
+  duration_ms: 57.073208
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_reference_responses without mutation
+ok 188 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_reference_responses without mutation
+  ---
+  duration_ms: 56.276083
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_reference_request_replacement without mutation
+ok 189 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_reference_request_replacement without mutation
+  ---
+  duration_ms: 32.205959
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection retain_reference_requests without mutation
+ok 190 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection retain_reference_requests without mutation
+  ---
+  duration_ms: 41.245333
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_agent_chat_requests without mutation
+ok 191 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_agent_chat_requests without mutation
+  ---
+  duration_ms: 33.377958
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection retain_agent_chat_requests without mutation
+ok 192 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection retain_agent_chat_requests without mutation
+  ---
+  duration_ms: 36.712084
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_agent_chat_run_identity without mutation
+ok 193 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_agent_chat_run_identity without mutation
+  ---
+  duration_ms: 34.637083
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_agent_chat_events without mutation
+ok 194 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_agent_chat_events without mutation
+  ---
+  duration_ms: 28.223083
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection retain_agent_chat_events without mutation
+ok 195 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection retain_agent_chat_events without mutation
+  ---
+  duration_ms: 31.269375
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_agent_chat_step_payload without mutation
+ok 196 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_agent_chat_step_payload without mutation
+  ---
+  duration_ms: 31.009708
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection retain_agent_chat_steps without mutation
+ok 197 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection retain_agent_chat_steps without mutation
+  ---
+  duration_ms: 37.798125
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_agent_chat_inspection_context without mutation
+ok 198 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_agent_chat_inspection_context without mutation
+  ---
+  duration_ms: 35.124125
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_mutation_request_replacement without mutation
+ok 199 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_mutation_request_replacement without mutation
+  ---
+  duration_ms: 36.745584
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_mutation_requests without mutation
+ok 200 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_mutation_requests without mutation
+  ---
+  duration_ms: 33.741458
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection retain_mutation_requests without mutation
+ok 201 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection retain_mutation_requests without mutation
+  ---
+  duration_ms: 32.038041
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_agent_edit_replacement without mutation
+ok 202 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_agent_edit_replacement without mutation
+  ---
+  duration_ms: 42.885542
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_agent_edit_intent without mutation
+ok 203 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_agent_edit_intent without mutation
+  ---
+  duration_ms: 35.1495
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection guard_agent_edit_transition without mutation
+ok 204 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection guard_agent_edit_transition without mutation
+  ---
+  duration_ms: 35.886583
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection retain_agent_edit_proposals without mutation
+ok 205 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection retain_agent_edit_proposals without mutation
+  ---
+  duration_ms: 54.101958
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_agent_chat_edit_target without mutation
+ok 206 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_agent_chat_edit_target without mutation
+  ---
+  duration_ms: 80.098334
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_asset_range_identity without mutation
+ok 207 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_asset_range_identity without mutation
+  ---
+  duration_ms: 50.096042
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_asset_range_request_replacement without mutation
+ok 208 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_asset_range_request_replacement without mutation
+  ---
+  duration_ms: 57.473125
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_asset_range_requests without mutation
+ok 209 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_asset_range_requests without mutation
+  ---
+  duration_ms: 56.003
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection retain_asset_range_requests without mutation
+ok 210 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection retain_asset_range_requests without mutation
+  ---
+  duration_ms: 49.417209
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_asset_range_cross_request without mutation
+ok 211 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_asset_range_cross_request without mutation
+  ---
+  duration_ms: 38.104375
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_mutation_cross_range_request without mutation
+ok 212 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_mutation_cross_range_request without mutation
+  ---
+  duration_ms: 39.9735
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_asset_disposition_identity without mutation
+ok 213 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_asset_disposition_identity without mutation
+  ---
+  duration_ms: 33.602125
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_asset_disposition_request_replacement without mutation
+ok 214 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_asset_disposition_request_replacement without mutation
+  ---
+  duration_ms: 32.6695
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_asset_disposition_requests without mutation
+ok 215 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_asset_disposition_requests without mutation
+  ---
+  duration_ms: 35.004542
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection retain_asset_disposition_requests without mutation
+ok 216 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection retain_asset_disposition_requests without mutation
+  ---
+  duration_ms: 41.248834
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_asset_disposition_cross_request without mutation
+ok 217 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_asset_disposition_cross_request without mutation
+  ---
+  duration_ms: 36.619875
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_mutation_cross_disposition_request without mutation
+ok 218 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_mutation_cross_disposition_request without mutation
+  ---
+  duration_ms: 31.972875
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_asset_range_cross_disposition_request without mutation
+ok 219 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_asset_range_cross_disposition_request without mutation
+  ---
+  duration_ms: 45.922416
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection agent_chat_one_active without mutation
+ok 220 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection agent_chat_one_active without mutation
+  ---
+  duration_ms: 34.40425
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses missing additive dependency mutation_requests
+ok 221 - fixed26 historical receipt repair: ordinary24 refuses missing additive dependency mutation_requests
+  ---
+  duration_ms: 21.636416
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses missing additive dependency agent_chat_runs
+ok 222 - fixed26 historical receipt repair: ordinary24 refuses missing additive dependency agent_chat_runs
+  ---
+  duration_ms: 20.254792
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses missing additive dependency agent_chat_quota
+ok 223 - fixed26 historical receipt repair: ordinary24 refuses missing additive dependency agent_chat_quota
+  ---
+  duration_ms: 22.527083
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses missing additive dependency asset_range_requests
+ok 224 - fixed26 historical receipt repair: ordinary24 refuses missing additive dependency asset_range_requests
+  ---
+  duration_ms: 19.065541
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses missing additive dependency asset_disposition_requests
+ok 225 - fixed26 historical receipt repair: ordinary24 refuses missing additive dependency asset_disposition_requests
+  ---
+  duration_ms: 24.663541
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses missing additive dependency timeline_history
+ok 226 - fixed26 historical receipt repair: ordinary24 refuses missing additive dependency timeline_history
+  ---
+  duration_ms: 20.433833
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses missing additive dependency versions
+ok 227 - fixed26 historical receipt repair: ordinary24 refuses missing additive dependency versions
+  ---
+  duration_ms: 23.688833
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses missing additive dependency agent_edit_proposals
+ok 228 - fixed26 historical receipt repair: ordinary24 refuses missing additive dependency agent_edit_proposals
+  ---
+  duration_ms: 23.212292
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses missing additive dependency mutation_requests
+ok 229 - fixed26 historical receipt repair: ordinary26 refuses missing additive dependency mutation_requests
+  ---
+  duration_ms: 36.767875
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses missing additive dependency agent_chat_runs
+ok 230 - fixed26 historical receipt repair: ordinary26 refuses missing additive dependency agent_chat_runs
+  ---
+  duration_ms: 37.646
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses missing additive dependency agent_chat_quota
+ok 231 - fixed26 historical receipt repair: ordinary26 refuses missing additive dependency agent_chat_quota
+  ---
+  duration_ms: 35.741791
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses missing additive dependency asset_range_requests
+ok 232 - fixed26 historical receipt repair: ordinary26 refuses missing additive dependency asset_range_requests
+  ---
+  duration_ms: 38.890292
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses missing additive dependency asset_disposition_requests
+ok 233 - fixed26 historical receipt repair: ordinary26 refuses missing additive dependency asset_disposition_requests
+  ---
+  duration_ms: 42.3325
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses missing additive dependency timeline_history
+ok 234 - fixed26 historical receipt repair: ordinary26 refuses missing additive dependency timeline_history
+  ---
+  duration_ms: 37.363875
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses missing additive dependency versions
+ok 235 - fixed26 historical receipt repair: ordinary26 refuses missing additive dependency versions
+  ---
+  duration_ms: 37.845209
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses missing additive dependency agent_edit_proposals
+ok 236 - fixed26 historical receipt repair: ordinary26 refuses missing additive dependency agent_edit_proposals
+  ---
+  duration_ms: 33.983958
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses changed additive dependency mutation_requests
+ok 237 - fixed26 historical receipt repair: ordinary24 refuses changed additive dependency mutation_requests
+  ---
+  duration_ms: 23.940125
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses changed additive dependency agent_chat_runs
+ok 238 - fixed26 historical receipt repair: ordinary24 refuses changed additive dependency agent_chat_runs
+  ---
+  duration_ms: 23.158167
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses changed additive dependency asset_range_requests
+ok 239 - fixed26 historical receipt repair: ordinary24 refuses changed additive dependency asset_range_requests
+  ---
+  duration_ms: 25.4915
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses changed additive dependency agent_chat_quota
+ok 240 - fixed26 historical receipt repair: ordinary24 refuses changed additive dependency agent_chat_quota
+  ---
+  duration_ms: 34.759667
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses changed additive dependency mutation_requests
+ok 241 - fixed26 historical receipt repair: ordinary26 refuses changed additive dependency mutation_requests
+  ---
+  duration_ms: 51.414042
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses changed additive dependency agent_chat_runs
+ok 242 - fixed26 historical receipt repair: ordinary26 refuses changed additive dependency agent_chat_runs
+  ---
+  duration_ms: 36.123458
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses changed additive dependency asset_range_requests
+ok 243 - fixed26 historical receipt repair: ordinary26 refuses changed additive dependency asset_range_requests
+  ---
+  duration_ms: 31.658083
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses changed additive dependency agent_chat_quota
+ok 244 - fixed26 historical receipt repair: ordinary26 refuses changed additive dependency agent_chat_quota
+  ---
+  duration_ms: 41.693333
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses missing quota rather than recreating state
+ok 245 - fixed26 historical receipt repair: ordinary24 refuses missing quota rather than recreating state
+  ---
+  duration_ms: 23.977125
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses missing quota rather than recreating state
+ok 246 - fixed26 historical receipt repair: ordinary26 refuses missing quota rather than recreating state
+  ---
+  duration_ms: 50.936375
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 refuses duplicate active-chat state before attempting additive repair
+ok 247 - fixed26 historical receipt repair: ordinary24 refuses duplicate active-chat state before attempting additive repair
+  ---
+  duration_ms: 33.040209
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 refuses duplicate active-chat state before attempting additive repair
+ok 248 - fixed26 historical receipt repair: ordinary26 refuses duplicate active-chat state before attempting additive repair
+  ---
+  duration_ms: 47.673917
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_versions
+ok 249 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_versions
+  ---
+  duration_ms: 54.281417
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_versions
+ok 250 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_versions
+  ---
+  duration_ms: 51.754625
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_timeline_responses
+ok 251 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_timeline_responses
+  ---
+  duration_ms: 49.818042
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_timeline_responses
+ok 252 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_timeline_responses
+  ---
+  duration_ms: 47.270334
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_timeline_render_snapshot
+ok 253 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_timeline_render_snapshot
+  ---
+  duration_ms: 50.39375
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_timeline_render_snapshot
+ok 254 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_timeline_render_snapshot
+  ---
+  duration_ms: 48.870458
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_timeline_history
+ok 255 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_timeline_history
+  ---
+  duration_ms: 51.213042
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_timeline_history
+ok 256 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_timeline_history
+  ---
+  duration_ms: 45.341542
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_reference_responses
+ok 257 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_reference_responses
+  ---
+  duration_ms: 51.454709
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_reference_responses
+ok 258 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_reference_responses
+  ---
+  duration_ms: 47.670125
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_reference_request_replacement
+ok 259 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_reference_request_replacement
+  ---
+  duration_ms: 49.250792
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_reference_request_replacement
+ok 260 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_reference_request_replacement
+  ---
+  duration_ms: 46.798125
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before retain_reference_requests
+ok 261 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before retain_reference_requests
+  ---
+  duration_ms: 62.0045
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after retain_reference_requests
+ok 262 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after retain_reference_requests
+  ---
+  duration_ms: 50.178375
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_agent_chat_requests
+ok 263 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_agent_chat_requests
+  ---
+  duration_ms: 49.602916
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_agent_chat_requests
+ok 264 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_agent_chat_requests
+  ---
+  duration_ms: 46.133375
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before retain_agent_chat_requests
+ok 265 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before retain_agent_chat_requests
+  ---
+  duration_ms: 46.122917
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after retain_agent_chat_requests
+ok 266 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after retain_agent_chat_requests
+  ---
+  duration_ms: 50.291125
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_agent_chat_run_identity
+ok 267 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_agent_chat_run_identity
+  ---
+  duration_ms: 43.919667
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_agent_chat_run_identity
+ok 268 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_agent_chat_run_identity
+  ---
+  duration_ms: 50.536542
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_agent_chat_events
+ok 269 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_agent_chat_events
+  ---
+  duration_ms: 57.471917
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_agent_chat_events
+ok 270 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_agent_chat_events
+  ---
+  duration_ms: 70.553667
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before retain_agent_chat_events
+ok 271 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before retain_agent_chat_events
+  ---
+  duration_ms: 54.988084
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after retain_agent_chat_events
+ok 272 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after retain_agent_chat_events
+  ---
+  duration_ms: 64.170708
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_agent_chat_step_payload
+ok 273 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_agent_chat_step_payload
+  ---
+  duration_ms: 60.126041
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_agent_chat_step_payload
+ok 274 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_agent_chat_step_payload
+  ---
+  duration_ms: 73.782875
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before retain_agent_chat_steps
+ok 275 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before retain_agent_chat_steps
+  ---
+  duration_ms: 57.38625
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after retain_agent_chat_steps
+ok 276 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after retain_agent_chat_steps
+  ---
+  duration_ms: 63.671625
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_agent_chat_inspection_context
+ok 277 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_agent_chat_inspection_context
+  ---
+  duration_ms: 67.257167
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_agent_chat_inspection_context
+ok 278 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_agent_chat_inspection_context
+  ---
+  duration_ms: 80.766792
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_mutation_request_replacement
+ok 279 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_mutation_request_replacement
+  ---
+  duration_ms: 60.286708
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_mutation_request_replacement
+ok 280 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_mutation_request_replacement
+  ---
+  duration_ms: 56.310167
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_mutation_requests
+ok 281 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_mutation_requests
+  ---
+  duration_ms: 49.723125
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_mutation_requests
+ok 282 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_mutation_requests
+  ---
+  duration_ms: 76.313333
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before retain_mutation_requests
+ok 283 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before retain_mutation_requests
+  ---
+  duration_ms: 90.432292
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after retain_mutation_requests
+ok 284 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after retain_mutation_requests
+  ---
+  duration_ms: 45.431959
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_agent_edit_replacement
+ok 285 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_agent_edit_replacement
+  ---
+  duration_ms: 49.667166
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_agent_edit_replacement
+ok 286 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_agent_edit_replacement
+  ---
+  duration_ms: 48.057833
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_agent_edit_intent
+ok 287 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_agent_edit_intent
+  ---
+  duration_ms: 48.618167
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_agent_edit_intent
+ok 288 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_agent_edit_intent
+  ---
+  duration_ms: 45.243458
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before guard_agent_edit_transition
+ok 289 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before guard_agent_edit_transition
+  ---
+  duration_ms: 47.183875
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after guard_agent_edit_transition
+ok 290 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after guard_agent_edit_transition
+  ---
+  duration_ms: 47.745041
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before retain_agent_edit_proposals
+ok 291 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before retain_agent_edit_proposals
+  ---
+  duration_ms: 54.85225
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after retain_agent_edit_proposals
+ok 292 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after retain_agent_edit_proposals
+  ---
+  duration_ms: 49.692333
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_agent_chat_edit_target
+ok 293 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_agent_chat_edit_target
+  ---
+  duration_ms: 64.361959
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_agent_chat_edit_target
+ok 294 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_agent_chat_edit_target
+  ---
+  duration_ms: 61.314334
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_asset_range_identity
+ok 295 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_asset_range_identity
+  ---
+  duration_ms: 65.618208
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_asset_range_identity
+ok 296 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_asset_range_identity
+  ---
+  duration_ms: 66.695541
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_asset_range_request_replacement
+ok 297 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_asset_range_request_replacement
+  ---
+  duration_ms: 54.993417
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_asset_range_request_replacement
+ok 298 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_asset_range_request_replacement
+  ---
+  duration_ms: 49.039417
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_asset_range_requests
+ok 299 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_asset_range_requests
+  ---
+  duration_ms: 59.520125
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_asset_range_requests
+ok 300 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_asset_range_requests
+  ---
+  duration_ms: 48.757417
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before retain_asset_range_requests
+ok 301 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before retain_asset_range_requests
+  ---
+  duration_ms: 43.474417
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after retain_asset_range_requests
+ok 302 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after retain_asset_range_requests
+  ---
+  duration_ms: 47.567
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_asset_range_cross_request
+ok 303 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_asset_range_cross_request
+  ---
+  duration_ms: 46.423875
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_asset_range_cross_request
+ok 304 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_asset_range_cross_request
+  ---
+  duration_ms: 47.069417
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_mutation_cross_range_request
+ok 305 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_mutation_cross_range_request
+  ---
+  duration_ms: 46.922875
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_mutation_cross_range_request
+ok 306 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_mutation_cross_range_request
+  ---
+  duration_ms: 46.879833
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_asset_disposition_identity
+ok 307 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_asset_disposition_identity
+  ---
+  duration_ms: 52.276209
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_asset_disposition_identity
+ok 308 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_asset_disposition_identity
+  ---
+  duration_ms: 47.9735
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_asset_disposition_request_replacement
+ok 309 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_asset_disposition_request_replacement
+  ---
+  duration_ms: 48.009
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_asset_disposition_request_replacement
+ok 310 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_asset_disposition_request_replacement
+  ---
+  duration_ms: 47.266333
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_asset_disposition_requests
+ok 311 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_asset_disposition_requests
+  ---
+  duration_ms: 46.589916
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_asset_disposition_requests
+ok 312 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_asset_disposition_requests
+  ---
+  duration_ms: 51.746291
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before retain_asset_disposition_requests
+ok 313 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before retain_asset_disposition_requests
+  ---
+  duration_ms: 50.599959
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after retain_asset_disposition_requests
+ok 314 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after retain_asset_disposition_requests
+  ---
+  duration_ms: 55.524417
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_asset_disposition_cross_request
+ok 315 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_asset_disposition_cross_request
+  ---
+  duration_ms: 58.995667
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_asset_disposition_cross_request
+ok 316 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_asset_disposition_cross_request
+  ---
+  duration_ms: 55.057791
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_mutation_cross_disposition_request
+ok 317 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_mutation_cross_disposition_request
+  ---
+  duration_ms: 50.229458
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_mutation_cross_disposition_request
+ok 318 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_mutation_cross_disposition_request
+  ---
+  duration_ms: 49.102
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_asset_range_cross_disposition_request
+ok 319 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_asset_range_cross_disposition_request
+  ---
+  duration_ms: 49.1325
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_asset_range_cross_disposition_request
+ok 320 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_asset_range_cross_disposition_request
+  ---
+  duration_ms: 49.438791
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards before agent_chat_one_active
+ok 321 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before agent_chat_one_active
+  ---
+  duration_ms: 45.713875
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary24 rolls back all additive guards after agent_chat_one_active
+ok 322 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after agent_chat_one_active
+  ---
+  duration_ms: 47.568209
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_versions
+ok 323 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_versions
+  ---
+  duration_ms: 46.717959
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_versions
+ok 324 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_versions
+  ---
+  duration_ms: 44.066709
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_timeline_responses
+ok 325 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_timeline_responses
+  ---
+  duration_ms: 42.782083
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_timeline_responses
+ok 326 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_timeline_responses
+  ---
+  duration_ms: 41.343916
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_timeline_render_snapshot
+ok 327 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_timeline_render_snapshot
+  ---
+  duration_ms: 42.197875
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_timeline_render_snapshot
+ok 328 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_timeline_render_snapshot
+  ---
+  duration_ms: 49.075083
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_timeline_history
+ok 329 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_timeline_history
+  ---
+  duration_ms: 48.844125
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_timeline_history
+ok 330 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_timeline_history
+  ---
+  duration_ms: 43.906709
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_reference_responses
+ok 331 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_reference_responses
+  ---
+  duration_ms: 40.560417
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_reference_responses
+ok 332 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_reference_responses
+  ---
+  duration_ms: 41.887375
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_reference_request_replacement
+ok 333 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_reference_request_replacement
+  ---
+  duration_ms: 43.798917
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_reference_request_replacement
+ok 334 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_reference_request_replacement
+  ---
+  duration_ms: 46.859542
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before retain_reference_requests
+ok 335 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before retain_reference_requests
+  ---
+  duration_ms: 51.815875
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after retain_reference_requests
+ok 336 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after retain_reference_requests
+  ---
+  duration_ms: 54.177208
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_agent_chat_requests
+ok 337 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_agent_chat_requests
+  ---
+  duration_ms: 43.583125
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_agent_chat_requests
+ok 338 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_agent_chat_requests
+  ---
+  duration_ms: 48.308833
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before retain_agent_chat_requests
+ok 339 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before retain_agent_chat_requests
+  ---
+  duration_ms: 48.352041
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after retain_agent_chat_requests
+ok 340 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after retain_agent_chat_requests
+  ---
+  duration_ms: 47.362083
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_agent_chat_run_identity
+ok 341 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_agent_chat_run_identity
+  ---
+  duration_ms: 49.571292
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_agent_chat_run_identity
+ok 342 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_agent_chat_run_identity
+  ---
+  duration_ms: 68.257833
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_agent_chat_events
+ok 343 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_agent_chat_events
+  ---
+  duration_ms: 50.672417
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_agent_chat_events
+ok 344 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_agent_chat_events
+  ---
+  duration_ms: 50.659541
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before retain_agent_chat_events
+ok 345 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before retain_agent_chat_events
+  ---
+  duration_ms: 47.865917
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after retain_agent_chat_events
+ok 346 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after retain_agent_chat_events
+  ---
+  duration_ms: 46.065042
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_agent_chat_step_payload
+ok 347 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_agent_chat_step_payload
+  ---
+  duration_ms: 48.516208
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_agent_chat_step_payload
+ok 348 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_agent_chat_step_payload
+  ---
+  duration_ms: 50.824625
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before retain_agent_chat_steps
+ok 349 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before retain_agent_chat_steps
+  ---
+  duration_ms: 45.499375
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after retain_agent_chat_steps
+ok 350 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after retain_agent_chat_steps
+  ---
+  duration_ms: 46.127541
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_agent_chat_inspection_context
+ok 351 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_agent_chat_inspection_context
+  ---
+  duration_ms: 45.273291
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_agent_chat_inspection_context
+ok 352 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_agent_chat_inspection_context
+  ---
+  duration_ms: 49.81875
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_mutation_request_replacement
+ok 353 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_mutation_request_replacement
+  ---
+  duration_ms: 54.659041
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_mutation_request_replacement
+ok 354 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_mutation_request_replacement
+  ---
+  duration_ms: 47.4345
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_mutation_requests
+ok 355 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_mutation_requests
+  ---
+  duration_ms: 52.227417
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_mutation_requests
+ok 356 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_mutation_requests
+  ---
+  duration_ms: 44.100875
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before retain_mutation_requests
+ok 357 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before retain_mutation_requests
+  ---
+  duration_ms: 43.420667
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after retain_mutation_requests
+ok 358 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after retain_mutation_requests
+  ---
+  duration_ms: 47.768458
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_agent_edit_replacement
+ok 359 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_agent_edit_replacement
+  ---
+  duration_ms: 48.299208
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_agent_edit_replacement
+ok 360 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_agent_edit_replacement
+  ---
+  duration_ms: 45.639041
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_agent_edit_intent
+ok 361 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_agent_edit_intent
+  ---
+  duration_ms: 43.666459
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_agent_edit_intent
+ok 362 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_agent_edit_intent
+  ---
+  duration_ms: 46.524666
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before guard_agent_edit_transition
+ok 363 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before guard_agent_edit_transition
+  ---
+  duration_ms: 48.511166
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after guard_agent_edit_transition
+ok 364 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after guard_agent_edit_transition
+  ---
+  duration_ms: 47.909167
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before retain_agent_edit_proposals
+ok 365 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before retain_agent_edit_proposals
+  ---
+  duration_ms: 44.066875
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after retain_agent_edit_proposals
+ok 366 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after retain_agent_edit_proposals
+  ---
+  duration_ms: 49.516
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_agent_chat_edit_target
+ok 367 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_agent_chat_edit_target
+  ---
+  duration_ms: 52.379209
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_agent_chat_edit_target
+ok 368 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_agent_chat_edit_target
+  ---
+  duration_ms: 51.027791
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_asset_range_identity
+ok 369 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_asset_range_identity
+  ---
+  duration_ms: 54.848583
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_asset_range_identity
+ok 370 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_asset_range_identity
+  ---
+  duration_ms: 50.430167
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_asset_range_request_replacement
+ok 371 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_asset_range_request_replacement
+  ---
+  duration_ms: 47.417208
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_asset_range_request_replacement
+ok 372 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_asset_range_request_replacement
+  ---
+  duration_ms: 44.964667
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_asset_range_requests
+ok 373 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_asset_range_requests
+  ---
+  duration_ms: 91.59225
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_asset_range_requests
+ok 374 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_asset_range_requests
+  ---
+  duration_ms: 58.736541
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before retain_asset_range_requests
+ok 375 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before retain_asset_range_requests
+  ---
+  duration_ms: 73.608416
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after retain_asset_range_requests
+ok 376 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after retain_asset_range_requests
+  ---
+  duration_ms: 65.969708
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_asset_range_cross_request
+ok 377 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_asset_range_cross_request
+  ---
+  duration_ms: 46.382625
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_asset_range_cross_request
+ok 378 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_asset_range_cross_request
+  ---
+  duration_ms: 57.000125
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_mutation_cross_range_request
+ok 379 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_mutation_cross_range_request
+  ---
+  duration_ms: 48.128417
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_mutation_cross_range_request
+ok 380 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_mutation_cross_range_request
+  ---
+  duration_ms: 54.722333
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_asset_disposition_identity
+ok 381 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_asset_disposition_identity
+  ---
+  duration_ms: 46.635292
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_asset_disposition_identity
+ok 382 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_asset_disposition_identity
+  ---
+  duration_ms: 62.997583
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_asset_disposition_request_replacement
+ok 383 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_asset_disposition_request_replacement
+  ---
+  duration_ms: 57.550792
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_asset_disposition_request_replacement
+ok 384 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_asset_disposition_request_replacement
+  ---
+  duration_ms: 52.68325
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_asset_disposition_requests
+ok 385 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_asset_disposition_requests
+  ---
+  duration_ms: 56.517334
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_asset_disposition_requests
+ok 386 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_asset_disposition_requests
+  ---
+  duration_ms: 58.075667
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before retain_asset_disposition_requests
+ok 387 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before retain_asset_disposition_requests
+  ---
+  duration_ms: 57.741792
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after retain_asset_disposition_requests
+ok 388 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after retain_asset_disposition_requests
+  ---
+  duration_ms: 66.783542
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_asset_disposition_cross_request
+ok 389 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_asset_disposition_cross_request
+  ---
+  duration_ms: 67.68725
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_asset_disposition_cross_request
+ok 390 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_asset_disposition_cross_request
+  ---
+  duration_ms: 60.77875
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_mutation_cross_disposition_request
+ok 391 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_mutation_cross_disposition_request
+  ---
+  duration_ms: 71.175083
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_mutation_cross_disposition_request
+ok 392 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_mutation_cross_disposition_request
+  ---
+  duration_ms: 72.37525
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_asset_range_cross_disposition_request
+ok 393 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_asset_range_cross_disposition_request
+  ---
+  duration_ms: 59.238459
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_asset_range_cross_disposition_request
+ok 394 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_asset_range_cross_disposition_request
+  ---
+  duration_ms: 65.786208
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards before agent_chat_one_active
+ok 395 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before agent_chat_one_active
+  ---
+  duration_ms: 62.483834
+  type: 'test'
+  ...
+# Subtest: fixed26 historical receipt repair: ordinary26 rolls back all additive guards after agent_chat_one_active
+ok 396 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after agent_chat_one_active
+  ---
+  duration_ms: 54.481708
+  type: 'test'
+  ...
+1..396
+# tests 396
+# suites 0
+# pass 396
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 20698.178375

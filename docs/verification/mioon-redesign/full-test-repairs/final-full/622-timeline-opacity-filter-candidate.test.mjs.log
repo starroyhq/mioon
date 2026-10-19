@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: absence/null preserve exact legacy graph; one frozen stage contract serves both purposes
+ok 1 - absence/null preserve exact legacy graph; one frozen stage contract serves both purposes
+  ---
+  duration_ms: 1.22475
+  type: 'test'
+  ...
+# Subtest: emitted expressions match held endpoints, exact anchors and every integer frame
+ok 2 - emitted expressions match held endpoints, exact anchors and every integer frame
+  ---
+  duration_ms: 1.315625
+  type: 'test'
+  ...
+# Subtest: selected range retains original segment/clip clock across unrelated clip edges
+ok 3 - selected range retains original segment/clip clock across unrelated clip edges
+  ---
+  duration_ms: 2.514625
+  type: 'test'
+  ...
+# Subtest: straight changes only A; premultiplied changes RGB/A together before overlay
+ok 4 - straight changes only A; premultiplied changes RGB/A together before overlay
+  ---
+  duration_ms: 0.414625
+  type: 'test'
+  ...
+# Subtest: independent grammar reader rejects swapped/duplicate channel options and extra graph text
+ok 5 - independent grammar reader rejects swapped/duplicate channel options and extra graph text
+  ---
+  duration_ms: 3.305375
+  type: 'test'
+  ...
+# Subtest: single point and seven-point closed grammar stay within conservative byte caps
+ok 6 - single point and seven-point closed grammar stay within conservative byte caps
+  ---
+  duration_ms: 0.79775
+  type: 'test'
+  ...
+# Subtest: malformed coordinates, alpha representations and expression injection reject
+ok 7 - malformed coordinates, alpha representations and expression injection reject
+  ---
+  duration_ms: 1.286666
+  type: 'test'
+  ...
+# Subtest: ordinary data accessors and sparse/extended points reject without executing getters
+ok 8 - ordinary data accessors and sparse/extended points reject without executing getters
+  ---
+  duration_ms: 0.979666
+  type: 'test'
+  ...
+# Subtest: deterministic emitted curves and shared evaluator agree at original clip coordinates
+ok 9 - deterministic emitted curves and shared evaluator agree at original clip coordinates
+  ---
+  duration_ms: 9.039583
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 183.589042

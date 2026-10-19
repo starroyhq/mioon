@@ -39,7 +39,7 @@ async function fixture(t){
  const listing='Encoders:\n V..... = Video\n A..... = Audio\n ------\n V....D libx264 Synthetic H.264\n A..... aac Synthetic AAC\n A..... pcm_f32le Synthetic float PCM\n';
  await writeFile(tool,`#!${process.execPath}\nimport {writeFileSync} from 'node:fs';\nconst args=process.argv.slice(2);\nif(args.includes('-encoders'))process.stdout.write(${JSON.stringify(listing)});\nelse{const file=args.at(-1);if(!file.endsWith('.mov'))process.exit(29);writeFileSync(file,'partial owned MOV');setInterval(()=>{},1000);}\n`,{mode:0o700});
  const restoreTool=()=>{if(originalFfmpeg===undefined)delete process.env.MIOON_FFMPEG_PATH;else process.env.MIOON_FFMPEG_PATH=originalFfmpeg;};
- const store=openStore(root),services=createServices(store,new Map(),{env:{MIOON_ENABLE_LIVE_PROVIDER:'0',RUNWAY_MAX_GENERATIONS:'0'}});
+ const store=openStore(root),services=createServices(store,new Map(),{env:{MIOON_ENABLE_LIVE_PROVIDER:'0'}});
  const project=await services.call('project.create',{name:'Float cancellation synthetic project'});let timeline=await services.call('timeline.get',{projectId:project.id});
  const assetId=randomUUID(),relativePath=`media/${assetId}.wav`,source=tinyWave();await writeFile(path.join(root,relativePath),source,{mode:0o600});
  store.put('assets',{id:assetId,projectId:project.id,name:'Synthetic silence.wav',mimeType:'audio/wav',relativePath,sha256:hash(source),sizeBytes:source.length,width:0,height:0,duration:.1,hasVideo:false,hasAudio:true,audioStreamIndex:0,provenance:'user-import',createdAt:new Date().toISOString()});

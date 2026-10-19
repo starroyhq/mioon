@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: SDK origin is explicit outer context, not a client default or domain field
+ok 1 - SDK origin is explicit outer context, not a client default or domain field
+  ---
+  duration_ms: 2.656
+  type: 'test'
+  ...
+# Subtest: SDK rejects malformed context before fetching and never upgrades after inspect
+ok 2 - SDK rejects malformed context before fetching and never upgrades after inspect
+  ---
+  duration_ms: 1.988625
+  type: 'test'
+  ...
+# Subtest: SDK validates restored inspection and retains original uncertainty on refusal
+ok 3 - SDK validates restored inspection and retains original uncertainty on refusal
+  ---
+  duration_ms: 1.06775
+  type: 'test'
+  ...
+# Subtest: real CLI keeps strict tool input and explicit invocation origin
+ok 4 - real CLI keeps strict tool input and explicit invocation origin
+  ---
+  duration_ms: 1594.890083
+  type: 'test'
+  ...
+# Subtest: official MCP pins launch origin across real endpoint reload without adding tool authority
+ok 5 - official MCP pins launch origin across real endpoint reload without adding tool authority
+  ---
+  duration_ms: 394.477375
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2264.970042

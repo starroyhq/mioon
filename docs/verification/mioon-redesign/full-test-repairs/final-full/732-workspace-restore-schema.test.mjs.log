@@ -1,0 +1,124 @@
+TAP version 13
+# Subtest: schema25 adds durable quarantine, retains every raw old column/SQL type/rowid/sequence, and archives redo-tail evidence
+ok 1 - schema25 adds durable quarantine, retains every raw old column/SQL type/rowid/sequence, and archives redo-tail evidence
+  ---
+  duration_ms: 220.0625
+  type: 'test'
+  ...
+# Subtest: current-epoch pending lane coexists without releasing captured task, request identity, sequence or immutable epoch
+ok 2 - current-epoch pending lane coexists without releasing captured task, request identity, sequence or immutable epoch
+  ---
+  duration_ms: 72.764166
+  type: 'test'
+  ...
+# Subtest: main-database marker and captured-row guards reject INSERT/IGNORE/REPLACE/UPSERT/update/delete with recursive_triggers=0
+ok 3 - main-database marker and captured-row guards reject INSERT/IGNORE/REPLACE/UPSERT/update/delete with recursive_triggers=0
+  ---
+  duration_ms: 75.110958
+  type: 'test'
+  ...
+# Subtest: main-database marker and captured-row guards reject INSERT/IGNORE/REPLACE/UPSERT/update/delete with recursive_triggers=1
+ok 4 - main-database marker and captured-row guards reject INSERT/IGNORE/REPLACE/UPSERT/update/delete with recursive_triggers=1
+  ---
+  duration_ms: 73.496167
+  type: 'test'
+  ...
+# Subtest: offline source24 rejects unknown imported triggers before any construction statement
+ok 5 - offline source24 rejects unknown imported triggers before any construction statement
+  ---
+  duration_ms: 47.716417
+  type: 'test'
+  ...
+# Subtest: every construction DDL boundary rolls back schema/rows/guards/sequence in a single transaction
+ok 6 - every construction DDL boundary rolls back schema/rows/guards/sequence in a single transaction
+  ---
+  duration_ms: 404.318125
+  type: 'test'
+  ...
+# Subtest: partial metadata/profile/marker/guard/epoch structures refuse with no ordinary fallback
+ok 7 - partial metadata/profile/marker/guard/epoch structures refuse with no ordinary fallback
+  ---
+  duration_ms: 374.86925
+  type: 'test'
+  ...
+# Subtest: unregistered/copied/mutated/closed stores cannot manufacture a verified restoration or ordinary context
+ok 8 - unregistered/copied/mutated/closed stores cannot manufacture a verified restoration or ordinary context
+  ---
+  duration_ms: 1307.295375
+  type: 'test'
+  ...
+# Subtest: metadata UUID/hash validation rejects trailing newline and construction leaves source24 unchanged
+ok 9 - metadata UUID/hash validation rejects trailing newline and construction leaves source24 unchanged
+  ---
+  duration_ms: 48.667125
+  type: 'test'
+  ...
+# Subtest: ordinary current-schema reopen keeps raw schema/rows/receipts and source profile classification intact
+ok 10 - ordinary current-schema reopen keeps raw schema/rows/receipts and source profile classification intact
+  ---
+  duration_ms: 657.307875
+  type: 'test'
+  ...
+# Subtest: ordinary current-schema reopen rejects legacy BLOB receipt without changing schema or retained rows
+ok 11 - ordinary current-schema reopen rejects legacy BLOB receipt without changing schema or retained rows
+  ---
+  duration_ms: 626.712584
+  type: 'test'
+  ...
+# Subtest: quoted keyword lookalikes are not equivalent fixed schema objects
+ok 12 - quoted keyword lookalikes are not equivalent fixed schema objects
+  ---
+  duration_ms: 45.06075
+  type: 'test'
+  ...
+# Subtest: history and cursor positions are bounded real integers before archival, not coercible affinity values
+ok 13 - history and cursor positions are bounded real integers before archival, not coercible affinity values
+  ---
+  duration_ms: 95.541833
+  type: 'test'
+  ...
+# Subtest: source sequence identity rejects corrupt type, duplicate name and regressed high-water without changing anything
+ok 14 - source sequence identity rejects corrupt type, duplicate name and regressed high-water without changing anything
+  ---
+  duration_ms: 147.30475
+  type: 'test'
+  ...
+# Subtest: strict restore source classification supports independently frozen historical schemas after their ordinary upgrade to24
+ok 15 - strict restore source classification supports independently frozen historical schemas after their ordinary upgrade to24
+  ---
+  duration_ms: 218.74875
+  type: 'test'
+  ...
+# Subtest: synthetic legacy export projection without JSON requestId binds its unique original receipt without rewriting JSON
+ok 16 - synthetic legacy export projection without JSON requestId binds its unique original receipt without rewriting JSON
+  ---
+  duration_ms: 185.34
+  type: 'test'
+  ...
+# Subtest: restart archive byte limits run before hashing and include cursor values
+ok 17 - restart archive byte limits run before hashing and include cursor values
+  ---
+  duration_ms: 120.81375
+  type: 'test'
+  ...
+# Subtest: restart captured-record limits run before hash scan without counting new live receipts
+ok 18 - restart captured-record limits run before hash scan without counting new live receipts
+  ---
+  duration_ms: 260.825666
+  type: 'test'
+  ...
+# Subtest: captured export request IDs must be JSON text or absent, never objects/arrays/numbers even with a receipt
+ok 19 - captured export request IDs must be JSON text or absent, never objects/arrays/numbers even with a receipt
+  ---
+  duration_ms: 238.648042
+  type: 'test'
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5476.958041

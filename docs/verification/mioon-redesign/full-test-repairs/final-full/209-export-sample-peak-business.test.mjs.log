@@ -1,0 +1,145 @@
+TAP version 13
+# Subtest: named/unnamed and ranged historical outputs use two actual hashes, preserve optional identity and never write
+    # Subtest: {}
+    ok 1 - {}
+      ---
+      duration_ms: 719.992792
+      type: 'test'
+      ...
+    # Subtest: {"named":true,"range":true}
+    ok 2 - {"named":true,"range":true}
+      ---
+      duration_ms: 670.513167
+      type: 'test'
+      ...
+    1..2
+ok 1 - named/unnamed and ranged historical outputs use two actual hashes, preserve optional identity and never write
+  ---
+  duration_ms: 1391.272834
+  type: 'test'
+  ...
+# Subtest: strict input, missing/foreign/corrupt ownership and output substitution are opaque before file access
+ok 2 - strict input, missing/foreign/corrupt ownership and output substitution are opaque before file access
+  ---
+  duration_ms: 678.401958
+  type: 'test'
+  ...
+# Subtest: real lock:false readers cannot admit analysis; wrappers on the exact owner DB share one permit
+ok 3 - real lock:false readers cannot admit analysis; wrappers on the exact owner DB share one permit
+  ---
+  duration_ms: 1003.199666
+  type: 'test'
+  ...
+# Subtest: cancelled nonsettled hash retains shared admission, never decodes/publishes, and drain is unsafe
+ok 4 - cancelled nonsettled hash retains shared admission, never decodes/publishes, and drain is unsafe
+  ---
+  duration_ms: 607.326542
+  type: 'test'
+  ...
+# Subtest: end-to-end timeout returns no partial result and keeps outstanding hash admitted
+ok 5 - end-to-end timeout returns no partial result and keeps outstanding hash admitted
+  ---
+  duration_ms: 641.965667
+  type: 'test'
+  ...
+# Subtest: same-owned metadata/bytes drift discards measurement; foreign owner revocation outranks decode errors
+    # Subtest: metadata
+    ok 1 - metadata
+      ---
+      duration_ms: 692.870083
+      type: 'test'
+      ...
+    # Subtest: bytes
+    ok 2 - bytes
+      ---
+      duration_ms: 816.454041
+      type: 'test'
+      ...
+    # Subtest: foreign
+    ok 3 - foreign
+      ---
+      duration_ms: 887.329666
+      type: 'test'
+      ...
+    # Subtest: lock
+    ok 4 - lock
+      ---
+      duration_ms: 759.686875
+      type: 'test'
+      ...
+    1..4
+ok 6 - same-owned metadata/bytes drift discards measurement; foreign owner revocation outranks decode errors
+  ---
+  duration_ms: 3157.330542
+  type: 'test'
+  ...
+# Subtest: untrusted decoder success is independently rejected before the second hash
+ok 7 - untrusted decoder success is independently rejected before the second hash
+  ---
+  duration_ms: 828.273792
+  type: 'test'
+  ...
+# Subtest: bad bytes, symlinks and recorded input cap never become a decoded success
+ok 8 - bad bytes, symlinks and recorded input cap never become a decoded success
+  ---
+  duration_ms: 706.395875
+  type: 'test'
+  ...
+# Subtest: unconfirmed exact-child cleanup retains admission until actual close and permanently fails drain
+ok 9 - unconfirmed exact-child cleanup retains admission until actual close and permanently fails drain
+  ---
+  duration_ms: 624.084125
+  type: 'test'
+  ...
+# Subtest: restored denial catalogue and service boundary reject before touching payload
+ok 10 - restored denial catalogue and service boundary reject before touching payload
+  ---
+  duration_ms: 591.424375
+  type: 'test'
+  ...
+# Subtest: actual restored-v1 shared service denies valid and hostile payloads before getters, bytes, or local processes
+ok 11 - actual restored-v1 shared service denies valid and hostile payloads before getters, bytes, or local processes
+  ---
+  duration_ms: 653.255416
+  type: 'test'
+  ...
+# Subtest: actual runner registry retains exact advisory handle until late close and never kills unrelated render handle
+ok 12 - actual runner registry retains exact advisory handle until late close and never kills unrelated render handle
+  ---
+  duration_ms: 608.443583
+  type: 'test'
+  ...
+# Subtest: full and ranged 600-second outputs accept exactly 4800-frame discrepancy and reject 4801
+    # Subtest: full
+    ok 1 - full
+      ---
+      duration_ms: 655.0325
+      type: 'test'
+      ...
+    # Subtest: ranged
+    ok 2 - ranged
+      ---
+      duration_ms: 670.340833
+      type: 'test'
+      ...
+    1..2
+ok 13 - full and ranged 600-second outputs accept exactly 4800-frame discrepancy and reject 4801
+  ---
+  duration_ms: 1325.864333
+  type: 'test'
+  ...
+# Subtest: ready advisory preserves silence, exact full scale, and over-full-scale values without normalization
+ok 14 - ready advisory preserves silence, exact full scale, and over-full-scale values without normalization
+  ---
+  duration_ms: 796.231417
+  type: 'test'
+  ...
+1..14
+# tests 22
+# suites 0
+# pass 22
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 13990.09625

@@ -1,0 +1,28 @@
+TAP version 13
+# Subtest: format reads are noncreating and schemas/effects discoverable through actual CLI and official MCP, without Agent authority
+ok 1 - format reads are noncreating and schemas/effects discoverable through actual CLI and official MCP, without Agent authority
+  ---
+  duration_ms: 2154.135333
+  type: 'test'
+  ...
+# Subtest: HTTP CLI and official MCP lost acknowledgements recover the exact format receipt after real backend restart, never retry implicitly
+ok 2 - HTTP CLI and official MCP lost acknowledgements recover the exact format receipt after real backend restart, never retry implicitly
+  ---
+  duration_ms: 2034.408833
+  type: 'test'
+  ...
+# Subtest: format durable task survives lost execute response and restart with one exact intent and explicit recovery
+ok 3 - format durable task survives lost execute response and restart with one exact intent and explicit recovery
+  ---
+  duration_ms: 2404.29275
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 7415.535291

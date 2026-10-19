@@ -1,0 +1,635 @@
+[
+  {
+    "file": "tests/agent-timeline-gain-business.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "gain applied receipt source reassignment cannot disclose historical ACK",
+      "gain fresh source identity and metadata tamper fail closed in shared mutation transaction",
+      "gain lost ACK and approval-before-dispatch recovery never infer or mint a fresh key",
+      "gain proposal quota retains existing unknown work and never creates a second request key",
+      "gain receipt hash, historical target and oversized response corruption fail closed without replay writes",
+      "gain rejected no-op preserves redo branch and a fresh approved gain clears it once",
+      "gain rejects no-op, injected authority, non-number and invalid source eligibility without effects",
+      "gain review freezes exact owned audio and applies one patch through the timeline journal only after approval",
+      "gain same-revision frozen clip, muted track, and format tampering cannot pass fresh mutation scope",
+      "gain stale revision records exact rollback proof and never rebase or write history",
+      "gain supports exact 0 and 2, muted audio and hidden video without changing track state",
+      "gain two approval windows, rejection and stop cannot multiply or authorize dispatch",
+      "gain uncertain dispatch recovery retains original input, approval, and idempotent history",
+      "historical gain ACK survives later gain, mute, undo, clip removal, metadata discovery and restart"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/agent-timeline-gain-contracts.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "new typed leaf and real barrel expose a closed gain contract without changing public operations"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/agent-timeline-gain-preservation.test.mjs",
+    "baselineFailed": true,
+    "addedFailureNames": [
+      "fresh gain rereads same-revision saved audio identity inside shared dispatch; historical replay tolerates metadata discovery only"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/agent-timeline-gain-wire.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "actual CLI and MCP gain update/undo share the approved Agent timeline history while exposing no Agent approval tools",
+      "chat_completions: Stop during gain answer closes the provider socket and blocks later approval",
+      "chat_completions: Stop during gain request closes the provider socket and blocks later approval",
+      "chat_completions: actual fragmented HTTP/SSE gain freezes a gain-only review and authenticated approval shares the timeline transaction",
+      "chat_completions: applied gain historical replay remains exact after undo, redo, selected clip removal and process restart",
+      "chat_completions: changed target after first POST prevents continuation POST and cannot authorize captured gain",
+      "chat_completions: forged authority, invalid gain, no-op and incomplete SSE fail before proposal capture",
+      "chat_completions: gain history branches once and historical recovery never restores a discarded redo branch",
+      "chat_completions: gain pending restart and lost approval ACK retain one exact key with no automatic model or mutation POST",
+      "chat_completions: owned SIGKILL at gain afterApproval never auto-repeats inference or approval and recovery retains the exact key",
+      "chat_completions: owned SIGKILL at gain afterDispatch never auto-repeats inference or approval and recovery retains the exact key",
+      "chat_completions: owned SIGKILL at gain afterDispatchStarted never auto-repeats inference or approval and recovery retains the exact key",
+      "chat_completions: owned SIGKILL at gain beforeAcknowledgement never auto-repeats inference or approval and recovery retains the exact key",
+      "chat_completions: owned SIGKILL at gain beforeApproval never auto-repeats inference or approval and recovery retains the exact key",
+      "chat_completions: stale gain timeline CAS records a request-bound rejection without rebase, receipt or second dispatch",
+      "chat_completions: tools-off answer failure and backend interruption leave captured gain proposals unapprovable",
+      "gain HTTP routes fence authentication, project, epoch, digest and outbound consent before any authority is acquired",
+      "historical gain HTTP review refuses a source that now belongs to a foreign project",
+      "pending gain HTTP review refuses a source that now belongs to a foreign project",
+      "responses: Stop during gain answer closes the provider socket and blocks later approval",
+      "responses: Stop during gain request closes the provider socket and blocks later approval",
+      "responses: actual fragmented HTTP/SSE gain freezes a gain-only review and authenticated approval shares the timeline transaction",
+      "responses: applied gain historical replay remains exact after undo, redo, selected clip removal and process restart",
+      "responses: changed target after first POST prevents continuation POST and cannot authorize captured gain",
+      "responses: forged authority, invalid gain, no-op and incomplete SSE fail before proposal capture",
+      "responses: gain history branches once and historical recovery never restores a discarded redo branch",
+      "responses: gain pending restart and lost approval ACK retain one exact key with no automatic model or mutation POST",
+      "responses: owned SIGKILL at gain afterApproval never auto-repeats inference or approval and recovery retains the exact key",
+      "responses: owned SIGKILL at gain afterDispatch never auto-repeats inference or approval and recovery retains the exact key",
+      "responses: owned SIGKILL at gain afterDispatchStarted never auto-repeats inference or approval and recovery retains the exact key",
+      "responses: owned SIGKILL at gain beforeAcknowledgement never auto-repeats inference or approval and recovery retains the exact key",
+      "responses: owned SIGKILL at gain beforeApproval never auto-repeats inference or approval and recovery retains the exact key",
+      "responses: stale gain timeline CAS records a request-bound rejection without rebase, receipt or second dispatch",
+      "responses: tools-off answer failure and backend interruption leave captured gain proposals unapprovable",
+      "two authenticated windows racing gain approve/reject retain one decision and at most one exact timeline receipt"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/asset-annotation-components.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "actual AssetLibrary composes saved tag, type, name, disposition and unused filters, retaining unknown rows"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/clip-lut-ui.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "actual controls disclose whole-timeline adoption, source-ungraded status and import versus save"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/clip-opacity-ime-session.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "42 Save cannot enter while Cancel is deleting a persisted draft or waiting on its earlier PUT",
+      "42 delayed GET, PUT and DELETE acknowledgments do not release a newer composition or replace its raw draft",
+      "repeated Save/Cancel and a late business ACK retain newer Chinese/Japanese input in 42",
+      "repeated Save/Cancel and a late business ACK retain newer Chinese/Japanese input in 43",
+      "synthetic Chinese/Japanese update, blur and Escape preserve the input owner until compositionend in 42",
+      "synthetic Chinese/Japanese update, blur and Escape preserve the input owner until compositionend in 43",
+      "synthetic Enter229 after compositionend and stale keyup remain fenced, while a later ordinary Enter keeps explicit form behavior",
+      "synthetic IME Enter commits text without implicitly saving 42 v3 draft in all locales",
+      "synthetic IME Enter commits text without implicitly saving 43 memory input in all locales",
+      "synthetic Process229 cannot block a later mouse-focused field Enter Save in 42",
+      "synthetic Process229 cannot block a later mouse-focused field Enter Save in 43",
+      "synthetic final nonnumeric composition is visibly rejected in four locales without normalizing or saving",
+      "synthetic held confirmation Enter repeats cannot Save after compositionend in 42",
+      "synthetic held confirmation Enter repeats cannot Save after compositionend in 43",
+      "synthetic stale update/end handlers cannot settle or overwrite a later opacity session"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/clip-opacity-retained-app.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "actual App ancestor preserves native Enter during retained disconnected opacity composition in 42",
+      "actual App ancestor preserves native Enter during retained disconnected opacity composition in 43 memory fallback",
+      "actual App ancestor preserves native Enter during retained disconnected opacity composition in 43 persisted",
+      "actual App ancestor preserves native Escape during retained disconnected opacity composition in 42",
+      "actual App ancestor preserves native Escape during retained disconnected opacity composition in 43 memory fallback",
+      "actual App ancestor preserves native Escape during retained disconnected opacity composition in 43 persisted"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/clip-volume-envelope-capability-ui.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "Inspector wires controller-owned envelope token across renders and blocks save/remove during composition",
+      "actual Inspector Enter/13 ducking IME confirmation survives compositionend and submit until keyup release",
+      "actual Inspector Process/229 ducking IME confirmation survives compositionend and submit until keyup release",
+      "actual Inspector ducking confirmation is released only by a later independent pointer after composition",
+      "an older ducking keyup microtask cannot clear a newer Inspector composition confirmation",
+      "retained old Inspector callbacks cannot retarget newer same-owner composition session",
+      "unsupported or silent assets retain visible recovered envelope and localized blocked message"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/comfy-image-ui.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "actual Comfy composer prepares first and stale hidden approval handlers never run",
+      "actual unavailable-module composer retains old preview/details/recovery and disables new prepare, approval and query"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/desktop-security.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "package configuration disables runtime injection and cannot publish by default"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/editor-window-modal-observation.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "a disposed scope cannot be revived by a late modal cancellation or focus callback",
+      "cancelling while still blurred waits for actual focus rather than reviving an inactive Agent",
+      "dirty Agent native inspection pauses before capture; modal blur/focus cannot start a load or stale the commit",
+      "final unload veto never resumes reads inline; exact main cancellation resumes after consumed ticket",
+      "native close detaches only observation of an accepted Agent run and never stops or repeats it",
+      "new inspection replaces pause ownership; late old cancel and commit cannot resume or authorize the new attempt",
+      "only the current cancellation resumes one Agent read and never restores old send consent",
+      "unknown-result risk close with dirty Agent keeps the exact unknown owner and requires separate discard"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/export-range-ui.test.mjs",
+    "baselineFailed": true,
+    "addedFailureNames": [
+      "actual App range context rejects hidden, offline, busy and pending retained callbacks but preserves restored direct export",
+      "actual local-delivery execution epoch includes range version even after changing back to the original endpoints",
+      "preflight shows frozen selected duration separately from full composition and checks all source scope"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/export-sample-peak-ui.test.mjs",
+    "baselineFailed": true,
+    "addedFailureNames": [
+      "actual App context uses current refs, transport option shape, and frozen rows rather than current timeline",
+      "named, unnamed and range rows share action; previews/storyboard/pending do not, downloads remain byte-for-byte intact"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/export-settings-recovery.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "corrupt frozen delivery and ACK settings fail closed without fresh probe or key-release proof",
+      "export"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/frame-extraction-preview.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "a pending explicit seek is never capture fact; acknowledged quantized seek retains the intended editing mark",
+      "candidate exact output player revokes retained play handlers on held, disconnect and application replacement",
+      "capture is absent for audio/image/clip/timeline and requires an actual source hash",
+      "capture reads actual paused currentTime, freezes source/hash/frame and ignores controller and timeline playheads",
+      "exclusive EOF and unknown source duration cannot be captured",
+      "hash-only source replacement remounts decoded media and requires fresh readiness before capturing the new hash",
+      "narrow Properties can recover a saved local result while retained hidden Preview capture is denied",
+      "old source/readiness handlers and hidden previews cannot submit against a new binding",
+      "readiness events enable/disable capture and click revalidation denies stale-enabled media",
+      "synchronous in-flight guard suppresses double click before parent busy render"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/http-file-response.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "actual server disconnect/replay and simultaneous SSE/media shutdown preserve durable chat_completions run",
+      "actual server disconnect/replay and simultaneous SSE/media shutdown preserve durable responses run"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/image-edit-ui.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "actual edit composer prepares first, renders immutable source disclosure, and requires a fresh explicit approval handler",
+      "actual source handlers retain dirty selection and reject late clicks after source change, tab change and project change"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/inspection-contracts.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "every shared operation has a complete explicit frozen effect descriptor; unknown operations fail closed"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/inspection-wire-lifecycle.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "process deadline distinguishes startup, request, response body and an envelope waiting for exit",
+      "process-exit"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/integration.test.mjs",
+    "baselineFailed": true,
+    "addedFailureNames": [
+      "A8 export stitches three genuine clips into default native H264 1080x1920 MP4 with summed duration"
+    ],
+    "removedFailureNames": [
+      "A8 export stitches three genuine clips into decodable H264 720x1280 MP4 with summed duration"
+    ]
+  },
+  {
+    "file": "tests/last-project-app.test.mjs",
+    "baselineFailed": true,
+    "addedFailureNames": [
+      "actual App rejects failed, foreign, unmounted or overtaken load without remembering it",
+      "actual preference-load setup rejection releases only its current loading owner and never remembers"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/mioon-brand-assets.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "actual shared window factory adds the local icon while retaining the secure preload and owned session",
+      "brand PNG dimensions and alpha intent match their fixed local consumers"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/mioon-branding.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "login, loading, header and browser title display Mioon rather than prior branding"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/mutation-replay.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "additive first migration and repeated startup preserve old rows and journal response bytes"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/named-delivery-app.test.mjs",
+    "baselineFailed": true,
+    "addedFailureNames": [
+      "actual history opener only changes the shared dock, and compose reopen keeps the name draft",
+      "delivery pages retain both forms with inherited visibility and never submit on open/hide",
+      "real App execution epoch blocks prepared export after history/compose returns to the same view",
+      "real App execution epoch blocks prepared export after panel hide/show returns to the same view"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/named-delivery-business.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "normal",
+      "restored",
+      "title-only render completes legacy encoding in normal and restored workspaces; held work stays held"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/native-close-sources.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "Agent unrecovered receipt stays blocked on initial failed read, and stopping blocks synchronously",
+      "actual Agent draft and held send report before React rerender; accepted stream is close-neutral",
+      "actual Image edits report synchronously and accepted durable generation never requires cancellation",
+      "actual Image lost rejection ACK remains blocked until an exact readonly rejected review is read",
+      "hidden Image constructor immediately reports restored generation/remote intents and corrupt storage",
+      "readonly concurrent approval/dispatched proof resolves lost rejection without cancelling durable work"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/opacity-candidate-app-entry.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "candidate App binds the actual task lane, Inspector v3 client and render readers while unsupported editors remain unavailable"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/opacity-restored-application-server.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "already disconnected HTTP advisory calls are cancelled before effects and a healthy read remains available"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/opacity-restored-application-ui.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "real shared components show43 draft disclosure in four languages and remove unavailable mutation actions while keeping clip/history/preview controls"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/opacity-restored-draft-ime.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "synthetic en composition uses the exact43 new-origin client without persisting partial composition or implicit Save",
+      "synthetic ja composition uses the exact43 new-origin client without persisting partial composition or implicit Save",
+      "synthetic zh-Hans composition uses the exact43 new-origin client without persisting partial composition or implicit Save",
+      "synthetic zh-Hant composition uses the exact43 new-origin client without persisting partial composition or implicit Save",
+      "synthetic43 late GET/PUT/DELETE responses retain a later Chinese/Japanese composition and fresh raw owner",
+      "synthetic43 repeated Save cannot race an active Cancel waiting for PUT/DELETE"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/project-specifications-preflight.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "export preflight accepts exactly the supported frozen dimension pairs at 30 fps"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/providers.test.mjs",
+    "baselineFailed": true,
+    "addedFailureNames": [
+      "accepted then response lost persists the remote record before throwing and reconciles after restart",
+      "mock delay, failure, timeout and remote cancellation are deterministic",
+      "mock recoverable timeout and rejection/failure aliases use the same durable ledger"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/settings-navigation-state.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "agent: Back cancellation leaves the visible form editable and saveable",
+      "agent: Back denied during saving or unknown recovery keeps the session usable",
+      "agent: a second nonempty key invalidates confirmation and hide clears it without reporting bytes",
+      "agent: accepted current Back runs existing close exactly once, while omitted guard stays synchronous",
+      "agent: actual settings publishes synchronous dirty and busy state without form data",
+      "agent: an edit before async discard confirmation invalidates the exact captured version",
+      "agent: late save acknowledgement after owner replacement cannot clear the new owner",
+      "agent: matching readback after unknown save still blocks until explicit review",
+      "agent: old Back permission cannot close after visibility, edits, owner replacement or unmount",
+      "agent: optional closeLabel changes only return text and accessibility labels",
+      "agent: unresolved reconciliation publishes busy and blocked before any readback arrives"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/storyboard-multistream-media.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "provider output passes real version publication but storyboard must use the identified later streams"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/subject-video-provider.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "Mock persists the full subject snapshot and advertises a metadata-only test pattern"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/subject-video-ui.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "Inspector saves only shot fields then generates explicit pinned option, and late save cannot act on changed selection",
+      "TaskCenter routes marked or observed subject retries to strict recovery and preserves genuine legacy options",
+      "subject warning and reason descriptor sidecars preserve exact legacy meaning and all locales"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/timeline-export-range-business.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "range-only worker uses original receipt through owned staged publication without capability compute"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/timeline-fades-ui.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "actual inspector renders integer fade controls inside its existing ScrollArea and keeps gain semantics",
+      "actual inspector role selection uses shared dirty form and one existing Save revision",
+      "captured enabled role selector cannot write after capability loss or owner unmount",
+      "edits made during save survive its acknowledgment without silently rebasing the newer draft",
+      "every newer timeline revision preserves the exact dirty fade input and requires explicit reload",
+      "failed or unacknowledged save preserves fade edits and does not retry",
+      "image inspector excludes audio role; restored supported editor can save without sidecar support",
+      "invalid local fade drafts stay visible and block even direct form submission",
+      "keyed project unmount fences late fade acknowledgments and retained form submit",
+      "missing role capability blocks captured selector callbacks but unrelated inspector edits save",
+      "real inspector adopts SDR, applies a declared creative LUT and saves through the common draft pipeline",
+      "role eligibility includes silent video, zero gain and muted timeline without enabling fades",
+      "silent and unknown-audio videos show disabled fades with an honest no-effect explanation; images have no audio controls",
+      "source playback copy stays explicit about dry audio and the shared render path",
+      "trim never silently clamps either fade and invalid totals cannot submit",
+      "unrelated save on legacy clip never adds zero fields; explicitly changing one missing fade adds only that zero",
+      "unrelated save preserves explicit zero and fade values while discard restores omission"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/timeline-preflight-business.test.mjs",
+    "baselineFailed": true,
+    "addedFailureNames": [
+      "shared renderer validator retains precise legacy messages and input preparation is uncapped by default"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/topbar-save-status.test.mjs",
+    "baselineFailed": true,
+    "addedFailureNames": [
+      "actual App status reports annotation drafts without broadening timeline dirty inputs"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/video-first-last-ui.test.mjs",
+    "baselineFailed": true,
+    "addedFailureNames": [
+      "all four languages update an open frame confirmation while retaining the exact unsaved draft and approval",
+      "bound first frame does not lock tail; busy, pending and conflicting reference work block both",
+      "history summary includes both frozen human labels/thumbnails with collapsed expandable IDs and hash",
+      "late clear/mode confirmations cannot overwrite edits, hidden/reopened panels, changed tabs or unmounted shots",
+      "late save acknowledges the saved draft but cannot generate after tab/provider change or a newer tail edit",
+      "restored Inspector retains frame history and local tail edits while blocking save-and-generate",
+      "tail omission stays omitted in legacy drafts/saves; explicit null and saved tail retain exact semantics",
+      "tail picker persists through normal save/reload, reset restores omission, clear writes only explicit null",
+      "tail-only and same-image drafts remain saveable but cannot submit; provider switch retains tail visibly",
+      "text mode explicitly confirms clearing both frames and never invents null for old first-only shots"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/waveform-ui.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "actual Timeline renders decorative bounded SVG inside existing clip button without changing its click/drag behavior",
+      "actual hook measures sticky labels, excludes vertically hidden tracks, and stops on tab hiding",
+      "actual hook scroll updates source bounds; collapse, mode hide and project switch are fenced",
+      "actual overlay clips the decoder tail while the inner SVG retains full requested time spacing"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/workspace-opacity-candidate.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "historical25\u201341 hashes retain63 exact files and one explicitly approved renderer delta"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/workspace-receipt-protections.test.mjs",
+    "baselineFailed": true,
+    "addedFailureNames": [
+      "current default dispatcher independently boots ordinary40 with the same receipt protections"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/workspace-restore-execution.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "restored catalogue reports four disabled media operations and refuses calls without writes",
+      "restored profile has fixed catalogue coverage with no hint-based or suffix-based authority"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/workspace-restore-integrity-source-guard.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "fixed initializer, constant and validation dependency remains byte-exact: packages/contracts/src/lut-resources.ts"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/workspace-restore-local-execution.test.mjs",
+    "baselineFailed": true,
+    "addedFailureNames": [
+      "positive current-origin timeline and storyboard exports publish through the shared worker without touching held exports"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/workspace-restore-schema.test.mjs",
+    "baselineFailed": false,
+    "addedFailureNames": [
+      "ordinary current-schema reopen keeps raw schema/rows/receipts and source profile classification intact"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/workspace-schema-dispatch.test.mjs",
+    "baselineFailed": true,
+    "addedFailureNames": [
+      "actual current schema all marker rows removed is refused unchanged before historical repair",
+      "actual current schema known marker removed is refused unchanged before historical repair",
+      "actual current schema marker table removed is refused unchanged before historical repair",
+      "actual current schema marker26 and known marker removed is refused unchanged before historical repair",
+      "actual current schema marker26 removed is refused unchanged before historical repair",
+      "completed24 enters explicit26,28,30,32,34,36,38 and40 migrations without legacy bootstrap writes",
+      "genuinely missing known markers keep the old ordinary repair path before26",
+      "real missing marker table retains historical bootstrap/upgrade qualification",
+      "real ordinary-1 retains historical bootstrap/upgrade qualification",
+      "real ordinary-14 retains historical bootstrap/upgrade qualification",
+      "real ordinary-21 retains historical bootstrap/upgrade qualification",
+      "real ordinary-23 retains historical bootstrap/upgrade qualification"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/workspace-schema-profiles.test.mjs",
+    "baselineFailed": true,
+    "addedFailureNames": [
+      "fresh runtime construction has only the reviewed ordinary40 delta and no restoration authority",
+      "frozen ordinary1 classifies without mutation and runtime opens with only the reviewed ordinary40 delta",
+      "frozen ordinary10 classifies without mutation and runtime opens with only the reviewed ordinary40 delta",
+      "frozen ordinary11 classifies without mutation and runtime opens with only the reviewed ordinary40 delta",
+      "frozen ordinary12 classifies without mutation and runtime opens with only the reviewed ordinary40 delta",
+      "frozen ordinary13 classifies without mutation and runtime opens with only the reviewed ordinary40 delta",
+      "frozen ordinary14 classifies without mutation and runtime opens with only the reviewed ordinary40 delta",
+      "frozen ordinary15 classifies without mutation and runtime opens with only the reviewed ordinary40 delta",
+      "frozen ordinary16 classifies without mutation and runtime opens with only the reviewed ordinary40 delta",
+      "frozen ordinary17 classifies without mutation and runtime opens with only the reviewed ordinary40 delta",
+      "frozen ordinary18 classifies without mutation and runtime opens with only the reviewed ordinary40 delta",
+      "frozen ordinary19 classifies without mutation and runtime opens with only the reviewed ordinary40 delta",
+      "frozen ordinary2 classifies without mutation and runtime opens with only the reviewed ordinary40 delta",
+      "frozen ordinary20 classifies without mutation and runtime opens with only the reviewed ordinary40 delta",
+      "frozen ordinary21 classifies without mutation and runtime opens with only the reviewed ordinary40 delta",
+      "frozen ordinary22 classifies without mutation and runtime opens with only the reviewed ordinary40 delta",
+      "frozen ordinary23 classifies without mutation and runtime opens with only the reviewed ordinary40 delta",
+      "frozen ordinary24 classifies without mutation and runtime opens with only the reviewed ordinary40 delta",
+      "frozen ordinary24 reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence",
+      "frozen ordinary24-mock reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence",
+      "frozen ordinary3 classifies without mutation and runtime opens with only the reviewed ordinary40 delta",
+      "frozen ordinary4 classifies without mutation and runtime opens with only the reviewed ordinary40 delta",
+      "frozen ordinary5 classifies without mutation and runtime opens with only the reviewed ordinary40 delta",
+      "frozen ordinary6 classifies without mutation and runtime opens with only the reviewed ordinary40 delta",
+      "frozen ordinary7 classifies without mutation and runtime opens with only the reviewed ordinary40 delta",
+      "frozen ordinary8 classifies without mutation and runtime opens with only the reviewed ordinary40 delta",
+      "frozen ordinary9 classifies without mutation and runtime opens with only the reviewed ordinary40 delta",
+      "ordinary runtime retains baseline repair eligibility for marker-table-absent; offline classification stays strict"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/workspace-schema36.test.mjs",
+    "baselineFailed": true,
+    "addedFailureNames": [
+      "34 to36 preserves every prior schema object/raw row and is idempotent; fresh parity"
+    ],
+    "removedFailureNames": []
+  },
+  {
+    "file": "tests/workspace-visibility.test.mjs",
+    "baselineFailed": true,
+    "addedFailureNames": [
+      "Inspector cancels pending highlight focus when hidden and does not refocus on reopening or refresh",
+      "Inspector never schedules hidden focus, and an unmounted pending callback is inert",
+      "audio Media pauses before passive effects; hide/reopen preserves element, source and time",
+      "collapsing Inspector preserves the draft and an already requested save-and-generate continuation",
+      "language-only updates preserve the exact media decoder, playback position and source identity",
+      "video Media pauses before passive effects; hide/reopen preserves element, source and time"
+    ],
+    "removedFailureNames": []
+  }
+]

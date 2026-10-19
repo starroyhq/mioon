@@ -1,0 +1,9 @@
+{
+  "completedFiles": 755,
+  "totalFiles": 755,
+  "passedFiles": 604,
+  "failedFiles": 151,
+  "timeoutFiles": 0,
+  "seconds": 1287.59,
+  "last": "tests/workspace-schema34.test.mjs"
+}

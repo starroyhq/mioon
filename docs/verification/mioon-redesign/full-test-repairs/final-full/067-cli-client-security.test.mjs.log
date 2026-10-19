@@ -1,0 +1,34 @@
+TAP version 13
+# Subtest: shared direct token-file client re-reads credentials between calls without logging them
+ok 1 - shared direct token-file client re-reads credentials between calls without logging them
+  ---
+  duration_ms: 25.823625
+  type: 'test'
+  ...
+# Subtest: watch deadline bounds a hanging get and never dispatches job.cancel
+ok 2 - watch deadline bounds a hanging get and never dispatches job.cancel
+  ---
+  duration_ms: 107.670459
+  type: 'test'
+  ...
+# Subtest: RPC and download refuse redirects without forwarding credentials or keeping partial output
+ok 3 - RPC and download refuse redirects without forwarding credentials or keeping partial output
+  ---
+  duration_ms: 4.689166
+  type: 'test'
+  ...
+# Subtest: interrupted media stream closes only the client and removes its partial output
+ok 4 - interrupted media stream closes only the client and removes its partial output
+  ---
+  duration_ms: 3.15075
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 361.217125

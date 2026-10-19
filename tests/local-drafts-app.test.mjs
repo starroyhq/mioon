@@ -202,6 +202,7 @@ test('actual App draft discard leaves the original pending timeline request and 
   const original = Object.freeze({ requestId: 'original-request', expectedRevision: 7, clipId: key.clipId, patch: Object.freeze({ name: 'Previously submitted' }) });
   const tasks = { current: Object.freeze({ operation: 'timeline.clip.update', input: original, status: 'unknown' }) }, calls = [];
   const mutate = compile(mutationSource, 'mutateTimeline', {
+    application: null, // The ordinary App entry has no candidate application capability.
     clipDraftRef: { current: f.controller },
     dataRef: { current: { timeline: { revision: 7 } } }, currentProject: { current: key.projectId },
     tasksRef: { current: { blocked: (...args) => { calls.push(['blocked', ...args]); return Boolean(tasks.current); } } },

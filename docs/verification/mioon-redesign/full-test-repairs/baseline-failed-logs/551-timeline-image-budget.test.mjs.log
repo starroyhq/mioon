@@ -1,0 +1,213 @@
+TAP version 13
+# Subtest: image budget uses exact JSON UTF-8 bytes and leaves the historical 256 KiB cap unchanged
+ok 1 - image budget uses exact JSON UTF-8 bytes and leaves the historical 256 KiB cap unchanged
+  ---
+  duration_ms: 302.343625
+  type: 'test'
+  ...
+# Subtest: one-byte image candidate overflow rejects before any SQL write with exact scoped proof
+ok 2 - one-byte image candidate overflow rejects before any SQL write with exact scoped proof
+  ---
+  duration_ms: 192.56725
+  type: 'test'
+  ...
+# Subtest: revision 9 to 10 growth is budgeted after mutation and before writing
+ok 3 - revision 9 to 10 growth is budgeted after mutation and before writing
+  ---
+  duration_ms: 181.217
+  type: 'test'
+  ...
+# Subtest: canonical timestamp growth is budgeted after mutation and before writing
+ok 4 - canonical timestamp growth is budgeted after mutation and before writing
+  ---
+  duration_ms: 165.956791
+  type: 'test'
+  ...
+# Subtest: revision growth during undo cannot write an over-budget reconstructed image response
+ok 5 - revision growth during undo cannot write an over-budget reconstructed image response
+  ---
+  duration_ms: 212.394875
+  type: 'test'
+  ...
+# Subtest: undo recognizes a valid historical image snapshot that already exceeds the current revision envelope
+ok 6 - undo recognizes a valid historical image snapshot that already exceeds the current revision envelope
+  ---
+  duration_ms: 278.327167
+  type: 'test'
+  ...
+# Subtest: loudness image overflow at gain change keeps the frozen unsafe proof and writes nothing
+ok 7 - loudness image overflow at gain change keeps the frozen unsafe proof and writes nothing
+  ---
+  duration_ms: 160.296917
+  type: 'test'
+  ...
+# Subtest: loudness image overflow at final revision keeps the frozen unsafe proof and writes nothing
+ok 8 - loudness image overflow at final revision keeps the frozen unsafe proof and writes nothing
+  ---
+  duration_ms: 188.680792
+  type: 'test'
+  ...
+# Subtest: a durable image-capacity rejection retains the exact draft, then acknowledgement releases the lane
+ok 9 - a durable image-capacity rejection retains the exact draft, then acknowledgement releases the lane
+  ---
+  duration_ms: 233.25425
+  type: 'test'
+  ...
+# Subtest: exact-limit mutation, history, undo, redo and historical replay survive reopen
+ok 10 - exact-limit mutation, history, undo, redo and historical replay survive reopen
+  ---
+  duration_ms: 458.518
+  type: 'test'
+  ...
+# Subtest: oversized persisted receipt stays fail-closed without candidate proof or writes
+ok 11 - oversized persisted receipt stays fail-closed without candidate proof or writes
+  ---
+  duration_ms: 191.208125
+  type: 'test'
+  ...
+# Subtest: oversized persisted history stays fail-closed without candidate proof or writes
+ok 12 - oversized persisted history stays fail-closed without candidate proof or writes
+  ---
+  duration_ms: 195.9015
+  type: 'test'
+  ...
+# Subtest: cold backup32 and restored33 preserve exact-limit evidence, receipts and history across reopen
+not ok 13 - cold backup32 and restored33 preserve exact-limit evidence, receipts and history across reopen
+  ---
+  duration_ms: 216.900917
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-image-budget.test.mjs:371:1'
+  failureType: 'testCodeFailure'
+  error: 'The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.'
+  code: 'WORKSPACE_BACKUP_IO'
+  stack: |-
+    backupError (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-backup-storage.mjs:27:58)
+    safeBackupError (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-backup-storage.mjs:32:9)
+    createWorkspaceBackup (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-backup.mjs:175:31)
+    async TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-image-budget.test.mjs:383:17)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restored33 install rolls back exact-limit timeline, receipt and history bytes on commit failure
+not ok 14 - restored33 install rolls back exact-limit timeline, receipt and history bytes on commit failure
+  ---
+  duration_ms: 191.355291
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-image-budget.test.mjs:403:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      Comparison {
+    +   code: 'RESTORE_SCHEMA_UNSUPPORTED'
+    -   code: 'INJECTED_BUDGET_RESTORE'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    code: 'INJECTED_BUDGET_RESTORE'
+  actual:
+  error: 'Workspace schema role is unsupported'
+  stack: |-
+    unsupported (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-schema-dispatch.ts:34:55)
+    readCurrentWorkspaceRole (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-schema-dispatch.ts:125:123)
+    classify (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-schema-dispatch.ts:172:18)
+    installRestore (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-schema-dispatch.ts:237:21)
+    assert.throws.code (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-image-budget.test.mjs:418:25)
+    getActual (node:assert:580:5)
+    strict.throws (node:assert:728:24)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-image-budget.test.mjs:418:12)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-image-budget.test.mjs:418:12)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: raw not-applied image-budget error cannot expand historical role 24
+ok 15 - raw not-applied image-budget error cannot expand historical role 24
+  ---
+  duration_ms: 171.662375
+  type: 'test'
+  ...
+# Subtest: raw not-applied image-budget error cannot expand historical role 25
+ok 16 - raw not-applied image-budget error cannot expand historical role 25
+  ---
+  duration_ms: 91.239583
+  type: 'test'
+  ...
+# Subtest: raw not-applied image-budget error cannot expand historical role 26
+ok 17 - raw not-applied image-budget error cannot expand historical role 26
+  ---
+  duration_ms: 148.467917
+  type: 'test'
+  ...
+# Subtest: raw not-applied image-budget error cannot expand historical role 27
+ok 18 - raw not-applied image-budget error cannot expand historical role 27
+  ---
+  duration_ms: 155.267166
+  type: 'test'
+  ...
+# Subtest: raw not-applied image-budget error cannot expand historical role 28
+ok 19 - raw not-applied image-budget error cannot expand historical role 28
+  ---
+  duration_ms: 175.457375
+  type: 'test'
+  ...
+# Subtest: raw not-applied image-budget error cannot expand historical role 29
+ok 20 - raw not-applied image-budget error cannot expand historical role 29
+  ---
+  duration_ms: 108.947333
+  type: 'test'
+  ...
+# Subtest: raw not-applied image-budget error cannot expand historical role 30
+ok 21 - raw not-applied image-budget error cannot expand historical role 30
+  ---
+  duration_ms: 174.461709
+  type: 'test'
+  ...
+# Subtest: raw not-applied image-budget error cannot expand historical role 31
+ok 22 - raw not-applied image-budget error cannot expand historical role 31
+  ---
+  duration_ms: 121.356084
+  type: 'test'
+  ...
+# Subtest: raw not-applied image-budget error cannot expand historical role 32
+ok 23 - raw not-applied image-budget error cannot expand historical role 32
+  ---
+  duration_ms: 189.299708
+  type: 'test'
+  ...
+# Subtest: raw not-applied image-budget error cannot expand historical role 33
+not ok 24 - raw not-applied image-budget error cannot expand historical role 33
+  ---
+  duration_ms: 161.067583
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-image-budget.test.mjs:428:3'
+  failureType: 'testCodeFailure'
+  error: 'RESTORE_CAPTURE_CHANGED'
+  code: 'RESTORE_CAPTURE_CHANGED'
+  stack: |-
+    fail (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-restore-capture-integrity.ts:10:71)
+    validateHistoricalRestoreCapture (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-restore-capture-integrity.ts:98:200)
+    validateRestore (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-schema-dispatch.ts:195:106)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/timeline-image-budget.test.mjs:458:36)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..24
+# tests 24
+# suites 0
+# pass 21
+# fail 3
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5241.360125

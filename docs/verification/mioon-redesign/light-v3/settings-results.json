@@ -1,0 +1,25 @@
+{
+  "scope": "Existing settings behavior and navigation regression after Slider alignment composition change",
+  "files": [
+    {
+      "file": "tests/settings-center-ui.test.mjs",
+      "exitCode": 0,
+      "seconds": 0.52,
+      "tests": 21,
+      "pass": 21,
+      "fail": 0,
+      "skipped": 0,
+      "source": "light-v3/logs/settings-center-ui.test.mjs.tap"
+    },
+    {
+      "file": "tests/settings-center-navigation.test.mjs",
+      "exitCode": 0,
+      "seconds": 0.37,
+      "tests": 24,
+      "pass": 24,
+      "fail": 0,
+      "skipped": 0,
+      "source": "light-v3/logs/settings-center-navigation.test.mjs.tap"
+    }
+  ]
+}

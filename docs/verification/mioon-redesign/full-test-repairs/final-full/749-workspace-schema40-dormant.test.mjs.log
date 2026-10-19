@@ -1,0 +1,202 @@
+TAP version 13
+# Subtest: dormant38 to40 is marker-only and preserves integer task sequence storage
+ok 1 - dormant38 to40 is marker-only and preserves integer task sequence storage
+  ---
+  duration_ms: 306.938792
+  type: 'test'
+  ...
+# Subtest: dormant38 to40 is marker-only and preserves real task sequence storage
+ok 2 - dormant38 to40 is marker-only and preserves real task sequence storage
+  ---
+  duration_ms: 135.927584
+  type: 'test'
+  ...
+# Subtest: dormant38 to40 is marker-only and preserves wide integer task sequence storage
+ok 3 - dormant38 to40 is marker-only and preserves wide integer task sequence storage
+  ---
+  duration_ms: 135.442875
+  type: 'test'
+  ...
+# Subtest: ordinary40 rejects a non-exact source marker chain: DELETE FROM schema_version WHERE version=38
+ok 4 - ordinary40 rejects a non-exact source marker chain: DELETE FROM schema_version WHERE version=38
+  ---
+  duration_ms: 104.180375
+  type: 'test'
+  ...
+# Subtest: ordinary40 rejects a non-exact source marker chain: DELETE FROM schema_version WHERE version=13
+ok 5 - ordinary40 rejects a non-exact source marker chain: DELETE FROM schema_version WHERE version=13
+  ---
+  duration_ms: 107.54275
+  type: 'test'
+  ...
+# Subtest: ordinary40 rejects a non-exact source marker chain: INSERT INTO schema_version VALUES(39)
+ok 6 - ordinary40 rejects a non-exact source marker chain: INSERT INTO schema_version VALUES(39)
+  ---
+  duration_ms: 105.029708
+  type: 'test'
+  ...
+# Subtest: ordinary40 rejects a non-exact source marker chain: INSERT INTO schema_version VALUES(41)
+ok 7 - ordinary40 rejects a non-exact source marker chain: INSERT INTO schema_version VALUES(41)
+  ---
+  duration_ms: 111.176375
+  type: 'test'
+  ...
+# Subtest: ordinary40 rejects a non-exact source marker chain: INSERT INTO schema_version VALUES(999)
+ok 8 - ordinary40 rejects a non-exact source marker chain: INSERT INTO schema_version VALUES(999)
+  ---
+  duration_ms: 105.754209
+  type: 'test'
+  ...
+# Subtest: ordinary40 refuses missing inherited immutable_timeline_responses without repairs
+ok 9 - ordinary40 refuses missing inherited immutable_timeline_responses without repairs
+  ---
+  duration_ms: 109.344583
+  type: 'test'
+  ...
+# Subtest: ordinary40 refuses missing inherited immutable_timeline_history without repairs
+ok 10 - ordinary40 refuses missing inherited immutable_timeline_history without repairs
+  ---
+  duration_ms: 105.763333
+  type: 'test'
+  ...
+# Subtest: ordinary40 refuses missing inherited immutable_timeline_render_snapshot without repairs
+ok 11 - ordinary40 refuses missing inherited immutable_timeline_render_snapshot without repairs
+  ---
+  duration_ms: 110.106292
+  type: 'test'
+  ...
+# Subtest: ordinary40 refuses missing inherited agent_chat_one_active without repairs
+ok 12 - ordinary40 refuses missing inherited agent_chat_one_active without repairs
+  ---
+  duration_ms: 111.776916
+  type: 'test'
+  ...
+# Subtest: ordinary38 positive envelope evidence is rejected before marker writes: {"volumeEnvelope":null}
+ok 13 - ordinary38 positive envelope evidence is rejected before marker writes: {"volumeEnvelope":null}
+  ---
+  duration_ms: 105.926041
+  type: 'test'
+  ...
+# Subtest: ordinary38 positive envelope evidence is rejected before marker writes: {"volume\\u0045nvelope":null}
+ok 14 - ordinary38 positive envelope evidence is rejected before marker writes: {"volume\\u0045nvelope":null}
+  ---
+  duration_ms: 109.220333
+  type: 'test'
+  ...
+# Subtest: ordinary38 positive envelope evidence is rejected before marker writes: {"volumeEnvelope":null,"volumeEnvelope":0}
+ok 15 - ordinary38 positive envelope evidence is rejected before marker writes: {"volumeEnvelope":null,"volumeEnvelope":0}
+  ---
+  duration_ms: 112.670375
+  type: 'test'
+  ...
+# Subtest: ordinary38 positive envelope evidence is rejected before marker writes: {"volumeEnvelope":
+ok 16 - ordinary38 positive envelope evidence is rejected before marker writes: {"volumeEnvelope":
+  ---
+  duration_ms: 111.432417
+  type: 'test'
+  ...
+# Subtest: ordinary40 interruption after marker insertion rolls back without touching prior bytes
+ok 17 - ordinary40 interruption after marker insertion rolls back without touching prior bytes
+  ---
+  duration_ms: 121.471709
+  type: 'test'
+  ...
+# Subtest: ordinary40 rejects bounded blob task sequence projection
+ok 18 - ordinary40 rejects bounded blob task sequence projection
+  ---
+  duration_ms: 124.6715
+  type: 'test'
+  ...
+# Subtest: ordinary40 rejects bounded text task sequence projection
+ok 19 - ordinary40 rejects bounded text task sequence projection
+  ---
+  duration_ms: 126.434209
+  type: 'test'
+  ...
+# Subtest: ordinary40 and exact restored41 preserve absent timeline/history/receipt shapes
+ok 20 - ordinary40 and exact restored41 preserve absent timeline/history/receipt shapes
+  ---
+  duration_ms: 309.918709
+  type: 'test'
+  ...
+# Subtest: ordinary40 and exact restored41 preserve null timeline/history/receipt shapes
+ok 21 - ordinary40 and exact restored41 preserve null timeline/history/receipt shapes
+  ---
+  duration_ms: 317.782625
+  type: 'test'
+  ...
+# Subtest: ordinary40 and exact restored41 preserve non-null timeline/history/receipt shapes
+ok 22 - ordinary40 and exact restored41 preserve non-null timeline/history/receipt shapes
+  ---
+  duration_ms: 316.649542
+  type: 'test'
+  ...
+# Subtest: restored41 held tasks, receipt vacancy and execution epochs remain isolated
+ok 23 - restored41 held tasks, receipt vacancy and execution epochs remain isolated
+  ---
+  duration_ms: 176.612875
+  type: 'test'
+  ...
+# Subtest: restored41 source40 pair is exact and historical restored39 is never upgraded or reinterpreted
+ok 24 - restored41 source40 pair is exact and historical restored39 is never upgraded or reinterpreted
+  ---
+  duration_ms: 489.656
+  type: 'test'
+  ...
+# Subtest: restored41 rejects forged metadata pair sourceSchema=38
+ok 25 - restored41 rejects forged metadata pair sourceSchema=38
+  ---
+  duration_ms: 160.785292
+  type: 'test'
+  ...
+# Subtest: restored41 rejects forged metadata pair profile='restored-local-v8'
+ok 26 - restored41 rejects forged metadata pair profile='restored-local-v8'
+  ---
+  duration_ms: 154.576708
+  type: 'test'
+  ...
+# Subtest: ordinary40 and restored41 retain inherited roles, annotation and image/colour admission
+ok 27 - ordinary40 and restored41 retain inherited roles, annotation and image/colour admission
+  ---
+  duration_ms: 170.039625
+  type: 'test'
+  ...
+# Subtest: ordinary40 invalid inherited feature data fails without repair
+ok 28 - ordinary40 invalid inherited feature data fails without repair
+  ---
+  duration_ms: 117.114167
+  type: 'test'
+  ...
+# Subtest: ordinary40 invalid inherited feature data fails without repair
+ok 29 - ordinary40 invalid inherited feature data fails without repair
+  ---
+  duration_ms: 118.690333
+  type: 'test'
+  ...
+# Subtest: ordinary40 invalid inherited feature data fails without repair
+ok 30 - ordinary40 invalid inherited feature data fails without repair
+  ---
+  duration_ms: 121.351791
+  type: 'test'
+  ...
+# Subtest: ordinary40 and restored41 preserve every historical task state and raw non-input storage class
+ok 31 - ordinary40 and restored41 preserve every historical task state and raw non-input storage class
+  ---
+  duration_ms: 173.574875
+  type: 'test'
+  ...
+# Subtest: supported40 malformed positive evidence rejects restoration before any DDL or capture
+ok 32 - supported40 malformed positive evidence rejects restoration before any DDL or capture
+  ---
+  duration_ms: 117.517833
+  type: 'test'
+  ...
+1..32
+# tests 32
+# suites 0
+# pass 32
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5361.312958

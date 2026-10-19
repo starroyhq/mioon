@@ -1,0 +1,173 @@
+TAP version 13
+# Subtest: format intent preparation is durable and noncreating; a matching prepared task is not a dispatch claim
+ok 1 - format intent preparation is durable and noncreating; a matching prepared task is not a dispatch claim
+  ---
+  duration_ms: 740.784792
+  type: 'test'
+  ...
+# Subtest: only the exact claimed format input is exempt inside its live coordinator dispatch context
+ok 2 - only the exact claimed format input is exempt inside its live coordinator dispatch context
+  ---
+  duration_ms: 815.602125
+  type: 'test'
+  ...
+# Subtest: a direct caller cannot borrow a live claim while its coordinator awaits dispatch
+ok 3 - a direct caller cannot borrow a live claim while its coordinator awaits dispatch
+  ---
+  duration_ms: 681.831541
+  type: 'test'
+  ...
+# Subtest: another prepared unacknowledged timeline task blocks a fresh format key
+ok 4 - another prepared unacknowledged timeline task blocks a fresh format key
+  ---
+  duration_ms: 606.633084
+  type: 'test'
+  ...
+# Subtest: another unknown unacknowledged timeline task blocks a fresh format key
+ok 5 - another unknown unacknowledged timeline task blocks a fresh format key
+  ---
+  duration_ms: 609.583625
+  type: 'test'
+  ...
+# Subtest: another applied unacknowledged timeline task blocks a fresh format key
+ok 6 - another applied unacknowledged timeline task blocks a fresh format key
+  ---
+  duration_ms: 642.490208
+  type: 'test'
+  ...
+# Subtest: another not_applied unacknowledged timeline task blocks a fresh format key
+ok 7 - another not_applied unacknowledged timeline task blocks a fresh format key
+  ---
+  duration_ms: 631.291042
+  type: 'test'
+  ...
+# Subtest: an older timeline edit blocks the same project only, without creating either timeline
+ok 8 - an older timeline edit blocks the same project only, without creating either timeline
+  ---
+  duration_ms: 603.941625
+  type: 'test'
+  ...
+# Subtest: reference and subject lanes do not block a pristine timeline specification
+ok 9 - reference and subject lanes do not block a pristine timeline specification
+  ---
+  duration_ms: 993.736375
+  type: 'test'
+  ...
+# Subtest: format restart after afterClaim preserves one request identity and original acknowledgement
+ok 10 - format restart after afterClaim preserves one request identity and original acknowledgement
+  ---
+  duration_ms: 977.234291
+  type: 'test'
+  ...
+# Subtest: format restart after beforeDispatch preserves one request identity and original acknowledgement
+ok 11 - format restart after beforeDispatch preserves one request identity and original acknowledgement
+  ---
+  duration_ms: 616.380458
+  type: 'test'
+  ...
+# Subtest: format restart after afterBusinessCommit preserves one request identity and original acknowledgement
+ok 12 - format restart after afterBusinessCommit preserves one request identity and original acknowledgement
+  ---
+  duration_ms: 694.029125
+  type: 'test'
+  ...
+# Subtest: format restart after beforeOutcomePersist preserves one request identity and original acknowledgement
+ok 13 - format restart after beforeOutcomePersist preserves one request identity and original acknowledgement
+  ---
+  duration_ms: 666.522459
+  type: 'test'
+  ...
+# Subtest: format restart after afterOutcomePersist preserves one request identity and original acknowledgement
+ok 14 - format restart after afterOutcomePersist preserves one request identity and original acknowledgement
+  ---
+  duration_ms: 674.329291
+  type: 'test'
+  ...
+# Subtest: exact format replay survives later formats, project CAS drift, edits and restart without recreating history
+ok 15 - exact format replay survives later formats, project CAS drift, edits and restart without recreating history
+  ---
+  duration_ms: 757.047541
+  type: 'test'
+  ...
+# Subtest: current owner and immutable historical format ACK remain mandatory for lost-response recovery
+    # Subtest: project owner
+    ok 1 - project owner
+      ---
+      duration_ms: 657.837458
+      type: 'test'
+      ...
+    # Subtest: timeline owner
+    ok 2 - timeline owner
+      ---
+      duration_ms: 722.051125
+      type: 'test'
+      ...
+    # Subtest: receipt revision
+    ok 3 - receipt revision
+      ---
+      duration_ms: 783.24725
+      type: 'test'
+      ...
+    # Subtest: receipt dimensions
+    ok 4 - receipt dimensions
+      ---
+      duration_ms: 1283.487416
+      type: 'test'
+      ...
+    # Subtest: companion input
+    ok 5 - companion input
+      ---
+      duration_ms: 832.3615
+      type: 'test'
+      ...
+    1..5
+ok 16 - current owner and immutable historical format ACK remain mandatory for lost-response recovery
+  ---
+  duration_ms: 4280.811791
+  type: 'test'
+  ...
+# Subtest: format receipt insertion failure rolls back the timeline, both journals and project CAS
+ok 17 - format receipt insertion failure rolls back the timeline, both journals and project CAS
+  ---
+  duration_ms: 753.11925
+  type: 'test'
+  ...
+# Subtest: same-preset and stale project CAS produce definite not-applied tasks without replacing requests
+ok 18 - same-preset and stale project CAS produce definite not-applied tasks without replacing requests
+  ---
+  duration_ms: 836.92325
+  type: 'test'
+  ...
+# Subtest: corrupt acknowledged prepared task cannot hide pending format work from the read or write boundary
+ok 19 - corrupt acknowledged prepared task cannot hide pending format work from the read or write boundary
+  ---
+  duration_ms: 661.939917
+  type: 'test'
+  ...
+# Subtest: corrupt wrong timeline lane cannot hide pending format work from the read or write boundary
+ok 20 - corrupt wrong timeline lane cannot hide pending format work from the read or write boundary
+  ---
+  duration_ms: 646.58625
+  type: 'test'
+  ...
+# Subtest: a retained receipt with invalid UUID fails closed rather than disappearing from format admission
+ok 21 - a retained receipt with invalid UUID fails closed rather than disappearing from format admission
+  ---
+  duration_ms: 656.496208
+  type: 'test'
+  ...
+# Subtest: a retained receipt with missing project fails closed rather than disappearing from format admission
+ok 22 - a retained receipt with missing project fails closed rather than disappearing from format admission
+  ---
+  duration_ms: 955.602958
+  type: 'test'
+  ...
+1..22
+# tests 27
+# suites 0
+# pass 27
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 19905.537959

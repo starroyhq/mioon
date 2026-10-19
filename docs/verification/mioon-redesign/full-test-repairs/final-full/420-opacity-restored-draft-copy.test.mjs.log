@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: restored43 draft disclosure has complete simplified Chinese, region-neutral traditional Chinese, English and Japanese catalogs
+ok 1 - restored43 draft disclosure has complete simplified Chinese, region-neutral traditional Chinese, English and Japanese catalogs
+  ---
+  duration_ms: 14.600416
+  type: 'test'
+  ...
+# Subtest: actual restored notice separates source42 exclusions from new43 storage and preserves the default memory fallback in all four locales
+ok 2 - actual restored notice separates source42 exclusions from new43 storage and preserves the default memory fallback in all four locales
+  ---
+  duration_ms: 376.197917
+  type: 'test'
+  ...
+# Subtest: actual persistent recovery explains origin, confirmation and explicit timeline saving without the old memory-only claim in all four locales
+ok 3 - actual persistent recovery explains origin, confirmation and explicit timeline saving without the old memory-only claim in all four locales
+  ---
+  duration_ms: 0.280459
+  type: 'test'
+  ...
+# Subtest: actual restored candidate offers explicit restore and discard while protecting newer, pending and composing input in all four locales
+ok 4 - actual restored candidate offers explicit restore and discard while protecting newer, pending and composing input in all four locales
+  ---
+  duration_ms: 0.260125
+  type: 'test'
+  ...
+# Subtest: unknown restored draft outcomes retain accurate persistence disclosure and offer read-only recheck in all four locales
+ok 5 - unknown restored draft outcomes retain accurate persistence disclosure and offer read-only recheck in all four locales
+  ---
+  duration_ms: 0.250333
+  type: 'test'
+  ...
+# Subtest: confirmed draft status still discloses explicit timeline saving and excludes the old restored memory fallback in all four locales
+ok 6 - confirmed draft status still discloses explicit timeline saving and excludes the old restored memory fallback in all four locales
+  ---
+  duration_ms: 0.071666
+  type: 'test'
+  ...
+# Subtest: old restored43 memory-only fallback and ordinary42 storage disclosure remain distinct in all four locales
+ok 7 - old restored43 memory-only fallback and ordinary42 storage disclosure remain distinct in all four locales
+  ---
+  duration_ms: 0.131541
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 616.842083

@@ -1,0 +1,59 @@
+TAP version 13
+# Subtest: timeline history CLI and official MCP advertise identical strict schemas and require caller-owned request IDs offline
+ok 1 - timeline history CLI and official MCP advertise identical strict schemas and require caller-owned request IDs offline
+  ---
+  duration_ms: 11797.028625
+  type: 'test'
+  ...
+# Subtest: timeline edit history round-trips HTTP, CLI and official MCP with durable replay, conflicts, branching and process restart
+    # Subtest: history reads and empty undo/redo do not create a timeline or journal
+    ok 1 - history reads and empty undo/redo do not create a timeline or journal
+      ---
+      duration_ms: 2065.671834
+      type: 'test'
+      ...
+    # Subtest: HTTP edit, CLI undo with explicit request-id flag, and official MCP redo preserve stable track IDs
+    ok 2 - HTTP edit, CLI undo with explicit request-id flag, and official MCP redo preserve stable track IDs
+      ---
+      duration_ms: 2151.331292
+      type: 'test'
+      ...
+    # Subtest: exact successful replay wins over stale revisions and changed request data conflicts on every transport
+    ok 3 - exact successful replay wins over stale revisions and changed request data conflicts on every transport
+      ---
+      duration_ms: 3564.184666
+      type: 'test'
+      ...
+    # Subtest: simultaneous identical undo/redo requests across transports advance revision and cursor once
+    ok 4 - simultaneous identical undo/redo requests across transports advance revision and cursor once
+      ---
+      duration_ms: 1808.329583
+      type: 'test'
+      ...
+    # Subtest: actual backend process restart preserves cursor and exact saved responses through existing clients
+    ok 5 - actual backend process restart preserves cursor and exact saved responses through existing clients
+      ---
+      duration_ms: 3814.959
+      type: 'test'
+      ...
+    # Subtest: rejected edits preserve redo while new edits replace the branch without invalidating old replay
+    ok 6 - rejected edits preserve redo while new edits replace the branch without invalidating old replay
+      ---
+      duration_ms: 1927.4135
+      type: 'test'
+      ...
+    1..6
+ok 2 - timeline edit history round-trips HTTP, CLI and official MCP with durable replay, conflicts, branching and process restart
+  ---
+  duration_ms: 16848.3855
+  type: 'test'
+  ...
+1..2
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 28860.780125

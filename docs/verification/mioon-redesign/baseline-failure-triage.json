@@ -1,0 +1,2683 @@
+{
+  "failedFiles": 135,
+  "categoryCounts": {
+    "schema-marker-expectation": 27,
+    "source-text-or-harness-assertion": 40,
+    "frozen-fixture-hash-drift": 3,
+    "renderer-harness-import": 6,
+    "source-harness-reference-failure": 20,
+    "mock-media-job-deadline": 5,
+    "legacy-schema-or-exact-byte-expectation": 9,
+    "platform-assumption": 3,
+    "migration-source-identity": 2,
+    "canonical-path-assumption": 4,
+    "test-harness-json-truncation": 2,
+    "local-media-failure": 23,
+    "sqlite-bigint-fixture": 14,
+    "backup-or-restored-profile-identity": 10,
+    "mcp-owner-only-discovery": 1,
+    "localized-native-dialog-expectation": 1,
+    "ordinary-receipt-repair-gate": 3,
+    "archive-without-git-history": 1,
+    "test-runner-module-mock-flag": 1,
+    "runtime-version-pin": 2
+  },
+  "failures": [
+    {
+      "file": "tests/agent-chat-ui.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.938,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation",
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 19 - actual component collapse and settings transition invalidate old callbacks before parent navigation",
+        "not ok 21 - integration preserves settings entry, the shared right dock, bounded history and app-local controls",
+        "not ok 38 - actual App project guard Confirm permits project-key isolation; no draft or merely running reply needs no prompt",
+        "not ok 39 - actual App image draft guard Cancel preserves project and Confirm changes it without stopping accepted work",
+        "not ok 44 - App right-dock tabs preserve existing layout, resize and Inspector subtree and ordinary selection never changes tabs"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/006-agent-chat-ui.test.mjs.log"
+    },
+    {
+      "file": "tests/agent-quickstart-docs.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.342,
+      "timeout": false,
+      "categories": [
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 1 - tests/agent-quickstart-docs.test.mjs"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/018-agent-quickstart-docs.test.mjs.log"
+    },
+    {
+      "file": "tests/agent-timeline-app.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.288,
+      "timeout": false,
+      "categories": [
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 2 - actual App blocks timeline proposals on every draft, offline/loading or unresolved timeline state",
+        "not ok 3 - actual applied receipt callback rereads only current project and never applies historical timeline or clears drafts"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/028-agent-timeline-app.test.mjs.log"
+    },
+    {
+      "file": "tests/agent-timeline-gain-preservation.test.mjs",
+      "exitCode": 1,
+      "seconds": 5.813,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation",
+        "frozen-fixture-hash-drift",
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 2 - frozen validator loader rejects changed historical source before import",
+        "not ok 3 - frozen validator loader rejects live direct-dependency drift before import",
+        "not ok 4 - frozen validator loader refuses unpinned imports instead of broadening its dependency allowlist",
+        "not ok 5 - frozen c3a0a57 restore policy and effects use the exact old catalog despite current operation additions",
+        "not ok 7 - fixed real v1/v2 records survive startup, read, pagination and recovery with every raw byte and sequence intact",
+        "not ok 8 - v3 uses existing SQL only and the frozen old validator rejects or holds new JSON without inference or payload rewrites",
+        "not ok 9 - frozen old definition version gate rejects v3 even when a valid old move mode and target precede it",
+        "not ok 10 - actual offline backup CLI retains mixed legacy and v3 gain bytes; schema27 holds inherited authority while fresh manual gain stays local"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/035-agent-timeline-gain-preservation.test.mjs.log"
+    },
+    {
+      "file": "tests/agent-timeline-move-migration.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.98,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation"
+      ],
+      "failedTests": [
+        "not ok 4 - fresh startup and upgraded startup converge and reopen never rewrites legacy data"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/041-agent-timeline-move-migration.test.mjs.log"
+    },
+    {
+      "file": "tests/agent-timeline-move-renderer.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.711,
+      "timeout": false,
+      "categories": [
+        "renderer-harness-import"
+      ],
+      "failedTests": [
+        "not ok 9 - actual timeline review renders names, immutable frames and seconds, unchanged fields and total-duration warning",
+        "not ok 10 - actual timeline review disables stale selection/draft/context callbacks, preserves Reject and gates Stop",
+        "not ok 11 - actual timeline composer requires separate consent, bounds intervals, clears consent on dirty and preserves draft",
+        "not ok 12 - actual timeline activity safely separates proposal from application and never displays media or authority buttons",
+        "not ok 18 - actual review labels an off-page local uncertainty and retains its exact identity beside all fetched rows"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/042-agent-timeline-move-renderer.test.mjs.log"
+    },
+    {
+      "file": "tests/agent-tool-renderer.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.491,
+      "timeout": false,
+      "categories": [
+        "renderer-harness-import"
+      ],
+      "failedTests": [
+        "not ok 1 - chat_completions: actual dock requires a scope choice plus fresh project-bound consent; opening/typing/toggling never sends",
+        "not ok 2 - chat_completions: immutable streamed tool activity and results remain inert text with no new inference",
+        "not ok 4 - responses: actual dock requires a scope choice plus fresh project-bound consent; opening/typing/toggling never sends",
+        "not ok 5 - responses: immutable streamed tool activity and results remain inert text with no new inference",
+        "not ok 10 - retained project-derived reply remains labelled when typed mode is selected; typed send has no project fields",
+        "not ok 13 - hidden acceptance preserves run identity, blocks stale mode/consent/send/stop, and reopening only reads",
+        "not ok 14 - project navigation resets choice and makes old tool events and controls inert without stopping the accepted run",
+        "not ok 16 - inspection disclosures retain unencrypted storage, no secrets, bounded billing and continued hidden-run behavior"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/048-agent-tool-renderer.test.mjs.log"
+    },
+    {
+      "file": "tests/asset-disposition-ui.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.729,
+      "timeout": false,
+      "categories": [
+        "source-harness-reference-failure",
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 15 - actual App recovery replays the exact key and refreshes current marks separately from historical ACK",
+        "not ok 16 - actual App annotation recovery preserves the exact session intent and rereads separately from historical ACK"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/058-asset-disposition-ui.test.mjs.log"
+    },
+    {
+      "file": "tests/asset-dispositions.test.mjs",
+      "exitCode": 1,
+      "seconds": 11.061,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation"
+      ],
+      "failedTests": [
+        "not ok 24 - v12 upgrade preserves all old records and response bytes and has identical fresh schema invariants on repeated restart"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/059-asset-dispositions.test.mjs.log"
+    },
+    {
+      "file": "tests/asset-timeline-usage-ui.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.768,
+      "timeout": false,
+      "categories": [
+        "renderer-harness-import"
+      ],
+      "failedTests": [
+        "not ok 1 - only an own key in this project ready snapshot means zero; absence stays unknown",
+        "not ok 2 - unused is a pure local view, combines existing results, and keeps unknown assets visible",
+        "not ok 3 - filter resets on each project epoch and obsolete or hidden handlers cannot change it",
+        "not ok 4 - compact count expands explicit destinations and sends precisely the chosen immutable use",
+        "not ok 5 - unchanged saved polling preserves expansion and pending choice; changed source metadata invalidates",
+        "not ok 6 - unknown, unavailable and foreign assets cannot claim unused or expose destinations",
+        "not ok 7 - navigation callbacks and in-flight predicates expire on hide, scope, snapshot, asset change and unmount",
+        "not ok 8 - controls do not nest buttons or drag assets; target labels remain narrow-panel keyboard buttons",
+        "not ok 9 - actual library composes usage filter, preserves hidden selected source and resets all filters",
+        "not ok 10 - new usage filters scroll before cards while existing filters and actions stay fixed",
+        "not ok 11 - actual library passes explicit hidden and subjects visibility to usage controls",
+        "not ok 12 - filter copy identifies saved revision and unavailable data, and stays guarded while hidden"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/060-asset-timeline-usage-ui.test.mjs.log"
+    },
+    {
+      "file": "tests/asset-usage-navigation.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.392,
+      "timeout": false,
+      "categories": [
+        "source-harness-reference-failure",
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 25 - App passes the target fence through the actual clip discard boundary"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/061-asset-usage-navigation.test.mjs.log"
+    },
+    {
+      "file": "tests/cli-v4.test.mjs",
+      "exitCode": 1,
+      "seconds": 66.929,
+      "timeout": false,
+      "categories": [
+        "mock-media-job-deadline"
+      ],
+      "failedTests": [
+        "not ok 2 - CLI inputs, MCP crossvisibility, stable replay, watches and real mock export share one backend"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/066-cli-v4.test.mjs.log"
+    },
+    {
+      "file": "tests/client-mutation-app.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.684,
+      "timeout": false,
+      "categories": [
+        "source-harness-reference-failure",
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 1 - actual App legacy session runner keeps changed draft blocked until explicit original replay, with no automatic POST",
+        "not ok 2 - actual App legacy session runner retains auth/ID-conflict/protocol failures and clears only bound rollback proof",
+        "not ok 3 - malformed six-op success is not acknowledged and remains explicitly recoverable",
+        "not ok 4 - late project A success cannot refresh or navigate project B and mutation locks are isolated",
+        "not ok 7 - retained old Inspector save and version-selection callbacks cannot write after project switch",
+        "not ok 8 - explicit stored replay survives removal of target from current snapshot without wrong-project admission"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/068-client-mutation-app.test.mjs.log"
+    },
+    {
+      "file": "tests/client-timeline-history-ui.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.716,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation",
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 12 - App invalidates history around mutation dispatch and uses the common refresh/recovery path"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/075-client-timeline-history-ui.test.mjs.log"
+    },
+    {
+      "file": "tests/client-timeline-split-ui.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.871,
+      "timeout": false,
+      "categories": [
+        "source-harness-reference-failure",
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 10 - actual App subtitle selection suppresses splitting a previously selected media clip"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/080-client-timeline-split-ui.test.mjs.log"
+    },
+    {
+      "file": "tests/client-version-source.test.mjs",
+      "exitCode": 1,
+      "seconds": 4.077,
+      "timeout": false,
+      "categories": [
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 6 - source wiring keeps CLI, MCP, schema discovery and doctor on the shared VERSION export"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/081-client-version-source.test.mjs.log"
+    },
+    {
+      "file": "tests/comfy-migration.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.757,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation",
+        "legacy-schema-or-exact-byte-expectation"
+      ],
+      "failedTests": [
+        "not ok 6 - normal startup upgrades frozen schema18 once and restarts without rewriting retained bytes"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/107-comfy-migration.test.mjs.log"
+    },
+    {
+      "file": "tests/desktop-agent-secrets.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.594,
+      "timeout": false,
+      "categories": [
+        "platform-assumption"
+      ],
+      "failedTests": [
+        "not ok 12 - desktop source keeps the renderer sandbox and native secret channel private"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/126-desktop-agent-secrets.test.mjs.log"
+    },
+    {
+      "file": "tests/desktop-identity.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.925,
+      "timeout": false,
+      "categories": [
+        "migration-source-identity"
+      ],
+      "failedTests": [
+        "not ok 10 - new identity never moves legacy data; explicit migration copies into a fresh channel workspace"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/134-desktop-identity.test.mjs.log"
+    },
+    {
+      "file": "tests/desktop-image-secrets.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.441,
+      "timeout": false,
+      "categories": [
+        "platform-assumption"
+      ],
+      "failedTests": [
+        "not ok 17 - desktop wiring adds no renderer capability and leaves settings ownership in the utility"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/135-desktop-image-secrets.test.mjs.log"
+    },
+    {
+      "file": "tests/desktop-media-shutdown.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.798,
+      "timeout": false,
+      "categories": [
+        "source-harness-reference-failure"
+      ],
+      "failedTests": [
+        "not ok 19 - main quit aborts active tool validation and a late result cannot create backend or settings",
+        "not ok 20 - main quit during settings initialization closes late settings without creating a backend",
+        "not ok 21 - main ready arriving after quit cannot create a fresh startup scope",
+        "not ok 22 - unconfirmed orphan media quit requires a fixed explicit exit warning and ends nonzero"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/145-desktop-media-shutdown.test.mjs.log"
+    },
+    {
+      "file": "tests/desktop-migration-schema26.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.847,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation",
+        "legacy-schema-or-exact-byte-expectation"
+      ],
+      "failedTests": [
+        "not ok 1 - desktop migration accepts ordinary34 from current openStore and preserves source identity, bytes, modes and credentials",
+        "not ok 2 - desktop migration rejects complete restored35 before destination creation without changing source",
+        "not ok 3 - desktop migration rejects partial restoration metadata on ordinary34 before destination creation without changing source",
+        "not ok 4 - desktop migration rejects partial restoration evidence on ordinary34 before destination creation without changing source",
+        "not ok 5 - desktop migration rejects execution epoch without restore marker on ordinary34 before destination creation without changing source",
+        "not ok 6 - desktop migration rejects restored35 marker without metadata before destination creation without changing source",
+        "not ok 7 - desktop migration rejects mixed historical restore25 and ordinary34 markers before destination creation without changing source",
+        "not ok 8 - desktop migration rejects future36 marker on ordinary34 before destination creation without changing source",
+        "not ok 9 - desktop migration rejects mixed historical restore27 and ordinary34 markers before destination creation without changing source"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/146-desktop-migration-schema26.test.mjs.log"
+    },
+    {
+      "file": "tests/desktop-migration.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.298,
+      "timeout": false,
+      "categories": [
+        "migration-source-identity"
+      ],
+      "failedTests": [
+        "not ok 1 - migration copies closed data, leaves original bytes unchanged, excludes credentials"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/147-desktop-migration.test.mjs.log"
+    },
+    {
+      "file": "tests/desktop-startup-restart-race.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.402,
+      "timeout": false,
+      "categories": [
+        "source-harness-reference-failure"
+      ],
+      "failedTests": [
+        "not ok 1 - old validation resolve after replacement is pending cannot quit it",
+        "not ok 2 - old validation cancel after replacement is pending cannot quit it",
+        "not ok 3 - old validation reject after replacement is pending cannot quit it",
+        "not ok 4 - old validation resolve after replacement is successful cannot quit it",
+        "not ok 5 - old validation cancel after replacement is successful cannot quit it",
+        "not ok 6 - old validation reject after replacement is successful cannot quit it",
+        "not ok 7 - replacement itself failing remains fatal even when both starts reject the same Error",
+        "not ok 8 - current uncancelled start error DESKTOP_START_CANCELLED is still fatal",
+        "not ok 9 - current uncancelled start error BACKEND_START_CANCELLED is still fatal",
+        "not ok 10 - current uncancelled start error MEDIA_CANCELLED is still fatal",
+        "not ok 11 - current uncancelled start error CURRENT_FAILURE is still fatal",
+        "not ok 12 - late settings acquisition closes the old instance once and preserves replacement settings",
+        "not ok 13 - late settings close failure SETTINGS_CLOSE_FAILED remains visible after restart",
+        "not ok 14 - late settings close failure DESKTOP_START_CANCELLED remains visible after restart",
+        "not ok 15 - late settings close failure SETTINGS_CLOSE_FAILED remains visible after quit",
+        "not ok 16 - late settings close failure DESKTOP_START_CANCELLED remains visible after quit",
+        "not ok 17 - restart waits for the owned child exit even though old backend.start already rejected",
+        "not ok 18 - old cookie completion after replacement success cannot publish or fail another start",
+        "not ok 19 - old load completion after replacement success cannot publish or fail another start",
+        "not ok 20 - duplicate restart shares the drain and creates only one replacement",
+        "not ok 21 - quit during restart drain shares quit work and prevents replacement startup",
+        "not ok 22 - backend stop unconfirmed remains a replacement barrier with cancelled old start",
+        "not ok 23 - backend stop media remains a replacement barrier with cancelled old start",
+        "not ok 24 - backend stop failed remains a replacement barrier with cancelled old start",
+        "not ok 25 - drain failure is not hidden by old startup cancellation",
+        "not ok 26 - remove failure is not hidden by old startup cancellation",
+        "not ok 27 - clear failure is not hidden by old startup cancellation"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/159-desktop-startup-restart-race.test.mjs.log"
+    },
+    {
+      "file": "tests/dev-proxy.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.619,
+      "timeout": false,
+      "categories": [
+        "canonical-path-assumption"
+      ],
+      "failedTests": [
+        "not ok 1 - Vite dev proxy validates incoming origins before adapting to the strict backend boundary"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/165-dev-proxy.test.mjs.log"
+    },
+    {
+      "file": "tests/edit-task-app.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.452,
+      "timeout": false,
+      "categories": [
+        "source-harness-reference-failure",
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 1 - actual App routes only the twenty explicit writes into Task prepare/execute while excluded and legacy paths remain session based",
+        "not ok 2 - actual App rejects stale owner and existing legacy lane before creating any new identity",
+        "not ok 3 - actual App keeps drafts and durable identity after unknown loss, and recovery never installs historical ACK into Inspector",
+        "not ok 4 - actual App format recovery notifies the current draft owner only after the exact durable request is confirmed",
+        "not ok 5 - format rejected recovery also notifies its owner, while an unconfirmed acknowledgment never releases its draft fence",
+        "not ok 6 - actual App preserves fresh-save navigation fences and only refreshes the current project",
+        "not ok 7 - actual App same-project fresh save may acknowledge its mounted editor but suppresses old navigation message",
+        "not ok 8 - actual App preparation finishing after navigation is durable but does not execute from the obsolete view",
+        "not ok 9 - actual App respects a replaced subject draft fence after durable prepare without dispatching it",
+        "not ok 10 - actual App recovery finishing lookup after project change leaves unknown untouched and does not execute",
+        "not ok 11 - actual App acknowledges only fresh bound not_applied state; ordinary 4xx cannot clear unknown",
+        "not ok 12 - actual App terminal close rereads after a dropped ACK and releases the lane without retrying stale acknowledgment",
+        "not ok 13 - actual App terminal close observes another window ACK and never executes a changed nonterminal response",
+        "not ok 14 - actual App explicit adoption alone removes exact old session receipt only after strict server ACK",
+        "not ok 15 - actual App malformed adoption and race with a newer receipt never clear original or newer storage",
+        "not ok 16 - TaskCenter separates durable, legacy and generation details, retains generation recovery/cancel/retry controls",
+        "not ok 17 - actual TaskCenter does not render an empty-list claim when loading or error and keeps unknown card visible"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/166-edit-task-app.test.mjs.log"
+    },
+    {
+      "file": "tests/editor-project-create.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.738,
+      "timeout": false,
+      "categories": [
+        "source-harness-reference-failure"
+      ],
+      "failedTests": [
+        "not ok 22 - legacy native App create only requests scoped New and performs zero business actions (entry true)",
+        "not ok 23 - legacy native App create only requests scoped New and performs zero business actions (entry false)",
+        "not ok 25 - Web real create/runSession preserves legacy retry and response semantics without a native observer"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/171-editor-project-create.test.mjs.log"
+    },
+    {
+      "file": "tests/empty-workspace-mode.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.881,
+      "timeout": false,
+      "categories": [
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 1 - tests/empty-workspace-mode.test.mjs"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/176-empty-workspace-mode.test.mjs.log"
+    },
+    {
+      "file": "tests/export-history-ui.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.326,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation",
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 8 - App keeps history inside the controlled visible right dock with project identity and ordering"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/177-export-history-ui.test.mjs.log"
+    },
+    {
+      "file": "tests/export-loudness-ui.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.126,
+      "timeout": false,
+      "categories": [
+        "test-harness-json-truncation",
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 1 - classic TSX shared controls render compact measure-only default, optional collapsed targets and honest limits",
+        "not ok 2 - ready keeps exact file/range/revision/profile/hashes inside collapsed details and shows distinct units",
+        "not ok 3 - custom target shows exact needed gain and peak-room conflict, never a clamped gain or application control",
+        "not ok 4 - silence, short program, and below-gate measurements remain distinct from missing audio and failures",
+        "not ok 5 - pending makes all explicit actions busy, cancel is observer-only on owned row, drafts remain editable",
+        "not ok 6 - invalid draft, cancelled, nonready, restored and disconnected states remain explicit",
+        "not ok 7 - named and unnamed frozen exports share row control, other render kinds do not; download links stay unchanged",
+        "not ok 8 - layout reuses existing bounded dock row, without global CSS or widening layout",
+        "not ok 9 - actual component callbacks are passive until clicked, capture draft version, and prevent late result after input edit",
+        "not ok 10 - actual cancel callback is bound to its row/attempt and cannot cancel newer work",
+        "not ok 11 - actual App hook wiring uses accepted live ownership, pinned invocation and exact read-only operation"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/187-export-loudness-ui.test.mjs.log"
+    },
+    {
+      "file": "tests/export-range-ui.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.883,
+      "timeout": false,
+      "categories": [
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 12 - named and unnamed export history display immutable range while absent and preview rows remain unchanged",
+        "not ok 15 - only malformed range-present historical rows suppress downloads; valid selected and absent legacy keep existing controls"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/197-export-range-ui.test.mjs.log"
+    },
+    {
+      "file": "tests/export-sample-peak-media.test.mjs",
+      "exitCode": 1,
+      "seconds": 15.62,
+      "timeout": false,
+      "categories": [
+        "local-media-failure"
+      ],
+      "failedTests": [
+        "not ok 1 - real final AAC peaks match independent PCM for silence, quiet, antiphase, asymmetric and overdrive/fades"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/203-export-sample-peak-media.test.mjs.log"
+    },
+    {
+      "file": "tests/export-sample-peak-ui.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.199,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation",
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 1 - App wires one explicit historical-file observer with live project/workspace/navigation fences"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/208-export-sample-peak-ui.test.mjs.log"
+    },
+    {
+      "file": "tests/export-settings-media.test.mjs",
+      "exitCode": 1,
+      "seconds": 31.001,
+      "timeout": false,
+      "categories": [
+        "local-media-failure"
+      ],
+      "failedTests": [
+        "not ok 1 - all three timeline aspects deliver native/360/1080 with post-caption scale, exact frame boundaries and identical audio"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/213-export-settings-media.test.mjs.log"
+    },
+    {
+      "file": "tests/float-checked-export-backup.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.475,
+      "timeout": false,
+      "categories": [
+        "legacy-schema-or-exact-byte-expectation"
+      ],
+      "failedTests": [
+        "not ok 1 - cold backup verify and offline restore preserve v2 queued failed succeeded raw reports and keep inherited work held"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/218-float-checked-export-backup.test.mjs.log"
+    },
+    {
+      "file": "tests/float-checked-export-recovery.test.mjs",
+      "exitCode": 1,
+      "seconds": 16.829,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation",
+        "legacy-schema-or-exact-byte-expectation"
+      ],
+      "failedTests": [
+        "not ok 3 - pristine 140fa882 omitted and v1 golden receipts, snapshots, histories and rows survive open/read/replay byte-exact"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/220-float-checked-export-recovery.test.mjs.log"
+    },
+    {
+      "file": "tests/frame-extraction-integration.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.982,
+      "timeout": false,
+      "categories": [
+        "source-harness-reference-failure",
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 4 - actual App hook connects capture/rpc/reveal with source or narrow Properties visibility",
+        "not ok 5 - actual App source inspector keeps the normal frame panel and replaces it with the restored hold notice",
+        "not ok 6 - actual source inspector children slot exposes frame history for video and image while preserving range draft controls",
+        "not ok 8 - hidden Properties unsubscribes and cancels its read timer while source controller stays usable"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/226-frame-extraction-integration.test.mjs.log"
+    },
+    {
+      "file": "tests/frame-migration.test.mjs",
+      "exitCode": 1,
+      "seconds": 2.124,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation",
+        "legacy-schema-or-exact-byte-expectation"
+      ],
+      "failedTests": [
+        "not ok 10 - real fresh and independently frozen schema19 workspace startup produce identical frame invariants"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/229-frame-migration.test.mjs.log"
+    },
+    {
+      "file": "tests/generation-input-ui.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.626,
+      "timeout": false,
+      "categories": [
+        "test-harness-json-truncation"
+      ],
+      "failedTests": [
+        "not ok 5 - wired ProviderSettings renders accessible compact summaries and all role details from actual server profiles"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/237-generation-input-ui.test.mjs.log"
+    },
+    {
+      "file": "tests/i18n-command-unit.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.067,
+      "timeout": false,
+      "categories": [
+        "legacy-schema-or-exact-byte-expectation"
+      ],
+      "failedTests": [
+        "not ok 1 - pure help retains exact legacy bytes and schema object content in every presentation locale"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/245-i18n-command-unit.test.mjs.log"
+    },
+    {
+      "file": "tests/i18n-shell.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.394,
+      "timeout": false,
+      "categories": [
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 5 - header actions and native settings remain reachable without locale or resize remount keys"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/251-i18n-shell.test.mjs.log"
+    },
+    {
+      "file": "tests/image-compatible-migration.test.mjs",
+      "exitCode": 1,
+      "seconds": 2.321,
+      "timeout": false,
+      "categories": [
+        "legacy-schema-or-exact-byte-expectation"
+      ],
+      "failedTests": [
+        "not ok 4 - normal startup upgrades frozen schema17 once and preserves restart/replay bytes"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/258-image-compatible-migration.test.mjs.log"
+    },
+    {
+      "file": "tests/image-edit-migration.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.204,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation",
+        "sqlite-bigint-fixture"
+      ],
+      "failedTests": [
+        "not ok 1 - schema23 changes only image_reviews CHECKs and preserves every row, rowid, raw receipt, trigger, index, FK and sequence",
+        "not ok 2 - schema23 copy, external-trigger drop, parent drop, trigger restore, FK check and marker failures roll back byte-exact",
+        "not ok 3 - schema23 admits only a bound official edit descriptor and rejects cross-branch, oversized and mutable source authority",
+        "not ok 4 - fresh startup and frozen schema22 upgrade restore FK enforcement and restart without rewriting old bytes",
+        "not ok 5 - startup marker failure preserves frozen database and enables a later successful retry",
+        "not ok 6 - schema23 rejects missing transaction, an unguarded rebuild and an actual broken foreign-key graph"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/263-image-edit-migration.test.mjs.log"
+    },
+    {
+      "file": "tests/images-migration.test.mjs",
+      "exitCode": 1,
+      "seconds": 5.69,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation",
+        "legacy-schema-or-exact-byte-expectation"
+      ],
+      "failedTests": [
+        "not ok 4 - normal startup preserves schema15 rows through later migrations and the explicit format allowlist rebuild"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/281-images-migration.test.mjs.log"
+    },
+    {
+      "file": "tests/import-feedback.test.mjs",
+      "exitCode": 1,
+      "seconds": 15.031,
+      "timeout": false,
+      "categories": [
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 1 - actual App importFiles identifies confirmed, rejected, and unattempted files after partial success",
+        "not ok 2 - first explicit rejection confirms zero and identifies every unattempted remainder",
+        "not ok 3 - full success is sequential, names every confirmed file and normalizes existing audio aliases",
+        "not ok 4 - unsupported type after success is a local pre-POST failure with the skipped remainder",
+        "not ok 5 - oversize validation happens before FileReader and before POST",
+        "not ok 6 - FileReader onerror is a local failure, stops before POST and retains filenames",
+        "not ok 7 - FileReader onabort is a local failure, stops before POST and retains filenames",
+        "not ok 8 - synchronous FileReader throw and invalid read result are both local pre-POST failures",
+        "not ok 9 - fetch failure after a confirmed import is unknown and never retries or advances",
+        "not ok 10 - malformed JSON and invalid success envelopes from real rpc remain unknown",
+        "not ok 11 - invalid success asset identity, project, filename or MIME never counts as acknowledged",
+        "not ok 12 - a structured server 5xx is uncertain even when its code and message resemble a rejection",
+        "not ok 13 - large batches and hostile Unicode/HTML labels stay bounded plain text with exact counts",
+        "not ok 14 - project switch during FileReader stops before POST and does not clear a new input",
+        "not ok 15 - project switch during POST cannot continue the old batch or overwrite the new project",
+        "not ok 16 - A to B to A and mode navigation each invalidate old responses despite matching project ID",
+        "not ok 17 - new selection while busy is explicitly not started and fences old success, remainder and input cleanup",
+        "not ok 18 - late old-project cleanup cannot release a newer project batch busy lock",
+        "not ok 19 - unmount during read or POST prevents continuation, refresh, notification and stateful busy cleanup",
+        "not ok 20 - StrictMode effect reactivation does not resurrect old import ownership",
+        "not ok 21 - replacement input element is not cleared by completed old selection",
+        "not ok 22 - cleanup refresh failure still releases busy and clears only the current input",
+        "not ok 23 - actual App refresh cannot apply a late snapshot after newer selection, project switch or unmount",
+        "not ok 24 - normal actual App refresh applies the confirmed import and leaves busy/input clean",
+        "not ok 25 - real loopback HTTP and imported rpc: structured 4xx rejects only the current file",
+        "not ok 26 - real loopback HTTP and imported rpc: malformed 200 acknowledgement remains unknown",
+        "not ok 27 - real loopback HTTP and imported rpc: socket loss after observed POST stays unknown with no retry",
+        "not ok 28 - actual App interval discovers accepted asset after superseded old POST success without changing newer notice/input",
+        "not ok 29 - actual App visibilitychange discovers accepted asset after superseded old POST success without changing newer notice/input",
+        "not ok 30 - actual App poll after superseded POST success cannot apply an old project snapshot after newer project refresh",
+        "not ok 31 - actual App interval discovers accepted asset after superseded old POST unknown without changing newer notice/input",
+        "not ok 32 - actual App visibilitychange discovers accepted asset after superseded old POST unknown without changing newer notice/input",
+        "not ok 33 - actual App poll after superseded POST unknown cannot apply an old project snapshot after newer project refresh",
+        "not ok 34 - actual App polling honors hidden/dragging guards and removes its timer and visibility listener on cleanup",
+        "not ok 35 - restored import pins the first gesture and treats origin refusal as unknown without rekeying or batch replay",
+        "not ok 36 - home presentation never starts project polling or performs the loaded-project refresh",
+        "not ok 37 - actual API harness loads five exact real dependencies and rejects any unlisted module"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/283-import-feedback.test.mjs.log"
+    },
+    {
+      "file": "tests/integration.test.mjs",
+      "exitCode": 1,
+      "seconds": 148.203,
+      "timeout": false,
+      "categories": [
+        "mock-media-job-deadline",
+        "local-media-failure"
+      ],
+      "failedTests": [
+        "not ok 1 - durable HTTP acceptance: real process restarts, provider side effects, media and security"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/288-integration.test.mjs.log"
+    },
+    {
+      "file": "tests/last-project-app.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.774,
+      "timeout": false,
+      "categories": [
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 4 - actual App only remembers a successfully loaded explicit project, never initial recovery or reload-view",
+        "not ok 6 - actual same-project shortcut requires loaded project and a failed activation can be explicitly retried",
+        "not ok 8 - actual App startup chooses the remembered nonfirst project, with explicit URL precedence and no remember write",
+        "not ok 9 - actual App stale startup cannot replace newer selection, publish data after unmount or inspect restored locator",
+        "not ok 10 - initial foreign locator permits uncached manual project fallback; changed established identity blocks startup"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/290-last-project-app.test.mjs.log"
+    },
+    {
+      "file": "tests/local-delivery-backup.test.mjs",
+      "exitCode": 1,
+      "seconds": 2.409,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation"
+      ],
+      "failedTests": [
+        "not ok 1 - actual cold backup excludes delivery draft, immutable intent and atomic temp; actual restored profile cannot read or write them"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/294-local-delivery-backup.test.mjs.log"
+    },
+    {
+      "file": "tests/local-drafts-transports.test.mjs",
+      "exitCode": 1,
+      "seconds": 9.783,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation"
+      ],
+      "failedTests": [
+        "not ok 4 - a real cold schema-26 backup excludes populated local drafts and preserves the source sidecar exactly"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/306-local-drafts-transports.test.mjs.log"
+    },
+    {
+      "file": "tests/local-shot-text-app.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.395,
+      "timeout": false,
+      "categories": [
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 1 - actual App navigation sees synchronous shot text edits before generic dirty effect and preserves stored intent",
+        "not ok 2 - actual App late confirmation cannot discard newer edit shot draft",
+        "not ok 3 - actual App late confirmation cannot discard newer controller shot draft",
+        "not ok 4 - actual App late confirmation cannot discard newer project shot draft",
+        "not ok 5 - actual App cancelled navigation leaves shot draft untouched",
+        "not ok 7 - actual App shot fence blocks reference/generation work before touching legacy receipts",
+        "not ok 13 - actual fresh generation waits for its selected target registration/GET: {\"target\":\"shot-a\"}",
+        "not ok 14 - actual fresh generation waits for its selected target registration/GET: {\"controller\":false}",
+        "not ok 15 - actual fresh generation waits for its selected target registration/GET: {\"target\":\"shot-b\",\"loading\":true}",
+        "not ok 16 - actual fresh generation waits for its selected target registration/GET: {\"target\":\"shot-b\",\"pending\":true}",
+        "not ok 17 - actual fresh generation succeeds only after matching loaded target; frozen retry and restored fallback retain old admission"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/308-local-shot-text-app.test.mjs.log"
+    },
+    {
+      "file": "tests/local-shot-text-backup.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.912,
+      "timeout": false,
+      "categories": [
+        "legacy-schema-or-exact-byte-expectation"
+      ],
+      "failedTests": [
+        "not ok 1 - cold backup excludes shot draft, intent and atomic temp; restored profile rejects them before all I/O"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/309-local-shot-text-backup.test.mjs.log"
+    },
+    {
+      "file": "tests/local-shot-text-render.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.492,
+      "timeout": false,
+      "categories": [
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 2 - candidate preserves escaped raw title and explicit empty prompt without duplicate editable form",
+        "not ok 6 - new logic is typed and isolated from broad RPC, renderer storage, modal and duplicate field paths"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/314-local-shot-text-render.test.mjs.log"
+    },
+    {
+      "file": "tests/look-pack-portability.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.612,
+      "timeout": false,
+      "categories": [
+        "local-media-failure"
+      ],
+      "failedTests": [
+        "not ok 1 - project-owned Look survives removed source file, cold reopen, render and restored33 backup",
+        "not ok 2 - project-owned Look survives removed source file, cold reopen, render and restored35 backup"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/320-look-pack-portability.test.mjs.log"
+    },
+    {
+      "file": "tests/lut-resources-backup.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.158,
+      "timeout": false,
+      "categories": [
+        "backup-or-restored-profile-identity",
+        "schema-marker-expectation"
+      ],
+      "failedTests": [
+        "not ok 1 - offline cold capture and restore33 preserve exact bytes/hash/receipt without .cube media path",
+        "not ok 2 - offline cold capture and restore35 preserve exact bytes/hash/receipt without .cube media path"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/324-lut-resources-backup.test.mjs.log"
+    },
+    {
+      "file": "tests/mcp-discovery.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.285,
+      "timeout": false,
+      "categories": [
+        "mcp-owner-only-discovery"
+      ],
+      "failedTests": [
+        "not ok 2 - MCP desktop discovery reads owner-only files and follows token rotation"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/330-mcp-discovery.test.mjs.log"
+    },
+    {
+      "file": "tests/mcp.test.mjs",
+      "exitCode": 1,
+      "seconds": 47.546,
+      "timeout": false,
+      "categories": [
+        "mock-media-job-deadline",
+        "local-media-failure"
+      ],
+      "failedTests": [
+        "not ok 1 - A3 official MCP SDK stdio initialize/list/call controls durable HTTP project, jobs and versions"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/332-mcp.test.mjs.log"
+    },
+    {
+      "file": "tests/media-runtime-paths.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.545,
+      "timeout": false,
+      "categories": [
+        "canonical-path-assumption"
+      ],
+      "failedTests": [
+        "not ok 1 - mock generation and probe use selected absolute executables with no host PATH"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/336-media-runtime-paths.test.mjs.log"
+    },
+    {
+      "file": "tests/media-shutdown.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.597,
+      "timeout": false,
+      "categories": [
+        "canonical-path-assumption"
+      ],
+      "failedTests": [
+        "not ok 1 - shutdown interrupts a real long FFmpeg export, reaps its process and preserves queued recovery"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/337-media-shutdown.test.mjs.log"
+    },
+    {
+      "file": "tests/named-delivery-app.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.799,
+      "timeout": false,
+      "categories": [
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 1 - actual project guard allows first project without a delivery draft and preserves cancelled drafts",
+        "not ok 2 - actual project guard rejects new typing and replacement controller during confirmation",
+        "not ok 3 - actual App options and real coordinator preserve the exact original render input through prepare, execute and refresh",
+        "not ok 7 - real coordinator ACK refresh cannot clear a newer name typed during execution",
+        "not ok 8 - real coordinator ACK refresh cannot clear a newer name typed during refresh",
+        "not ok 9 - actual normal export uses coordinator with exact captured input and marks only its matching acknowledgement clean",
+        "not ok 10 - restored export preserves the legacy runner and exact named input without consulting the coordinator",
+        "not ok 11 - timeline preview remains on the legacy runner and never submits or acknowledges a delivery draft",
+        "not ok 13 - actual render unknown outcome retains draft and existing pending key prevents new submission",
+        "not ok 14 - actual render late acknowledgement cannot clear a changed draft or new project epoch",
+        "not ok 15 - cancelled project confirmation does not consume a valid render capture",
+        "not ok 18 - late accepted render cannot reopen delivery history after a newer panel or project choice"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/348-named-delivery-app.test.mjs.log"
+    },
+    {
+      "file": "tests/named-delivery-desktop.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.457,
+      "timeout": false,
+      "categories": [
+        "localized-native-dialog-expectation"
+      ],
+      "failedTests": [
+        "not ok 1 - named download uses actual response metadata and trusted Downloads only, with native overwrite and cancellation"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/351-named-delivery-desktop.test.mjs.log"
+    },
+    {
+      "file": "tests/named-delivery-dock.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.199,
+      "timeout": false,
+      "categories": [
+        "renderer-harness-import"
+      ],
+      "failedTests": [
+        "not ok 3 - actual component delegates valid page callbacks without local state, draft changes or implicit actions"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/352-named-delivery-dock.test.mjs.log"
+    },
+    {
+      "file": "tests/project-specifications-migration.test.mjs",
+      "exitCode": 1,
+      "seconds": 3.828,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation"
+      ],
+      "failedTests": [
+        "not ok 3 - actual schema20 startup migration matches fresh schema26 and is byte-stable across repeated restarts",
+        "not ok 7 - failed schema21 marker rolls back both new objects and raw-column task rebuild, then startup succeeds"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/428-project-specifications-migration.test.mjs.log"
+    },
+    {
+      "file": "tests/providers.test.mjs",
+      "exitCode": 1,
+      "seconds": 5.752,
+      "timeout": false,
+      "categories": [
+        "local-media-failure"
+      ],
+      "failedTests": [
+        "not ok 6 - mock download failure is recoverable without another generation submit",
+        "not ok 7 - mock produces playable 9:16 moving MP4s of all advertised durations with simulated labeling",
+        "not ok 24 - Runway downloads a playable output to managed storage without forwarding auth or signed URLs"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/437-providers.test.mjs.log"
+    },
+    {
+      "file": "tests/recovery-storage-details.test.mjs",
+      "exitCode": 1,
+      "seconds": 3.131,
+      "timeout": false,
+      "categories": [
+        "renderer-harness-import"
+      ],
+      "failedTests": [
+        "not ok 2 - disclosures have no custom actions, state, network, storage, or unsafe type escape"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/439-recovery-storage-details.test.mjs.log"
+    },
+    {
+      "file": "tests/reference-recovery-business.test.mjs",
+      "exitCode": 1,
+      "seconds": 18.949,
+      "timeout": false,
+      "categories": [
+        "ordinary-receipt-repair-gate",
+        "backup-or-restored-profile-identity"
+      ],
+      "failedTests": [
+        "not ok 14 - retention triggers bootstrap additively, preserve legacy bytes and block delete or replacement"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/442-reference-recovery-business.test.mjs.log"
+    },
+    {
+      "file": "tests/reference-recovery-transports.test.mjs",
+      "exitCode": 1,
+      "seconds": 3.197,
+      "timeout": false,
+      "categories": [
+        "ordinary-receipt-repair-gate",
+        "backup-or-restored-profile-identity"
+      ],
+      "failedTests": [
+        "not ok 1 - real HTTP CLI and official MCP lose attach/detach acknowledgements, retain ownership uncertainty and replay historical exact responses"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/443-reference-recovery-transports.test.mjs.log"
+    },
+    {
+      "file": "tests/reference-recovery-ui.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.504,
+      "timeout": false,
+      "categories": [
+        "source-harness-reference-failure",
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 1 - actual App legacy session runner validates both reference writes and preserves existing-binding attach no-op acknowledgements",
+        "not ok 2 - malformed 200 responses retain exact reference receipts until a complete explicit acknowledgement",
+        "not ok 3 - reference rollback proof requires its exact operation, project, request and reference rejection code",
+        "not ok 4 - a fresh proven reference rejection releases only its original key for a corrected intent",
+        "not ok 5 - fresh same-operation reference callbacks cannot implicitly replay a pending input, even unchanged",
+        "not ok 6 - stale-project reference callbacks cannot write either owner or perform any RPC",
+        "not ok 7 - missing, changed, cross-operation and wrong-owner Tasks receipts never create replacement reference requests",
+        "not ok 8 - same-session reload recovers original request bytes only through explicit Tasks replay",
+        "not ok 9 - historical attach and detach recovery do not require today’s edge and preserve newer selection and draft",
+        "not ok 10 - late reference ACK after project navigation changes no foreign data, pending view, selection or notice",
+        "not ok 11 - late same-project reference ACK respects navigation epoch and keeps a newer inspector draft",
+        "not ok 12 - an old reference refresh cannot overwrite a reopened project epoch or its newer selection",
+        "not ok 13 - late reference loss keeps only the original owner receipt without touching the foreign project",
+        "not ok 14 - unavailable session storage prevents reference dispatch and never creates an alternate key"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/444-reference-recovery-ui.test.mjs.log"
+    },
+    {
+      "file": "tests/right-dock-layout.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.349,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation",
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 3 - selecting a shot, node or clip leaves the Tasks and Delivery pages for Properties",
+        "not ok 5 - an empty timeline is flagged before Check, and the empty preview offers building it from the storyboard"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/447-right-dock-layout.test.mjs.log"
+    },
+    {
+      "file": "tests/server-lifecycle.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.513,
+      "timeout": false,
+      "categories": [
+        "canonical-path-assumption"
+      ],
+      "failedTests": [
+        "not ok 1 - exported server supports ephemeral loopback port, independent lifecycle and durable data",
+        "not ok 2 - refactored transport retains authorization, origin and host checks, without exposing token",
+        "not ok 3 - token remains private at rest, invalid startup releases lock for a corrected retry"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/452-server-lifecycle.test.mjs.log"
+    },
+    {
+      "file": "tests/server-storage.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.506,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation"
+      ],
+      "failedTests": [
+        "not ok 25 - legacy media0755 and SQLite0644 survive restart with exact project values and stored token normalization"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/453-server-storage.test.mjs.log"
+    },
+    {
+      "file": "tests/settings-center-ui.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.548,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation",
+        "source-harness-reference-failure",
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 14 - restored web requests normalize to General and cannot activate model pages through stale form callbacks",
+        "not ok 15 - web center stays first keyed sibling across home and workbench rather than replacing the editor tree",
+        "not ok 17 - actual App Ctrl+B and undo handlers work before settings opens and after close, but not with an open confirmation"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/456-settings-center-ui.test.mjs.log"
+    },
+    {
+      "file": "tests/source-range-ui.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.447,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation",
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 10 - App guards dirty clip before source selection, clears clip selection, and rereads after replay",
+        "not ok 14 - actual App range replay uses its original request and triggers latest scoped reread without installing historical ACK"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/462-source-range-ui.test.mjs.log"
+    },
+    {
+      "file": "tests/source-ranges.test.mjs",
+      "exitCode": 1,
+      "seconds": 4.072,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation"
+      ],
+      "failedTests": [
+        "not ok 11 - targeted v11/v12 additive reapplication preserves all old receipt bytes and fresh schema invariants"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/463-source-ranges.test.mjs.log"
+    },
+    {
+      "file": "tests/subject-video-recovery-ui.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.504,
+      "timeout": false,
+      "categories": [
+        "source-harness-reference-failure"
+      ],
+      "failedTests": [
+        "not ok 6 - actual session runner retains lost ACK and every unbound 4xx, then accepts only exact original subject replay",
+        "not ok 7 - actual late subject ACK cannot refresh or notify a replacement project, while preserving its confirmed original key outcome",
+        "not ok 9 - actual subject retry holds lost, malformed and rejected outcomes until exact original snapshot ACK",
+        "not ok 10 - actual known-subject retry cannot use stripped metadata or an absent receipt as legacy authority"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/472-subject-video-recovery-ui.test.mjs.log"
+    },
+    {
+      "file": "tests/subjects-domain.test.mjs",
+      "exitCode": 1,
+      "seconds": 2.271,
+      "timeout": false,
+      "categories": [
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 1 - strict schemas, eleven local operations, mandatory keys and bounded noncreating reads"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/476-subjects-domain.test.mjs.log"
+    },
+    {
+      "file": "tests/subjects-migration.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.899,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation"
+      ],
+      "failedTests": [
+        "not ok 2 - subject migration preserves all old rows, raw inputs, claims, receipts, indexes, triggers and sequence across repeated startup",
+        "not ok 3 - fresh and upgraded stores expose identical v15 schema and retain original twelve service/receipt behaviors",
+        "not ok 4 - empty legacy task migration preserves sqlite_sequence absence",
+        "not ok 5 - empty legacy task migration preserves sqlite_sequence 0",
+        "not ok 6 - empty legacy task migration preserves sqlite_sequence 8123",
+        "not ok 7 - failure after the rebuild rolls back every schema15 change, all rows and sequence, then normal restart succeeds"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/478-subjects-migration.test.mjs.log"
+    },
+    {
+      "file": "tests/subtitles-media.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.629,
+      "timeout": false,
+      "categories": [
+        "local-media-failure"
+      ],
+      "failedTests": [
+        "not ok 2 - one bounded font-only process measures distinct UTF-8 literal cues with hostile paths and all 100 captions",
+        "not ok 3 - caption filters preserve half-open global frames across media edges without adding audio filters",
+        "not ok 4 - portrait landscape and square renders show correct boundary frames with identical audio and cleanup"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/482-subtitles-media.test.mjs.log"
+    },
+    {
+      "file": "tests/subtitles-migration.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.874,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation"
+      ],
+      "failedTests": [
+        "not ok 3 - real schema21 startup equals fresh schema26 and repeated restart preserves every retained byte",
+        "not ok 7 - failed schema22 marker rolls back raw rebuild, schema objects and sequence, then startup retries safely"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/483-subtitles-migration.test.mjs.log"
+    },
+    {
+      "file": "tests/subtitles-package.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.064,
+      "timeout": false,
+      "categories": [
+        "platform-assumption"
+      ],
+      "failedTests": [
+        "not ok 4 - gzip verifier streams >10MiB font, detects corruption/missing files, and reads GNU tar output"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/484-subtitles-package.test.mjs.log"
+    },
+    {
+      "file": "tests/task-center-app.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.348,
+      "timeout": false,
+      "categories": [
+        "source-harness-reference-failure",
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 13 - direct timeline.format.set runner cannot steal the dock after a delayed unknown result",
+        "not ok 14 - direct timeline.subtitle.add runner cannot steal the dock after a delayed unknown result",
+        "not ok 15 - direct subject.create runner cannot steal the dock after a delayed unknown result",
+        "not ok 16 - delayed unknown still reveals Tasks when the original view choice is current",
+        "not ok 17 - already accepted exact result still acknowledges and refreshes after the user leaves Tasks",
+        "not ok 18 - Tasks recovery lookup loses execution and notice authority when the pane hides",
+        "not ok 19 - Tasks recovery handles an applied receipt after hiding without rewriting drafts or opening panels",
+        "not ok 20 - Tasks hidden recovery 401 retains authentication handling, changed project=false",
+        "not ok 21 - Tasks hidden recovery 401 retains authentication handling, changed project=true"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/490-task-center-app.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-audio-preview-app.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.403,
+      "timeout": false,
+      "categories": [
+        "source-harness-reference-failure",
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 1 - actual App hook reads the current saved snapshot, supplies exact RPC options, and never prepares on render",
+        "not ok 2 - an unapplied clip recovery candidate warns even with clean inputs without entering the saved mix or changing its owner",
+        "not ok 3 - actual App hidden signal retires sound and never prepares/resumes from a rerender",
+        "not ok 4 - actual App sourceTab signal retires sound and never prepares/resumes from a rerender",
+        "not ok 5 - actual App canvasMode signal retires sound and never prepares/resumes from a rerender",
+        "not ok 6 - actual App modal signal retires sound and never prepares/resumes from a rerender",
+        "not ok 7 - actual App comparison signal retires sound and never prepares/resumes from a rerender",
+        "not ok 8 - actual App clipSwitch signal retires sound and never prepares/resumes from a rerender",
+        "not ok 9 - actual App sourceSwitch signal retires sound and never prepares/resumes from a rerender",
+        "not ok 10 - actual App logout signal retires sound and never prepares/resumes from a rerender",
+        "not ok 11 - actual App disconnected signal retires sound and never prepares/resumes from a rerender",
+        "not ok 12 - actual App restored signal retires sound and never prepares/resumes from a rerender",
+        "not ok 13 - actual App projectReopen signal retires sound and never prepares/resumes from a rerender",
+        "not ok 14 - actual App revision signal retires sound and never prepares/resumes from a rerender",
+        "not ok 15 - unaccepted project data cannot start audition through actual App readiness guards",
+        "not ok 16 - actual App clock display stays ephemeral while each explicit seek writes the saved view exactly once",
+        "not ok 17 - actual native-player guard revokes current sound, while stale media can only pause itself",
+        "not ok 19 - actual TSX callbacks pass their rendered owner once; shared Slider seek remains an explicit action",
+        "not ok 20 - actual component never substitutes a last-frame prepare for an outside or empty saved range"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/507-timeline-audio-preview-app.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-clip-loudness-ui.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.667,
+      "timeout": false,
+      "categories": [
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 6 - actual host binds selected saved clip and shared RPC; comparison/source overlays and draft conflicts fence analysis"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/529-timeline-clip-loudness-ui.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-colour-media.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.1,
+      "timeout": false,
+      "categories": [
+        "local-media-failure"
+      ],
+      "failedTests": [
+        "not ok 3 - shared production SDR renderer grades source before padding and preview/export decode identically",
+        "not ok 4 - zero strength managed render needs no resource and differs from unsupported-source bypass",
+        "not ok 5 - managed multitrack padding and subtitles retain layer ownership through an interior range",
+        "not ok 6 - actual 10-bit limited source uses explicit SDR interpretation and limited output",
+        "not ok 7 - actual 10-bit full source uses explicit SDR interpretation and limited output"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/534-timeline-colour-media.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-colour-worker.test.mjs",
+      "exitCode": 1,
+      "seconds": 3.645,
+      "timeout": false,
+      "categories": [
+        "backup-or-restored-profile-identity",
+        "local-media-failure"
+      ],
+      "failedTests": [
+        "not ok 1 - real accepted LUT job uses exact frozen receipt, preflight, shared worker and artifact verification",
+        "not ok 4 - physical source replacement at capability prevents managed-colour publication",
+        "not ok 5 - physical source replacement at prepublication prevents managed-colour publication",
+        "not ok 6 - cold backup32 restore33 retains exact LUT and source interpretation and explicitly rerenders"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/536-timeline-colour-worker.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-export-range-media.test.mjs",
+      "exitCode": 1,
+      "seconds": 4.507,
+      "timeout": false,
+      "categories": [
+        "local-media-failure"
+      ],
+      "failedTests": [
+        "not ok 1 - phase fixture: selected 24fps video and resampled faded audio match a decoded full-reference crop",
+        "not ok 4 - three canvas presets preserve subtitle exclusive edges, overlapping layers, gaps and existing delivery scales"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/539-timeline-export-range-media.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-float-media.test.mjs",
+      "exitCode": 1,
+      "seconds": 4.104,
+      "timeout": false,
+      "categories": [
+        "local-media-failure"
+      ],
+      "failedTests": [
+        "not ok 5 - actual selected v2 preserves global subtitle timing and exact float envelope, with observed intermediate storage tradeoff"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/547-timeline-float-media.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-image-budget.test.mjs",
+      "exitCode": 1,
+      "seconds": 5.399,
+      "timeout": false,
+      "categories": [
+        "backup-or-restored-profile-identity"
+      ],
+      "failedTests": [
+        "not ok 13 - cold backup32 and restored33 preserve exact-limit evidence, receipts and history across reopen",
+        "not ok 14 - restored33 install rolls back exact-limit timeline, receipt and history bytes on commit failure",
+        "not ok 24 - raw not-applied image-budget error cannot expand historical role 33"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/551-timeline-image-budget.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-image-concurrency.test.mjs",
+      "exitCode": 1,
+      "seconds": 2.023,
+      "timeout": false,
+      "categories": [
+        "backup-or-restored-profile-identity",
+        "local-media-failure"
+      ],
+      "failedTests": [
+        "not ok 4 - production render opens only active PNG inputs: twelve sequential",
+        "not ok 5 - production render opens only active PNG inputs: two visible plus hidden",
+        "not ok 8 - restored33 rejects an over-budget frozen export consistently without changing retained evidence",
+        "not ok 9 - restored33 rejects an over-budget frozen receipt consistently without changing retained evidence"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/554-timeline-image-concurrency.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-image-filter.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.876,
+      "timeout": false,
+      "categories": [
+        "local-media-failure"
+      ],
+      "failedTests": [
+        "not ok 3 - actual PNG production conversion covers all256 RGB and alpha codes without scaling",
+        "not ok 4 - narrow and odd plane boundaries preserve straight RGB, alpha and final RGBA8",
+        "not ok 5 - nonidentity creative look is after display conversion on straight RGB and never alpha",
+        "not ok 6 - production resize matches mirrored bilinear oracle up/down, odd and 65536 pixel bound",
+        "not ok 7 - hidden RGB is invariant after look/resize and contain padding remains transparent",
+        "not ok 8 - one/two encoded RGB8 premultiplied overlays match independent composition oracle",
+        "not ok 9 - mixed known BT709 limited video background and PNG keep explicit limited YUV420 output mapping",
+        "not ok 10 - owned static layer derives once, binds exact look identity and decodes byte-identically to direct graph",
+        "not ok 11 - owned layer rejects hash tampering and preserves unknown replacement files"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/555-timeline-image-filter.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-image-media.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.932,
+      "timeout": false,
+      "categories": [
+        "local-media-failure"
+      ],
+      "failedTests": [
+        "not ok 1 - production mixed PNG/video/subtitle preview and export share exact decoded output",
+        "not ok 2 - creative LUT on straight image RGB leaves alpha/padding/background/subtitle independent"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/556-timeline-image-media.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-image-restored-render.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.259,
+      "timeout": false,
+      "categories": [
+        "local-media-failure"
+      ],
+      "failedTests": [
+        "not ok 1 - cold backup32→restored33 explicitly rerenders mixed PNG/video/subtitle with exact decoded parity"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/557-timeline-image-restored-render.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-image-transports.test.mjs",
+      "exitCode": 1,
+      "seconds": 2.285,
+      "timeout": false,
+      "categories": [
+        "backup-or-restored-profile-identity"
+      ],
+      "failedTests": [
+        "not ok 5 - actual authenticated HTTP, CLI and official MCP preserve image inspection scope; restored33 refuses even an explicit origin"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/559-timeline-image-transports.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-jpeg-concurrency.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.564,
+      "timeout": false,
+      "categories": [
+        "local-media-failure"
+      ],
+      "failedTests": [
+        "not ok 3 - production renderer opens only active combined image inputs: PNG plus JPEG with hidden PNG/JPEG",
+        "not ok 4 - production renderer opens only active combined image inputs: six nonoverlapping alternating sources"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/563-timeline-jpeg-concurrency.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-jpeg-decode.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.823,
+      "timeout": false,
+      "categories": [
+        "local-media-failure"
+      ],
+      "failedTests": [
+        "not ok 1 - strict 444 decoder and transfer use actual RGB24, not lossy pre-encode pixels",
+        "not ok 2 - strict 422 decoder and transfer use actual RGB24, not lossy pre-encode pixels",
+        "not ok 3 - strict 420 decoder and transfer use actual RGB24, not lossy pre-encode pixels"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/564-timeline-jpeg-decode.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-jpeg-restored-render.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.422,
+      "timeout": false,
+      "categories": [
+        "local-media-failure"
+      ],
+      "failedTests": [
+        "not ok 1 - cold backup34→restored35 rerenders mixed JFIF/PNG/video/subtitle with exact decoded parity and retained LUT reads"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/566-timeline-jpeg-restored-render.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-loudness-apply-app.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.499,
+      "timeout": false,
+      "categories": [
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 1 - actual App callback routes scalar request through real task client prepare/execute/ACK; no direct RPC or gain array",
+        "not ok 2 - actual App unknown prepare survives controller/server restart and recovers original key without a new prepare",
+        "not ok 3 - actual App unknown execute survives controller/server restart and recovers original key without a new prepare",
+        "not ok 4 - late navigation after persisted prepare leaves original durable task recoverable without execute",
+        "not ok 5 - malformed application ACK cannot release durable lane or become UI success",
+        "not ok 7 - actual review and App durable path tolerate only their own validated prepared-task pending fence"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/569-timeline-loudness-apply-app.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-loudness-apply-close.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.682,
+      "timeout": false,
+      "categories": [
+        "source-harness-reference-failure",
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 1 - actual App timeout clears generic busy, but apply unknown remains a native hard block through exact recovery",
+        "not ok 2 - only the exact original acknowledged terminal task can release close; stale or malformed recovery is passive",
+        "not ok 3 - lost prepare retains original scalar binding and clears only after explicit terminal recovery without another prepare",
+        "not ok 4 - hiding, navigation and a late old-project ACK retain the new owner and its hard block",
+        "not ok 5 - unknown survives owner navigation and back, effect cleanup/reattach, and exact old recovery",
+        "not ok 8 - actual App recovery scope rejects copied tasks in another normal workspace or blocked identity, but permits original workspace after UI epoch change",
+        "not ok 10 - actual App missing recovery identity cannot confirm, mint a request or create a pending apply",
+        "not ok 11 - actual App malformed recovery identity cannot confirm, mint a request or create a pending apply",
+        "not ok 12 - actual App blocked recovery identity cannot confirm, mint a request or create a pending apply",
+        "not ok 13 - actual App changed recovery identity during confirmation exits busy without POST, without render",
+        "not ok 14 - actual App unverified recovery identity during confirmation exits busy without POST, without render",
+        "not ok 15 - actual App blocked recovery identity during confirmation exits busy without POST, without render",
+        "not ok 16 - actual App changed recovery identity during confirmation exits busy without POST, with render",
+        "not ok 17 - actual App unverified recovery identity during confirmation exits busy without POST, with render",
+        "not ok 18 - actual App blocked recovery identity during confirmation exits busy without POST, with render"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/572-timeline-loudness-apply-close.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-mcp.test.mjs",
+      "exitCode": 1,
+      "seconds": 43.774,
+      "timeout": false,
+      "categories": [
+        "mock-media-job-deadline",
+        "local-media-failure"
+      ],
+      "failedTests": [
+        "not ok 1 - timeline official SDK protocol exercises strict tools, shared HTTP state, exact replay and real backend restart"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/580-timeline-mcp.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-media.test.mjs",
+      "exitCode": 1,
+      "seconds": 64.964,
+      "timeout": false,
+      "categories": [
+        "mock-media-job-deadline",
+        "local-media-failure"
+      ],
+      "failedTests": [
+        "not ok 1 - multitrack v2 real-media rendering acceptance"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/581-timeline-media.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-mix-loudness-decoder.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.393,
+      "timeout": false,
+      "categories": [
+        "frozen-fixture-hash-drift"
+      ],
+      "failedTests": [
+        "not ok 3 - current renderer retains exact shared audio helper wiring and unchanged trusted filter literals"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/585-timeline-mix-loudness-decoder.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-mix-loudness-media.test.mjs",
+      "exitCode": 1,
+      "seconds": 3.537,
+      "timeout": false,
+      "categories": [
+        "frozen-fixture-hash-drift"
+      ],
+      "failedTests": [
+        "not ok 6 - complete v1 and float-v2 render argv and final MP4 bytes match the reconstructed baseline exactly"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/587-timeline-mix-loudness-media.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-mix-loudness-ui.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.909,
+      "timeout": false,
+      "categories": [
+        "source-harness-reference-failure",
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 7 - actual App wiring reads saved snapshot, pinned workspace and live draft controllers without crossing export extractor markers"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/592-timeline-mix-loudness-ui.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-opacity-legacy-render-regression.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.285,
+      "timeout": false,
+      "categories": [
+        "archive-without-git-history"
+      ],
+      "failedTests": [
+        "not ok 1 - tests/timeline-opacity-legacy-render-regression.test.mjs"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/597-timeline-opacity-legacy-render-regression.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-preflight-business.test.mjs",
+      "exitCode": 1,
+      "seconds": 8.273,
+      "timeout": false,
+      "categories": [
+        "local-media-failure"
+      ],
+      "failedTests": [
+        "not ok 22 - restricted metadata probe accepts PNG JPEG WEBP MP4 WebM MP3 WAV and M4A with no full-decode process"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/603-timeline-preflight-business.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-recovery-audit.test.mjs",
+      "exitCode": 1,
+      "seconds": 3.433,
+      "timeout": false,
+      "categories": [
+        "source-harness-reference-failure"
+      ],
+      "failedTests": [
+        "not ok 2 - App undo: held prepare and repeated shortcut/click create one exact intent",
+        "not ok 3 - App undo: bound not_applied conflict closes the task and refreshes current state",
+        "not ok 4 - App undo: ordinary 409 retains the original intent without automatic retry",
+        "not ok 5 - App undo: recreated function scope explicitly recovers a historical ACK without installing it",
+        "not ok 6 - App undo: closing Tasks during lookup revokes the passed execution callback",
+        "not ok 7 - App redo: held prepare and repeated shortcut/click create one exact intent",
+        "not ok 8 - App redo: bound not_applied conflict closes the task and refreshes current state",
+        "not ok 9 - App redo: ordinary 409 retains the original intent without automatic retry",
+        "not ok 10 - App redo: recreated function scope explicitly recovers a historical ACK without installing it",
+        "not ok 11 - App redo: closing Tasks during lookup revokes the passed execution callback"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/605-timeline-recovery-audit.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-recovery-transports.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.898,
+      "timeout": false,
+      "categories": [
+        "ordinary-receipt-repair-gate",
+        "backup-or-restored-profile-identity"
+      ],
+      "failedTests": [
+        "not ok 1 - real HTTP, CLI and official MCP retain ambiguous lost-commit errors and replay exact bytes after backend recreation"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/607-timeline-recovery-transports.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-recovery-ui.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.441,
+      "timeout": false,
+      "categories": [
+        "source-harness-reference-failure",
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 1 - actual App legacy session runner guards exactly the sixteen timeline writes and accepts their complete matching acknowledgements",
+        "not ok 2 - format recovery preserves expected project revision and absent-timeline revision zero in the original session intent",
+        "not ok 3 - every timeline write retains the exact original receipt after loss, 404/409 and corrupt ACK until explicit valid replay",
+        "not ok 4 - timeline rollback requires matching request-bound proof and rejects forbidden or contradictory claims",
+        "not ok 5 - fresh proven timeline rejection releases the key for a new user intent",
+        "not ok 6 - same-session reload rediscovers exact pending writes without automatically submitting or accepting newer project state",
+        "not ok 7 - late timeline results preserve project/navigation fences and release only their original busy key",
+        "not ok 8 - late same-project ACK respects draft navigation epoch while an opted-in mounted inspector can receive its own ACK",
+        "not ok 9 - late loss after project navigation retains only the original project receipt for explicit recovery",
+        "not ok 10 - retained timeline and reference callbacks reject old-project input before any persistence or RPC",
+        "not ok 11 - missing timeline and reference Tasks receipts cannot be recreated by an obsolete replay callback",
+        "not ok 12 - changed timeline and reference replay inputs or operation cannot replace the original saved request",
+        "not ok 13 - stored timeline or reference input with a different owner stays intact and is never dispatched",
+        "not ok 14 - fresh timeline and reference actions cannot dispatch a different operation stored under the same key",
+        "not ok 15 - preview and export keys remain independent while pending preview cannot silently resubmit",
+        "not ok 16 - digest-bound render stays pending on matching public refresh and clears only after explicit exact replay",
+        "not ok 17 - actual App catch and project refresh cannot erase a render receipt after source-ownership or receipt rejection",
+        "not ok 18 - actual App refresh validates restored identity and held exports before changing data or reconciling receipts",
+        "not ok 20 - pending timeline and reference cards disclose session-only recovery without broadening generation copy",
+        "not ok 21 - reference attach and detach retain ordinary 4xx without proof and unrelated matching records cannot clear them"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/608-timeline-recovery-ui.test.mjs.log"
+    },
+    {
+      "file": "tests/timeline-volume-envelope-mutations.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.443,
+      "timeout": false,
+      "categories": [
+        "test-runner-module-mock-flag"
+      ],
+      "failedTests": [
+        "not ok 1 - tests/timeline-volume-envelope-mutations.test.mjs"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/623-timeline-volume-envelope-mutations.test.mjs.log"
+    },
+    {
+      "file": "tests/topbar-save-status.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.624,
+      "timeout": false,
+      "categories": [
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 9 - App owns one busy projection, annotation-aware dirty status, late-bound Retry and unchanged reload fence",
+        "not ok 10 - actual App ignores delayed A acknowledgement after B activation without a new write or stale visible state",
+        "not ok 11 - actual Reload waits for confirmation and rejects newer project, navigation or workspace context",
+        "not ok 12 - actual Retry replays exact lost-response body and cannot clean inspector or format drafts",
+        "not ok 13 - actual App Retry callback reads the current project ref at click rather than render",
+        "not ok 14 - actual conflict has only Reload and passive rerenders during held saves cannot mutate drafts, panels or paid review"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/629-topbar-save-status.test.mjs.log"
+    },
+    {
+      "file": "tests/transport-utf8-output.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.538,
+      "timeout": false,
+      "categories": [
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 4 - every inventoried test/QA text collector configures continuous decoding at its actual listener, before delivery"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/630-transport-utf8-output.test.mjs.log"
+    },
+    {
+      "file": "tests/ui-components.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.786,
+      "timeout": false,
+      "categories": [
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 9 - renderer uses shared components for ordinary controls and modal confirmations"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/634-ui-components.test.mjs.log"
+    },
+    {
+      "file": "tests/version-comparison-app.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.379,
+      "timeout": false,
+      "categories": [
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 6 - background visibility, exact comparison ownership and four-locale catalog are wired without duplicate UI"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/636-version-comparison-app.test.mjs.log"
+    },
+    {
+      "file": "tests/version-comparison-media.test.mjs",
+      "exitCode": 1,
+      "seconds": 3.975,
+      "timeout": false,
+      "categories": [
+        "local-media-failure"
+      ],
+      "failedTests": [
+        "not ok 2 - comparison GET/HEAD/ranges serve exact production Mock-published version with no writes"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/637-version-comparison-media.test.mjs.log"
+    },
+    {
+      "file": "tests/video-first-last-ui.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.737,
+      "timeout": false,
+      "categories": [
+        "source-harness-reference-failure",
+        "source-text-or-harness-assertion"
+      ],
+      "failedTests": [
+        "not ok 14 - actual save runner keeps malformed tail ACK pending and preserves draft; exact historical replay clears only original key",
+        "not ok 15 - actual create runner rejects missing explicit null or UUID tail ACK, while omitted-tail requests keep legacy ACK shape"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/644-video-first-last-ui.test.mjs.log"
+    },
+    {
+      "file": "tests/workspace-backup-marker-bounds.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.788,
+      "timeout": false,
+      "categories": [
+        "sqlite-bigint-fixture"
+      ],
+      "failedTests": [
+        "not ok 4 - ordinary24 unknown journal survives startup migration and cold40 archive while fixed41 restore refuses it"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/655-workspace-backup-marker-bounds.test.mjs.log"
+    },
+    {
+      "file": "tests/workspace-blob-admission-boundary.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.417,
+      "timeout": false,
+      "categories": [
+        "sqlite-bigint-fixture"
+      ],
+      "failedTests": [
+        "not ok 1 - separate initial TEXT ordinary24 enters40 and cold reopens without changing original typed rows",
+        "not ok 2 - separate initial TEXT source captured by fixed25 cold reopens with its complete snapshot unchanged",
+        "not ok 3 - original golden BLOB ordinary24 remains historically valid and current admission refuses without writes",
+        "not ok 4 - original golden BLOB restored25 retains its fixed capture evidence and current admission refuses without writes",
+        "not ok 5 - separate initial TEXT ordinary24-mock enters40 and cold reopens without changing original typed rows",
+        "not ok 6 - separate initial TEXT source captured by fixed25-mock cold reopens with its complete snapshot unchanged",
+        "not ok 7 - original golden BLOB ordinary24-mock remains historically valid and current admission refuses without writes",
+        "not ok 8 - original golden BLOB restored25-mock retains its fixed capture evidence and current admission refuses without writes",
+        "not ok 9 - separate initial TEXT known-marker-gap admits ordinary40 while preserving original rows and cold reopen",
+        "not ok 10 - original golden BLOB known-marker-gap is refused by current admission without snapshot or file-byte changes",
+        "not ok 11 - separate initial TEXT initial-markers-absent admits ordinary40 while preserving original rows and cold reopen",
+        "not ok 12 - original golden BLOB initial-markers-absent is refused by current admission without snapshot or file-byte changes"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/660-workspace-blob-admission-boundary.test.mjs.log"
+    },
+    {
+      "file": "tests/workspace-frozen-evidence-v40.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.371,
+      "timeout": false,
+      "categories": [
+        "runtime-version-pin"
+      ],
+      "failedTests": [
+        "not ok 1 - tests/workspace-frozen-evidence-v40.test.mjs"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/664-workspace-frozen-evidence-v40.test.mjs.log"
+    },
+    {
+      "file": "tests/workspace-panel-intent.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.319,
+      "timeout": false,
+      "categories": [
+        "source-harness-reference-failure"
+      ],
+      "failedTests": [
+        "not ok 1 - an uninterrupted Add-to-Timeline acknowledgement reveals its accepted clip once without opening a collapsed inspector",
+        "not ok 2 - a newer canvas panel hide wins over a held bridge reveal while preserving the accepted clip",
+        "not ok 3 - newer narrow canvas navigation to its center suppresses a held bridge reveal",
+        "not ok 4 - a newer editing panel hide wins over a held bridge reveal while preserving the accepted clip",
+        "not ok 5 - newer narrow editing navigation to its center suppresses a held bridge reveal"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/670-workspace-panel-intent.test.mjs.log"
+    },
+    {
+      "file": "tests/workspace-preferences-http.test.mjs",
+      "exitCode": 1,
+      "seconds": 2.209,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation"
+      ],
+      "failedTests": [
+        "not ok 3 - official MCP discovery and calls cannot reach renderer workspace preferences"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/673-workspace-preferences-http.test.mjs.log"
+    },
+    {
+      "file": "tests/workspace-receipt-protections.test.mjs",
+      "exitCode": 1,
+      "seconds": 2.04,
+      "timeout": false,
+      "categories": [
+        "sqlite-bigint-fixture"
+      ],
+      "failedTests": [
+        "not ok 3 - current feature admission refuses the intentionally raw historical receipt fixture without changing it",
+        "not ok 4 - fixed26 historical receipt repair: ordinary24 startup restores only missing trusted receipts: immutable_timeline_responses,immutable_reference_responses,reject_reference_request_replacement,retain_reference_requests",
+        "not ok 5 - fixed26 historical receipt repair: ordinary24 startup restores only missing trusted receipts: immutable_timeline_responses",
+        "not ok 6 - fixed26 historical receipt repair: ordinary24 startup restores only missing trusted receipts: immutable_reference_responses",
+        "not ok 7 - fixed26 historical receipt repair: ordinary24 startup restores only missing trusted receipts: reject_reference_request_replacement",
+        "not ok 8 - fixed26 historical receipt repair: ordinary24 startup restores only missing trusted receipts: retain_reference_requests",
+        "not ok 9 - fixed26 historical receipt repair: ordinary26 startup restores only missing trusted receipts: immutable_timeline_responses,immutable_reference_responses,reject_reference_request_replacement,retain_reference_requests",
+        "not ok 10 - fixed26 historical receipt repair: ordinary26 startup restores only missing trusted receipts: immutable_timeline_responses",
+        "not ok 11 - fixed26 historical receipt repair: ordinary26 startup restores only missing trusted receipts: immutable_reference_responses",
+        "not ok 12 - fixed26 historical receipt repair: ordinary26 startup restores only missing trusted receipts: reject_reference_request_replacement",
+        "not ok 13 - fixed26 historical receipt repair: ordinary26 startup restores only missing trusted receipts: retain_reference_requests",
+        "not ok 14 - fixed26 historical receipt repair: actual26 file reopen restores all four protections with raw receipts unchanged",
+        "not ok 15 - fixed26 historical receipt repair: ordinary24 refuses changed known trigger SQL before any receipt or migration DDL",
+        "not ok 16 - fixed26 historical receipt repair: ordinary24 refuses known trigger on another table before any receipt or migration DDL",
+        "not ok 17 - fixed26 historical receipt repair: ordinary24 refuses case-only trigger name collision before any receipt or migration DDL",
+        "not ok 18 - fixed26 historical receipt repair: ordinary24 refuses table collides with trigger name before any receipt or migration DDL",
+        "not ok 19 - fixed26 historical receipt repair: ordinary24 refuses view collides with trigger name before any receipt or migration DDL",
+        "not ok 20 - fixed26 historical receipt repair: ordinary24 refuses index collides with trigger name before any receipt or migration DDL",
+        "not ok 21 - fixed26 historical receipt repair: ordinary24 refuses changed receipt table before any receipt or migration DDL",
+        "not ok 22 - fixed26 historical receipt repair: ordinary24 refuses missing receipt table before any receipt or migration DDL",
+        "not ok 23 - fixed26 historical receipt repair: ordinary24 refuses view replaces receipt table before any receipt or migration DDL",
+        "not ok 24 - fixed26 historical receipt repair: ordinary24 refuses temporary receipt table shadow before any receipt or migration DDL",
+        "not ok 25 - fixed26 historical receipt repair: ordinary24 refuses temporary known-name trigger collision before any receipt or migration DDL",
+        "not ok 26 - fixed26 historical receipt repair: ordinary26 refuses changed known trigger SQL before any receipt or migration DDL",
+        "not ok 27 - fixed26 historical receipt repair: ordinary26 refuses known trigger on another table before any receipt or migration DDL",
+        "not ok 28 - fixed26 historical receipt repair: ordinary26 refuses case-only trigger name collision before any receipt or migration DDL",
+        "not ok 29 - fixed26 historical receipt repair: ordinary26 refuses table collides with trigger name before any receipt or migration DDL",
+        "not ok 30 - fixed26 historical receipt repair: ordinary26 refuses view collides with trigger name before any receipt or migration DDL",
+        "not ok 31 - fixed26 historical receipt repair: ordinary26 refuses index collides with trigger name before any receipt or migration DDL",
+        "not ok 32 - fixed26 historical receipt repair: ordinary26 refuses changed receipt table before any receipt or migration DDL",
+        "not ok 33 - fixed26 historical receipt repair: ordinary26 refuses missing receipt table before any receipt or migration DDL",
+        "not ok 34 - fixed26 historical receipt repair: ordinary26 refuses view replaces receipt table before any receipt or migration DDL",
+        "not ok 35 - fixed26 historical receipt repair: ordinary26 refuses temporary receipt table shadow before any receipt or migration DDL",
+        "not ok 36 - fixed26 historical receipt repair: ordinary26 refuses temporary known-name trigger collision before any receipt or migration DDL",
+        "not ok 37 - fixed26 historical receipt repair: ordinary26 edit-task schema gate rejects before receipt reconstruction",
+        "not ok 38 - fixed26 historical receipt repair: complete24 marker trigger cannot execute via historical bootstrap or repair",
+        "not ok 39 - fixed26 historical receipt repair: receipt-only repair preserves unrelated custom objects and never invokes their triggers",
+        "not ok 40 - fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at before immutable_timeline_responses",
+        "not ok 41 - fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at after immutable_timeline_responses",
+        "not ok 42 - fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at before immutable_reference_responses",
+        "not ok 43 - fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at after immutable_reference_responses",
+        "not ok 44 - fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at before reject_reference_request_replacement",
+        "not ok 45 - fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at after reject_reference_request_replacement",
+        "not ok 46 - fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at before retain_reference_requests",
+        "not ok 47 - fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at after retain_reference_requests",
+        "not ok 48 - fixed26 historical receipt repair: ordinary24 migration/receipt repair rolls back every missing guard at before COMMIT",
+        "not ok 49 - fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at before immutable_timeline_responses",
+        "not ok 50 - fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at after immutable_timeline_responses",
+        "not ok 51 - fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at before immutable_reference_responses",
+        "not ok 52 - fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at after immutable_reference_responses",
+        "not ok 53 - fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at before reject_reference_request_replacement",
+        "not ok 54 - fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at after reject_reference_request_replacement",
+        "not ok 55 - fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at before retain_reference_requests",
+        "not ok 56 - fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at after retain_reference_requests",
+        "not ok 57 - fixed26 historical receipt repair: ordinary26 migration/receipt repair rolls back every missing guard at before COMMIT",
+        "not ok 58 - fixed26 historical receipt repair: restored25 valid reopen stays unchanged without ordinary receipt repair",
+        "not ok 59 - fixed26 historical receipt repair: restored25 missing guards are refused without ordinary receipt repair",
+        "not ok 60 - fixed26 historical receipt repair: restored27 valid reopen stays unchanged without ordinary receipt repair",
+        "not ok 61 - fixed26 historical receipt repair: restored27 missing guards are refused without ordinary receipt repair",
+        "not ok 62 - fixed26 historical receipt repair: ordinary24 restores missing historical mutation receipt guards: reject_mutation_request_replacement,immutable_mutation_requests,retain_mutation_requests",
+        "not ok 63 - fixed26 historical receipt repair: ordinary24 restores missing historical mutation receipt guards: reject_mutation_request_replacement",
+        "not ok 64 - fixed26 historical receipt repair: ordinary24 restores missing historical mutation receipt guards: immutable_mutation_requests",
+        "not ok 65 - fixed26 historical receipt repair: ordinary24 restores missing historical mutation receipt guards: retain_mutation_requests",
+        "not ok 66 - fixed26 historical receipt repair: ordinary26 restores missing historical mutation receipt guards: reject_mutation_request_replacement,immutable_mutation_requests,retain_mutation_requests",
+        "not ok 67 - fixed26 historical receipt repair: ordinary26 restores missing historical mutation receipt guards: reject_mutation_request_replacement",
+        "not ok 68 - fixed26 historical receipt repair: ordinary26 restores missing historical mutation receipt guards: immutable_mutation_requests",
+        "not ok 69 - fixed26 historical receipt repair: ordinary26 restores missing historical mutation receipt guards: retain_mutation_requests",
+        "not ok 71 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_versions with exact frozen SQL",
+        "not ok 72 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_timeline_responses with exact frozen SQL",
+        "not ok 73 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_timeline_render_snapshot with exact frozen SQL",
+        "not ok 74 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_timeline_history with exact frozen SQL",
+        "not ok 75 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_reference_responses with exact frozen SQL",
+        "not ok 76 - fixed26 historical receipt repair: ordinary24 repairs additive protection reject_reference_request_replacement with exact frozen SQL",
+        "not ok 77 - fixed26 historical receipt repair: ordinary24 repairs additive protection retain_reference_requests with exact frozen SQL",
+        "not ok 78 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_agent_chat_requests with exact frozen SQL",
+        "not ok 79 - fixed26 historical receipt repair: ordinary24 repairs additive protection retain_agent_chat_requests with exact frozen SQL",
+        "not ok 80 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_agent_chat_run_identity with exact frozen SQL",
+        "not ok 81 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_agent_chat_events with exact frozen SQL",
+        "not ok 82 - fixed26 historical receipt repair: ordinary24 repairs additive protection retain_agent_chat_events with exact frozen SQL",
+        "not ok 83 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_agent_chat_step_payload with exact frozen SQL",
+        "not ok 84 - fixed26 historical receipt repair: ordinary24 repairs additive protection retain_agent_chat_steps with exact frozen SQL",
+        "not ok 85 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_agent_chat_inspection_context with exact frozen SQL",
+        "not ok 86 - fixed26 historical receipt repair: ordinary24 repairs additive protection reject_mutation_request_replacement with exact frozen SQL",
+        "not ok 87 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_mutation_requests with exact frozen SQL",
+        "not ok 88 - fixed26 historical receipt repair: ordinary24 repairs additive protection retain_mutation_requests with exact frozen SQL",
+        "not ok 89 - fixed26 historical receipt repair: ordinary24 repairs additive protection reject_agent_edit_replacement with exact frozen SQL",
+        "not ok 90 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_agent_edit_intent with exact frozen SQL",
+        "not ok 91 - fixed26 historical receipt repair: ordinary24 repairs additive protection guard_agent_edit_transition with exact frozen SQL",
+        "not ok 92 - fixed26 historical receipt repair: ordinary24 repairs additive protection retain_agent_edit_proposals with exact frozen SQL",
+        "not ok 93 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_agent_chat_edit_target with exact frozen SQL",
+        "not ok 94 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_asset_range_identity with exact frozen SQL",
+        "not ok 95 - fixed26 historical receipt repair: ordinary24 repairs additive protection reject_asset_range_request_replacement with exact frozen SQL",
+        "not ok 96 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_asset_range_requests with exact frozen SQL",
+        "not ok 97 - fixed26 historical receipt repair: ordinary24 repairs additive protection retain_asset_range_requests with exact frozen SQL",
+        "not ok 98 - fixed26 historical receipt repair: ordinary24 repairs additive protection reject_asset_range_cross_request with exact frozen SQL",
+        "not ok 99 - fixed26 historical receipt repair: ordinary24 repairs additive protection reject_mutation_cross_range_request with exact frozen SQL",
+        "not ok 100 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_asset_disposition_identity with exact frozen SQL",
+        "not ok 101 - fixed26 historical receipt repair: ordinary24 repairs additive protection reject_asset_disposition_request_replacement with exact frozen SQL",
+        "not ok 102 - fixed26 historical receipt repair: ordinary24 repairs additive protection immutable_asset_disposition_requests with exact frozen SQL",
+        "not ok 103 - fixed26 historical receipt repair: ordinary24 repairs additive protection retain_asset_disposition_requests with exact frozen SQL",
+        "not ok 104 - fixed26 historical receipt repair: ordinary24 repairs additive protection reject_asset_disposition_cross_request with exact frozen SQL",
+        "not ok 105 - fixed26 historical receipt repair: ordinary24 repairs additive protection reject_mutation_cross_disposition_request with exact frozen SQL",
+        "not ok 106 - fixed26 historical receipt repair: ordinary24 repairs additive protection reject_asset_range_cross_disposition_request with exact frozen SQL",
+        "not ok 107 - fixed26 historical receipt repair: ordinary24 repairs additive protection agent_chat_one_active with exact frozen SQL",
+        "not ok 108 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_versions with exact frozen SQL",
+        "not ok 109 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_timeline_responses with exact frozen SQL",
+        "not ok 110 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_timeline_render_snapshot with exact frozen SQL",
+        "not ok 111 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_timeline_history with exact frozen SQL",
+        "not ok 112 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_reference_responses with exact frozen SQL",
+        "not ok 113 - fixed26 historical receipt repair: ordinary26 repairs additive protection reject_reference_request_replacement with exact frozen SQL",
+        "not ok 114 - fixed26 historical receipt repair: ordinary26 repairs additive protection retain_reference_requests with exact frozen SQL",
+        "not ok 115 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_agent_chat_requests with exact frozen SQL",
+        "not ok 116 - fixed26 historical receipt repair: ordinary26 repairs additive protection retain_agent_chat_requests with exact frozen SQL",
+        "not ok 117 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_agent_chat_run_identity with exact frozen SQL",
+        "not ok 118 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_agent_chat_events with exact frozen SQL",
+        "not ok 119 - fixed26 historical receipt repair: ordinary26 repairs additive protection retain_agent_chat_events with exact frozen SQL",
+        "not ok 120 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_agent_chat_step_payload with exact frozen SQL",
+        "not ok 121 - fixed26 historical receipt repair: ordinary26 repairs additive protection retain_agent_chat_steps with exact frozen SQL",
+        "not ok 122 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_agent_chat_inspection_context with exact frozen SQL",
+        "not ok 123 - fixed26 historical receipt repair: ordinary26 repairs additive protection reject_mutation_request_replacement with exact frozen SQL",
+        "not ok 124 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_mutation_requests with exact frozen SQL",
+        "not ok 125 - fixed26 historical receipt repair: ordinary26 repairs additive protection retain_mutation_requests with exact frozen SQL",
+        "not ok 126 - fixed26 historical receipt repair: ordinary26 repairs additive protection reject_agent_edit_replacement with exact frozen SQL",
+        "not ok 127 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_agent_edit_intent with exact frozen SQL",
+        "not ok 128 - fixed26 historical receipt repair: ordinary26 repairs additive protection guard_agent_edit_transition with exact frozen SQL",
+        "not ok 129 - fixed26 historical receipt repair: ordinary26 repairs additive protection retain_agent_edit_proposals with exact frozen SQL",
+        "not ok 130 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_agent_chat_edit_target with exact frozen SQL",
+        "not ok 131 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_asset_range_identity with exact frozen SQL",
+        "not ok 132 - fixed26 historical receipt repair: ordinary26 repairs additive protection reject_asset_range_request_replacement with exact frozen SQL",
+        "not ok 133 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_asset_range_requests with exact frozen SQL",
+        "not ok 134 - fixed26 historical receipt repair: ordinary26 repairs additive protection retain_asset_range_requests with exact frozen SQL",
+        "not ok 135 - fixed26 historical receipt repair: ordinary26 repairs additive protection reject_asset_range_cross_request with exact frozen SQL",
+        "not ok 136 - fixed26 historical receipt repair: ordinary26 repairs additive protection reject_mutation_cross_range_request with exact frozen SQL",
+        "not ok 137 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_asset_disposition_identity with exact frozen SQL",
+        "not ok 138 - fixed26 historical receipt repair: ordinary26 repairs additive protection reject_asset_disposition_request_replacement with exact frozen SQL",
+        "not ok 139 - fixed26 historical receipt repair: ordinary26 repairs additive protection immutable_asset_disposition_requests with exact frozen SQL",
+        "not ok 140 - fixed26 historical receipt repair: ordinary26 repairs additive protection retain_asset_disposition_requests with exact frozen SQL",
+        "not ok 141 - fixed26 historical receipt repair: ordinary26 repairs additive protection reject_asset_disposition_cross_request with exact frozen SQL",
+        "not ok 142 - fixed26 historical receipt repair: ordinary26 repairs additive protection reject_mutation_cross_disposition_request with exact frozen SQL",
+        "not ok 143 - fixed26 historical receipt repair: ordinary26 repairs additive protection reject_asset_range_cross_disposition_request with exact frozen SQL",
+        "not ok 144 - fixed26 historical receipt repair: ordinary26 repairs additive protection agent_chat_one_active with exact frozen SQL",
+        "not ok 145 - fixed26 historical receipt repair: ordinary24 repairs all additive guards together while preserving raw receipts, gains, history and REAL sequence",
+        "not ok 146 - fixed26 historical receipt repair: ordinary26 repairs all additive guards together while preserving raw receipts, gains, history and REAL sequence",
+        "not ok 147 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_versions without mutation",
+        "not ok 148 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_timeline_responses without mutation",
+        "not ok 149 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_timeline_render_snapshot without mutation",
+        "not ok 150 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_timeline_history without mutation",
+        "not ok 151 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_reference_responses without mutation",
+        "not ok 152 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_reference_request_replacement without mutation",
+        "not ok 153 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection retain_reference_requests without mutation",
+        "not ok 154 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_agent_chat_requests without mutation",
+        "not ok 155 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection retain_agent_chat_requests without mutation",
+        "not ok 156 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_agent_chat_run_identity without mutation",
+        "not ok 157 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_agent_chat_events without mutation",
+        "not ok 158 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection retain_agent_chat_events without mutation",
+        "not ok 159 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_agent_chat_step_payload without mutation",
+        "not ok 160 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection retain_agent_chat_steps without mutation",
+        "not ok 161 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_agent_chat_inspection_context without mutation",
+        "not ok 162 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_mutation_request_replacement without mutation",
+        "not ok 163 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_mutation_requests without mutation",
+        "not ok 164 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection retain_mutation_requests without mutation",
+        "not ok 165 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_agent_edit_replacement without mutation",
+        "not ok 166 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_agent_edit_intent without mutation",
+        "not ok 167 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection guard_agent_edit_transition without mutation",
+        "not ok 168 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection retain_agent_edit_proposals without mutation",
+        "not ok 169 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_agent_chat_edit_target without mutation",
+        "not ok 170 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_asset_range_identity without mutation",
+        "not ok 171 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_asset_range_request_replacement without mutation",
+        "not ok 172 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_asset_range_requests without mutation",
+        "not ok 173 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection retain_asset_range_requests without mutation",
+        "not ok 174 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_asset_range_cross_request without mutation",
+        "not ok 175 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_mutation_cross_range_request without mutation",
+        "not ok 176 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_asset_disposition_identity without mutation",
+        "not ok 177 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_asset_disposition_request_replacement without mutation",
+        "not ok 178 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection immutable_asset_disposition_requests without mutation",
+        "not ok 179 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection retain_asset_disposition_requests without mutation",
+        "not ok 180 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_asset_disposition_cross_request without mutation",
+        "not ok 181 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_mutation_cross_disposition_request without mutation",
+        "not ok 182 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection reject_asset_range_cross_disposition_request without mutation",
+        "not ok 183 - fixed26 historical receipt repair: ordinary24 refuses conflicting additive protection agent_chat_one_active without mutation",
+        "not ok 184 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_versions without mutation",
+        "not ok 185 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_timeline_responses without mutation",
+        "not ok 186 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_timeline_render_snapshot without mutation",
+        "not ok 187 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_timeline_history without mutation",
+        "not ok 188 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_reference_responses without mutation",
+        "not ok 189 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_reference_request_replacement without mutation",
+        "not ok 190 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection retain_reference_requests without mutation",
+        "not ok 191 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_agent_chat_requests without mutation",
+        "not ok 192 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection retain_agent_chat_requests without mutation",
+        "not ok 193 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_agent_chat_run_identity without mutation",
+        "not ok 194 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_agent_chat_events without mutation",
+        "not ok 195 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection retain_agent_chat_events without mutation",
+        "not ok 196 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_agent_chat_step_payload without mutation",
+        "not ok 197 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection retain_agent_chat_steps without mutation",
+        "not ok 198 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_agent_chat_inspection_context without mutation",
+        "not ok 199 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_mutation_request_replacement without mutation",
+        "not ok 200 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_mutation_requests without mutation",
+        "not ok 201 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection retain_mutation_requests without mutation",
+        "not ok 202 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_agent_edit_replacement without mutation",
+        "not ok 203 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_agent_edit_intent without mutation",
+        "not ok 204 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection guard_agent_edit_transition without mutation",
+        "not ok 205 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection retain_agent_edit_proposals without mutation",
+        "not ok 206 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_agent_chat_edit_target without mutation",
+        "not ok 207 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_asset_range_identity without mutation",
+        "not ok 208 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_asset_range_request_replacement without mutation",
+        "not ok 209 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_asset_range_requests without mutation",
+        "not ok 210 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection retain_asset_range_requests without mutation",
+        "not ok 211 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_asset_range_cross_request without mutation",
+        "not ok 212 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_mutation_cross_range_request without mutation",
+        "not ok 213 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_asset_disposition_identity without mutation",
+        "not ok 214 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_asset_disposition_request_replacement without mutation",
+        "not ok 215 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection immutable_asset_disposition_requests without mutation",
+        "not ok 216 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection retain_asset_disposition_requests without mutation",
+        "not ok 217 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_asset_disposition_cross_request without mutation",
+        "not ok 218 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_mutation_cross_disposition_request without mutation",
+        "not ok 219 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection reject_asset_range_cross_disposition_request without mutation",
+        "not ok 220 - fixed26 historical receipt repair: ordinary26 refuses conflicting additive protection agent_chat_one_active without mutation",
+        "not ok 221 - fixed26 historical receipt repair: ordinary24 refuses missing additive dependency mutation_requests",
+        "not ok 222 - fixed26 historical receipt repair: ordinary24 refuses missing additive dependency agent_chat_runs",
+        "not ok 223 - fixed26 historical receipt repair: ordinary24 refuses missing additive dependency agent_chat_quota",
+        "not ok 224 - fixed26 historical receipt repair: ordinary24 refuses missing additive dependency asset_range_requests",
+        "not ok 225 - fixed26 historical receipt repair: ordinary24 refuses missing additive dependency asset_disposition_requests",
+        "not ok 226 - fixed26 historical receipt repair: ordinary24 refuses missing additive dependency timeline_history",
+        "not ok 227 - fixed26 historical receipt repair: ordinary24 refuses missing additive dependency versions",
+        "not ok 228 - fixed26 historical receipt repair: ordinary24 refuses missing additive dependency agent_edit_proposals",
+        "not ok 229 - fixed26 historical receipt repair: ordinary26 refuses missing additive dependency mutation_requests",
+        "not ok 230 - fixed26 historical receipt repair: ordinary26 refuses missing additive dependency agent_chat_runs",
+        "not ok 231 - fixed26 historical receipt repair: ordinary26 refuses missing additive dependency agent_chat_quota",
+        "not ok 232 - fixed26 historical receipt repair: ordinary26 refuses missing additive dependency asset_range_requests",
+        "not ok 233 - fixed26 historical receipt repair: ordinary26 refuses missing additive dependency asset_disposition_requests",
+        "not ok 234 - fixed26 historical receipt repair: ordinary26 refuses missing additive dependency timeline_history",
+        "not ok 235 - fixed26 historical receipt repair: ordinary26 refuses missing additive dependency versions",
+        "not ok 236 - fixed26 historical receipt repair: ordinary26 refuses missing additive dependency agent_edit_proposals",
+        "not ok 237 - fixed26 historical receipt repair: ordinary24 refuses changed additive dependency mutation_requests",
+        "not ok 238 - fixed26 historical receipt repair: ordinary24 refuses changed additive dependency agent_chat_runs",
+        "not ok 239 - fixed26 historical receipt repair: ordinary24 refuses changed additive dependency asset_range_requests",
+        "not ok 240 - fixed26 historical receipt repair: ordinary24 refuses changed additive dependency agent_chat_quota",
+        "not ok 241 - fixed26 historical receipt repair: ordinary26 refuses changed additive dependency mutation_requests",
+        "not ok 242 - fixed26 historical receipt repair: ordinary26 refuses changed additive dependency agent_chat_runs",
+        "not ok 243 - fixed26 historical receipt repair: ordinary26 refuses changed additive dependency asset_range_requests",
+        "not ok 244 - fixed26 historical receipt repair: ordinary26 refuses changed additive dependency agent_chat_quota",
+        "not ok 245 - fixed26 historical receipt repair: ordinary24 refuses missing quota rather than recreating state",
+        "not ok 246 - fixed26 historical receipt repair: ordinary26 refuses missing quota rather than recreating state",
+        "not ok 247 - fixed26 historical receipt repair: ordinary24 refuses duplicate active-chat state before attempting additive repair",
+        "not ok 248 - fixed26 historical receipt repair: ordinary26 refuses duplicate active-chat state before attempting additive repair",
+        "not ok 249 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_versions",
+        "not ok 250 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_versions",
+        "not ok 251 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_timeline_responses",
+        "not ok 252 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_timeline_responses",
+        "not ok 253 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_timeline_render_snapshot",
+        "not ok 254 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_timeline_render_snapshot",
+        "not ok 255 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_timeline_history",
+        "not ok 256 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_timeline_history",
+        "not ok 257 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_reference_responses",
+        "not ok 258 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_reference_responses",
+        "not ok 259 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_reference_request_replacement",
+        "not ok 260 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_reference_request_replacement",
+        "not ok 261 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before retain_reference_requests",
+        "not ok 262 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after retain_reference_requests",
+        "not ok 263 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_agent_chat_requests",
+        "not ok 264 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_agent_chat_requests",
+        "not ok 265 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before retain_agent_chat_requests",
+        "not ok 266 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after retain_agent_chat_requests",
+        "not ok 267 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_agent_chat_run_identity",
+        "not ok 268 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_agent_chat_run_identity",
+        "not ok 269 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_agent_chat_events",
+        "not ok 270 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_agent_chat_events",
+        "not ok 271 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before retain_agent_chat_events",
+        "not ok 272 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after retain_agent_chat_events",
+        "not ok 273 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_agent_chat_step_payload",
+        "not ok 274 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_agent_chat_step_payload",
+        "not ok 275 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before retain_agent_chat_steps",
+        "not ok 276 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after retain_agent_chat_steps",
+        "not ok 277 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_agent_chat_inspection_context",
+        "not ok 278 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_agent_chat_inspection_context",
+        "not ok 279 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_mutation_request_replacement",
+        "not ok 280 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_mutation_request_replacement",
+        "not ok 281 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_mutation_requests",
+        "not ok 282 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_mutation_requests",
+        "not ok 283 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before retain_mutation_requests",
+        "not ok 284 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after retain_mutation_requests",
+        "not ok 285 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_agent_edit_replacement",
+        "not ok 286 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_agent_edit_replacement",
+        "not ok 287 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_agent_edit_intent",
+        "not ok 288 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_agent_edit_intent",
+        "not ok 289 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before guard_agent_edit_transition",
+        "not ok 290 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after guard_agent_edit_transition",
+        "not ok 291 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before retain_agent_edit_proposals",
+        "not ok 292 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after retain_agent_edit_proposals",
+        "not ok 293 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_agent_chat_edit_target",
+        "not ok 294 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_agent_chat_edit_target",
+        "not ok 295 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_asset_range_identity",
+        "not ok 296 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_asset_range_identity",
+        "not ok 297 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_asset_range_request_replacement",
+        "not ok 298 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_asset_range_request_replacement",
+        "not ok 299 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_asset_range_requests",
+        "not ok 300 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_asset_range_requests",
+        "not ok 301 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before retain_asset_range_requests",
+        "not ok 302 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after retain_asset_range_requests",
+        "not ok 303 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_asset_range_cross_request",
+        "not ok 304 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_asset_range_cross_request",
+        "not ok 305 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_mutation_cross_range_request",
+        "not ok 306 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_mutation_cross_range_request",
+        "not ok 307 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_asset_disposition_identity",
+        "not ok 308 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_asset_disposition_identity",
+        "not ok 309 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_asset_disposition_request_replacement",
+        "not ok 310 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_asset_disposition_request_replacement",
+        "not ok 311 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before immutable_asset_disposition_requests",
+        "not ok 312 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after immutable_asset_disposition_requests",
+        "not ok 313 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before retain_asset_disposition_requests",
+        "not ok 314 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after retain_asset_disposition_requests",
+        "not ok 315 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_asset_disposition_cross_request",
+        "not ok 316 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_asset_disposition_cross_request",
+        "not ok 317 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_mutation_cross_disposition_request",
+        "not ok 318 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_mutation_cross_disposition_request",
+        "not ok 319 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before reject_asset_range_cross_disposition_request",
+        "not ok 320 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after reject_asset_range_cross_disposition_request",
+        "not ok 321 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards before agent_chat_one_active",
+        "not ok 322 - fixed26 historical receipt repair: ordinary24 rolls back all additive guards after agent_chat_one_active",
+        "not ok 323 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_versions",
+        "not ok 324 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_versions",
+        "not ok 325 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_timeline_responses",
+        "not ok 326 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_timeline_responses",
+        "not ok 327 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_timeline_render_snapshot",
+        "not ok 328 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_timeline_render_snapshot",
+        "not ok 329 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_timeline_history",
+        "not ok 330 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_timeline_history",
+        "not ok 331 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_reference_responses",
+        "not ok 332 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_reference_responses",
+        "not ok 333 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_reference_request_replacement",
+        "not ok 334 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_reference_request_replacement",
+        "not ok 335 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before retain_reference_requests",
+        "not ok 336 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after retain_reference_requests",
+        "not ok 337 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_agent_chat_requests",
+        "not ok 338 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_agent_chat_requests",
+        "not ok 339 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before retain_agent_chat_requests",
+        "not ok 340 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after retain_agent_chat_requests",
+        "not ok 341 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_agent_chat_run_identity",
+        "not ok 342 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_agent_chat_run_identity",
+        "not ok 343 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_agent_chat_events",
+        "not ok 344 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_agent_chat_events",
+        "not ok 345 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before retain_agent_chat_events",
+        "not ok 346 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after retain_agent_chat_events",
+        "not ok 347 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_agent_chat_step_payload",
+        "not ok 348 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_agent_chat_step_payload",
+        "not ok 349 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before retain_agent_chat_steps",
+        "not ok 350 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after retain_agent_chat_steps",
+        "not ok 351 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_agent_chat_inspection_context",
+        "not ok 352 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_agent_chat_inspection_context",
+        "not ok 353 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_mutation_request_replacement",
+        "not ok 354 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_mutation_request_replacement",
+        "not ok 355 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_mutation_requests",
+        "not ok 356 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_mutation_requests",
+        "not ok 357 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before retain_mutation_requests",
+        "not ok 358 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after retain_mutation_requests",
+        "not ok 359 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_agent_edit_replacement",
+        "not ok 360 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_agent_edit_replacement",
+        "not ok 361 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_agent_edit_intent",
+        "not ok 362 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_agent_edit_intent",
+        "not ok 363 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before guard_agent_edit_transition",
+        "not ok 364 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after guard_agent_edit_transition",
+        "not ok 365 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before retain_agent_edit_proposals",
+        "not ok 366 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after retain_agent_edit_proposals",
+        "not ok 367 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_agent_chat_edit_target",
+        "not ok 368 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_agent_chat_edit_target",
+        "not ok 369 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_asset_range_identity",
+        "not ok 370 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_asset_range_identity",
+        "not ok 371 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_asset_range_request_replacement",
+        "not ok 372 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_asset_range_request_replacement",
+        "not ok 373 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_asset_range_requests",
+        "not ok 374 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_asset_range_requests",
+        "not ok 375 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before retain_asset_range_requests",
+        "not ok 376 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after retain_asset_range_requests",
+        "not ok 377 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_asset_range_cross_request",
+        "not ok 378 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_asset_range_cross_request",
+        "not ok 379 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_mutation_cross_range_request",
+        "not ok 380 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_mutation_cross_range_request",
+        "not ok 381 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_asset_disposition_identity",
+        "not ok 382 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_asset_disposition_identity",
+        "not ok 383 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_asset_disposition_request_replacement",
+        "not ok 384 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_asset_disposition_request_replacement",
+        "not ok 385 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before immutable_asset_disposition_requests",
+        "not ok 386 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after immutable_asset_disposition_requests",
+        "not ok 387 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before retain_asset_disposition_requests",
+        "not ok 388 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after retain_asset_disposition_requests",
+        "not ok 389 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_asset_disposition_cross_request",
+        "not ok 390 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_asset_disposition_cross_request",
+        "not ok 391 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_mutation_cross_disposition_request",
+        "not ok 392 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_mutation_cross_disposition_request",
+        "not ok 393 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before reject_asset_range_cross_disposition_request",
+        "not ok 394 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after reject_asset_range_cross_disposition_request",
+        "not ok 395 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards before agent_chat_one_active",
+        "not ok 396 - fixed26 historical receipt repair: ordinary26 rolls back all additive guards after agent_chat_one_active"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/675-workspace-receipt-protections.test.mjs.log"
+    },
+    {
+      "file": "tests/workspace-restore-apply-replay.test.mjs",
+      "exitCode": 1,
+      "seconds": 15.279,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation"
+      ],
+      "failedTests": [
+        "not ok 1 - real applied task restores held; get/list/replay retain original ACK after clip removal without media remeasurement",
+        "not ok 2 - real source ACK corrupted to wrong operation remains archived but cannot replay",
+        "not ok 3 - real source ACK corrupted to wrong project remains archived but cannot replay",
+        "not ok 4 - real source ACK corrupted to wrong request remains archived but cannot replay",
+        "not ok 5 - real source ACK corrupted to wrong bare timeline remains archived but cannot replay",
+        "not ok 6 - held apply replay still requires database ownership: foreign asset owner",
+        "not ok 7 - held apply replay still requires database ownership: missing current timeline",
+        "not ok 8 - held apply replay still requires database ownership: different current timeline id",
+        "not ok 9 - held apply replay still requires database ownership: current revision behind ACK"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/676-workspace-restore-apply-replay.test.mjs.log"
+    },
+    {
+      "file": "tests/workspace-restore-local-execution.test.mjs",
+      "exitCode": 1,
+      "seconds": 10.007,
+      "timeout": false,
+      "categories": [
+        "local-media-failure"
+      ],
+      "failedTests": [
+        "not ok 19 - ordinary v24 actual Mock download decodes and publishes a selected version"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/689-workspace-restore-local-execution.test.mjs.log"
+    },
+    {
+      "file": "tests/workspace-restore-mock-schema.test.mjs",
+      "exitCode": 1,
+      "seconds": 2.163,
+      "timeout": false,
+      "categories": [
+        "sqlite-bigint-fixture"
+      ],
+      "failedTests": [
+        "not ok 1 - actual ordinary Mock constructor schema is accepted exactly and all raw ledgers/types/rowids/sequences survive",
+        "not ok 3 - optional Mock ledger/evidence barriers reject INSERT/UPDATE/DELETE/REPLACE with recursive_triggers=0",
+        "not ok 4 - optional Mock ledger/evidence barriers reject INSERT/UPDATE/DELETE/REPLACE with recursive_triggers=1",
+        "not ok 5 - optional Mock source profile refuses missing-tasks before imported SQL effects",
+        "not ok 6 - optional Mock source profile refuses missing-submissions before imported SQL effects",
+        "not ok 7 - optional Mock source profile refuses missing-request-index before imported SQL effects",
+        "not ok 8 - optional Mock source profile refuses altered-index before imported SQL effects",
+        "not ok 9 - optional Mock source profile refuses altered-table before imported SQL effects",
+        "not ok 10 - optional Mock source profile refuses extra-index before imported SQL effects",
+        "not ok 11 - optional Mock source profile refuses extra-trigger before imported SQL effects",
+        "not ok 12 - restored optional Mock profile refuses guard-missing with exact fixed schema and evidence",
+        "not ok 13 - restored optional Mock profile refuses evidence-missing with exact fixed schema and evidence",
+        "not ok 14 - restored optional Mock profile refuses ledger-mutated with exact fixed schema and evidence",
+        "not ok 15 - restored optional Mock profile refuses sequence-mutated with exact fixed schema and evidence",
+        "not ok 16 - restored optional Mock profile refuses sequence-duplicated with exact fixed schema and evidence",
+        "not ok 17 - Mock evidence excludes legitimate new edit sequence advancement but keeps exact original Mock sequence",
+        "not ok 18 - optional Mock evidence installation failure rolls back every original object, byte/type/rowid and sequence",
+        "not ok 22 - real offline restore of ordinary populated Mock workspace reopens without inherited provider work",
+        "not ok 23 - Mock sequence text corruption is rejected before any evidence digest",
+        "not ok 24 - Mock sequence blob corruption is rejected before any evidence digest",
+        "not ok 25 - Mock sequence negative corruption is rejected before any evidence digest"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/692-workspace-restore-mock-schema.test.mjs.log"
+    },
+    {
+      "file": "tests/workspace-restore-v27.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.993,
+      "timeout": false,
+      "categories": [
+        "sqlite-bigint-fixture"
+      ],
+      "failedTests": [
+        "not ok 1 - source26→restored27 holds every durable apply state with raw preservation, mock=false",
+        "not ok 2 - source26→restored27 holds every durable apply state with raw preservation, mock=true",
+        "not ok 9 - restored27 construction rolls back all logical bytes at CREATE TABLE workspace_restoration",
+        "not ok 10 - restored27 construction rolls back all logical bytes at INSERT INTO workspace_restore_timeline_history",
+        "not ok 11 - restored27 construction rolls back all logical bytes at CREATE TRIGGER restore_legacy_schema_gate",
+        "not ok 12 - restored27 construction rolls back all logical bytes at COMMIT",
+        "not ok 14 - offline create→verify→restore→status→reopen fixed pair source26",
+        "not ok 15 - schema32 live backup inspection is read-only and current contract pairs never accept a cross-product"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/699-workspace-restore-v27.test.mjs.log"
+    },
+    {
+      "file": "tests/workspace-schema-dispatch.test.mjs",
+      "exitCode": 1,
+      "seconds": 1.868,
+      "timeout": false,
+      "categories": [
+        "sqlite-bigint-fixture"
+      ],
+      "failedTests": [
+        "not ok 18 - unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,9007199254740993",
+        "not ok 42 - non-TEXT retained golden cells refuse current envelope migration before writes"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/701-workspace-schema-dispatch.test.mjs.log"
+    },
+    {
+      "file": "tests/workspace-schema-profiles.test.mjs",
+      "exitCode": 1,
+      "seconds": 5.275,
+      "timeout": false,
+      "categories": [
+        "sqlite-bigint-fixture"
+      ],
+      "failedTests": [
+        "not ok 35 - frozen ordinary24-seeded reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence",
+        "not ok 36 - restore25 construction from independent ordinary24-seeded matches frozen SQL and capture evidence",
+        "not ok 37 - independent frozen restored25-seeded opens and validates without ordinary bootstrap or evidence rewrites",
+        "not ok 41 - frozen ordinary24-mock-seeded reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence",
+        "not ok 42 - restore25 construction from independent ordinary24-mock-seeded matches frozen SQL and capture evidence",
+        "not ok 43 - independent frozen restored25-mock-seeded opens and validates without ordinary bootstrap or evidence rewrites",
+        "not ok 44 - ordinary runtime retains baseline repair eligibility for known-marker-gap; offline classification stays strict",
+        "not ok 45 - ordinary runtime retains baseline repair eligibility for initial-markers-absent; offline classification stays strict",
+        "not ok 47 - unsupported marker-only profile26 is refused before ordinary bootstrap can execute imported SQL",
+        "not ok 48 - unsupported marker-only profile27 is refused before ordinary bootstrap can execute imported SQL",
+        "not ok 49 - unsupported marker-only profile28 is refused before ordinary bootstrap can execute imported SQL",
+        "not ok 50 - unsupported marker-only profile29 is refused before ordinary bootstrap can execute imported SQL",
+        "not ok 51 - marker25 only cannot enter ordinary bootstrap or mutate frozen captured bytes",
+        "not ok 52 - restore metadata only cannot enter ordinary bootstrap or mutate frozen captured bytes",
+        "not ok 53 - execution epoch only cannot enter ordinary bootstrap or mutate frozen captured bytes",
+        "not ok 54 - restore guard missing cannot enter ordinary bootstrap or mutate frozen captured bytes",
+        "not ok 55 - restore marker missing cannot enter ordinary bootstrap or mutate frozen captured bytes",
+        "not ok 56 - restore Mock evidence missing cannot enter ordinary bootstrap or mutate frozen captured bytes"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/703-workspace-schema-profiles.test.mjs.log"
+    },
+    {
+      "file": "tests/workspace-schema26-sequence-compatibility.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.933,
+      "timeout": false,
+      "categories": [
+        "sqlite-bigint-fixture"
+      ],
+      "failedTests": [
+        "not ok 3 - ordinary26 preserves empty integer sequence 0, exact large rowid and AUTOINCREMENT behavior",
+        "not ok 4 - ordinary26 preserves empty integer sequence 8123, exact large rowid and AUTOINCREMENT behavior",
+        "not ok 5 - ordinary26 preserves empty integer sequence 9007199254740991, exact large rowid and AUTOINCREMENT behavior",
+        "not ok 6 - ordinary26 preserves empty integer sequence 9007199254741999, exact large rowid and AUTOINCREMENT behavior",
+        "not ok 7 - ordinary26 preserves empty integer sequence 9223372036854775807, exact large rowid and AUTOINCREMENT behavior",
+        "not ok 8 - ordinary26 preserves empty real sequence 0, exact large rowid and AUTOINCREMENT behavior",
+        "not ok 9 - ordinary26 preserves empty real sequence 8123, exact large rowid and AUTOINCREMENT behavior",
+        "not ok 10 - ordinary26 preserves empty real sequence 9007199254740991, exact large rowid and AUTOINCREMENT behavior",
+        "not ok 11 - ordinary26 preserves occupied integer sequence 31 at or above maximum position",
+        "not ok 12 - ordinary26 preserves occupied integer sequence 8123 at or above maximum position",
+        "not ok 13 - ordinary26 preserves occupied real sequence 31 at or above maximum position",
+        "not ok 14 - ordinary26 preserves occupied real sequence 8123 at or above maximum position",
+        "not ok 15 - ordinary26 preserves occupied real sequence 9007199254740991 at or above maximum position",
+        "not ok 29 - ordinary26 rejects duplicate INTEGER/REAL sequence rows even with valid high-water values (bigint)",
+        "not ok 30 - ordinary26 rejects duplicate INTEGER/REAL sequence rows even with valid high-water values (number)",
+        "not ok 31 - ordinary26 compares safe REAL sequence to an unsafe integer position without Number rounding",
+        "not ok 32 - ordinary26 rollback retains REAL sequence bytes, storage and rowid after DROP TABLE main.edit_tasks",
+        "not ok 33 - ordinary26 rollback retains REAL sequence bytes, storage and rowid after ALTER TABLE main.edit_tasks_loudness_v26 RENAME TO edit_tasks",
+        "not ok 34 - ordinary26 rollback retains REAL sequence bytes, storage and rowid after DELETE FROM main.sqlite_sequence WHERE name='edit_tasks'",
+        "not ok 35 - ordinary26 rollback retains REAL sequence bytes, storage and rowid before INSERT INTO main.sqlite_sequence(rowid,name,seq) VALUES(?,'edit_tasks',?)",
+        "not ok 36 - ordinary26 rollback retains REAL sequence bytes, storage and rowid after INSERT INTO main.sqlite_sequence(rowid,name,seq) VALUES(?,'edit_tasks',?)",
+        "not ok 37 - ordinary26 rollback retains REAL sequence bytes, storage and rowid after INSERT INTO main.schema_version(version) VALUES(26)",
+        "not ok 38 - ordinary26 rollback retains REAL sequence bytes, storage and rowid before COMMIT",
+        "not ok 39 - numeric sequence compatibility retains SQL masking of giant TEXT/BLOB inputs"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/704-workspace-schema26-sequence-compatibility.test.mjs.log"
+    },
+    {
+      "file": "tests/workspace-schema26.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.736,
+      "timeout": false,
+      "categories": [
+        "sqlite-bigint-fixture"
+      ],
+      "failedTests": [
+        "not ok 3 - ordinary26 preserves independent ordinary-24-seeded raw catalog and every record/receipt/sequence",
+        "not ok 5 - ordinary26 preserves independent ordinary-24-mock-seeded raw catalog and every record/receipt/sequence",
+        "not ok 6 - ordinary26 preserves all19 legacy operations, all states, raw BLOB/TEXT and signed64 rowids/high-water marks",
+        "not ok 8 - ordinary26 preserves empty sequence 0 including original rowid",
+        "not ok 9 - ordinary26 preserves empty sequence 8000 including original rowid",
+        "not ok 10 - ordinary26 preserves empty sequence 9007199254741999 including original rowid",
+        "not ok 11 - ordinary26 keeps lane uniqueness, immutable identity, state machine, input bounds and FK constraints",
+        "not ok 12 - ordinary26 preserves unrelated custom table/index/trigger/view without executing imported DDL",
+        "not ok 13 - ordinary26 rejects custom attached index before schema or data effects",
+        "not ok 14 - ordinary26 rejects custom attached trigger before schema or data effects",
+        "not ok 15 - ordinary26 rejects dependent view before schema or data effects",
+        "not ok 16 - ordinary26 rejects external trigger dependency before schema or data effects",
+        "not ok 17 - ordinary26 rejects marker trigger before schema or data effects",
+        "not ok 18 - ordinary26 rejects inbound cascade FK before schema or data effects",
+        "not ok 19 - ordinary26 rejects inbound restrict FK before schema or data effects",
+        "not ok 20 - ordinary26 rejects additional task column before schema or data effects",
+        "not ok 21 - ordinary26 rejects changed protection before schema or data effects",
+        "not ok 22 - ordinary26 rejects missing protection before schema or data effects",
+        "not ok 23 - ordinary26 rejects staging collision before schema or data effects",
+        "not ok 24 - ordinary26 rejects restore residue before schema or data effects",
+        "not ok 25 - ordinary26 rejects TEMP task trigger before schema or data effects",
+        "not ok 26 - ordinary26 rejects TEMP marker trigger before schema or data effects",
+        "not ok 27 - ordinary26 rejects TEMP dependent view before schema or data effects",
+        "not ok 28 - ordinary26 rejects missing marker without repairing or rewriting old records",
+        "not ok 29 - ordinary26 rejects restored25 marker without repairing or rewriting old records",
+        "not ok 30 - ordinary26 rejects unexpanded26 marker without repairing or rewriting old records",
+        "not ok 31 - ordinary26 rejects future27 marker without repairing or rewriting old records",
+        "not ok 32 - ordinary26 rejects unknown signed64 marker without repairing or rewriting old records",
+        "not ok 33 - ordinary26 rejects negative marker without repairing or rewriting old records",
+        "not ok 34 - ordinary26 rejects duplicate sequence without repairing or rewriting old records",
+        "not ok 35 - ordinary26 rejects absent occupied sequence without repairing or rewriting old records",
+        "not ok 36 - ordinary26 rejects low sequence without repairing or rewriting old records",
+        "not ok 37 - ordinary26 rejects negative sequence without repairing or rewriting old records",
+        "not ok 38 - ordinary26 rejects real sequence without repairing or rewriting old records",
+        "not ok 39 - ordinary26 rejects text sequence without repairing or rewriting old records",
+        "not ok 40 - ordinary26 rejects blob sequence without repairing or rewriting old records",
+        "not ok 42 - ordinary26 never migrates frozen restored-25-seeded",
+        "not ok 43 - ordinary26 never migrates frozen restored-25-mock-seeded",
+        "not ok 44 - ordinary26 read-only validator does not bootstrap24 and rejects lost/mixed markers",
+        "not ok 45 - ordinary26 main-qualified migration ignores harmless TEMP table shadows and preserves them",
+        "not ok 46 - ordinary26 refuses unsafe connection settings and nested transactions",
+        "not ok 47 - ordinary26 rolls back every DDL/copy/index/trigger/sequence/marker stage before and after native execution",
+        "not ok 48 - real WAL child SIGKILL at every migration write cold-reopens complete24 or committed26 and converges on reentry",
+        "not ok 49 - non-integer sequence projection masks giant TEXT/BLOB payloads before they cross into JavaScript",
+        "not ok 50 - complete24 read-only migration preflight rejects marker trigger before frozen bootstrap"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/705-workspace-schema26.test.mjs.log"
+    },
+    {
+      "file": "tests/workspace-schema28.test.mjs",
+      "exitCode": 1,
+      "seconds": 2.861,
+      "timeout": false,
+      "categories": [
+        "sqlite-bigint-fixture"
+      ],
+      "failedTests": [
+        "not ok 2 - 26 to28 is additive and preserves independent ordinary-24-seeded records and catalog",
+        "not ok 4 - 26 to28 is additive and preserves independent ordinary-24-mock-seeded records and catalog",
+        "not ok 21 - new pair contracts accept exactly24/25,26/27,28/29,30/31 32/33 and34/35, never numerical neighbors or cross-pairs",
+        "not ok 25 - restore29 preserves all independent inherited raw rows as well as LUTs: ordinary-24-seeded",
+        "not ok 26 - restore29 preserves all independent inherited raw rows as well as LUTs: ordinary-24-mock-seeded"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/706-workspace-schema28.test.mjs.log"
+    },
+    {
+      "file": "tests/workspace-schema30.test.mjs",
+      "exitCode": 1,
+      "seconds": 4.065,
+      "timeout": false,
+      "categories": [
+        "backup-or-restored-profile-identity",
+        "sqlite-bigint-fixture"
+      ],
+      "failedTests": [
+        "not ok 1 - 28 to30 is marker-only and preserves frozen seeded raw rows, rowids and schema SQL",
+        "not ok 8 - pair contracts keep30/31 and current32/33 exact while rejecting unknown versions and cross-pairs",
+        "not ok 30 - cold backup30 and restored31 preserve exact colour, snapshots, history, LUT bytes and source bytes",
+        "not ok 31 - cold capture and migration refuse missing30 or corrupt colour before publishing a destination"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/707-workspace-schema30.test.mjs.log"
+    },
+    {
+      "file": "tests/workspace-schema32.test.mjs",
+      "exitCode": 1,
+      "seconds": 10.053,
+      "timeout": false,
+      "categories": [
+        "backup-or-restored-profile-identity",
+        "sqlite-bigint-fixture"
+      ],
+      "failedTests": [
+        "not ok 2 - 30→32 adds only its marker and preserves exact rows, types, rowids, DDL and v1 plan (retained=true)",
+        "not ok 10 - wire contracts admit only exact32/33 v5 pairing and keep restored schemas out of backup sources",
+        "not ok 85 - cold backup32→restored33 preserves exact mixed image evidence, raw receipts/history, v2 snapshot, LUT/source bytes across reopen",
+        "not ok 89 - restored33 keeps source inspection and LUT import denied; reads and explicit-origin local actions retain existing fences",
+        "not ok 90 - cold capture and migration refuse missing32 and corrupt image evidence before publishing a destination"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/708-workspace-schema32.test.mjs.log"
+    },
+    {
+      "file": "tests/workspace-schema34.test.mjs",
+      "exitCode": 1,
+      "seconds": 16.264,
+      "timeout": false,
+      "categories": [
+        "sqlite-bigint-fixture"
+      ],
+      "failedTests": [
+        "not ok 2 - 32→34 adds only its marker and preserves exact rows, types, rowids, DDL and v1 plan (retained=true)",
+        "not ok 11 - wire contracts admit only exact registered source/restoration pairings and keep restored schemas out of backup sources"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/709-workspace-schema34.test.mjs.log"
+    },
+    {
+      "file": "tests/workspace-schema36.test.mjs",
+      "exitCode": 1,
+      "seconds": 3.509,
+      "timeout": false,
+      "categories": [
+        "schema-marker-expectation"
+      ],
+      "failedTests": [
+        "not ok 7 - current backup38 restore39 retains exact annotation rows and receipts and denies new writes"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/710-workspace-schema36.test.mjs.log"
+    },
+    {
+      "file": "tests/workspace-schema40-dispatch.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.434,
+      "timeout": false,
+      "categories": [
+        "runtime-version-pin"
+      ],
+      "failedTests": [
+        "not ok 1 - tests/workspace-schema40-dispatch.test.mjs"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/712-workspace-schema40-dispatch.test.mjs.log"
+    },
+    {
+      "file": "tests/workspace-visibility.test.mjs",
+      "exitCode": 1,
+      "seconds": 0.466,
+      "timeout": false,
+      "categories": [
+        "renderer-harness-import"
+      ],
+      "failedTests": [
+        "not ok 3 - video Preview ignores late hidden callbacks and does not seek or resume on reopen",
+        "not ok 5 - audio Preview ignores late hidden callbacks and does not seek or resume on reopen",
+        "not ok 6 - source Preview cannot publish late playback or native-seek events while hidden",
+        "not ok 7 - timeline Preview cannot publish late playback or native-seek events while hidden",
+        "not ok 8 - Preview applies a changed playhead deferred while hidden, without publishing that programmatic seek",
+        "not ok 9 - replaced Preview sources reject old callbacks and Strict Mode disposal restores the current source"
+      ],
+      "log": "/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/logs/717-workspace-visibility.test.mjs.log"
+    }
+  ]
+}

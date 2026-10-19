@@ -1,0 +1,164 @@
+{
+  "base": "/private/tmp/mioon-opacity-restored-drafts-qualification-4p6nLo",
+  "source": "/private/tmp/mioon-opacity-restored-drafts-qualification-4p6nLo/source42",
+  "backup": "/private/tmp/mioon-opacity-restored-drafts-qualification-4p6nLo/backup42",
+  "target": "/private/tmp/mioon-opacity-restored-drafts-qualification-4p6nLo/restored43",
+  "dist": "/private/tmp/mioon-opacity-restored-drafts-qualification-4p6nLo/candidate-dist",
+  "projectId": "ce323037-0a61-49a7-bec5-654dc9132f8d",
+  "timelineId": "801c6f27-544f-4f8c-9df4-9cff59fdb621",
+  "clipId": "72e4bb8c-3bc2-4fcd-ae9e-bc9955df1b6c",
+  "sourceDbHash": "bb32872111699eef7c2bfdcea861c5b4f3393864825260aa8eb47415d6107510",
+  "sourceDraftHash": "e2f014e46f697d5066ec5060e37b2810d79357efda04faafadf6ef049579b960",
+  "restored": {
+    "restorationId": "c5dba1c2-1bce-4b2c-8bdd-5746520f725c",
+    "workspaceOrigin": "b1c044a0-6662-45ef-84a7-35a8de506ee6",
+    "sourceBackupId": "3f7418ab-4bf1-40b9-af17-6ee9a94278ef",
+    "manifestHash": "6bb1f07d74f65e41ac86332c0465bb44f152ee037412473b5b44127fff941c9e",
+    "sourceDbHash": "bb32872111699eef7c2bfdcea861c5b4f3393864825260aa8eb47415d6107510",
+    "profile": "restored-local-v10",
+    "sourceSchema": 42,
+    "databaseSchemaVersion": 43,
+    "publication": "confirmed",
+    "createdAt": "2026-10-16T08:08:28.059Z",
+    "fileCount": 2,
+    "payloadBytes": 860187,
+    "databaseBytes": 966656,
+    "additionalDiskBytesEstimate": 2215452699,
+    "inventory": {
+      "complete": true,
+      "totalIssues": 0,
+      "issues": [],
+      "truncated": false
+    },
+    "heldCounts": {
+      "agent_chat_quota": 1,
+      "edit_tasks": 1,
+      "timeline_requests": 1
+    },
+    "draftPolicy": "excluded"
+  },
+  "initialLogicalHash": "5279ab17ece68a2106ee48a040c382e6ae4cf9a1b4649d1962cde95ddbe5cdd6",
+  "phases": [
+    {
+      "phase": "create",
+      "pid": 68448,
+      "passed": true,
+      "normalClose": true,
+      "lockReleased": true,
+      "instanceId": "55f233d3-14ec-4073-b567-05a36fb11675",
+      "logicalHash": "5279ab17ece68a2106ee48a040c382e6ae4cf9a1b4649d1962cde95ddbe5cdd6",
+      "noListenNativeExternalAttempts": 0,
+      "mediaProcesses": 0
+    },
+    {
+      "phase": "restore",
+      "pid": 69898,
+      "passed": true,
+      "normalClose": true,
+      "lockReleased": true,
+      "instanceId": "91eacc5b-dfd2-409a-9066-a884ad5b28ee",
+      "logicalHash": "5279ab17ece68a2106ee48a040c382e6ae4cf9a1b4649d1962cde95ddbe5cdd6",
+      "noListenNativeExternalAttempts": 0,
+      "mediaProcesses": 0
+    },
+    {
+      "phase": "discard",
+      "pid": 70136,
+      "passed": true,
+      "normalClose": true,
+      "lockReleased": true,
+      "instanceId": "00d93881-8932-4be0-84ae-cbcae3caa2dc",
+      "logicalHash": "5279ab17ece68a2106ee48a040c382e6ae4cf9a1b4649d1962cde95ddbe5cdd6",
+      "noListenNativeExternalAttempts": 0,
+      "mediaProcesses": 0
+    },
+    {
+      "phase": "verify",
+      "pid": 70878,
+      "passed": true,
+      "normalClose": true,
+      "lockReleased": true,
+      "instanceId": "b3e4b622-552d-48d5-9e70-58270a728299",
+      "logicalHash": "5279ab17ece68a2106ee48a040c382e6ae4cf9a1b4649d1962cde95ddbe5cdd6",
+      "noListenNativeExternalAttempts": 0,
+      "mediaProcesses": 0
+    }
+  ],
+  "raw": {
+    "name": "Cold reopen 草稿 日本語",
+    "trackId": "4b63a793-ce80-46e5-99e9-aac2de31baaa",
+    "startFrame": 0,
+    "durationFrames": 30,
+    "sourceInFrame": 0,
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 720,
+      "height": 1280
+    },
+    "gain": 1,
+    "opacityEnvelope": {
+      "profileId": "mioon-clip-linear-opacity-v1",
+      "points": [
+        {
+          "frame": "0",
+          "opacity": "."
+        },
+        {
+          "frame": "30",
+          "opacity": "1"
+        }
+      ]
+    }
+  },
+  "saved": {
+    "supported": true,
+    "workspaceScope": "d12a92a72c04f8e73f935d09eacd40657ab90df3faf6cf888307daa62ad3a0a9",
+    "instanceId": "55f233d3-14ec-4073-b567-05a36fb11675",
+    "key": {
+      "projectId": "ce323037-0a61-49a7-bec5-654dc9132f8d",
+      "timelineId": "801c6f27-544f-4f8c-9df4-9cff59fdb621",
+      "clipId": "72e4bb8c-3bc2-4fcd-ae9e-bc9955df1b6c"
+    },
+    "revision": 1,
+    "targetStatus": "matching",
+    "draft": {
+      "baseRevision": 3,
+      "source": {
+        "assetId": "7c0c7740-98c6-4ad4-b87c-cb9fa744727b",
+        "assetSha256": "e89a2641ad53443817634d38e4c06e8d66bb6de0bcd169750ef51ad9d0499212"
+      },
+      "raw": {
+        "name": "Cold reopen 草稿 日本語",
+        "trackId": "4b63a793-ce80-46e5-99e9-aac2de31baaa",
+        "startFrame": 0,
+        "durationFrames": 30,
+        "sourceInFrame": 0,
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 720,
+          "height": 1280
+        },
+        "gain": 1,
+        "opacityEnvelope": {
+          "profileId": "mioon-clip-linear-opacity-v1",
+          "points": [
+            {
+              "frame": "0",
+              "opacity": "."
+            },
+            {
+              "frame": "30",
+              "opacity": "1"
+            }
+          ]
+        }
+      },
+      "updatedAt": "2026-10-16T08:08:28.691Z"
+    }
+  },
+  "sidecarHash": "fa0d6b27b7104e97c9bbf8de3159f1f52de82d87dfbe7d3f1f6ae9be657547df",
+  "discardRevision": 2,
+  "tombstoneHash": "85bb00a5e043d55654cb32f565caf593ad12105dda6bde8b118f5868e58efa6f"
+}

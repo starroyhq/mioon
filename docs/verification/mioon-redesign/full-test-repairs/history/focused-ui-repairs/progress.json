@@ -1,0 +1,9 @@
+{
+  "completedFiles": 11,
+  "totalFiles": 11,
+  "passedFiles": 9,
+  "failedFiles": 2,
+  "timeoutFiles": 0,
+  "seconds": 15.26,
+  "last": "tests/inspection-contracts.test.mjs"
+}

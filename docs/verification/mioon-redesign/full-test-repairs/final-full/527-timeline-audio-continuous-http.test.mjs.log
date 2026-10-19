@@ -1,0 +1,34 @@
+TAP version 13
+# Subtest: continuous HTTP binds all response clocks/identities and retains Buffer through finish
+ok 1 - continuous HTTP binds all response clocks/identities and retains Buffer through finish
+  ---
+  duration_ms: 3.016083
+  type: 'test'
+  ...
+# Subtest: destroy after cancellation waits observed transport close and native settlement
+ok 2 - destroy after cancellation waits observed transport close and native settlement
+  ---
+  duration_ms: 4.360333
+  type: 'test'
+  ...
+# Subtest: DELETE authenticates canonical request and awaits actual session retirement
+ok 3 - DELETE authenticates canonical request and awaits actual session retirement
+  ---
+  duration_ms: 3.261375
+  type: 'test'
+  ...
+# Subtest: malformed/reordered/duplicate inputs and restored profiles reject before media service
+ok 4 - malformed/reordered/duplicate inputs and restored profiles reject before media service
+  ---
+  duration_ms: 0.518458
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 196.233042

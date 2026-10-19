@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: volume and opacity composition share one owner and reject each other’s tokens without clearing close protection
+ok 1 - volume and opacity composition share one owner and reject each other’s tokens without clearing close protection
+  ---
+  duration_ms: 25.71025
+  type: 'test'
+  ...
+# Subtest: unchanged opacity absent is omitted from patch but exact presence remains mandatory in ACK
+ok 2 - unchanged opacity absent is omitted from patch but exact presence remains mandatory in ACK
+  ---
+  duration_ms: 2.325917
+  type: 'test'
+  ...
+# Subtest: unchanged opacity null is omitted from patch but exact presence remains mandatory in ACK
+ok 3 - unchanged opacity null is omitted from patch but exact presence remains mandatory in ACK
+  ---
+  duration_ms: 0.895208
+  type: 'test'
+  ...
+# Subtest: unchanged opacity curve is omitted from patch but exact presence remains mandatory in ACK
+ok 4 - unchanged opacity curve is omitted from patch but exact presence remains mandatory in ACK
+  ---
+  duration_ms: 1.035125
+  type: 'test'
+  ...
+# Subtest: exact acknowledged curve opacity survives local draft clearing
+ok 5 - exact acknowledged curve opacity survives local draft clearing
+  ---
+  duration_ms: 1.716167
+  type: 'test'
+  ...
+# Subtest: exact acknowledged null opacity survives local draft clearing
+ok 6 - exact acknowledged null opacity survives local draft clearing
+  ---
+  duration_ms: 0.763875
+  type: 'test'
+  ...
+# Subtest: a late exact opacity ACK cannot clear later form input or the persisted draft owner
+ok 7 - a late exact opacity ACK cannot clear later form input or the persisted draft owner
+  ---
+  duration_ms: 0.718333
+  type: 'test'
+  ...
+# Subtest: opacity capability loss while draft flush is pending cancels business dispatch without dropping raw input
+ok 8 - opacity capability loss while draft flush is pending cancels business dispatch without dropping raw input
+  ---
+  duration_ms: 2.8385
+  type: 'test'
+  ...
+# Subtest: opacity capability loss revokes a prepared save’s canExecute guard
+ok 9 - opacity capability loss revokes a prepared save’s canExecute guard
+  ---
+  duration_ms: 0.647959
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 269.030958

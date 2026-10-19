@@ -1,0 +1,42 @@
+{
+  "baseline": "eee1db48686dff5db8f4f0c9434b96cdcecd0c52",
+  "reviewer": "/root/restored_drafts_final_review",
+  "mode": "Independent read-only final review; no file edits",
+  "standards": {
+    "findings": 0,
+    "scope": [
+      "TypeScript runtime and checked legacy wiring",
+      "No new frozen source exception, JS allowlist, schema migration or typecheck exemption"
+    ]
+  },
+  "spec": {
+    "findings": 0,
+    "scope": [
+      "Exact restored43 store/private frontend binding",
+      "Optional old inspection fallback and strict present capability",
+      "Version/profile/origin/scope/project/timeline/clip/source/baseRevision/instance",
+      "CAS, atomic publication, directory fsync and SAVE_UNCERTAIN",
+      "Explicit restore/discard and current-origin business ACK cleanup",
+      "IME, Cancel, stale responses, close and retained owner",
+      "Source42 v3 exclusion and held/epoch/history protections"
+    ]
+  },
+  "independentTests": {
+    "files": [
+      "tests/opacity-restored-draft-client.test.mjs",
+      "tests/clip-draft-app-close.test.mjs"
+    ],
+    "tests": 24,
+    "pass": 24,
+    "fail": 0,
+    "skipped": 0,
+    "note": "Reviewer-reported separate run; overlaps final aggregate."
+  },
+  "copiedClientAssessment": "A manually copied closure can still be called by trusted code, but production TimelineInspector requires exact private WeakMap binding with restored43 context. No payload-accessible authority expansion found; no generic client framework added.",
+  "remaining": [
+    "Actual GUI",
+    "Real Chinese/Japanese OS IME",
+    "Native window cold close/reopen"
+  ],
+  "blockers": []
+}

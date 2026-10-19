@@ -45,7 +45,7 @@ async function fixture(t) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-split-media-'));
   await mkdir(evidence, { recursive: true });
   const port = await freePort(), base = `http://127.0.0.1:${port}`;
-  const child = spawn(process.execPath, ['server/index.mjs'], { cwd: repo, env: { ...process.env, PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '', RUNWAY_MAX_GENERATIONS: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, ['server/index.mjs'], { cwd: repo, env: { ...process.env, PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
   records.server = { pid: child.pid, port, stdout: '', stderr: '' };
   child.stdout.setEncoding('utf8').on('data', bytes => records.server.stdout += bytes);
   child.stderr.setEncoding('utf8').on('data', bytes => records.server.stderr += bytes);
@@ -97,11 +97,11 @@ async function makeFixtures(root) {
   await ffmpeg(['-f', 'lavfi', '-i', 'aevalsrc=0.2*sin(2*PI*(440+440*floor(t))*t):s=48000:d=4', '-c:a', 'pcm_s16le', path.join(root, 'trim-tone.wav')]);
   await ffmpeg(['-f', 'lavfi', '-i', 'sine=frequency=2371:sample_rate=48000:duration=4', '-c:a', 'pcm_s16le', path.join(root, 'muted.wav')]);
 }
-async function probe(file) {
+async function probe(file, format) {
   const info = JSON.parse(await command('ffprobe', ['-v', 'error', '-count_frames', '-show_streams', '-show_format', '-of', 'json', file]));
   const video = info.streams.find(stream => stream.codec_type === 'video'), audio = info.streams.find(stream => stream.codec_type === 'audio');
   assert.ok(video && audio);
-  assert.equal(video.codec_name, 'h264'); assert.equal(video.width, 720); assert.equal(video.height, 1280);
+  assert.equal(video.codec_name, 'h264'); assert.equal(video.width, format.width); assert.equal(video.height, format.height);
   assert.equal(video.r_frame_rate, '30/1'); assert.equal(video.avg_frame_rate, '30/1'); assert.equal(Number(video.nb_read_frames), frames);
   assert.equal(audio.codec_name, 'aac'); assert.equal(Number(audio.sample_rate), sampleRate); assert.equal(audio.channels, 2);
   assert.ok(Math.abs(Number(video.duration) - frames / fps) < 0.00001);
@@ -175,7 +175,7 @@ test('clip split preserves real rendered multitrack composition and exact frame 
     await mutate('timeline.clip.add', { trackId: mutedTrack.id, assetId: muted.id, startFrame: 0, durationFrames: frames, sourceInFrame: 8, gain: 2 });
     const original = structuredClone(timeline);
     const before = await f.render(project.id, original, 'before-split.mp4');
-    records.checks.push({ name: 'Before split export', result: 'passed', ...await probe(before.file) });
+    records.checks.push({ name: 'Before split export', result: 'passed', ...await probe(before.file, original) });
     const splitPlan = [[image, 31], [video, 43], [audio, 47], [muted, 59]];
     for (const [asset, atFrame] of splitPlan) {
       const clip = structuredClone(timeline.clips.find(clip => clip.assetId === asset.id));
@@ -191,7 +191,7 @@ test('clip split preserves real rendered multitrack composition and exact frame 
       records.checks.push({ name: `Split ${asset.name}`, result: 'passed', atFrame, left, right });
     }
     const after = await f.render(project.id, timeline, 'after-split.mp4');
-    records.checks.push({ name: 'After split export', result: 'passed', ...await probe(after.file) });
+    records.checks.push({ name: 'After split export', result: 'passed', ...await probe(after.file, original) });
     const full = compareFrames(await decodedVideo(before.file), await decodedVideo(after.file), 180 * 320 * 3, 'full composition');
     const cropFilter = 'crop=528:296:96:370,scale=264:148';
     const moving = compareFrames(await decodedVideo(before.file, cropFilter), await decodedVideo(after.file, cropFilter), 264 * 148 * 3, 'moving source crop');

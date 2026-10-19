@@ -1,0 +1,106 @@
+TAP version 13
+# Subtest: private desktop LUT metadata survives store recreation without touching missing storage on read
+ok 1 - private desktop LUT metadata survives store recreation without touching missing storage on read
+  ---
+  duration_ms: 36.12
+  type: 'test'
+  ...
+# Subtest: CAS reservation and completion compare the complete metadata and preserve unrelated scopes
+ok 2 - CAS reservation and completion compare the complete metadata and preserve unrelated scopes
+  ---
+  duration_ms: 51.721083
+  type: 'test'
+  ...
+# Subtest: each operation rereads disk and invalid data is never repaired or evicted
+ok 3 - each operation rereads disk and invalid data is never repaired or evicted
+  ---
+  duration_ms: 22.975667
+  type: 'test'
+  ...
+# Subtest: oversized existing aggregate is rejected without replacing evidence
+ok 4 - oversized existing aggregate is rejected without replacing evidence
+  ---
+  duration_ms: 1.232792
+  type: 'test'
+  ...
+# Subtest: bounded slots reject a new unresolved request but never evict prior evidence
+ok 5 - bounded slots reject a new unresolved request but never evict prior evidence
+  ---
+  duration_ms: 2421.918833
+  type: 'test'
+  ...
+# Subtest: rejects symlink target without repairing or modifying it
+ok 6 - rejects symlink target without repairing or modifying it
+  ---
+  duration_ms: 1.251833
+  type: 'test'
+  ...
+# Subtest: rejects hardlink target without repairing or modifying it
+ok 7 - rejects hardlink target without repairing or modifying it
+  ---
+  duration_ms: 1.430125
+  type: 'test'
+  ...
+# Subtest: rejects mode target without repairing or modifying it
+ok 8 - rejects mode target without repairing or modifying it
+  ---
+  duration_ms: 1.30625
+  type: 'test'
+  ...
+# Subtest: rejects directory target without repairing or modifying it
+ok 9 - rejects directory target without repairing or modifying it
+  ---
+  duration_ms: 1.112292
+  type: 'test'
+  ...
+# Subtest: root is private and pinned for the lifetime of the store
+ok 10 - root is private and pinned for the lifetime of the store
+  ---
+  duration_ms: 0.957875
+  type: 'test'
+  ...
+# Subtest: publication aborts after a root identity swap without touching replacement directory
+ok 11 - publication aborts after a root identity swap without touching replacement directory
+  ---
+  duration_ms: 11.308917
+  type: 'test'
+  ...
+# Subtest: publication rechecks original target identity and preserves a replacement record
+ok 12 - publication rechecks original target identity and preserves a replacement record
+  ---
+  duration_ms: 53.504667
+  type: 'test'
+  ...
+# Subtest: workspace/backend fence runs before access and again immediately before publication
+ok 13 - workspace/backend fence runs before access and again immediately before publication
+  ---
+  duration_ms: 11.103125
+  type: 'test'
+  ...
+# Subtest: invalid incoming metadata cannot reach disk
+ok 14 - invalid incoming metadata cannot reach disk
+  ---
+  duration_ms: 0.798625
+  type: 'test'
+  ...
+# Subtest: invalid UTF-8 and too many preexisting records are corrupt, not normalized
+ok 15 - invalid UTF-8 and too many preexisting records are corrupt, not normalized
+  ---
+  duration_ms: 2.673
+  type: 'test'
+  ...
+# Subtest: constructor pins private root without requiring an active backend request
+ok 16 - constructor pins private root without requiring an active backend request
+  ---
+  duration_ms: 0.461375
+  type: 'test'
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2801.008208

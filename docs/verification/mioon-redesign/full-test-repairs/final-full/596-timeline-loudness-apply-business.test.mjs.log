@@ -1,0 +1,138 @@
+TAP version 13
+# Subtest: apply performs a new complete double measurement and double hash, then exact group admission
+ok 1 - apply performs a new complete double measurement and double hash, then exact group admission
+  ---
+  duration_ms: 60.075333
+  type: 'test'
+  ...
+# Subtest: same-key retained ACK precedes media even after undo, source loss, unavailable decoder and restart wrapper
+ok 2 - same-key retained ACK precedes media even after undo, source loss, unavailable decoder and restart wrapper
+  ---
+  duration_ms: 46.259375
+  type: 'test'
+  ...
+# Subtest: receipt conflicts propagate before any measurement
+ok 3 - receipt conflicts propagate before any measurement
+  ---
+  duration_ms: 20.126792
+  type: 'test'
+  ...
+# Subtest: strict scalar input is validated before receipts or media; restoration precedes getters
+ok 4 - strict scalar input is validated before receipts or media; restoration precedes getters
+  ---
+  duration_ms: 19.773542
+  type: 'test'
+  ...
+# Subtest: reviewed digest and snapshot mismatches cannot rebase to freshly calculated gains
+    # Subtest: candidateDigest
+    ok 1 - candidateDigest
+      ---
+      duration_ms: 38.000875
+      type: 'test'
+      ...
+    # Subtest: snapshotSha256
+    ok 2 - snapshotSha256
+      ---
+      duration_ms: 36.95175
+      type: 'test'
+      ...
+    1..2
+ok 5 - reviewed digest and snapshot mismatches cannot rebase to freshly calculated gains
+  ---
+  duration_ms: 75.300125
+  type: 'test'
+  ...
+# Subtest: actual measured target and true peak both gate acceptance; no fallback target or clamp
+ok 6 - actual measured target and true peak both gate acceptance; no fallback target or clamp
+  ---
+  duration_ms: 36.702833
+  type: 'test'
+  ...
+# Subtest: a mathematically unchanged candidate cannot append an edit
+ok 7 - a mathematically unchanged candidate cannot append an edit
+  ---
+  duration_ms: 53.164958
+  type: 'test'
+  ...
+# Subtest: private final fence checks owner, full graph and source identity synchronously and expires on return
+    # Subtest: owner
+    ok 1 - owner
+      ---
+      duration_ms: 35.194541
+      type: 'test'
+      ...
+    # Subtest: graph
+    ok 2 - graph
+      ---
+      duration_ms: 35.421042
+      type: 'test'
+      ...
+    # Subtest: source
+    ok 3 - source
+      ---
+      duration_ms: 37.835833
+      type: 'test'
+      ...
+    # Subtest: cancel
+    ok 4 - cancel
+      ---
+      duration_ms: 35.74725
+      type: 'test'
+      ...
+    1..4
+ok 8 - private final fence checks owner, full graph and source identity synchronously and expires on return
+  ---
+  duration_ms: 184.634125
+  type: 'test'
+  ...
+# Subtest: child retirement is awaited before mutation, with no public DTO substitute for live fence
+ok 9 - child retirement is awaited before mutation, with no public DTO substitute for live fence
+  ---
+  duration_ms: 59.922834
+  type: 'test'
+  ...
+# Subtest: transport disconnect does not cancel accepted business work
+ok 10 - transport disconnect does not cancel accepted business work
+  ---
+  duration_ms: 299.869792
+  type: 'test'
+  ...
+# Subtest: post-write and unknown transaction errors retain identity and are never decoder-normalized or safely rejected
+ok 11 - post-write and unknown transaction errors retain identity and are never decoder-normalized or safely rejected
+  ---
+  duration_ms: 133.001708
+  type: 'test'
+  ...
+# Subtest: raced retained receipt is returned unchanged without a post-commit fence
+ok 12 - raced retained receipt is returned unchanged without a post-commit fence
+  ---
+  duration_ms: 56.3185
+  type: 'test'
+  ...
+# Subtest: unconfirmed child termination cannot reach apply or produce a not-applied proof
+ok 13 - unconfirmed child termination cannot reach apply or produce a not-applied proof
+  ---
+  duration_ms: 59.291166
+  type: 'test'
+  ...
+# Subtest: accepted scalar intent is frozen independently of later caller changes
+ok 14 - accepted scalar intent is frozen independently of later caller changes
+  ---
+  duration_ms: 37.148334
+  type: 'test'
+  ...
+# Subtest: last source validation cannot revoke the owner scope unnoticed by the private final fence
+ok 15 - last source validation cannot revoke the owner scope unnoticed by the private final fence
+  ---
+  duration_ms: 34.532125
+  type: 'test'
+  ...
+1..15
+# tests 21
+# suites 0
+# pass 21
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1379.012792

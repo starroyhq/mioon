@@ -1,0 +1,220 @@
+{
+  "date": "2026-10-16",
+  "baseline": "1e95a4492633dd2f4e1db16793f5b86dabdcabe3",
+  "status": "repairs-verified-partial-GUI-realIME-unverified",
+  "implemented": [
+    "compositionEnter/end implicit-submit fence in pureTypeScript; nativeIME default preserved",
+    "compositionupdate raw text retained; Escape/blur/current-owner focus and heldEnter repeat guards",
+    "42Cancel spans in-flightPUT/DELETE; duplicateSave/Cancel and lateACK cannot overwrite newer draft or leave permanent busy",
+    "four-language preview permissions copy and precise Japanese halfwidth/unique-frame wording"
+  ],
+  "tests": {
+    "targeted": {
+      "total": 241,
+      "pass": 241,
+      "newSyntheticCases": 15,
+      "exitCode": 0,
+      "summary": "synthetic-qualification.json",
+      "log": "synthetic-focusfix-targeted.txt"
+    },
+    "languageSessionAndCopy": {
+      "total": 5,
+      "pass": 5,
+      "exitCode": 0,
+      "command": [
+        "node",
+        "--test",
+        "--test-concurrency=2",
+        "--test-reporter=tap",
+        "tests/opacity-application-language-session.test.mjs",
+        "tests/opacity-language-copy.test.mjs"
+      ],
+      "log": "language-session-copy-tests.tap",
+      "sessionMatrix": "42/43 × zh-Hans/zh-Hant/en/ja =8actual shared-handler/controller sessions; noGUI orIME"
+    },
+    "independent": {
+      "total": 36,
+      "pass": 36,
+      "overlap": "not added to targeted count"
+    },
+    "fullRepositorySuite": false
+  },
+  "gates": [
+    {
+      "command": [
+        "node",
+        "scripts/tooling.mjs",
+        "typecheck"
+      ],
+      "exitCode": 0,
+      "log": "synthetic-focusfix-typecheck.txt"
+    },
+    {
+      "command": [
+        "node",
+        "scripts/tooling.mjs",
+        "build"
+      ],
+      "exitCode": 0,
+      "log": "build-summary.txt",
+      "scope": "canonical type/source guards, defaultWeb/developmentDesktop source stage; no installable package"
+    },
+    {
+      "cwd": "apps/web",
+      "command": [
+        "node",
+        "node_modules/vite/bin/vite.js",
+        "build",
+        "--mode",
+        "opacity-candidate"
+      ],
+      "exitCode": 0,
+      "log": "candidate-build-summary.txt"
+    }
+  ],
+  "review": "independent-review.json",
+  "frozen": "frozen-check.json",
+  "frozenNewExceptions": 0,
+  "versions": {
+    "node": "v26.9.0",
+    "safari": "27.0.1"
+  },
+  "gui": {
+    "file": "gui-acceptance.json",
+    "buildScope": "previous compiled1e95a449 build; final repaired buildGUI not verified",
+    "profile": 43,
+    "completeLocales": [
+      "zh-Hans",
+      "zh-Hant",
+      "en"
+    ],
+    "localeScope": "restore/memory notice,Inspector,error,ordinaryEnter/Escape/focus,double-clickSave/Cancel,refresh+reselect; not native close/reopen",
+    "partialJapanese": "language selector/settings only",
+    "42GUI": false,
+    "completeFourLanguageGUI": false,
+    "realChineseIME": false,
+    "realJapaneseIME": false,
+    "inputSourceChanged": false,
+    "OSPermissionsOrSettingsChanged": false,
+    "toolFailure": "Transportclosed; failed path stopped without retry",
+    "lastObservedAppLanguage": "ja; originalsystem preference could not be restored after disconnect",
+    "windowClosure": "unconfirmed"
+  },
+  "workspace": {
+    "seed": "seed.json",
+    "audit": "final-workspace-audit.json",
+    "source42SavedRevision": 2,
+    "target43SavedRevision": 5,
+    "target43Opacity": 0.43,
+    "heldOriginEpochUnchanged": true,
+    "sourceV3Retained": true,
+    "targetV3Absent": true,
+    "exportsOrJobs": 0,
+    "mediaChildren": 0,
+    "locksReleased": true
+  },
+  "process": {
+    "ownPID": 71123,
+    "session": 61632,
+    "closeWrite": "unconfirmed because execserver disconnected and session unknown",
+    "originalServiceExitCode": "unconfirmed",
+    "exactPIDCheck": "absent; ps exit1 zero rows",
+    "port4319": "no listener; lsof exit1 zero rows",
+    "residualLock": "captured then original fixed43 owner-lease stale-lock admission and normalstore.close released it",
+    "manualLockRemoval": false,
+    "processSignalSent": false,
+    "listenerRestartAfterFailure": false,
+    "evidence": "disconnect-lifecycle-before.json"
+  },
+  "blockers": [
+    {
+      "action": "ContinueJapaneseInspector and final-fixed-build four-languageGUI / realOSIME",
+      "target": "task-owned Safari localhost4319 43workspace",
+      "reason": "CUA Transportclosed; no retry per instruction",
+      "state": "tool unavailable; not denied"
+    },
+    {
+      "action": "Verify originalservice normalexit and testwindow closure; restore app-language preference",
+      "target": "ownPID71123/session61632 / newSafari testwindow",
+      "reason": "execsession lost and GUI unavailable; exactPID absent,portfree and original stale-lock cleanup succeeded",
+      "state": "historical exit/window outcome unconfirmed; no live own service remains"
+    }
+  ],
+  "deniedOperations": [],
+  "pendingApprovals": [],
+  "remaining": [
+    "final repaired-build four-language GUI and native close/reopen",
+    "actual Chinese andJapanese OSIME without changing user settings",
+    "42 GUI in this round",
+    "native installer,Node24,product-pinnedFFmpeg andcrossplatform gates remain separate"
+  ],
+  "boundaries": {
+    "default40and41Changed": false,
+    "databaseSchemaChanged": false,
+    "heldOriginEpochRelaxed": false,
+    "43DraftPersistenceExpanded": false,
+    "legacyAllowlistOrTypecheckWeakened": false,
+    "dependenciesInstalled": false,
+    "providersOrPaidServices": false,
+    "userProjectsAccessed": false,
+    "githubPush": false
+  },
+  "nextDeliverable": "When GUI is available, finish JapaneseInspector and final-built four-language/actualIME/native-close matrix in task-owned42/43 only; preserve current explicit memory policy.",
+  "recordedAt": "2026-10-16T07:54:22.270140+00:00",
+  "runtimeSha256": {
+    "apps/web/src/ClipOpacityEnvelopeControls.tsx": "3384ad5e5a38206e3bf44380e4ba5d85d1ffae35fb1817bff240a005a5720fa3",
+    "apps/web/src/TimelineInspector.jsx": "b9a2b8c65eacc363bd013769d533dd142393be01c64094a570c78bc16652db5b",
+    "apps/web/src/clip-draft-state.ts": "da73b58cf828a6f0039e9803fa7b51620fde48f1827a0a9aab8be7d55bee9e8b",
+    "apps/web/src/opacity-ime-submit-guard.ts": "30c37851d250ac39b61140fab95081b94209de4b4d030bd3ff7d9eca676de42a",
+    "packages/i18n/src/catalogs/opacity-envelope.ts": "73128e4c62e82a8598b8a7e49bc20021befe812b2b310617dd521c1800d7c98e",
+    "packages/i18n/src/catalogs/opacity-restored-application.ts": "48143c48bc1d418fd56df54b1293066135f8e9a7671939cf513adb6ab886a186"
+  },
+  "temporaryHarnesses": [
+    {
+      "path": "/tmp/mioon-opacity-language-seed.mjs",
+      "sha256": "fd0e765e866173a0927610013d05eb5a6cd37be86da7a030789198f334e38ae5"
+    },
+    {
+      "path": "/tmp/mioon-opacity-language-runtime.mjs",
+      "sha256": "6b7d298dd91eaec2e54485fb7ad4a666055182209e7f172431bcbcc461ee1994"
+    }
+  ],
+  "evidenceSha256": {
+    "build-summary-before-focus-fix.txt": "561a7b5b5a30d6e7ad4b06c15ab835e0884b95b63491a695135515052157e7bb",
+    "build-summary.txt": "881963f8c2faf897686be52d3a1b3cf39b8baa9e0eb0be2755312f5795eb8e96",
+    "builds-before-focus-fix.json": "09dc6be2ddd98af0633086e83a2425e9304dda1cbe7f483d04be0f161ff3f5f5",
+    "candidate-build-summary-before-focus-fix.txt": "28b179a0ea51e00adc4fbdcf3085578f6b18b7e8730a72f6c5af1cd75c3a70ef",
+    "candidate-build-summary.txt": "eb19e425eca1ce3e2482e8e9c0b5c1695628f33458c109ec031eaf8e156719c5",
+    "disconnect-lifecycle-before.json": "b7d9f0ce7d9866181fd62a6744d9980c80cc74e03b4db8bae571feefd9446f86",
+    "final-workspace-audit.json": "49b34a9e755127e1b34fb40d7a89addbb8e6aa37a23248080d9f7a49b968fc89",
+    "frozen-check.json": "753d3859c686735dbed9827aeb190246d865073233f66a8e09fec95286e376da",
+    "gui-acceptance.json": "27664402302510f9fe5b42f0bf78125913c566081485065cdca0afb1edae04a0",
+    "independent-review.json": "7bd709d6a0f946ab700087c7538fefc0a6c914d0f7ecac354f4a8d1c469350b1",
+    "input-source-readonly.json": "571a8f047de6cebc3c7e394f9750447d234c49a6098b3e0224b759550f53fe13",
+    "language-session-copy-tests.tap": "55621ac7becba941d392db73e2520d07766c3fc83616db2a8ff96ca44d0ece9b",
+    "lifecycle.jsonl": "eecfa574be6405bd63bc96a4b22ff0a87023b15daba318dc0c9ef743280cf857",
+    "seed.json": "995bf1307053dc9ce6cc887efade530b5e18744afdc028d49eb0cab6ce5f366e",
+    "synthetic-before-fix.txt": "05b8e2e0f28818c1243c5bbfec488b169cd99d8b53f8ca2998c8c829916dcc38",
+    "synthetic-focusfix-targeted.txt": "7da7afb2e2e35b5bb82c589f93c83f44d94d22eb365298480ff87b68a5560c7a",
+    "synthetic-focusfix-typecheck.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "synthetic-process229-before-fix.txt": "2c20756f676c35338ed150610d3661168d9b5e5f8ff452c20b0b829a2208662c",
+    "synthetic-qualification.json": "42c62777bb51428f51ff70aecefea98672d70ab06bc7a1919c4f42dba4e50ca1",
+    "synthetic-regression-attempt1.txt": "8425e0bdfa48d0b812ba3141134c3a3f77c84ab06bbe8c65304791af185c732d",
+    "synthetic-targeted-final.txt": "6b66ca1ab4ed0ab5f33905b13b0acedfbcceaae009a93ba51c8c35d13747b8e8",
+    "synthetic-typecheck.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "copiedLogNormalization": [
+    {
+      "file": "synthetic-before-fix.txt",
+      "normalization": "Copied evidence only: strip trailing spaces/tabs from lines; original test/source/assertions unchanged",
+      "originalSha256": "9c71f37ac35a319ceb5ddc89a713f2666f7e4b0691afbb421653666670efaa9d",
+      "savedSha256": "05b8e2e0f28818c1243c5bbfec488b169cd99d8b53f8ca2998c8c829916dcc38"
+    },
+    {
+      "file": "synthetic-process229-before-fix.txt",
+      "normalization": "Copied evidence only: strip trailing spaces/tabs from lines; original test/source/assertions unchanged",
+      "originalSha256": "33da3be4116a2fe6dfc084ebad47b4f493f008d486d284b874c2d004d47dd6a8",
+      "savedSha256": "2c20756f676c35338ed150610d3661168d9b5e5f8ff452c20b0b829a2208662c"
+    }
+  ]
+}

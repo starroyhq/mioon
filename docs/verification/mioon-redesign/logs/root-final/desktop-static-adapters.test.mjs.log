@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: desktop adapter transform refuses dynamic or escaped require and preserves other source
+ok 1 - desktop adapter transform refuses dynamic or escaped require and preserves other source
+  ---
+  duration_ms: 4.349833
+  type: 'test'
+  ...
+# Subtest: a self-contained CJS bundle opens ordinary48 and exact46/47 without source-tree runtime paths
+ok 2 - a self-contained CJS bundle opens ordinary48 and exact46/47 without source-tree runtime paths
+  ---
+  duration_ms: 1939.54275
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2206.005083

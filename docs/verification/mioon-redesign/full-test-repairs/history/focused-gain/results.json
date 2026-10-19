@@ -1,0 +1,108 @@
+[
+  {
+    "file": "tests/agent-timeline-gain-business.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 20.85,
+    "tapSummary": {
+      "tests": 15,
+      "suites": 0,
+      "pass": 15,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-gain/002-agent-timeline-gain-business.test.mjs.log",
+    "sha256": "471222b83491711701457298f19897e67f3dd09a0e8bae0bb9d6fd0e38e38391",
+    "sourceSha256": "d1b3b892c42903c8bb17bf69321f7ce9d6d1da903773ebcd538ffeaffd33313e",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-timeline-gain-contracts.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.44,
+    "tapSummary": {
+      "tests": 11,
+      "suites": 0,
+      "pass": 11,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-gain/001-agent-timeline-gain-contracts.test.mjs.log",
+    "sha256": "55011783449aefc6cf33b45148b16c76df7ca02aa1ca1d64b639becec9212d66",
+    "sourceSha256": "25eeb500d9c4291c045a516b6c51424218d742ce47bf728d0fca58ee1e1c8c78",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-timeline-gain-media.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 25.17,
+    "tapSummary": {
+      "tests": 1,
+      "suites": 0,
+      "pass": 1,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-gain/005-agent-timeline-gain-media.test.mjs.log",
+    "sha256": "7d56600be4b9f2990329d6df8f248866fc3d54b0ee21dfab70ce76d16a1a73d0",
+    "sourceSha256": "0a10751a0f53ff05616a2623ecb1cd861c1c6ec17eee1beeb48237b9c82b6fc0",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/agent-timeline-gain-preservation.test.mjs",
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 9.33,
+    "tapSummary": {
+      "tests": 11,
+      "suites": 0,
+      "pass": 3,
+      "fail": 8,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-gain/003-agent-timeline-gain-preservation.test.mjs.log",
+    "sha256": "e83975c344cce0a4d4c0347cc6ac0ca6da76c104c917ea6ea11cd4588a1a4722",
+    "sourceSha256": "3f9d170ba796e41e15ff57997e837306ae35b25c916a4e8a37b5c18b38e4b612",
+    "failedSubtests": [
+      "frozen validator loader rejects changed historical source before import",
+      "frozen validator loader rejects live direct-dependency drift before import",
+      "frozen validator loader refuses unpinned imports instead of broadening its dependency allowlist",
+      "frozen c3a0a57 restore policy and effects use the exact old catalog despite current operation additions",
+      "fixed real v1/v2 records survive startup, read, pagination and recovery with every raw byte and sequence intact",
+      "v3 uses existing SQL only and the frozen old validator rejects or holds new JSON without inference or payload rewrites",
+      "frozen old definition version gate rejects v3 even when a valid old move mode and target precede it",
+      "actual offline backup CLI retains mixed legacy and v3 gain bytes; schema27 holds inherited authority while fresh manual gain stays local"
+    ]
+  },
+  {
+    "file": "tests/agent-timeline-gain-wire.test.mjs",
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 0.64,
+    "tapSummary": {
+      "tests": 1,
+      "suites": 0,
+      "pass": 0,
+      "fail": 1,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-gain/004-agent-timeline-gain-wire.test.mjs.log",
+    "sha256": "c08c02b20a0b950af702835cd5549ce6a5f5ab518ea5427b50665eb9b14d7cee",
+    "sourceSha256": "d50fd5641b20c6cd047cf1c8ebfca6d8f16fbc59e979e486191697a5b22ec4fa",
+    "failedSubtests": [
+      "tests/agent-timeline-gain-wire.test.mjs"
+    ]
+  }
+]

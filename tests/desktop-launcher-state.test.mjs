@@ -52,6 +52,31 @@ test('explicit openings seal a one-use permit and different editor projects neve
   assert.equal(f.controller.getState().shown, false);
   assert.equal(f.controller.consume(f.opens[0].entryToken, uuid(4)).accepted, false);
 });
+test('accepted already-ready editor targets close the picker while rejected targets retain its error', async () => {
+  for (const accepted of [true, false]) {
+    const initial = ctx({role:'editor',initialProjectId:uuid(3),editorProjectId:uuid(3),editorPhase:'ready',editorCount:2});
+    const f = fixture({context:initial,invoke:({controller,entryToken,projectId}) => {
+      assert.equal(controller.consume(entryToken, projectId).accepted,true);
+      return accepted ? result({targetPhase:'ready'}) : result({ok:false,reason:'busy',targetWindowId:null,targetPhase:null});
+    }});
+    await f.controller.boot(); await f.controller.show('open');
+    assert.equal(await f.controller.open(uuid(4)),accepted);
+    assert.equal(f.controller.getState().shown,!accepted);
+    assert.equal(f.controller.getState().phase,accepted?'home':'error');
+    assert.equal(Boolean(f.controller.getState().error),!accepted);
+    assert.equal(f.controller.getContext().editorProjectId,uuid(3));
+  }
+});
+test('an exact late accepted receipt closes the editor picker after an unknown open without redispatch', async () => {
+  const initial=ctx({role:'editor',initialProjectId:uuid(3),editorProjectId:uuid(3),editorPhase:'ready',editorCount:2});
+  const f=fixture({context:initial,invoke:({controller,entryToken,projectId})=>{assert.equal(controller.consume(entryToken,projectId).accepted,true);throw new Error('lost');}});
+  await f.controller.boot();await f.controller.show('open');
+  assert.equal(await f.controller.open(uuid(4)),false);assert.equal(f.controller.getState().openUnknown,true);
+  f.receive({entryReceipt:{entryToken:uuid(999),result:result({targetPhase:'ready'})}});
+  assert.equal(f.controller.getState().shown,true);
+  f.receive({entryReceipt:{entryToken:f.opens[0].entryToken,result:result({targetPhase:'ready'})}});
+  assert.equal(f.controller.getState().shown,false);assert.equal(f.controller.getState().openUnknown,false);assert.equal(f.opens.length,1);
+});
 test('programmatic open cannot bypass unknown creation and refreshing never proves creation success', async () => {
   const pending = Promise.withResolvers();
   const f = fixture({ rpc: async (op) => op === 'workspace.restore.inspect' ? { restored: false } : op === 'project.list' ? [row()] : pending.promise });

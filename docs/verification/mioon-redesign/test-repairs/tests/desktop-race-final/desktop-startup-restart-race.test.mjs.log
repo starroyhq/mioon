@@ -1,0 +1,172 @@
+TAP version 13
+# Subtest: old validation resolve after replacement is pending cannot quit it
+ok 1 - old validation resolve after replacement is pending cannot quit it
+  ---
+  duration_ms: 16.194084
+  type: 'test'
+  ...
+# Subtest: old validation cancel after replacement is pending cannot quit it
+ok 2 - old validation cancel after replacement is pending cannot quit it
+  ---
+  duration_ms: 3.420333
+  type: 'test'
+  ...
+# Subtest: old validation reject after replacement is pending cannot quit it
+ok 3 - old validation reject after replacement is pending cannot quit it
+  ---
+  duration_ms: 4.397334
+  type: 'test'
+  ...
+# Subtest: old validation resolve after replacement is successful cannot quit it
+ok 4 - old validation resolve after replacement is successful cannot quit it
+  ---
+  duration_ms: 2.984375
+  type: 'test'
+  ...
+# Subtest: old validation cancel after replacement is successful cannot quit it
+ok 5 - old validation cancel after replacement is successful cannot quit it
+  ---
+  duration_ms: 2.882541
+  type: 'test'
+  ...
+# Subtest: old validation reject after replacement is successful cannot quit it
+ok 6 - old validation reject after replacement is successful cannot quit it
+  ---
+  duration_ms: 2.888583
+  type: 'test'
+  ...
+# Subtest: replacement itself failing remains fatal even when both starts reject the same Error
+ok 7 - replacement itself failing remains fatal even when both starts reject the same Error
+  ---
+  duration_ms: 3.609333
+  type: 'test'
+  ...
+# Subtest: current uncancelled start error DESKTOP_START_CANCELLED is still fatal
+ok 8 - current uncancelled start error DESKTOP_START_CANCELLED is still fatal
+  ---
+  duration_ms: 1.995292
+  type: 'test'
+  ...
+# Subtest: current uncancelled start error BACKEND_START_CANCELLED is still fatal
+ok 9 - current uncancelled start error BACKEND_START_CANCELLED is still fatal
+  ---
+  duration_ms: 2.163583
+  type: 'test'
+  ...
+# Subtest: current uncancelled start error MEDIA_CANCELLED is still fatal
+ok 10 - current uncancelled start error MEDIA_CANCELLED is still fatal
+  ---
+  duration_ms: 1.930208
+  type: 'test'
+  ...
+# Subtest: current uncancelled start error CURRENT_FAILURE is still fatal
+ok 11 - current uncancelled start error CURRENT_FAILURE is still fatal
+  ---
+  duration_ms: 1.9985
+  type: 'test'
+  ...
+# Subtest: late settings acquisition closes the old instance once and preserves replacement settings
+ok 12 - late settings acquisition closes the old instance once and preserves replacement settings
+  ---
+  duration_ms: 2.887125
+  type: 'test'
+  ...
+# Subtest: late settings close failure SETTINGS_CLOSE_FAILED remains visible after restart
+ok 13 - late settings close failure SETTINGS_CLOSE_FAILED remains visible after restart
+  ---
+  duration_ms: 3.596875
+  type: 'test'
+  ...
+# Subtest: late settings close failure DESKTOP_START_CANCELLED remains visible after restart
+ok 14 - late settings close failure DESKTOP_START_CANCELLED remains visible after restart
+  ---
+  duration_ms: 1.935334
+  type: 'test'
+  ...
+# Subtest: late settings close failure SETTINGS_CLOSE_FAILED remains visible after quit
+ok 15 - late settings close failure SETTINGS_CLOSE_FAILED remains visible after quit
+  ---
+  duration_ms: 2.022917
+  type: 'test'
+  ...
+# Subtest: late settings close failure DESKTOP_START_CANCELLED remains visible after quit
+ok 16 - late settings close failure DESKTOP_START_CANCELLED remains visible after quit
+  ---
+  duration_ms: 1.983791
+  type: 'test'
+  ...
+# Subtest: restart waits for the owned child exit even though old backend.start already rejected
+ok 17 - restart waits for the owned child exit even though old backend.start already rejected
+  ---
+  duration_ms: 3.633
+  type: 'test'
+  ...
+# Subtest: old cookie completion after replacement success cannot publish or fail another start
+ok 18 - old cookie completion after replacement success cannot publish or fail another start
+  ---
+  duration_ms: 2.085625
+  type: 'test'
+  ...
+# Subtest: old load completion after replacement success cannot publish or fail another start
+ok 19 - old load completion after replacement success cannot publish or fail another start
+  ---
+  duration_ms: 2.632375
+  type: 'test'
+  ...
+# Subtest: duplicate restart shares the drain and creates only one replacement
+ok 20 - duplicate restart shares the drain and creates only one replacement
+  ---
+  duration_ms: 4.06925
+  type: 'test'
+  ...
+# Subtest: quit during restart drain shares quit work and prevents replacement startup
+ok 21 - quit during restart drain shares quit work and prevents replacement startup
+  ---
+  duration_ms: 3.544125
+  type: 'test'
+  ...
+# Subtest: backend stop unconfirmed remains a replacement barrier with cancelled old start
+ok 22 - backend stop unconfirmed remains a replacement barrier with cancelled old start
+  ---
+  duration_ms: 33.726375
+  type: 'test'
+  ...
+# Subtest: backend stop media remains a replacement barrier with cancelled old start
+ok 23 - backend stop media remains a replacement barrier with cancelled old start
+  ---
+  duration_ms: 2.529208
+  type: 'test'
+  ...
+# Subtest: backend stop failed remains a replacement barrier with cancelled old start
+ok 24 - backend stop failed remains a replacement barrier with cancelled old start
+  ---
+  duration_ms: 2.064333
+  type: 'test'
+  ...
+# Subtest: drain failure is not hidden by old startup cancellation
+ok 25 - drain failure is not hidden by old startup cancellation
+  ---
+  duration_ms: 2.032959
+  type: 'test'
+  ...
+# Subtest: remove failure is not hidden by old startup cancellation
+ok 26 - remove failure is not hidden by old startup cancellation
+  ---
+  duration_ms: 1.908959
+  type: 'test'
+  ...
+# Subtest: clear failure is not hidden by old startup cancellation
+ok 27 - clear failure is not hidden by old startup cancellation
+  ---
+  duration_ms: 1.256417
+  type: 'test'
+  ...
+1..27
+# tests 27
+# suites 0
+# pass 27
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 346.804458

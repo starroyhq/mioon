@@ -1,0 +1,88 @@
+TAP version 13
+# Subtest: chat_completions: exact selected timing consent is durable before outbound work and only review can apply
+ok 1 - chat_completions: exact selected timing consent is durable before outbound work and only review can apply
+  ---
+  duration_ms: 765.615208
+  type: 'test'
+  ...
+# Subtest: responses: exact selected timing consent is durable before outbound work and only review can apply
+ok 2 - responses: exact selected timing consent is durable before outbound work and only review can apply
+  ---
+  duration_ms: 695.016208
+  type: 'test'
+  ...
+# Subtest: timeline-derived turns are excluded from typed and inspection context; another move sees only typed history
+ok 3 - timeline-derived turns are excluded from typed and inspection context; another move sees only typed history
+  ---
+  duration_ms: 792.105042
+  type: 'test'
+  ...
+# Subtest: foreign target, stale revision and every consent binding fail before acceptance or credentials
+ok 4 - foreign target, stale revision and every consent binding fail before acceptance or credentials
+  ---
+  duration_ms: 615.167792
+  type: 'test'
+  ...
+# Subtest: Stop at move tool intent cancels unapproved work and fences continuation
+ok 5 - Stop at move tool intent cancels unapproved work and fences continuation
+  ---
+  duration_ms: 642.086625
+  type: 'test'
+  ...
+# Subtest: Stop at move tool completed cancels unapproved work and fences continuation
+ok 6 - Stop at move tool completed cancels unapproved work and fences continuation
+  ---
+  duration_ms: 661.216042
+  type: 'test'
+  ...
+# Subtest: move final-answer failed never enables review or repeats model work on restart
+ok 7 - move final-answer failed never enables review or repeats model work on restart
+  ---
+  duration_ms: 662.967291
+  type: 'test'
+  ...
+# Subtest: move final-answer stopped never enables review or repeats model work on restart
+ok 8 - move final-answer stopped never enables review or repeats model work on restart
+  ---
+  duration_ms: 669.079583
+  type: 'test'
+  ...
+# Subtest: move final-answer interrupted never enables review or repeats model work on restart
+ok 9 - move final-answer interrupted never enables review or repeats model work on restart
+  ---
+  duration_ms: 661.416875
+  type: 'test'
+  ...
+# Subtest: invalid, no-op, overlapping and authority-bearing model moves never create proposals
+ok 10 - invalid, no-op, overlapping and authority-bearing model moves never create proposals
+  ---
+  duration_ms: 6665.462167
+  type: 'test'
+  ...
+# Subtest: Stop racing completed move preserves answer but cancels pending proposal; restart does not retry it
+ok 11 - Stop racing completed move preserves answer but cancels pending proposal; restart does not retry it
+  ---
+  duration_ms: 643.034875
+  type: 'test'
+  ...
+# Subtest: saved foreign_source during model wait fails only that move, leaving typed chat usable
+ok 12 - saved foreign_source during model wait fails only that move, leaving typed chat usable
+  ---
+  duration_ms: 645.66075
+  type: 'test'
+  ...
+# Subtest: saved invalid_timeline during model wait fails only that move, leaving typed chat usable
+ok 13 - saved invalid_timeline during model wait fails only that move, leaving typed chat usable
+  ---
+  duration_ms: 697.339625
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 15153.997334

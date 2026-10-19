@@ -1,0 +1,557 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-10-16 08:57:47 UTC",
+  "sourceCommit": "256cfd3d6bff0fbd304958125884acbe7a126348",
+  "scope": "Read-only repository requirements and bounded inventory of already-installed Node/FFmpeg/ffprobe. Executables were invoked only for --version (Node) or -version (FFmpeg/ffprobe); no media, listeners, GUI, installation, download, PATH/environment mutation, user workspace, designs content or credentials.",
+  "requirements": {
+    "sourceRuntime": {
+      "node": ">=24.0.0",
+      "pnpm": "11.25.0",
+      "note": "Current package.json engines and local tooling gate permit Node 24 or newer. This prerequisite is distinct from exact qualification.",
+      "references": [
+        "package.json:6",
+        "package.json:7",
+        "scripts/lib/local-tooling.mjs:265",
+        "README.md:9",
+        "docs/MAC-SOURCE-TRIAL.zh-CN.md:13"
+      ]
+    },
+    "exactHistoricalNodeGates": {
+      "version": "v24.21.0",
+      "references": [
+        "tests/workspace-schema40-dispatch.test.mjs:22",
+        "tests/workspace-frozen-evidence-v40.test.mjs:23"
+      ],
+      "historicalLinuxNodeSha256": "7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c",
+      "historicalHashReferences": [
+        "docs/FROZEN-EVIDENCE-WORKSPACE40.md:69",
+        "docs/EXPORT-PREVIEW-IDENTITY.json:74"
+      ],
+      "earlierNode24_19_0": "Historical V2 and TypeScript acceptance used 24.19.0; it is not the exact version asserted by the two workspace40 gates.",
+      "earlierReferences": [
+        "docs/ACCEPTANCE.md:78",
+        "docs/TYPESCRIPT.md:55"
+      ]
+    },
+    "desktop": {
+      "electron": "44.7.0",
+      "buildTarget": "node24",
+      "minimumBackendNodeMajor": 24,
+      "nodeSqliteRequired": true,
+      "notes": "Electron is pinned by package/build metadata; its utilityProcess runtime and a packaged artifact are separate qualification targets. Electron/GUI was not launched.",
+      "references": [
+        "package.json:51",
+        "apps/desktop/scripts/build.mjs:22",
+        "apps/desktop/src/backend.mjs:17",
+        "apps/desktop/builder-config.cjs:8"
+      ]
+    },
+    "media": {
+      "currentExactProductVersionPinFound": false,
+      "externalTools": true,
+      "requirements": [
+        "Absolute executable paths in desktop configuration",
+        "ffmpeg/ffprobe version-header check",
+        "FFmpeg libx264 and aac encoders; mock workflow additionally needs drawtext"
+      ],
+      "note": "No current global exact FFmpeg version pin was found in the inspected package/config/tooling/runtime/desktop declarations. Historical fixed qualification binaries must not be confused with the current external-tool prerequisite.",
+      "references": [
+        "apps/desktop/src/config.mjs:163",
+        "apps/desktop/src/config.mjs:179",
+        "apps/desktop/builder-config.cjs:14",
+        "docs/PLATFORM-RELEASE-GATES.md:94",
+        "docs/CORE-TRIAL.zh-CN.md:13"
+      ],
+      "historicalQualification": {
+        "version": "7.1.5",
+        "debianVersion": "7.1.5-0+deb13u1",
+        "ffmpegSha256": "e8a8d46f5225f3062cec7c07fb145d58ae73c603cb740dcd5bad34bfb54e455a",
+        "ffprobeSha256": "cefc5f81c0b18429cdbf8fa5a89e1e9c759235e10f93f9b329ff1b2fdff26f46",
+        "references": [
+          "docs/ACCEPTANCE.md:78",
+          "docs/JFIF-SDR-IMAGES-ACCEPTANCE.md:72",
+          "docs/EXPORT-PREVIEW-IDENTITY.json:76"
+        ]
+      }
+    }
+  },
+  "inventory": {
+    "boundedOnly": true,
+    "wholeDiskScan": false,
+    "pathDirectoriesChecked": [
+      "/Library/Frameworks/Python.framework/Versions/3.11/bin",
+      "/opt/homebrew/bin",
+      "/opt/homebrew/sbin",
+      "/usr/local/bin",
+      "/System/Cryptexes/App/usr/bin",
+      "/usr/bin",
+      "/bin",
+      "/usr/sbin",
+      "/sbin",
+      "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin",
+      "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin",
+      "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin",
+      "/pkg/env/global/bin",
+      "/Library/Apple/usr/bin",
+      "/Applications/VMware Fusion.app/Contents/Public",
+      "/usr/local/go/bin",
+      "/Users/kouzen/.codex/tmp/arg0/codex-arg0wgUnHn",
+      "/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path",
+      "/Users/kouzen/.codeium/windsurf/bin",
+      "/Users/kouzen/.unity/bin",
+      "/Users/kouzen/.local/bin",
+      "/Users/kouzen/.antigravity/antigravity/bin",
+      "/opt/homebrew/opt/ruby/bin",
+      "/Users/kouzen/.codebuddy/bin",
+      "/Users/kouzen/.cargo/bin",
+      "/Users/kouzen/Library/Application Support/JetBrains/Toolbox/scripts",
+      "/Applications/Tuanjie Cowork.app/Contents/MacOS",
+      "/Users/kouzen/Library/Application Support/Tuanjie Cowork/bin",
+      "/Applications/Tuanjie Cowork.app/Contents/MacOS/app/resource/core/bin/darwin-arm64",
+      "/Applications/Tuanjie Cowork.app/Contents/MacOS/hub"
+    ],
+    "rootsChecked": [
+      {
+        "path": "/opt/homebrew/Cellar/node",
+        "exists": true,
+        "topLevelEntryNames": [
+          "26.9.0"
+        ]
+      },
+      {
+        "path": "/opt/homebrew/Cellar/node@24",
+        "exists": false
+      },
+      {
+        "path": "/usr/local/Cellar/node",
+        "exists": false
+      },
+      {
+        "path": "/usr/local/Cellar/node@24",
+        "exists": false
+      },
+      {
+        "path": "/opt/homebrew/Cellar/ffmpeg",
+        "exists": true,
+        "topLevelEntryNames": [
+          "9.0.2_1"
+        ]
+      },
+      {
+        "path": "/opt/homebrew/Cellar/ffmpeg@7",
+        "exists": false
+      },
+      {
+        "path": "/opt/homebrew/Cellar/ffmpeg@6",
+        "exists": false
+      },
+      {
+        "path": "/usr/local/Cellar/ffmpeg",
+        "exists": false
+      },
+      {
+        "path": "/usr/local/Cellar/ffmpeg@7",
+        "exists": false
+      },
+      {
+        "path": "/usr/local/Cellar/ffmpeg@6",
+        "exists": false
+      },
+      {
+        "path": "/Users/kouzen/.nvm/versions/node",
+        "exists": false
+      },
+      {
+        "path": "/Users/kouzen/.local/share/fnm/node-versions",
+        "exists": false
+      },
+      {
+        "path": "/Users/kouzen/.fnm/node-versions",
+        "exists": false
+      },
+      {
+        "path": "/Users/kouzen/.local/share/mise/installs/node",
+        "exists": false
+      },
+      {
+        "path": "/Users/kouzen/.local/share/rtx/installs/node",
+        "exists": false
+      },
+      {
+        "path": "/Users/kouzen/.asdf/installs/nodejs",
+        "exists": false
+      },
+      {
+        "path": "/Users/kouzen/.volta/tools/image/node",
+        "exists": false
+      },
+      {
+        "path": "/Users/kouzen/.local/share/mise/installs/ffmpeg",
+        "exists": false
+      },
+      {
+        "path": "/Users/kouzen/.local/share/rtx/installs/ffmpeg",
+        "exists": false
+      },
+      {
+        "path": "/Users/kouzen/.asdf/installs/ffmpeg",
+        "exists": false
+      },
+      {
+        "path": "/Users/kouzen/.codex/runtimes",
+        "exists": false
+      },
+      {
+        "path": "/Applications/Codex.app/Contents/Resources",
+        "exists": false
+      }
+    ],
+    "fixedPatterns": [
+      "node",
+      "bin/node",
+      "*/bin/node",
+      "*/installation/bin/node",
+      "node*/bin/node",
+      "*/node/bin/node",
+      "node*/node",
+      "*/node",
+      "ffmpeg",
+      "ffprobe",
+      "bin/ffmpeg",
+      "bin/ffprobe",
+      "*/bin/ffmpeg",
+      "*/bin/ffprobe",
+      "*/ffmpeg",
+      "*/ffprobe"
+    ],
+    "bundleRootsChecked": [
+      {
+        "path": "/Applications/ChatGPT.app/Contents/Resources",
+        "exists": true,
+        "patterns": [
+          "node",
+          "bin/node",
+          "*/bin/node",
+          "node*/bin/node",
+          "*/node/bin/node",
+          "*/installation/bin/node",
+          "vendor/*/node",
+          "vendor/*/bin/node",
+          "vendor/*/node/bin/node",
+          "vendor/*/*/node",
+          "vendor/*/*/bin/node",
+          "ffmpeg",
+          "ffprobe",
+          "bin/ffmpeg",
+          "bin/ffprobe",
+          "*/bin/ffmpeg",
+          "*/bin/ffprobe",
+          "vendor/*/ffmpeg",
+          "vendor/*/ffprobe"
+        ],
+        "matchingExecutables": [
+          "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node"
+        ]
+      },
+      {
+        "path": "/Applications/ChatGPT.app/Contents/Resources/codex-cli",
+        "exists": true,
+        "patterns": [
+          "node",
+          "bin/node",
+          "*/bin/node",
+          "node*/bin/node",
+          "*/node/bin/node",
+          "*/installation/bin/node",
+          "vendor/*/node",
+          "vendor/*/bin/node",
+          "vendor/*/node/bin/node",
+          "vendor/*/*/node",
+          "vendor/*/*/bin/node",
+          "ffmpeg",
+          "ffprobe",
+          "bin/ffmpeg",
+          "bin/ffprobe",
+          "*/bin/ffmpeg",
+          "*/bin/ffprobe",
+          "vendor/*/ffmpeg",
+          "vendor/*/ffprobe"
+        ],
+        "matchingExecutables": []
+      },
+      {
+        "path": "/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path",
+        "exists": true,
+        "patterns": [
+          "node",
+          "bin/node",
+          "*/bin/node",
+          "node*/bin/node",
+          "*/node/bin/node",
+          "*/installation/bin/node",
+          "vendor/*/node",
+          "vendor/*/bin/node",
+          "vendor/*/node/bin/node",
+          "vendor/*/*/node",
+          "vendor/*/*/bin/node",
+          "ffmpeg",
+          "ffprobe",
+          "bin/ffmpeg",
+          "bin/ffprobe",
+          "*/bin/ffmpeg",
+          "*/bin/ffprobe",
+          "vendor/*/ffmpeg",
+          "vendor/*/ffprobe"
+        ],
+        "matchingExecutables": []
+      },
+      {
+        "path": "/Applications/Codex.app/Contents/Resources",
+        "exists": false,
+        "patterns": [
+          "node",
+          "bin/node",
+          "*/bin/node",
+          "node*/bin/node",
+          "*/node/bin/node",
+          "*/installation/bin/node",
+          "vendor/*/node",
+          "vendor/*/bin/node",
+          "vendor/*/node/bin/node",
+          "vendor/*/*/node",
+          "vendor/*/*/bin/node",
+          "ffmpeg",
+          "ffprobe",
+          "bin/ffmpeg",
+          "bin/ffprobe",
+          "*/bin/ffmpeg",
+          "*/bin/ffprobe",
+          "vendor/*/ffmpeg",
+          "vendor/*/ffprobe"
+        ]
+      },
+      {
+        "path": "/Users/kouzen/.codex/bin",
+        "exists": false,
+        "patterns": [
+          "node",
+          "bin/node",
+          "*/bin/node",
+          "node*/bin/node",
+          "*/node/bin/node",
+          "*/installation/bin/node",
+          "vendor/*/node",
+          "vendor/*/bin/node",
+          "vendor/*/node/bin/node",
+          "vendor/*/*/node",
+          "vendor/*/*/bin/node",
+          "ffmpeg",
+          "ffprobe",
+          "bin/ffmpeg",
+          "bin/ffprobe",
+          "*/bin/ffmpeg",
+          "*/bin/ffprobe",
+          "vendor/*/ffmpeg",
+          "vendor/*/ffprobe"
+        ]
+      },
+      {
+        "path": "/Applications/ChatGPT.app/Contents/Resources/cua_node",
+        "exists": true,
+        "patterns": [
+          "node",
+          "bin/node",
+          "*/bin/node",
+          "*/*/bin/node",
+          "ffmpeg",
+          "ffprobe",
+          "bin/ffmpeg",
+          "bin/ffprobe",
+          "*/bin/ffmpeg",
+          "*/bin/ffprobe",
+          "*/*/bin/ffmpeg",
+          "*/*/bin/ffprobe"
+        ],
+        "matchingExecutables": [
+          "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node"
+        ]
+      },
+      {
+        "path": "/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-resources",
+        "exists": true,
+        "patterns": [
+          "node",
+          "bin/node",
+          "*/bin/node",
+          "*/*/bin/node",
+          "ffmpeg",
+          "ffprobe",
+          "bin/ffmpeg",
+          "bin/ffprobe",
+          "*/bin/ffmpeg",
+          "*/bin/ffprobe",
+          "*/*/bin/ffmpeg",
+          "*/*/bin/ffprobe"
+        ],
+        "matchingExecutables": []
+      },
+      {
+        "path": "/Applications/ChatGPT.app/Contents/Resources/app.asar.unpacked",
+        "exists": true,
+        "patterns": [
+          "node",
+          "bin/node",
+          "*/bin/node",
+          "*/*/bin/node",
+          "ffmpeg",
+          "ffprobe",
+          "bin/ffmpeg",
+          "bin/ffprobe",
+          "*/bin/ffmpeg",
+          "*/bin/ffprobe",
+          "*/*/bin/ffmpeg",
+          "*/*/bin/ffprobe"
+        ],
+        "matchingExecutables": []
+      }
+    ],
+    "found": [
+      {
+        "path": "/opt/homebrew/Cellar/node/26.9.0/bin/node",
+        "aliases": [
+          "/opt/homebrew/Cellar/node/26.9.0/bin/node",
+          "/opt/homebrew/bin/node"
+        ],
+        "discoveredFrom": [
+          "/opt/homebrew/Cellar/node",
+          "PATH"
+        ],
+        "argv": [
+          "/opt/homebrew/Cellar/node/26.9.0/bin/node",
+          "--version"
+        ],
+        "exitCode": 0,
+        "versionFirstLine": "v26.9.0",
+        "successfulClose": true,
+        "stdoutBytes": 8,
+        "stderrBytes": 0,
+        "bytes": 132848,
+        "sha256": "91ed66b8cd139609427a3e9d93518dd3b0d5407c737fc9a265bfd991ec623d8a",
+        "binaryMagic": "cffaedfe",
+        "machOCpuType": 16777228,
+        "architectureFromMachO": "arm64"
+      },
+      {
+        "path": "/opt/homebrew/Cellar/ffmpeg/9.0.2_1/bin/ffmpeg",
+        "aliases": [
+          "/opt/homebrew/Cellar/ffmpeg/9.0.2_1/bin/ffmpeg",
+          "/opt/homebrew/bin/ffmpeg"
+        ],
+        "discoveredFrom": [
+          "/opt/homebrew/Cellar/ffmpeg",
+          "PATH"
+        ],
+        "argv": [
+          "/opt/homebrew/Cellar/ffmpeg/9.0.2_1/bin/ffmpeg",
+          "-version"
+        ],
+        "exitCode": 0,
+        "versionFirstLine": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+        "successfulClose": true,
+        "stdoutBytes": 823,
+        "stderrBytes": 0,
+        "bytes": 426512,
+        "sha256": "7f6028378534aa10a2dfa07d807ddcc0d18c869bf5c2f64c89efcc18ee88c4ee",
+        "binaryMagic": "cffaedfe",
+        "machOCpuType": 16777228,
+        "architectureFromMachO": "arm64"
+      },
+      {
+        "path": "/opt/homebrew/Cellar/ffmpeg/9.0.2_1/bin/ffprobe",
+        "aliases": [
+          "/opt/homebrew/Cellar/ffmpeg/9.0.2_1/bin/ffprobe",
+          "/opt/homebrew/bin/ffprobe"
+        ],
+        "discoveredFrom": [
+          "/opt/homebrew/Cellar/ffmpeg",
+          "PATH"
+        ],
+        "argv": [
+          "/opt/homebrew/Cellar/ffmpeg/9.0.2_1/bin/ffprobe",
+          "-version"
+        ],
+        "exitCode": 0,
+        "versionFirstLine": "ffprobe version 9.0.2 Copyright (c) 2007-2026 the FFmpeg developers",
+        "successfulClose": true,
+        "stdoutBytes": 798,
+        "stderrBytes": 0,
+        "bytes": 253488,
+        "sha256": "bfe676bfc3a889bebe63af07c71a926a6167f568c7a932a79c2f1fe51ae6d5a1",
+        "binaryMagic": "cffaedfe",
+        "machOCpuType": 16777228,
+        "architectureFromMachO": "arm64"
+      },
+      {
+        "path": "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+        "aliases": [
+          "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node"
+        ],
+        "discoveredFrom": [
+          "/Applications/ChatGPT.app/Contents/Resources"
+        ],
+        "argv": [
+          "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+          "--version"
+        ],
+        "exitCode": 0,
+        "versionFirstLine": "v24.21.0",
+        "successfulClose": true,
+        "stdoutBytes": 9,
+        "stderrBytes": 0,
+        "bytes": 122127712,
+        "sha256": "9d15ff36c0c6526429b426e77a0cc89b0717892723c3b4b8ea748d9c1fa287e0",
+        "binaryMagic": "cffaedfe",
+        "machOCpuType": 16777228,
+        "architectureFromMachO": "arm64"
+      }
+    ],
+    "installedNode24Manifest": {
+      "path": "/Applications/ChatGPT.app/Contents/Resources/cua_node/manifest.json",
+      "platform": "darwin",
+      "arch": "arm64",
+      "target": "darwin-arm64",
+      "nodeVersion": "24.21.0-cua.1",
+      "nodeBinaryVersion": "24.21.0",
+      "nodeArchivePath": "v24.21.0-cua.1/node-v24.21.0-darwin-arm64.tar.gz",
+      "runtimeArchiveName": "cua-node-0.0.30-20261008210730-dff8b428775e-darwin-arm64.tar.gz",
+      "runtimeArchiveVersion": "0.0.30/20261008210730-dff8b428775e",
+      "nodePath": "bin/node"
+    }
+  },
+  "conclusions": {
+    "usableNode24VersionFound": true,
+    "usableNode24Path": "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+    "exactHistoricalLinuxNodeBinaryFound": false,
+    "historicalFixedFFmpegPairFound": false,
+    "sourceEnginePrerequisiteMet": true,
+    "toolchainQualificationComplete": false,
+    "nodeQualificationLimit": "The installed CUA darwin-arm64 variant returns exact v24.21.0 and is available for separately recorded source/test execution. This inventory does not certify its equivalence to the historical Linux executable, official distribution, product Electron runtime, final package, or current feature execution.",
+    "mediaQualificationLimit": "Only Homebrew FFmpeg/ffprobe 9.0.2 were found in checked locations. Their hashes differ from the retained fixed historical hashes. Version reads do not verify encoders, filters, actual render output, resource limits or final product compatibility.",
+    "missingSearchLimit": "No fixed historical FFmpeg pair found within PATH, listed Homebrew/version-manager/Codex runtime roots and explicit ChatGPT/Codex bundle patterns. Other unsearched locations may contain additional binaries; this is not a whole-disk inventory.",
+    "repositoryChanges": "Only this evidence JSON is owned by the audit; no runtime/config/test/allowlist changes or commit.",
+    "remainingBlockers": [
+      "Historical fixed FFmpeg/ffprobe qualification unavailable in checked locations",
+      "Official/product runtime and GUI/media qualification not performed by this read-only audit"
+    ],
+    "deniedActions": [],
+    "pendingActions": [],
+    "uncertainOutcomes": []
+  },
+  "auxiliaryDiscovery": {
+    "action": "mcp__codex_app__load_workspace_dependencies",
+    "target": "current delegated thread",
+    "outcome": "unavailable",
+    "reason": "Workspace dependency tools are only supported for local threads.",
+    "resolution": "Continued through bounded read-only filesystem inventory; found the installed CUA Node24 binary without this helper."
+  }
+}

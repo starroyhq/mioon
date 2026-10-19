@@ -1,0 +1,76 @@
+TAP version 13
+# Subtest: dormant raw opacity preserves absent, null and bounded unfinished editing text exactly
+ok 1 - dormant raw opacity preserves absent, null and bounded unfinished editing text exactly
+  ---
+  duration_ms: 3.352959
+  type: 'test'
+  ...
+# Subtest: candidate opacity accepts only bounded raw strings and rejects unknown fields at every leaf
+ok 2 - candidate opacity accepts only bounded raw strings and rejects unknown fields at every leaf
+  ---
+  duration_ms: 0.752333
+  type: 'test'
+  ...
+# Subtest: candidate value, slot, write and response retain existing v2 shapes without publishing them
+ok 3 - candidate value, slot, write and response retain existing v2 shapes without publishing them
+  ---
+  duration_ms: 1.427667
+  type: 'test'
+  ...
+# Subtest: v3 accepts unchanged legacy rows and exact tombstones but rejects other disk versions
+ok 4 - v3 accepts unchanged legacy rows and exact tombstones but rejects other disk versions
+  ---
+  duration_ms: 1.848167
+  type: 'test'
+  ...
+# Subtest: frozen v1 and current v2 contracts still reject opacity presence and v3 with no promotion
+ok 5 - frozen v1 and current v2 contracts still reject opacity presence and v3 with no promotion
+  ---
+  duration_ms: 1.903125
+  type: 'test'
+  ...
+# Subtest: actual v1/v2 services reject v3 reads and opacity writes with in-memory storage and no publication
+ok 6 - actual v1/v2 services reject v3 reads and opacity writes with in-memory storage and no publication
+  ---
+  duration_ms: 9.850166
+  type: 'test'
+  ...
+# Subtest: candidate complete slot admission retains the exact 8191-byte row boundary
+ok 7 - candidate complete slot admission retains the exact 8191-byte row boundary
+  ---
+  duration_ms: 0.310583
+  type: 'test'
+  ...
+# Subtest: candidate complete slot admission retains the exact 8192-byte row boundary
+ok 8 - candidate complete slot admission retains the exact 8192-byte row boundary
+  ---
+  duration_ms: 0.159375
+  type: 'test'
+  ...
+# Subtest: candidate complete slot admission retains the exact 8193-byte row boundary
+ok 9 - candidate complete slot admission retains the exact 8193-byte row boundary
+  ---
+  duration_ms: 0.177542
+  type: 'test'
+  ...
+# Subtest: candidate complete disk capture validates all rows, preserves tombstones and counts the final newline
+ok 10 - candidate complete disk capture validates all rows, preserves tombstones and counts the final newline
+  ---
+  duration_ms: 6.843792
+  type: 'test'
+  ...
+# Subtest: candidate disk capture rejects duplicate identities and late invalid or oversized rows without altering input
+ok 11 - candidate disk capture rejects duplicate identities and late invalid or oversized rows without altering input
+  ---
+  duration_ms: 1.732875
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 211.78125

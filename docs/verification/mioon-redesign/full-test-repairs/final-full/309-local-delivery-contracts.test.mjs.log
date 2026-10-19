@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: local title stores invalid-but-bounded raw Unicode exactly without becoming a render schema
+ok 1 - local title stores invalid-but-bounded raw Unicode exactly without becoming a render schema
+  ---
+  duration_ms: 2.898375
+  type: 'test'
+  ...
+# Subtest: prepare preserves original input property order, omission, raw title and exact schema authority
+ok 2 - prepare preserves original input property order, omission, raw title and exact schema authority
+  ---
+  duration_ms: 1.322292
+  type: 'test'
+  ...
+# Subtest: blank title means exact legacy omission; no draft only authorizes unnamed input
+ok 3 - blank title means exact legacy omission; no draft only authorizes unnamed input
+  ---
+  duration_ms: 0.485042
+  type: 'test'
+  ...
+# Subtest: profile types follow every existing closed profile branch without introducing defaults
+ok 4 - profile types follow every existing closed profile branch without introducing defaults
+  ---
+  duration_ms: 1.7195
+  type: 'test'
+  ...
+# Subtest: independent draft CAS retains newer title while older intent and exact captured draft remain frozen
+ok 5 - independent draft CAS retains newer title while older intent and exact captured draft remain frozen
+  ---
+  duration_ms: 0.872625
+  type: 'test'
+  ...
+# Subtest: latest intent identity and monotonic CAS cannot be erased, substituted or confused with draft revision
+ok 6 - latest intent identity and monotonic CAS cannot be erased, substituted or confused with draft revision
+  ---
+  duration_ms: 1.330958
+  type: 'test'
+  ...
+# Subtest: bounded disk keeps project tombstones, one latest intent, no journal or receipt snapshots
+ok 7 - bounded disk keeps project tombstones, one latest intent, no journal or receipt snapshots
+  ---
+  duration_ms: 2.157208
+  type: 'test'
+  ...
+# Subtest: outcomes carry only bounded authoritative receipt references or proof codes
+ok 8 - outcomes carry only bounded authoritative receipt references or proof codes
+  ---
+  duration_ms: 0.272541
+  type: 'test'
+  ...
+# Subtest: old render and original receipt bytes remain unchanged; execute is separately bounded and still needs shared ACK validation
+ok 9 - old render and original receipt bytes remain unchanged; execute is separately bounded and still needs shared ACK validation
+  ---
+  duration_ms: 18.772791
+  type: 'test'
+  ...
+# Subtest: unsupported restored workspace is explicit and contains no inferred authority or hidden sidecar data
+ok 10 - unsupported restored workspace is explicit and contains no inferred authority or hidden sidecar data
+  ---
+  duration_ms: 0.4125
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 230.700875

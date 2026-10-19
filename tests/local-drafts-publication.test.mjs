@@ -17,7 +17,7 @@ import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validate
 const errorCode=expected=>error=>error?.code===expected&&!error.message.includes('PRIVATE');
 const bytes=file=>fs.existsSync(file)?fs.readFileSync(file):null;
 async function fixture(t){
-  const root=fs.mkdtempSync(path.join(tmpdir(),'mioon-draft-publication-'));
+  const root=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'mioon-draft-publication-'));
   const store=openStore(root),services=createServices(store,new Map()),controller=new AbortController();
   const project=await services.call('project.create',{name:'Publication fence fixture'}),assetId=randomUUID();
   const asset=store.put('assets',{id:assetId,projectId:project.id,name:'Synthetic',mimeType:'image/png',width:2,height:2,hasVideo:true,hasAudio:false,provenance:'user-import',sha256:'a'.repeat(64),relativePath:`media/${assetId}.png`,createdAt:new Date().toISOString()});

@@ -4,6 +4,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as waveform from '../apps/web/src/waveform-state.js';
+import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
+import * as geometry from '../apps/web/src/timeline-view-geometry.ts';
+import * as removalState from '../apps/web/src/timeline-removal.ts';
+import {hasOpenWorkbenchModal} from '../apps/web/src/workbench-modal-state.ts';
 import { WAVEFORM_ALGORITHM } from '../packages/contracts/src/waveforms.mjs';
 
 const projectId = '11111111-1111-4111-8111-111111111111';
@@ -220,9 +224,15 @@ function componentHarness({ hook = false, waveformState } = {}) {
   function load(file) {
     if (modules.has(file)) return modules.get(file);
     const module = { exports: {} };
-    Function('require', 'module', 'exports', 'document', 'ResizeObserver', 'window', transformSync(readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code)(id => {
+    Function('require', 'module', 'exports', 'document', 'ResizeObserver', 'window', transformSync(readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'), { loader: file.endsWith('.tsx') ? 'tsx' : file.endsWith('.ts') ? 'ts' : 'jsx', format: 'cjs' }).code)(id => {
       if (id === 'react') return react;
-    if (id === './i18n/I18nProvider.tsx') return i18nTestModule();
+      if (id === './i18n/I18nProvider.tsx') return i18nTestModule();
+      if (id === './UiPreferencesProvider.tsx') return {useUiPreferences: () => ({preferences:DEFAULT_UI_PREFERENCES})};
+      if (id === './timeline-view-geometry.ts') return geometry;
+      if (id === './timeline-removal.ts') return removalState;
+      if (id === './ClipRemovalControls.tsx') return load('ClipRemovalControls.tsx');
+      if (id === './TimelineToolbar.tsx') return load('TimelineToolbar.tsx');
+      if (id === './workbench-modal-state.ts') return {hasOpenWorkbenchModal};
       if (id === './waveform-state.js') return waveform;
       if (id === './api.js') return { rpc: (operation, input) => { const pending = deferred(); requests.push({ operation, input, ...pending }); return pending.promise; }, assetUrl: () => '' };
       if (id === './use-timeline-waveforms.js') return hook ? load('use-timeline-waveforms.js') : { useTimelineWaveforms: () => waveformState };
@@ -250,7 +260,10 @@ function componentHarness({ hook = false, waveformState } = {}) {
 
 test('actual hook measures sticky labels, excludes vertically hidden tracks, and stops on tab hiding', async () => {
   const h = componentHarness({ hook: true });
-  assert.equal(h.value.enabled, false); assert.equal(h.value.windows[0].sourceEndFrame, 150); assert.equal(h.requests.length, 0);
+  // 460 layout pixels minus the real 168px sticky track label leave 146 frames
+  // at 2px/frame; the vertically offscreen track must still be excluded.
+  assert.deepEqual(h.value.windows.map(window => window.clipId), ['clip-one']);
+  assert.equal(h.value.enabled, false); assert.equal(h.value.windows[0].sourceEndFrame, 146); assert.equal(h.requests.length, 0);
   h.value.setEnabled(true); h.render(); await flush(); assert.equal(h.requests.length, 1);
   h.hideDocument(); h.requests[0].resolve(response(h.requests[0].input, 'missing')); await flush(); h.render();
   assert.equal(h.requests.length, 1); assert.equal(h.value.active, false); h.unmount();
@@ -258,7 +271,7 @@ test('actual hook measures sticky labels, excludes vertically hidden tracks, and
 
 test('actual hook scroll updates source bounds; collapse, mode hide and project switch are fenced', async () => {
   for (const visibility of [false]) {
-    const h = componentHarness({ hook: true }); h.scroll(120); assert.equal(h.value.windows[0].sourceStartFrame, 60); assert.equal(h.value.windows[0].sourceEndFrame, 210);
+    const h = componentHarness({ hook: true }); h.scroll(120); assert.equal(h.value.windows[0].sourceStartFrame, 60); assert.equal(h.value.windows[0].sourceEndFrame, 206);
     h.value.setEnabled(true); h.render(); await flush(); h.render({ active: visibility });
     h.requests[0].resolve(response(h.requests[0].input, 'missing')); await flush(); assert.equal(h.requests.length, 1);
     h.render({ active: true, timeline: timeline([clip()], { projectId: otherProject }), assets: [asset({ projectId: otherProject })] });

@@ -1,0 +1,14 @@
+{
+  "verifiedAt": "2026-10-18T23:42:10.449441+00:00",
+  "privateRoot": "/private/tmp/mioon-light-v2-81z_mlwk",
+  "removedOwnedDirectories": [
+    "verify",
+    "preview-workspace"
+  ],
+  "previewServerExited": true,
+  "originalWorkspaceTrackedChanges": [],
+  "dependencyManifestChanges": [],
+  "commits": 0,
+  "pushes": 0,
+  "realProviderCalls": 0
+}

@@ -1,0 +1,76 @@
+TAP version 13
+# Subtest: float accumulator preserves headroom, counts scalar samples and handles every split offset
+ok 1 - float accumulator preserves headroom, counts scalar samples and handles every split offset
+  ---
+  duration_ms: 6.603333
+  type: 'test'
+  ...
+# Subtest: float complete <=1 passes; overrange rejection exposes only privately branded evidence
+ok 2 - float complete <=1 passes; overrange rejection exposes only privately branded evidence
+  ---
+  duration_ms: 0.877334
+  type: 'test'
+  ...
+# Subtest: float accumulator rejects short, extra, residual and poisoned PCM permanently
+ok 3 - float accumulator rejects short, extra, residual and poisoned PCM permanently
+  ---
+  duration_ms: 0.77175
+  type: 'test'
+  ...
+# Subtest: float probe refuses other audio formats and missing/ambiguous streams
+ok 4 - float probe refuses other audio formats and missing/ambiguous streams
+  ---
+  duration_ms: 0.287333
+  type: 'test'
+  ...
+# Subtest: checker measures owned concat naturally with unchanged 48k stereo floats and original signal
+ok 5 - checker measures owned concat naturally with unchanged 48k stereo floats and original signal
+  ---
+  duration_ms: 1.163417
+  type: 'test'
+  ...
+# Subtest: checker fences before permits, after permit and immediately before spawn
+ok 6 - checker fences before permits, after permit and immediately before spawn
+  ---
+  duration_ms: 0.284333
+  type: 'test'
+  ...
+# Subtest: checker preserves callback poison/unconfirmed accounting and never returns a partial report
+ok 7 - checker preserves callback poison/unconfirmed accounting and never returns a partial report
+  ---
+  duration_ms: 0.691083
+  type: 'test'
+  ...
+# Subtest: checker validates every generated segment format/count before concat and rejects mismatched plan
+ok 8 - checker validates every generated segment format/count before concat and rejects mismatched plan
+  ---
+  duration_ms: 0.233
+  type: 'test'
+  ...
+# Subtest: queued probe wait is bounded by the same total deadline without reassigning spawned-child ownership
+ok 9 - queued probe wait is bounded by the same total deadline without reassigning spawned-child ownership
+  ---
+  duration_ms: 21.039709
+  type: 'test'
+  ...
+# Subtest: completed check remains owned evidence when later AAC/probe/cleanup fails, never on cancellation or uncertain close
+ok 10 - completed check remains owned evidence when later AAC/probe/cleanup fails, never on cancellation or uncertain close
+  ---
+  duration_ms: 0.869708
+  type: 'test'
+  ...
+# Subtest: unconfirmed cancellation retains authoritative flag even when the measurement budget expires simultaneously
+ok 11 - unconfirmed cancellation retains authoritative flag even when the measurement budget expires simultaneously
+  ---
+  duration_ms: 30.090417
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 245.925375

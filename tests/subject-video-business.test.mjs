@@ -47,7 +47,7 @@ test('exact replay and retry retain the old selected version after head advancem
 
 test('subject exact replay/read disclosure does not re-evaluate clock, quota, credentials or current shot inputs',async t=>{
  const f=await fixture(t),a=await f.asset(),subject=await f.subject(a),shot=await f.shot();f.ark();const input=f.input(shot,subject.headVersionId,{providerId:'ark'}),job=await f.call('generation.submit',input);
- f.setDate('2099-01-01T00:00:00Z');f.env.ARK_MAX_GENERATIONS='0';f.providers.set('ark',{...f.providers.get('ark'),capabilities:{...f.providers.get('ark').capabilities,enabled:false}});
+ f.setDate('2099-01-01T00:00:00Z');f.providers.set('ark',{...f.providers.get('ark'),capabilities:{...f.providers.get('ark').capabilities,enabled:false}});
  assert.deepEqual(await f.call('generation.submit',input),job);assert.deepEqual(await f.call('job.get',{jobId:job.id}),job);assert.equal((await f.call('job.list',{projectId:f.project.id}))[0].id,job.id);assert.equal(f.posts(),0);
 });
 

@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: fixed persistence grammar admits complete seven-point prepare and unchanged execute shell budgets
+ok 1 - fixed persistence grammar admits complete seven-point prepare and unchanged execute shell budgets
+  ---
+  duration_ms: 4.419375
+  type: 'test'
+  ...
+# Subtest: complete compound-field ACK and durable task use independent retained byte caps
+ok 2 - complete compound-field ACK and durable task use independent retained byte caps
+  ---
+  duration_ms: 5.44
+  type: 'test'
+  ...
+# Subtest: new ACK grammar binds exact opacity including null and all old patch fields
+ok 3 - new ACK grammar binds exact opacity including null and all old patch fields
+  ---
+  duration_ms: 0.977333
+  type: 'test'
+  ...
+# Subtest: record and ACK checks retain independent 256KiB budget and historical strict fields
+ok 4 - record and ACK checks retain independent 256KiB budget and historical strict fields
+  ---
+  duration_ms: 0.963666
+  type: 'test'
+  ...
+# Subtest: task grammar retains original input and strict16KiB shell without weakening old tasks
+ok 5 - task grammar retains original input and strict16KiB shell without weakening old tasks
+  ---
+  duration_ms: 0.478667
+  type: 'test'
+  ...
+# Subtest: captured legacy durable families retain their closed read grammar and ACK envelope
+ok 6 - captured legacy durable families retain their closed read grammar and ACK envelope
+  ---
+  duration_ms: 9.541833
+  type: 'test'
+  ...
+# Subtest: prepare and task hostile descriptors never execute accessors or proxies
+ok 7 - prepare and task hostile descriptors never execute accessors or proxies
+  ---
+  duration_ms: 0.197875
+  type: 'test'
+  ...
+# Subtest: fixed parser capture cannot be replaced through the shared legacy schema map
+ok 8 - fixed parser capture cannot be replaced through the shared legacy schema map
+  ---
+  duration_ms: 0.310417
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 228.795833

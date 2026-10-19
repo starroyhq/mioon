@@ -28,6 +28,14 @@ import {z} from 'zod';
 import {timelineSubtitleSchemas} from './timeline-subtitles.mjs';
 export * from './timeline-subtitles.mjs';
 import {timelineFormatSchemas} from './timeline-format.mjs';
+import {agentAuthorizationSchemas,agentAuthorizationDescriptions} from './agent-authorization.ts';
+import {projectLifecycleSchemas,projectLifecycleDescriptions} from './project-lifecycle.ts';
+export * from './project-lifecycle.ts';
+export * from './agent-authorization.ts';
+import {timelineRippleRemoveSchema} from './timeline-ripple-remove.ts';
+import {projectHomeSchemas,projectHomeDescriptions} from './project-home.ts';
+export {projectHomeSchemas,projectHomeDescriptions,projectSummarySchema,projectSummaryListSchema} from './project-home.ts';
+export {TIMELINE_RIPPLE_REMOVE_OPERATION,timelineRippleRemoveSchema,isTimelineRippleRemoveInput} from './timeline-ripple-remove.ts';
 export * from './timeline-format.mjs';
 import {frameSchemas} from './frame-extraction.mjs';
 export * from './frame-extraction.mjs';
@@ -94,7 +102,7 @@ const sourceFrame=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER-18000);
 const even=(minimum,maximum)=>z.number().int().min(minimum).max(maximum).multipleOf(2);
 // Syntax admits the maximum supported envelope. The aggregate and ACK validate
 // against their own exact preset pair, including historical acknowledgements.
-const rect=z.object({x:even(0,1278),y:even(0,1278),width:even(2,1280),height:even(2,1280)}).strict().refine(r=>r.x+r.width<=1280&&r.y+r.height<=1280,{message:'Rectangle exceeds the supported output envelope'});
+const rect=z.object({x:even(0,1918),y:even(0,1918),width:even(2,1920),height:even(2,1920)}).strict().refine(r=>r.x+r.width<=1920&&r.y+r.height<=1920,{message:'Rectangle exceeds the supported output envelope'});
 const timelineMutation={projectId:id,expectedRevision:z.number().int().positive(),requestId:key};
 // Validation preserves the submitted profile, point order and explicit null.
 // An update without duration remains lexical; execution uses its original clip.
@@ -103,6 +111,9 @@ const clipFields={volumeEnvelope:volumeEnvelope.optional(),audioRole:clipAudioRo
  fadeInFrames:frame.describe('Optional audio fade-in in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional(),
  fadeOutFrames:frame.describe('Optional audio fade-out in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional()};
 export const schemas={
+...projectLifecycleSchemas,
+...projectHomeSchemas,
+...agentAuthorizationSchemas,
 ...lutResourceSchemas,
 ...lookPackInspectSchemas,
 ...timelineColourSchemas,
@@ -129,7 +140,7 @@ export const schemas={
 ...audioPreviewSchemas,
 ...continuousAudioSchemas,
 ...timelineExportCapabilitySchemas,
-'project.create':z.object({name:z.string().min(1).max(150),description:z.string().max(2000).optional()}).strict(),
+'project.create':z.object({name:z.string().min(1).max(150),description:z.string().max(2000).optional(),timelinePresetId:z.enum(['portrait_1080','landscape_1080','square_1080']).optional()}).strict(),
 'project.list':z.object({}).strict(),
 'project.get':z.object({projectId:id}).strict(),
 'asset.import':z.object({projectId:id,name:z.string().min(1).max(200),mimeType:z.enum(['image/png','image/jpeg','image/webp','video/mp4','video/webm','audio/wav','audio/mpeg','audio/mp4']),dataBase64:z.string().max(40*1024*1024)}).strict(),
@@ -164,6 +175,7 @@ export const schemas={
 'timeline.clip.update':z.object({...timelineMutation,clipId:id,patch:z.object(Object.fromEntries(Object.entries(clipFields).map(([k,v])=>[k,v.optional()]))).strict().refine(p=>Object.keys(p).length>0).refine(p=>!Object.hasOwn(p,'volumeEnvelope')||isVolumeEnvelope(p.volumeEnvelope,p.durationFrames??18000),{message:'Envelope points exceed the resulting clip duration.',path:['volumeEnvelope']})}).strict(),
 'timeline.clip.replaceSource':z.object({...timelineMutation,clipId:id,assetId:id,versionId:id.optional().describe('Optional exact generated version to pin with its canonical shot. Must belong to the replacement asset and project. Omission keeps an asset-only fixed reference; no version is inferred.')}).strict(),
 'timeline.clip.remove':z.object({...timelineMutation,clipId:id}).strict(),
+'timeline.clip.rippleRemove':timelineRippleRemoveSchema,
 'timeline.clip.split':z.object({...timelineMutation,clipId:id,atFrame:frame}).strict(),
 'timeline.seed':z.object(timelineMutation).strict(),
 'timeline.render':z.object({...timelineMutation,purpose:z.enum(['preview','export']),exportRange:timelineExportRangeSchema.optional().describe('Optional export-only half-open [startFrame,endFrame) interval at the saved 30fps clock; at least one frame, bounded by the saved timeline. The full frozen snapshot remains unchanged. Omission preserves full export and historical bytes.'),deliveryName:timelineDeliveryNameSchema.optional(),exportSettings:timelineExportSettingsSchema.optional(),preflightSnapshotHash:z.string().regex(/^[a-f0-9]{64}$/).optional().describe('Optional exact snapshot digest returned by timeline.export.preflight. New renders verify it against current frozen content; exact replay still returns its original response first. Omission preserves the legacy input and response. A successful check does not guarantee future source availability or full decoding.')}).strict().refine(value=>value.exportSettings===undefined||value.purpose==='export',{message:'Export settings are available only for export renders',path:['exportSettings']}).refine(value=>isTimelineDeliveryNameInput(value,value.purpose),{message:'Delivery names are available only for export renders and must be explicitly valid',path:['deliveryName']}).refine(value=>isTimelineExportRangeInput(value,value.purpose),{message:'Export ranges are available only for export renders and must be explicitly valid',path:['exportRange']})
@@ -172,10 +184,13 @@ export const schemas={
 // or dispatch can initialize; never infer safety from an operation-name suffix.
 assertOperationEffectCoverage(schemas);
 export const descriptions={
+...projectHomeDescriptions,
 'workspace.backup.inspect':'只读检查整个工作区的有界数据库计数；不复制文件、不恢复任务、不读取密钥。冷备份前必须正常关闭应用和同工作区后端。',
 'workspace.restore.inspect':'只读查看工作区恢复分支身份、隔离计数与可用操作，可显式请求已验证的音频角色与音量包络能力；不接收路径、不恢复或执行旧任务、不授予模型或付费权限。',
 'project.create':'创建持久化视频项目','project.list':'列出项目','project.get':'读取完整项目、画布和任务','asset.import':'导入授权的本地图片或视频字节（base64，最大30MiB）','asset.list':'读取项目素材','shot.create':'创建稳定ID镜头','shot.update':'按版本更新镜头，旧版本返回冲突','shot.reorder':'按项目版本原子调整镜头顺序','node.create':'创建文本、图片或视频画布节点','node.update':'按版本更新节点','edge.create':'连接同一项目节点','edge.delete':'移除连线','provider.list':'查询供应商能力与配置状态','generation.submit':'用稳定requestId提交生成（默认仅模拟）','job.get':'读取任务和可恢复错误','job.list':'读取项目任务','job.retry':'显式重试已明确失败任务，必须用新requestId','job.cancel':'停止本地等待，不声称已取消供应商任务','job.reconcile':'重新查询或对账已有任务，不重新提交','version.list':'列出不可变生成版本','version.select':'按镜头版本选择结果','export.create':'冻结已选版本并按镜头顺序导出真实9:16 MP4','export.get':'查询导出进度和文件'};
 Object.assign(descriptions,{
+ ...projectLifecycleDescriptions,
+ ...agentAuthorizationDescriptions,
  ...lutResourceDescriptions,
  ...lookPackInspectDescriptions,
  ...timelineColourDescriptions,
@@ -249,6 +264,7 @@ Object.assign(descriptions,{
  'timeline.clip.update':'按时间线版本移动、裁切或调整片段及音频角色分类，保留固定素材引用；角色不改变声音，可撤销',
  'timeline.clip.replaceSource':'按时间线版本显式替换片段的固定素材；仅同类视频、音频或图片互换，保留片段ID、位置、时长、源入点、画面、音量和淡入淡出；可选versionId须精确匹配新素材并固定来源镜头，不跟随镜头后续选用版本；使用必填稳定requestId精确重放，可撤销，不生成或处理媒体',
  'timeline.clip.remove':'按时间线版本移除指定片段',
+ 'timeline.clip.rippleRemove':'移除指定片段，并将同轨后续片段前移被删片段时长；其他轨道不动，一次撤销，保留稳定requestId以精确重放',
  'timeline.clip.split':'在所选片段内部的整数时间线帧原子分割；左段保留ID，右段固定新ID；保留素材和源范围，不移动其他片段，可一次撤销，使用稳定requestId',
  'timeline.seed':'仅向空时间线按镜头顺序复制当前所选版本，之后独立编辑',
  'timeline.render':'冻结完整多轨时间线和素材哈希，排队生成真实预览或导出；导出可指定30fps左闭右开的帧范围，快照保持完整；通过export_get查询'

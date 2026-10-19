@@ -64,7 +64,7 @@ test('timeline migration is additive, stable, empty, and does not change v1 proj
   const timeline = firstProject.timeline;
   assert.ok(timeline, 'project.get should additively expose a timeline');
   assert.equal(timeline.projectId, f.project.id); assert.equal(timeline.revision, 1);
-  assert.equal(timeline.fps, 30); assert.equal(timeline.width, 720); assert.equal(timeline.height, 1280);
+  assert.equal(timeline.fps, 30); assert.equal(timeline.width, 1080); assert.equal(timeline.height, 1920);
   assert.equal(timeline.durationFrames, 0); assert.deepEqual(timeline.clips, []);
   assert.equal(timeline.tracks.length, 3); assert.equal(timeline.tracks.filter(track => track.kind === 'video').length, 2); assert.equal(timeline.tracks.filter(track => track.kind === 'audio').length, 1);
   assert.equal(new Set(timeline.tracks.map(track => track.id)).size, 3);
@@ -91,7 +91,7 @@ test('every timeline mutation replays the exact original response after later ed
   await mutate('timeline.track.update', { trackId: track.id, patch: { name: 'Renamed visual', hidden: true, muted: true } });
   await mutate('timeline.clip.add', { trackId: track.id, assetId: asset.id, startFrame: 10, durationFrames: 20 });
   const clipId = timeline.clips[0].id;
-  assert.deepEqual(timeline.clips[0].rect, { x: 0, y: 0, width: 720, height: 1280 }); assert.equal(timeline.clips[0].sourceInFrame, 0); assert.equal(timeline.clips[0].gain, 1);
+  assert.deepEqual(timeline.clips[0].rect, { x: 0, y: 0, width: 1080, height: 1920 }); assert.equal(timeline.clips[0].sourceInFrame, 0); assert.equal(timeline.clips[0].gain, 1);
   await mutate('timeline.clip.update', { clipId, patch: { startFrame: 12, durationFrames: 18, rect: { x: 10, y: 20, width: 200, height: 400 }, gain: 0.5 } });
   await mutate('timeline.clip.remove', { clipId });
   const latest = clone(timeline);
@@ -177,7 +177,7 @@ test('clip validation rejects invalid frames, rectangles, media kinds, cross-pro
     { assetId: video.id, sourceInFrame: 1, durationFrames: 60 }, { assetId: video.id, durationFrames: 61 }, { assetId: audio.id }, { trackId: audioTrack.id }, { trackId: audioTrack.id, assetId: video.id },
     { assetId: foreignImage.id }, { trackId: foreignTimeline.tracks[0].id }, { assetId: randomUUID() }, { trackId: randomUUID() },
     { gain: -0.1 }, { gain: 2.1 }, { gain: Infinity }, { rect: { x: 1, y: 0, width: 100, height: 100 } }, { rect: { x: 0, y: 0, width: 101, height: 100 } },
-    { rect: { x: 0, y: 0, width: 0, height: 100 } }, { rect: { x: 622, y: 0, width: 100, height: 100 } }, { rect: { x: 0, y: 1200, width: 100, height: 100 } },
+    { rect: { x: 0, y: 0, width: 0, height: 100 } }, { rect: { x: timeline.width - 98, y: 0, width: 100, height: 100 } }, { rect: { x: 0, y: timeline.height - 98, width: 100, height: 100 } },
     { rect: { x: 0, y: 0, width: 100, height: 100, rotation: 90 } }, { speed: 2 },
   ];
   const invalidAddCodes = ['VALIDATION_ERROR', 'VALIDATION_ERROR', 'VALIDATION_ERROR', 'VALIDATION_ERROR', 'VALIDATION_ERROR', 'TIMELINE_LIMIT', 'SOURCE_BOUNDS', 'SOURCE_BOUNDS', 'SOURCE_BOUNDS', 'INVALID_CLIP_TYPE', 'INVALID_CLIP_TYPE', 'INVALID_CLIP_TYPE', 'CROSS_PROJECT_REFERENCE', 'TRACK_NOT_FOUND', 'NOT_FOUND', 'TRACK_NOT_FOUND', ...Array(10).fill('VALIDATION_ERROR')];

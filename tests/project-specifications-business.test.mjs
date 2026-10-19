@@ -23,19 +23,19 @@ async function addClip(f,timeline){return f.call('timeline.clip.add',{projectId:
 test('format read is genuinely noncreating and absence creates exactly revision one without modifying project bytes',async t=>{
  const f=await fixture(t),before=f.capture();
  const read=await f.call('timeline.format.get',{projectId:f.project.id});
- assert.deepEqual(read,{projectId:f.project.id,projectRevision:1,timelineId:null,timelineRevision:0,presetId:'portrait_720',fps:30,width:720,height:1280,eligible:true,blockedReasons:[]});assert.deepEqual(f.capture(),before);
+ assert.deepEqual(read,{projectId:f.project.id,projectRevision:1,timelineId:null,timelineRevision:0,presetId:'portrait_1080',fps:30,width:1080,height:1920,eligible:true,blockedReasons:[]});assert.deepEqual(f.capture(),before);
  const input=f.spec(),timeline=await f.call('timeline.format.set',input);
  assert.equal(timeline.revision,1);assert.equal(timeline.width,1280);assert.equal(timeline.height,720);assert.equal(timeline.tracks.length,3);
  assert.deepEqual(f.capture().projects,before.projects);assert.deepEqual(f.capture().timeline_history,[]);assert.deepEqual(f.capture().timeline_history_cursors,[]);
  assert.equal(f.capture().timeline_requests.length,1);assert.equal(f.capture().timeline_format_requests.length,1);
  f.restart();assert.deepEqual(await f.call('timeline.format.set',input),timeline);
 });
-test('default timeline lazy creation retains the legacy serialized shape and dimensions',async t=>{
+test('default timeline lazy creation keeps the serialized shape with current 1080 dimensions',async t=>{
  const f=await fixture(t),timeline=await f.call('timeline.get',{projectId:f.project.id});
  assert.deepEqual(Object.keys(timeline),['id','projectId','revision','fps','width','height','tracks','clips','durationFrames','createdAt','updatedAt']);
- assert.equal(timeline.width,720);assert.equal(timeline.height,1280);assert.equal(timeline.revision,1);
+ assert.equal(timeline.width,1080);assert.equal(timeline.height,1920);assert.equal(timeline.revision,1);
  assert.equal(f.capture().timeline_format_requests.length,0);assert.equal((await f.call('timeline.format.get',{projectId:f.project.id})).eligible,true);
- await rejected(f,f.spec('portrait_720',1),'TIMELINE_FORMAT_UNCHANGED');
+ await rejected(f,f.spec('portrait_1080',1),'TIMELINE_FORMAT_UNCHANGED');
  const changed=await f.call('timeline.format.set',f.spec('square_720',1));assert.equal(changed.revision,2);assert.equal(changed.id,timeline.id);assert.deepEqual(changed.tracks,timeline.tracks);
 });
 test('both revision fences are atomic and unchanged format writes no receipt',async t=>{
@@ -73,10 +73,10 @@ test('every supported format initializes clip rectangles against its own output 
   const inspected=await f.call('timeline.inspect',{projectId:f.project.id});assert.equal(inspected.width,preset.width);assert.equal(inspected.height,preset.height);
  }
 });
-test('submitted rectangles retain VALIDATION_ERROR against all three saved pairs without database writes or proof',async t=>{
+test('submitted rectangles retain VALIDATION_ERROR against all six saved pairs without database writes or proof',async t=>{
  for(const preset of TIMELINE_OUTPUT_PRESETS){
   const f=await fixture(t),timeline=await f.call('timeline.format.set',f.spec(preset.id)),asset=f.asset();
-  const overflow=preset.id==='landscape_720'?{x:0,y:622,width:100,height:100}:{x:622,y:0,width:100,height:100};
+  const overflow=preset.width>preset.height?{x:0,y:preset.height-98,width:100,height:100}:{x:preset.width-98,y:0,width:100,height:100};
   const base={projectId:f.project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId:asset.id,trackId:timeline.tracks[0].id,startFrame:0,durationFrames:30};
   async function fails(operation,input,path){
    const before=f.capture(),changes=f.store.db.prepare('SELECT total_changes() AS n').get().n;
@@ -97,7 +97,7 @@ test('submitted rectangles retain VALIDATION_ERROR against all three saved pairs
   assert.deepEqual(f.capture(),before);assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get().n,changes);
  }
  const f=await fixture(t),asset=f.asset(),before=f.capture(),changes=f.store.db.prepare('SELECT total_changes() AS n').get().n;
- await assert.rejects(f.call('timeline.clip.add',{projectId:f.project.id,expectedRevision:1,requestId:randomUUID(),assetId:asset.id,trackId:randomUUID(),startFrame:0,durationFrames:30,rect:{x:622,y:0,width:100,height:100}}),error=>error.code==='VALIDATION_ERROR'&&error.details.mutationOutcome===undefined);
+ await assert.rejects(f.call('timeline.clip.add',{projectId:f.project.id,expectedRevision:1,requestId:randomUUID(),assetId:asset.id,trackId:randomUUID(),startFrame:0,durationFrames:30,rect:{x:982,y:0,width:100,height:100}}),error=>error.code==='VALIDATION_ERROR'&&error.details.mutationOutcome===undefined);
  assert.deepEqual(f.capture(),before);assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get().n,changes);assert.equal(f.store.list('timelines').length,0);
 });
 

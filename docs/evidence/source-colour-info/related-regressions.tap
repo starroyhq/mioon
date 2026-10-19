@@ -1,0 +1,334 @@
+TAP version 13
+# Subtest: every composed UI and native catalog has exact four-locale and placeholder parity
+ok 1 - every composed UI and native catalog has exact four-locale and placeholder parity
+  ---
+  duration_ms: 44.713042
+  type: 'test'
+  ...
+# Subtest: UI literal ledger rejects unexplained, newly introduced and stale exceptions
+ok 2 - UI literal ledger rejects unexplained, newly introduced and stale exceptions
+  ---
+  duration_ms: 1.169167
+  type: 'test'
+  ...
+# Subtest: current source has no unreviewed or stale static UI literal exceptions
+ok 3 - current source has no unreviewed or stale static UI literal exceptions
+  ---
+  duration_ms: 404.003833
+  type: 'test'
+  ...
+# Subtest: static semantic keys used by UI translation calls exist in the composed catalog
+ok 4 - static semantic keys used by UI translation calls exist in the composed catalog
+  ---
+  duration_ms: 249.975417
+  type: 'test'
+  ...
+# Subtest: visible template guard distinguishes app copy from dynamic semantic keys
+ok 5 - visible template guard distinguishes app copy from dynamic semantic keys
+  ---
+  duration_ms: 0.303042
+  type: 'test'
+  ...
+# Subtest: timeline catalog has all four locales and exact placeholders for every presentation message
+ok 6 - timeline catalog has all four locales and exact placeholders for every presentation message
+  ---
+  duration_ms: 25.123458
+  type: 'test'
+  ...
+# Subtest: real language store relabels the mounted subtitle inspector without recreating its controller or replaying uncertain input
+ok 7 - real language store relabels the mounted subtitle inspector without recreating its controller or replaying uncertain input
+  ---
+  duration_ms: 44.052875
+  type: 'test'
+  ...
+# Subtest: language switches preserve frame extraction unknown identity, hash, source name and output format draft
+ok 8 - language switches preserve frame extraction unknown identity, hash, source name and output format draft
+  ---
+  duration_ms: 5.498333
+  type: 'test'
+  ...
+# Subtest: presentation lifecycle does not key controllers or business effects by language
+ok 9 - presentation lifecycle does not key controllers or business effects by language
+  ---
+  duration_ms: 0.96675
+  type: 'test'
+  ...
+# Subtest: revision labels are localized rather than carrying English shorthand into non-English interfaces
+ok 10 - revision labels are localized rather than carrying English shorthand into non-English interfaces
+  ---
+  duration_ms: 9.305
+  type: 'test'
+  ...
+# Subtest: shared source inspection client sends one read, preserves returned evidence and discovers bounded effects
+ok 11 - shared source inspection client sends one read, preserves returned evidence and discovers bounded effects
+  ---
+  duration_ms: 29.385334
+  type: 'test'
+  ...
+# Subtest: shared source inspection rejects cross-project, wrong-asset, contradictory or excessive DTOs without retry or mutation uncertainty
+ok 12 - shared source inspection rejects cross-project, wrong-asset, contradictory or excessive DTOs without retry or mutation uncertainty
+  ---
+  duration_ms: 6.121833
+  type: 'test'
+  ...
+# Subtest: source inspection malformed input fails before transport and does not invent a request identity
+ok 13 - source inspection malformed input fails before transport and does not invent a request identity
+  ---
+  duration_ms: 0.370541
+  type: 'test'
+  ...
+# Subtest: clip colour is strict and nullable, with no silent conversion or unknown controls
+ok 14 - clip colour is strict and nullable, with no silent conversion or unknown controls
+  ---
+  duration_ms: 8.401208
+  type: 'test'
+  ...
+# Subtest: projection is deterministic and side-effect-free; frozen plan binds every identity and LUT parameter
+ok 15 - projection is deterministic and side-effect-free; frozen plan binds every identity and LUT parameter
+  ---
+  duration_ms: 5.383209
+  type: 'test'
+  ...
+# Subtest: legacy omission/null never acquire a plan or defaults, while unsupported opt-in fails closed
+ok 16 - legacy omission/null never acquire a plan or defaults, while unsupported opt-in fails closed
+  ---
+  duration_ms: 1.888709
+  type: 'test'
+  ...
+# Subtest: timeline, clip update/add, split and replacement acknowledgements preserve exact colour intent
+ok 17 - timeline, clip update/add, split and replacement acknowledgements preserve exact colour intent
+  ---
+  duration_ms: 1.670209
+  type: 'test'
+  ...
+# Subtest: render acknowledgements require the exact non-null managed colour plan
+ok 18 - render acknowledgements require the exact non-null managed colour plan
+  ---
+  duration_ms: 4.146375
+  type: 'test'
+  ...
+# Subtest: source inspection is bounded, read-only local compute and exactly request-bound
+ok 19 - source inspection is bounded, read-only local compute and exactly request-bound
+  ---
+  duration_ms: 0.833083
+  type: 'test'
+  ...
+# Subtest: purposeful preflight blockers are explicit and restored LUT reading stays pair-bound
+ok 20 - purposeful preflight blockers are explicit and restored LUT reading stays pair-bound
+  ---
+  duration_ms: 0.135
+  type: 'test'
+  ...
+# Subtest: definitive colour edit rejection proofs bind the exact request and do not admit read-only inspection failures
+ok 21 - definitive colour edit rejection proofs bind the exact request and do not admit read-only inspection failures
+  ---
+  duration_ms: 0.441208
+  type: 'test'
+  ...
+# Subtest: colour-only render receipt identity prevents removal from selecting the legacy path
+ok 22 - colour-only render receipt identity prevents removal from selecting the legacy path
+  ---
+  duration_ms: 0.959792
+  type: 'test'
+  ...
+# Subtest: explicit 709 opaque YUV has real evidence, selected playable stream and compatible status
+ok 23 - explicit 709 opaque YUV has real evidence, selected playable stream and compatible status
+  ---
+  duration_ms: 3.028542
+  type: 'test'
+  ...
+# Subtest: missing and unspecified tags need explicit interpretation without pretending it is evidence
+ok 24 - missing and unspecified tags need explicit interpretation without pretending it is evidence
+  ---
+  duration_ms: 0.685958
+  type: 'test'
+  ...
+# Subtest: known non709, Log, HDR, RGB, alpha, depth contradictions and unsupported ranges cannot be overridden
+ok 25 - known non709, Log, HDR, RGB, alpha, depth contradictions and unsupported ranges cannot be overridden
+  ---
+  duration_ms: 1.392416
+  type: 'test'
+  ...
+# Subtest: asset hashes, selected stream and known ranges are actual-byte bound
+ok 26 - asset hashes, selected stream and known ranges are actual-byte bound
+  ---
+  duration_ms: 2.372792
+  type: 'test'
+  ...
+# Subtest: malformed probe is bounded and a missing video is unsupported rather than inferred
+ok 27 - malformed probe is bounded and a missing video is unsupported rather than inferred
+  ---
+  duration_ms: 0.203084
+  type: 'test'
+  ...
+# Subtest: owned inspection hashes before/after probe, exposes only DTO and has no SQLite writes
+ok 28 - owned inspection hashes before/after probe, exposes only DTO and has no SQLite writes
+  ---
+  duration_ms: 3.367042
+  type: 'test'
+  ...
+# Subtest: owner/restored/foreign/source limits reject before hashing and probing
+ok 29 - owner/restored/foreign/source limits reject before hashing and probing
+  ---
+  duration_ms: 0.404334
+  type: 'test'
+  ...
+# Subtest: hostile accessors and caller file paths never execute or reach runtime
+ok 30 - hostile accessors and caller file paths never execute or reach runtime
+  ---
+  duration_ms: 0.248292
+  type: 'test'
+  ...
+# Subtest: SHA/row/path changes and ownership loss across await invalidate rather than publish
+ok 31 - SHA/row/path changes and ownership loss across await invalidate rather than publish
+  ---
+  duration_ms: 3.350042
+  type: 'test'
+  ...
+# Subtest: single active operation survives public cancellation until noncooperative work actually settles
+ok 32 - single active operation survives public cancellation until noncooperative work actually settles
+  ---
+  duration_ms: 0.598083
+  type: 'test'
+  ...
+# Subtest: read-only inspection never starts file/process work from inside a SQLite write
+ok 33 - read-only inspection never starts file/process work from inside a SQLite write
+  ---
+  duration_ms: 0.177334
+  type: 'test'
+  ...
+# Subtest: unconfirmed process shutdown permanently poisons the local inspection owner
+ok 34 - unconfirmed process shutdown permanently poisons the local inspection owner
+  ---
+  duration_ms: 0.40275
+  type: 'test'
+  ...
+# Subtest: fixed metadata probe is file-only, bounded, selected-field and lifetime-fenced
+ok 35 - fixed metadata probe is file-only, bounded, selected-field and lifetime-fenced
+  ---
+  duration_ms: 0.247458
+  type: 'test'
+  ...
+# Subtest: fade draft preserves omission, explicit zero and immutable copies
+ok 36 - fade draft preserves omission, explicit zero and immutable copies
+  ---
+  duration_ms: 1.124833
+  type: 'test'
+  ...
+# Subtest: fade validation checks both integers, per-side bounds, their sum and confirmed audio
+ok 37 - fade validation checks both integers, per-side bounds, their sum and confirmed audio
+  ---
+  duration_ms: 0.633834
+  type: 'test'
+  ...
+# Subtest: actual inspector renders integer fade controls inside its existing ScrollArea and keeps gain semantics
+ok 38 - actual inspector renders integer fade controls inside its existing ScrollArea and keeps gain semantics
+  ---
+  duration_ms: 99.224958
+  type: 'test'
+  ...
+# Subtest: silent and unknown-audio videos show disabled fades with an honest no-effect explanation; images have no audio controls
+ok 39 - silent and unknown-audio videos show disabled fades with an honest no-effect explanation; images have no audio controls
+  ---
+  duration_ms: 36.89
+  type: 'test'
+  ...
+# Subtest: unrelated save on legacy clip never adds zero fields; explicitly changing one missing fade adds only that zero
+ok 40 - unrelated save on legacy clip never adds zero fields; explicitly changing one missing fade adds only that zero
+  ---
+  duration_ms: 15.599208
+  type: 'test'
+  ...
+# Subtest: unrelated save preserves explicit zero and fade values while discard restores omission
+ok 41 - unrelated save preserves explicit zero and fade values while discard restores omission
+  ---
+  duration_ms: 29.427417
+  type: 'test'
+  ...
+# Subtest: trim never silently clamps either fade and invalid totals cannot submit
+ok 42 - trim never silently clamps either fade and invalid totals cannot submit
+  ---
+  duration_ms: 16.216208
+  type: 'test'
+  ...
+# Subtest: invalid local fade drafts stay visible and block even direct form submission
+ok 43 - invalid local fade drafts stay visible and block even direct form submission
+  ---
+  duration_ms: 46.779041
+  type: 'test'
+  ...
+# Subtest: edits made during save survive its acknowledgment without silently rebasing the newer draft
+ok 44 - edits made during save survive its acknowledgment without silently rebasing the newer draft
+  ---
+  duration_ms: 22.352416
+  type: 'test'
+  ...
+# Subtest: failed or unacknowledged save preserves fade edits and does not retry
+ok 45 - failed or unacknowledged save preserves fade edits and does not retry
+  ---
+  duration_ms: 24.68275
+  type: 'test'
+  ...
+# Subtest: every newer timeline revision preserves the exact dirty fade input and requires explicit reload
+ok 46 - every newer timeline revision preserves the exact dirty fade input and requires explicit reload
+  ---
+  duration_ms: 14.726417
+  type: 'test'
+  ...
+# Subtest: keyed project unmount fences late fade acknowledgments and retained form submit
+ok 47 - keyed project unmount fences late fade acknowledgments and retained form submit
+  ---
+  duration_ms: 22.780042
+  type: 'test'
+  ...
+# Subtest: source playback copy stays explicit about dry audio and the shared render path
+ok 48 - source playback copy stays explicit about dry audio and the shared render path
+  ---
+  duration_ms: 1.576958
+  type: 'test'
+  ...
+# Subtest: real inspector adopts SDR, applies a declared creative LUT and saves through the common draft pipeline
+ok 49 - real inspector adopts SDR, applies a declared creative LUT and saves through the common draft pipeline
+  ---
+  duration_ms: 18.725958
+  type: 'test'
+  ...
+# Subtest: actual inspector role selection uses shared dirty form and one existing Save revision
+ok 50 - actual inspector role selection uses shared dirty form and one existing Save revision
+  ---
+  duration_ms: 18.555833
+  type: 'test'
+  ...
+# Subtest: missing role capability blocks captured selector callbacks but unrelated inspector edits save
+ok 51 - missing role capability blocks captured selector callbacks but unrelated inspector edits save
+  ---
+  duration_ms: 19.393333
+  type: 'test'
+  ...
+# Subtest: role eligibility includes silent video, zero gain and muted timeline without enabling fades
+ok 52 - role eligibility includes silent video, zero gain and muted timeline without enabling fades
+  ---
+  duration_ms: 55.558292
+  type: 'test'
+  ...
+# Subtest: image inspector excludes audio role; restored supported editor can save without sidecar support
+ok 53 - image inspector excludes audio role; restored supported editor can save without sidecar support
+  ---
+  duration_ms: 175.614208
+  type: 'test'
+  ...
+# Subtest: captured enabled role selector cannot write after capability loss or owner unmount
+ok 54 - captured enabled role selector cannot write after capability loss or owner unmount
+  ---
+  duration_ms: 13.254791
+  type: 'test'
+  ...
+1..54
+# tests 54
+# suites 0
+# pass 54
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3688.273916

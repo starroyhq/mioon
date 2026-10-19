@@ -1,0 +1,16 @@
+{
+  "startedAt": "2026-10-16T08:12:28.780Z",
+  "finishedAt": "2026-10-16T08:14:51.946Z",
+  "node": "v26.9.0",
+  "fileCount": 37,
+  "exitCode": 1,
+  "signal": null,
+  "tests": 434,
+  "pass": 415,
+  "fail": 19,
+  "cancelled": 0,
+  "skipped": 0,
+  "selection": "aggregate-selection.json",
+  "log": "aggregate-attempt1-tests.tap",
+  "note": "17 failures: existing native lifecycle stub lacked real controller API;2 failures: mistakenly selected loopback CLI/MCP suite denied EPERM before listener/child startup. No escalation/retry of denied operations. Final selection removes entire transport suite (5 tests)."
+}

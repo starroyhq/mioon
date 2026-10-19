@@ -102,10 +102,13 @@ registry snapshots are excluded from scanning. The app's Vite configuration must
 use `@tailwindcss/vite`. Because pnpm resolves imports from the owning package,
 `tailwindcss` itself must also be a direct dependency of `@mioon/ui`.
 
-The theme follows shadcn's neutral semantic-token structure, with deliberately
-customized dark surfaces (`#101114`, `#1e2025`, `#22242a`) and the existing editor's
-sage primary (`#d7e6aa`). This preserves the editor's visual identity instead of
-claiming the customized palette is the unmodified upstream neutral preset.
+The theme follows shadcn's semantic-token structure, mapped to the application's
+palette; private design materials are not included in the repository. Canvas/panel/surface/raised are
+`#0B0C0E` / `#141518` / `#1B1D21` / `#23252A`, and the action color is white
+(`#F2F3F5` on `#0B0C0E`). This application palette is not an unmodified upstream
+neutral preset. Color, typography, spacing, radius and control/layout dimensions
+live in `packages/ui/src/styles/globals.css` as `--wb-*` tokens; renderer styles
+reference those tokens instead of maintaining private palettes.
 The renderer uses `class="dark"` on the document element. Both the web renderer
 and Electron renderer use the same stylesheet and component code.
 
@@ -120,8 +123,51 @@ and utility code. Animation utilities come from `tw-animate-css`.
 
 Keep legacy editor layout variables separate from shadcn's semantic tokens:
 `--muted` is a surface color, `--muted-foreground` is text, `--accent` is an
-interactive hover surface, and `--primary` is the sage action color. Legacy
-variables should have their own prefix rather than overriding these names.
+interactive hover surface, and `--primary` is the white action color. Legacy
+variables use the `--wb-` prefix rather than overriding these names. In particular,
+`--wb-accent` is the white action color and maps to shadcn `--primary`;
+shadcn `--accent` maps to `--wb-hover`, not white. Text on media clips uses the
+separate `--wb-media-text` (`#FFFFFF`): the specified image fill needs this to meet
+the design's 9:1 clip-text contrast target (the ordinary `#ECEDEF` text gives 8.44:1).
+
+## Redesign application compositions
+
+Import the optional application adapters from
+`@mioon/ui/components/workbench-controls`. Their CSS is imported by the existing
+`@mioon/ui/globals.css` entry. They do not patch any pinned registry source,
+change its variants or replace its Base UI behavior.
+
+- `WorkbenchButton`: primary, secondary, ghost, danger, danger-ghost and icon;
+  compact/default/large heights of 24/28/36px; disabled/loading/focus states.
+  Loading retains its label, exposes `aria-busy`, and prevents repeated clicks.
+  The stable `.wb-button` class also works when a Tooltip changes `data-slot`.
+- `WorkbenchTabs`: controlled segmented or underline presentation using the real
+  Tabs primitives, manual activation and disabled options. Labels/test IDs are
+  caller-supplied; callers may compose the existing `TabsContent` children.
+- `WorkbenchChip`, `WorkbenchBadge`, `WorkbenchAlert`, `WorkbenchEmptyState` and
+  `WorkbenchProgress`: display compositions with caller-localized copy. Progress
+  bounds finite percentages to 0–100 and exposes an accessible progressbar.
+- `WorkbenchPanel` and `WorkbenchGroup`: 36px header, scrollable content and 48px
+  footer, plus Base UI collapsible sections that retain their mounted drafts.
+- `WorkbenchDialogContent`: 420px, 560px or 960×640 content with a scrollable body
+  and fixed actions. The existing Dialog root continues to own open/close,
+  navigation admission and focus behavior. `WorkbenchToastRegion` and
+  `WorkbenchToast` provide the top-right stack without submitting/dismissing work.
+
+Input/Textarea, the existing scalar Select adapter and existing Switch/Slider
+primitives use the same tokens. Native checkbox/radio controls can use
+`.wb-checkbox` / `.wb-radio`; number/timecode displays use `--wb-font-mono`.
+All new labels, errors, tooltip text and actions remain the caller's four-language
+responsibility. No model/service or persistence behavior lives in these adapters.
+
+`node --test tests/design-tokens.test.mjs` checks token mappings, text/action/media
+contrast, renderer token references and Tooltip-safe selectors without installed
+dependencies. `node --test tests/workbench-controls.test.mjs` checks real React /
+Base UI rendering, callback/test-ID forwarding, loading and progress bounds under
+the shipped classic JSX transform. These checks complement the official-source
+integrity suite; browser keyboard/focus and screenshot acceptance are still needed
+as the redesigned pages adopt the compositions. System light appearance is not
+enabled by this foundation; its separate two-page screenshot review remains a gate.
 
 ## Editor adoption map
 
@@ -134,6 +180,17 @@ variables should have their own prefix rather than overriding these names.
 - `DropdownMenu` powers the project switcher.
 - `Tabs` powers library filters, workspace modes, preview and inspector tabs.
 - `Collapsible` powers library, inspector, storyboard, timeline and advanced sections.
+  Desktop timeline collapse retains the same mounted timeline and its full 40px
+  toolbar. Its hidden body is inert; waveform work, clip dragging and removal
+  shortcuts stop until expansion. Explicit toolbar actions retain their existing
+  domain admission. Very narrow windows keep the single-panel recall fallback;
+  expanding restores the selected clip, scroll position and saved panel height.
+  Agent sending options remain fully disclosed before permission. A saved grant
+  defaults to a compact model/scope/target summary that can expand for review;
+  changing the mounted disclosure key or revoking permission reopens the details.
+  Hidden options remain mounted and inert, and retained scope-change callbacks
+  must pass their current presentation owner. This state never grants permission
+  or changes the existing send/approval admission.
 - `Switch` controls track visibility and mute; `Slider` controls timeline zoom.
 - `ScrollArea` wraps the asset library and inspector. `Tooltip` supports icon and
   library actions; `Badge` displays status chips; `Separator` divides inspector sections.
@@ -229,3 +286,17 @@ packages were not installed; Vite compiled the TSX sources and the runtime tests
 executed them. The separate application-wide HTTP/MCP/media and full-flow browser
 suites are reported in the project's aggregate acceptance documentation, rather
 than being implied by these UI-specific checks.
+
+### 界面文案
+
+界面提示的每段末尾不加中文或日文句号 `。`、英文句点 `.`，段落内部的句号、省略号及其他标点保留。此规则在静态文案模板中应用，不裁剪用户输入、动态参数、文件名或链接。
+
+### 浅色主题
+
+`packages/ui/src/styles/light.css` 在根元素 `.light` 下生效。用户确认第三版截图后，外观偏好支持 `dark | light | system`；Provider维护互斥根类并公开解析后的主题，ReactFlow使用同一解析值。普通文字与操作文字最低4.5:1，媒体片段保留深色语义底与白字，最低9:1。媒体文字遮罩使用独立的 `--wb-media-overlay`，避免跟随弹窗浅色backdrop而降低可读性。系统外观监听随偏好切换与卸载清理，不会触发偏好写入。
+
+### 小桌面窗口的面板展示
+
+`usePanelGeometry` 按工作区的物理宽度派生紧凑展示：小于 1150px 且未进入原有极窄模式时，两侧默认显示 44px 图标栏，中央画板或预览继续可用。点击图标栏打开保留挂载的临时浮层，可固定到当前项目和模式的瞬态布局。自动收起、浮层和固定均不改写保存的面板尺寸/折叠偏好；恢复宽窗会重新使用原偏好。低于原有 800 逻辑像素或高度不足时，仍使用独立的单面板兜底模式。缩放测量同时区分物理窗口与逻辑控件尺寸。
+
+导出文件恢复组件也遵守 `WorkspaceVisibility`：隐藏或归属变化后，旧文件选择、状态读取和回调失效；已经发出的恢复 POST 保持执行，完成后只释放当前实例的忙碌锁，重新可见的历史由自己的 GET 重核，不使用旧结果覆盖新视图或冻结下载 URL。

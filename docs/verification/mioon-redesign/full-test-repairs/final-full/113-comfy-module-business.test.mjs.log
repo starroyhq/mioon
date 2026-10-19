@@ -1,0 +1,59 @@
+TAP version 13
+# Subtest: unavailable Comfy module refuses new generation, preparation and pending approval without mutations
+    # Subtest: not_provided
+    ok 1 - not_provided
+      ---
+      duration_ms: 1159.282459
+      type: 'test'
+      ...
+    # Subtest: not_loaded
+    ok 2 - not_loaded
+      ---
+      duration_ms: 644.684416
+      type: 'test'
+      ...
+    1..2
+ok 1 - unavailable Comfy module refuses new generation, preparation and pending approval without mutations
+  ---
+  duration_ms: 1804.530916
+  type: 'test'
+  ...
+# Subtest: completed Comfy receipts, reviews, remote journals and PNG bytes survive unavailable-module restarts exactly
+ok 2 - completed Comfy receipts, reviews, remote journals and PNG bytes survive unavailable-module restarts exactly
+  ---
+  duration_ms: 1038.913625
+  type: 'test'
+  ...
+# Subtest: unknown original task retains its identities and exact observation replay while missing module blocks a fresh query
+ok 3 - unknown original task retains its identities and exact observation replay while missing module blocks a fresh query
+  ---
+  duration_ms: 772.446416
+  type: 'test'
+  ...
+# Subtest: local-result recovery remains explicitly usable without the Comfy network module
+ok 4 - local-result recovery remains explicitly usable without the Comfy network module
+  ---
+  duration_ms: 796.070583
+  type: 'test'
+  ...
+# Subtest: loaded connector still observes original frozen task when current settings disable generation or point elsewhere
+ok 5 - loaded connector still observes original frozen task when current settings disable generation or point elsewhere
+  ---
+  duration_ms: 660.153375
+  type: 'test'
+  ...
+# Subtest: lost observation acknowledgment replays under module omission without resuming its interrupted query
+ok 6 - lost observation acknowledgment replays under module omission without resuming its interrupted query
+  ---
+  duration_ms: 659.201125
+  type: 'test'
+  ...
+1..6
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 6151.161916

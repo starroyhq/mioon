@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: provider registry exposes model-specific safe readiness without credential values
+ok 1 - provider registry exposes model-specific safe readiness without credential values
+  ---
+  duration_ms: 707.392667
+  type: 'test'
+  ...
+# Subtest: unsupported duration, reference mode and parameters fail before any job exists
+ok 2 - unsupported duration, reference mode and parameters fail before any job exists
+  ---
+  duration_ms: 697.624125
+  type: 'test'
+  ...
+# Subtest: Seedance first-frame ratio validation is shared and snapshots retain immutable dimensions
+ok 3 - Seedance first-frame ratio validation is shared and snapshots retain immutable dimensions
+  ---
+  duration_ms: 598.268833
+  type: 'test'
+  ...
+# Subtest: text input has no generation count limit and exact requests still deduplicate
+ok 4 - text input has no generation count limit and exact requests still deduplicate
+  ---
+  duration_ms: 602.523625
+  type: 'test'
+  ...
+# Subtest: obsolete count settings do not affect readiness and are excluded from the desktop allowlist
+ok 5 - obsolete count settings do not affect readiness and are excluded from the desktop allowlist
+  ---
+  duration_ms: 0.528458
+  type: 'test'
+  ...
+# Subtest: removing the count cap retains the explicit live switch and credential gates
+ok 6 - removing the count cap retains the explicit live switch and credential gates
+  ---
+  duration_ms: 1750.264208
+  type: 'test'
+  ...
+# Subtest: reopening a workspace retains unlimited admission, exact request replay and unknown-result protection
+ok 7 - reopening a workspace retains unlimited admission, exact request replay and unknown-result protection
+  ---
+  duration_ms: 915.958166
+  type: 'test'
+  ...
+# Subtest: unknown model never falls back and provider-specific seed is rejected
+ok 8 - unknown model never falls back and provider-specific seed is rejected
+  ---
+  duration_ms: 582.503417
+  type: 'test'
+  ...
+# Subtest: every advertised provider ratio is representable in the shared shot schema
+ok 9 - every advertised provider ratio is representable in the shared shot schema
+  ---
+  duration_ms: 587.981417
+  type: 'test'
+  ...
+# Subtest: manual reconciliation and explicit retry preserve the original regional account boundary
+ok 10 - manual reconciliation and explicit retry preserve the original regional account boundary
+  ---
+  duration_ms: 573.012417
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 7389.999708

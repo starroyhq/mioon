@@ -1,0 +1,3086 @@
+TAP version 13
+# Subtest: historical 25: populated type-preserving content mutations keep identity/FKs and fail capture equality
+    # Subtest: jobs
+    ok 1 - jobs
+      ---
+      duration_ms: 23.491042
+      type: 'test'
+      ...
+    # Subtest: exports
+    ok 2 - exports
+      ---
+      duration_ms: 24.000667
+      type: 'test'
+      ...
+    # Subtest: versions
+    ok 3 - versions
+      ---
+      duration_ms: 22.984459
+      type: 'test'
+      ...
+    # Subtest: job_events
+    ok 4 - job_events
+      ---
+      duration_ms: 22.566
+      type: 'test'
+      ...
+    # Subtest: timeline_requests
+    ok 5 - timeline_requests
+      ---
+      duration_ms: 23.298333
+      type: 'test'
+      ...
+    # Subtest: reference_requests
+    ok 6 - reference_requests
+      ---
+      duration_ms: 23.351292
+      type: 'test'
+      ...
+    # Subtest: idempotency
+    ok 7 - idempotency
+      ---
+      duration_ms: 22.574333
+      type: 'test'
+      ...
+    # Subtest: mutation_requests
+    ok 8 - mutation_requests
+      ---
+      duration_ms: 23.948833
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests
+    ok 9 - asset_range_requests
+      ---
+      duration_ms: 22.839208
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests
+    ok 10 - asset_disposition_requests
+      ---
+      duration_ms: 24.332541
+      type: 'test'
+      ...
+    # Subtest: subject_requests
+    ok 11 - subject_requests
+      ---
+      duration_ms: 23.370125
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads
+    ok 12 - agent_chat_threads
+      ---
+      duration_ms: 26.021417
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests
+    ok 13 - agent_chat_requests
+      ---
+      duration_ms: 22.581
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs
+    ok 14 - agent_chat_runs
+      ---
+      duration_ms: 25.197875
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events
+    ok 15 - agent_chat_events
+      ---
+      duration_ms: 25.0265
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps
+    ok 16 - agent_chat_steps
+      ---
+      duration_ms: 23.810042
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota
+    ok 17 - agent_chat_quota
+      ---
+      duration_ms: 22.705875
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals
+    ok 18 - agent_edit_proposals
+      ---
+      duration_ms: 24.316917
+      type: 'test'
+      ...
+    # Subtest: edit_tasks
+    ok 19 - edit_tasks
+      ---
+      duration_ms: 27.321792
+      type: 'test'
+      ...
+    1..19
+ok 1 - historical 25: populated type-preserving content mutations keep identity/FKs and fail capture equality
+  ---
+  duration_ms: 657.483
+  type: 'test'
+  ...
+# Subtest: historical 25: legitimate current-origin growth does not demand new holds or rewrite archives
+ok 2 - historical 25: legitimate current-origin growth does not demand new holds or rewrite archives
+  ---
+  duration_ms: 117.393417
+  type: 'test'
+  ...
+# Subtest: historical 25: rowid zero, negative and >2^53 plus text/blob chunk boundaries retain independent constructor hashes
+ok 3 - historical 25: rowid zero, negative and >2^53 plus text/blob chunk boundaries retain independent constructor hashes
+  ---
+  duration_ms: 256.050792
+  type: 'test'
+  ...
+# Subtest: historical 25: null framing and genuine SQLite REAL formatting match constructor bytes
+ok 4 - historical 25: null framing and genuine SQLite REAL formatting match constructor bytes
+  ---
+  duration_ms: 116.326125
+  type: 'test'
+  ...
+# Subtest: historical 25: invalid live request shape preserves identity diagnostic after matching independent digest
+ok 5 - historical 25: invalid live request shape preserves identity diagnostic after matching independent digest
+  ---
+  duration_ms: 118.184416
+  type: 'test'
+  ...
+# Subtest: historical 25: gate exact tuple is not a version-range admission API
+ok 6 - historical 25: gate exact tuple is not a version-range admission API
+  ---
+  duration_ms: 78.315333
+  type: 'test'
+  ...
+# Subtest: historical 27: populated type-preserving content mutations keep identity/FKs and fail capture equality
+    # Subtest: jobs
+    ok 1 - jobs
+      ---
+      duration_ms: 103.89925
+      type: 'test'
+      ...
+    # Subtest: exports
+    ok 2 - exports
+      ---
+      duration_ms: 22.320292
+      type: 'test'
+      ...
+    # Subtest: versions
+    ok 3 - versions
+      ---
+      duration_ms: 22.52725
+      type: 'test'
+      ...
+    # Subtest: job_events
+    ok 4 - job_events
+      ---
+      duration_ms: 22.10625
+      type: 'test'
+      ...
+    # Subtest: timeline_requests
+    ok 5 - timeline_requests
+      ---
+      duration_ms: 22.755291
+      type: 'test'
+      ...
+    # Subtest: reference_requests
+    ok 6 - reference_requests
+      ---
+      duration_ms: 22.069084
+      type: 'test'
+      ...
+    # Subtest: idempotency
+    ok 7 - idempotency
+      ---
+      duration_ms: 24.452666
+      type: 'test'
+      ...
+    # Subtest: mutation_requests
+    ok 8 - mutation_requests
+      ---
+      duration_ms: 23.225875
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests
+    ok 9 - asset_range_requests
+      ---
+      duration_ms: 22.987916
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests
+    ok 10 - asset_disposition_requests
+      ---
+      duration_ms: 22.710959
+      type: 'test'
+      ...
+    # Subtest: subject_requests
+    ok 11 - subject_requests
+      ---
+      duration_ms: 23.076667
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads
+    ok 12 - agent_chat_threads
+      ---
+      duration_ms: 23.826625
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests
+    ok 13 - agent_chat_requests
+      ---
+      duration_ms: 23.008583
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs
+    ok 14 - agent_chat_runs
+      ---
+      duration_ms: 23.64575
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events
+    ok 15 - agent_chat_events
+      ---
+      duration_ms: 24.615292
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps
+    ok 16 - agent_chat_steps
+      ---
+      duration_ms: 24.390042
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota
+    ok 17 - agent_chat_quota
+      ---
+      duration_ms: 23.915708
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals
+    ok 18 - agent_edit_proposals
+      ---
+      duration_ms: 22.545667
+      type: 'test'
+      ...
+    # Subtest: edit_tasks
+    ok 19 - edit_tasks
+      ---
+      duration_ms: 24.5105
+      type: 'test'
+      ...
+    1..19
+ok 7 - historical 27: populated type-preserving content mutations keep identity/FKs and fail capture equality
+  ---
+  duration_ms: 694.059958
+  type: 'test'
+  ...
+# Subtest: historical 27: legitimate current-origin growth does not demand new holds or rewrite archives
+ok 8 - historical 27: legitimate current-origin growth does not demand new holds or rewrite archives
+  ---
+  duration_ms: 116.445542
+  type: 'test'
+  ...
+# Subtest: historical 27: rowid zero, negative and >2^53 plus text/blob chunk boundaries retain independent constructor hashes
+ok 9 - historical 27: rowid zero, negative and >2^53 plus text/blob chunk boundaries retain independent constructor hashes
+  ---
+  duration_ms: 252.368292
+  type: 'test'
+  ...
+# Subtest: historical 27: null framing and genuine SQLite REAL formatting match constructor bytes
+ok 10 - historical 27: null framing and genuine SQLite REAL formatting match constructor bytes
+  ---
+  duration_ms: 122.1715
+  type: 'test'
+  ...
+# Subtest: historical 27: invalid live request shape preserves identity diagnostic after matching independent digest
+ok 11 - historical 27: invalid live request shape preserves identity diagnostic after matching independent digest
+  ---
+  duration_ms: 115.700292
+  type: 'test'
+  ...
+# Subtest: historical 27: gate exact tuple is not a version-range admission API
+ok 12 - historical 27: gate exact tuple is not a version-range admission API
+  ---
+  duration_ms: 84.822208
+  type: 'test'
+  ...
+# Subtest: historical 29: populated type-preserving content mutations keep identity/FKs and fail capture equality
+    # Subtest: jobs
+    ok 1 - jobs
+      ---
+      duration_ms: 106.790375
+      type: 'test'
+      ...
+    # Subtest: exports
+    ok 2 - exports
+      ---
+      duration_ms: 22.80875
+      type: 'test'
+      ...
+    # Subtest: versions
+    ok 3 - versions
+      ---
+      duration_ms: 23.885167
+      type: 'test'
+      ...
+    # Subtest: job_events
+    ok 4 - job_events
+      ---
+      duration_ms: 23.226291
+      type: 'test'
+      ...
+    # Subtest: timeline_requests
+    ok 5 - timeline_requests
+      ---
+      duration_ms: 24.284542
+      type: 'test'
+      ...
+    # Subtest: reference_requests
+    ok 6 - reference_requests
+      ---
+      duration_ms: 23.320625
+      type: 'test'
+      ...
+    # Subtest: idempotency
+    ok 7 - idempotency
+      ---
+      duration_ms: 23.897084
+      type: 'test'
+      ...
+    # Subtest: mutation_requests
+    ok 8 - mutation_requests
+      ---
+      duration_ms: 24.299875
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests
+    ok 9 - asset_range_requests
+      ---
+      duration_ms: 25.09275
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests
+    ok 10 - asset_disposition_requests
+      ---
+      duration_ms: 24.980375
+      type: 'test'
+      ...
+    # Subtest: subject_requests
+    ok 11 - subject_requests
+      ---
+      duration_ms: 23.793708
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads
+    ok 12 - agent_chat_threads
+      ---
+      duration_ms: 24.120791
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests
+    ok 13 - agent_chat_requests
+      ---
+      duration_ms: 24.858041
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs
+    ok 14 - agent_chat_runs
+      ---
+      duration_ms: 25.911791
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events
+    ok 15 - agent_chat_events
+      ---
+      duration_ms: 23.915208
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps
+    ok 16 - agent_chat_steps
+      ---
+      duration_ms: 25.822833
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota
+    ok 17 - agent_chat_quota
+      ---
+      duration_ms: 24.991667
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals
+    ok 18 - agent_edit_proposals
+      ---
+      duration_ms: 27.185416
+      type: 'test'
+      ...
+    # Subtest: edit_tasks
+    ok 19 - edit_tasks
+      ---
+      duration_ms: 25.465583
+      type: 'test'
+      ...
+    # Subtest: project_lut_resources
+    ok 20 - project_lut_resources
+      ---
+      duration_ms: 25.572333
+      type: 'test'
+      ...
+    1..20
+ok 13 - historical 29: populated type-preserving content mutations keep identity/FKs and fail capture equality
+  ---
+  duration_ms: 765.023083
+  type: 'test'
+  ...
+# Subtest: historical 29: legitimate current-origin growth does not demand new holds or rewrite archives
+ok 14 - historical 29: legitimate current-origin growth does not demand new holds or rewrite archives
+  ---
+  duration_ms: 127.488958
+  type: 'test'
+  ...
+# Subtest: historical 29: rowid zero, negative and >2^53 plus text/blob chunk boundaries retain independent constructor hashes
+ok 15 - historical 29: rowid zero, negative and >2^53 plus text/blob chunk boundaries retain independent constructor hashes
+  ---
+  duration_ms: 266.6365
+  type: 'test'
+  ...
+# Subtest: historical 29: null framing and genuine SQLite REAL formatting match constructor bytes
+ok 16 - historical 29: null framing and genuine SQLite REAL formatting match constructor bytes
+  ---
+  duration_ms: 132.431667
+  type: 'test'
+  ...
+# Subtest: historical 29: invalid live request shape preserves identity diagnostic after matching independent digest
+ok 17 - historical 29: invalid live request shape preserves identity diagnostic after matching independent digest
+  ---
+  duration_ms: 127.783375
+  type: 'test'
+  ...
+# Subtest: historical 29: gate exact tuple is not a version-range admission API
+ok 18 - historical 29: gate exact tuple is not a version-range admission API
+  ---
+  duration_ms: 91.367709
+  type: 'test'
+  ...
+# Subtest: historical 31: populated type-preserving content mutations keep identity/FKs and fail capture equality
+    # Subtest: jobs
+    ok 1 - jobs
+      ---
+      duration_ms: 114.748208
+      type: 'test'
+      ...
+    # Subtest: exports
+    ok 2 - exports
+      ---
+      duration_ms: 24.103209
+      type: 'test'
+      ...
+    # Subtest: versions
+    ok 3 - versions
+      ---
+      duration_ms: 23.574417
+      type: 'test'
+      ...
+    # Subtest: job_events
+    ok 4 - job_events
+      ---
+      duration_ms: 25.847208
+      type: 'test'
+      ...
+    # Subtest: timeline_requests
+    ok 5 - timeline_requests
+      ---
+      duration_ms: 25.590333
+      type: 'test'
+      ...
+    # Subtest: reference_requests
+    ok 6 - reference_requests
+      ---
+      duration_ms: 26.43625
+      type: 'test'
+      ...
+    # Subtest: idempotency
+    ok 7 - idempotency
+      ---
+      duration_ms: 25.012042
+      type: 'test'
+      ...
+    # Subtest: mutation_requests
+    ok 8 - mutation_requests
+      ---
+      duration_ms: 27.261375
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests
+    ok 9 - asset_range_requests
+      ---
+      duration_ms: 27.793959
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests
+    ok 10 - asset_disposition_requests
+      ---
+      duration_ms: 28.159542
+      type: 'test'
+      ...
+    # Subtest: subject_requests
+    ok 11 - subject_requests
+      ---
+      duration_ms: 30.1815
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads
+    ok 12 - agent_chat_threads
+      ---
+      duration_ms: 28.962417
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests
+    ok 13 - agent_chat_requests
+      ---
+      duration_ms: 27.682541
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs
+    ok 14 - agent_chat_runs
+      ---
+      duration_ms: 26.3405
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events
+    ok 15 - agent_chat_events
+      ---
+      duration_ms: 26.546334
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps
+    ok 16 - agent_chat_steps
+      ---
+      duration_ms: 27.260167
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota
+    ok 17 - agent_chat_quota
+      ---
+      duration_ms: 24.7045
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals
+    ok 18 - agent_edit_proposals
+      ---
+      duration_ms: 27.295625
+      type: 'test'
+      ...
+    # Subtest: edit_tasks
+    ok 19 - edit_tasks
+      ---
+      duration_ms: 26.818708
+      type: 'test'
+      ...
+    # Subtest: project_lut_resources
+    ok 20 - project_lut_resources
+      ---
+      duration_ms: 27.766708
+      type: 'test'
+      ...
+    1..20
+ok 19 - historical 31: populated type-preserving content mutations keep identity/FKs and fail capture equality
+  ---
+  duration_ms: 823.156417
+  type: 'test'
+  ...
+# Subtest: historical 31: legitimate current-origin growth does not demand new holds or rewrite archives
+ok 20 - historical 31: legitimate current-origin growth does not demand new holds or rewrite archives
+  ---
+  duration_ms: 138.631083
+  type: 'test'
+  ...
+# Subtest: historical 31: rowid zero, negative and >2^53 plus text/blob chunk boundaries retain independent constructor hashes
+ok 21 - historical 31: rowid zero, negative and >2^53 plus text/blob chunk boundaries retain independent constructor hashes
+  ---
+  duration_ms: 278.586792
+  type: 'test'
+  ...
+# Subtest: historical 31: null framing and genuine SQLite REAL formatting match constructor bytes
+ok 22 - historical 31: null framing and genuine SQLite REAL formatting match constructor bytes
+  ---
+  duration_ms: 143.896875
+  type: 'test'
+  ...
+# Subtest: historical 31: invalid live request shape preserves identity diagnostic after matching independent digest
+ok 23 - historical 31: invalid live request shape preserves identity diagnostic after matching independent digest
+  ---
+  duration_ms: 136.964708
+  type: 'test'
+  ...
+# Subtest: historical 31: gate exact tuple is not a version-range admission API
+ok 24 - historical 31: gate exact tuple is not a version-range admission API
+  ---
+  duration_ms: 103.528291
+  type: 'test'
+  ...
+# Subtest: historical 33: populated type-preserving content mutations keep identity/FKs and fail capture equality
+    # Subtest: jobs
+    ok 1 - jobs
+      ---
+      duration_ms: 121.616083
+      type: 'test'
+      ...
+    # Subtest: exports
+    ok 2 - exports
+      ---
+      duration_ms: 24.7955
+      type: 'test'
+      ...
+    # Subtest: versions
+    ok 3 - versions
+      ---
+      duration_ms: 23.747917
+      type: 'test'
+      ...
+    # Subtest: job_events
+    ok 4 - job_events
+      ---
+      duration_ms: 26.250333
+      type: 'test'
+      ...
+    # Subtest: timeline_requests
+    ok 5 - timeline_requests
+      ---
+      duration_ms: 25.382375
+      type: 'test'
+      ...
+    # Subtest: reference_requests
+    ok 6 - reference_requests
+      ---
+      duration_ms: 24.585666
+      type: 'test'
+      ...
+    # Subtest: idempotency
+    ok 7 - idempotency
+      ---
+      duration_ms: 24.441083
+      type: 'test'
+      ...
+    # Subtest: mutation_requests
+    ok 8 - mutation_requests
+      ---
+      duration_ms: 24.848083
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests
+    ok 9 - asset_range_requests
+      ---
+      duration_ms: 25.032666
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests
+    ok 10 - asset_disposition_requests
+      ---
+      duration_ms: 25.749125
+      type: 'test'
+      ...
+    # Subtest: subject_requests
+    ok 11 - subject_requests
+      ---
+      duration_ms: 24.189875
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads
+    ok 12 - agent_chat_threads
+      ---
+      duration_ms: 25.1435
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests
+    ok 13 - agent_chat_requests
+      ---
+      duration_ms: 27.220042
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs
+    ok 14 - agent_chat_runs
+      ---
+      duration_ms: 26.449917
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events
+    ok 15 - agent_chat_events
+      ---
+      duration_ms: 25.003333
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps
+    ok 16 - agent_chat_steps
+      ---
+      duration_ms: 27.1035
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota
+    ok 17 - agent_chat_quota
+      ---
+      duration_ms: 25.11525
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals
+    ok 18 - agent_edit_proposals
+      ---
+      duration_ms: 27.355709
+      type: 'test'
+      ...
+    # Subtest: edit_tasks
+    ok 19 - edit_tasks
+      ---
+      duration_ms: 26.3185
+      type: 'test'
+      ...
+    # Subtest: project_lut_resources
+    ok 20 - project_lut_resources
+      ---
+      duration_ms: 25.061208
+      type: 'test'
+      ...
+    1..20
+ok 25 - historical 33: populated type-preserving content mutations keep identity/FKs and fail capture equality
+  ---
+  duration_ms: 824.150542
+  type: 'test'
+  ...
+# Subtest: historical 33: legitimate current-origin growth does not demand new holds or rewrite archives
+ok 26 - historical 33: legitimate current-origin growth does not demand new holds or rewrite archives
+  ---
+  duration_ms: 141.555
+  type: 'test'
+  ...
+# Subtest: historical 33: rowid zero, negative and >2^53 plus text/blob chunk boundaries retain independent constructor hashes
+ok 27 - historical 33: rowid zero, negative and >2^53 plus text/blob chunk boundaries retain independent constructor hashes
+  ---
+  duration_ms: 281.182834
+  type: 'test'
+  ...
+# Subtest: historical 33: null framing and genuine SQLite REAL formatting match constructor bytes
+ok 28 - historical 33: null framing and genuine SQLite REAL formatting match constructor bytes
+  ---
+  duration_ms: 148.4965
+  type: 'test'
+  ...
+# Subtest: historical 33: invalid live request shape preserves identity diagnostic after matching independent digest
+ok 29 - historical 33: invalid live request shape preserves identity diagnostic after matching independent digest
+  ---
+  duration_ms: 140.669666
+  type: 'test'
+  ...
+# Subtest: historical 33: gate exact tuple is not a version-range admission API
+ok 30 - historical 33: gate exact tuple is not a version-range admission API
+  ---
+  duration_ms: 108.2915
+  type: 'test'
+  ...
+# Subtest: historical 35: populated type-preserving content mutations keep identity/FKs and fail capture equality
+    # Subtest: jobs
+    ok 1 - jobs
+      ---
+      duration_ms: 126.254958
+      type: 'test'
+      ...
+    # Subtest: exports
+    ok 2 - exports
+      ---
+      duration_ms: 24.714333
+      type: 'test'
+      ...
+    # Subtest: versions
+    ok 3 - versions
+      ---
+      duration_ms: 23.992625
+      type: 'test'
+      ...
+    # Subtest: job_events
+    ok 4 - job_events
+      ---
+      duration_ms: 22.942875
+      type: 'test'
+      ...
+    # Subtest: timeline_requests
+    ok 5 - timeline_requests
+      ---
+      duration_ms: 23.620917
+      type: 'test'
+      ...
+    # Subtest: reference_requests
+    ok 6 - reference_requests
+      ---
+      duration_ms: 24.658792
+      type: 'test'
+      ...
+    # Subtest: idempotency
+    ok 7 - idempotency
+      ---
+      duration_ms: 25.139833
+      type: 'test'
+      ...
+    # Subtest: mutation_requests
+    ok 8 - mutation_requests
+      ---
+      duration_ms: 24.03425
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests
+    ok 9 - asset_range_requests
+      ---
+      duration_ms: 25.570542
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests
+    ok 10 - asset_disposition_requests
+      ---
+      duration_ms: 25.101292
+      type: 'test'
+      ...
+    # Subtest: subject_requests
+    ok 11 - subject_requests
+      ---
+      duration_ms: 25.487167
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads
+    ok 12 - agent_chat_threads
+      ---
+      duration_ms: 27.143667
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests
+    ok 13 - agent_chat_requests
+      ---
+      duration_ms: 42.453167
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs
+    ok 14 - agent_chat_runs
+      ---
+      duration_ms: 26.648334
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events
+    ok 15 - agent_chat_events
+      ---
+      duration_ms: 25.567417
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps
+    ok 16 - agent_chat_steps
+      ---
+      duration_ms: 27.391333
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota
+    ok 17 - agent_chat_quota
+      ---
+      duration_ms: 26.7975
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals
+    ok 18 - agent_edit_proposals
+      ---
+      duration_ms: 25.201834
+      type: 'test'
+      ...
+    # Subtest: edit_tasks
+    ok 19 - edit_tasks
+      ---
+      duration_ms: 28.246791
+      type: 'test'
+      ...
+    # Subtest: project_lut_resources
+    ok 20 - project_lut_resources
+      ---
+      duration_ms: 27.891625
+      type: 'test'
+      ...
+    1..20
+ok 31 - historical 35: populated type-preserving content mutations keep identity/FKs and fail capture equality
+  ---
+  duration_ms: 860.339583
+  type: 'test'
+  ...
+# Subtest: historical 35: legitimate current-origin growth does not demand new holds or rewrite archives
+ok 32 - historical 35: legitimate current-origin growth does not demand new holds or rewrite archives
+  ---
+  duration_ms: 153.442708
+  type: 'test'
+  ...
+# Subtest: historical 35: rowid zero, negative and >2^53 plus text/blob chunk boundaries retain independent constructor hashes
+ok 33 - historical 35: rowid zero, negative and >2^53 plus text/blob chunk boundaries retain independent constructor hashes
+  ---
+  duration_ms: 291.250583
+  type: 'test'
+  ...
+# Subtest: historical 35: null framing and genuine SQLite REAL formatting match constructor bytes
+ok 34 - historical 35: null framing and genuine SQLite REAL formatting match constructor bytes
+  ---
+  duration_ms: 156.565417
+  type: 'test'
+  ...
+# Subtest: historical 35: invalid live request shape preserves identity diagnostic after matching independent digest
+ok 35 - historical 35: invalid live request shape preserves identity diagnostic after matching independent digest
+  ---
+  duration_ms: 153.408166
+  type: 'test'
+  ...
+# Subtest: historical 35: gate exact tuple is not a version-range admission API
+ok 36 - historical 35: gate exact tuple is not a version-range admission API
+  ---
+  duration_ms: 121.318458
+  type: 'test'
+  ...
+# Subtest: historical 37: populated type-preserving content mutations keep identity/FKs and fail capture equality
+    # Subtest: jobs
+    ok 1 - jobs
+      ---
+      duration_ms: 146.895208
+      type: 'test'
+      ...
+    # Subtest: exports
+    ok 2 - exports
+      ---
+      duration_ms: 25.995958
+      type: 'test'
+      ...
+    # Subtest: versions
+    ok 3 - versions
+      ---
+      duration_ms: 25.546958
+      type: 'test'
+      ...
+    # Subtest: job_events
+    ok 4 - job_events
+      ---
+      duration_ms: 25.915
+      type: 'test'
+      ...
+    # Subtest: timeline_requests
+    ok 5 - timeline_requests
+      ---
+      duration_ms: 26.083584
+      type: 'test'
+      ...
+    # Subtest: reference_requests
+    ok 6 - reference_requests
+      ---
+      duration_ms: 26.019625
+      type: 'test'
+      ...
+    # Subtest: idempotency
+    ok 7 - idempotency
+      ---
+      duration_ms: 27.932875
+      type: 'test'
+      ...
+    # Subtest: mutation_requests
+    ok 8 - mutation_requests
+      ---
+      duration_ms: 28.18325
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests
+    ok 9 - asset_range_requests
+      ---
+      duration_ms: 25.664209
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests
+    ok 10 - asset_disposition_requests
+      ---
+      duration_ms: 27.833167
+      type: 'test'
+      ...
+    # Subtest: subject_requests
+    ok 11 - subject_requests
+      ---
+      duration_ms: 26.922375
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads
+    ok 12 - agent_chat_threads
+      ---
+      duration_ms: 27.993708
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests
+    ok 13 - agent_chat_requests
+      ---
+      duration_ms: 26.602916
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs
+    ok 14 - agent_chat_runs
+      ---
+      duration_ms: 28.778791
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events
+    ok 15 - agent_chat_events
+      ---
+      duration_ms: 26.667875
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps
+    ok 16 - agent_chat_steps
+      ---
+      duration_ms: 27.969459
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota
+    ok 17 - agent_chat_quota
+      ---
+      duration_ms: 35.042208
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals
+    ok 18 - agent_edit_proposals
+      ---
+      duration_ms: 33.259375
+      type: 'test'
+      ...
+    # Subtest: edit_tasks
+    ok 19 - edit_tasks
+      ---
+      duration_ms: 30.023875
+      type: 'test'
+      ...
+    # Subtest: asset_annotations
+    ok 20 - asset_annotations
+      ---
+      duration_ms: 25.373292
+      type: 'test'
+      ...
+    # Subtest: asset_annotation_requests
+    ok 21 - asset_annotation_requests
+      ---
+      duration_ms: 27.85325
+      type: 'test'
+      ...
+    # Subtest: project_lut_resources
+    ok 22 - project_lut_resources
+      ---
+      duration_ms: 29.349083
+      type: 'test'
+      ...
+    1..22
+ok 37 - historical 37: populated type-preserving content mutations keep identity/FKs and fail capture equality
+  ---
+  duration_ms: 993.041208
+  type: 'test'
+  ...
+# Subtest: historical 37: legitimate current-origin growth does not demand new holds or rewrite archives
+ok 38 - historical 37: legitimate current-origin growth does not demand new holds or rewrite archives
+  ---
+  duration_ms: 161.899625
+  type: 'test'
+  ...
+# Subtest: historical 37: rowid zero, negative and >2^53 plus text/blob chunk boundaries retain independent constructor hashes
+ok 39 - historical 37: rowid zero, negative and >2^53 plus text/blob chunk boundaries retain independent constructor hashes
+  ---
+  duration_ms: 312.526125
+  type: 'test'
+  ...
+# Subtest: historical 37: null framing and genuine SQLite REAL formatting match constructor bytes
+ok 40 - historical 37: null framing and genuine SQLite REAL formatting match constructor bytes
+  ---
+  duration_ms: 173.4445
+  type: 'test'
+  ...
+# Subtest: historical 37: invalid live request shape preserves identity diagnostic after matching independent digest
+ok 41 - historical 37: invalid live request shape preserves identity diagnostic after matching independent digest
+  ---
+  duration_ms: 166.357125
+  type: 'test'
+  ...
+# Subtest: historical 37: gate exact tuple is not a version-range admission API
+ok 42 - historical 37: gate exact tuple is not a version-range admission API
+  ---
+  duration_ms: 126.307667
+  type: 'test'
+  ...
+# Subtest: historical 39: populated type-preserving content mutations keep identity/FKs and fail capture equality
+    # Subtest: jobs
+    ok 1 - jobs
+      ---
+      duration_ms: 146.957208
+      type: 'test'
+      ...
+    # Subtest: exports
+    ok 2 - exports
+      ---
+      duration_ms: 25.883667
+      type: 'test'
+      ...
+    # Subtest: versions
+    ok 3 - versions
+      ---
+      duration_ms: 27.036708
+      type: 'test'
+      ...
+    # Subtest: job_events
+    ok 4 - job_events
+      ---
+      duration_ms: 27.524416
+      type: 'test'
+      ...
+    # Subtest: timeline_requests
+    ok 5 - timeline_requests
+      ---
+      duration_ms: 27.23625
+      type: 'test'
+      ...
+    # Subtest: reference_requests
+    ok 6 - reference_requests
+      ---
+      duration_ms: 26.85475
+      type: 'test'
+      ...
+    # Subtest: idempotency
+    ok 7 - idempotency
+      ---
+      duration_ms: 26.183292
+      type: 'test'
+      ...
+    # Subtest: mutation_requests
+    ok 8 - mutation_requests
+      ---
+      duration_ms: 25.99025
+      type: 'test'
+      ...
+    # Subtest: asset_range_requests
+    ok 9 - asset_range_requests
+      ---
+      duration_ms: 27.671708
+      type: 'test'
+      ...
+    # Subtest: asset_disposition_requests
+    ok 10 - asset_disposition_requests
+      ---
+      duration_ms: 28.084958
+      type: 'test'
+      ...
+    # Subtest: subject_requests
+    ok 11 - subject_requests
+      ---
+      duration_ms: 28.407959
+      type: 'test'
+      ...
+    # Subtest: agent_chat_threads
+    ok 12 - agent_chat_threads
+      ---
+      duration_ms: 27.551708
+      type: 'test'
+      ...
+    # Subtest: agent_chat_requests
+    ok 13 - agent_chat_requests
+      ---
+      duration_ms: 27.290292
+      type: 'test'
+      ...
+    # Subtest: agent_chat_runs
+    ok 14 - agent_chat_runs
+      ---
+      duration_ms: 27.300333
+      type: 'test'
+      ...
+    # Subtest: agent_chat_events
+    ok 15 - agent_chat_events
+      ---
+      duration_ms: 28.448
+      type: 'test'
+      ...
+    # Subtest: agent_chat_steps
+    ok 16 - agent_chat_steps
+      ---
+      duration_ms: 27.637833
+      type: 'test'
+      ...
+    # Subtest: agent_chat_quota
+    ok 17 - agent_chat_quota
+      ---
+      duration_ms: 29.527125
+      type: 'test'
+      ...
+    # Subtest: agent_edit_proposals
+    ok 18 - agent_edit_proposals
+      ---
+      duration_ms: 28.785708
+      type: 'test'
+      ...
+    # Subtest: edit_tasks
+    ok 19 - edit_tasks
+      ---
+      duration_ms: 28.90175
+      type: 'test'
+      ...
+    # Subtest: asset_annotations
+    ok 20 - asset_annotations
+      ---
+      duration_ms: 28.635042
+      type: 'test'
+      ...
+    # Subtest: asset_annotation_requests
+    ok 21 - asset_annotation_requests
+      ---
+      duration_ms: 28.902583
+      type: 'test'
+      ...
+    # Subtest: project_lut_resources
+    ok 22 - project_lut_resources
+      ---
+      duration_ms: 30.2755
+      type: 'test'
+      ...
+    1..22
+ok 43 - historical 39: populated type-preserving content mutations keep identity/FKs and fail capture equality
+  ---
+  duration_ms: 1004.98625
+  type: 'test'
+  ...
+# Subtest: historical 39: legitimate current-origin growth does not demand new holds or rewrite archives
+ok 44 - historical 39: legitimate current-origin growth does not demand new holds or rewrite archives
+  ---
+  duration_ms: 176.309833
+  type: 'test'
+  ...
+# Subtest: historical 39: rowid zero, negative and >2^53 plus text/blob chunk boundaries retain independent constructor hashes
+ok 45 - historical 39: rowid zero, negative and >2^53 plus text/blob chunk boundaries retain independent constructor hashes
+  ---
+  duration_ms: 324.000084
+  type: 'test'
+  ...
+# Subtest: historical 39: null framing and genuine SQLite REAL formatting match constructor bytes
+ok 46 - historical 39: null framing and genuine SQLite REAL formatting match constructor bytes
+  ---
+  duration_ms: 180.751667
+  type: 'test'
+  ...
+# Subtest: historical 39: invalid live request shape preserves identity diagnostic after matching independent digest
+ok 47 - historical 39: invalid live request shape preserves identity diagnostic after matching independent digest
+  ---
+  duration_ms: 174.657542
+  type: 'test'
+  ...
+# Subtest: historical 39: gate exact tuple is not a version-range admission API
+ok 48 - historical 39: gate exact tuple is not a version-range admission API
+  ---
+  duration_ms: 138.47875
+  type: 'test'
+  ...
+# Subtest: historical 25: export saved-key matrix preserves explicit, inferred, null and legacy modes
+    # Subtest: mode=timeline, explicit=true
+    ok 1 - mode=timeline, explicit=true
+      ---
+      duration_ms: 102.126833
+      type: 'test'
+      ...
+    # Subtest: mode=timeline, explicit=false
+    ok 2 - mode=timeline, explicit=false
+      ---
+      duration_ms: 99.767291
+      type: 'test'
+      ...
+    # Subtest: mode=storyboard, explicit=true
+    ok 3 - mode=storyboard, explicit=true
+      ---
+      duration_ms: 100.415
+      type: 'test'
+      ...
+    # Subtest: mode=storyboard, explicit=false
+    ok 4 - mode=storyboard, explicit=false
+      ---
+      duration_ms: 102.379208
+      type: 'test'
+      ...
+    # Subtest: mode=null, explicit=true
+    ok 5 - mode=null, explicit=true
+      ---
+      duration_ms: 100.510584
+      type: 'test'
+      ...
+    # Subtest: mode=null, explicit=false
+    ok 6 - mode=null, explicit=false
+      ---
+      duration_ms: 101.865875
+      type: 'test'
+      ...
+    # Subtest: mode=absent, explicit=true
+    ok 7 - mode=absent, explicit=true
+      ---
+      duration_ms: 101.167958
+      type: 'test'
+      ...
+    # Subtest: mode=absent, explicit=false
+    ok 8 - mode=absent, explicit=false
+      ---
+      duration_ms: 102.826083
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=timeline
+    ok 9 - explicit key without saved receipt, mode=timeline
+      ---
+      duration_ms: 84.413375
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=storyboard
+    ok 10 - explicit key without saved receipt, mode=storyboard
+      ---
+      duration_ms: 84.224333
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=null
+    ok 11 - explicit key without saved receipt, mode=null
+      ---
+      duration_ms: 88.820708
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=absent
+    ok 12 - explicit key without saved receipt, mode=absent
+      ---
+      duration_ms: 83.231375
+      type: 'test'
+      ...
+    1..12
+ok 49 - historical 25: export saved-key matrix preserves explicit, inferred, null and legacy modes
+  ---
+  duration_ms: 1159.922709
+  type: 'test'
+  ...
+# Subtest: historical 25: export saved metadata mismatch diagnostics remain specific
+    # Subtest: namespace=other
+    ok 1 - namespace=other
+      ---
+      duration_ms: 18.563084
+      type: 'test'
+      ...
+    # Subtest: namespace=timeline
+    ok 2 - namespace=timeline
+      ---
+      duration_ms: 21.378041
+      type: 'test'
+      ...
+    # Subtest: requestId=different-key
+    ok 3 - requestId=different-key
+      ---
+      duration_ms: 21.662416
+      type: 'test'
+      ...
+    # Subtest: operation=timeline.render
+    ok 4 - operation=timeline.render
+      ---
+      duration_ms: 21.334042
+      type: 'test'
+      ...
+    # Subtest: projectId=00000000-0000-4000-8000-000000000099
+    ok 5 - projectId=00000000-0000-4000-8000-000000000099
+      ---
+      duration_ms: 20.546208
+      type: 'test'
+      ...
+    1..5
+ok 50 - historical 25: export saved metadata mismatch diagnostics remain specific
+  ---
+  duration_ms: 172.856125
+  type: 'test'
+  ...
+# Subtest: historical 25: export live malformed mode/request and wrong receipt binding preserve unsupported diagnostics
+    # Subtest: numeric mode
+    ok 1 - numeric mode
+      ---
+      duration_ms: 101.44825
+      type: 'test'
+      ...
+    # Subtest: unsupported mode
+    ok 2 - unsupported mode
+      ---
+      duration_ms: 97.926375
+      type: 'test'
+      ...
+    # Subtest: object mode
+    ok 3 - object mode
+      ---
+      duration_ms: 97.36775
+      type: 'test'
+      ...
+    # Subtest: numeric request
+    ok 4 - numeric request
+      ---
+      duration_ms: 98.893125
+      type: 'test'
+      ...
+    # Subtest: object request
+    ok 5 - object request
+      ---
+      duration_ms: 98.456
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: timeline, explicit=true
+    ok 6 - missing saved receipt: timeline, explicit=true
+      ---
+      duration_ms: 98.001792
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: timeline, explicit=false
+    ok 7 - missing saved receipt: timeline, explicit=false
+      ---
+      duration_ms: 97.706375
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: storyboard, explicit=true
+    ok 8 - missing saved receipt: storyboard, explicit=true
+      ---
+      duration_ms: 97.766375
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: storyboard, explicit=false
+    ok 9 - missing saved receipt: storyboard, explicit=false
+      ---
+      duration_ms: 98.152667
+      type: 'test'
+      ...
+    # Subtest: wrong receipt resource: timeline
+    ok 10 - wrong receipt resource: timeline
+      ---
+      duration_ms: 96.753958
+      type: 'test'
+      ...
+    # Subtest: wrong receipt resource: storyboard
+    ok 11 - wrong receipt resource: storyboard
+      ---
+      duration_ms: 97.475375
+      type: 'test'
+      ...
+    # Subtest: wrong timeline receipt project
+    ok 12 - wrong timeline receipt project
+      ---
+      duration_ms: 98.975875
+      type: 'test'
+      ...
+    1..12
+ok 51 - historical 25: export live malformed mode/request and wrong receipt binding preserve unsupported diagnostics
+  ---
+  duration_ms: 1186.743625
+  type: 'test'
+  ...
+# Subtest: historical 27: export saved-key matrix preserves explicit, inferred, null and legacy modes
+    # Subtest: mode=timeline, explicit=true
+    ok 1 - mode=timeline, explicit=true
+      ---
+      duration_ms: 108.71525
+      type: 'test'
+      ...
+    # Subtest: mode=timeline, explicit=false
+    ok 2 - mode=timeline, explicit=false
+      ---
+      duration_ms: 109.226708
+      type: 'test'
+      ...
+    # Subtest: mode=storyboard, explicit=true
+    ok 3 - mode=storyboard, explicit=true
+      ---
+      duration_ms: 114.174375
+      type: 'test'
+      ...
+    # Subtest: mode=storyboard, explicit=false
+    ok 4 - mode=storyboard, explicit=false
+      ---
+      duration_ms: 114.246792
+      type: 'test'
+      ...
+    # Subtest: mode=null, explicit=true
+    ok 5 - mode=null, explicit=true
+      ---
+      duration_ms: 110.687625
+      type: 'test'
+      ...
+    # Subtest: mode=null, explicit=false
+    ok 6 - mode=null, explicit=false
+      ---
+      duration_ms: 110.69625
+      type: 'test'
+      ...
+    # Subtest: mode=absent, explicit=true
+    ok 7 - mode=absent, explicit=true
+      ---
+      duration_ms: 109.477709
+      type: 'test'
+      ...
+    # Subtest: mode=absent, explicit=false
+    ok 8 - mode=absent, explicit=false
+      ---
+      duration_ms: 111.706375
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=timeline
+    ok 9 - explicit key without saved receipt, mode=timeline
+      ---
+      duration_ms: 93.38825
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=storyboard
+    ok 10 - explicit key without saved receipt, mode=storyboard
+      ---
+      duration_ms: 94.925917
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=null
+    ok 11 - explicit key without saved receipt, mode=null
+      ---
+      duration_ms: 93.370083
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=absent
+    ok 12 - explicit key without saved receipt, mode=absent
+      ---
+      duration_ms: 93.371917
+      type: 'test'
+      ...
+    1..12
+ok 52 - historical 27: export saved-key matrix preserves explicit, inferred, null and legacy modes
+  ---
+  duration_ms: 1272.731
+  type: 'test'
+  ...
+# Subtest: historical 27: export saved metadata mismatch diagnostics remain specific
+    # Subtest: namespace=other
+    ok 1 - namespace=other
+      ---
+      duration_ms: 19.582791
+      type: 'test'
+      ...
+    # Subtest: namespace=timeline
+    ok 2 - namespace=timeline
+      ---
+      duration_ms: 21.270708
+      type: 'test'
+      ...
+    # Subtest: requestId=different-key
+    ok 3 - requestId=different-key
+      ---
+      duration_ms: 20.090167
+      type: 'test'
+      ...
+    # Subtest: operation=timeline.render
+    ok 4 - operation=timeline.render
+      ---
+      duration_ms: 21.743875
+      type: 'test'
+      ...
+    # Subtest: projectId=00000000-0000-4000-8000-000000000099
+    ok 5 - projectId=00000000-0000-4000-8000-000000000099
+      ---
+      duration_ms: 21.359
+      type: 'test'
+      ...
+    1..5
+ok 53 - historical 27: export saved metadata mismatch diagnostics remain specific
+  ---
+  duration_ms: 183.072042
+  type: 'test'
+  ...
+# Subtest: historical 27: export live malformed mode/request and wrong receipt binding preserve unsupported diagnostics
+    # Subtest: numeric mode
+    ok 1 - numeric mode
+      ---
+      duration_ms: 108.805
+      type: 'test'
+      ...
+    # Subtest: unsupported mode
+    ok 2 - unsupported mode
+      ---
+      duration_ms: 106.351042
+      type: 'test'
+      ...
+    # Subtest: object mode
+    ok 3 - object mode
+      ---
+      duration_ms: 109.271458
+      type: 'test'
+      ...
+    # Subtest: numeric request
+    ok 4 - numeric request
+      ---
+      duration_ms: 109.273959
+      type: 'test'
+      ...
+    # Subtest: object request
+    ok 5 - object request
+      ---
+      duration_ms: 108.161041
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: timeline, explicit=true
+    ok 6 - missing saved receipt: timeline, explicit=true
+      ---
+      duration_ms: 107.25475
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: timeline, explicit=false
+    ok 7 - missing saved receipt: timeline, explicit=false
+      ---
+      duration_ms: 109.235125
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: storyboard, explicit=true
+    ok 8 - missing saved receipt: storyboard, explicit=true
+      ---
+      duration_ms: 108.856792
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: storyboard, explicit=false
+    ok 9 - missing saved receipt: storyboard, explicit=false
+      ---
+      duration_ms: 109.673584
+      type: 'test'
+      ...
+    # Subtest: wrong receipt resource: timeline
+    ok 10 - wrong receipt resource: timeline
+      ---
+      duration_ms: 105.345083
+      type: 'test'
+      ...
+    # Subtest: wrong receipt resource: storyboard
+    ok 11 - wrong receipt resource: storyboard
+      ---
+      duration_ms: 107.505417
+      type: 'test'
+      ...
+    # Subtest: wrong timeline receipt project
+    ok 12 - wrong timeline receipt project
+      ---
+      duration_ms: 109.233875
+      type: 'test'
+      ...
+    1..12
+ok 54 - historical 27: export live malformed mode/request and wrong receipt binding preserve unsupported diagnostics
+  ---
+  duration_ms: 1306.576
+  type: 'test'
+  ...
+# Subtest: historical 29: export saved-key matrix preserves explicit, inferred, null and legacy modes
+    # Subtest: mode=timeline, explicit=true
+    ok 1 - mode=timeline, explicit=true
+      ---
+      duration_ms: 121.563875
+      type: 'test'
+      ...
+    # Subtest: mode=timeline, explicit=false
+    ok 2 - mode=timeline, explicit=false
+      ---
+      duration_ms: 121.190792
+      type: 'test'
+      ...
+    # Subtest: mode=storyboard, explicit=true
+    ok 3 - mode=storyboard, explicit=true
+      ---
+      duration_ms: 118.926583
+      type: 'test'
+      ...
+    # Subtest: mode=storyboard, explicit=false
+    ok 4 - mode=storyboard, explicit=false
+      ---
+      duration_ms: 127.228417
+      type: 'test'
+      ...
+    # Subtest: mode=null, explicit=true
+    ok 5 - mode=null, explicit=true
+      ---
+      duration_ms: 121.229667
+      type: 'test'
+      ...
+    # Subtest: mode=null, explicit=false
+    ok 6 - mode=null, explicit=false
+      ---
+      duration_ms: 119.260166
+      type: 'test'
+      ...
+    # Subtest: mode=absent, explicit=true
+    ok 7 - mode=absent, explicit=true
+      ---
+      duration_ms: 119.868875
+      type: 'test'
+      ...
+    # Subtest: mode=absent, explicit=false
+    ok 8 - mode=absent, explicit=false
+      ---
+      duration_ms: 120.016125
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=timeline
+    ok 9 - explicit key without saved receipt, mode=timeline
+      ---
+      duration_ms: 103.607417
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=storyboard
+    ok 10 - explicit key without saved receipt, mode=storyboard
+      ---
+      duration_ms: 103.752209
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=null
+    ok 11 - explicit key without saved receipt, mode=null
+      ---
+      duration_ms: 102.302916
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=absent
+    ok 12 - explicit key without saved receipt, mode=absent
+      ---
+      duration_ms: 107.189167
+      type: 'test'
+      ...
+    1..12
+ok 55 - historical 29: export saved-key matrix preserves explicit, inferred, null and legacy modes
+  ---
+  duration_ms: 1394.308209
+  type: 'test'
+  ...
+# Subtest: historical 29: export saved metadata mismatch diagnostics remain specific
+    # Subtest: namespace=other
+    ok 1 - namespace=other
+      ---
+      duration_ms: 20.579667
+      type: 'test'
+      ...
+    # Subtest: namespace=timeline
+    ok 2 - namespace=timeline
+      ---
+      duration_ms: 21.280292
+      type: 'test'
+      ...
+    # Subtest: requestId=different-key
+    ok 3 - requestId=different-key
+      ---
+      duration_ms: 22.479
+      type: 'test'
+      ...
+    # Subtest: operation=timeline.render
+    ok 4 - operation=timeline.render
+      ---
+      duration_ms: 24.372875
+      type: 'test'
+      ...
+    # Subtest: projectId=00000000-0000-4000-8000-000000000099
+    ok 5 - projectId=00000000-0000-4000-8000-000000000099
+      ---
+      duration_ms: 22.867209
+      type: 'test'
+      ...
+    1..5
+ok 56 - historical 29: export saved metadata mismatch diagnostics remain specific
+  ---
+  duration_ms: 197.538792
+  type: 'test'
+  ...
+# Subtest: historical 29: export live malformed mode/request and wrong receipt binding preserve unsupported diagnostics
+    # Subtest: numeric mode
+    ok 1 - numeric mode
+      ---
+      duration_ms: 118.860917
+      type: 'test'
+      ...
+    # Subtest: unsupported mode
+    ok 2 - unsupported mode
+      ---
+      duration_ms: 115.35775
+      type: 'test'
+      ...
+    # Subtest: object mode
+    ok 3 - object mode
+      ---
+      duration_ms: 114.248375
+      type: 'test'
+      ...
+    # Subtest: numeric request
+    ok 4 - numeric request
+      ---
+      duration_ms: 119.7135
+      type: 'test'
+      ...
+    # Subtest: object request
+    ok 5 - object request
+      ---
+      duration_ms: 121.12775
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: timeline, explicit=true
+    ok 6 - missing saved receipt: timeline, explicit=true
+      ---
+      duration_ms: 117.613792
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: timeline, explicit=false
+    ok 7 - missing saved receipt: timeline, explicit=false
+      ---
+      duration_ms: 119.05925
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: storyboard, explicit=true
+    ok 8 - missing saved receipt: storyboard, explicit=true
+      ---
+      duration_ms: 124.190875
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: storyboard, explicit=false
+    ok 9 - missing saved receipt: storyboard, explicit=false
+      ---
+      duration_ms: 118.431208
+      type: 'test'
+      ...
+    # Subtest: wrong receipt resource: timeline
+    ok 10 - wrong receipt resource: timeline
+      ---
+      duration_ms: 121.753333
+      type: 'test'
+      ...
+    # Subtest: wrong receipt resource: storyboard
+    ok 11 - wrong receipt resource: storyboard
+      ---
+      duration_ms: 119.163541
+      type: 'test'
+      ...
+    # Subtest: wrong timeline receipt project
+    ok 12 - wrong timeline receipt project
+      ---
+      duration_ms: 118.094667
+      type: 'test'
+      ...
+    1..12
+ok 57 - historical 29: export live malformed mode/request and wrong receipt binding preserve unsupported diagnostics
+  ---
+  duration_ms: 1435.605667
+  type: 'test'
+  ...
+# Subtest: historical 31: export saved-key matrix preserves explicit, inferred, null and legacy modes
+    # Subtest: mode=timeline, explicit=true
+    ok 1 - mode=timeline, explicit=true
+      ---
+      duration_ms: 131.716375
+      type: 'test'
+      ...
+    # Subtest: mode=timeline, explicit=false
+    ok 2 - mode=timeline, explicit=false
+      ---
+      duration_ms: 130.2275
+      type: 'test'
+      ...
+    # Subtest: mode=storyboard, explicit=true
+    ok 3 - mode=storyboard, explicit=true
+      ---
+      duration_ms: 130.516917
+      type: 'test'
+      ...
+    # Subtest: mode=storyboard, explicit=false
+    ok 4 - mode=storyboard, explicit=false
+      ---
+      duration_ms: 129.285334
+      type: 'test'
+      ...
+    # Subtest: mode=null, explicit=true
+    ok 5 - mode=null, explicit=true
+      ---
+      duration_ms: 126.297667
+      type: 'test'
+      ...
+    # Subtest: mode=null, explicit=false
+    ok 6 - mode=null, explicit=false
+      ---
+      duration_ms: 127.726709
+      type: 'test'
+      ...
+    # Subtest: mode=absent, explicit=true
+    ok 7 - mode=absent, explicit=true
+      ---
+      duration_ms: 127.313125
+      type: 'test'
+      ...
+    # Subtest: mode=absent, explicit=false
+    ok 8 - mode=absent, explicit=false
+      ---
+      duration_ms: 129.319917
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=timeline
+    ok 9 - explicit key without saved receipt, mode=timeline
+      ---
+      duration_ms: 111.29325
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=storyboard
+    ok 10 - explicit key without saved receipt, mode=storyboard
+      ---
+      duration_ms: 111.141167
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=null
+    ok 11 - explicit key without saved receipt, mode=null
+      ---
+      duration_ms: 109.53925
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=absent
+    ok 12 - explicit key without saved receipt, mode=absent
+      ---
+      duration_ms: 109.228625
+      type: 'test'
+      ...
+    1..12
+ok 58 - historical 31: export saved-key matrix preserves explicit, inferred, null and legacy modes
+  ---
+  duration_ms: 1482.551417
+  type: 'test'
+  ...
+# Subtest: historical 31: export saved metadata mismatch diagnostics remain specific
+    # Subtest: namespace=other
+    ok 1 - namespace=other
+      ---
+      duration_ms: 20.844833
+      type: 'test'
+      ...
+    # Subtest: namespace=timeline
+    ok 2 - namespace=timeline
+      ---
+      duration_ms: 23.154667
+      type: 'test'
+      ...
+    # Subtest: requestId=different-key
+    ok 3 - requestId=different-key
+      ---
+      duration_ms: 21.453917
+      type: 'test'
+      ...
+    # Subtest: operation=timeline.render
+    ok 4 - operation=timeline.render
+      ---
+      duration_ms: 22.951208
+      type: 'test'
+      ...
+    # Subtest: projectId=00000000-0000-4000-8000-000000000099
+    ok 5 - projectId=00000000-0000-4000-8000-000000000099
+      ---
+      duration_ms: 22.48325
+      type: 'test'
+      ...
+    1..5
+ok 59 - historical 31: export saved metadata mismatch diagnostics remain specific
+  ---
+  duration_ms: 205.427666
+  type: 'test'
+  ...
+# Subtest: historical 31: export live malformed mode/request and wrong receipt binding preserve unsupported diagnostics
+    # Subtest: numeric mode
+    ok 1 - numeric mode
+      ---
+      duration_ms: 125.310041
+      type: 'test'
+      ...
+    # Subtest: unsupported mode
+    ok 2 - unsupported mode
+      ---
+      duration_ms: 125.898291
+      type: 'test'
+      ...
+    # Subtest: object mode
+    ok 3 - object mode
+      ---
+      duration_ms: 125.815292
+      type: 'test'
+      ...
+    # Subtest: numeric request
+    ok 4 - numeric request
+      ---
+      duration_ms: 127.606375
+      type: 'test'
+      ...
+    # Subtest: object request
+    ok 5 - object request
+      ---
+      duration_ms: 131.909667
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: timeline, explicit=true
+    ok 6 - missing saved receipt: timeline, explicit=true
+      ---
+      duration_ms: 129.354625
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: timeline, explicit=false
+    ok 7 - missing saved receipt: timeline, explicit=false
+      ---
+      duration_ms: 128.852291
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: storyboard, explicit=true
+    ok 8 - missing saved receipt: storyboard, explicit=true
+      ---
+      duration_ms: 126.210125
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: storyboard, explicit=false
+    ok 9 - missing saved receipt: storyboard, explicit=false
+      ---
+      duration_ms: 125.872125
+      type: 'test'
+      ...
+    # Subtest: wrong receipt resource: timeline
+    ok 10 - wrong receipt resource: timeline
+      ---
+      duration_ms: 128.812125
+      type: 'test'
+      ...
+    # Subtest: wrong receipt resource: storyboard
+    ok 11 - wrong receipt resource: storyboard
+      ---
+      duration_ms: 128.573166
+      type: 'test'
+      ...
+    # Subtest: wrong timeline receipt project
+    ok 12 - wrong timeline receipt project
+      ---
+      duration_ms: 126.888958
+      type: 'test'
+      ...
+    1..12
+ok 60 - historical 31: export live malformed mode/request and wrong receipt binding preserve unsupported diagnostics
+  ---
+  duration_ms: 1540.417
+  type: 'test'
+  ...
+# Subtest: historical 33: export saved-key matrix preserves explicit, inferred, null and legacy modes
+    # Subtest: mode=timeline, explicit=true
+    ok 1 - mode=timeline, explicit=true
+      ---
+      duration_ms: 136.446583
+      type: 'test'
+      ...
+    # Subtest: mode=timeline, explicit=false
+    ok 2 - mode=timeline, explicit=false
+      ---
+      duration_ms: 133.3885
+      type: 'test'
+      ...
+    # Subtest: mode=storyboard, explicit=true
+    ok 3 - mode=storyboard, explicit=true
+      ---
+      duration_ms: 134.038
+      type: 'test'
+      ...
+    # Subtest: mode=storyboard, explicit=false
+    ok 4 - mode=storyboard, explicit=false
+      ---
+      duration_ms: 134.501833
+      type: 'test'
+      ...
+    # Subtest: mode=null, explicit=true
+    ok 5 - mode=null, explicit=true
+      ---
+      duration_ms: 142.295292
+      type: 'test'
+      ...
+    # Subtest: mode=null, explicit=false
+    ok 6 - mode=null, explicit=false
+      ---
+      duration_ms: 133.634541
+      type: 'test'
+      ...
+    # Subtest: mode=absent, explicit=true
+    ok 7 - mode=absent, explicit=true
+      ---
+      duration_ms: 137.804875
+      type: 'test'
+      ...
+    # Subtest: mode=absent, explicit=false
+    ok 8 - mode=absent, explicit=false
+      ---
+      duration_ms: 139.674667
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=timeline
+    ok 9 - explicit key without saved receipt, mode=timeline
+      ---
+      duration_ms: 118.984292
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=storyboard
+    ok 10 - explicit key without saved receipt, mode=storyboard
+      ---
+      duration_ms: 116.914917
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=null
+    ok 11 - explicit key without saved receipt, mode=null
+      ---
+      duration_ms: 119.652083
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=absent
+    ok 12 - explicit key without saved receipt, mode=absent
+      ---
+      duration_ms: 116.143167
+      type: 'test'
+      ...
+    1..12
+ok 61 - historical 33: export saved-key matrix preserves explicit, inferred, null and legacy modes
+  ---
+  duration_ms: 1572.946
+  type: 'test'
+  ...
+# Subtest: historical 33: export saved metadata mismatch diagnostics remain specific
+    # Subtest: namespace=other
+    ok 1 - namespace=other
+      ---
+      duration_ms: 19.789958
+      type: 'test'
+      ...
+    # Subtest: namespace=timeline
+    ok 2 - namespace=timeline
+      ---
+      duration_ms: 23.263875
+      type: 'test'
+      ...
+    # Subtest: requestId=different-key
+    ok 3 - requestId=different-key
+      ---
+      duration_ms: 22.653209
+      type: 'test'
+      ...
+    # Subtest: operation=timeline.render
+    ok 4 - operation=timeline.render
+      ---
+      duration_ms: 22.745208
+      type: 'test'
+      ...
+    # Subtest: projectId=00000000-0000-4000-8000-000000000099
+    ok 5 - projectId=00000000-0000-4000-8000-000000000099
+      ---
+      duration_ms: 21.546208
+      type: 'test'
+      ...
+    1..5
+ok 62 - historical 33: export saved metadata mismatch diagnostics remain specific
+  ---
+  duration_ms: 210.912917
+  type: 'test'
+  ...
+# Subtest: historical 33: export live malformed mode/request and wrong receipt binding preserve unsupported diagnostics
+    # Subtest: numeric mode
+    ok 1 - numeric mode
+      ---
+      duration_ms: 130.048042
+      type: 'test'
+      ...
+    # Subtest: unsupported mode
+    ok 2 - unsupported mode
+      ---
+      duration_ms: 133.44375
+      type: 'test'
+      ...
+    # Subtest: object mode
+    ok 3 - object mode
+      ---
+      duration_ms: 132.070208
+      type: 'test'
+      ...
+    # Subtest: numeric request
+    ok 4 - numeric request
+      ---
+      duration_ms: 131.305
+      type: 'test'
+      ...
+    # Subtest: object request
+    ok 5 - object request
+      ---
+      duration_ms: 130.861
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: timeline, explicit=true
+    ok 6 - missing saved receipt: timeline, explicit=true
+      ---
+      duration_ms: 134.641292
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: timeline, explicit=false
+    ok 7 - missing saved receipt: timeline, explicit=false
+      ---
+      duration_ms: 130.492959
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: storyboard, explicit=true
+    ok 8 - missing saved receipt: storyboard, explicit=true
+      ---
+      duration_ms: 131.014584
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: storyboard, explicit=false
+    ok 9 - missing saved receipt: storyboard, explicit=false
+      ---
+      duration_ms: 131.509083
+      type: 'test'
+      ...
+    # Subtest: wrong receipt resource: timeline
+    ok 10 - wrong receipt resource: timeline
+      ---
+      duration_ms: 133.57825
+      type: 'test'
+      ...
+    # Subtest: wrong receipt resource: storyboard
+    ok 11 - wrong receipt resource: storyboard
+      ---
+      duration_ms: 132.297875
+      type: 'test'
+      ...
+    # Subtest: wrong timeline receipt project
+    ok 12 - wrong timeline receipt project
+      ---
+      duration_ms: 138.446
+      type: 'test'
+      ...
+    1..12
+ok 63 - historical 33: export live malformed mode/request and wrong receipt binding preserve unsupported diagnostics
+  ---
+  duration_ms: 1599.376125
+  type: 'test'
+  ...
+# Subtest: historical 35: export saved-key matrix preserves explicit, inferred, null and legacy modes
+    # Subtest: mode=timeline, explicit=true
+    ok 1 - mode=timeline, explicit=true
+      ---
+      duration_ms: 142.273625
+      type: 'test'
+      ...
+    # Subtest: mode=timeline, explicit=false
+    ok 2 - mode=timeline, explicit=false
+      ---
+      duration_ms: 145.113375
+      type: 'test'
+      ...
+    # Subtest: mode=storyboard, explicit=true
+    ok 3 - mode=storyboard, explicit=true
+      ---
+      duration_ms: 145.355167
+      type: 'test'
+      ...
+    # Subtest: mode=storyboard, explicit=false
+    ok 4 - mode=storyboard, explicit=false
+      ---
+      duration_ms: 148.873542
+      type: 'test'
+      ...
+    # Subtest: mode=null, explicit=true
+    ok 5 - mode=null, explicit=true
+      ---
+      duration_ms: 143.890875
+      type: 'test'
+      ...
+    # Subtest: mode=null, explicit=false
+    ok 6 - mode=null, explicit=false
+      ---
+      duration_ms: 143.075875
+      type: 'test'
+      ...
+    # Subtest: mode=absent, explicit=true
+    ok 7 - mode=absent, explicit=true
+      ---
+      duration_ms: 141.299209
+      type: 'test'
+      ...
+    # Subtest: mode=absent, explicit=false
+    ok 8 - mode=absent, explicit=false
+      ---
+      duration_ms: 145.226166
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=timeline
+    ok 9 - explicit key without saved receipt, mode=timeline
+      ---
+      duration_ms: 124.549708
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=storyboard
+    ok 10 - explicit key without saved receipt, mode=storyboard
+      ---
+      duration_ms: 122.698625
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=null
+    ok 11 - explicit key without saved receipt, mode=null
+      ---
+      duration_ms: 125.235209
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=absent
+    ok 12 - explicit key without saved receipt, mode=absent
+      ---
+      duration_ms: 126.196667
+      type: 'test'
+      ...
+    1..12
+ok 64 - historical 35: export saved-key matrix preserves explicit, inferred, null and legacy modes
+  ---
+  duration_ms: 1661.776166
+  type: 'test'
+  ...
+# Subtest: historical 35: export saved metadata mismatch diagnostics remain specific
+    # Subtest: namespace=other
+    ok 1 - namespace=other
+      ---
+      duration_ms: 22.308625
+      type: 'test'
+      ...
+    # Subtest: namespace=timeline
+    ok 2 - namespace=timeline
+      ---
+      duration_ms: 23.443166
+      type: 'test'
+      ...
+    # Subtest: requestId=different-key
+    ok 3 - requestId=different-key
+      ---
+      duration_ms: 23.443083
+      type: 'test'
+      ...
+    # Subtest: operation=timeline.render
+    ok 4 - operation=timeline.render
+      ---
+      duration_ms: 23.944
+      type: 'test'
+      ...
+    # Subtest: projectId=00000000-0000-4000-8000-000000000099
+    ok 5 - projectId=00000000-0000-4000-8000-000000000099
+      ---
+      duration_ms: 23.367333
+      type: 'test'
+      ...
+    1..5
+ok 65 - historical 35: export saved metadata mismatch diagnostics remain specific
+  ---
+  duration_ms: 222.763333
+  type: 'test'
+  ...
+# Subtest: historical 35: export live malformed mode/request and wrong receipt binding preserve unsupported diagnostics
+    # Subtest: numeric mode
+    ok 1 - numeric mode
+      ---
+      duration_ms: 140.209583
+      type: 'test'
+      ...
+    # Subtest: unsupported mode
+    ok 2 - unsupported mode
+      ---
+      duration_ms: 150.249458
+      type: 'test'
+      ...
+    # Subtest: object mode
+    ok 3 - object mode
+      ---
+      duration_ms: 140.23025
+      type: 'test'
+      ...
+    # Subtest: numeric request
+    ok 4 - numeric request
+      ---
+      duration_ms: 142.271167
+      type: 'test'
+      ...
+    # Subtest: object request
+    ok 5 - object request
+      ---
+      duration_ms: 138.932875
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: timeline, explicit=true
+    ok 6 - missing saved receipt: timeline, explicit=true
+      ---
+      duration_ms: 142.872833
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: timeline, explicit=false
+    ok 7 - missing saved receipt: timeline, explicit=false
+      ---
+      duration_ms: 146.614875
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: storyboard, explicit=true
+    ok 8 - missing saved receipt: storyboard, explicit=true
+      ---
+      duration_ms: 139.93575
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: storyboard, explicit=false
+    ok 9 - missing saved receipt: storyboard, explicit=false
+      ---
+      duration_ms: 136.673708
+      type: 'test'
+      ...
+    # Subtest: wrong receipt resource: timeline
+    ok 10 - wrong receipt resource: timeline
+      ---
+      duration_ms: 145.025625
+      type: 'test'
+      ...
+    # Subtest: wrong receipt resource: storyboard
+    ok 11 - wrong receipt resource: storyboard
+      ---
+      duration_ms: 151.847958
+      type: 'test'
+      ...
+    # Subtest: wrong timeline receipt project
+    ok 12 - wrong timeline receipt project
+      ---
+      duration_ms: 141.067625
+      type: 'test'
+      ...
+    1..12
+ok 66 - historical 35: export live malformed mode/request and wrong receipt binding preserve unsupported diagnostics
+  ---
+  duration_ms: 1724.44125
+  type: 'test'
+  ...
+# Subtest: historical 37: export saved-key matrix preserves explicit, inferred, null and legacy modes
+    # Subtest: mode=timeline, explicit=true
+    ok 1 - mode=timeline, explicit=true
+      ---
+      duration_ms: 150.734667
+      type: 'test'
+      ...
+    # Subtest: mode=timeline, explicit=false
+    ok 2 - mode=timeline, explicit=false
+      ---
+      duration_ms: 154.16825
+      type: 'test'
+      ...
+    # Subtest: mode=storyboard, explicit=true
+    ok 3 - mode=storyboard, explicit=true
+      ---
+      duration_ms: 157.998333
+      type: 'test'
+      ...
+    # Subtest: mode=storyboard, explicit=false
+    ok 4 - mode=storyboard, explicit=false
+      ---
+      duration_ms: 154.816125
+      type: 'test'
+      ...
+    # Subtest: mode=null, explicit=true
+    ok 5 - mode=null, explicit=true
+      ---
+      duration_ms: 156.784
+      type: 'test'
+      ...
+    # Subtest: mode=null, explicit=false
+    ok 6 - mode=null, explicit=false
+      ---
+      duration_ms: 151.959208
+      type: 'test'
+      ...
+    # Subtest: mode=absent, explicit=true
+    ok 7 - mode=absent, explicit=true
+      ---
+      duration_ms: 154.663
+      type: 'test'
+      ...
+    # Subtest: mode=absent, explicit=false
+    ok 8 - mode=absent, explicit=false
+      ---
+      duration_ms: 156.460292
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=timeline
+    ok 9 - explicit key without saved receipt, mode=timeline
+      ---
+      duration_ms: 136.840875
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=storyboard
+    ok 10 - explicit key without saved receipt, mode=storyboard
+      ---
+      duration_ms: 136.948833
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=null
+    ok 11 - explicit key without saved receipt, mode=null
+      ---
+      duration_ms: 135.657583
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=absent
+    ok 12 - explicit key without saved receipt, mode=absent
+      ---
+      duration_ms: 138.608875
+      type: 'test'
+      ...
+    1..12
+ok 67 - historical 37: export saved-key matrix preserves explicit, inferred, null and legacy modes
+  ---
+  duration_ms: 1793.792292
+  type: 'test'
+  ...
+# Subtest: historical 37: export saved metadata mismatch diagnostics remain specific
+    # Subtest: namespace=other
+    ok 1 - namespace=other
+      ---
+      duration_ms: 24.662333
+      type: 'test'
+      ...
+    # Subtest: namespace=timeline
+    ok 2 - namespace=timeline
+      ---
+      duration_ms: 24.947667
+      type: 'test'
+      ...
+    # Subtest: requestId=different-key
+    ok 3 - requestId=different-key
+      ---
+      duration_ms: 25.026416
+      type: 'test'
+      ...
+    # Subtest: operation=timeline.render
+    ok 4 - operation=timeline.render
+      ---
+      duration_ms: 24.223584
+      type: 'test'
+      ...
+    # Subtest: projectId=00000000-0000-4000-8000-000000000099
+    ok 5 - projectId=00000000-0000-4000-8000-000000000099
+      ---
+      duration_ms: 23.757083
+      type: 'test'
+      ...
+    1..5
+ok 68 - historical 37: export saved metadata mismatch diagnostics remain specific
+  ---
+  duration_ms: 242.478166
+  type: 'test'
+  ...
+# Subtest: historical 37: export live malformed mode/request and wrong receipt binding preserve unsupported diagnostics
+    # Subtest: numeric mode
+    ok 1 - numeric mode
+      ---
+      duration_ms: 148.314708
+      type: 'test'
+      ...
+    # Subtest: unsupported mode
+    ok 2 - unsupported mode
+      ---
+      duration_ms: 150.973292
+      type: 'test'
+      ...
+    # Subtest: object mode
+    ok 3 - object mode
+      ---
+      duration_ms: 149.779042
+      type: 'test'
+      ...
+    # Subtest: numeric request
+    ok 4 - numeric request
+      ---
+      duration_ms: 152.142584
+      type: 'test'
+      ...
+    # Subtest: object request
+    ok 5 - object request
+      ---
+      duration_ms: 151.926
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: timeline, explicit=true
+    ok 6 - missing saved receipt: timeline, explicit=true
+      ---
+      duration_ms: 154.34275
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: timeline, explicit=false
+    ok 7 - missing saved receipt: timeline, explicit=false
+      ---
+      duration_ms: 150.961167
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: storyboard, explicit=true
+    ok 8 - missing saved receipt: storyboard, explicit=true
+      ---
+      duration_ms: 150.847334
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: storyboard, explicit=false
+    ok 9 - missing saved receipt: storyboard, explicit=false
+      ---
+      duration_ms: 156.761084
+      type: 'test'
+      ...
+    # Subtest: wrong receipt resource: timeline
+    ok 10 - wrong receipt resource: timeline
+      ---
+      duration_ms: 151.628084
+      type: 'test'
+      ...
+    # Subtest: wrong receipt resource: storyboard
+    ok 11 - wrong receipt resource: storyboard
+      ---
+      duration_ms: 153.622458
+      type: 'test'
+      ...
+    # Subtest: wrong timeline receipt project
+    ok 12 - wrong timeline receipt project
+      ---
+      duration_ms: 148.338625
+      type: 'test'
+      ...
+    1..12
+ok 69 - historical 37: export live malformed mode/request and wrong receipt binding preserve unsupported diagnostics
+  ---
+  duration_ms: 1828.460084
+  type: 'test'
+  ...
+# Subtest: historical 39: export saved-key matrix preserves explicit, inferred, null and legacy modes
+    # Subtest: mode=timeline, explicit=true
+    ok 1 - mode=timeline, explicit=true
+      ---
+      duration_ms: 166.313833
+      type: 'test'
+      ...
+    # Subtest: mode=timeline, explicit=false
+    ok 2 - mode=timeline, explicit=false
+      ---
+      duration_ms: 165.61525
+      type: 'test'
+      ...
+    # Subtest: mode=storyboard, explicit=true
+    ok 3 - mode=storyboard, explicit=true
+      ---
+      duration_ms: 164.005916
+      type: 'test'
+      ...
+    # Subtest: mode=storyboard, explicit=false
+    ok 4 - mode=storyboard, explicit=false
+      ---
+      duration_ms: 164.601833
+      type: 'test'
+      ...
+    # Subtest: mode=null, explicit=true
+    ok 5 - mode=null, explicit=true
+      ---
+      duration_ms: 167.972334
+      type: 'test'
+      ...
+    # Subtest: mode=null, explicit=false
+    ok 6 - mode=null, explicit=false
+      ---
+      duration_ms: 171.689375
+      type: 'test'
+      ...
+    # Subtest: mode=absent, explicit=true
+    ok 7 - mode=absent, explicit=true
+      ---
+      duration_ms: 167.361209
+      type: 'test'
+      ...
+    # Subtest: mode=absent, explicit=false
+    ok 8 - mode=absent, explicit=false
+      ---
+      duration_ms: 164.574833
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=timeline
+    ok 9 - explicit key without saved receipt, mode=timeline
+      ---
+      duration_ms: 144.377541
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=storyboard
+    ok 10 - explicit key without saved receipt, mode=storyboard
+      ---
+      duration_ms: 145.821875
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=null
+    ok 11 - explicit key without saved receipt, mode=null
+      ---
+      duration_ms: 146.762875
+      type: 'test'
+      ...
+    # Subtest: explicit key without saved receipt, mode=absent
+    ok 12 - explicit key without saved receipt, mode=absent
+      ---
+      duration_ms: 146.081208
+      type: 'test'
+      ...
+    1..12
+ok 70 - historical 39: export saved-key matrix preserves explicit, inferred, null and legacy modes
+  ---
+  duration_ms: 1925.232791
+  type: 'test'
+  ...
+# Subtest: historical 39: export saved metadata mismatch diagnostics remain specific
+    # Subtest: namespace=other
+    ok 1 - namespace=other
+      ---
+      duration_ms: 23.369083
+      type: 'test'
+      ...
+    # Subtest: namespace=timeline
+    ok 2 - namespace=timeline
+      ---
+      duration_ms: 24.162833
+      type: 'test'
+      ...
+    # Subtest: requestId=different-key
+    ok 3 - requestId=different-key
+      ---
+      duration_ms: 25.875625
+      type: 'test'
+      ...
+    # Subtest: operation=timeline.render
+    ok 4 - operation=timeline.render
+      ---
+      duration_ms: 24.56075
+      type: 'test'
+      ...
+    # Subtest: projectId=00000000-0000-4000-8000-000000000099
+    ok 5 - projectId=00000000-0000-4000-8000-000000000099
+      ---
+      duration_ms: 25.518875
+      type: 'test'
+      ...
+    1..5
+ok 71 - historical 39: export saved metadata mismatch diagnostics remain specific
+  ---
+  duration_ms: 251.461209
+  type: 'test'
+  ...
+# Subtest: historical 39: export live malformed mode/request and wrong receipt binding preserve unsupported diagnostics
+    # Subtest: numeric mode
+    ok 1 - numeric mode
+      ---
+      duration_ms: 159.018417
+      type: 'test'
+      ...
+    # Subtest: unsupported mode
+    ok 2 - unsupported mode
+      ---
+      duration_ms: 165.270208
+      type: 'test'
+      ...
+    # Subtest: object mode
+    ok 3 - object mode
+      ---
+      duration_ms: 161.144416
+      type: 'test'
+      ...
+    # Subtest: numeric request
+    ok 4 - numeric request
+      ---
+      duration_ms: 162.207917
+      type: 'test'
+      ...
+    # Subtest: object request
+    ok 5 - object request
+      ---
+      duration_ms: 167.807791
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: timeline, explicit=true
+    ok 6 - missing saved receipt: timeline, explicit=true
+      ---
+      duration_ms: 163.779875
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: timeline, explicit=false
+    ok 7 - missing saved receipt: timeline, explicit=false
+      ---
+      duration_ms: 165.931167
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: storyboard, explicit=true
+    ok 8 - missing saved receipt: storyboard, explicit=true
+      ---
+      duration_ms: 160.083875
+      type: 'test'
+      ...
+    # Subtest: missing saved receipt: storyboard, explicit=false
+    ok 9 - missing saved receipt: storyboard, explicit=false
+      ---
+      duration_ms: 160.411083
+      type: 'test'
+      ...
+    # Subtest: wrong receipt resource: timeline
+    ok 10 - wrong receipt resource: timeline
+      ---
+      duration_ms: 163.473208
+      type: 'test'
+      ...
+    # Subtest: wrong receipt resource: storyboard
+    ok 11 - wrong receipt resource: storyboard
+      ---
+      duration_ms: 162.516583
+      type: 'test'
+      ...
+    # Subtest: wrong timeline receipt project
+    ok 12 - wrong timeline receipt project
+      ---
+      duration_ms: 162.382708
+      type: 'test'
+      ...
+    1..12
+ok 72 - historical 39: export live malformed mode/request and wrong receipt binding preserve unsupported diagnostics
+  ---
+  duration_ms: 1963.5645
+  type: 'test'
+  ...
+# Subtest: historical 25: existing-row swap, cross-family pointer and deleted capture cannot reopen
+    # Subtest: swapped existing pointers
+    ok 1 - swapped existing pointers
+      ---
+      duration_ms: 30.658458
+      type: 'test'
+      ...
+    # Subtest: cross-family existing pointer with donor hash
+    ok 2 - cross-family existing pointer with donor hash
+      ---
+      duration_ms: 34.063459
+      type: 'test'
+      ...
+    # Subtest: deleted captured row
+    ok 3 - deleted captured row
+      ---
+      duration_ms: 34.7705
+      type: 'test'
+      ...
+    1..3
+ok 73 - historical 25: existing-row swap, cross-family pointer and deleted capture cannot reopen
+  ---
+  duration_ms: 173.330875
+  type: 'test'
+  ...
+# Subtest: historical 25: composite JSON identities preserve escaped separators and non-ASCII keys
+ok 74 - historical 25: composite JSON identities preserve escaped separators and non-ASCII keys
+  ---
+  duration_ms: 110.765875
+  type: 'test'
+  ...
+# Subtest: historical 27: existing-row swap, cross-family pointer and deleted capture cannot reopen
+    # Subtest: swapped existing pointers
+    ok 1 - swapped existing pointers
+      ---
+      duration_ms: 47.759334
+      type: 'test'
+      ...
+    # Subtest: cross-family existing pointer with donor hash
+    ok 2 - cross-family existing pointer with donor hash
+      ---
+      duration_ms: 79.615416
+      type: 'test'
+      ...
+    # Subtest: deleted captured row
+    ok 3 - deleted captured row
+      ---
+      duration_ms: 84.440875
+      type: 'test'
+      ...
+    1..3
+ok 75 - historical 27: existing-row swap, cross-family pointer and deleted capture cannot reopen
+  ---
+  duration_ms: 418.821625
+  type: 'test'
+  ...
+# Subtest: historical 27: composite JSON identities preserve escaped separators and non-ASCII keys
+ok 76 - historical 27: composite JSON identities preserve escaped separators and non-ASCII keys
+  ---
+  duration_ms: 141.379708
+  type: 'test'
+  ...
+# Subtest: historical 29: existing-row swap, cross-family pointer and deleted capture cannot reopen
+    # Subtest: swapped existing pointers
+    ok 1 - swapped existing pointers
+      ---
+      duration_ms: 35.188875
+      type: 'test'
+      ...
+    # Subtest: cross-family existing pointer with donor hash
+    ok 2 - cross-family existing pointer with donor hash
+      ---
+      duration_ms: 37.153458
+      type: 'test'
+      ...
+    # Subtest: deleted captured row
+    ok 3 - deleted captured row
+      ---
+      duration_ms: 36.319667
+      type: 'test'
+      ...
+    1..3
+ok 77 - historical 29: existing-row swap, cross-family pointer and deleted capture cannot reopen
+  ---
+  duration_ms: 203.526459
+  type: 'test'
+  ...
+# Subtest: historical 29: composite JSON identities preserve escaped separators and non-ASCII keys
+ok 78 - historical 29: composite JSON identities preserve escaped separators and non-ASCII keys
+  ---
+  duration_ms: 119.807833
+  type: 'test'
+  ...
+# Subtest: historical 31: existing-row swap, cross-family pointer and deleted capture cannot reopen
+    # Subtest: swapped existing pointers
+    ok 1 - swapped existing pointers
+      ---
+      duration_ms: 36.480291
+      type: 'test'
+      ...
+    # Subtest: cross-family existing pointer with donor hash
+    ok 2 - cross-family existing pointer with donor hash
+      ---
+      duration_ms: 34.995166
+      type: 'test'
+      ...
+    # Subtest: deleted captured row
+    ok 3 - deleted captured row
+      ---
+      duration_ms: 37.538333
+      type: 'test'
+      ...
+    1..3
+ok 79 - historical 31: existing-row swap, cross-family pointer and deleted capture cannot reopen
+  ---
+  duration_ms: 212.234875
+  type: 'test'
+  ...
+# Subtest: historical 31: composite JSON identities preserve escaped separators and non-ASCII keys
+ok 80 - historical 31: composite JSON identities preserve escaped separators and non-ASCII keys
+  ---
+  duration_ms: 131.334416
+  type: 'test'
+  ...
+# Subtest: historical 33: existing-row swap, cross-family pointer and deleted capture cannot reopen
+    # Subtest: swapped existing pointers
+    ok 1 - swapped existing pointers
+      ---
+      duration_ms: 34.984916
+      type: 'test'
+      ...
+    # Subtest: cross-family existing pointer with donor hash
+    ok 2 - cross-family existing pointer with donor hash
+      ---
+      duration_ms: 36.219667
+      type: 'test'
+      ...
+    # Subtest: deleted captured row
+    ok 3 - deleted captured row
+      ---
+      duration_ms: 41.479458
+      type: 'test'
+      ...
+    1..3
+ok 81 - historical 33: existing-row swap, cross-family pointer and deleted capture cannot reopen
+  ---
+  duration_ms: 221.085958
+  type: 'test'
+  ...
+# Subtest: historical 33: composite JSON identities preserve escaped separators and non-ASCII keys
+ok 82 - historical 33: composite JSON identities preserve escaped separators and non-ASCII keys
+  ---
+  duration_ms: 134.00225
+  type: 'test'
+  ...
+# Subtest: historical 35: existing-row swap, cross-family pointer and deleted capture cannot reopen
+    # Subtest: swapped existing pointers
+    ok 1 - swapped existing pointers
+      ---
+      duration_ms: 35.871708
+      type: 'test'
+      ...
+    # Subtest: cross-family existing pointer with donor hash
+    ok 2 - cross-family existing pointer with donor hash
+      ---
+      duration_ms: 36.39975
+      type: 'test'
+      ...
+    # Subtest: deleted captured row
+    ok 3 - deleted captured row
+      ---
+      duration_ms: 38.536667
+      type: 'test'
+      ...
+    1..3
+ok 83 - historical 35: existing-row swap, cross-family pointer and deleted capture cannot reopen
+  ---
+  duration_ms: 227.505417
+  type: 'test'
+  ...
+# Subtest: historical 35: composite JSON identities preserve escaped separators and non-ASCII keys
+ok 84 - historical 35: composite JSON identities preserve escaped separators and non-ASCII keys
+  ---
+  duration_ms: 135.279167
+  type: 'test'
+  ...
+# Subtest: historical 37: existing-row swap, cross-family pointer and deleted capture cannot reopen
+    # Subtest: swapped existing pointers
+    ok 1 - swapped existing pointers
+      ---
+      duration_ms: 36.195542
+      type: 'test'
+      ...
+    # Subtest: cross-family existing pointer with donor hash
+    ok 2 - cross-family existing pointer with donor hash
+      ---
+      duration_ms: 37.597
+      type: 'test'
+      ...
+    # Subtest: deleted captured row
+    ok 3 - deleted captured row
+      ---
+      duration_ms: 37.818333
+      type: 'test'
+      ...
+    1..3
+ok 85 - historical 37: existing-row swap, cross-family pointer and deleted capture cannot reopen
+  ---
+  duration_ms: 239.906541
+  type: 'test'
+  ...
+# Subtest: historical 37: composite JSON identities preserve escaped separators and non-ASCII keys
+ok 86 - historical 37: composite JSON identities preserve escaped separators and non-ASCII keys
+  ---
+  duration_ms: 154.603416
+  type: 'test'
+  ...
+# Subtest: historical 39: existing-row swap, cross-family pointer and deleted capture cannot reopen
+    # Subtest: swapped existing pointers
+    ok 1 - swapped existing pointers
+      ---
+      duration_ms: 37.731541
+      type: 'test'
+      ...
+    # Subtest: cross-family existing pointer with donor hash
+    ok 2 - cross-family existing pointer with donor hash
+      ---
+      duration_ms: 38.809417
+      type: 'test'
+      ...
+    # Subtest: deleted captured row
+    ok 3 - deleted captured row
+      ---
+      duration_ms: 40.499375
+      type: 'test'
+      ...
+    1..3
+ok 87 - historical 39: existing-row swap, cross-family pointer and deleted capture cannot reopen
+  ---
+  duration_ms: 263.107
+  type: 'test'
+  ...
+# Subtest: historical 39: composite JSON identities preserve escaped separators and non-ASCII keys
+ok 88 - historical 39: composite JSON identities preserve escaped separators and non-ASCII keys
+  ---
+  duration_ms: 159.236625
+  type: 'test'
+  ...
+1..88
+# tests 506
+# suites 0
+# pass 506
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 43073.805417

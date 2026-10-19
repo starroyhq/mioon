@@ -1,0 +1,37 @@
+{
+  "testFile": "tests/opacity-workspace-upgrade-faults.test.mjs",
+  "runtimeEditsByThisAgent": false,
+  "stages": [
+    {
+      "stage": "initial red reproduction",
+      "tests": 40,
+      "pass": 38,
+      "fail": 2,
+      "failures": [
+        {"test": "the final publication fence refuses an unknown target file appearing at beforePublish", "expected": "WORKSPACE_UPGRADE_CHANGED before publication", "actual": "operation returned success and published canonical42"},
+        {"test": "proof-file fsync failure before publication removes the file created by this operation", "expected": "owned staging fully removed", "actual": "cleanupUnconfirmed=true and staging remained"}
+      ]
+    },
+    {
+      "stage": "after final fence and metadata atomic-writer fix, with nine added cases",
+      "tests": 49,
+      "pass": 48,
+      "fail": 1,
+      "failures": [
+        {"test": "proof-file fsync failure before publication removes the file created by this operation", "expected": "WORKSPACE_UPGRADE_IO", "actual": "WORKSPACE_UPGRADE_INVALID_PATH from STORAGE_PRIVATE_REQUIRED reason=IO_ERROR"}
+      ]
+    },
+    {
+      "stage": "after root fixed the private-storage IO reason mapping",
+      "tests": 49,
+      "pass": 49,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "durationMs": 30564.213167,
+      "forbiddenAttempts": {"childProcess": 0, "listen": 0, "fetch": 0, "mediaProcessEvents": 0}
+    }
+  ],
+  "finalRunLog": "/tmp/mioon-ordinary40-upgrade-faults-final-20261016.log"
+}

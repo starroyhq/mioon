@@ -26,7 +26,7 @@ const input = {projectId: IDS.project, expectedRevision: 4};
 const imageId = uuid(80), videoTrack = uuid(81), audioTrack = uuid(82), imageClip = uuid(83), audioClip = uuid(84), audioId = uuid(85);
 const PRIVATE = 'PREFLIGHT_PRIVATE_SOURCE_MARKER';
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-const environment = extra => ({...mediaEnvironment(), MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAY_MAX_GENERATIONS: '0', ...extra});
+const environment = extra => ({...mediaEnvironment(), MIOON_ENABLE_LIVE_PROVIDER: '0', ...extra});
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 const canonicalHash = value => sha256(JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item)
   ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item));

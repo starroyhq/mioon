@@ -1,0 +1,572 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-10-16T07:20:33.650Z",
+  "status": "failed",
+  "workspace": "/private/tmp/mioon-opacity43-app-qualification-20261016/restored43",
+  "scope": "Read-only HTTP and SQLite audit of task-owned restored43; GUI actions were performed by root and are not asserted by this script.",
+  "server": "http://127.0.0.1:4319",
+  "projectId": "7773d16c-b298-46d7-ac81-d27076160ce8",
+  "workspaceOrigin": "c8c2e7c9-ba6e-49d5-a17c-1c209000712b",
+  "limits": {
+    "httpTimeoutMs": 10000,
+    "observeMaxMs": 60000,
+    "childTimeoutMs": 5000,
+    "rgbMaxStdoutBytes": 30,
+    "probeMaxStdoutBytes": 4096,
+    "childMaxStderrBytes": 65536,
+    "decodeThreads": 1,
+    "filterThreads": 1,
+    "sourceFrames": 10
+  },
+  "outputs": [
+    {
+      "purpose": "preview",
+      "exportId": "24542b1d-f839-41d0-ba15-687b33ac2b24",
+      "assetId": "f817e62d-85c9-42f0-9f74-26b4d88b391c",
+      "timelineRevision": 5,
+      "opacityEnvelope": {
+        "profileId": "mioon-clip-linear-opacity-v1",
+        "points": [
+          {
+            "frame": 0,
+            "opacity": 0.4
+          },
+          {
+            "frame": 10,
+            "opacity": 1
+          }
+        ]
+      },
+      "origin": {
+        "workspaceOrigin": "c8c2e7c9-ba6e-49d5-a17c-1c209000712b",
+        "requestScope": "timeline.render",
+        "requestId": "191110f2-ab8c-4e9b-8463-c3ae5cca21fa",
+        "requestHash": "3e8f6048f54f57bbbf3b8b9977d876eaadc436d79d9b0fb4b5cf523e99c85343",
+        "identityHash": "1d1da6b035f77dea11e718f4af8744416a9f563da12131bde163bb87f28e9e64"
+      },
+      "bytes": 4477,
+      "sha256": "b24242e78b4bd498cd83f31fe28e7c742bc9bd74e2aa43d0d51ddd6e5ce36626",
+      "checks": {
+        "previewGet": true,
+        "previewHead": true,
+        "range": true,
+        "exportDownload": false,
+        "previewDownloadRejected": true,
+        "rawOutputRejected": true
+      },
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "width": 720,
+            "height": 1280,
+            "nb_read_frames": "10"
+          }
+        ],
+        "format": {
+          "duration": "0.333333"
+        }
+      },
+      "decodedFrames": 10,
+      "firstRGB": [
+        37,
+        17,
+        37
+      ],
+      "lastRGB": [
+        88,
+        39,
+        88
+      ],
+      "brightnessRatio": 2.3626373626373627,
+      "sample": "preview-10frames.mp4"
+    },
+    {
+      "purpose": "export",
+      "exportId": "d11545c3-0af2-4ddb-b59c-c7a5a61389ad",
+      "assetId": "39ebdc00-c105-454d-b032-3bd956063019",
+      "timelineRevision": 5,
+      "opacityEnvelope": {
+        "profileId": "mioon-clip-linear-opacity-v1",
+        "points": [
+          {
+            "frame": 0,
+            "opacity": 0.4
+          },
+          {
+            "frame": 10,
+            "opacity": 1
+          }
+        ]
+      },
+      "origin": {
+        "workspaceOrigin": "c8c2e7c9-ba6e-49d5-a17c-1c209000712b",
+        "requestScope": "timeline.render",
+        "requestId": "2897a787-f992-4e68-8c36-60b0e69abf98",
+        "requestHash": "1d9be9b9aa5047edd1f6030f25eec832757462a7fba75c8bac8e0da1919a6ce5",
+        "identityHash": "2315dba52085b833c37145bce640d526165b0deddc8a3d791d902f75da23ef6f"
+      },
+      "bytes": 4477,
+      "sha256": "b24242e78b4bd498cd83f31fe28e7c742bc9bd74e2aa43d0d51ddd6e5ce36626",
+      "checks": {
+        "previewGet": true,
+        "previewHead": true,
+        "range": true,
+        "exportDownload": true,
+        "previewDownloadRejected": false,
+        "rawOutputRejected": true
+      },
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "width": 720,
+            "height": 1280,
+            "nb_read_frames": "10"
+          }
+        ],
+        "format": {
+          "duration": "0.333333"
+        }
+      },
+      "decodedFrames": 10,
+      "firstRGB": [
+        37,
+        17,
+        37
+      ],
+      "lastRGB": [
+        88,
+        39,
+        88
+      ],
+      "brightnessRatio": 2.3626373626373627,
+      "sample": "export-10frames.mp4"
+    }
+  ],
+  "children": [
+    {
+      "binary": "/opt/homebrew/bin/ffprobe",
+      "args": [
+        "-v",
+        "error",
+        "-count_frames",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=width,height,nb_read_frames:format=duration",
+        "-of",
+        "json",
+        "/private/tmp/mioon-opacity43-app-qualification-20261016/restored43/media/export-24542b1d-f839-41d0-ba15-687b33ac2b24-3799d3f1-da3f-4642-bd3f-436ce74f2a75.mp4"
+      ],
+      "timeoutMs": 5000,
+      "maxStdoutBytes": 4096,
+      "maxStderrBytes": 65536,
+      "status": "closed",
+      "pid": 74797,
+      "code": 0,
+      "signal": null,
+      "durationMs": 157,
+      "stdoutBytes": 247,
+      "stderrBytes": 0
+    },
+    {
+      "binary": "/opt/homebrew/bin/ffmpeg",
+      "args": [
+        "-v",
+        "error",
+        "-threads",
+        "1",
+        "-filter_threads",
+        "1",
+        "-i",
+        "/private/tmp/mioon-opacity43-app-qualification-20261016/restored43/media/export-24542b1d-f839-41d0-ba15-687b33ac2b24-3799d3f1-da3f-4642-bd3f-436ce74f2a75.mp4",
+        "-an",
+        "-vf",
+        "scale=1:1",
+        "-frames:v",
+        "10",
+        "-pix_fmt",
+        "rgb24",
+        "-f",
+        "rawvideo",
+        "pipe:1"
+      ],
+      "timeoutMs": 5000,
+      "maxStdoutBytes": 30,
+      "maxStderrBytes": 65536,
+      "status": "closed",
+      "pid": 74798,
+      "code": 0,
+      "signal": null,
+      "durationMs": 52,
+      "stdoutBytes": 30,
+      "stderrBytes": 0
+    },
+    {
+      "binary": "/opt/homebrew/bin/ffprobe",
+      "args": [
+        "-v",
+        "error",
+        "-count_frames",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=width,height,nb_read_frames:format=duration",
+        "-of",
+        "json",
+        "/private/tmp/mioon-opacity43-app-qualification-20261016/restored43/media/export-d11545c3-0af2-4ddb-b59c-c7a5a61389ad-12698f57-5f65-41fd-b34e-4702ee10a781.mp4"
+      ],
+      "timeoutMs": 5000,
+      "maxStdoutBytes": 4096,
+      "maxStderrBytes": 65536,
+      "status": "closed",
+      "pid": 74801,
+      "code": 0,
+      "signal": null,
+      "durationMs": 40,
+      "stdoutBytes": 247,
+      "stderrBytes": 0
+    },
+    {
+      "binary": "/opt/homebrew/bin/ffmpeg",
+      "args": [
+        "-v",
+        "error",
+        "-threads",
+        "1",
+        "-filter_threads",
+        "1",
+        "-i",
+        "/private/tmp/mioon-opacity43-app-qualification-20261016/restored43/media/export-d11545c3-0af2-4ddb-b59c-c7a5a61389ad-12698f57-5f65-41fd-b34e-4702ee10a781.mp4",
+        "-an",
+        "-vf",
+        "scale=1:1",
+        "-frames:v",
+        "10",
+        "-pix_fmt",
+        "rgb24",
+        "-f",
+        "rawvideo",
+        "pipe:1"
+      ],
+      "timeoutMs": 5000,
+      "maxStdoutBytes": 30,
+      "maxStderrBytes": 65536,
+      "status": "closed",
+      "pid": 74802,
+      "code": 0,
+      "signal": null,
+      "durationMs": 41,
+      "stdoutBytes": 30,
+      "stderrBytes": 0
+    }
+  ],
+  "observations": [
+    {
+      "at": "2026-10-16T07:20:33.746Z",
+      "revision": 5
+    }
+  ],
+  "inspection": {
+    "restored": true,
+    "schemaVersion": 43,
+    "profile": "restored-local-v10",
+    "workspaceOrigin": "c8c2e7c9-ba6e-49d5-a17c-1c209000712b",
+    "restorationId": "9decd635-3182-4fde-b372-24f4cdcb9ae7",
+    "createdAt": "2026-10-16T07:10:10.465Z",
+    "source": {
+      "backupId": "bdd0a9af-4a49-47ea-b669-090f1dba2a12",
+      "schemaVersion": 42,
+      "manifestHash": "ba92aefd0d8640e8ca3ea32c7328ab810e011f54841478ffe54487c12d1b548f",
+      "dbHash": "89acf43acae76f96da94d26a84f2e68a4527277f18325d80d2a398608e7e5878"
+    },
+    "heldCounts": [
+      {
+        "kind": "agent_chat_quota",
+        "count": 1
+      },
+      {
+        "kind": "edit_tasks",
+        "count": 1
+      },
+      {
+        "kind": "timeline_requests",
+        "count": 1
+      }
+    ],
+    "operationPolicy": [
+      {
+        "operation": "project.list",
+        "available": true,
+        "reason": "AVAILABLE"
+      },
+      {
+        "operation": "project.get",
+        "available": true,
+        "reason": "AVAILABLE"
+      },
+      {
+        "operation": "asset.list",
+        "available": true,
+        "reason": "AVAILABLE"
+      },
+      {
+        "operation": "asset.get",
+        "available": true,
+        "reason": "AVAILABLE"
+      },
+      {
+        "operation": "export.list",
+        "available": true,
+        "reason": "AVAILABLE"
+      },
+      {
+        "operation": "export.get",
+        "available": true,
+        "reason": "AVAILABLE"
+      },
+      {
+        "operation": "provider.list",
+        "available": true,
+        "reason": "AVAILABLE"
+      },
+      {
+        "operation": "workspace.restore.inspect",
+        "available": true,
+        "reason": "AVAILABLE"
+      },
+      {
+        "operation": "timeline.get",
+        "available": true,
+        "reason": "AVAILABLE"
+      },
+      {
+        "operation": "timeline.history.get",
+        "available": true,
+        "reason": "AVAILABLE"
+      },
+      {
+        "operation": "timeline.clip.update",
+        "available": true,
+        "reason": "AVAILABLE"
+      },
+      {
+        "operation": "timeline.undo",
+        "available": true,
+        "reason": "AVAILABLE"
+      },
+      {
+        "operation": "timeline.redo",
+        "available": true,
+        "reason": "AVAILABLE"
+      },
+      {
+        "operation": "timeline.render",
+        "available": true,
+        "reason": "AVAILABLE"
+      },
+      {
+        "operation": "timeline.export.preflight",
+        "available": true,
+        "reason": "AVAILABLE"
+      },
+      {
+        "operation": "timeline.export.capabilities",
+        "available": true,
+        "reason": "AVAILABLE"
+      },
+      {
+        "operation": "project.create",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "asset.import",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "timeline.format.get",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "timeline.track.add",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "timeline.track.update",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "timeline.clip.add",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "timeline.clip.remove",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "timeline.clip.split",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "timeline.clip.replaceSource",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "timeline.seed",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "timeline.format.set",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "workspace.backup.inspect",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "workspace.preferences.put",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "generation.submit",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "job.retry",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "job.cancel",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "job.reconcile",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "timeline.subtitle.add",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "timeline.subtitle.update",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "timeline.subtitle.remove",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "timeline.audioPreview.plan",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "timeline.audioPreview.continuousPlan",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "timeline.export.samplePeak",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "timeline.export.loudness",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "timeline.clip.loudness",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "timeline.loudness.apply",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "asset.waveform.request",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      },
+      {
+        "operation": "frame.extract",
+        "available": false,
+        "reason": "RESTORE_OPERATION_UNAVAILABLE"
+      }
+    ],
+    "backupCreate": {
+      "available": false,
+      "reason": "RESTORE_BACKUP_UNAVAILABLE"
+    },
+    "draftPolicy": "excluded"
+  },
+  "initialOwnership": {
+    "restoration": {
+      "workspaceOrigin": "c8c2e7c9-ba6e-49d5-a17c-1c209000712b",
+      "sourceSchema": 42,
+      "profile": "restored-local-v10"
+    },
+    "held": {
+      "id": "046d6a64-292d-4e4f-a002-98e004e857f9",
+      "status": "prepared",
+      "acknowledged": 0,
+      "executionEpoch": "captured",
+      "digest": "8dcf3554440a5dfc6167f54642a336eccc4e675ef378d2f14c3011c4b47a557a",
+      "inputSha256": "76c7cf40c9802582b1d1f210631b5e7a838ddb010a0c53f2a520f1a0b0923b42"
+    },
+    "newTaskEpochs": [
+      {
+        "id": "e1733ac2-e41b-41bf-9fe8-8a444d3e49aa",
+        "operation": "timeline.clip.update",
+        "status": "applied",
+        "acknowledged": 1,
+        "executionEpoch": "c8c2e7c9-ba6e-49d5-a17c-1c209000712b"
+      },
+      {
+        "id": "a3b06b02-8361-451e-8023-bc98b70db973",
+        "operation": "timeline.undo",
+        "status": "applied",
+        "acknowledged": 1,
+        "executionEpoch": "c8c2e7c9-ba6e-49d5-a17c-1c209000712b"
+      },
+      {
+        "id": "d7536743-9433-4247-b9bb-639e21e33bda",
+        "operation": "timeline.redo",
+        "status": "applied",
+        "acknowledged": 1,
+        "executionEpoch": "c8c2e7c9-ba6e-49d5-a17c-1c209000712b"
+      }
+    ]
+  },
+  "finishedAt": "2026-10-16T07:20:35.235Z",
+  "error": {
+    "name": "TypeError",
+    "message": "The \"path\" argument must be of type string. Received undefined",
+    "code": "ERR_INVALID_ARG_TYPE"
+  }
+}

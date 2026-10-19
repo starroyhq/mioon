@@ -1,0 +1,124 @@
+TAP version 13
+# Subtest: construction/configure/reopen are inert and initial unread or failed history blocks capture
+ok 1 - construction/configure/reopen are inert and initial unread or failed history blocks capture
+  ---
+  duration_ms: 3.661084
+  type: 'test'
+  ...
+# Subtest: capture freezes actual intent, rejects double clicks, validates ACK and reads current task instead of showing historical queued state
+ok 2 - capture freezes actual intent, rejects double clicks, validates ACK and reads current task instead of showing historical queued state
+  ---
+  duration_ms: 2.103334
+  type: 'test'
+  ...
+# Subtest: lost or malformed ACK retains exact input; null receipt never invents a key, explicit retry repeats exact input
+ok 3 - lost or malformed ACK retains exact input; null receipt never invents a key, explicit retry repeats exact input
+  ---
+  duration_ms: 1.86825
+  type: 'test'
+  ...
+# Subtest: request reconciliation requires matching operation/identity and treats original receipt separately from task current state
+ok 4 - request reconciliation requires matching operation/identity and treats original receipt separately from task current state
+  ---
+  duration_ms: 0.725167
+  type: 'test'
+  ...
+# Subtest: late project/source responses do not overwrite current selection; exact unknown input survives navigation
+ok 5 - late project/source responses do not overwrite current selection; exact unknown input survives navigation
+  ---
+  duration_ms: 0.228417
+  type: 'test'
+  ...
+# Subtest: late and decreasing task revisions cannot regress the current task or leak foreign-project DTOs
+ok 6 - late and decreasing task revisions cannot regress the current task or leak foreign-project DTOs
+  ---
+  duration_ms: 9.252583
+  type: 'test'
+  ...
+# Subtest: history replaces page-20 while retaining at most 50 active rows and blocks duplicate active source marks
+ok 7 - history replaces page-20 while retaining at most 50 active rows and blocks duplicate active source marks
+  ---
+  duration_ms: 5.728792
+  type: 'test'
+  ...
+# Subtest: cancel is CAS-bound only while never started; recovery explicitly checks existing bytes for interrupted or local-result tasks
+ok 8 - cancel is CAS-bound only while never started; recovery explicitly checks existing bytes for interrupted or local-result tasks
+  ---
+  duration_ms: 1.256375
+  type: 'test'
+  ...
+# Subtest: result reveal re-reads current task, preserves draft refusal, and rejects navigation while awaiting verification
+ok 9 - result reveal re-reads current task, preserves draft refusal, and rejects navigation while awaiting verification
+  ---
+  duration_ms: 0.540583
+  type: 'test'
+  ...
+# Subtest: actual Properties result card keeps its readable summary visible and exact audit identities in a closed native disclosure
+ok 10 - actual Properties result card keeps its readable summary visible and exact audit identities in a closed native disclosure
+  ---
+  duration_ms: 6.670291
+  type: 'test'
+  ...
+# Subtest: actual Properties component shows bounded provenance/result, and stale hidden/unmounted handlers cannot act
+ok 11 - actual Properties component shows bounded provenance/result, and stale hidden/unmounted handlers cannot act
+  ---
+  duration_ms: 0.738125
+  type: 'test'
+  ...
+# Subtest: interrupted recovery with missing local bytes never falls back to extraction or replaces the original key
+ok 12 - interrupted recovery with missing local bytes never falls back to extraction or replaces the original key
+  ---
+  duration_ms: 0.371625
+  type: 'test'
+  ...
+# Subtest: actual Properties recovery control does not claim every interrupted task already has a complete PNG
+ok 13 - actual Properties recovery control does not claim every interrupted task already has a complete PNG
+  ---
+  duration_ms: 0.401
+  type: 'test'
+  ...
+# Subtest: only an exact operation/input-bound authoritative rejection clears recovery intent, never retries extraction
+ok 14 - only an exact operation/input-bound authoritative rejection clears recovery intent, never retries extraction
+  ---
+  duration_ms: 6.304958
+  type: 'test'
+  ...
+# Subtest: forged, changed-input, wrong-status or unbound refusal never clears exact unknown input
+ok 15 - forged, changed-input, wrong-status or unbound refusal never clears exact unknown input
+  ---
+  duration_ms: 1.508708
+  type: 'test'
+  ...
+# Subtest: more than 50 historical tasks remain navigable and an older local PNG recovery is explicit
+ok 16 - more than 50 historical tasks remain navigable and an older local PNG recovery is explicit
+  ---
+  duration_ms: 8.065041
+  type: 'test'
+  ...
+# Subtest: returning to latest supersedes a late older page and retains newer observed task revisions
+ok 17 - returning to latest supersedes a late older page and retains newer observed task revisions
+  ---
+  duration_ms: 0.274416
+  type: 'test'
+  ...
+# Subtest: page trail reaches all 256 retained tasks in 13 bounded pages and supports newer-page navigation
+ok 18 - page trail reaches all 256 retained tasks in 13 bounded pages and supports newer-page navigation
+  ---
+  duration_ms: 11.6415
+  type: 'test'
+  ...
+# Subtest: interrupted and local-result errors retain old tasks but permit a new explicit capture key after review
+ok 19 - interrupted and local-result errors retain old tasks but permit a new explicit capture key after review
+  ---
+  duration_ms: 0.389042
+  type: 'test'
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 437.525834

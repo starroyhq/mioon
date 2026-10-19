@@ -1,15 +1,15 @@
-.task-workspace{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0;height:100%;overflow:hidden;background:#181b20}
-.task-workspace-heading{flex:none;min-width:0;padding:12px;border-bottom:1px solid #30373c}
-.task-workspace-heading h2{margin:0;color:#e0e5db;font-size:12px;font-weight:500}
-.task-workspace-heading p{margin:5px 0 0;color:#99a4a9;font-size:10px;line-height:1.6;overflow-wrap:anywhere}
+.task-workspace{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0;height:100%;overflow:hidden;background:var(--wb-card)}
+.task-workspace-heading{flex:none;min-width:0;padding:12px;border-bottom:1px solid var(--wb-line)}
+.task-workspace-heading h2{margin:0;color:var(--wb-text);font-size:12px;font-weight:500}
+.task-workspace-heading p{margin:5px 0 0;color:var(--wb-soft);font-size:10px;line-height:1.6;overflow-wrap:anywhere}
 .task-workspace-body{flex:1;min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding:12px;overflow-wrap:anywhere}
-.task-workspace-body:focus-visible{outline:1px solid #8d9e80;outline-offset:-2px}
-.task-workspace-body>h3{margin:16px 0 8px;font-size:11px;color:#c8d0c2;font-weight:500}
+.task-workspace-body:focus-visible{outline:1px solid var(--wb-accent-line);outline-offset:-2px}
+.task-workspace-body>h3{margin:16px 0 8px;font-size:11px;color:var(--wb-text);font-weight:500}
 .task-workspace-body>h3:first-child{margin-top:0}
 .task-workspace-body>[data-testid="recovery-task-storage-disclosure"]{margin:10px 0 14px}
 .task-workspace-body>[data-testid="recovery-task-storage-disclosure"] summary{cursor:pointer}
 .task-workspace-body>[data-testid="recovery-task-storage-disclosure"] ul{padding-left:18px}
-.task-workspace-note{flex:none;min-width:0;padding:9px 12px;border-top:1px solid #30373c;color:#89969c;font-size:10px;line-height:1.7;overflow-wrap:anywhere}
+.task-workspace-note{flex:none;min-width:0;padding:9px 12px;border-top:1px solid var(--wb-line);color:var(--wb-soft);font-size:10px;line-height:1.7;overflow-wrap:anywhere}
 .task-workspace .job-card{min-width:0;padding:11px;margin-bottom:11px;border-radius:7px}
 .task-workspace .job-title{min-width:0;flex-wrap:wrap;gap:6px}
 .task-workspace .job-title strong{min-width:0;flex:1 1 90px;white-space:normal;overflow-wrap:anywhere;line-height:1.6}

@@ -1,0 +1,44 @@
+{
+  "node": {
+    "executable": "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+    "observedVersion": "v24.21.0"
+  },
+  "command": "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node --test --test-reporter=tap tests/project-home-app.test.mjs tests/project-specifications-ui.test.mjs",
+  "before": {
+    "exitCode": 1,
+    "total": 76,
+    "passed": 47,
+    "failed": 29,
+    "failuresByFile": {"project-home-app.test.mjs": 17, "project-specifications-ui.test.mjs": 12},
+    "rawOutput": "app-fixtures-before.tap",
+    "cause": "The independently extracted App callbacks/render branches omitted current closure dependencies and still selected the old pre-retention auth branch. Missing clipDraftRef caused direct ReferenceErrors or caught refresh errors; project-guard async calls failed before reaching existing confirmation assertions."
+  },
+  "fixtureChanges": [
+    "Model the ordinary entry with no candidate/restored-opacity capability and no registered or retained clip input.",
+    "Provide actual existing audio-role observation and contract validators, probe refs and state setter to the boot callback environment.",
+    "Select the current exact auth/retained-input boundary; keep the existing real home/settings/workbench boundary assertions.",
+    "Supply a null visual BrandMark fixture like the existing Icon fixture; no brand-image or asset-pipeline claim is made.",
+    "Provide clipDraftRef with current:null in project-specifications callback extraction, preserving explicit caller overrides."
+  ],
+  "preservation": {
+    "allExistingBehaviorAssertions": "Unchanged",
+    "externalTestHelperChanges": false,
+    "runtimeChanges": false,
+    "removedOrSkippedTests": false
+  },
+  "intermediateRuns": [
+    {"rawOutput": "app-fixtures-stage1.tap", "total": 76, "passed": 74, "failed": 2, "cause": "The now-reached auth-error rendering required the missing BrandMark fixture."},
+    {"rawOutput": "app-fixtures-stage2.tap", "total": 76, "passed": 71, "failed": 5, "cause": "An attempted actual BrandMark import used import.meta.url in the CommonJS test bundle and failed with Invalid URL; that fixture-only import was removed in favor of the inert visual boundary."}
+  ],
+  "after": {
+    "exitCode": 0,
+    "total": 76,
+    "passed": 76,
+    "failed": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0,
+    "rawOutput": "app-fixtures-after.tap"
+  },
+  "limits": "Synthetic App callback and static render regression only. No GUI, native input method, listener, media process, provider or user project was used."
+}

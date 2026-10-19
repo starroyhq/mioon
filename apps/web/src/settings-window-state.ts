@@ -2,7 +2,8 @@ import { message as msg } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import type { ProjectWindowContext, ProjectWindowSettingsSlot } from './desktop-window-client.ts';
 import type { SettingsNavigationRegistry } from './settings-navigation-state.ts';
-export type SettingsPage = ProjectWindowSettingsSlot | 'general';
+export type SettingsPage = ProjectWindowSettingsSlot | 'general' | 'workspace' | 'video-tools' | 'models' | 'extensions' | 'shortcuts' | 'about';
+export const isSettingsConnectionPage = (page: SettingsPage): page is ProjectWindowSettingsSlot => page === 'agent' || page === 'official' || page === 'custom' || page === 'comfy';
 /** Slot requests own no form data. All form owners stay mounted and a later
  * intent or input invalidates consent before the selected pane can change. */
 export function createSettingsWindowNavigation({ context: initial, registry, confirm, onChange = () => {} }: {
@@ -21,7 +22,7 @@ export function createSettingsWindowNavigation({ context: initial, registry, con
     if (!current()) { notice = msg('shell.settingsBusy'); onChange(); return false; }
     if (registry.needsConfirmation(capture) && !await confirm(msg('shell.changeConnectionConfirm'))) return false;
     if (!current()) return false;
-    page = next; if (next !== 'general') selected = next; notice = ''; onChange(); return true;
+    page = next; if (isSettingsConnectionPage(next)) selected = next; notice = ''; onChange(); return true;
   }
   const select = (slot: ProjectWindowSettingsSlot) => selectPage(slot);
   return {

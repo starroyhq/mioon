@@ -1,0 +1,790 @@
+TAP version 13
+# Subtest: Ark subject sends explicit 9:16, 4s, reference mode with unchanged prompt
+ok 1 - Ark subject sends explicit 9:16, 4s, reference mode with unchanged prompt
+  ---
+  duration_ms: 27.198708
+  type: 'test'
+  ...
+# Subtest: Ark subject sends explicit 9:16, 8s, reference mode with unchanged prompt
+ok 2 - Ark subject sends explicit 9:16, 8s, reference mode with unchanged prompt
+  ---
+  duration_ms: 5.335833
+  type: 'test'
+  ...
+# Subtest: Ark subject sends explicit 16:9, 4s, reference mode with unchanged prompt
+ok 3 - Ark subject sends explicit 16:9, 4s, reference mode with unchanged prompt
+  ---
+  duration_ms: 3.515458
+  type: 'test'
+  ...
+# Subtest: Ark subject sends explicit 16:9, 8s, reference mode with unchanged prompt
+ok 4 - Ark subject sends explicit 16:9, 8s, reference mode with unchanged prompt
+  ---
+  duration_ms: 3.295
+  type: 'test'
+  ...
+# Subtest: Ark subject JPEG bytes are transmitted as the approved JPEG data URI
+ok 5 - Ark subject JPEG bytes are transmitted as the approved JPEG data URI
+  ---
+  duration_ms: 3.080375
+  type: 'test'
+  ...
+# Subtest: Ark subject metadata accepts inclusive image limits 300x750
+ok 6 - Ark subject metadata accepts inclusive image limits 300x750
+  ---
+  duration_ms: 4.262292
+  type: 'test'
+  ...
+# Subtest: Ark subject metadata accepts inclusive image limits 750x300
+ok 7 - Ark subject metadata accepts inclusive image limits 750x300
+  ---
+  duration_ms: 2.825458
+  type: 'test'
+  ...
+# Subtest: Ark subject metadata accepts inclusive image limits 6000x6000
+ok 8 - Ark subject metadata accepts inclusive image limits 6000x6000
+  ---
+  duration_ms: 2.440375
+  type: 'test'
+  ...
+# Subtest: Ark rejects subject geometry 299x480 before dispatch
+ok 9 - Ark rejects subject geometry 299x480 before dispatch
+  ---
+  duration_ms: 3.410708
+  type: 'test'
+  ...
+# Subtest: Ark rejects subject geometry 480x6001 before dispatch
+ok 10 - Ark rejects subject geometry 480x6001 before dispatch
+  ---
+  duration_ms: 7.480875
+  type: 'test'
+  ...
+# Subtest: Ark rejects subject geometry 300x751 before dispatch
+ok 11 - Ark rejects subject geometry 300x751 before dispatch
+  ---
+  duration_ms: 6.153417
+  type: 'test'
+  ...
+# Subtest: Ark rejects subject geometry 751x300 before dispatch
+ok 12 - Ark rejects subject geometry 751x300 before dispatch
+  ---
+  duration_ms: 2.631333
+  type: 'test'
+  ...
+# Subtest: ark rejects missing subject record without any submission
+ok 13 - ark rejects missing subject record without any submission
+  ---
+  duration_ms: 2.89225
+  type: 'test'
+  ...
+# Subtest: ark rejects null subject record without any submission
+ok 14 - ark rejects null subject record without any submission
+  ---
+  duration_ms: 2.606667
+  type: 'test'
+  ...
+# Subtest: ark rejects unknown subject field without any submission
+ok 15 - ark rejects unknown subject field without any submission
+  ---
+  duration_ms: 2.60375
+  type: 'test'
+  ...
+# Subtest: ark rejects unknown version field without any submission
+ok 16 - ark rejects unknown version field without any submission
+  ---
+  duration_ms: 2.455084
+  type: 'test'
+  ...
+# Subtest: ark rejects planning-only look kind without any submission
+ok 17 - ark rejects planning-only look kind without any submission
+  ---
+  duration_ms: 2.508625
+  type: 'test'
+  ...
+# Subtest: ark rejects blank subject name without any submission
+ok 18 - ark rejects blank subject name without any submission
+  ---
+  duration_ms: 2.738041
+  type: 'test'
+  ...
+# Subtest: ark rejects unfrozen request version field without any submission
+ok 19 - ark rejects unfrozen request version field without any submission
+  ---
+  duration_ms: 2.589666
+  type: 'test'
+  ...
+# Subtest: ark rejects incomplete provenance without any submission
+ok 20 - ark rejects incomplete provenance without any submission
+  ---
+  duration_ms: 2.394958
+  type: 'test'
+  ...
+# Subtest: ark rejects invalid provenance identities without any submission
+ok 21 - ark rejects invalid provenance identities without any submission
+  ---
+  duration_ms: 2.447125
+  type: 'test'
+  ...
+# Subtest: ark rejects invalid version identity without any submission
+ok 22 - ark rejects invalid version identity without any submission
+  ---
+  duration_ms: 2.324542
+  type: 'test'
+  ...
+# Subtest: ark rejects foreign subject project without any submission
+ok 23 - ark rejects foreign subject project without any submission
+  ---
+  duration_ms: 2.49125
+  type: 'test'
+  ...
+# Subtest: ark rejects different subject asset without any submission
+ok 24 - ark rejects different subject asset without any submission
+  ---
+  duration_ms: 2.511833
+  type: 'test'
+  ...
+# Subtest: ark rejects different subject hash without any submission
+ok 25 - ark rejects different subject hash without any submission
+  ---
+  duration_ms: 2.624958
+  type: 'test'
+  ...
+# Subtest: ark rejects different subject MIME without any submission
+ok 26 - ark rejects different subject MIME without any submission
+  ---
+  duration_ms: 2.613625
+  type: 'test'
+  ...
+# Subtest: ark rejects different subject dimensions without any submission
+ok 27 - ark rejects different subject dimensions without any submission
+  ---
+  duration_ms: 2.416292
+  type: 'test'
+  ...
+# Subtest: ark rejects missing profile version without any submission
+ok 28 - ark rejects missing profile version without any submission
+  ---
+  duration_ms: 2.469167
+  type: 'test'
+  ...
+# Subtest: ark rejects missing profile ID without any submission
+ok 29 - ark rejects missing profile ID without any submission
+  ---
+  duration_ms: 2.418125
+  type: 'test'
+  ...
+# Subtest: ark rejects older profile without any submission
+ok 30 - ark rejects older profile without any submission
+  ---
+  duration_ms: 2.534542
+  type: 'test'
+  ...
+# Subtest: ark rejects foreign region without any submission
+ok 31 - ark rejects foreign region without any submission
+  ---
+  duration_ms: 2.745959
+  type: 'test'
+  ...
+# Subtest: ark rejects unimplemented provider without any submission
+ok 32 - ark rejects unimplemented provider without any submission
+  ---
+  duration_ms: 2.570959
+  type: 'test'
+  ...
+# Subtest: ark rejects missing IDs without any submission
+ok 33 - ark rejects missing IDs without any submission
+  ---
+  duration_ms: 2.566167
+  type: 'test'
+  ...
+# Subtest: ark rejects different ID list without any submission
+ok 34 - ark rejects different ID list without any submission
+  ---
+  duration_ms: 2.316792
+  type: 'test'
+  ...
+# Subtest: ark rejects missing binding without any submission
+ok 35 - ark rejects missing binding without any submission
+  ---
+  duration_ms: 2.482708
+  type: 'test'
+  ...
+# Subtest: ark rejects extra binding field without any submission
+ok 36 - ark rejects extra binding field without any submission
+  ---
+  duration_ms: 2.602584
+  type: 'test'
+  ...
+# Subtest: ark rejects different binding hash without any submission
+ok 37 - ark rejects different binding hash without any submission
+  ---
+  duration_ms: 2.636625
+  type: 'test'
+  ...
+# Subtest: ark rejects untyped asset without any submission
+ok 38 - ark rejects untyped asset without any submission
+  ---
+  duration_ms: 2.968291
+  type: 'test'
+  ...
+# Subtest: ark rejects first-frame asset without any submission
+ok 39 - ark rejects first-frame asset without any submission
+  ---
+  duration_ms: 2.763625
+  type: 'test'
+  ...
+# Subtest: ark rejects provider wire role without any submission
+ok 40 - ark rejects provider wire role without any submission
+  ---
+  duration_ms: 2.477458
+  type: 'test'
+  ...
+# Subtest: ark rejects mixed first frame without any submission
+ok 41 - ark rejects mixed first frame without any submission
+  ---
+  duration_ms: 2.387041
+  type: 'test'
+  ...
+# Subtest: ark rejects last-frame selection without any submission
+ok 42 - ark rejects last-frame selection without any submission
+  ---
+  duration_ms: 2.442375
+  type: 'test'
+  ...
+# Subtest: ark rejects first-frame connection without any submission
+ok 43 - ark rejects first-frame connection without any submission
+  ---
+  duration_ms: 2.329
+  type: 'test'
+  ...
+# Subtest: ark rejects missing size without any submission
+ok 44 - ark rejects missing size without any submission
+  ---
+  duration_ms: 2.631666
+  type: 'test'
+  ...
+# Subtest: ark rejects invalid size without any submission
+ok 45 - ark rejects invalid size without any submission
+  ---
+  duration_ms: 2.968333
+  type: 'test'
+  ...
+# Subtest: mock rejects missing subject record without any submission
+ok 46 - mock rejects missing subject record without any submission
+  ---
+  duration_ms: 3.512166
+  type: 'test'
+  ...
+# Subtest: mock rejects null subject record without any submission
+ok 47 - mock rejects null subject record without any submission
+  ---
+  duration_ms: 2.665834
+  type: 'test'
+  ...
+# Subtest: mock rejects unknown subject field without any submission
+ok 48 - mock rejects unknown subject field without any submission
+  ---
+  duration_ms: 3.028667
+  type: 'test'
+  ...
+# Subtest: mock rejects unknown version field without any submission
+ok 49 - mock rejects unknown version field without any submission
+  ---
+  duration_ms: 2.955333
+  type: 'test'
+  ...
+# Subtest: mock rejects planning-only look kind without any submission
+ok 50 - mock rejects planning-only look kind without any submission
+  ---
+  duration_ms: 3.0865
+  type: 'test'
+  ...
+# Subtest: mock rejects blank subject name without any submission
+ok 51 - mock rejects blank subject name without any submission
+  ---
+  duration_ms: 4.46975
+  type: 'test'
+  ...
+# Subtest: mock rejects unfrozen request version field without any submission
+ok 52 - mock rejects unfrozen request version field without any submission
+  ---
+  duration_ms: 10.346833
+  type: 'test'
+  ...
+# Subtest: mock rejects incomplete provenance without any submission
+ok 53 - mock rejects incomplete provenance without any submission
+  ---
+  duration_ms: 2.854625
+  type: 'test'
+  ...
+# Subtest: mock rejects invalid provenance identities without any submission
+ok 54 - mock rejects invalid provenance identities without any submission
+  ---
+  duration_ms: 3.104084
+  type: 'test'
+  ...
+# Subtest: mock rejects invalid version identity without any submission
+ok 55 - mock rejects invalid version identity without any submission
+  ---
+  duration_ms: 2.941583
+  type: 'test'
+  ...
+# Subtest: mock rejects foreign subject project without any submission
+ok 56 - mock rejects foreign subject project without any submission
+  ---
+  duration_ms: 2.501333
+  type: 'test'
+  ...
+# Subtest: mock rejects different subject asset without any submission
+ok 57 - mock rejects different subject asset without any submission
+  ---
+  duration_ms: 2.948875
+  type: 'test'
+  ...
+# Subtest: mock rejects different subject hash without any submission
+ok 58 - mock rejects different subject hash without any submission
+  ---
+  duration_ms: 2.745458
+  type: 'test'
+  ...
+# Subtest: mock rejects different subject MIME without any submission
+ok 59 - mock rejects different subject MIME without any submission
+  ---
+  duration_ms: 2.895208
+  type: 'test'
+  ...
+# Subtest: mock rejects different subject dimensions without any submission
+ok 60 - mock rejects different subject dimensions without any submission
+  ---
+  duration_ms: 2.532917
+  type: 'test'
+  ...
+# Subtest: mock rejects missing profile version without any submission
+ok 61 - mock rejects missing profile version without any submission
+  ---
+  duration_ms: 2.576625
+  type: 'test'
+  ...
+# Subtest: mock rejects missing profile ID without any submission
+ok 62 - mock rejects missing profile ID without any submission
+  ---
+  duration_ms: 2.567709
+  type: 'test'
+  ...
+# Subtest: mock rejects older profile without any submission
+ok 63 - mock rejects older profile without any submission
+  ---
+  duration_ms: 2.518959
+  type: 'test'
+  ...
+# Subtest: mock rejects foreign region without any submission
+ok 64 - mock rejects foreign region without any submission
+  ---
+  duration_ms: 2.579958
+  type: 'test'
+  ...
+# Subtest: mock rejects unimplemented provider without any submission
+ok 65 - mock rejects unimplemented provider without any submission
+  ---
+  duration_ms: 2.66375
+  type: 'test'
+  ...
+# Subtest: mock rejects missing IDs without any submission
+ok 66 - mock rejects missing IDs without any submission
+  ---
+  duration_ms: 2.526916
+  type: 'test'
+  ...
+# Subtest: mock rejects different ID list without any submission
+ok 67 - mock rejects different ID list without any submission
+  ---
+  duration_ms: 2.531167
+  type: 'test'
+  ...
+# Subtest: mock rejects missing binding without any submission
+ok 68 - mock rejects missing binding without any submission
+  ---
+  duration_ms: 2.41
+  type: 'test'
+  ...
+# Subtest: mock rejects extra binding field without any submission
+ok 69 - mock rejects extra binding field without any submission
+  ---
+  duration_ms: 2.635375
+  type: 'test'
+  ...
+# Subtest: mock rejects different binding hash without any submission
+ok 70 - mock rejects different binding hash without any submission
+  ---
+  duration_ms: 2.516292
+  type: 'test'
+  ...
+# Subtest: mock rejects untyped asset without any submission
+ok 71 - mock rejects untyped asset without any submission
+  ---
+  duration_ms: 2.654042
+  type: 'test'
+  ...
+# Subtest: mock rejects first-frame asset without any submission
+ok 72 - mock rejects first-frame asset without any submission
+  ---
+  duration_ms: 2.663042
+  type: 'test'
+  ...
+# Subtest: mock rejects provider wire role without any submission
+ok 73 - mock rejects provider wire role without any submission
+  ---
+  duration_ms: 2.693458
+  type: 'test'
+  ...
+# Subtest: mock rejects mixed first frame without any submission
+ok 74 - mock rejects mixed first frame without any submission
+  ---
+  duration_ms: 2.484375
+  type: 'test'
+  ...
+# Subtest: mock rejects last-frame selection without any submission
+ok 75 - mock rejects last-frame selection without any submission
+  ---
+  duration_ms: 2.435625
+  type: 'test'
+  ...
+# Subtest: mock rejects first-frame connection without any submission
+ok 76 - mock rejects first-frame connection without any submission
+  ---
+  duration_ms: 2.456958
+  type: 'test'
+  ...
+# Subtest: mock rejects missing size without any submission
+ok 77 - mock rejects missing size without any submission
+  ---
+  duration_ms: 2.807958
+  type: 'test'
+  ...
+# Subtest: mock rejects invalid size without any submission
+ok 78 - mock rejects invalid size without any submission
+  ---
+  duration_ms: 2.85775
+  type: 'test'
+  ...
+# Subtest: ark v3 cannot fall back to an omitted first-frame role
+ok 79 - ark v3 cannot fall back to an omitted first-frame role
+  ---
+  duration_ms: 2.680875
+  type: 'test'
+  ...
+# Subtest: mock v3 cannot fall back to an omitted first-frame role
+ok 80 - mock v3 cannot fall back to an omitted first-frame role
+  ---
+  duration_ms: 2.507792
+  type: 'test'
+  ...
+# Subtest: Ark archived v1 untyped first frame preserves adaptive request and exact aspect checking
+ok 81 - Ark archived v1 untyped first frame preserves adaptive request and exact aspect checking
+  ---
+  duration_ms: 2.933417
+  type: 'test'
+  ...
+# Subtest: Ark archived v2 untyped first frame preserves adaptive request and exact aspect checking
+ok 82 - Ark archived v2 untyped first frame preserves adaptive request and exact aspect checking
+  ---
+  duration_ms: 2.846667
+  type: 'test'
+  ...
+# Subtest: Ark v3 explicit first frame keeps adaptive ratio and does not gain subject geometry rules
+ok 83 - Ark v3 explicit first frame keeps adaptive ratio and does not gain subject geometry rules
+  ---
+  duration_ms: 2.972708
+  type: 'test'
+  ...
+# Subtest: Ark subject still requires the exact approved hash even for claimed generated provenance
+ok 84 - Ark subject still requires the exact approved hash even for claimed generated provenance
+  ---
+  duration_ms: 2.525625
+  type: 'test'
+  ...
+# Subtest: Ark subject metadata never enables construction-time or disabled-provider HTTP
+ok 85 - Ark subject metadata never enables construction-time or disabled-provider HTTP
+  ---
+  duration_ms: 2.351916
+  type: 'test'
+  ...
+# Subtest: Ark subject changed bytes is rejected before HTTP
+ok 86 - Ark subject changed bytes is rejected before HTTP
+  ---
+  duration_ms: 2.747333
+  type: 'test'
+  ...
+# Subtest: Ark subject false MIME is rejected before HTTP
+ok 87 - Ark subject false MIME is rejected before HTTP
+  ---
+  duration_ms: 2.734209
+  type: 'test'
+  ...
+# Subtest: Ark subject oversize file is rejected before HTTP
+ok 88 - Ark subject oversize file is rejected before HTTP
+  ---
+  duration_ms: 5.573208
+  type: 'test'
+  ...
+# Subtest: Ark subject oversize metadata is rejected before HTTP
+ok 89 - Ark subject oversize metadata is rejected before HTTP
+  ---
+  duration_ms: 2.2595
+  type: 'test'
+  ...
+# Subtest: Ark subject actual dimensions differ is rejected before HTTP
+ok 90 - Ark subject actual dimensions differ is rejected before HTTP
+  ---
+  duration_ms: 2.645333
+  type: 'test'
+  ...
+# Subtest: Ark subject asset URL is rejected before HTTP
+ok 91 - Ark subject asset URL is rejected before HTTP
+  ---
+  duration_ms: 2.432708
+  type: 'test'
+  ...
+# Subtest: Ark subject remote URL is rejected before HTTP
+ok 92 - Ark subject remote URL is rejected before HTTP
+  ---
+  duration_ms: 2.649083
+  type: 'test'
+  ...
+# Subtest: Ark subject managed storage cannot be escaped with a symlink
+ok 93 - Ark subject managed storage cannot be escaped with a symlink
+  ---
+  duration_ms: 5.557916
+  type: 'test'
+  ...
+# Subtest: Ark subject INVALID_REFERENCE_OWNERSHIP at image fence 1 prevents POST
+ok 94 - Ark subject INVALID_REFERENCE_OWNERSHIP at image fence 1 prevents POST
+  ---
+  duration_ms: 2.834583
+  type: 'test'
+  ...
+# Subtest: Ark subject INVALID_REFERENCE_OWNERSHIP at image fence 2 prevents POST
+ok 95 - Ark subject INVALID_REFERENCE_OWNERSHIP at image fence 2 prevents POST
+  ---
+  duration_ms: 2.478
+  type: 'test'
+  ...
+# Subtest: Ark subject INVALID_REFERENCE_OWNERSHIP at image fence 3 prevents POST
+ok 96 - Ark subject INVALID_REFERENCE_OWNERSHIP at image fence 3 prevents POST
+  ---
+  duration_ms: 2.368875
+  type: 'test'
+  ...
+# Subtest: Ark subject INVALID_REFERENCE_OWNERSHIP at image fence 4 prevents POST
+ok 97 - Ark subject INVALID_REFERENCE_OWNERSHIP at image fence 4 prevents POST
+  ---
+  duration_ms: 2.43475
+  type: 'test'
+  ...
+# Subtest: Ark subject INVALID_REFERENCE_OWNERSHIP at image fence 5 prevents POST
+ok 98 - Ark subject INVALID_REFERENCE_OWNERSHIP at image fence 5 prevents POST
+  ---
+  duration_ms: 2.444583
+  type: 'test'
+  ...
+# Subtest: Ark subject PROVIDER_REGION_CHANGED at image fence 1 prevents POST
+ok 99 - Ark subject PROVIDER_REGION_CHANGED at image fence 1 prevents POST
+  ---
+  duration_ms: 2.208084
+  type: 'test'
+  ...
+# Subtest: Ark subject PROVIDER_REGION_CHANGED at image fence 2 prevents POST
+ok 100 - Ark subject PROVIDER_REGION_CHANGED at image fence 2 prevents POST
+  ---
+  duration_ms: 2.344
+  type: 'test'
+  ...
+# Subtest: Ark subject PROVIDER_REGION_CHANGED at image fence 3 prevents POST
+ok 101 - Ark subject PROVIDER_REGION_CHANGED at image fence 3 prevents POST
+  ---
+  duration_ms: 2.510042
+  type: 'test'
+  ...
+# Subtest: Ark subject PROVIDER_REGION_CHANGED at image fence 4 prevents POST
+ok 102 - Ark subject PROVIDER_REGION_CHANGED at image fence 4 prevents POST
+  ---
+  duration_ms: 2.425417
+  type: 'test'
+  ...
+# Subtest: Ark subject PROVIDER_REGION_CHANGED at image fence 5 prevents POST
+ok 103 - Ark subject PROVIDER_REGION_CHANGED at image fence 5 prevents POST
+  ---
+  duration_ms: 2.386417
+  type: 'test'
+  ...
+# Subtest: Ark subject MODEL_LIFECYCLE_REVALIDATION_REQUIRED at image fence 1 prevents POST
+ok 104 - Ark subject MODEL_LIFECYCLE_REVALIDATION_REQUIRED at image fence 1 prevents POST
+  ---
+  duration_ms: 2.321917
+  type: 'test'
+  ...
+# Subtest: Ark subject MODEL_LIFECYCLE_REVALIDATION_REQUIRED at image fence 2 prevents POST
+ok 105 - Ark subject MODEL_LIFECYCLE_REVALIDATION_REQUIRED at image fence 2 prevents POST
+  ---
+  duration_ms: 2.381291
+  type: 'test'
+  ...
+# Subtest: Ark subject MODEL_LIFECYCLE_REVALIDATION_REQUIRED at image fence 3 prevents POST
+ok 106 - Ark subject MODEL_LIFECYCLE_REVALIDATION_REQUIRED at image fence 3 prevents POST
+  ---
+  duration_ms: 2.527584
+  type: 'test'
+  ...
+# Subtest: Ark subject MODEL_LIFECYCLE_REVALIDATION_REQUIRED at image fence 4 prevents POST
+ok 107 - Ark subject MODEL_LIFECYCLE_REVALIDATION_REQUIRED at image fence 4 prevents POST
+  ---
+  duration_ms: 2.354417
+  type: 'test'
+  ...
+# Subtest: Ark subject MODEL_LIFECYCLE_REVALIDATION_REQUIRED at image fence 5 prevents POST
+ok 108 - Ark subject MODEL_LIFECYCLE_REVALIDATION_REQUIRED at image fence 5 prevents POST
+  ---
+  duration_ms: 2.782167
+  type: 'test'
+  ...
+# Subtest: Ark subject final synchronous GENERATION_STATE_CHANGED fence prevents POST
+ok 109 - Ark subject final synchronous GENERATION_STATE_CHANGED fence prevents POST
+  ---
+  duration_ms: 2.577167
+  type: 'test'
+  ...
+# Subtest: Ark subject final synchronous INVALID_REFERENCE_OWNERSHIP fence prevents POST
+ok 110 - Ark subject final synchronous INVALID_REFERENCE_OWNERSHIP fence prevents POST
+  ---
+  duration_ms: 2.487875
+  type: 'test'
+  ...
+# Subtest: Ark subject final synchronous PROVIDER_REGION_CHANGED fence prevents POST
+ok 111 - Ark subject final synchronous PROVIDER_REGION_CHANGED fence prevents POST
+  ---
+  duration_ms: 2.42825
+  type: 'test'
+  ...
+# Subtest: Ark subject final synchronous MODEL_LIFECYCLE_REVALIDATION_REQUIRED fence prevents POST
+ok 112 - Ark subject final synchronous MODEL_LIFECYCLE_REVALIDATION_REQUIRED fence prevents POST
+  ---
+  duration_ms: 2.2975
+  type: 'test'
+  ...
+# Subtest: Ark subject abort at image fence 1 is definitely before dispatch
+ok 113 - Ark subject abort at image fence 1 is definitely before dispatch
+  ---
+  duration_ms: 2.323542
+  type: 'test'
+  ...
+# Subtest: Ark subject abort at image fence 2 is definitely before dispatch
+ok 114 - Ark subject abort at image fence 2 is definitely before dispatch
+  ---
+  duration_ms: 2.240542
+  type: 'test'
+  ...
+# Subtest: Ark subject abort at image fence 3 is definitely before dispatch
+ok 115 - Ark subject abort at image fence 3 is definitely before dispatch
+  ---
+  duration_ms: 2.375042
+  type: 'test'
+  ...
+# Subtest: Ark subject abort at image fence 4 is definitely before dispatch
+ok 116 - Ark subject abort at image fence 4 is definitely before dispatch
+  ---
+  duration_ms: 2.409666
+  type: 'test'
+  ...
+# Subtest: Ark subject abort at image fence 5 is definitely before dispatch
+ok 117 - Ark subject abort at image fence 5 is definitely before dispatch
+  ---
+  duration_ms: 2.5595
+  type: 'test'
+  ...
+# Subtest: Ark subject abort in final synchronous fence is unsubmitted
+ok 118 - Ark subject abort in final synchronous fence is unsubmitted
+  ---
+  duration_ms: 2.521833
+  type: 'test'
+  ...
+# Subtest: Ark subject post-dispatch abort remains ambiguous with exactly one POST
+ok 119 - Ark subject post-dispatch abort remains ambiguous with exactly one POST
+  ---
+  duration_ms: 3.195875
+  type: 'test'
+  ...
+# Subtest: Ark subject lost response never causes a retry or raw-provider disclosure
+ok 120 - Ark subject lost response never causes a retry or raw-provider disclosure
+  ---
+  duration_ms: 2.586375
+  type: 'test'
+  ...
+# Subtest: Ark subject HTTP 500 never causes a retry or raw-provider disclosure
+ok 121 - Ark subject HTTP 500 never causes a retry or raw-provider disclosure
+  ---
+  duration_ms: 3.021833
+  type: 'test'
+  ...
+# Subtest: Ark subject HTTP 400 never causes a retry or raw-provider disclosure
+ok 122 - Ark subject HTTP 400 never causes a retry or raw-provider disclosure
+  ---
+  duration_ms: 2.6585
+  type: 'test'
+  ...
+# Subtest: Ark subject missing receipt never causes a retry or raw-provider disclosure
+ok 123 - Ark subject missing receipt never causes a retry or raw-provider disclosure
+  ---
+  duration_ms: 2.453458
+  type: 'test'
+  ...
+# Subtest: Mock persists the full subject snapshot and advertises a metadata-only test pattern
+not ok 124 - Mock persists the full subject snapshot and advertises a metadata-only test pattern
+  ---
+  duration_ms: 45.071042
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subject-video-provider.test.mjs:170:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'failed'
+    - 'succeeded'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'succeeded'
+  actual: 'failed'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/subject-video-provider.test.mjs:174:9)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: Mock subject metadata permits positive dimensions and enforces PNG/JPEG with a 10 MiB limit
+ok 125 - Mock subject metadata permits positive dimensions and enforces PNG/JPEG with a 10 MiB limit
+  ---
+  duration_ms: 3.527208
+  type: 'test'
+  ...
+# Subtest: Mock accepted subject with lost response reconciles the same durable record
+ok 126 - Mock accepted subject with lost response reconciles the same durable record
+  ---
+  duration_ms: 2.92775
+  type: 'test'
+  ...
+# Subtest: Mock final subject fence stops before any provider ledger mutation
+ok 127 - Mock final subject fence stops before any provider ledger mutation
+  ---
+  duration_ms: 2.952875
+  type: 'test'
+  ...
+1..127
+# tests 127
+# suites 0
+# pass 126
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 659.781125

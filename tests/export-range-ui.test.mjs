@@ -149,22 +149,23 @@ function actualAppFunction(start, end, env) {
   return Function(...Object.keys(env), `return (${appSource.slice(first, last).trim()});`)(...Object.values(env));
 }
 
-test('actual App range context rejects hidden, offline, busy and pending retained callbacks but preserves restored direct export', () => {
+test('actual App range context rejects hidden dialog, offline, busy and pending callbacks but preserves independent and restored export', () => {
   let base = { scope: 'project:1', enabled: true }, local = { scope: 'project:1', busy: false, pending: false };
   const env = { exportSettingsContext: () => base, localDeliveryRef: { current: { controller: { getState: () => local } } },
     projectSessionReady: () => true,
-    rightDockTab: 'delivery', showExports: false, panelVisible: () => true,
+    rightDockTab: 'properties', showDelivery: true, showExports: false, panelVisible: () => false,
     dataRef: { current: { project: { id: projectId }, timeline: { id: timelineId, revision: 4, durationFrames: 120 } } }, currentProject: { current: projectId } };
   const getContext = () => actualAppFunction('  function exportRangeContext(', '  const exportRange = useExportRange(', env)();
   const controller = createExportRangeController({ getContext }); controller.setContext(getContext());
   const choose = value => controller.chooseRange(value, 'project:1', controller.getVersion('project:1'));
   assert.equal(choose(draft()), true);
-  for (const block of ['hidden dock', 'history page', 'collapsed', 'offline', 'busy', 'pending']) {
-    env.rightDockTab = block === 'hidden dock' ? 'properties' : 'delivery'; env.showExports = block === 'history page'; env.panelVisible = () => block !== 'collapsed';
+  assert.equal(getContext().enabled, true, 'The export dialog is independent of the collapsed inspector and its selected tab');
+  for (const block of ['hidden dialog', 'history page', 'offline', 'busy', 'pending']) {
+    env.showDelivery = block !== 'hidden dialog'; env.showExports = block === 'history page';
     base = { ...base, enabled: block !== 'offline' }; local = { ...local, busy: block === 'busy', pending: block === 'pending' };
     assert.equal(getContext().enabled, false, block); assert.equal(choose(draft('0', '1')), false, block); assert.deepEqual(controller.getRange('project:1'), range);
   }
-  env.rightDockTab = 'delivery'; env.showExports = false; env.panelVisible = () => true; base = { ...base, enabled: true };
+  env.showDelivery = true; env.showExports = false; base = { ...base, enabled: true };
   local = { scope: 'other-project:1', busy: true, pending: true }; assert.equal(getContext().enabled, true, 'another project coordinator cannot block this scope');
   local = { scope: 'project:1', busy: false, pending: false, phase: 'unsupported' }; assert.equal(getContext().enabled, true, 'restored unsupported sidecar does not disable explicit export');
   assert.equal(choose(draft('0', '1')), true);
@@ -177,27 +178,33 @@ test('actual local-delivery execution epoch includes range version even after ch
   const f = rangeFixture(); f.choose(draft());
   const env = { currentProject: { current: projectId }, projectEpoch: { current: 1 }, dataRef: { current: { project: { id: projectId }, timeline: { id: timelineId, revision: 4 } } }, workspaceRef: { current: { restored: false } },
     projectSessionReady: () => true, workbenchReady: true,
-    online: true, auth: true, loading: false, rightDockTab: 'delivery', showExports: false, panelVisible: () => true, isBusy: () => false,
+    online: true, auth: true, loading: false, showDelivery: true, showExports: false, isBusy: () => false,
     navigationEpoch: { current: 1 }, panelIntent: { current: 1 }, exportSettings: { controller: { getVersion: () => 1 } }, exportRange: { controller: { getVersion: () => f.controller.getVersion('project:1') } },
     deliveryName: { controller: { getName: () => '', getVersion: () => 1, hasUnsaved: () => false } } };
   const getContext = () => actualAppFunction('  function localDeliveryContext(', '  const localDelivery = useLocalDelivery(', env)();
   const before = getContext(); f.choose(draft('0', '1')); f.choose(draft()); const after = getContext();
   assert.deepEqual(f.controller.getRange('project:1'), range); assert.notEqual(after.executionEpoch, before.executionEpoch);
   assert.deepEqual({ ...after, executionEpoch: before.executionEpoch }, before);
+  env.showDelivery = false; assert.equal(getContext().visible, false);
+  env.showDelivery = true; env.showExports = true; assert.equal(getContext().visible, false);
+  env.showExports = false; assert.equal(getContext().visible, true);
   env.projectSessionReady = () => false; env.workbenchReady = false;
   const unopened = getContext(); assert.equal(unopened.projectId, null); assert.equal(unopened.connected, false); assert.equal(unopened.visible, false);
 });
 
 
-test('only malformed range-present historical rows suppress downloads; valid selected and absent legacy keep existing controls', () => {
+test('only malformed range-present rows suppress file actions; valid selected and absent history retain exact inspection inputs', () => {
   const View = component('ExportHistoryList.jsx').default;
   const timeline = { width: 720, height: 1280, fps: 30, durationFrames: 120 };
-  const base = { id: id(10), mode: 'timeline', purpose: 'export', timelineRevision: 4, createdAt: stamp, status: 'succeeded', url: '/media/original-file', assetId: id(11), snapshot: { timeline, exportRange: range } };
-  const downloads = tree => nodes(tree).filter(node => node.props['data-testid'] === 'download-export' || node.props.render?.props?.['data-testid'] === 'download-export');
+  const base = { id: id(10), projectId, mode: 'timeline', purpose: 'export', timelineRevision: 4, createdAt: stamp, status: 'succeeded', url: '/media/original-file', assetId: id(11), snapshot: { timeline, exportRange: range } };
+  const actions = tree => nodes(tree).filter(node => node.type === 'ExportFileActions');
   for (const named of [false, true]) {
     const name = named ? { deliveryName: 'Frozen title' } : {};
     for (const snapshot of [{ timeline, exportRange: range, ...name }, { timeline, ...name }]) {
-      const tree = View({ orderedExports: [{ ...base, snapshot }], projectName: 'Current name', timelineRevision: 99 }); assert.equal(downloads(tree).length, 1);
+      const tree = View({ orderedExports: [{ ...base, snapshot }], projectName: 'Current name', timelineRevision: 99 });
+      assert.equal(actions(tree).length, 1);
+      assert.deepEqual(actions(tree)[0].props, {projectId, exportId:id(10), downloadHref:named ? `/media/${id(11)}?download=1&exportId=${id(10)}` : base.url, disabled:false, children:[]});
+      assert.equal(nodes(tree).some(node => node.props['data-testid'] === 'download-export'), false, 'Composition cannot claim an asynchronous file check has succeeded');
     }
     for (const patch of [
       { snapshot: { timeline, exportRange: null, ...name } }, { snapshot: { timeline, exportRange: undefined, ...name } },
@@ -207,7 +214,7 @@ test('only malformed range-present historical rows suppress downloads; valid sel
       { mode: 'storyboard', snapshot: { timeline, exportRange: range, ...name } },
     ]) {
       const tree = View({ orderedExports: [{ ...base, ...patch }], projectName: 'Current name', timelineRevision: 99 });
-      assert.equal(downloads(tree).length, 0); assert.match(textOf(tree), /暂时不能下载/);
+      assert.equal(actions(tree).length, 0); assert.match(textOf(tree), /暂时不能下载/);
     }
   }
 });

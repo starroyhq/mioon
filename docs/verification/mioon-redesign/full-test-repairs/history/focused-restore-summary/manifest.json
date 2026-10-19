@@ -1,0 +1,14 @@
+{
+  "files": [
+    "tests/workspace-restore-execution.test.mjs",
+    "tests/project-home-summary.test.mjs"
+  ],
+  "concurrency": 1,
+  "timeoutSeconds": 900,
+  "separateProcesses": true,
+  "source": "real directory enumeration; no exclusions",
+  "nodeFlags": [
+    "--test",
+    "--test-reporter=tap"
+  ]
+}

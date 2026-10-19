@@ -165,7 +165,7 @@ test('Runway parity: actual worker persists HTTP 409 unknown, refuses job.retry 
   const root = await sandbox(t), fixture = await createRunwayUnknownFixture(root), store = openStore(root);
   let calls = 0, worker;
   const provider = createRunwayProvider({ root, env: { RUNWAYML_API_SECRET: SECRET, MIOON_ENABLE_LIVE_PROVIDER: '1' }, fetchImpl: async () => { calls++; throw Error('No network during unknown reconciliation'); } });
-  const providers = new Map([['runway', provider]]), services = createServices(store, providers, { env: { RUNWAY_MAX_GENERATIONS: '2' } });
+  const providers = new Map([['runway', provider]]), services = createServices(store, providers, {});
   t.after(async () => { await worker?.stop(); store.close(); });
   assert.equal(store.get('jobs', fixture.jobId).status, 'submission_unknown');
   services.saveJob(store.get('jobs', fixture.jobId), { nextPollAt: 0 });

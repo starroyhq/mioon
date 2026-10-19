@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
-import {mkdtemp, readFile, readdir, rm, writeFile} from 'node:fs/promises';
+import {copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -12,7 +12,12 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from '../apps/server/src/index.mjs';
 import {createClient, discoverSchema, effectAnnotations} from '../packages/client/src/index.mjs';
 import {operationEffect} from '../packages/contracts/src/index.mjs';
-import {openStore, installCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.mjs';
+import {openStore, classifyCurrentWorkspaceSchema, installCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
+import {initializeWorkspaceSchema28} from '../packages/business/src/workspace-schema-v28.ts';
+import {initializeWorkspaceSchema30} from '../packages/business/src/workspace-schema-v30.ts';
+import {initializeWorkspaceSchema32} from '../packages/business/src/workspace-schema-v32.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
 import {READ_TOOL_DEFINITIONS, READ_TOOL_OPERATIONS, parseReadToolArguments} from '../packages/business/src/agent/read-tool-policy.mjs';
 import {RESTORE_READ_OPERATIONS, RESTORE_LOCAL_OPERATIONS} from '../packages/business/src/workspace-restore-policy.mjs';
@@ -132,7 +137,7 @@ async function bounded(promise, label, ms = 10_000) {
 
 function childEnvironment(root, origin, audit) {
   return {PATH: process.env.PATH || '', HOME: root, TMPDIR: root, LANG: 'C.UTF-8', NODE_ENV: 'test',
-    MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAY_MAX_GENERATIONS: '0', MIOON_BASE_URL: origin, MIOON_TOKEN: token,
+    MIOON_ENABLE_LIVE_PROVIDER: '0', MIOON_BASE_URL: origin, MIOON_TOKEN: token,
     MIOON_INSPECTION_WIRE_GUARD: '1', MIOON_INSPECTION_WIRE_ALLOWED_ORIGIN: origin,
     MIOON_INSPECTION_WIRE_AUDIT: audit};
 }
@@ -175,8 +180,8 @@ function databaseSnapshot(db) {
 
 async function fixture(t) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-image-transports-'));
-  const dataDir = path.join(root, 'data'), audit = path.join(root, 'forbidden-effects.jsonl');
-  let server, db, mcp, transport, off;
+  const audit = path.join(root, 'forbidden-effects.jsonl');
+  let dataDir = path.join(root, 'data'), source32, server, db, mcp, transport, off;
   t.after(async () => {
     try { if (mcp) await bounded(mcp.close(), 'Owned image MCP cleanup', 7_000); }
     finally {
@@ -229,11 +234,17 @@ async function fixture(t) {
       assert.equal(await readFile(audit, 'utf8'), '', 'CLI/MCP attempt no non-owned network or media subprocess');
       assert.deepEqual(mediaProcesses, [], 'image inspection never invokes a media process');
       assert.deepEqual(backendEffects, [], 'inspection never attempts provider or model work, even if errors are caught');
+      if (source32) {
+        assert.equal(sha(await readFile(source32.database)), source32.sha256, 'Installing and serving restored33 cannot change its historical source32 database');
+        for (const [index, asset] of assets.entries()) assert.deepEqual(await readFile(path.join(source32.directory, asset.relativePath)), fixtures[index]);
+      }
     },
-    async connectMcp() {
+    async connectMcp(expectedWorkspaceOrigin) {
+      if (mcp) { await bounded(mcp.close(), 'Owned image MCP reconnect cleanup'); mcp = undefined; }
+      await transport?.close(); transport = undefined;
       mcp = new Client({name: 'timeline-image-inspection-test', version: '1.0.0'}, {capabilities: {}});
       transport = new StdioClientTransport({command: process.execPath, cwd: repo, stderr: 'pipe',
-        args: ['--import', wireGuard, 'apps/mcp/src/index.mjs'], env: childEnvironment(root, server.url, audit)});
+        args: ['--import', wireGuard, 'apps/mcp/src/index.mjs', ...(expectedWorkspaceOrigin ? ['--workspace-origin', expectedWorkspaceOrigin] : [])], env: childEnvironment(root, server.url, audit)});
       let stderr = '';
       transport.stderr.setEncoding('utf8').on('data', value => { stderr = (stderr + value).slice(-65_536); });
       await bounded(mcp.connect(transport), 'Owned image MCP connect');
@@ -249,14 +260,49 @@ async function fixture(t) {
     async restore33() {
       if (mcp) { await bounded(mcp.close(), 'Owned image MCP close before restore'); mcp = undefined; }
       await transport?.close(); transport = undefined;
+      const projectRows = db.prepare('SELECT id,data FROM projects ORDER BY id').all();
+      const assetRows = db.prepare('SELECT id,projectId,data FROM assets ORDER BY id').all();
       db.close(); db = undefined; await server.close(); server = undefined;
+      // Construct the fixed historical schema, never relabel a current database
+      // by deleting markers while its newer tables and protections remain.
+      const sourceDirectory = path.join(root, 'source32'), sourceDatabase = path.join(sourceDirectory, 'workbench.sqlite');
+      await mkdir(path.join(sourceDirectory, 'media'), {recursive:true, mode:0o700});
+      await writeFile(sourceDatabase, '', {flag:'wx', mode:0o600});
+      const source = new DatabaseSync(sourceDatabase);
+      try {
+        source.exec('PRAGMA trusted_schema=OFF; PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL');
+        initializeWorkspaceSchemaThrough24(source);
+        initializeWorkspaceSchema26(source); initializeWorkspaceSchema28(source);
+        initializeWorkspaceSchema30(source); initializeWorkspaceSchema32(source);
+        for (const row of projectRows) source.prepare('INSERT INTO projects(id,data) VALUES(?,?)').run(row.id, row.data);
+        for (const row of assetRows) source.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(row.id, row.projectId, row.data);
+        assert.deepEqual(classifyCurrentWorkspaceSchema(source), {schemaVersion:32, profile:'ordinary'});
+        assert.deepEqual(source.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row => row.version), [...Array.from({length:24}, (_, index) => index + 1),26,28,30,32]);
+      } finally { source.close(); }
+      for (const [index, asset] of assets.entries()) await writeFile(path.join(sourceDirectory, asset.relativePath), fixtures[index], {mode:0o600});
+      source32 = {directory:sourceDirectory, database:sourceDatabase, sha256:sha(await readFile(sourceDatabase))};
+      // Installation acts on a separate fixture-owned copy. Retain the exact
+      // source database and PNG bytes to verify no historical repair occurs.
+      dataDir = path.join(root, 'restored33');
+      await mkdir(path.join(dataDir, 'media'), {recursive:true, mode:0o700});
+      await copyFile(sourceDatabase, path.join(dataDir, 'workbench.sqlite'));
+      for (const asset of assets) await copyFile(path.join(sourceDirectory, asset.relativePath), path.join(dataDir, asset.relativePath));
       const database = new DatabaseSync(path.join(dataDir, 'workbench.sqlite'));
       let restored;
-      try { database.exec('DELETE FROM schema_version WHERE version=34'); // Explicit historical PNG-only fixture.
+      try {
+        database.exec('PRAGMA trusted_schema=OFF; PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL');
+        assert.deepEqual(classifyCurrentWorkspaceSchema(database), {schemaVersion:32, profile:'ordinary'});
         restored = installCurrentWorkspaceRestoreSchema(database, {restorationId: randomUUID(), workspaceOrigin: randomUUID(),
-        sourceBackupId: randomUUID(), manifestHash: 'a'.repeat(64), sourceDbHash: 'b'.repeat(64), createdAt: stamp}); }
+          sourceBackupId: randomUUID(), manifestHash: 'a'.repeat(64), sourceDbHash: source32.sha256, createdAt: stamp});
+        assert.equal(restored.sourceSchema, 32);
+        assert.deepEqual(classifyCurrentWorkspaceSchema(database), {schemaVersion:33, profile:restored.profile});
+        assert.deepEqual(database.prepare('SELECT id,data FROM projects ORDER BY id').all(), projectRows);
+        assert.deepEqual(database.prepare('SELECT id,projectId,data FROM assets ORDER BY id').all(), assetRows);
+      }
       finally { database.close(); }
-      assert.equal(restored.schemaVersion, 33); await open(); return restored;
+      assert.equal(restored.schemaVersion, 33);
+      assert.equal(sha(await readFile(sourceDatabase)), source32.sha256);
+      await open(); return restored;
     },
   };
 }
@@ -298,12 +344,20 @@ test('actual authenticated HTTP, CLI and official MCP preserve image inspection 
     await f.verifyFiles();
 
     const restored = await f.restore33(), restoredBefore = f.snapshot();
-    assert.equal((await f.client.rpc('workspace.restore.inspect', {})).schemaVersion, 33);
+    const inspection = await f.client.rpc('workspace.restore.inspect', {});
+    assert.equal(inspection.schemaVersion, 33); assert.equal(inspection.source.schemaVersion, 32);
     for (const expectedWorkspaceOrigin of [undefined, restored.workspaceOrigin]) {
       const rejected = await f.rpc(operation, input, {expectedWorkspaceOrigin});
       assert.equal(rejected.status, 409); assert.equal(rejected.envelope.error.code, 'RESTORE_OPERATION_UNAVAILABLE');
       await assert.rejects(f.client.rpc(operation, input, expectedWorkspaceOrigin ? {expectedWorkspaceOrigin} : {}),
         {code: 'RESTORE_OPERATION_UNAVAILABLE'});
+      const command = await cli(['timeline', 'colour', 'image', 'inspect', '--input', JSON.stringify(input),
+        ...(expectedWorkspaceOrigin ? ['--workspace-origin', expectedWorkspaceOrigin] : [])], f.env);
+      assert.equal(command.code, 3); assert.equal(command.envelope.ok, false);
+      assert.equal(command.envelope.error.code, 'RESTORE_OPERATION_UNAVAILABLE');
+      const restoredMcp = await f.connectMcp(expectedWorkspaceOrigin);
+      const rejectedMcp = await restoredMcp.call('timeline_colour_image_inspect', input);
+      assert.equal(rejectedMcp.ok, false); assert.equal(rejectedMcp.error.code, 'RESTORE_OPERATION_UNAVAILABLE');
     }
     assert.deepEqual(f.snapshot(), restoredBefore, 'denial does not mutate captured evidence or restoration state');
     await f.verifyFiles();

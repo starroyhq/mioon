@@ -9,6 +9,7 @@ import { Textarea } from '@mioon/ui/components/textarea';
 import { Input } from '@mioon/ui/components/input';
 import { Label } from '@mioon/ui/components/label';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@mioon/ui/components/collapsible';
+import {Dialog,DialogContent,DialogTitle,DialogDescription,DialogFooter} from '@mioon/ui/components/dialog';
 import { agentTimelineFrameText } from './agent-tool-state.js';
 import AgentRunActivity from './AgentRunActivity.jsx';
 import AgentEditProposal from './AgentEditProposal.jsx';
@@ -41,6 +42,8 @@ export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, p
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const [state, setState] = useState(initialAgentChatState);
   const [disclosure, setDisclosure] = useState({ key: null, expanded: true, reviewed: false });
+  const [composerDisclosure, setComposerDisclosure] = useState({ projectId: null, key: null, consented: false, expanded: false });
+  const [authorizationIntent,setAuthorizationIntent]=useState({key:null,checked:false,sendAfterApproval:false});
   const disclosureIdentity = useRef(null);
   const paneVisible = useWorkspaceVisibility();
   const nativeSession = useRef(null);
@@ -108,12 +111,29 @@ export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, p
   const disclosureReviewed = disclosure.key === disclosureKey && disclosure.reviewed;
   const sendConsented = Boolean(snapshot && state.consent !== null && state.consent === agentChatConsentKey(snapshot, state.contextMode, selectedTarget));
   const canCompactDisclosure = disclosureReviewed || sendConsented;
+  // Initial retained permission and a new approval compact this presentation.
+  // A changed mounted destination/scope/selection is disclosed even if granted.
+  const composerKeyChanged = composerDisclosure.key !== disclosureKey;
+  const composerOptionsOpen = !sendConsented || (composerDisclosure.projectId === projectId && (composerKeyChanged ? composerDisclosure.consented : composerDisclosure.expanded));
+  const composerOptionsVisible = visible && composerOptionsOpen;
+  useLayoutEffect(() => {
+    setComposerDisclosure(previous => ({ projectId, key: disclosureKey, consented: sendConsented,
+      expanded: Boolean(previous.projectId === projectId && sendConsented && previous.consented && previous.key !== disclosureKey) }));
+  }, [disclosureKey, sendConsented]);
+  const optionsInteraction = useMemo(() => ({ disclosureKey, sendConsented, composerOptionsVisible, interaction }), [disclosureKey, sendConsented, composerOptionsVisible, interaction]);
+  const optionsInteractionRef = useRef(null);
+  useLayoutEffect(() => { optionsInteractionRef.current = optionsInteraction; return () => { optionsInteractionRef.current = null; }; }, [optionsInteraction]);
+  const optionsUsable = () => usable() && composerOptionsVisible && optionsInteractionRef.current === optionsInteraction;
 
   const proposalRefresh = JSON.stringify(snapshot?.runs.map(run => [run.id, run.status, run.activity?.filter(step => step.kind === 'tool').map(step => [step.id, step.status])]) || []);
   const blockedRunIds = snapshot?.runs.filter(run => run.status !== 'completed').map(run => run.id) || [];
   const ready = visible && phase === 'ready', canSend = visible && agentChatCanSend(state);
   const promptBytes = new TextEncoder().encode(state.draft).length;
   const promptIssue = state.draft ? renderMessage(agentChatPromptIssueDescriptor(state.draft)) : '';
+  const authorizationKey=agentChatConsentKey(snapshot,state.contextMode,selectedTarget);
+  const authorizationReady=Boolean(ready&&!pending&&!running&&!state.authorizing&&authorizationKey&&
+    !(moving&&timelineEditBlockedReason||gaining&&timelineGainBlockedReason));
+  const canStart=canSend||Boolean(authorizationReady&&state.draft.trim()&&!promptIssue);
   const lastRun = snapshot?.runs.at(-1);
   useLayoutEffect(() => {
     if (follow.current && scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight;
@@ -121,10 +141,19 @@ export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, p
   useLayoutEffect(() => { if (archiveScroll.current) archiveScroll.current.scrollTop = 0; }, [state.history.before]);
   async function send() {
     if (!usable()) return;
+    if(!sendConsented){if(canStart)setAuthorizationIntent({key:disclosureKey,checked:false,sendAfterApproval:true});return;}
     const current = session.current, key = disclosureKey, editSend = editing || moving || gaining;
     const accepted = await current?.send();
     if (accepted && editSend && owner && !owner.closed && lifetime.current === owner && session.current === current && disclosureIdentity.current === key)
       setDisclosure({ key, expanded: false, reviewed: true });
+  }
+  async function confirmAuthorization(){
+    if(!usable()||authorizationIntent.key!==disclosureKey||!authorizationIntent.checked||!authorizationReady)return;
+    const current=session.current,key=disclosureKey,sendAfterApproval=authorizationIntent.sendAfterApproval;
+    const approved=await current?.approve(true);
+    if(!approved||!owner||owner.closed||lifetime.current!==owner||session.current!==current||disclosureIdentity.current!==key)return;
+    setAuthorizationIntent({key:null,checked:false,sendAfterApproval:false});
+    if(sendAfterApproval)await current.send();
   }
   function submit(event) { event.preventDefault(); void send(); }
   return <section className="agent-chat-page" data-testid="agent-chat-page" data-project-id={projectId} data-phase={phase} aria-label={t('agent.chat.conversationAria')} hidden={!visible} inert={!visible}>
@@ -181,14 +210,22 @@ export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, p
         {state.message && <div className={`agent-chat-notice ${['unknown', 'load_error', 'detached'].includes(phase) ? 'is-warning' : ''}`} role="status" data-testid="agent-chat-notice">{renderMessage(state.displayMessage)}</div>}
       </div>
       <form className="agent-chat-composer" onSubmit={submit} noValidate>
-        <div className="agent-chat-composer-options">
-        <fieldset className="agent-chat-context-mode" disabled={!ready || pending} data-testid="agent-chat-context-mode">
+        <Collapsible className="agent-chat-composer-disclosure" data-testid="agent-chat-target-disclosure" open={composerOptionsVisible} onOpenChange={open => {
+          if (usable() && sendConsented && optionsInteractionRef.current === optionsInteraction) setComposerDisclosure({ projectId, key: disclosureKey, consented: true, expanded: open });
+        }}>
+        {sendConsented && <CollapsibleTrigger className="agent-chat-composer-summary" data-testid="agent-chat-options-toggle" disabled={!visible} render={<Button type="button" variant="ghost" />}>
+          <span className="agent-chat-composer-summary-model">{t('agent.chat.destination')} · {configuration?.model || t('agent.chat.missingModel')}</span>
+          <span className="agent-chat-composer-summary-scope">{t(`agent.authorization.scope.${state.contextMode}`)}</span>
+          <span className="agent-chat-composer-summary-target">{configuration?.baseUrl ? deriveAgentEndpoint(configuration) : t('agent.chat.missingEndpoint')}</span><Icon name="down" size={12} />
+        </CollapsibleTrigger>}
+        <CollapsibleContent keepMounted className="agent-chat-composer-options" data-testid="agent-chat-composer-options" hidden={!composerOptionsVisible} inert={!composerOptionsVisible} aria-hidden={!composerOptionsVisible}>
+        <fieldset className="agent-chat-context-mode" disabled={!composerOptionsVisible || !ready || pending} data-testid="agent-chat-context-mode">
           <legend>{t('agent.chat.sendingScope')}</legend>
-          <Label htmlFor="agent-chat-mode-typed"><Input id="agent-chat-mode-typed" data-testid="agent-chat-mode-typed" type="radio" name="agent-chat-context-mode" value={AGENT_TYPED_CONTEXT} checked={state.contextMode === AGENT_TYPED_CONTEXT} disabled={!ready || pending} onChange={event => { if (usable() && event.target.checked) session.current?.setContextMode(AGENT_TYPED_CONTEXT); }} /><span>{t('agent.chat.textChatOnly')}</span></Label>
-          <Label htmlFor="agent-chat-mode-project"><Input id="agent-chat-mode-project" data-testid="agent-chat-mode-project" type="radio" name="agent-chat-context-mode" value={AGENT_PROJECT_CONTEXT} checked={inspecting} disabled={!inspectionAvailable || !ready || pending} onChange={event => { if (usable() && event.target.checked) session.current?.setContextMode(AGENT_PROJECT_CONTEXT); }} /><span>{t('agent.chat.readOnlyProject')}</span></Label>
-          <Label htmlFor="agent-chat-mode-edit"><Input id="agent-chat-mode-edit" data-testid="agent-chat-mode-edit" type="radio" name="agent-chat-context-mode" value={AGENT_EDIT_CONTEXT} checked={editing} disabled={!editAvailable || !ready || pending} onChange={event => { if (usable() && event.target.checked) session.current?.setContextMode(AGENT_EDIT_CONTEXT); }} /><span>{t('agent.chat.selectedShotProposal')}</span></Label>
-          <Label htmlFor="agent-chat-mode-timeline"><Input id="agent-chat-mode-timeline" data-testid="agent-chat-mode-timeline" type="radio" name="agent-chat-context-mode" value={AGENT_TIMELINE_CONTEXT} checked={moving} disabled={!timelineAvailable || !ready || pending} onChange={event => { if (usable() && event.target.checked) session.current?.setContextMode(AGENT_TIMELINE_CONTEXT); }} /><span>{t('agent.chat.selectedMoveProposal')}</span></Label>
-          <Label htmlFor="agent-chat-mode-gain"><Input id="agent-chat-mode-gain" data-testid="agent-chat-mode-gain" type="radio" name="agent-chat-context-mode" value={AGENT_TIMELINE_GAIN_CONTEXT} checked={gaining} disabled={!gainAvailable || !selectedTimelineGainClip || !ready || pending} onChange={event => { if (usable() && event.target.checked) session.current?.setContextMode(AGENT_TIMELINE_GAIN_CONTEXT); }} /><span>{t('agent.chat.selectedGainProposal')}</span></Label>
+          <Label htmlFor="agent-chat-mode-typed"><Input id="agent-chat-mode-typed" data-testid="agent-chat-mode-typed" type="radio" name="agent-chat-context-mode" value={AGENT_TYPED_CONTEXT} checked={state.contextMode === AGENT_TYPED_CONTEXT} disabled={!composerOptionsVisible || !ready || pending} onChange={event => { if (optionsUsable() && event.target.checked) session.current?.setContextMode(AGENT_TYPED_CONTEXT); }} /><span>{t('agent.chat.textChatOnly')}</span></Label>
+          <Label htmlFor="agent-chat-mode-project"><Input id="agent-chat-mode-project" data-testid="agent-chat-mode-project" type="radio" name="agent-chat-context-mode" value={AGENT_PROJECT_CONTEXT} checked={inspecting} disabled={!inspectionAvailable || !composerOptionsVisible || !ready || pending} onChange={event => { if (optionsUsable() && event.target.checked) session.current?.setContextMode(AGENT_PROJECT_CONTEXT); }} /><span>{t('agent.chat.readOnlyProject')}</span></Label>
+          <Label htmlFor="agent-chat-mode-edit"><Input id="agent-chat-mode-edit" data-testid="agent-chat-mode-edit" type="radio" name="agent-chat-context-mode" value={AGENT_EDIT_CONTEXT} checked={editing} disabled={!editAvailable || !composerOptionsVisible || !ready || pending} onChange={event => { if (optionsUsable() && event.target.checked) session.current?.setContextMode(AGENT_EDIT_CONTEXT); }} /><span>{t('agent.chat.selectedShotProposal')}</span></Label>
+          <Label htmlFor="agent-chat-mode-timeline"><Input id="agent-chat-mode-timeline" data-testid="agent-chat-mode-timeline" type="radio" name="agent-chat-context-mode" value={AGENT_TIMELINE_CONTEXT} checked={moving} disabled={!timelineAvailable || !composerOptionsVisible || !ready || pending} onChange={event => { if (optionsUsable() && event.target.checked) session.current?.setContextMode(AGENT_TIMELINE_CONTEXT); }} /><span>{t('agent.chat.selectedMoveProposal')}</span></Label>
+          <Label htmlFor="agent-chat-mode-gain"><Input id="agent-chat-mode-gain" data-testid="agent-chat-mode-gain" type="radio" name="agent-chat-context-mode" value={AGENT_TIMELINE_GAIN_CONTEXT} checked={gaining} disabled={!gainAvailable || !selectedTimelineGainClip || !composerOptionsVisible || !ready || pending} onChange={event => { if (optionsUsable() && event.target.checked) session.current?.setContextMode(AGENT_TIMELINE_GAIN_CONTEXT); }} /><span>{t('agent.chat.selectedGainProposal')}</span></Label>
           {!gainAvailable && <span className="agent-chat-mode-unavailable">{t('agent.chat.gainUnavailable')}</span>}
           {gainAvailable && !selectedTimelineGainClip && <span className="agent-chat-mode-unavailable">{t('agent.chat.gainRequiresAudio')}</span>}
           {!timelineAvailable && <span className="agent-chat-mode-unavailable">{t('agent.chat.moveUnavailable')}</span>}
@@ -200,9 +237,9 @@ export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, p
           {state.editTarget ? <><p data-testid="agent-edit-target-summary">{t('agent.chat.shotRevision', { shotId: creationParameter(state.editTarget.shotId), expectedRevision: creationParameter(state.editTarget.expectedRevision) })}</p>
             <p>{t('agent.chat.savedShotScope')}</p>
             <Collapsible className="agent-edit-selected-disclosure" data-testid="agent-edit-selected-disclosure" open={disclosureOpen} onOpenChange={open => {
-              if (usable() && disclosureIdentity.current === disclosureKey && (open || canCompactDisclosure)) setDisclosure({ key: disclosureKey, expanded: open, reviewed: disclosureReviewed || sendConsented });
+              if (optionsUsable() && disclosureIdentity.current === disclosureKey && (open || canCompactDisclosure)) setDisclosure({ key: disclosureKey, expanded: open, reviewed: disclosureReviewed || sendConsented });
             }}>
-              <CollapsibleTrigger className="agent-chat-details-trigger" data-testid="agent-edit-selected-details-toggle" disabled={!visible || !canCompactDisclosure}>{disclosureOpen ? t('agent.chat.fullTextLimits') : t('agent.chat.expandReviewedText')}</CollapsibleTrigger>
+              <CollapsibleTrigger className="agent-chat-details-trigger" data-testid="agent-edit-selected-details-toggle" disabled={!composerOptionsVisible || !canCompactDisclosure}>{disclosureOpen ? t('agent.chat.fullTextLimits') : t('agent.chat.expandReviewedText')}</CollapsibleTrigger>
               <CollapsibleContent keepMounted className="agent-edit-selected-details" data-testid="agent-edit-selected-details">
                 <p>{t('agent.chat.savedTextDisclosure')}</p>
                 <div className="agent-edit-selected-text"><span>{t('agent.chat.savedTitle')}</span><pre data-testid="agent-edit-selected-title">{state.editTarget.title}</pre><span>{t('agent.chat.savedDescription')}</span><pre data-testid="agent-edit-selected-prompt">{state.editTarget.prompt || t('agent.chat.emptyValue')}</pre></div>
@@ -217,35 +254,46 @@ export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, p
             <p data-testid="agent-timeline-target-summary">{t('agent.chat.clipTargetSummary', { clipName: creationParameter(state.timelineTarget.clipName), trackName: creationParameter(state.timelineTarget.trackName), value: creationParameter(state.timelineTarget.trackKind === 'audio' ? t('agent.chat.audioTrack') : t('agent.chat.videoTrack')), expectedRevision: creationParameter(state.timelineTarget.expectedRevision) })}</p>
             <p data-testid="agent-timeline-selected-time">{t('agent.chat.clipTiming', { value: creationParameter(agentTimelineFrameDisplay(state.timelineTarget.startFrame, 30, t)), value2: creationParameter(agentTimelineFrameDisplay(state.timelineTarget.endFrame, 30, t)), value3: creationParameter(agentTimelineFrameDisplay(state.timelineTarget.durationFrames, 30, t)) })}</p>
             <Collapsible className="agent-edit-selected-disclosure" data-testid="agent-timeline-selected-disclosure" open={disclosureOpen} onOpenChange={open => {
-              if (usable() && disclosureIdentity.current === disclosureKey && (open || canCompactDisclosure)) setDisclosure({ key: disclosureKey, expanded: open, reviewed: disclosureReviewed || sendConsented });
+              if (optionsUsable() && disclosureIdentity.current === disclosureKey && (open || canCompactDisclosure)) setDisclosure({ key: disclosureKey, expanded: open, reviewed: disclosureReviewed || sendConsented });
             }}>
-              <CollapsibleTrigger className="agent-chat-details-trigger" data-testid="agent-timeline-selected-details-toggle" disabled={!visible || !canCompactDisclosure}>{disclosureOpen ? t('agent.chat.fullScopeLimits') : t('agent.chat.expandReviewedScope')}</CollapsibleTrigger>
+              <CollapsibleTrigger className="agent-chat-details-trigger" data-testid="agent-timeline-selected-details-toggle" disabled={!composerOptionsVisible || !canCompactDisclosure}>{disclosureOpen ? t('agent.chat.fullScopeLimits') : t('agent.chat.expandReviewedScope')}</CollapsibleTrigger>
               <CollapsibleContent keepMounted className="agent-edit-selected-details" data-testid="agent-timeline-selected-details">
                 <p>{t('agent.chat.moveDataDisclosure')}</p>
-                <div className="agent-timeline-intervals" data-testid="agent-timeline-occupied-intervals" tabIndex={visible ? 0 : -1} aria-label={t('agent.chat.sentOccupiedIntervals')}>{state.timelineTarget.occupiedIntervals.length ? <ol>{state.timelineTarget.occupiedIntervals.map((interval, index) => <li key={index}>{t('agent.chat.frameInterval', { startFrame: creationParameter(interval.startFrame), endFrame: creationParameter(interval.endFrame) })}</li>)}</ol> : <p>{t('agent.chat.noOtherClips')}</p>}</div>
+                <div className="agent-timeline-intervals" data-testid="agent-timeline-occupied-intervals" tabIndex={composerOptionsVisible ? 0 : -1} aria-label={t('agent.chat.sentOccupiedIntervals')}>{state.timelineTarget.occupiedIntervals.length ? <ol>{state.timelineTarget.occupiedIntervals.map((interval, index) => <li key={index}>{t('agent.chat.frameInterval', { startFrame: creationParameter(interval.startFrame), endFrame: creationParameter(interval.endFrame) })}</li>)}</ol> : <p>{t('agent.chat.noOtherClips')}</p>}</div>
                 <p>{t('agent.chat.moveBounds', { count: state.timelineTarget.occupiedIntervals.length })}</p>
                 <p>{t('agent.chat.movePreservedAndConflicts')}</p>
                 {snapshot?.timelineEdit && <p data-testid="agent-timeline-policy">{t('agent.chat.proposalToolLimits', { schemaVersion: creationParameter(snapshot.timelineEdit.schemaVersion), catalogHash: creationParameter(snapshot.timelineEdit.catalogHash.slice(0, 12)) })}</p>}
-                <Collapsible><CollapsibleTrigger className="agent-chat-details-trigger" disabled={!visible}>{t('agent.chat.localIdentity')}</CollapsibleTrigger><CollapsibleContent><p>{t('agent.chat.projectId', { projectId: creationParameter(projectId) })}</p><p>{t('agent.chat.timelineClipTrackIds', { timelineId: creationParameter(state.timelineTarget.timelineId), clipId: creationParameter(state.timelineTarget.clipId), trackId: creationParameter(state.timelineTarget.trackId) })}</p></CollapsibleContent></Collapsible>
+                <Collapsible><CollapsibleTrigger className="agent-chat-details-trigger" disabled={!composerOptionsVisible}>{t('agent.chat.localIdentity')}</CollapsibleTrigger><CollapsibleContent><p>{t('agent.chat.projectId', { projectId: creationParameter(projectId) })}</p><p>{t('agent.chat.timelineClipTrackIds', { timelineId: creationParameter(state.timelineTarget.timelineId), clipId: creationParameter(state.timelineTarget.clipId), trackId: creationParameter(state.timelineTarget.trackId) })}</p></CollapsibleContent></Collapsible>
               </CollapsibleContent>
             </Collapsible>
           </> : <p role="status">{t('agent.chat.selectSavedClip')}</p>}
           {timelineEditBlockedReason && <p role="status" data-testid="agent-timeline-context-blocked">{timelineEditBlockedDescriptor ? renderMessage(timelineEditBlockedDescriptor) : t('agent.gain.state.checkTimelineState')}</p>}
         </section>}
-        {gaining && <AgentTimelineGainSelection target={state.timelineGainTarget} policy={snapshot?.timelineGainEdit} blockedReason={timelineGainBlockedReason} blockedDescriptor={timelineGainBlockedDescriptor} visible={visible} />}
+        {gaining && <AgentTimelineGainSelection target={state.timelineGainTarget} policy={snapshot?.timelineGainEdit} blockedReason={timelineGainBlockedReason} blockedDescriptor={timelineGainBlockedDescriptor} visible={composerOptionsVisible} />}
         {configuration && <div className="agent-chat-destination" data-testid="agent-chat-destination"><div><span>{t('agent.chat.destination')}</span><strong>{configuration.model || t('agent.chat.missingModel')}</strong><span data-testid="agent-chat-protocol">{AGENT_PROTOCOLS[configuration.protocol].label}</span></div><p>{configuration.baseUrl ? deriveAgentEndpoint(configuration) : t('agent.chat.missingEndpoint')}</p><p className="agent-chat-context" data-testid="agent-chat-context">{gaining ? renderMessage(AGENT_GAIN_SEND_CONTEXT) : moving ? t('agent.chat.moveSendDisclosure') : editing ? t('agent.chat.shotSendDisclosure') : inspecting ? t('agent.chat.inspectionSendDisclosure', { value: creationParameter(projectName || projectId) }) : t('agent.chat.chatSendDisclosure')}</p></div>}
-        </div>
+        </CollapsibleContent>
+        </Collapsible>
         <div className="agent-chat-composer-input">
-        <Label className="agent-chat-consent" htmlFor="agent-chat-consent"><Input id="agent-chat-consent" data-testid="agent-chat-consent" type="checkbox" checked={Boolean(snapshot && state.consent !== null && state.consent === agentChatConsentKey(snapshot, state.contextMode, selectedTarget))} disabled={!ready || pending || (editing && !state.editTarget) || (moving && (!state.timelineTarget || Boolean(timelineEditBlockedReason))) || (gaining && (!state.timelineGainTarget || Boolean(timelineGainBlockedReason)))} onChange={event => { if (usable()) session.current?.approve(event.target.checked); }} /><span>{t('agent.chat.consentAndHiddenNotice', { value: creationParameter(gaining ? renderMessage(AGENT_GAIN_SEND_CONSENT) : moving ? t('agent.chat.moveSendConsent') : editing ? t('agent.chat.shotSendConsent') : inspecting ? t('agent.chat.inspectionSendConsent') : t('agent.chat.chatSendConsent')) })}</span></Label>
+        <div className="agent-chat-consent"><span role="status" data-testid="agent-chat-authorization-status">{t(sendConsented?'agent.authorization.saved':'agent.authorization.firstRequired')}</span>{!sendConsented&&<Button type="button" variant="ghost" data-testid="agent-chat-authorization-open" disabled={!authorizationReady} onClick={()=>{if(usable())setAuthorizationIntent({key:disclosureKey,checked:false,sendAfterApproval:false});}}>{t('agent.authorization.review')}</Button>}</div>
         <Label className="sr-only" htmlFor="agent-chat-prompt">{t('agent.chat.messageLabel')}</Label>
         <Textarea id="agent-chat-prompt" ref={composer} data-testid="agent-chat-prompt" value={state.draft} rows={3} maxLength={AGENT_CHAT_PROMPT_BYTES} disabled={!visible || pending || ['submitting', 'stopping'].includes(phase)} placeholder={t('agent.chat.messagePlaceholder')} aria-describedby="agent-chat-input-help" onChange={event => { if (usable()) session.current?.edit(event.target.value); }} onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && !event.nativeEvent?.isComposing) { event.preventDefault(); void send(); } }} />
         <div className="agent-chat-composer-bottom"><div id="agent-chat-input-help"><span className={promptIssue ? 'is-warning' : ''}>{promptIssue || t('agent.chat.promptByteCount', { promptBytes: creationParameter(promptBytes), AGENT_CHAT_PROMPT_BYTES: creationParameter(AGENT_CHAT_PROMPT_BYTES) })}</span><span data-testid="agent-chat-phase" role="status">{phaseLabel(phase, t)}</span></div><div className="agent-chat-controls">
           {['unknown', 'load_error', 'detached'].includes(phase) && <Button type="button" variant="ghost" className="button" data-testid="agent-chat-reload" disabled={!visible} onClick={() => { if (usable()) void session.current?.load(); }}><Icon name="refresh" size={13} />{t('agent.chat.reload')}</Button>}
           {running && <Button type="button" variant="ghost" className="button agent-chat-stop" data-testid="agent-chat-stop" disabled={!visible || ['stopping', 'loading', 'submitting'].includes(phase)} onClick={() => { if (usable()) void session.current?.stop(); }}>{t('agent.chat.stopLaterSteps')}</Button>}
-          {!running && <Button type="submit" variant="ghost" className="button primary" data-testid="agent-chat-send" disabled={!canSend}>{phase === 'submitting' ? <span className="spinner" /> : <Icon name="arrow" size={14} />}{t('agent.chat.send')}</Button>}
+          {!running && <Button type="submit" variant="ghost" className="button primary" data-testid="agent-chat-send" disabled={!canStart}>{phase === 'submitting' ? <span className="spinner" /> : <Icon name="arrow" size={14} />}{t('agent.chat.send')}</Button>}
         </div></div>
         </div>
         <p className="agent-chat-stop-note">{t('agent.chat.stopDisclosure')}</p>
       </form>
+      <Dialog open={Boolean(visible&&!sendConsented&&authorizationIntent.key===disclosureKey)} onOpenChange={open=>{if(!open&&!state.authorizing)setAuthorizationIntent({key:null,checked:false,sendAfterApproval:false});}}>
+        <DialogContent className="agent-authorization-dialog" data-testid="agent-chat-authorization-dialog" showCloseButton={!state.authorizing}>
+          <DialogTitle>{t('agent.authorization.title')}</DialogTitle><DialogDescription>{t('agent.authorization.explanation')}</DialogDescription>
+          <p>{configuration?.model}</p><p className="agent-chat-context">{configuration?.baseUrl?deriveAgentEndpoint(configuration):''}</p>
+          <p>{gaining?renderMessage(AGENT_GAIN_SEND_CONTEXT):moving?t('agent.chat.moveSendDisclosure'):editing?t('agent.chat.shotSendDisclosure'):inspecting?t('agent.chat.inspectionSendDisclosure',{value:creationParameter(projectName||projectId)}):t('agent.chat.chatSendDisclosure')}</p>
+          <p>{t('agent.authorization.cost')}</p>
+          <Label className="agent-chat-consent" htmlFor="agent-chat-consent"><Input id="agent-chat-consent" data-testid="agent-chat-consent" type="checkbox" checked={sendConsented||authorizationIntent.key===disclosureKey&&authorizationIntent.checked} disabled={!authorizationReady||sendConsented} onChange={event=>{if(usable()&&!sendConsented)setAuthorizationIntent({...authorizationIntent,key:disclosureKey,checked:event.target.checked});}}/><span>{t('agent.authorization.remember')}</span></Label>
+          <DialogFooter><Button type="button" variant="ghost" disabled={state.authorizing} onClick={()=>setAuthorizationIntent({key:null,checked:false,sendAfterApproval:false})}>{t('agent.authorization.cancel')}</Button><Button type="button" data-testid="agent-chat-authorization-confirm" disabled={!authorizationReady||!authorizationIntent.checked} onClick={()=>{void confirmAuthorization();}}>{t(state.authorizing?'agent.authorization.saving':'agent.authorization.confirm')}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
   </section>;
 }

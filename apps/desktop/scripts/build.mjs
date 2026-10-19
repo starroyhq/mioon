@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import desktopIdentity from '../identity.cjs';
 import desktopBuildMetadata from '../build-metadata.cjs';
 import {main as checkTypes} from '../../../scripts/tooling.mjs';
+import {localRequireBundlePlugin} from './bundle-local-require.mjs';
 const identity = desktopIdentity.identityForChannel(desktopIdentity.buildChannel(process.argv.slice(2)));
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const { appVersion, desktopPackage: pkg } = desktopBuildMetadata.readBuildMetadata(root);
@@ -20,6 +21,7 @@ await mkdir(output, { recursive: true });
 for (const name of ['main', 'backend']) {
   await build({ entryPoints: [path.join(desktop, `src/${name}.mjs`)], outfile: path.join(output, `${name}.cjs`),
     bundle: true, platform: 'node', format: 'cjs', target: 'node24', external: ['electron'],
+    plugins:[localRequireBundlePlugin(root)],
     define: { 'import.meta.url': '__mioon_import_meta_url', __MIOON_DESKTOP_CHANNEL__: JSON.stringify(identity.channel) },
     banner: { js: 'const __mioon_import_meta_url = require("node:url").pathToFileURL(__filename).href;' },
     sourcemap: false, legalComments: 'eof', logLevel: 'info' });

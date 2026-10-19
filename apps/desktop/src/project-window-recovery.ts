@@ -80,7 +80,7 @@ export function createProjectBackendIncident() {
   return {
     get failed() { return failed; }, fail() { failed = true; },
     assertAlive() {
-      if (failed) throw Object.assign(new Error('本地服务在窗口准备完成前已停止。'), { code: 'BACKEND_START_EXITED' });
+      if (failed) throw Object.assign(new Error('本地服务在窗口准备完成前已停止'), { code: 'BACKEND_START_EXITED' });
     },
     claimPrompt() { if (prompted) return false; prompted = true; return true; },
   };

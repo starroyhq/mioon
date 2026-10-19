@@ -1,0 +1,133 @@
+TAP version 13
+# Subtest: shutdown before reference preparation finishes leaves queued with no attempt or media spawn
+ok 1 - shutdown before reference preparation finishes leaves queued with no attempt or media spawn
+  ---
+  duration_ms: 642.862875
+  type: 'test'
+  ...
+# Subtest: pre-aborted shared POST is explicitly before dispatch; ambiguous abort after fetch stays unknown
+ok 2 - pre-aborted shared POST is explicitly before dispatch; ambiguous abort after fetch stays unknown
+  ---
+  duration_ms: 0.599541
+  type: 'test'
+  ...
+# Subtest: cooperative adapter preflight abort rolls back only the unsubmitted attempt
+ok 3 - cooperative adapter preflight abort rolls back only the unsubmitted attempt
+  ---
+  duration_ms: 651.511041
+  type: 'test'
+  ...
+# Subtest: uncooperative submit stops within budget, records unknown, and late acceptance cannot touch closed SQLite
+ok 4 - uncooperative submit stops within budget, records unknown, and late acceptance cannot touch closed SQLite
+  ---
+  duration_ms: 1036.227542
+  type: 'test'
+  ...
+# Subtest: accepted receipt inside the stop window is durable without starting another phase
+ok 5 - accepted receipt inside the stop window is durable without starting another phase
+  ---
+  duration_ms: 676.046208
+  type: 'test'
+  ...
+# Subtest: shutdown during poll keeps original recoverable state and fences late phase/media
+ok 6 - shutdown during poll keeps original recoverable state and fences late phase/media
+  ---
+  duration_ms: 584.287958
+  type: 'test'
+  ...
+# Subtest: shutdown during reconcile keeps original recoverable state and fences late phase/media
+ok 7 - shutdown during reconcile keeps original recoverable state and fences late phase/media
+  ---
+  duration_ms: 605.746917
+  type: 'test'
+  ...
+# Subtest: shutdown during download keeps original recoverable state and fences late phase/media
+ok 8 - shutdown during download keeps original recoverable state and fences late phase/media
+  ---
+  duration_ms: 589.045459
+  type: 'test'
+  ...
+# Subtest: export interruption preserves frozen multi-input snapshot and queues recovery without late probe
+ok 9 - export interruption preserves frozen multi-input snapshot and queues recovery without late probe
+  ---
+  duration_ms: 596.896667
+  type: 'test'
+  ...
+# Subtest: service import shutdown gate covers write-to-probe await and removes unpublished owned file
+ok 10 - service import shutdown gate covers write-to-probe await and removes unpublished owned file
+  ---
+  duration_ms: 680.81075
+  type: 'test'
+  ...
+# Subtest: RPC reconciliation drains an ignored provider promise and cannot mutate after SQLite closes
+ok 11 - RPC reconciliation drains an ignored provider promise and cannot mutate after SQLite closes
+  ---
+  duration_ms: 728.660167
+  type: 'test'
+  ...
+# Subtest: download abort cancels stalled read, removes only temporary bytes, and preserves existing output
+ok 12 - download abort cancels stalled read, removes only temporary bytes, and preserves existing output
+  ---
+  duration_ms: 675.633708
+  type: 'test'
+  ...
+# Worker cycle failed: MEDIA_TERMINATION_UNCONFIRMED
+# Subtest: unconfirmed owned-child termination is an explicit worker stop failure, never a successful close
+ok 13 - unconfirmed owned-child termination is an explicit worker stop failure, never a successful close
+  ---
+  duration_ms: 3718.949708
+  type: 'test'
+  ...
+# Subtest: server/worker termination result validator rejects every unconfirmed outcome
+ok 14 - server/worker termination result validator rejects every unconfirmed outcome
+  ---
+  duration_ms: 0.38825
+  type: 'test'
+  ...
+# Subtest: retired worker operation aborts its queued probe before later semaphore release can spawn
+ok 15 - retired worker operation aborts its queued probe before later semaphore release can spawn
+  ---
+  duration_ms: 803.917167
+  type: 'test'
+  ...
+# Subtest: ordinary unconfirmed provider/media failure stops same-cycle and future jobs/exports before explicit stop
+ok 16 - ordinary unconfirmed provider/media failure stops same-cycle and future jobs/exports before explicit stop
+  ---
+  duration_ms: 879.578834
+  type: 'test'
+  ...
+# Worker cycle failed: MEDIA_TERMINATION_UNCONFIRMED
+# Subtest: ordinary final-reap failure latches the worker before later timer ticks can dispatch another job
+ok 17 - ordinary final-reap failure latches the worker before later timer ticks can dispatch another job
+  ---
+  duration_ms: 3961.881708
+  type: 'test'
+  ...
+# Worker cycle failed: MEDIA_TERMINATION_UNCONFIRMED
+# Subtest: unconfirmed existing-result probe never falls back to provider download or advances queued work
+ok 18 - unconfirmed existing-result probe never falls back to provider download or advances queued work
+  ---
+  duration_ms: 3947.342416
+  type: 'test'
+  ...
+# Subtest: unconfirmed export failure stays queued with its snapshot and a durable pause diagnostic
+ok 19 - unconfirmed export failure stays queued with its snapshot and a durable pause diagnostic
+  ---
+  duration_ms: 598.686625
+  type: 'test'
+  ...
+# Subtest: unconfirmed media failure during ambiguous submission keeps acceptance uncertainty primary
+ok 20 - unconfirmed media failure during ambiguous submission keeps acceptance uncertainty primary
+  ---
+  duration_ms: 575.146958
+  type: 'test'
+  ...
+1..20
+# tests 20
+# suites 0
+# pass 20
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 22294.915

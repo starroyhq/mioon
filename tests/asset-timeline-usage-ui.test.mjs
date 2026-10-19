@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 import { deriveTimelineAssetUsage, retainTimelineAssetUsage } from '../apps/web/src/timeline-asset-usage.ts';
 import { dispositionCounts, dispositionFilters, filterLibraryAssets } from '../apps/web/src/asset-disposition-state.js';
+import * as annotations from '../apps/web/src/asset-annotation-state.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const source = readFileSync(path.join(root, 'apps/web/src/AssetTimelineUsage.tsx'), 'utf8');
@@ -46,6 +47,8 @@ function harness() {
     if (name === 'react') return { ...react, default: react };
     if (name.endsWith('/i18n/I18nProvider.tsx')) return i18nTestModule();
     if (name === '@mioon/ui/components/button') return { Button: 'Button' };
+    if (name === '@mioon/ui/components/workbench-icons') return { Film: 'Film' };
+    if (name.endsWith('.css')) return {};
     throw Error(`Unexpected TSX import ${name}`);
   };
   h.usage = load(source, 'tsx', strictRequire);
@@ -54,7 +57,9 @@ function harness() {
     './asset-disposition-state.js': { dispositionCounts, dispositionFilters, filterLibraryAssets },
     './AssetDispositionControls.jsx': { __esModule: true, default: 'AssetDispositionControls', useDispositionInteraction: () => ({ visible: h.visible, admit: action => { if (h.visible) action(); } }) },
     './Timeline.jsx': { assetKind: () => 'video', dragAsset() {} },
-    './WorkspaceControls.jsx': { WorkbenchTooltip: 'WorkbenchTooltip' },
+    './WorkspaceControls.jsx': { WorkbenchTooltip: 'WorkbenchTooltip', WorkbenchSelect: 'WorkbenchSelect' },
+    './AssetLibraryToolbar.tsx': { __esModule: true, default: 'AssetLibraryToolbar', useAssetLibraryLayout: () => ({ layout: 'grid', setLayout() {} }) },
+    './asset-annotation-state.ts': annotations,
     './workspace-visibility.jsx': { WorkspaceVisibilityProvider: 'WorkspaceVisibilityProvider' },
     './Nodes.jsx': { Media: 'Media' },
     './icons.jsx': { __esModule: true, default: 'Icon' },
@@ -189,14 +194,15 @@ test('actual library composes usage filter, preserves hidden selected source and
   assert.doesNotMatch(librarySource, /setQuickAssetId|setSelectedClipId|guardNavigation|sourceRangeScope/);
 });
 
-test('new usage filters scroll before cards while existing filters and actions stay fixed', () => {
+test('usage, type and mark filters compose once in the shared filter popover above the scrolling cards', () => {
   const h = harness(), tree = h.render(h.library, libraryProps());
   const scroll = nodes(tree).find(node => node.props?.className === 'asset-scroll-area');
   const scrolled = nodes(scroll);
-  const usageFilters = scrolled.find(node => node.type === h.usage.AssetTimelineUsageFilters);
-  assert.ok(usageFilters, 'The new usage controls must not consume fixed library header height');
+  const toolbar = nodes(tree).find(node => node.type === 'AssetLibraryToolbar');
+  const usageFilters = nodes(toolbar).find(node => node.type === h.usage.AssetTimelineUsageFilters);
+  assert.ok(usageFilters, 'Usage controls belong to the same owned filter popover as type and marks');
   assert.equal(nodes(tree).filter(node => node.type === h.usage.AssetTimelineUsageFilters).length, 1);
-  assert.ok(scrolled.indexOf(usageFilters) < scrolled.indexOf(find(scroll, `asset-card-${assetId}`)));
+  assert.equal(scrolled.includes(usageFilters), false);
   assert.equal(scrolled.some(node => node.props?.className === 'asset-tabs'), false);
   for (const selector of ['asset-disposition-filter-all', 'asset-disposition-refresh', 'asset-filter-reset']) {
     assert.ok(find(tree, selector));

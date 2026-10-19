@@ -1,0 +1,47 @@
+[
+  {
+    "name": "typecheck",
+    "command": [
+      "node",
+      "scripts/tooling.mjs",
+      "typecheck"
+    ],
+    "exitCode": 0,
+    "seconds": 12.33
+  },
+  {
+    "name": "build",
+    "command": [
+      "node",
+      "scripts/tooling.mjs",
+      "build",
+      "--channel=development"
+    ],
+    "exitCode": 0,
+    "seconds": 34.84
+  },
+  {
+    "name": "official-full",
+    "command": [
+      "node",
+      "scripts/tooling.mjs",
+      "test",
+      "--suite=full",
+      "--concurrency=4"
+    ],
+    "exitCode": 2,
+    "seconds": 0.17
+  },
+  {
+    "name": "portable",
+    "command": [
+      "node",
+      "scripts/tooling.mjs",
+      "test",
+      "--suite=portable",
+      "--concurrency=1"
+    ],
+    "exitCode": 0,
+    "seconds": 26.18
+  }
+]

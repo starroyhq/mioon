@@ -1,0 +1,576 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-18T19:41:18.777574+00:00",
+  "snapshot": "/private/tmp/mioon-redesign-2_80wkck/verify",
+  "scope": "Final passing focused Board leaf, frozen38/40 fixture and ordinary48 impact runs only. Historical failed rounds excluded. Two shared UI files are reused from UI-final and must be deduplicated by filename when combining reports. Final visual Board fixes were verified in independent Chrome contexts on the 55203 build; see board-browser-results.json.",
+  "tapLog": "logs/Board-final.tap",
+  "groups": [
+    {
+      "id": "board-leaves",
+      "files": [
+        {
+          "file": "tests/asset-disposition-ui.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/asset-disposition-ui.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 18,
+          "pass": 18,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 314.757458,
+          "wallSeconds": 0.48,
+          "sourceRun": "focused-board-final"
+        },
+        {
+          "file": "tests/redesign-board-ui.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/redesign-board-ui.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 4,
+          "pass": 4,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 266.263375,
+          "wallSeconds": 0.4,
+          "sourceRun": "focused-board-storyboard-controls-final"
+        },
+        {
+          "file": "tests/comparison-playback.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/comparison-playback.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 5,
+          "pass": 5,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 158.866125,
+          "wallSeconds": 0.32,
+          "sourceRun": "focused-board-final"
+        },
+        {
+          "file": "tests/version-comparison-ui.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/version-comparison-ui.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 11,
+          "pass": 11,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 244.80925,
+          "wallSeconds": 0.38,
+          "sourceRun": "focused-board-final"
+        },
+        {
+          "file": "tests/provider-settings-ui.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/provider-settings-ui.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 1,
+          "pass": 1,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 568.257417,
+          "wallSeconds": 0.73,
+          "sourceRun": "focused-board-final"
+        },
+        {
+          "file": "tests/asset-annotation-ui-state.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/asset-annotation-ui-state.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 13,
+          "pass": 13,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 222.614375,
+          "wallSeconds": 0.38,
+          "sourceRun": "focused-board-final"
+        },
+        {
+          "file": "tests/local-shot-text-ui.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/local-shot-text-ui.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 28,
+          "pass": 28,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 330.84975,
+          "wallSeconds": 0.48,
+          "sourceRun": "focused-board-final"
+        },
+        {
+          "file": "tests/reference-connections.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/reference-connections.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 15,
+          "pass": 15,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 13308.964542,
+          "wallSeconds": 13.43,
+          "sourceRun": "focused-board-final"
+        },
+        {
+          "file": "tests/canvas-position.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/canvas-position.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 2,
+          "pass": 2,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 152.702208,
+          "wallSeconds": 0.27,
+          "sourceRun": "focused-board-final"
+        },
+        {
+          "file": "tests/asset-timeline-usage-ui.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/asset-timeline-usage-ui.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 13,
+          "pass": 13,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 733.723125,
+          "wallSeconds": 0.9,
+          "sourceRun": "focused-board-usage-final"
+        },
+        {
+          "file": "tests/image-generation-ui.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/image-generation-ui.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 57,
+          "pass": 57,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 488.794209,
+          "reusedFrom": "ui-results.json",
+          "sourceRun": "ui-final"
+        },
+        {
+          "file": "tests/ui-components.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/ui-components.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 29,
+          "pass": 29,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 532.647416,
+          "reusedFrom": "ui-results.json",
+          "sourceRun": "ui-final"
+        }
+      ]
+    },
+    {
+      "id": "frozen-upgrade-fixtures",
+      "files": [
+        {
+          "file": "tests/opacity-upgrade-application-integration.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/opacity-upgrade-application-integration.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 7,
+          "pass": 7,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 7742.530208,
+          "wallSeconds": 7.86,
+          "sourceRun": "focused-board-frozen-final"
+        },
+        {
+          "file": "tests/opacity-upgrade-database.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/opacity-upgrade-database.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 37,
+          "pass": 37,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 29182.490375,
+          "wallSeconds": 29.34,
+          "sourceRun": "focused-board-frozen-final"
+        },
+        {
+          "file": "tests/opacity-upgrade-companions.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/opacity-upgrade-companions.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 25,
+          "pass": 25,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 274.306541,
+          "wallSeconds": 0.44,
+          "sourceRun": "focused-board-frozen-final"
+        },
+        {
+          "file": "tests/opacity-upgrade-cli.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/opacity-upgrade-cli.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 8,
+          "pass": 8,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 4197.230709,
+          "wallSeconds": 4.37,
+          "sourceRun": "focused-board-frozen-final"
+        },
+        {
+          "file": "tests/opacity-workspace-upgrade.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/opacity-workspace-upgrade.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 52,
+          "pass": 52,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 46161.616416,
+          "wallSeconds": 46.3,
+          "sourceRun": "focused-board-frozen-final"
+        },
+        {
+          "file": "tests/opacity-workspace-upgrade-faults.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/opacity-workspace-upgrade-faults.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 49,
+          "pass": 49,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 47278.803125,
+          "wallSeconds": 47.45,
+          "sourceRun": "focused-board-frozen-final"
+        }
+      ]
+    },
+    {
+      "id": "ordinary48-impact-fixtures",
+      "files": [
+        {
+          "file": "tests/workspace-backup-readiness.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/workspace-backup-readiness.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 4,
+          "pass": 4,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 3035.792791,
+          "wallSeconds": 3.2,
+          "sourceRun": "focused-board-impact-corrected"
+        },
+        {
+          "file": "tests/workspace-restore-backup-boundary.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/workspace-restore-backup-boundary.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 3,
+          "pass": 3,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 2027.867625,
+          "wallSeconds": 2.16,
+          "sourceRun": "focused-board-impact-corrected"
+        },
+        {
+          "file": "tests/workspace-schema38.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/workspace-schema38.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 49,
+          "pass": 49,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 2926.602917,
+          "wallSeconds": 3.09,
+          "sourceRun": "focused-board-impact-corrected"
+        },
+        {
+          "file": "tests/timeline-volume-envelope-durable-ingress.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/timeline-volume-envelope-durable-ingress.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 6,
+          "pass": 6,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 4158.016792,
+          "wallSeconds": 4.3,
+          "sourceRun": "focused-board-impact-corrected"
+        },
+        {
+          "file": "tests/timeline-volume-envelope-owned-startup.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/timeline-volume-envelope-owned-startup.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 19,
+          "pass": 19,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 27031.468042,
+          "wallSeconds": 27.18,
+          "sourceRun": "focused-board-impact-corrected"
+        },
+        {
+          "file": "tests/opacity-candidate-application-services.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/opacity-candidate-application-services.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 7,
+          "pass": 7,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 3009.620083,
+          "wallSeconds": 3.14,
+          "sourceRun": "focused-board-impact-corrected"
+        },
+        {
+          "file": "tests/opacity-candidate-transactions.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/opacity-candidate-transactions.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 7,
+          "pass": 7,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 6078.896875,
+          "wallSeconds": 6.24,
+          "sourceRun": "focused-board-impact-corrected"
+        },
+        {
+          "file": "tests/workspace-restore-media-fences.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/workspace-restore-media-fences.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 15,
+          "pass": 15,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 4849.798875,
+          "wallSeconds": 4.98,
+          "sourceRun": "focused-board-impact-corrected"
+        },
+        {
+          "file": "tests/agent-timeline-gain-media.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/agent-timeline-gain-media.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 1,
+          "pass": 1,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 16719.427417,
+          "wallSeconds": 16.87,
+          "sourceRun": "focused-board-impact-corrected"
+        },
+        {
+          "file": "tests/frame-consumption.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/frame-consumption.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 4,
+          "pass": 4,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 4975.580666,
+          "wallSeconds": 5.15,
+          "sourceRun": "focused-board-impact-corrected"
+        },
+        {
+          "file": "tests/storyboard-multistream-media.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/storyboard-multistream-media.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 6,
+          "pass": 6,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 2886.010584,
+          "wallSeconds": 3.02,
+          "sourceRun": "focused-board-impact-corrected"
+        },
+        {
+          "file": "tests/timeline-fades-media.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/timeline-fades-media.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 7,
+          "pass": 7,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 4550.555084,
+          "wallSeconds": 4.7,
+          "sourceRun": "focused-board-impact-corrected"
+        },
+        {
+          "file": "tests/timeline-replacement-media.test.mjs",
+          "command": [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            "tests/timeline-replacement-media.test.mjs"
+          ],
+          "exitCode": 0,
+          "tests": 1,
+          "pass": 1,
+          "fail": 0,
+          "skipped": 0,
+          "durationMs": 3279.142959,
+          "wallSeconds": 3.45,
+          "sourceRun": "focused-board-impact-corrected"
+        }
+      ]
+    }
+  ],
+  "totals": {
+    "files": 31,
+    "tests": 503,
+    "pass": 503,
+    "fail": 0,
+    "skipped": 0,
+    "durationMs": 237689.007334
+  },
+  "browserVerification": {
+    "evidencePath": "board-browser-results.json",
+    "url": "http://127.0.0.1:55203",
+    "passed": true,
+    "screenshots": 17,
+    "pageErrors": 0,
+    "appearancePreferenceWrites": 0
+  },
+  "targetedRevisionEvidence": {
+    "sourceRun": "focused-board-storyboard-controls-final",
+    "tests": 4,
+    "sourceSha256": {
+      "apps/web/src/board-redesign.css": "dd037e49c5a9a91e2c102e5d2ed58f91ec41a7111b1398536d3602372722f0e8",
+      "apps/web/src/StoryboardStrip.tsx": "c7a7224de1031941cdd36ad55cee774307c9b7689e1b7ab9846275666832c2e7",
+      "tests/redesign-board-ui.test.mjs": "57ac9df268f7cf11a1fe5b717f8278d8192d26d387e4afa1feb5e60cebb7a2f0"
+    }
+  }
+}

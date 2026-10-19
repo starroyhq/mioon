@@ -1,0 +1,170 @@
+{
+  "baseline": "ff85c9a8daaa35bff080d0979fe2faa3683cd3b5",
+  "headBeforeIntegrationFix": "256cfd3d6bff0fbd304958125884acbe7a126348",
+  "releaseReady": false,
+  "fixes": [
+    "captured42 opacity clip.add task/receipt remains readable after43 restore without widening new43 prepare/execute",
+    "upgraded42 remembered-project target development scope matches actual candidate application; source channel remains strict",
+    "ordinary40 upgrade refuses acknowledged historical operations not readable by the seven-operation application grammar",
+    "App ancestor retained-input gate preserves disconnected opacity IME native Enter/Escape defaults",
+    "four-language backup/upgrade CLI boundary messages and current documentation indices"
+  ],
+  "aggregate": {
+    "initial": "aggregate-initial-result.json",
+    "final": "aggregate-result.json",
+    "finalExecution": "completed-with-six-retained-failures",
+    "uniqueFiles": 121,
+    "wholeRepositoryQualification": false,
+    "overlappingCountsAreNotAdded": true,
+    "finalCounts": {
+      "tests": 3574,
+      "suites": 0,
+      "pass": 3568,
+      "fail": 6,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "finalCode": 1,
+    "finalSelectionHashesMatch": true
+  },
+  "checks": [
+    {
+      "name": "Node24 canonical strict foundation/browser types and source-language guard",
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+        "scripts/tooling.mjs",
+        "typecheck"
+      ],
+      "code": 0,
+      "status": "passed",
+      "log": "typecheck.txt"
+    },
+    {
+      "name": "Node24 canonical default source build",
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+        "scripts/tooling.mjs",
+        "build"
+      ],
+      "code": 1,
+      "status": "blocked",
+      "log": "build-default.txt",
+      "blocker": "ERR_DLOPEN_FAILED: macOS refuses mapping installed @rollup/rollup-darwin-arm64/rollup.darwin-arm64.node into hardened CUA Node because Team IDs differ; wrapper MODULE_NOT_FOUND is misleading. No installation or signing change attempted."
+    },
+    {
+      "name": "Node24 candidate Vite source build",
+      "cwd": "apps/web",
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+        "node_modules/vite/bin/vite.js",
+        "build",
+        "--mode",
+        "opacity-candidate"
+      ],
+      "code": 1,
+      "status": "blocked",
+      "log": "build-candidate-node24.txt",
+      "blocker": "Same macOS native-addon Team ID restriction; no workaround or retry."
+    },
+    {
+      "name": "Node26 auxiliary default Web + development Desktop source build",
+      "command": [
+        "/opt/homebrew/Cellar/node/26.9.0/bin/node",
+        "scripts/tooling.mjs",
+        "build"
+      ],
+      "code": 0,
+      "status": "passed-auxiliary-only",
+      "log": "build-default-node26-auxiliary.txt",
+      "formalNode24Qualification": false
+    },
+    {
+      "name": "Node26 auxiliary isolated candidate Web source build",
+      "cwd": "apps/web",
+      "command": [
+        "/opt/homebrew/Cellar/node/26.9.0/bin/node",
+        "node_modules/vite/bin/vite.js",
+        "build",
+        "--mode",
+        "opacity-candidate"
+      ],
+      "code": 0,
+      "status": "passed-auxiliary-only",
+      "log": "build-candidate-node26-auxiliary.txt",
+      "formalNode24Qualification": false
+    },
+    {
+      "name": "Default/candidate artifact separation",
+      "status": "passed-auxiliary-only",
+      "evidence": "build-entry-audit.json"
+    },
+    {
+      "name": "Frozen manifest and unchanged legacy/source boundaries",
+      "status": "passed",
+      "evidence": "frozen-check.json"
+    }
+  ],
+  "remainingBlockers": [
+    {
+      "action": "Open seeded historical ordinary24/restored25 and marker-repair variants with current dispatcher",
+      "target": "tests/workspace-schema-profiles.test.mjs; timeline_requests.response rowid88 BLOB 00FF0D0A",
+      "status": "failed-current-profile-expectations-classification-pending",
+      "reason": "Six current test expectations conflict with the frozen volume validator rejecting non-TEXT receipt BLOB as RESTORE_SCHEMA_UNSUPPORTED. The original golden and preservation assertions remain. Whether the fixture represents supported historical compatibility or a stale current-reopen expectation is unresolved; do not equate this with a7fcf741 without comparison. No frozen runtime or history admission permission changed.",
+      "evidence": "workspace-portable-fixture-repair.json",
+      "autoReviewDenied": false,
+      "baselineReproduction": {
+        "baseline": "ff85c9a8daaa35bff080d0979fe2faa3683cd3b5",
+        "exactBaselineExecuted": false,
+        "status": "baseline-problem-not-established",
+        "evidenceScope": "validator/dispatcher source SHA equality only; not complete dependency-closure execution at baseline"
+      },
+      "supportClassificationEvidence": "blob-baseline-qualification.json",
+      "priorFixDistinction": {
+        "commit": "a7fcf74199ed7ca54c5be408e6c67cd33b19b645",
+        "target": "tests/workspace-restore-schema.test.mjs ordinary40 dynamic seed",
+        "policy": "TEXT positive and retained BLOB refusal WORKSPACE_VOLUME_ENVELOPE_INVALID",
+        "currentSix": "Independent0343 golden old24/25/marker repair with RESTORE_SCHEMA_UNSUPPORTED; distinct fixture/entry/error path; current historical support scope unresolved"
+      }
+    },
+    {
+      "action": "Build with prescribed Node24",
+      "target": "CUA darwin-arm64 Node24.21.0 + installed Rollup native binding",
+      "status": "os-denied-native-addon-mapping",
+      "reason": "Different code-signing Team IDs. Standard/product runtime qualification remains missing; no install, codesign or environment alteration.",
+      "autoReviewDenied": false
+    },
+    {
+      "action": "Final real four-locale GUI, CJK OS IME, durable draft cold reopen and normal close, listening transports/native app",
+      "status": "not-run",
+      "reason": "Explicitly excluded unavailable prior GUI/listener paths; in-memory HTTP and synthetic React are not native acceptance. Prior disconnected window closure/service exit code remain historically uncertain; no current retry.",
+      "evidence": "../../OPACITY-LANGUAGE-IME-ACCEPTANCE.md"
+    },
+    {
+      "action": "Actual media/product runtime/platform/signing acceptance",
+      "status": "not-run",
+      "reason": "Only Homebrew FFmpeg/ffprobe9.0.2 found; historical fixed Linux7.1.5/hash combination not found. Current product has no global exact FFmpeg pin. No codecs, long media, provider or packaging/signing executed.",
+      "evidence": "toolchain.json"
+    }
+  ],
+  "constraints": {
+    "default40and41Unchanged": true,
+    "newRuntimeTypeScriptOnly": true,
+    "newFrozenExceptions": 0,
+    "legacyJsAllowlistExpanded": false,
+    "newSchemaMigration": false,
+    "newTaskExecutionAuthority": false,
+    "realProviderOrPaidService": false,
+    "actualUserProjectTouched": false,
+    "dependenciesInstalled": false,
+    "credentialsOrSystemSettingsChanged": false,
+    "githubPushed": false,
+    "automaticApprovalReviewDenial": false,
+    "newUncertainActions": false,
+    "designsContentReadOrModified": false
+  },
+  "nextDevelopmentRecommendation": "First classify the six BLOB receipt expectations against the supported historical contract without widening frozen admission; exact baseline failure is not established. After formal runtime/GUI gates, design strict read-only compatibility for acknowledged old split/replaceSource, then relax40-to42 qualification only for individually proven operations; never re-enable captured execution.",
+  "minimumRealAcceptanceProposal": "One new task-owned42 workspace and ten-frame synthetic source; four locale Inspector and real Chinese/Japanese OS IME Save/Cancel/normal close/reopen; backup/restore43, current-origin durable draft explicit cold restore, new preview/export/download identity. Use product-approved Node/media runtime; no actual user projects, live providers or long FFmpeg.",
+  "constraintScope": "This integration patch; prior explicit42/43 constructors and40-to42 offline copy feature are audited, not introduced by this patch.",
+  "diffCheck": "diff-check.json"
+}

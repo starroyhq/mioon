@@ -231,6 +231,8 @@ export function createLocalShotText({root,channel='web',guards,storage,signal,fa
     });
   }
   return {
+    assertProjectDeletable(projectId:string):void{guarded(()=>{owned();if(!/^[a-f0-9-]{36}$/iu.test(projectId))fail('LOCAL_SHOT_TEXT_VALIDATION');const disk=read();if(flights.has(projectId)||uncertain.has(projectId)||saveUncertain||disk.entries.some(row=>row.projectId===projectId&&row.intent&&row.intent.outcome.status==='pending'))fail('LOCAL_SHOT_TEXT_CONFLICT');});},
+    removeProject(projectId:string):void{guarded(()=>{owned();if(!/^[a-f0-9-]{36}$/iu.test(projectId))fail('LOCAL_SHOT_TEXT_VALIDATION');const disk=read();if(flights.has(projectId)||uncertain.has(projectId)||saveUncertain||disk.entries.some(row=>row.projectId===projectId&&row.intent&&row.intent.outcome.status==='pending'))fail('LOCAL_SHOT_TEXT_CONFLICT');const entries=disk.entries.filter(row=>row.projectId!==projectId);if(entries.length===disk.entries.length)return;disk.entries=entries;persist(disk);syncDirectory();});},
     get(value:unknown):LocalShotTextEnvelope{return guarded(()=>{if(!active())return unsupported;const key=parse(schemas.key,value);return response(slot(read(),key));});},
     put(value:unknown):LocalShotTextEnvelope{return guarded(()=>{
       if(!active())return unsupported;const args=parse(schemas.put,value);writable(args);const disk=read(),row=slot(disk,args),current=shot(args);evidence(row);

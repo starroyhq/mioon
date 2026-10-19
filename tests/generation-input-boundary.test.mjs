@@ -14,7 +14,7 @@ import {INPUT_PROFILE_VERSION,getCapabilityProfile,getLegacyCapabilityProfile} f
 
 async function fixture(t,{providerId='mock',date='2026-10-10',image=false}={}){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-input-boundary-')),store=openStore(root);
- const env={MIOON_ENABLE_LIVE_PROVIDER:'1',ARK_API_KEY:'inert-fixture',GEMINI_API_KEY:'inert-fixture',MINIMAX_API_KEY:'inert-fixture',ARK_MAX_GENERATIONS:'20',VEO_MAX_GENERATIONS:'20',MINIMAX_MAX_GENERATIONS:'20'};
+ const env={MIOON_ENABLE_LIVE_PROVIDER:'1',ARK_API_KEY:'inert-fixture',GEMINI_API_KEY:'inert-fixture',MINIMAX_API_KEY:'inert-fixture'};
  const providers=createProviderRegistry({db:store.db,root,env});let current=date,worker,posts=0,polls=0;
  const services=createServices(store,providers,{env,profileNow:()=>Date.parse(`${current}T12:00:00Z`)});
  const project=await services.call('project.create',{name:'Input boundary synthetic fixture'});
@@ -89,7 +89,7 @@ test('old error order: revision, disabled provider, legacy limits precede new pr
 
 test('request replay returns historical response before clock, reference and authorization drift',async t=>{
  const f=await fixture(t,{providerId:'veo',image:true}),job=await f.submit(),before=snapshotBytes(f.store,job.id);
- f.setDate('2026-10-22');f.store.db.prepare('DELETE FROM assets WHERE id=?').run(f.asset.id);f.env.VEO_MAX_GENERATIONS='0';
+ f.setDate('2026-10-22');f.store.db.prepare('DELETE FROM assets WHERE id=?').run(f.asset.id);
  f.store.put('shots',{...f.store.get('shots',f.shot.id),revision:99});
  assert.deepEqual(await f.submit(),job);assert.equal(snapshotBytes(f.store,job.id),before);
  await assert.rejects(f.submit({requestId:randomUUID()}),{code:'REVISION_CONFLICT'});
@@ -220,7 +220,7 @@ test('local cancellation during adapter preparation preserves cancellation witho
 });
 
 for(const providerId of ['minimax','vidu'])test(`${providerId} invalid server-configured region advertises no exact profile and cannot insert or POST`,async t=>{
- const f=await fixture(t),prefix=providerId.toUpperCase(),env={...f.env,[`${prefix}_API_KEY`]:'inert-fixture',[`${prefix}_MAX_GENERATIONS`]:'2',[`${prefix}_REGION`]:'unrecognized-region',VIDU_OUTPUT_HOSTS:'cdn.synthetic.invalid'};
+ const f=await fixture(t),prefix=providerId.toUpperCase(),env={...f.env,[`${prefix}_API_KEY`]:'inert-fixture',[`${prefix}_REGION`]:'unrecognized-region',VIDU_OUTPUT_HOSTS:'cdn.synthetic.invalid'};
  const registry=createProviderRegistry({db:f.store.db,root:f.root,env});let posts=0;
  const provider=registry.get(providerId);registry.set(providerId,{...provider,submit:async()=>{posts++;throw Error('Invalid region must never dispatch');}});
  const services=createServices(f.store,registry,{env}),capabilities=(await services.call('provider.list',{})).find(item=>item.id===providerId);

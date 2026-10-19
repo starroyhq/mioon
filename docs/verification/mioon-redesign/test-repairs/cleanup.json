@@ -1,0 +1,19 @@
+{
+  "verifiedAt": "2026-10-19T02:03:11.506375+00:00",
+  "removedOwnedDirectories": [
+    "/private/tmp/mioon-test-repair-7cywd8uj/verify",
+    "/private/tmp/mioon-test-repair-7cywd8uj/ledger-before"
+  ],
+  "activeOwnedProcesses": 0,
+  "retained": [
+    "managed worktree",
+    "development build",
+    "durable evidence",
+    "private raw scripts and logs"
+  ],
+  "originalWorkspaceTrackedChanges": [],
+  "dependencyManifestChanges": [],
+  "commits": 0,
+  "pushes": 0,
+  "providerCalls": 0
+}

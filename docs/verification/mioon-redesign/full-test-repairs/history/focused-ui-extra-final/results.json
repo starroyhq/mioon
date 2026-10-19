@@ -1,0 +1,118 @@
+[
+  {
+    "file": "tests/opacity-candidate-app-entry.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.47,
+    "tapSummary": {
+      "tests": 6,
+      "suites": 0,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-extra-final/001-opacity-candidate-app-entry.test.mjs.log",
+    "sha256": "9ee74d87f5be1c94e0fe9a10ac6c5c3bc5caba269b4a02fbe91e9da730a9144f",
+    "sourceSha256": "b0f7ec054da8f2fad0ac50145fd9804cb44a97746fc032c64027d115ed8a0be7",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/opacity-restored-application-ui.test.mjs",
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 9.6,
+    "tapSummary": {
+      "tests": 6,
+      "suites": 0,
+      "pass": 5,
+      "fail": 1,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-extra-final/002-opacity-restored-application-ui.test.mjs.log",
+    "sha256": "36756358307208b25a7cf9d571c1217b960a26cb94265021928343509c6f20f1",
+    "sourceSha256": "a254ffa4d8ba68ae0d2e204dad099de789055b6baab809e743d76acdf6f2a9da",
+    "failedSubtests": [
+      "actual restored Timeline menu disables structure writes and rejects current and retained mutation callbacks"
+    ]
+  },
+  {
+    "file": "tests/settings-navigation-state.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.63,
+    "tapSummary": {
+      "tests": 47,
+      "suites": 0,
+      "pass": 47,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-extra-final/003-settings-navigation-state.test.mjs.log",
+    "sha256": "f3ccf7277392d3c255a2e3e66471eda0aa29b8d694490b19b2eeef8ade20d665",
+    "sourceSha256": "0c534c9008a55b78484df4907abe8e7e966e9239b19f49cea0b42b46a73dc8bc",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/subject-video-ui.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.53,
+    "tapSummary": {
+      "tests": 15,
+      "suites": 0,
+      "pass": 15,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-extra-final/004-subject-video-ui.test.mjs.log",
+    "sha256": "b69802e325db9ee5d7ef752161165e574c40ddc171ad6c6d7c18dc84c85f103a",
+    "sourceSha256": "8d46a00cc267104fc716210cb9f1dc8987d71a8df4752bc7f5fa5beae194cfb9",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/timeline-fades-ui.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.75,
+    "tapSummary": {
+      "tests": 19,
+      "suites": 0,
+      "pass": 19,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-extra-final/005-timeline-fades-ui.test.mjs.log",
+    "sha256": "3d8934dd411ee5095705ca31d6cada3fee12e60b84900425a934c0e03e44182a",
+    "sourceSha256": "033d30dc56ccc1d0851c79cfef9934a9bb0fcc09cbab63a389b253932a4a9a65",
+    "failedSubtests": []
+  },
+  {
+    "file": "tests/waveform-ui.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.5,
+    "tapSummary": {
+      "tests": 23,
+      "suites": 0,
+      "pass": 23,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-extra-final/006-waveform-ui.test.mjs.log",
+    "sha256": "c22a4e79d636b1af8e08277ee372379d07f48447d462cce2e027d12649b1eed1",
+    "sourceSha256": "9320e3da86345d495dcca335f1ec679c657f535552028d2a17c6e62e717aee2a",
+    "failedSubtests": []
+  }
+]

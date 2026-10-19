@@ -1,18 +1,8 @@
 import {z} from 'zod';
+import {TIMELINE_OUTPUT_PRESETS,DEFAULT_TIMELINE_OUTPUT_PRESET,timelineOutputPreset} from './timeline-output-geometry.ts';
+export {TIMELINE_OUTPUT_PRESETS,TIMELINE_CURRENT_OUTPUT_PRESETS,TIMELINE_LEGACY_OUTPUT_PRESETS,DEFAULT_TIMELINE_OUTPUT_PRESET,timelineOutputPreset} from './timeline-output-geometry.ts';
 // Closed timeline-output presets. Source/generation and the editing timebase
 // remain independent; this module does not normalize stored legacy records.
-export const TIMELINE_OUTPUT_PRESETS = Object.freeze([
-  Object.freeze({id:'portrait_720',label:'竖屏 9:16',fps:30,width:720,height:1280}),
-  Object.freeze({id:'landscape_720',label:'横屏 16:9',fps:30,width:1280,height:720}),
-  Object.freeze({id:'square_720',label:'方屏 1:1',fps:30,width:720,height:720}),
-]);
-export const DEFAULT_TIMELINE_OUTPUT_PRESET = 'portrait_720';
-export function timelineOutputPreset(value) {
-  if (typeof value === 'string') return TIMELINE_OUTPUT_PRESETS.find(item=>item.id===value) ?? null;
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  return TIMELINE_OUTPUT_PRESETS.find(item=>item.fps===value.fps && item.width===value.width && item.height===value.height) ?? null;
-}
-
 export const TIMELINE_FORMAT_BLOCKED_REASONS = Object.freeze(['CLIPS_PRESENT','HISTORY_PRESENT','REQUEST_HISTORY','EXPORT_HISTORY','PENDING_EDIT']);
 const revision=z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
 export const timelineFormatSchemas = Object.freeze({

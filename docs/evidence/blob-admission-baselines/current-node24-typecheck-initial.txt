@@ -1,0 +1,1 @@
+{"status":"failed","code":"TYPECHECK_DEPENDENCY_INVALID","message":"Installed TypeScript must match the exact root devDependency pin, expected JavaScript compiler entries and repository-local paths. Restore the reviewed lockfile dependencies explicitly; no installation or repair was attempted."}

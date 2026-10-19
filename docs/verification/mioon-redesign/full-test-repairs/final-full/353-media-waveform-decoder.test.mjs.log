@@ -1,0 +1,124 @@
+TAP version 13
+# Subtest: incremental mono bins preserve unaligned float bytes and the final partial bin
+ok 1 - incremental mono bins preserve unaligned float bytes and the final partial bin
+  ---
+  duration_ms: 4.574167
+  type: 'test'
+  ...
+# Subtest: stereo reduction keeps channel/frame boundaries and never cancels opposite phase
+ok 2 - stereo reduction keeps channel/frame boundaries and never cancels opposite phase
+  ---
+  duration_ms: 3.9985
+  type: 'test'
+  ...
+# Subtest: full scale is stable; any finite magnitude is accepted and values above one are marked clipped
+ok 3 - full scale is stable; any finite magnitude is accepted and values above one are marked clipped
+  ---
+  duration_ms: 0.444958
+  type: 'test'
+  ...
+# Subtest: nonfinite PCM, empty input, partial floats and incomplete stereo frames never succeed
+ok 4 - nonfinite PCM, empty input, partial floats and incomplete stereo frames never succeed
+  ---
+  duration_ms: 0.421667
+  type: 'test'
+  ...
+# Subtest: duration tolerance is explicit and rejects otherwise whole-frame truncated decodes
+ok 5 - duration tolerance is explicit and rejects otherwise whole-frame truncated decodes
+  ---
+  duration_ms: 5.974833
+  type: 'test'
+  ...
+# Subtest: PCM storage is bounded to 60000 bins and a byte over 600 seconds is rejected without truncation
+ok 6 - PCM storage is bounded to 60000 bins and a byte over 600 seconds is rejected without truncation
+  ---
+  duration_ms: 1948.921917
+  type: 'test'
+  ...
+# Subtest: decoder rejects invalid bounds, protocol inputs and already-aborted work before any spawn
+ok 7 - decoder rejects invalid bounds, protocol inputs and already-aborted work before any spawn
+  ---
+  duration_ms: 1.608458
+  type: 'test'
+  ...
+# Subtest: streaming runner consumes binary stdout beyond the buffered cap without weakening run()
+ok 8 - streaming runner consumes binary stdout beyond the buffered cap without weakening run()
+  ---
+  duration_ms: 116.341709
+  type: 'test'
+  ...
+# Subtest: streaming byte budgets count binary bytes exactly and abort before spawn remains side-effect free
+ok 9 - streaming byte budgets count binary bytes exactly and abort before spawn remains side-effect free
+  ---
+  duration_ms: 220.051667
+  type: 'test'
+  ...
+# Subtest: streaming runner enforces stdout/stderr limits and synchronously failing consumers are safely reaped
+ok 10 - streaming runner enforces stdout/stderr limits and synchronously failing consumers are safely reaped
+  ---
+  duration_ms: 440.377625
+  type: 'test'
+  ...
+# Subtest: streaming spawn/exit errors are sanitized and do not leave active children or signal listeners
+ok 11 - streaming spawn/exit errors are sanitized and do not leave active children or signal listeners
+  ---
+  duration_ms: 110.676541
+  type: 'test'
+  ...
+# Subtest: streaming timeout/abort reap owned children and remove abort listeners
+ok 12 - streaming timeout/abort reap owned children and remove abort listeners
+  ---
+  duration_ms: 222.538458
+  type: 'test'
+  ...
+# Subtest: streaming legacy shutdown preserves terminationUnconfirmed and the new-spawn gate until real close
+ok 13 - streaming legacy shutdown preserves terminationUnconfirmed and the new-spawn gate until real close
+  ---
+  duration_ms: 3120.569875
+  type: 'test'
+  ...
+# Subtest: real FFmpeg decodes mono, opposite-phase stereo, clipping and resampled audio
+ok 14 - real FFmpeg decodes mono, opposite-phase stereo, clipping and resampled audio
+  ---
+  duration_ms: 130.88325
+  type: 'test'
+  ...
+# Subtest: real FFmpeg selects only the first audio stream and rejects malformed/duration-mismatched audio
+ok 15 - real FFmpeg selects only the first audio stream and rejects malformed/duration-mismatched audio
+  ---
+  duration_ms: 167.832625
+  type: 'test'
+  ...
+# Subtest: real FFmpeg MP4 selects the first audio stream while ignoring video and the second louder audio stream
+ok 16 - real FFmpeg MP4 selects the first audio stream while ignoring video and the second louder audio stream
+  ---
+  duration_ms: 75.533458
+  type: 'test'
+  ...
+# Subtest: real FFmpeg container allowlist rejects valid local concat and HLS reference playlists
+ok 17 - real FFmpeg container allowlist rejects valid local concat and HLS reference playlists
+  ---
+  duration_ms: 99.9
+  type: 'test'
+  ...
+# Subtest: decoder keeps terminationUnconfirmed when rejecting nonfinite PCM before child close is confirmed
+ok 18 - decoder keeps terminationUnconfirmed when rejecting nonfinite PCM before child close is confirmed
+  ---
+  duration_ms: 3035.478833
+  type: 'test'
+  ...
+# Subtest: real FFmpeg protocol allowlist blocks a local playlist from fetching HTTP segments
+ok 19 - real FFmpeg protocol allowlist blocks a local playlist from fetching HTTP segments
+  ---
+  duration_ms: 61.900333
+  type: 'test'
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 9941.481166

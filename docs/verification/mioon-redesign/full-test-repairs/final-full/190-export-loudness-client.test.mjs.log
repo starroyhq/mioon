@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: loudness defaults to 125 seconds; other defaults and explicit caller deadlines stay unchanged
+ok 1 - loudness defaults to 125 seconds; other defaults and explicit caller deadlines stay unchanged
+  ---
+  duration_ms: 4.004625
+  type: 'test'
+  ...
+# Subtest: client carries workspace and caller cancellation outside strict input without new request ID
+ok 2 - client carries workspace and caller cancellation outside strict input without new request ID
+  ---
+  duration_ms: 0.524792
+  type: 'test'
+  ...
+# Subtest: strict invalid inputs and unknown operation reject before connection or dispatch
+ok 3 - strict invalid inputs and unknown operation reject before connection or dispatch
+  ---
+  duration_ms: 1.532042
+  type: 'test'
+  ...
+# Subtest: strict bounded responses bind hashes, profile, amplitude and gate semantics without retry
+ok 4 - strict bounded responses bind hashes, profile, amplitude and gate semantics without retry
+  ---
+  duration_ms: 8.105625
+  type: 'test'
+  ...
+# Subtest: transport loss, malformed JSON and local cancellation do not create receipt uncertainty or retries
+ok 5 - transport loss, malformed JSON and local cancellation do not create receipt uncertainty or retries
+  ---
+  duration_ms: 0.817709
+  type: 'test'
+  ...
+# Subtest: an explicit loudness deadline interrupts one request without automatic retry or mutation guidance
+ok 6 - an explicit loudness deadline interrupts one request without automatic retry or mutation guidance
+  ---
+  duration_ms: 7.555333
+  type: 'test'
+  ...
+# Subtest: optional custom target stays explicit and arithmetic-only suggestions must exactly match it
+ok 7 - optional custom target stays explicit and arithmetic-only suggestions must exactly match it
+  ---
+  duration_ms: 2.969792
+  type: 'test'
+  ...
+# Subtest: 8 KiB result guard rejects oversized and executable values without invoking accessors
+ok 8 - 8 KiB result guard rejects oversized and executable values without invoking accessors
+  ---
+  duration_ms: 0.415584
+  type: 'test'
+  ...
+# Subtest: backend, decoder and malformed-report errors expose no token or executable stderr
+ok 9 - backend, decoder and malformed-report errors expose no token or executable stderr
+  ---
+  duration_ms: 0.554875
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 303.927083

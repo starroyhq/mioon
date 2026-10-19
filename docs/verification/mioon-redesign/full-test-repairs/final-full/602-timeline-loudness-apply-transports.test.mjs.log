@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: actual CLI and official MCP discover strict apply intent and local-mutation annotations offline without adding Agent authority
+ok 1 - actual CLI and official MCP discover strict apply intent and local-mutation annotations offline without adding Agent authority
+  ---
+  duration_ms: 1235.50375
+  type: 'test'
+  ...
+# Subtest: real HTTP-first apply replays the exact ACK across HTTP, CLI and official MCP with one revision/history/receipt
+ok 2 - real HTTP-first apply replays the exact ACK across HTTP, CLI and official MCP with one revision/history/receipt
+  ---
+  duration_ms: 3736.110375
+  type: 'test'
+  ...
+# Subtest: real CLI-first apply replays the exact ACK across HTTP, CLI and official MCP with one revision/history/receipt
+ok 3 - real CLI-first apply replays the exact ACK across HTTP, CLI and official MCP with one revision/history/receipt
+  ---
+  duration_ms: 3754.922084
+  type: 'test'
+  ...
+# Subtest: real MCP-first apply replays the exact ACK across HTTP, CLI and official MCP with one revision/history/receipt
+ok 4 - real MCP-first apply replays the exact ACK across HTTP, CLI and official MCP with one revision/history/receipt
+  ---
+  duration_ms: 3755.92575
+  type: 'test'
+  ...
+# Subtest: real HTTP rejects client gains, paths and authority; CLI and official MCP reject strict inputs before dispatch
+ok 5 - real HTTP rejects client gains, paths and authority; CLI and official MCP reject strict inputs before dispatch
+  ---
+  duration_ms: 3728.343667
+  type: 'test'
+  ...
+# Subtest: disconnecting actual HTTP apply stops only its caller; real business work commits once and replays its original key
+ok 6 - disconnecting actual HTTP apply stops only its caller; real business work commits once and replays its original key
+  ---
+  duration_ms: 2691.894333
+  type: 'test'
+  ...
+# Subtest: disconnecting actual CLI apply stops only its caller; real business work commits once and replays its original key
+ok 7 - disconnecting actual CLI apply stops only its caller; real business work commits once and replays its original key
+  ---
+  duration_ms: 2901.335708
+  type: 'test'
+  ...
+# Subtest: disconnecting actual MCP apply stops only its caller; real business work commits once and replays its original key
+ok 8 - disconnecting actual MCP apply stops only its caller; real business work commits once and replays its original key
+  ---
+  duration_ms: 2726.746666
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 24963.496208

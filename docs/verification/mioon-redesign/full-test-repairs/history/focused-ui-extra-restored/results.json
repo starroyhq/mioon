@@ -1,0 +1,21 @@
+[
+  {
+    "file": "tests/opacity-restored-application-ui.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 9.47,
+    "tapSummary": {
+      "tests": 6,
+      "suites": 0,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "focused-ui-extra-restored/001-opacity-restored-application-ui.test.mjs.log",
+    "sha256": "d0319d1616535cb5431c821adc6770bbef9421b4f0b483c16227043afc7ab6ab",
+    "sourceSha256": "60f02e236cb1a97d1127a526ce08d2f08ff36b2e31db0ac48ca8b858ab4a28bf",
+    "failedSubtests": []
+  }
+]

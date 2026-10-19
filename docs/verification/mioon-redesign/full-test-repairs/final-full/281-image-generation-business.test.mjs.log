@@ -1,0 +1,118 @@
+TAP version 13
+# Subtest: stable generation keys return the original ACK before CAS and reject changed operation, project and input
+ok 1 - stable generation keys return the original ACK before CAS and reject changed operation, project and input
+  ---
+  duration_ms: 636.124459
+  type: 'test'
+  ...
+# Subtest: V1 and V2 retain their original receipt and name without rewriting project, existing assets or video/history records
+ok 2 - V1 and V2 retain their original receipt and name without rewriting project, existing assets or video/history records
+  ---
+  duration_ms: 1033.67175
+  type: 'test'
+  ...
+# Subtest: OpenAI stays disabled before acceptance even with a trusted injected generator
+ok 3 - OpenAI stays disabled before acceptance even with a trusted injected generator
+  ---
+  duration_ms: 591.18225
+  type: 'test'
+  ...
+# Subtest: strict server parsing rejects request-supplied adapters, paths, options and oversized or malformed inputs
+ok 4 - strict server parsing rejects request-supplied adapters, paths, options and oversized or malformed inputs
+  ---
+  duration_ms: 596.343291
+  type: 'test'
+  ...
+# Subtest: one unresolved task locks its group while different groups remain independently queued
+ok 5 - one unresolved task locks its group while different groups remain independently queued
+  ---
+  duration_ms: 576.284583
+  type: 'test'
+  ...
+# Subtest: lock:false services cannot mutate or reconcile and image reads leave every row and total_changes untouched
+ok 6 - lock:false services cannot mutate or reconcile and image reads leave every row and total_changes untouched
+  ---
+  duration_ms: 885.755916
+  type: 'test'
+  ...
+# Subtest: corrupt input-hash fails closed without receipts, private disclosure or read-time repair
+ok 7 - corrupt input-hash fails closed without receipts, private disclosure or read-time repair
+  ---
+  duration_ms: 587.912833
+  type: 'test'
+  ...
+# Subtest: corrupt snapshot-identity fails closed without receipts, private disclosure or read-time repair
+ok 8 - corrupt snapshot-identity fails closed without receipts, private disclosure or read-time repair
+  ---
+  duration_ms: 597.559041
+  type: 'test'
+  ...
+# Subtest: corrupt revision fails closed without receipts, private disclosure or read-time repair
+ok 9 - corrupt revision fails closed without receipts, private disclosure or read-time repair
+  ---
+  duration_ms: 581.38925
+  type: 'test'
+  ...
+# Subtest: corrupt oversized-input fails closed without receipts, private disclosure or read-time repair
+ok 10 - corrupt oversized-input fails closed without receipts, private disclosure or read-time repair
+  ---
+  duration_ms: 574.2055
+  type: 'test'
+  ...
+# Subtest: corrupt oversized-snapshot fails closed without receipts, private disclosure or read-time repair
+ok 11 - corrupt oversized-snapshot fails closed without receipts, private disclosure or read-time repair
+  ---
+  duration_ms: 581.857166
+  type: 'test'
+  ...
+# Subtest: corrupt request-response fails closed without receipts, private disclosure or read-time repair
+ok 12 - corrupt request-response fails closed without receipts, private disclosure or read-time repair
+  ---
+  duration_ms: 591.695208
+  type: 'test'
+  ...
+# Subtest: corrupt oversized-response fails closed without receipts, private disclosure or read-time repair
+ok 13 - corrupt oversized-response fails closed without receipts, private disclosure or read-time repair
+  ---
+  duration_ms: 580.47175
+  type: 'test'
+  ...
+# Subtest: corrupt request-operation fails closed without receipts, private disclosure or read-time repair
+ok 14 - corrupt request-operation fails closed without receipts, private disclosure or read-time repair
+  ---
+  duration_ms: 565.957083
+  type: 'test'
+  ...
+# Subtest: queue capacity is enforced per project and globally without dispatch or eviction
+ok 15 - queue capacity is enforced per project and globally without dispatch or eviction
+  ---
+  duration_ms: 609.841792
+  type: 'test'
+  ...
+# Subtest: retained request capacity rejects new mutations but exact historical replay remains readable
+ok 16 - retained request capacity rejects new mutations but exact historical replay remains readable
+  ---
+  duration_ms: 621.721958
+  type: 'test'
+  ...
+# Subtest: retained task capacity rejects admission without media allocation or deleting any retained task
+ok 17 - retained task capacity rejects admission without media allocation or deleting any retained task
+  ---
+  duration_ms: 707.84525
+  type: 'test'
+  ...
+# Subtest: task list paging is bounded, authenticated and scoped to project, group, operation and requested limit
+ok 18 - task list paging is bounded, authenticated and scoped to project, group, operation and requested limit
+  ---
+  duration_ms: 581.341292
+  type: 'test'
+  ...
+1..18
+# tests 18
+# suites 0
+# pass 18
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 11837.189125

@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: chat_completions: completed and lost-acknowledgement runs survive an actual backend restart without replaying inference
+ok 1 - chat_completions: completed and lost-acknowledgement runs survive an actual backend restart without replaying inference
+  ---
+  duration_ms: 2010.634084
+  type: 'test'
+  ...
+# Subtest: chat_completions: forced owned-process crash preserves committed SSE prefix; stop/restart rejects late writes
+ok 2 - chat_completions: forced owned-process crash preserves committed SSE prefix; stop/restart rejects late writes
+  ---
+  duration_ms: 3009.538083
+  type: 'test'
+  ...
+# Subtest: responses: completed and lost-acknowledgement runs survive an actual backend restart without replaying inference
+ok 3 - responses: completed and lost-acknowledgement runs survive an actual backend restart without replaying inference
+  ---
+  duration_ms: 2128.161625
+  type: 'test'
+  ...
+# Subtest: responses: forced owned-process crash preserves committed SSE prefix; stop/restart rejects late writes
+ok 4 - responses: forced owned-process crash preserves committed SSE prefix; stop/restart rejects late writes
+  ---
+  duration_ms: 2931.815584
+  type: 'test'
+  ...
+# Subtest: durable history keeps the latest 16 runs and read-only older pages/request lookup across process restart
+ok 5 - durable history keeps the latest 16 runs and read-only older pages/request lookup across process restart
+  ---
+  duration_ms: 2937.211834
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 13274.747417

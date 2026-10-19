@@ -1,0 +1,10 @@
+✔ fade CLI and official MCP schemas are optional, strict, offline and retain existing operation effects (8331.683417ms)
+✔ fades agree across real HTTP, CLI and official MCP with atomic errors, split boundaries, exact recovery and restart (17882.012625ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 26639.146625

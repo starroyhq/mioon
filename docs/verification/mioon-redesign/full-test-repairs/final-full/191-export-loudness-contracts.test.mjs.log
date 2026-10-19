@@ -1,0 +1,262 @@
+TAP version 13
+# Subtest: input requires explicit selected file/profile, target is optional and never defaulted
+ok 1 - input requires explicit selected file/profile, target is optional and never defaulted
+  ---
+  duration_ms: 3.831208
+  type: 'test'
+  ...
+# Subtest: complete response bound to artifact and explicit arithmetic target
+ok 2 - complete response bound to artifact and explicit arithmetic target
+  ---
+  duration_ms: 2.171667
+  type: 'test'
+  ...
+# Subtest: response rejects expected hash
+ok 3 - response rejects expected hash
+  ---
+  duration_ms: 0.477875
+  type: 'test'
+  ...
+# Subtest: response rejects actual hash
+ok 4 - response rejects actual hash
+  ---
+  duration_ms: 0.214375
+  type: 'test'
+  ...
+# Subtest: response rejects snapshot hash
+ok 5 - response rejects snapshot hash
+  ---
+  duration_ms: 0.149125
+  type: 'test'
+  ...
+# Subtest: response rejects one hash
+ok 6 - response rejects one hash
+  ---
+  duration_ms: 0.110833
+  type: 'test'
+  ...
+# Subtest: response rejects partial decode
+ok 7 - response rejects partial decode
+  ---
+  duration_ms: 0.120167
+  type: 'test'
+  ...
+# Subtest: response rejects frame duration
+ok 8 - response rejects frame duration
+  ---
+  duration_ms: 0.147667
+  type: 'test'
+  ...
+# Subtest: response rejects gate blocks
+ok 9 - response rejects gate blocks
+  ---
+  duration_ms: 0.122958
+  type: 'test'
+  ...
+# Subtest: response rejects unqualified sentinel
+ok 10 - response rejects unqualified sentinel
+  ---
+  duration_ms: 0.148917
+  type: 'test'
+  ...
+# Subtest: response rejects missing gate
+ok 11 - response rejects missing gate
+  ---
+  duration_ms: 0.107625
+  type: 'test'
+  ...
+# Subtest: response rejects impossible mean
+ok 12 - response rejects impossible mean
+  ---
+  duration_ms: 0.092666
+  type: 'test'
+  ...
+# Subtest: response rejects same members different mean
+ok 13 - response rejects same members different mean
+  ---
+  duration_ms: 0.096125
+  type: 'test'
+  ...
+# Subtest: response rejects impossible nesting
+ok 14 - response rejects impossible nesting
+  ---
+  duration_ms: 0.080708
+  type: 'test'
+  ...
+# Subtest: response rejects peak logarithm
+ok 15 - response rejects peak logarithm
+  ---
+  duration_ms: 0.071209
+  type: 'test'
+  ...
+# Subtest: response rejects lower truepeak
+ok 16 - response rejects lower truepeak
+  ---
+  duration_ms: 0.086541
+  type: 'test'
+  ...
+# Subtest: response rejects not stereo
+ok 17 - response rejects not stereo
+  ---
+  duration_ms: 0.0855
+  type: 'test'
+  ...
+# Subtest: response rejects not48k
+ok 18 - response rejects not48k
+  ---
+  duration_ms: 0.066875
+  type: 'test'
+  ...
+# Subtest: response rejects private path
+ok 19 - response rejects private path
+  ---
+  duration_ms: 0.077042
+  type: 'test'
+  ...
+# Subtest: response rejects NaN
+ok 20 - response rejects NaN
+  ---
+  duration_ms: 0.036375
+  type: 'test'
+  ...
+# Subtest: response rejects Infinity
+ok 21 - response rejects Infinity
+  ---
+  duration_ms: 0.034
+  type: 'test'
+  ...
+# Subtest: response rejects oversized
+ok 22 - response rejects oversized
+  ---
+  duration_ms: 0.038417
+  type: 'test'
+  ...
+# Subtest: response rejects extra execution permission
+ok 23 - response rejects extra execution permission
+  ---
+  duration_ms: 1.528167
+  type: 'test'
+  ...
+# Subtest: response rejects arbitraryreason
+ok 24 - response rejects arbitraryreason
+  ---
+  duration_ms: 0.136167
+  type: 'test'
+  ...
+# Subtest: response rejects undefined optional
+ok 25 - response rejects undefined optional
+  ---
+  duration_ms: 0.044291
+  type: 'test'
+  ...
+# Subtest: response rejects bad range
+ok 26 - response rejects bad range
+  ---
+  duration_ms: 0.190416
+  type: 'test'
+  ...
+# Subtest: advice cannot be fabricated, clamped, or turned into application authority
+ok 27 - advice cannot be fabricated, clamped, or turned into application authority
+  ---
+  duration_ms: 1.517333
+  type: 'test'
+  ...
+# Subtest: digital silence, too-short and below-gate are distinct and never produce gain advice
+ok 28 - digital silence, too-short and below-gate are distinct and never produce gain advice
+  ---
+  duration_ms: 0.200708
+  type: 'test'
+  ...
+# Subtest: unmeasured unsupported/NO_AUDIO has no numeric result
+ok 29 - unmeasured unsupported/NO_AUDIO has no numeric result
+  ---
+  duration_ms: 1.494875
+  type: 'test'
+  ...
+# Subtest: unmeasured unsupported/UNSUPPORTED_FORMAT has no numeric result
+ok 30 - unmeasured unsupported/UNSUPPORTED_FORMAT has no numeric result
+  ---
+  duration_ms: 0.135625
+  type: 'test'
+  ...
+# Subtest: unmeasured unsupported/INPUT_TOO_LARGE has no numeric result
+ok 31 - unmeasured unsupported/INPUT_TOO_LARGE has no numeric result
+  ---
+  duration_ms: 0.090791
+  type: 'test'
+  ...
+# Subtest: unmeasured unsupported/DURATION_LIMIT has no numeric result
+ok 32 - unmeasured unsupported/DURATION_LIMIT has no numeric result
+  ---
+  duration_ms: 0.092333
+  type: 'test'
+  ...
+# Subtest: unmeasured incomplete/BUSY has no numeric result
+ok 33 - unmeasured incomplete/BUSY has no numeric result
+  ---
+  duration_ms: 0.169375
+  type: 'test'
+  ...
+# Subtest: unmeasured incomplete/TIMEOUT has no numeric result
+ok 34 - unmeasured incomplete/TIMEOUT has no numeric result
+  ---
+  duration_ms: 0.209959
+  type: 'test'
+  ...
+# Subtest: unmeasured incomplete/RESOURCE_LIMIT has no numeric result
+ok 35 - unmeasured incomplete/RESOURCE_LIMIT has no numeric result
+  ---
+  duration_ms: 0.352958
+  type: 'test'
+  ...
+# Subtest: unmeasured incomplete/DECODER_UNAVAILABLE has no numeric result
+ok 36 - unmeasured incomplete/DECODER_UNAVAILABLE has no numeric result
+  ---
+  duration_ms: 0.138542
+  type: 'test'
+  ...
+# Subtest: unmeasured incomplete/INVALID_PCM has no numeric result
+ok 37 - unmeasured incomplete/INVALID_PCM has no numeric result
+  ---
+  duration_ms: 0.1055
+  type: 'test'
+  ...
+# Subtest: unmeasured incomplete/DECODE_FAILED has no numeric result
+ok 38 - unmeasured incomplete/DECODE_FAILED has no numeric result
+  ---
+  duration_ms: 0.093833
+  type: 'test'
+  ...
+# Subtest: unmeasured incomplete/CANCELLED has no numeric result
+ok 39 - unmeasured incomplete/CANCELLED has no numeric result
+  ---
+  duration_ms: 0.568916
+  type: 'test'
+  ...
+# Subtest: unmeasured incomplete/SHUTDOWN has no numeric result
+ok 40 - unmeasured incomplete/SHUTDOWN has no numeric result
+  ---
+  duration_ms: 0.447292
+  type: 'test'
+  ...
+# Subtest: unmeasured stale/ARTIFACT_CHANGED has no numeric result
+ok 41 - unmeasured stale/ARTIFACT_CHANGED has no numeric result
+  ---
+  duration_ms: 0.091958
+  type: 'test'
+  ...
+# Subtest: direct response rejects accessors, cycles, inherited objects without invoking user code
+ok 42 - direct response rejects accessors, cycles, inherited objects without invoking user code
+  ---
+  duration_ms: 0.272167
+  type: 'test'
+  ...
+1..42
+# tests 42
+# suites 0
+# pass 42
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 263.21025

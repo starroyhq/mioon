@@ -1,0 +1,148 @@
+TAP version 13
+# Subtest: continuous engine requires the exact fixed clock and a complete mixed initial block
+ok 1 - continuous engine requires the exact fixed clock and a complete mixed initial block
+  ---
+  duration_ms: 1.089584
+  type: 'test'
+  ...
+# Subtest: mount prepares no extra data and next block is scheduled on the exact common sample clock
+ok 2 - mount prepares no extra data and next block is scheduled on the exact common sample clock
+  ---
+  duration_ms: 3.27475
+  type: 'test'
+  ...
+# Subtest: continuous 25s playback crosses every boundary with bounded buffers and exact final samples
+ok 3 - continuous 25s playback crosses every boundary with bounded buffers and exact final samples
+  ---
+  duration_ms: 1.794208
+  type: 'test'
+  ...
+# Subtest: continuous 120s playback crosses every boundary with bounded buffers and exact final samples
+ok 4 - continuous 120s playback crosses every boundary with bounded buffers and exact final samples
+  ---
+  duration_ms: 2.469208
+  type: 'test'
+  ...
+# Subtest: continuous 600s playback crosses every boundary with bounded buffers and exact final samples
+ok 5 - continuous 600s playback crosses every boundary with bounded buffers and exact final samples
+  ---
+  duration_ms: 13.644
+  type: 'test'
+  ...
+# Subtest: underrun waits at the exact consumed boundary and resumes without skipping a block
+ok 6 - underrun waits at the exact consumed boundary and resumes without skipping a block
+  ---
+  duration_ms: 1.932584
+  type: 'test'
+  ...
+# Subtest: a late load before a delayed end notification cannot schedule in the past or count a false completion
+ok 7 - a late load before a delayed end notification cannot schedule in the past or count a false completion
+  ---
+  duration_ms: 1.631667
+  type: 'test'
+  ...
+# Subtest: pause stops both scheduled blocks, preserves exact sample cursor and resumes without reacquiring mixed PCM
+ok 8 - pause stops both scheduled blocks, preserves exact sample cursor and resumes without reacquiring mixed PCM
+  ---
+  duration_ms: 0.417709
+  type: 'test'
+  ...
+# Subtest: buffered playing and paused seek use retained blocks, while a stale source cannot end the replacement graph
+ok 9 - buffered playing and paused seek use retained blocks, while a stale source cannot end the replacement graph
+  ---
+  duration_ms: 0.990875
+  type: 'test'
+  ...
+# Subtest: rapid unbuffered seeks await exact prior retirement and allow only the latest request to become audible
+ok 10 - rapid unbuffered seeks await exact prior retirement and allow only the latest request to become audible
+  ---
+  duration_ms: 1.106791
+  type: 'test'
+  ...
+# Subtest: paused unbuffered seek stays paused and does not prefetch beyond its complete target block
+ok 11 - paused unbuffered seek stays paused and does not prefetch beyond its complete target block
+  ---
+  duration_ms: 0.269958
+  type: 'test'
+  ...
+# Subtest: pause aborts prefetch, and resume waits for its exact settlement before retrying the same sequence
+ok 12 - pause aborts prefetch, and resume waits for its exact settlement before retrying the same sequence
+  ---
+  duration_ms: 0.683083
+  type: 'test'
+  ...
+# Subtest: late resume acknowledgments cannot revive a paused, stopped or replaced generation
+ok 13 - late resume acknowledgments cannot revive a paused, stopped or replaced generation
+  ---
+  duration_ms: 0.523333
+  type: 'test'
+  ...
+# Subtest: a seek replacing a pending initial resume can start the newest position independently
+ok 14 - a seek replacing a pending initial resume can start the newest position independently
+  ---
+  duration_ms: 0.097625
+  type: 'test'
+  ...
+# Subtest: out-of-order delayed block end events still transfer ownership through the exact final end
+ok 15 - out-of-order delayed block end events still transfer ownership through the exact final end
+  ---
+  duration_ms: 2.10675
+  type: 'test'
+  ...
+# Subtest: stop and dispose retain the retirement fence through an ignored cancellation and close the exact context once
+ok 16 - stop and dispose retain the retirement fence through an ignored cancellation and close the exact context once
+  ---
+  duration_ms: 0.319791
+  type: 'test'
+  ...
+# Subtest: an unconfirmed reader retirement remains a failed fence after the original request leaves the flight slot
+ok 17 - an unconfirmed reader retirement remains a failed fence after the original request leaves the flight slot
+  ---
+  duration_ms: 0.50525
+  type: 'test'
+  ...
+# Subtest: a failed or unconfirmed exact context close stays rejected across repeated disposal
+ok 18 - a failed or unconfirmed exact context close stays rejected across repeated disposal
+  ---
+  duration_ms: 0.956458
+  type: 'test'
+  ...
+# Subtest: 50 pause/resume rounds do not accumulate retained buffers, listeners or active sources
+ok 19 - 50 pause/resume rounds do not accumulate retained buffers, listeners or active sources
+  ---
+  duration_ms: 0.722
+  type: 'test'
+  ...
+# Subtest: RAF paints only and never drives a boundary or pretends that an exhausted block completed the timeline
+ok 20 - RAF paints only and never drives a boundary or pretends that an exhausted block completed the timeline
+  ---
+  duration_ms: 0.224375
+  type: 'test'
+  ...
+# Subtest: replay reloads the original start and only the real timeline end reports ended
+ok 21 - replay reloads the original start and only the real timeline end reports ended
+  ---
+  duration_ms: 0.433166
+  type: 'test'
+  ...
+# Subtest: block failures, schedule failure, context suspension and output failure stop the whole sound owner
+ok 22 - block failures, schedule failure, context suspension and output failure stop the whole sound owner
+  ---
+  duration_ms: 0.840834
+  type: 'test'
+  ...
+# Subtest: synchronous starting and playing observers can revoke before further work is admitted
+ok 23 - synchronous starting and playing observers can revoke before further work is admitted
+  ---
+  duration_ms: 0.119083
+  type: 'test'
+  ...
+1..23
+# tests 23
+# suites 0
+# pass 23
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 199.797542

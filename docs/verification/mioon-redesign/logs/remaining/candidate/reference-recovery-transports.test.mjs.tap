@@ -1,0 +1,37 @@
+TAP version 13
+# Subtest: real HTTP CLI and official MCP lose attach/detach acknowledgements, retain ownership uncertainty and replay historical exact responses
+not ok 1 - real HTTP CLI and official MCP lose attach/detach acknowledgements, retain ownership uncertainty and replay historical exact responses
+  ---
+  duration_ms: 1598.542042
+  type: 'test'
+  location: '/private/tmp/mioon-redesign-2_80wkck/verify/tests/reference-recovery-transports.test.mjs:64:1'
+  failureType: 'testCodeFailure'
+  error: 'RESTORE_SCHEMA_UNSUPPORTED'
+  code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  stack: |-
+    fail (file:///private/tmp/mioon-redesign-2_80wkck/verify/packages/business/src/workspace-restore-schema-v49.ts:31:71)
+    Object.classifyWorkspaceSchemaV48V49 (file:///private/tmp/mioon-redesign-2_80wkck/verify/packages/business/src/workspace-restore-schema-v49.ts:154:3)
+    Object.initialize (file:///private/tmp/mioon-redesign-2_80wkck/verify/packages/business/src/workspace-schema-dispatch.ts:229:45)
+    openStore (file:///private/tmp/mioon-redesign-2_80wkck/verify/packages/business/src/db.mjs:97:40)
+    composeServer (file:///private/tmp/mioon-redesign-2_80wkck/verify/apps/server/src/index.mjs:150:47)
+    startServer (file:///private/tmp/mioon-redesign-2_80wkck/verify/apps/server/src/index.mjs:97:21)
+    Object.restart (file:///private/tmp/mioon-redesign-2_80wkck/verify/tests/reference-recovery-transports.test.mjs:53:177)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async TestContext.<anonymous> (file:///private/tmp/mioon-redesign-2_80wkck/verify/tests/reference-recovery-transports.test.mjs:78:3)
+    async Test.run (node:internal/test_runner/test:1409:7)
+  ...
+# Subtest: real malformed reference HTTP client CLI MCP successes retain exact request identity and recover without duplicate changes
+ok 2 - real malformed reference HTTP client CLI MCP successes retain exact request identity and recover without duplicate changes
+  ---
+  duration_ms: 2324.794833
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 1
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4361.075

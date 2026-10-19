@@ -1,0 +1,646 @@
+TAP version 13
+# Subtest: 30→32 adds only its marker and preserves exact rows, types, rowids, DDL and v1 plan (retained=false)
+ok 1 - 30→32 adds only its marker and preserves exact rows, types, rowids, DDL and v1 plan (retained=false)
+  ---
+  duration_ms: 327.5815
+  type: 'test'
+  ...
+# Subtest: 30→32 adds only its marker and preserves exact rows, types, rowids, DDL and v1 plan (retained=true)
+not ok 2 - 30→32 adds only its marker and preserves exact rows, types, rowids, DDL and v1 plan (retained=true)
+  ---
+  duration_ms: 3.739208
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema32.test.mjs:110:36'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema32.test.mjs:48:14)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema32.test.mjs:111:11)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: schema32 migration rolls back all retained bytes after marker
+ok 3 - schema32 migration rolls back all retained bytes after marker
+  ---
+  duration_ms: 81.796917
+  type: 'test'
+  ...
+# Subtest: schema32 migration rolls back all retained bytes before commit
+ok 4 - schema32 migration rolls back all retained bytes before commit
+  ---
+  duration_ms: 87.430458
+  type: 'test'
+  ...
+# Subtest: current dispatcher retains exact source24/restored25 pair without upgrading historical restores
+ok 5 - current dispatcher retains exact source24/restored25 pair without upgrading historical restores
+  ---
+  duration_ms: 213.322834
+  type: 'test'
+  ...
+# Subtest: current dispatcher retains exact source26/restored27 pair without upgrading historical restores
+ok 6 - current dispatcher retains exact source26/restored27 pair without upgrading historical restores
+  ---
+  duration_ms: 182.381792
+  type: 'test'
+  ...
+# Subtest: current dispatcher retains exact source28/restored29 pair without upgrading historical restores
+ok 7 - current dispatcher retains exact source28/restored29 pair without upgrading historical restores
+  ---
+  duration_ms: 201.7885
+  type: 'test'
+  ...
+# Subtest: current dispatcher retains exact source30/restored31 pair without upgrading historical restores
+ok 8 - current dispatcher retains exact source30/restored31 pair without upgrading historical restores
+  ---
+  duration_ms: 211.988083
+  type: 'test'
+  ...
+# Subtest: current dispatcher retains exact source32/restored33 pair without upgrading historical restores
+ok 9 - current dispatcher retains exact source32/restored33 pair without upgrading historical restores
+  ---
+  duration_ms: 130.100166
+  type: 'test'
+  ...
+# Subtest: wire contracts admit only exact32/33 v5 pairing and keep restored schemas out of backup sources
+not ok 10 - wire contracts admit only exact32/33 v5 pairing and keep restored schemas out of backup sources
+  ---
+  duration_ms: 1.133125
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema32.test.mjs:135:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    true !== false
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: false
+  actual: true
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema32.test.mjs:137:59)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: mixed-role reader rejects corrupt or downgraded markers: future marker
+ok 11 - mixed-role reader rejects corrupt or downgraded markers: future marker
+  ---
+  duration_ms: 82.848375
+  type: 'test'
+  ...
+# Subtest: mixed-role reader rejects corrupt or downgraded markers: missing32
+ok 12 - mixed-role reader rejects corrupt or downgraded markers: missing32
+  ---
+  duration_ms: 82.95825
+  type: 'test'
+  ...
+# Subtest: mixed-role reader rejects corrupt or downgraded markers: missing30
+ok 13 - mixed-role reader rejects corrupt or downgraded markers: missing30
+  ---
+  duration_ms: 81.474541
+  type: 'test'
+  ...
+# Subtest: mixed-role reader rejects corrupt or downgraded markers: missing28
+ok 14 - mixed-role reader rejects corrupt or downgraded markers: missing28
+  ---
+  duration_ms: 80.934208
+  type: 'test'
+  ...
+# Subtest: mixed-role reader rejects corrupt or downgraded markers: missing26
+ok 15 - mixed-role reader rejects corrupt or downgraded markers: missing26
+  ---
+  duration_ms: 81.744375
+  type: 'test'
+  ...
+# Subtest: mixed-role reader rejects corrupt or downgraded markers: restored33 without32
+ok 16 - mixed-role reader rejects corrupt or downgraded markers: restored33 without32
+  ---
+  duration_ms: 76.315417
+  type: 'test'
+  ...
+# Subtest: mixed-role reader rejects corrupt or downgraded markers: restored31 with32
+ok 17 - mixed-role reader rejects corrupt or downgraded markers: restored31 with32
+  ---
+  duration_ms: 80.926833
+  type: 'test'
+  ...
+# Subtest: historical30 rejects image clip in timeline without mutation
+ok 18 - historical30 rejects image clip in timeline without mutation
+  ---
+  duration_ms: 80.117666
+  type: 'test'
+  ...
+# Subtest: historical30 rejects image source in timeline without mutation
+ok 19 - historical30 rejects image source in timeline without mutation
+  ---
+  duration_ms: 78.677916
+  type: 'test'
+  ...
+# Subtest: historical30 rejects mixed plan in timeline without mutation
+ok 20 - historical30 rejects mixed plan in timeline without mutation
+  ---
+  duration_ms: 79.659709
+  type: 'test'
+  ...
+# Subtest: historical30 rejects image clip in history without mutation
+ok 21 - historical30 rejects image clip in history without mutation
+  ---
+  duration_ms: 81.12375
+  type: 'test'
+  ...
+# Subtest: historical30 rejects image source in history without mutation
+ok 22 - historical30 rejects image source in history without mutation
+  ---
+  duration_ms: 79.503708
+  type: 'test'
+  ...
+# Subtest: historical30 rejects mixed plan in history without mutation
+ok 23 - historical30 rejects mixed plan in history without mutation
+  ---
+  duration_ms: 80.174333
+  type: 'test'
+  ...
+# Subtest: historical30 rejects image clip in receipt without mutation
+ok 24 - historical30 rejects image clip in receipt without mutation
+  ---
+  duration_ms: 80.385875
+  type: 'test'
+  ...
+# Subtest: historical30 rejects image source in receipt without mutation
+ok 25 - historical30 rejects image source in receipt without mutation
+  ---
+  duration_ms: 78.911625
+  type: 'test'
+  ...
+# Subtest: historical30 rejects mixed plan in receipt without mutation
+ok 26 - historical30 rejects mixed plan in receipt without mutation
+  ---
+  duration_ms: 79.325625
+  type: 'test'
+  ...
+# Subtest: historical30 rejects image clip in task without mutation
+ok 27 - historical30 rejects image clip in task without mutation
+  ---
+  duration_ms: 81.705625
+  type: 'test'
+  ...
+# Subtest: historical30 rejects image source in task without mutation
+ok 28 - historical30 rejects image source in task without mutation
+  ---
+  duration_ms: 83.775666
+  type: 'test'
+  ...
+# Subtest: historical30 rejects mixed plan in task without mutation
+ok 29 - historical30 rejects mixed plan in task without mutation
+  ---
+  duration_ms: 86.844833
+  type: 'test'
+  ...
+# Subtest: historical30 rejects image clip in export without mutation
+ok 30 - historical30 rejects image clip in export without mutation
+  ---
+  duration_ms: 81.064334
+  type: 'test'
+  ...
+# Subtest: historical30 rejects image source in export without mutation
+ok 31 - historical30 rejects image source in export without mutation
+  ---
+  duration_ms: 80.841875
+  type: 'test'
+  ...
+# Subtest: historical30 rejects mixed plan in export without mutation
+ok 32 - historical30 rejects mixed plan in export without mutation
+  ---
+  duration_ms: 82.1955
+  type: 'test'
+  ...
+# Subtest: historical31 rejects image clip in timeline without mutation
+ok 33 - historical31 rejects image clip in timeline without mutation
+  ---
+  duration_ms: 114.208125
+  type: 'test'
+  ...
+# Subtest: historical31 rejects image source in timeline without mutation
+ok 34 - historical31 rejects image source in timeline without mutation
+  ---
+  duration_ms: 110.131208
+  type: 'test'
+  ...
+# Subtest: historical31 rejects mixed plan in timeline without mutation
+ok 35 - historical31 rejects mixed plan in timeline without mutation
+  ---
+  duration_ms: 111.774208
+  type: 'test'
+  ...
+# Subtest: historical31 rejects image clip in history without mutation
+ok 36 - historical31 rejects image clip in history without mutation
+  ---
+  duration_ms: 116.557833
+  type: 'test'
+  ...
+# Subtest: historical31 rejects image source in history without mutation
+ok 37 - historical31 rejects image source in history without mutation
+  ---
+  duration_ms: 110.716792
+  type: 'test'
+  ...
+# Subtest: historical31 rejects mixed plan in history without mutation
+ok 38 - historical31 rejects mixed plan in history without mutation
+  ---
+  duration_ms: 111.80575
+  type: 'test'
+  ...
+# Subtest: historical31 rejects image clip in receipt without mutation
+ok 39 - historical31 rejects image clip in receipt without mutation
+  ---
+  duration_ms: 111.392375
+  type: 'test'
+  ...
+# Subtest: historical31 rejects image source in receipt without mutation
+ok 40 - historical31 rejects image source in receipt without mutation
+  ---
+  duration_ms: 113.561792
+  type: 'test'
+  ...
+# Subtest: historical31 rejects mixed plan in receipt without mutation
+ok 41 - historical31 rejects mixed plan in receipt without mutation
+  ---
+  duration_ms: 112.875291
+  type: 'test'
+  ...
+# Subtest: historical31 rejects image clip in task without mutation
+ok 42 - historical31 rejects image clip in task without mutation
+  ---
+  duration_ms: 111.021667
+  type: 'test'
+  ...
+# Subtest: historical31 rejects image source in task without mutation
+ok 43 - historical31 rejects image source in task without mutation
+  ---
+  duration_ms: 113.768958
+  type: 'test'
+  ...
+# Subtest: historical31 rejects mixed plan in task without mutation
+ok 44 - historical31 rejects mixed plan in task without mutation
+  ---
+  duration_ms: 111.236042
+  type: 'test'
+  ...
+# Subtest: historical31 rejects image clip in export without mutation
+ok 45 - historical31 rejects image clip in export without mutation
+  ---
+  duration_ms: 110.418708
+  type: 'test'
+  ...
+# Subtest: historical31 rejects image source in export without mutation
+ok 46 - historical31 rejects image source in export without mutation
+  ---
+  duration_ms: 110.415459
+  type: 'test'
+  ...
+# Subtest: historical31 rejects mixed plan in export without mutation
+ok 47 - historical31 rejects mixed plan in export without mutation
+  ---
+  duration_ms: 108.845292
+  type: 'test'
+  ...
+# Subtest: schema32 rejects accepted image binding corruption: source hash
+ok 48 - schema32 rejects accepted image binding corruption: source hash
+  ---
+  duration_ms: 78.03875
+  type: 'test'
+  ...
+# Subtest: schema32 rejects accepted image binding corruption: evidence hash
+ok 49 - schema32 rejects accepted image binding corruption: evidence hash
+  ---
+  duration_ms: 76.445333
+  type: 'test'
+  ...
+# Subtest: schema32 rejects accepted image binding corruption: source profile
+ok 50 - schema32 rejects accepted image binding corruption: source profile
+  ---
+  duration_ms: 77.309167
+  type: 'test'
+  ...
+# Subtest: schema32 rejects accepted image binding corruption: clip profile
+ok 51 - schema32 rejects accepted image binding corruption: clip profile
+  ---
+  duration_ms: 77.308292
+  type: 'test'
+  ...
+# Subtest: schema32 rejects accepted image binding corruption: interpretation
+ok 52 - schema32 rejects accepted image binding corruption: interpretation
+  ---
+  duration_ms: 76.819416
+  type: 'test'
+  ...
+# Subtest: schema32 rejects accepted image binding corruption: unknown evidence field
+ok 53 - schema32 rejects accepted image binding corruption: unknown evidence field
+  ---
+  duration_ms: 78.7635
+  type: 'test'
+  ...
+# Subtest: schema32 rejects accepted image binding corruption: wrong MIME
+ok 54 - schema32 rejects accepted image binding corruption: wrong MIME
+  ---
+  duration_ms: 75.794041
+  type: 'test'
+  ...
+# Subtest: schema32 rejects accepted image binding corruption: image profile on video
+ok 55 - schema32 rejects accepted image binding corruption: image profile on video
+  ---
+  duration_ms: 77.969875
+  type: 'test'
+  ...
+# Subtest: schema32 rejects accepted image binding corruption: video profile on image
+ok 56 - schema32 rejects accepted image binding corruption: video profile on image
+  ---
+  duration_ms: 76.936041
+  type: 'test'
+  ...
+# Subtest: schema32 rejects accepted image binding corruption: foreign asset
+ok 57 - schema32 rejects accepted image binding corruption: foreign asset
+  ---
+  duration_ms: 79.669292
+  type: 'test'
+  ...
+# Subtest: schema32 rejects accepted image binding corruption: foreign LUT
+ok 58 - schema32 rejects accepted image binding corruption: foreign LUT
+  ---
+  duration_ms: 77.574042
+  type: 'test'
+  ...
+# Subtest: schema32 rejects accepted image binding corruption: missing LUT
+ok 59 - schema32 rejects accepted image binding corruption: missing LUT
+  ---
+  duration_ms: 75.999375
+  type: 'test'
+  ...
+# Subtest: schema32 rejects accepted image binding corruption: LUT hash
+ok 60 - schema32 rejects accepted image binding corruption: LUT hash
+  ---
+  duration_ms: 77.634625
+  type: 'test'
+  ...
+# Subtest: schema32 rejects accepted image binding corruption: audio track
+ok 61 - schema32 rejects accepted image binding corruption: audio track
+  ---
+  duration_ms: 78.457125
+  type: 'test'
+  ...
+# Subtest: schema32 rejects accepted image binding corruption: duplicate key
+ok 62 - schema32 rejects accepted image binding corruption: duplicate key
+  ---
+  duration_ms: 76.342583
+  type: 'test'
+  ...
+# Subtest: schema32 retains invalidated image declaration on video/mp4, but cannot freeze it for render
+ok 63 - schema32 retains invalidated image declaration on video/mp4, but cannot freeze it for render
+  ---
+  duration_ms: 122.538833
+  type: 'test'
+  ...
+# Subtest: schema32 retains invalidated image declaration on video/webm, but cannot freeze it for render
+ok 64 - schema32 retains invalidated image declaration on video/webm, but cannot freeze it for render
+  ---
+  duration_ms: 122.8235
+  type: 'test'
+  ...
+# Subtest: schema32 retains invalidated image declaration on image/png, but cannot freeze it for render
+ok 65 - schema32 retains invalidated image declaration on image/png, but cannot freeze it for render
+  ---
+  duration_ms: 125.342542
+  type: 'test'
+  ...
+# Subtest: schema32 retains invalidated video declaration on video/mp4, but cannot freeze it for render
+ok 66 - schema32 retains invalidated video declaration on video/mp4, but cannot freeze it for render
+  ---
+  duration_ms: 126.764292
+  type: 'test'
+  ...
+# Subtest: schema32 retains invalidated video declaration on video/webm, but cannot freeze it for render
+ok 67 - schema32 retains invalidated video declaration on video/webm, but cannot freeze it for render
+  ---
+  duration_ms: 126.268208
+  type: 'test'
+  ...
+# Subtest: schema32 retains invalidated video declaration on image/png, but cannot freeze it for render
+ok 68 - schema32 retains invalidated video declaration on image/png, but cannot freeze it for render
+  ---
+  duration_ms: 121.604
+  type: 'test'
+  ...
+# Subtest: invalidated source:null never admits unsupported image/jpeg
+ok 69 - invalidated source:null never admits unsupported image/jpeg
+  ---
+  duration_ms: 68.821458
+  type: 'test'
+  ...
+# Subtest: invalidated source:null never admits unsupported image/webp
+ok 70 - invalidated source:null never admits unsupported image/webp
+  ---
+  duration_ms: 68.801292
+  type: 'test'
+  ...
+# Subtest: invalidated source:null never admits unsupported audio/wav
+ok 71 - invalidated source:null never admits unsupported audio/wav
+  ---
+  duration_ms: 72.423167
+  type: 'test'
+  ...
+# Subtest: invalidated source:null never admits unsupported video/quicktime
+ok 72 - invalidated source:null never admits unsupported video/quicktime
+  ---
+  duration_ms: 72.896833
+  type: 'test'
+  ...
+# Subtest: schema32 frozen snapshot rejects missing plan
+ok 73 - schema32 frozen snapshot rejects missing plan
+  ---
+  duration_ms: 78.301167
+  type: 'test'
+  ...
+# Subtest: schema32 frozen snapshot rejects wrong plan profile
+ok 74 - schema32 frozen snapshot rejects wrong plan profile
+  ---
+  duration_ms: 73.364334
+  type: 'test'
+  ...
+# Subtest: schema32 frozen snapshot rejects changed evidence
+ok 75 - schema32 frozen snapshot rejects changed evidence
+  ---
+  duration_ms: 69.581292
+  type: 'test'
+  ...
+# Subtest: schema32 frozen snapshot rejects changed algorithm
+ok 76 - schema32 frozen snapshot rejects changed algorithm
+  ---
+  duration_ms: 71.008208
+  type: 'test'
+  ...
+# Subtest: schema32 frozen snapshot rejects changed display
+ok 77 - schema32 frozen snapshot rejects changed display
+  ---
+  duration_ms: 71.056708
+  type: 'test'
+  ...
+# Subtest: schema32 frozen snapshot rejects extra field
+ok 78 - schema32 frozen snapshot rejects extra field
+  ---
+  duration_ms: 73.613292
+  type: 'test'
+  ...
+# Subtest: schema32 retains unresolved prepared image intent without granting source or LUT authority
+ok 79 - schema32 retains unresolved prepared image intent without granting source or LUT authority
+  ---
+  duration_ms: 135.0075
+  type: 'test'
+  ...
+# Subtest: schema32 retains unresolved not_applied image intent without granting source or LUT authority
+ok 80 - schema32 retains unresolved not_applied image intent without granting source or LUT authority
+  ---
+  duration_ms: 175.576167
+  type: 'test'
+  ...
+# Subtest: restored33 installation rolls back at CREATE TABLE workspace_restoration
+ok 81 - restored33 installation rolls back at CREATE TABLE workspace_restoration
+  ---
+  duration_ms: 233.971833
+  type: 'test'
+  ...
+# Subtest: restored33 installation rolls back at INSERT INTO workspace_restore_timeline_history
+ok 82 - restored33 installation rolls back at INSERT INTO workspace_restore_timeline_history
+  ---
+  duration_ms: 120.638375
+  type: 'test'
+  ...
+# Subtest: restored33 installation rolls back at CREATE TRIGGER restore_legacy_schema_gate
+ok 83 - restored33 installation rolls back at CREATE TRIGGER restore_legacy_schema_gate
+  ---
+  duration_ms: 128.71075
+  type: 'test'
+  ...
+# Subtest: restored33 installation rolls back at COMMIT
+ok 84 - restored33 installation rolls back at COMMIT
+  ---
+  duration_ms: 138.792959
+  type: 'test'
+  ...
+# Subtest: cold backup32→restored33 preserves exact mixed image evidence, raw receipts/history, v2 snapshot, LUT/source bytes across reopen
+not ok 85 - cold backup32→restored33 preserves exact mixed image evidence, raw receipts/history, v2 snapshot, LUT/source bytes across reopen
+  ---
+  duration_ms: 141.372042
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema32.test.mjs:223:1'
+  failureType: 'testCodeFailure'
+  error: 'Workspace schema role is unsupported'
+  code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  stack: |-
+    unsupported (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-schema-dispatch.ts:34:55)
+    readCurrentWorkspaceRole (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-schema-dispatch.ts:125:123)
+    classify (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-schema-dispatch.ts:172:18)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema32.test.mjs:227:15)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: restored33 revalidation rejects corrupted live timeline without repairing captured image evidence
+ok 86 - restored33 revalidation rejects corrupted live timeline without repairing captured image evidence
+  ---
+  duration_ms: 118.23075
+  type: 'test'
+  ...
+# Subtest: restored33 revalidation rejects corrupted archive without repairing captured image evidence
+ok 87 - restored33 revalidation rejects corrupted archive without repairing captured image evidence
+  ---
+  duration_ms: 115.441709
+  type: 'test'
+  ...
+# Subtest: restored33 revalidation rejects corrupted held snapshot without repairing captured image evidence
+ok 88 - restored33 revalidation rejects corrupted held snapshot without repairing captured image evidence
+  ---
+  duration_ms: 117.022417
+  type: 'test'
+  ...
+# Subtest: restored33 keeps source inspection and LUT import denied; reads and explicit-origin local actions retain existing fences
+not ok 89 - restored33 keeps source inspection and LUT import denied; reads and explicit-origin local actions retain existing fences
+  ---
+  duration_ms: 130.52375
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema32.test.mjs:258:1'
+  failureType: 'testCodeFailure'
+  error: 'Workspace schema role is unsupported'
+  code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  stack: |-
+    unsupported (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-schema-dispatch.ts:34:55)
+    readCurrentWorkspaceRole (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-schema-dispatch.ts:125:123)
+    classify (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-schema-dispatch.ts:172:18)
+    installRestore (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-schema-dispatch.ts:237:21)
+    TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema32.test.mjs:261:13)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: cold capture and migration refuse missing32 and corrupt image evidence before publishing a destination
+not ok 90 - cold capture and migration refuse missing32 and corrupt image evidence before publishing a destination
+  ---
+  duration_ms: 175.004333
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema32.test.mjs:280:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      Comparison {
+    +   code: 'WORKSPACE_BACKUP_IO'
+    -   code: 'WORKSPACE_BACKUP_DATABASE_INVALID'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    code: 'WORKSPACE_BACKUP_DATABASE_INVALID'
+  actual:
+  error: 'The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.'
+  stack: |-
+    backupError (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-backup-storage.mjs:27:58)
+    safeBackupError (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-backup-storage.mjs:32:9)
+    createWorkspaceBackup (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/workspace-backup.mjs:175:31)
+    async waitForActual (node:assert:615:5)
+    async strict.rejects (node:assert:738:25)
+    async TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema32.test.mjs:285:3)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  operator: 'rejects'
+  stack: |-
+    async TestContext.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/workspace-schema32.test.mjs:285:3)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..90
+# tests 90
+# suites 0
+# pass 85
+# fail 5
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 9638.1365

@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-10-16T09:08:09.661476+00:00",
+  "kind": "test-fixture-portability-repair",
+  "scope": "Only three inline fixture temp parents and two fs imports; no shared helper, frozen reader, runtime, private policy, assertion, environment or design changes. No install, media, provider, listener, GUI or commit.",
+  "cause": "macOS tmpdir() traverses /var symlink; strict private storage correctly rejects it. Resolve the pre-existing parent before creating each task-owned temp root.",
+  "causality": "docs/evidence/opacity-release-check/local-drafts-portable-fixture-causality.json",
+  "red": {
+    "tests": 94,
+    "passed": 3,
+    "failed": 91,
+    "exitCode": 1,
+    "log": "docs/evidence/opacity-release-check/local-drafts-portable-fixture-red.tap"
+  },
+  "green": {
+    "tests": 94,
+    "passed": 94,
+    "failed": 0,
+    "skipped": 0,
+    "cancelled": 0,
+    "exitCode": 0,
+    "log": "docs/evidence/opacity-release-check/local-drafts-portable-fixture-green.tap"
+  },
+  "sourceProof": [
+    {
+      "path": "tests/local-drafts-business.test.mjs",
+      "beforeSha256": "90377e0783566fbf3a4bbce944b09c2756482896ca5dd67d3f548c495e6ce8b9",
+      "afterSha256": "d140ae9b75a3cf0c9366b20f644c64a4173a88b75cb1537815fa709ec6c83a89",
+      "onlyImportAndCanonicalTempParentChanged": true,
+      "assertionsUnchanged": true
+    },
+    {
+      "path": "tests/local-drafts-publication.test.mjs",
+      "beforeSha256": "32a20dfe4a5997ef013716eccd886841bee865de31c2738ff6fbc62595030021",
+      "afterSha256": "291ad094ee4e1726d1f1b41235156ccee6edff1686a1962bba76307dfd223a63",
+      "onlyImportAndCanonicalTempParentChanged": true,
+      "assertionsUnchanged": true
+    },
+    {
+      "path": "tests/local-drafts-volume-envelope-format.test.mjs",
+      "beforeSha256": "5d6c1d8a34447cec75e712968f6f466fffed21c92e093bbf1fb9b60c53c82541",
+      "afterSha256": "ec36ee9f7b1726caaa3a3be7009a00ddf8545a0dc32b08453ec27da2be5ee66c",
+      "onlyImportAndCanonicalTempParentChanged": true,
+      "assertionsUnchanged": true
+    }
+  ],
+  "remainingBlockers": [],
+  "denied": [],
+  "pending": [],
+  "uncertain": []
+}

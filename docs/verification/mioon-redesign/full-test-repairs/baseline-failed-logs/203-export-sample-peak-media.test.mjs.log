@@ -1,0 +1,94 @@
+TAP version 13
+# Subtest: real final AAC peaks match independent PCM for silence, quiet, antiphase, asymmetric and overdrive/fades
+not ok 1 - real final AAC peaks match independent PCM for silence, quiet, antiphase, asymmetric and overdrive/fades
+  ---
+  duration_ms: 236.567834
+  type: 'test'
+  location: '/private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/tests/export-sample-peak-media.test.mjs:69:1'
+  failureType: 'testCodeFailure'
+  error: 'Local media tool failed.'
+  code: 'MEDIA_EXIT_FAILED'
+  stack: |-
+    mediaError (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/media-runtime.mjs:7:53)
+    ChildProcess.<anonymous> (file:///private/var/folders/sn/js11_0t91mg_bf1m2fr_38780000gn/T/mioon-design-baseline-ic44qxmj/baseline/packages/business/src/media-runtime.mjs:121:45)
+    ChildProcess.wrapper (node:events:639:12)
+    ChildProcess.emit (node:events:526:24)
+    maybeClose (node:internal/child_process:1125:16)
+    Socket.<anonymous> (node:internal/child_process:497:11)
+    Socket.emit (node:events:514:20)
+    Pipe.<anonymous> (node:net:362:12)
+  ...
+# {"fixture":"silence","sampleFrames":19200,"peakLinear":0,"channelPeaks":[0,0]}
+# Subtest: real AAC one-frame export retains its complete codec tail instead of trimming
+ok 2 - real AAC one-frame export retains its complete codec tail instead of trimming
+  ---
+  duration_ms: 147.211333
+  type: 'test'
+  ...
+# {"nominalFrames":1600,"decodedFrames":1600}
+# Subtest: real AAC near and exact 600 second boundaries use natural EOF and the unchanged hard cap
+ok 3 - real AAC near and exact 600 second boundaries use natural EOF and the unchanged hard cap
+  ---
+  duration_ms: 8126.121167
+  type: 'test'
+  ...
+# {"seconds":599.9,"referenceBytes":230361600,"expected":"ready"}
+# {"seconds":600,"referenceBytes":230400000,"expected":"ready"}
+# Subtest: real probe rejects non-native audio, absent audio and multiple audio without decoding
+ok 4 - real probe rejects non-native audio, absent audio and multiple audio without decoding
+  ---
+  duration_ms: 506.854625
+  type: 'test'
+  ...
+# Subtest: real demux/protocol guard rejects disguised local-reference and network playlists
+ok 5 - real demux/protocol guard rejects disguised local-reference and network playlists
+  ---
+  duration_ms: 236.499875
+  type: 'test'
+  ...
+# Subtest: real changing-channel AAC in MP4 fails rather than silently downmixing or rebuilding filters
+ok 6 - real changing-channel AAC in MP4 fails rather than silently downmixing or rebuilding filters
+  ---
+  duration_ms: 811.535167
+  type: 'test'
+  ...
+# {"formatChangeChannels":[2,1],"duration":9.258667,"processes":["ffprobe","ffmpeg"]}
+# Subtest: global probe queue performs the ownership fence after acquisition and before actual spawn
+ok 7 - global probe queue performs the ownership fence after acquisition and before actual spawn
+  ---
+  duration_ms: 2.221542
+  type: 'test'
+  ...
+# Subtest: real streaming callback ownership failure preserves the exact error and reaps its child
+ok 8 - real streaming callback ownership failure preserves the exact error and reaps its child
+  ---
+  duration_ms: 246.334
+  type: 'test'
+  ...
+# Subtest: real decoder cancellation and deadline only reap the advisory analysis child
+ok 9 - real decoder cancellation and deadline only reap the advisory analysis child
+  ---
+  duration_ms: 221.323334
+  type: 'test'
+  ...
+# Subtest: real streaming nonzero close, stderr cap and nonfinite PCM never return a measurement
+ok 10 - real streaming nonzero close, stderr cap and nonfinite PCM never return a measurement
+  ---
+  duration_ms: 1361.689833
+  type: 'test'
+  ...
+# Subtest: real callback poison preserves terminationUnconfirmed until the exact child closes
+ok 11 - real callback poison preserves terminationUnconfirmed until the exact child closes
+  ---
+  duration_ms: 3287.57
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 10
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 15437.808625

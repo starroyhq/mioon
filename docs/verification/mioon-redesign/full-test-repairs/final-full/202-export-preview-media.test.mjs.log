@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: exact preview GET HEAD Range supports named and unnamed historical outputs without writes
+ok 1 - exact preview GET HEAD Range supports named and unnamed historical outputs without writes
+  ---
+  duration_ms: 2035.240042
+  type: 'test'
+  ...
+# Subtest: preview syntax is exact and unauthorized requests do not disclose bytes
+ok 2 - preview syntax is exact and unauthorized requests do not disclose bytes
+  ---
+  duration_ms: 666.138375
+  type: 'test'
+  ...
+# Subtest: preview exact ownership requires matching export receipt and owned published asset
+ok 3 - preview exact ownership requires matching export receipt and owned published asset
+  ---
+  duration_ms: 717.612916
+  type: 'test'
+  ...
+# Subtest: preview revalidates after open and closes descriptor when ownership changes
+ok 4 - preview revalidates after open and closes descriptor when ownership changes
+  ---
+  duration_ms: 602.386291
+  type: 'test'
+  ...
+# Subtest: preview rejects foreign reverse owner and keeps frozen receipt in late fence
+ok 5 - preview rejects foreign reverse owner and keeps frozen receipt in late fence
+  ---
+  duration_ms: 619.3095
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5121.99775

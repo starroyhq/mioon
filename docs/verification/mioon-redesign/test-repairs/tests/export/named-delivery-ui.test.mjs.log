@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: actual shared Input is controlled, labelled and explicit about blank legacy omission
+ok 1 - actual shared Input is controlled, labelled and explicit about blank legacy omission
+  ---
+  duration_ms: 0.524417
+  type: 'test'
+  ...
+# Subtest: invalid visible text remains exact and emits an accessible bounded validation message
+ok 2 - invalid visible text remains exact and emits an accessible bounded validation message
+  ---
+  duration_ms: 0.113167
+  type: 'test'
+  ...
+# Subtest: named history shows frozen title/time/revision/dimensions/quality after project rename and revision change
+ok 3 - named history shows frozen title/time/revision/dimensions/quality after project rename and revision change
+  ---
+  duration_ms: 13.958417
+  type: 'test'
+  ...
+# Subtest: named history delegates only immutable managed IDs and URL to the async check without a filename override
+ok 4 - named history delegates only immutable managed IDs and URL to the async check without a filename override
+  ---
+  duration_ms: 0.703
+  type: 'test'
+  ...
+# Subtest: held restored rows retain historical labels, successful managed downloads and blocked failed execution
+ok 5 - held restored rows retain historical labels, successful managed downloads and blocked failed execution
+  ---
+  duration_ms: 0.230167
+  type: 'test'
+  ...
+# Subtest: name-only rows use frozen timeline geometry without inventing a quality profile
+ok 6 - name-only rows use frozen timeline geometry without inventing a quality profile
+  ---
+  duration_ms: 0.080708
+  type: 'test'
+  ...
+# Subtest: unnamed legacy and storyboard rows retain display fallbacks and exact original URLs through file inspection
+ok 7 - unnamed legacy and storyboard rows retain display fallbacks and exact original URLs through file inspection
+  ---
+  duration_ms: 0.170125
+  type: 'test'
+  ...
+# Subtest: malformed named metadata is visibly unavailable without borrowing a project title or download URL
+ok 8 - malformed named metadata is visibly unavailable without borrowing a project title or download URL
+  ---
+  duration_ms: 0.13175
+  type: 'test'
+  ...
+# Subtest: typed components import real shared controls and no unchecked barrel or legacy icon graph
+ok 9 - typed components import real shared controls and no unchecked barrel or legacy icon graph
+  ---
+  duration_ms: 0.469792
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 721.891917

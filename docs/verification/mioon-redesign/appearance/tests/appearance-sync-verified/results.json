@@ -1,0 +1,27 @@
+[
+  {
+    "file": "ui-appearance.test.mjs",
+    "code": 0,
+    "seconds": 0.34
+  },
+  {
+    "file": "settings-appearance.test.mjs",
+    "code": 0,
+    "seconds": 0.39
+  },
+  {
+    "file": "ui-preferences-client.test.mjs",
+    "code": 0,
+    "seconds": 0.32
+  },
+  {
+    "file": "settings-navigation-slot.test.mjs",
+    "code": 0,
+    "seconds": 0.32
+  },
+  {
+    "file": "workspace-panel-intent.test.mjs",
+    "code": 0,
+    "seconds": 0.37
+  }
+]

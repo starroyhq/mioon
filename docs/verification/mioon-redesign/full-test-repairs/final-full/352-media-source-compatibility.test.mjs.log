@@ -1,0 +1,28 @@
+TAP version 13
+# Subtest: unknown WAV codec blocks preflight and preparation before an inevitably failing audio export
+ok 1 - unknown WAV codec blocks preflight and preparation before an inevitably failing audio export
+  ---
+  duration_ms: 818.346083
+  type: 'test'
+  ...
+# Subtest: preflight and renderer select later identified video/audio streams when the first codecs are unknown
+ok 2 - preflight and renderer select later identified video/audio streams when the first codecs are unknown
+  ---
+  duration_ms: 1164.054333
+  type: 'test'
+  ...
+# Subtest: attached cover stays nonvisual and audio-only preflight matches an audible export
+ok 3 - attached cover stays nonvisual and audio-only preflight matches an audible export
+  ---
+  duration_ms: 1364.180083
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3630.182125

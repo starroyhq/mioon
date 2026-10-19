@@ -1,0 +1,76 @@
+TAP version 13
+# Subtest: all nine researched preset families have explicit platform defaults and no executable network work
+ok 1 - all nine researched preset families have explicit platform defaults and no executable network work
+  ---
+  duration_ms: 5.562
+  type: 'test'
+  ...
+# Subtest: remote endpoint syntax blocks credentials, alternate local IP forms and unsafe path parsing without DNS
+ok 2 - remote endpoint syntax blocks credentials, alternate local IP forms and unsafe path parsing without DNS
+  ---
+  duration_ms: 0.639708
+  type: 'test'
+  ...
+# Subtest: only explicit local Ollama profile permits loopback /v1 and never current Mioon port
+ok 3 - only explicit local Ollama profile permits loopback /v1 and never current Mioon port
+  ---
+  duration_ms: 0.206208
+  type: 'test'
+  ...
+# Subtest: strict mutation/configuration/key shapes and bounds reject unrecognized fields without reflecting values
+ok 4 - strict mutation/configuration/key shapes and bounds reject unrecognized fields without reflecting values
+  ---
+  duration_ms: 0.323708
+  type: 'test'
+  ...
+# Subtest: session keys are write-only, never reach envelope, and vanish on fresh engine restart
+ok 5 - session keys are write-only, never reach envelope, and vanish on fresh engine restart
+  ---
+  duration_ms: 0.942417
+  type: 'test'
+  ...
+# Subtest: credential binding covers exact normalized endpoint, preset and platform; model and protocol changes retain it
+ok 6 - credential binding covers exact normalized endpoint, preset and platform; model and protocol changes retain it
+  ---
+  duration_ms: 0.9215
+  type: 'test'
+  ...
+# Subtest: CAS serializes concurrent saves, every successful save increments, stale writes cannot replace secrets
+ok 7 - CAS serializes concurrent saves, every successful save increments, stale writes cannot replace secrets
+  ---
+  duration_ms: 0.646667
+  type: 'test'
+  ...
+# Subtest: failed replacements, removals and binding edits preserve prior atomic envelope and RAM state
+ok 8 - failed replacements, removals and binding edits preserve prior atomic envelope and RAM state
+  ---
+  duration_ms: 0.794292
+  type: 'test'
+  ...
+# Subtest: persistent encryption, restart validation, explicit fallback and deletion use one envelope
+ok 9 - persistent encryption, restart validation, explicit fallback and deletion use one envelope
+  ---
+  duration_ms: 1.424292
+  type: 'test'
+  ...
+# Subtest: unreadable persistent ciphertext stays stored but fails closed and allows explicit new session key
+ok 10 - unreadable persistent ciphertext stays stored but fails closed and allows explicit new session key
+  ---
+  duration_ms: 0.396667
+  type: 'test'
+  ...
+# Subtest: corrupt metadata fails closed only for settings and safe public serializer drops hidden fields
+ok 11 - corrupt metadata fails closed only for settings and safe public serializer drops hidden fields
+  ---
+  duration_ms: 0.318458
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 219.900334

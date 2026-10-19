@@ -1,0 +1,65 @@
+TAP version 13
+# Subtest: scoped inspection is read-only and identical over actual HTTP, CLI, and official MCP stdio
+    # Subtest: CLI schema and MCP initialize/list/schema expose identical strict inputs and explicit effects offline
+    ok 1 - CLI schema and MCP initialize/list/schema expose identical strict inputs and explicit effects offline
+      ---
+      duration_ms: 2395.423333
+      type: 'test'
+      ...
+    # Subtest: strict argument validation is identical on all three interfaces
+    ok 2 - strict argument validation is identical on all three interfaces
+      ---
+      duration_ms: 13500.297417
+      type: 'test'
+      ...
+    # Subtest: HTTP authentication and local-origin checks still protect every inspection operation
+    ok 3 - HTTP authentication and local-origin checks still protect every inspection operation
+      ---
+      duration_ms: 7.379875
+      type: 'test'
+      ...
+    # Subtest: bounded allowlisted DTOs retain hostile metadata only as inert text
+    ok 4 - bounded allowlisted DTOs retain hostile metadata only as inert text
+      ---
+      duration_ms: 1086.68875
+      type: 'test'
+      ...
+    # Subtest: pages are stable, bounded, exhaustive, and cursors bind project, operation and page size
+    ok 5 - pages are stable, bounded, exhaustive, and cursors bind project, operation and page size
+      ---
+      duration_ms: 6963.482417
+      type: 'test'
+      ...
+    # Subtest: missing timelines stay absent and corrupt cross-project links fail uniformly without leakage
+    ok 6 - missing timelines stay absent and corrupt cross-project links fail uniformly without leakage
+      ---
+      duration_ms: 4047.520333
+      type: 'test'
+      ...
+    # Subtest: signed cursors expire after backend restart without requiring a different CLI or MCP connection
+    ok 7 - signed cursors expire after backend restart without requiring a different CLI or MCP connection
+      ---
+      duration_ms: 1546.840542
+      type: 'test'
+      ...
+    # Subtest: legacy get initialization and exact request replay retain their established mutation semantics
+    ok 8 - legacy get initialization and exact request replay retain their established mutation semantics
+      ---
+      duration_ms: 1092.13925
+      type: 'test'
+      ...
+    1..8
+ok 1 - scoped inspection is read-only and identical over actual HTTP, CLI, and official MCP stdio
+  ---
+  duration_ms: 32490.233083
+  type: 'test'
+  ...
+1..1
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 32723.510125

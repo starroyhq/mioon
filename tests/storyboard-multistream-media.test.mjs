@@ -76,14 +76,25 @@ test('provider output passes real version publication but storyboard must use th
   await run('ffmpeg', ['-v', 'error', '-i', source, '-f', 'null', '-']);
   const hash = await fileHash(source);
   f.store = openStore(f.root);
-  const mock = createMockProvider({ root: f.root, db: f.store.db }); let downloads = 0;
-  // Only simulate the provider download bytes. Submission/polling, validation,
-  // publication, automatic selection and export run the real service/worker.
-  const provider = { ...mock, download: async (_id, destination, { signal }) => {
+  const mock = createMockProvider({ root: f.root, db: f.store.db }); let downloads = 0, polls = 0;
+  // This controlled provider supplies an already encoded multistream fixture,
+  // so its completion and download belong to the same adapter. The real Mock
+  // renderer (and its drawtext admission) is not used here. Submission/ledger,
+  // validation, publication, selection and export remain the real code paths.
+  const provider = { ...mock, poll: async (providerJobId, { signal }) => {
+    assert.equal(signal.aborted, false);
+    const saved = f.store.db.prepare('SELECT * FROM mock_provider_tasks WHERE provider_job_id=?').get(providerJobId);
+    assert.ok(saved, 'the fixture can complete only a task accepted by the real provider ledger');
+    assert.equal(saved.cancelled, 0); assert.ok(saved.ready_at_ms <= Date.now()); polls++;
+    return { status: 'succeeded', progress: 1 };
+  }, download: async (_id, destination, { signal }) => {
     assert.equal(signal.aborted, false); downloads++; await copyFile(source, destination);
   } };
   const providers = new Map([['mock', provider]]); f.services = createServices(f.store, providers);
   const project = await f.services.call('project.create', { name: 'Synthetic storyboard' });
+ // This pixel/audio fixture explicitly preserves its historical 720 canvas.
+ await f.services.call('timeline.format.set',{projectId:project.id,expectedProjectRevision:project.revision,expectedRevision:0,requestId:randomUUID(),presetId:'portrait_720'});
+
   const shot = await f.services.call('shot.create', { projectId: project.id, title: 'Multistream output', prompt: 'Synthetic download fixture', duration: 2, referenceAssetIds: [] });
   const job = await f.services.call('generation.submit', { shotId: shot.id, expectedRevision: shot.revision, providerId: 'mock', requestId: randomUUID(), parameters: { scenario: 'success', delayMs: 0 } });
   f.worker = startWorker(f.store, f.services, providers);
@@ -104,7 +115,7 @@ test('provider output passes real version publication but storyboard must use th
   await checkOutput(path.join(f.root, output.relativePath), 2, [0, 0, 255], 880);
   assert.deepEqual(f.store.get('versions', version.id), frozenVersion); assert.deepEqual(f.store.get('assets', asset.id), frozenAsset);
   assert.equal(await fileHash(published), hash); assert.equal(await fileHash(source), hash);
-  assert.equal(downloads, 1); assert.equal(mock.stats().submissionCount, 1);
+  assert.equal(polls, 1); assert.equal(downloads, 1); assert.equal(mock.stats().submissionCount, 1); assert.equal(mock.stats().taskCount, 1);
   assert.equal((await readdir(path.join(f.root, 'media'))).some(name => name.includes('.part')), false);
 });
 
@@ -118,7 +129,7 @@ test('stitch preserves ordinary audio, silent video and video with an attached c
   for (const [name, file, color, frequency] of [['ordinary', plain, [255, 255, 0], 660], ['silent', silent, [0, 0, 255], null], ['covered', covered, [0, 0, 255], null]]) {
     await t.test(name, async () => {
       const hash = await fileHash(file), output = path.join(f.root, `${name}-out.mp4`);
-      await stitch([file], output); await checkOutput(output, 1, color, frequency); assert.equal(await fileHash(file), hash);
+      await stitch([file], output, {outputGeometry:{fps:30,width:720,height:1280}}); await checkOutput(output, 1, color, frequency); assert.equal(await fileHash(file), hash);
     });
   }
 });

@@ -1,0 +1,17 @@
+[
+  {
+    "file": "i18n-command-unit.test.mjs",
+    "code": 0,
+    "seconds": 0.43
+  },
+  {
+    "file": "i18n-command-presentation.test.mjs",
+    "code": 0,
+    "seconds": 8.99
+  },
+  {
+    "file": "i18n-backup-mcp-diagnostics.test.mjs",
+    "code": 0,
+    "seconds": 23.04
+  }
+]

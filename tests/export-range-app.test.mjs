@@ -97,7 +97,7 @@ async function harness(t, {restored = false, gates = {}, projectReady = true} = 
     // Existing export cases start inside an already opened workbench. Exercise
     // the opposite App readiness boundary separately without faking its reads.
     projectSessionReady: () => projectReady, workbenchReady: projectReady,
-    rightDockTab: 'delivery', showExports: false, panelVisible: () => visible,
+    rightDockTab: 'properties', showDelivery: visible, showExports: false, panelVisible: () => visible, clipDraftRef: {current:null}, markPanelIntent() {}, setShowTasks() {}, setShowImage() {}, setShowDelivery() {},
     isBusy: () => false, pendingForProject: () => [], setAuth() { assert.fail('Fixture cannot cause authentication loss'); },
     async refresh(value) { refreshes.push(value); if (gates.refresh) await gates.refresh.promise; },
     async rpc(operation, input, options) {
@@ -124,7 +124,7 @@ async function harness(t, {restored = false, gates = {}, projectReady = true} = 
     context: () => ({projectId: environment.currentProject.current, epoch: environment.projectEpoch.current}),
     isCurrent: value => value.projectId === environment.currentProject.current && value.epoch === environment.projectEpoch.current,
     requestId: () => `range-app-request-${++requestCount}`,
-    openExportHistory: () => history.push(true), notify: (...args) => notices.push(args), openTasks: () => panels.push('tasks'),
+    setDeliveryAttempt: value => history.push(['attempt', value]), openExportHistory: () => history.push(true), notify: (...args) => notices.push(args), openTasks: () => panels.push('tasks'),
     setShowExports: value => panels.push(['history', value]), setRightDockTab: value => panels.push(['tab', value]),
     setPanelOpen: (...args) => panels.push(args), updateView() {}, setPreviewKind() {},
     async run(...args) { direct.push(clone(args)); if (gates.direct) await gates.direct.promise; return receipt(args[2], saved); },
@@ -170,7 +170,7 @@ test('actual App hook/context wiring carries one exact selected range through pr
   assert.deepEqual(h.transportCalls.find(row => row.method === 'prepare').input.input, exact);
   assert.deepEqual(h.localDelivery.controller.getState().intent.input, exact);
   assert.equal(h.localDelivery.controller.getState().intent.outcome.status, 'accepted');
-  assert.deepEqual(h.history, [true]); assert.deepEqual(h.refreshes, [projectId]); assert.deepEqual(h.direct, []);
+  assert.deepEqual(h.history, [['attempt', {projectId,id:id(6)}]]); assert.deepEqual(h.refreshes, [projectId]); assert.deepEqual(h.direct, []);
   assert.equal(JSON.stringify(h.saved), savedBytes);
 });
 
@@ -249,7 +249,7 @@ test('restored actual route preserves frozen range and separately pinned origin 
   await h.render('export', binding);
   assert.deepEqual(h.direct, [['timeline:render:export', 'timeline.render', {...binding, requestId: 'range-app-request-1', purpose: 'export'}]]);
   assert.equal(Object.hasOwn(h.direct[0][2], 'expectedWorkspaceOrigin'), false);
-  assert.deepEqual(h.transportCalls, []); assert.deepEqual(h.history, [true]);
+  assert.deepEqual(h.transportCalls, []); assert.deepEqual(h.history, [['attempt', {projectId,id:id(6)}]]);
 });
 
 for (const restored of [false, true]) test(`hidden actual delivery pane cannot submit its retained range closure: restored=${restored}`, async t => {

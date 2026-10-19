@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: candidate offline help has four locales, accurate fixed42→43 boundaries and explicit draft exclusion
+ok 1 - candidate offline help has four locales, accurate fixed42→43 boundaries and explicit draft exclusion
+  ---
+  duration_ms: 3215.780042
+  type: 'test'
+  ...
+# Subtest: actual candidate CLI cold roundtrip preserves media/opacity/history and exposes both read-only status modes
+ok 2 - actual candidate CLI cold roundtrip preserves media/opacity/history and exposes both read-only status modes
+  ---
+  duration_ms: 3432.611458
+  type: 'test'
+  ...
+# Subtest: candidate CLI preserves original parser validation and identifies its own localized usage
+ok 3 - candidate CLI preserves original parser validation and identifies its own localized usage
+  ---
+  duration_ms: 4482.173459
+  type: 'test'
+  ...
+# Subtest: successful create and restore also disclose excluded drafts in Traditional Chinese and Japanese
+ok 4 - successful create and restore also disclose excluded drafts in Traditional Chinese and Japanese
+  ---
+  duration_ms: 2922.878959
+  type: 'test'
+  ...
+# Subtest: candidate CLI refuses corruption, occupied sources and existing targets without overwriting or leaking private paths
+ok 5 - candidate CLI refuses corruption, occupied sources and existing targets without overwriting or leaking private paths
+  ---
+  duration_ms: 1829.344708
+  type: 'test'
+  ...
+# Subtest: candidate CLI preserves sanitized uncertain-publication binding for read-only status rather than retrying
+ok 6 - candidate CLI preserves sanitized uncertain-publication binding for read-only status rather than retrying
+  ---
+  duration_ms: 3041.491167
+  type: 'test'
+  ...
+# Subtest: ordinary offline CLI keeps its original help and rejects fixed42 archives/workspaces
+ok 7 - ordinary offline CLI keeps its original help and rejects fixed42 archives/workspaces
+  ---
+  duration_ms: 2407.623209
+  type: 'test'
+  ...
+# Subtest: candidate CLI import is inert and preserves scoped listener lifecycle
+ok 8 - candidate CLI import is inert and preserves scoped listener lifecycle
+  ---
+  duration_ms: 39.5715
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 21653.671917

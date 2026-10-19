@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: actual App close veto retains agent-chat unknown owner without depending on a React dirty effect
+ok 1 - actual App close veto retains agent-chat unknown owner without depending on a React dirty effect
+  ---
+  duration_ms: 1.46225
+  type: 'test'
+  ...
+# Subtest: actual App close veto retains image-generation unknown owner without depending on a React dirty effect
+ok 2 - actual App close veto retains image-generation unknown owner without depending on a React dirty effect
+  ---
+  duration_ms: 0.174
+  type: 'test'
+  ...
+# Subtest: actual App close veto retains agent-edits unknown owner without depending on a React dirty effect
+ok 3 - actual App close veto retains agent-edits unknown owner without depending on a React dirty effect
+  ---
+  duration_ms: 0.169
+  type: 'test'
+  ...
+# Subtest: actual App close uses synchronous home:agent configuration owner metadata
+ok 4 - actual App close uses synchronous home:agent configuration owner metadata
+  ---
+  duration_ms: 0.310542
+  type: 'test'
+  ...
+# Subtest: actual App close uses synchronous home:official configuration owner metadata
+ok 5 - actual App close uses synchronous home:official configuration owner metadata
+  ---
+  duration_ms: 0.135125
+  type: 'test'
+  ...
+# Subtest: actual App close uses synchronous workbench:custom configuration owner metadata
+ok 6 - actual App close uses synchronous workbench:custom configuration owner metadata
+  ---
+  duration_ms: 0.136083
+  type: 'test'
+  ...
+# Subtest: actual App close uses synchronous workbench:comfy configuration owner metadata
+ok 7 - actual App close uses synchronous workbench:comfy configuration owner metadata
+  ---
+  duration_ms: 0.108292
+  type: 'test'
+  ...
+# Subtest: actual App preserves each existing synchronous draft predicate
+ok 8 - actual App preserves each existing synchronous draft predicate
+  ---
+  duration_ms: 0.15575
+  type: 'test'
+  ...
+# Subtest: actual App project epoch and workspace replacement invalidate the exact native permission
+ok 9 - actual App project epoch and workspace replacement invalidate the exact native permission
+  ---
+  duration_ms: 3.591083
+  type: 'test'
+  ...
+# Subtest: actual App cleanup cannot delete a replacement document admission object
+ok 10 - actual App cleanup cannot delete a replacement document admission object
+  ---
+  duration_ms: 0.146667
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 190.29175

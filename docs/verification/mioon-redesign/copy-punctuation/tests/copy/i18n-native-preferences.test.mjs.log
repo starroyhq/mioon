@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: real private preference file survives restart independently of tools and projects
+ok 1 - real private preference file survives restart independently of tools and projects
+  ---
+  duration_ms: 14.451542
+  type: 'test'
+  ...
+# Subtest: all manual languages and system preference survive real connection cleanup, quit and restart
+ok 2 - all manual languages and system preference survive real connection cleanup, quit and restart
+  ---
+  duration_ms: 226.002917
+  type: 'test'
+  ...
+# Subtest: failed preference reads remain visible and never overwrite the persisted document
+ok 3 - failed preference reads remain visible and never overwrite the persisted document
+  ---
+  duration_ms: 3.395667
+  type: 'test'
+  ...
+# Subtest: unsafe preference permissions are preserved and session-only writes are explicit
+ok 4 - unsafe preference permissions are preserved and session-only writes are explicit
+  ---
+  duration_ms: 9.849708
+  type: 'test'
+  ...
+# Subtest: linked or public preference file is rejected without repairing it
+ok 5 - linked or public preference file is rejected without repairing it
+  ---
+  duration_ms: 2.097208
+  type: 'test'
+  ...
+# Subtest: native warnings change language while keeping cancellation defaults and privacy meaning
+ok 6 - native warnings change language while keeping cancellation defaults and privacy meaning
+  ---
+  duration_ms: 0.413917
+  type: 'test'
+  ...
+# Subtest: native Save As localizes app-owned labels without changing output filenames or overwrite confirmation
+ok 7 - native Save As localizes app-owned labels without changing output filenames or overwrite confirmation
+  ---
+  duration_ms: 0.634125
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 639.673083

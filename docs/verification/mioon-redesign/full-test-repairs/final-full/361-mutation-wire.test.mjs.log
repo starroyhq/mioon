@@ -1,0 +1,96 @@
+TAP version 13
+# Subtest: six optional mutation keys retain exact results through lost HTTP responses, real CLI, official MCP and restart
+    # Subtest: all discovery surfaces expose optional keys and conservative non-idempotent hints
+    ok 1 - all discovery surfaces expose optional keys and conservative non-idempotent hints
+      ---
+      duration_ms: 1888.499208
+      type: 'test'
+      ...
+    # Subtest: each of the six commits once despite response loss, and old responses survive newer changes
+    ok 2 - each of the six commits once despite response loss, and old responses survive newer changes
+      ---
+      duration_ms: 1794.044625
+      type: 'test'
+      ...
+    # Subtest: actual backend restart and canonical object-key order retain every original response
+    ok 3 - actual backend restart and canonical object-key order retain every original response
+      ---
+      duration_ms: 2688.132458
+      type: 'test'
+      ...
+    # Subtest: changed payload, operation or project cannot consume or reveal another request receipt
+    ok 4 - changed payload, operation or project cannot consume or reveal another request receipt
+      ---
+      duration_ms: 1683.664667
+      type: 'test'
+      ...
+    # Subtest: strict validation rejects invalid optional keys before any write on all transports
+    ok 5 - strict validation rejects invalid optional keys before any write on all transports
+      ---
+      duration_ms: 1839.625542
+      type: 'test'
+      ...
+    # Subtest: only a fresh-key definite rejection proves not applied, and it does not reserve the key
+    ok 6 - only a fresh-key definite rejection proves not applied, and it does not reserve the key
+      ---
+      duration_ms: 276.099166
+      type: 'test'
+      ...
+    # Subtest: omitting requestId preserves legacy create and optimistic-revision behavior
+    ok 7 - omitting requestId preserves legacy create and optimistic-revision behavior
+      ---
+      duration_ms: 581.173167
+      type: 'test'
+      ...
+    # Subtest: an existing receipt cannot disclose a removed target or falsely prove not applied
+    ok 8 - an existing receipt cannot disclose a removed target or falsely prove not applied
+      ---
+      duration_ms: 1613.568583
+      type: 'test'
+      ...
+    1..8
+ok 1 - six optional mutation keys retain exact results through lost HTTP responses, real CLI, official MCP and restart
+  ---
+  duration_ms: 14210.656625
+  type: 'test'
+  ...
+# Subtest: real competing SQLite writers converge on one stable mutation and production ownership stays locked
+ok 2 - real competing SQLite writers converge on one stable mutation and production ownership stays locked
+  ---
+  duration_ms: 2550.113958
+  type: 'test'
+  ...
+# Subtest: test-child rollback and actual crash boundaries keep mutation and exact response receipt atomic
+    # Subtest: rollback
+    ok 1 - rollback
+      ---
+      duration_ms: 2716.782833
+      type: 'test'
+      ...
+    # Subtest: crash-before-commit
+    ok 2 - crash-before-commit
+      ---
+      duration_ms: 2755.3935
+      type: 'test'
+      ...
+    # Subtest: crash-after-commit
+    ok 3 - crash-after-commit
+      ---
+      duration_ms: 2907.671166
+      type: 'test'
+      ...
+    1..3
+ok 3 - test-child rollback and actual crash boundaries keep mutation and exact response receipt atomic
+  ---
+  duration_ms: 8380.348708
+  type: 'test'
+  ...
+1..3
+# tests 14
+# suites 0
+# pass 14
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 25463.605792

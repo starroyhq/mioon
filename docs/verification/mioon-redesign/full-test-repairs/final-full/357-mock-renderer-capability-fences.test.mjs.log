@@ -1,0 +1,143 @@
+TAP version 13
+# Subtest: unknown first filter probe followed by missing drawtext ends the actual worker download once
+ok 1 - unknown first filter probe followed by missing drawtext ends the actual worker download once
+  ---
+  duration_ms: 1577.432542
+  type: 'test'
+  ...
+# Subtest: persisted downloading job reopens on its original task and terminally records proven missing drawtext
+ok 2 - persisted downloading job reopens on its original task and terminally records proven missing drawtext
+  ---
+  duration_ms: 2534.215417
+  type: 'test'
+  ...
+# Subtest: render failure with unknown capability remains retryable on the accepted task
+ok 3 - render failure with unknown capability remains retryable on the accepted task
+  ---
+  duration_ms: 1282.19425
+  type: 'test'
+  ...
+# Subtest: same-path replacement permits explicit new-key retry without reviving the old request
+ok 4 - same-path replacement permits explicit new-key retry without reviving the old request
+  ---
+  duration_ms: 1636.907917
+  type: 'test'
+  ...
+# Subtest: same-path overwrite permits explicit new-key retry without reviving the old request
+ok 5 - same-path overwrite permits explicit new-key retry without reviving the old request
+  ---
+  duration_ms: 1359.19825
+  type: 'test'
+  ...
+# Subtest: different tool path permits explicit new-key retry without reviving the old request
+ok 6 - different tool path permits explicit new-key retry without reviving the old request
+  ---
+  duration_ms: 1628.140166
+  type: 'test'
+  ...
+# Subtest: default PATH lookup is never cached across a PATH change
+ok 7 - default PATH lookup is never cached across a PATH change
+  ---
+  duration_ms: 1353.720125
+  type: 'test'
+  ...
+# Subtest: in-flight filter result is unknown when configured path changes
+ok 8 - in-flight filter result is unknown when configured path changes
+  ---
+  duration_ms: 1326.912834
+  type: 'test'
+  ...
+# Subtest: in-flight filter result is unknown when executable is replaced
+ok 9 - in-flight filter result is unknown when executable is replaced
+  ---
+  duration_ms: 1332.25625
+  type: 'test'
+  ...
+# Subtest: only a fully recognized filter listing may prove missing drawtext; unknown results are not cached
+ok 10 - only a fully recognized filter listing may prove missing drawtext; unknown results are not cached
+  ---
+  duration_ms: 4570.813959
+  type: 'test'
+  ...
+# Subtest: failed filter command is unknown and is probed again
+ok 11 - failed filter command is unknown and is probed again
+  ---
+  duration_ms: 1162.342208
+  type: 'test'
+  ...
+# Subtest: unchanged configured executable caches its recognized filter listing
+ok 12 - unchanged configured executable caches its recognized filter listing
+  ---
+  duration_ms: 933.89675
+  type: 'test'
+  ...
+# Subtest: unconfirmed filter-probe termination propagates from the actual Mock provider
+ok 13 - unconfirmed filter-probe termination propagates from the actual Mock provider
+  ---
+  duration_ms: 3944.599459
+  type: 'test'
+  ...
+# Subtest: unconfirmed render termination outranks a cached missing-drawtext result
+ok 14 - unconfirmed render termination outranks a cached missing-drawtext result
+  ---
+  duration_ms: 4090.052292
+  type: 'test'
+  ...
+# Worker cycle failed: MEDIA_TERMINATION_UNCONFIRMED
+# Subtest: unconfirmed Mock render latches worker pause before later jobs and future ticks
+ok 15 - unconfirmed Mock render latches worker pause before later jobs and future ticks
+  ---
+  duration_ms: 4412.82475
+  type: 'test'
+  ...
+# Subtest: pre-aborted Mock capability and render never spawn or rewrite cancellation
+ok 16 - pre-aborted Mock capability and render never spawn or rewrite cancellation
+  ---
+  duration_ms: 571.49175
+  type: 'test'
+  ...
+# Subtest: abort while a filter probe is running preserves cancellation and reaps the owned child
+ok 17 - abort while a filter probe is running preserves cancellation and reaps the owned child
+  ---
+  duration_ms: 1227.571042
+  type: 'test'
+  ...
+# Subtest: abort during Mock rendering takes priority over cached unsupported capability
+ok 18 - abort during Mock rendering takes priority over cached unsupported capability
+  ---
+  duration_ms: 1613.787417
+  type: 'test'
+  ...
+# Subtest: worker terminal classification does not broaden to other provider
+ok 19 - worker terminal classification does not broaden to other provider
+  ---
+  duration_ms: 657.32325
+  type: 'test'
+  ...
+# Subtest: worker terminal classification does not broaden to different error code
+ok 20 - worker terminal classification does not broaden to different error code
+  ---
+  duration_ms: 590.591583
+  type: 'test'
+  ...
+# Subtest: worker terminal classification does not broaden to submission unknown
+ok 21 - worker terminal classification does not broaden to submission unknown
+  ---
+  duration_ms: 579.147958
+  type: 'test'
+  ...
+# Subtest: replacement invalidates a positive drawtext cache as well as a negative one
+ok 22 - replacement invalidates a positive drawtext cache as well as a negative one
+  ---
+  duration_ms: 1325.318458
+  type: 'test'
+  ...
+1..22
+# tests 22
+# suites 0
+# pass 22
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 40053.968792

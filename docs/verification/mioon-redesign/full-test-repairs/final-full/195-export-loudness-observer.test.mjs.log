@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: loudness aborted cancels only its explicit observer and detaches listeners
+ok 1 - loudness aborted cancels only its explicit observer and detaches listeners
+  ---
+  duration_ms: 0.987208
+  type: 'test'
+  ...
+# Subtest: loudness close cancels only its explicit observer and detaches listeners
+ok 2 - loudness close cancels only its explicit observer and detaches listeners
+  ---
+  duration_ms: 0.158417
+  type: 'test'
+  ...
+# Subtest: already-disconnected loudness is aborted before service entry and cleanup survives rejection
+ok 3 - already-disconnected loudness is aborted before service entry and cleanup survives rejection
+  ---
+  duration_ms: 0.285833
+  type: 'test'
+  ...
+# Subtest: finished response and post-settlement close do not cancel loudness
+ok 4 - finished response and post-settlement close do not cancel loudness
+  ---
+  duration_ms: 0.101
+  type: 'test'
+  ...
+# Subtest: timeline.render keeps its old observation behavior
+ok 5 - timeline.render keeps its old observation behavior
+  ---
+  duration_ms: 0.081417
+  type: 'test'
+  ...
+# Subtest: export.create keeps its old observation behavior
+ok 6 - export.create keeps its old observation behavior
+  ---
+  duration_ms: 0.043875
+  type: 'test'
+  ...
+# Subtest: project.list keeps its old observation behavior
+ok 7 - project.list keeps its old observation behavior
+  ---
+  duration_ms: 0.071041
+  type: 'test'
+  ...
+# Subtest: asset.waveform.request keeps its old observation behavior
+ok 8 - asset.waveform.request keeps its old observation behavior
+  ---
+  duration_ms: 0.052083
+  type: 'test'
+  ...
+# Subtest: future.operation keeps its old observation behavior
+ok 9 - future.operation keeps its old observation behavior
+  ---
+  duration_ms: 0.048583
+  type: 'test'
+  ...
+# Subtest: simultaneous observers cancel independently and leave prior advisory operations unchanged
+ok 10 - simultaneous observers cancel independently and leave prior advisory operations unchanged
+  ---
+  duration_ms: 0.337834
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 221.221459

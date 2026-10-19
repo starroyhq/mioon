@@ -1,0 +1,178 @@
+TAP version 13
+# Subtest: passive mount, hydration, read and reconnect never create writes or restore text
+ok 1 - passive mount, hydration, read and reconnect never create writes or restore text
+  ---
+  duration_ms: 13.93675
+  type: 'test'
+  ...
+# Subtest: user empty prompt and invalid blank title remain exact recoverable raw input
+ok 2 - user empty prompt and invalid blank title remain exact recoverable raw input
+  ---
+  duration_ms: 3.963541
+  type: 'test'
+  ...
+# Subtest: restoration preserves original revision and exact original text rather than today baseline
+ok 3 - restoration preserves original revision and exact original text rather than today baseline
+  ---
+  duration_ms: 1.0635
+  type: 'test'
+  ...
+# Subtest: raw guard preserves maximum Unicode and controls without truncation or forged local evidence
+ok 4 - raw guard preserves maximum Unicode and controls without truncation or forged local evidence
+  ---
+  duration_ms: 2.259792
+  type: 'test'
+  ...
+# Subtest: full form capture fences same-tick nontext edits independently of text serial
+ok 5 - full form capture fences same-tick nontext edits independently of text serial
+  ---
+  duration_ms: 0.815
+  type: 'test'
+  ...
+# Subtest: loaded selected target required for legacy admission; restored fallback remains available
+ok 6 - loaded selected target required for legacy admission; restored fallback remains available
+  ---
+  duration_ms: 0.688458
+  type: 'test'
+  ...
+# Subtest: fresh submit durably saves raw then prepares immutable text-only intent before execute
+ok 7 - fresh submit durably saves raw then prepares immutable text-only intent before execute
+  ---
+  duration_ms: 1.115625
+  type: 'test'
+  ...
+# Subtest: legacy mutation/ref busy blocks text handlers even without a rerender
+ok 8 - legacy mutation/ref busy blocks text handlers even without a rerender
+  ---
+  duration_ms: 0.623167
+  type: 'test'
+  ...
+# Subtest: full form serial, current revision, action epoch, visibility and busy each fence late prepare
+ok 9 - full form serial, current revision, action epoch, visibility and busy each fence late prepare
+  ---
+  duration_ms: 5.143542
+  type: 'test'
+  ...
+# Subtest: late text ACK preserves newer typing and never acknowledges current form
+ok 10 - late text ACK preserves newer typing and never acknowledges current form
+  ---
+  duration_ms: 1.181292
+  type: 'test'
+  ...
+# Subtest: fresh text merge preserves all unrelated draft values and nontext dirty state
+ok 11 - fresh text merge preserves all unrelated draft values and nontext dirty state
+  ---
+  duration_ms: 0.941625
+  type: 'test'
+  ...
+# Subtest: duration edit during text execution requires explicit current-text acceptance without another no-op request
+ok 12 - duration edit during text execution requires explicit current-text acceptance without another no-op request
+  ---
+  duration_ms: 3.469875
+  type: 'test'
+  ...
+# Subtest: unknown PUT survives empty reread and exact retry uses fresh nonce, original raw and CAS
+ok 13 - unknown PUT survives empty reread and exact retry uses fresh nonce, original raw and CAS
+  ---
+  duration_ms: 1.77725
+  type: 'test'
+  ...
+# Subtest: known refusal permits explicit leave but never unlocks a separate legacy busy state
+ok 14 - known refusal permits explicit leave but never unlocks a separate legacy busy state
+  ---
+  duration_ms: 0.732375
+  type: 'test'
+  ...
+# Subtest: unknown preparation never dispatches and empty reread cannot revoke original identity
+ok 15 - unknown preparation never dispatches and empty reread cannot revoke original identity
+  ---
+  duration_ms: 3.984459
+  type: 'test'
+  ...
+# Subtest: passive terminal reveal cannot resurrect same identity or substitute frozen input at higher revision
+ok 16 - passive terminal reveal cannot resurrect same identity or substitute frozen input at higher revision
+  ---
+  duration_ms: 1.794542
+  type: 'test'
+  ...
+# Subtest: malformed response, wrong unchanged prompt and wrong revision remain pending
+ok 17 - malformed response, wrong unchanged prompt and wrong revision remain pending
+  ---
+  duration_ms: 2.629625
+  type: 'test'
+  ...
+# Subtest: unknown PUT and preparation survive actual controller disposal/remount with session retention
+ok 18 - unknown PUT and preparation survive actual controller disposal/remount with session retention
+  ---
+  duration_ms: 1.427625
+  type: 'test'
+  ...
+# Subtest: ambiguous DELETE survives remount; null unchanged GET cannot settle; explicit newer authoritative state preserves candidate
+ok 19 - ambiguous DELETE survives remount; null unchanged GET cannot settle; explicit newer authoritative state preserves candidate
+  ---
+  duration_ms: 1.563625
+  type: 'test'
+  ...
+# Subtest: other-shot project pending is visible and blocks fresh submission without hidden dispatch
+ok 20 - other-shot project pending is visible and blocks fresh submission without hidden dispatch
+  ---
+  duration_ms: 0.863417
+  type: 'test'
+  ...
+# Subtest: hidden view cannot restore or initiate persistence, business save or recovery
+ok 21 - hidden view cannot restore or initiate persistence, business save or recovery
+  ---
+  duration_ms: 0.454292
+  type: 'test'
+  ...
+# Subtest: two local controllers cannot overwrite another window draft CAS
+ok 22 - two local controllers cannot overwrite another window draft CAS
+  ---
+  duration_ms: 0.603792
+  type: 'test'
+  ...
+# Subtest: fixed scoped client endpoints, exact refusal codes, bounded timeout and malformed protocol
+ok 23 - fixed scoped client endpoints, exact refusal codes, bounded timeout and malformed protocol
+  ---
+  duration_ms: 24.974125
+  type: 'test'
+  ...
+# Subtest: accepted navigation releases only abandoned local input synchronously, retaining request uncertainty
+ok 24 - accepted navigation releases only abandoned local input synchronously, retaining request uncertainty
+  ---
+  duration_ms: 1.145375
+  type: 'test'
+  ...
+# Subtest: unknown DELETE with unchanged original draft can explicitly retry exact original CAS using fresh nonce
+ok 25 - unknown DELETE with unchanged original draft can explicitly retry exact original CAS using fresh nonce
+  ---
+  duration_ms: 1.073125
+  type: 'test'
+  ...
+# Subtest: a refused exact DELETE retry cannot disprove original deletion uncertainty
+ok 26 - a refused exact DELETE retry cannot disprove original deletion uncertainty
+  ---
+  duration_ms: 0.782292
+  type: 'test'
+  ...
+# Subtest: session retention reveals private raw only after matching verified workspace authority
+ok 27 - session retention reveals private raw only after matching verified workspace authority
+  ---
+  duration_ms: 2.167583
+  type: 'test'
+  ...
+# Subtest: an authoritative unsupported response detaches previously displayed recovery payloads without deleting retention
+ok 28 - an authoritative unsupported response detaches previously displayed recovery payloads without deleting retention
+  ---
+  duration_ms: 0.426792
+  type: 'test'
+  ...
+1..28
+# tests 28
+# suites 0
+# pass 28
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 359.889334

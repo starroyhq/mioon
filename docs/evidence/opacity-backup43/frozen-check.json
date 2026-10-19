@@ -1,0 +1,15 @@
+{
+  "originalManifestUnchanged": true,
+  "baselineFiles": 64,
+  "originalFilesUnchanged": 63,
+  "approvedRendererExceptionUnchanged": true,
+  "newExceptions": 0,
+  "legacyAllowlistChanged": false,
+  "typecheckPolicyChanged": false,
+  "candidateSchemaAndAuthorityUnchanged": {
+    "packages/business/src/workspace-schema-v42.ts": "8bf142882b5684db9d898eca8b66ca964d62f3171eb9f388d9be6eacd2de0d96",
+    "packages/business/src/workspace-restore-schema-v43.ts": "2c471d7e5cf140b3ec897b7dace9d2bb43b7b1e5492758e1a16ac91cff903d04",
+    "packages/business/src/opacity-candidate-store.ts": "8b826b6112bd2dbbf4db884f58778e38968329ddbf57391c9ca80cbc456a602e",
+    "packages/business/src/opacity-candidate-services.ts": "435291c23b1cb5a1acc47633cad48f8c75789ceaf070950b31b38e119431c1ea"
+  }
+}

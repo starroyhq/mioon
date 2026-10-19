@@ -42,7 +42,7 @@ export function liveConfiguration(env, keyName, prefix) {
     status: !configured ? 'not_configured' : enabled ? 'available' : 'disabled',
     configuration: {
       missing: [...(!configured ? [keyName] : []), ...(env.MIOON_ENABLE_LIVE_PROVIDER !== '1' ? ['MIOON_ENABLE_LIVE_PROVIDER'] : [])],
-      requirements: [keyName, 'MIOON_ENABLE_LIVE_PROVIDER=1', `${prefix}_MAX_GENERATIONS (application-enforced approved count)`, `${prefix}_APPROVED_ASSET_SHA256 (required for image input)`],
+      requirements: [keyName, 'MIOON_ENABLE_LIVE_PROVIDER=1', `${prefix}_APPROVED_ASSET_SHA256 (required for image input)`],
     },
     ensureEnabled() { if (!enabled) throw providerError('PROVIDER_DISABLED', 'Live provider calls are disabled or its server credential is missing.'); },
   };

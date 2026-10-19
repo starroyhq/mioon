@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: custom HTTP GET/PUT targets only its slot, strips all secrets, and leaves official endpoint DTO unchanged
+ok 1 - custom HTTP GET/PUT targets only its slot, strips all secrets, and leaves official endpoint DTO unchanged
+  ---
+  duration_ms: 6.276166
+  type: 'test'
+  ...
+# Subtest: custom HTTP route shares strict methods, query/body/encoding/size guards and sanitized failures
+ok 2 - custom HTTP route shares strict methods, query/body/encoding/size guards and sanitized failures
+  ---
+  duration_ms: 1.185291
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 275.011542

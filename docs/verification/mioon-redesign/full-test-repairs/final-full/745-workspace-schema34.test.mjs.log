@@ -1,0 +1,891 @@
+TAP version 13
+# Subtest: 32→34 adds only its marker and preserves exact rows, types, rowids, DDL and v1 plan (retained=false)
+ok 1 - 32→34 adds only its marker and preserves exact rows, types, rowids, DDL and v1 plan (retained=false)
+  ---
+  duration_ms: 361.313875
+  type: 'test'
+  ...
+# Subtest: 32→34 adds only its marker and preserves exact rows, types, rowids, DDL and v1 plan (retained=true)
+not ok 2 - 32→34 adds only its marker and preserves exact rows, types, rowids, DDL and v1 plan (retained=true)
+  ---
+  duration_ms: 4.244292
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema34.test.mjs:115:36'
+  failureType: 'testCodeFailure'
+  error: 'Value is too large to be represented as a JavaScript number: 9007199254740993'
+  code: 'ERR_OUT_OF_RANGE'
+  name: 'RangeError'
+  stack: |-
+    fixture (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema26-fixtures.mjs:44:41)
+    database (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema34.test.mjs:43:14)
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema34.test.mjs:116:11)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: schema34 migration rolls back all retained bytes after marker
+ok 3 - schema34 migration rolls back all retained bytes after marker
+  ---
+  duration_ms: 92.783416
+  type: 'test'
+  ...
+# Subtest: schema34 migration rolls back all retained bytes before commit
+ok 4 - schema34 migration rolls back all retained bytes before commit
+  ---
+  duration_ms: 94.981041
+  type: 'test'
+  ...
+# Subtest: current dispatcher retains exact source24/restored25 pair without upgrading historical restores
+ok 5 - current dispatcher retains exact source24/restored25 pair without upgrading historical restores
+  ---
+  duration_ms: 218.525041
+  type: 'test'
+  ...
+# Subtest: current dispatcher retains exact source26/restored27 pair without upgrading historical restores
+ok 6 - current dispatcher retains exact source26/restored27 pair without upgrading historical restores
+  ---
+  duration_ms: 188.522
+  type: 'test'
+  ...
+# Subtest: current dispatcher retains exact source28/restored29 pair without upgrading historical restores
+ok 7 - current dispatcher retains exact source28/restored29 pair without upgrading historical restores
+  ---
+  duration_ms: 206.462166
+  type: 'test'
+  ...
+# Subtest: current dispatcher retains exact source30/restored31 pair without upgrading historical restores
+ok 8 - current dispatcher retains exact source30/restored31 pair without upgrading historical restores
+  ---
+  duration_ms: 223.184458
+  type: 'test'
+  ...
+# Subtest: current dispatcher retains exact source32/restored33 pair without upgrading historical restores
+ok 9 - current dispatcher retains exact source32/restored33 pair without upgrading historical restores
+  ---
+  duration_ms: 231.108708
+  type: 'test'
+  ...
+# Subtest: current dispatcher retains exact source34/restored35 pair without upgrading historical restores
+ok 10 - current dispatcher retains exact source34/restored35 pair without upgrading historical restores
+  ---
+  duration_ms: 142.096
+  type: 'test'
+  ...
+# Subtest: wire contracts admit only exact registered source/restoration pairings and keep restored schemas out of backup sources
+not ok 11 - wire contracts admit only exact registered source/restoration pairings and keep restored schemas out of backup sources
+  ---
+  duration_ms: 1.117583
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema34.test.mjs:140:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    true !== false
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: false
+  actual: true
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/workspace-schema34.test.mjs:142:62)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: mixed-role reader rejects corrupt or downgraded markers: future marker
+ok 12 - mixed-role reader rejects corrupt or downgraded markers: future marker
+  ---
+  duration_ms: 92.325542
+  type: 'test'
+  ...
+# Subtest: mixed-role reader rejects corrupt or downgraded markers: missing34
+ok 13 - mixed-role reader rejects corrupt or downgraded markers: missing34
+  ---
+  duration_ms: 92.2
+  type: 'test'
+  ...
+# Subtest: mixed-role reader rejects corrupt or downgraded markers: missing32
+ok 14 - mixed-role reader rejects corrupt or downgraded markers: missing32
+  ---
+  duration_ms: 91.148083
+  type: 'test'
+  ...
+# Subtest: mixed-role reader rejects corrupt or downgraded markers: missing30
+ok 15 - mixed-role reader rejects corrupt or downgraded markers: missing30
+  ---
+  duration_ms: 89.65075
+  type: 'test'
+  ...
+# Subtest: mixed-role reader rejects corrupt or downgraded markers: missing28
+ok 16 - mixed-role reader rejects corrupt or downgraded markers: missing28
+  ---
+  duration_ms: 91.76625
+  type: 'test'
+  ...
+# Subtest: mixed-role reader rejects corrupt or downgraded markers: missing26
+ok 17 - mixed-role reader rejects corrupt or downgraded markers: missing26
+  ---
+  duration_ms: 89.173791
+  type: 'test'
+  ...
+# Subtest: mixed-role reader rejects corrupt or downgraded markers: restored35 without34
+ok 18 - mixed-role reader rejects corrupt or downgraded markers: restored35 without34
+  ---
+  duration_ms: 88.919583
+  type: 'test'
+  ...
+# Subtest: mixed-role reader rejects corrupt or downgraded markers: restored33 with34
+ok 19 - mixed-role reader rejects corrupt or downgraded markers: restored33 with34
+  ---
+  duration_ms: 87.026459
+  type: 'test'
+  ...
+# Subtest: historical32 rejects image clip in timeline without mutation
+ok 20 - historical32 rejects image clip in timeline without mutation
+  ---
+  duration_ms: 88.21
+  type: 'test'
+  ...
+# Subtest: historical32 rejects image source in timeline without mutation
+ok 21 - historical32 rejects image source in timeline without mutation
+  ---
+  duration_ms: 87.811625
+  type: 'test'
+  ...
+# Subtest: historical32 rejects mixed plan in timeline without mutation
+ok 22 - historical32 rejects mixed plan in timeline without mutation
+  ---
+  duration_ms: 88.170708
+  type: 'test'
+  ...
+# Subtest: historical32 rejects image clip in history without mutation
+ok 23 - historical32 rejects image clip in history without mutation
+  ---
+  duration_ms: 89.973709
+  type: 'test'
+  ...
+# Subtest: historical32 rejects image source in history without mutation
+ok 24 - historical32 rejects image source in history without mutation
+  ---
+  duration_ms: 89.61525
+  type: 'test'
+  ...
+# Subtest: historical32 rejects mixed plan in history without mutation
+ok 25 - historical32 rejects mixed plan in history without mutation
+  ---
+  duration_ms: 90.062
+  type: 'test'
+  ...
+# Subtest: historical32 rejects image clip in receipt without mutation
+ok 26 - historical32 rejects image clip in receipt without mutation
+  ---
+  duration_ms: 102.579541
+  type: 'test'
+  ...
+# Subtest: historical32 rejects image source in receipt without mutation
+ok 27 - historical32 rejects image source in receipt without mutation
+  ---
+  duration_ms: 93.770083
+  type: 'test'
+  ...
+# Subtest: historical32 rejects mixed plan in receipt without mutation
+ok 28 - historical32 rejects mixed plan in receipt without mutation
+  ---
+  duration_ms: 91.418458
+  type: 'test'
+  ...
+# Subtest: historical32 rejects image clip in task without mutation
+ok 29 - historical32 rejects image clip in task without mutation
+  ---
+  duration_ms: 96.590208
+  type: 'test'
+  ...
+# Subtest: historical32 rejects image source in task without mutation
+ok 30 - historical32 rejects image source in task without mutation
+  ---
+  duration_ms: 99.763292
+  type: 'test'
+  ...
+# Subtest: historical32 rejects mixed plan in task without mutation
+ok 31 - historical32 rejects mixed plan in task without mutation
+  ---
+  duration_ms: 98.074209
+  type: 'test'
+  ...
+# Subtest: historical32 rejects image clip in export without mutation
+ok 32 - historical32 rejects image clip in export without mutation
+  ---
+  duration_ms: 96.692542
+  type: 'test'
+  ...
+# Subtest: historical32 rejects image source in export without mutation
+ok 33 - historical32 rejects image source in export without mutation
+  ---
+  duration_ms: 92.659375
+  type: 'test'
+  ...
+# Subtest: historical32 rejects mixed plan in export without mutation
+ok 34 - historical32 rejects mixed plan in export without mutation
+  ---
+  duration_ms: 97.993542
+  type: 'test'
+  ...
+# Subtest: historical33 rejects image clip in timeline without mutation
+ok 35 - historical33 rejects image clip in timeline without mutation
+  ---
+  duration_ms: 124.08025
+  type: 'test'
+  ...
+# Subtest: historical33 rejects image source in timeline without mutation
+ok 36 - historical33 rejects image source in timeline without mutation
+  ---
+  duration_ms: 120.904
+  type: 'test'
+  ...
+# Subtest: historical33 rejects mixed plan in timeline without mutation
+ok 37 - historical33 rejects mixed plan in timeline without mutation
+  ---
+  duration_ms: 123.580792
+  type: 'test'
+  ...
+# Subtest: historical33 rejects image clip in history without mutation
+ok 38 - historical33 rejects image clip in history without mutation
+  ---
+  duration_ms: 123.722542
+  type: 'test'
+  ...
+# Subtest: historical33 rejects image source in history without mutation
+ok 39 - historical33 rejects image source in history without mutation
+  ---
+  duration_ms: 122.231833
+  type: 'test'
+  ...
+# Subtest: historical33 rejects mixed plan in history without mutation
+ok 40 - historical33 rejects mixed plan in history without mutation
+  ---
+  duration_ms: 122.7315
+  type: 'test'
+  ...
+# Subtest: historical33 rejects image clip in receipt without mutation
+ok 41 - historical33 rejects image clip in receipt without mutation
+  ---
+  duration_ms: 122.340959
+  type: 'test'
+  ...
+# Subtest: historical33 rejects image source in receipt without mutation
+ok 42 - historical33 rejects image source in receipt without mutation
+  ---
+  duration_ms: 124.226417
+  type: 'test'
+  ...
+# Subtest: historical33 rejects mixed plan in receipt without mutation
+ok 43 - historical33 rejects mixed plan in receipt without mutation
+  ---
+  duration_ms: 120.804917
+  type: 'test'
+  ...
+# Subtest: historical33 rejects image clip in task without mutation
+ok 44 - historical33 rejects image clip in task without mutation
+  ---
+  duration_ms: 125.57075
+  type: 'test'
+  ...
+# Subtest: historical33 rejects image source in task without mutation
+ok 45 - historical33 rejects image source in task without mutation
+  ---
+  duration_ms: 122.861125
+  type: 'test'
+  ...
+# Subtest: historical33 rejects mixed plan in task without mutation
+ok 46 - historical33 rejects mixed plan in task without mutation
+  ---
+  duration_ms: 122.824833
+  type: 'test'
+  ...
+# Subtest: historical33 rejects image clip in export without mutation
+ok 47 - historical33 rejects image clip in export without mutation
+  ---
+  duration_ms: 127.063
+  type: 'test'
+  ...
+# Subtest: historical33 rejects image source in export without mutation
+ok 48 - historical33 rejects image source in export without mutation
+  ---
+  duration_ms: 120.694125
+  type: 'test'
+  ...
+# Subtest: historical33 rejects mixed plan in export without mutation
+ok 49 - historical33 rejects mixed plan in export without mutation
+  ---
+  duration_ms: 122.921666
+  type: 'test'
+  ...
+# Subtest: schema34 rejects accepted image binding corruption: source hash
+ok 50 - schema34 rejects accepted image binding corruption: source hash
+  ---
+  duration_ms: 86.922125
+  type: 'test'
+  ...
+# Subtest: schema34 rejects accepted image binding corruption: evidence hash
+ok 51 - schema34 rejects accepted image binding corruption: evidence hash
+  ---
+  duration_ms: 88.4345
+  type: 'test'
+  ...
+# Subtest: schema34 rejects accepted image binding corruption: source profile
+ok 52 - schema34 rejects accepted image binding corruption: source profile
+  ---
+  duration_ms: 92.331791
+  type: 'test'
+  ...
+# Subtest: schema34 rejects accepted image binding corruption: clip profile
+ok 53 - schema34 rejects accepted image binding corruption: clip profile
+  ---
+  duration_ms: 86.238042
+  type: 'test'
+  ...
+# Subtest: schema34 rejects accepted image binding corruption: interpretation
+ok 54 - schema34 rejects accepted image binding corruption: interpretation
+  ---
+  duration_ms: 86.429084
+  type: 'test'
+  ...
+# Subtest: schema34 rejects accepted image binding corruption: unknown evidence field
+ok 55 - schema34 rejects accepted image binding corruption: unknown evidence field
+  ---
+  duration_ms: 91.656375
+  type: 'test'
+  ...
+# Subtest: schema34 rejects accepted image binding corruption: wrong MIME
+ok 56 - schema34 rejects accepted image binding corruption: wrong MIME
+  ---
+  duration_ms: 86.117
+  type: 'test'
+  ...
+# Subtest: schema34 rejects accepted image binding corruption: image profile on video
+ok 57 - schema34 rejects accepted image binding corruption: image profile on video
+  ---
+  duration_ms: 90.095792
+  type: 'test'
+  ...
+# Subtest: schema34 rejects accepted image binding corruption: video profile on image
+ok 58 - schema34 rejects accepted image binding corruption: video profile on image
+  ---
+  duration_ms: 87.986875
+  type: 'test'
+  ...
+# Subtest: schema34 rejects accepted image binding corruption: foreign asset
+ok 59 - schema34 rejects accepted image binding corruption: foreign asset
+  ---
+  duration_ms: 87.495416
+  type: 'test'
+  ...
+# Subtest: schema34 rejects accepted image binding corruption: foreign LUT
+ok 60 - schema34 rejects accepted image binding corruption: foreign LUT
+  ---
+  duration_ms: 86.933708
+  type: 'test'
+  ...
+# Subtest: schema34 rejects accepted image binding corruption: missing LUT
+ok 61 - schema34 rejects accepted image binding corruption: missing LUT
+  ---
+  duration_ms: 85.7625
+  type: 'test'
+  ...
+# Subtest: schema34 rejects accepted image binding corruption: LUT hash
+ok 62 - schema34 rejects accepted image binding corruption: LUT hash
+  ---
+  duration_ms: 88.758583
+  type: 'test'
+  ...
+# Subtest: schema34 rejects accepted image binding corruption: audio track
+ok 63 - schema34 rejects accepted image binding corruption: audio track
+  ---
+  duration_ms: 86.829417
+  type: 'test'
+  ...
+# Subtest: schema34 rejects accepted image binding corruption: duplicate key
+ok 64 - schema34 rejects accepted image binding corruption: duplicate key
+  ---
+  duration_ms: 86.439167
+  type: 'test'
+  ...
+# Subtest: schema34 retains invalidated image declaration on video/mp4, but cannot freeze it for render
+ok 65 - schema34 retains invalidated image declaration on video/mp4, but cannot freeze it for render
+  ---
+  duration_ms: 139.8785
+  type: 'test'
+  ...
+# Subtest: schema34 retains invalidated image declaration on video/webm, but cannot freeze it for render
+ok 66 - schema34 retains invalidated image declaration on video/webm, but cannot freeze it for render
+  ---
+  duration_ms: 138.511875
+  type: 'test'
+  ...
+# Subtest: schema34 retains invalidated image declaration on image/png, but cannot freeze it for render
+ok 67 - schema34 retains invalidated image declaration on image/png, but cannot freeze it for render
+  ---
+  duration_ms: 137.057958
+  type: 'test'
+  ...
+# Subtest: schema34 retains invalidated image declaration on image/jpeg, but cannot freeze it for render
+ok 68 - schema34 retains invalidated image declaration on image/jpeg, but cannot freeze it for render
+  ---
+  duration_ms: 138.103167
+  type: 'test'
+  ...
+# Subtest: schema34 retains invalidated video declaration on video/mp4, but cannot freeze it for render
+ok 69 - schema34 retains invalidated video declaration on video/mp4, but cannot freeze it for render
+  ---
+  duration_ms: 138.797042
+  type: 'test'
+  ...
+# Subtest: schema34 retains invalidated video declaration on video/webm, but cannot freeze it for render
+ok 70 - schema34 retains invalidated video declaration on video/webm, but cannot freeze it for render
+  ---
+  duration_ms: 138.771084
+  type: 'test'
+  ...
+# Subtest: schema34 retains invalidated video declaration on image/png, but cannot freeze it for render
+ok 71 - schema34 retains invalidated video declaration on image/png, but cannot freeze it for render
+  ---
+  duration_ms: 135.505333
+  type: 'test'
+  ...
+# Subtest: schema34 retains invalidated video declaration on image/jpeg, but cannot freeze it for render
+ok 72 - schema34 retains invalidated video declaration on image/jpeg, but cannot freeze it for render
+  ---
+  duration_ms: 135.157334
+  type: 'test'
+  ...
+# Subtest: invalidated source:null never admits unsupported image/webp
+ok 73 - invalidated source:null never admits unsupported image/webp
+  ---
+  duration_ms: 82.750167
+  type: 'test'
+  ...
+# Subtest: invalidated source:null never admits unsupported image/avif
+ok 74 - invalidated source:null never admits unsupported image/avif
+  ---
+  duration_ms: 81.490667
+  type: 'test'
+  ...
+# Subtest: invalidated source:null never admits unsupported audio/wav
+ok 75 - invalidated source:null never admits unsupported audio/wav
+  ---
+  duration_ms: 80.405292
+  type: 'test'
+  ...
+# Subtest: invalidated source:null never admits unsupported video/quicktime
+ok 76 - invalidated source:null never admits unsupported video/quicktime
+  ---
+  duration_ms: 81.893
+  type: 'test'
+  ...
+# Subtest: schema34 frozen snapshot rejects missing plan
+ok 77 - schema34 frozen snapshot rejects missing plan
+  ---
+  duration_ms: 82.285
+  type: 'test'
+  ...
+# Subtest: schema34 frozen snapshot rejects wrong plan profile
+ok 78 - schema34 frozen snapshot rejects wrong plan profile
+  ---
+  duration_ms: 80.552833
+  type: 'test'
+  ...
+# Subtest: schema34 frozen snapshot rejects changed evidence
+ok 79 - schema34 frozen snapshot rejects changed evidence
+  ---
+  duration_ms: 83.142125
+  type: 'test'
+  ...
+# Subtest: schema34 frozen snapshot rejects changed algorithm
+ok 80 - schema34 frozen snapshot rejects changed algorithm
+  ---
+  duration_ms: 81.41525
+  type: 'test'
+  ...
+# Subtest: schema34 frozen snapshot rejects changed display
+ok 81 - schema34 frozen snapshot rejects changed display
+  ---
+  duration_ms: 83.0505
+  type: 'test'
+  ...
+# Subtest: schema34 frozen snapshot rejects extra field
+ok 82 - schema34 frozen snapshot rejects extra field
+  ---
+  duration_ms: 82.360083
+  type: 'test'
+  ...
+# Subtest: schema34 retains unresolved prepared image intent without granting source or LUT authority
+ok 83 - schema34 retains unresolved prepared image intent without granting source or LUT authority
+  ---
+  duration_ms: 135.438541
+  type: 'test'
+  ...
+# Subtest: schema34 retains unresolved not_applied image intent without granting source or LUT authority
+ok 84 - schema34 retains unresolved not_applied image intent without granting source or LUT authority
+  ---
+  duration_ms: 136.681416
+  type: 'test'
+  ...
+# Subtest: restored35 installation rolls back at CREATE TABLE workspace_restoration
+ok 85 - restored35 installation rolls back at CREATE TABLE workspace_restoration
+  ---
+  duration_ms: 241.754333
+  type: 'test'
+  ...
+# Subtest: restored35 installation rolls back at INSERT INTO workspace_restore_timeline_history
+ok 86 - restored35 installation rolls back at INSERT INTO workspace_restore_timeline_history
+  ---
+  duration_ms: 134.939541
+  type: 'test'
+  ...
+# Subtest: restored35 installation rolls back at CREATE TRIGGER restore_legacy_schema_gate
+ok 87 - restored35 installation rolls back at CREATE TRIGGER restore_legacy_schema_gate
+  ---
+  duration_ms: 141.934625
+  type: 'test'
+  ...
+# Subtest: restored35 installation rolls back at COMMIT
+ok 88 - restored35 installation rolls back at COMMIT
+  ---
+  duration_ms: 157.545625
+  type: 'test'
+  ...
+# Subtest: cold backup34→restored35 preserves exact mixed image evidence, raw receipts/history, v3 snapshot, LUT/source bytes across reopen
+ok 89 - cold backup34→restored35 preserves exact mixed image evidence, raw receipts/history, v3 snapshot, LUT/source bytes across reopen
+  ---
+  duration_ms: 556.704584
+  type: 'test'
+  ...
+# Subtest: restored35 revalidation rejects corrupted live timeline without repairing captured image evidence
+ok 90 - restored35 revalidation rejects corrupted live timeline without repairing captured image evidence
+  ---
+  duration_ms: 131.442542
+  type: 'test'
+  ...
+# Subtest: restored35 revalidation rejects corrupted archive without repairing captured image evidence
+ok 91 - restored35 revalidation rejects corrupted archive without repairing captured image evidence
+  ---
+  duration_ms: 135.384167
+  type: 'test'
+  ...
+# Subtest: restored35 revalidation rejects corrupted held snapshot without repairing captured image evidence
+ok 92 - restored35 revalidation rejects corrupted held snapshot without repairing captured image evidence
+  ---
+  duration_ms: 134.719458
+  type: 'test'
+  ...
+# Subtest: restored35 keeps source inspection and LUT import denied; reads and explicit-origin local actions retain existing fences
+ok 93 - restored35 keeps source inspection and LUT import denied; reads and explicit-origin local actions retain existing fences
+  ---
+  duration_ms: 252.077708
+  type: 'test'
+  ...
+# Subtest: cold capture and migration refuse missing34 and corrupt image evidence before publishing a destination
+ok 94 - cold capture and migration refuse missing34 and corrupt image evidence before publishing a destination
+  ---
+  duration_ms: 367.720166
+  type: 'test'
+  ...
+# Subtest: historical24 fails closed on standalone jfif-ycbcr8-srgb-v1 receipt
+ok 95 - historical24 fails closed on standalone jfif-ycbcr8-srgb-v1 receipt
+  ---
+  duration_ms: 50.469458
+  type: 'test'
+  ...
+# Subtest: historical24 fails closed on standalone mioon-jfif-image-clip-v1 receipt
+ok 96 - historical24 fails closed on standalone mioon-jfif-image-clip-v1 receipt
+  ---
+  duration_ms: 51.681417
+  type: 'test'
+  ...
+# Subtest: historical24 fails closed on standalone mioon-mixed-sdr-render-v3 receipt
+ok 97 - historical24 fails closed on standalone mioon-mixed-sdr-render-v3 receipt
+  ---
+  duration_ms: 49.551666
+  type: 'test'
+  ...
+# Subtest: historical25 fails closed on standalone jfif-ycbcr8-srgb-v1 receipt
+ok 98 - historical25 fails closed on standalone jfif-ycbcr8-srgb-v1 receipt
+  ---
+  duration_ms: 86.231875
+  type: 'test'
+  ...
+# Subtest: historical25 fails closed on standalone mioon-jfif-image-clip-v1 receipt
+ok 99 - historical25 fails closed on standalone mioon-jfif-image-clip-v1 receipt
+  ---
+  duration_ms: 88.257958
+  type: 'test'
+  ...
+# Subtest: historical25 fails closed on standalone mioon-mixed-sdr-render-v3 receipt
+ok 100 - historical25 fails closed on standalone mioon-mixed-sdr-render-v3 receipt
+  ---
+  duration_ms: 84.884959
+  type: 'test'
+  ...
+# Subtest: historical26 fails closed on standalone jfif-ycbcr8-srgb-v1 receipt
+ok 101 - historical26 fails closed on standalone jfif-ycbcr8-srgb-v1 receipt
+  ---
+  duration_ms: 60.669125
+  type: 'test'
+  ...
+# Subtest: historical26 fails closed on standalone mioon-jfif-image-clip-v1 receipt
+ok 102 - historical26 fails closed on standalone mioon-jfif-image-clip-v1 receipt
+  ---
+  duration_ms: 62.636834
+  type: 'test'
+  ...
+# Subtest: historical26 fails closed on standalone mioon-mixed-sdr-render-v3 receipt
+ok 103 - historical26 fails closed on standalone mioon-mixed-sdr-render-v3 receipt
+  ---
+  duration_ms: 59.118834
+  type: 'test'
+  ...
+# Subtest: historical27 fails closed on standalone jfif-ycbcr8-srgb-v1 receipt
+ok 104 - historical27 fails closed on standalone jfif-ycbcr8-srgb-v1 receipt
+  ---
+  duration_ms: 96.315833
+  type: 'test'
+  ...
+# Subtest: historical27 fails closed on standalone mioon-jfif-image-clip-v1 receipt
+ok 105 - historical27 fails closed on standalone mioon-jfif-image-clip-v1 receipt
+  ---
+  duration_ms: 94.554709
+  type: 'test'
+  ...
+# Subtest: historical27 fails closed on standalone mioon-mixed-sdr-render-v3 receipt
+ok 106 - historical27 fails closed on standalone mioon-mixed-sdr-render-v3 receipt
+  ---
+  duration_ms: 97.259208
+  type: 'test'
+  ...
+# Subtest: historical28 fails closed on standalone jfif-ycbcr8-srgb-v1 receipt
+ok 107 - historical28 fails closed on standalone jfif-ycbcr8-srgb-v1 receipt
+  ---
+  duration_ms: 67.115625
+  type: 'test'
+  ...
+# Subtest: historical28 fails closed on standalone mioon-jfif-image-clip-v1 receipt
+ok 108 - historical28 fails closed on standalone mioon-jfif-image-clip-v1 receipt
+  ---
+  duration_ms: 66.267625
+  type: 'test'
+  ...
+# Subtest: historical28 fails closed on standalone mioon-mixed-sdr-render-v3 receipt
+ok 109 - historical28 fails closed on standalone mioon-mixed-sdr-render-v3 receipt
+  ---
+  duration_ms: 69.136583
+  type: 'test'
+  ...
+# Subtest: historical29 fails closed on standalone jfif-ycbcr8-srgb-v1 receipt
+ok 110 - historical29 fails closed on standalone jfif-ycbcr8-srgb-v1 receipt
+  ---
+  duration_ms: 106.427333
+  type: 'test'
+  ...
+# Subtest: historical29 fails closed on standalone mioon-jfif-image-clip-v1 receipt
+ok 111 - historical29 fails closed on standalone mioon-jfif-image-clip-v1 receipt
+  ---
+  duration_ms: 106.351459
+  type: 'test'
+  ...
+# Subtest: historical29 fails closed on standalone mioon-mixed-sdr-render-v3 receipt
+ok 112 - historical29 fails closed on standalone mioon-mixed-sdr-render-v3 receipt
+  ---
+  duration_ms: 105.042625
+  type: 'test'
+  ...
+# Subtest: historical30 fails closed on standalone jfif-ycbcr8-srgb-v1 receipt
+ok 113 - historical30 fails closed on standalone jfif-ycbcr8-srgb-v1 receipt
+  ---
+  duration_ms: 76.491833
+  type: 'test'
+  ...
+# Subtest: historical30 fails closed on standalone mioon-jfif-image-clip-v1 receipt
+ok 114 - historical30 fails closed on standalone mioon-jfif-image-clip-v1 receipt
+  ---
+  duration_ms: 76.207083
+  type: 'test'
+  ...
+# Subtest: historical30 fails closed on standalone mioon-mixed-sdr-render-v3 receipt
+ok 115 - historical30 fails closed on standalone mioon-mixed-sdr-render-v3 receipt
+  ---
+  duration_ms: 77.376583
+  type: 'test'
+  ...
+# Subtest: historical31 fails closed on standalone jfif-ycbcr8-srgb-v1 receipt
+ok 116 - historical31 fails closed on standalone jfif-ycbcr8-srgb-v1 receipt
+  ---
+  duration_ms: 113.822666
+  type: 'test'
+  ...
+# Subtest: historical31 fails closed on standalone mioon-jfif-image-clip-v1 receipt
+ok 117 - historical31 fails closed on standalone mioon-jfif-image-clip-v1 receipt
+  ---
+  duration_ms: 114.128208
+  type: 'test'
+  ...
+# Subtest: historical31 fails closed on standalone mioon-mixed-sdr-render-v3 receipt
+ok 118 - historical31 fails closed on standalone mioon-mixed-sdr-render-v3 receipt
+  ---
+  duration_ms: 113.865166
+  type: 'test'
+  ...
+# Subtest: historical32 fails closed on standalone jfif-ycbcr8-srgb-v1 receipt
+ok 119 - historical32 fails closed on standalone jfif-ycbcr8-srgb-v1 receipt
+  ---
+  duration_ms: 84.682416
+  type: 'test'
+  ...
+# Subtest: historical32 fails closed on standalone mioon-jfif-image-clip-v1 receipt
+ok 120 - historical32 fails closed on standalone mioon-jfif-image-clip-v1 receipt
+  ---
+  duration_ms: 82.126292
+  type: 'test'
+  ...
+# Subtest: historical32 fails closed on standalone mioon-mixed-sdr-render-v3 receipt
+ok 121 - historical32 fails closed on standalone mioon-mixed-sdr-render-v3 receipt
+  ---
+  duration_ms: 83.805958
+  type: 'test'
+  ...
+# Subtest: historical33 fails closed on standalone jfif-ycbcr8-srgb-v1 receipt
+ok 122 - historical33 fails closed on standalone jfif-ycbcr8-srgb-v1 receipt
+  ---
+  duration_ms: 123.518708
+  type: 'test'
+  ...
+# Subtest: historical33 fails closed on standalone mioon-jfif-image-clip-v1 receipt
+ok 123 - historical33 fails closed on standalone mioon-jfif-image-clip-v1 receipt
+  ---
+  duration_ms: 125.130625
+  type: 'test'
+  ...
+# Subtest: historical33 fails closed on standalone mioon-mixed-sdr-render-v3 receipt
+ok 124 - historical33 fails closed on standalone mioon-mixed-sdr-render-v3 receipt
+  ---
+  duration_ms: 124.688708
+  type: 'test'
+  ...
+# Subtest: schema34 additive migration rejects extra task trigger before imported code executes
+ok 125 - schema34 additive migration rejects extra task trigger before imported code executes
+  ---
+  duration_ms: 80.058208
+  type: 'test'
+  ...
+# Subtest: schema34 additive migration rejects extra LUT trigger before imported code executes
+ok 126 - schema34 additive migration rejects extra LUT trigger before imported code executes
+  ---
+  duration_ms: 80.84775
+  type: 'test'
+  ...
+# Subtest: schema34 additive migration rejects temporary LUT shadow before imported code executes
+ok 127 - schema34 additive migration rejects temporary LUT shadow before imported code executes
+  ---
+  duration_ms: 81.8025
+  type: 'test'
+  ...
+# Subtest: schema34 additive migration rejects marker trigger before imported code executes
+ok 128 - schema34 additive migration rejects marker trigger before imported code executes
+  ---
+  duration_ms: 80.995209
+  type: 'test'
+  ...
+# Subtest: schema34 preserves existing PNG/v2 bytes during marker-only migration
+ok 129 - schema34 preserves existing PNG/v2 bytes during marker-only migration
+  ---
+  duration_ms: 87.611875
+  type: 'test'
+  ...
+# Subtest: JPEG generation leaves every historical26–33 constructor byte-frozen
+ok 130 - JPEG generation leaves every historical26–33 constructor byte-frozen
+  ---
+  duration_ms: 0.62225
+  type: 'test'
+  ...
+# Subtest: fixed34/35 marker reading rejects signed64 overflow without crossing an unbounded value into JS (restored=false)
+ok 131 - fixed34/35 marker reading rejects signed64 overflow without crossing an unbounded value into JS (restored=false)
+  ---
+  duration_ms: 90.413625
+  type: 'test'
+  ...
+# Subtest: fixed34/35 marker reading rejects signed64 overflow without crossing an unbounded value into JS (restored=true)
+ok 132 - fixed34/35 marker reading rejects signed64 overflow without crossing an unbounded value into JS (restored=true)
+  ---
+  duration_ms: 127.483833
+  type: 'test'
+  ...
+# Subtest: cold-source marker scanner projects oversized imported marker cells away before JS
+ok 133 - cold-source marker scanner projects oversized imported marker cells away before JS
+  ---
+  duration_ms: 1.485375
+  type: 'test'
+  ...
+# Subtest: ordinary34/restored35 retain one exact v3 snapshot mixing video, PNG and JFIF JPEG
+ok 134 - ordinary34/restored35 retain one exact v3 snapshot mixing video, PNG and JFIF JPEG
+  ---
+  duration_ms: 146.623334
+  type: 'test'
+  ...
+# Subtest: restored35 accepts origin-bound exact saved JPEG clip colour, replays once, and preserves undo/redo semantics
+ok 135 - restored35 accepts origin-bound exact saved JPEG clip colour, replays once, and preserves undo/redo semantics
+  ---
+  duration_ms: 298.383625
+  type: 'test'
+  ...
+# Subtest: restored31 denies newer PNG timeline.clip.add before any write
+ok 136 - restored31 denies newer PNG timeline.clip.add before any write
+  ---
+  duration_ms: 185.525041
+  type: 'test'
+  ...
+# Subtest: restored31 denies newer PNG timeline.clip.update before any write
+ok 137 - restored31 denies newer PNG timeline.clip.update before any write
+  ---
+  duration_ms: 184.171833
+  type: 'test'
+  ...
+# Subtest: restored31 denies newer JPEG timeline.clip.add before any write
+ok 138 - restored31 denies newer JPEG timeline.clip.add before any write
+  ---
+  duration_ms: 191.088959
+  type: 'test'
+  ...
+# Subtest: restored31 denies newer JPEG timeline.clip.update before any write
+ok 139 - restored31 denies newer JPEG timeline.clip.update before any write
+  ---
+  duration_ms: 181.0115
+  type: 'test'
+  ...
+# Subtest: restored33 denies newer JPEG timeline.clip.add before any write
+ok 140 - restored33 denies newer JPEG timeline.clip.add before any write
+  ---
+  duration_ms: 188.148666
+  type: 'test'
+  ...
+# Subtest: restored33 denies newer JPEG timeline.clip.update before any write
+ok 141 - restored33 denies newer JPEG timeline.clip.update before any write
+  ---
+  duration_ms: 188.942084
+  type: 'test'
+  ...
+1..141
+# tests 141
+# suites 0
+# pass 139
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 16655.106917

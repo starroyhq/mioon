@@ -1,0 +1,44 @@
+TAP version 13
+# Subtest: migration copies closed data, leaves original bytes unchanged, excludes credentials
+not ok 1 - migration copies closed data, leaves original bytes unchanged, excludes credentials
+  ---
+  duration_ms: 1080.149834
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/desktop-migration.test.mjs:22:1'
+  failureType: 'testCodeFailure'
+  error: 'The source database changed while checking migration eligibility.'
+  code: 'MIGRATION_SOURCE_CHANGED'
+  stack: |-
+    changed (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/apps/desktop/scripts/migration-restore-guard.mjs:16:33)
+    withOrdinaryMigrationSource (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/apps/desktop/scripts/migration-restore-guard.mjs:64:90)
+    async TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/desktop-migration.test.mjs:26:20)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: migration refuses a locked source or uncheckpointed WAL before creating destination
+ok 2 - migration refuses a locked source or uncheckpointed WAL before creating destination
+  ---
+  duration_ms: 611.5005
+  type: 'test'
+  ...
+# Subtest: migration rejects destination ancestor aliases into source without mutating original
+ok 3 - migration rejects destination ancestor aliases into source without mutating original
+  ---
+  duration_ms: 577.295416
+  type: 'test'
+  ...
+# Subtest: migration rejects source parent aliases and all existing destinations
+ok 4 - migration rejects source parent aliases and all existing destinations
+  ---
+  duration_ms: 592.10475
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 3
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3218.283042

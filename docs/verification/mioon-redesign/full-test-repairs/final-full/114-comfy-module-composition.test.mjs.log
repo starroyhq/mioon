@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: fixed composition constructs only the loaded reviewed factory and snapshots admission
+ok 1 - fixed composition constructs only the loaded reviewed factory and snapshots admission
+  ---
+  duration_ms: 1.713459
+  type: 'test'
+  ...
+# Subtest: availability has no executable selector, inconsistent or forged declarations fail closed
+ok 2 - availability has no executable selector, inconsistent or forged declarations fail closed
+  ---
+  duration_ms: 0.457458
+  type: 'test'
+  ...
+# Subtest: launcher opt-out accepts only fixed load/skip values, not distribution claims or code paths
+ok 3 - launcher opt-out accepts only fixed load/skip values, not distribution claims or code paths
+  ---
+  duration_ms: 0.109625
+  type: 'test'
+  ...
+# Subtest: module availability adds no RPC admin authority and existing remote discovery remains static
+ok 4 - module availability adds no RPC admin authority and existing remote discovery remains static
+  ---
+  duration_ms: 1.154
+  type: 'test'
+  ...
+# Subtest: desktop forwards only the bounded launcher decision, not ambient code injection
+ok 5 - desktop forwards only the bounded launcher decision, not ambient code injection
+  ---
+  duration_ms: 0.160583
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 403.680833

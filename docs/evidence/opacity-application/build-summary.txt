@@ -1,0 +1,8 @@
+node scripts/tooling.mjs build: exit0 (strict foundation/browser TS and language guard, Web build, development desktop staging)
+candidate: (cd apps/web && node node_modules/vite/bin/vite.js build --mode opacity-candidate): exit0
+No media/provider/listener/GUI was started by these build commands.
+Warnings: existing use-client bundling directives and large chunk warnings; no build errors.
+✓ built in 4.48s
+Desktop identity: app.starroy.mioon.dev (development)
+Desktop staging contains bundled shared backend and the same built web UI; no node_modules or data directories.
+✓ built in 11.44s

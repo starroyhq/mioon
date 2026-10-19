@@ -1,0 +1,66 @@
+TAP version 13
+# Subtest: the clip inspector leads with the fields people edit most and keeps source and replacement after them
+ok 1 - the clip inspector leads with the fields people edit most and keeps source and replacement after them
+  ---
+  duration_ms: 1.156042
+  type: 'test'
+  ...
+# Subtest: Agent authorization status, review entrance and send stay in the sticky composer; explicit consent belongs to its review dialog
+not ok 2 - Agent authorization status, review entrance and send stay in the sticky composer; explicit consent belongs to its review dialog
+  ---
+  duration_ms: 3.640584
+  type: 'test'
+  location: '/private/tmp/mioon-light-v3-uf1kv1gy/verify/tests/right-dock-layout.test.mjs:23:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The expression evaluated to a falsy value:
+    
+      assert.ok(options > 0 && options < source.indexOf('<fieldset className="agent-chat-context-mode"') && source.indexOf('<fieldset className="agent-chat-context-mode"') < source.indexOf('data-testid="agent-chat-destination"') && source.indexOf('data-testid="agent-chat-destination"') < start)
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-light-v3-uf1kv1gy/verify/tests/right-dock-layout.test.mjs:37:10)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: selecting a shot, node or clip closes reference overlays after the existing navigation fence
+ok 3 - selecting a shot, node or clip closes reference overlays after the existing navigation fence
+  ---
+  duration_ms: 0.441667
+  type: 'test'
+  ...
+# Subtest: the generate button explains why it is idle while the title or prompt text still has to be saved
+ok 4 - the generate button explains why it is idle while the title or prompt text still has to be saved
+  ---
+  duration_ms: 0.206
+  type: 'test'
+  ...
+# Subtest: an empty timeline is flagged before Check, and the empty preview offers building it from the storyboard
+ok 5 - an empty timeline is flagged before Check, and the empty preview offers building it from the storyboard
+  ---
+  duration_ms: 0.679292
+  type: 'test'
+  ...
+# Subtest: localized layout labels retain the original semantic copy
+ok 6 - localized layout labels retain the original semantic copy
+  ---
+  duration_ms: 0.206083
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 5
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 206.470167

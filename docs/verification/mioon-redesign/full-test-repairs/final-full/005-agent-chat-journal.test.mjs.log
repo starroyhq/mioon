@@ -1,0 +1,136 @@
+TAP version 13
+# Subtest: empty snapshot/history is zero-write; stable thread UUID materializes only at accepted send
+ok 1 - empty snapshot/history is zero-write; stable thread UUID materializes only at accepted send
+  ---
+  duration_ms: 958.198833
+  type: 'test'
+  ...
+# Subtest: accepted context/config/consent and initial event commit before acquisition or acknowledgement; dispatch precedes gateway
+ok 2 - accepted context/config/consent and initial event commit before acquisition or acknowledgement; dispatch precedes gateway
+  ---
+  duration_ms: 622.935042
+  type: 'test'
+  ...
+# Subtest: completed and interrupted runs survive real database reopen; lookup is scoped, read-only and independent of settings
+ok 3 - completed and interrupted runs survive real database reopen; lookup is scoped, read-only and independent of settings
+  ---
+  duration_ms: 642.391
+  type: 'test'
+  ...
+# Subtest: startup recovers pre-dispatch and dispatch-started records without any acquisition or inference
+ok 4 - startup recovers pre-dispatch and dispatch-started records without any acquisition or inference
+  ---
+  duration_ms: 637.156042
+  type: 'test'
+  ...
+# Subtest: durable delta events are batched by bytes, committed before publication and flushed on Stop
+ok 5 - durable delta events are batched by bytes, committed before publication and flushed on Stop
+  ---
+  duration_ms: 621.524125
+  type: 'test'
+  ...
+# Subtest: small fragments wait for the bounded timer instead of committing every character
+ok 6 - small fragments wait for the bounded timer instead of committing every character
+  ---
+  duration_ms: 672.796083
+  type: 'test'
+  ...
+# Subtest: admission capacity failure is atomic and occurs before acquisition/network; retained requests never evict
+ok 7 - admission capacity failure is atomic and occurs before acquisition/network; retained requests never evict
+  ---
+  duration_ms: 653.899833
+  type: 'test'
+  ...
+# Subtest: byte capacity rejects before acceptance and leaves no thread, request, run or event
+ok 8 - byte capacity rejects before acceptance and leaves no thread, request, run or event
+  ---
+  duration_ms: 594.364125
+  type: 'test'
+  ...
+# Subtest: streaming byte capacity preserves accepted intent and emits only committed prefix plus reserved failure terminal
+ok 9 - streaming byte capacity preserves accepted intent and emits only committed prefix plus reserved failure terminal
+  ---
+  duration_ms: 624.354917
+  type: 'test'
+  ...
+# Subtest: journal write failure fences all streams and closes subscribers without publishing uncommitted text
+ok 10 - journal write failure fences all streams and closes subscribers without publishing uncommitted text
+  ---
+  duration_ms: 639.121875
+  type: 'test'
+  ...
+# Subtest: acceptance commit followed by acknowledgement-side failure stays recoverable and never starts a gateway
+ok 11 - acceptance commit followed by acknowledgement-side failure stays recoverable and never starts a gateway
+  ---
+  duration_ms: 695.213667
+  type: 'test'
+  ...
+# Subtest: close flushes pending text and makes provider/credential callbacks inert after SQLite closes
+ok 12 - close flushes pending text and makes provider/credential callbacks inert after SQLite closes
+  ---
+  duration_ms: 653.692292
+  type: 'test'
+  ...
+# Subtest: history pages are scoped chronological16; browsing older pages does not widen the accepted model context
+ok 13 - history pages are scoped chronological16; browsing older pages does not widen the accepted model context
+  ---
+  duration_ms: 1463.808625
+  type: 'test'
+  ...
+# Subtest: bounded durable replay resets oversized history to a snapshot without deleting saved events
+ok 14 - bounded durable replay resets oversized history to a snapshot without deleting saved events
+  ---
+  duration_ms: 828.630542
+  type: 'test'
+  ...
+# Subtest: reentrant Stop from one subscriber cannot send a late delta after another subscriber terminal
+ok 15 - reentrant Stop from one subscriber cannot send a late delta after another subscriber terminal
+  ---
+  duration_ms: 712.246666
+  type: 'test'
+  ...
+# Subtest: close during pending credential acquisition prevents post-close journal writes and gateway calls
+ok 16 - close during pending credential acquisition prevents post-close journal writes and gateway calls
+  ---
+  duration_ms: 609.383458
+  type: 'test'
+  ...
+# Subtest: public run/history/event DTOs omit unknown persisted fields and sanitize stored error messages
+ok 17 - public run/history/event DTOs omit unknown persisted fields and sanitize stored error messages
+  ---
+  duration_ms: 655.484708
+  type: 'test'
+  ...
+# Subtest: persisted run identity/status mismatch fails closed before returning scope data
+ok 18 - persisted run identity/status mismatch fails closed before returning scope data
+  ---
+  duration_ms: 3616.585542
+  type: 'test'
+  ...
+# Subtest: persisted run must agree with immutable acceptance and owning thread, even if SQL/data scopes both change
+ok 19 - persisted run must agree with immutable acceptance and owning thread, even if SQL/data scopes both change
+  ---
+  duration_ms: 596.035084
+  type: 'test'
+  ...
+# Subtest: malformed or oversized persisted run shapes fail closed rather than leaking raw JSON
+ok 20 - malformed or oversized persisted run shapes fail closed rather than leaking raw JSON
+  ---
+  duration_ms: 3848.051792
+  type: 'test'
+  ...
+# Subtest: persisted event scope/sequence mismatch is rejected before any replay publication
+ok 21 - persisted event scope/sequence mismatch is rejected before any replay publication
+  ---
+  duration_ms: 847.899584
+  type: 'test'
+  ...
+1..21
+# tests 21
+# suites 0
+# pass 21
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 21473.760167

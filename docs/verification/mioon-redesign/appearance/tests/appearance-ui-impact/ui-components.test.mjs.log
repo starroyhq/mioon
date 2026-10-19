@@ -1,0 +1,185 @@
+TAP version 13
+# Subtest: all fifteen shadcn base-nova components match the pinned official source
+    # Subtest: button
+    ok 1 - button
+      ---
+      duration_ms: 1.332
+      type: 'test'
+      ...
+    # Subtest: input
+    ok 2 - input
+      ---
+      duration_ms: 0.517083
+      type: 'test'
+      ...
+    # Subtest: textarea
+    ok 3 - textarea
+      ---
+      duration_ms: 0.249334
+      type: 'test'
+      ...
+    # Subtest: select
+    ok 4 - select
+      ---
+      duration_ms: 0.917583
+      type: 'test'
+      ...
+    # Subtest: dialog
+    ok 5 - dialog
+      ---
+      duration_ms: 0.544792
+      type: 'test'
+      ...
+    # Subtest: dropdown-menu
+    ok 6 - dropdown-menu
+      ---
+      duration_ms: 0.395208
+      type: 'test'
+      ...
+    # Subtest: tabs
+    ok 7 - tabs
+      ---
+      duration_ms: 0.237375
+      type: 'test'
+      ...
+    # Subtest: switch
+    ok 8 - switch
+      ---
+      duration_ms: 0.364209
+      type: 'test'
+      ...
+    # Subtest: collapsible
+    ok 9 - collapsible
+      ---
+      duration_ms: 0.229167
+      type: 'test'
+      ...
+    # Subtest: tooltip
+    ok 10 - tooltip
+      ---
+      duration_ms: 0.348583
+      type: 'test'
+      ...
+    # Subtest: scroll-area
+    ok 11 - scroll-area
+      ---
+      duration_ms: 0.387792
+      type: 'test'
+      ...
+    # Subtest: label
+    ok 12 - label
+      ---
+      duration_ms: 0.222
+      type: 'test'
+      ...
+    # Subtest: badge
+    ok 13 - badge
+      ---
+      duration_ms: 0.434292
+      type: 'test'
+      ...
+    # Subtest: separator
+    ok 14 - separator
+      ---
+      duration_ms: 0.304125
+      type: 'test'
+      ...
+    # Subtest: slider
+    ok 15 - slider
+      ---
+      duration_ms: 0.271
+      type: 'test'
+      ...
+    1..15
+ok 1 - all fifteen shadcn base-nova components match the pinned official source
+  ---
+  duration_ms: 8.373916
+  type: 'test'
+  ...
+# Subtest: DialogContent defaults to the upstream portal lifetime and forwards only explicit keepMounted to the real portal boundary
+ok 2 - DialogContent defaults to the upstream portal lifetime and forwards only explicit keepMounted to the real portal boundary
+  ---
+  duration_ms: 117.22525
+  type: 'test'
+  ...
+# Subtest: behavioral components use real Base UI primitives
+ok 3 - behavioral components use real Base UI primitives
+  ---
+  duration_ms: 0.510625
+  type: 'test'
+  ...
+# Subtest: dialog, select and menu preserve primitive portals and accessible composition
+ok 4 - dialog, select and menu preserve primitive portals and accessible composition
+  ---
+  duration_ms: 0.313625
+  type: 'test'
+  ...
+# Subtest: Tailwind scans both workspace components and renderer sources and maps Base UI state
+ok 5 - Tailwind scans both workspace components and renderer sources and maps Base UI state
+  ---
+  duration_ms: 0.221125
+  type: 'test'
+  ...
+# Subtest: shared package config supports official Base UI registry installation
+ok 6 - shared package config supports official Base UI registry installation
+  ---
+  duration_ms: 1.668458
+  type: 'test'
+  ...
+# Subtest: shadcn MIT copyright and permission notice travel with the vendored source
+ok 7 - shadcn MIT copyright and permission notice travel with the vendored source
+  ---
+  duration_ms: 0.282584
+  type: 'test'
+  ...
+# Subtest: installed Base UI components render semantic controls with real runtime dependencies
+ok 8 - installed Base UI components render semantic controls with real runtime dependencies
+  ---
+  duration_ms: 216.468166
+  type: 'test'
+  ...
+# Subtest: renderer uses shared components for ordinary controls and modal confirmations
+ok 9 - renderer uses shared components for ordinary controls and modal confirmations
+  ---
+  duration_ms: 10.531041
+  type: 'test'
+  ...
+# Subtest: confirmation dismissal and concurrent requests never imply approval
+ok 10 - confirmation dismissal and concurrent requests never imply approval
+  ---
+  duration_ms: 0.271291
+  type: 'test'
+  ...
+# Subtest: timeline retains specialized positioning and accessible Base UI controls
+ok 11 - timeline retains specialized positioning and accessible Base UI controls
+  ---
+  duration_ms: 0.697833
+  type: 'test'
+  ...
+# Subtest: timeline ruler keyboard navigation stays inside integer-frame bounds
+ok 12 - timeline ruler keyboard navigation stays inside integer-frame bounds
+  ---
+  duration_ms: 0.174875
+  type: 'test'
+  ...
+# Subtest: project menu labels are grouped for Base UI MenuGroupContext
+ok 13 - project menu labels are grouped for Base UI MenuGroupContext
+  ---
+  duration_ms: 0.263459
+  type: 'test'
+  ...
+# Subtest: legacy button reset does not override shared semantic foreground colors
+ok 14 - legacy button reset does not override shared semantic foreground colors
+  ---
+  duration_ms: 0.236292
+  type: 'test'
+  ...
+1..14
+# tests 29
+# suites 0
+# pass 29
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 640.170208

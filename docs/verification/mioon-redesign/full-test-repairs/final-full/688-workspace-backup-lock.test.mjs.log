@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: backup refuses existing lock "67589" without takeover
+ok 1 - backup refuses existing lock "67589" without takeover
+  ---
+  duration_ms: 612.403875
+  type: 'test'
+  ...
+# Subtest: backup refuses existing lock "2147483647" without takeover
+ok 2 - backup refuses existing lock "2147483647" without takeover
+  ---
+  duration_ms: 577.000958
+  type: 'test'
+  ...
+# Subtest: backup refuses existing lock "invalid-lock-token" without takeover
+ok 3 - backup refuses existing lock "invalid-lock-token" without takeover
+  ---
+  duration_ms: 583.198875
+  type: 'test'
+  ...
+# Subtest: backup refuses existing lock "" without takeover
+ok 4 - backup refuses existing lock "" without takeover
+  ---
+  duration_ms: 579.30375
+  type: 'test'
+  ...
+# Subtest: backend retains established stale-lock takeover and opaque db-bound ownership
+ok 5 - backend retains established stale-lock takeover and opaque db-bound ownership
+  ---
+  duration_ms: 950.784792
+  type: 'test'
+  ...
+# Subtest: replaced or altered leases are permanently revoked and never delete replacement locks
+ok 6 - replaced or altered leases are permanently revoked and never delete replacement locks
+  ---
+  duration_ms: 583.502459
+  type: 'test'
+  ...
+# Subtest: backup lease excludes backend startup and a concurrent backup
+ok 7 - backup lease excludes backend startup and a concurrent backup
+  ---
+  duration_ms: 940.682667
+  type: 'test'
+  ...
+# Subtest: backup refuses publication after replacement of its lock and preserves that replacement
+ok 8 - backup refuses publication after replacement of its lock and preserves that replacement
+  ---
+  duration_ms: 604.916542
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5698.248

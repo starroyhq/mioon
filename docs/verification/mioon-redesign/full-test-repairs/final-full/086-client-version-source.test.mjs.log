@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: client version import resolves to the existing desktop application-version authority
+ok 1 - client version import resolves to the existing desktop application-version authority
+  ---
+  duration_ms: 1.471042
+  type: 'test'
+  ...
+# Subtest: production version slice loads the current root manifest independently of cwd and client package version
+ok 2 - production version slice loads the current root manifest independently of cwd and client package version
+  ---
+  duration_ms: 133.365459
+  type: 'test'
+  ...
+# Subtest: a root-only version update is reflected on the next process start, including prerelease and build metadata
+ok 3 - a root-only version update is reflected on the next process start, including prerelease and build metadata
+  ---
+  duration_ms: 232.995542
+  type: 'test'
+  ...
+# Subtest: version resolution survives relocation of the complete synthetic source layout
+ok 4 - version resolution survives relocation of the complete synthetic source layout
+  ---
+  duration_ms: 115.55725
+  type: 'test'
+  ...
+# Subtest: missing root manifest fails instead of falling back to cwd or client metadata
+ok 5 - missing root manifest fails instead of falling back to cwd or client metadata
+  ---
+  duration_ms: 150.888375
+  type: 'test'
+  ...
+# Subtest: source wiring keeps CLI, MCP, schema discovery and doctor on the shared VERSION export
+not ok 6 - source wiring keeps CLI, MCP, schema discovery and doctor on the shared VERSION export
+  ---
+  duration_ms: 2.695791
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/client-version-source.test.mjs:91:1'
+  failureType: 'testCodeFailure'
+  error: 'CLI help uses VERSION'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/client-version-source.test.mjs:97:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: full client VERSION and schema discovery match the root when workspace dependencies are initialized
+ok 7 - full client VERSION and schema discovery match the root when workspace dependencies are initialized
+  ---
+  duration_ms: 112.859833
+  type: 'test'
+  ...
+# Subtest: actual CLI startup reports the application version from unrelated cwd without backend configuration
+ok 8 - actual CLI startup reports the application version from unrelated cwd without backend configuration
+  ---
+  duration_ms: 896.315458
+  type: 'test'
+  ...
+# Subtest: official MCP initialization separates application serverInfo from negotiated wire protocol
+ok 9 - official MCP initialization separates application serverInfo from negotiated wire protocol
+  ---
+  duration_ms: 465.301084
+  type: 'test'
+  ...
+# Subtest: doctor preserves distinct backend version rather than rewriting it to application identity
+ok 10 - doctor preserves distinct backend version rather than rewriting it to application identity
+  ---
+  duration_ms: 11.283084
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 9
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2258.942666

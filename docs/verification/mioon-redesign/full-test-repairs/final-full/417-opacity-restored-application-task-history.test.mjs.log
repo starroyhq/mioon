@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: real42 backup/43 restore reads captured opacity add applied task without granting new execution
+ok 1 - real42 backup/43 restore reads captured opacity add applied task without granting new execution
+  ---
+  duration_ms: 2079.99675
+  type: 'test'
+  ...
+# Subtest: real42 backup/43 restore reads captured opacity add prepared task without granting new execution
+ok 2 - real42 backup/43 restore reads captured opacity add prepared task without granting new execution
+  ---
+  duration_ms: 1031.975083
+  type: 'test'
+  ...
+# Subtest: real42 backup/43 restore reads captured opacity add not_applied task without granting new execution
+ok 3 - real42 backup/43 restore reads captured opacity add not_applied task without granting new execution
+  ---
+  duration_ms: 1223.330833
+  type: 'test'
+  ...
+# Subtest: captured malformed task digest stays unreadable through the historical add predicate
+ok 4 - captured malformed task digest stays unreadable through the historical add predicate
+  ---
+  duration_ms: 1364.717792
+  type: 'test'
+  ...
+# Subtest: captured valid-shaped receipt cannot change the add opacity accepted by its immutable task
+ok 5 - captured valid-shaped receipt cannot change the add opacity accepted by its immutable task
+  ---
+  duration_ms: 1390.55325
+  type: 'test'
+  ...
+# Subtest: a current-origin add row without a capture hold cannot select the historical task grammar
+ok 6 - a current-origin add row without a capture hold cannot select the historical task grammar
+  ---
+  duration_ms: 1233.177375
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 8684.675458

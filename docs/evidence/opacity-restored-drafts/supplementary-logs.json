@@ -1,0 +1,32 @@
+{
+  "note": "Counts overlap aggregate; do not add them to its total.",
+  "records": [
+    {
+      "source": "/tmp/restored43-draft-frontend-final2.txt",
+      "evidence": "frontend-final.txt",
+      "tests": 89,
+      "exitCode": 0,
+      "originalSha256": "4215e2acf1496df4c11141ce288a78ae89eaad47c95d5af93c23513442067841",
+      "savedSha256": "4215e2acf1496df4c11141ce288a78ae89eaad47c95d5af93c23513442067841",
+      "normalization": "Copied logs only: trim trailing spaces/tabs; assertions and sources unchanged."
+    },
+    {
+      "source": "/tmp/restored43-native-lifecycle-final.txt",
+      "evidence": "native-lifecycle-final.txt",
+      "tests": 21,
+      "exitCode": 0,
+      "originalSha256": "f2d8044fc4d023d4d219184b609358fc367bda028ed58bbc62bd58a3b4c21386",
+      "savedSha256": "f2d8044fc4d023d4d219184b609358fc367bda028ed58bbc62bd58a3b4c21386",
+      "normalization": "Copied logs only: trim trailing spaces/tabs; assertions and sources unchanged."
+    },
+    {
+      "source": "/tmp/restored43-draft-typecheck-final.txt",
+      "evidence": "typecheck.txt",
+      "tests": null,
+      "exitCode": 0,
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "savedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "normalization": "Copied logs only: trim trailing spaces/tabs; assertions and sources unchanged."
+    }
+  ]
+}

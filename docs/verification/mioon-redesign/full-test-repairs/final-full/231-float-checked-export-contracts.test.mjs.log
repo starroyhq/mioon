@@ -1,0 +1,76 @@
+TAP version 13
+# Subtest: v2 is strict, opt-in, export-only and grants no caller attempt/report authority
+ok 1 - v2 is strict, opt-in, export-only and grants no caller attempt/report authority
+  ---
+  duration_ms: 3.274292
+  type: 'test'
+  ...
+# Subtest: v2 resolver retains fixed video choices and rejects crossed or altered profiles
+ok 2 - v2 resolver retains fixed video choices and rejects crossed or altered profiles
+  ---
+  duration_ms: 30.021708
+  type: 'test'
+  ...
+# Subtest: omitted/v1 record bytes, defaults and frozen effective object remain unchanged
+ok 3 - omitted/v1 record bytes, defaults and frozen effective object remain unchanged
+  ---
+  duration_ms: 1.631084
+  type: 'test'
+  ...
+# Subtest: queued receipt is unchanged and running requires only a fresh attempt token
+ok 4 - queued receipt is unchanged and running requires only a fresh attempt token
+  ---
+  duration_ms: 0.587541
+  type: 'test'
+  ...
+# Subtest: complete measurement has exact counts and strict >1 threshold
+ok 5 - complete measurement has exact counts and strict >1 threshold
+  ---
+  duration_ms: 0.940417
+  type: 'test'
+  ...
+# Subtest: v2 success requires a complete same-attempt within-limit report and owned output binding
+ok 6 - v2 success requires a complete same-attempt within-limit report and owned output binding
+  ---
+  duration_ms: 4.004916
+  type: 'test'
+  ...
+# Subtest: premeasurement failure retains its attempt without invented measurement; over-range failure is terminal
+ok 7 - premeasurement failure retains its attempt without invented measurement; over-range failure is terminal
+  ---
+  duration_ms: 1.728541
+  type: 'test'
+  ...
+# Subtest: incomplete reports never contain a partial measurement or authorize a published asset
+ok 8 - incomplete reports never contain a partial measurement or authorize a published asset
+  ---
+  duration_ms: 1.874959
+  type: 'test'
+  ...
+# Subtest: report guard rejects hostile JSON and arbitrary fields without invoking getters
+ok 9 - report guard rejects hostile JSON and arbitrary fields without invoking getters
+  ---
+  duration_ms: 0.292167
+  type: 'test'
+  ...
+# Subtest: selected range and capability response bind the frozen profile without audio claims
+ok 10 - selected range and capability response bind the frozen profile without audio claims
+  ---
+  duration_ms: 1.143125
+  type: 'test'
+  ...
+# Subtest: export.get v2 read guard validates exact identity and frozen input without changing legacy reads
+ok 11 - export.get v2 read guard validates exact identity and frozen input without changing legacy reads
+  ---
+  duration_ms: 1.964375
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 257.057084

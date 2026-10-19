@@ -1,5 +1,31 @@
-import { clipDraftEnvelopeSchema, clipDraftWriteSchema, clipDraftDeleteSchema, LOCAL_DRAFT_LIMITS } from '../../../packages/contracts/src/local-drafts.ts';
-import type { ClipDraftClient, ClipDraftDelete, ClipDraftEnvelope, ClipDraftKey, ClipDraftRead, ClipDraftWrite } from './clip-draft-state.ts';
+import { clipDraftEnvelopeSchema, clipDraftWriteSchema, clipDraftDeleteSchema, clipDraftKeySchema, LOCAL_DRAFT_LIMITS } from '../../../packages/contracts/src/local-drafts.ts';
+import { clipDraftOpacityCandidateWriteSchema, clipDraftOpacityCandidateEnvelopeSchema } from '../../../packages/contracts/src/local-drafts-opacity-candidate.ts';
+import type { ClipDraftOpacityCandidateWrite, ClipDraftOpacityCandidateEnvelope } from '../../../packages/contracts/src/local-drafts-opacity-candidate.ts';
+import type { ClipDraftClient, ClipDraftDelete, ClipDraftKey, ClipDraftWrite } from './clip-draft-state.ts';
+import { isOpacityRestoredApplicationInspection } from '../../../packages/contracts/src/opacity-restored-application.ts';
+import { clipDraftOpacityRestoredEnvelopeSchema } from '../../../packages/contracts/src/local-drafts-opacity-restored.ts';
+
+export type OpacityCandidateClipDraftEnvelope = Extract<ClipDraftOpacityCandidateEnvelope, { supported: true }>;
+export interface OpacityCandidateClipDraftClient {
+  get(key: ClipDraftKey): Promise<ClipDraftOpacityCandidateEnvelope>;
+  put(value: ClipDraftOpacityCandidateWrite): Promise<OpacityCandidateClipDraftEnvelope>;
+  remove(value: ClipDraftDelete): Promise<OpacityCandidateClipDraftEnvelope>;
+}
+const opacityCandidateClients = new WeakSet<object>();
+const restoredOpacityClients = new WeakMap<object, string>();
+/** Only this independently minted client can persist current-origin restored
+ * input. A capability payload or a copied client cannot authorize storage. */
+export function isRestoredOpacityCandidateClipDraftClient(value: unknown): value is OpacityCandidateClipDraftClient {
+  return value !== null && typeof value === 'object' && restoredOpacityClients.has(value);
+}
+export function matchesRestoredOpacityClipDraftOrigin(value: unknown, origin: unknown): boolean {
+  return isRestoredOpacityCandidateClipDraftClient(value) && typeof origin === 'string' && restoredOpacityClients.get(value) === origin;
+}
+/** Authority is the exact client created by the fixed candidate constructor;
+ * payload flags, copied methods, wrappers and lookalike objects cannot grant it. */
+export function isOpacityCandidateClipDraftClient(value: unknown): value is OpacityCandidateClipDraftClient {
+  return value !== null && typeof value === 'object' && opacityCandidateClients.has(value);
+}
 
 export type ClipDraftFailureKind = 'refused' | 'conflict' | 'unknown';
 export interface ClipDraftFailure { code: string; status: number | null; kind: ClipDraftFailureKind }
@@ -55,23 +81,46 @@ const bytes = (value: unknown): number => new TextEncoder().encode(JSON.stringif
 /** Complete outgoing admission, before fetch. A refusal does not replace any
  * existing record or establish the outcome of an earlier uncertain write. */
 export function admitClipDraftRequest(method: 'PUT' | 'DELETE', input: ClipDraftWrite | ClipDraftDelete): void {
+  admitRequest(method, input, false);
+}
+function admitRequest(method: 'PUT' | 'DELETE', input: ClipDraftOpacityCandidateWrite | ClipDraftDelete, opacityCandidate: boolean): void {
   if (bytes(input) > LOCAL_DRAFT_LIMITS.httpBytes) throw new ClipDraftRequestError('Local draft input exceeds the size limit.', 'LOCAL_DRAFT_LIMIT', 413);
   if (method === 'PUT') {
-    const write = input as ClipDraftWrite;
+    const write = input as ClipDraftOpacityCandidateWrite;
     const row = { projectId: write.projectId, timelineId: write.timelineId, clipId: write.clipId, revision: write.expectedRevision + 1,
       draft: { baseRevision: write.baseRevision, source: write.source, raw: write.raw, updatedAt: '2000-01-01T00:00:00.000Z' } };
     if (bytes(row) > LOCAL_DRAFT_LIMITS.rowBytes || bytes({ ok: true, data: { supported: true, workspaceScope: write.workspaceScope, instanceId: write.instanceId,
       key: { projectId: write.projectId, timelineId: write.timelineId, clipId: write.clipId }, revision: row.revision, targetStatus: 'matching', draft: row.draft } }) > LOCAL_DRAFT_LIMITS.httpBytes)
       throw new ClipDraftRequestError('Local draft input exceeds the size limit.', 'LOCAL_DRAFT_LIMIT', 413);
   }
-  const parsed = (method === 'PUT' ? clipDraftWriteSchema : clipDraftDeleteSchema).safeParse(input);
+  const parsed = (method === 'PUT' ? opacityCandidate ? clipDraftOpacityCandidateWriteSchema : clipDraftWriteSchema : clipDraftDeleteSchema).safeParse(input);
   if (!parsed.success) throw new ClipDraftRequestError('Invalid local draft input.', 'LOCAL_DRAFT_VALIDATION', 400);
 }
 /** Deadlines bound HTTP transport only, including response headers and body.
  * They do not cancel backend writes, establish refusal, or authorize a retry. */
 export function createClipDraftClient(fetcher: typeof fetch = (...args) => fetch(...args), { timeoutMs = 10000 }: { timeoutMs?: number } = {}): ClipDraftClient {
-  async function request(method: 'GET' | 'PUT' | 'DELETE', input: ClipDraftKey | ClipDraftWrite | ClipDraftDelete): Promise<ClipDraftRead> {
-    if (method !== 'GET') admitClipDraftRequest(method, input as ClipDraftWrite | ClipDraftDelete);
+  return makeClient(fetcher, timeoutMs, false);
+}
+/** Explicit internal UI assembly only. The endpoint, CAS, limits and transport
+ * are shared; no request field or public option can switch the draft codec. */
+export function createOpacityCandidateClipDraftClient(fetcher: typeof fetch = (...args) => fetch(...args), { timeoutMs = 10000 }: { timeoutMs?: number } = {}): OpacityCandidateClipDraftClient {
+  const client = makeClient(fetcher, timeoutMs, true);
+  opacityCandidateClients.add(client);
+  return client;
+}
+/** Fixed43 assembly. The origin comes only from the exact strict application
+ * inspection; callers still supply the original raw/CAS shape without wire
+ * authority fields. Source42 draft files are never addressed by this client. */
+export function createRestoredOpacityCandidateClipDraftClient(inspection: unknown, fetcher: typeof fetch = (...args) => fetch(...args), { timeoutMs = 10000 }: { timeoutMs?: number } = {}): OpacityCandidateClipDraftClient {
+  if (!isOpacityRestoredApplicationInspection(inspection) || !inspection.localClipDrafts) throw new ClipDraftRequestError('Invalid restored draft capability.', 'LOCAL_DRAFT_VALIDATION', 400);
+  const client = makeClient(fetcher, timeoutMs, true, inspection.workspaceOrigin);
+  restoredOpacityClients.set(client, inspection.workspaceOrigin);
+  return client;
+}
+function makeClient(fetcher: typeof fetch, timeoutMs: number, opacityCandidate: boolean, restoredOrigin?: string): OpacityCandidateClipDraftClient {
+  async function request(method: 'GET' | 'PUT' | 'DELETE', input: ClipDraftKey | ClipDraftOpacityCandidateWrite | ClipDraftDelete): Promise<ClipDraftOpacityCandidateEnvelope> {
+    if (method === 'GET' && restoredOrigin && !clipDraftKeySchema.safeParse(input).success) throw new ClipDraftRequestError('Invalid local draft input.', 'LOCAL_DRAFT_VALIDATION', 400);
+    if (method !== 'GET') admitRequest(method, input as ClipDraftOpacityCandidateWrite | ClipDraftDelete, opacityCandidate);
     const deadline = Number.isFinite(timeoutMs) ? Math.max(1, Math.min(60000, timeoutMs)) : 10000;
     const controller = new AbortController(); let timer: ReturnType<typeof setTimeout> | undefined;
     const work = perform(method, input, controller.signal, Date.now() + deadline);
@@ -81,10 +130,12 @@ export function createClipDraftClient(fetcher: typeof fetch = (...args) => fetch
       }, deadline); })]);
     } finally { if (timer !== undefined) clearTimeout(timer); }
   }
-  async function perform(method: 'GET' | 'PUT' | 'DELETE', input: ClipDraftKey | ClipDraftWrite | ClipDraftDelete, signal: AbortSignal, expiresAt: number): Promise<ClipDraftRead> {
-    const query = method === 'GET' ? `?${new URLSearchParams(input as unknown as Record<string, string>)}` : '';
+  async function perform(method: 'GET' | 'PUT' | 'DELETE', input: ClipDraftKey | ClipDraftOpacityCandidateWrite | ClipDraftDelete, signal: AbortSignal, expiresAt: number): Promise<ClipDraftOpacityCandidateEnvelope> {
+    const wireInput = restoredOrigin ? {...input, schemaVersion: 1, expectedWorkspaceOrigin: restoredOrigin} : input;
+    if (bytes(wireInput) > LOCAL_DRAFT_LIMITS.httpBytes) throw new ClipDraftRequestError('Local draft input exceeds the size limit.', 'LOCAL_DRAFT_LIMIT', 413);
+    const query = method === 'GET' ? `?${new URLSearchParams(Object.fromEntries(Object.entries(wireInput).map(([key, value]) => [key, String(value)])))}` : '';
     let response: Response;
-    try { response = await fetcher(endpoint + query, { method, credentials: 'same-origin', cache: 'no-store', signal, ...(method === 'GET' ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) }) }); }
+    try { response = await fetcher((restoredOrigin ? '/api/local-drafts/restored43/clip' : endpoint) + query, { method, credentials: 'same-origin', cache: 'no-store', signal, ...(method === 'GET' ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(wireInput) }) }); }
     catch {
       if (signal.aborted || Date.now() >= expiresAt) throw timeoutError();
       throw new ClipDraftRequestError('本地草稿请求未收到确认；写入结果可能仍待确认。', 'LOCAL_DRAFT_NETWORK_UNKNOWN');
@@ -106,12 +157,18 @@ export function createClipDraftClient(fetcher: typeof fetch = (...args) => fetch
       throw new ClipDraftRequestError(error.message, error.code, response.status);
     }
     if (response.status !== 200 || !Object.hasOwn(body, 'data')) throw protocol();
-    const value = clipDraftEnvelopeSchema.safeParse(body.data);
+    const value = (restoredOrigin ? clipDraftOpacityRestoredEnvelopeSchema : opacityCandidate ? clipDraftOpacityCandidateEnvelopeSchema : clipDraftEnvelopeSchema).safeParse(body.data);
     if (!value.success) throw protocol();
     if (value.data.supported && value.data.draft && bytes({ ...value.data.key, revision: value.data.revision, draft: value.data.draft }) > LOCAL_DRAFT_LIMITS.rowBytes) throw protocol();
+    if (restoredOrigin) {
+      const restored = clipDraftOpacityRestoredEnvelopeSchema.safeParse(value.data);
+      if (!restored.success || restored.data.workspaceOrigin !== restoredOrigin) throw protocol();
+      const {schemaVersion: _version, profileId: _profile, workspaceOrigin: _origin, ...envelope} = restored.data;
+      return envelope;
+    }
     return value.data;
   }
-  async function write(method: 'PUT' | 'DELETE', input: ClipDraftWrite | ClipDraftDelete): Promise<ClipDraftEnvelope> {
+  async function write(method: 'PUT' | 'DELETE', input: ClipDraftOpacityCandidateWrite | ClipDraftDelete): Promise<OpacityCandidateClipDraftEnvelope> {
     const result = await request(method, input);
     if (!result.supported) throw new ClipDraftRequestError('恢复分支暂不支持本地片段草稿。', 'LOCAL_DRAFT_WRITE_UNSUPPORTED');
     return result;

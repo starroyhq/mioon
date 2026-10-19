@@ -1,39 +1,47 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
+import {DatabaseSync} from 'node:sqlite';
 import path from 'node:path';
 import {openStore} from '../packages/business/src/db.mjs';
 import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
-import {validateWorkspaceSchema38} from '../packages/business/src/workspace-schema-v38.ts';
-import {initializeWorkspaceSchema40,validateWorkspaceSchema40} from '../packages/business/src/workspace-schema-v40.ts';
+import {validateWorkspaceSchema48} from '../packages/business/src/workspace-schema-v48.ts';
+import {assertTimelineVolumeEnvelopeWorkspace} from '../packages/business/src/timeline-volume-envelope-admission.ts';
+import {initializeFrozenUpgradeFixtureSchema} from './helpers/opacity-upgrade-fixture.mjs';
 import {hash} from '../packages/business/src/services.mjs';
 import {VOLUME_ENVELOPE_PROFILE as profileId} from '../packages/contracts/src/timeline-volume-envelope.ts';
 const id='11111111-1111-4111-8111-111111111111';
 const points=()=>[{frame:0,multiplier:1},{frame:20,multiplier:.5}];
 const add=()=>({projectId:id,expectedRevision:1,requestId:'live-envelope-request',assetId:id,trackId:id,startFrame:0,durationFrames:20,volumeEnvelope:{profileId,points:points()}});
 const update=()=>({projectId:id,expectedRevision:1,requestId:'live-envelope-request',clipId:id,patch:{volumeEnvelope:{profileId,points:points()}}});
-function fixture(t,{version=38}={}){
+function fixture(t,{seedProject=false}={}){
  // Approved disposable synthetic fixture, confined to this isolated checkout.
  const root=mkdtempSync(path.join(process.cwd(),'.tmp-envelope-ingress-')),store=openStore(root);
  t.after(()=>{store.close();rmSync(root,{recursive:true,force:true});});
- // This historical-profile negative uses only a fresh synthetic catalog.
- if(version===38){store.db.exec('DELETE FROM schema_version WHERE version=40');validateWorkspaceSchema38(store.db,{verifyBytes:false});}
  const tasks=createEditTasks({store,services:{call(){throw Error('Preparation must never dispatch.');}}});
- if(version===40){
+ if(seedProject){
   store.put('projects',{id,name:'Synthetic ingress',description:'',revision:1});
   store.put('assets',{id,projectId:id,name:'Synthetic audio',mimeType:'audio/wav',duration:2,hasAudio:true,provenance:'user-import',sha256:'a'.repeat(64),relativePath:'media/synthetic.wav',createdAt:'2026-10-15T00:00:00.000Z'});
-  initializeWorkspaceSchema40(store.db);validateWorkspaceSchema40(store.db,{verifyBytes:false});
+  validateWorkspaceSchema48(store.db);
  }
  const prepare=(operation,input)=>tasks.prepare({projectId:id,operation,input,origin:'new'});
  const state=()=>({changes:store.db.prepare('SELECT total_changes() AS n').get().n,rows:store.db.prepare('SELECT count(*) AS n FROM edit_tasks').get().n});
  return {store,tasks,prepare,state};
 }
-test('owned old38 prepare refuses both typed paths and explicit null before any durable insert',t=>{
- const f=fixture(t);assert.equal(f.store.db.prepare('SELECT MAX(version) AS v FROM schema_version').get().v,38);
+test('frozen old38 admission refuses both typed paths and explicit null before any durable insert',t=>{
+ const db=new DatabaseSync(':memory:');t.after(()=>db.close());initializeFrozenUpgradeFixtureSchema(db,38);
+ assert.equal(db.prepare('SELECT MAX(version) AS v FROM schema_version').get().v,38);
  for(const operation of ['timeline.clip.add','timeline.clip.update'])for(const value of [null,{profileId,points:points()}]){
-  const input=operation.endsWith('.add')?add():update();(input.patch??input).volumeEnvelope=value;const before=f.state();
-  assert.throws(()=>f.prepare(operation,input),{code:'TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED'});assert.deepEqual(f.state(),before);
+  const input=operation.endsWith('.add')?add():update();(input.patch??input).volumeEnvelope=value;const before=db.prepare('SELECT total_changes() AS n').get().n;
+  assert.throws(()=>assertTimelineVolumeEnvelopeWorkspace(db,input),{code:'TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED'});
+  assert.equal(db.prepare('SELECT total_changes() AS n').get().n,before);assert.equal(db.prepare('SELECT count(*) n FROM edit_tasks').get().n,0);
  }
+});
+test('frozen ordinary40 still admits valid envelope evidence without acquiring execution authority',t=>{
+ const db=new DatabaseSync(':memory:');t.after(()=>db.close());initializeFrozenUpgradeFixtureSchema(db,40);
+ const before=db.prepare('SELECT total_changes() AS n').get().n;
+ for(const input of [add(),update()])assert.doesNotThrow(()=>assertTimelineVolumeEnvelopeWorkspace(db,input));
+ assert.equal(db.prepare('SELECT total_changes() AS n').get().n,before);assert.equal(db.prepare('SELECT count(*) n FROM edit_tasks').get().n,0);
 });
 test('outer prepare and nested point capture execute zero getter/proxy traps',t=>{
  const f=fixture(t);let calls=0;const get=()=>{calls++;throw Error('Untrusted getter or trap executed.');};
@@ -59,9 +67,9 @@ test('typed arrays do not relax unrelated paths, malformed Unicode or the 128-no
  assert.equal(f.state().rows,0);
 });
 
-test('synthetic40 existing coordinator captures both exact points paths and production hashes without dispatch',t=>{
+test('owned ordinary48 coordinator captures both exact points paths and production hashes without dispatch',t=>{
  for(const operation of ['timeline.clip.add','timeline.clip.update']){
-  const f=fixture(t,{version:40}),input=operation.endsWith('.add')?add():update(),original=JSON.parse(JSON.stringify(input));
+  const f=fixture(t,{seedProject:true}),input=operation.endsWith('.add')?add():update(),original=JSON.parse(JSON.stringify(input));
   const saved=f.prepare(operation,input);assert.deepEqual(saved.task.input,original);
   assert.equal(saved.task.digest,hash({operation,input:original}));
   const row=f.store.db.prepare('SELECT input,digest FROM edit_tasks WHERE id=?').get(saved.task.id);
@@ -74,8 +82,8 @@ test('synthetic40 existing coordinator captures both exact points paths and prod
   assert.equal(f.state().rows,1);
  }
 });
-test('real live coordinator construction admits validated40 without insertion or dispatch',t=>{
- const f=fixture(t,{version:40}),before=f.state();
+test('real live coordinator construction admits validated48 without insertion or dispatch',t=>{
+ const f=fixture(t,{seedProject:true}),before=f.state();
  assert.doesNotThrow(()=>createEditTasks({store:f.store,services:{call(){throw Error('Must not dispatch.');}}}));
  assert.deepEqual(f.state(),before);
 });

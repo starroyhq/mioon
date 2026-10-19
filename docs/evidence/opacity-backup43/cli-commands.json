@@ -1,0 +1,25 @@
+{
+  "entry": "node apps/cli/src/opacity-backup.ts",
+  "allExitCodes": {
+    "create": 0,
+    "verify": 0,
+    "restore": 0,
+    "restore-status-backup": 0,
+    "restore-status-exact": 0
+  },
+  "exactStatusArgv": [
+    "node",
+    "apps/cli/src/opacity-backup.ts",
+    "restore-status",
+    "--destination",
+    "/private/tmp/mioon-opacity-backup43-qualification-20261016/restored43",
+    "--restoration-id",
+    "570f44a2-6461-48ee-9b03-37b70f4429c8",
+    "--backup-id",
+    "696d2d0f-0b79-4eea-bc28-306fed22f966",
+    "--manifest-hash",
+    "81e9f38a527bf5b14cf666ad3a942bac0e7a7f8415342ac18fbe4c5c4fbdbcd5",
+    "--source-db-hash",
+    "19844d04c75bae3a3fb1e15bc3c789ecbdab05e86c9ebb1ca62bf9612fa43d7b"
+  ]
+}

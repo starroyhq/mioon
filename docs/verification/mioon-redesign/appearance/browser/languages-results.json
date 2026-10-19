@@ -1,0 +1,1493 @@
+{
+  "states": [
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "home"
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "new-project",
+      "dialog": {
+        "x": 440,
+        "y": 245.7109375,
+        "width": 560,
+        "height": 408.578125
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "home"
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "new-project",
+      "dialog": {
+        "x": 245,
+        "y": 135.7109375,
+        "width": 560,
+        "height": 408.578125
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "canvas"
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "editing"
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "task-popover"
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "tasks",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "settings-general",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "settings-workspace",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "settings-video-tools",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "settings-models",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "settings-agent",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "settings-extensions",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "settings-shortcuts",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "settings-about",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "export",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "canvas"
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "editing"
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "task-popover"
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "tasks",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "settings-general",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "settings-workspace",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "settings-video-tools",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "settings-models",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "settings-agent",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "settings-extensions",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "settings-shortcuts",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "settings-about",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hans",
+      "theme": "light",
+      "state": "export",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "home"
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "new-project",
+      "dialog": {
+        "x": 440,
+        "y": 245.7109375,
+        "width": 560,
+        "height": 408.578125
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "home"
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "new-project",
+      "dialog": {
+        "x": 245,
+        "y": 135.7109375,
+        "width": 560,
+        "height": 408.578125
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "canvas"
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "editing"
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "task-popover"
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "tasks",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "settings-general",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "settings-workspace",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "settings-video-tools",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "settings-models",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "settings-agent",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "settings-extensions",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "settings-shortcuts",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "settings-about",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "export",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "canvas"
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "editing"
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "task-popover"
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "tasks",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "settings-general",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "settings-workspace",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "settings-video-tools",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "settings-models",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "settings-agent",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "settings-extensions",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "settings-shortcuts",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "settings-about",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "zh-Hant",
+      "theme": "light",
+      "state": "export",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "en",
+      "theme": "light",
+      "state": "home"
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "en",
+      "theme": "light",
+      "state": "new-project",
+      "dialog": {
+        "x": 440,
+        "y": 245.7109375,
+        "width": 560,
+        "height": 408.578125
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "en",
+      "theme": "light",
+      "state": "home"
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "en",
+      "theme": "light",
+      "state": "new-project",
+      "dialog": {
+        "x": 245,
+        "y": 135.7109375,
+        "width": 560,
+        "height": 408.578125
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "en",
+      "theme": "light",
+      "state": "canvas"
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "en",
+      "theme": "light",
+      "state": "editing"
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "en",
+      "theme": "light",
+      "state": "task-popover"
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "en",
+      "theme": "light",
+      "state": "tasks",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "en",
+      "theme": "light",
+      "state": "settings-general",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "en",
+      "theme": "light",
+      "state": "settings-workspace",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "en",
+      "theme": "light",
+      "state": "settings-video-tools",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "en",
+      "theme": "light",
+      "state": "settings-models",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "en",
+      "theme": "light",
+      "state": "settings-agent",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "en",
+      "theme": "light",
+      "state": "settings-extensions",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "en",
+      "theme": "light",
+      "state": "settings-shortcuts",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "en",
+      "theme": "light",
+      "state": "settings-about",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "en",
+      "theme": "light",
+      "state": "export",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "en",
+      "theme": "light",
+      "state": "canvas"
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "en",
+      "theme": "light",
+      "state": "editing"
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "en",
+      "theme": "light",
+      "state": "task-popover"
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "en",
+      "theme": "light",
+      "state": "tasks",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "en",
+      "theme": "light",
+      "state": "settings-general",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "en",
+      "theme": "light",
+      "state": "settings-workspace",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "en",
+      "theme": "light",
+      "state": "settings-video-tools",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "en",
+      "theme": "light",
+      "state": "settings-models",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "en",
+      "theme": "light",
+      "state": "settings-agent",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "en",
+      "theme": "light",
+      "state": "settings-extensions",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "en",
+      "theme": "light",
+      "state": "settings-shortcuts",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "en",
+      "theme": "light",
+      "state": "settings-about",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "en",
+      "theme": "light",
+      "state": "export",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "ja",
+      "theme": "light",
+      "state": "home"
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "ja",
+      "theme": "light",
+      "state": "new-project",
+      "dialog": {
+        "x": 440,
+        "y": 245.7109375,
+        "width": 560,
+        "height": 408.578125
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "ja",
+      "theme": "light",
+      "state": "home"
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "ja",
+      "theme": "light",
+      "state": "new-project",
+      "dialog": {
+        "x": 245,
+        "y": 135.7109375,
+        "width": 560,
+        "height": 408.578125
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "ja",
+      "theme": "light",
+      "state": "canvas"
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "ja",
+      "theme": "light",
+      "state": "editing"
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "ja",
+      "theme": "light",
+      "state": "task-popover"
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "ja",
+      "theme": "light",
+      "state": "tasks",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "ja",
+      "theme": "light",
+      "state": "settings-general",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "ja",
+      "theme": "light",
+      "state": "settings-workspace",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "ja",
+      "theme": "light",
+      "state": "settings-video-tools",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "ja",
+      "theme": "light",
+      "state": "settings-models",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "ja",
+      "theme": "light",
+      "state": "settings-agent",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "ja",
+      "theme": "light",
+      "state": "settings-extensions",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "ja",
+      "theme": "light",
+      "state": "settings-shortcuts",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "ja",
+      "theme": "light",
+      "state": "settings-about",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scroll": 1440,
+      "lang": "ja",
+      "theme": "light",
+      "state": "export",
+      "dialog": {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "ja",
+      "theme": "light",
+      "state": "canvas"
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "ja",
+      "theme": "light",
+      "state": "editing"
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "ja",
+      "theme": "light",
+      "state": "task-popover"
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "ja",
+      "theme": "light",
+      "state": "tasks",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "ja",
+      "theme": "light",
+      "state": "settings-general",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "ja",
+      "theme": "light",
+      "state": "settings-workspace",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "ja",
+      "theme": "light",
+      "state": "settings-video-tools",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "ja",
+      "theme": "light",
+      "state": "settings-models",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "ja",
+      "theme": "light",
+      "state": "settings-agent",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "ja",
+      "theme": "light",
+      "state": "settings-extensions",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "ja",
+      "theme": "light",
+      "state": "settings-shortcuts",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "ja",
+      "theme": "light",
+      "state": "settings-about",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    },
+    {
+      "width": 1050,
+      "height": 680,
+      "scroll": 1050,
+      "lang": "ja",
+      "theme": "light",
+      "state": "export",
+      "dialog": {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    }
+  ],
+  "errors": []
+}

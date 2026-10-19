@@ -1,0 +1,220 @@
+TAP version 13
+# Subtest: chat_completions/openai: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+ok 1 - chat_completions/openai: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 9.282542
+  type: 'test'
+  ...
+# Subtest: chat_completions/custom: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+ok 2 - chat_completions/custom: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.8915
+  type: 'test'
+  ...
+# Subtest: chat_completions/openrouter: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+ok 3 - chat_completions/openrouter: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.652417
+  type: 'test'
+  ...
+# Subtest: chat_completions/qwen: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+ok 4 - chat_completions/qwen: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.567375
+  type: 'test'
+  ...
+# Subtest: chat_completions/deepseek: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+ok 5 - chat_completions/deepseek: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.603541
+  type: 'test'
+  ...
+# Subtest: chat_completions/zhipu: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+ok 6 - chat_completions/zhipu: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.67025
+  type: 'test'
+  ...
+# Subtest: chat_completions/kimi: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+ok 7 - chat_completions/kimi: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.895334
+  type: 'test'
+  ...
+# Subtest: chat_completions/minimax: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+ok 8 - chat_completions/minimax: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.689125
+  type: 'test'
+  ...
+# Subtest: chat_completions/ollama: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+ok 9 - chat_completions/ollama: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 1.042125
+  type: 'test'
+  ...
+# Subtest: chat_completions: typed, inspection, shot and move scopes all reject the completed gain tool
+ok 10 - chat_completions: typed, inspection, shot and move scopes all reject the completed gain tool
+  ---
+  duration_ms: 3.952209
+  type: 'test'
+  ...
+# Subtest: chat_completions: gain tool rejects foreign functions, identifiers, duplicate keys, wrong types and incomplete streams
+ok 11 - chat_completions: gain tool rejects foreign functions, identifiers, duplicate keys, wrong types and incomplete streams
+  ---
+  duration_ms: 4.598042
+  type: 'test'
+  ...
+# Subtest: chat_completions: terminal function snapshot changes fail closed and answer phase cannot call again
+ok 12 - chat_completions: terminal function snapshot changes fail closed and answer phase cannot call again
+  ---
+  duration_ms: 0.709375
+  type: 'test'
+  ...
+# Subtest: chat_completions: full bounded selected context plus large proposal remains scoped to edit; arbitrary catalogs fail validation
+ok 13 - chat_completions: full bounded selected context plus large proposal remains scoped to edit; arbitrary catalogs fail validation
+  ---
+  duration_ms: 0.489834
+  type: 'test'
+  ...
+# Subtest: responses/openai: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+ok 14 - responses/openai: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 1.338125
+  type: 'test'
+  ...
+# Subtest: responses/custom: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+ok 15 - responses/custom: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.509584
+  type: 'test'
+  ...
+# Subtest: responses/qwen: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+ok 16 - responses/qwen: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.413708
+  type: 'test'
+  ...
+# Subtest: responses/deepseek: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+ok 17 - responses/deepseek: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.33125
+  type: 'test'
+  ...
+# Subtest: responses/ollama: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+ok 18 - responses/ollama: scoped timeline gain catalog preserves profile controls and exact call-linkage without broadening schema
+  ---
+  duration_ms: 0.44825
+  type: 'test'
+  ...
+# Subtest: responses: typed, inspection, shot and move scopes all reject the completed gain tool
+ok 19 - responses: typed, inspection, shot and move scopes all reject the completed gain tool
+  ---
+  duration_ms: 1.152541
+  type: 'test'
+  ...
+# Subtest: responses: gain tool rejects foreign functions, identifiers, duplicate keys, wrong types and incomplete streams
+ok 20 - responses: gain tool rejects foreign functions, identifiers, duplicate keys, wrong types and incomplete streams
+  ---
+  duration_ms: 4.582333
+  type: 'test'
+  ...
+# Subtest: responses: terminal function snapshot changes fail closed and answer phase cannot call again
+ok 21 - responses: terminal function snapshot changes fail closed and answer phase cannot call again
+  ---
+  duration_ms: 0.709875
+  type: 'test'
+  ...
+# Subtest: responses: full bounded selected context plus large proposal remains scoped to edit; arbitrary catalogs fail validation
+ok 22 - responses: full bounded selected context plus large proposal remains scoped to edit; arbitrary catalogs fail validation
+  ---
+  duration_ms: 0.427916
+  type: 'test'
+  ...
+# Subtest: chat_completions: duplicate function calls and changed terminal identities never expose a gain call
+ok 23 - chat_completions: duplicate function calls and changed terminal identities never expose a gain call
+  ---
+  duration_ms: 1.111708
+  type: 'test'
+  ...
+# Subtest: chat_completions: actual HTTP byte-fragmented UTF-8 gain call waits for clean EOF before dispatch
+ok 24 - chat_completions: actual HTTP byte-fragmented UTF-8 gain call waits for clean EOF before dispatch
+  ---
+  duration_ms: 35.673417
+  type: 'test'
+  ...
+# Subtest: responses: duplicate function calls and changed terminal identities never expose a gain call
+ok 25 - responses: duplicate function calls and changed terminal identities never expose a gain call
+  ---
+  duration_ms: 2.223209
+  type: 'test'
+  ...
+# Subtest: responses: actual HTTP byte-fragmented UTF-8 gain call waits for clean EOF before dispatch
+ok 26 - responses: actual HTTP byte-fragmented UTF-8 gain call waits for clean EOF before dispatch
+  ---
+  duration_ms: 27.239334
+  type: 'test'
+  ...
+# Subtest: gain-derived turns never become typed, inspection, shot, move or subsequent gain history
+ok 27 - gain-derived turns never become typed, inspection, shot, move or subsequent gain history
+  ---
+  duration_ms: 1.555916
+  type: 'test'
+  ...
+# Subtest: chat_completions: gain beforeSubmit fence at before_dns gates actual request.end rather than only preflight
+ok 28 - chat_completions: gain beforeSubmit fence at before_dns gates actual request.end rather than only preflight
+  ---
+  duration_ms: 0.32975
+  type: 'test'
+  ...
+# Subtest: chat_completions: gain beforeSubmit fence at during_dns gates actual request.end rather than only preflight
+ok 29 - chat_completions: gain beforeSubmit fence at during_dns gates actual request.end rather than only preflight
+  ---
+  duration_ms: 0.143708
+  type: 'test'
+  ...
+# Subtest: chat_completions: gain beforeSubmit fence at during_connect gates actual request.end rather than only preflight
+ok 30 - chat_completions: gain beforeSubmit fence at during_connect gates actual request.end rather than only preflight
+  ---
+  duration_ms: 0.22925
+  type: 'test'
+  ...
+# Subtest: chat_completions: gain beforeSubmit fence at unchanged gates actual request.end rather than only preflight
+ok 31 - chat_completions: gain beforeSubmit fence at unchanged gates actual request.end rather than only preflight
+  ---
+  duration_ms: 0.510083
+  type: 'test'
+  ...
+# Subtest: responses: gain beforeSubmit fence at before_dns gates actual request.end rather than only preflight
+ok 32 - responses: gain beforeSubmit fence at before_dns gates actual request.end rather than only preflight
+  ---
+  duration_ms: 0.154167
+  type: 'test'
+  ...
+# Subtest: responses: gain beforeSubmit fence at during_dns gates actual request.end rather than only preflight
+ok 33 - responses: gain beforeSubmit fence at during_dns gates actual request.end rather than only preflight
+  ---
+  duration_ms: 0.152042
+  type: 'test'
+  ...
+# Subtest: responses: gain beforeSubmit fence at during_connect gates actual request.end rather than only preflight
+ok 34 - responses: gain beforeSubmit fence at during_connect gates actual request.end rather than only preflight
+  ---
+  duration_ms: 0.153125
+  type: 'test'
+  ...
+# Subtest: responses: gain beforeSubmit fence at unchanged gates actual request.end rather than only preflight
+ok 35 - responses: gain beforeSubmit fence at unchanged gates actual request.end rather than only preflight
+  ---
+  duration_ms: 0.283417
+  type: 'test'
+  ...
+1..35
+# tests 35
+# suites 0
+# pass 35
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 323.924291

@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: actual database startup supplies exact production timeline and receipt predicates
+ok 1 - actual database startup supplies exact production timeline and receipt predicates
+  ---
+  duration_ms: 2.704041
+  type: 'test'
+  ...
+# Subtest: actual startup capability validates the complete catalog, not only markers
+ok 2 - actual startup capability validates the complete catalog, not only markers
+  ---
+  duration_ms: 1063.948541
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1316.309708

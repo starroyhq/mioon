@@ -1,0 +1,41 @@
+TAP version 13
+# Subtest: saved frame pairs share strict real HTTP/CLI/official MCP, exact recovery and restart semantics
+    # Subtest: schema exposes nullable optional tail without changing first-frame attach role
+    ok 1 - schema exposes nullable optional tail without changing first-frame attach role
+      ---
+      duration_ms: 282.814375
+      type: 'test'
+      ...
+    # Subtest: HTTP creates, CLI saves and MCP exactly replays the complete stored tail
+    ok 2 - HTTP creates, CLI saves and MCP exactly replays the complete stored tail
+      ---
+      duration_ms: 311.063625
+      type: 'test'
+      ...
+    # Subtest: lost generation HTTP acknowledgement retains one immutable pair and one provider submission
+    ok 3 - lost generation HTTP acknowledgement retains one immutable pair and one provider submission
+      ---
+      duration_ms: 97.458042
+      type: 'test'
+      ...
+    # Subtest: restart finds saved selection and exact keys; explicit clear leaves frozen job unchanged
+    ok 4 - restart finds saved selection and exact keys; explicit clear leaves frozen job unchanged
+      ---
+      duration_ms: 1150.9335
+      type: 'test'
+      ...
+    1..4
+ok 1 - saved frame pairs share strict real HTTP/CLI/official MCP, exact recovery and restart semantics
+  ---
+  duration_ms: 3597.34875
+  type: 'test'
+  ...
+1..1
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4013.623

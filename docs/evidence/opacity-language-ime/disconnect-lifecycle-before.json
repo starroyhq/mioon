@@ -1,0 +1,16 @@
+{
+  "at": "2026-10-16T07:43:09.559348+00:00",
+  "pid": 71123,
+  "session": 61632,
+  "closeAttempt": "write_stdin close failed: exec-server transport disconnected/unknown session; outcome unconfirmed",
+  "exactPidRead": "ps -p71123 exit1, zero rows",
+  "portRead": "lsof4319 exit1, zero rows",
+  "lock": {
+    "path": "/private/tmp/mioon-opacity-language-20261016-x0bK0C/restored43/server.lock",
+    "mode": "0o600",
+    "bytes": 5,
+    "sha256": "8e341e8bce85be8b817bc01715fe92afa2a7349b49b72d617ff820e441c7a2e8",
+    "contents": 71123
+  },
+  "nextAction": "use existing fixed43 store owner-lease stale-lock policy and normal store.close; no manual lock removal or process signals"
+}

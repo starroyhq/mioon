@@ -1,0 +1,136 @@
+TAP version 13
+# Subtest: H1 provides a dedicated typed project home boundary
+ok 1 - H1 provides a dedicated typed project home boundary
+  ---
+  duration_ms: 0.536667
+  type: 'test'
+  ...
+# Subtest: empty home is a standalone welcome without project controls or a modal
+ok 2 - empty home is a standalone welcome without project controls or a modal
+  ---
+  duration_ms: 227.132167
+  type: 'test'
+  ...
+# Subtest: real shared controls render keyboard-native page and project buttons with honest timestamps
+ok 3 - real shared controls render keyboard-native page and project buttons with honest timestamps
+  ---
+  duration_ms: 13.799334
+  type: 'test'
+  ...
+# Subtest: list errors do not masquerade as empty workspaces and keep refresh reachable
+ok 4 - list errors do not masquerade as empty workspaces and keep refresh reachable
+  ---
+  duration_ms: 0.757959
+  type: 'test'
+  ...
+# Subtest: opening and error states stay on home, identify the target, and offer an explicit retry
+ok 5 - opening and error states stay on home, identify the target, and offer an explicit retry
+  ---
+  duration_ms: 1.132542
+  type: 'test'
+  ...
+# Subtest: notice and supplied status remain visible across project and settings pages
+ok 6 - notice and supplied status remain visible across project and settings pages
+  ---
+  duration_ms: 0.68975
+  type: 'test'
+  ...
+# Subtest: actual callbacks dispatch only explicit list, retry, open, and page intent
+ok 7 - actual callbacks dispatch only explicit list, retry, open, and page intent
+  ---
+  duration_ms: 6.509333
+  type: 'test'
+  ...
+# Subtest: busy and opening disable repeated project actions including real shared keyboard handlers
+ok 8 - busy and opening disable repeated project actions including real shared keyboard handlers
+  ---
+  duration_ms: 4.590042
+  type: 'test'
+  ...
+# Subtest: opening cannot enter settings, while an error preserves controlled settings navigation
+ok 9 - opening cannot enter settings, while an error preserves controlled settings navigation
+  ---
+  duration_ms: 2.262833
+  type: 'test'
+  ...
+# Subtest: modal creation uses labeled shared inputs, 500-character direction and native form submission
+ok 10 - modal creation uses labeled shared inputs, 500-character direction and native form submission
+  ---
+  duration_ms: 5.111
+  type: 'test'
+  ...
+# Subtest: required-name and length validation reject programmatic invalid submissions
+ok 11 - required-name and length validation reject programmatic invalid submissions
+  ---
+  duration_ms: 9.206709
+  type: 'test'
+  ...
+# Subtest: a form already open cannot submit after opening begins or the controlled page leaves
+ok 12 - a form already open cannot submit after opening begins or the controlled page leaves
+  ---
+  duration_ms: 7.467417
+  type: 'test'
+  ...
+# Subtest: create trims inputs, dispatches once before a parent rerender, and clears only accepted success
+ok 13 - create trims inputs, dispatches once before a parent rerender, and clears only accepted success
+  ---
+  duration_ms: 3.29825
+  type: 'test'
+  ...
+# Subtest: rejected or unknown create results retain exact inputs and offer list checking without replay
+ok 14 - rejected or unknown create results retain exact inputs and offer list checking without replay
+  ---
+  duration_ms: 5.655167
+  type: 'test'
+  ...
+# Subtest: cancel, settings navigation, and a late unaccepted result never clear draft input or navigate
+ok 15 - cancel, settings navigation, and a late unaccepted result never clear draft input or navigate
+  ---
+  duration_ms: 2.563875
+  type: 'test'
+  ...
+# Subtest: classic JSX executes with explicit React import and presentation has no business dependencies
+ok 16 - classic JSX executes with explicit React import and presentation has no business dependencies
+  ---
+  duration_ms: 2.327542
+  type: 'test'
+  ...
+# Subtest: home styles are scoped and include bounded scrolling and narrow-window layout
+ok 17 - home styles are scoped and include bounded scrolling and narrow-window layout
+  ---
+  duration_ms: 0.393959
+  type: 'test'
+  ...
+# Subtest: mac-inset home header preserves native-control space and interactive no-drag boundaries
+ok 18 - mac-inset home header preserves native-control space and interactive no-drag boundaries
+  ---
+  duration_ms: 0.396833
+  type: 'test'
+  ...
+# Subtest: actual App wires the scoped home stylesheet without weakening TypeScript module checks
+ok 19 - actual App wires the scoped home stylesheet without weakening TypeScript module checks
+  ---
+  duration_ms: 0.177625
+  type: 'test'
+  ...
+# Subtest: native create intent effect opens once and retained inputs survive later same-version renders
+ok 20 - native create intent effect opens once and retained inputs survive later same-version renders
+  ---
+  duration_ms: 1.917166
+  type: 'test'
+  ...
+# Subtest: four-language live rendering retains draft fields, form ownership, and unknown pending outcome
+ok 21 - four-language live rendering retains draft fields, form ownership, and unknown pending outcome
+  ---
+  duration_ms: 2.73175
+  type: 'test'
+  ...
+1..21
+# tests 21
+# suites 0
+# pass 21
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 888.121958

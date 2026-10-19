@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: independent descriptor has one segment and preserves source trim, gain and clip-local fades under rebase
+ok 1 - independent descriptor has one segment and preserves source trim, gain and clip-local fades under rebase
+  ---
+  duration_ms: 8.786541
+  type: 'test'
+  ...
+# Subtest: timeline placement cannot add leading silence, extra segments, or change selected PCM mapping
+ok 2 - timeline placement cannot add leading silence, extra segments, or change selected PCM mapping
+  ---
+  duration_ms: 6.484083
+  type: 'test'
+  ...
+# Subtest: muted, zero gain and image selections reject without a source probe
+ok 3 - muted, zero gain and image selections reject without a source probe
+  ---
+  duration_ms: 0.415417
+  type: 'test'
+  ...
+# Subtest: hidden video embedded sound is measured; actual audio mismatch and genuine no-audio are not silence
+ok 4 - hidden video embedded sound is measured; actual audio mismatch and genuine no-audio are not silence
+  ---
+  duration_ms: 1.668125
+  type: 'test'
+  ...
+# Subtest: unknown and multichannel layouts refuse before PCM; supported mono/44.1k retains fixed output
+ok 5 - unknown and multichannel layouts refuse before PCM; supported mono/44.1k retains fixed output
+  ---
+  duration_ms: 2.742125
+  type: 'test'
+  ...
+# Subtest: exact sample count, finite PCM and callback cancellation remain enforced
+ok 6 - exact sample count, finite PCM and callback cancellation remain enforced
+  ---
+  duration_ms: 1.992625
+  type: 'test'
+  ...
+# Subtest: 60 second clip planner stays one pass; longer selections refuse before allocating PCM
+ok 7 - 60 second clip planner stays one pass; longer selections refuse before allocating PCM
+  ---
+  duration_ms: 0.121459
+  type: 'test'
+  ...
+# Subtest: adapter preserves the existing synchronous borrowed-chunk callback contract
+ok 8 - adapter preserves the existing synchronous borrowed-chunk callback contract
+  ---
+  duration_ms: 0.357166
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 259.860959

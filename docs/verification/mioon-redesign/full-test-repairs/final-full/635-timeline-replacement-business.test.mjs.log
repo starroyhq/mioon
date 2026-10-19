@@ -1,0 +1,479 @@
+TAP version 13
+# Subtest: replacement preserves complete clip editing state, pins explicit provenance, and round-trips one history entry
+ok 1 - replacement preserves complete clip editing state, pins explicit provenance, and round-trips one history entry
+  ---
+  duration_ms: 934.614292
+  type: 'test'
+  ...
+# Subtest: asset-only generated replacement removes stale provenance without inventing links or legacy fade keys
+ok 2 - asset-only generated replacement removes stale provenance without inventing links or legacy fade keys
+  ---
+  duration_ms: 784.043667
+  type: 'test'
+  ...
+# Subtest: replacement cannot commit a saved extension field rejected by the shared acknowledgement guard
+ok 3 - replacement cannot commit a saved extension field rejected by the shared acknowledgement guard
+  ---
+  duration_ms: 629.917417
+  type: 'test'
+  ...
+# Subtest: each media category can replace its own kind, including image and audio containers
+    # Subtest: video/mp4 to video/webm
+    ok 1 - video/mp4 to video/webm
+      ---
+      duration_ms: 601.989167
+      type: 'test'
+      ...
+    # Subtest: audio/wav to audio/mp4
+    ok 2 - audio/wav to audio/mp4
+      ---
+      duration_ms: 611.844875
+      type: 'test'
+      ...
+    # Subtest: image/png to image/jpeg
+    ok 3 - image/png to image/jpeg
+      ---
+      duration_ms: 607.672167
+      type: 'test'
+      ...
+    1..3
+ok 4 - each media category can replace its own kind, including image and audio containers
+  ---
+  duration_ms: 1822.098958
+  type: 'test'
+  ...
+# Subtest: same source, changed category, short media, incompatible fades and stale revision reject atomically without discarding redo
+ok 5 - same source, changed category, short media, incompatible fades and stale revision reject atomically without discarding redo
+  ---
+  duration_ms: 633.399458
+  type: 'test'
+  ...
+# Subtest: replacement accepts the exact preserved source end and rejects one-frame-short or fractional final frames
+ok 6 - replacement accepts the exact preserved source end and rejects one-frame-short or fractional final frames
+  ---
+  duration_ms: 605.442792
+  type: 'test'
+  ...
+# Subtest: duplicates, lost acknowledgements and restart replay the exact response after undo, branching, replacement and clip removal
+ok 7 - duplicates, lost acknowledgements and restart replay the exact response after undo, branching, replacement and clip removal
+  ---
+  duration_ms: 1007.038708
+  type: 'test'
+  ...
+# Subtest: missing timelines and missing/foreign assets reject without initialization or information leakage
+ok 8 - missing timelines and missing/foreign assets reject without initialization or information leakage
+  ---
+  duration_ms: 618.199042
+  type: 'test'
+  ...
+# Subtest: new replacement rejects SQL/JSON owner and identity corruption before CAS can expose current data
+    # Subtest: project JSON identity
+    ok 1 - project JSON identity
+      ---
+      duration_ms: 588.898
+      type: 'test'
+      ...
+    # Subtest: timeline SQL owner
+    ok 2 - timeline SQL owner
+      ---
+      duration_ms: 599.875958
+      type: 'test'
+      ...
+    # Subtest: timeline JSON owner
+    ok 3 - timeline JSON owner
+      ---
+      duration_ms: 605.460625
+      type: 'test'
+      ...
+    # Subtest: timeline JSON identity
+    ok 4 - timeline JSON identity
+      ---
+      duration_ms: 601.174042
+      type: 'test'
+      ...
+    # Subtest: current asset SQL owner
+    ok 5 - current asset SQL owner
+      ---
+      duration_ms: 608.358667
+      type: 'test'
+      ...
+    # Subtest: current asset JSON owner
+    ok 6 - current asset JSON owner
+      ---
+      duration_ms: 660.52975
+      type: 'test'
+      ...
+    # Subtest: candidate asset SQL owner
+    ok 7 - candidate asset SQL owner
+      ---
+      duration_ms: 621.6555
+      type: 'test'
+      ...
+    # Subtest: candidate asset JSON owner
+    ok 8 - candidate asset JSON owner
+      ---
+      duration_ms: 610.26925
+      type: 'test'
+      ...
+    # Subtest: candidate asset JSON identity
+    ok 9 - candidate asset JSON identity
+      ---
+      duration_ms: 591.77975
+      type: 'test'
+      ...
+    # Subtest: malformed candidate JSON
+    ok 10 - malformed candidate JSON
+      ---
+      duration_ms: 625.147958
+      type: 'test'
+      ...
+    # Subtest: oversized candidate JSON
+    ok 11 - oversized candidate JSON
+      ---
+      duration_ms: 647.431209
+      type: 'test'
+      ...
+    # Subtest: malformed timeline JSON
+    ok 12 - malformed timeline JSON
+      ---
+      duration_ms: 650.683667
+      type: 'test'
+      ...
+    1..12
+ok 9 - new replacement rejects SQL/JSON owner and identity corruption before CAS can expose current data
+  ---
+  duration_ms: 7413.084416
+  type: 'test'
+  ...
+# Subtest: explicit versions and asset-only selection validate complete actual reverse generation ownership
+    # Subtest: unknown version
+    ok 1 - unknown version
+      ---
+      duration_ms: 716.039333
+      type: 'test'
+      ...
+    # Subtest: wrong asset version
+    ok 2 - wrong asset version
+      ---
+      duration_ms: 725.648
+      type: 'test'
+      ...
+    # Subtest: foreign version
+    ok 3 - foreign version
+      ---
+      duration_ms: 810.219167
+      type: 'test'
+      ...
+    # Subtest: version SQL owner
+    ok 4 - version SQL owner
+      ---
+      duration_ms: 750.065958
+      type: 'test'
+      ...
+    # Subtest: version JSON owner
+    ok 5 - version JSON owner
+      ---
+      duration_ms: 820.727209
+      type: 'test'
+      ...
+    # Subtest: version SQL job
+    ok 6 - version SQL job
+      ---
+      duration_ms: 667.69725
+      type: 'test'
+      ...
+    # Subtest: version hash
+    ok 7 - version hash
+      ---
+      duration_ms: 646.978208
+      type: 'test'
+      ...
+    # Subtest: job JSON owner
+    ok 8 - job JSON owner
+      ---
+      duration_ms: 722.138334
+      type: 'test'
+      ...
+    # Subtest: job SQL owner
+    ok 9 - job SQL owner
+      ---
+      duration_ms: 611.215709
+      type: 'test'
+      ...
+    # Subtest: job asset mismatch
+    ok 10 - job asset mismatch
+      ---
+      duration_ms: 613.572834
+      type: 'test'
+      ...
+    # Subtest: job version mismatch
+    ok 11 - job version mismatch
+      ---
+      duration_ms: 831.88675
+      type: 'test'
+      ...
+    # Subtest: job shot mismatch
+    ok 12 - job shot mismatch
+      ---
+      duration_ms: 611.015167
+      type: 'test'
+      ...
+    # Subtest: shot SQL owner
+    ok 13 - shot SQL owner
+      ---
+      duration_ms: 579.489917
+      type: 'test'
+      ...
+    # Subtest: shot reference asset owner
+    ok 14 - shot reference asset owner
+      ---
+      duration_ms: 593.847083
+      type: 'test'
+      ...
+    # Subtest: version snapshot owner
+    ok 15 - version snapshot owner
+      ---
+      duration_ms: 578.715375
+      type: 'test'
+      ...
+    # Subtest: job snapshot source owner
+    ok 16 - job snapshot source owner
+      ---
+      duration_ms: 581.17475
+      type: 'test'
+      ...
+    # Subtest: missing reverse version
+    ok 17 - missing reverse version
+      ---
+      duration_ms: 582.317834
+      type: 'test'
+      ...
+    # Subtest: hidden foreign reverse owner
+    ok 18 - hidden foreign reverse owner
+      ---
+      duration_ms: 597.757292
+      type: 'test'
+      ...
+    # Subtest: duplicate reverse owner
+    ok 19 - duplicate reverse owner
+      ---
+      duration_ms: 583.342291
+      type: 'test'
+      ...
+    1..19
+ok 10 - explicit versions and asset-only selection validate complete actual reverse generation ownership
+  ---
+  duration_ms: 12626.290917
+  type: 'test'
+  ...
+# Subtest: saved replacement receipts fail closed when their response structure or exact scope is corrupted
+    # Subtest: foreign project
+    ok 1 - foreign project
+      ---
+      duration_ms: 571.070583
+      type: 'test'
+      ...
+    # Subtest: different timeline
+    ok 2 - different timeline
+      ---
+      duration_ms: 595.576042
+      type: 'test'
+      ...
+    # Subtest: wrong revision
+    ok 3 - wrong revision
+      ---
+      duration_ms: 587.115
+      type: 'test'
+      ...
+    # Subtest: missing target clip
+    ok 4 - missing target clip
+      ---
+      duration_ms: 588.212708
+      type: 'test'
+      ...
+    # Subtest: different target source
+    ok 5 - different target source
+      ---
+      duration_ms: 575.418542
+      type: 'test'
+      ...
+    # Subtest: invented provenance
+    ok 6 - invented provenance
+      ---
+      duration_ms: 573.53375
+      type: 'test'
+      ...
+    # Subtest: wrong total duration
+    ok 7 - wrong total duration
+      ---
+      duration_ms: 578.197125
+      type: 'test'
+      ...
+    # Subtest: invalid fades
+    ok 8 - invalid fades
+      ---
+      duration_ms: 614.448791
+      type: 'test'
+      ...
+    # Subtest: out of source bounds
+    ok 9 - out of source bounds
+      ---
+      duration_ms: 621.572375
+      type: 'test'
+      ...
+    # Subtest: malformed JSON
+    ok 10 - malformed JSON
+      ---
+      duration_ms: 623.704708
+      type: 'test'
+      ...
+    # Subtest: oversized response
+    ok 11 - oversized response
+      ---
+      duration_ms: 783.758792
+      type: 'test'
+      ...
+    1..11
+ok 11 - saved replacement receipts fail closed when their response structure or exact scope is corrupted
+  ---
+  duration_ms: 6713.8885
+  type: 'test'
+  ...
+# Subtest: malformed or oversized replacement receipt hashes are rejected before response decoding
+    # Subtest: invalid hash length 200000
+    ok 1 - invalid hash length 200000
+      ---
+      duration_ms: 997.562833
+      type: 'test'
+      ...
+    # Subtest: invalid hash length 64
+    ok 2 - invalid hash length 64
+      ---
+      duration_ms: 701.688458
+      type: 'test'
+      ...
+    # Subtest: invalid hash length 63
+    ok 3 - invalid hash length 63
+      ---
+      duration_ms: 629.526625
+      type: 'test'
+      ...
+    1..3
+ok 12 - malformed or oversized replacement receipt hashes are rejected before response decoding
+  ---
+  duration_ms: 2329.251125
+  type: 'test'
+  ...
+# Subtest: historical replay requires current project, aggregate and every saved source to retain ownership
+    # Subtest: missing project
+    ok 1 - missing project
+      ---
+      duration_ms: 735.981416
+      type: 'test'
+      ...
+    # Subtest: missing timeline
+    ok 2 - missing timeline
+      ---
+      duration_ms: 648.694583
+      type: 'test'
+      ...
+    # Subtest: reassigned timeline
+    ok 3 - reassigned timeline
+      ---
+      duration_ms: 635.181333
+      type: 'test'
+      ...
+    # Subtest: missing saved source
+    ok 4 - missing saved source
+      ---
+      duration_ms: 618.124209
+      type: 'test'
+      ...
+    # Subtest: reassigned saved source
+    ok 5 - reassigned saved source
+      ---
+      duration_ms: 641.816667
+      type: 'test'
+      ...
+    # Subtest: saved source SQL/JSON mismatch
+    ok 6 - saved source SQL/JSON mismatch
+      ---
+      duration_ms: 723.931875
+      type: 'test'
+      ...
+    1..6
+ok 13 - historical replay requires current project, aggregate and every saved source to retain ownership
+  ---
+  duration_ms: 4004.557667
+  type: 'test'
+  ...
+# Subtest: durable receipt failures and post-write owner corruption roll back timeline, redo branch, history and request together
+    # Subtest: receipt failure
+    ok 1 - receipt failure
+      ---
+      duration_ms: 696.023959
+      type: 'test'
+      ...
+    # Subtest: timeline owner
+    ok 2 - timeline owner
+      ---
+      duration_ms: 632.999
+      type: 'test'
+      ...
+    # Subtest: asset owner
+    ok 3 - asset owner
+      ---
+      duration_ms: 626.0255
+      type: 'test'
+      ...
+    # Subtest: source duration
+    ok 4 - source duration
+      ---
+      duration_ms: 627.468541
+      type: 'test'
+      ...
+    # Subtest: source audio
+    ok 5 - source audio
+      ---
+      duration_ms: 660.117584
+      type: 'test'
+      ...
+    # Subtest: response corruption
+    ok 6 - response corruption
+      ---
+      duration_ms: 663.21925
+      type: 'test'
+      ...
+    # Subtest: hash corruption
+    ok 7 - hash corruption
+      ---
+      duration_ms: 660.518375
+      type: 'test'
+      ...
+    1..7
+ok 14 - durable receipt failures and post-write owner corruption roll back timeline, redo branch, history and request together
+  ---
+  duration_ms: 4567.889667
+  type: 'test'
+  ...
+# Subtest: independent SQLite writers serialize exact duplicates once and conflicting fresh writers by CAS
+ok 15 - independent SQLite writers serialize exact duplicates once and conflicting fresh writers by CAS
+  ---
+  duration_ms: 3870.827083
+  type: 'test'
+  ...
+# Subtest: replacement uses only local metadata and never invokes providers or network
+ok 16 - replacement uses only local metadata and never invokes providers or network
+  ---
+  duration_ms: 588.664417
+  type: 'test'
+  ...
+1..16
+# tests 77
+# suites 0
+# pass 77
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 49525.22025

@@ -1,0 +1,166 @@
+TAP version 13
+# Subtest: desktop prepares a private empty root before any Electron path change
+ok 1 - desktop prepares a private empty root before any Electron path change
+  ---
+  duration_ms: 11.649333
+  type: 'test'
+  ...
+# Subtest: desktop rejects existing 755 root without changing bytes, modes or Electron paths
+ok 2 - desktop rejects existing 755 root without changing bytes, modes or Electron paths
+  ---
+  duration_ms: 4.244917
+  type: 'test'
+  ...
+# Subtest: desktop rejects existing 777 root without changing bytes, modes or Electron paths
+ok 3 - desktop rejects existing 777 root without changing bytes, modes or Electron paths
+  ---
+  duration_ms: 4.281792
+  type: 'test'
+  ...
+# Subtest: desktop rejects a symlink root or ancestor before creating anything outside it
+ok 4 - desktop rejects a symlink root or ancestor before creating anything outside it
+  ---
+  duration_ms: 2.282
+  type: 'test'
+  ...
+# Subtest: desktop preflights unsafe workspace root before identity and Electron writes
+ok 5 - desktop preflights unsafe workspace root before identity and Electron writes
+  ---
+  duration_ms: 4.622042
+  type: 'test'
+  ...
+# Subtest: desktop preflights unsafe workspace media link before identity and Electron writes
+ok 6 - desktop preflights unsafe workspace media link before identity and Electron writes
+  ---
+  duration_ms: 3.814334
+  type: 'test'
+  ...
+# Subtest: desktop preflights unsafe workspace SQLite link before identity and Electron writes
+ok 7 - desktop preflights unsafe workspace SQLite link before identity and Electron writes
+  ---
+  duration_ms: 4.157292
+  type: 'test'
+  ...
+# Subtest: desktop preflights unsafe workspace token mode before identity and Electron writes
+ok 8 - desktop preflights unsafe workspace token mode before identity and Electron writes
+  ---
+  duration_ms: 9.090875
+  type: 'test'
+  ...
+# Subtest: desktop preflights unsafe settings directory before identity and Electron writes
+ok 9 - desktop preflights unsafe settings directory before identity and Electron writes
+  ---
+  duration_ms: 5.378584
+  type: 'test'
+  ...
+# Subtest: desktop preflights unsafe settings envelope mode before identity and Electron writes
+ok 10 - desktop preflights unsafe settings envelope mode before identity and Electron writes
+  ---
+  duration_ms: 107.885375
+  type: 'test'
+  ...
+# Subtest: desktop preflights unsafe identity mode before identity and Electron writes
+ok 11 - desktop preflights unsafe identity mode before identity and Electron writes
+  ---
+  duration_ms: 22.126834
+  type: 'test'
+  ...
+# Subtest: desktop preflights unsafe config hardlink before identity and Electron writes
+ok 12 - desktop preflights unsafe config hardlink before identity and Electron writes
+  ---
+  duration_ms: 14.347125
+  type: 'test'
+  ...
+# Subtest: desktop preflights unsafe discovery oversized before identity and Electron writes
+ok 13 - desktop preflights unsafe discovery oversized before identity and Electron writes
+  ---
+  duration_ms: 14.711666
+  type: 'test'
+  ...
+# Subtest: desktop preserves channel separation before handing a directory to Electron
+ok 14 - desktop preserves channel separation before handing a directory to Electron
+  ---
+  duration_ms: 31.756792
+  type: 'test'
+  ...
+# Subtest: private corrupt settings JSON stays scoped to settings rather than blocking desktop metadata preflight
+ok 15 - private corrupt settings JSON stays scoped to settings rather than blocking desktop metadata preflight
+  ---
+  duration_ms: 13.57125
+  type: 'test'
+  ...
+# Subtest: desktop identity and tool config reject linked or oversized files without reading/replacing their targets
+ok 16 - desktop identity and tool config reject linked or oversized files without reading/replacing their targets
+  ---
+  duration_ms: 8.100583
+  type: 'test'
+  ...
+# Subtest: desktop discovery validates both existing files before rotating or removing either one
+ok 17 - desktop discovery validates both existing files before rotating or removing either one
+  ---
+  duration_ms: 29.098958
+  type: 'test'
+  ...
+# Subtest: desktop atomic writers leave attacker-created legacy temporary paths untouched
+ok 18 - desktop atomic writers leave attacker-created legacy temporary paths untouched
+  ---
+  duration_ms: 48.9055
+  type: 'test'
+  ...
+# Subtest: desktop settings recheck the userData privacy boundary on each save
+ok 19 - desktop settings recheck the userData privacy boundary on each save
+  ---
+  duration_ms: 55.409
+  type: 'test'
+  ...
+# Subtest: fatal startup uses only a fresh private diagnostic directory, shows actionable UI, then cleans it at quit
+ok 20 - fatal startup uses only a fresh private diagnostic directory, shows actionable UI, then cleans it at quit
+  ---
+  duration_ms: 6.126167
+  type: 'test'
+  ...
+# Subtest: fatal startup never uses default userData or readiness if a diagnostic directory cannot be verified
+ok 21 - fatal startup never uses default userData or readiness if a diagnostic directory cannot be verified
+  ---
+  duration_ms: 3.330792
+  type: 'test'
+  ...
+# Subtest: diagnostic cleanup preserves a replacement directory instead of deleting an ambiguous path
+ok 22 - diagnostic cleanup preserves a replacement directory instead of deleting an ambiguous path
+  ---
+  duration_ms: 4.181458
+  type: 'test'
+  ...
+# Subtest: main isolates fatal storage handling from lock acquisition and normal readiness
+ok 23 - main isolates fatal storage handling from lock acquisition and normal readiness
+  ---
+  duration_ms: 1.110416
+  type: 'test'
+  ...
+# Subtest: fatal startup copy distinguishes identity, channel, canonical-path and ACL blockers without raw errors
+ok 24 - fatal startup copy distinguishes identity, channel, canonical-path and ACL blockers without raw errors
+  ---
+  duration_ms: 0.1755
+  type: 'test'
+  ...
+# Subtest: quit preserves newly unsafe discovery, warns once without secrets and still stops backend and clears session exactly once
+ok 25 - quit preserves newly unsafe discovery, warns once without secrets and still stops backend and clears session exactly once
+  ---
+  duration_ms: 50.403708
+  type: 'test'
+  ...
+# Subtest: shutdown cleanup keeps non-privacy programming errors visible
+ok 26 - shutdown cleanup keeps non-privacy programming errors visible
+  ---
+  duration_ms: 0.438125
+  type: 'test'
+  ...
+1..26
+# tests 26
+# suites 0
+# pass 26
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 905.5205

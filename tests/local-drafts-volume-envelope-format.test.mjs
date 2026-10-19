@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {Readable} from 'node:stream';
 import {createClipDraftClient} from '../apps/web/src/clip-draft-client.ts';
 import {createLocalDraftHttp} from '../apps/server/src/local-drafts-http.ts';
-import {mkdtempSync,rmSync,readFileSync,writeFileSync,existsSync} from 'node:fs';
+import {mkdtempSync,realpathSync,rmSync,readFileSync,writeFileSync,existsSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {createLocalDrafts,LOCAL_DRAFT_FILENAME} from '../packages/business/src/local-drafts.ts';
@@ -16,7 +16,7 @@ const storage={readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,v
 const error=code=>e=>e.code===code;
 const envelope=(points=[])=>({profileId:VOLUME_ENVELOPE_PROFILE,points});
 function fixture(t){
- const root=mkdtempSync(path.join(tmpdir(),'mioon-draft-format-'));
+ const root=mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-draft-format-'));
  writeFileSync(path.join(root,'workbench.sqlite'),'synthetic identity only',{mode:0o600});
  t.after(()=>rmSync(root,{recursive:true,force:true}));
  const key={projectId:randomUUID(),timelineId:randomUUID(),clipId:randomUUID()};

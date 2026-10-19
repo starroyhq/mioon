@@ -1,0 +1,9 @@
+{
+  "completedFiles": 1,
+  "totalFiles": 1,
+  "passedFiles": 1,
+  "failedFiles": 0,
+  "timeoutFiles": 0,
+  "seconds": 4.59,
+  "last": "tests/inspection-wire-lifecycle.test.mjs"
+}

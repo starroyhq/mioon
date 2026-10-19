@@ -189,6 +189,8 @@ export function createLocalDrafts({root,channel='web',guards,storage,signal,faul
     }catch(error){if(published)fail('LOCAL_DRAFT_SAVE_UNCERTAIN');throw error;}
   }
   return {
+    assertProjectDeletable(projectId:string):void{guarded(()=>{owned();parsed(clipDraftProjectSchema,{projectId});read();});},
+    removeProject(projectId:string):void{guarded(()=>{owned();parsed(clipDraftProjectSchema,{projectId});const disk=read(),entries=disk.entries.filter(row=>row.projectId!==projectId);if(entries.length===disk.entries.length)return;persist({...disk,entries});confirmPublished();});},
     get(input:unknown):ClipDraftEnvelope{return guarded(()=>{
       if(!active())return unsupported;const key=parsed(clipDraftKeySchema,input),current=timeline(key.projectId),disk=read();
       return response(key,disk.entries.find(row=>keyOf(row)===keyOf(key)),current);

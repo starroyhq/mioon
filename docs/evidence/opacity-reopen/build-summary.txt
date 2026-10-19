@@ -1,0 +1,5 @@
+node scripts/tooling.mjs build: exit0; strict foundation/browser TS and source-language guard, Web build and development desktop staging.
+✓ built in 6.32s
+Desktop identity: app.starroy.mioon.dev (development)
+Desktop staging contains bundled shared backend and the same built web UI; no node_modules or data directories.
+Existing use-client bundling and chunk-size warnings remain; no build errors.

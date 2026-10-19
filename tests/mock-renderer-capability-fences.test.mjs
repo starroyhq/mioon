@@ -101,7 +101,11 @@ for(const mode of ['configured path changes','executable is replaced'])test(`in-
 
 test('only a fully recognized filter listing may prove missing drawtext; unknown results are not cached',async t=>{
  const f=await fixture(t),id=await f.task();let index=0;
- for(const malformed of ['not a filter table\n ... scale V->V Synthetic.\n','Filters:\n garbage\n ... scale V->V Synthetic.\n','Filters:\n T.. = corrupted legend\n ... scale V->V Synthetic.\n','Filters:\n ... scale V->V Synthetic.\n drawtext row truncated\n']){
+ for(const malformed of ['not a filter table\n ... scale V->V Synthetic.\n','Filters:\n garbage\n ... scale V->V Synthetic.\n','Filters:\n T.. = corrupted legend\n ... scale V->V Synthetic.\n','Filters:\n ... scale V->V Synthetic.\n drawtext row truncated\n',
+  'Filters:\n ------\n ------\n ... scale V->V Synthetic.\n',
+  'Filters:\n -----\n ... scale V->V Synthetic.\n',
+  'Filters:\n ... scale V->V Synthetic.\n ------\n',
+  'Filters:\n ------\n T.. = Timeline support\n ... scale V->V Synthetic.\n']){
   const tool=await f.makeTool({listings:[malformed,missing]},path.join(f.root,`malformed-${++index}`));process.env.MIOON_FFMPEG_PATH=tool.file;
   assert.equal((await f.provider.poll(id)).status,'succeeded');assert.equal((await f.provider.poll(id)).status,'failed');assert.deepEqual(await tool.counts(),['probe','probe']);
  }

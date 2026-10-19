@@ -13,12 +13,18 @@ import { createLocalDeliveryController } from '../apps/web/src/local-delivery-st
 import * as contracts from '@mioon/contracts';
 import * as audio from '../apps/web/src/clip-audio-state.js';
 import * as clipDraft from '../apps/web/src/clip-draft-state.ts';
+import * as opacityState from '../apps/web/src/clip-opacity-envelope-state.ts';
+import * as opacityAssembly from '../apps/web/src/clip-opacity-candidate-assembly.ts';
+import * as volumeState from '../apps/web/src/clip-volume-envelope-state.ts';
+import * as audioRoleState from '../apps/web/src/clip-audio-role-state.ts';
+import * as removalState from '../apps/web/src/timeline-removal.ts';
+import * as viewGeometry from '../apps/web/src/timeline-view-geometry.ts';
 
 const id = n => `73000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), timelineId = id(2);
 const context = patch => ({ scope: `${projectId}:1`, projectId, projectRevision: 2, timelineId: null, timelineRevision: 0, connected: true, pending: false, ...patch });
-const metadata = patch => ({ projectId, projectRevision: 2, timelineId: null, timelineRevision: 0, presetId: 'portrait_720', fps: 30, width: 720, height: 1280, eligible: true, blockedReasons: [], ...patch });
-const timeline = (presetId = 'landscape_720', revision = 1) => ({ id: timelineId, projectId, revision,
+const metadata = patch => ({ projectId, projectRevision: 2, timelineId: null, timelineRevision: 0, presetId: 'portrait_1080', fps: 30, width: 1080, height: 1920, eligible: true, blockedReasons: [], ...patch });
+const timeline = (presetId = 'landscape_1080', revision = 1) => ({ id: timelineId, projectId, revision,
   ...Object.fromEntries(Object.entries(contracts.timelineOutputPreset(presetId)).filter(([key]) => ['fps', 'width', 'height'].includes(key))),
   tracks: [{ id: id(3), kind: 'video', name: 'Video', orderIndex: 0, hidden: false, muted: false }], clips: [], durationFrames: 0,
   createdAt: '2026-10-11T00:00:00Z', updatedAt: '2026-10-11T00:00:00Z' });
@@ -47,33 +53,41 @@ function fixture() {
 test('closed presets and noncreating read retain exact authoritative eligibility', async () => {
   const f = fixture(); await f.ready();
   assert.deepEqual(format.TIMELINE_OUTPUT_PRESETS.map(preset => [preset.id, preset.width, preset.height, preset.fps]), [
+    ['portrait_1080', 1080, 1920, 30], ['landscape_1080', 1920, 1080, 30], ['square_1080', 1080, 1080, 30],
     ['portrait_720', 720, 1280, 30], ['landscape_720', 1280, 720, 30], ['square_720', 720, 720, 30],
   ]);
   assert.deepEqual(f.reads[0].input, { projectId }); assert.equal(f.submits.length, 0);
   assert.equal(f.state().saved.timelineId, null); assert.equal(f.state().saved.timelineRevision, 0);
   for (const reason of ['CLIPS_PRESENT', 'HISTORY_PRESENT', 'REQUEST_HISTORY', 'EXPORT_HISTORY', 'PENDING_EDIT']) {
     f.server({ eligible: false, blockedReasons: [reason] }); await f.ready();
-    assert.equal(f.controller.choose('landscape_720'), false); assert.equal(format.timelineFormatCanSave(f.state()), false);
+    assert.equal(f.controller.choose('landscape_1080'), false); assert.equal(format.timelineFormatCanSave(f.state()), false);
     assert.ok(format.timelineFormatReason(reason));
   }
 });
 
+test('saved legacy720 remains readable but new format choices use only the three1080 presets', async () => {
+  const f=fixture();f.set({timelineId,timelineRevision:1});f.server({timelineId,timelineRevision:1,presetId:'portrait_720',width:720,height:1280});await f.ready();
+  assert.equal(f.state().saved.presetId,'portrait_720');assert.equal(f.state().saved.width,720);assert.equal(f.controller.choose('landscape_1080'),true);
+  const Panel=component('TimelineFormatPanel.jsx').default,tree=Panel({state:f.state(),controller:f.controller});
+  const options=nodes(tree).filter(node=>node.type==='option');assert.deepEqual(options.map(node=>node.props.value),['portrait_1080','landscape_1080','square_1080','portrait_720']);
+});
+
 test('polls, dock hiding, selection and mode changes preserve the independent format draft', async () => {
-  const f = fixture(); await f.ready(); f.controller.choose('landscape_720');
+  const f = fixture(); await f.ready(); f.controller.choose('landscape_1080');
   const base = structuredClone(f.state().base);
   f.controller.setVisible(false); f.set({ selectedClipId: 'next', activeMode: 'canvas', propertiesPage: 'inspector' }); await f.ready();
-  assert.equal(f.state().draftPresetId, 'landscape_720'); assert.equal(f.state().dirty, true); assert.deepEqual(f.state().base, base);
-  assert.equal(await f.controller.save(), null); assert.equal(f.controller.choose('square_720'), false); assert.equal(f.submits.length, 0);
-  f.controller.setVisible(true); assert.equal(f.controller.choose('square_720'), true); assert.equal(f.state().dirty, true);
+  assert.equal(f.state().draftPresetId, 'landscape_1080'); assert.equal(f.state().dirty, true); assert.deepEqual(f.state().base, base);
+  assert.equal(await f.controller.save(), null); assert.equal(f.controller.choose('square_1080'), false); assert.equal(f.submits.length, 0);
+  f.controller.setVisible(true); assert.equal(f.controller.choose('square_1080'), true); assert.equal(f.state().dirty, true);
 });
 
 test('newer authoritative revision preserves dirty choice and prevents blind rebase', async () => {
-  const f = fixture(); await f.ready(); f.controller.choose('square_720');
+  const f = fixture(); await f.ready(); f.controller.choose('square_1080');
   f.server({ projectRevision: 3 }); f.set({ projectRevision: 3 }); await f.ready();
-  assert.equal(f.state().draftPresetId, 'square_720'); assert.equal(f.state().base.projectRevision, 2); assert.equal(f.state().conflict, true);
+  assert.equal(f.state().draftPresetId, 'square_1080'); assert.equal(f.state().base.projectRevision, 2); assert.equal(f.state().conflict, true);
   assert.equal(await f.controller.save(), null);
   f.controller.discardDraft(); assert.equal(f.state().dirty, false); assert.equal(f.state().base.projectRevision, 3);
-  f.controller.choose('square_720'); assert.equal(format.timelineFormatCanSave(f.state()), true);
+  f.controller.choose('square_1080'); assert.equal(format.timelineFormatCanSave(f.state()), true);
 });
 
 test('live owner change before React commit fences late read success and authentication error', async () => {
@@ -87,63 +101,63 @@ test('live owner change before React commit fences late read success and authent
 });
 
 test('newer read wins; reconnect keeps draft but cannot revive an unverified save', async () => {
-  const f = fixture(); await f.ready(); f.controller.choose('square_720');
+  const f = fixture(); await f.ready(); f.controller.choose('square_1080');
   const held = f.holdRead(), older = f.controller.load(); await f.ready(); held.resolve(metadata({ projectRevision: 1 })); await older;
   assert.equal(f.state().saved.projectRevision, 2);
   f.set({ connected: false }); assert.equal(format.timelineFormatCanSave(f.state()), false);
   f.set({ connected: true }); assert.equal(format.timelineFormatCanSave(f.state()), false);
-  await f.ready(); assert.equal(f.state().draftPresetId, 'square_720'); assert.equal(format.timelineFormatCanSave(f.state()), true);
+  await f.ready(); assert.equal(f.state().draftPresetId, 'square_1080'); assert.equal(format.timelineFormatCanSave(f.state()), true);
 });
 
 test('save freezes both revisions and exact intent; double click never mints another request', async () => {
-  const f = fixture(); await f.ready(); f.controller.choose('landscape_720');
+  const f = fixture(); await f.ready(); f.controller.choose('landscape_1080');
   const saved = f.controller.save(); assert.equal(await f.controller.save(), null);
-  assert.deepEqual(f.submits[0].input, { projectId, expectedProjectRevision: 2, expectedRevision: 0, requestId: 'format-request-1', presetId: 'landscape_720' });
+  assert.deepEqual(f.submits[0].input, { projectId, expectedProjectRevision: 2, expectedRevision: 0, requestId: 'format-request-1', presetId: 'landscape_1080' });
   assert.ok(Object.isFrozen(f.submits[0].input)); assert.equal(f.submits.length, 1);
-  f.ack(); await saved; assert.equal(f.state().dirty, false); assert.equal(f.state().saved.width, 1280);
+  f.ack(); await saved; assert.equal(f.state().dirty, false); assert.equal(f.state().saved.width, 1920);
   assert.equal(f.state().saved.timelineRevision, 1); assert.equal(f.controller.hasUnsaved(), false);
-  f.controller.choose('square_720'); const second = f.controller.save(); assert.equal(f.submits[1].input.expectedRevision, 1); f.ack(1); await second;
+  f.controller.choose('square_1080'); const second = f.controller.save(); assert.equal(f.submits[1].input.expectedRevision, 1); f.ack(1); await second;
 });
 
-for (const later of ['square_720', 'portrait_720']) test(`late ACK does not erase later ${later} draft while the panel is hidden`, async () => {
-  const f = fixture(); await f.ready(); f.controller.choose('landscape_720'); const saving = f.controller.save();
+for (const later of ['square_1080', 'portrait_1080']) test(`late ACK does not erase later ${later} draft while the panel is hidden`, async () => {
+  const f = fixture(); await f.ready(); f.controller.choose('landscape_1080'); const saving = f.controller.save();
   f.controller.choose(later); f.controller.setVisible(false); f.ack(); await saving;
   assert.equal(f.state().draftPresetId, later); assert.equal(f.state().dirty, true); assert.equal(f.state().base.timelineRevision, 1);
-  assert.equal(f.state().saved.presetId, 'landscape_720'); assert.equal(f.submits.length, 1);
+  assert.equal(f.state().saved.presetId, 'landscape_1080'); assert.equal(f.submits.length, 1);
 });
 
 test('same project revisited in a newer epoch cannot receive an old save ACK', async () => {
-  const f = fixture(); await f.ready(); f.controller.choose('landscape_720'); const saving = f.controller.save();
+  const f = fixture(); await f.ready(); f.controller.choose('landscape_1080'); const saving = f.controller.save();
   f.set({ scope: `${projectId}:3` }); f.ack(); await saving;
   assert.equal(f.state().scope, `${projectId}:3`); assert.equal(f.state().saved, null); assert.equal(f.state().dirty, false);
 });
 
 test('unknown exact intent remains fenced after reads, hiding and reconnect; only explicit matching recovery releases it', async () => {
-  const f = fixture(); await f.ready(); f.controller.choose('landscape_720'); const saving = f.controller.save();
+  const f = fixture(); await f.ready(); f.controller.choose('landscape_1080'); const saving = f.controller.save();
   f.responses[0].resolve({ status: 'unknown' }); await saving;
   const original = f.state().uncertain; assert.ok(original); assert.match(f.state().error, /同一请求/);
-  f.controller.choose('square_720'); f.controller.setVisible(false); await f.ready(); f.set({ connected: false }); f.set({ connected: true }); f.controller.setVisible(true); await f.ready();
+  f.controller.choose('square_1080'); f.controller.setVisible(false); await f.ready(); f.set({ connected: false }); f.set({ connected: true }); f.controller.setVisible(true); await f.ready();
   assert.equal(await f.controller.save(), null); assert.equal(f.submits.length, 1); assert.equal(f.state().uncertain, original);
   const task = { projectId, operation: 'timeline.format.set', requestId: original.input.requestId, input: { ...original.input }, status: 'not_applied' };
-  f.controller.recovered({ ...task, input: { ...task.input, presetId: 'square_720' } }); await tick(); assert.equal(f.state().uncertain, original);
-  f.controller.recovered(task); await tick(); assert.equal(f.state().uncertain, null); assert.equal(f.state().draftPresetId, 'square_720'); assert.equal(f.state().dirty, true);
+  f.controller.recovered({ ...task, input: { ...task.input, presetId: 'square_1080' } }); await tick(); assert.equal(f.state().uncertain, original);
+  f.controller.recovered(task); await tick(); assert.equal(f.state().uncertain, null); assert.equal(f.state().draftPresetId, 'square_1080'); assert.equal(f.state().dirty, true);
   assert.equal(f.submits.length, 1);
 });
 
 test('historical applied recovery refreshes saved data without acknowledging or replacing the current draft', async () => {
-  const f = fixture(); await f.ready(); f.controller.choose('square_720');
-  f.server({ timelineId, timelineRevision: 1, presetId: 'landscape_720', width: 1280, height: 720 });
+  const f = fixture(); await f.ready(); f.controller.choose('square_1080');
+  f.server({ timelineId, timelineRevision: 1, presetId: 'landscape_1080', width: 1920, height: 1080 });
   f.controller.recovered({ projectId, operation: 'timeline.format.set', requestId: 'historical-request', input: {}, status: 'applied' }); await tick();
-  assert.equal(f.state().draftPresetId, 'square_720'); assert.equal(f.state().dirty, true); assert.equal(f.state().conflict, true); assert.equal(f.submits.length, 0);
+  assert.equal(f.state().draftPresetId, 'square_1080'); assert.equal(f.state().dirty, true); assert.equal(f.state().conflict, true); assert.equal(f.submits.length, 0);
 });
 
 test('malformed or misbound ACK never clears the draft or releases unknown intent', async () => {
-  const f = fixture(); await f.ready(); f.controller.choose('landscape_720'); const saving = f.controller.save();
-  f.responses[0].resolve({ status: 'applied', timeline: timeline('square_720') }); await saving;
+  const f = fixture(); await f.ready(); f.controller.choose('landscape_1080'); const saving = f.controller.save();
+  f.responses[0].resolve({ status: 'applied', timeline: timeline('square_1080') }); await saving;
   assert.equal(f.state().dirty, true); assert.ok(f.state().uncertain); assert.equal(format.timelineFormatCanSave(f.state()), false);
 });
 
-for (const patch of [{ extra: true }, { projectId: id(9) }, { timelineId, timelineRevision: 0 }, { presetId: 'landscape_720', width: 1280, height: 720 }, { width: 1080 }, { blockedReasons: ['NEW_UNKNOWN_REASON'], eligible: false }, { blockedReasons: ['CLIPS_PRESENT'], eligible: true }]) {
+for (const patch of [{ extra: true }, { projectId: id(9) }, { timelineId, timelineRevision: 0 }, { presetId: 'landscape_1080', width: 1920, height: 1080 }, { width: 720 }, { blockedReasons: ['NEW_UNKNOWN_REASON'], eligible: false }, { blockedReasons: ['CLIPS_PRESENT'], eligible: true }]) {
   test(`format read fails closed: ${JSON.stringify(patch)}`, async () => {
     const f = fixture(); f.server(patch); await f.ready(); assert.equal(f.state().phase, 'error'); assert.equal(f.state().saved, null);
   });
@@ -157,7 +171,7 @@ const primitive = new Proxy({ __esModule: true, default: 'Component' }, { get: (
 function component(name, imports = {}) {
   const react = { createElement: element, useEffect() {}, useLayoutEffect() {}, useRef: current => ({ current }), useState: value => [typeof value === 'function' ? value() : value, () => {}] }; react.default = react;
   const module = { exports: {} };
-  Function('module', 'exports', 'require', transformSync(read(name), { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, key => key === './creation-i18n.ts' ? creationI18n : key === './i18n/I18nProvider.tsx' ? i18nTestModule() : key.endsWith('packages/i18n/src/index.ts') ? i18n : key === 'react' ? react : key === '@mioon/contracts' ? contracts : key === './timeline-format-state.js' ? format : key === './export-settings-state.js' ? exportSettings : imports[key] || primitive);
+  Function('module', 'exports', 'require', transformSync(read(name), { loader: name.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code)(module, module.exports, key => key === './creation-i18n.ts' ? creationI18n : key === './i18n/I18nProvider.tsx' ? i18nTestModule() : key.endsWith('packages/i18n/src/index.ts') ? i18n : key === 'react' ? react : key === '@mioon/contracts' ? contracts : key === './timeline-format-state.js' ? format : key === './export-settings-state.js' ? exportSettings : key === './clip-opacity-envelope-state.ts' ? opacityState : key === './clip-opacity-candidate-assembly.ts' ? opacityAssembly : key === './clip-volume-envelope-state.ts' ? volumeState : key === './clip-audio-role-state.ts' ? audioRoleState : key === './timeline-removal.ts' ? removalState : key === './timeline-view-geometry.ts' ? viewGeometry : key === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : key === './ClipRemovalControls.tsx' ? component('ClipRemovalControls.tsx') : imports[key] || primitive);
   return module.exports;
 }
 
@@ -184,39 +198,39 @@ test('actual format panel uses accessible shared controls and tells the truth ab
 });
 
 test('retained format panel callbacks cannot edit, reset, read or submit a revisited project epoch', async () => {
-  const f = fixture(); await f.ready(); f.controller.choose('landscape_720');
+  const f = fixture(); await f.ready(); f.controller.choose('landscape_1080');
   const Panel = component('TimelineFormatPanel.jsx').default, old = Panel({ state: f.state(), controller: f.controller });
-  f.set({ scope: `${projectId}:2` }); await f.ready(); f.controller.choose('square_720');
+  f.set({ scope: `${projectId}:2` }); await f.ready(); f.controller.choose('square_1080');
   const count = f.reads.length;
-  nodes(old).find(node => node.props.id === 'timeline-format-preset').props.onChange({ target: { value: 'portrait_720' } });
+  nodes(old).find(node => node.props.id === 'timeline-format-preset').props.onChange({ target: { value: 'portrait_1080' } });
   for (const label of ['保存输出规格', '重新核对', '载入已保存规格']) await nodes(old).find(node => node.type === 'Button' && textOf(node) === label).props.onClick();
-  assert.equal(f.state().draftPresetId, 'square_720'); assert.equal(f.state().dirty, true); assert.equal(f.submits.length, 0); assert.equal(f.reads.length, count);
+  assert.equal(f.state().draftPresetId, 'square_1080'); assert.equal(f.state().dirty, true); assert.equal(f.submits.length, 0); assert.equal(f.reads.length, count);
 });
 
-test('actual preview labels the old job snapshot dimensions, never the current timeline', () => {
+test('actual preview labels legacy frozen job dimensions, never the new current timeline', () => {
   const Preview = component('Preview.jsx', { './workspace-visibility.jsx': { useWorkspaceVisibility: () => true }, './api.js': { assetUrl: () => '', statusText: () => '成功' }, './Timeline.jsx': { assetKind: () => 'video', framesLabel: String } }).default;
-  const tree = Preview({ kind: 'timeline', timeline: timeline('landscape_720', 9), job: { id: id(7), status: 'succeeded', url: '/media/old', timelineRevision: 1, snapshot: { timeline: timeline('square_720', 1) } }, playhead: 30 });
-  const footer = nodes(tree).find(node => node.props.className === 'preview-footer');
-  assert.match(textOf(footer), /720 × 720 · 30 fps/); assert.doesNotMatch(textOf(footer), /1280/);
-  const missing = Preview({ kind: 'timeline', timeline: timeline('landscape_720', 9), job: { status: 'succeeded', url: '/media/old', timelineRevision: 1 }, playhead: 0 });
-  assert.match(textOf(nodes(missing).find(node => node.props.className === 'preview-footer')), /快照规格不可用/);
+  const tree = Preview({ kind: 'timeline', timeline: timeline('landscape_1080', 9), job: { id: id(7), status: 'succeeded', url: '/media/old', timelineRevision: 1, snapshot: { timeline: timeline('square_720', 1) } }, playhead: 30 });
+  const label = nodes(tree).find(node => node.props.className === 'edit-preview-format');
+  assert.match(textOf(label), /720 × 720 · 30 fps/); assert.doesNotMatch(textOf(label), /1920/);
+  const missing = Preview({ kind: 'timeline', timeline: timeline('landscape_1080', 9), job: { status: 'succeeded', url: '/media/old', timelineRevision: 1 }, playhead: 0 });
+  assert.match(textOf(nodes(missing).find(node => node.props.className === 'edit-preview-format')), /快照规格不可用/);
 });
 
-test('actual timeline header and preflight summary use their own saved dimensions', () => {
-  const Timeline = component('Timeline.jsx', { './use-timeline-waveforms.js': { useTimelineWaveforms: () => ({ windows: [], entries: new Map() }) }, './waveform-state.js': { WAVEFORM_LIMITS: { entries: 12 } } }).default;
-  const tree = Timeline({ timeline: timeline('landscape_720'), assets: [], playhead: 0 });
-  assert.equal(textOf(nodes(tree).find(node => node.props.className === 'timeline-spec')), '30 fps · 1280 × 720');
+test('actual monitor header and preflight summary use their own saved dimensions', () => {
+  const Preview = component('Preview.jsx', { './workspace-visibility.jsx': { useWorkspaceVisibility: () => true }, './api.js': { assetUrl: () => '' }, './Timeline.jsx': { assetKind: () => 'video' } }).default;
+  const tree = Preview({ kind: 'timeline', timeline: timeline('landscape_1080'), playhead: 0 });
+  assert.equal(textOf(nodes(tree).find(node => node.props.className === 'edit-preview-format')), '1920 × 1080 · 30 fps');
   const Panel = component('TimelineExportPreflight.jsx').default;
-  const summary = { fps: 30, width: 720, height: 720, durationFrames: 90, trackCount: 1, clipCount: 1, assetCount: 1 };
+  const summary = { fps: 30, width: 1080, height: 1080, durationFrames: 90, trackCount: 1, clipCount: 1, assetCount: 1 };
   const report = Panel({ state: { phase: 'ready', report: { timelineRevision: 1, checkedAt: '2026-10-11T00:00:00Z', issues: [], summary, checks: { checkedAssets: 1, totalAssets: 1, bytesHashed: 0 } } } });
-  assert.match(textOf(report), /720 × 720 · 30 fps/); assert.doesNotMatch(textOf(report), /1280/);
+  assert.match(textOf(report), /1080 × 1080 · 30 fps/); assert.doesNotMatch(textOf(report), /1920/);
 });
 
 test('actual inspector bounds follow landscape and square timelines and reject odd or overflowing rectangles', () => {
   const Inspector = component('TimelineInspector.jsx', { './clip-audio-state.js': audio, './Timeline.jsx': { assetKind: () => 'image', framesLabel: String }, '@mioon/ui/components/workbench-confirm': { useConfirmation: () => async () => true }, './workspace-visibility.jsx': { useWorkspaceVisibility: () => true }, './clip-draft-state.ts': clipDraft,
     './clip-draft-hook.ts': { useClipDraft: ({ context }) => { const controller = clipDraft.createClipDraftController({ context, client: { get: () => assert.fail('Static bounds inspection does not load persistence') } }); return { state: controller.getState(), controller }; } },
   }).default;
-  for (const preset of ['landscape_720', 'square_720']) {
+  for (const preset of ['landscape_1080', 'square_1080']) {
     const saved = timeline(preset), rect = { x: 0, y: 0, width: saved.width, height: saved.height };
     const tree = Inspector({ clip: { id: id(4), trackId: id(3), name: 'Image', rect, startFrame: 0, durationFrames: 30, sourceInFrame: 0, gain: 1 }, timeline: saved, asset: { mimeType: 'image/png' } });
     for (const key of ['x', 'width', 'y', 'height']) assert.equal(nodes(tree).find(node => node.props.id === `clip-${key}`).props.max, ['x', 'width'].includes(key) ? saved.width : saved.height);
@@ -232,10 +246,11 @@ function appFunction(name, end, env) {
   const start = app.indexOf(`  ${name}`), stop = app.indexOf(`  ${end}`, start);
   assert.ok(start >= 0 && stop > start, 'Actual App callback boundaries must remain present');
   assert.equal(app.indexOf(`  ${name}`, start + name.length + 2), -1, 'The extracted callback must have a unique owner');
-  return Function(...Object.keys({ msg: message, ...env }), `${app.slice(start, stop)}; return ${name.replace(/^async function |^function /, '').split('(')[0]};`)(...Object.values({ msg: message, ...env }));
+  const scope = {msg: message, clipDraftRef: {current: null}, ...env};
+  return Function(...Object.keys(scope), `${app.slice(start, stop)}; return ${name.replace(/^async function |^function /, '').split('(')[0]};`)(...Object.values(scope));
 }
 test('actual project-leave guard checks the independent draft and only discards after accepted current-owner navigation', async () => {
-  const f = fixture(); await f.ready(); f.controller.choose('landscape_720');
+  const f = fixture(); await f.ready(); f.controller.choose('landscape_1080');
   let approved = false; const checks = [];
   const guard = appFunction('async function guardProjectNavigation(', 'async function changeMode(', { nativeWindow: null, timelineFormatRef: { current: f }, deliveryNameRef: { current: null }, localDeliveryRef: { current: null }, guardNavigation: async (message, dirty) => { checks.push({ message, dirty }); return approved; } });
   assert.equal(await guard('leave'), false); assert.equal(f.state().dirty, true); assert.equal(checks[0].dirty, true);
@@ -247,7 +262,7 @@ test('actual project-leave guard checks the independent draft and only discards 
 });
 
 test('actual navigation epoch guard prevents late confirmation from discarding a newer project draft', async () => {
-  const f = fixture(); await f.ready(); f.controller.choose('landscape_720');
+  const f = fixture(); await f.ready(); f.controller.choose('landscape_1080');
   let epoch = 1; const confirmation = deferred();
   const guardNavigation = appFunction('async function guardNavigation(', 'async function guardProjectNavigation(', { nativeWindow: null,
     shotTextRef: { current: null }, clipDraftRef: { current: null },
@@ -256,8 +271,8 @@ test('actual navigation epoch guard prevents late confirmation from discarding a
     dirtyRef: { current: false }, confirm: () => confirmation.promise,
   });
   const guard = appFunction('async function guardProjectNavigation(', 'async function changeMode(', { nativeWindow: null, timelineFormatRef: { current: f }, deliveryNameRef: { current: null }, localDeliveryRef: { current: null }, guardNavigation });
-  const leaving = guard('leave'); epoch++; f.set({ scope: `${projectId}:2` }); await f.ready(); f.controller.choose('square_720');
-  confirmation.resolve(true); assert.equal(await leaving, false); assert.equal(f.state().draftPresetId, 'square_720'); assert.equal(f.state().dirty, true);
+  const leaving = guard('leave'); epoch++; f.set({ scope: `${projectId}:2` }); await f.ready(); f.controller.choose('square_1080');
+  confirmation.resolve(true); assert.equal(await leaving, false); assert.equal(f.state().draftPresetId, 'square_1080'); assert.equal(f.state().dirty, true);
 });
 
 function deliveryNameController() {
@@ -269,7 +284,7 @@ function deliveryNameController() {
 
 for (const outcome of ['accepted unchanged', 'cancelled', 'newer name', 'name changed back', 'replacement controller', 'replacement local controller', 'newer project epoch', 'newer format', 'replacement format controller']) {
   test(`actual project guard preserves combined format and delivery-name drafts unless confirmation is current: ${outcome}`, async t => {
-    const f = fixture(); await f.ready(); assert.equal(f.controller.choose('landscape_720'), true);
+    const f = fixture(); await f.ready(); assert.equal(f.controller.choose('landscape_1080'), true);
     const delivery = deliveryNameController(); assert.equal(delivery.choose('First delivery', context().scope), true);
     const deliveryNameRef = { current: { controller: delivery } }, confirmation = deferred(), checks = [];
     let epoch = 1;
@@ -296,7 +311,7 @@ for (const outcome of ['accepted unchanged', 'cancelled', 'newer name', 'name ch
     const leaving = guard('Discard both drafts?');
     assert.deepEqual(checks, ['Discard both drafts?']);
     assert.equal(f.controller.hasUnsaved(), true); assert.equal(delivery.hasUnsaved(), true);
-    assert.equal(f.state().draftPresetId, 'landscape_720'); assert.equal(delivery.getState().value, 'First delivery');
+    assert.equal(f.state().draftPresetId, 'landscape_1080'); assert.equal(delivery.getState().value, 'First delivery');
     if (outcome === 'newer name' || outcome === 'name changed back') {
       assert.equal(delivery.choose('Newer delivery', context().scope), true);
       if (outcome === 'name changed back') assert.equal(delivery.choose('First delivery', context().scope), true);
@@ -308,9 +323,9 @@ for (const outcome of ['accepted unchanged', 'cancelled', 'newer name', 'name ch
     }
     if (outcome === 'replacement local controller') localDeliveryRef.current = { controller: makeLocalController() };
     if (outcome === 'newer project epoch') epoch++;
-    if (outcome === 'newer format') assert.equal(f.controller.choose('square_720'), true);
+    if (outcome === 'newer format') assert.equal(f.controller.choose('square_1080'), true);
     if (outcome === 'replacement format controller') {
-      const replacement = fixture(); await replacement.ready(); assert.equal(replacement.controller.choose('landscape_720'), true);
+      const replacement = fixture(); await replacement.ready(); assert.equal(replacement.controller.choose('landscape_1080'), true);
       assert.deepEqual(replacement.state(), f.state()); timelineFormatRef.current = replacement;
     }
     localDeliveryRef.current.controller.setContext(getLocalContext());
@@ -322,7 +337,7 @@ for (const outcome of ['accepted unchanged', 'cancelled', 'newer name', 'name ch
     assert.equal(await leaving, accepted);
     assert.equal(f.controller.hasUnsaved(), !accepted); assert.equal(currentDelivery.hasUnsaved(), !accepted);
     if (accepted) {
-      assert.equal(f.state().dirty, false); assert.equal(f.state().draftPresetId, 'portrait_720');
+      assert.equal(f.state().dirty, false); assert.equal(f.state().draftPresetId, 'portrait_1080');
       assert.equal(currentDelivery.getState().dirty, false); assert.equal(currentDelivery.getState().value, '');
       assert.equal(currentLocal.getState().leaveWithoutSaving, true); assert.equal(currentLocal.getState().autosavePaused, true);
     } else {
@@ -341,7 +356,7 @@ for (const outcome of ['accepted unchanged', 'cancelled', 'newer name', 'name ch
 }
 
 test('newer delivery title during joint confirmation preserves dirty inspector, format and local draft together', async t => {
-  const f = fixture(); await f.ready(); assert.equal(f.controller.choose('landscape_720'), true);
+  const f = fixture(); await f.ready(); assert.equal(f.controller.choose('landscape_1080'), true);
   const delivery = deliveryNameController(); assert.equal(delivery.choose('First delivery', context().scope), true);
   const getLocalContext = () => ({ scope: context().scope, projectId, timelineId, timelineRevision: 1,
     restored: false, connected: true, visible: true, busy: false, deliveryName: delivery.getName(context().scope),
@@ -374,7 +389,7 @@ test('newer delivery title during joint confirmation preserves dirty inspector, 
 });
 
 test('actual format save callback uses only the existing durable timeline lane and exact frozen input', async () => {
-  const f = fixture(); await f.ready(); f.controller.choose('landscape_720'); const pending = f.controller.save(); const intent = f.submits[0];
+  const f = fixture(); await f.ready(); f.controller.choose('landscape_1080'); const pending = f.controller.save(); const intent = f.submits[0];
   const calls = [];
   const save = appFunction('async function saveTimelineFormat(', 'const timelineFormat =', { timelineFormatContext: () => context(), isDurableEditOperation: value => contracts.DURABLE_EDIT_OPERATIONS.includes(value),
     runDurable: async (...args) => { calls.push(args); args[4].validateResponse(timeline()); return timeline(); }, timelineFormatAcknowledged: format.timelineFormatAcknowledged,
@@ -386,15 +401,19 @@ test('actual format save callback uses only the existing durable timeline lane a
 test('App keeps both Properties subpages mounted and keeps format dirtiness outside inspector reset logic', () => {
   transformSync(app, { loader: 'jsx', format: 'esm' });
   for (const id of ['properties-inspector-pane', 'properties-format-pane', 'properties-subtitle-pane']) assert.ok(app.includes(`<AgentDockPane id="${id}"`));
-  assert.equal((app.match(/data-testid="right-dock-tab-/g) || []).length, 5);
-  assert.match(app, /data-testid="right-dock-tab-tasks"/);
+  const {WorkbenchInspectorTabs}=component('WorkbenchShell.tsx');
+  for(const [mode,expected] of [['canvas',['properties','versions','agent']],['editing',['properties','agent']]]) {
+    const tabs=WorkbenchInspectorTabs({mode,value:'properties',onValueChange(){},agentDisabled:false,labels:{workspace:'Workspace',properties:'Properties',versions:'Versions',agent:'Agent'}});
+    assert.deepEqual(nodes(tabs).filter(node=>node.props['data-testid']?.startsWith('right-dock-tab-')).map(node=>node.props.value),expected);
+  }
+  assert.match(app + readFileSync(new URL('../apps/web/src/TaskPopover.tsx', import.meta.url), 'utf8'), /data-testid="right-dock-tab-tasks"/);
   assert.match(app, /const inspectorDirty = shotDirty \|\| clipDirty \|\| sourceDirty \|\| subjectDirty \|\| subtitleDirty;/);
   assert.match(app, /visible=\{propertiesPage === 'inspector' \|\| propertiesPage === 'subtitle' && workspaceMode === 'canvas'\}/); assert.match(app, /visible=\{propertiesPage === 'format'\}/);
   const open = app.slice(app.indexOf('  function openTimelineFormat()'), app.indexOf('  function subtitleContext()'));
   assert.doesNotMatch(open, /guardNavigation|setInspectorEpoch|setSelected|setQuickAsset|setSourceDirty|discardDraft/);
   const wrapper = read('AgentWorkspace.jsx'); assert.match(wrapper, /hidden=\{!shown\} inert=\{!shown\}/);
   const controls = read('WorkspaceControls.jsx'); assert.match(controls, /if \(!visible\) \{ setOpen\(false\)/); assert.match(controls, /inert=\{!popup.visible\}/);
-  const task = read('TaskCenter.jsx'); assert.match(task, /DURABLE_EDIT_OPERATIONS\.length/); assert.equal(contracts.DURABLE_EDIT_OPERATIONS.length, 20); assert.deepEqual(contracts.DURABLE_EDIT_OPERATIONS.slice(19), ['timeline.loudness.apply']);
+  const task = read('TaskCenter.jsx'); assert.match(task, /DURABLE_EDIT_OPERATIONS\.length/); assert.equal(contracts.DURABLE_EDIT_OPERATIONS.length, 21); assert.equal(contracts.DURABLE_EDIT_OPERATIONS.filter(operation => operation === 'timeline.clip.rippleRemove').length, 1); assert.equal(contracts.DURABLE_EDIT_OPERATIONS.at(-1), 'timeline.loudness.apply');
 });
 
 test('actual dock pane retains child identity while hidden and removes it from focus and accessibility navigation', () => {
@@ -413,7 +432,7 @@ test('actual unload callback sees synchronous format edits and in-flight saves t
   const dirtyRef = { current: false }, warn = actualAppCloseWarning(app, { dirtyRef, timelineFormatRef: { current: f }, deliveryNameRef: { current: null }, clipDraftRef: { current: null }, shotTextRef: { current: null } });
   const event = () => ({ prevented: false, preventDefault() { this.prevented = true; } });
   let e = event(); warn(e); assert.equal(e.prevented, false);
-  f.controller.choose('landscape_720'); e = event(); warn(e); assert.equal(e.prevented, true); assert.equal(e.returnValue, '');
+  f.controller.choose('landscape_1080'); e = event(); warn(e); assert.equal(e.prevented, true); assert.equal(e.returnValue, '');
   const saving = f.controller.save(); e = event(); warn(e); assert.equal(e.prevented, true);
   f.ack(); await saving; e = event(); warn(e); assert.equal(e.prevented, false);
   dirtyRef.current = true; e = event(); warn(e); assert.equal(e.prevented, true);
@@ -428,17 +447,17 @@ test('actual unload callback observes either current format or delivery-name con
     assert.equal(event.prevented, expected); assert.equal(event.returnValue, expected ? '' : undefined);
   };
   check(false);
-  assert.equal(f.controller.choose('landscape_720'), true); check(true);
+  assert.equal(f.controller.choose('landscape_1080'), true); check(true);
   f.controller.discardDraft(); check(false);
   assert.equal(delivery.choose('First delivery', context().scope), true); check(true);
   assert.equal(delivery.discardDraft(), true); check(false);
-  assert.equal(f.controller.choose('square_720'), true); assert.equal(delivery.choose('Retained delivery', context().scope), true); check(true);
+  assert.equal(f.controller.choose('square_1080'), true); assert.equal(delivery.choose('Retained delivery', context().scope), true); check(true);
   const replacementFormat = fixture(); await replacementFormat.ready(); const replacementDelivery = deliveryNameController();
   timelineFormatRef.current = replacementFormat; deliveryNameRef.current = { controller: replacementDelivery };
   assert.equal(f.controller.hasUnsaved(), true); assert.equal(delivery.hasUnsaved(), true); check(false);
   assert.equal(replacementDelivery.choose('Current delivery', context().scope), true); check(true);
   assert.equal(replacementDelivery.discardDraft(), true); check(false);
-  assert.equal(replacementFormat.controller.choose('landscape_720'), true); check(true);
+  assert.equal(replacementFormat.controller.choose('landscape_1080'), true); check(true);
   replacementFormat.controller.discardDraft(); check(false);
   assert.equal(f.submits.length, 0); assert.equal(replacementFormat.submits.length, 0);
 });
@@ -461,11 +480,11 @@ test('actual hook keeps the project draft across visibility and polling without 
     return value;
   }
   let value = render(); assert.equal(reads.length, 0);
-  value = render({ visible: true }); await tick(); value = render(); assert.equal(value.state.saved.presetId, 'portrait_720');
-  value.controller.choose('landscape_720'); value = render({ visible: false });
-  assert.equal(value.state.draftPresetId, 'landscape_720'); assert.equal(value.state.dirty, true);
+  value = render({ visible: true }); await tick(); value = render(); assert.equal(value.state.saved.presetId, 'portrait_1080');
+  value.controller.choose('landscape_1080'); value = render({ visible: false });
+  assert.equal(value.state.draftPresetId, 'landscape_1080'); assert.equal(value.state.dirty, true);
   const count = reads.length; value = render({ refreshKey: 1 }); await tick(); assert.equal(reads.length, count);
-  value = render({ visible: true }); await tick(); value = render(); assert.equal(value.state.draftPresetId, 'landscape_720');
+  value = render({ visible: true }); await tick(); value = render(); assert.equal(value.state.draftPresetId, 'landscape_1080');
   assert.equal(value.state.dirty, true); assert.equal(submits.length, 0);
   for (const slot of slots) slot.cleanup?.(); assert.equal(value.controller.getState().saved, null);
 });

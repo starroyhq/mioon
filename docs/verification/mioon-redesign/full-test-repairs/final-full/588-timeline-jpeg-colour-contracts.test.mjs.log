@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: JPEG source, clip and evidence form a separate strict generation, never widening old PNG/video schemas
+ok 1 - JPEG source, clip and evidence form a separate strict generation, never widening old PNG/video schemas
+  ---
+  duration_ms: 3.385833
+  type: 'test'
+  ...
+# Subtest: JPEG evidence rejects altered decoder, sampling, orientation, alpha, profile, colour and unknown fields
+ok 2 - JPEG evidence rejects altered decoder, sampling, orientation, alpha, profile, colour and unknown fields
+  ---
+  duration_ms: 0.735542
+  type: 'test'
+  ...
+# Subtest: JPEG declarations require explicit user sRGB intent, hash binding and exact closed source/clip shape
+ok 3 - JPEG declarations require explicit user sRGB intent, hash binding and exact closed source/clip shape
+  ---
+  duration_ms: 2.103666
+  type: 'test'
+  ...
+# Subtest: only visible JPEG plan members select v3 while historical PNG-only v2 and video-only v1 remain exact
+ok 4 - only visible JPEG plan members select v3 while historical PNG-only v2 and video-only v1 remain exact
+  ---
+  duration_ms: 4.891
+  type: 'test'
+  ...
+# Subtest: JPEG plan preserves exact detached source evidence, decoder and alpha/transfer identities
+ok 5 - JPEG plan preserves exact detached source evidence, decoder and alpha/transfer identities
+  ---
+  duration_ms: 0.629375
+  type: 'test'
+  ...
+# Subtest: saved JPEG snapshots reject every changed evidence/pipeline identity or omitted colour plan
+ok 6 - saved JPEG snapshots reject every changed evidence/pipeline identity or omitted colour plan
+  ---
+  duration_ms: 12.01725
+  type: 'test'
+  ...
+# Subtest: JPEG presence, valid JFIF bytes or a needs-interpretation inspection never create an implicit declaration
+ok 7 - JPEG presence, valid JFIF bytes or a needs-interpretation inspection never create an implicit declaration
+  ---
+  duration_ms: 0.77725
+  type: 'test'
+  ...
+# Subtest: JPEG inspection is distinct, request-bound and always needs interpretation with bounded local-process effects
+ok 8 - JPEG inspection is distinct, request-bound and always needs interpretation with bounded local-process effects
+  ---
+  duration_ms: 0.52675
+  type: 'test'
+  ...
+# Subtest: current clip mutation DTO accepts only the explicit JPEG generation and retains unknown-field rejection
+ok 9 - current clip mutation DTO accepts only the explicit JPEG generation and retains unknown-field rejection
+  ---
+  duration_ms: 0.808166
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 260.066417

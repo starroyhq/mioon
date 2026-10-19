@@ -1,0 +1,112 @@
+TAP version 13
+# Subtest: native launcher create restriction is explained before form and also guards stale handlers
+ok 1 - native launcher create restriction is explained before form and also guards stale handlers
+  ---
+  duration_ms: 24.331041
+  type: 'test'
+  ...
+# Subtest: local draft P0 metadata reports synchronously without name or description payloads
+ok 2 - local draft P0 metadata reports synchronously without name or description payloads
+  ---
+  duration_ms: 3.480375
+  type: 'test'
+  ...
+# Subtest: host busy presentation alone does not republish local create metadata
+ok 3 - host busy presentation alone does not republish local create metadata
+  ---
+  duration_ms: 3.734958
+  type: 'test'
+  ...
+# Subtest: typed launcher dependency graph never imports App, editor controllers or legacy settings forms
+ok 4 - typed launcher dependency graph never imports App, editor controllers or legacy settings forms
+  ---
+  duration_ms: 424.594875
+  type: 'test'
+  ...
+# Subtest: root mounts all three verified native roles without project-role URL authority
+ok 5 - root mounts all three verified native roles without project-role URL authority
+  ---
+  duration_ms: 2.33975
+  type: 'test'
+  ...
+# Subtest: entry form stale handlers cannot mutate while sealed before React rerenders disabled props
+ok 6 - entry form stale handlers cannot mutate while sealed before React rerenders disabled props
+  ---
+  duration_ms: 3.767958
+  type: 'test'
+  ...
+# Subtest: native settings slot delegates before existing key clearing; Web fallback remains present
+ok 7 - native settings slot delegates before existing key clearing; Web fallback remains present
+  ---
+  duration_ms: 1.369042
+  type: 'test'
+  ...
+# Subtest: settings slot consent is exact and changed input remains with its owner
+ok 8 - settings slot consent is exact and changed input remains with its owner
+  ---
+  duration_ms: 0.466292
+  type: 'test'
+  ...
+# Subtest: cancelled, busy or unknown settings slot cannot clear or select another form
+ok 9 - cancelled, busy or unknown settings slot cannot clear or select another form
+  ---
+  duration_ms: 0.181125
+  type: 'test'
+  ...
+# Subtest: accepted slot selection retains registry owners and their nonsecret drafts
+ok 10 - accepted slot selection retains registry owners and their nonsecret drafts
+  ---
+  duration_ms: 0.167625
+  type: 'test'
+  ...
+# Subtest: new host or local same-slot intent invalidates older pending consent synchronously
+ok 11 - new host or local same-slot intent invalidates older pending consent synchronously
+  ---
+  duration_ms: 0.14675
+  type: 'test'
+  ...
+# Subtest: requesting editor closure does not unmount, clear, hide or change settings owner
+ok 12 - requesting editor closure does not unmount, clear, hide or change settings owner
+  ---
+  duration_ms: 0.0895
+  type: 'test'
+  ...
+# Subtest: settings close P0 survives presentation-only quit and preserves exact dirty/busy/unknown fences
+ok 13 - settings close P0 survives presentation-only quit and preserves exact dirty/busy/unknown fences
+  ---
+  duration_ms: 0.471208
+  type: 'test'
+  ...
+# Subtest: foreign settings context and stale settings version cannot select an owned form
+ok 14 - foreign settings context and stale settings version cannot select an owned form
+  ---
+  duration_ms: 19.543333
+  type: 'test'
+  ...
+# Subtest: a superseded initial context rejection cannot unmount an established native role
+ok 15 - a superseded initial context rejection cannot unmount an established native role
+  ---
+  duration_ms: 14.2885
+  type: 'test'
+  ...
+# Subtest: scoped picker uses shared focus-managed controlled Dialog and retains hidden form owner
+ok 16 - scoped picker uses shared focus-managed controlled Dialog and retains hidden form owner
+  ---
+  duration_ms: 4.039625
+  type: 'test'
+  ...
+# Subtest: hidden editor picker does not boot catalog reads before an explicit entry action
+ok 17 - hidden editor picker does not boot catalog reads before an explicit entry action
+  ---
+  duration_ms: 0.101042
+  type: 'test'
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 722.51

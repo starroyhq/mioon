@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: metadata uses the root app version and exact Electron pin without changing manifests
+ok 1 - metadata uses the root app version and exact Electron pin without changing manifests
+  ---
+  duration_ms: 0.7155
+  type: 'test'
+  ...
+# Subtest: exact versions permit valid SemVer prerelease and build identifiers
+ok 2 - exact versions permit valid SemVer prerelease and build identifiers
+  ---
+  duration_ms: 0.081041
+  type: 'test'
+  ...
+# Subtest: desktop and root version mismatch fails without rewriting either version
+ok 3 - desktop and root version mismatch fails without rewriting either version
+  ---
+  duration_ms: 0.19075
+  type: 'test'
+  ...
+# Subtest: missing, non-object and malformed app metadata fails clearly
+ok 4 - missing, non-object and malformed app metadata fails clearly
+  ---
+  duration_ms: 0.205084
+  type: 'test'
+  ...
+# Subtest: Electron metadata rejects missing pins, ranges, tags and malformed exact versions
+ok 5 - Electron metadata rejects missing pins, ranges, tags and malformed exact versions
+  ---
+  duration_ms: 0.189333
+  type: 'test'
+  ...
+# Subtest: reader resolves metadata relative to the supplied root and remains read-only on mismatch
+ok 6 - reader resolves metadata relative to the supplied root and remains read-only on mismatch
+  ---
+  duration_ms: 6.177667
+  type: 'test'
+  ...
+# Subtest: reader reports malformed JSON and missing manifests with the failing path
+ok 7 - reader reports malformed JSON and missing manifests with the failing path
+  ---
+  duration_ms: 2.134167
+  type: 'test'
+  ...
+# Subtest: staging validates every identity field and rejects missing or stale app versions
+ok 8 - staging validates every identity field and rejects missing or stale app versions
+  ---
+  duration_ms: 0.404583
+  type: 'test'
+  ...
+# Subtest: staging rejects missing or changed packaging envelope fields and nonempty dependencies
+ok 9 - staging rejects missing or changed packaging envelope fields and nonempty dependencies
+  ---
+  duration_ms: 0.204291
+  type: 'test'
+  ...
+# Subtest: builder config takes its Electron version from root metadata and validates before loading a stage
+ok 10 - builder config takes its Electron version from root metadata and validates before loading a stage
+  ---
+  duration_ms: 6.347417
+  type: 'test'
+  ...
+# Subtest: beforePack rejects stale same-channel versions and names for both channels using fixture manifests only
+ok 11 - beforePack rejects stale same-channel versions and names for both channels using fixture manifests only
+  ---
+  duration_ms: 47.995292
+  type: 'test'
+  ...
+# Subtest: staging build preflights metadata before cleanup and writes the root application version
+ok 12 - staging build preflights metadata before cleanup and writes the root application version
+  ---
+  duration_ms: 0.405125
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 189.073041

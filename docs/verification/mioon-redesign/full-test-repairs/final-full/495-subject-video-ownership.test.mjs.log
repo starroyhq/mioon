@@ -1,0 +1,329 @@
+TAP version 13
+# Subtest: subject asset-sql drift denies exact replay, reads and retry without disclosure
+ok 1 - subject asset-sql drift denies exact replay, reads and retry without disclosure
+  ---
+  duration_ms: 644.043125
+  type: 'test'
+  ...
+# Subtest: subject asset-json drift denies exact replay, reads and retry without disclosure
+ok 2 - subject asset-json drift denies exact replay, reads and retry without disclosure
+  ---
+  duration_ms: 611.414375
+  type: 'test'
+  ...
+# Subtest: subject asset-hash drift denies exact replay, reads and retry without disclosure
+ok 3 - subject asset-hash drift denies exact replay, reads and retry without disclosure
+  ---
+  duration_ms: 597.133708
+  type: 'test'
+  ...
+# Subtest: subject asset-dimensions drift denies exact replay, reads and retry without disclosure
+ok 4 - subject asset-dimensions drift denies exact replay, reads and retry without disclosure
+  ---
+  duration_ms: 583.477208
+  type: 'test'
+  ...
+# Subtest: subject shot-sql drift denies exact replay, reads and retry without disclosure
+ok 5 - subject shot-sql drift denies exact replay, reads and retry without disclosure
+  ---
+  duration_ms: 583.084458
+  type: 'test'
+  ...
+# Subtest: subject job-sql drift denies exact replay, reads and retry without disclosure
+ok 6 - subject job-sql drift denies exact replay, reads and retry without disclosure
+  ---
+  duration_ms: 606.455041
+  type: 'test'
+  ...
+# Subtest: subject subject-owner drift denies exact replay, reads and retry without disclosure
+ok 7 - subject subject-owner drift denies exact replay, reads and retry without disclosure
+  ---
+  duration_ms: 593.676
+  type: 'test'
+  ...
+# Subtest: subject version-owner drift denies exact replay, reads and retry without disclosure
+ok 8 - subject version-owner drift denies exact replay, reads and retry without disclosure
+  ---
+  duration_ms: 579.682667
+  type: 'test'
+  ...
+# Subtest: typed image source lineage checked at admission
+ok 9 - typed image source lineage checked at admission
+  ---
+  duration_ms: 587.4725
+  type: 'test'
+  ...
+# Subtest: typed image source lineage checked at replay
+ok 10 - typed image source lineage checked at replay
+  ---
+  duration_ms: 593.083875
+  type: 'test'
+  ...
+# Subtest: typed image source lineage checked at queued
+ok 11 - typed image source lineage checked at queued
+  ---
+  duration_ms: 590.4415
+  type: 'test'
+  ...
+# Subtest: typed image source lineage checked at retry
+ok 12 - typed image source lineage checked at retry
+  ---
+  duration_ms: 596.094041
+  type: 'test'
+  ...
+# Subtest: typed frame source lineage checked at admission
+ok 13 - typed frame source lineage checked at admission
+  ---
+  duration_ms: 582.088125
+  type: 'test'
+  ...
+# Subtest: typed frame source lineage checked at replay
+ok 14 - typed frame source lineage checked at replay
+  ---
+  duration_ms: 591.233875
+  type: 'test'
+  ...
+# Subtest: typed frame source lineage checked at queued
+ok 15 - typed frame source lineage checked at queued
+  ---
+  duration_ms: 584.619
+  type: 'test'
+  ...
+# Subtest: typed frame source lineage checked at retry
+ok 16 - typed frame source lineage checked at retry
+  ---
+  duration_ms: 588.895584
+  type: 'test'
+  ...
+# Subtest: typed ancestry drift after-image-read prevents actual Ark POST
+ok 17 - typed ancestry drift after-image-read prevents actual Ark POST
+  ---
+  duration_ms: 629.286333
+  type: 'test'
+  ...
+# Subtest: typed ancestry drift final-post prevents actual Ark POST
+ok 18 - typed ancestry drift final-post prevents actual Ark POST
+  ---
+  duration_ms: 591.358625
+  type: 'test'
+  ...
+# Subtest: queued malformed missing-subject subject snapshot cannot fall back to first-frame dispatch
+ok 19 - queued malformed missing-subject subject snapshot cannot fall back to first-frame dispatch
+  ---
+  duration_ms: 571.233792
+  type: 'test'
+  ...
+# Subtest: queued malformed wrong-version subject snapshot cannot fall back to first-frame dispatch
+ok 20 - queued malformed wrong-version subject snapshot cannot fall back to first-frame dispatch
+  ---
+  duration_ms: 594.199625
+  type: 'test'
+  ...
+# Subtest: queued malformed pruned-bindings subject snapshot cannot fall back to first-frame dispatch
+ok 21 - queued malformed pruned-bindings subject snapshot cannot fall back to first-frame dispatch
+  ---
+  duration_ms: 610.9755
+  type: 'test'
+  ...
+# Subtest: queued malformed pruned-role subject snapshot cannot fall back to first-frame dispatch
+ok 22 - queued malformed pruned-role subject snapshot cannot fall back to first-frame dispatch
+  ---
+  duration_ms: 590.912459
+  type: 'test'
+  ...
+# Subtest: queued malformed first-frame-role subject snapshot cannot fall back to first-frame dispatch
+ok 23 - queued malformed first-frame-role subject snapshot cannot fall back to first-frame dispatch
+  ---
+  duration_ms: 608.749875
+  type: 'test'
+  ...
+# Subtest: queued malformed foreign-project subject snapshot cannot fall back to first-frame dispatch
+ok 24 - queued malformed foreign-project subject snapshot cannot fall back to first-frame dispatch
+  ---
+  duration_ms: 583.998334
+  type: 'test'
+  ...
+# Subtest: queued malformed changed-provenance subject snapshot cannot fall back to first-frame dispatch
+ok 25 - queued malformed changed-provenance subject snapshot cannot fall back to first-frame dispatch
+  ---
+  duration_ms: 580.903708
+  type: 'test'
+  ...
+# Subtest: queued malformed old-profile subject snapshot cannot fall back to first-frame dispatch
+ok 26 - queued malformed old-profile subject snapshot cannot fall back to first-frame dispatch
+  ---
+  duration_ms: 575.91
+  type: 'test'
+  ...
+# Subtest: inspection validates retained subject snapshot lineage without exposing new fields in the inspection DTO
+ok 27 - inspection validates retained subject snapshot lineage without exposing new fields in the inspection DTO
+  ---
+  duration_ms: 595.078083
+  type: 'test'
+  ...
+# Subtest: inspection rejects removed subjectReference with retained subject role markers
+ok 28 - inspection rejects removed subjectReference with retained subject role markers
+  ---
+  duration_ms: 593.182292
+  type: 'test'
+  ...
+# Subtest: subject ownership rows share supplied budget, bound materialization and use primary-key lookup
+ok 29 - subject ownership rows share supplied budget, bound materialization and use primary-key lookup
+  ---
+  duration_ms: 598.012791
+  type: 'test'
+  ...
+# Subtest: large retained history keeps subject row reads bounded; native read-only reopen does not mutate
+ok 30 - large retained history keeps subject row reads bounded; native read-only reopen does not mutate
+  ---
+  duration_ms: 940.957916
+  type: 'test'
+  ...
+# {"subjects":2001,"subjectVersions":2001,"unrelatedEdges":3000,"retainedJobs":2000,"reservationProbeMs":1.9092080000009446,"reservationQueryPlan":["SCAN jobs"],"materializedSubjectRows":2,"materializedSubjectBytes":999,"elapsedMs":6.074625000001106,"subjectVersionQueryPlan":["SEARCH subject_versions USING INDEX sqlite_autoindex_subject_versions_1 (id=?)"],"edgeTargetQueryLimitation":"guarded JSON target predicate scans; LIMIT bounds materialized candidates only"}
+# Subtest: damaged missing generation receipt cannot disclose or recreate a retained subject request
+ok 31 - damaged missing generation receipt cannot disclose or recreate a retained subject request
+  ---
+  duration_ms: 673.98475
+  type: 'test'
+  ...
+# Subtest: damaged wrong-resource generation receipt cannot disclose or recreate a retained subject request
+ok 32 - damaged wrong-resource generation receipt cannot disclose or recreate a retained subject request
+  ---
+  duration_ms: 677.176708
+  type: 'test'
+  ...
+# Subtest: damaged wrong-hash generation receipt cannot disclose or recreate a retained subject request
+ok 33 - damaged wrong-hash generation receipt cannot disclose or recreate a retained subject request
+  ---
+  duration_ms: 720.235625
+  type: 'test'
+  ...
+# Subtest: damaged oversized-hash generation receipt cannot disclose or recreate a retained subject request
+ok 34 - damaged oversized-hash generation receipt cannot disclose or recreate a retained subject request
+  ---
+  duration_ms: 692.168417
+  type: 'test'
+  ...
+# Subtest: retained legacy request also prevents new explicit subject admission after its ledger disappears
+ok 35 - retained legacy request also prevents new explicit subject admission after its ledger disappears
+  ---
+  duration_ms: 724.315666
+  type: 'test'
+  ...
+# Subtest: foreign oversized edge cannot hide its first-frame relation before bounded JSON extraction
+ok 36 - foreign oversized edge cannot hide its first-frame relation before bounded JSON extraction
+  ---
+  duration_ms: 770.17125
+  type: 'test'
+  ...
+# Subtest: foreign nontext edge cannot hide its first-frame relation before bounded JSON extraction
+ok 37 - foreign nontext edge cannot hide its first-frame relation before bounded JSON extraction
+  ---
+  duration_ms: 754.904834
+  type: 'test'
+  ...
+# Subtest: foreign malformed edge cannot hide its first-frame relation before bounded JSON extraction
+ok 38 - foreign malformed edge cannot hide its first-frame relation before bounded JSON extraction
+  ---
+  duration_ms: 729.433375
+  type: 'test'
+  ...
+# Subtest: foreign null edge cannot hide its first-frame relation before bounded JSON extraction
+ok 39 - foreign null edge cannot hide its first-frame relation before bounded JSON extraction
+  ---
+  duration_ms: 813.39
+  type: 'test'
+  ...
+# Subtest: paid subject cancel/reconcile can progress with unavailable source, but never disclose its invalid snapshot or resubmit
+ok 40 - paid subject cancel/reconcile can progress with unavailable source, but never disclose its invalid snapshot or resubmit
+  ---
+  duration_ms: 836.0365
+  type: 'test'
+  ...
+# Subtest: subject identity drift at cancel cannot mutate a foreign job or shot
+ok 41 - subject identity drift at cancel cannot mutate a foreign job or shot
+  ---
+  duration_ms: 779.238958
+  type: 'test'
+  ...
+# Subtest: subject identity drift at reconcile-before cannot mutate a foreign job or shot
+ok 42 - subject identity drift at reconcile-before cannot mutate a foreign job or shot
+  ---
+  duration_ms: 689.785083
+  type: 'test'
+  ...
+# Subtest: subject identity drift at reconcile-after cannot mutate a foreign job or shot
+ok 43 - subject identity drift at reconcile-after cannot mutate a foreign job or shot
+  ---
+  duration_ms: 644.894791
+  type: 'test'
+  ...
+# Subtest: retained subject with missing request identity is uncertain, never a vacant fresh key
+ok 44 - retained subject with missing request identity is uncertain, never a vacant fresh key
+  ---
+  duration_ms: 656.942541
+  type: 'test'
+  ...
+# Subtest: retained subject with null request identity is uncertain, never a vacant fresh key
+ok 45 - retained subject with null request identity is uncertain, never a vacant fresh key
+  ---
+  duration_ms: 606.11125
+  type: 'test'
+  ...
+# Subtest: retained subject with number request identity is uncertain, never a vacant fresh key
+ok 46 - retained subject with number request identity is uncertain, never a vacant fresh key
+  ---
+  duration_ms: 623.356458
+  type: 'test'
+  ...
+# Subtest: retained subject with short request identity is uncertain, never a vacant fresh key
+ok 47 - retained subject with short request identity is uncertain, never a vacant fresh key
+  ---
+  duration_ms: 682.902667
+  type: 'test'
+  ...
+# Subtest: retained subject with oversized request identity is uncertain, never a vacant fresh key
+ok 48 - retained subject with oversized request identity is uncertain, never a vacant fresh key
+  ---
+  duration_ms: 637.594375
+  type: 'test'
+  ...
+# Subtest: genuine legacy exact replay remains before an unrelated damaged subject reservation
+ok 49 - genuine legacy exact replay remains before an unrelated damaged subject reservation
+  ---
+  duration_ms: 647.060042
+  type: 'test'
+  ...
+# Subtest: historical provenance-only job without a request key remains compatible with fresh subject and legacy generation
+ok 50 - historical provenance-only job without a request key remains compatible with fresh subject and legacy generation
+  ---
+  duration_ms: 657.889375
+  type: 'test'
+  ...
+# Subtest: partial asset-role subject claim with missing key still reserves an uncertain request
+ok 51 - partial asset-role subject claim with missing key still reserves an uncertain request
+  ---
+  duration_ms: 648.8645
+  type: 'test'
+  ...
+# Subtest: partial binding-role subject claim with missing key still reserves an uncertain request
+ok 52 - partial binding-role subject claim with missing key still reserves an uncertain request
+  ---
+  duration_ms: 623.416833
+  type: 'test'
+  ...
+# Subtest: subject version disclosure rejects oversized or corrupt linked job through a bounded probe
+ok 53 - subject version disclosure rejects oversized or corrupt linked job through a bounded probe
+  ---
+  duration_ms: 657.417042
+  type: 'test'
+  ...
+1..53
+# tests 53
+# suites 0
+# pass 53
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 34507.527792

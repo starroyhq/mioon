@@ -1,0 +1,84 @@
+.project-home-screen { width: 100%; min-width: 0; min-height: 0; position: relative; }
+.project-home-page { height: 100dvh; }
+.project-home-screen > .project-home > .project-home-header { min-height: var(--wb-topbar); height: var(--wb-topbar); padding: 0 12px; gap: 12px; background: var(--wb-bg); }
+.project-home-screen > .project-home .project-home-brand { font-size: 15px; font-weight: 600; letter-spacing: 0; }
+.project-home-screen > .project-home .project-home-search { position: absolute; left: 50%; translate: -50% 0; width: min(360px, 30vw); height: var(--wb-control); min-height: var(--wb-control); background: var(--wb-panel); }
+.project-home-screen > .project-home .project-home-header > [data-testid="project-home-create-toggle"] { height: var(--wb-control); min-height: var(--wb-control); padding: 0 12px; font-size: var(--wb-text-label); }
+.project-home-screen > .project-home .project-home-status { max-width: 230px; font-size: var(--wb-text-caption); }
+.project-home-screen > .project-home .project-home-settings-button { min-height: var(--wb-control); height: var(--wb-control); width: var(--wb-control); padding: 0; font-size: 18px; color: var(--wb-soft); }
+.project-home-screen > .project-home > .project-home-layout { width: 100%; display: block; flex: 1; min-height: 0; }
+.project-home-screen > .project-home > .project-home-layout > .project-home-main { height: 100%; padding: 28px 48px 40px; }
+.project-home-screen > .project-home .project-home-heading { align-items: center; margin-bottom: 20px; }
+.project-home-screen > .project-home .project-home-heading h1 { display: flex; align-items: center; gap: 10px; font-size: 24px; font-weight: 600; }
+.project-home-total { display: grid; place-items: center; min-width: 24px; height: 20px; padding-inline: 5px; border: 1px solid var(--wb-line-subtle); border-radius: 20px; background: var(--wb-panel); color: var(--wb-soft); font-size: var(--wb-text-caption); font-weight: 400; }
+.project-home-toolbar { display: flex; align-items: center; gap: 10px; }
+.project-home-toolbar .workbench-select { width: 132px; }
+.project-home-toolbar .wb-tabs { flex: none; }
+.project-home-screen > .project-home .project-home-list-header { margin-bottom: 12px; }
+.project-home-screen > .project-home .project-home-list-header h2 { font-size: var(--wb-text-caption); }
+.project-home-screen > .project-home .project-home-list { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px 20px; }
+.project-home-screen > .project-home .project-home-card { position: relative; display: block; height: auto; border: 0; padding: 0; border-radius: 0; background: none; }
+.project-home-card-open[data-slot="button"] { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 0; width: 100%; height: auto; padding: 0; border: 0; border-radius: var(--wb-radius-card); background: none; text-align: left; white-space: normal; }
+.project-home-card-open[data-slot="button"]:hover { background: none; }
+.project-home-cover { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border-radius: var(--wb-radius-card); background: var(--wb-panel); color: var(--wb-muted); }
+.project-home-cover > img, .project-home-cover > video { width: 100%; height: 100%; object-fit: cover; }
+.project-home-recent { position: absolute; top: 8px; left: 8px; border-radius: 4px; background: var(--wb-media-overlay); color: var(--wb-media-text); padding: 3px 6px; font-size: var(--wb-text-caption); }
+.project-home-duration { position: absolute; bottom: 8px; right: 8px; background: var(--wb-media-overlay); color: var(--wb-media-text); padding: 3px 6px; border-radius: 4px; font: 11px/1 var(--wb-font-mono); }
+.project-home-card-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; font-size: var(--wb-text-section); font-weight: 500; line-height: 1.5; overflow-wrap: anywhere; }
+.project-home-card-title small { flex: none; font: 11px/1.5 var(--wb-font-mono); color: var(--wb-muted); }
+.project-home-card-info { display: flex; align-items: baseline; margin-top: 4px; font-size: var(--wb-text-label); color: var(--wb-soft); line-height: 1.5; }
+.project-home-screen > .project-home .project-home-date { display: inline-flex; flex-direction: row; gap: 4px; font-size: var(--wb-text-label); line-height: inherit; }
+.project-home-card-menu { position: absolute; top: 8px; right: 8px; z-index: 1; }
+.project-home-card-menu .wb-button { background: var(--wb-media-overlay); color: var(--wb-media-text); }
+:root.light .project-home-card-menu .wb-button:not(:disabled):not([data-disabled]):hover { background: var(--wb-media-overlay); color: var(--wb-media-text); }
+.project-home-delete { color: var(--wb-danger); }
+.project-home-screen > .project-home .project-home-empty { min-height: 420px; border: 0; background: none; }
+.project-home-screen > .project-home .project-home-empty > [data-slot="button"] { margin-top: 20px; }
+.project-home-screen > .project-home .project-home-footnote { font-size: var(--wb-text-caption); color: var(--wb-muted); }
+.project-home-screen[data-view="list"] .project-home-list { display: flex; flex-direction: column; gap: 8px; }
+.project-home-screen[data-view="list"] .project-home-card-open[data-slot="button"] { flex-direction: row; align-items: center; gap: 20px; padding: 8px; background: var(--wb-panel); }
+.project-home-screen[data-view="list"] .project-home-cover { width: 132px; flex: none; }
+.project-home-screen[data-view="list"] .project-home-card-title { flex: 1; margin: 0; }
+.project-home-screen[data-view="list"] .project-home-card-info { width: 320px; flex: none; margin-right: 40px; }
+.project-home-preference-status { position: absolute; bottom: 16px; right: 16px; max-width: 420px; z-index: 10; }
+.project-home-create-dialog .project-home-create { border: 0; padding: 0; background: none; }
+.project-home-create-dialog .project-home-create-intro { color: var(--wb-soft); font-size: var(--wb-text-label); line-height: 1.5; }
+.project-home-create-dialog .project-home-field { display: flex; flex-direction: column; gap: 8px; margin-top: 20px; }
+.project-home-create-dialog .project-home-field label { font-size: var(--wb-text-label); }
+.project-home-create-dialog .project-home-field label > span { margin-left: 8px; color: var(--wb-muted); }
+.project-home-create-dialog .project-home-form-actions, .project-home-action-buttons { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+.project-home-presets { display: flex; gap: 8px; border: 0; padding: 0; margin-top: 20px; }
+.project-home-presets legend { margin-bottom: 8px; font-size: var(--wb-text-label); }
+.project-home-presets label { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 8px; border: 1px solid var(--wb-line); border-radius: var(--wb-radius-control); background: var(--wb-card); cursor: pointer; }
+.project-home-presets label[data-selected="true"] { border-color: var(--wb-accent); background: var(--wb-accent-subtle); }
+.project-home-presets input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.project-home-presets label:focus-within { outline: 2px solid var(--wb-accent); outline-offset: 2px; }
+.project-home-presets small { font: 11px/1.5 var(--wb-font-mono); color: var(--wb-soft); }
+.project-home-presets input:disabled { cursor: default; }
+.project-home-create-dialog .project-home-form-error { color: var(--wb-danger); font-size: var(--wb-text-label); margin-top: 12px; }
+:root[data-desktop-frame="mac-inset"] .project-home-page .project-home-header { padding-left: 88px; -webkit-app-region: drag; }
+:root[data-desktop-frame="mac-inset"] .project-home-page .project-home-header :is(button,input,[role="button"]) { -webkit-app-region: no-drag; }
+@media (max-width: 1200px) { .project-home-screen > .project-home .project-home-list { grid-template-columns: repeat(3, minmax(0, 1fr)); } .project-home-screen > .project-home > .project-home-layout > .project-home-main { padding-inline: 32px; } .project-home-screen > .project-home .project-home-status { max-width: 180px; } }
+
+.project-home-cleanup-status { position: absolute; bottom: 16px; left: 32px; max-width: 520px; z-index: 10; }
+
+/* A native editor's catalog is retained inside a bounded dialog. It must not
+ * inherit the standalone window height or the former navigation column. */
+.project-entry-dialog.modal[data-slot="dialog-content"] { display: flex; flex-direction: column; gap: 0; width: min(980px, calc(var(--mioon-viewport-width) - 40px)); height: min(640px, calc(var(--mioon-viewport-height) - 40px)); max-width: calc(var(--mioon-viewport-width) - 40px); max-height: calc(var(--mioon-viewport-height) - 40px); padding: 0; overflow: hidden; }
+.project-entry-dialog-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 16px; padding: 18px 24px; border-bottom: 1px solid var(--wb-line); flex: none; }
+.project-entry-dialog-heading h2 { color: var(--wb-text); font-size: var(--wb-text-section); font-weight: 600; }
+.project-entry-dialog-heading p { grid-column: 1; color: var(--wb-soft); font-size: var(--wb-text-label); line-height: 1.6; }
+.project-entry-dialog-heading > button { grid-column: 2; grid-row: 1 / 3; }
+.project-entry-dialog > .project-home-notice { flex: none; margin: 12px 24px; }
+.project-entry-dialog > .project-home-embedded { flex: 1; min-height: 0; overflow: hidden; }
+.project-home-embedded > .project-home { height: 100%; min-height: 0; }
+.project-home-embedded > .project-home > .project-home-header { padding: 8px 16px; height: auto; min-height: 48px; flex-wrap: wrap; -webkit-app-region: no-drag; }
+.project-home-embedded > .project-home .project-home-search { position: static; translate: none; width: min(320px, 42%); margin-left: auto; }
+.project-home-embedded > .project-home > .project-home-layout > .project-home-main { padding: 20px 24px; }
+.project-home-embedded > .project-home .project-home-feedback { width: 100%; flex-wrap: wrap; align-items: flex-start; }
+.project-home-embedded > .project-home .project-home-feedback > strong { flex: 1 1 320px; min-width: 0; }
+.project-home-embedded > .project-home .project-home-feedback > button { flex: none; }
+.project-home-embedded > .project-home .project-home-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px 16px; }
+.project-home-embedded > .project-home .project-home-empty { min-height: 220px; }
+.project-home-embedded > .project-home .project-home-heading { flex-wrap: wrap; gap: 12px; }
+.project-home-embedded[data-view="list"] .project-home-card-info { width: 210px; }

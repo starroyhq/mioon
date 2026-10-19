@@ -1,0 +1,218 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-10-16T09:21:24.793654+00:00",
+  "scope": "Read-only git/file comparison only. No new test run, baseline environment, constructor execution, code/test edit, golden rewrite, software installation, GUI, media or network action. Only this JSON and baseline/distinction fields of the existing repair JSON were updated.",
+  "baselineReproduction": {
+    "status": "not_reproduced_on_exact_baseline",
+    "statusZh": "\u5c1a\u672a\u8bc1\u5b9e\u57fa\u7ebf\u95ee\u9898",
+    "baselineCommit": "ff85c9a8daaa35bff080d0979fe2faa3683cd3b5",
+    "exactBaselineSixCasesExecuted": false,
+    "newBaselineEnvironmentConstructed": false,
+    "evidenceAvailable": "Current-checkout failures and byte-identical validator/dispatcher to ff85 are recorded. This establishes source equality only, not a complete baseline reproduction or a real user-data regression.",
+    "relatedPriorFixIsNotReproductionOfTheseCases": true
+  },
+  "priorFixComparison": {
+    "priorFixCommit": "a7fcf74199ed7ca54c5be408e6c67cd33b19b645",
+    "priorFixParentCommit": "c2000a1118c57585cc94a42f53ff6febf86bbec9",
+    "sourcePath": "tests/workspace-restore-schema.test.mjs",
+    "sourceSha256AtFix": "77b4959b91043e8a469c5039b2ac08b26ca81c09ccd8711109c96c91f6e7f931",
+    "originalLegacySeedUnchangedByFix": true,
+    "legacySeedSliceSha256": "d38587e5d065c1ae34732cf07a7e060627fd0a07939524ec343a089ed335ee6d",
+    "sameExactFixture": false,
+    "sameTestFile": false,
+    "sameBroadEvidenceFamily": true,
+    "sameBroadEvidenceFamilyBasis": "Both retain an opaque00FF0D0A BLOB timeline_requests.response. The schema-profiles manifest lists workspace-restore-schema.test.mjs as a reused regression lane, but does not prove its golden generator directly calls seed(db).",
+    "priorFixDetails": {
+      "positiveCase": "ordinary current-schema reopen keeps raw schema/rows/receipts and source profile classification intact",
+      "positiveSeed": "new seedOrdinary(db,receipt), TEXT JSON inserted at initial construction; no BLOB-to-TEXT mutation",
+      "negativeCase": "ordinary current-schema reopen rejects legacy BLOB receipt without changing schema or retained rows",
+      "negativeSeed": "unchanged seed(db), Buffer.from([0,255,13,10]) in timeline_requests.response",
+      "rowid": "seed(db) does not specify rowid; exact generated rowid was not established in this read-only audit",
+      "startingRole": "ordinary-40",
+      "rejectionCode": "WORKSPACE_VOLUME_ENVELOPE_INVALID",
+      "runtimeValidationChangedByFix": false
+    },
+    "currentSixCaseDifference": {
+      "source": "independent frozen golden fixtures loaded by loadFixture(), with explicit rowid88",
+      "startingRoles": "historical ordinary24/restored25, plus two ordinary24 marker-repair variants",
+      "rejectionCode": "RESTORE_SCHEMA_UNSUPPORTED",
+      "reasonCodesDiffer": "Current40 admission allows envelope family validation and reports invalid evidence; the historical24/25 path disallows the family and rejects selected non-TEXT cells before migration/reopen.",
+      "a7ChangedTheseFixturesOrTests": false
+    },
+    "historicalCommittedQualificationScope": "The a7 report records exact c2000a parent reproduction for its named current-reopen test and catalogue case, then a bounded267/267 gate. It did not include workspace-schema-profiles.test.mjs or reproduce these six cases on ff85."
+  },
+  "sixCurrentFailures": [
+    {
+      "test": "frozen ordinary24-seeded reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence",
+      "location": "'/Users/kouzen/Documents/data/mioon/tests/workspace-schema-profiles.test.mjs:350:3'",
+      "code": "RESTORE_SCHEMA_UNSUPPORTED",
+      "actualReason": "Volume envelopes require an exact supported workspace profile.",
+      "testSource": "tests/workspace-schema-profiles.test.mjs",
+      "sourceFixture": "tests/fixtures/workspace-schema-profiles/golden.json",
+      "profile": "ordinary-24-seeded",
+      "preOpenMutation": null,
+      "retainedCell": {
+        "table": "timeline_requests",
+        "column": "response",
+        "rowid": "88",
+        "storageClass": "blob",
+        "hexBytes": "00FF0D0A"
+      },
+      "admissionPath": "onDisk -> loadFixture -> openStore -> workspaceSchemas.initialize -> validateWorkspaceVolumeEnvelopeRows(allowVolumeEnvelopes=false)",
+      "exactBaselineRunPerformed": false
+    },
+    {
+      "test": "independent frozen restored25-seeded opens and validates without ordinary bootstrap or evidence rewrites",
+      "location": "'/Users/kouzen/Documents/data/mioon/tests/workspace-schema-profiles.test.mjs:375:3'",
+      "code": "RESTORE_SCHEMA_UNSUPPORTED",
+      "actualReason": "Volume envelopes require an exact supported workspace profile.",
+      "testSource": "tests/workspace-schema-profiles.test.mjs",
+      "sourceFixture": "tests/fixtures/workspace-schema-profiles/golden.json",
+      "profile": "restored-25-seeded",
+      "preOpenMutation": null,
+      "retainedCell": {
+        "table": "timeline_requests",
+        "column": "response",
+        "rowid": "88",
+        "storageClass": "blob",
+        "hexBytes": "00FF0D0A"
+      },
+      "admissionPath": "onDisk -> loadFixture -> openStore -> workspaceSchemas.initialize -> validateRestore -> validateWorkspaceVolumeEnvelopeRows(allowVolumeEnvelopes=false)",
+      "exactBaselineRunPerformed": false
+    },
+    {
+      "test": "frozen ordinary24-mock-seeded reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence",
+      "location": "'/Users/kouzen/Documents/data/mioon/tests/workspace-schema-profiles.test.mjs:350:3'",
+      "code": "RESTORE_SCHEMA_UNSUPPORTED",
+      "actualReason": "Volume envelopes require an exact supported workspace profile.",
+      "testSource": "tests/workspace-schema-profiles.test.mjs",
+      "sourceFixture": "tests/fixtures/workspace-schema-profiles/golden.json",
+      "profile": "ordinary-24-mock-seeded",
+      "preOpenMutation": null,
+      "retainedCell": {
+        "table": "timeline_requests",
+        "column": "response",
+        "rowid": "88",
+        "storageClass": "blob",
+        "hexBytes": "00FF0D0A"
+      },
+      "admissionPath": "onDisk -> loadFixture -> openStore -> workspaceSchemas.initialize -> validateWorkspaceVolumeEnvelopeRows(allowVolumeEnvelopes=false)",
+      "exactBaselineRunPerformed": false
+    },
+    {
+      "test": "independent frozen restored25-mock-seeded opens and validates without ordinary bootstrap or evidence rewrites",
+      "location": "'/Users/kouzen/Documents/data/mioon/tests/workspace-schema-profiles.test.mjs:375:3'",
+      "code": "RESTORE_SCHEMA_UNSUPPORTED",
+      "actualReason": "Volume envelopes require an exact supported workspace profile.",
+      "testSource": "tests/workspace-schema-profiles.test.mjs",
+      "sourceFixture": "tests/fixtures/workspace-schema-profiles/golden.json",
+      "profile": "restored-25-mock-seeded",
+      "preOpenMutation": null,
+      "retainedCell": {
+        "table": "timeline_requests",
+        "column": "response",
+        "rowid": "88",
+        "storageClass": "blob",
+        "hexBytes": "00FF0D0A"
+      },
+      "admissionPath": "onDisk -> loadFixture -> openStore -> workspaceSchemas.initialize -> validateRestore -> validateWorkspaceVolumeEnvelopeRows(allowVolumeEnvelopes=false)",
+      "exactBaselineRunPerformed": false
+    },
+    {
+      "test": "ordinary runtime retains baseline repair eligibility for known-marker-gap; offline classification stays strict",
+      "location": "'/Users/kouzen/Documents/data/mioon/tests/workspace-schema-profiles.test.mjs:390:3'",
+      "code": "RESTORE_SCHEMA_UNSUPPORTED",
+      "actualReason": "Volume envelopes require an exact supported workspace profile.",
+      "testSource": "tests/workspace-schema-profiles.test.mjs",
+      "sourceFixture": "tests/fixtures/workspace-schema-profiles/golden.json",
+      "profile": "ordinary-24-seeded",
+      "preOpenMutation": "DELETE FROM schema_version WHERE version=7",
+      "retainedCell": {
+        "table": "timeline_requests",
+        "column": "response",
+        "rowid": "88",
+        "storageClass": "blob",
+        "hexBytes": "00FF0D0A"
+      },
+      "admissionPath": "onDisk -> loadFixture -> openStore -> workspaceSchemas.initialize -> validateWorkspaceVolumeEnvelopeRows(allowVolumeEnvelopes=false)",
+      "exactBaselineRunPerformed": false
+    },
+    {
+      "test": "ordinary runtime retains baseline repair eligibility for initial-markers-absent; offline classification stays strict",
+      "location": "'/Users/kouzen/Documents/data/mioon/tests/workspace-schema-profiles.test.mjs:390:3'",
+      "code": "RESTORE_SCHEMA_UNSUPPORTED",
+      "actualReason": "Volume envelopes require an exact supported workspace profile.",
+      "testSource": "tests/workspace-schema-profiles.test.mjs",
+      "sourceFixture": "tests/fixtures/workspace-schema-profiles/golden.json",
+      "profile": "ordinary-24-seeded",
+      "preOpenMutation": "DELETE FROM schema_version WHERE version<=14",
+      "retainedCell": {
+        "table": "timeline_requests",
+        "column": "response",
+        "rowid": "88",
+        "storageClass": "blob",
+        "hexBytes": "00FF0D0A"
+      },
+      "admissionPath": "onDisk -> loadFixture -> openStore -> workspaceSchemas.initialize -> validateWorkspaceVolumeEnvelopeRows(allowVolumeEnvelopes=false)",
+      "exactBaselineRunPerformed": false
+    }
+  ],
+  "currentEvidence": {
+    "log": "docs/evidence/opacity-release-check/workspace-portable-fixture-final.tap",
+    "metadata": "docs/evidence/opacity-release-check/workspace-portable-fixture-final.json",
+    "tests": 74,
+    "passed": 68,
+    "failed": 6,
+    "status": "failed"
+  },
+  "independentFixtureProvenance": {
+    "creationCommit": "f8b91713af0c8ed3994e32fa57447827a0ab3883",
+    "sourceCommit": "0343ed390a85c319210b5f179180cf9c8c3985c2",
+    "fixturePath": "tests/fixtures/workspace-schema-profiles/golden.json",
+    "fixtureSha256": "6e3f8f14199f5a64d2412c647f5db79b2da63bd4702f0a7f88df548a8b06502b",
+    "manifestPath": "tests/fixtures/workspace-schema-profiles/manifest.json",
+    "synthetic": true,
+    "recordedGeneratorNode": "v24.19.0",
+    "recordedGeneratorSQLite": "3.53.3",
+    "a7DidNotChangeGoldenBytes": true,
+    "a7DidNotChangeSchemaProfilesTest": true,
+    "ddl": "CREATE TABLE timeline_requests(requestId TEXT PRIMARY KEY,requestHash TEXT NOT NULL,response TEXT NOT NULL)"
+  },
+  "unchangedBaselineSources": [
+    {
+      "path": "packages/business/src/workspace-schema-dispatch.ts",
+      "baselineSha256": "fc60f85cdb26accbe747dbec6d05e0ecbfceb67332cb114cb85359cb7c4b06bc",
+      "currentSha256": "fc60f85cdb26accbe747dbec6d05e0ecbfceb67332cb114cb85359cb7c4b06bc",
+      "unchanged": true
+    },
+    {
+      "path": "packages/business/src/workspace-volume-envelope-validation.ts",
+      "baselineSha256": "1face8429869dd619ccb83214998537d103d9e70c1974e7b85b29bf83361ef09",
+      "currentSha256": "1face8429869dd619ccb83214998537d103d9e70c1974e7b85b29bf83361ef09",
+      "unchanged": true
+    }
+  ],
+  "supportAssessment": {
+    "historicalRetentionEvidence": {
+      "status": "bounded_evidence_exists",
+      "basis": "The independent synthetic24/25 golden retains the BLOB and frozen table DDL. In the already-recorded current targeted run, through24 checkpoints and direct restore25 construction for seeded and mock-seeded profiles passed with raw retention assertions. This concerns historical construction/validation, not current openStore admission."
+    },
+    "currentOrdinary40": {
+      "status": "documented_text_admission_and_blob_rejection",
+      "basis": "a7 source/comment/negative test and docs/RESTORE-REGRESSION-REPAIRS.md explicitly distinguish TEXT-positive current40 reopen from retained BLOB rejection without changing production validation. This was inspected; those a7 tests were not rerun by this read-only subtask."
+    },
+    "historical24ToCurrent40MigrationAndCurrentRestored25Reopen": {
+      "status": "undetermined",
+      "statusZh": "\u53d7\u652f\u6301\u6027\u5f85\u5b9a",
+      "basis": "The six historical tests expect positive current-open raw retention, while the current dispatcher rejects their synthetic BLOB cell. No reviewed product contract found here explicitly resolves this exact old24/25 current-admission promise. Do not classify them conclusively as supported-user-data regressions or as merely obsolete fixtures."
+    },
+    "realUserDataRegressionEstablished": false
+  },
+  "constraints": {
+    "frozenBoundaryRetained": true,
+    "blobConvertedToText": false,
+    "assertionsRemoved": false,
+    "furtherRuntimeAttempts": false,
+    "autoReviewDenied": false
+  }
+}

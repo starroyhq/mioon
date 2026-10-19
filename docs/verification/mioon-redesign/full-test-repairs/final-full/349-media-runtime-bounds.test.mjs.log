@@ -1,0 +1,100 @@
+TAP version 13
+# Subtest: explicit environment policy only copies platform/locale keys from synthetic dictionaries
+ok 1 - explicit environment policy only copies platform/locale keys from synthetic dictionaries
+  ---
+  duration_ms: 0.973208
+  type: 'test'
+  ...
+# Subtest: child environment omits synthetic credentials/injection settings and cannot be expanded by options.env
+ok 2 - child environment omits synthetic credentials/injection settings and cannot be expanded by options.env
+  ---
+  duration_ms: 364.939625
+  type: 'test'
+  ...
+# Subtest: absolute configured paths preserve spaces and Unicode; shell metacharacters stay literal
+ok 3 - absolute configured paths preserve spaces and Unicode; shell metacharacters stay literal
+  ---
+  duration_ms: 115.712666
+  type: 'test'
+  ...
+# Subtest: stdout preserves multibyte bytes at the exact budget and rejects one byte over
+ok 4 - stdout preserves multibyte bytes at the exact budget and rejects one byte over
+  ---
+  duration_ms: 221.984
+  type: 'test'
+  ...
+# Subtest: stdout flood stops the child under a byte budget
+ok 5 - stdout flood stops the child under a byte budget
+  ---
+  duration_ms: 111.28675
+  type: 'test'
+  ...
+# Subtest: stderr flood stops the child under a byte budget
+ok 6 - stderr flood stops the child under a byte budget
+  ---
+  duration_ms: 109.180125
+  type: 'test'
+  ...
+# Subtest: spawn and exit errors are safe and leave no active records
+ok 7 - spawn and exit errors are safe and leave no active records
+  ---
+  duration_ms: 117.603459
+  type: 'test'
+  ...
+# Subtest: already-aborted operations never spawn; observer errors do not affect a run
+ok 8 - already-aborted operations never spawn; observer errors do not affect a run
+  ---
+  duration_ms: 113.82075
+  type: 'test'
+  ...
+# Subtest: timeout and abort reap owned children with one start/exit pair
+ok 9 - timeout and abort reap owned children with one start/exit pair
+  ---
+  duration_ms: 223.466375
+  type: 'test'
+  ...
+# Subtest: scoped termination leaves other owners running and repeated stop is idempotent
+ok 10 - scoped termination leaves other owners running and repeated stop is idempotent
+  ---
+  duration_ms: 123.646833
+  type: 'test'
+  ...
+# Subtest: an owned child that ignores TERM is hard-stopped within the bounded reap window
+ok 11 - an owned child that ignores TERM is hard-stopped within the bounded reap window
+  ---
+  duration_ms: 2117.943042
+  type: 'test'
+  ...
+# Subtest: unconfirmed reap is bounded and never emits a false exited event
+ok 12 - unconfirmed reap is bounded and never emits a false exited event
+  ---
+  duration_ms: 3252.322167
+  type: 'test'
+  ...
+# Subtest: legacy global shutdown reports unconfirmed reap to a running caller without an AbortSignal
+ok 13 - legacy global shutdown reports unconfirmed reap to a running caller without an AbortSignal
+  ---
+  duration_ms: 3118.939708
+  type: 'test'
+  ...
+# Subtest: observed exit does not release an unconfirmed close gate or signal that child again
+ok 14 - observed exit does not release an unconfirmed close gate or signal that child again
+  ---
+  duration_ms: 3249.721458
+  type: 'test'
+  ...
+# Subtest: final reap deadline is scheduled from stop start even if the grace callback is delayed
+ok 15 - final reap deadline is scheduled from stop start even if the grace callback is delayed
+  ---
+  duration_ms: 117.214958
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 13508.858958

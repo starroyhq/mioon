@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: owned PNG inspection validates bytes, returns no paths and changes no files or DB
+ok 1 - owned PNG inspection validates bytes, returns no paths and changes no files or DB
+  ---
+  duration_ms: 47.435083
+  type: 'test'
+  ...
+# Subtest: untagged image needs explicit declaration; conflicting PNG metadata cannot be overridden
+ok 2 - untagged image needs explicit declaration; conflicting PNG metadata cannot be overridden
+  ---
+  duration_ms: 7.148
+  type: 'test'
+  ...
+# Subtest: ownership, project, MIME and exact SHA mismatch fail before evidence is returned
+ok 3 - ownership, project, MIME and exact SHA mismatch fail before evidence is returned
+  ---
+  duration_ms: 3.887083
+  type: 'test'
+  ...
+# Subtest: getters, proxy inputs and caller paths are not evaluated or read
+ok 4 - getters, proxy inputs and caller paths are not evaluated or read
+  ---
+  duration_ms: 1.80225
+  type: 'test'
+  ...
+# Subtest: source replacement across an await, symlinks and revoked ownership fail closed
+ok 5 - source replacement across an await, symlinks and revoked ownership fail closed
+  ---
+  duration_ms: 3.376125
+  type: 'test'
+  ...
+# Subtest: single flight, transaction and cancellation preserve lifecycle ownership
+ok 6 - single flight, transaction and cancellation preserve lifecycle ownership
+  ---
+  duration_ms: 41.929625
+  type: 'test'
+  ...
+# Subtest: saved dimensions, alpha, stream and decoder interpretation cannot be forged
+ok 7 - saved dimensions, alpha, stream and decoder interpretation cannot be forged
+  ---
+  duration_ms: 35.943958
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 311.299

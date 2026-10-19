@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: actual App hook/context wiring carries one exact selected range through preflight, prepared intent and ACK
+ok 1 - actual App hook/context wiring carries one exact selected range through preflight, prepared intent and ACK
+  ---
+  duration_ms: 19.391209
+  type: 'test'
+  ...
+# Subtest: actual export contexts remain inactive until project opening has been accepted
+ok 2 - actual export contexts remain inactive until project opening has been accepted
+  ---
+  duration_ms: 0.883458
+  type: 'test'
+  ...
+# Subtest: actual App uses range version for Check and both live contexts, including A to B to A
+ok 3 - actual App uses range version for Check and both live contexts, including A to B to A
+  ---
+  duration_ms: 1.326708
+  type: 'test'
+  ...
+# Subtest: changing range during an awaited title save cannot prepare or execute the prior range
+ok 4 - changing range during an awaited title save cannot prepare or execute the prior range
+  ---
+  duration_ms: 1.384083
+  type: 'test'
+  ...
+# Subtest: range version change during actual prepared-intent await blocks dispatch: saved bounds changed
+ok 5 - range version change during actual prepared-intent await blocks dispatch: saved bounds changed
+  ---
+  duration_ms: 8.159458
+  type: 'test'
+  ...
+# Subtest: range version change during actual prepared-intent await blocks dispatch: saved bounds A to B to A
+ok 6 - range version change during actual prepared-intent await blocks dispatch: saved bounds A to B to A
+  ---
+  duration_ms: 2.750667
+  type: 'test'
+  ...
+# Subtest: late actual ACK preserves saved range context and cannot navigate after execute wait
+ok 7 - late actual ACK preserves saved range context and cannot navigate after execute wait
+  ---
+  duration_ms: 1.659625
+  type: 'test'
+  ...
+# Subtest: late actual ACK preserves saved range context and cannot navigate after refresh wait
+ok 8 - late actual ACK preserves saved range context and cannot navigate after refresh wait
+  ---
+  duration_ms: 1.388625
+  type: 'test'
+  ...
+# Subtest: restored actual route preserves frozen range and separately pinned origin without opening local delivery storage
+ok 9 - restored actual route preserves frozen range and separately pinned origin without opening local delivery storage
+  ---
+  duration_ms: 0.999292
+  type: 'test'
+  ...
+# Subtest: hidden actual delivery pane cannot submit its retained range closure: restored=false
+ok 10 - hidden actual delivery pane cannot submit its retained range closure: restored=false
+  ---
+  duration_ms: 0.910917
+  type: 'test'
+  ...
+# Subtest: hidden actual delivery pane cannot submit its retained range closure: restored=true
+ok 11 - hidden actual delivery pane cannot submit its retained range closure: restored=true
+  ---
+  duration_ms: 0.732167
+  type: 'test'
+  ...
+# Subtest: actual open and range toggles are passive; whole export and preview retain omitted range
+ok 12 - actual open and range toggles are passive; whole export and preview retain omitted range
+  ---
+  duration_ms: 1.463458
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 321.446625

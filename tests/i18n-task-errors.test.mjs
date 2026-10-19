@@ -27,7 +27,7 @@ function verify(error, key, code) {
   assert.ok(error instanceof Error); assert.equal(error.displayMessage.key, `tasks.localError.${key}`);
   if (code) assert.equal(error.code, code);
   const original = { message: error.message, code: error.code, details: error.details, definitive: error.definitive };
-  assert.equal(renderMessage('zh-Hans', error.displayMessage), error.message);
+  assert.equal(renderMessage('zh-Hans', error.displayMessage), error.message.replace(/。$/u, ''));
   for (const locale of LOCALES) assert.ok(renderMessage(locale, error.displayMessage).length);
   assert.deepEqual({ message: error.message, code: error.code, details: error.details, definitive: error.definitive }, original);
   return true;

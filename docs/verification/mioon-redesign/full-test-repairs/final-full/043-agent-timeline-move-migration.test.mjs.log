@@ -1,0 +1,131 @@
+TAP version 13
+# Subtest: schema24 retains every legacy byte, column, status, position, sequence rowid/high-water and SQL protection
+ok 1 - schema24 retains every legacy byte, column, status, position, sequence rowid/high-water and SQL protection
+  ---
+  duration_ms: 6.05575
+  type: 'test'
+  ...
+# Subtest: schema24 has a genuine target XOR; no clip can masquerade as a legacy shot
+ok 2 - schema24 has a genuine target XOR; no clip can masquerade as a legacy shot
+  ---
+  duration_ms: 2.439166
+  type: 'test'
+  ...
+# Subtest: every rebuild stage rolls back without marker or changed old rows/triggers/sequence
+ok 3 - every rebuild stage rolls back without marker or changed old rows/triggers/sequence
+  ---
+  duration_ms: 14.846041
+  type: 'test'
+  ...
+# Subtest: fresh startup and upgraded startup converge and reopen never rewrites legacy data
+not ok 4 - fresh startup and upgraded startup converge and reopen never rewrites legacy data
+  ---
+  duration_ms: 1233.41975
+  type: 'test'
+  location: '/private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/agent-timeline-move-migration.test.mjs:65:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    ... Skipped lines
+    
+      [
+        1,
+        2,
+        3,
+        4,
+    ...
+        26,
+    +   28,
+    +   30,
+    +   32,
+    +   34,
+    +   36,
+    +   38,
+    +   40,
+    +   44,
+    +   48
+      ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: 1
+    1: 2
+    2: 3
+    3: 4
+    4: 5
+    5: 6
+    6: 7
+    7: 8
+    8: 9
+    9: 10
+    10: 11
+    11: 12
+    12: 13
+    13: 14
+    14: 15
+    15: 16
+    16: 17
+    17: 18
+    18: 19
+    19: 20
+    20: 21
+    21: 22
+    22: 23
+    23: 24
+    24: 26
+  actual:
+    0: 1
+    1: 2
+    2: 3
+    3: 4
+    4: 5
+    5: 6
+    6: 7
+    7: 8
+    8: 9
+    9: 10
+    10: 11
+    11: 12
+    12: 13
+    13: 14
+    14: 15
+    15: 16
+    16: 17
+    17: 18
+    18: 19
+    19: 20
+    20: 21
+    21: 22
+    22: 23
+    23: 24
+    24: 26
+    25: 28
+    26: 30
+    27: 32
+    28: 34
+    29: 36
+    30: 38
+    31: 40
+    32: 44
+    33: 48
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///private/tmp/mioon-full-recheck-_m5c6umh/verify/tests/agent-timeline-move-migration.test.mjs:71:31)
+    Test.runInAsyncScope (node:async_hooks:226:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 3
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1504.9805

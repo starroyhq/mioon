@@ -1,0 +1,398 @@
+TAP version 13
+# Subtest: real CLI and MCP preserve proof-specific rejection and HTTP status semantics
+    # Subtest: CLI: timeline legacy proof
+    ok 1 - CLI: timeline legacy proof
+      ---
+      duration_ms: 276.488917
+      type: 'test'
+      ...
+    # Subtest: MCP: timeline legacy proof
+    ok 2 - MCP: timeline legacy proof
+      ---
+      duration_ms: 28.093084
+      type: 'test'
+      ...
+    # Subtest: CLI: timeline wrong key
+    ok 3 - CLI: timeline wrong key
+      ---
+      duration_ms: 279.057
+      type: 'test'
+      ...
+    # Subtest: MCP: timeline wrong key
+    ok 4 - MCP: timeline wrong key
+      ---
+      duration_ms: 4.607833
+      type: 'test'
+      ...
+    # Subtest: CLI: timeline wrong operation
+    ok 5 - CLI: timeline wrong operation
+      ---
+      duration_ms: 296.781042
+      type: 'test'
+      ...
+    # Subtest: MCP: timeline wrong operation
+    ok 6 - MCP: timeline wrong operation
+      ---
+      duration_ms: 4.671792
+      type: 'test'
+      ...
+    # Subtest: CLI: reference exact proof
+    ok 7 - CLI: reference exact proof
+      ---
+      duration_ms: 282.573875
+      type: 'test'
+      ...
+    # Subtest: MCP: reference exact proof
+    ok 8 - MCP: reference exact proof
+      ---
+      duration_ms: 2.117417
+      type: 'test'
+      ...
+    # Subtest: CLI: reference missing project
+    ok 9 - CLI: reference missing project
+      ---
+      duration_ms: 285.220292
+      type: 'test'
+      ...
+    # Subtest: MCP: reference missing project
+    ok 10 - MCP: reference missing project
+      ---
+      duration_ms: 2.377042
+      type: 'test'
+      ...
+    # Subtest: CLI: reference wrong operation
+    ok 11 - CLI: reference wrong operation
+      ---
+      duration_ms: 266.862833
+      type: 'test'
+      ...
+    # Subtest: MCP: reference wrong operation
+    ok 12 - MCP: reference wrong operation
+      ---
+      duration_ms: 1.810834
+      type: 'test'
+      ...
+    # Subtest: CLI: reference no proof
+    ok 13 - CLI: reference no proof
+      ---
+      duration_ms: 266.882542
+      type: 'test'
+      ...
+    # Subtest: MCP: reference no proof
+    ok 14 - MCP: reference no proof
+      ---
+      duration_ms: 1.768542
+      type: 'test'
+      ...
+    # Subtest: CLI: subject exact proof
+    ok 15 - CLI: subject exact proof
+      ---
+      duration_ms: 268.268667
+      type: 'test'
+      ...
+    # Subtest: MCP: subject exact proof
+    ok 16 - MCP: subject exact proof
+      ---
+      duration_ms: 2.660459
+      type: 'test'
+      ...
+    # Subtest: CLI: subject wrong code domain
+    ok 17 - CLI: subject wrong code domain
+      ---
+      duration_ms: 270.606334
+      type: 'test'
+      ...
+    # Subtest: MCP: subject wrong code domain
+    ok 18 - MCP: subject wrong code domain
+      ---
+      duration_ms: 2.367209
+      type: 'test'
+      ...
+    # Subtest: CLI: subject wrong HTTP status
+    ok 19 - CLI: subject wrong HTTP status
+      ---
+      duration_ms: 269.782167
+      type: 'test'
+      ...
+    # Subtest: MCP: subject wrong HTTP status
+    ok 20 - MCP: subject wrong HTTP status
+      ---
+      duration_ms: 1.970833
+      type: 'test'
+      ...
+    # Subtest: CLI: Comfy exact proof
+    ok 21 - CLI: Comfy exact proof
+      ---
+      duration_ms: 278.026833
+      type: 'test'
+      ...
+    # Subtest: MCP: Comfy exact proof
+    ok 22 - MCP: Comfy exact proof
+      ---
+      duration_ms: 9.721083
+      type: 'test'
+      ...
+    # Subtest: CLI: Comfy capacity 507
+    ok 23 - CLI: Comfy capacity 507
+      ---
+      duration_ms: 274.45025
+      type: 'test'
+      ...
+    # Subtest: MCP: Comfy capacity 507
+    ok 24 - MCP: Comfy capacity 507
+      ---
+      duration_ms: 1.879
+      type: 'test'
+      ...
+    # Subtest: CLI: Comfy wrong input hash
+    ok 25 - CLI: Comfy wrong input hash
+      ---
+      duration_ms: 330.001459
+      type: 'test'
+      ...
+    # Subtest: MCP: Comfy wrong input hash
+    ok 26 - MCP: Comfy wrong input hash
+      ---
+      duration_ms: 1.6555
+      type: 'test'
+      ...
+    # Subtest: CLI: Comfy wrong operation
+    ok 27 - CLI: Comfy wrong operation
+      ---
+      duration_ms: 273.926125
+      type: 'test'
+      ...
+    # Subtest: MCP: Comfy wrong operation
+    ok 28 - MCP: Comfy wrong operation
+      ---
+      duration_ms: 1.6765
+      type: 'test'
+      ...
+    # Subtest: CLI: Comfy wrong key
+    ok 29 - CLI: Comfy wrong key
+      ---
+      duration_ms: 374.839542
+      type: 'test'
+      ...
+    # Subtest: MCP: Comfy wrong key
+    ok 30 - MCP: Comfy wrong key
+      ---
+      duration_ms: 2.966667
+      type: 'test'
+      ...
+    # Subtest: CLI: Comfy wrong status
+    ok 31 - CLI: Comfy wrong status
+      ---
+      duration_ms: 298.92975
+      type: 'test'
+      ...
+    # Subtest: MCP: Comfy wrong status
+    ok 32 - MCP: Comfy wrong status
+      ---
+      duration_ms: 1.657791
+      type: 'test'
+      ...
+    # Subtest: CLI: Comfy absent proof
+    ok 33 - CLI: Comfy absent proof
+      ---
+      duration_ms: 266.648459
+      type: 'test'
+      ...
+    # Subtest: MCP: Comfy absent proof
+    ok 34 - MCP: Comfy absent proof
+      ---
+      duration_ms: 1.421625
+      type: 'test'
+      ...
+    1..34
+ok 1 - real CLI and MCP preserve proof-specific rejection and HTTP status semantics
+  ---
+  duration_ms: 5269.543333
+  type: 'test'
+  ...
+# Subtest: nested review commits survive real wire loss and exact cross-client replay without approval
+    # Subtest: CLI: committed review then drop
+    ok 1 - CLI: committed review then drop
+      ---
+      duration_ms: 396.581667
+      type: 'test'
+      ...
+    # Subtest: CLI: committed review then truncate
+    ok 2 - CLI: committed review then truncate
+      ---
+      duration_ms: 308.649291
+      type: 'test'
+      ...
+    # Subtest: CLI: committed review then bad-review
+    ok 3 - CLI: committed review then bad-review
+      ---
+      duration_ms: 310.671625
+      type: 'test'
+      ...
+    # Subtest: MCP: committed review then drop
+    ok 4 - MCP: committed review then drop
+      ---
+      duration_ms: 284.115209
+      type: 'test'
+      ...
+    # Subtest: MCP: committed review then truncate
+    ok 5 - MCP: committed review then truncate
+      ---
+      duration_ms: 282.669083
+      type: 'test'
+      ...
+    # Subtest: MCP: committed review then bad-review
+    ok 6 - MCP: committed review then bad-review
+      ---
+      duration_ms: 297.182833
+      type: 'test'
+      ...
+    1..6
+ok 2 - nested review commits survive real wire loss and exact cross-client replay without approval
+  ---
+  duration_ms: 3048.478541
+  type: 'test'
+  ...
+# Subtest: read errors keep exit classifications and sanitization across real CLI and MCP
+    # Subtest: CLI: read HTTP 500
+    ok 1 - CLI: read HTTP 500
+      ---
+      duration_ms: 269.9035
+      type: 'test'
+      ...
+    # Subtest: CLI: read HTTP 401
+    ok 2 - CLI: read HTTP 401
+      ---
+      duration_ms: 281.810375
+      type: 'test'
+      ...
+    # Subtest: CLI: read HTTP 503
+    ok 3 - CLI: read HTTP 503
+      ---
+      duration_ms: 266.363166
+      type: 'test'
+      ...
+    # Subtest: CLI: read HTTP 409
+    ok 4 - CLI: read HTTP 409
+      ---
+      duration_ms: 266.84475
+      type: 'test'
+      ...
+    # Subtest: CLI: project.list drop
+    ok 5 - CLI: project.list drop
+      ---
+      duration_ms: 360.516458
+      type: 'test'
+      ...
+    # Subtest: CLI: project.list truncate
+    ok 6 - CLI: project.list truncate
+      ---
+      duration_ms: 311.623042
+      type: 'test'
+      ...
+    # Subtest: CLI: image.request.get drop
+    ok 7 - CLI: image.request.get drop
+      ---
+      duration_ms: 256.94675
+      type: 'test'
+      ...
+    # Subtest: CLI: image.request.get truncate
+    ok 8 - CLI: image.request.get truncate
+      ---
+      duration_ms: 305.193541
+      type: 'test'
+      ...
+    # Subtest: MCP: read HTTP 500
+    ok 9 - MCP: read HTTP 500
+      ---
+      duration_ms: 21.7815
+      type: 'test'
+      ...
+    # Subtest: MCP: read HTTP 401
+    ok 10 - MCP: read HTTP 401
+      ---
+      duration_ms: 1.769459
+      type: 'test'
+      ...
+    # Subtest: MCP: read HTTP 503
+    ok 11 - MCP: read HTTP 503
+      ---
+      duration_ms: 1.827708
+      type: 'test'
+      ...
+    # Subtest: MCP: read HTTP 409
+    ok 12 - MCP: read HTTP 409
+      ---
+      duration_ms: 1.538833
+      type: 'test'
+      ...
+    # Subtest: MCP: project.list drop
+    ok 13 - MCP: project.list drop
+      ---
+      duration_ms: 3.080375
+      type: 'test'
+      ...
+    # Subtest: MCP: project.list truncate
+    ok 14 - MCP: project.list truncate
+      ---
+      duration_ms: 1.611791
+      type: 'test'
+      ...
+    # Subtest: MCP: image.request.get drop
+    ok 15 - MCP: image.request.get drop
+      ---
+      duration_ms: 1.139375
+      type: 'test'
+      ...
+    # Subtest: MCP: image.request.get truncate
+    ok 16 - MCP: image.request.get truncate
+      ---
+      duration_ms: 1.294875
+      type: 'test'
+      ...
+    1..16
+ok 3 - read errors keep exit classifications and sanitization across real CLI and MCP
+  ---
+  duration_ms: 2660.329959
+  type: 'test'
+  ...
+# Subtest: backend-controlled error code and detail keys cannot expose the connection credential
+    # Subtest: CLI: credential in code
+    ok 1 - CLI: credential in code
+      ---
+      duration_ms: 294.627375
+      type: 'test'
+      ...
+    # Subtest: CLI: credential in detail-key
+    ok 2 - CLI: credential in detail-key
+      ---
+      duration_ms: 274.262042
+      type: 'test'
+      ...
+    # Subtest: MCP: credential in code
+    ok 3 - MCP: credential in code
+      ---
+      duration_ms: 22.751041
+      type: 'test'
+      ...
+    # Subtest: MCP: credential in detail-key
+    ok 4 - MCP: credential in detail-key
+      ---
+      duration_ms: 3.417541
+      type: 'test'
+      ...
+    1..4
+ok 4 - backend-controlled error code and detail keys cannot expose the connection credential
+  ---
+  duration_ms: 957.902958
+  type: 'test'
+  ...
+1..4
+# tests 64
+# suites 0
+# pass 64
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 12360.043125

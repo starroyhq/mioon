@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-10-16T09:14:52.008196+00:00",
+  "baselineCommit": "ff85c9a8daaa35bff080d0979fe2faa3683cd3b5",
+  "annotationCatalogPin": {
+    "source": "tests/workspace-schema-dispatch.test.mjs",
+    "sourceFileSha256": "7a6f075c0714b0f8974f8d8b3886bd13c71d6437da95195909698a8ce1687a0f",
+    "catalogCount": 20,
+    "catalogSha256": "36eab4635ff3ef13ae1fd9fd11e0467ac6890cb5bb9175342ff02748d5bf5ede",
+    "method": "Reuse the independent literal count/hash already committed in preservedCurrent() of the immutable baseline test; no current constructor executed to generate expected values. The current test validates the entire additions hash and both exact empty table layouts before removing additions from its comparison to the untouched24 golden."
+  },
+  "runtimeBaselineComparisons": [
+    {
+      "path": "packages/business/src/db.mjs",
+      "baselineSha256": "1eeb40162c19c579727830e8b2a92e08022648fa9fbbaa77032414a06dd31964",
+      "currentSha256": "1eeb40162c19c579727830e8b2a92e08022648fa9fbbaa77032414a06dd31964",
+      "unchanged": true
+    },
+    {
+      "path": "packages/business/src/workspace-schema-dispatch.ts",
+      "baselineSha256": "fc60f85cdb26accbe747dbec6d05e0ecbfceb67332cb114cb85359cb7c4b06bc",
+      "currentSha256": "fc60f85cdb26accbe747dbec6d05e0ecbfceb67332cb114cb85359cb7c4b06bc",
+      "unchanged": true
+    },
+    {
+      "path": "packages/business/src/workspace-schema-v34.ts",
+      "baselineSha256": "2da821c424cf3c0e75587b0c091dd9851b46374e0f32a3a643feb8cd19b670ff",
+      "currentSha256": "2da821c424cf3c0e75587b0c091dd9851b46374e0f32a3a643feb8cd19b670ff",
+      "unchanged": true
+    },
+    {
+      "path": "packages/business/src/workspace-schema-v36.ts",
+      "baselineSha256": "bd3b84c58cbc5c5c60f7cd0e6a250d6c63874cbed4349f753e7a9cf26e120e71",
+      "currentSha256": "bd3b84c58cbc5c5c60f7cd0e6a250d6c63874cbed4349f753e7a9cf26e120e71",
+      "unchanged": true
+    },
+    {
+      "path": "packages/business/src/workspace-schema-v38.ts",
+      "baselineSha256": "766276a823898296ff03478e15566a45170c6f4bede272e26022903b77dd2920",
+      "currentSha256": "766276a823898296ff03478e15566a45170c6f4bede272e26022903b77dd2920",
+      "unchanged": true
+    },
+    {
+      "path": "packages/business/src/workspace-schema-v40.ts",
+      "baselineSha256": "ce792a5f1f9ebd8c5a7615dea78241f31b8ef1373851271527b26c6801160b31",
+      "currentSha256": "ce792a5f1f9ebd8c5a7615dea78241f31b8ef1373851271527b26c6801160b31",
+      "unchanged": true
+    },
+    {
+      "path": "packages/business/src/workspace-backup-schema-versions.ts",
+      "baselineSha256": "9d91b4b006113d1c2c7d6804b1c15768c0dd432ab9907fc1c89eb862e9fc0c98",
+      "currentSha256": "9d91b4b006113d1c2c7d6804b1c15768c0dd432ab9907fc1c89eb862e9fc0c98",
+      "unchanged": true
+    },
+    {
+      "path": "packages/business/src/workspace-volume-envelope-validation.ts",
+      "baselineSha256": "1face8429869dd619ccb83214998537d103d9e70c1974e7b85b29bf83361ef09",
+      "currentSha256": "1face8429869dd619ccb83214998537d103d9e70c1974e7b85b29bf83361ef09",
+      "unchanged": true
+    }
+  ],
+  "historicalGoldenComparisons": [
+    {
+      "path": "tests/fixtures/workspace-schema-profiles/golden.json",
+      "baselineSha256": "6e3f8f14199f5a64d2412c647f5db79b2da63bd4702f0a7f88df548a8b06502b",
+      "currentSha256": "6e3f8f14199f5a64d2412c647f5db79b2da63bd4702f0a7f88df548a8b06502b",
+      "unchanged": true
+    },
+    {
+      "path": "tests/fixtures/workspace-schema-profiles/manifest.json",
+      "baselineSha256": "6c911653232e380764b0f7e476c0523d58271eeb673ef8db39ba0e3091065d7c",
+      "currentSha256": "6c911653232e380764b0f7e476c0523d58271eeb673ef8db39ba0e3091065d7c",
+      "unchanged": true
+    }
+  ],
+  "currentExpectedMarkerDelta": [
+    36,
+    38,
+    40
+  ],
+  "scope": "Existing neighboring fixtures were stale relative to the already-published baseline. No runtime, frozen schema, storage policy, golden output or manifest changed. Current-schema version expectations only were updated; all raw row, schema/hash, bytes, lock, source, receipt and rejection assertions remain."
+}

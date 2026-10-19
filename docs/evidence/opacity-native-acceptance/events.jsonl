@@ -1,0 +1,19 @@
+{"type":"started-existing-owned-workspace","time":"2026-10-16T06:26:59.654Z","url":"http://127.0.0.1:4319"}
+{"type":"actual-PNG-import","time":"2026-10-16T06:26:59.825Z","assetId":"ec59034c-312b-4b3c-9af3-e80e54750a63","bytes":165,"width":64,"height":64,"sha256":"260d48846b0b0901bf8da934571961ab8319154c7163a1e8dbe8a88958574827"}
+{"type":"actual-opacity-task-ACK","time":"2026-10-16T06:27:00.755Z","revision":3,"durationFrames":10,"curve":{"profileId":"mioon-clip-linear-opacity-v1","points":[{"frame":0,"opacity":0.25},{"frame":10,"opacity":1}]}}
+{"type":"normal-close","time":"2026-10-16T06:27:00.953Z","activeMedia":0,"lockExists":false}
+{"type":"started-existing-owned-workspace","time":"2026-10-16T06:27:01.049Z","url":"http://127.0.0.1:4319"}
+{"type":"qualification-failure","time":"2026-10-16T06:27:01.052Z","name":"TypeError","code":null,"message":"fetch failed"}
+{"type":"normal-close","time":"2026-10-16T06:27:01.054Z","activeMedia":0,"lockExists":false}
+{"type":"started-existing-owned-workspace","time":"2026-10-16T06:27:43.126Z","url":"http://127.0.0.1:4319"}
+{"type":"resume-existing-owned-test-data","time":"2026-10-16T06:27:43.246Z","assetId":"ec59034c-312b-4b3c-9af3-e80e54750a63","revision":3}
+{"type":"actual-opacity-task-ACK","time":"2026-10-16T06:27:43.246Z","revision":3,"durationFrames":10,"curve":{"profileId":"mioon-clip-linear-opacity-v1","points":[{"frame":0,"opacity":0.25},{"frame":10,"opacity":1}]}}
+{"type":"normal-close","time":"2026-10-16T06:27:43.462Z","activeMedia":0,"lockExists":false}
+{"type":"started-existing-owned-workspace","time":"2026-10-16T06:27:43.559Z","url":"http://127.0.0.1:4319"}
+{"type":"HTTP-draft-reopen-and-discard","time":"2026-10-16T06:27:43.793Z","scopePreserved":true,"newInstance":true,"incompleteTextRecovered":true,"savedCurveUnchanged":true}
+{"type":"HTTP-undo-redo","time":"2026-10-16T06:27:44.624Z","revision":5}
+{"type":"real-preflight-ready","time":"2026-10-16T06:27:45.037Z","purpose":"preview","checks":{"totalAssets":1,"checkedAssets":1,"bytesHashed":165,"fullDecode":false}}
+{"type":"real-render-delivery-decode-passed","time":"2026-10-16T06:27:49.196Z","purpose":"preview","exportId":"e4ae3e56-0409-41c7-b26c-fe46adbe6b1c","assetId":"e2f6b6e1-5fbc-4364-b6a0-46f0d5da18bb","status":"succeeded","bytes":5519,"sha256":"4b8aecf4c7489f69db9e0492c1d90839a408da0d6096e83dfdc50bdb3e623e6d","width":720,"height":1280,"duration":0.333333,"frames":10,"firstPixel":[23,10,23],"lastPixel":[86,39,86],"guardedHTTP":true}
+{"type":"real-preflight-ready","time":"2026-10-16T06:27:49.579Z","purpose":"export","checks":{"totalAssets":1,"checkedAssets":1,"bytesHashed":165,"fullDecode":false}}
+{"type":"real-render-delivery-decode-passed","time":"2026-10-16T06:27:54.273Z","purpose":"export","exportId":"a13a0eb8-3199-47db-ab98-baf1a70d97c4","assetId":"3e24fadf-2bf9-4af9-bd0a-7627d584ae08","status":"succeeded","bytes":5519,"sha256":"4b8aecf4c7489f69db9e0492c1d90839a408da0d6096e83dfdc50bdb3e623e6d","width":720,"height":1280,"duration":0.333333,"frames":10,"firstPixel":[23,10,23],"lastPixel":[86,39,86],"guardedHTTP":true,"downloadByteEquality":true}
+{"type":"normal-close","time":"2026-10-16T06:27:54.276Z","activeMedia":0,"lockExists":false}

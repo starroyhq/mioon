@@ -1,0 +1,79 @@
+{
+  "date": "2026-10-16",
+  "baseCommit": "a5e1f9e0ef012ff9fca5db2823e59d0bddeec9bd",
+  "runtime": "Node26.9.0",
+  "pureQualification": {
+    "command": "TMPDIR=/private/tmp node --test tests/*opacity*.test.mjs tests/export-preflight-ui.test.mjs tests/project-specifications-preflight.test.mjs tests/subtitles-preflight.test.mjs tests/export-settings-business.test.mjs",
+    "tests": 277,
+    "passed": 277,
+    "failed": 0,
+    "skipped": 0,
+    "cancelled": 0,
+    "logSummary": "tests-summary.txt",
+    "subprocessSuites": {
+      "existingRenderAuthority": 9,
+      "candidatePreflightRuntime": 14
+    }
+  },
+  "strictTypecheck": {
+    "foundation": true,
+    "browser": true,
+    "legacyAllowlistChanged": false
+  },
+  "review": {
+    "independentReadOnly": "all findings closed",
+    "rawSnapshotAndActualExecution": "same freezer, actual SQLite/source graph/hash/inode/receipts/worker/shared renderer; codec transport mocked",
+    "sourceAndLutReasons": "finite14 code vocabulary, sanitized, four locale explanations; no public legacy DTO widening",
+    "authority": "separate expiring advisory invocation; 43 exactorigin; no task/worker permission minted",
+    "asyncLifetime": "native rejecting Promise retained; lease/catalog revocations pass through; no false-ready success"
+  },
+  "frozen": {
+    "originalManifestChanged": false,
+    "originalHashesRetained": 63,
+    "rendererExceptionUnchangedSinceBase": true,
+    "rendererAfterSha256": "db497b44160a3d5c3b398fb5be795a0aecfdd8df23e54d00c1dcbdc6ccb0e9ee"
+  },
+  "mediaValidation": {
+    "thisPhaseProcesses": 0,
+    "previousBoundedEvidence": "../opacity-render-candidate/pixel-probe.json",
+    "previousFfmpeg": "9.0.2",
+    "noNode24OrOldFixedFfmpegQualification": true
+  },
+  "node24Check": "node-runtime-check.json",
+  "productionDefaults": "40/41 unchanged, 42/43 internal only, no user migration or GUI",
+  "listen": {
+    "thisPhaseAttempts": 0,
+    "previousOsDenial": "EPERM on 127.0.0.1",
+    "notRetriedOrBypassed": true,
+    "futureApprovalCommand": "TMPDIR=/private/tmp node --test --test-name-pattern='restored server' tests/workspace-restore-execution.test.mjs",
+    "futureTarget": "127.0.0.1 ephemeral test port",
+    "futureReason": "actual HTTP server/client restoration ingress qualification after activation wiring"
+  },
+  "resolvedDevelopmentAttempt": {
+    "oldTimerTest": "50ms probe-entry race; replaced with deterministic timer",
+    "deniedAction": "kill -TERM 72267",
+    "denial": "OS EPERM; no auto-review rejection",
+    "safeAlternative": "exact tool session44222 interrupted; exit code1 confirmed",
+    "currentTest": "14/14 passed in bounded wrapper",
+    "pendingProcesses": false
+  },
+  "activationPlan": "../../OPACITY-CANDIDATE-EDITOR.md",
+  "sourceSha256": {
+    "apps/web/src/export-preflight-state.js": "94a4bf0b687a72981b61478f3e93a80468a65ee3c4f27b867f0cf4aca546ad54",
+    "packages/business/src/opacity-candidate-domain.ts": "efc153d1f997b9ab6192efdf04b0243669b798dda21e8a46b8a78a171f11786c",
+    "packages/business/src/opacity-candidate-preflight.ts": "e3ee3479e1e8de9d47233b59663dc976e2c1dd0aec234cecdb4d02866f045a35",
+    "packages/business/src/opacity-candidate-services.ts": "84ae86aa150ab49a1ff814b84d3ed5b818b6a73ab5052eefbca5f7182391fc89",
+    "packages/business/src/opacity-candidate-store.ts": "7a7355f6259af2bdb2f63cc657d2a050b787007400ccfb55db3ac4a93ba066ba",
+    "packages/business/src/timeline-export-admission.mjs": "0c125ff70b58b33744f607c724c03a210272e86924cdb392d51deaa7babb31c8",
+    "packages/business/src/timeline-preflight.mjs": "377af9f55f80250482e38c26b387ea999cc1afa2cffbba9aad49d36eaa962ebc",
+    "packages/business/src/timeline.mjs": "1b899d4e65d515dd524b5297ec757306119d176444a5500f168d5cde98fdfc73",
+    "packages/contracts/src/timeline-opacity-render-candidate.ts": "3487dac4cd0777e6ca7942a462ca9d3abba584497fd2f3d83e74c74e12cd9068",
+    "packages/i18n/src/catalogs/timeline-delivery.ts": "90f6fb461ae9314426facbab84eeeb9dad68bf8b610c09c8cb40f26bc22931da",
+    "tests/opacity-candidate-preflight-capabilities.test.mjs": "a96510aae472afd0fb49c0623c104e981c46686b0fafbb1988f260e85713c5b2",
+    "tests/opacity-candidate-preflight-domain.test.mjs": "e5c24e2c40c11bc0e848fce94f3b2b39a0b44b9c60404001d0370cef8b43ab50",
+    "tests/opacity-candidate-preflight-execution.test.mjs": "86acc46a046ed6ca4ce01098eb2729e11623f5a77842dd3f4373a7ec2d531fb0",
+    "tests/opacity-candidate-preflight-messages.test.mjs": "2fe6106fedca8af8567d25be0b9e8379caafd545f91d60b6f84b3223bad4b901",
+    "tests/opacity-candidate-preflight-runtime.test.mjs": "a54485c79260c6e85c1e5fe98067ac9cc006a93735d17add5004240cb859b305",
+    "tests/opacity-candidate-render-admission.test.mjs": "94503acad7616a0a8a5a2e1a2fcc0824da605c2ae8eef7f216cc5238b8076010"
+  }
+}

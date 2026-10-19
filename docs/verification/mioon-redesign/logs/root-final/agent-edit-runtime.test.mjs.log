@@ -1,0 +1,88 @@
+TAP version 13
+# Subtest: chat_completions: immutable selected target and exact first body are durable before credentials, proposal does not apply until review
+ok 1 - chat_completions: immutable selected target and exact first body are durable before credentials, proposal does not apply until review
+  ---
+  duration_ms: 714.496458
+  type: 'test'
+  ...
+# Subtest: responses: immutable selected target and exact first body are durable before credentials, proposal does not apply until review
+ok 2 - responses: immutable selected target and exact first body are durable before credentials, proposal does not apply until review
+  ---
+  duration_ms: 662.940791
+  type: 'test'
+  ...
+# Subtest: edit responses and full saved text never enter typed or inspection context; edit receives no earlier inspection answer
+ok 3 - edit responses and full saved text never enter typed or inspection context; edit receives no earlier inspection answer
+  ---
+  duration_ms: 767.738709
+  type: 'test'
+  ...
+# Subtest: foreign, missing and stale selected targets or changed consent fail before credentials and acceptance
+ok 4 - foreign, missing and stale selected targets or changed consent fail before credentials and acceptance
+  ---
+  duration_ms: 642.583791
+  type: 'test'
+  ...
+# Subtest: Stop at tool intent cancels pending proposal atomically and fences continuation
+ok 5 - Stop at tool intent cancels pending proposal atomically and fences continuation
+  ---
+  duration_ms: 609.108167
+  type: 'test'
+  ...
+# Subtest: Stop at tool completed cancels pending proposal atomically and fences continuation
+ok 6 - Stop at tool completed cancels pending proposal atomically and fences continuation
+  ---
+  duration_ms: 629.49425
+  type: 'test'
+  ...
+# Subtest: failed final model cannot leave an approvable proposal or restart model calls
+ok 7 - failed final model cannot leave an approvable proposal or restart model calls
+  ---
+  duration_ms: 642.625542
+  type: 'test'
+  ...
+# Subtest: interrupted final model cannot leave an approvable proposal or restart model calls
+ok 8 - interrupted final model cannot leave an approvable proposal or restart model calls
+  ---
+  duration_ms: 719.755167
+  type: 'test'
+  ...
+# Subtest: no-op, both-null, invalid title, unknown function and model authority cannot create proposals
+ok 9 - no-op, both-null, invalid title, unknown function and model authority cannot create proposals
+  ---
+  duration_ms: 3869.0205
+  type: 'test'
+  ...
+# Subtest: Stop racing just after final completion still cancels an unapproved proposal and preserves original answer
+ok 10 - Stop racing just after final completion still cancels an unapproved proposal and preserves original answer
+  ---
+  duration_ms: 638.323291
+  type: 'test'
+  ...
+# Subtest: full maximum saved prompt is disclosed without excerpts only in selected edit mode; empty proposed prompt clears on approval
+ok 11 - full maximum saved prompt is disclosed without excerpts only in selected edit mode; empty proposed prompt clears on approval
+  ---
+  duration_ms: 698.022458
+  type: 'test'
+  ...
+# Subtest: malformed or oversized saved target cannot reach accepted context or credentials
+ok 12 - malformed or oversized saved target cannot reach accepted context or credentials
+  ---
+  duration_ms: 601.138625
+  type: 'test'
+  ...
+# Subtest: saved shot changes during model wait cannot retarget or rebase the accepted proposal
+ok 13 - saved shot changes during model wait cannot retarget or rebase the accepted proposal
+  ---
+  duration_ms: 626.463791
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 12211.032792

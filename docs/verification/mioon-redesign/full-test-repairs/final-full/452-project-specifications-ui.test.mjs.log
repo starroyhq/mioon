@@ -1,0 +1,268 @@
+TAP version 13
+# Subtest: closed presets and noncreating read retain exact authoritative eligibility
+ok 1 - closed presets and noncreating read retain exact authoritative eligibility
+  ---
+  duration_ms: 2.69875
+  type: 'test'
+  ...
+# Subtest: saved legacy720 remains readable but new format choices use only the three1080 presets
+ok 2 - saved legacy720 remains readable but new format choices use only the three1080 presets
+  ---
+  duration_ms: 42.142708
+  type: 'test'
+  ...
+# Subtest: polls, dock hiding, selection and mode changes preserve the independent format draft
+ok 3 - polls, dock hiding, selection and mode changes preserve the independent format draft
+  ---
+  duration_ms: 0.383541
+  type: 'test'
+  ...
+# Subtest: newer authoritative revision preserves dirty choice and prevents blind rebase
+ok 4 - newer authoritative revision preserves dirty choice and prevents blind rebase
+  ---
+  duration_ms: 0.226958
+  type: 'test'
+  ...
+# Subtest: live owner change before React commit fences late read success and authentication error
+ok 5 - live owner change before React commit fences late read success and authentication error
+  ---
+  duration_ms: 0.17
+  type: 'test'
+  ...
+# Subtest: newer read wins; reconnect keeps draft but cannot revive an unverified save
+ok 6 - newer read wins; reconnect keeps draft but cannot revive an unverified save
+  ---
+  duration_ms: 0.209458
+  type: 'test'
+  ...
+# Subtest: save freezes both revisions and exact intent; double click never mints another request
+ok 7 - save freezes both revisions and exact intent; double click never mints another request
+  ---
+  duration_ms: 0.902209
+  type: 'test'
+  ...
+# Subtest: late ACK does not erase later square_1080 draft while the panel is hidden
+ok 8 - late ACK does not erase later square_1080 draft while the panel is hidden
+  ---
+  duration_ms: 0.161459
+  type: 'test'
+  ...
+# Subtest: late ACK does not erase later portrait_1080 draft while the panel is hidden
+ok 9 - late ACK does not erase later portrait_1080 draft while the panel is hidden
+  ---
+  duration_ms: 0.154916
+  type: 'test'
+  ...
+# Subtest: same project revisited in a newer epoch cannot receive an old save ACK
+ok 10 - same project revisited in a newer epoch cannot receive an old save ACK
+  ---
+  duration_ms: 0.135166
+  type: 'test'
+  ...
+# Subtest: unknown exact intent remains fenced after reads, hiding and reconnect; only explicit matching recovery releases it
+ok 11 - unknown exact intent remains fenced after reads, hiding and reconnect; only explicit matching recovery releases it
+  ---
+  duration_ms: 3.253709
+  type: 'test'
+  ...
+# Subtest: historical applied recovery refreshes saved data without acknowledging or replacing the current draft
+ok 12 - historical applied recovery refreshes saved data without acknowledging or replacing the current draft
+  ---
+  duration_ms: 1.015542
+  type: 'test'
+  ...
+# Subtest: malformed or misbound ACK never clears the draft or releases unknown intent
+ok 13 - malformed or misbound ACK never clears the draft or releases unknown intent
+  ---
+  duration_ms: 0.30375
+  type: 'test'
+  ...
+# Subtest: format read fails closed: {"extra":true}
+ok 14 - format read fails closed: {"extra":true}
+  ---
+  duration_ms: 0.297833
+  type: 'test'
+  ...
+# Subtest: format read fails closed: {"projectId":"73000000-0000-4000-8000-000000000009"}
+ok 15 - format read fails closed: {"projectId":"73000000-0000-4000-8000-000000000009"}
+  ---
+  duration_ms: 0.057041
+  type: 'test'
+  ...
+# Subtest: format read fails closed: {"timelineId":"73000000-0000-4000-8000-000000000002","timelineRevision":0}
+ok 16 - format read fails closed: {"timelineId":"73000000-0000-4000-8000-000000000002","timelineRevision":0}
+  ---
+  duration_ms: 0.06
+  type: 'test'
+  ...
+# Subtest: format read fails closed: {"presetId":"landscape_1080","width":1920,"height":1080}
+ok 17 - format read fails closed: {"presetId":"landscape_1080","width":1920,"height":1080}
+  ---
+  duration_ms: 0.041917
+  type: 'test'
+  ...
+# Subtest: format read fails closed: {"width":720}
+ok 18 - format read fails closed: {"width":720}
+  ---
+  duration_ms: 0.040834
+  type: 'test'
+  ...
+# Subtest: format read fails closed: {"blockedReasons":["NEW_UNKNOWN_REASON"],"eligible":false}
+ok 19 - format read fails closed: {"blockedReasons":["NEW_UNKNOWN_REASON"],"eligible":false}
+  ---
+  duration_ms: 0.079667
+  type: 'test'
+  ...
+# Subtest: format read fails closed: {"blockedReasons":["CLIPS_PRESENT"],"eligible":true}
+ok 20 - format read fails closed: {"blockedReasons":["CLIPS_PRESENT"],"eligible":true}
+  ---
+  duration_ms: 0.045167
+  type: 'test'
+  ...
+# Subtest: actual format panel uses accessible shared controls and tells the truth about scope, fixed fps and blocked reasons
+ok 21 - actual format panel uses accessible shared controls and tells the truth about scope, fixed fps and blocked reasons
+  ---
+  duration_ms: 4.036375
+  type: 'test'
+  ...
+# Subtest: retained format panel callbacks cannot edit, reset, read or submit a revisited project epoch
+ok 22 - retained format panel callbacks cannot edit, reset, read or submit a revisited project epoch
+  ---
+  duration_ms: 1.2845
+  type: 'test'
+  ...
+# Subtest: actual preview labels legacy frozen job dimensions, never the new current timeline
+ok 23 - actual preview labels legacy frozen job dimensions, never the new current timeline
+  ---
+  duration_ms: 3.600792
+  type: 'test'
+  ...
+# Subtest: actual monitor header and preflight summary use their own saved dimensions
+ok 24 - actual monitor header and preflight summary use their own saved dimensions
+  ---
+  duration_ms: 19.317
+  type: 'test'
+  ...
+# Subtest: actual inspector bounds follow landscape and square timelines and reject odd or overflowing rectangles
+ok 25 - actual inspector bounds follow landscape and square timelines and reject odd or overflowing rectangles
+  ---
+  duration_ms: 7.372084
+  type: 'test'
+  ...
+# Subtest: actual project-leave guard checks the independent draft and only discards after accepted current-owner navigation
+ok 26 - actual project-leave guard checks the independent draft and only discards after accepted current-owner navigation
+  ---
+  duration_ms: 1.146334
+  type: 'test'
+  ...
+# Subtest: actual navigation epoch guard prevents late confirmation from discarding a newer project draft
+ok 27 - actual navigation epoch guard prevents late confirmation from discarding a newer project draft
+  ---
+  duration_ms: 0.675208
+  type: 'test'
+  ...
+# Subtest: actual project guard preserves combined format and delivery-name drafts unless confirmation is current: accepted unchanged
+ok 28 - actual project guard preserves combined format and delivery-name drafts unless confirmation is current: accepted unchanged
+  ---
+  duration_ms: 2.606584
+  type: 'test'
+  ...
+# Subtest: actual project guard preserves combined format and delivery-name drafts unless confirmation is current: cancelled
+ok 29 - actual project guard preserves combined format and delivery-name drafts unless confirmation is current: cancelled
+  ---
+  duration_ms: 0.519083
+  type: 'test'
+  ...
+# Subtest: actual project guard preserves combined format and delivery-name drafts unless confirmation is current: newer name
+ok 30 - actual project guard preserves combined format and delivery-name drafts unless confirmation is current: newer name
+  ---
+  duration_ms: 0.476042
+  type: 'test'
+  ...
+# Subtest: actual project guard preserves combined format and delivery-name drafts unless confirmation is current: name changed back
+ok 31 - actual project guard preserves combined format and delivery-name drafts unless confirmation is current: name changed back
+  ---
+  duration_ms: 0.45
+  type: 'test'
+  ...
+# Subtest: actual project guard preserves combined format and delivery-name drafts unless confirmation is current: replacement controller
+ok 32 - actual project guard preserves combined format and delivery-name drafts unless confirmation is current: replacement controller
+  ---
+  duration_ms: 0.574875
+  type: 'test'
+  ...
+# Subtest: actual project guard preserves combined format and delivery-name drafts unless confirmation is current: replacement local controller
+ok 33 - actual project guard preserves combined format and delivery-name drafts unless confirmation is current: replacement local controller
+  ---
+  duration_ms: 0.601958
+  type: 'test'
+  ...
+# Subtest: actual project guard preserves combined format and delivery-name drafts unless confirmation is current: newer project epoch
+ok 34 - actual project guard preserves combined format and delivery-name drafts unless confirmation is current: newer project epoch
+  ---
+  duration_ms: 0.471125
+  type: 'test'
+  ...
+# Subtest: actual project guard preserves combined format and delivery-name drafts unless confirmation is current: newer format
+ok 35 - actual project guard preserves combined format and delivery-name drafts unless confirmation is current: newer format
+  ---
+  duration_ms: 0.546333
+  type: 'test'
+  ...
+# Subtest: actual project guard preserves combined format and delivery-name drafts unless confirmation is current: replacement format controller
+ok 36 - actual project guard preserves combined format and delivery-name drafts unless confirmation is current: replacement format controller
+  ---
+  duration_ms: 0.694292
+  type: 'test'
+  ...
+# Subtest: newer delivery title during joint confirmation preserves dirty inspector, format and local draft together
+ok 37 - newer delivery title during joint confirmation preserves dirty inspector, format and local draft together
+  ---
+  duration_ms: 0.935291
+  type: 'test'
+  ...
+# Subtest: actual format save callback uses only the existing durable timeline lane and exact frozen input
+ok 38 - actual format save callback uses only the existing durable timeline lane and exact frozen input
+  ---
+  duration_ms: 0.455542
+  type: 'test'
+  ...
+# Subtest: App keeps both Properties subpages mounted and keeps format dirtiness outside inspector reset logic
+ok 39 - App keeps both Properties subpages mounted and keeps format dirtiness outside inspector reset logic
+  ---
+  duration_ms: 16.336583
+  type: 'test'
+  ...
+# Subtest: actual dock pane retains child identity while hidden and removes it from focus and accessibility navigation
+ok 40 - actual dock pane retains child identity while hidden and removes it from focus and accessibility navigation
+  ---
+  duration_ms: 1.491167
+  type: 'test'
+  ...
+# Subtest: actual unload callback sees synchronous format edits and in-flight saves through its independent owner
+ok 41 - actual unload callback sees synchronous format edits and in-flight saves through its independent owner
+  ---
+  duration_ms: 0.894416
+  type: 'test'
+  ...
+# Subtest: actual unload callback observes either current format or delivery-name controller without retaining replaced owners
+ok 42 - actual unload callback observes either current format or delivery-name controller without retaining replaced owners
+  ---
+  duration_ms: 0.352208
+  type: 'test'
+  ...
+# Subtest: actual hook keeps the project draft across visibility and polling without creating a mutation
+ok 43 - actual hook keeps the project draft across visibility and polling without creating a mutation
+  ---
+  duration_ms: 7.133166
+  type: 'test'
+  ...
+1..43
+# tests 43
+# suites 0
+# pass 43
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 423.479541

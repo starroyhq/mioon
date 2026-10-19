@@ -1,0 +1,124 @@
+TAP version 13
+# Subtest: owned ordinary48 in preset 15/60 replaces the curve through durable Save, history and reopen
+ok 1 - owned ordinary48 in preset 15/60 replaces the curve through durable Save, history and reopen
+  ---
+  duration_ms: 2225.381333
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 in preset 60/60 replaces the curve through durable Save, history and reopen
+ok 2 - owned ordinary48 in preset 60/60 replaces the curve through durable Save, history and reopen
+  ---
+  duration_ms: 1833.19075
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 out preset 15/60 replaces the curve through durable Save, history and reopen
+ok 3 - owned ordinary48 out preset 15/60 replaces the curve through durable Save, history and reopen
+  ---
+  duration_ms: 1562.229083
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 out preset 60/60 replaces the curve through durable Save, history and reopen
+ok 4 - owned ordinary48 out preset 60/60 replaces the curve through durable Save, history and reopen
+  ---
+  duration_ms: 1425.129417
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 manual ducking four-point interval saves exact anchors and preserves source identity through history and reopen
+ok 5 - owned ordinary48 manual ducking four-point interval saves exact anchors and preserves source identity through history and reopen
+  ---
+  duration_ms: 1629.415084
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 manual ducking triangle with a shared ramp anchor saves exact anchors and preserves source identity through history and reopen
+ok 6 - owned ordinary48 manual ducking triangle with a shared ramp anchor saves exact anchors and preserves source identity through history and reopen
+  ---
+  duration_ms: 1565.975291
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 manual ducking full-range zero-ramp attenuation saves exact anchors and preserves source identity through history and reopen
+ok 7 - owned ordinary48 manual ducking full-range zero-ramp attenuation saves exact anchors and preserves source identity through history and reopen
+  ---
+  duration_ms: 1598.769333
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 manual ducking one-frame full-range attack saves exact anchors and preserves source identity through history and reopen
+ok 8 - owned ordinary48 manual ducking one-frame full-range attack saves exact anchors and preserves source identity through history and reopen
+  ---
+  duration_ms: 1575.190417
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 starts, durably prepares/applies, replays after Undo and reopens exact envelope receipts
+ok 9 - owned ordinary48 starts, durably prepares/applies, replays after Undo and reopens exact envelope receipts
+  ---
+  duration_ms: 1175.903959
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 source replacement, atomic shrink/clear, split and history preserve exact anchors
+ok 10 - owned ordinary48 source replacement, atomic shrink/clear, split and history preserve exact anchors
+  ---
+  duration_ms: 1398.397833
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 durable invalid source is terminal not_applied with no domain writes
+ok 11 - owned ordinary48 durable invalid source is terminal not_applied with no domain writes
+  ---
+  duration_ms: 703.735541
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 afterClaim interruption recovers without dispatch and rejects stale instance
+ok 12 - owned ordinary48 afterClaim interruption recovers without dispatch and rejects stale instance
+  ---
+  duration_ms: 923.428875
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 afterBusinessCommit interruption recovers without dispatch and rejects stale instance
+ok 13 - owned ordinary48 afterBusinessCommit interruption recovers without dispatch and rejects stale instance
+  ---
+  duration_ms: 921.393709
+  type: 'test'
+  ...
+# Subtest: owned restored49 keeps captured evidence immutable and admits envelope writes only in the current origin/epoch
+ok 14 - owned restored49 keeps captured evidence immutable and admits envelope writes only in the current origin/epoch
+  ---
+  duration_ms: 2888.558166
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 durable updates distinguish absent/null/value and retain inherited role/colour fields
+ok 15 - owned ordinary48 durable updates distinguish absent/null/value and retain inherited role/colour fields
+  ---
+  duration_ms: 1631.545625
+  type: 'test'
+  ...
+# Subtest: owned restored49 current-epoch afterClaim recovery preserves captured holds and rejects stale instances
+ok 16 - owned restored49 current-epoch afterClaim recovery preserves captured holds and rejects stale instances
+  ---
+  duration_ms: 1606.763833
+  type: 'test'
+  ...
+# Subtest: owned restored49 current-epoch afterBusinessCommit recovery preserves captured holds and rejects stale instances
+ok 17 - owned restored49 current-epoch afterBusinessCommit recovery preserves captured holds and rejects stale instances
+  ---
+  duration_ms: 1487.436208
+  type: 'test'
+  ...
+# Subtest: owned ordinary48 complete envelope budget fails atomically before history/redo/receipt/task writes
+ok 18 - owned ordinary48 complete envelope budget fails atomically before history/redo/receipt/task writes
+  ---
+  duration_ms: 1417.747875
+  type: 'test'
+  ...
+# Subtest: owned restored49 complete envelope budget fails atomically before history/redo/receipt/task writes
+ok 19 - owned restored49 complete envelope budget fails atomically before history/redo/receipt/task writes
+  ---
+  duration_ms: 1784.794208
+  type: 'test'
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 29792.550291

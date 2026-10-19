@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: task HTTP preserves authentication, cookie, host/origin, exact methods and bounded closed request schemas
+ok 1 - task HTTP preserves authentication, cookie, host/origin, exact methods and bounded closed request schemas
+  ---
+  duration_ms: 1132.65775
+  type: 'test'
+  ...
+# Subtest: GET/list are noncreating, strictly bound queries and never convert reads into dispatch or acknowledgement
+ok 2 - GET/list are noncreating, strictly bound queries and never convert reads into dispatch or acknowledgement
+  ---
+  duration_ms: 695.392
+  type: 'test'
+  ...
+# Subtest: fixed durable tasks cannot expose generation, rendering, arbitrary RPC or model/MCP authority
+ok 3 - fixed durable tasks cannot expose generation, rendering, arbitrary RPC or model/MCP authority
+  ---
+  duration_ms: 638.040375
+  type: 'test'
+  ...
+# Subtest: real lost prepare acknowledgement rediscovers the exact persisted intent without automatic POST or business change
+ok 4 - real lost prepare acknowledgement rediscovers the exact persisted intent without automatic POST or business change
+  ---
+  duration_ms: 746.361833
+  type: 'test'
+  ...
+# Subtest: real dropped execute response commits once; reads/restart do not replay and explicit reconcile returns historical receipt
+ok 5 - real dropped execute response commits once; reads/restart do not replay and explicit reconcile returns historical receipt
+  ---
+  duration_ms: 803.149667
+  type: 'test'
+  ...
+# Subtest: real process death at afterPreparePersist recovers before listen without dispatch and rejects stale instance callbacks
+ok 6 - real process death at afterPreparePersist recovers before listen without dispatch and rejects stale instance callbacks
+  ---
+  duration_ms: 2160.09425
+  type: 'test'
+  ...
+# Subtest: real process death at afterClaim recovers before listen without dispatch and rejects stale instance callbacks
+ok 7 - real process death at afterClaim recovers before listen without dispatch and rejects stale instance callbacks
+  ---
+  duration_ms: 2873.594459
+  type: 'test'
+  ...
+# Subtest: real process death at afterBusinessCommit recovers before listen without dispatch and rejects stale instance callbacks
+ok 8 - real process death at afterBusinessCommit recovers before listen without dispatch and rejects stale instance callbacks
+  ---
+  duration_ms: 2794.552333
+  type: 'test'
+  ...
+# Subtest: legacy session import reconciles exact old RPC receipts and closes the lane only on explicit acknowledgement
+ok 9 - legacy session import reconciles exact old RPC receipts and closes the lane only on explicit acknowledgement
+  ---
+  duration_ms: 787.280833
+  type: 'test'
+  ...
+# Subtest: reference attach/detach task receipts remain historical and GET does not reattach a removed edge
+ok 10 - reference attach/detach task receipts remain historical and GET does not reattach a removed edge
+  ---
+  duration_ms: 742.117709
+  type: 'test'
+  ...
+# Subtest: official CLI and MCP replay the same domain receipts after task execution without exposing task tools
+ok 11 - official CLI and MCP replay the same domain receipts after task execution without exposing task tools
+  ---
+  duration_ms: 1794.769958
+  type: 'test'
+  ...
+# Subtest: shutdown rejects a late request body and waits for owned HTTP work before releasing SQLite
+ok 12 - shutdown rejects a late request body and waits for owned HTTP work before releasing SQLite
+  ---
+  duration_ms: 710.899625
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 16378.820583

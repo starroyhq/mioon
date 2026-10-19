@@ -1,0 +1,83 @@
+{
+  "url": "http://127.0.0.1:52924",
+  "scope": "Real built App in a private preview workspace; physical viewport and temporary CSS scale, no display preference PUT.",
+  "checks": [
+    {
+      "check": "1050 dual icon rails",
+      "geometry": {
+        "workbench": {
+          "x": 0,
+          "y": 0,
+          "width": 1050,
+          "height": 680
+        },
+        "reopen-assets": {
+          "x": 6,
+          "y": 50,
+          "width": 44,
+          "height": 624
+        },
+        "reopen-inspector": {
+          "x": 1000,
+          "y": 50,
+          "width": 44,
+          "height": 624
+        },
+        "dock-canvas": {
+          "x": 0,
+          "y": 44,
+          "width": 1050,
+          "height": 636
+        }
+      }
+    },
+    {
+      "check": "temporary overlay, pin and collapse",
+      "geometry": {
+        "workbench": {
+          "x": 0,
+          "y": 0,
+          "width": 1050,
+          "height": 680
+        },
+        "reopen-assets": {
+          "x": 6,
+          "y": 50,
+          "width": 44,
+          "height": 624
+        },
+        "reopen-inspector": {
+          "x": 1000,
+          "y": 50,
+          "width": 44,
+          "height": 624
+        },
+        "dock-canvas": {
+          "x": 0,
+          "y": 44,
+          "width": 1050,
+          "height": 636
+        }
+      }
+    },
+    {
+      "check": "1440 restores saved expanded panels with exact draft"
+    },
+    {
+      "check": "physical 1050 viewport remains dual rails",
+      "scale": 0.9
+    },
+    {
+      "check": "physical 1050 viewport remains dual rails",
+      "scale": 1
+    },
+    {
+      "check": "physical 1050 viewport remains dual rails",
+      "scale": 1.25
+    }
+  ],
+  "pageErrors": [],
+  "workspacePreferenceWrites": [],
+  "creativeMutations": [],
+  "passed": true
+}

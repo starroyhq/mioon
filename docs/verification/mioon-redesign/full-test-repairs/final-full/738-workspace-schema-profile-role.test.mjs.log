@@ -1,0 +1,76 @@
+TAP version 13
+# Subtest: ordinary known markers retain legacy missing-marker repair eligibility
+ok 1 - ordinary known markers retain legacy missing-marker repair eligibility
+  ---
+  duration_ms: 2.025542
+  type: 'test'
+  ...
+# Subtest: only explicit 25 is restored marker evidence, never an unknown future version
+ok 2 - only explicit 25 is restored marker evidence, never an unknown future version
+  ---
+  duration_ms: 2.029208
+  type: 'test'
+  ...
+# Subtest: unknown marker table shape fails closed instead of bypassing version role checking
+ok 3 - unknown marker table shape fails closed instead of bypassing version role checking
+  ---
+  duration_ms: 0.359167
+  type: 'test'
+  ...
+# Subtest: partial restoration objects remain evidence independently of marker ordering
+ok 4 - partial restoration objects remain evidence independently of marker ordering
+  ---
+  duration_ms: 0.5985
+  type: 'test'
+  ...
+# Subtest: SQLite case-insensitive identifiers cannot bypass role or partial-restoration checking
+ok 5 - SQLite case-insensitive identifiers cannot bypass role or partial-restoration checking
+  ---
+  duration_ms: 0.677834
+  type: 'test'
+  ...
+# Subtest: marker views and unreadably long marker DDL refuse instead of returning ordinary
+ok 6 - marker views and unreadably long marker DDL refuse instead of returning ordinary
+  ---
+  duration_ms: 0.792833
+  type: 'test'
+  ...
+# Subtest: unreadable edit-task DDL cannot hide a partial restoration epoch
+ok 7 - unreadable edit-task DDL cannot hide a partial restoration epoch
+  ---
+  duration_ms: 0.708334
+  type: 'test'
+  ...
+# Subtest: role checks main namespace, unaffected by a temporary marker shadow
+ok 8 - role checks main namespace, unaffected by a temporary marker shadow
+  ---
+  duration_ms: 0.621208
+  type: 'test'
+  ...
+# Subtest: finite exceptional-marker query bounds output without MAX or numeric role inference
+ok 9 - finite exceptional-marker query bounds output without MAX or numeric role inference
+  ---
+  duration_ms: 31.751
+  type: 'test'
+  ...
+# Subtest: unknown marker 28 refuses startup/context/backup/migration/restore before downstream execution
+ok 10 - unknown marker 28 refuses startup/context/backup/migration/restore before downstream execution
+  ---
+  duration_ms: 273.325958
+  type: 'test'
+  ...
+# Subtest: unknown marker 29 refuses startup/context/backup/migration/restore before downstream execution
+ok 11 - unknown marker 29 refuses startup/context/backup/migration/restore before downstream execution
+  ---
+  duration_ms: 283.931334
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 865.44675

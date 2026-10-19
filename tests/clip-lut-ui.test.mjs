@@ -9,6 +9,11 @@ import { createClipLutRecovery, clipLutRecoveryKey, clipLutRecoveryMetadata } fr
 import { clipDraftRaw, clipDraftPatch, createClipDraftController } from '../apps/web/src/clip-draft-state.ts';
 import { clipDraftRawSchema, clipDraftDiskSchema } from '../packages/contracts/src/local-drafts.ts';
 import { clipReplacementAcknowledged } from '../apps/web/src/clip-source-replacement.js';
+import { DEFAULT_UI_PREFERENCES } from '../packages/contracts/src/ui-preferences.ts';
+import * as creationI18n from '../apps/web/src/creation-i18n.ts';
+import * as exportSettings from '../apps/web/src/export-settings-state.js';
+import * as sourceRanges from '../apps/web/src/source-range-state.js';
+import { i18nTestModule } from './helpers/i18n.ts';
 
 const id = n => `90000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), clipId = id(2), assetId = id(3), timelineId = id(4), trackId = id(5), stamp = '2026-10-14T18:00:00.000Z';
@@ -164,20 +169,20 @@ test('source replacement ACK must clear interpretation but retain exact creative
   assert.equal(clipReplacementAcknowledged(review, response(null)), false);
 });
 
-function renderControls(state, ctx = context(), kind = 'video') {
-  const module = { exports: {} }, noop = () => {}, controller = new Proxy({ getState: () => state }, { get: (target, key) => target[key] || noop });
-  const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), useRef: value => ({ current: value }), useState: () => [state, noop], useLayoutEffect: noop }; react.default = react;
+function renderControls(state, ctx = context(), kind = 'video', locale = 'zh-Hans', options = {}) {
+  const module = { exports: {} }, noop = () => {}, controller = options.controller ?? new Proxy({ getState: () => state }, { get: (target, key) => target[key] || noop });
+  const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), useRef: value => ({ current: value }), useState: () => [state, noop], useLayoutEffect: options.controller ? action => { action(); } : noop }; react.default = react;
   const output = transformSync(readFileSync(new URL('../apps/web/src/ClipLutControls.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
   Function('require', 'module', 'exports', output)(name => {
     if (name === 'react') return react;
-    if (name === './i18n/I18nProvider.tsx') return { useI18n: () => ({ t: (key, params) => translate('zh-Hans', key, params), renderMessage: value => renderMessage('zh-Hans', value), formatNumber: value => formatNumber('zh-Hans', value) }) };
+    if (name === './i18n/I18nProvider.tsx') return { useI18n: () => ({ t: (key, params) => translate(locale, key, params), renderMessage: value => renderMessage(locale, value), formatNumber: value => formatNumber(locale, value) }) };
     if (name === './LookPackControls.tsx') return { default: 'LookPackControls', LookPackDetails: 'LookPackDetails' };
     if (name === './clip-draft-client.ts') return { createClipDraftClient: () => ({ get: noop }) };
     if (name === './clip-lut-state.ts') return { createClipLutController: () => controller, clipLutSourceIssue, clipLutSourceMessage };
     if (name.startsWith('@mioon/ui/components/')) return { [name.split('/').at(-1).replace(/^./, value => value.toUpperCase())]: name };
     throw Error(`Unexpected ${name}`);
   }, module, module.exports);
-  return module.exports.default({ context: ctx, kind, onEdit: noop, rpc: noop, Select: 'Select' });
+  return module.exports.default({ context: ctx, kind, onEdit: options.onEdit ?? noop, rpc: options.rpc ?? noop, Select: 'Select' });
 }
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
 const textOf = tree => Array.isArray(tree) ? tree.map(textOf).join(' ') : tree && typeof tree === 'object' ? textOf(tree.props?.children) : tree ?? '';
@@ -193,8 +198,48 @@ test('actual controls disclose whole-timeline adoption, source-ungraded status a
   assert.equal(byId('clip-lut-file').props.accept, '.cube'); assert.equal(byId('clip-lut-strength').props.min, 0); assert.equal(byId('clip-lut-strength').props.max, 100);
   assert.equal(nodes(tree).filter(node => String(node.type).includes('button')).every(node => node.props.type === 'button'), true);
   assert.match(readFileSync(new URL('../apps/web/src/TimelineInspector.jsx', import.meta.url), 'utf8'), /<ClipLutControls/);
-  assert.match(readFileSync(new URL('../apps/web/src/Preview.jsx', import.meta.url), 'utf8'), /t\('timeline\.preview\.sourceUnprocessed'\)/);
   assert.match(translate('zh-Hans', 'timeline.preview.sourceUnprocessed'), /未调色，不应用片段 LUT/);
+});
+
+test('actual source Preview visibly discloses unprocessed audio and image while rendered timeline output does not', () => {
+  const code = transformSync(readFileSync(new URL('../apps/web/src/Preview.jsx', import.meta.url), 'utf8'), {loader:'jsx', format:'cjs'}).code;
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) {
+    const noop = () => {}, module = {exports:{}};
+    // Only render-phase wiring is exercised here; the existing playback and
+    // visibility suites own media lifecycle and asynchronous browser events.
+    const react = {createElement:(type, props, ...children) => ({type, props:{...props, children}}), useRef:value => ({current:value}), useState:value => [value, noop], useEffect:noop, useLayoutEffect:noop};
+    react.default = react;
+    Function('require', 'module', 'exports', code)(name => {
+      if (name === 'react') return react;
+      if (name === './i18n/I18nProvider.tsx') return i18nTestModule(locale);
+      if (name === './UiPreferencesProvider.tsx') return {useUiPreferences:() => ({preferences:DEFAULT_UI_PREFERENCES})};
+      if (name === './creation-i18n.ts') return creationI18n;
+      if (name === './export-settings-state.js') return exportSettings;
+      if (name === './source-range-state.js') return sourceRanges;
+      if (name === './api.js') return {assetUrl:asset => asset?.url || ''};
+      if (name === './Timeline.jsx') return {assetKind:asset => asset?.mimeType?.split('/')[0]};
+      if (name === './workspace-visibility.jsx') return {useWorkspaceVisibility:() => true};
+      if (name.endsWith('.css')) return {};
+      return new Proxy({}, {get:(_, key) => String(key)});
+    }, module, module.exports);
+    const timeline = {id:timelineId, projectId, revision:1, width:720, height:1280, fps:30, durationFrames:30, clips:[{id:clipId}]};
+    const base = {kind:'source', timeline, playhead:0, onSeek:noop};
+    for (const mimeType of ['video/mp4', 'image/png', 'audio/wav']) for (const clip of [undefined, {id:clipId, startFrame:0, sourceInFrame:0, durationFrames:30}]) {
+      const asset = {id:assetId, projectId, mimeType, name:'Owned original', url:'/media/owned-original', duration:1, width:720, height:1280};
+      const tree = module.exports.default({...base, asset, clip});
+      const notice = nodes(tree).find(node => node.props?.['data-testid'] === 'preview-source-unprocessed');
+      assert.ok(notice, `${locale} ${mimeType} source disclosure`);
+      assert.equal(textOf(notice), translate(locale, 'timeline.preview.sourceUnprocessed'));
+      const label = nodes(tree).find(node => node.props?.className === 'preview-stage-label');
+      assert.equal(label.props.style.whiteSpace, 'normal', 'The visible source disclosure wraps instead of hiding its LUT qualification');
+      assert.equal(label.props.hidden, undefined); assert.equal(label.props['aria-hidden'], undefined);
+      assert.equal(nodes(tree).find(node => ['video','audio','img'].includes(node.type))?.props.src, asset.url);
+    }
+    const rendered = module.exports.default({...base, kind:'timeline', job:{id:id(90), status:'succeeded', timelineRevision:1, url:'/media/frozen-render', snapshot:{timeline}}});
+    assert.equal(nodes(rendered).some(node => node.props?.['data-testid'] === 'preview-source-unprocessed'), false);
+    const empty = module.exports.default(base);
+    assert.equal(nodes(empty).some(node => node.props?.['data-testid'] === 'preview-source-unprocessed'), false);
+  }
 });
 
 test('retained controls cannot act after disposal; source reinspection revokes old approval', async t => {
@@ -451,4 +496,206 @@ test('absent-hint reconciliation preserves newer, foreign, mismatching and uncon
     assert.equal(h.calls.some(([op]) => op === 'lut.import'), false); assert.deepEqual(h.edits, []);
     if (scenario !== 'scope') assert.equal(h.state().recoveryPhase, 'error');
   }
+});
+
+const sourceInfoLocales = ['zh-Hans', 'zh-Hant', 'en', 'ja'];
+const controlById = (tree, testId) => nodes(tree).find(node => node.props?.['data-testid'] === testId);
+const renderLiveControls = (h, locale = 'en', kind = h.live().kind ?? 'video') => renderControls(h.state(), h.live(), kind, locale, {
+  controller: h.controller,
+  rpc: () => assert.fail('rendering source information must not dispatch a new RPC'),
+  onEdit: () => assert.fail('rendering source information must not edit a clip'),
+});
+const assertControlMessage = (tree, testId, locale, key, params) => {
+  const node = controlById(tree, testId);
+  assert.ok(node, `${testId} is visible in ${locale}`);
+  assert.equal(textOf(node), translate(locale, key, params));
+};
+const assertNoProbeEvidence = tree => {
+  for (const testId of ['clip-lut-source-evidence', 'clip-lut-source-depth', 'clip-lut-source-provenance']) assert.equal(controlById(tree, testId), undefined, testId);
+};
+const assertReadOnlySourceCalls = (h, expected) => {
+  assert.deepEqual(h.calls.map(([operation]) => operation), expected);
+  assert.deepEqual(h.edits, []);
+};
+
+for (const locale of sourceInfoLocales) test(`video limits and unknown source are visible before any explicit probe (${locale})`, t => {
+  for (const savedColour of [undefined, colour()]) {
+    const h = harness(t, { current: context({ colour: savedColour }) });
+    const tree = renderLiveControls(h, locale);
+    assertControlMessage(tree, 'clip-lut-video-limits', locale, 'colour.lut.videoLimits');
+    assertControlMessage(tree, 'clip-lut-source-uninspected', locale, 'colour.lut.sourceUninspected');
+    assertNoProbeEvidence(tree);
+    assert.equal(Boolean(controlById(tree, 'clip-lut-source-confirmed')), Boolean(savedColour), 'saved user interpretation is separate from probe evidence');
+    assert.equal(controlById(tree, 'open-clip-lut').props.type, 'button');
+    assert.equal(controlById(tree, 'inspect-clip-colour-source'), undefined);
+    assertReadOnlySourceCalls(h, []);
+  }
+});
+
+for (const locale of sourceInfoLocales) for (const depth of [8, 10, null]) test(`explicit source check shows exact ${depth ?? 'unknown'}-bit stream observations (${locale})`, async t => {
+  const response = inspection({ streamIndex: 3, status: depth === null ? 'unsupported' : 'compatible',
+    evidence: { ...inspection().evidence, pixelFormat: depth === 10 ? 'yuv422p10le' : 'yuv420p', bitDepth: depth } });
+  const h = harness(t, { handler: operation => operation === 'timeline.colour.source.inspect' ? response : undefined });
+  let tree = renderLiveControls(h, locale);
+  assertReadOnlySourceCalls(h, []);
+  assert.equal(controlById(tree, 'open-clip-lut').props.onClick(), true);
+  await tick();
+  assert.equal(h.state().sourcePhase, 'ready', 'the fixture is accepted by the existing inspection contract');
+  tree = renderLiveControls(h, locale);
+  assertControlMessage(tree, 'clip-lut-video-limits', locale, 'colour.lut.videoLimits');
+  assertControlMessage(tree, 'clip-lut-source-depth', locale, 'colour.lut.videoBitDepth', { stream: 3, depth: depth ?? translate(locale, 'colour.lut.unknown') });
+  assertControlMessage(tree, 'clip-lut-source-provenance', locale, 'colour.lut.videoEvidenceLimits');
+  assertControlMessage(tree, 'clip-lut-source-evidence', locale, 'colour.lut.videoEvidence', {
+    primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'limited', pixel: response.evidence.pixelFormat, hdr: translate(locale, 'colour.lut.noHdrMetadata'),
+  });
+  assert.equal(controlById(tree, 'clip-lut-source-uninspected'), undefined);
+  assert.equal(h.state().inspection.evidence.bitDepth, depth, 'display does not fill a missing depth or reinterpret 10-bit as HDR');
+  assert.equal(h.state().range, '');
+  assert.equal(h.state().sourceDeclared, false);
+  assert.equal(controlById(tree, 'confirm-clip-colour-source').props.disabled, true);
+  renderLiveControls(h, locale);
+  assertReadOnlySourceCalls(h, ['timeline.colour.source.inspect', 'lut.list']);
+});
+
+test('observed HDR, Log and non-709 tags remain raw and cannot be overridden from the actual controls', async t => {
+  const cases = [
+    { transfer: 'smpte2084' }, { transfer: 'arib-std-b67' }, { transfer: 'log100' },
+    { primaries: 'bt2020' }, { matrix: 'bt470bg' }, { hdrMetadata: true }, { pixelFormat: 'yuv420p12le', bitDepth: 12 },
+  ];
+  for (const evidence of cases) {
+    const response = inspection({ status: 'unsupported', reason: 'Observed tags are outside the supported source interpretation', evidence: { ...inspection().evidence, ...evidence } });
+    const h = harness(t, { handler: operation => operation === 'timeline.colour.source.inspect' ? response : undefined });
+    controlById(renderLiveControls(h), 'open-clip-lut').props.onClick(); await tick();
+    assert.equal(h.state().sourcePhase, 'ready');
+    const tree = renderLiveControls(h), allEvidence = textOf(controlById(tree, 'clip-lut-source-evidence'));
+    for (const [field, value] of Object.entries(evidence)) if (typeof value === 'string') assert.ok(allEvidence.includes(value), `${field} is displayed without classification`);
+    if (evidence.hdrMetadata) assert.ok(allEvidence.includes(translate('en', 'colour.lut.hdrMetadata')));
+    if (evidence.bitDepth) assertControlMessage(tree, 'clip-lut-source-depth', 'en', 'colour.lut.videoBitDepth', { stream: 0, depth: evidence.bitDepth });
+    assert.equal(controlById(tree, 'clip-lut-source-range').props.disabled, true);
+    assert.equal(controlById(tree, 'clip-lut-source-declaration').props.disabled, true);
+    assert.equal(controlById(tree, 'confirm-clip-colour-source').props.disabled, true);
+    assert.ok(controlById(tree, 'clip-lut-source-issue'));
+    controlById(tree, 'clip-lut-source-range').props.onChange({ target: { value: 'limited' } });
+    controlById(tree, 'clip-lut-source-declaration').props.onChange({ target: { checked: true } });
+    assert.equal(controlById(tree, 'confirm-clip-colour-source').props.onClick(), false, 'retained handlers do not bypass the original source guard');
+    assertReadOnlySourceCalls(h, ['timeline.colour.source.inspect', 'lut.list']);
+  }
+});
+
+test('missing tags and no reported HDR side data stay observations, with no automatic SDR declaration', async t => {
+  for (const locale of sourceInfoLocales) {
+    const response = inspection({ status: 'needs_interpretation', evidence: { ...inspection().evidence, primaries: null, transfer: null, matrix: null, range: null } });
+    const h = harness(t, { handler: operation => operation === 'timeline.colour.source.inspect' ? response : undefined });
+    controlById(renderLiveControls(h, locale), 'open-clip-lut').props.onClick(); await tick();
+    const tree = renderLiveControls(h, locale), evidence = textOf(controlById(tree, 'clip-lut-source-evidence'));
+    assert.equal(h.state().sourcePhase, 'ready');
+    assert.equal(h.state().inspection.status, 'needs_interpretation');
+    assert.equal(h.state().inspection.evidence.primaries, null);
+    assert.ok(evidence.includes(translate(locale, 'colour.lut.untagged')));
+    assert.ok(evidence.includes(translate(locale, 'colour.lut.noHdrMetadata')));
+    assertControlMessage(tree, 'clip-lut-source-provenance', locale, 'colour.lut.videoEvidenceLimits');
+    assert.equal(h.state().range, ''); assert.equal(h.state().sourceDeclared, false);
+    assert.equal(controlById(tree, 'confirm-clip-colour-source').props.disabled, true);
+    assertReadOnlySourceCalls(h, ['timeline.colour.source.inspect', 'lut.list']);
+  }
+  assert.match(translate('en', 'colour.lut.videoEvidenceLimits'), /10-bit depth or no reported HDR side data do not prove SDR/);
+  assert.match(translate('en', 'colour.lut.videoEvidenceLimits'), /Log is not inferred from filenames or brands/);
+  assert.match(translate('en', 'colour.lut.sourceUninspected'), /user declaration.*does not mean SDR/);
+});
+
+test('10-bit inspection remains read-only until the original range and declaration buttons are used', async t => {
+  const response = inspection({ evidence: { ...inspection().evidence, pixelFormat: 'p010le', bitDepth: 10 } });
+  const h = harness(t, { handler: operation => operation === 'timeline.colour.source.inspect' ? response : undefined });
+  controlById(renderLiveControls(h), 'open-clip-lut').props.onClick(); await tick();
+  let tree = renderLiveControls(h);
+  assert.equal(controlById(tree, 'confirm-clip-colour-source').props.onClick(), false);
+  controlById(tree, 'clip-lut-source-range').props.onChange({ target: { value: 'limited' } });
+  tree = renderLiveControls(h);
+  assert.equal(controlById(tree, 'confirm-clip-colour-source').props.disabled, true);
+  assertReadOnlySourceCalls(h, ['timeline.colour.source.inspect', 'lut.list']);
+  controlById(tree, 'clip-lut-source-declaration').props.onChange({ target: { checked: true } });
+  tree = renderLiveControls(h);
+  assert.equal(controlById(tree, 'confirm-clip-colour-source').props.disabled, false);
+  assert.equal(controlById(tree, 'confirm-clip-colour-source').props.onClick(), true);
+  assert.deepEqual(h.edits, [colour()]);
+  assert.equal(Object.hasOwn(h.live().colour.source, 'evidence'), false, 'a video user declaration does not persist probe observations as technical conversion evidence');
+  assert.deepEqual(h.calls.map(([operation]) => operation), ['timeline.colour.source.inspect', 'lut.list'], 'source confirmation still edits only the draft, with no Save, import or render RPC');
+});
+
+test('explicit reinspection clears old observations while loading and after probe errors', async t => {
+  const gate = deferred(); let attempts = 0;
+  const h = harness(t, { handler: operation => operation === 'timeline.colour.source.inspect' ? (++attempts === 1 ? inspection() : gate.promise) : undefined });
+  controlById(renderLiveControls(h), 'open-clip-lut').props.onClick(); await tick();
+  let tree = renderLiveControls(h);
+  assert.ok(controlById(tree, 'clip-lut-source-depth'));
+  controlById(tree, 'inspect-clip-colour-source').props.onClick();
+  assert.equal(h.state().sourcePhase, 'loading');
+  for (const locale of sourceInfoLocales) {
+    tree = renderLiveControls(h, locale);
+    assertControlMessage(tree, 'clip-lut-source-uninspected', locale, 'colour.lut.sourceUninspected');
+    assertNoProbeEvidence(tree);
+    assert.equal(controlById(tree, 'inspect-clip-colour-source').props.disabled, true);
+  }
+  gate.reject(Error('Synthetic inspection unavailable')); await tick();
+  assert.equal(h.state().sourcePhase, 'error');
+  for (const locale of sourceInfoLocales) {
+    tree = renderLiveControls(h, locale);
+    assertControlMessage(tree, 'clip-lut-source-uninspected', locale, 'colour.lut.sourceUninspected');
+    assertNoProbeEvidence(tree);
+    assert.equal(controlById(tree, 'confirm-clip-colour-source').props.disabled, true);
+  }
+  assertReadOnlySourceCalls(h, ['timeline.colour.source.inspect', 'lut.list', 'timeline.colour.source.inspect']);
+});
+
+test('a retained observed snapshot never displays probe evidence for a different project, asset or hash', async t => {
+  const h = harness(t); controlById(renderLiveControls(h), 'open-clip-lut').props.onClick(); await tick();
+  h.controller.chooseRange('limited'); h.controller.declareSource(true);
+  const observed = h.state(); assert.ok(observed.inspection); assert.equal(observed.sourceDeclared, true);
+  for (const patch of [{ projectId: id(90) }, { assetId: id(91) }, { assetSha256: 'f'.repeat(64) }]) {
+    for (const locale of sourceInfoLocales) {
+      const tree = renderControls(observed, context(patch), 'video', locale);
+      assertControlMessage(tree, 'clip-lut-source-uninspected', locale, 'colour.lut.sourceUninspected');
+      assertNoProbeEvidence(tree);
+      assert.equal(controlById(tree, 'clip-lut-source-issue'), undefined, 'no old-source interpretation issue is attributed to the new source');
+      assert.equal(controlById(tree, 'clip-lut-source-range').props.disabled, true);
+      assert.equal(controlById(tree, 'confirm-clip-colour-source').props.disabled, true);
+    }
+  }
+  assertReadOnlySourceCalls(h, ['timeline.colour.source.inspect', 'lut.list']);
+});
+
+test('source replacement drops late responses and requires an explicit check of the replacement bytes', async t => {
+  const gate = deferred(), nextHash = 'f'.repeat(64); let attempts = 0;
+  const h = harness(t, { handler: (operation, input) => operation === 'timeline.colour.source.inspect' ? (++attempts === 1 ? gate.promise : inspection({ assetId: input.assetId, assetSha256: nextHash, streamIndex: 2 })) : undefined });
+  controlById(renderLiveControls(h), 'open-clip-lut').props.onClick();
+  h.set({ assetId: id(91), assetSha256: nextHash }); h.controller.refresh();
+  gate.resolve(inspection()); await tick();
+  let tree = renderLiveControls(h);
+  assert.equal(h.state().inspection, null); assertNoProbeEvidence(tree);
+  assertControlMessage(tree, 'clip-lut-source-uninspected', 'en', 'colour.lut.sourceUninspected');
+  assertReadOnlySourceCalls(h, ['timeline.colour.source.inspect', 'lut.list']);
+  controlById(tree, 'open-clip-lut').props.onClick(); await tick(); tree = renderLiveControls(h);
+  assert.equal(h.state().inspection.assetId, id(91)); assert.equal(h.state().inspection.assetSha256, nextHash);
+  assertControlMessage(tree, 'clip-lut-source-depth', 'en', 'colour.lut.videoBitDepth', { stream: 2, depth: 8 });
+  assertReadOnlySourceCalls(h, ['timeline.colour.source.inspect', 'lut.list', 'timeline.colour.source.inspect', 'lut.list']);
+});
+
+test('image and audio controls do not inherit video limits or video probe depth', async t => {
+  const video = harness(t); controlById(renderLiveControls(video), 'open-clip-lut').props.onClick(); await tick();
+  for (const locale of sourceInfoLocales) {
+    const h = harness(t, { current: context({ kind: 'image' }), handler: operation => operation === 'timeline.colour.image.inspect' ? imageInspection() : undefined });
+    for (const opened of [false, true]) {
+      if (opened) { controlById(renderLiveControls(h, locale), 'open-clip-lut').props.onClick(); await tick(); }
+      const tree = renderLiveControls(h, locale);
+      for (const testId of ['clip-lut-video-limits', 'clip-lut-source-uninspected', 'clip-lut-source-depth', 'clip-lut-source-provenance', 'clip-lut-source-evidence']) assert.equal(controlById(tree, testId), undefined, testId);
+      assert.equal(Boolean(controlById(tree, 'clip-image-source-evidence')), opened);
+      assert.equal(renderLiveControls(h, locale, 'audio'), null);
+    }
+    assertReadOnlySourceCalls(h, ['timeline.colour.image.inspect', 'lut.list']);
+    const retainedVideoTree = renderControls(video.state(), context({ kind: 'image' }), 'image', locale);
+    for (const testId of ['clip-lut-video-limits', 'clip-lut-source-uninspected', 'clip-lut-source-depth', 'clip-lut-source-provenance', 'clip-lut-source-evidence']) assert.equal(controlById(retainedVideoTree, testId), undefined, `image cannot display retained ${testId}`);
+    assert.equal(controlById(retainedVideoTree, 'clip-lut-source-issue'), undefined, 'image cannot inherit a video interpretation issue');
+    assert.equal(controlById(retainedVideoTree, 'confirm-clip-colour-source').props.disabled, true);
+  }
+  assertReadOnlySourceCalls(video, ['timeline.colour.source.inspect', 'lut.list']);
 });

@@ -52,7 +52,7 @@ test('late recovery answer cannot act on replacement context and duplicate same-
 });
 test('backend failure blocks interaction irreversibly for that scope and grants only one prompt', () => {
   const old = createProjectBackendIncident(); assert.equal(old.failed, false); assert.doesNotThrow(() => old.assertAlive()); old.fail(); assert.equal(old.failed, true);
-  assert.throws(() => old.assertAlive(), {code: 'BACKEND_START_EXITED', message: '本地服务在窗口准备完成前已停止。'});
+  assert.throws(() => old.assertAlive(), {code: 'BACKEND_START_EXITED', message: '本地服务在窗口准备完成前已停止'});
   assert.equal(old.claimPrompt(), true); assert.equal(old.claimPrompt(), false); assert.equal(old.failed, true);
   assert.equal(createProjectBackendIncident().failed, false);
 });

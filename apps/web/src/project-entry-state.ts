@@ -166,7 +166,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
       }
     } catch { if (alive(owner) && serial === readSerial) emit({ listBusy: false, listError: msg('projects.listUnavailable') }); }
   }
-  async function create(name: string, description: string): Promise<boolean> {
+  async function create(name: string, description: string, timelinePresetId?: string): Promise<boolean> {
     if (!available() || !state.workspace || state.workspace.restored) return false;
     // The view's submit latch may already be busy; this exact call alone owns
     // it. No second submission can enter after creating is set synchronously.
@@ -185,7 +185,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
     } catch { if (alive(owner)) emit({ creating: false, notice: msg('projects.unconfirmedNotCreated') }); return false; }
     if (!ownerCurrent() || !visible || context.role === 'launcher' && context.editorCount > 0) { emit({ creating: false }); return false; }
     let created;
-    try { created = await client.create(name, description); }
+    try { created = await client.create(name, description, timelinePresetId); }
     catch (error) {
       if (alive(owner)) {
         const rejected = error instanceof LauncherCreateError && error.outcome === 'rejected';

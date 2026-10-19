@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: restore context remains outside original task and domain receipt
+ok 1 - restore context remains outside original task and domain receipt
+  ---
+  duration_ms: 1.859125
+  type: 'test'
+  ...
+# Subtest: held and mismatched task epochs never borrow a current inspection origin
+ok 2 - held and mismatched task epochs never borrow a current inspection origin
+  ---
+  duration_ms: 0.7025
+  type: 'test'
+  ...
+# Subtest: task list restore metadata requires exactly one matching ordered context per row
+ok 3 - task list restore metadata requires exactly one matching ordered context per row
+  ---
+  duration_ms: 0.726875
+  type: 'test'
+  ...
+# Subtest: ordinary task envelopes cannot silently become restored, and missing restored metadata fails closed
+ok 4 - ordinary task envelopes cannot silently become restored, and missing restored metadata fails closed
+  ---
+  duration_ms: 0.227333
+  type: 'test'
+  ...
+# Subtest: invalid task workspace identity preserves exact diagnostic and localizes retained-request guidance without changing envelope
+ok 5 - invalid task workspace identity preserves exact diagnostic and localizes retained-request guidance without changing envelope
+  ---
+  duration_ms: 0.303584
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 251.677292

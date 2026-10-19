@@ -1,0 +1,106 @@
+TAP version 13
+# Subtest: whole SQLite bytes, unknown journals and canonical assets survive while settings/token/browser data are excluded
+ok 1 - whole SQLite bytes, unknown journals and canonical assets survive while settings/token/browser data are excluded
+  ---
+  duration_ms: 109.354083
+  type: 'test'
+  ...
+# Subtest: disk receipt preserves task-bound final PNG before asset registration, plus partial PNG without invented recovery
+ok 2 - disk receipt preserves task-bound final PNG before asset registration, plus partial PNG without invented recovery
+  ---
+  duration_ms: 109.755625
+  type: 'test'
+  ...
+# Subtest: DB receipt alone retains a final PNG and reports missing durable manifest
+ok 3 - DB receipt alone retains a final PNG and reports missing durable manifest
+  ---
+  duration_ms: 69.097875
+  type: 'test'
+  ...
+# Subtest: valid receipt with no staged or final PNG is explicitly incomplete
+ok 4 - valid receipt with no staged or final PNG is explicitly incomplete
+  ---
+  duration_ms: 63.728083
+  type: 'test'
+  ...
+# Subtest: known unfinished video and export files are evidence; arbitrary files and renderer directories are excluded
+ok 5 - known unfinished video and export files are evidence; arbitrary files and renderer directories are excluded
+  ---
+  duration_ms: 106.467333
+  type: 'test'
+  ...
+# Subtest: issues distinguish missing and mismatched registered bytes, malformed and oversized metadata
+ok 6 - issues distinguish missing and mismatched registered bytes, malformed and oversized metadata
+  ---
+  duration_ms: 67.672
+  type: 'test'
+  ...
+# Subtest: issue detail is capped without concealing total issues or asserting completeness
+ok 7 - issue detail is capped without concealing total issues or asserting completeness
+  ---
+  duration_ms: 111.461375
+  type: 'test'
+  ...
+# Subtest: inconsistent image input/snapshot cannot attest a receipt-derived final path
+ok 8 - inconsistent image input/snapshot cannot attest a receipt-derived final path
+  ---
+  duration_ms: 98.013958
+  type: 'test'
+  ...
+# Subtest: frame disk receipt binds exact input, snapshot and final result before asset commit
+ok 9 - frame disk receipt binds exact input, snapshot and final result before asset commit
+  ---
+  duration_ms: 109.511375
+  type: 'test'
+  ...
+# Subtest: verification refuses payload-corrupt
+ok 10 - verification refuses payload-corrupt
+  ---
+  duration_ms: 66.86475
+  type: 'test'
+  ...
+# Subtest: verification refuses extra-file
+ok 11 - verification refuses extra-file
+  ---
+  duration_ms: 61.730875
+  type: 'test'
+  ...
+# Subtest: verification refuses extra-directory
+ok 12 - verification refuses extra-directory
+  ---
+  duration_ms: 74.89375
+  type: 'test'
+  ...
+# Subtest: verification refuses missing-marker
+ok 13 - verification refuses missing-marker
+  ---
+  duration_ms: 68.877625
+  type: 'test'
+  ...
+# Subtest: verification refuses manifest-corrupt
+ok 14 - verification refuses manifest-corrupt
+  ---
+  duration_ms: 80.195792
+  type: 'test'
+  ...
+# Subtest: verification refuses marker-corrupt
+ok 15 - verification refuses marker-corrupt
+  ---
+  duration_ms: 65.9865
+  type: 'test'
+  ...
+# Subtest: database inventory enumeration stops at its fixed global row bound
+ok 16 - database inventory enumeration stops at its fixed global row bound
+  ---
+  duration_ms: 2788.181917
+  type: 'test'
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4315.533958

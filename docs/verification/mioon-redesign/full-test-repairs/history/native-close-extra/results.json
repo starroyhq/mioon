@@ -1,0 +1,21 @@
+[
+  {
+    "file": "tests/native-close-sources.test.mjs",
+    "exitCode": 0,
+    "timeout": false,
+    "seconds": 0.81,
+    "tapSummary": {
+      "tests": 15,
+      "suites": 0,
+      "pass": 15,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "log": "native-close-extra/001-native-close-sources.test.mjs.log",
+    "sha256": "ff5e2997fb41eaecd4d7ce62dd5edb148b057ac9b8f5a091182c6db0dc0c4b0e",
+    "sourceSha256": "902b0d76b56787d865198149ee9d919ea9efcd480dcdec7342c913f5f615e2ca",
+    "failedSubtests": []
+  }
+]

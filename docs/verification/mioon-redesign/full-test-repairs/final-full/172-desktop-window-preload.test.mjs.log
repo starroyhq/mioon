@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: fixed preload exposes only validated window actions and strips Electron event authority
+ok 1 - fixed preload exposes only validated window actions and strips Electron event authority
+  ---
+  duration_ms: 2.16225
+  type: 'test'
+  ...
+# Subtest: preload rejects malformed output and protocol rejects extra authority fields
+ok 2 - preload rejects malformed output and protocol rejects extra authority fields
+  ---
+  duration_ms: 0.837916
+  type: 'test'
+  ...
+# Subtest: actual sandbox preload bundle requires only Electron and exposes no arbitrary transport
+ok 3 - actual sandbox preload bundle requires only Electron and exposes no arbitrary transport
+  ---
+  duration_ms: 28.980958
+  type: 'test'
+  ...
+# Subtest: restart confirmation cannot act on replaced startup/backend or a newly requested Quit
+ok 4 - restart confirmation cannot act on replaced startup/backend or a newly requested Quit
+  ---
+  duration_ms: 0.2625
+  type: 'test'
+  ...
+# Subtest: old preload cannot borrow replacement document context for a late status or action
+ok 5 - old preload cannot borrow replacement document context for a late status or action
+  ---
+  duration_ms: 0.289625
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 198.437583

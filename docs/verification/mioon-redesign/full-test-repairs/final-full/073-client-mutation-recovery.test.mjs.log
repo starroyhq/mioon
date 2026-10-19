@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: all six mutations opt in, persist a deep exact input once, and never generate an ID for replay
+ok 1 - all six mutations opt in, persist a deep exact input once, and never generate an ID for replay
+  ---
+  duration_ms: 8.977667
+  type: 'test'
+  ...
+# Subtest: new intent never receives an old save acknowledgement or replaces unknown input
+ok 2 - new intent never receives an old save acknowledgement or replaces unknown input
+  ---
+  duration_ms: 0.494917
+  type: 'test'
+  ...
+# Subtest: pending mutation blocks only its project and newer server state cannot establish its outcome
+ok 3 - pending mutation blocks only its project and newer server state cannot establish its outcome
+  ---
+  duration_ms: 0.272208
+  type: 'test'
+  ...
+# Subtest: legacy durable submissions retain their existing exact replay behavior
+ok 4 - legacy durable submissions retain their existing exact replay behavior
+  ---
+  duration_ms: 0.15875
+  type: 'test'
+  ...
+# Subtest: storage denial, silent write failure and corruption fail closed before a mutation dispatch
+ok 5 - storage denial, silent write failure and corruption fail closed before a mutation dispatch
+  ---
+  duration_ms: 1.997916
+  type: 'test'
+  ...
+# Subtest: only exact backend rollback proof can clear a mutation failure
+ok 6 - only exact backend rollback proof can clear a mutation failure
+  ---
+  duration_ms: 0.190458
+  type: 'test'
+  ...
+# Subtest: historical responses must identify the original project and target before acknowledging
+ok 7 - historical responses must identify the original project and target before acknowledging
+  ---
+  duration_ms: 0.325583
+  type: 'test'
+  ...
+# Subtest: App opts every six-op path in, uses explicit drawer replay, and never resumes a partial structure
+ok 8 - App opts every six-op path in, uses explicit drawer replay, and never resumes a partial structure
+  ---
+  duration_ms: 15.852375
+  type: 'test'
+  ...
+# Subtest: six-op recovery warns about session-only unencrypted receipts without changing generation guarantees
+ok 9 - six-op recovery warns about session-only unencrypted receipts without changing generation guarantees
+  ---
+  duration_ms: 0.766958
+  type: 'test'
+  ...
+# Subtest: a colliding legacy receipt can never silently turn a new edit into another operation
+ok 10 - a colliding legacy receipt can never silently turn a new edit into another operation
+  ---
+  duration_ms: 0.284625
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 275.002792

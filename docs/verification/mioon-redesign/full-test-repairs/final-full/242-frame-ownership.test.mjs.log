@@ -1,0 +1,376 @@
+TAP version 13
+# Subtest: frame result is an owned PNG for clips, references and typed subjects; read APIs do zero writes
+ok 1 - frame result is an owned PNG for clips, references and typed subjects; read APIs do zero writes
+  ---
+  duration_ms: 29.361292
+  type: 'test'
+  ...
+# Subtest: strict Agent inspection exposes only existing safe fields and extracted-frame provenance
+ok 2 - strict Agent inspection exposes only existing safe fields and extracted-frame provenance
+  ---
+  duration_ms: 9.476
+  type: 'test'
+  ...
+# Subtest: historical ACK/result/subject reads use frozen bounds despite mutable source metadata drift
+ok 3 - historical ACK/result/subject reads use frozen bounds despite mutable source metadata drift
+  ---
+  duration_ms: 8.921166
+  type: 'test'
+  ...
+# Subtest: changed source hash rejects historical result and task without disclosure
+ok 4 - changed source hash rejects historical result and task without disclosure
+  ---
+  duration_ms: 7.377375
+  type: 'test'
+  ...
+# Subtest: changed source mime rejects historical result and task without disclosure
+ok 5 - changed source mime rejects historical result and task without disclosure
+  ---
+  duration_ms: 7.49925
+  type: 'test'
+  ...
+# Subtest: changed source path rejects historical result and task without disclosure
+ok 6 - changed source path rejects historical result and task without disclosure
+  ---
+  duration_ms: 7.215708
+  type: 'test'
+  ...
+# Subtest: changed source jsonProject rejects historical result and task without disclosure
+ok 7 - changed source jsonProject rejects historical result and task without disclosure
+  ---
+  duration_ms: 7.376084
+  type: 'test'
+  ...
+# Subtest: changed source jsonId rejects historical result and task without disclosure
+ok 8 - changed source jsonId rejects historical result and task without disclosure
+  ---
+  duration_ms: 7.20675
+  type: 'test'
+  ...
+# Subtest: changed result hash rejects both task and asset reads
+ok 9 - changed result hash rejects both task and asset reads
+  ---
+  duration_ms: 7.664
+  type: 'test'
+  ...
+# Subtest: changed result mime rejects both task and asset reads
+ok 10 - changed result mime rejects both task and asset reads
+  ---
+  duration_ms: 8.095459
+  type: 'test'
+  ...
+# Subtest: changed result path rejects both task and asset reads
+ok 11 - changed result path rejects both task and asset reads
+  ---
+  duration_ms: 7.705292
+  type: 'test'
+  ...
+# Subtest: changed result bytes rejects both task and asset reads
+ok 12 - changed result bytes rejects both task and asset reads
+  ---
+  duration_ms: 9.584791
+  type: 'test'
+  ...
+# Subtest: changed result width rejects both task and asset reads
+ok 13 - changed result width rejects both task and asset reads
+  ---
+  duration_ms: 7.037125
+  type: 'test'
+  ...
+# Subtest: changed result height rejects both task and asset reads
+ok 14 - changed result height rejects both task and asset reads
+  ---
+  duration_ms: 9.107875
+  type: 'test'
+  ...
+# Subtest: changed result kind rejects both task and asset reads
+ok 15 - changed result kind rejects both task and asset reads
+  ---
+  duration_ms: 7.86375
+  type: 'test'
+  ...
+# Subtest: changed result jsonProject rejects both task and asset reads
+ok 16 - changed result jsonProject rejects both task and asset reads
+  ---
+  duration_ms: 7.193625
+  type: 'test'
+  ...
+# Subtest: corrupt frame input-hash fails closed
+ok 17 - corrupt frame input-hash fails closed
+  ---
+  duration_ms: 7.861542
+  type: 'test'
+  ...
+# Subtest: corrupt frame input-canonical fails closed
+ok 18 - corrupt frame input-canonical fails closed
+  ---
+  duration_ms: 7.714875
+  type: 'test'
+  ...
+# Subtest: corrupt frame input-json fails closed
+ok 19 - corrupt frame input-json fails closed
+  ---
+  duration_ms: 7.562084
+  type: 'test'
+  ...
+# Subtest: corrupt frame snapshot-task fails closed
+ok 20 - corrupt frame snapshot-task fails closed
+  ---
+  duration_ms: 7.803042
+  type: 'test'
+  ...
+# Subtest: corrupt frame snapshot-bounds fails closed
+ok 21 - corrupt frame snapshot-bounds fails closed
+  ---
+  duration_ms: 7.704833
+  type: 'test'
+  ...
+# Subtest: corrupt frame snapshot-profile fails closed
+ok 22 - corrupt frame snapshot-profile fails closed
+  ---
+  duration_ms: 7.682208
+  type: 'test'
+  ...
+# Subtest: corrupt frame receipt-task fails closed
+ok 23 - corrupt frame receipt-task fails closed
+  ---
+  duration_ms: 8.977583
+  type: 'test'
+  ...
+# Subtest: corrupt frame receipt-output fails closed
+ok 24 - corrupt frame receipt-output fails closed
+  ---
+  duration_ms: 8.006291
+  type: 'test'
+  ...
+# Subtest: corrupt frame receipt-probe fails closed
+ok 25 - corrupt frame receipt-probe fails closed
+  ---
+  duration_ms: 7.202166
+  type: 'test'
+  ...
+# Subtest: corrupt frame receipt-null fails closed
+ok 26 - corrupt frame receipt-null fails closed
+  ---
+  duration_ms: 10.138208
+  type: 'test'
+  ...
+# Subtest: corrupt frame row-asset fails closed
+ok 27 - corrupt frame row-asset fails closed
+  ---
+  duration_ms: 8.283166
+  type: 'test'
+  ...
+# Subtest: corrupt frame row-project fails closed
+ok 28 - corrupt frame row-project fails closed
+  ---
+  duration_ms: 6.86325
+  type: 'test'
+  ...
+# Subtest: corrupt frame row-started fails closed
+ok 29 - corrupt frame row-started fails closed
+  ---
+  duration_ms: 10.489916
+  type: 'test'
+  ...
+# Subtest: corrupt frame row-revision fails closed
+ok 30 - corrupt frame row-revision fails closed
+  ---
+  duration_ms: 7.650833
+  type: 'test'
+  ...
+# Subtest: corrupt frame ack-id fails closed
+ok 31 - corrupt frame ack-id fails closed
+  ---
+  duration_ms: 7.915333
+  type: 'test'
+  ...
+# Subtest: corrupt frame ack-project fails closed
+ok 32 - corrupt frame ack-project fails closed
+  ---
+  duration_ms: 7.548625
+  type: 'test'
+  ...
+# Subtest: corrupt frame ack-time fails closed
+ok 33 - corrupt frame ack-time fails closed
+  ---
+  duration_ms: 8.374291
+  type: 'test'
+  ...
+# Subtest: corrupt frame ack-state fails closed
+ok 34 - corrupt frame ack-state fails closed
+  ---
+  duration_ms: 7.751583
+  type: 'test'
+  ...
+# Subtest: corrupt frame ack-source fails closed
+ok 35 - corrupt frame ack-source fails closed
+  ---
+  duration_ms: 9.665666
+  type: 'test'
+  ...
+# Subtest: corrupt frame ack-extra fails closed
+ok 36 - corrupt frame ack-extra fails closed
+  ---
+  duration_ms: 7.570458
+  type: 'test'
+  ...
+# Subtest: corrupt frame request-hash fails closed
+ok 37 - corrupt frame request-hash fails closed
+  ---
+  duration_ms: 7.837292
+  type: 'test'
+  ...
+# Subtest: corrupt frame request-input fails closed
+ok 38 - corrupt frame request-input fails closed
+  ---
+  duration_ms: 8.384792
+  type: 'test'
+  ...
+# Subtest: corrupt frame request-task fails closed
+ok 39 - corrupt frame request-task fails closed
+  ---
+  duration_ms: 6.988834
+  type: 'test'
+  ...
+# Subtest: corrupt frame oversized-input fails closed
+ok 40 - corrupt frame oversized-input fails closed
+  ---
+  duration_ms: 6.895542
+  type: 'test'
+  ...
+# Subtest: corrupt frame oversized-receipt fails closed
+ok 41 - corrupt frame oversized-receipt fails closed
+  ---
+  duration_ms: 7.316125
+  type: 'test'
+  ...
+# Subtest: corrupt frame oversized-ack fails closed
+ok 42 - corrupt frame oversized-ack fails closed
+  ---
+  duration_ms: 7.406792
+  type: 'test'
+  ...
+# Subtest: queued, interrupted before start and interrupted after start without receipt are readable
+ok 43 - queued, interrupted before start and interrupted after start without receipt are readable
+  ---
+  duration_ms: 8.059916
+  type: 'test'
+  ...
+# Subtest: missing/foreign source, output, owner or original ACK uniformly fail closed
+ok 44 - missing/foreign source, output, owner or original ACK uniformly fail closed
+  ---
+  duration_ms: 50.949917
+  type: 'test'
+  ...
+# Subtest: legacy/frame mixed owners reject, oversized=false, disguised=false
+ok 45 - legacy/frame mixed owners reject, oversized=false, disguised=false
+  ---
+  duration_ms: 7.062833
+  type: 'test'
+  ...
+# Subtest: legacy/frame mixed owners reject, oversized=false, disguised=true
+ok 46 - legacy/frame mixed owners reject, oversized=false, disguised=true
+  ---
+  duration_ms: 6.820667
+  type: 'test'
+  ...
+# Subtest: legacy/frame mixed owners reject, oversized=true, disguised=false
+ok 47 - legacy/frame mixed owners reject, oversized=true, disguised=false
+  ---
+  duration_ms: 7.17825
+  type: 'test'
+  ...
+# Subtest: legacy/frame mixed owners reject, oversized=true, disguised=true
+ok 48 - legacy/frame mixed owners reject, oversized=true, disguised=true
+  ---
+  duration_ms: 7.267375
+  type: 'test'
+  ...
+# Subtest: image/frame mixed owners reject even when published frame relation was erased
+ok 49 - image/frame mixed owners reject even when published frame relation was erased
+  ---
+  duration_ms: 7.468667
+  type: 'test'
+  ...
+# Subtest: receipt reverse relation cannot hide a malformed oversized frame owner
+ok 50 - receipt reverse relation cannot hide a malformed oversized frame owner
+  ---
+  duration_ms: 7.159666
+  type: 'test'
+  ...
+# Subtest: duplicate frame owners are bounded to two and cannot disappear behind provenance
+ok 51 - duplicate frame owners are bounded to two and cannot disappear behind provenance
+  ---
+  duration_ms: 10.139459
+  type: 'test'
+  ...
+# Subtest: oversized legacy owner rejects imported assets even without any typed owner
+ok 52 - oversized legacy owner rejects imported assets even without any typed owner
+  ---
+  duration_ms: 6.768792
+  type: 'test'
+  ...
+# Subtest: legacy valid shot-reference cycles and frame-source shot cycles remain supported
+ok 53 - legacy valid shot-reference cycles and frame-source shot cycles remain supported
+  ---
+  duration_ms: 9.024
+  type: 'test'
+  ...
+# Subtest: a frame PNG cannot become a video source by corrupting its metadata or task snapshot
+ok 54 - a frame PNG cannot become a video source by corrupting its metadata or task snapshot
+  ---
+  duration_ms: 8.374
+  type: 'test'
+  ...
+# Subtest: source lineage ancestry uses one bounded graph and stops beyond 16 frame ancestors
+ok 55 - source lineage ancestry uses one bounded graph and stops beyond 16 frame ancestors
+  ---
+  duration_ms: 37.081542
+  type: 'test'
+  ...
+# Subtest: one shared reader enforces a 64-task census rather than resetting on each asset
+ok 56 - one shared reader enforces a 64-task census rather than resetting on each asset
+  ---
+  duration_ms: 72.944833
+  type: 'test'
+  ...
+# Subtest: frame metadata has an independent 1 MiB shared budget below the 4 MiB graph ceiling
+ok 57 - frame metadata has an independent 1 MiB shared budget below the 4 MiB graph ceiling
+  ---
+  duration_ms: 82.245
+  type: 'test'
+  ...
+# Subtest: subject versions freeze explicit frameSource and preserve old provenance bytes
+ok 58 - subject versions freeze explicit frameSource and preserve old provenance bytes
+  ---
+  duration_ms: 15.877417
+  type: 'test'
+  ...
+# Subtest: unchanged source bytes do not conceal a foreign legacy source owner
+ok 59 - unchanged source bytes do not conceal a foreign legacy source owner
+  ---
+  duration_ms: 7.315792
+  type: 'test'
+  ...
+# Subtest: oversized frame JSON and owner lists are bounded in SQL before crossing the JS boundary
+ok 60 - oversized frame JSON and owner lists are bounded in SQL before crossing the JS boundary
+  ---
+  duration_ms: 7.143083
+  type: 'test'
+  ...
+# Subtest: tampered frozen frameSource is rejected without rewriting a subject version
+ok 61 - tampered frozen frameSource is rejected without rewriting a subject version
+  ---
+  duration_ms: 10.732208
+  type: 'test'
+  ...
+1..61
+# tests 61
+# suites 0
+# pass 61
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1039.191292

@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: native audio preload locks first exact owner and cannot borrow replacement generation
+ok 1 - native audio preload locks first exact owner and cannot borrow replacement generation
+  ---
+  duration_ms: 1.600375
+  type: 'test'
+  ...
+# Subtest: late acquire result from a different owner is refused, including same project
+ok 2 - late acquire result from a different owner is refused, including same project
+  ---
+  duration_ms: 1.298208
+  type: 'test'
+  ...
+# Subtest: retirement keeps original own generation and cannot acknowledge another lease owner
+ok 3 - retirement keeps original own generation and cannot acknowledge another lease owner
+  ---
+  duration_ms: 0.935458
+  type: 'test'
+  ...
+# Subtest: cancel before describe settles fences that original action without sending an acquire or stopping A
+ok 4 - cancel before describe settles fences that original action without sending an acquire or stopping A
+  ---
+  duration_ms: 0.175333
+  type: 'test'
+  ...
+# Subtest: pending describes consume the same bounded admission slots as granted actions
+ok 5 - pending describes consume the same bounded admission slots as granted actions
+  ---
+  duration_ms: 0.291458
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 202.482792

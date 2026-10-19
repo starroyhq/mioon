@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: synthetic zh-Hans composition uses the exact43 new-origin client without persisting partial composition or implicit Save
+ok 1 - synthetic zh-Hans composition uses the exact43 new-origin client without persisting partial composition or implicit Save
+  ---
+  duration_ms: 32.670417
+  type: 'test'
+  ...
+# Subtest: synthetic zh-Hant composition uses the exact43 new-origin client without persisting partial composition or implicit Save
+ok 2 - synthetic zh-Hant composition uses the exact43 new-origin client without persisting partial composition or implicit Save
+  ---
+  duration_ms: 5.758084
+  type: 'test'
+  ...
+# Subtest: synthetic en composition uses the exact43 new-origin client without persisting partial composition or implicit Save
+ok 3 - synthetic en composition uses the exact43 new-origin client without persisting partial composition or implicit Save
+  ---
+  duration_ms: 6.592208
+  type: 'test'
+  ...
+# Subtest: synthetic ja composition uses the exact43 new-origin client without persisting partial composition or implicit Save
+ok 4 - synthetic ja composition uses the exact43 new-origin client without persisting partial composition or implicit Save
+  ---
+  duration_ms: 4.873334
+  type: 'test'
+  ...
+# Subtest: synthetic43 late GET/PUT/DELETE responses retain a later Chinese/Japanese composition and fresh raw owner
+ok 5 - synthetic43 late GET/PUT/DELETE responses retain a later Chinese/Japanese composition and fresh raw owner
+  ---
+  duration_ms: 11.975958
+  type: 'test'
+  ...
+# Subtest: synthetic43 repeated Save cannot race an active Cancel waiting for PUT/DELETE
+ok 6 - synthetic43 repeated Save cannot race an active Cancel waiting for PUT/DELETE
+  ---
+  duration_ms: 3.807667
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 361.294833

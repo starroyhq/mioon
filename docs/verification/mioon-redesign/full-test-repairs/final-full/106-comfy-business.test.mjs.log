@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: Comfy profile discovery and review pin the exact fixed graph before one explicitly approved POST
+ok 1 - Comfy profile discovery and review pin the exact fixed graph before one explicitly approved POST
+  ---
+  duration_ms: 1203.935583
+  type: 'test'
+  ...
+# Subtest: lost POST acknowledgement survives backend recreation and explicit retrieval never resubmits
+ok 2 - lost POST acknowledgement survives backend recreation and explicit retrieval never resubmits
+  ---
+  duration_ms: 792.926542
+  type: 'test'
+  ...
+# Subtest: queued cancellation and restart never submit, and startup does not infer readiness
+ok 3 - queued cancellation and restart never submit, and startup does not infer readiness
+  ---
+  duration_ms: 989.201625
+  type: 'test'
+  ...
+# Subtest: result pin survives staging crash and permits only explicitly requested identical-byte retrieval
+ok 4 - result pin survives staging crash and permits only explicitly requested identical-byte retrieval
+  ---
+  duration_ms: 1019.594
+  type: 'test'
+  ...
+# Subtest: verified terminal failure alone releases an unknown Comfy task; missing history remains unknown
+ok 5 - verified terminal failure alone releases an unknown Comfy task; missing history remains unknown
+  ---
+  duration_ms: 655.68375
+  type: 'test'
+  ...
+# Subtest: two windows and busy queries have exact rollback proof, while accepted duplicate retains one observation
+ok 6 - two windows and busy queries have exact rollback proof, while accepted duplicate retains one observation
+  ---
+  duration_ms: 792.080125
+  type: 'test'
+  ...
+# Subtest: accepted observation lost ACK and backend restart do not query automatically
+ok 7 - accepted observation lost ACK and backend restart do not query automatically
+  ---
+  duration_ms: 803.162
+  type: 'test'
+  ...
+# Subtest: changed output bytes at the same descriptor cannot replace a pinned result after staging failure
+ok 8 - changed output bytes at the same descriptor cannot replace a pinned result after staging failure
+  ---
+  duration_ms: 659.943959
+  type: 'test'
+  ...
+# Subtest: remote content flags cannot be injected through public DTOs and historical ownership fails closed
+ok 9 - remote content flags cannot be injected through public DTOs and historical ownership fails closed
+  ---
+  duration_ms: 736.557625
+  type: 'test'
+  ...
+# Subtest: shutdown timeout is unconfirmed and late owned observation cannot publish a result
+ok 10 - shutdown timeout is unconfirmed and late owned observation cannot publish a result
+  ---
+  duration_ms: 5623.861083
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 13655.959375

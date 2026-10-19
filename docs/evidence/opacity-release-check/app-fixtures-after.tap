@@ -1,0 +1,466 @@
+TAP version 13
+# Subtest: causal regression: actual refresh quarantines wrong-project data before reconciling pending operations
+ok 1 - causal regression: actual refresh quarantines wrong-project data before reconciling pending operations
+  ---
+  duration_ms: 3.458458
+  type: 'test'
+  ...
+# Subtest: causal regression: actual refresh cannot publish a response after renderer unmount
+ok 2 - causal regression: actual refresh cannot publish a response after renderer unmount
+  ---
+  duration_ms: 4.160083
+  type: 'test'
+  ...
+# Subtest: actual selection keeps home visible after preferences resolve until validated project data settles
+ok 3 - actual selection keeps home visible after preferences resolve until validated project data settles
+  ---
+  duration_ms: 5.305959
+  type: 'test'
+  ...
+# Subtest: actual refresh rejects wrong-project responses before reconciliation or publishing data
+ok 4 - actual refresh rejects wrong-project responses before reconciliation or publishing data
+  ---
+  duration_ms: 7.548583
+  type: 'test'
+  ...
+# Subtest: ordinary refresh cannot read or publish before a successful project-open ticket exists
+ok 5 - ordinary refresh cannot read or publish before a successful project-open ticket exists
+  ---
+  duration_ms: 1.076584
+  type: 'test'
+  ...
+# Subtest: same-project data without an accepted opening ticket must take the real load path
+ok 6 - same-project data without an accepted opening ticket must take the real load path
+  ---
+  duration_ms: 0.621458
+  type: 'test'
+  ...
+# Subtest: actual selection preserves UNAUTHORIZED routing from project load and preference fallback
+ok 7 - actual selection preserves UNAUTHORIZED routing from project load and preference fallback
+  ---
+  duration_ms: 2.474833
+  type: 'test'
+  ...
+# Subtest: actual selection preserves WORKSPACE_ORIGIN_UNVERIFIED routing from project load and preference fallback
+ok 8 - actual selection preserves WORKSPACE_ORIGIN_UNVERIFIED routing from project load and preference fallback
+  ---
+  duration_ms: 1.245375
+  type: 'test'
+  ...
+# Subtest: actual selection preserves RESTORE_WORKSPACE_ORIGIN_MISMATCH routing from project load and preference fallback
+ok 9 - actual selection preserves RESTORE_WORKSPACE_ORIGIN_MISMATCH routing from project load and preference fallback
+  ---
+  duration_ms: 0.955208
+  type: 'test'
+  ...
+# Subtest: actual selection preserves LAST_PROJECT_SCOPE_MISMATCH routing from project load and preference fallback
+ok 10 - actual selection preserves LAST_PROJECT_SCOPE_MISMATCH routing from project load and preference fallback
+  ---
+  duration_ms: 0.995875
+  type: 'test'
+  ...
+# Subtest: actual selection preserves LAST_PROJECT_STALE_INSTANCE routing from project load and preference fallback
+ok 11 - actual selection preserves LAST_PROJECT_STALE_INSTANCE routing from project load and preference fallback
+  ---
+  duration_ms: 0.883125
+  type: 'test'
+  ...
+# Subtest: slow A and late A failure cannot overwrite a faster B selection
+ok 12 - slow A and late A failure cannot overwrite a faster B selection
+  ---
+  duration_ms: 2.263208
+  type: 'test'
+  ...
+# Subtest: same-ID reopen is a new epoch and the first response cannot publish its ticket
+ok 13 - same-ID reopen is a new epoch and the first response cannot publish its ticket
+  ---
+  duration_ms: 1.49425
+  type: 'test'
+  ...
+# Subtest: unmount rejects late successful and failed project loads without publishing or reconciling
+ok 14 - unmount rejects late successful and failed project loads without publishing or reconciling
+  ---
+  duration_ms: 3.098875
+  type: 'test'
+  ...
+# Subtest: workspace replacement prevents a delayed response from reconciling or exposing the workbench
+ok 15 - workspace replacement prevents a delayed response from reconciling or exposing the workbench
+  ---
+  duration_ms: 2.556208
+  type: 'test'
+  ...
+# Subtest: restored project origin mismatch blocks workspace identity while malformed restore data stays a project error
+ok 16 - restored project origin mismatch blocks workspace identity while malformed restore data stays a project error
+  ---
+  duration_ms: 1.137291
+  type: 'test'
+  ...
+# Subtest: settings cancellation and newer input during confirmation leave the same home and project
+ok 17 - settings cancellation and newer input during confirmation leave the same home and project
+  ---
+  duration_ms: 4.860125
+  type: 'test'
+  ...
+# Subtest: busy or unresolved settings block open, create, and leaving settings without confirmation or RPC
+ok 18 - busy or unresolved settings block open, create, and leaving settings without confirmation or RPC
+  ---
+  duration_ms: 1.3085
+  type: 'test'
+  ...
+# Subtest: new settings input during the ordinary project guard invalidates the departure ticket
+ok 19 - new settings input during the ordinary project guard invalidates the departure ticket
+  ---
+  duration_ms: 1.162042
+  type: 'test'
+  ...
+# Subtest: late create completion cannot steal newer navigation and never repeats the create request
+ok 20 - late create completion cannot steal newer navigation and never repeats the create request
+  ---
+  duration_ms: 0.881458
+  type: 'test'
+  ...
+# Subtest: create acknowledgements and list responses cannot publish after unmount or a new renderer lifetime
+ok 21 - create acknowledgements and list responses cannot publish after unmount or a new renderer lifetime
+  ---
+  duration_ms: 4.79075
+  type: 'test'
+  ...
+# Subtest: create with failed list read keeps uncertainty visible and does not retry mutation automatically
+ok 22 - create with failed list read keeps uncertainty visible and does not retry mutation automatically
+  ---
+  duration_ms: 1.181917
+  type: 'test'
+  ...
+# Subtest: create holds its synchronous latch through the post-acknowledgement project-list read
+ok 23 - create holds its synchronous latch through the post-acknowledgement project-list read
+  ---
+  duration_ms: 1.098792
+  type: 'test'
+  ...
+# Subtest: actual empty startup chooses home while explicit startup succeeds without rewriting the locator
+ok 24 - actual empty startup chooses home while explicit startup succeeds without rewriting the locator
+  ---
+  duration_ms: 2.539416
+  type: 'test'
+  ...
+# Subtest: native startup opens only the host-assigned UUID, regardless of URL, remembered target or first project
+ok 25 - native startup opens only the host-assigned UUID, regardless of URL, remembered target or first project
+  ---
+  duration_ms: 1.542208
+  type: 'test'
+  ...
+# Subtest: native assigned-project failure stays on that UUID and never falls through to another project
+ok 26 - native assigned-project failure stays on that UUID and never falls through to another project
+  ---
+  duration_ms: 1.314042
+  type: 'test'
+  ...
+# Subtest: native invalid assignment cannot borrow a valid Web fallback
+ok 27 - native invalid assignment cannot borrow a valid Web fallback
+  ---
+  duration_ms: 0.897958
+  type: 'test'
+  ...
+# Subtest: late boot discovery cannot select over a newer project or publish after unmount
+ok 28 - late boot discovery cannot select over a newer project or publish after unmount
+  ---
+  duration_ms: 2.617041
+  type: 'test'
+  ...
+# Subtest: actual App renders standalone home, routes settings to the retained center, and exposes workbench only after success
+ok 29 - actual App renders standalone home, routes settings to the retained center, and exposes workbench only after success
+  ---
+  duration_ms: 297.802625
+  type: 'test'
+  ...
+# Subtest: actual auth and restored-home branches retain their existing protections
+ok 30 - actual auth and restored-home branches retain their existing protections
+  ---
+  duration_ms: 1.874708
+  type: 'test'
+  ...
+# Subtest: actual App shares authenticated settled project readiness between workbench display and geometry observation
+ok 31 - actual App shares authenticated settled project readiness between workbench display and geometry observation
+  ---
+  duration_ms: 12.816083
+  type: 'test'
+  ...
+# Subtest: native pending/error render never mounts launcher home or settings in the editor owner
+ok 32 - native pending/error render never mounts launcher home or settings in the editor owner
+  ---
+  duration_ms: 0.850375
+  type: 'test'
+  ...
+# Subtest: native ready status has no local locator writer while Web selection still remembers
+ok 33 - native ready status has no local locator writer while Web selection still remembers
+  ---
+  duration_ms: 1.041833
+  type: 'test'
+  ...
+# Subtest: native alternate project delegates before any editor draft, request or URL mutation
+ok 34 - native alternate project delegates before any editor draft, request or URL mutation
+  ---
+  duration_ms: 0.464625
+  type: 'test'
+  ...
+# Subtest: closed presets and noncreating read retain exact authoritative eligibility
+ok 35 - closed presets and noncreating read retain exact authoritative eligibility
+  ---
+  duration_ms: 3.456959
+  type: 'test'
+  ...
+# Subtest: polls, dock hiding, selection and mode changes preserve the independent format draft
+ok 36 - polls, dock hiding, selection and mode changes preserve the independent format draft
+  ---
+  duration_ms: 0.33025
+  type: 'test'
+  ...
+# Subtest: newer authoritative revision preserves dirty choice and prevents blind rebase
+ok 37 - newer authoritative revision preserves dirty choice and prevents blind rebase
+  ---
+  duration_ms: 0.904875
+  type: 'test'
+  ...
+# Subtest: live owner change before React commit fences late read success and authentication error
+ok 38 - live owner change before React commit fences late read success and authentication error
+  ---
+  duration_ms: 0.656292
+  type: 'test'
+  ...
+# Subtest: newer read wins; reconnect keeps draft but cannot revive an unverified save
+ok 39 - newer read wins; reconnect keeps draft but cannot revive an unverified save
+  ---
+  duration_ms: 0.313208
+  type: 'test'
+  ...
+# Subtest: save freezes both revisions and exact intent; double click never mints another request
+ok 40 - save freezes both revisions and exact intent; double click never mints another request
+  ---
+  duration_ms: 1.611541
+  type: 'test'
+  ...
+# Subtest: late ACK does not erase later square_720 draft while the panel is hidden
+ok 41 - late ACK does not erase later square_720 draft while the panel is hidden
+  ---
+  duration_ms: 0.237875
+  type: 'test'
+  ...
+# Subtest: late ACK does not erase later portrait_720 draft while the panel is hidden
+ok 42 - late ACK does not erase later portrait_720 draft while the panel is hidden
+  ---
+  duration_ms: 0.155084
+  type: 'test'
+  ...
+# Subtest: same project revisited in a newer epoch cannot receive an old save ACK
+ok 43 - same project revisited in a newer epoch cannot receive an old save ACK
+  ---
+  duration_ms: 0.131375
+  type: 'test'
+  ...
+# Subtest: unknown exact intent remains fenced after reads, hiding and reconnect; only explicit matching recovery releases it
+ok 44 - unknown exact intent remains fenced after reads, hiding and reconnect; only explicit matching recovery releases it
+  ---
+  duration_ms: 7.207458
+  type: 'test'
+  ...
+# Subtest: historical applied recovery refreshes saved data without acknowledging or replacing the current draft
+ok 45 - historical applied recovery refreshes saved data without acknowledging or replacing the current draft
+  ---
+  duration_ms: 0.425209
+  type: 'test'
+  ...
+# Subtest: malformed or misbound ACK never clears the draft or releases unknown intent
+ok 46 - malformed or misbound ACK never clears the draft or releases unknown intent
+  ---
+  duration_ms: 0.298583
+  type: 'test'
+  ...
+# Subtest: format read fails closed: {"extra":true}
+ok 47 - format read fails closed: {"extra":true}
+  ---
+  duration_ms: 0.428833
+  type: 'test'
+  ...
+# Subtest: format read fails closed: {"projectId":"73000000-0000-4000-8000-000000000009"}
+ok 48 - format read fails closed: {"projectId":"73000000-0000-4000-8000-000000000009"}
+  ---
+  duration_ms: 0.742292
+  type: 'test'
+  ...
+# Subtest: format read fails closed: {"timelineId":"73000000-0000-4000-8000-000000000002","timelineRevision":0}
+ok 49 - format read fails closed: {"timelineId":"73000000-0000-4000-8000-000000000002","timelineRevision":0}
+  ---
+  duration_ms: 0.202958
+  type: 'test'
+  ...
+# Subtest: format read fails closed: {"presetId":"landscape_720","width":1280,"height":720}
+ok 50 - format read fails closed: {"presetId":"landscape_720","width":1280,"height":720}
+  ---
+  duration_ms: 0.175375
+  type: 'test'
+  ...
+# Subtest: format read fails closed: {"width":1080}
+ok 51 - format read fails closed: {"width":1080}
+  ---
+  duration_ms: 0.143541
+  type: 'test'
+  ...
+# Subtest: format read fails closed: {"blockedReasons":["NEW_UNKNOWN_REASON"],"eligible":false}
+ok 52 - format read fails closed: {"blockedReasons":["NEW_UNKNOWN_REASON"],"eligible":false}
+  ---
+  duration_ms: 0.129625
+  type: 'test'
+  ...
+# Subtest: format read fails closed: {"blockedReasons":["CLIPS_PRESENT"],"eligible":true}
+ok 53 - format read fails closed: {"blockedReasons":["CLIPS_PRESENT"],"eligible":true}
+  ---
+  duration_ms: 0.090041
+  type: 'test'
+  ...
+# Subtest: actual format panel uses accessible shared controls and tells the truth about scope, fixed fps and blocked reasons
+ok 54 - actual format panel uses accessible shared controls and tells the truth about scope, fixed fps and blocked reasons
+  ---
+  duration_ms: 90.257042
+  type: 'test'
+  ...
+# Subtest: retained format panel callbacks cannot edit, reset, read or submit a revisited project epoch
+ok 55 - retained format panel callbacks cannot edit, reset, read or submit a revisited project epoch
+  ---
+  duration_ms: 2.938917
+  type: 'test'
+  ...
+# Subtest: actual preview labels the old job snapshot dimensions, never the current timeline
+ok 56 - actual preview labels the old job snapshot dimensions, never the current timeline
+  ---
+  duration_ms: 6.031667
+  type: 'test'
+  ...
+# Subtest: actual timeline header and preflight summary use their own saved dimensions
+ok 57 - actual timeline header and preflight summary use their own saved dimensions
+  ---
+  duration_ms: 30.592167
+  type: 'test'
+  ...
+# Subtest: actual inspector bounds follow landscape and square timelines and reject odd or overflowing rectangles
+ok 58 - actual inspector bounds follow landscape and square timelines and reject odd or overflowing rectangles
+  ---
+  duration_ms: 10.423709
+  type: 'test'
+  ...
+# Subtest: actual project-leave guard checks the independent draft and only discards after accepted current-owner navigation
+ok 59 - actual project-leave guard checks the independent draft and only discards after accepted current-owner navigation
+  ---
+  duration_ms: 0.94275
+  type: 'test'
+  ...
+# Subtest: actual navigation epoch guard prevents late confirmation from discarding a newer project draft
+ok 60 - actual navigation epoch guard prevents late confirmation from discarding a newer project draft
+  ---
+  duration_ms: 0.899458
+  type: 'test'
+  ...
+# Subtest: actual project guard preserves combined format and delivery-name drafts unless confirmation is current: accepted unchanged
+ok 61 - actual project guard preserves combined format and delivery-name drafts unless confirmation is current: accepted unchanged
+  ---
+  duration_ms: 3.369042
+  type: 'test'
+  ...
+# Subtest: actual project guard preserves combined format and delivery-name drafts unless confirmation is current: cancelled
+ok 62 - actual project guard preserves combined format and delivery-name drafts unless confirmation is current: cancelled
+  ---
+  duration_ms: 2.322958
+  type: 'test'
+  ...
+# Subtest: actual project guard preserves combined format and delivery-name drafts unless confirmation is current: newer name
+ok 63 - actual project guard preserves combined format and delivery-name drafts unless confirmation is current: newer name
+  ---
+  duration_ms: 0.544791
+  type: 'test'
+  ...
+# Subtest: actual project guard preserves combined format and delivery-name drafts unless confirmation is current: name changed back
+ok 64 - actual project guard preserves combined format and delivery-name drafts unless confirmation is current: name changed back
+  ---
+  duration_ms: 0.845333
+  type: 'test'
+  ...
+# Subtest: actual project guard preserves combined format and delivery-name drafts unless confirmation is current: replacement controller
+ok 65 - actual project guard preserves combined format and delivery-name drafts unless confirmation is current: replacement controller
+  ---
+  duration_ms: 0.721666
+  type: 'test'
+  ...
+# Subtest: actual project guard preserves combined format and delivery-name drafts unless confirmation is current: replacement local controller
+ok 66 - actual project guard preserves combined format and delivery-name drafts unless confirmation is current: replacement local controller
+  ---
+  duration_ms: 0.488
+  type: 'test'
+  ...
+# Subtest: actual project guard preserves combined format and delivery-name drafts unless confirmation is current: newer project epoch
+ok 67 - actual project guard preserves combined format and delivery-name drafts unless confirmation is current: newer project epoch
+  ---
+  duration_ms: 0.376792
+  type: 'test'
+  ...
+# Subtest: actual project guard preserves combined format and delivery-name drafts unless confirmation is current: newer format
+ok 68 - actual project guard preserves combined format and delivery-name drafts unless confirmation is current: newer format
+  ---
+  duration_ms: 0.364791
+  type: 'test'
+  ...
+# Subtest: actual project guard preserves combined format and delivery-name drafts unless confirmation is current: replacement format controller
+ok 69 - actual project guard preserves combined format and delivery-name drafts unless confirmation is current: replacement format controller
+  ---
+  duration_ms: 0.402833
+  type: 'test'
+  ...
+# Subtest: newer delivery title during joint confirmation preserves dirty inspector, format and local draft together
+ok 70 - newer delivery title during joint confirmation preserves dirty inspector, format and local draft together
+  ---
+  duration_ms: 0.669959
+  type: 'test'
+  ...
+# Subtest: actual format save callback uses only the existing durable timeline lane and exact frozen input
+ok 71 - actual format save callback uses only the existing durable timeline lane and exact frozen input
+  ---
+  duration_ms: 2.489417
+  type: 'test'
+  ...
+# Subtest: App keeps both Properties subpages mounted and keeps format dirtiness outside inspector reset logic
+ok 72 - App keeps both Properties subpages mounted and keeps format dirtiness outside inspector reset logic
+  ---
+  duration_ms: 22.424334
+  type: 'test'
+  ...
+# Subtest: actual dock pane retains child identity while hidden and removes it from focus and accessibility navigation
+ok 73 - actual dock pane retains child identity while hidden and removes it from focus and accessibility navigation
+  ---
+  duration_ms: 2.962458
+  type: 'test'
+  ...
+# Subtest: actual unload callback sees synchronous format edits and in-flight saves through its independent owner
+ok 74 - actual unload callback sees synchronous format edits and in-flight saves through its independent owner
+  ---
+  duration_ms: 1.281083
+  type: 'test'
+  ...
+# Subtest: actual unload callback observes either current format or delivery-name controller without retaining replaced owners
+ok 75 - actual unload callback observes either current format or delivery-name controller without retaining replaced owners
+  ---
+  duration_ms: 0.408708
+  type: 'test'
+  ...
+# Subtest: actual hook keeps the project draft across visibility and polling without creating a mutation
+ok 76 - actual hook keeps the project draft across visibility and polling without creating a mutation
+  ---
+  duration_ms: 12.812
+  type: 'test'
+  ...
+1..76
+# tests 76
+# suites 0
+# pass 76
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 659.4035

@@ -1,0 +1,174 @@
+/* Isolated review candidate. The application never selects this class from a
+ * saved preference or OS appearance. Remove it after each screenshot session. */
+:root.mioon-light-preview {
+  color-scheme: light !important;
+  --wb-bg: #F0F0ED;
+  --wb-panel: #FAFAF8;
+  --wb-card: #F4F4F1;
+  --wb-raised: #FFFFFF;
+  --wb-hover: #ECECEA;
+  --wb-selected: #E5E5E1;
+  --wb-input: #FFFFFF;
+  --wb-line-subtle: #E4E4DE;
+  --wb-line: #D7D7D0;
+  --wb-line-strong: #C9C9C0;
+  --wb-text: #333430;
+  --wb-soft: #5E5F59;
+  --wb-muted: #666661;
+  --wb-disabled: #A0A099;
+  --wb-accent: #464646;
+  --wb-accent-hover: #383838;
+  --wb-accent-pressed: #2D2D2D;
+  --wb-accent-foreground: #FFFFFF;
+  --wb-accent-line: #666666;
+  --wb-accent-subtle: rgb(70 70 70 / 8%);
+  --wb-danger: #B52A2A;
+  --wb-danger-fill: #BA2525;
+  --wb-danger-foreground: #FFFFFF;
+  --wb-danger-subtle: rgb(181 42 42 / 9%);
+  --wb-warning: #8A5300;
+  --wb-warning-subtle: rgb(242 169 59 / 14%);
+  --wb-success: #2B704D;
+  --wb-success-subtle: rgb(43 112 77 / 9%);
+  --wb-video-edge: #7694B2;
+  --wb-image-edge: #7CA699;
+  --wb-audio-edge: #819C72;
+  --wb-subtitle-edge: #9B8FB6;
+  --wb-overlay: rgb(29 35 29 / 28%);
+  --wb-shadow-color: rgb(36 43 34 / 10%);
+  /* Keep the isolated candidate complete when injected into a running build.
+   * Primary is the action color; accent remains a hover surface. */
+  --background: var(--wb-bg);
+  --foreground: var(--wb-text);
+  --card: var(--wb-card);
+  --card-foreground: var(--wb-text);
+  --popover: var(--wb-raised);
+  --popover-foreground: var(--wb-text);
+  --primary: var(--wb-accent);
+  --primary-foreground: var(--wb-accent-foreground);
+  --secondary: var(--wb-card);
+  --secondary-foreground: var(--wb-text);
+  --muted: var(--wb-card);
+  --muted-foreground: var(--wb-soft);
+  --accent: var(--wb-hover);
+  --accent-foreground: var(--wb-text);
+  --destructive: var(--wb-danger);
+  --destructive-foreground: var(--wb-danger-foreground);
+  --border: var(--wb-line);
+  --input: var(--wb-line);
+  --ring: var(--wb-accent-line);
+  --sidebar: var(--wb-panel);
+  --sidebar-foreground: var(--wb-text);
+  --sidebar-primary: var(--wb-accent);
+  --sidebar-primary-foreground: var(--wb-accent-foreground);
+  --sidebar-accent: var(--wb-hover);
+  --sidebar-accent-foreground: var(--wb-text);
+  --sidebar-border: var(--wb-line-subtle);
+  --sidebar-ring: var(--wb-accent-line);
+}
+
+/* Surface steps carry the hierarchy; ordinary outlines should recede behind
+ * content. Keep focus and selection separate from these quiet separators. */
+:root.mioon-light-preview .dock-workbench .dock-panel,
+:root.mioon-light-preview .dock-workbench.mode-editing .dock-canvas {
+  border-color: var(--wb-line-subtle);
+  box-shadow: 0 1px 3px rgb(36 43 34 / 3%);
+}
+:root.mioon-light-preview .dock-workbench .topbar {
+  background: var(--wb-panel);
+  border-bottom-color: var(--wb-line-subtle);
+}
+:root.mioon-light-preview .dock-workbench .dock-panel > .asset-panel,
+:root.mioon-light-preview .dock-workbench .timeline-panel.edit-timeline .track-label,
+:root.mioon-light-preview .dock-workbench .timeline-panel.edit-timeline .timeline-ruler,
+:root.mioon-light-preview .dock-workbench .timeline-panel.edit-timeline .ruler-label {
+  background: var(--wb-card);
+}
+:root.mioon-light-preview .web-settings-dialog.project-home {
+  border-color: var(--wb-line);
+  box-shadow: 0 24px 64px rgb(36 43 34 / 15%), 0 2px 8px rgb(36 43 34 / 4%);
+}
+:root.mioon-light-preview .web-settings-dialog .settings-center-nav {
+  background: var(--wb-card);
+  border-right-color: var(--wb-line-subtle);
+}
+:root.mioon-light-preview .web-settings-dialog .settings-center-content,
+:root.mioon-light-preview .web-settings-dialog .settings-appearance-actions {
+  background: var(--wb-raised);
+}
+:root.mioon-light-preview .web-settings-dialog .settings-center [aria-current="page"] {
+  background: var(--wb-selected);
+  color: var(--wb-accent);
+}
+:root.mioon-light-preview .dock-workbench .edit-clip-inspector :is(input, select, button[data-slot="select-trigger"]):not(:focus):not(:focus-visible):not([aria-invalid="true"]),
+:root.mioon-light-preview .web-settings-dialog :is([data-slot="input"], [data-slot="textarea"], .workbench-select):not(:focus):not(:focus-visible):not([aria-invalid="true"]) {
+  border-color: var(--wb-line);
+  background: var(--wb-input);
+}
+:root.mioon-light-preview :is(button, a, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--wb-accent-line);
+  outline-offset: 2px;
+}
+
+/* A light timeline is a working surface, rather than a full-width table grid. */
+:root.mioon-light-preview .dock-workbench .timeline-panel.edit-timeline :is(.timeline-toolbar, .timeline-track, .track-label) {
+  border-color: var(--wb-line-subtle);
+}
+:root.mioon-light-preview .dock-workbench .timeline-panel.edit-timeline .ruler-tick {
+  border-color: var(--wb-line);
+}
+:root.mioon-light-preview .dock-workbench .timeline-panel.edit-timeline .track-lane:not(.drag-over):not(.drag-invalid) {
+  background-color: var(--wb-panel);
+  background-image: linear-gradient(to right, color-mix(in srgb, var(--wb-line) 40%, transparent) 1px, transparent 1px);
+}
+
+/* Media keeps its semantic dark fill and white labels. Thumbnail pixels are
+ * unconstrained, so overlaid labels need their own opaque backing. */
+:root.mioon-light-preview .dock-workbench .timeline-panel.edit-timeline :is(.timeline-clip, .track-kind),
+:root.mioon-light-preview .dock-workbench .timeline-panel.edit-timeline .timeline-clip :is(.clip-copy > strong, .timeline-waveform, .timeline-waveform-placeholder) {
+  color: var(--wb-media-text);
+  text-shadow: none;
+}
+:root.mioon-light-preview .dock-workbench .timeline-panel.edit-timeline .timeline-clip:hover {
+  filter: none;
+}
+:root.mioon-light-preview .dock-workbench .timeline-panel.edit-timeline :is(.timeline-waveform, .timeline-waveform-placeholder) {
+  opacity: 1;
+}
+:root.mioon-light-preview .dock-workbench .timeline-panel.edit-timeline .timeline-clip:has(> :is(img, video.clip-thumbnail)) :is(.clip-copy > strong, .clip-symbol),
+:root.mioon-light-preview .dock-workbench .timeline-panel.edit-timeline .timeline-clip:has(> :is(img, video.clip-thumbnail)) .timeline-waveform-placeholder,
+:root.mioon-light-preview .central-preview.edit-preview .preview-stage-label,
+:root.mioon-light-preview .dock-workbench :is(.asset-kind, .asset-duration, .asset-marks-compact .unknown, .asset-usage-compact) {
+  color: var(--wb-media-text);
+  background: #333430;
+  border-color: transparent;
+}
+:root.mioon-light-preview .dock-workbench .asset-marks-compact .asset-disposition-buttons > button {
+  background: #333430;
+}
+:root.mioon-light-preview .dock-workbench .asset-marks-compact button[aria-pressed="true"][data-testid*="-favorite-"] {
+  color: #F2A93B;
+}
+:root.mioon-light-preview .dock-workbench .asset-marks-compact button[aria-pressed="true"][data-testid*="-rejected-"] {
+  color: #F26464;
+}
+:root.mioon-light-preview .dock-workbench .asset-layout-grid .asset-kind {
+  background: var(--wb-video);
+  border-color: var(--wb-video-edge);
+}
+:root.mioon-light-preview .dock-workbench .asset-layout-grid .asset-card.image .asset-kind {
+  background: var(--wb-image);
+  border-color: var(--wb-image-edge);
+}
+:root.mioon-light-preview .dock-workbench .asset-layout-grid .asset-card.audio .asset-kind {
+  background: var(--wb-audio);
+  border-color: var(--wb-audio-edge);
+}
+:root.mioon-light-preview .dock-workbench .timeline-panel.edit-timeline .timeline-clip.selected {
+  border-color: var(--wb-media-text);
+  outline: 2px solid var(--wb-accent-line);
+  outline-offset: 1px;
+}
+:root.mioon-light-preview .dock-workbench .timeline-panel.edit-timeline .clip-trim-mark {
+  background: var(--wb-media-text);
+}

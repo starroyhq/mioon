@@ -1,0 +1,116 @@
+[
+  {
+    "label": "old-filter-script",
+    "file": "/opt/homebrew/bin/ffmpeg",
+    "args": [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=black:s=64x64:r=30",
+      "-filter_script:v",
+      "/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/simple-null.filter",
+      "-frames:v",
+      "1",
+      "-f",
+      "null",
+      "-"
+    ],
+    "exitCode": 8,
+    "stderr": "Unrecognized option 'filter_script:v'.\nError splitting the argument list: Option not found\n"
+  },
+  {
+    "label": "new-filter-file",
+    "file": "/opt/homebrew/bin/ffmpeg",
+    "args": [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=black:s=64x64:r=30",
+      "-/filter:v",
+      "/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/simple-null.filter",
+      "-frames:v",
+      "1",
+      "-f",
+      "null",
+      "-"
+    ],
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "label": "old-filter-complex-script",
+    "file": "/opt/homebrew/bin/ffmpeg",
+    "args": [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=black:s=64x64:r=30",
+      "-filter_complex_script",
+      "/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/complex-null.filter",
+      "-map",
+      "[outv]",
+      "-frames:v",
+      "1",
+      "-f",
+      "null",
+      "-"
+    ],
+    "exitCode": 8,
+    "stderr": "Unrecognized option 'filter_complex_script'.\nError splitting the argument list: Option not found\n"
+  },
+  {
+    "label": "new-filter-complex-file",
+    "file": "/opt/homebrew/bin/ffmpeg",
+    "args": [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=black:s=64x64:r=30",
+      "-/filter_complex",
+      "/private/tmp/mioon-full-recheck-_m5c6umh/media-diagnostics/complex-null.filter",
+      "-map",
+      "[outv]",
+      "-frames:v",
+      "1",
+      "-f",
+      "null",
+      "-"
+    ],
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "label": "independent-subtitles-no-options",
+    "file": "/opt/homebrew/bin/ffmpeg",
+    "args": [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=black:s=64x64:r=30",
+      "-vf",
+      "subtitles",
+      "-frames:v",
+      "1",
+      "-f",
+      "null",
+      "-"
+    ],
+    "exitCode": 8,
+    "stderr": "[AVFilterGraph @ 0x78a9024200] No such filter: 'subtitles'\nError opening output file -.\nError opening output files: Filter not found\n"
+  }
+]

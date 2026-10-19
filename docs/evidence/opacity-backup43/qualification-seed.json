@@ -1,0 +1,38 @@
+{
+  "base": "/private/tmp/mioon-opacity-backup43-qualification-20261016",
+  "source": "/private/tmp/mioon-opacity-backup43-qualification-20261016/source42",
+  "backup": "/private/tmp/mioon-opacity-backup43-qualification-20261016/backup42",
+  "destination": "/private/tmp/mioon-opacity-backup43-qualification-20261016/restored43",
+  "seededAt": "2026-10-16T06:49:10.852Z",
+  "runtime": "v26.9.0",
+  "storeClosed": true,
+  "lockExists": false,
+  "projectId": "bdc77905-586b-45e3-8401-250c8455d389",
+  "timelineId": "dd6d9b0b-02d4-4605-a42a-53b7fdc0abe3",
+  "assetId": "cfc69d24-d308-4a6e-b290-c9207780b456",
+  "taskId": "cec36b12-512b-46b3-895b-0e75a37bdc20",
+  "relativePath": "media/cfc69d24-d308-4a6e-b290-c9207780b456.mp4",
+  "sourceDbSha256": "19844d04c75bae3a3fb1e15bc3c789ecbdab05e86c9ebb1ca62bf9612fa43d7b",
+  "assetSha256": "e89a2641ad53443817634d38e4c06e8d66bb6de0bcd169750ef51ad9d0499212",
+  "assetBytes": 27,
+  "draftSha256": "67f5c2f9105567cc3b3415b0f05596a19f2497bca056486f4a191b55082f5ae8",
+  "timelineTextSha256": "0ef52f54be289125ddcccb94cd24e9f2d0e5445a4e425274e5d479da42b51783",
+  "taskTextSha256": "d59477b9f9179bd7fa4adf483409619e93e9e4bf44bb3cdb1a772b02124dbc45",
+  "receiptTextSha256": "0ef52f54be289125ddcccb94cd24e9f2d0e5445a4e425274e5d479da42b51783",
+  "receiptRequestId": "cf486259-c4ba-474f-b882-be218e52254b",
+  "historyBeforeSha256": "949bc9a961e83625de974a589d09345d587f0e38e5182bae5aa74a176967ef05",
+  "historyAfterSha256": "8af308d83789dc2e1999e6a45596e139209edfecea6ca8dbe1f6eeefd7e056c3",
+  "opacityEnvelope": {
+    "profileId": "mioon-clip-linear-opacity-v1",
+    "points": [
+      {
+        "frame": 0,
+        "opacity": 0.25
+      },
+      {
+        "frame": 30,
+        "opacity": 1
+      }
+    ]
+  }
+}

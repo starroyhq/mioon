@@ -1,4 +1,92 @@
-# Local single-Look increment — 2026-10-15
+# Current iteration and delivery status — 2026-10-16
+
+Last verified GitHub main and application integration:
+`ff85c9a8daaa35bff080d0979fe2faa3683cd3b5`. The Mac's subsequent
+`25609e98b8990eaa121124f35242f0bcf4a4b3ae` is a local test-fixture repair and
+has not been pushed. The push was verified by reading back the exact remote SHA;
+no workflow runs, check runs or commit statuses were visible at that query, so
+CI success is not claimed. This documentation update performs no fresh remote query.
+
+Local-only opacity development began after `ec01753056c0f31706d29ed279ae1944c822ad94`
+and now includes the completed follow-ups through `256cfd3` indexed below:
+the [fresh42 application slice](docs/OPACITY-CANDIDATE-APPLICATION.md) connects
+project/import/edit/Inspector v3/tasks/preview/download in the shared App, with
+synthetic no-listen qualification and canonical builds. Default40/41 remains;
+Explicit ordinary42 [reopening](docs/OPACITY-CANDIDATE-REOPEN.md) now preserves
+saved edits/drafts. [Partial Safari and real short-media acceptance](docs/OPACITY-CANDIDATE-NATIVE-ACCEPTANCE.md)
+now verifies login/project creation, actual HTTP persistence/Undo/Redo and10-frame
+FFmpeg preview/export/download. In that earlier42 run CUA disconnected at the import picker, so its later
+GUI operations remain unverified. The [fixed42 cold-backup→offline43 entry](docs/OPACITY-CANDIDATE-BACKUP-RESTORE.md)
+now preserves raw evidence, held/epoch/origin and managed asset bytes, explicitly
+excludes v3 drafts. The subsequent [restored43 application entry](docs/OPACITY-RESTORED-APPLICATION.md)
+now opens exact restored43 through `--open-restored-workspace`, with the original
+origin/held/epoch guards, existing-clip saves/Undo/Redo and new render requests.
+It does not migrate40/41 or grant ordinary42 creation/import capabilities.
+That initial43 slice kept unsaved input and view state in window memory;
+original v3 drafts remain excluded from backup and preserved in the42 source.
+That43 slice passed
+124/124 focused tests plus separate12/12 preference checks, canonical builds,
+actual Safari Save/Cancel/Undo/Redo,10-frame preview/export/playback and normal
+close/reopen with saved curve retained. HTTP download bytes and RGB decode
+passed; full four-language/IME and package/platform gates remain separate.
+The subsequent [language/IME qualification](docs/OPACITY-LANGUAGE-IME-ACCEPTANCE.md)
+fixes composition-Enter implicit saving and42 Cancel/Save races.241/241 targeted
+checks and a separate5/5 language/session group passed. Its43 GUI run covered
+Simplified/Traditional Chinese and English on the previous build; Japanese stopped
+after settings when CUA disconnected. Real OS IME and the final fixed-build GUI
+remain unverified. The own server PID is absent and its stale lock was released
+through existing admission; the lost exec session exit code and test-window
+closure remain unconfirmed.
+The later [restored43 draft slice](docs/OPACITY-RESTORED-DRAFTS.md), local commit
+`4607947`, persists new clip input only under the current origin's exact
+`localClipDrafts` capability. After durable acknowledgement it can be explicitly
+restored or discarded on cold reopen; source42 v3 drafts are not migrated.
+Older43 without that capability and restored view state retain memory fallback;
+unacknowledged or composing input is not safe to discard. The subsequent
+[ordinary40→ordinary42 offline upgrade](docs/OPACITY-ORDINARY-UPGRADE.md), local
+commit `256cfd3`, creates an explicit new copy from an eligible closed40 and its
+verified backup, preserving the source. It does not upgrade41 or change default
+admission. [Batch integration and release checks](docs/OPACITY-RELEASE-CHECK.md)
+are complete: four product regressions fixed; the final121-file aggregate is
+3574 total /3568 passed /6 retained BLOB-expectation failures,0 skips/cancellations.
+Node24 strict types passed, while CUA Node24 builds were blocked by macOS/Rollup
+Team ID mapping; Node26 builds passed only as auxiliary source checks. The [isolated follow-up](docs/BLOB-ADMISSION-BASELINES.md) reproduced all six
+at pre-a7/a7/ff85/d52 exact snapshots. Their historical BLOB startup compatibility
+remains unresolved; independent TEXT controls do not replace those failures. This pass found CUA Node24.21.0 darwin-arm64;
+it is not the old pinned Linux executable or product-runtime qualification.
+Use `git rev-parse HEAD` for the exact local commit; no push was performed.
+
+- **Implemented:** independent Settings center, four-language presentation,
+  1–300-frame sample export preview, continuous saved-timeline audio, and the
+  volume-envelope backend plus integrated row editor. Earlier prototype/dormant
+  labels describe earlier checkpoints; do not reopen these implementations.
+- **Source gates:** canonical TS/source-language guard and one canonical
+  production source build passed on `ff85c9a`, with 217 focused positive checks.
+  The old 721 TS diagnostics were resolved in `dc7a057`; retain the earlier
+  [failure evidence](docs/evidence/volume-envelope-editor-integration/qualification.md)
+  and [canonical repair](docs/evidence/volume-envelope-canonical-repair/qualification.md)
+  as history. A source build is not installer or native-platform acceptance.
+- **Local fixture repair:** `25609e9` changes only ownership/security tests.
+  The two original files pass 53/53, and pure-memory LUT host checks pass 11/11
+  under subprocess/network/filesystem-write guards. These replace the known
+  44 baseline fixture failures within that scope, not a full-suite qualification.
+  An extra preload bundling case attempted esbuild and was blocked before launch;
+  that command exited 1 and is not a passing gate. No product runtime changed.
+- **Volume-envelope acceptance:** `dc7a057` native Save/Undo/Redo and normal close
+  passed. Inspector reopen, CJK IME and four-language native acceptance remain
+  unfinished. Backend/row-editor implementation is separate from those gates;
+  [integration](docs/VOLUME-ENVELOPE-EDITOR-INTEGRATION.md) retains its earlier scope.
+- **Still separate:** 600-second wall-clock audio/resource qualification, exact-file
+  LUT reselection/native restart, complete platform/installer/signing and real-provider
+  gates. Other visual keyframes/transitions, Full Log/HDR and a general plugin
+  broker/SDK remain future features; opacity has only the isolated scope above.
+  See the [current queue](docs/PRODUCT-ROADMAP.md#current-delivery-and-remaining-work-2026-10-16).
+
+The dated entries below retain their original evidence, test counts and Git facts.
+The earlier index alignment changed documentation only; current local opacity
+test/build evidence is linked above. Complete GUI/platform acceptance remains separate.
+
+# Historical local single-Look increment — 2026-10-15
 
 On isolated `feat/look-pack`, based on `16b7b4de75e19e4166742ace52e68357d99eefd1`:
 one declarative `.mioon-look.cube` can be previewed, explicitly adopted into the

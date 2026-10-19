@@ -1,0 +1,14 @@
+.login-redesign { display: grid; place-items: center; width: 100%; min-height: 100dvh; padding: 24px; background: var(--wb-bg); color: var(--wb-text); overflow-y: auto; }
+.login-redesign-card { position: relative; width: min(400px, 100%); padding: 68px 32px 32px; border: 1px solid var(--wb-line-subtle); border-radius: var(--wb-radius-dialog); background: var(--wb-panel); box-shadow: var(--wb-shadow); }
+.login-redesign-language { position: absolute; top: 20px; right: 32px; }
+.login-redesign-language .language-control { margin: 0; }
+.login-redesign-card h1 { margin: 0; text-align: center; font-size: 24px; line-height: 1.3; font-weight: 600; }
+.login-redesign-tagline { margin: 6px 0 28px; color: var(--wb-soft); text-align: center; font-size: var(--wb-text-body); line-height: 1.5; }
+.login-redesign-card label { margin-bottom: 8px; color: var(--wb-soft); font-size: var(--wb-text-label); }
+.login-redesign-token { position: relative; }
+.login-redesign-token input { height: var(--wb-control-large); padding-right: 36px; }
+.login-redesign-token > .wb-button { position: absolute; top: 4px; right: 4px; }
+.login-redesign-card form > .wb-button { width: 100%; margin-top: 16px; }
+.login-redesign-card .wb-alert { margin-top: 12px; }
+.login-redesign-location { margin: 24px 0 0; color: var(--wb-muted); font-size: var(--wb-text-caption); line-height: 1.6; text-align: center; }
+.login-redesign-location code { font-family: var(--wb-font-mono); }

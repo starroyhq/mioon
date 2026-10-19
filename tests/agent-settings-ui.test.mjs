@@ -206,6 +206,7 @@ function uiHarness(client) {
     if (id === '../../../packages/i18n/src/index.ts') return i18n;
     if (id === 'react') return react;
     if (id === './settings-navigation-state.ts') return navigation;
+    if (id === './AgentAuthorizations.tsx') return {__esModule:true,default:'AgentAuthorizations'};
     if (id === './agent-settings.js') return { ...logic, createAgentSettingsSession: options => logic.createAgentSettingsSession({ ...options, client }) };
     if (id === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
     if (id === './icons.jsx') return { default: 'Icon' };

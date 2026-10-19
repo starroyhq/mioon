@@ -1,0 +1,205 @@
+TAP version 13
+# Subtest: GET has a whole-request deadline while response headers hang
+ok 1 - GET has a whole-request deadline while response headers hang
+  ---
+  duration_ms: 26.325375
+  type: 'test'
+  ...
+# Subtest: GET has a whole-request deadline while the response body hangs
+ok 2 - GET has a whole-request deadline while the response body hangs
+  ---
+  duration_ms: 2.796917
+  type: 'test'
+  ...
+# Subtest: PUT has a whole-request deadline while response headers hang
+ok 3 - PUT has a whole-request deadline while response headers hang
+  ---
+  duration_ms: 4.594708
+  type: 'test'
+  ...
+# Subtest: PUT has a whole-request deadline while the response body hangs
+ok 4 - PUT has a whole-request deadline while the response body hangs
+  ---
+  duration_ms: 2.638125
+  type: 'test'
+  ...
+# Subtest: DELETE has a whole-request deadline while response headers hang
+ok 5 - DELETE has a whole-request deadline while response headers hang
+  ---
+  duration_ms: 1.837959
+  type: 'test'
+  ...
+# Subtest: DELETE has a whole-request deadline while the response body hangs
+ok 6 - DELETE has a whole-request deadline while the response body hangs
+  ---
+  duration_ms: 1.230708
+  type: 'test'
+  ...
+# Subtest: deadline defaults to 10s, clamps to 60s, and remains finite for invalid options
+    # Subtest: timeoutMs=undefined uses 10000ms
+    ok 1 - timeoutMs=undefined uses 10000ms
+      ---
+      duration_ms: 1.819083
+      type: 'test'
+      ...
+    # Subtest: timeoutMs=NaN uses 10000ms
+    ok 2 - timeoutMs=NaN uses 10000ms
+      ---
+      duration_ms: 2.532333
+      type: 'test'
+      ...
+    # Subtest: timeoutMs=Infinity uses 10000ms
+    ok 3 - timeoutMs=Infinity uses 10000ms
+      ---
+      duration_ms: 1.333625
+      type: 'test'
+      ...
+    # Subtest: timeoutMs=120000 uses 60000ms
+    ok 4 - timeoutMs=120000 uses 60000ms
+      ---
+      duration_ms: 1.761083
+      type: 'test'
+      ...
+    # Subtest: timeoutMs=0 uses 1ms
+    ok 5 - timeoutMs=0 uses 1ms
+      ---
+      duration_ms: 0.916875
+      type: 'test'
+      ...
+    # Subtest: timeoutMs=-1 uses 1ms
+    ok 6 - timeoutMs=-1 uses 1ms
+      ---
+      duration_ms: 1.022625
+      type: 'test'
+      ...
+    1..6
+ok 7 - deadline defaults to 10s, clamps to 60s, and remains finite for invalid options
+  ---
+  duration_ms: 10.212959
+  type: 'test'
+  ...
+# Subtest: expired PUT cannot accept a late ACK, alter its CAS, or issue another PUT
+ok 8 - expired PUT cannot accept a late ACK, alter its CAS, or issue another PUT
+  ---
+  duration_ms: 1.290667
+  type: 'test'
+  ...
+# Subtest: late fetch rejection is consumed after the deadline
+ok 9 - late fetch rejection is consumed after the deadline
+  ---
+  duration_ms: 0.454709
+  type: 'test'
+  ...
+# Subtest: declared oversized and malformed lengths are rejected before waiting for any body bytes
+    # Subtest: Content-Length 12289
+    ok 1 - Content-Length 12289
+      ---
+      duration_ms: 1.314
+      type: 'test'
+      ...
+    # Subtest: Content-Length 9007199254740992
+    ok 2 - Content-Length 9007199254740992
+      ---
+      duration_ms: 1.966666
+      type: 'test'
+      ...
+    # Subtest: Content-Length -1
+    ok 3 - Content-Length -1
+      ---
+      duration_ms: 0.629541
+      type: 'test'
+      ...
+    # Subtest: Content-Length +1
+    ok 4 - Content-Length +1
+      ---
+      duration_ms: 0.723917
+      type: 'test'
+      ...
+    # Subtest: Content-Length 1.5
+    ok 5 - Content-Length 1.5
+      ---
+      duration_ms: 0.740792
+      type: 'test'
+      ...
+    # Subtest: Content-Length 01
+    ok 6 - Content-Length 01
+      ---
+      duration_ms: 1.053333
+      type: 'test'
+      ...
+    1..6
+ok 10 - declared oversized and malformed lengths are rejected before waiting for any body bytes
+  ---
+  duration_ms: 7.499
+  type: 'test'
+  ...
+# Subtest: actual streamed bytes are bounded even with absent or misleading Content-Length
+    # Subtest: Content-Length undefined
+    ok 1 - Content-Length undefined
+      ---
+      duration_ms: 0.781458
+      type: 'test'
+      ...
+    # Subtest: Content-Length 1
+    ok 2 - Content-Length 1
+      ---
+      duration_ms: 0.343625
+      type: 'test'
+      ...
+    1..2
+ok 11 - actual streamed bytes are bounded even with absent or misleading Content-Length
+  ---
+  duration_ms: 1.469041
+  type: 'test'
+  ...
+# Subtest: the maximum legal stored row and success-envelope overhead fit the actual HTTP budget
+ok 12 - the maximum legal stored row and success-envelope overhead fit the actual HTTP budget
+  ---
+  duration_ms: 1.830417
+  type: 'test'
+  ...
+# Subtest: UTF-8 sequences split across chunks survive strict decoding
+ok 13 - UTF-8 sequences split across chunks survive strict decoding
+  ---
+  duration_ms: 5.020625
+  type: 'test'
+  ...
+# Subtest: invalid UTF-8 inside otherwise valid JSON never becomes replacement-character success
+ok 14 - invalid UTF-8 inside otherwise valid JSON never becomes replacement-character success
+  ---
+  duration_ms: 1.169917
+  type: 'test'
+  ...
+# Subtest: successful acknowledgements require status 200 and exactly own ok/data keys
+ok 15 - successful acknowledgements require status 200 and exactly own ok/data keys
+  ---
+  duration_ms: 0.443375
+  type: 'test'
+  ...
+# Subtest: error evidence requires exactly the outer and four inner keys
+ok 16 - error evidence requires exactly the outer and four inner keys
+  ---
+  duration_ms: 0.967042
+  type: 'test'
+  ...
+# Subtest: only exact code/status evidence distinguishes refused, conflict and unknown
+ok 17 - only exact code/status evidence distinguishes refused, conflict and unknown
+  ---
+  duration_ms: 1.337708
+  type: 'test'
+  ...
+# Subtest: existing fetcher-only calling convention preserves endpoints, request bodies and unsupported handling
+ok 18 - existing fetcher-only calling convention preserves endpoints, request bodies and unsupported handling
+  ---
+  duration_ms: 0.628667
+  type: 'test'
+  ...
+1..18
+# tests 32
+# suites 0
+# pass 32
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 265.194584

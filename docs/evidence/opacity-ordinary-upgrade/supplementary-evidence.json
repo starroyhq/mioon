@@ -1,0 +1,19 @@
+{
+  "overlap": "Fault49 overlaps final235; do not sum counts.",
+  "copied": [
+    {
+      "source": "/tmp/mioon-ordinary40-upgrade-faults-final-20261016.log",
+      "evidence": "faults-final.txt",
+      "originalSha256": "37584a7b6b8ae84d9098a9cc639645a66be952ac3d303879651fbab38096c1d0",
+      "savedSha256": "37584a7b6b8ae84d9098a9cc639645a66be952ac3d303879651fbab38096c1d0",
+      "normalization": "Copy only: trim line-end spaces/tabs. No assertion/source changes."
+    },
+    {
+      "source": "/tmp/mioon-ordinary40-upgrade-faults-stages-20261016.json",
+      "evidence": "faults-stages.json",
+      "originalSha256": "dbc5beb2fc8b9044eddbc498a4a14c941f7e39f8bf510eb3ca17d7ba49bc3653",
+      "savedSha256": "dbc5beb2fc8b9044eddbc498a4a14c941f7e39f8bf510eb3ca17d7ba49bc3653",
+      "normalization": "Copy only: trim line-end spaces/tabs. No assertion/source changes."
+    }
+  ]
+}

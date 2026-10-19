@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: image inspection shares exact bounded effects and does not widen the generic Agent read catalog
+ok 1 - image inspection shares exact bounded effects and does not widen the generic Agent read catalog
+  ---
+  duration_ms: 2.096417
+  type: 'test'
+  ...
+# Subtest: shared image client preserves SHA-bound image evidence and the historical video DTO unchanged
+ok 2 - shared image client preserves SHA-bound image evidence and the historical video DTO unchanged
+  ---
+  duration_ms: 2.84125
+  type: 'test'
+  ...
+# Subtest: shared image client rejects foreign, unbound, contradictory and path-bearing DTOs once without mutation uncertainty
+ok 3 - shared image client rejects foreign, unbound, contradictory and path-bearing DTOs once without mutation uncertainty
+  ---
+  duration_ms: 2.8395
+  type: 'test'
+  ...
+# Subtest: image inspection refuses caller paths, bytes, decoder arguments and request identities before transport
+ok 4 - image inspection refuses caller paths, bytes, decoder arguments and request identities before transport
+  ---
+  duration_ms: 0.302458
+  type: 'test'
+  ...
+# Subtest: actual authenticated HTTP, CLI and official MCP preserve image inspection scope; restored33 refuses even an explicit origin
+ok 5 - actual authenticated HTTP, CLI and official MCP preserve image inspection scope; restored33 refuses even an explicit origin
+  ---
+  duration_ms: 4213.065959
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4650.670208

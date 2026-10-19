@@ -1,0 +1,754 @@
+TAP version 13
+# Subtest: candidate launch is explicit, one-shot, fresh-only and requires the isolated build
+ok 1 - candidate launch is explicit, one-shot, fresh-only and requires the isolated build
+  ---
+  duration_ms: 1331.973417
+  type: 'test'
+  ...
+# Subtest: actual shared handler serves candidate page, authenticates and excludes provider runtimes
+ok 2 - actual shared handler serves candidate page, authenticates and excludes provider runtimes
+  ---
+  duration_ms: 275.694792
+  type: 'test'
+  ...
+# Subtest: actual project, timeline, task ACK, v3 draft and delivery endpoints retain opacity
+ok 3 - actual project, timeline, task ACK, v3 draft and delivery endpoints retain opacity
+  ---
+  duration_ms: 4649.717375
+  type: 'test'
+  ...
+# Subtest: ordinary startServer rejects forged candidate proof before opening a directory or listening
+ok 4 - ordinary startServer rejects forged candidate proof before opening a directory or listening
+  ---
+  duration_ms: 599.183333
+  type: 'test'
+  ...
+# Subtest: actual shared file response guards preview and export GET/HEAD/Range and refuses raw exports
+ok 5 - actual shared file response guards preview and export GET/HEAD/Range and refuses raw exports
+  ---
+  duration_ms: 10168.760417
+  type: 'test'
+  ...
+# Subtest: application grant requires a newly created exact42 store and cannot be reconstituted
+ok 6 - application grant requires a newly created exact42 store and cannot be reconstituted
+  ---
+  duration_ms: 1122.849291
+  type: 'test'
+  ...
+# Subtest: fresh42 actual services create/hydrate project, import managed bytes, add clip, save opacity and undo/redo
+ok 7 - fresh42 actual services create/hydrate project, import managed bytes, add clip, save opacity and undo/redo
+  ---
+  duration_ms: 998.63175
+  type: 'test'
+  ...
+# Subtest: a pre-aborted application call cannot create a project or initialize a missing timeline
+ok 8 - a pre-aborted application call cannot create a project or initialize a missing timeline
+  ---
+  duration_ms: 242.194875
+  type: 'test'
+  ...
+# Subtest: shared ordinary40 importer retains successful bytes/type rejection and cleanup without candidate grant
+ok 9 - shared ordinary40 importer retains successful bytes/type rejection and cleanup without candidate grant
+  ---
+  duration_ms: 213.517583
+  type: 'test'
+  ...
+# Subtest: candidate import refuses project identity replacement before publication and removes its owned source
+ok 10 - candidate import refuses project identity replacement before publication and removes its owned source
+  ---
+  duration_ms: 302.943083
+  type: 'test'
+  ...
+# Subtest: candidate source replacement is refused without deleting another inode
+ok 11 - candidate source replacement is refused without deleting another inode
+  ---
+  duration_ms: 321.101333
+  type: 'test'
+  ...
+# Subtest: candidate drain waits for its live import and propagates its cancellation failure
+ok 12 - candidate drain waits for its live import and propagates its cancellation failure
+  ---
+  duration_ms: 271.019541
+  type: 'test'
+  ...
+# Subtest: new42 actual application creates project, imports source and durably adds/removes clips with exact opacity history
+ok 13 - new42 actual application creates project, imports source and durably adds/removes clips with exact opacity history
+  ---
+  duration_ms: 20065.622417
+  type: 'test'
+  ...
+# Subtest: application task binding refuses service copies and cannot broaden an ordinary42 store
+ok 14 - application task binding refuses service copies and cannot broaden an ordinary42 store
+  ---
+  duration_ms: 1303.534834
+  type: 'test'
+  ...
+# Subtest: fresh application prepare has a fixed seven-operation data grammar without broadening ordinary42/43
+ok 15 - fresh application prepare has a fixed seven-operation data grammar without broadening ordinary42/43
+  ---
+  duration_ms: 46.115333
+  type: 'test'
+  ...
+# Subtest: application add ACK requires exact opacity presence, null or points on the clip matching legacy fields
+ok 16 - application add ACK requires exact opacity presence, null or points on the clip matching legacy fields
+  ---
+  duration_ms: 6.783708
+  type: 'test'
+  ...
+# Subtest: application track/remove ACK projects retained opacity but still uses frozen legacy intent semantics
+ok 17 - application track/remove ACK projects retained opacity but still uses frozen legacy intent semantics
+  ---
+  duration_ms: 4.074
+  type: 'test'
+  ...
+# Subtest: application task projection retains original opacity fields and rejects unknown shell or intent fields
+ok 18 - application task projection retains original opacity fields and rejects unknown shell or intent fields
+  ---
+  duration_ms: 1.570417
+  type: 'test'
+  ...
+# Subtest: candidate cold capture refuses an active owner lease without changing its identity or source
+ok 19 - candidate cold capture refuses an active owner lease without changing its identity or source
+  ---
+  duration_ms: 1169.775791
+  type: 'test'
+  ...
+# Subtest: candidate capture refuses nonempty -wal and never repairs it
+ok 20 - candidate capture refuses nonempty -wal and never repairs it
+  ---
+  duration_ms: 591.868709
+  type: 'test'
+  ...
+# Subtest: candidate capture refuses nonempty -journal and never repairs it
+ok 21 - candidate capture refuses nonempty -journal and never repairs it
+  ---
+  duration_ms: 603.774584
+  type: 'test'
+  ...
+# Subtest: candidate backup and restore never reuse an existing empty target
+ok 22 - candidate backup and restore never reuse an existing empty target
+  ---
+  duration_ms: 923.707417
+  type: 'test'
+  ...
+# Subtest: candidate backup and restore never reuse an existing nonempty target
+ok 23 - candidate backup and restore never reuse an existing nonempty target
+  ---
+  duration_ms: 775.751416
+  type: 'test'
+  ...
+# Subtest: candidate restore refuses an existing workspace ancestor workbench.sqlite
+ok 24 - candidate restore refuses an existing workspace ancestor workbench.sqlite
+  ---
+  duration_ms: 882.84
+  type: 'test'
+  ...
+# Subtest: candidate restore refuses an existing workspace ancestor server.lock
+ok 25 - candidate restore refuses an existing workspace ancestor server.lock
+  ---
+  duration_ms: 682.5645
+  type: 'test'
+  ...
+# Subtest: candidate capture refuses source-root symlinks without following or changing their targets
+ok 26 - candidate capture refuses source-root symlinks without following or changing their targets
+  ---
+  duration_ms: 895.829791
+  type: 'test'
+  ...
+# Subtest: candidate capture refuses source-database symlinks without following or changing their targets
+ok 27 - candidate capture refuses source-database symlinks without following or changing their targets
+  ---
+  duration_ms: 554.656708
+  type: 'test'
+  ...
+# Subtest: candidate capture refuses source-media symlinks without following or changing their targets
+ok 28 - candidate capture refuses source-media symlinks without following or changing their targets
+  ---
+  duration_ms: 714.484917
+  type: 'test'
+  ...
+# Subtest: candidate capture refuses source-media-directory symlinks without following or changing their targets
+ok 29 - candidate capture refuses source-media-directory symlinks without following or changing their targets
+  ---
+  duration_ms: 474.230333
+  type: 'test'
+  ...
+# Subtest: candidate restore refuses archive-root symlinks and preserves source/archive bytes
+ok 30 - candidate restore refuses archive-root symlinks and preserves source/archive bytes
+  ---
+  duration_ms: 830.1765
+  type: 'test'
+  ...
+# Subtest: candidate restore refuses archive-database symlinks and preserves source/archive bytes
+ok 31 - candidate restore refuses archive-database symlinks and preserves source/archive bytes
+  ---
+  duration_ms: 1029.634875
+  type: 'test'
+  ...
+# Subtest: candidate restore refuses archive-media symlinks and preserves source/archive bytes
+ok 32 - candidate restore refuses archive-media symlinks and preserves source/archive bytes
+  ---
+  duration_ms: 1055.452959
+  type: 'test'
+  ...
+# Subtest: candidate restore refuses target-root symlinks and preserves source/archive bytes
+ok 33 - candidate restore refuses target-root symlinks and preserves source/archive bytes
+  ---
+  duration_ms: 743.993625
+  type: 'test'
+  ...
+# Subtest: candidate restore refuses target-parent symlinks and preserves source/archive bytes
+ok 34 - candidate restore refuses target-parent symlinks and preserves source/archive bytes
+  ---
+  duration_ms: 792.717583
+  type: 'test'
+  ...
+# Subtest: canonical path checks reject traversal and overlapping offline operations
+ok 35 - canonical path checks reject traversal and overlapping offline operations
+  ---
+  duration_ms: 862.835875
+  type: 'test'
+  ...
+# Subtest: candidate archive rejects rehashed path traversal "payload/../outside"
+ok 36 - candidate archive rejects rehashed path traversal "payload/../outside"
+  ---
+  duration_ms: 924.841875
+  type: 'test'
+  ...
+# Subtest: candidate archive rejects rehashed path traversal "payload/media/../../outside"
+ok 37 - candidate archive rejects rehashed path traversal "payload/media/../../outside"
+  ---
+  duration_ms: 752.508041
+  type: 'test'
+  ...
+# Subtest: candidate archive rejects rehashed path traversal "/payload/workbench.sqlite"
+ok 38 - candidate archive rejects rehashed path traversal "/payload/workbench.sqlite"
+  ---
+  duration_ms: 918.326666
+  type: 'test'
+  ...
+# Subtest: candidate archive rejects rehashed path traversal "payload\\\\workbench.sqlite"
+ok 39 - candidate archive rejects rehashed path traversal "payload\\\\workbench.sqlite"
+  ---
+  duration_ms: 805.923291
+  type: 'test'
+  ...
+# Subtest: candidate verification and restore refuse damaged database without publication
+ok 40 - candidate verification and restore refuse damaged database without publication
+  ---
+  duration_ms: 1129.381833
+  type: 'test'
+  ...
+# Subtest: candidate verification and restore refuse damaged media without publication
+ok 41 - candidate verification and restore refuse damaged media without publication
+  ---
+  duration_ms: 1946.54025
+  type: 'test'
+  ...
+# Subtest: candidate verification and restore refuse damaged manifest without publication
+ok 42 - candidate verification and restore refuse damaged manifest without publication
+  ---
+  duration_ms: 1296.391167
+  type: 'test'
+  ...
+# Subtest: candidate verification and restore refuse damaged complete without publication
+ok 43 - candidate verification and restore refuse damaged complete without publication
+  ---
+  duration_ms: 1009.682625
+  type: 'test'
+  ...
+# Subtest: candidate verification and restore refuse damaged missing-complete without publication
+ok 44 - candidate verification and restore refuse damaged missing-complete without publication
+  ---
+  duration_ms: 1005.003959
+  type: 'test'
+  ...
+# Subtest: candidate verification and restore refuse damaged extra-file without publication
+ok 45 - candidate verification and restore refuse damaged extra-file without publication
+  ---
+  duration_ms: 1229.802875
+  type: 'test'
+  ...
+# Subtest: candidate metadata requires the explicit excluded draft policy (undefined)
+ok 46 - candidate metadata requires the explicit excluded draft policy (undefined)
+  ---
+  duration_ms: 841.714
+  type: 'test'
+  ...
+# Subtest: candidate metadata requires the explicit excluded draft policy (included)
+ok 47 - candidate metadata requires the explicit excluded draft policy (included)
+  ---
+  duration_ms: 650.172125
+  type: 'test'
+  ...
+# Subtest: candidate metadata requires the explicit excluded draft policy (restored)
+ok 48 - candidate metadata requires the explicit excluded draft policy (restored)
+  ---
+  duration_ms: 582.127
+  type: 'test'
+  ...
+# Subtest: metadata42 cannot authorize a schema40 database even with recomputed payload, manifest and COMPLETE hashes
+ok 49 - metadata42 cannot authorize a schema40 database even with recomputed payload, manifest and COMPLETE hashes
+  ---
+  duration_ms: 1324.5165
+  type: 'test'
+  ...
+# Subtest: candidate42 stays excluded from default backup/verify and old40 stays excluded from candidate capture
+ok 50 - candidate42 stays excluded from default backup/verify and old40 stays excluded from candidate capture
+  ---
+  duration_ms: 1263.796
+  type: 'test'
+  ...
+# Subtest: copied, inherited, null and callback profiles are rejected before any path or database action
+ok 51 - copied, inherited, null and callback profiles are rejected before any path or database action
+  ---
+  duration_ms: 1.714458
+  type: 'test'
+  ...
+# Subtest: candidate restore copy failure retains only an unpublished candidate and leaves originals unchanged
+ok 52 - candidate restore copy failure retains only an unpublished candidate and leaves originals unchanged
+  ---
+  duration_ms: 1073.606708
+  type: 'test'
+  ...
+# Subtest: candidate restore ddl failure retains only an unpublished candidate and leaves originals unchanged
+ok 53 - candidate restore ddl failure retains only an unpublished candidate and leaves originals unchanged
+  ---
+  duration_ms: 1640.357209
+  type: 'test'
+  ...
+# Subtest: candidate restore validation failure retains only an unpublished candidate and leaves originals unchanged
+ok 54 - candidate restore validation failure retains only an unpublished candidate and leaves originals unchanged
+  ---
+  duration_ms: 3331.804833
+  type: 'test'
+  ...
+# Subtest: candidate directory-sync failure reports uncertain publication without rollback or automatic repair
+ok 55 - candidate directory-sync failure reports uncertain publication without rollback or automatic repair
+  ---
+  duration_ms: 1273.528584
+  type: 'test'
+  ...
+# Subtest: candidate link-ack failure reports uncertain publication without rollback or automatic repair
+ok 56 - candidate link-ack failure reports uncertain publication without rollback or automatic repair
+  ---
+  duration_ms: 1264.842792
+  type: 'test'
+  ...
+# Subtest: candidate offline help has four locales, accurate fixed42→43 boundaries and explicit draft exclusion
+ok 57 - candidate offline help has four locales, accurate fixed42→43 boundaries and explicit draft exclusion
+  ---
+  duration_ms: 13840.241875
+  type: 'test'
+  ...
+# Subtest: actual candidate CLI cold roundtrip preserves media/opacity/history and exposes both read-only status modes
+ok 58 - actual candidate CLI cold roundtrip preserves media/opacity/history and exposes both read-only status modes
+  ---
+  duration_ms: 13852.15925
+  type: 'test'
+  ...
+# Subtest: candidate CLI preserves original parser validation and identifies its own localized usage
+ok 59 - candidate CLI preserves original parser validation and identifies its own localized usage
+  ---
+  duration_ms: 15648.347333
+  type: 'test'
+  ...
+# Subtest: successful create and restore also disclose excluded drafts in Traditional Chinese and Japanese
+ok 60 - successful create and restore also disclose excluded drafts in Traditional Chinese and Japanese
+  ---
+  duration_ms: 8827.415542
+  type: 'test'
+  ...
+# Subtest: candidate CLI refuses corruption, occupied sources and existing targets without overwriting or leaking private paths
+ok 61 - candidate CLI refuses corruption, occupied sources and existing targets without overwriting or leaking private paths
+  ---
+  duration_ms: 5746.064875
+  type: 'test'
+  ...
+# Subtest: candidate CLI preserves sanitized uncertain-publication binding for read-only status rather than retrying
+ok 62 - candidate CLI preserves sanitized uncertain-publication binding for read-only status rather than retrying
+  ---
+  duration_ms: 5241.631166
+  type: 'test'
+  ...
+# Subtest: ordinary offline CLI keeps its original help and rejects fixed42 archives/workspaces
+ok 63 - ordinary offline CLI keeps its original help and rejects fixed42 archives/workspaces
+  ---
+  duration_ms: 3997.142
+  type: 'test'
+  ...
+# Subtest: candidate CLI import is inert and preserves scoped listener lifecycle
+ok 64 - candidate CLI import is inert and preserves scoped listener lifecycle
+  ---
+  duration_ms: 82.192917
+  type: 'test'
+  ...
+# Subtest: fixed42 archive DTO inherits format1 paths, roles, inventory and strict fields without widening old schemas
+ok 65 - fixed42 archive DTO inherits format1 paths, roles, inventory and strict fields without widening old schemas
+  ---
+  duration_ms: 6.419833
+  type: 'test'
+  ...
+# Subtest: fixed42 manifest retains unique sorted paths, one database and aggregate payload bound
+ok 66 - fixed42 manifest retains unique sorted paths, one database and aggregate payload bound
+  ---
+  duration_ms: 1.830708
+  type: 'test'
+  ...
+# Subtest: fixed43 offline results require exact42/43 pair and explicit exclusion with original publication semantics
+ok 67 - fixed43 offline results require exact42/43 pair and explicit exclusion with original publication semantics
+  ---
+  duration_ms: 0.748459
+  type: 'test'
+  ...
+# Subtest: actual cold42 archive restores independent guarded43 while preserving raw opacity, history, tasks, receipts and asset bytes
+ok 68 - actual cold42 archive restores independent guarded43 while preserving raw opacity, history, tasks, receipts and asset bytes
+  ---
+  duration_ms: 3834.645125
+  type: 'test'
+  ...
+# Subtest: draft exclusion is explicit in archive, results and status, preserves original v3 bytes and never imports its unfinished opacity
+ok 69 - draft exclusion is explicit in archive, results and status, preserves original v3 bytes and never imports its unfinished opacity
+  ---
+  duration_ms: 3891.976167
+  type: 'test'
+  ...
+# Subtest: restored old pending task stays held and fresh explicit-origin edit, Undo and Redo use only original candidate capabilities
+ok 70 - restored old pending task stays held and fresh explicit-origin edit, Undo and Redo use only original candidate capabilities
+  ---
+  duration_ms: 8034.77025
+  type: 'test'
+  ...
+# Subtest: guarded43 cannot produce a recursive archive through candidate or default backup entry
+ok 71 - guarded43 cannot produce a recursive archive through candidate or default backup entry
+  ---
+  duration_ms: 2501.763708
+  type: 'test'
+  ...
+# Subtest: default40-to41 archive and restoration retain original DTO boundaries while fixed42-to43 stays separate
+ok 72 - default40-to41 archive and restoration retain original DTO boundaries while fixed42-to43 stays separate
+  ---
+  duration_ms: 3458.650041
+  type: 'test'
+  ...
+# Subtest: fixed application guards play both purposes and download only exports, including unnamed, without effects
+ok 73 - fixed application guards play both purposes and download only exports, including unnamed, without effects
+  ---
+  duration_ms: 6410.543542
+  type: 'test'
+  ...
+# Subtest: candidate media binds exact owner, queued receipt, output path and late response fence
+ok 74 - candidate media binds exact owner, queued receipt, output path and late response fence
+  ---
+  duration_ms: 1291.499792
+  type: 'test'
+  ...
+# Subtest: ordinary42, copied stores and a closed application never grant candidate delivery rules
+ok 75 - ordinary42, copied stores and a closed application never grant candidate delivery rules
+  ---
+  duration_ms: 2277.92
+  type: 'test'
+  ...
+# Subtest: raw candidate media only serves managed imports and cannot relabel an output to skip receipt proof
+ok 76 - raw candidate media only serves managed imports and cannot relabel an output to skip receipt proof
+  ---
+  duration_ms: 794.949375
+  type: 'test'
+  ...
+# Subtest: real shared Preview plays candidate preview and export through exact managed identity URLs
+ok 77 - real shared Preview plays candidate preview and export through exact managed identity URLs
+  ---
+  duration_ms: 0.696333
+  type: 'test'
+  ...
+# Subtest: real empty Preview only offers canvas navigation when an actionable callback exists
+ok 78 - real empty Preview only offers canvas navigation when an actionable callback exists
+  ---
+  duration_ms: 0.149084
+  type: 'test'
+  ...
+# Subtest: candidate Preview removes player for held, invalid, foreign and counterfeit application bindings
+ok 79 - candidate Preview removes player for held, invalid, foreign and counterfeit application bindings
+  ---
+  duration_ms: 0.223709
+  type: 'test'
+  ...
+# Subtest: candidate named and unnamed downloads keep frozen metadata and use receipt query identities
+ok 80 - candidate named and unnamed downloads keep frozen metadata and use receipt query identities
+  ---
+  duration_ms: 0.124916
+  type: 'test'
+  ...
+# Subtest: candidate history never gives held, malformed, foreign or preview-only rows a download
+ok 81 - candidate history never gives held, malformed, foreign or preview-only rows a download
+  ---
+  duration_ms: 0.127042
+  type: 'test'
+  ...
+# Subtest: real sample player consumes fixed candidate ACK validator and keeps all existing attempt fences
+ok 82 - real sample player consumes fixed candidate ACK validator and keeps all existing attempt fences
+  ---
+  duration_ms: 0.190667
+  type: 'test'
+  ...
+# Subtest: actual candidate services persist raw planned preview/export ACKs and replay exact receipts after reopen
+ok 83 - actual candidate services persist raw planned preview/export ACKs and replay exact receipts after reopen
+  ---
+  duration_ms: 1776.113542
+  type: 'test'
+  ...
+# Subtest: candidate render preserves absent/null fields and refuses stale preflight before writes or media
+ok 84 - candidate render preserves absent/null fields and refuses stale preflight before writes or media
+  ---
+  duration_ms: 1322.298125
+  type: 'test'
+  ...
+# Subtest: render replay binds persisted export/rawsnapshot and current source identity
+ok 85 - render replay binds persisted export/rawsnapshot and current source identity
+  ---
+  duration_ms: 687.176417
+  type: 'test'
+  ...
+# Subtest: candidate custom delivery reuses two-phase existing admission and CAS around a pure bounded-check stand-in
+ok 86 - candidate custom delivery reuses two-phase existing admission and CAS around a pure bounded-check stand-in
+  ---
+  duration_ms: 886.142
+  type: 'test'
+  ...
+# Subtest: candidate delivery admission rechecks source metadata after await and commits no stale export or receipt
+ok 87 - candidate delivery admission rechecks source metadata after await and commits no stale export or receipt
+  ---
+  duration_ms: 450.968
+  type: 'test'
+  ...
+# Subtest: 43 fresh render requires the exact origin and captured render receipts stay held
+ok 88 - 43 fresh render requires the exact origin and captured render receipts stay held
+  ---
+  duration_ms: 1911.05775
+  type: 'test'
+  ...
+# Subtest: candidate render authority exercises real SQL, hashed synthetic files and private lifetimes without media processes
+ok 89 - candidate render authority exercises real SQL, hashed synthetic files and private lifetimes without media processes
+  ---
+  duration_ms: 13276.048667
+  type: 'test'
+  ...
+# Subtest: explicit reopen never creates missing roots/databases and keeps new/open CLI actions exclusive
+ok 90 - explicit reopen never creates missing roots/databases and keeps new/open CLI actions exclusive
+  ---
+  duration_ms: 12.150458
+  type: 'test'
+  ...
+# Subtest: reopen refuses exact40/41/43, unknown catalog and corrupt SQLite without modifying original database bytes
+ok 91 - reopen refuses exact40/41/43, unknown catalog and corrupt SQLite without modifying original database bytes
+  ---
+  duration_ms: 3322.0265
+  type: 'test'
+  ...
+# Subtest: occupied owner lock and unsafe managed files are refused without taking over or repairing them
+ok 92 - occupied owner lock and unsafe managed files are refused without taking over or repairing them
+  ---
+  duration_ms: 321.745917
+  type: 'test'
+  ...
+# Subtest: clean reopened application gets a new exact owner capability and preserved project while generic copies do not
+ok 93 - clean reopened application gets a new exact owner capability and preserved project while generic copies do not
+  ---
+  duration_ms: 825.147208
+  type: 'test'
+  ...
+# Subtest: reopen retains complete raw opacity/source ownership validation
+ok 94 - reopen retains complete raw opacity/source ownership validation
+  ---
+  duration_ms: 623.300584
+  type: 'test'
+  ...
+# Subtest: restored launch is explicit, mutually exclusive and never creates missing roots or databases
+ok 95 - restored launch is explicit, mutually exclusive and never creates missing roots or databases
+  ---
+  duration_ms: 1277.072542
+  type: 'test'
+  ...
+# Subtest: restored admission refuses ordinary40/restored41/ordinary42 before changing database bytes
+ok 96 - restored admission refuses ordinary40/restored41/ordinary42 before changing database bytes
+  ---
+  duration_ms: 5017.265708
+  type: 'test'
+  ...
+# Subtest: real cold backup restores a separately admitted read surface with held history and explicit draft policy
+ok 97 - real cold backup restores a separately admitted read surface with held history and explicit draft policy
+  ---
+  duration_ms: 3584.239042
+  type: 'test'
+  ...
+# Subtest: new origin edits and durable tasks work while all captured pending task actions remain held
+ok 98 - new origin edits and durable tasks work while all captured pending task actions remain held
+  ---
+  duration_ms: 7192.6725
+  type: 'test'
+  ...
+# Subtest: registered43 proofs are one-shot and copies or a generic43 handle confer no application authority
+ok 99 - registered43 proofs are one-shot and copies or a generic43 handle confer no application authority
+  ---
+  duration_ms: 2886.9305
+  type: 'test'
+  ...
+# Subtest: bad restored evidence or catalog is rejected before RW open and its original bytes are preserved
+ok 100 - bad restored evidence or catalog is rejected before RW open and its original bytes are preserved
+  ---
+  duration_ms: 2348.300208
+  type: 'test'
+  ...
+# Subtest: restored admission refuses database inode replacement between read-only validation and RW open
+ok 101 - restored admission refuses database inode replacement between read-only validation and RW open
+  ---
+  duration_ms: 2476.488209
+  type: 'test'
+  ...
+# Subtest: active owner and symlinked root/database/media paths are refused without taking over or repairing
+ok 102 - active owner and symlinked root/database/media paths are refused without taking over or repairing
+  ---
+  duration_ms: 1570.612291
+  type: 'test'
+  ...
+# Subtest: pre-aborted restored actions make no writes and a forged fresh output cannot be disclosed
+ok 103 - pre-aborted restored actions make no writes and a forged fresh output cannot be disclosed
+  ---
+  duration_ms: 1958.477041
+  type: 'test'
+  ...
+# Subtest: restored application disclosure has one exact pair, provenance, original permissions and explicit excluded drafts
+ok 104 - restored application disclosure has one exact pair, provenance, original permissions and explicit excluded drafts
+  ---
+  duration_ms: 13.066708
+  type: 'test'
+  ...
+# Subtest: wrong pair, incomplete provenance, duplicated evidence and forged operation availability fail closed
+ok 105 - wrong pair, incomplete provenance, duplicated evidence and forged operation availability fail closed
+  ---
+  duration_ms: 4.7445
+  type: 'test'
+  ...
+# Subtest: only exact restored43 application admission grants delivery; generic, copied and other database handles refuse
+ok 106 - only exact restored43 application admission grants delivery; generic, copied and other database handles refuse
+  ---
+  duration_ms: 6815.566458
+  type: 'test'
+  ...
+# Subtest: new-origin preview and named/unnamed exports retain opacity, receipts and guarded range bytes across reopen
+ok 107 - new-origin preview and named/unnamed exports retain opacity, receipts and guarded range bytes across reopen
+  ---
+  duration_ms: 11422.304292
+  type: 'test'
+  ...
+# Subtest: restored canonical captured imports serve bytes; held output never becomes a raw import by relabeling
+ok 108 - restored canonical captured imports serve bytes; held output never becomes a raw import by relabeling
+  ---
+  duration_ms: 3614.513667
+  type: 'test'
+  ...
+# Subtest: missing receipt or origin and corrupt acceptance identity refuse outputs without weakening restored SQL guards
+ok 109 - missing receipt or origin and corrupt acceptance identity refuse outputs without weakening restored SQL guards
+  ---
+  duration_ms: 3161.130541
+  type: 'test'
+  ...
+# Subtest: foreign output ownership and late source/export changes close file descriptors without streaming
+ok 110 - foreign output ownership and late source/export changes close file descriptors without streaming
+  ---
+  duration_ms: 5402.960291
+  type: 'test'
+  ...
+# Subtest: cancelled range response owns only its descriptor and closing application revokes every retained media grant
+ok 111 - cancelled range response owns only its descriptor and closing application revokes every retained media grant
+  ---
+  duration_ms: 5003.514375
+  type: 'test'
+  ...
+# Subtest: actual restored43 shared handler discloses its fixed policy, captured history and excluded drafts
+ok 112 - actual restored43 shared handler discloses its fixed policy, captured history and excluded drafts
+  ---
+  duration_ms: 6536.268334
+  type: 'test'
+  ...
+# Subtest: HTTP origin gates and fixed operation catalogue reject writes without changing rows
+ok 113 - HTTP origin gates and fixed operation catalogue reject writes without changing rows
+  ---
+  duration_ms: 2712.972875
+  type: 'test'
+  ...
+# Subtest: captured pending HTTP tasks stay held through execute, reconcile and acknowledge
+ok 114 - captured pending HTTP tasks stay held through execute, reconcile and acknowledge
+  ---
+  duration_ms: 3085.050542
+  type: 'test'
+  ...
+# Subtest: new-origin HTTP prepare execute ACK saves opacity and supports actual Undo and Redo
+ok 115 - new-origin HTTP prepare execute ACK saves opacity and supports actual Undo and Redo
+  ---
+  duration_ms: 5752.030292
+  type: 'test'
+  ...
+# Subtest: reopen leaves a fresh prepared task idle and requires a current instance plus explicit execute
+ok 116 - reopen leaves a fresh prepared task idle and requires a current instance plus explicit execute
+  ---
+  duration_ms: 4334.868791
+  type: 'test'
+  ...
+# Subtest: restored companion endpoints remain unsupported and never read or overwrite local draft files
+ok 117 - restored companion endpoints remain unsupported and never read or overwrite local draft files
+  ---
+  duration_ms: 2748.870541
+  type: 'test'
+  ...
+# Subtest: restored preferences read through HTTP while all writes refuse even with the correct origin
+ok 118 - restored preferences read through HTTP while all writes refuse even with the correct origin
+  ---
+  duration_ms: 1699.611917
+  type: 'test'
+  ...
+# Subtest: already disconnected HTTP advisory calls are cancelled before effects and a healthy read remains available
+ok 119 - already disconnected HTTP advisory calls are cancelled before effects and a healthy read remains available
+  ---
+  duration_ms: 1616.822833
+  type: 'test'
+  ...
+# Subtest: candidate RPC opens a real restored43 project and preserves strict scope and held export disclosure
+ok 120 - candidate RPC opens a real restored43 project and preserves strict scope and held export disclosure
+  ---
+  duration_ms: 4258.357959
+  type: 'test'
+  ...
+# Subtest: only the exact candidate client binding accepts43; legacy API, copied binding and forged capability responses reject
+ok 121 - only the exact candidate client binding accepts43; legacy API, copied binding and forged capability responses reject
+  ---
+  duration_ms: 1435.376792
+  type: 'test'
+  ...
+# Subtest: real restored client and clip controller save opacity, cancel only memory, undo/redo and refuse captured pending without v3 traffic
+ok 122 - real restored client and clip controller save opacity, cancel only memory, undo/redo and refuse captured pending without v3 traffic
+  ---
+  duration_ms: 5022.976042
+  type: 'test'
+  ...
+# Subtest: actual App view updates remain in memory for43 and continue using the existing preference controller for42
+ok 123 - actual App view updates remain in memory for43 and continue using the existing preference controller for42
+  ---
+  duration_ms: 1479.843458
+  type: 'test'
+  ...
+# Subtest: real shared components show43 draft disclosure in four languages and remove unavailable mutation actions while keeping clip/history/preview controls
+ok 124 - real shared components show43 draft disclosure in four languages and remove unavailable mutation actions while keeping clip/history/preview controls
+  ---
+  duration_ms: 3849.973291
+  type: 'test'
+  ...
+1..124
+# tests 124
+# suites 0
+# pass 124
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 165266.519875

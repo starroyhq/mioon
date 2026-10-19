@@ -1,0 +1,35 @@
+{
+  "files": [
+    {
+      "file": "tests/desktop-window-appearance.test.mjs",
+      "exitCode": 0,
+      "durationMs": 426.233,
+      "tests": 8,
+      "pass": 8,
+      "fail": 0,
+      "skipped": 0,
+      "tapLog": "desktop-window-appearance.test.mjs.tap",
+      "testSha256": "9f447584ec9f2fca64d5b996eb2684bfe7a5ca7587b1a9c272f6b4bef829cc82"
+    },
+    {
+      "file": "tests/desktop-window-ownership.test.mjs",
+      "exitCode": 0,
+      "durationMs": 468.443,
+      "tests": 43,
+      "pass": 43,
+      "fail": 0,
+      "skipped": 0,
+      "tapLog": "desktop-window-ownership.test.mjs.tap",
+      "testSha256": "4d2cf3a3d236f65df35ddad11a869a910bfca6a5ed3cbcda70c7ceec39b22c6e"
+    }
+  ],
+  "typecheck": {
+    "command": "node scripts/tooling.mjs typecheck",
+    "exitCode": 0,
+    "log": "typecheck.log"
+  },
+  "sourceSha256": {
+    "apps/desktop/src/main.mjs": "ba09e6f3b7f063583cbd38a451abe2d0f4c12784cfd2f1da2e01ca09006bc188",
+    "apps/desktop/src/window-appearance.ts": "9f465ea13239381aaedd6ab427f3e710c1ab40333f98cd7825f38c93e0d11a1e"
+  }
+}

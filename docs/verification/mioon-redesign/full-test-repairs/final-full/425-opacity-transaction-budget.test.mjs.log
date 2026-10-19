@@ -1,0 +1,35 @@
+TAP version 13
+# Subtest: actual owned task prepare accepts complete old maximum and refuses opacity without any write or dispatch
+ok 1 - actual owned task prepare accepts complete old maximum and refuses opacity without any write or dispatch
+  ---
+  duration_ms: 1031.645625
+  type: 'test'
+  ...
+# 127 nodes is candidate capture plus the unchanged complete prepare wrapper only; production still rejects the opacity array. No opacity transaction, execution, commit or restore profile is implemented by this test.
+# Subtest: real HTTP prepare separates restored-origin context before the 128-node task walker
+ok 2 - real HTTP prepare separates restored-origin context before the 128-node task walker
+  ---
+  duration_ms: 1.894125
+  type: 'test'
+  ...
+# Subtest: full historical ACK uses its record/byte contract rather than the prepare node budget
+ok 3 - full historical ACK uses its record/byte contract rather than the prepare node budget
+  ---
+  duration_ms: 1.335625
+  type: 'test'
+  ...
+# Subtest: actual owned store cannot register or reopen42/43 through the frozen production assembly
+ok 4 - actual owned store cannot register or reopen42/43 through the frozen production assembly
+  ---
+  duration_ms: 1290.133792
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2829.794959

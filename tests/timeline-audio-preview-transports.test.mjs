@@ -26,7 +26,7 @@ const operation = 'timeline.audioPreview.plan', toolName = 'timeline_audioPrevie
 const token = 'synthetic-timeline-audio-preview-transport-token';
 const sha = value => createHash('sha256').update(value).digest('hex');
 const tick = () => new Promise(resolve => setImmediate(resolve));
-const environment = url => ({...mediaEnvironment(), MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAY_MAX_GENERATIONS: '0',
+const environment = url => ({...mediaEnvironment(), MIOON_ENABLE_LIVE_PROVIDER: '0',
   ...(url ? {MIOON_BASE_URL: url, MIOON_TOKEN: token} : {})});
 async function bounded(promise, label, ms = 15000) {
   let timer;

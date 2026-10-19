@@ -1,0 +1,196 @@
+TAP version 13
+# Subtest: close flush persists exact raw before the 250 ms timer and never calls business Save
+ok 1 - close flush persists exact raw before the 250 ms timer and never calls business Save
+  ---
+  duration_ms: 11.596334
+  type: 'test'
+  ...
+# Subtest: ordinary flush remains Promise<void> and business dirty differs from unpersisted raw
+ok 2 - ordinary flush remains Promise<void> and business dirty differs from unpersisted raw
+  ---
+  duration_ms: 0.622459
+  type: 'test'
+  ...
+# Subtest: a pristine fast-path close rechecks serial when its Promise settles
+ok 3 - a pristine fast-path close rechecks serial when its Promise settles
+  ---
+  duration_ms: 0.2575
+  type: 'test'
+  ...
+# Subtest: a persisted dirty fast-path close rechecks serial when its Promise settles
+ok 4 - a persisted dirty fast-path close rechecks serial when its Promise settles
+  ---
+  duration_ms: 0.352584
+  type: 'test'
+  ...
+# Subtest: a pristine form and an untouched recovery candidate need no close write
+ok 5 - a pristine form and an untouched recovery candidate need no close write
+  ---
+  duration_ms: 0.466
+  type: 'test'
+  ...
+# Subtest: dirty input before GET finishes returns false without implicit reads, writes, or lost raw
+ok 6 - dirty input before GET finishes returns false without implicit reads, writes, or lost raw
+  ---
+  duration_ms: 0.437458
+  type: 'test'
+  ...
+# Subtest: restored workspaces keep manual editing and close false for dirty raw with no sidecar I/O
+ok 7 - restored workspaces keep manual editing and close false for dirty raw with no sidecar I/O
+  ---
+  duration_ms: 0.209958
+  type: 'test'
+  ...
+# Subtest: offline dirty input and an unresolved different candidate cannot be acknowledged on close
+ok 8 - offline dirty input and an unresolved different candidate cannot be acknowledged on close
+  ---
+  duration_ms: 0.348125
+  type: 'test'
+  ...
+# Subtest: concurrent close requests join the old PUT and perform at most one legal next CAS for current raw
+ok 9 - concurrent close requests join the old PUT and perform at most one legal next CAS for current raw
+  ---
+  duration_ms: 0.49225
+  type: 'test'
+  ...
+# Subtest: concurrent ordinary flush callers share a bounded next write instead of recursively chasing edits
+ok 10 - concurrent ordinary flush callers share a bounded next write instead of recursively chasing edits
+  ---
+  duration_ms: 0.695833
+  type: 'test'
+  ...
+# Subtest: editing during the final close PUT returns false and leaves newer raw for the normal debounce
+ok 11 - editing during the final close PUT returns false and leaves newer raw for the normal debounce
+  ---
+  duration_ms: 1.803833
+  type: 'test'
+  ...
+# Subtest: input changed back during close still invalidates the captured serial
+ok 12 - input changed back during close still invalidates the captured serial
+  ---
+  duration_ms: 0.385583
+  type: 'test'
+  ...
+# Subtest: editing while close awaits an old PUT does not start a hidden next submission
+ok 13 - editing while close awaits an old PUT does not start a hidden next submission
+  ---
+  duration_ms: 0.341333
+  type: 'test'
+  ...
+# Subtest: LOCAL_DRAFT_CAPACITY returns close false and preserves raw/CAS without automatic retry
+ok 14 - LOCAL_DRAFT_CAPACITY returns close false and preserves raw/CAS without automatic retry
+  ---
+  duration_ms: 0.655167
+  type: 'test'
+  ...
+# Subtest: LOCAL_DRAFT_CONFLICT returns close false and preserves raw/CAS without automatic retry
+ok 15 - LOCAL_DRAFT_CONFLICT returns close false and preserves raw/CAS without automatic retry
+  ---
+  duration_ms: 0.297292
+  type: 'test'
+  ...
+# Subtest: LOCAL_DRAFT_STALE_INSTANCE returns close false and preserves raw/CAS without automatic retry
+ok 16 - LOCAL_DRAFT_STALE_INSTANCE returns close false and preserves raw/CAS without automatic retry
+  ---
+  duration_ms: 0.261875
+  type: 'test'
+  ...
+# Subtest: LOCAL_DRAFT_SAVE_UNCERTAIN returns close false and preserves raw/CAS without automatic retry
+ok 17 - LOCAL_DRAFT_SAVE_UNCERTAIN returns close false and preserves raw/CAS without automatic retry
+  ---
+  duration_ms: 0.395791
+  type: 'test'
+  ...
+# Subtest: close rejects a PUT acknowledgement with different raw
+ok 18 - close rejects a PUT acknowledgement with different raw
+  ---
+  duration_ms: 0.327792
+  type: 'test'
+  ...
+# Subtest: close rejects a PUT acknowledgement with different baseRevision
+ok 19 - close rejects a PUT acknowledgement with different baseRevision
+  ---
+  duration_ms: 0.1505
+  type: 'test'
+  ...
+# Subtest: close rejects a PUT acknowledgement with different source
+ok 20 - close rejects a PUT acknowledgement with different source
+  ---
+  duration_ms: 0.164583
+  type: 'test'
+  ...
+# Subtest: close rejects a PUT acknowledgement with different instanceId
+ok 21 - close rejects a PUT acknowledgement with different instanceId
+  ---
+  duration_ms: 0.159292
+  type: 'test'
+  ...
+# Subtest: close rejects a PUT acknowledgement with different workspaceScope
+ok 22 - close rejects a PUT acknowledgement with different workspaceScope
+  ---
+  duration_ms: 0.173209
+  type: 'test'
+  ...
+# Subtest: close rejects a PUT acknowledgement with different revision
+ok 23 - close rejects a PUT acknowledgement with different revision
+  ---
+  duration_ms: 0.147
+  type: 'test'
+  ...
+# Subtest: close rejects a PUT acknowledgement with different key
+ok 24 - close rejects a PUT acknowledgement with different key
+  ---
+  duration_ms: 0.178375
+  type: 'test'
+  ...
+# Subtest: a reread with a new service instance never grants close confirmation for the old draft
+ok 25 - a reread with a new service instance never grants close confirmation for the old draft
+  ---
+  duration_ms: 0.197042
+  type: 'test'
+  ...
+# Subtest: an explicit in-flight reread cannot reuse an old saved acknowledgement to release close
+ok 26 - an explicit in-flight reread cannot reuse an old saved acknowledgement to release close
+  ---
+  duration_ms: 0.22175
+  type: 'test'
+  ...
+# Subtest: an in-flight DELETE cannot satisfy close even for an untouched recovery candidate
+ok 27 - an in-flight DELETE cannot satisfy close even for an untouched recovery candidate
+  ---
+  duration_ms: 0.2785
+  type: 'test'
+  ...
+# Subtest: scope replacement fences an old close ACK and never marks its new owner persisted
+ok 28 - scope replacement fences an old close ACK and never marks its new owner persisted
+  ---
+  duration_ms: 0.167166
+  type: 'test'
+  ...
+# Subtest: abandonment cannot let an old close release a later owner
+ok 29 - abandonment cannot let an old close release a later owner
+  ---
+  duration_ms: 0.222958
+  type: 'test'
+  ...
+# Subtest: explicitly abandoned clean input may leave while retaining historical unknown evidence
+ok 30 - explicitly abandoned clean input may leave while retaining historical unknown evidence
+  ---
+  duration_ms: 0.207792
+  type: 'test'
+  ...
+# Subtest: disposing then activating the same object cannot reuse a previous close acknowledgement
+ok 31 - disposing then activating the same object cannot reuse a previous close acknowledgement
+  ---
+  duration_ms: 0.183042
+  type: 'test'
+  ...
+1..31
+# tests 31
+# suites 0
+# pass 31
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 309.558333

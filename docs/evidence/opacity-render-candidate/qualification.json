@@ -1,0 +1,70 @@
+{
+  "date": "2026-10-16",
+  "baseCommit": "d28052fab59ca839c999a100c1571633573abc8b",
+  "nodeVersion": "v26.9.0",
+  "pureTests": {
+    "command": "node --test tests/*opacity*.test.mjs",
+    "passed": 168,
+    "failed": 0,
+    "finalGuardRegression": {
+      "passed": 18,
+      "failed": 0
+    },
+    "authorityChildCases": 9
+  },
+  "strictTypecheck": {
+    "foundation": true,
+    "probeCli": true,
+    "legacyAllowlistChanged": false
+  },
+  "legacyRendererComparisons": 8,
+  "frozen": {
+    "manifestUnchanged": true,
+    "originalMatches": 63,
+    "exception": "tests/fixtures/opacity-render-seam-exception.json"
+  },
+  "reviews": {
+    "authorityAndPublication": "closed after fixes",
+    "pixelProbeLifecycle": "closed after output thread limit fix"
+  },
+  "pixelProbes": "pixel-probe.json",
+  "versionMetadata": "ffmpeg-version.json",
+  "remaining": [
+    "production40/41 activation remains disabled; no migration",
+    "candidate preflightSnapshotHash unsupported",
+    "Node24 runtime qualification not performed",
+    "manual GUI and real-media long-duration/performance qualification not performed"
+  ],
+  "extraSuiteBlocker": {
+    "action": "listen",
+    "target": "127.0.0.1",
+    "reason": "sandbox EPERM",
+    "state": "denied by OS; not retried",
+    "uncertain": false
+  },
+  "sourceSha256": {
+    "packages/business/src/jobs.mjs": "694e4addb33a13a789b48aa88b2f70c66dae812c08627e67d79155ff4dcca8b6",
+    "packages/business/src/opacity-candidate-domain.ts": "31d7a9ae5017b414c97d06d8016ca97424316449e197dd2f89aab1dcb933dca6",
+    "packages/business/src/opacity-candidate-render-authority.ts": "3caf1a3c3dbcd0ea1b1dabb620e359a9f61556a85f5d0212a02cc7894fa3d2da",
+    "packages/business/src/opacity-candidate-services.ts": "53b8bfccf8c52f18ccad5c8af3d71770b52fa208b4f9bf6a7e49d9ff8ee29bda",
+    "packages/business/src/opacity-candidate-store.ts": "fb28a6b40541b467fa17834f6bc530bc131059e984ef1a16ad377cc9b54c446a",
+    "packages/business/src/timeline-export-admission.mjs": "5eda2ca85b2edd841dd10a0a9cc9e430514f6364c1ae15a6f32fffbf9406c483",
+    "packages/business/src/timeline-media.mjs": "db497b44160a3d5c3b398fb5be795a0aecfdd8df23e54d00c1dcbdc6ccb0e9ee",
+    "packages/business/src/timeline-opacity-filter-candidate.ts": "6f91996a8b26fa272a56734227740a747348ccf356770474680bfe6fde500c02",
+    "packages/business/src/timeline-opacity-pixel-probe-candidate.ts": "47361174588b328d3502b530760a84da7b486103f131a91c3edec56928e48923",
+    "packages/business/src/timeline-opacity-render-binding.ts": "d4ecf4a4e8a3ddf84ada044e1301d0915d3145524d4104367480192ff05df462",
+    "packages/business/src/timeline-sources.mjs": "514ed1d1dfb04007100d58850d69fa87e1d319a111c480ec4e2451aa60086b67",
+    "packages/business/src/timeline.mjs": "f86658ad7280a68aee40ce4627fda212cf26d4a1d47def65b146d13012f55afa",
+    "packages/business/src/workspace-opacity-validation.ts": "64f173b4bcb49aeb5e4e8f5216aed3f61ff14055beafbfa360b89468de576f52",
+    "scripts/probe-timeline-opacity-candidate.ts": "707197a74c237128bc5e2e3b118b82affb821f09b00a0945fde2d55b65c4dfa8",
+    "tests/fixtures/opacity-render-authority-pure.mjs": "bffdc869a71f6808531e735580e81a0f809df7237159988334e4865bdafcb733",
+    "tests/fixtures/opacity-render-seam-exception.json": "24445e2f31faf03da5d50d0184db40a652c3376d0088254bfc00b60cd2db8bb2",
+    "tests/opacity-candidate-render-admission.test.mjs": "cd6fc36c463bb5381e16d50842fc418785bee3794b8cbc40269c6192335a76c5",
+    "tests/opacity-candidate-render-authority.test.mjs": "0b0849f3d31c46ed27060b73a50cc2f71d2cf3b79b5d3486e507b6749ef3f06a",
+    "tests/timeline-opacity-legacy-render-regression.test.mjs": "a0c9e521c255647754e8a58ee3dbb6e0239ea161385c7fe8e66999a138e8bcc3",
+    "tests/timeline-opacity-pixel-probe-candidate.test.mjs": "c6d424dbfd93a5ec9fede52cad6d505c52e6b63a066b34f14de6e814581fc64b",
+    "tests/timeline-opacity-render-binding.test.mjs": "d8949f39dc0c9424b9e91aa3c97eb01c942f64a80c8fe499ceb57f4a1e3fa0f6",
+    "tests/timeline-opacity-worker-candidate.test.mjs": "2f73e74bdcd28e27f9e35fbaa68a225de7db7fae5af4bcb2b0ab6df7d1296067",
+    "tests/workspace-opacity-candidate.test.mjs": "d26707998bd506af52af9e83bcf02a4368796ed6a9d4875b1d986603f3e566d9"
+  }
+}

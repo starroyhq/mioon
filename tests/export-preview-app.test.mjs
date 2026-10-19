@@ -30,7 +30,7 @@ function fixture({ rejected = false, pending = false, gated = false } = {}) {
     } } } },
     deliveryNameRef: { current: { controller: { capture: () => null } } }, requestId: () => 'exact-sample-request', context: () => ({}), isCurrent: () => true,
     setExportPreviewAttempt(value) { attempt = typeof value === 'function' ? value(attempt) : value; },
-    notify() {}, openTasks() {}, openExportHistory() { history.push(true); }, run() { assert.fail('normal workspace must use durable local delivery'); },
+    setDeliveryAttempt() {}, setShowExports() {}, notify() {}, openTasks() {}, openExportHistory() { history.push(true); }, run() { assert.fail('normal workspace must use durable local delivery'); },
   };
   const render = execute('  async function renderTimeline(', '  async function previewSource(', env);
   return { render, binding, finalContext, calls, history, attempt: () => attempt, change: () => { liveKey = 'sample-two'; }, resolve };

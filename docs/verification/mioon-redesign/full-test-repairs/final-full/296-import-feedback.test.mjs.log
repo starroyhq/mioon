@@ -1,0 +1,232 @@
+TAP version 13
+# Subtest: actual App importFiles identifies confirmed, rejected, and unattempted files after partial success
+ok 1 - actual App importFiles identifies confirmed, rejected, and unattempted files after partial success
+  ---
+  duration_ms: 36.765375
+  type: 'test'
+  ...
+# Subtest: first explicit rejection confirms zero and identifies every unattempted remainder
+ok 2 - first explicit rejection confirms zero and identifies every unattempted remainder
+  ---
+  duration_ms: 2.276334
+  type: 'test'
+  ...
+# Subtest: full success is sequential, names every confirmed file and normalizes existing audio aliases
+ok 3 - full success is sequential, names every confirmed file and normalizes existing audio aliases
+  ---
+  duration_ms: 1.692792
+  type: 'test'
+  ...
+# Subtest: unsupported type after success is a local pre-POST failure with the skipped remainder
+ok 4 - unsupported type after success is a local pre-POST failure with the skipped remainder
+  ---
+  duration_ms: 1.495375
+  type: 'test'
+  ...
+# Subtest: oversize validation happens before FileReader and before POST
+ok 5 - oversize validation happens before FileReader and before POST
+  ---
+  duration_ms: 0.932958
+  type: 'test'
+  ...
+# Subtest: FileReader onerror is a local failure, stops before POST and retains filenames
+ok 6 - FileReader onerror is a local failure, stops before POST and retains filenames
+  ---
+  duration_ms: 1.015709
+  type: 'test'
+  ...
+# Subtest: FileReader onabort is a local failure, stops before POST and retains filenames
+ok 7 - FileReader onabort is a local failure, stops before POST and retains filenames
+  ---
+  duration_ms: 1.316208
+  type: 'test'
+  ...
+# Subtest: synchronous FileReader throw and invalid read result are both local pre-POST failures
+ok 8 - synchronous FileReader throw and invalid read result are both local pre-POST failures
+  ---
+  duration_ms: 2.180959
+  type: 'test'
+  ...
+# Subtest: fetch failure after a confirmed import is unknown and never retries or advances
+ok 9 - fetch failure after a confirmed import is unknown and never retries or advances
+  ---
+  duration_ms: 1.172458
+  type: 'test'
+  ...
+# Subtest: malformed JSON and invalid success envelopes from real rpc remain unknown
+ok 10 - malformed JSON and invalid success envelopes from real rpc remain unknown
+  ---
+  duration_ms: 3.663834
+  type: 'test'
+  ...
+# Subtest: invalid success asset identity, project, filename or MIME never counts as acknowledged
+ok 11 - invalid success asset identity, project, filename or MIME never counts as acknowledged
+  ---
+  duration_ms: 6.941791
+  type: 'test'
+  ...
+# Subtest: a structured server 5xx is uncertain even when its code and message resemble a rejection
+ok 12 - a structured server 5xx is uncertain even when its code and message resemble a rejection
+  ---
+  duration_ms: 1.084542
+  type: 'test'
+  ...
+# Subtest: large batches and hostile Unicode/HTML labels stay bounded plain text with exact counts
+ok 13 - large batches and hostile Unicode/HTML labels stay bounded plain text with exact counts
+  ---
+  duration_ms: 3.270333
+  type: 'test'
+  ...
+# Subtest: project switch during FileReader stops before POST and does not clear a new input
+ok 14 - project switch during FileReader stops before POST and does not clear a new input
+  ---
+  duration_ms: 1.315833
+  type: 'test'
+  ...
+# Subtest: project switch during POST cannot continue the old batch or overwrite the new project
+ok 15 - project switch during POST cannot continue the old batch or overwrite the new project
+  ---
+  duration_ms: 0.99675
+  type: 'test'
+  ...
+# Subtest: A to B to A and mode navigation each invalidate old responses despite matching project ID
+ok 16 - A to B to A and mode navigation each invalidate old responses despite matching project ID
+  ---
+  duration_ms: 1.474833
+  type: 'test'
+  ...
+# Subtest: new selection while busy is explicitly not started and fences old success, remainder and input cleanup
+ok 17 - new selection while busy is explicitly not started and fences old success, remainder and input cleanup
+  ---
+  duration_ms: 1.139459
+  type: 'test'
+  ...
+# Subtest: late old-project cleanup cannot release a newer project batch busy lock
+ok 18 - late old-project cleanup cannot release a newer project batch busy lock
+  ---
+  duration_ms: 0.897292
+  type: 'test'
+  ...
+# Subtest: unmount during read or POST prevents continuation, refresh, notification and stateful busy cleanup
+ok 19 - unmount during read or POST prevents continuation, refresh, notification and stateful busy cleanup
+  ---
+  duration_ms: 1.632791
+  type: 'test'
+  ...
+# Subtest: StrictMode effect reactivation does not resurrect old import ownership
+ok 20 - StrictMode effect reactivation does not resurrect old import ownership
+  ---
+  duration_ms: 1.132416
+  type: 'test'
+  ...
+# Subtest: replacement input element is not cleared by completed old selection
+ok 21 - replacement input element is not cleared by completed old selection
+  ---
+  duration_ms: 0.730542
+  type: 'test'
+  ...
+# Subtest: cleanup refresh failure still releases busy and clears only the current input
+ok 22 - cleanup refresh failure still releases busy and clears only the current input
+  ---
+  duration_ms: 1.180416
+  type: 'test'
+  ...
+# Subtest: actual App refresh cannot apply a late snapshot after newer selection, project switch or unmount
+ok 23 - actual App refresh cannot apply a late snapshot after newer selection, project switch or unmount
+  ---
+  duration_ms: 3.524916
+  type: 'test'
+  ...
+# Subtest: normal actual App refresh applies the confirmed import and leaves busy/input clean
+ok 24 - normal actual App refresh applies the confirmed import and leaves busy/input clean
+  ---
+  duration_ms: 2.227
+  type: 'test'
+  ...
+# Subtest: real loopback HTTP and imported rpc: structured 4xx rejects only the current file
+ok 25 - real loopback HTTP and imported rpc: structured 4xx rejects only the current file
+  ---
+  duration_ms: 22.222958
+  type: 'test'
+  ...
+# Subtest: real loopback HTTP and imported rpc: malformed 200 acknowledgement remains unknown
+ok 26 - real loopback HTTP and imported rpc: malformed 200 acknowledgement remains unknown
+  ---
+  duration_ms: 6.886292
+  type: 'test'
+  ...
+# Subtest: real loopback HTTP and imported rpc: socket loss after observed POST stays unknown with no retry
+ok 27 - real loopback HTTP and imported rpc: socket loss after observed POST stays unknown with no retry
+  ---
+  duration_ms: 2.258667
+  type: 'test'
+  ...
+# Subtest: actual App interval discovers accepted asset after superseded old POST success without changing newer notice/input
+ok 28 - actual App interval discovers accepted asset after superseded old POST success without changing newer notice/input
+  ---
+  duration_ms: 1.547209
+  type: 'test'
+  ...
+# Subtest: actual App visibilitychange discovers accepted asset after superseded old POST success without changing newer notice/input
+ok 29 - actual App visibilitychange discovers accepted asset after superseded old POST success without changing newer notice/input
+  ---
+  duration_ms: 1.773542
+  type: 'test'
+  ...
+# Subtest: actual App poll after superseded POST success cannot apply an old project snapshot after newer project refresh
+ok 30 - actual App poll after superseded POST success cannot apply an old project snapshot after newer project refresh
+  ---
+  duration_ms: 1.416583
+  type: 'test'
+  ...
+# Subtest: actual App interval discovers accepted asset after superseded old POST unknown without changing newer notice/input
+ok 31 - actual App interval discovers accepted asset after superseded old POST unknown without changing newer notice/input
+  ---
+  duration_ms: 1.5125
+  type: 'test'
+  ...
+# Subtest: actual App visibilitychange discovers accepted asset after superseded old POST unknown without changing newer notice/input
+ok 32 - actual App visibilitychange discovers accepted asset after superseded old POST unknown without changing newer notice/input
+  ---
+  duration_ms: 1.040167
+  type: 'test'
+  ...
+# Subtest: actual App poll after superseded POST unknown cannot apply an old project snapshot after newer project refresh
+ok 33 - actual App poll after superseded POST unknown cannot apply an old project snapshot after newer project refresh
+  ---
+  duration_ms: 1.235292
+  type: 'test'
+  ...
+# Subtest: actual App polling honors hidden/dragging guards and removes its timer and visibility listener on cleanup
+ok 34 - actual App polling honors hidden/dragging guards and removes its timer and visibility listener on cleanup
+  ---
+  duration_ms: 0.9205
+  type: 'test'
+  ...
+# Subtest: restored import pins the first gesture and treats origin refusal as unknown without rekeying or batch replay
+ok 35 - restored import pins the first gesture and treats origin refusal as unknown without rekeying or batch replay
+  ---
+  duration_ms: 2.679083
+  type: 'test'
+  ...
+# Subtest: home presentation never starts project polling or performs the loaded-project refresh
+ok 36 - home presentation never starts project polling or performs the loaded-project refresh
+  ---
+  duration_ms: 0.857834
+  type: 'test'
+  ...
+# Subtest: actual API harness loads the exact current real dependencies and rejects any unlisted module
+ok 37 - actual API harness loads the exact current real dependencies and rejects any unlisted module
+  ---
+  duration_ms: 0.245083
+  type: 'test'
+  ...
+1..37
+# tests 37
+# suites 0
+# pass 37
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 409.936917

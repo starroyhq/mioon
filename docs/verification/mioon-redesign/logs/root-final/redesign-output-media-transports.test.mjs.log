@@ -1,0 +1,16 @@
+TAP version 13
+# Subtest: three 1080 presets cross HTTP/CLI/MCP and produce native/downscaled/preview/sample MP4s at 30fps
+ok 1 - three 1080 presets cross HTTP/CLI/MCP and produce native/downscaled/preview/sample MP4s at 30fps
+  ---
+  duration_ms: 9918.202166
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 10318.862125

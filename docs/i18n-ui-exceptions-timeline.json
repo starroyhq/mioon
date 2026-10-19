@@ -590,27 +590,6 @@
       "reason": "Immutable source-version identity notation V followed by the original source version number, not a revision label or prose. The neighboring shot title remains literal user content; all replacement instructions are localized. Reviewed literal template fragment: '· V'."
     },
     {
-      "file": "apps/web/src/Preview.jsx",
-      "category": "visible-jsx",
-      "hash": "8170d88edf1074bb37a191df4702b33d3a3944fdac209d0d8d7638ad95aaa4c3",
-      "owner": "timeline",
-      "reason": "Fixed frames-per-second editing/output unit in the original frozen media geometry, not translatable prose. The numeric frame rate and dimensions remain unchanged; surrounding statuses and captions use localized descriptors. Reviewed literal template fragment: 'fps ·'."
-    },
-    {
-      "file": "apps/web/src/Preview.jsx",
-      "category": "visible-jsx",
-      "hash": "23e3a16cd69e0ea405543ce66c9194e3360e6ae3299a2f4b0e52acf1e401fb74",
-      "owner": "timeline",
-      "reason": "Fixed frames-per-second editing/output unit in the original frozen media geometry, not translatable prose. The numeric frame rate and dimensions remain unchanged; surrounding statuses and captions use localized descriptors. Reviewed literal template fragment: 'fps'."
-    },
-    {
-      "file": "apps/web/src/Timeline.jsx",
-      "category": "visible-jsx",
-      "hash": "8170d88edf1074bb37a191df4702b33d3a3944fdac209d0d8d7638ad95aaa4c3",
-      "owner": "timeline",
-      "reason": "Fixed frames-per-second editing/output unit in the original frozen media geometry, not translatable prose. The numeric frame rate and dimensions remain unchanged; surrounding statuses and captions use localized descriptors. Reviewed literal template fragment: 'fps ·'."
-    },
-    {
       "file": "apps/web/src/Timeline.jsx",
       "category": "visible-jsx",
       "hash": "b38fb3f76e4e15f9326ec20a07315e9c7c7f9ad0fed9af2ca8c7e523743d53f1",

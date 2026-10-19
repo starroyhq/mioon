@@ -1,0 +1,21 @@
+import type { MessageCatalog } from '../types.ts';
+export const opacityEnvelopeMessages = {
+  'opacity.envelope.title': { 'zh-Hans': '透明度关键帧', 'zh-Hant': '透明度關鍵幀', en: 'Opacity keyframes', ja: '不透明度キーフレーム' },
+  'opacity.envelope.frame': { 'zh-Hans': '片段内帧', 'zh-Hant': '片段內幀', en: 'Local frame', ja: 'クリップ内フレーム' },
+  'opacity.envelope.opacity': { 'zh-Hans': '不透明度', 'zh-Hant': '不透明度', en: 'Opacity', ja: '不透明度' },
+  'opacity.envelope.add': { 'zh-Hans': '添加关键帧', 'zh-Hant': '新增關鍵幀', en: 'Add keyframe', ja: 'キーフレームを追加' },
+  'opacity.envelope.remove': { 'zh-Hans': '移除第 {index} 个关键帧', 'zh-Hant': '移除第 {index} 個關鍵幀', en: 'Remove keyframe {index}', ja: 'キーフレーム {index} を削除' },
+  'opacity.envelope.clear': { 'zh-Hans': '清除透明度关键帧', 'zh-Hant': '清除透明度關鍵幀', en: 'Clear opacity keyframes', ja: '不透明度キーフレームをクリア' },
+  'opacity.envelope.effect': { 'zh-Hans': '0 为完全透明，1 保持原画面的不透明度。关键帧之间线性变化', 'zh-Hant': '0 為完全透明，1 保持原畫面的不透明度。關鍵幀之間線性變化', en: '0 is fully transparent; 1 preserves the original opacity. Values change linearly between keyframes', ja: '0 は完全に透明、1 は元の不透明度を維持します。キーフレーム間で値が直線的に変化します' },
+  'opacity.envelope.renderSaved': { 'zh-Hans': '保存后，合成预览和导出会应用透明度关键帧', 'zh-Hant': '儲存後，合成預覽和匯出會套用透明度關鍵幀', en: 'Saved opacity keyframes are applied to composite previews and exports', ja: '保存した不透明度キーフレームは、合成プレビューと書き出しに適用されます' },
+  'opacity.envelope.renderPending': { 'zh-Hans': '关键帧可保存；预览和导出尚未应用透明度', 'zh-Hant': '關鍵幀可儲存；預覽和匯出尚未套用透明度', en: 'Keyframes can be saved. Preview and export do not yet apply opacity', ja: 'キーフレームは保存できます。プレビューと書き出しには、不透明度がまだ適用されません' },
+  'opacity.envelope.bounds': { 'zh-Hans': '需要 1–7 个关键帧。帧为 0–{duration} 的整数，严格递增；不透明度为 0–1', 'zh-Hant': '需要 1–7 個關鍵幀。幀為 0–{duration} 的整數，嚴格遞增；不透明度為 0–1', en: 'Use 1–7 keyframes: integer frames 0–{duration}, strictly increasing; opacity 0–1', ja: 'キーフレームは 1～7 個です。フレームは 0～{duration} の整数で重複しない昇順、不透明度は 0～1 にしてください' },
+  'opacity.envelope.durationInvalid': { 'zh-Hans': '请先填写有效的片段时长：1–18000 的整数帧。透明度关键帧草稿仍保留', 'zh-Hant': '請先填寫有效的片段時長：1–18000 的整數幀。透明度關鍵幀草稿仍保留', en: 'Enter a valid clip duration of 1–18000 whole frames. The opacity-keyframe draft is retained', ja: 'クリップの長さを 1～18000 の整数フレームで入力してください。不透明度キーフレームの下書きは保持されています' },
+  'opacity.envelope.rejected': { 'zh-Hans': '未接受此次输入。仅支持数字及 + - . e E，最多 {limit} 个字符；原值未变', 'zh-Hant': '未接受此次輸入。僅支援數字及 + - . e E，最多 {limit} 個字元；原值未變', en: 'Input not accepted. Use digits and + - . e E, up to {limit} characters. The previous value is unchanged', ja: '入力を受け付けませんでした。半角数字と + - . e E を {limit} 文字以内で入力してください。元の値は変更されていません' },
+  'opacity.envelope.unsupported': { 'zh-Hans': '当前工作区无法保存透明度关键帧修改；草稿已保留', 'zh-Hant': '目前工作區無法儲存透明度關鍵幀修改；草稿已保留', en: 'This workspace cannot save opacity-keyframe changes. The draft is retained', ja: 'このワークスペースでは不透明度キーフレームの変更を保存できません。下書きは保持されています' },
+  'opacity.envelope.oversize': { 'zh-Hans': '输入超过本地草稿大小限制，仍保留在当前表单中，但尚未保存到本地', 'zh-Hant': '輸入超過本機草稿大小限制，仍保留在目前表單中，但尚未儲存至本機', en: 'Input exceeds the local draft size limit. It remains in this form but has not been saved locally', ja: '入力がローカル下書きのサイズ上限を超えています。現在のフォームには保持されていますが、ローカルには保存されていません' },
+  'opacity.envelope.loading': { 'zh-Hans': '正在检查透明度关键帧支持；其他编辑不受影响', 'zh-Hant': '正在檢查透明度關鍵幀支援；其他編輯不受影響', en: 'Checking opacity-keyframe support. Other editing remains available', ja: '不透明度キーフレームの対応状況を確認中です。他の編集は利用できます' },
+  'opacity.envelope.unavailable': { 'zh-Hans': '无法确认透明度关键帧支持；现有草稿仍保留', 'zh-Hant': '無法確認透明度關鍵幀支援；現有草稿仍保留', en: 'Opacity-keyframe support could not be confirmed. Existing draft values are retained', ja: '不透明度キーフレームの対応状況を確認できません。既存の下書きは保持されています' },
+  'opacity.envelope.composing': { 'zh-Hans': '请先完成当前输入，再保存、切换片段或关闭', 'zh-Hant': '請先完成目前輸入，再儲存、切換片段或關閉', en: 'Finish the current text composition before saving, switching clips or closing', ja: '保存、クリップの切り替え、終了の前に現在の文字入力を確定してください' },
+  'opacity.envelope.connectionRetained': { 'zh-Hans': '连接或片段已变化。原输入仍保留，提交已阻止。请先完成输入，并明确处理当前草稿，再重新连接；不会将输入转给其他工作区', 'zh-Hant': '連線或片段已變更。原輸入仍保留，提交已阻止。請先完成輸入，並明確處理目前草稿，再重新連線；不會將輸入轉給其他工作區', en: 'The connection or clip changed. Original input is retained and submission is blocked. Finish composing and explicitly resolve this draft before reconnecting. Input will not be redirected to another workspace', ja: '接続またはクリップが変更されました。元の入力を保持し、送信を停止しています。文字入力を確定し、この下書きを明示的に処理してから再接続してください。入力を別のワークスペースに転送することはありません' },
+} as const satisfies MessageCatalog;
