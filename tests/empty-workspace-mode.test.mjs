@@ -128,7 +128,7 @@ function harness({ projectId = null, mode = 'canvas', loading = false, ready = B
     projectOpening: { phase: projectId && ready ? 'ready' : 'home', projectId, error: '' }, projects: [],
     projectListStatus: { busy: false, error: '' }, busy: {}, homePage: 'projects', homeConnection: 'agent', toast: null,
     markBusy: (...args) => calls.push(['markBusy', ...args]), setHomeConnection() {}, changeHomePage() {}, refreshHomeProjects() {},
-    ...Object.fromEntries(['setLastSync', 'setView', 'setMobilePanel', 'setPreviewAsset', 'setComparisonId', 'setShowCreate', 'setProjects', 'setWorkspace', 'setAuth', 'setOnline', 'setProviders', 'setPropertiesPage', 'setTaskState', 'setPreferenceStatus', 'setPending', 'setShowProjects', 'setNodes', 'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setRightDockTab', 'setShowExports', 'setRealConfirm', 'setToast', 'setZoom', 'notify'].map(name => [name, (...args) => calls.push([name, ...args])])),
+    ...Object.fromEntries(['setLastSync', 'setView', 'setMobilePanel', 'setPreviewAsset', 'setComparisonId', 'setShowCreate', 'setProjects', 'setWorkspace', 'setAuth', 'setOnline', 'setProviders', 'setPropertiesPage', 'setTaskState', 'setPreferenceStatus', 'setPending', 'setShowProjects', 'setNodes', 'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setRightDockTab', 'setShowExports', 'setRealConfirm', 'setToast', 'setZoom', 'setPanelOverlay', 'setHomePage', 'setHomeConnection', 'setPanelOpen', 'setSettingsOpen', 'setAgentPage', 'setWorkspaceMode', 'setShowTasks', 'setShowDelivery', 'setShowImage', 'setShowProjectChooser', 'setTaskState', 'setShowSettings', 'setWebSettingsOpen', 'setCanvasToolbar', 'notify'].map(name => [name, (...args) => calls.push([name, ...args])])),
   };
   if (projectId && ready) env.openedProject.current = projectOpenAttempt(projectId, 0, workspaceOriginScope(env.workspaceRef.current));
   env.setProjectOpening = value => { env.projectOpening = value; calls.push(['setProjectOpening', value]); };
@@ -198,10 +198,10 @@ test('actual loaded normal/restored project switches through the shared componen
 });
 
 test('the actual home create callback enables workbench modes only after successful project activation', async () => {
-  const f = harness(), props = modeProps(f), tree = ui.Surface(props);
-  assertHome(ui.render(props)); assert.equal(tree.props.onCreate, f.create); assert.deepEqual(f.calls, []);
-  assert.equal(await tree.props.onCreate('第一个项目', ''), true);
-  assert.deepEqual(f.calls.find(call => call[0] === 'dispatch'), ['dispatch', 'project-create', 'project.create', { name: '第一个项目', description: '' }]);
+  const f = harness(), props = modeProps(f), tree = ui.Surface(props), home = nodes(tree).find(node => node.props && node.props.onCreate);
+  assertHome(ui.render(props)); assert.ok(home, 'project home must receive onCreate'); assert.equal(home.props.onCreate, f.create); assert.deepEqual(f.calls, []);
+  assert.equal(await home.props.onCreate('第一个项目', ''), true);
+  const dispatch = f.calls.find(call => call[0] === 'dispatch'); assert.deepEqual(dispatch.slice(0, 4), ['dispatch', 'project-create', 'project.create', { name: '第一个项目', description: '' }]); assert.equal(dispatch.length, 6);
   assert.equal(f.env.currentProject.current, A); assert.equal(f.env.viewReady.current, true); assert.equal(f.env.loading, false);
   assert.equal(f.env.projectSessionReady(), true); assert.equal(f.env.openedProject.current.projectId, A);
   assertDisabled(ui.render(modeProps(f)), false); await f.change('editing'); assert.equal(f.env.viewRef.current.activeMode, 'editing');

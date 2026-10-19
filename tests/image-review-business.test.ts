@@ -9,14 +9,28 @@ import {createImageReviewServices, validateImageTaskReview, safeImageReviewError
 import {migrateImageReviewSchema} from '../packages/business/src/images/review-schema.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, canonicalImageInput as canonical} from '../packages/contracts/src/images.ts';
 import {IMAGE_REVIEW_DESTINATION, IMAGE_REVIEW_LIMITS, isImageReviewResponse} from '../packages/contracts/src/image-reviews.ts';
+import {DatabaseSync} from 'node:sqlite';
+import {errorView} from './helpers/test-error.ts';
 
-const hash = text => createHash('sha256').update(text).digest('hex');
-const code = expected => error => error.code === expected && !JSON.stringify(error).includes('SYNTHETIC_PRIVATE_SENTINEL');
-const rows = db => JSON.stringify(db.prepare('SELECT * FROM image_reviews ORDER BY id').all());
-const changes = db => db.prepare('SELECT total_changes() AS n').get().n;
-const generation = (projectId, patch = {}) => ({projectId, requestId: randomUUID(), name: 'Reviewed synthetic image',
+interface ReviewInput {projectId: string; requestId: string; name: string; providerId: string; model: string; prompt: string;
+  options: Record<string, unknown>; [key: string]: unknown}
+interface ReviewRecord {id: string; revision: number; state: string; taskId: string | null; postAttempts: number; [key: string]: unknown}
+
+const hash = (text: string) => createHash('sha256').update(text).digest('hex');
+const code = (expected: string) => (error: unknown) => {const failure = errorView(error); return failure.code === expected && !JSON.stringify(error).includes('SYNTHETIC_PRIVATE_SENTINEL');};
+const rows = (db: DatabaseSync) => JSON.stringify(db.prepare('SELECT * FROM image_reviews ORDER BY id').all());
+const changes = (db: DatabaseSync) => (db.prepare('SELECT total_changes() AS n').get() as {n: number}).n;
+const generation = (projectId: string, patch: Record<string, unknown> = {}): ReviewInput => ({projectId, requestId: randomUUID(), name: 'Reviewed synthetic image',
   providerId: 'openai', model: IMAGE_MODELS.openai, prompt: 'Synthetic fixture, no network transmission.', options: {...IMAGE_FIXED_OPTIONS}, ...patch});
-function fixture(t, options = {}) {
+type ReviewFixture = {root: string; projectId: string; otherProjectId: string; store: ReturnType<typeof openStore>;
+  reviews: ReturnType<typeof createImageReviewServices>;
+  input(patch?: Record<string, unknown>): ReviewInput;
+  configure(patch: Record<string, unknown>): void;
+  prepare(input: ReviewInput): ReviewRecord;
+  get(value: {id: string}): ReviewRecord;
+  approval(value: ReviewRecord): {projectId: string; reviewId: string; expectedRevision: number};
+  restart(): void};
+function fixture(t: import('node:test').TestContext, options: Record<string, unknown> = {}): ReviewFixture {
   const root = mkdtempSync(path.join(tmpdir(), 'mioon-image-review-'));
   let store = openStore(root), settings = {revision: 1, enabled: true, destination: IMAGE_REVIEW_DESTINATION};
   store.tx(() => migrateImageReviewSchema(store.db));
@@ -25,16 +39,16 @@ function fixture(t, options = {}) {
   const getSettings = () => settings;
   let reviews = createImageReviewServices(store, {getSettings, ...options});
   t.after(() => {store.close(); rmSync(root, {recursive: true, force: true});});
-  const f = {root, projectId, otherProjectId, get store() {return store;}, get reviews() {return reviews;},
-    input: patch => generation(projectId, patch), configure: patch => {settings = {...settings, ...patch};},
-    prepare(input) {return reviews.handlers['image.review.prepare']({input, settingsRevision: settings.revision});},
-    get(value) {return reviews.handlers['image.review.get']({projectId, reviewId: value.id});},
+  const f: ReviewFixture = {root, projectId, otherProjectId, get store() {return store;}, get reviews() {return reviews;},
+    input: (patch: Record<string, unknown> = {}) => generation(projectId, patch), configure: (patch: Record<string, unknown>) => {settings = {...settings, ...patch};},
+    prepare(input) {return reviews.handlers['image.review.prepare']({input: input as never, settingsRevision: settings.revision}) as unknown as ReviewRecord;},
+    get(value) {return reviews.handlers['image.review.get']({projectId, reviewId: value.id}) as unknown as ReviewRecord;},
     approval(value) {return {projectId, reviewId: value.id, expectedRevision: value.revision};},
     restart() {store.close(); store = openStore(root); reviews = createImageReviewServices(store, {getSettings, ...options});},
   };
   return f;
 }
-function insertTask(f, input, id = randomUUID()) {
+function insertTask(f: ReturnType<typeof fixture>, input: ReviewInput, id: string = randomUUID()) {
   const {db} = f.store, groupId = randomUUID(), timestamp = new Date().toISOString();
   const snapshot = {schemaVersion: 1, projectId: input.projectId, groupId, taskId: id, name: input.name,
     prompt: input.prompt, providerId: input.providerId, model: input.model, options: input.options};
@@ -46,7 +60,7 @@ function insertTask(f, input, id = randomUUID()) {
     providerId: input.providerId, model: input.model, options: input.options, state: 'queued', revision: 1, dispatched: false,
     versionId: null, errorCode: null, createdAt: timestamp, updatedAt: timestamp};
 }
-function approve(f, approval, fault = () => {}) {
+function approve(f: ReviewFixture, approval: {projectId: string; reviewId: string; expectedRevision: number}, fault: (stage: string) => void = () => {}) {
   const input = f.reviews.readForApproval(approval), db = f.store.db;
   const previous = db.prepare('SELECT response FROM image_requests WHERE requestId=?').get(input.requestId);
   if (previous) {
@@ -60,7 +74,7 @@ function approve(f, approval, fault = () => {}) {
     return response;
   });
 }
-function dispatch(f, input, taskId, fault = () => {}) {
+function dispatch(f: ReviewFixture, input: ReviewInput, taskId: string, fault: (stage: string) => void = () => {}) {
   f.store.tx(() => {
     f.reviews.beforeDispatch(input, taskId); fault('after_review_fence');
     f.store.db.prepare("UPDATE image_tasks SET state='dispatching',dispatched=1,revision=revision+1 WHERE id=?").run(taskId);
@@ -71,8 +85,8 @@ test('prepare is retained exact local intent; no approval, task, receipt, or POS
   const f = fixture(t), input = f.input(), value = f.prepare(input);
   assert.ok(isImageReviewResponse(value)); assert.equal(value.state, 'pending'); assert.equal(value.taskId, null); assert.equal(value.postAttempts, 0);
   assert.equal(value.policy.promptStorage, 'local-plaintext'); assert.equal(value.policy.price, 'usage-based-unknown');
-  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM image_tasks').get().n, 0);
-  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM image_requests').get().n, 0);
+  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM image_tasks').get()!.n, 0);
+  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM image_requests').get()!.n, 0);
   assert.deepEqual(f.prepare(input), value);
   const before = rows(f.store.db), count = changes(f.store.db);
   for (let index = 0; index < 3; index++) {
@@ -93,25 +107,25 @@ test('approval reservation, queued task and original ACK commit or roll back tog
   const f = fixture(t), input = f.input(), value = f.prepare(input), approval = f.approval(value), before = rows(f.store.db);
   assert.throws(() => approve(f, approval, () => {throw new Error('Synthetic acceptance fault');}), /Synthetic/);
   assert.equal(rows(f.store.db), before);
-  for (const table of ['image_groups', 'image_tasks', 'image_requests']) assert.equal(f.store.db.prepare(`SELECT count(*) AS n FROM ${table}`).get().n, 0);
+  for (const table of ['image_groups', 'image_tasks', 'image_requests']) assert.equal(f.store.db.prepare(`SELECT count(*) AS n FROM ${table}`).get()!.n, 0);
   const ack = approve(f, approval), retained = f.get(value);
   assert.equal(retained.state, 'approved'); assert.equal(retained.taskId, ack.id); assert.equal(retained.postAttempts, 0);
   assert.deepEqual(f.reviews.getForTask(f.projectId, ack.id), retained);
   assert.deepEqual(validateImageTaskReview(f.store.db, f.projectId, ack.id, input), retained);
-  assert.equal(f.store.db.prepare('SELECT response FROM image_requests WHERE requestId=?').get(input.requestId).response, JSON.stringify(ack));
+  assert.equal(f.store.db.prepare('SELECT response FROM image_requests WHERE requestId=?').get(input.requestId)!.response, JSON.stringify(ack));
   assert.throws(() => f.reviews.authorizeAcceptance(input, ack.id, approval), /require the image transaction/);
   assert.throws(() => f.reviews.beforeDispatch(input, ack.id), /require the image transaction/);
 });
 
 test('lost confirmation ACK and exact repeated approvals recover original key before settings/CAS, without reexecution', t => {
   const f = fixture(t), input = f.input(), value = f.prepare(input), approval = f.approval(value), ack = approve(f, approval);
-  const receipt = f.store.db.prepare('SELECT response FROM image_requests WHERE requestId=?').get(input.requestId).response;
+  const receipt = f.store.db.prepare('SELECT response FROM image_requests WHERE requestId=?').get(input.requestId)!.response;
   f.configure({revision: 2, enabled: false});
   for (let index = 0; index < 3; index++) assert.deepEqual(approve(f, approval), ack);
   f.restart();
-  assert.deepEqual(approve(f, approval), ack); assert.equal(f.get(value).state, 'approved');
-  assert.equal(f.store.db.prepare('SELECT response FROM image_requests WHERE requestId=?').get(input.requestId).response, receipt);
-  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM image_tasks').get().n, 1);
+  assert.deepEqual(approve(f, approval), ack); assert.equal(f.get(value)!.state, 'approved');
+  assert.equal(f.store.db.prepare('SELECT response FROM image_requests WHERE requestId=?').get(input.requestId)!.response, receipt);
+  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM image_tasks').get()!.n, 1);
   assert.throws(() => f.reviews.verifyReplay({...input, prompt: 'Changed'}, ack.id, approval), code('IMAGE_REVIEW_CONFLICT'));
   assert.throws(() => f.reviews.verifyReplay(input, randomUUID(), approval), code('IMAGE_REVIEW_REQUIRED'));
   assert.throws(() => f.reviews.verifyReplay(input, ack.id, {...approval, expectedRevision: 2}), code('IMAGE_REVIEW_REQUIRED'));
@@ -122,7 +136,7 @@ test('only one POST fence is possible; unknown outcome and restart never release
   let syntheticPosts = 0;
   dispatch(f, input, ack.id); syntheticPosts++;
   f.store.db.prepare("UPDATE image_tasks SET state='outcome_unknown',revision=revision+1,errorCode='IMAGE_OUTCOME_UNKNOWN' WHERE id=?").run(ack.id);
-  assert.equal(f.get(value).postAttempts, 1); assert.equal(f.get(value).state, 'dispatched');
+  assert.equal(f.get(value)!.postAttempts, 1); assert.equal(f.get(value)!.state, 'dispatched');
   assert.throws(() => dispatch(f, input, ack.id), code('IMAGE_REVIEW_STATE_CONFLICT'));
   f.restart();
   const before = rows(f.store.db), count = changes(f.store.db);
@@ -137,9 +151,9 @@ test('only one POST fence is possible; unknown outcome and restart never release
 test('dispatch review fence rolls back atomically with task fence on a synthetic pre-POST fault', t => {
   const f = fixture(t), input = f.input(), value = f.prepare(input), ack = approve(f, f.approval(value)), before = rows(f.store.db);
   assert.throws(() => dispatch(f, input, ack.id, () => {throw new Error('Synthetic before POST');}), /Synthetic/);
-  assert.equal(rows(f.store.db), before); assert.equal(f.get(value).postAttempts, 0);
-  assert.equal(f.store.db.prepare('SELECT dispatched FROM image_tasks WHERE id=?').get(ack.id).dispatched, 0);
-  dispatch(f, input, ack.id); assert.equal(f.get(value).postAttempts, 1);
+  assert.equal(rows(f.store.db), before); assert.equal(f.get(value)!.postAttempts, 0);
+  assert.equal(f.store.db.prepare('SELECT dispatched FROM image_tasks WHERE id=?').get(ack.id)!.dispatched, 0);
+  dispatch(f, input, ack.id); assert.equal(f.get(value)!.postAttempts, 1);
 });
 
 test('rejection wins approval race and accepted tasks use existing cancelQueued semantics', t => {
@@ -147,14 +161,14 @@ test('rejection wins approval race and accepted tasks use existing cancelQueued 
   const rejected = f.reviews.reject(approval); assert.equal(rejected.state, 'rejected');
   assert.deepEqual(f.reviews.reject(approval), rejected);
   assert.throws(() => approve(f, approval), code('IMAGE_REVIEW_REVISION_CONFLICT'));
-  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM image_tasks').get().n, 0);
+  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM image_tasks').get()!.n, 0);
   const input = f.input(), value = f.prepare(input), ack = approve(f, f.approval(value));
   assert.throws(() => f.reviews.reject({...f.approval(value), expectedRevision: 2}), code('IMAGE_REVIEW_STATE_CONFLICT'));
   f.store.tx(() => {
     f.store.db.prepare("UPDATE image_tasks SET state='cancelled_before_dispatch',revision=2 WHERE id=?").run(ack.id);
     f.store.db.prepare('UPDATE image_groups SET activeTaskId=NULL,revision=revision+1 WHERE id=?').run(ack.groupId);
   });
-  assert.equal(f.get(value).state, 'approved'); assert.equal(f.get(value).postAttempts, 0);
+  assert.equal(f.get(value)!.state, 'approved'); assert.equal(f.get(value)!.postAttempts, 0);
   assert.throws(() => dispatch(f, input, ack.id), code('IMAGE_REVIEW_STATE_CONFLICT'));
   assert.deepEqual(approve(f, f.approval(value)), ack);
 });
@@ -165,12 +179,12 @@ test('changed revision, disabled settings and pending configuration fences block
   const input = f.input(), value = f.prepare(input), approval = f.approval(value);
   f.configure({revision: 2});
   assert.throws(() => approve(f, approval), code('IMAGE_REVIEW_SETTINGS_CHANGED'));
-  assert.equal(f.get(value).state, 'pending');
+  assert.equal(f.get(value)!.state, 'pending');
   f.configure({revision: 1}); const ack = approve(f, approval);
   f.configure({enabled: false}); assert.throws(() => dispatch(f, input, ack.id), code('IMAGE_LIVE_DISABLED'));
   f.configure({enabled: true}); pending = true; assert.throws(() => dispatch(f, input, ack.id), code('SETTINGS_PENDING'));
   pending = false; f.configure({revision: 2}); assert.throws(() => dispatch(f, input, ack.id), code('IMAGE_REVIEW_SETTINGS_CHANGED'));
-  assert.equal(f.get(value).postAttempts, 0);
+  assert.equal(f.get(value)!.postAttempts, 0);
 });
 
 test('stop and abort revoke future transmission; read-only history stays available', t => {
@@ -178,10 +192,10 @@ test('stop and abort revoke future transmission; read-only history stays availab
   const input = f.input(), value = f.prepare(input), ack = approve(f, f.approval(value));
   controller.abort();
   assert.throws(() => dispatch(f, input, ack.id), code('IMAGE_SERVICE_STOPPED'));
-  assert.equal(f.get(value).postAttempts, 0);
+  assert.equal(f.get(value)!.postAttempts, 0);
   const second = fixture(t), next = second.prepare(second.input()); second.reviews.stop();
   assert.throws(() => approve(second, second.approval(next)), code('IMAGE_SERVICE_STOPPED'));
-  assert.equal(second.get(next).state, 'pending');
+  assert.equal(second.get(next)!.state, 'pending');
 });
 
 test('project isolation, cursor scope and restart expiration are read-only and bounded', t => {
@@ -249,7 +263,7 @@ test('async settings hooks and thenables cannot authorize acceptance or a POST',
   assert.throws(() => createImageReviewServices(f.store, {getSettings: async () => ({})}), /must be synchronous/);
   const service = createImageReviewServices(f.store, {getSettings: () => Promise.resolve({revision: 1, enabled: true, destination: IMAGE_REVIEW_DESTINATION})});
   assert.throws(() => service.handlers['image.review.prepare']({input: f.input(), settingsRevision: 1}), /synchronous values/);
-  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM image_reviews').get().n, 0);
+  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM image_reviews').get()!.n, 0);
 });
 
 test('supplied settings assertions must synchronously return literal true, and HTTP errors are sanitized', t => {
@@ -258,7 +272,7 @@ test('supplied settings assertions must synchronously return literal true, and H
     const service = createImageReviewServices(f.store, {getSettings, assertSettings: () => value});
     assert.throws(() => service.handlers['image.review.prepare']({input: f.input(), settingsRevision: 1}), code('IMAGE_REVIEW_SETTINGS_CHANGED'));
   }
-  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM image_reviews').get().n, 0);
+  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM image_reviews').get()!.n, 0);
   const cause = Object.assign(new Error('SYNTHETIC_PRIVATE_SENTINEL'), {code: 'IMAGE_REVIEW_REQUIRED', status: 200,
     details: {apiKey: 'SYNTHETIC_PRIVATE_SENTINEL'}});
   assert.deepEqual(safeImageReviewError(cause), {code: 'IMAGE_REVIEW_REQUIRED', message: 'This exact live image request requires the user’s approval.', status: 403});

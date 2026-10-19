@@ -1,4 +1,5 @@
 import test from 'node:test';
+import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp, readFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -22,10 +23,13 @@ import {availability, imageRows, until} from './helpers/comfy-module-fixture.ts'
 const token = 'synthetic-optional-comfy-http-access-token';
 const modes = {load: 'available', skip: 'not_loaded', 'not-provided': 'not_provided'};
 const repo = fileURLToPath(new URL('..', import.meta.url));
-const cliEnvironment = f => ({...Object.fromEntries(['PATH', 'HOME', 'TMPDIR', 'TEMP', 'LANG', 'SYSTEMROOT', 'COMSPEC']
+interface HttpData {revision?: number; configuration?: Record<string, unknown>; readiness?: {checked: boolean; checkedAt: string | null}; items?: {assetId: string}[]; [key: string]: unknown}
+interface HttpBody {ok?: boolean; data?: HttpData; error?: {code?: string; retryable?: boolean}}
+interface Fixture {root: string; server: {url: string}; request(route: string, options?: {method?: string; input?: unknown; authenticated?: boolean; headers?: Record<string, string>}): Promise<{status: number; headers: Headers; body: HttpBody}>; rpc(operation: string, input?: Record<string, unknown>): Promise<HttpData>; approve(review: {projectId: string; id: string}): Promise<HttpData>; task(ack: {projectId: string; id: string}): Promise<HttpData>; remote(ack: {projectId: string; id: string}): Promise<HttpData>; reopen(selected?: string): Promise<void>}
+const cliEnvironment = (f: Fixture): Record<string, string> => ({...Object.fromEntries(['PATH', 'HOME', 'TMPDIR', 'TEMP', 'LANG', 'SYSTEMROOT', 'COMSPEC']
   .filter(key => typeof process.env[key] === 'string').map(key => [key, process.env[key]])),
-  TZ: 'UTC', MIOON_BASE_URL: f.server.url, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0'});
-async function cli(f, operation, input) {
+  TZ: 'UTC', MIOON_BASE_URL: f.server.url, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0'} as Record<string, string>);
+async function cli(f: Fixture, operation: string, input: unknown) {
   // Feature-specific invocation against this test's owned ephemeral backend.
   // No doctor, startup measurement, native QA workspace, or external service.
   const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.ts'), 'rpc', operation, '--input', JSON.stringify(input)],
@@ -40,38 +44,38 @@ async function cli(f, operation, input) {
   for (const text of [stdout, stderr]) assert.ok(!text.includes(token) && !text.includes(f.root), 'CLI must not expose credentials or workspace paths');
   return {code: result[0], envelope: JSON.parse(stdout)};
 }
-function retainedRows(f) {
+function retainedRows(f: Fixture) {
   const db = new DatabaseSync(path.join(f.root, 'workbench.sqlite'), {readOnly: true});
   try { return imageRows({db}); } finally { db.close(); }
 }
-async function fixture(t, {mode, comfyNetwork} = {}) {
+async function fixture(t: TestContext, {mode, comfyNetwork}: {mode?: string; comfyNetwork?: {httpRequest?: () => unknown}} = {}): Promise<Fixture> {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-comfy-module-http-'));
-  let server;
+  let server!: Awaited<ReturnType<typeof startServer>>;
   t.after(async () => { await server?.close(); await rm(root, {recursive: true, force: true}); });
-  const start = selected => startServer({dataDir: root, port: 0, token, ...(selected === undefined ? {} : {comfyModule: selected}), ...(comfyNetwork ? {comfyNetwork} : {})});
+  const start = (selected?: string) => startServer({dataDir: root, port: 0, token, ...(selected === undefined ? {} : {comfyModule: selected}), ...(comfyNetwork ? {comfyNetwork} : {})});
   server = await start(mode);
   const f = {root, get server() { return server; },
-    async request(route, {method = 'GET', input, authenticated = true, headers = {}} = {}) {
+    async request(route: string, {method = 'GET', input, authenticated = true, headers = {}}: {method?: string; input?: unknown; authenticated?: boolean; headers?: Record<string, string>} = {}) {
       const response = await fetch(server.url + route, {method, redirect: 'error', signal: AbortSignal.timeout(10000),
         headers: {'Content-Type': 'application/json', ...(authenticated ? {Authorization: `Bearer ${token}`} : {}), ...headers},
         ...(input === undefined ? {} : {body: JSON.stringify(input)})});
       const text = await response.text();
       assert.ok(!text.includes(root) && !text.includes(token), 'public HTTP response must not expose storage paths or credentials');
-      return {status: response.status, headers: response.headers, body: text ? JSON.parse(text) : null};
+      return {status: response.status, headers: response.headers, body: (text ? JSON.parse(text) : null) as HttpBody};
     },
-    async rpc(operation, input = {}) { const result = await f.request('/api/rpc', {method: 'POST', input: {operation, input}});
+    async rpc(operation: string, input: Record<string, unknown> = {}) { const result = await f.request('/api/rpc', {method: 'POST', input: {operation, input}});
       assert.equal(result.status, 200, JSON.stringify(result.body)); assert.equal(result.body.ok, true); return result.body.data; },
-    async approve(review) { const result = await f.request('/api/images/reviews/approve', {method: 'POST', input: {projectId: review.projectId, reviewId: review.id, expectedRevision: 1}});
+    async approve(review: {projectId: string; id: string}) { const result = await f.request('/api/images/reviews/approve', {method: 'POST', input: {projectId: review.projectId, reviewId: review.id, expectedRevision: 1}});
       assert.equal(result.status, 200, JSON.stringify(result.body)); return result.body.data; },
-    task: ack => f.rpc('image.task.get', {projectId: ack.projectId, taskId: ack.id}),
-    remote: ack => f.rpc('image.task.remote.get', {projectId: ack.projectId, taskId: ack.id}),
-    async reopen(selected) { await server.close(); server = await start(selected); },
+    task: (ack: {projectId: string; id: string}) => f.rpc('image.task.get', {projectId: ack.projectId, taskId: ack.id}),
+    remote: (ack: {projectId: string; id: string}) => f.rpc('image.task.remote.get', {projectId: ack.projectId, taskId: ack.id}),
+    async reopen(selected?: string) { await server.close(); server = await start(selected); },
   };
   return f;
 }
-const inputFor = projectId => ({projectId, requestId: randomUUID(), name: 'Synthetic optional Comfy image', providerId: 'comfy-local',
+const inputFor = (projectId: string) => ({projectId, requestId: randomUUID(), name: 'Synthetic optional Comfy image', providerId: 'comfy-local',
   model: COMFY_FIXTURE_MODEL, prompt: 'Exact synthetic local-only retained image.', options: COMFY_IMAGE_OPTIONS});
-async function configured(f, comfy) {
+async function configured(f: Fixture, comfy: {baseUrl: string}) {
   const check = await f.request('/api/images/comfy-check', {method: 'POST', input: {baseUrl: comfy.baseUrl}});
   assert.equal(check.status, 200, JSON.stringify(check.body));
   const configuration = {...DEFAULT_COMFY_IMAGE_CONFIGURATION, enabled: true, baseUrl: comfy.baseUrl, model: COMFY_FIXTURE_MODEL};
@@ -94,10 +98,10 @@ test('actual HTTP Comfy availability is fixed, minimal and behind existing beare
     assert.equal(forgedHost, 403);
     const result = await f.request(route);
     assert.equal(result.status, 200); assert.equal(result.headers.get('cache-control'), 'no-store');
-    assert.deepEqual(result.body, {ok: true, data: availability(modes[mode])});
+    assert.deepEqual(result.body, {ok: true, data: availability((modes as Record<string, string>)[mode])});
     const login = await f.request('/api/login', {method: 'POST', authenticated: false, input: {token}});
     assert.equal(login.status, 200);
-    const cookie = login.headers.get('set-cookie').split(';', 1)[0];
+    const cookie = login.headers.get('set-cookie')!.split(';', 1)[0];
     assert.deepEqual((await f.request(route, {authenticated: false, headers: {Cookie: cookie, Origin: f.server.url}})).body, result.body);
     const badMethod = await f.request(route, {method: 'POST', input: {comfyModule: 'load'}});
     assert.equal(badMethod.status, 405); assert.equal(badMethod.headers.get('allow'), 'GET');
@@ -144,7 +148,7 @@ test('default server keeps Comfy available and omitted module keeps exact receip
     await f.reopen(mode);
     assert.deepEqual((await f.request('/api/images/comfy-availability')).body.data, availability(modes[mode]));
     assert.deepEqual(await readFile(path.join(f.root, 'comfy-settings', 'settings.json')), settingsFile);
-    assert.deepEqual(await f.rpc('image.generate', input), ack);
+    assert.deepEqual(await f.rpc('image.generate', input as Record<string, unknown>), ack);
     assert.deepEqual(await f.rpc('image.review.prepare', {input, settingsRevision: 1}), savedReview);
     assert.deepEqual(await f.approve(review), ack);
     assert.deepEqual(await f.rpc('image.task.observeRemote', observation), observed);
@@ -154,7 +158,7 @@ test('default server keeps Comfy available and omitted module keeps exact receip
     assert.deepEqual(retainedRows(f), beforeCli, 'CLI receipt replay must not rewrite any retained image row');
     assert.deepEqual(await f.task(ack), finished);
     assert.deepEqual(await f.rpc('image.version.list', {projectId: project.id, groupId: ack.groupId}), versions);
-    const media = await fetch(`${f.server.url}/media/${versions.items[0].assetId}`, {headers: {Authorization: `Bearer ${token}`}, signal: AbortSignal.timeout(10000)});
+    const media = await fetch(`${f.server.url}/media/${versions.items![0].assetId}`, {headers: {Authorization: `Bearer ${token}`}, signal: AbortSignal.timeout(10000)});
     assert.equal(media.status, 200); assert.deepEqual(Buffer.from(await media.arrayBuffer()), comfy.png);
     const fresh = inputFor(project.id);
     for (const [operation, request] of [['image.generate', fresh], ['image.review.prepare', {input: fresh, settingsRevision: 1}]]) {
@@ -194,9 +198,9 @@ test('omitting Comfy preserves official MCP discovery and CLI refusal but grants
   }
   assert.ok(!tools.some(tool => /comfy.*(?:settings|check|availability|module)|image_review_approve/i.test(tool.name)));
   const result = await client.callTool({name: operationDefinition('image.review.prepare').toolName, arguments: {input: inputFor(project.id), settingsRevision: 1}});
-  assert.equal(result.isError, true); assert.equal(result.structuredContent.error.code, 'COMFY_MODULE_UNAVAILABLE');
+  assert.equal(result.isError, true); assert.equal((result.structuredContent as {error: {code: string}}).error.code, 'COMFY_MODULE_UNAVAILABLE');
   const injected = await client.callTool({name: operationDefinition('image.review.prepare').toolName, arguments: {input: inputFor(project.id), settingsRevision: 1, comfyModule: 'load'}});
-  assert.equal(injected.isError, true); assert.equal(injected.structuredContent.error.code, 'VALIDATION_ERROR');
+  assert.equal(injected.isError, true); assert.equal((injected.structuredContent as {error: {code: string}}).error.code, 'VALIDATION_ERROR');
   assert.deepEqual((await f.request('/api/images/comfy-availability')).body.data, availability('not_provided'));
   assert.equal(networkCalls, 0);
 });
@@ -208,13 +212,13 @@ test('missing-module check refuses before invalidating any retained advisory rea
   for (const state of ['not_provided', 'not_loaded']) {
     let writes = 0;
     const settings = {get: async () => structuredClone(existing), clearCheck() { writes++; }, recordCheck() { writes++; }, put() { writes++; }};
-    const route = createComfyHttp({settings, availability: availability(state)});
-    const request = Readable.from([Buffer.from(JSON.stringify({baseUrl: configuration.baseUrl}))]);
+    const route = createComfyHttp({settings: settings as never, availability: availability(state as never)});
+    const request = Readable.from([Buffer.from(JSON.stringify({baseUrl: configuration.baseUrl}))]) as unknown as {url: string; method: string; headers: Record<string, string>};
     request.url = '/api/images/comfy-check'; request.method = 'POST'; request.headers = {'content-type': 'application/json'};
-    const response = new EventEmitter(); let status, body;
-    Object.assign(response, {setHeader() {}, writeHead(value) { status = value; }, end(value) { body = JSON.parse(value); response.writableEnded = true; response.writableFinished = true; }});
-    assert.equal(await route(request, response, new URL(request.url, 'http://127.0.0.1:4318')), true);
-    assert.equal(status, 503); assert.equal(body.error.code, 'COMFY_MODULE_UNAVAILABLE');
+    let status: number | undefined, body: {error: {code: string}} | undefined;
+    const response = Object.assign(new EventEmitter(), {writableEnded: false, writableFinished: false, setHeader() {}, writeHead(value: number) { status = value; }, end(value: string) { body = JSON.parse(value) as {error: {code: string}}; this.writableEnded = true; this.writableFinished = true; }});
+    assert.equal(await route(request as never, response as never, new URL(request.url, 'http://127.0.0.1:4318')), true);
+    assert.equal(status, 503); assert.equal(body!.error.code, 'COMFY_MODULE_UNAVAILABLE');
     assert.equal(writes, 0, 'absence must be checked before clearCheck or any settings mutation');
     assert.deepEqual(await settings.get(), existing);
   }

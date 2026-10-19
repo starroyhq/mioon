@@ -20,57 +20,87 @@ import { IMAGE_FIXED_OPTIONS, IMAGE_MODELS, createImageGenerationSession, imageC
 
 import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
-const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+type Obj = Record<string, unknown>;
+const id = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), groupId = id(2), taskId = id(3), requestId = id(4), versionId = id(5), assetId = id(6);
 const at = '2026-10-10T10:00:00.000Z';
-const settings = (patch = {}) => ({ revision: 1, configuration: { ...DEFAULT_IMAGE_CONFIGURATION, enabled: true }, secret: { configured: true, storage: 'session' }, storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY' }, ...patch });
-const paidInput = (patch = {}) => ({ projectId, name: '原始图像', prompt: '  原始描述\n不要改写。  ', providerId: 'openai', model: IMAGE_MODELS.openai, options: { ...IMAGE_FIXED_OPTIONS }, requestId: id(60), ...patch });
-const review = (input = paidInput(), patch = {}) => ({ id: id(70), projectId: input.projectId, requestId: input.requestId, input, inputHash: createHash('sha256').update(canonicalImageInput(input)).digest('hex'), settingsRevision: 1, destination: IMAGE_REVIEW_DESTINATION, policy: { ...IMAGE_REVIEW_POLICY }, state: 'pending', revision: 1, taskId: null, postAttempts: 0, createdAt: at, updatedAt: at, approvedAt: null, rejectedAt: null, dispatchedAt: null, ...patch });
-const task = (patch = {}) => ({ id: taskId, projectId, groupId, requestId, name: '测试图像', prompt: '清晨的山间小屋', providerId: 'mock', model: IMAGE_MODELS.mock, options: { ...IMAGE_FIXED_OPTIONS }, state: 'queued', revision: 1, dispatched: false, versionId: null, errorCode: null, createdAt: at, updatedAt: at, ...patch });
-const group = (patch = {}) => ({ id: groupId, projectId, name: '测试图像', revision: 1, headVersionId: null, activeTaskId: taskId, createdAt: at, updatedAt: at, ...patch });
-const version = (patch = {}) => ({ id: versionId, projectId, groupId, taskId, number: 1, assetId, sha256: 'a'.repeat(64), mimeType: 'image/png', width: 1024, height: 1024, byteLength: 3400, isMock: true, providerId: 'mock', model: IMAGE_MODELS.mock, options: { ...IMAGE_FIXED_OPTIONS }, createdAt: at, ...patch });
-const page = (items, nextCursor = null) => ({ projectId, items, nextCursor });
-const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
-const flush = async () => { for (let n = 0; n < 120; n++) await Promise.resolve(); };
-const error = (code = 'NETWORK', details) => new ApiError('NEVER SHOW private provider text', code, details, Boolean(details));
-function memoryStorage() { const data = new Map(); return { data, getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, value), removeItem: key => data.delete(key) }; }
-function fixture(options = {}) {
-  const calls = [], privateCalls = [], changes = [], notifications = [], timers = new Map(), storage = options.storage || memoryStorage(); let sequence = 0, keys = 0;
-  const data = { groups: options.groups || [], tasks: options.tasks || [], versions: options.versions || [], reviews: options.reviews || [], receipts: new Map() };
-  function accept(input) {
-    const result = task({ ...input, id: data.tasks.length ? id(30 + data.tasks.length) : taskId, groupId: input.groupId || groupId }); delete result.expectedRevision;
-    data.tasks = [result, ...data.tasks]; data.groups = [group({ id: result.groupId, name: result.name, revision: input.expectedRevision ? input.expectedRevision + 1 : 1, activeTaskId: result.id })];
-    data.receipts.set(input.requestId, { projectId, requestId: input.requestId, operation: 'image.generate', response: structuredClone(result) }); return result;
+const settings = (patch: Obj = {}): Obj => ({ revision: 1, configuration: { ...DEFAULT_IMAGE_CONFIGURATION, enabled: true }, secret: { configured: true, storage: 'session' }, storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY' }, ...patch });
+const paidInput = (patch: Obj = {}): Obj => ({ projectId, name: '原始图像', prompt: '  原始描述\n不要改写。  ', providerId: 'openai', model: IMAGE_MODELS.openai, options: { ...IMAGE_FIXED_OPTIONS }, requestId: id(60), ...patch });
+const review = (input: Obj = paidInput(), patch: Obj = {}): Obj => ({ id: id(70), projectId: input.projectId, requestId: input.requestId, input, inputHash: createHash('sha256').update(canonicalImageInput(input as never)).digest('hex'), settingsRevision: 1, destination: IMAGE_REVIEW_DESTINATION, policy: { ...IMAGE_REVIEW_POLICY }, state: 'pending', revision: 1, taskId: null, postAttempts: 0, createdAt: at, updatedAt: at, approvedAt: null, rejectedAt: null, dispatchedAt: null, ...patch });
+const task = (patch: Obj = {}): Obj => ({ id: taskId, projectId, groupId, requestId, name: '测试图像', prompt: '清晨的山间小屋', providerId: 'mock', model: IMAGE_MODELS.mock, options: { ...IMAGE_FIXED_OPTIONS }, state: 'queued', revision: 1, dispatched: false, versionId: null, errorCode: null, createdAt: at, updatedAt: at, ...patch });
+const group = (patch: Obj = {}): Obj => ({ id: groupId, projectId, name: '测试图像', revision: 1, headVersionId: null, activeTaskId: taskId, createdAt: at, updatedAt: at, ...patch });
+const version = (patch: Obj = {}): Obj => ({ id: versionId, projectId, groupId, taskId, number: 1, assetId, sha256: 'a'.repeat(64), mimeType: 'image/png', width: 1024, height: 1024, byteLength: 3400, isMock: true, providerId: 'mock', model: IMAGE_MODELS.mock, options: { ...IMAGE_FIXED_OPTIONS }, createdAt: at, ...patch });
+const page = (items: unknown[], nextCursor: unknown = null): Obj => ({ projectId, items, nextCursor });
+interface Deferred<T> { promise: Promise<T>; resolve: (value: T) => void; reject: (reason?: unknown) => void }
+const deferred = <T = Obj>(): Deferred<T> => { let resolve: (value: T) => void = () => undefined, reject: (reason?: unknown) => void = () => undefined; const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
+const flush = async (): Promise<void> => { for (let n = 0; n < 120; n++) await Promise.resolve(); };
+const error = (code = 'NETWORK', details?: unknown): ApiError => new ApiError('NEVER SHOW private provider text', code, details, Boolean(details));
+interface MemoryStorage { data: Map<string, unknown>; getItem(key: string): unknown; setItem(key: string, value: unknown): void; removeItem(key: string): boolean }
+function memoryStorage(): MemoryStorage { const data = new Map<string, unknown>(); return { data, getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: unknown): void => {data.set(key, value);}, removeItem: (key: string): boolean => data.delete(key) }; }
+interface InputView extends Obj {
+  projectId?: string; requestId?: string; groupId?: string; taskId?: string; reviewId?: string;
+  limit?: number; settingsRevision?: number; input?: Obj; expectedRevision?: number; state?: unknown;
+  name?: string; prompt?: string; providerId?: string; options?: Obj; id?: string; operation?: string;
+}
+interface EntityView extends Obj {
+  id?: string; projectId?: string; groupId?: string; taskId?: string; requestId?: string; state?: string;
+  revision?: number; activeTaskId?: string | null; headVersionId?: string | null; versionId?: string | null;
+  name?: string; prompt?: string; providerId?: string; model?: string; options?: Obj; createdAt?: string; updatedAt?: string;
+  assetId?: string; dispatched?: boolean; approvedAt?: string | null; rejectedAt?: string | null; settingsRevision?: number;
+}
+interface DataStore { groups: EntityView[]; tasks: EntityView[]; versions: EntityView[]; reviews: EntityView[]; receipts: Map<string, unknown> }
+type AcceptFn = (input: Obj) => Obj;
+type ApiFn = (operation: string, input: InputView, data: DataStore) => unknown;
+type ApproveFn = (value: EntityView & {input?: Obj}, data: DataStore, accept: AcceptFn) => unknown;
+type RejectFn = (value: EntityView & {input?: Obj}, data: DataStore) => unknown;
+interface FixtureOptions {
+  storage?: MemoryStorage; groups?: Obj[]; tasks?: Obj[]; versions?: Obj[]; reviews?: Obj[];
+  api?: ApiFn; approve?: ApproveFn; reject?: RejectFn; settings?: Obj; customSettings?: Obj; session?: Record<string, unknown>;
+}
+interface Fixture {
+  session: ReturnType<typeof createImageGenerationSession>; api: ApiFn; reviewClient: Record<string, unknown>;
+  settingsClient: Record<string, unknown>; customSettingsClient: Record<string, unknown>;
+  privateCalls: Obj[]; calls: Array<{operation: string; input: unknown}>; data: DataStore; storage: MemoryStorage;
+  changes: Obj[]; notifications: unknown[][]; timers: Map<number, () => void>;
+  keyCount(): number; tick(): Promise<boolean>;
+}
+function fixture(options: FixtureOptions = {}): Fixture {
+  const calls: Array<{operation: string; input: unknown}> = [], privateCalls: Obj[] = [], changes: Obj[] = [], notifications: unknown[][] = [], timers = new Map<number, () => void>(), storage = options.storage || memoryStorage();
+  let sequence = 0, keys = 0;
+  const data: DataStore = { groups: options.groups || [], tasks: options.tasks || [], versions: options.versions || [], reviews: options.reviews || [], receipts: new Map() };
+  function accept(input: Obj): Obj {
+    const result = task({ ...input, id: data.tasks.length ? id(30 + data.tasks.length) : taskId, groupId: input.groupId || groupId });
+    delete result.expectedRevision;
+    data.tasks = [result, ...data.tasks]; data.groups = [group({ id: result.groupId, name: result.name, revision: input.expectedRevision ? (input.expectedRevision as number) + 1 : 1, activeTaskId: result.id })];
+    data.receipts.set(String(input.requestId), { projectId, requestId: input.requestId, operation: 'image.generate', response: structuredClone(result) }); return result;
   }
-  const api = async (operation, input) => {
+  const api: ApiFn = async (operation: string, input: InputView): Promise<unknown> => {
     calls.push({ operation, input: structuredClone(input) });
     if (options.api) { const response = await options.api(operation, input, data); if (response !== undefined) return response; }
-    if (operation === 'image.group.list') return page(data.groups.slice(0, input.limit));
+    if (operation === 'image.group.list') return page(data.groups.slice(0, input.limit as number));
     if (operation === 'image.group.get') return data.groups.find(item => item.id === input.groupId);
-    if (operation === 'image.task.list') return page(data.tasks.filter(item => !input.groupId || item.groupId === input.groupId).slice(0, input.limit));
-    if (operation === 'image.version.list') return page(data.versions.filter(item => item.groupId === input.groupId).slice(0, input.limit));
-    if (operation === 'image.request.get') return data.receipts.get(input.requestId) || null;
+    if (operation === 'image.task.list') return page(data.tasks.filter(item => !input.groupId || item.groupId === input.groupId).slice(0, input.limit as number));
+    if (operation === 'image.version.list') return page(data.versions.filter(item => item.groupId === input.groupId).slice(0, input.limit as number));
+    if (operation === 'image.request.get') return data.receipts.get(String(input.requestId)) || null;
     if (operation === 'image.task.get') return data.tasks.find(item => item.id === input.taskId);
-    if (operation === 'image.review.prepare') { const result = review(input.input, { settingsRevision: input.settingsRevision }); data.reviews.unshift(result); return result; }
+    if (operation === 'image.review.prepare') { const result = review(input.input as Obj, { settingsRevision: input.settingsRevision }); data.reviews.unshift(result); return result; }
     if (operation === 'image.review.get') return data.reviews.find(item => item.id === input.reviewId);
-    if (operation === 'image.review.list') return page(data.reviews.slice(0, input.limit));
-    if (operation === 'image.generate') {
-      return accept(input);
-    }
+    if (operation === 'image.review.list') return page(data.reviews.slice(0, input.limit as number));
+    if (operation === 'image.generate') return accept(input);
     if (['image.task.cancelQueued', 'image.task.recoverResult'].includes(operation)) {
-      const original = data.tasks.find(item => item.id === input.taskId), result = { ...original, state: operation.endsWith('cancelQueued') ? 'cancelled_before_dispatch' : 'persisting', revision: original.revision + 1 };
+      const original = data.tasks.find(item => item.id === input.taskId)!, result = { ...original, state: operation.endsWith('cancelQueued') ? 'cancelled_before_dispatch' : 'persisting', revision: (original.revision as number) + 1 };
       data.tasks = [result]; data.groups = [group({ activeTaskId: operation.endsWith('cancelQueued') ? null : taskId })];
-      data.receipts.set(input.requestId, { projectId, requestId: input.requestId, operation, response: structuredClone(result) }); return result;
+      data.receipts.set(String(input.requestId), { projectId, requestId: input.requestId, operation, response: structuredClone(result) }); return result;
     }
     throw error('UNSUPPORTED');
   };
-  const reviewClient = { async approve(value) { privateCalls.push({ action: 'approve', review: structuredClone(value) }); if (options.approve) return options.approve(value, data, accept); const result = accept(value.input); data.reviews = data.reviews.map(item => item.id === value.id ? { ...item, state: 'approved', revision: 2, taskId: result.id, approvedAt: at } : item); return result; }, async reject(value) { privateCalls.push({ action: 'reject', review: structuredClone(value) }); if (options.reject) return options.reject(value, data); const result = { ...value, state: 'rejected', revision: 2, rejectedAt: at }; data.reviews = data.reviews.map(item => item.id === value.id ? result : item); return result; } };
+  const reviewClient = { async approve(value: EntityView & {input?: Obj}): Promise<unknown> { privateCalls.push({ action: 'approve', review: structuredClone(value) }); if (options.approve) return options.approve(value, data, accept); const result = accept(value.input as Obj); data.reviews = data.reviews.map(item => item.id === value.id ? { ...item, state: 'approved', revision: 2, taskId: result.id, approvedAt: at } : item); return result; }, async reject(value: EntityView & {input?: Obj}): Promise<unknown> { privateCalls.push({ action: 'reject', review: structuredClone(value) }); if (options.reject) return options.reject(value, data); const result = { ...value, state: 'rejected', revision: 2, rejectedAt: at }; data.reviews = data.reviews.map(item => item.id === value.id ? result : item); return result; } };
   const settingsClient = { read: async () => options.settings || settings({ configuration: { ...DEFAULT_IMAGE_CONFIGURATION } }) }, customSettingsClient = { read: async () => options.customSettings || settings({ revision: 0, configuration: { ...DEFAULT_CUSTOM_IMAGE_CONFIGURATION }, secret: { configured: false, storage: 'none' } }) };
-  const session = createImageGenerationSession({ projectId, api, storage, reviewClient, settings: options.settings, customSettings: options.customSettings, requestId: () => { keys++; return keys === 1 && !data.tasks.some(item => item.requestId === requestId) ? requestId : id(40 + keys); }, onChange: next => changes.push(next), onGenerated: (...args) => notifications.push(args), setTimer: fn => { const key = ++sequence; timers.set(key, fn); return key; }, clearTimer: key => timers.delete(key), ...options.session });
-  return { session, api, reviewClient, settingsClient, customSettingsClient, privateCalls, calls, data, storage, changes, notifications, timers, keyCount: () => keys, async tick() { const [key, fn] = timers.entries().next().value || []; if (!fn) return false; timers.delete(key); fn(); await flush(); return true; } };
+  const session = createImageGenerationSession({ projectId, api: api as never, storage: storage as never, reviewClient: reviewClient as never, settings: options.settings as never, customSettings: options.customSettings as never, requestId: () => { keys++; return keys === 1 && !data.tasks.some(item => item.requestId === requestId) ? requestId : id(40 + keys); }, onChange: (next: Obj) => {changes.push(next);}, onGenerated: (...args: unknown[]) => {notifications.push(args);}, setTimer: (fn: () => void) => {const key = ++sequence; timers.set(key, fn); return key;}, clearTimer: (key: number) => {timers.delete(key);}, ...(options.session as never) });
+  return { session, api, reviewClient, settingsClient, customSettingsClient, privateCalls, calls, data, storage, changes, notifications, timers, keyCount: () => keys, async tick(): Promise<boolean> { const [key, fn] = timers.entries().next().value || [undefined, undefined]; if (!fn) return false; timers.delete(key); fn(); await flush(); return true; } };
 }
-async function ready(f) { await f.session.load(); f.session.edit('name', '测试图像'); f.session.edit('prompt', '清晨的山间小屋'); }
-const mutations = f => f.calls.filter(call => ['image.generate', 'image.task.cancelQueued', 'image.task.recoverResult'].includes(call.operation));
+async function ready(f: Fixture): Promise<void> { await f.session.load(); f.session.edit('name', '测试图像'); f.session.edit('prompt', '清晨的山间小屋'); }
+const mutations = (f: Fixture) => f.calls.filter(call => ['image.generate', 'image.task.cancelQueued', 'image.task.recoverResult'].includes(call.operation));
 
 test('fixed Mock intent is persisted and verified before one explicit dispatch', async () => {
   const storage = memoryStorage(); let savedBeforeDispatch = false;
@@ -219,57 +249,87 @@ test('renderer remains an extracted dock with explicit providers, fixed paid dis
 });
 
 const componentSource = readFileSync(new URL('../apps/web/src/ImageGeneration.tsx', import.meta.url), 'utf8');
-const element = (type, props = {}, ...children) => ({ type, props: { ...props, children: children.length === 1 ? children[0] : children } });
-const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
-const depsEqual = (left, right) => Boolean(left && right && left.length === right.length && left.every((value, index) => Object.is(value, right[index])));
-function renderer(f, options = {}) {
-  const slots = []; let index = 0, effects = [], visible = true, tree, currentProject = projectId, dirty = false;
-  const react = {
-    createElement: (type, props, ...children) => type === 'SettingsNavigationSlot' ? children[0](() => {}) : element(type, props, ...children),
-    useState(initial) { const slot = index++; slots[slot] ||= { value: typeof initial === 'function' ? initial() : initial }; return [slots[slot].value, value => { slots[slot].value = typeof value === 'function' ? value(slots[slot].value) : value; }]; },
-    useRef(initial) { return slots[index++] ||= { current: initial }; },
-    useMemo(callback, deps) { const slot = index++; if (!slots[slot] || !depsEqual(deps, slots[slot].deps)) slots[slot] = { value: callback(), deps }; return slots[slot].value; },
-    useLayoutEffect(callback, deps) { const slot = index++, old = slots[slot]; if (old && depsEqual(deps, old.deps)) return; slots[slot] = { callback, deps, cleanup: old?.cleanup }; effects.push(slot); },
-  }; react.default = react;
-  const primitive = new Proxy({}, { get: (_, key) => String(key) }), module = { exports: {} };
-  const require = name => {
+type EventHandler = (...args: unknown[]) => unknown;
+type UiNode = {type?: unknown; props: Obj & {children?: unknown; ref: {current: {value: string}}; onChange: EventHandler; onClick: EventHandler; onSubmit: EventHandler}};
+const element = (type: unknown, props: Obj | null = {}, ...children: unknown[]): UiNode => ({type, props: {...(props ?? {}), children: children.length === 1 ? children[0] : children} as UiNode['props']});
+const nodes = (tree: unknown): UiNode[] => Array.isArray(tree) ? tree.flatMap((item: unknown) => nodes(item)) : tree !== null && typeof tree === 'object' && 'props' in tree ? [tree as UiNode, ...nodes((tree as UiNode).props.children)] : [];
+const depsEqual = (left: unknown, right: unknown): boolean => Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((value: unknown, index: number) => Object.is(value, right[index]));
+interface RenderOptions { languageStore?: unknown; projectAssets?: Obj[]; editIntent?: unknown; isEditIntentCurrent?: unknown; onRevealAsset?: unknown }
+interface RenderSlot { [key: string]: unknown; value?: unknown; deps?: unknown; callback?: () => unknown; cleanup?: unknown }
+interface Harness {
+  render(owner?: string): UiNode; find(id: string): UiNode; form(): UiNode;
+  change(id: string, value: unknown): void; click(id: string): void;
+  settings(slot?: string): UiNode | undefined; show(value: boolean): void;
+  readonly dirty: boolean; unmount(): void;
+}
+function renderer(f: Fixture, options: RenderOptions = {}): Harness {
+  const slots: RenderSlot[] = []; let index = 0; let effects: number[] = []; let visible = true; let tree!: UiNode;
+  let currentProject = projectId; let dirty = false;
+  const react: Obj & {default?: Obj} = {
+    createElement: (type: unknown, props: Obj | null, ...children: unknown[]): UiNode => type === 'SettingsNavigationSlot' ? (children[0] as (register: () => void) => UiNode)(() => {}) : element(type, props, ...children),
+    useState(initial: unknown) {
+      const slot = index++; slots[slot] ||= {value: typeof initial === 'function' ? (initial as () => unknown)() : initial};
+      const state = slots[slot];
+      return [state.value, (value: unknown) => {state.value = typeof value === 'function' ? (value as (current: unknown) => unknown)(state.value) : value;}] as const;
+    },
+    useRef(initial: unknown) { return slots[index++] ||= {current: initial}; },
+    useMemo(callback: () => unknown, deps?: unknown) {
+      const slot = index++, existing = slots[slot];
+      if (!existing || !depsEqual(deps, existing.deps)) slots[slot] = {value: callback(), deps};
+      return slots[slot].value;
+    },
+    useLayoutEffect(callback: () => unknown, deps?: unknown) {
+      const slot = index++, old = slots[slot];
+      if (old && depsEqual(deps, old.deps)) return;
+      slots[slot] = {callback, deps, cleanup: old?.cleanup}; effects.push(slot);
+    },
+  };
+  react.default = react;
+  const module: {exports: Obj} = {exports: {}}, primitive = new Proxy<Obj>({}, {get: (_target, key) => String(key)});
+  const require = (name: string): unknown => {
     const i18nDependency = creationTestDependency(name, options.languageStore); if (i18nDependency) return i18nDependency;
     if (name === './native-close-sources.ts') return nativeCloseSources;
     if (name === './editor-settings-scope.ts') {
-      const settingsModule = { exports: {} };
-      const code = transformSync(readFileSync(new URL('../apps/web/src/editor-settings-scope.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code;
-      Function('module', 'exports', 'require', code)(settingsModule, settingsModule.exports, dependency => { assert.equal(dependency, 'react'); return react; });
+      const settingsModule: {exports: Obj} = {exports: {}};
+      const code = transformSync(readFileSync(new URL('../apps/web/src/editor-settings-scope.ts', import.meta.url), 'utf8'), {loader: 'ts', format: 'cjs'}).code;
+      Function('module', 'exports', 'require', code)(settingsModule, settingsModule.exports, (dependency: string) => {assert.equal(dependency, 'react'); return react;});
       return settingsModule.exports;
     }
     if (name === 'react') return react;
-    if (name === '@mioon/contracts') return { IMAGE_LIMITS };
-    if (name === './image-generation.ts') return { ...imageLogic, createImageGenerationSession: options => createImageGenerationSession({ ...options, api: f.api, storage: f.storage, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) };
+    if (name === '@mioon/contracts') return {IMAGE_LIMITS};
+    if (name === './image-generation.ts') return {...imageLogic, createImageGenerationSession: (value: Obj) => createImageGenerationSession({...value, api: f.api as never, storage: f.storage as never, requestId: () => requestId, setTimer: () => 1, clearTimer() {}} as never)};
     if (name === './image-edit-intent.ts') return imageEditIntents;
-    if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => visible };
-    if (name === './ComfyImageSettings.tsx') return { __esModule: true, default: 'ComfyImageSettings' };
-    if (name === './ComfyImageDetails.tsx') return { ComfyImageReviewDetails: 'ComfyImageReviewDetails', ComfyImageTaskDetails: 'ComfyImageTaskDetails' };
-    if (name === './comfy-image-settings.ts') return { comfyConnectorAvailabilityDescriptor, createComfyImageSettingsClient: () => ({ read: async () => null }) };
-    // This element-tree harness adapts only the status wrapper; owner semantics have dedicated tests.
-    if (name === './SettingsNavigationSlot.tsx') return { __esModule: true, default: 'SettingsNavigationSlot' };
-    if (name === './ImageSettings.tsx') return { __esModule: true, default: 'ImageSettings' };
-    if (name === './image-settings.ts') return { createImageSettingsClient: options => options?.slot === 'custom' ? f.customSettingsClient : f.settingsClient };
-    if (name === './icons.tsx') return { default: 'Icon' };
+    if (name === './workspace-visibility.tsx') return {useWorkspaceVisibility: () => visible};
+    if (name === './ComfyImageSettings.tsx') return {__esModule: true, default: 'ComfyImageSettings'};
+    if (name === './ComfyImageDetails.tsx') return {ComfyImageReviewDetails: 'ComfyImageReviewDetails', ComfyImageTaskDetails: 'ComfyImageTaskDetails'};
+    if (name === './comfy-image-settings.ts') return {comfyConnectorAvailabilityDescriptor, createComfyImageSettingsClient: () => ({read: async () => null})};
+    if (name === './SettingsNavigationSlot.tsx') return {__esModule: true, default: 'SettingsNavigationSlot'};
+    if (name === './ImageSettings.tsx') return {__esModule: true, default: 'ImageSettings'};
+    if (name === './image-settings.ts') return {createImageSettingsClient: (value: {slot?: string}) => value?.slot === 'custom' ? f.customSettingsClient : f.settingsClient};
+    if (name === './icons.tsx') return {default: 'Icon'};
     if (name === './image-generation.css') return {};
     if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return primitive;
     throw Error(name);
   };
-  Function('module', 'exports', 'require', transformSync(componentSource, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, require);
-  const harness = {
-    render(owner = currentProject) { currentProject = owner; index = 0; effects = []; tree = module.exports.default({ projectId: owner, projectName: 'Test project', reviewClient: f.reviewClient, settingsClient: f.settingsClient, customSettingsClient: f.customSettingsClient, onDirtyChange: value => { dirty = value; }, onRevealAsset: options.onRevealAsset, projectAssets: options.projectAssets || [], editIntent: options.editIntent || null, isEditIntentCurrent: options.isEditIntentCurrent }); for (const slot of effects) { slots[slot].cleanup?.(); slots[slot].cleanup = slots[slot].callback(); } return tree; },
-    find(id) { return nodes(tree).find(node => node.props['data-testid'] === id); },
-    form() { return nodes(tree).find(node => node.type === 'form'); },
-    change(id, value) { harness.find(id).props.onChange({ target: { value } }); harness.render(); },
-    click(id) { harness.find(id).props.onClick?.(); harness.render(); },
-    settings(slot = 'official') { return nodes(tree).find(node => node.type === 'ImageSettings' && node.props.slot === slot); },
-    show(value) { visible = value; harness.render(); },
-    get dirty() { return dirty; },
-    unmount() { for (const slot of slots) slot.cleanup?.(); },
-  }; return harness;
+  Function('module', 'exports', 'require', transformSync(componentSource, {loader: 'tsx', format: 'cjs'}).code)(module, module.exports, require);
+  const renderComponent = module.exports.default as (props: Obj) => UiNode;
+  const harness: Harness = {
+    render(owner: string = currentProject): UiNode {
+      currentProject = owner; index = 0; effects = [];
+      tree = renderComponent({projectId: owner, projectName: 'Test project', reviewClient: f.reviewClient, settingsClient: f.settingsClient, customSettingsClient: f.customSettingsClient, onDirtyChange: (value: unknown) => {dirty = value === true;}, onRevealAsset: options.onRevealAsset, projectAssets: options.projectAssets || [], editIntent: options.editIntent || null, isEditIntentCurrent: options.isEditIntentCurrent});
+      for (const slot of effects) {slots[slot].cleanup = (slots[slot].callback as () => unknown)();}
+      return tree;
+    },
+    find(idValue: string): UiNode { const value = nodes(tree).find(node => node.props['data-testid'] === idValue); assert.ok(value, idValue); return value; },
+    form(): UiNode { const value = nodes(tree).find(node => node.type === 'form'); assert.ok(value, 'form'); return value; },
+    change(idValue: string, value: unknown): void {(harness.find(idValue).props.onChange as EventHandler)({target: {value}}); harness.render();},
+    click(idValue: string): void {(harness.find(idValue).props.onClick as EventHandler)(); harness.render();},
+    settings(slot = 'official'): UiNode | undefined { return nodes(tree).find(node => node.type === 'ImageSettings' && node.props.slot === slot); },
+    show(value: boolean): void {visible = value; harness.render();},
+    get dirty(): boolean {return dirty;},
+    unmount(): void {for (const slot of slots) if (typeof slot.cleanup === 'function') (slot.cleanup as () => void)();},
+  };
+  return harness;
 }
 
 test('actual composer keeps draft across hidden tabs and invalidates old edit/submit handlers after reveal', async () => {

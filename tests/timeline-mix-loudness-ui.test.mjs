@@ -113,8 +113,8 @@ test('actual App wiring reads saved snapshot, pinned workspace and live draft co
     clips: [{ id: id(4), trackId: id(7), assetId: sourceId, startFrame: 0, sourceInFrame: 0, durationFrames: 60, gain: .5 }] };
   const dataRef = { current: { project: { id: projectId }, timeline: saved, assets: [{ id: sourceId, projectId, sha256: 'a'.repeat(64), sizeBytes: 128, mimeType: 'audio/wav', hasAudio: true }] } };
   let dirty = false, controller; const calls = [];
-  const env = { application: null, showDelivery: false, workspaceOriginScope, pinNewWorkspaceIntent, timelineAudioPreviewSourceIdentity, dataRef,
-    workspaceRef: { current: { restored: false } }, currentProject: { current: projectId }, projectEpoch: { current: 1 }, navigationEpoch: { current: 0 }, panelIntent: { current: 0 }, viewRef: { current: { activeMode: 'editing' } },
+  const env = { application: null, showDelivery: true, workspaceOriginScope, pinNewWorkspaceIntent, timelineAudioPreviewSourceIdentity, dataRef,
+    workspaceRef: { current: { restored: false, workspaceOrigin: '96000000-0000-4000-8000-000000000001' } }, currentProject: { current: projectId }, projectEpoch: { current: 1 }, navigationEpoch: { current: 0 }, panelIntent: { current: 0 }, viewRef: { current: { activeMode: 'editing' } },
     projectSessionReady: () => true, workbenchReady: true, online: true, auth: true, loading: false, rightDockTab: 'delivery', showExports: false, panelVisible: () => true,
     clipDirty: false, subtitleDirty: false, formatDirty: false, timelineBusy: false, isBusy: () => false,
     clipDraftRef: { current: { hasUnsaved: () => dirty, getState: () => ({ candidate: null }) } }, subtitlesRef: { current: null }, timelineFormatRef: { current: null }, setAuth() { assert.fail('Unexpected auth change'); },

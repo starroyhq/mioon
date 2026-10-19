@@ -5,16 +5,27 @@ import {Readable} from 'node:stream';
 import {createImageEditJsonTransport, createImageJsonTransport, createCompatibleImageJsonTransport, resolveImageEditDestination} from '../packages/business/src/images/network.ts';
 import {IMAGE_EDIT_ENDPOINT, IMAGE_EDIT_NETWORK_LIMITS, IMAGE_NETWORK_LIMITS} from '../packages/business/src/images/profiles.ts';
 
+import {errorView} from './helpers/test-error.ts';
+
+interface EditHttpsOptions {hostname: string; servername: string; path: string; port: number; method?: string; agent: boolean;
+  autoSelectFamily: boolean; rejectUnauthorized: boolean; headers: Record<string, string>;
+  checkServerIdentity(name: string, cert: unknown): Error | undefined;
+  lookup(host: string, options: {all: boolean}, callback: (error: Error | null, value?: {address: string; family: number}[]) => void): void}
+interface EditNetworkState {calls: number; posts: number; destroyed: number; options?: EditHttpsOptions; callback?: (response: {statusCode: number; headers: Record<string, string>; complete: boolean}) => void; request?: unknown; socket?: unknown; payload?: unknown; httpsRequest?: (options: EditHttpsOptions, callback: (response: {statusCode: number; headers: Record<string, string>; complete: boolean}) => void) => unknown}
+interface EditNetworkOptions {body?: Buffer; status?: number; headers?: Record<string, string>; complete?: boolean; peer?: string; port?: number;
+  authorized?: boolean; onConnect?: (state: EditNetworkState) => void; onEnd?: (state: EditNetworkState) => void; noConnect?: boolean;
+  noResponse?: boolean; chunks?: Buffer[]; duplicateSocket?: boolean; duplicateResponse?: boolean}
+type Deferred = {promise: Promise<unknown>; resolve: (value?: unknown) => void}
 const key = 'synthetic-edit-network-secret', answers = [{address: '8.8.8.8', family: 4}], args = {body: '{}', beforeDispatch: () => {}};
-const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return {promise, resolve}; };
+const deferred = (): Deferred => { let resolve: Deferred['resolve'] = () => {}; const promise = new Promise<unknown>(done => { resolve = done; }); return {promise, resolve}; };
 function network({body = Buffer.from('{}'), status = 200, headers = {'content-type': 'application/json'}, complete = true,
-  peer = '8.8.8.8', port = 443, authorized = true, onConnect, onEnd, noConnect = false, noResponse = false, chunks, duplicateSocket = false, duplicateResponse = false} = {}) {
-  const state = {calls: 0, posts: 0, destroyed: 0};
+  peer = '8.8.8.8', port = 443, authorized = true, onConnect, onEnd, noConnect = false, noResponse = false, chunks, duplicateSocket = false, duplicateResponse = false}: EditNetworkOptions = {}): EditNetworkState {
+  const state = {calls: 0, posts: 0, destroyed: 0} as unknown as EditNetworkState;
   state.httpsRequest = (options, callback) => {
     state.calls++; state.options = options; state.callback = callback;
-    const request = new EventEmitter(); state.request = request; request.destroy = () => { state.destroyed++; };
-    const incoming = () => { const response = Readable.from(chunks ?? [body]); Object.assign(response, {statusCode: status, headers, complete}); return response; };
-    request.end = payload => { state.posts++; state.payload = payload; onEnd?.(state); if (noResponse) return; callback(incoming()); if (duplicateResponse) callback(incoming()); };
+    const request = new EventEmitter() as EventEmitter & {destroy: () => void; end: (payload?: unknown) => void}; state.request = request; request.destroy = () => { state.destroyed++; };
+    const incoming = () => { const response = Readable.from(chunks ?? [body]) as Readable & {statusCode: number; headers: Record<string, string>; complete: boolean}; Object.assign(response, {statusCode: status, headers, complete}); return response; };
+    request.end = (payload?: unknown) => { state.posts++; state.payload = payload; onEnd?.(state); if (noResponse) return; callback(incoming()); if (duplicateResponse) callback(incoming()); };
     queueMicrotask(() => {
       const socket = new EventEmitter(); state.socket = socket; Object.assign(socket, {remoteAddress: peer, remotePort: port, authorized, destroy() { state.destroyed++; }});
       request.emit('socket', socket); onConnect?.(state); if (!noConnect) socket.emit('secureConnect');
@@ -24,13 +35,13 @@ function network({body = Buffer.from('{}'), status = 200, headers = {'content-ty
   };
   return state;
 }
-const transport = (state, options = {}) => createImageEditJsonTransport({lookup: async () => answers, httpsRequest: state.httpsRequest, apiKey: key, ...options});
+const transport = (state: EditNetworkState, options: Record<string, unknown> = {}) => createImageEditJsonTransport({lookup: async () => answers, httpsRequest: state.httpsRequest, apiKey: key, ...options} as never);
 
 test('official edit factory pins endpoint, certificate, selected public address and dedicated headers; passed URLs cannot redirect it', async () => {
-  const state = network(), order = []; let lookups = 0;
-  const result = await transport(state, {baseUrl: 'https://attacker.invalid', endpoint: 'https://attacker.invalid/edits', path: '/override', lookup: async (hostname, options) => { lookups++; assert.equal(hostname, 'api.openai.com'); assert.deepEqual(options, {all: true, verbatim: true}); return answers; }})({...args, beforeDispatch: () => { assert.equal(state.posts, 0); order.push('fence'); }});
+  const state = network(), order: string[] = []; let lookups = 0;
+  const result = await transport(state, {baseUrl: 'https://attacker.invalid', endpoint: 'https://attacker.invalid/edits', path: '/override', lookup: async (hostname: string, options: {all: boolean; verbatim: boolean}) => { lookups++; assert.equal(hostname, 'api.openai.com'); assert.deepEqual(options, {all: true, verbatim: true}); return answers; }})({...args, beforeDispatch: () => { assert.equal(state.posts, 0); order.push('fence'); }});
   assert.equal(IMAGE_EDIT_ENDPOINT, 'https://api.openai.com/v1/images/edits'); assert.equal(result.dispatched, true); assert.equal(state.calls, 1); assert.equal(state.posts, 1); assert.equal(lookups, 1); assert.deepEqual(order, ['fence']);
-  const options = state.options; assert.equal(options.hostname, 'api.openai.com'); assert.equal(options.servername, 'api.openai.com'); assert.equal(options.path, '/v1/images/edits'); assert.equal(options.port, 443); assert.equal(options.method, 'POST');
+  const options = state.options!; assert.equal(options.hostname, 'api.openai.com'); assert.equal(options.servername, 'api.openai.com'); assert.equal(options.path, '/v1/images/edits'); assert.equal(options.port, 443); assert.equal(options.method, 'POST');
   assert.equal(options.agent, false); assert.equal(options.autoSelectFamily, false); assert.equal(options.rejectUnauthorized, true); assert.equal(options.headers.Authorization, `Bearer ${key}`); assert.equal(options.headers['Content-Type'], 'application/json'); assert.equal(options.headers['Content-Length'], '2'); assert.equal(options.headers.Cookie, undefined);
   assert.ok(options.checkServerIdentity('api.openai.com', {subjectaltname: 'DNS:attacker.invalid'}) instanceof Error);
   assert.equal(options.checkServerIdentity('ignored.invalid', {subjectaltname: 'DNS:api.openai.com'}), undefined);
@@ -40,7 +51,7 @@ test('official edit factory pins endpoint, certificate, selected public address 
 
 test('edit-only request cap admits exact derived maximum and rejects overflow without widening generation/custom bounds', async () => {
   const maximum = IMAGE_EDIT_NETWORK_LIMITS.maxRequestBytes; assert.ok(maximum > 8 * 1024 * 1024); assert.equal(IMAGE_NETWORK_LIMITS.maxRequestBytes, 16384);
-  const state = network(); await transport(state)({...args, body: 'x'.repeat(maximum)}); assert.equal(state.posts, 1); assert.equal(state.options.headers['Content-Length'], String(maximum));
+  const state = network(); await transport(state)({...args, body: 'x'.repeat(maximum)}); assert.equal(state.posts, 1); assert.equal(state.options!.headers['Content-Length'], String(maximum));
   const blocked = network(); await assert.rejects(transport(blocked)({...args, body: 'x'.repeat(maximum + 1)}), {code: 'IMAGE_INVALID_REQUEST', dispatched: false}); assert.equal(blocked.calls, 0);
   for (const factory of [createImageJsonTransport, createCompatibleImageJsonTransport]) {
     const legacy = network(), dependencies = {lookup: async () => answers, httpsRequest: legacy.httpsRequest, apiKey: key, baseUrl: 'https://custom.example/v1'};
@@ -62,7 +73,7 @@ test('all edit DNS answers and actual TLS peer must pass safety checks; no fallb
 });
 
 test('the edit dispatch fence runs once synchronously after DNS/TLS and immediately before sole POST, despite duplicate socket events', async () => {
-  const order = [], state = network({duplicateSocket: true, onConnect: () => order.push('tls'), onEnd: () => order.push('post')});
+  const order: string[] = [], state = network({duplicateSocket: true, onConnect: () => order.push('tls'), onEnd: () => order.push('post')});
   await transport(state, {lookup: async () => { order.push('dns'); return answers; }})({...args, beforeDispatch: () => { order.push('fence'); queueMicrotask(() => order.push('later')); }});
   assert.deepEqual(order, ['dns', 'tls', 'fence', 'post', 'later']); assert.equal(state.calls, 1); assert.equal(state.posts, 1);
   for (const beforeDispatch of [async () => {}, () => { throw Error(`private detail ${key}`); }]) {
@@ -84,7 +95,7 @@ test('redirect/error status never follows Location or retries and returned error
   for (const status of [301, 302, 303, 307, 308, 401, 429, 500]) {
     const state = network({status, body: Buffer.from(`private body ${key}`), headers: {'content-type': 'application/json', location: `https://attacker.invalid/${key}`}});
     await assert.rejects(transport(state)(args), error => { assert.equal(error.code, 'IMAGE_HTTP_ERROR'); assert.equal(error.dispatched, true); assert.equal(error.outcomeUnknown, true); assert.equal(error.message.includes(key), false); assert.equal(error.cause, undefined); return true; });
-    assert.equal(state.calls, 1); assert.equal(state.posts, 1); assert.equal(state.options.hostname, 'api.openai.com');
+    assert.equal(state.calls, 1); assert.equal(state.posts, 1); assert.equal(state.options!.hostname, 'api.openai.com');
   }
 });
 

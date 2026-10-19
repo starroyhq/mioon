@@ -11,44 +11,57 @@ import {createImageSettings, createCustomImageSettings, IMAGE_CREDENTIAL_ACQUIRE
 import {DEFAULT_IMAGE_CONFIGURATION, DEFAULT_CUSTOM_IMAGE_CONFIGURATION} from '../packages/contracts/src/image-settings.ts';
 import {IMAGE_EDIT_LIMITS, IMAGE_FIXED_OPTIONS, IMAGE_MODELS, IMAGE_LIMITS} from '../packages/contracts/src/images.ts';
 import {renderMockImagePng} from '../packages/business/src/images/png.ts';
+import {errorView} from './helpers/test-error.ts';
+
+interface EditSource {assetId: string; sha256: string; mimeType: string; byteLength: number; width: number; height: number; name: string; origin: Record<string, unknown>}
+interface EditAdapterInput {providerId: string; model: string; prompt: string; options: Record<string, unknown>; purpose: string;
+  inputImage: {assetId: string; sha256: string}; sourceImage: EditSource; [key: string]: unknown}
+interface TransportState {calls: number; body?: unknown; transport?: (context: {body: unknown; beforeDispatch: () => void}) => Promise<{body: Buffer; dispatched: boolean}>}
+interface MockHttpsOptions {hostname: string; servername: string; path: string; port: number; method?: string; agent: boolean;
+  autoSelectFamily: boolean; rejectUnauthorized: boolean; headers: Record<string, string>;
+  checkServerIdentity(name: string, cert: unknown): Error | undefined;
+  lookup(host: string, options: {all: boolean}, callback: (error: Error | null, value?: {address: string; family: number}[]) => void): void}
+interface NetworkState {calls: number; posts: number; lookups: number; options?: MockHttpsOptions; payload?: unknown; lookup?: (hostname: string) => Promise<{address: string; family: number}[]>; httpsRequest?: (options: MockHttpsOptions, callback: (response: {statusCode: number; headers: Record<string, string>; complete: boolean}) => void) => void}
+interface NetworkOptions {body?: Buffer; onEnd?: () => void; onConnect?: () => void}
+type Deferred = {promise: Promise<unknown>; resolve: (value?: unknown) => void};
 
 const sourceId = '11111111-1111-4111-8111-111111111111', key = 'synthetic-official-edit-key', answers = [{address: '8.8.8.8', family: 4}];
-const hash = bytes => createHash('sha256').update(bytes).digest('hex');
-function chunk(type, data = Buffer.alloc(0)) {
+const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
+function chunk(type: string, data: Buffer = Buffer.alloc(0)): Buffer {
   const bytes = Buffer.alloc(data.length + 12); bytes.writeUInt32BE(data.length); bytes.write(type, 4); data.copy(bytes, 8);
   let crc = 0xffffffff; for (const byte of bytes.subarray(4, -4)) { crc ^= byte; for (let bit = 0; bit < 8; bit++) crc = crc & 1 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1; }
   bytes.writeUInt32BE((crc ^ 0xffffffff) >>> 0, bytes.length - 4); return bytes;
 }
-function sourcePng({alpha = false, before = []} = {}) {
+function sourcePng({alpha = false, before = []}: {alpha?: boolean; before?: Buffer[]} = {}): Buffer {
   const header = Buffer.alloc(13); header.writeUInt32BE(2); header.writeUInt32BE(2, 4); header[8] = 8; header[9] = alpha ? 6 : 2;
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header), ...before, chunk('IDAT', deflateSync(Buffer.alloc(alpha ? 18 : 14))), chunk('IEND')]);
 }
-const generation = providerId => ({providerId, model: IMAGE_MODELS[providerId], prompt: 'Synthetic exact edit instruction: 蓝色 sky.', options: {...IMAGE_FIXED_OPTIONS}});
-function input(bytes = sourcePng(), providerId = 'openai') {
+const generation = (providerId: string) => ({providerId, model: (IMAGE_MODELS as Record<string, string>)[providerId], prompt: 'Synthetic exact edit instruction: 蓝色 sky.', options: {...IMAGE_FIXED_OPTIONS}});
+function input(bytes: Buffer = sourcePng(), providerId = 'openai'): EditAdapterInput {
   return {...generation(providerId), purpose: 'edit', inputImage: {assetId: sourceId, sha256: hash(bytes)},
     sourceImage: {assetId: sourceId, sha256: hash(bytes), mimeType: 'image/png', byteLength: bytes.length, width: 2, height: 2, name: 'Synthetic source.png', origin: {kind: 'user-import'}}};
 }
-let output;
+let output: Buffer | undefined;
 async function responseBody() { output ??= await renderMockImagePng(); return Buffer.from(JSON.stringify({data: [{b64_json: output.toString('base64')}]})); }
-function transport(body) {
-  const state = {calls: 0};
-  state.transport = async ({body: requestBody, beforeDispatch}) => { beforeDispatch(); state.calls++; state.body = requestBody; return {body, dispatched: true}; };
+function transport(body: Buffer): TransportState {
+  const state = {calls: 0} as unknown as TransportState;
+  state.transport = async ({body: requestBody, beforeDispatch}: {body: unknown; beforeDispatch: () => void}) => { beforeDispatch(); state.calls++; state.body = requestBody; return {body, dispatched: true}; };
   return state;
 }
-const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return {promise, resolve}; };
-function network({body = Buffer.from('{}'), onEnd, onConnect} = {}) {
-  const state = {calls: 0, posts: 0, lookups: 0};
-  state.lookup = async hostname => { state.lookups++; assert.equal(hostname, 'api.openai.com'); return answers; };
+const deferred = (): Deferred => { let resolve: Deferred['resolve'] = () => {}; const promise = new Promise<unknown>(done => { resolve = done; }); return {promise, resolve}; };
+function network({body = Buffer.from('{}'), onEnd, onConnect}: NetworkOptions = {}): NetworkState {
+  const state = {calls: 0, posts: 0, lookups: 0} as unknown as NetworkState;
+  state.lookup = async (hostname: string) => { state.lookups++; assert.equal(hostname, 'api.openai.com'); return answers; };
   state.httpsRequest = (options, callback) => {
-    state.calls++; state.options = options; const request = new EventEmitter(); request.destroy = () => {};
-    request.end = payload => { state.posts++; state.payload = payload; onEnd?.(); const response = Readable.from([body]); Object.assign(response, {statusCode: 200, headers: {'content-type': 'application/json'}, complete: true}); callback(response); };
+    state.calls++; state.options = options; const request = new EventEmitter() as EventEmitter & {destroy: () => void; end: (payload?: unknown) => void}; request.destroy = () => {};
+    request.end = (payload?: unknown) => { state.posts++; state.payload = payload; onEnd?.(); const response = Readable.from([body]) as Readable & {statusCode: number; headers: Record<string, string>; complete: boolean}; Object.assign(response, {statusCode: 200, headers: {'content-type': 'application/json'}, complete: true}); callback(response); };
     queueMicrotask(() => { const socket = new EventEmitter(); Object.assign(socket, {remoteAddress: '8.8.8.8', remotePort: 443, authorized: true, destroy() {}}); request.emit('socket', socket); onConnect?.(); socket.emit('secureConnect'); });
     return request;
   };
   return state;
 }
-async function settingsFixture(t) {
-  let stored = null; const settings = await createImageSettings({persistence: {load: async () => stored, save: async value => { stored = structuredClone(value); }}});
+async function settingsFixture(t: import('node:test').TestContext) {
+  let stored: Record<string, unknown> | null = null; const settings = await createImageSettings({persistence: {load: async () => stored, save: async (value: Record<string, unknown>) => { stored = structuredClone(value); }}} as never);
   t.after(() => settings.close()); await settings.put({expectedRevision: 0, configuration: {...DEFAULT_IMAGE_CONFIGURATION, enabled: true}, secret: {action: 'replace', storage: 'session', value: key}});
   return {settings, persisted: () => stored};
 }
@@ -109,7 +122,7 @@ test('edit adapter denies custom providers, public byte fields, disabled transpo
 test('edit output decoder and post-fence uncertainty remain unchanged without automatic retry', async () => {
   const bytes = sourcePng();
   for (const body of [Buffer.from(JSON.stringify({data: [{url: 'https://example.invalid/output.png'}]})), Buffer.from('{"data":[],"d\\u0061ta":[]}'), Buffer.from(JSON.stringify({data: [{b64_json: bytes.toString('base64')}]}))]) {
-    const state = transport(body); await assert.rejects(createOpenAIImageAdapter(state).generate(input(bytes), {sourceBytes: bytes, beforeDispatch: () => {}}), error => error.dispatched === true && error.outcomeUnknown === true); assert.equal(state.calls, 1);
+    const state = transport(body); await assert.rejects(createOpenAIImageAdapter(state).generate(input(bytes), {sourceBytes: bytes, beforeDispatch: () => {}}), (error: unknown) => {const failure = errorView(error); return failure.dispatched === true && failure.outcomeUnknown === true;}); assert.equal(state.calls, 1);
   }
   const state = transport(await responseBody()), result = await createOpenAIImageAdapter(state).generate(input(bytes), {sourceBytes: bytes, beforeDispatch: () => {}});
   assert.equal(result.metadata.isMock, false); assert.equal(result.metadata.width, 1024); assert.deepEqual(result.bytes, output); assert.equal(state.calls, 1);
@@ -119,8 +132,8 @@ test('official edit gateway uses dedicated settings key, immutable review, fixed
   const {settings, persisted} = await settingsFixture(t), bytes = sourcePng(), snapshot = input(bytes), order = [];
   const state = network({body: await responseBody(), onEnd: () => order.push('post')});
   const wrapped = {...settings, [IMAGE_SETTINGS_ASSERT_CURRENT]: expected => { order.push('settings'); queueMicrotask(() => order.push('later')); return settings[IMAGE_SETTINGS_ASSERT_CURRENT](expected); }};
-  const result = await createLiveImageGateway({settings: wrapped, ...state, baseUrl: 'https://ignored.example'}).generate(snapshot, {sourceBytes: bytes, settingsRevision: 1, beforeDispatch: () => order.push('source-and-durable')});
-  assert.deepEqual(order, ['settings', 'source-and-durable', 'post', 'later']); assert.equal(state.posts, 1); assert.equal(state.options.path, '/v1/images/edits'); assert.equal(state.options.headers.Authorization, `Bearer ${key}`);
+  const result = await createLiveImageGateway({settings: wrapped, ...state, baseUrl: 'https://ignored.example'} as never).generate(snapshot, {sourceBytes: bytes, settingsRevision: 1, beforeDispatch: () => order.push('source-and-durable')});
+  assert.deepEqual(order, ['settings', 'source-and-durable', 'post', 'later']); assert.equal(state.posts, 1); assert.equal(state.options!.path, '/v1/images/edits'); assert.equal(state.options!.headers.Authorization, `Bearer ${key}`);
   assert.equal(JSON.parse(state.payload).images[0].image_url, `data:image/png;base64,${bytes.toString('base64')}`); assert.equal(result.metadata.isMock, false); assert.equal(JSON.stringify(persisted()).includes(key), false);
 });
 
@@ -128,11 +141,11 @@ test('edit gateway snapshots source and public input before credential wait, the
   const {settings} = await settingsFixture(t), entered = deferred(), release = deferred(), bytes = sourcePng(), original = Buffer.from(bytes), snapshot = input(bytes), originalPrompt = snapshot.prompt;
   const state = network({body: await responseBody()});
   const wrapped = {...settings, [IMAGE_CREDENTIAL_ACQUIRE]: async expected => { entered.resolve(); await release.promise; return settings[IMAGE_CREDENTIAL_ACQUIRE](expected); }};
-  const pending = createLiveImageGateway({settings: wrapped, ...state}).generate(snapshot, {sourceBytes: bytes, settingsRevision: 1, beforeDispatch: () => {}});
+  const pending = createLiveImageGateway({settings: wrapped, ...state} as never).generate(snapshot, {sourceBytes: bytes, settingsRevision: 1, beforeDispatch: () => {}});
   await entered.promise; bytes.fill(0); snapshot.purpose = undefined; snapshot.prompt = 'Changed after review'; snapshot.sourceImage.sha256 = 'a'.repeat(64); release.resolve(); await pending;
-  const body = JSON.parse(state.payload); assert.equal(body.prompt, originalPrompt); assert.equal(body.images[0].image_url, `data:image/png;base64,${original.toString('base64')}`); assert.equal(state.options.path, '/v1/images/edits');
+  const body = JSON.parse(state.payload); assert.equal(body.prompt, originalPrompt); assert.equal(body.images[0].image_url, `data:image/png;base64,${original.toString('base64')}`); assert.equal(state.options!.path, '/v1/images/edits');
   const dnsEntered = deferred(), dnsRelease = deferred(), second = network(); let fences = 0;
-  const waiting = createLiveImageGateway({settings, ...second, lookup: () => { dnsEntered.resolve(); return dnsRelease.promise; }}).generate(input(original), {sourceBytes: original, settingsRevision: 1, beforeDispatch: () => { fences++; }});
+  const waiting = createLiveImageGateway({settings, ...second, lookup: () => { dnsEntered.resolve(); return dnsRelease.promise; }} as never).generate(input(original), {sourceBytes: original, settingsRevision: 1, beforeDispatch: () => { fences++; }});
   await dnsEntered.promise; await settings.put({expectedRevision: 1, configuration: {...DEFAULT_IMAGE_CONFIGURATION, enabled: false}, secret: {action: 'keep'}}); dnsRelease.resolve(answers);
   await assert.rejects(waiting, {code: 'IMAGE_DISPATCH_BLOCKED', dispatched: false, outcomeUnknown: false}); assert.equal(fences, 0); assert.equal(second.posts, 0);
 });
@@ -140,7 +153,7 @@ test('edit gateway snapshots source and public input before credential wait, the
 test('source/task fence failure after DNS or TLS blocks edits without durable dispatch or POST', async t => {
   const {settings} = await settingsFixture(t), bytes = sourcePng(); let current = true, fences = 0;
   const state = network({onConnect: () => { current = false; }});
-  await assert.rejects(createLiveImageGateway({settings, ...state}).generate(input(bytes), {sourceBytes: bytes, settingsRevision: 1, beforeDispatch: () => { fences++; if (!current) throw Error('Synthetic source changed'); }}), {code: 'IMAGE_DISPATCH_BLOCKED', dispatched: false, outcomeUnknown: false});
+  await assert.rejects(createLiveImageGateway({settings, ...state} as never).generate(input(bytes), {sourceBytes: bytes, settingsRevision: 1, beforeDispatch: () => { fences++; if (!current) throw Error('Synthetic source changed'); }}), {code: 'IMAGE_DISPATCH_BLOCKED', dispatched: false, outcomeUnknown: false});
   assert.equal(fences, 1); assert.equal(state.posts, 0);
 });
 
@@ -149,12 +162,12 @@ test('official edit gateway revalidates credential namespace/revision/configurat
   const expected = {expectedRevision: 1, configuration: {...DEFAULT_IMAGE_CONFIGURATION, enabled: true}}, valid = await settings[IMAGE_CREDENTIAL_ACQUIRE](expected);
   for (const value of [{...valid, namespace: 'agent'}, {...valid, revision: 2}, {...valid, configuration: {...valid.configuration, model: 'other'}}, {...valid, apiKey: 'private\nheader'}]) {
     const state = network(), wrapped = {...settings, [IMAGE_CREDENTIAL_ACQUIRE]: async () => value};
-    await assert.rejects(createLiveImageGateway({settings: wrapped, ...state}).generate(input(bytes), {sourceBytes: bytes, settingsRevision: 1, beforeDispatch: () => assert.fail('No fence')})); assert.equal(state.lookups, 0); assert.equal(state.posts, 0);
+    await assert.rejects(createLiveImageGateway({settings: wrapped, ...state} as never).generate(input(bytes), {sourceBytes: bytes, settingsRevision: 1, beforeDispatch: () => assert.fail('No fence')})); assert.equal(state.lookups, 0); assert.equal(state.posts, 0);
   }
   let stored = null; const custom = await createCustomImageSettings({persistence: {load: async () => stored, save: async value => { stored = value; }}}); t.after(() => custom.close());
   const configuration = {...DEFAULT_CUSTOM_IMAGE_CONFIGURATION, enabled: true, baseUrl: 'https://custom.example/v1', model: 'custom-model'};
   await custom.put({expectedRevision: 0, configuration, secret: {action: 'replace', storage: 'session', value: 'synthetic-custom-key'}});
-  const state = network(); await assert.rejects(createLiveImageGateway({settings: custom, ...state}).generate(input(bytes), {sourceBytes: bytes, settingsRevision: 1, beforeDispatch: () => assert.fail('No fence')}));
+  const state = network(); await assert.rejects(createLiveImageGateway({settings: custom, ...state} as never).generate(input(bytes), {sourceBytes: bytes, settingsRevision: 1, beforeDispatch: () => assert.fail('No fence')}));
   await assert.rejects(createCompatibleImageGateway({settings: custom, ...state}).generate({...input(bytes), providerId: 'openai-compatible', model: 'custom-model'}, {sourceBytes: bytes, configuration, settingsRevision: 1, beforeDispatch: () => assert.fail('No fence')}));
   assert.equal(state.lookups, 0);
 });

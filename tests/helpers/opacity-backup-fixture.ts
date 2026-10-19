@@ -5,15 +5,16 @@ import {createHash, randomUUID} from 'node:crypto';
 import {openNewOpacityCandidateApplicationStore} from '../../packages/business/src/opacity-candidate-store.ts';
 import {createOpacityCandidateLocalDrafts} from '../../packages/business/src/opacity-candidate-local-drafts.ts';
 import {createOpacityCandidateApplicationServices} from '../../packages/business/src/opacity-candidate-services.ts';
+import type {DatabaseSync} from 'node:sqlite';
 
 export const opacityBackupStamp = '2026-10-16T00:00:00.000Z';
-export const hash = value => createHash('sha256').update(value).digest('hex');
-export const canonical = value => JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
+export const hash = (value: Buffer|Uint8Array|string): string => createHash('sha256').update(value).digest('hex');
+export const canonical = (value: unknown): string => JSON.stringify(value, (_key: string, item: unknown) => item && typeof item === 'object' && !Array.isArray(item)
   ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right))) : item);
-export const raw = value => ' \n' + JSON.stringify(value, null, '\t').replaceAll('界', '\\u754c') + '\n ';
-const quote = name => '"' + name.replaceAll('"', '""') + '"';
-export function tree(root) {
-  const visit = relative => {
+export const raw = (value: unknown): string => ' \n' + JSON.stringify(value, null, '\t').replaceAll('界', '\\u754c') + '\n ';
+const quote = (name: string): string => '"' + name.replaceAll('"', '""') + '"';
+export function tree(root: string): [string, Record<string, unknown>][] {
+  const visit = (relative: string): [string, Record<string, unknown>][] => {
     const file = path.join(root, relative), info = fs.lstatSync(file);
     if (info.isSymbolicLink()) return [[relative, {mode: info.mode, link: fs.readlinkSync(file)}]];
     if (info.isDirectory()) return [[relative, {mode: info.mode}], ...fs.readdirSync(file).sort().flatMap(name => visit(path.join(relative, name)))];
@@ -21,39 +22,39 @@ export function tree(root) {
   };
   return visit('');
 }
-export function logicalTables(db) {
-  return Object.fromEntries(db.prepare("SELECT name FROM main.sqlite_schema WHERE type='table' ORDER BY name").all().map(({name}) => {
-    const fields = db.prepare(`PRAGMA main.table_info(${quote(name)})`).all().map(row => row.name);
+export function logicalTables(db: DatabaseSync): Record<string, {fields: unknown; rows: unknown[]}> {
+  return Object.fromEntries((db.prepare("SELECT name FROM main.sqlite_schema WHERE type='table' ORDER BY name").all() as {name: string}[]).map(({name}) => {
+    const fields = (db.prepare(`PRAGMA main.table_info(${quote(name)})`).all() as {name: string}[]).map((row: {name: string}) => row.name);
     const statement = db.prepare(`SELECT rowid AS originalRowid,${fields.map(quote).join(',')} FROM main.${quote(name)} ORDER BY rowid`);
     statement.setReadBigInts(true);
     return [name, {fields, rows: statement.all()}];
   }));
 }
-export function originalRows(db, table, fields, where = '') {
+export function originalRows(db: DatabaseSync, table: string, fields: readonly string[], where = ''): unknown[] {
   const statement = db.prepare(`SELECT rowid AS originalRowid,${fields.map(quote).join(',')} FROM main.${quote(table)} ${where} ORDER BY rowid`);
   statement.setReadBigInts(true); return statement.all();
 }
 
 /** Owns every path, exact42 handle and synthetic byte. No codec, provider,
  * backend, network or actual project participates in this cold fixture. */
-export async function opacityBackupFixture(t) {
+export async function opacityBackupFixture(t: unknown): Promise<Record<string, unknown>> {
   const base = fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()), 'mioon-opacity-offline-'));
   const source = path.join(base, 'source42'), backup = path.join(base, 'backup42'), destination = path.join(base, 'restored43');
-  const cleanup = [], stores = [];
-  t.after(async () => {
-    try {for (const finish of cleanup.toReversed()) await finish();}
+  const cleanup: (()=>unknown)[] = [], stores: {close(): void}[] = [];
+  (t as {after(callback: ()=>Promise<void>): void}).after(async () => {
+    try {for (const finish of [...cleanup].reverse()) await finish();}
     finally {for (const store of stores) {try {store.close();} catch {}} fs.rmSync(base, {recursive: true, force: true});}
   });
-  const seeded = await seedOpacityBackupWorkspace(source); stores.push(seeded.store);
-  return {base, source, backup, destination, stores, ...seeded, manage: finish => cleanup.push(finish)};
+  const seeded = await seedOpacityBackupWorkspace(source); stores.push(seeded.store as {close(): void});
+  return {base, backup, destination, stores, ...seeded, source, manage: (finish: ()=>unknown) => cleanup.push(finish)};
 }
 
 /** Reusable owned seed for independent CLI qualification. The explicit target
  * must not exist. Returns only after its real services drain and store closes;
  * the caller owns subsequent removal, so qualification evidence may be kept. */
-export async function seedOpacityBackupWorkspace(source) {
+export async function seedOpacityBackupWorkspace(source: string): Promise<Record<string, unknown>> {
   const store = openNewOpacityCandidateApplicationStore(source);
-  let services;
+  let services: ReturnType<typeof createOpacityCandidateApplicationServices>|undefined;
   try {
   services = createOpacityCandidateApplicationServices(store);
   const projectId = randomUUID(), assetId = randomUUID(), timelineId = randomUUID(), trackId = randomUUID(), clipId = randomUUID(), taskId = randomUUID();
@@ -86,12 +87,13 @@ export async function seedOpacityBackupWorkspace(source) {
     .run(taskId, projectId, taskText, requestId, digest, opacityBackupStamp, opacityBackupStamp);
   db.exec("UPDATE sqlite_sequence SET seq=7001 WHERE name='edit_tasks'");
   fs.writeFileSync(path.join(source, relativePath), mediaBytes, {mode: 0o600});
-  const drafts = createOpacityCandidateLocalDrafts(store), key = {projectId, timelineId, clipId}, initial = drafts.get(key);
-  const draft = drafts.put({...key, workspaceScope: initial.workspaceScope, instanceId: initial.instanceId, expectedRevision: 0,
+  interface DraftEnvelope {readonly workspaceScope: string; readonly instanceId: string; readonly [key: string]: unknown}
+  const drafts = createOpacityCandidateLocalDrafts(store), key = {projectId, timelineId, clipId}, initial = drafts.get(key) as unknown as DraftEnvelope;
+  const draft = (drafts.put as unknown as (value: unknown)=>unknown)({...key, workspaceScope: initial.workspaceScope, instanceId: initial.instanceId, expectedRevision: 0,
     baseRevision: 3, source: {assetId, assetSha256: asset.sha256}, raw: {name: 'Unfinished opacity 界', trackId,
       startFrame: '0', durationFrames: '30', sourceInFrame: '0', rect: {x: '0', y: '0', width: '720', height: '1280'}, gain: '1',
       opacityEnvelope: {profileId: opacityEnvelope.profileId, points: [{frame: '0', opacity: '.'}, {frame: '30', opacity: '1'}]}}});
-  const observed = await services.call('timeline.get', {projectId});
+  const observed = await services.call('timeline.get', {projectId}) as unknown as {id: string; revision: number};
   if (observed.id !== timelineId || observed.revision !== 3) throw Error('Owned42 service read did not retain the seeded timeline.');
   const draftBytes = fs.readFileSync(path.join(source, 'local-drafts-v3.json')), before = logicalTables(db);
   return {source, store, projectId, assetId, timelineId, trackId, clipId, taskId, requestId,

@@ -7,6 +7,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {openStore} from '../packages/business/src/db.ts';
+import {currentMarkerChain,currentOrdinary48Delta} from './helpers/current-schema-delta.ts';
 import {createServices,canonical} from '../packages/business/src/services.ts';
 
 async function fixture(t,{open=openStore}={}){
@@ -181,9 +182,10 @@ test('targeted v11/v12 additive reapplication preserves all old receipt bytes an
  const f=await fixture(t,{open:openLegacyWorkspaceStore});await f.call('shot.create',{projectId:f.project.id,title:'Legacy keyed shot',requestId:randomUUID()});
  const old=f.store.db.prepare('SELECT * FROM mutation_requests').get();
  for(const table of ['timeline_requests','reference_requests'])f.store.db.prepare(`INSERT INTO ${table} VALUES(?,?,?)`).run(randomUUID(),'old-hash',' { "old": true, "preserve": "spacing" } ');
- const fresh=f.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name LIKE '%asset_range%' OR name='reject_mutation_cross_range_request' ORDER BY name").all();
  const fullSchema=()=>f.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all();
  const current=await fixture(t);
+ // The reviewed current-schema view of the range/trigger catalog: the historical fixture predates the annotation cross-table guards and lifecycle wrappers, so the current fresh store is the byte-exact expected catalog here (historical rows/bytes are asserted separately above).
+ const fresh=current.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name LIKE '%asset_range%' OR name='reject_mutation_cross_range_request' ORDER BY name").all();
  const completeFresh=current.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all();
  // Reapply only the two removed asset companions and the subject extension
  // that owns reciprocal triggers on them. Keep unrelated later schema markers:
@@ -196,11 +198,11 @@ test('targeted v11/v12 additive reapplication preserves all old receipt bytes an
  f.store.db.exec('DROP TRIGGER reject_mutation_cross_disposition_request; DROP TRIGGER reject_asset_range_cross_disposition_request; DROP TABLE asset_disposition_requests; DROP TABLE asset_dispositions; DELETE FROM schema_version WHERE version IN (12,15);');
  f.store.db.exec('DROP TRIGGER reject_mutation_cross_range_request; DROP TABLE asset_range_requests; DROP TABLE asset_ranges; DELETE FROM schema_version WHERE version=11;');
  const before=snapshot(f,['schema_version']);f.restart();
- assert.deepEqual(snapshot(f,['schema_version','asset_ranges','asset_range_requests','asset_dispositions','asset_disposition_requests','timeline_format_requests']),before);
+ assert.deepEqual(snapshot(f,['schema_version','asset_ranges','asset_range_requests','asset_dispositions','asset_disposition_requests','timeline_format_requests','project_lut_resources','lut_import_requests','asset_annotations','asset_annotation_requests',...Object.keys(currentOrdinary48Delta.lifecycleTables)]),before);
  assert.deepEqual(f.store.db.prepare('SELECT * FROM mutation_requests').get(),old);
  assert.deepEqual(f.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name LIKE '%asset_range%' OR name='reject_mutation_cross_range_request' ORDER BY name").all(),fresh);
  assert.ok(f.store.db.prepare('SELECT version FROM schema_version WHERE version=11').get());
- assert.deepEqual(f.store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...Array.from({length:24},(_,index)=>index+1),26]);
+ assert.deepEqual(f.store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...currentMarkerChain]);
  assert.deepEqual(fullSchema(),completeFresh);
  const migrated=snapshot(f);f.restart();assert.deepEqual(snapshot(f),migrated);assert.deepEqual(fullSchema(),completeFresh);
 });

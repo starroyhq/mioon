@@ -192,7 +192,7 @@ test('fixed compiler projects cover all runtime TypeScript without legacy browse
     assert.equal(config.compilerOptions.strict, true); assert.equal(config.compilerOptions.noEmit, true);
     assert.equal(config.compilerOptions.erasableSyntaxOnly, true); assert.equal(config.compilerOptions.skipLibCheck, false);
   }
-  assert.deepEqual(testsProject.compilerOptions.lib, ['ES2022', 'ES2024.Promise', 'DOM', 'DOM.Iterable']);
+  assert.deepEqual(testsProject.compilerOptions.lib, ['ES2022', 'ES2023.Array', 'ES2024.Promise', 'DOM', 'DOM.Iterable']);
   assert.equal(testsProject.compilerOptions.jsx, 'react-jsx');
   assert.deepEqual(testsProject.compilerOptions.types, ['node', 'react', 'react-dom']);
 });

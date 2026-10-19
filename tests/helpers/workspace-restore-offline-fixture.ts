@@ -9,31 +9,31 @@ import {initializeWorkspaceSchemaThrough24} from '../../packages/business/src/wo
 import {createWorkspaceBackup} from '../../packages/business/src/workspace-backup.ts';
 import {canonicalImageInput as canonical,IMAGE_FIXED_OPTIONS} from '../../packages/contracts/src/images.ts';
 export const repo=fileURLToPath(new URL('../..',import.meta.url));
-export const hash=value=>createHash('sha256').update(value).digest('hex');
+export const hash=(value: Buffer|Uint8Array|string): string=>createHash('sha256').update(value).digest('hex');
 export const secret='SYNTHETIC_PRIVATE_TEXT_界_🙂_NOT_REDACTED';
-export function tree(root){
- const visit=relative=>{
+export function tree(root: string): [string, Record<string, unknown>][]{
+ const visit=(relative: string): [string, Record<string, unknown>][]=>{
   const file=path.join(root,relative),info=fs.lstatSync(file);
   if(info.isDirectory())return [[relative,{mode:info.mode}],...fs.readdirSync(file).sort().flatMap(name=>visit(path.join(relative,name)))];
   return [[relative,{mode:info.mode,bytes:hash(fs.readFileSync(file)),size:info.size}]];
  };
  return visit('');
 }
-export function logical(db){
- const names=db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(row=>row.name);
- return Object.fromEntries(names.map(name=>[name,db.prepare(`SELECT rowid AS oldRowid,* FROM "${name}" ORDER BY rowid`).all()]));
+export function logical(db: DatabaseSync): Record<string, unknown[]>{
+ const names=(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all() as {name: string}[]).map(row=>row.name);
+ return Object.fromEntries(names.map((name: string)=>[name,db.prepare(`SELECT rowid AS oldRowid,* FROM "${name}" ORDER BY rowid`).all()]));
 }
-export async function restoreFixture(t,{mediaBytes=1024,stages=true}={}){
+export async function restoreFixture(t: unknown,{mediaBytes=1024,stages=true}: {mediaBytes?: number; stages?: boolean}={}){
  const base=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'mioon-offline-restore-')),source=path.join(base,'source'),backup=path.join(base,'backup'),destination=path.join(base,'restored');
- t.after(()=>fs.rmSync(base,{recursive:true,force:true}));
+ (t as {after(callback: ()=>void): void}).after(()=>fs.rmSync(base,{recursive:true,force:true}));
  // This fixture owns the historical source24 -> restored25 contract. Current
  // openStore intentionally migrates ordinary databases to26, so seed the
  // frozen source directly rather than depending on the runtime default.
  fs.mkdirSync(source,{mode:0o700});fs.mkdirSync(path.join(source,'media'),{mode:0o700});
  const db=new DatabaseSync(path.join(source,'workbench.sqlite'));db.exec('PRAGMA trusted_schema=OFF;PRAGMA foreign_keys=ON');initializeWorkspaceSchemaThrough24(db);
  const projectId=randomUUID(),assetId=randomUUID(),jobId=randomUUID(),exportId=randomUUID(),exportRequest=randomUUID();
- const write=(relative,bytes)=>{const file=path.join(source,relative);fs.mkdirSync(path.dirname(file),{recursive:true,mode:0o700});fs.writeFileSync(file,bytes,{mode:0o600});};
- const raw=value=>' \n'+JSON.stringify(value,null,'\t')+'\n ';
+ const write=(relative: string,bytes: string|Buffer): void=>{const file=path.join(source,relative);fs.mkdirSync(path.dirname(file),{recursive:true,mode:0o700});fs.writeFileSync(file,bytes,{mode:0o600});};
+ const raw=(value: unknown): string=>' \n'+JSON.stringify(value,null,'\t')+'\n ';
  const media=Buffer.alloc(mediaBytes,97),relativePath=`media/${assetId}.mp4`;
  db.prepare('INSERT INTO projects VALUES(?,?)').run(projectId,JSON.stringify({id:projectId,name:secret}));db.prepare('INSERT INTO assets VALUES(?,?,?)').run(assetId,projectId,JSON.stringify({id:assetId,projectId,relativePath,sha256:hash(media),sizeBytes:media.length,mimeType:'video/mp4',name:'synthetic'}));write(relativePath,media);
  db.prepare('INSERT INTO jobs VALUES(?,?,?)').run(jobId,projectId,raw({id:jobId,projectId,status:'submission_unknown',requestId:randomUUID(),prompt:secret}));
@@ -67,20 +67,22 @@ export async function restoreFixture(t,{mediaBytes=1024,stages=true}={}){
  const created=await createWorkspaceBackup({source,destination:backup});
  return {base,source,backup,destination,before,created,projectId,assetId,relativePath};
 }
-export function rewriteManifest(backup,mutate){
- const file=path.join(backup,'manifest.json'),manifest=JSON.parse(fs.readFileSync(file,'utf8'));mutate(manifest);
+interface BackupManifest {entries: {path: string; role?: string; bytes: number; sha256: string}[]; [key: string]: unknown}
+export function rewriteManifest(backup: string,mutate: (manifest: BackupManifest)=>void): void{
+ const file=path.join(backup,'manifest.json'),manifest=JSON.parse(fs.readFileSync(file,'utf8')) as BackupManifest;mutate(manifest);
  const bytes=Buffer.from(JSON.stringify(manifest));fs.writeFileSync(file,bytes);
  const completeFile=path.join(backup,'COMPLETE.json'),complete=JSON.parse(fs.readFileSync(completeFile,'utf8'));
- Object.assign(complete,{manifestSha256:hash(bytes),fileCount:manifest.entries.length,payloadBytes:manifest.entries.reduce((n,e)=>n+e.bytes,0)});fs.writeFileSync(completeFile,JSON.stringify(complete));
+ Object.assign(complete,{manifestSha256:hash(bytes),fileCount:manifest.entries.length,payloadBytes:manifest.entries.reduce((n: number,e: {bytes: number})=>n+e.bytes,0)});fs.writeFileSync(completeFile,JSON.stringify(complete));
 }
-export function refreshDatabaseManifest(backup){rewriteManifest(backup,manifest=>{const entry=manifest.entries.find(e=>e.role==='database'),bytes=fs.readFileSync(path.join(backup,entry.path));entry.bytes=bytes.length;entry.sha256=hash(bytes);});}
-export async function runRestoreChild(t,args,{preload,timeout=20000}={}){
+export function refreshDatabaseManifest(backup: string): void{rewriteManifest(backup,(manifest: BackupManifest)=>{const entry=manifest.entries.find((e: {role?: string})=>e.role==='database');if(!entry)throw Error('Missing database manifest entry');const bytes=fs.readFileSync(path.join(backup,entry.path));entry.bytes=bytes.length;entry.sha256=hash(bytes);});}
+export interface RestoreChildOptions {readonly preload?: string; readonly timeout?: number}
+export async function runRestoreChild(t: unknown,args: readonly string[],{preload,timeout=20000}: RestoreChildOptions={}){
  const child=spawn(process.execPath,[...(preload?['--import',preload]:[]),path.join(repo,'apps/cli/src/backup.ts'),...args],{cwd:repo,stdio:['ignore','pipe','pipe']});
  let stdout='',stderr='',failure,closed=false;
  // These are the only new child text collectors. Binary files stay bytes.
  child.stdout.setEncoding('utf8').on('data',text=>{stdout+=text;if(stdout.length>256*1024){failure=Error('bounded stdout exceeded');child.kill('SIGKILL');}});
  child.stderr.setEncoding('utf8').on('data',text=>{stderr+=text;if(stderr.length>256*1024){failure=Error('bounded stderr exceeded');child.kill('SIGKILL');}});
  const complete=new Promise(resolve=>{const timer=setTimeout(()=>{failure=Error('owned child deadline');child.kill('SIGKILL');},timeout);child.once('error',error=>{failure=error;});child.once('close',(code,signal)=>{clearTimeout(timer);closed=true;resolve({code,signal,stdout,stderr});});});
- t.after(async()=>{if(!closed){child.kill('SIGKILL');await complete;}});
+ (t as {after(callback: ()=>Promise<void>): void}).after(async()=>{if(!closed){child.kill('SIGKILL');await complete;}});
  const result=await complete;if(failure)throw failure;return result;
 }

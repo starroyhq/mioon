@@ -13,7 +13,7 @@ export const PRIVATE = 'ASSET_DISPOSITION_PRIVATE_FIXTURE_MARKER';
 // leave original managed files untouched. No route probes, plays or renders it.
 export const ORIGINAL_BYTES = Buffer.from('immutable original fixture bytes\n');
 
-async function seed(root) {
+async function seed(root: string): Promise<void> {
   await seedMutationStore(root);
   const {openStore} = await import('../../packages/business/src/db.ts');
   const store = openStore(root);
@@ -21,7 +21,7 @@ async function seed(root) {
     // Keep inspection's generated-version relationship unambiguous.
     store.db.prepare('DELETE FROM versions WHERE id=?').run(IDS.secondVersion);
     store.db.prepare('DELETE FROM jobs WHERE id=?').run(IDS.secondJob);
-    const asset = (id, extra = {}) => ({id, projectId: IDS.project, name: 'Disposition metadata fixture',
+    const asset = (id: string, extra: Record<string, unknown> = {}): Record<string, unknown> => ({id, projectId: IDS.project, name: 'Disposition metadata fixture',
       mimeType: 'video/mp4', duration: 2, width: 720, height: 1280, hasVideo: true, hasAudio: false,
       provenance: 'user-import', sha256: '2'.repeat(64), createdAt: NOW, ...extra});
     store.put('assets', asset(DISPOSITION_IDS.audio, {mimeType: 'audio/wav', hasVideo: false, hasAudio: true}));
@@ -35,11 +35,11 @@ async function seed(root) {
         relativePath: `media/${PRIVATE}.mp4`, url: `https://private.invalid/${PRIVATE}`}));
     store.db.prepare("UPDATE assets SET data=json_set(data,'$.projectId',?) WHERE id=?").run(IDS.other, DISPOSITION_IDS.mismatchedOwner);
     store.db.prepare("UPDATE assets SET data=json_set(data,'$.id',?) WHERE id=?").run(IDS.otherAsset, DISPOSITION_IDS.mismatchedId);
-    const original = JSON.parse(store.db.prepare('SELECT data FROM assets WHERE id=?').get(IDS.asset).data);
+    const original = JSON.parse((store.db.prepare('SELECT data FROM assets WHERE id=?').get(IDS.asset) as {data: string}).data);
     store.put('assets', {...original, relativePath: 'media/original.mp4'});
     fs.writeFileSync(path.join(root, 'media/original.mp4'), ORIGINAL_BYTES);
     // An existing in-use clip must remain byte-for-byte identical when rejected.
-    const timeline = JSON.parse(store.db.prepare('SELECT data FROM timelines WHERE id=?').get(IDS.timeline).data);
+    const timeline = JSON.parse((store.db.prepare('SELECT data FROM timelines WHERE id=?').get(IDS.timeline) as {data: string}).data);
     store.put('timelines', {...timeline, durationFrames: 30,
       tracks: [{id: DISPOSITION_IDS.track, name: 'Existing video', kind: 'video', orderIndex: 0, hidden: false, muted: false}],
       clips: [{id: DISPOSITION_IDS.clip, trackId: DISPOSITION_IDS.track, assetId: IDS.asset, name: 'Already in use',
@@ -50,7 +50,7 @@ async function seed(root) {
 
 // This opt-in is set only by the owned CLI test child, not production config.
 let phaseCount = 0;
-const phaseTrace = process.env.MIOON_DISPOSITION_PHASE_TRACE === '1' ? stage => {
+const phaseTrace = process.env.MIOON_DISPOSITION_PHASE_TRACE === '1' ? (stage: string): void => {
   if (++phaseCount > 16 || !['preload-ready', 'fetch-start', 'fetch-headers', 'fetch-rejected'].includes(stage)) return;
   const {userCPUTime, systemCPUTime, maxRSS} = process.resourceUsage();
   process.stderr.write('MIOON_WIRE_PHASE ' + JSON.stringify({stage,
@@ -64,27 +64,28 @@ if (process.env.MIOON_DISPOSITION_WIRE_GUARD === '1') installWireGuard({
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const root = process.env.MIOON_DATA_DIR;
   if (!root) throw Error('An isolated asset-disposition fixture is required');
+  const dataRoot: string = root;
   if (process.argv[2] === 'move-asset') {
     // Only after the owned backend has stopped: retained receipts must not reveal
     // an asset whose current ownership no longer matches the original request.
     const {openStore} = await import('../../packages/business/src/db.ts');
-    const store = openStore(root);
+    const store = openStore(dataRoot);
     try {
       const moved = store.db.prepare("UPDATE assets SET projectId=?,data=json_set(data,'$.projectId',?) WHERE id=?")
         .run(IDS.other, IDS.other, IDS.asset).changes;
       process.stdout.write(JSON.stringify({moved}) + '\n');
     } finally { store.close(); }
   } else if (process.argv[2] === 'server') {
-    if (!fs.existsSync(path.join(root, 'workbench.sqlite'))) await seed(root);
+    if (!fs.existsSync(path.join(dataRoot, 'workbench.sqlite'))) await seed(dataRoot);
     const {startServer} = await import('../../apps/server/src/index.ts');
-    const server = await startServer({dataDir: root, port: Number(process.env.PORT || 0), token: TOKEN,
+    const server = await startServer({dataDir: dataRoot, port: Number(process.env.PORT || 0), token: TOKEN,
       chatGateway: async function* () {
-        fs.appendFileSync(process.env.MIOON_DISPOSITION_WIRE_AUDIT, '{"kind":"model gateway"}\n');
+        fs.appendFileSync(process.env.MIOON_DISPOSITION_WIRE_AUDIT ?? '', '{"kind":"model gateway"}\n');
         throw Error('Asset dispositions must never enter the model gateway');
       }});
     process.stdout.write(JSON.stringify({ready: true, url: server.url, pid: process.pid}) + '\n');
-    let closing;
-    const close = () => closing ??= server.close().catch(() => { process.exitCode = 1; });
+    let closing: Promise<unknown>|undefined;
+    const close = (): Promise<unknown> => closing ??= server.close().catch(() => { process.exitCode = 1; });
     process.on('SIGTERM', close); process.on('SIGINT', close);
   } else throw Error('Unknown asset-disposition fixture mode');
 }

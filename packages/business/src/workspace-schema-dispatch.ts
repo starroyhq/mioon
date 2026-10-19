@@ -11,7 +11,7 @@ import {createWorkspaceRestoreProfileV39} from './workspace-restore-schema-v39.t
 import {hasWorkspaceAudioRoleEvidence,validateWorkspaceAudioRoleRows} from './workspace-audio-role-validation.ts';
 import {initializeWorkspaceSchema36,assertNoAssetAnnotationSchema} from './workspace-schema-v36.ts';
 import {createWorkspaceRestoreProfileV37} from './workspace-restore-schema-v37.ts';
-import type {DatabaseSync} from 'node:sqlite';
+import {DatabaseSync} from 'node:sqlite';
 import type {WorkspaceSchemaReader} from './workspace-schema-profile.ts';
 import {initializeWorkspaceSchema26} from './workspace-schema-v26.ts';
 import {initializeWorkspaceSchema28} from './workspace-schema-v28.ts';
@@ -200,6 +200,48 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
   const restored39 = createWorkspaceRestoreProfileV39(legacy.initializeThrough24);
   const restored37 = createWorkspaceRestoreProfileV37(legacy.initializeThrough24);
   const restored35 = createWorkspaceRestoreProfileV35(legacy.initializeThrough24);
+  // Ordinary restarts historically recreated the fixed receipt/retention
+  // guards additively. Recreate only missing application-owned triggers/indexes
+  // from a freshly constructed ordinary48 catalog, inside one transaction, and
+  // require the same strict classifier afterward. Missing tables, changed
+  // definitions, extra managed objects or any failed validation still leave the
+  // database byte-identical and fail closed.
+  let ordinaryProtectionCatalog: readonly {type: string; name: string; table: string; sql: string}[] | undefined;
+  const expectedOrdinaryProtections = () => {
+    if (ordinaryProtectionCatalog) return ordinaryProtectionCatalog;
+    const fresh = new DatabaseSync(':memory:');
+    try {
+      fresh.exec('PRAGMA foreign_keys=ON;PRAGMA trusted_schema=OFF;');
+      legacy.initializeThrough24(fresh);
+      initializeWorkspaceSchema26(fresh); initializeWorkspaceSchema28(fresh);
+      initializeWorkspaceSchema30(fresh); initializeWorkspaceSchema32(fresh);
+      initializeWorkspaceSchema34(fresh); initializeWorkspaceSchema36(fresh);
+      initializeWorkspaceSchema38(fresh); initializeWorkspaceSchema40(fresh);
+      initializeWorkspaceSchema44(fresh, legacy.initializeThrough24);
+      initializeWorkspaceSchema48(fresh, legacy.initializeThrough24);
+      ordinaryProtectionCatalog = Object.freeze(fresh.prepare("SELECT type,name,tbl_name AS guardedTable,sql FROM main.sqlite_schema WHERE type IN ('trigger','index') AND sql IS NOT NULL ORDER BY type,name").all().map(value => row(value)).filter(value => typeof value.type === 'string' && typeof value.name === 'string' && typeof value.guardedTable === 'string' && typeof value.sql === 'string').map(value => Object.freeze({type: value.type as string, name: value.name as string, table: value.guardedTable as string, sql: value.sql as string})));
+    } finally { fresh.close(); }
+    return ordinaryProtectionCatalog;
+  };
+  const repairMissingOrdinaryProtections = (db: DatabaseSync): boolean => {
+    if (db.isTransaction) return false;
+    const expected = expectedOrdinaryProtections();
+    const existing = new Set(db.prepare("SELECT name FROM main.sqlite_schema WHERE type IN ('trigger','index')").all().map(value => row(value).name));
+    const missing = expected.filter(value => !existing.has(value.name));
+    if (missing.length === 0) return false;
+    const tables = new Set(db.prepare("SELECT name FROM main.sqlite_schema WHERE type='table'").all().map(value => row(value).name));
+    if (missing.some(value => !tables.has(value.table))) return false;
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      for (const value of missing) db.exec(value.sql as string);
+      restored49.classifyWorkspaceSchemaV48V49(db);
+      db.exec('COMMIT');
+      return true;
+    } catch (error) {
+      if (db.isTransaction) db.exec('ROLLBACK');
+      return false;
+    }
+  };
   const detect = (db: WorkspaceSchemaReader): boolean => {
     const role = readCurrentWorkspaceRole(db);
     if (role === 'ordinary-through-24' || role === 'restored-25-evidence') return legacy.detectRestoreEvidence(db);
@@ -242,7 +284,16 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
   };
   const initialize = (db: DatabaseSync) => {
     const role = readCurrentWorkspaceRole(db);
-    if (role === 'ordinary-48') {restored49.classifyWorkspaceSchemaV48V49(db);return null;}
+    if (role === 'ordinary-48') {
+      try { restored49.classifyWorkspaceSchemaV48V49(db); return null; }
+      catch (strictFailure) {
+        // Additive historical safety bootstrap only: missing fixed guards are
+        // recreated and the strict catalog must then pass unchanged.
+        if (!repairMissingOrdinaryProtections(db)) throw strictFailure;
+        restored49.classifyWorkspaceSchemaV48V49(db);
+        return null;
+      }
+    }
     if (role === 'restored-49-evidence') return validateRestore(db);
     if (role === 'ordinary-44') {initializeWorkspaceSchema48(db,legacy.initializeThrough24); return null;}
     if (role === 'restored-45-evidence') return validateRestore(db);

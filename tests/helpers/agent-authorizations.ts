@@ -33,6 +33,6 @@ export async function authorizeHttpSnapshot(request: HttpRequest, snapshot: Http
   if(snapshot.authorization.scopes.includes(scope))return;
   const result=await request('/api/rpc',{method:'POST',input:{operation:'agent.authorization.grant',input:{requestId:randomUUID(),
     expectedRevision:snapshot.authorization.revision,expectedSettingsRevision:snapshot.settings.revision,
-    destination:deriveAgentEndpoint(snapshot.settings.configuration),model:snapshot.settings.configuration.model,scope}}});
+    destination:deriveAgentEndpoint(snapshot.settings.configuration as never),model:(snapshot.settings.configuration as {model: string}).model,scope}}});
   if(result.status!==200||(result.body as {ok?: unknown}|null|undefined)?.ok!==true)throw new Error(`Synthetic authorization failed: ${result.status}`);
 }

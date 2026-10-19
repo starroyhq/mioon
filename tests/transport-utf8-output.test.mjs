@@ -229,6 +229,13 @@ async function sourceFiles(directory) {
 }
 const registrationPattern = /(?<receiver>\b[A-Za-z_$][\w$]*\.(?:stdout|stderr)|\bstream)(?<access>\?\.|\.)(?<decode>setEncoding\(['"]utf8['"]\)\.)?on\(['"]data['"]/g;
 
+// The migration renames tested files from `.test.mjs` to `.test.ts` wave by wave.
+// Inventory keys are canonicalized by dropping the final source extension so the
+// reviewed per-file classification survives renames without central key churn.
+const canonicalInventoryName = name => name.replace(/\.(?:mjs|ts|jsx|tsx)$/u, '');
+const canonicalInventory = map => new Map(Object.entries(map).map(([name, value]) => [canonicalInventoryName(name), value]));
+const canonicalTextSites = canonicalInventory(textSites), canonicalBinarySites = canonicalInventory(binarySites),
+  canonicalPassthroughSites = canonicalInventory(passthroughSites), canonicalBufferedSites = canonicalInventory(bufferedSites);
 test('every inventoried test/QA text collector configures continuous decoding at its actual listener, before delivery', async () => {
   const found = {};
   for (const file of await sourceFiles(path.join(root, 'tests'))) {
@@ -236,14 +243,16 @@ test('every inventoried test/QA text collector configures continuous decoding at
     // This file deliberately exercises both the broken historical collector and
     // the repaired collector above. Immutable historical fixtures are JSON, not
     // executable source included in this scan, and remain hash-verified elsewhere.
-    if (name === 'tests/transport-utf8-output.test.mjs') continue;
+    if (canonicalInventoryName(name) === 'tests/transport-utf8-output.test') continue;
     const source = await readFile(file, 'utf8');
     const sites = [...source.matchAll(registrationPattern)];
     if (!sites.length) continue;
-    found[name] = sites.length;
-    assert.ok(Object.hasOwn(textSites, name) || Object.hasOwn(binarySites, name) || Object.hasOwn(passthroughSites, name) || Object.hasOwn(bufferedSites, name), `${name}: classify each newly introduced stream consumer`);
-    if (Object.hasOwn(bufferedSites, name)) {
-      const specification = bufferedSites[name];
+    const inventoryName = canonicalInventoryName(name);
+    assert.equal(Object.hasOwn(found, inventoryName), false, `${name}: duplicate canonical inventory name during migration`);
+    found[inventoryName] = sites.length;
+    assert.ok(canonicalTextSites.has(inventoryName) || canonicalBinarySites.has(inventoryName) || canonicalPassthroughSites.has(inventoryName) || canonicalBufferedSites.has(inventoryName), `${name}: classify each newly introduced stream consumer`);
+    if (canonicalBufferedSites.has(inventoryName)) {
+      const specification = canonicalBufferedSites.get(inventoryName);
       assert.equal(sites.length, specification.count, name);
       assert.ok(source.includes(specification.sink), `${name}: retain the audited ${specification.kind} sink`);
       for (const site of sites) {
@@ -252,18 +261,18 @@ test('every inventoried test/QA text collector configures continuous decoding at
       }
       continue;
     }
-    if (Object.hasOwn(passthroughSites, name)) {
-      assert.equal(sites.length, passthroughSites[name], name);
+    if (canonicalPassthroughSites.has(inventoryName)) {
+      assert.equal(sites.length, canonicalPassthroughSites.get(inventoryName), name);
       for (const site of sites) assert.equal(site.groups.decode, undefined, `${name}: keep raw byte passthrough`);
       continue;
     }
-    if (Object.hasOwn(binarySites, name)) {
-      assert.equal(sites.length, binarySites[name], name);
+    if (canonicalBinarySites.has(inventoryName)) {
+      assert.equal(sites.length, canonicalBinarySites.get(inventoryName), name);
       assert.match(source, /appendFile\(/, `${name}: raw file logging preserves Buffer bytes`);
       for (const site of sites) assert.equal(site.groups.decode, undefined, `${name}: keep raw byte writer binary`);
       continue;
     }
-    assert.equal(sites.length, textSites[name], `${name}: all helper instances remain covered`);
+    assert.equal(sites.length, canonicalTextSites.get(inventoryName), `${name}: all helper instances remain covered`);
     for (const site of sites) {
       const location = `${name}:${source.slice(0, site.index).split('\n').length}`;
       assert.ok(site.groups.decode, `${location}: configure decoder on this stream before registering its listener`);
@@ -285,5 +294,6 @@ test('every inventoried test/QA text collector configures continuous decoding at
       if (site.groups.access === '?.') assert.doesNotThrow(() => register({}, () => {}), location);
     }
   }
-  assert.deepEqual(found, Object.fromEntries(Object.entries({...textSites, ...binarySites, ...passthroughSites, ...Object.fromEntries(Object.entries(bufferedSites).map(([name, value]) => [name, value.count]))}).sort(([a], [b]) => a.localeCompare(b))), 'all inventoried helper and raw-file sites are present');
+  const expectedSites = {...Object.fromEntries(canonicalTextSites), ...Object.fromEntries(canonicalBinarySites), ...Object.fromEntries(canonicalPassthroughSites), ...Object.fromEntries([...canonicalBufferedSites].map(([name, value]) => [name, value.count]))};
+  assert.deepEqual(found, Object.fromEntries(Object.entries(expectedSites).sort(([a], [b]) => a.localeCompare(b))), 'all inventoried helper and raw-file sites are present');
 });

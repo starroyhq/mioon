@@ -533,7 +533,8 @@ async function composeServer({
           catch { return json(res, 404, {ok: false, error: {code: 'FILE_UNAVAILABLE', message: '本地文件不可用。'}}); }
           const headers: Record<string, string> = {'Content-Type': mimeType, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=3600'};
           if (!delivery && url.searchParams.has('download')) headers['Content-Disposition'] = `attachment; filename="mioon.${mimeType === 'video/mp4' ? 'mp4' : 'bin'}"`;
-          return await files.send(req, res, {file, headers: playback ? () => timelineExportPreviewResponseHeaders(store.db, url, deliveryGuards, playback) : delivery ? () => timelineDeliveryResponseHeaders(store.db, url, deliveryGuards, delivery) : candidate ? () => {assertOpacityCandidateApplicationSource(store,asset as Record<string, unknown>);return headers;} : headers, ranges: true});
+          try{return await files.send(req, res, {file, headers: playback ? () => timelineExportPreviewResponseHeaders(store.db, url, deliveryGuards, playback) : delivery ? () => timelineDeliveryResponseHeaders(store.db, url, deliveryGuards, delivery) : candidate ? () => {assertOpacityCandidateApplicationSource(store,asset as Record<string, unknown>);return headers;} : headers, ranges: true});}
+          catch(error){if(process.env.MIOON_DEBUG_PREVIEW)console.error('PREVIEW-SEND-FAIL',(error as {code?:string}).code,(error as Error).message);throw error;}
         }
         if (url.pathname.startsWith('/api/') || req.method !== 'GET') return json(res, 404, {ok: false, error: {code: 'NOT_FOUND', message: '接口不存在'}});
         const requested = decodeURIComponent(url.pathname);

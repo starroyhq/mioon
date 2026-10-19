@@ -5,24 +5,24 @@ import {installWireGuard} from './inspection-wire-fixture.ts';
 
 export const TOKEN = 'mutation-wire-synthetic-backend-token';
 export const NOW = '2026-01-02T03:04:05.000Z';
-export const uuid = value => `10000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
+export const uuid = (value: number|string): string => `10000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 export const IDS = Object.freeze({project: uuid(1), other: uuid(2), shot: uuid(10), spare: uuid(11),
   otherShot: uuid(12), node: uuid(20), otherNode: uuid(21), asset: uuid(30), otherAsset: uuid(31),
   job: uuid(40), secondJob: uuid(41), otherJob: uuid(42), version: uuid(50), secondVersion: uuid(51),
   otherVersion: uuid(52), timeline: uuid(60)});
 
-export function snapshot(db) {
-  return Object.fromEntries(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all()
-    .map(({name}) => [name, db.prepare(`SELECT * FROM "${name.replaceAll('"', '""')}" ORDER BY rowid`).all().map(row => ({...row}))]));
+export function snapshot(db: import('node:sqlite').DatabaseSync): Record<string, Record<string, unknown>[]> {
+  return Object.fromEntries((db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all() as {name: string}[])
+    .map(({name}) => [name, (db.prepare(`SELECT * FROM "${name.replaceAll('"', '""')}" ORDER BY rowid`).all() as Record<string, unknown>[]).map(row => ({...row}))]) as [string, Record<string, unknown>[]][]);
 }
 
-export async function seedMutationStore(root) {
+export async function seedMutationStore(root: string): Promise<void> {
   const {openStore} = await import('../../packages/business/src/db.ts');
   const store = openStore(root), {put, db} = store;
   try {
     for (const id of [IDS.project, IDS.other]) put('projects', {id, name: `Synthetic mutation project ${id}`, description: '',
       revision: 1, createdAt: NOW, updatedAt: NOW});
-    const shot = (id, projectId, orderIndex) => ({id, projectId, title: 'Synthetic saved shot', prompt: 'Saved prompt',
+    const shot = (id: string, projectId: string, orderIndex: number): Record<string, unknown> => ({id, projectId, title: 'Synthetic saved shot', prompt: 'Saved prompt',
       referenceAssetIds: [], aspectRatio: '9:16', duration: 2, parameters: {}, position: {x: 0, y: 0}, orderIndex,
       revision: 1, selectedVersionId: null, createdAt: NOW, updatedAt: NOW});
     put('shots', shot(IDS.shot, IDS.project, 0)); put('shots', shot(IDS.spare, IDS.project, 1));
@@ -64,29 +64,30 @@ const direct = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPat
 if (direct) {
   const root = process.env.MIOON_DATA_DIR;
   if (!root) throw Error('A disposable fixture data directory is required');
+  const dataRoot: string = root;
   const mode = process.argv[2];
-  if (mode === 'seed') await seedMutationStore(root);
+  if (mode === 'seed') await seedMutationStore(dataRoot);
   if (mode === 'delete-node') {
     // Test-only storage corruption/removal, after stopping the owned server:
     // retained receipts must never become a way to read a removed target.
     const {openStore} = await import('../../packages/business/src/db.ts');
-    const store = openStore(root);
+    const store = openStore(dataRoot);
     try {
-      const result = store.db.prepare('DELETE FROM nodes WHERE id=?').run(process.env.MIOON_MUTATION_WIRE_NODE_ID);
+      const result = store.db.prepare('DELETE FROM nodes WHERE id=?').run(process.env.MIOON_MUTATION_WIRE_NODE_ID as never);
       process.stdout.write(JSON.stringify({deleted: result.changes}) + '\n');
     } finally { store.close(); }
   }
   if (mode === 'server') {
-    if (!fs.existsSync(path.join(root, 'workbench.sqlite'))) await seedMutationStore(root);
+    if (!fs.existsSync(path.join(dataRoot, 'workbench.sqlite'))) await seedMutationStore(dataRoot);
     const {startServer} = await import('../../apps/server/src/index.ts');
-    const server = await startServer({dataDir: root, port: Number(process.env.PORT || 0), token: TOKEN,
+    const server = await startServer({dataDir: dataRoot, port: Number(process.env.PORT || 0), token: TOKEN,
       chatGateway: async function* () {
-        fs.appendFileSync(process.env.MIOON_MUTATION_WIRE_AUDIT, '{"kind":"model gateway"}\n');
+        fs.appendFileSync(process.env.MIOON_MUTATION_WIRE_AUDIT ?? '', '{"kind":"model gateway"}\n');
         throw Error('Mutation replay must not enter the model gateway');
       }});
     process.stdout.write(JSON.stringify({ready: true, url: server.url, pid: process.pid}) + '\n');
-    let closing;
-    const close = () => closing ??= server.close().catch(() => { process.exitCode = 1; });
+    let closing: Promise<unknown>|undefined;
+    const close = (): Promise<unknown> => closing ??= server.close().catch(() => { process.exitCode = 1; });
     process.on('SIGTERM', close); process.on('SIGINT', close);
   }
   if (mode === 'writer') {
@@ -95,15 +96,15 @@ if (direct) {
     // This explicit, isolated test child alone bypasses the backend owner lock
     // to exercise SQLite's real cross-process BEGIN IMMEDIATE serialization.
     const competing = process.env.MIOON_MUTATION_WIRE_COMPETING_WRITER === '1';
-    const store = openStore(root, {lock: !competing});
+    const store = openStore(dataRoot, {lock: !competing});
     const boundary = process.env.MIOON_MUTATION_WIRE_BOUNDARY || '';
     const role = process.env.MIOON_MUTATION_WIRE_ROLE || '';
-    const request = JSON.parse(process.env.MIOON_MUTATION_WIRE_REQUEST);
-    const report = value => process.stdout.write(JSON.stringify(value) + '\n');
-    const receipt = value => fs.writeFileSync(path.join(root, `receipt-${boundary}.json`), JSON.stringify(value));
+    const request = JSON.parse(process.env.MIOON_MUTATION_WIRE_REQUEST as string) as {operation: string; input: Record<string, unknown>};
+    const report = (value: unknown): void => { process.stdout.write(JSON.stringify(value) + '\n'); };
+    const receipt = (value: unknown): void => { fs.writeFileSync(path.join(dataRoot, `receipt-${boundary}.json`), JSON.stringify(value)); };
     const nativeTx = store.tx;
     const nativeExec = store.db.exec.bind(store.db);
-    if (role) store.db.exec = sql => {
+    if (role) store.db.exec = (sql: string): void => {
       if (/^BEGIN IMMEDIATE\s*;?$/i.test(sql.trim())) report({event: 'begin-attempt', pid: process.pid});
       const result = nativeExec(sql);
       if (/^BEGIN IMMEDIATE\s*;?$/i.test(sql.trim()) && role === 'holder') {
@@ -116,7 +117,7 @@ if (direct) {
       }
       return result;
     };
-    if (boundary) store.tx = fn => {
+    if (boundary) store.tx = <T>(fn: ()=>T): T => {
       const result = nativeTx(() => {
         const value = fn();
         if (boundary === 'rollback' || boundary === 'crash-before-commit') {
@@ -135,11 +136,11 @@ if (direct) {
     const services = createServices(store, new Map());
     const run = async () => {
       try { report({event: 'result', ok: true, data: await services.call(request.operation, request.input)}); }
-      catch (error) { report({event: 'result', ok: false, error: {code: error.code || 'FIXTURE_FAILURE', message: error.message}}); }
+      catch (error) { const failure=error as {code?: string; message?: string}; report({event: 'result', ok: false, error: {code: failure.code || 'FIXTURE_FAILURE', message: failure.message ?? String(error)}}); }
       finally { store.close(); if (process.connected) process.disconnect(); }
     };
     if (process.connected) {
-      process.once('message', message => { if (message === 'go') void run(); });
+      process.once('message', (message: unknown) => { if (message === 'go') void run(); });
       report({event: 'ready', pid: process.pid});
     } else await run();
   }

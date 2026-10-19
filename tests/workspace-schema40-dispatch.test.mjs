@@ -11,7 +11,7 @@ import {initializeWorkspaceSchema32} from '../packages/business/src/workspace-sc
 import {initializeWorkspaceSchema34} from '../packages/business/src/workspace-schema-v34.ts';
 import {initializeWorkspaceSchema36} from '../packages/business/src/workspace-schema-v36.ts';
 import {initializeWorkspaceSchema38,validateWorkspaceSchema38} from '../packages/business/src/workspace-schema-v38.ts';
-import {validateWorkspaceSchema40} from '../packages/business/src/workspace-schema-v40.ts';
+import {initializeWorkspaceSchema40,validateWorkspaceSchema40} from '../packages/business/src/workspace-schema-v40.ts';
 import {createWorkspaceRestoreProfileV39} from '../packages/business/src/workspace-restore-schema-v39.ts';
 import {createWorkspaceSchemaDispatch,readCurrentWorkspaceRole,validateCurrentWorkspaceColourProfile,usesAssetAnnotationSchema,assertTimelineAudioRoleWorkspace} from '../packages/business/src/workspace-schema-dispatch.ts';
 import {createTimelineColourPlan} from '../packages/contracts/src/timeline-colour.ts';
@@ -34,6 +34,9 @@ function database(t){
  for(const init of [initializeWorkspaceSchemaThrough24,initializeWorkspaceSchema26,initializeWorkspaceSchema28,initializeWorkspaceSchema30,initializeWorkspaceSchema32,initializeWorkspaceSchema34,initializeWorkspaceSchema36,initializeWorkspaceSchema38])init(db);
  return {get db(){return db;},reopen(){db.close();db=open(file);return db;}};
 }
+// Historical ordinary40 is constructed by its own reviewed initializer; current
+// startup would migrate it further to ordinary48.
+function historical40(db){initializeWorkspaceSchema40(db);}
 function seed(db){
  insert(db,'projects',{id:id(1),data:JSON.stringify({id:id(1),name:'Owned synthetic fixture'})});
  const asset={id:id(2),projectId:id(1),mimeType:'video/mp4',duration:2,width:720,height:1280,hasAudio:true,sha256:'a'.repeat(64)};
@@ -52,21 +55,24 @@ function proposal(db,volumeEnvelope){
 }
 function unchanged(db,fn,code='RESTORE_SCHEMA_UNSUPPORTED'){const before=snapshot(db);assert.throws(fn,{code});assert.deepEqual(snapshot(db),before);assert.equal(db.isTransaction,false);}
 
-test('real dispatch migrates source38 marker-only to40 and reopens idempotently',t=>{
+test('real dispatch migrates source38 marker-only to current ordinary48 and reopens idempotently',t=>{
  const f=database(t),db=f.db;seed(db);const before=snapshot(db);
  assert.deepEqual(dispatch.classify(db),{schemaVersion:38,profile:'ordinary'});
- assert.equal(dispatch.initialize(db),null);assert.equal(readCurrentWorkspaceRole(db),'ordinary-40');
- const after=snapshot(db);assert.deepEqual(after.objects,before.objects);
+ assert.equal(dispatch.initialize(db),null);assert.equal(readCurrentWorkspaceRole(db),'ordinary-48');
+ const after=snapshot(db);
+ // Seeded historical rows survive byte-for-byte; schema_version keeps its
+ // prefix and gains the reviewed current marker chain.
  for(const [name,value]of Object.entries(before.tables))if(name!=='schema_version')assert.deepEqual(after.tables[name],value,name);
- assert.deepEqual(after.tables.schema_version.rows.slice(0,-1),before.tables.schema_version.rows);
- assert.deepEqual(dispatch.classify(db),{schemaVersion:40,profile:'ordinary'});assert.equal(dispatch.detect(db),false);
+ assert.deepEqual(after.tables.schema_version.rows.slice(0,before.tables.schema_version.rows.length),before.tables.schema_version.rows);
+ assert.deepEqual(after.tables.schema_version.rows.map(row=>Number(row[0])),[...Array.from({length:24},(_,index)=>index+1),26,28,30,32,34,36,38,40,44,48]);
+ assert.deepEqual(dispatch.classify(db),{schemaVersion:48,profile:'ordinary'});assert.equal(dispatch.detect(db),false);
  assert.throws(()=>validateWorkspaceSchema38(db),{code:'RESTORE_SCHEMA_UNSUPPORTED'});
  assert.equal(dispatch.initialize(f.reopen()),null);assert.deepEqual(snapshot(f.db),after);
 });
 
 test('dispatch restores source40 as exact41 while fixed source38/restored39 stays unchanged',t=>{
  for(const version of [38,40]){
-  const f=database(t);seed(f.db);if(version===40)dispatch.initialize(f.db);
+  const f=database(t);seed(f.db);if(version===40)historical40(f.db);
   const info=dispatch.installRestore(f.db,metadata());assert.equal(info.sourceSchema,version);assert.equal(info.schemaVersion,version+1);assert.equal(info.profile,version===40?'restored-local-v9':'restored-local-v8');
   const before=snapshot(f.db);assert.equal(dispatch.detect(f.db),true);assert.deepEqual(dispatch.initialize(f.reopen()),info);assert.deepEqual(dispatch.validateRestore(f.db),info);assert.deepEqual(snapshot(f.db),before);
   assert.deepEqual(dispatch.classify(f.db),{schemaVersion:version+1,profile:info.profile});
@@ -87,7 +93,7 @@ test('source38 envelope evidence never acquires40 through migration',t=>{
 });
 
 for(const value of [null,'active'])test(`dispatch40/41 retains all seven envelope families (${value??'explicit null'})`,t=>{
- const f=database(t),db=f.db;dispatch.initialize(db);seed(db);
+ const f=database(t),db=f.db;historical40(db);seed(db);
  const v=timeline({volumeEnvelope:value===null?null:envelope()}),raw=JSON.stringify(v,null,2),history=JSON.stringify(edit(v),null,1);
  insert(db,'timelines',{id:v.id,projectId:id(1),data:raw});
  insert(db,'timeline_history',{id:id(10),projectId:id(1),position:1,operation:'timeline.clip.update',createdAt:stamp,beforeSnapshot:history,afterSnapshot:history});
@@ -112,7 +118,7 @@ function receipt(feature,asset){
  return {id:id(50),projectId:id(1),requestId:'frozen-receipt',mode:'timeline',purpose:'export',timelineRevision:1,snapshot:frozen,status:'queued',assetId:null,url:null,error:null,createdAt:stamp,updatedAt:stamp};
 }
 for(const feature of ['role','colour'])for(const table of ['timeline_requests','exports'])test(`real dispatch frozen ${feature}/${table} survives changed cache with inherited read continuity`,t=>{
- const f=database(t),db=f.db;dispatch.initialize(db);const asset=seed(db),value=receipt(feature,asset);
+ const f=database(t),db=f.db;historical40(db);const asset=seed(db),value=receipt(feature,asset);
  const cube=Buffer.from('LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n'),hash=createHash('sha256').update(cube).digest('hex'),rp='mioon-cube3d-normalized-tetrahedral-v1';
  db.prepare('INSERT INTO project_lut_resources VALUES(?,?,?,?,?,?,?,?,?)').run(id(80),id(1),'look.cube',hash,cube.length,rp,JSON.stringify(parseCube3D(cube.toString()).metadata),cube,stamp);
  db.prepare('INSERT INTO lut_import_requests VALUES(?,?,?,?)').run('lut-request',id(1),lutInputHash({projectId:id(1),requestId:'lut-request',name:'look.cube'},hash,cube.length),id(80));
@@ -129,7 +135,7 @@ for(const feature of ['role','colour'])for(const table of ['timeline_requests','
  for(const restored of [false,true]){
   if(restored)dispatch.installRestore(db,metadata());const before=snapshot(db);
   validateCurrentWorkspaceColourProfile(db);assert.equal(usesAssetAnnotationSchema(db),true);assertTimelineAudioRoleWorkspace(db,{audioRole:'human'});
-  assert.equal(dispatch.classify(db).schemaVersion,restored?41:40);dispatch.initialize(db);assert.deepEqual(snapshot(db),before);
+  assert.equal(dispatch.classify(db).schemaVersion,restored?41:40);if(restored)dispatch.validateRestore(db);assert.deepEqual(snapshot(db),before);
   assert.equal(db.prepare(table==='exports'?'SELECT data AS raw FROM exports':'SELECT response AS raw FROM timeline_requests').get().raw,raw);
   assert.deepEqual(Buffer.from(db.prepare('SELECT content FROM project_lut_resources').get().content),cube);
   assert.equal(db.prepare('SELECT note FROM asset_annotations').get().note,'Exact annotation');
@@ -191,7 +197,7 @@ function corruptProtectedRow(db,table,sql){
  db.exec(`DROP TRIGGER ${name}`);db.exec(sql);assert.equal(db.prepare('SELECT changes() AS n').get().n,1);db.exec(guard);
 }
 for(const kind of ['catalog','metadata','holds-receipt','holds-task','holds-proposal','holds-export','task-binding'])test(`full restored41 capability and shared mutation admission fail closed on ${kind} corruption`,t=>{
- const {db}=database(t);dispatch.initialize(db);const asset=seed(db);insert(db,'timeline_requests',{requestId:'captured-probe',requestHash:'a'.repeat(64),response:'{}'});task(db);proposal(db);const value=receipt('role',asset);insert(db,'exports',{id:value.id,projectId:id(1),data:JSON.stringify(value)});dispatch.installRestore(db,metadata());
+ const {db}=database(t);historical40(db);const asset=seed(db);insert(db,'timeline_requests',{requestId:'captured-probe',requestHash:'a'.repeat(64),response:'{}'});task(db);proposal(db);const value=receipt('role',asset);insert(db,'exports',{id:value.id,projectId:id(1),data:JSON.stringify(value)});dispatch.installRestore(db,metadata());
  assert.deepEqual(readTimelineVolumeEnvelopeCapability(db),capability(true));assertTimelineVolumeEnvelopeWorkspace(db,{volumeEnvelope:null});
  if(kind==='catalog')db.exec('DROP TRIGGER immutable_timeline_history');
  if(kind==='metadata')corruptProtectedRow(db,'workspace_restoration',"UPDATE workspace_restoration SET manifestHash='z'||substr(manifestHash,2)");
@@ -202,7 +208,7 @@ for(const kind of ['catalog','metadata','holds-receipt','holds-task','holds-prop
  assert.deepEqual(snapshot(db),before);assert.equal(db.isTransaction,false);
 });
 
-test('ordinary40 backup verifies and restores41 with valid actual-service capability responses and exact retained envelope history',async t=>{
+test('current ordinary48 backup verifies and restores49 with valid actual-service capability responses and exact retained envelope history',async t=>{
  const root=privateRoot(t),source=join(root,'source'),backup=join(root,'backup'),destination=join(root,'restored');
  let store=openStore(source),services=createServices(store,new Map());
  try{
@@ -215,8 +221,8 @@ test('ordinary40 backup verifies and restores41 with valid actual-service capabi
   insert(store.db,'timeline_history_cursors',{projectId:id(1),position:1});
   insert(store.db,'timeline_requests',{requestId:'retained-envelope',requestHash:'a'.repeat(64),response:JSON.stringify(value,null,2)});
   const before=snapshot(store.db);await services.drain();store.close();store=null;
-  const captured=await createWorkspaceBackup({source,destination:backup});assert.equal(captured.databaseSchemaVersion,40);assert.equal(captured.integrity,'verified');assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),captured);
-  const result=await restoreWorkspaceBackup({directory:backup,destination});assert.equal(result.sourceSchema,40);assert.equal(result.databaseSchemaVersion,41);assert.equal(result.profile,'restored-local-v9');
+  const captured=await createWorkspaceBackup({source,destination:backup});assert.equal(captured.databaseSchemaVersion,48);assert.equal(captured.integrity,'verified');assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),captured);
+  const result=await restoreWorkspaceBackup({directory:backup,destination});assert.equal(result.sourceSchema,48);assert.equal(result.databaseSchemaVersion,49);assert.equal(result.profile,'restored-local-v13');
   for(let reopen=0;reopen<2;reopen++){
    store=openStore(destination);services=createServices(store,new Map());
    const legacy=await services.call('workspace.restore.inspect',{}),optIn=await services.call('workspace.restore.inspect',{includeVolumeEnvelopeCapability:true});
@@ -244,7 +250,7 @@ function alterHeldFixture(db,action,mutate,code){
  finally{db.exec('ROLLBACK');}
 }
 test('all33 held families reject zero/nonexistent live bindings with intact41 catalog',async t=>{
- const {db}=database(t);dispatch.initialize(db);dispatch.installRestore(db,metadata());
+ const {db}=database(t);historical40(db);dispatch.installRestore(db,metadata());
  const declared=db.prepare("SELECT sql FROM sqlite_schema WHERE name='workspace_restore_holds'").get().sql.match(/kind IN \(([^)]+)\)/)[1].match(/'([^']+)'/g).map(value=>value.slice(1,-1));
  assert.deepEqual(declared,heldFamilies);assert.equal(heldFamilies.length,33);const original=snapshot(db);
  for(const family of heldFamilies)for(const capturedRowid of [0,9007199254740991])await t.test(`${family}: capturedRowid=${capturedRowid} has no live record`,()=>{
@@ -256,7 +262,7 @@ test('all33 held families reject zero/nonexistent live bindings with intact41 ca
 });
 
 test('every populated captured family rejects hash and applicable identity-binding mismatch',async t=>{
- const {db}=database(t);dispatch.initialize(db);const asset=seed(db);task(db);proposal(db);
+ const {db}=database(t);historical40(db);const asset=seed(db);task(db);proposal(db);
  insert(db,'timeline_requests',{requestId:'populated-probe',requestHash:'a'.repeat(64),response:'{}'});const value=receipt('role',asset);insert(db,'exports',{id:value.id,projectId:id(1),data:JSON.stringify(value)});
  dispatch.installRestore(db,metadata());const holds=db.prepare('SELECT * FROM workspace_restore_holds ORDER BY kind,id').all(),original=snapshot(db);assert.equal(holds.length,8);
  let count=0;const manifest=[];
@@ -272,8 +278,10 @@ test('every populated captured family rejects hash and applicable identity-bindi
 });
 
 for(const [kind,sql]of [['table','CREATE TABLE unrelated_fixture_catalog(value TEXT)'],['view','CREATE VIEW unrelated_fixture_catalog AS SELECT 1 AS value']])test(`ordinary40 capability refuses extra ${kind} catalog object without writes`,t=>{
- const {db}=database(t);dispatch.initialize(db);assert.deepEqual(readTimelineVolumeEnvelopeCapability(db),capability(true));
+ const {db}=database(t);historical40(db);assert.deepEqual(readTimelineVolumeEnvelopeCapability(db),capability(true));
  db.exec(sql);assert.equal(readCurrentWorkspaceRole(db),'ordinary-40');const before=snapshot(db);
- validateWorkspaceSchema40(db);assert.equal(dispatch.initialize(db),null);assert.deepEqual(snapshot(db),before);
+ // Strict historical classification refuses the extra unmanaged catalog object;
+ // the capability gate therefore cannot grant envelope editing.
+ assert.throws(()=>dispatch.classify(db),{code:'RESTORE_SCHEMA_UNSUPPORTED'});
  assert.deepEqual(readTimelineVolumeEnvelopeCapability(db),capability(false));assert.deepEqual(snapshot(db),before);assert.equal(db.isTransaction,false);
 });

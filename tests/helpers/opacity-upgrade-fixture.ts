@@ -20,13 +20,13 @@ import {createWorkspacePreferences} from '../../packages/business/src/workspace-
 import {defaultWorkspaceState} from '../../apps/web/src/workspace-state.ts';
 import {logicalTables, raw} from './opacity-backup-fixture.ts';
 
-export const upgradeFixtureHash = value => createHash('sha256').update(value).digest('hex');
+export const upgradeFixtureHash = (value: Buffer|Uint8Array|string): string => createHash('sha256').update(value).digest('hex');
 export const upgradeFixtureStamp = '2026-10-16T00:00:00.000Z';
 export const upgradeFixtureLut = Buffer.from('# retained original\r\nTITLE "Upgrade \\ raw"\r\nLUT_3D_SIZE 2\r\n0 0 0\r\n1 0 0\r\n0 1 0\r\n1 1 0\r\n0 0 1\r\n1 0 1\r\n0 1 1\r\n1 1 1\r\n');
-const quote = value => '"' + value.replaceAll('"', '""') + '"';
+const quote = (value: string): string => '"' + value.replaceAll('"', '""') + '"';
 
 /** Frozen constructors only; the current runtime is never an old-schema seed. */
-export function initializeFrozenUpgradeFixtureSchema(db, version = 40) {
+export function initializeFrozenUpgradeFixtureSchema(db: DatabaseSync, version = 40): void {
   assert.ok(version === 38 || version === 40);
   assert.equal(db.prepare('SELECT 1 FROM main.sqlite_schema LIMIT 1').get(), undefined);
   db.exec('PRAGMA foreign_keys=ON;PRAGMA trusted_schema=OFF;');
@@ -41,20 +41,20 @@ export function initializeFrozenUpgradeFixtureSchema(db, version = 40) {
  * Materialize only the frozen40 tables/columns in a separate fresh database:
  * never relabel, downgrade, or remove guards from a current workspace. SQL
  * copies preserve rowids, storage classes and raw JSON/BLOB bytes. */
-export function copyFrozenUpgradeFixtureDatabase(source, seeded, {version = 40} = {}) {
+export function copyFrozenUpgradeFixtureDatabase(source: string, seeded: {readonly root: string}, {version = 40}: {version?: number} = {}): Record<string, unknown> {
   fs.mkdirSync(source, {mode: 0o700});
   const file = path.join(source, 'workbench.sqlite'), db = new DatabaseSync(file);
   try {
     initializeFrozenUpgradeFixtureSchema(db, version);
     db.prepare('ATTACH DATABASE ? AS seeded').run(path.join(seeded.root, 'workbench.sqlite'));
-    const names = db.prepare("SELECT name FROM main.sqlite_schema WHERE type='table' ORDER BY name").all().map(row => row.name);
+    const names = (db.prepare("SELECT name FROM main.sqlite_schema WHERE type='table' ORDER BY name").all() as {name: string}[]).map((row: {name: string}) => row.name);
     db.exec('BEGIN IMMEDIATE;PRAGMA defer_foreign_keys=ON;');
     try {
       for (const table of names) {
         if (table === 'schema_version' || table === 'sqlite_sequence') continue;
-        const fields = db.prepare(`PRAGMA main.table_info(${quote(table)})`).all().map(row => row.name);
+        const fields = (db.prepare(`PRAGMA main.table_info(${quote(table)})`).all() as {name: string}[]).map((row: {name: string}) => row.name);
         const columns = ['rowid', ...fields.map(quote)].join(',');
-        const read = schema => { const statement = db.prepare(`SELECT ${columns} FROM ${schema}.${quote(table)} ORDER BY rowid`); statement.setReadBigInts(true); return statement.all(); };
+        const read = (schema: string): unknown[] => { const statement = db.prepare(`SELECT ${columns} FROM ${schema}.${quote(table)} ORDER BY rowid`); statement.setReadBigInts(true); return statement.all(); };
         // Frozen constructors seed quota rows. They must already match the
         // untouched service defaults; do not delete or bypass their guards.
         if (read('main').length === 0) db.exec(`INSERT INTO main.${quote(table)}(${columns}) SELECT ${columns} FROM seeded.${quote(table)} ORDER BY rowid`);
@@ -73,14 +73,15 @@ export function copyFrozenUpgradeFixtureDatabase(source, seeded, {version = 40} 
 
 /** Only owned synthetic directories participate. No media bytes are decoded,
  * provider constructed, listener created, or user workspace inspected. */
-export async function opacityUpgradeFixture(t, {rejectTask = false, beforeFreeze} = {}) {
+export interface OpacityUpgradeOptions {readonly rejectTask?: boolean; readonly beforeFreeze?: (context: Record<string, unknown>)=>Promise<unknown>|unknown}
+export async function opacityUpgradeFixture(t: unknown, {rejectTask = false, beforeFreeze}: OpacityUpgradeOptions = {}) {
   const base = fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()), 'mioon-ordinary40-upgrade-'));
-  t.after(() => fs.rmSync(base, {recursive: true, force: true}));
+  (t as {after(callback: ()=>void): void}).after(() => fs.rmSync(base, {recursive: true, force: true}));
   const source = path.join(base, 'source40'), backup = path.join(base, 'backup40'), destination = path.join(base, 'candidate42');
   const store = openStore(path.join(base, 'seed-runtime')), services = createServices(store, new Map());
   const tasks = createEditTasks({store, services});
   try {
-    const project = await services.call('project.create', {name: 'Owned upgrade raw 界'}), projectId = project.id;
+    const project = await services.call('project.create', {name: 'Owned upgrade raw 界'}) as unknown as {id: string}, projectId = project.id;
     const assetId = randomUUID(), timelineId = randomUUID(), trackId = randomUUID(), clipId = randomUUID();
     const mediaBytes = Buffer.from('SYNTHETIC_UPGRADE_OPAQUE_BYTES\0界\n'), relativePath = `media/${assetId}.mp4`;
     const asset = {id: assetId, projectId, name: 'Synthetic opaque import', mimeType: 'video/mp4', width: 720, height: 1280,
@@ -98,21 +99,22 @@ export async function opacityUpgradeFixture(t, {rejectTask = false, beforeFreeze
       .run(historyId, projectId, 'timeline.clip.add', upgradeFixtureStamp, raw({tracks: [track], clips: [], durationFrames: 0}), raw({tracks: [track], clips: [clip], durationFrames: 30}));
     store.db.prepare('INSERT INTO timeline_history_cursors(projectId,position) VALUES(?,1)').run(projectId);
     const input = {projectId, expectedRevision: 2, requestId: randomUUID(), clipId, patch: {name: 'Acknowledged 界'}};
-    const prepared = tasks.prepare({projectId, operation: 'timeline.clip.update', input, origin: 'new'});
-    const executed = await tasks.execute({projectId, taskId: prepared.task.id, digest: prepared.task.digest, instanceId: prepared.instanceId});
-    const acknowledged = tasks.acknowledge({projectId, taskId: prepared.task.id, digest: prepared.task.digest, expectedRevision: executed.task.revision, status: 'applied'});
+    interface PreparedTask {task: {id: string; digest: string; revision: number; status: string}; instanceId: string; result?: unknown; [key: string]: unknown}
+    const prepared = tasks.prepare({projectId, operation: 'timeline.clip.update', input, origin: 'new'} as never) as unknown as PreparedTask;
+    const executed = await tasks.execute({projectId, taskId: prepared.task.id, digest: prepared.task.digest, instanceId: prepared.instanceId} as never) as unknown as PreparedTask;
+    const acknowledged = tasks.acknowledge({projectId, taskId: prepared.task.id, digest: prepared.task.digest, expectedRevision: executed.task.revision, status: 'applied'} as never) as unknown as PreparedTask;
     let rejectedTask;
     if (rejectTask) {
       const rejectedInput = {...input, requestId: randomUUID(), expectedRevision: 999};
-      const preparedRejection = tasks.prepare({projectId, operation: 'timeline.clip.update', input: rejectedInput, origin: 'new'});
-      const rejected = await tasks.execute({projectId, taskId: preparedRejection.task.id, digest: preparedRejection.task.digest, instanceId: preparedRejection.instanceId});
-      rejectedTask = tasks.acknowledge({projectId, taskId: rejected.task.id, digest: rejected.task.digest, expectedRevision: rejected.task.revision, status: rejected.task.status}).task;
+      const preparedRejection = tasks.prepare({projectId, operation: 'timeline.clip.update', input: rejectedInput, origin: 'new'} as never) as unknown as PreparedTask;
+      const rejected = await tasks.execute({projectId, taskId: preparedRejection.task.id, digest: preparedRejection.task.digest, instanceId: preparedRejection.instanceId} as never) as unknown as PreparedTask;
+      rejectedTask = (tasks.acknowledge({projectId, taskId: rejected.task.id, digest: rejected.task.digest, expectedRevision: rejected.task.revision, status: rejected.task.status} as never) as unknown as PreparedTask).task;
     }
     const lutInput = {projectId, requestId: randomUUID(), name: 'Retained original.cube', dataBase64: upgradeFixtureLut.toString('base64')};
     const lut = await services.call('lut.import', lutInput);
-    const preferenceState = defaultWorkspaceState(); delete preferenceState.shared.assetSearch;
+    const preferenceState = defaultWorkspaceState(); delete (preferenceState.shared as unknown as Record<string, unknown>).assetSearch;
     preferenceState.activeMode = 'editing'; preferenceState.editing.selectedClipId = clipId;
-    const preferences = createWorkspacePreferences(store).put(projectId, {expectedRevision: 0, state: preferenceState});
+    const preferences = createWorkspacePreferences(store).put(projectId, {expectedRevision: 0, state: preferenceState} as never);
     store.db.prepare('UPDATE timelines SET data=? WHERE id=?').run(raw(executed.result), timelineId);
     store.db.exec("UPDATE sqlite_sequence SET seq=7001.0 WHERE name='edit_tasks'");
     await beforeFreeze?.({store, services, tasks, projectId, assetId, clipId, input, timeline: executed.result});
