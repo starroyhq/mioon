@@ -8,9 +8,9 @@ test('gain submission fence accepts only synchronous completed checks and saniti
  const fence=createAgentGainContextFence({live:()=>true,checkTarget:()=>{checks++;}});
  invokeAgentSubmissionFence(fence);assert.equal(checks,1);
  for(const value of [null, true, 1, {}, ()=>true, ()=>null, ()=>Promise.resolve(), async()=>{throw new Error('SECRET/path');}, ()=>{throw Object.assign(new Error('SECRET/path'),{code:'CUSTOM'});}]) {
-  assert.throws(()=>invokeAgentSubmissionFence(value),error=>error.code==='AGENT_CHAT_CONTEXT_CHANGED'&&!error.message.includes('SECRET'));
+  assert.throws(()=>invokeAgentSubmissionFence(value),(error: unknown)=>{const failure=error as {code?: string; message?: string};return failure.code==='AGENT_CHAT_CONTEXT_CHANGED'&&!String(failure.message).includes('SECRET');});
  }
- await new Promise(resolve=>setImmediate(resolve));
+ await new Promise<void>(resolve=>setImmediate(resolve));
 });
 
 test('gain submission fence stops before target access after Stop and cannot recover authority after target failure',()=>{
@@ -36,9 +36,9 @@ test('both real gain builders enforce complete escaped request bytes before any 
  const {buildAgentRequest}=await import('../packages/business/src/agent/agent-gateway.ts');
  const {TIMELINE_GAIN_EDIT_TOOL_SYSTEM_INSTRUCTION}=await import('../packages/business/src/agent/timeline-gain-tool-policy.ts');
  const {AGENT_PRESETS}=await import('../packages/business/src/agent/presets.ts');
- const platform=AGENT_PRESETS.find(item=>item.id==='openai').platforms[0];
+ const preset=AGENT_PRESETS.find(item=>item.id==='openai');assert.ok(preset);const platform=preset.platforms[0];assert.ok(platform);
  for(const protocol of ['chat_completions','responses']){
-  const configuration={presetId:'openai',platformId:platform.id,baseUrl:platform.baseUrl,model:platform.model,protocol};
+  const configuration={presetId:'openai',platformId:platform.id,baseUrl:platform.baseUrl,model:platform.model,protocol} as Parameters<typeof buildAgentRequest>[0]['configuration'];
   const messages=[{role:'system',content:TIMELINE_GAIN_EDIT_TOOL_SYSTEM_INSTRUCTION},{role:'user',content:'\\'.repeat(20000)}];
   assert.ok(messages.reduce((n,m)=>n+Buffer.byteLength(m.content),0)<30*1024);
   assert.throws(()=>buildAgentRequest({configuration,messages,readTools:{phase:'request',scope:'selected_timeline_clip_gain'},selfPort:1}),{code:'AGENT_CHAT_LIMIT'});

@@ -22,29 +22,30 @@ test('HTTP, CLI and MCP share grant/revoke state without granting built-in model
   const client=new Client({name:'authorization-offline-test',version:'1'},{capabilities:{}});
   t.after(async()=>{await client.close();await server.close();await rm(root,{recursive:true,force:true});});
   const env={PATH:process.env.PATH||'',MIOON_BASE_URL:server.url,MIOON_TOKEN:token,MIOON_ENABLE_LIVE_PROVIDER:'0'};
-  const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.ts')],cwd:repo,env,stderr:'pipe'});transport.stderr?.resume();
+  const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.ts')],cwd:repo,env,stderr:'pipe'});(transport.stderr as {resume?: () => void} | null | undefined)?.resume?.();
   await client.connect(transport);
-  const http=async(operation,input={})=>{
+  const http=async(operation: string,input: Record<string, unknown>={})=>{
     const response=await fetch(server.url+'/api/rpc',{method:'POST',headers:{authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({operation,input})});
-    const body=await response.json();assert.equal(response.status,200,JSON.stringify(body));assert.equal(body.ok,true);return body.data;
+    const body=await response.json() as {ok?: boolean; data?: Record<string, unknown>};assert.equal(response.status,200,JSON.stringify(body));assert.equal(body.ok,true);return body.data as Record<string, unknown>;
   };
-  const cli=async(operation,input={})=>{
+  const cli=async(operation: string,input: Record<string, unknown>={})=>{
     const result=await run(process.execPath,[path.join(repo,'apps/cli/src/index.ts'),...operation.split('.'),'--input',JSON.stringify(input)],{cwd:repo,env,timeout:15000});
-    const body=JSON.parse(result.stdout);assert.equal(body.ok,true);return body.data;
+    const body=JSON.parse(result.stdout) as {ok?: boolean; data?: Record<string, unknown>};assert.equal(body.ok,true);return body.data as Record<string, unknown>;
   };
-  const mcp=async(operation,input={})=>{
-    const result=await client.callTool({name:operation.replaceAll('.','_'),arguments:input});assert.equal(result.isError,false,JSON.stringify(result));return result.structuredContent.data;
+  const mcp=async(operation: string,input: Record<string, unknown>={})=>{
+    const result=await client.callTool({name:operation.replaceAll('.','_'),arguments:input});assert.equal(result.isError,false,JSON.stringify(result));return (result.structuredContent as {data: Record<string, unknown>}).data;
   };
-  const listed=await cli('agent.authorization.list');assert.deepEqual(listed,await http('agent.authorization.list'));assert.deepEqual(listed,await mcp('agent.authorization.list'));
+  const listed=await cli('agent.authorization.list') as {currentTarget: {settingsRevision: number; destination: string; model: string}; revision: number};
+  assert.deepEqual(listed,await http('agent.authorization.list'));assert.deepEqual(listed,await mcp('agent.authorization.list'));
   const target=listed.currentTarget,input={requestId:randomUUID(),expectedRevision:listed.revision,expectedSettingsRevision:target.settingsRevision,
     destination:target.destination,model:target.model,scope:'typed_chat_only'};
-  const granted=await mcp('agent.authorization.grant',input);assert.deepEqual(await http('agent.authorization.grant',input),granted);
-  let state=await http('agent.authorization.list');assert.equal(state.authorizations.length,1);
+  const granted=await mcp('agent.authorization.grant',input) as {authorizationId: string};assert.deepEqual(await http('agent.authorization.grant',input),granted);
+  let state=await http('agent.authorization.list') as {authorizations: unknown[]; revision: number};assert.equal(state.authorizations.length,1);
   const project=await http('project.create',{name:'No message is sent by authorization management'});
-  const snapshot=await (await fetch(server.url+`/api/agent/chat/${project.id}`,{headers:{authorization:`Bearer ${token}`}})).json();
+  const snapshot=await (await fetch(server.url+`/api/agent/chat/${project.id}`,{headers:{authorization:`Bearer ${token}`}})).json() as {data: {authorization: {scopes: string[]}; runs: unknown[]}};
   assert.deepEqual(snapshot.data.authorization.scopes,['typed_chat_only']);assert.equal(snapshot.data.runs.length,0);
   await cli('agent.authorization.revoke',{requestId:randomUUID(),expectedRevision:state.revision,authorizationId:granted.authorizationId});
-  await mcp('agent.authorization.grant',input);state=await cli('agent.authorization.list');assert.equal(state.authorizations.length,0);assert.equal(calls,0);
+  await mcp('agent.authorization.grant',input);state=await cli('agent.authorization.list') as {authorizations: unknown[]; revision: number};assert.equal(state.authorizations.length,0);assert.equal(calls,0);
   const tools=(await client.listTools()).tools;assert.ok(tools.some(tool=>tool.name==='agent_authorization_grant'));assert.ok(tools.some(tool=>tool.name==='agent_authorization_revoke'));
   for(const parser of [parseReadToolArguments,parseEditToolArguments,parseTimelineEditToolArguments,parseTimelineGainEditToolArguments]){
     for(const name of ['agent_authorization_grant','agent_authorization_revoke','mioon_agent_authorization_grant'])assert.throws(()=>parser(name,'{}'));

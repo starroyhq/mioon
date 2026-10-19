@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parseAgentSse} from '../packages/business/src/agent/sse.ts';
-const collect = async (source, options) => { const result = []; for await (const event of parseAgentSse(source, options)) result.push(event); return result; };
-const bytes = text => [Buffer.from(text)];
+type SseOptions = Parameters<typeof parseAgentSse>[1];
+const collect = async (source: AsyncIterable<Uint8Array | string> | Iterable<Uint8Array | string>, options?: SseOptions) => { const result: Array<{event: string; data: string}> = []; for await (const event of parseAgentSse(source as AsyncIterable<Uint8Array>, options as never)) result.push(event); return result; };
+const bytes = (text: string): Buffer[] => [Buffer.from(text)];
 
 test('SSE decodes every byte boundary of UTF-8, CRLF, BOM, multiline data and keepalives', async () => {
   const wire = Buffer.from('\ufeff: ping\r\nevent: message\r\ndata: 你好🙂\r\ndata: second\r\n\r\nid: ignored\nretry: 10\n\ndata: [DONE]\r\r');
@@ -36,11 +37,11 @@ test('SSE closes the source iterator on early return and rejects an already-abor
   for await (const _event of parseAgentSse(source())) break;
   assert.equal(closed, true);
   const controller = new AbortController(); controller.abort('synthetic-private-marker');
-  await assert.rejects(collect(bytes('data: x\n\n'), {signal: controller.signal}), error => error.code === 'AGENT_CHAT_ABORTED' && !error.message.includes('synthetic'));
+  await assert.rejects(collect(bytes('data: x\n\n'), {signal: controller.signal}), (error: unknown) => {const failure=error as {code?: string; message?: string};return failure.code === 'AGENT_CHAT_ABORTED' && !String(failure.message).includes('synthetic');});
 });
 
 test('optional event-name metadata distinguishes data-only framing from explicit message or empty names',async()=>{
   const source=(async function*(){yield Buffer.from('data: one\n\nevent: message\ndata: two\n\nevent:\ndata: three\n\nevent: response.created\ndata: four\n\n');})();
-  const events=[];for await(const event of parseAgentSse(source,{includeEventName:true}))events.push(event);
+  const events: Array<{event: string; eventName: string | null; data: string}> = [];for await(const event of parseAgentSse(source,{includeEventName:true} as never))events.push(event as never);
   assert.deepEqual(events,[{event:'message',eventName:null,data:'one'},{event:'message',eventName:'message',data:'two'},{event:'message',eventName:'',data:'three'},{event:'response.created',eventName:'response.created',data:'four'}]);
 });

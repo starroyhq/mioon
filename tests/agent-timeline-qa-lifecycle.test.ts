@@ -2,11 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {spawn} from 'node:child_process';
-import {ownQaChild} from './agent-timeline-move-qa-native.mjs';
+import type {ChildProcess} from 'node:child_process';
+import {ownQaChild as rawOwnQaChild} from './agent-timeline-move-qa-native.mjs';
+type OwnedChild = {readonly closed: boolean; readonly done: Promise<{code: number | null; signal: string | null; error?: {code?: string; message?: string}}>; stop(): Promise<{code: number | null; signal: string | null; error?: {code?: string; message?: string}}>};
+const ownQaChild = rawOwnQaChild as unknown as (child: ChildProcess) => OwnedChild;
 
 test('native QA ownership records an error but only close confirms termination',async()=>{
- const child=new EventEmitter(),signals=[];child.kill=signal=>{signals.push(signal);queueMicrotask(()=>child.emit('close',null,signal));return true;};
- const owned=ownQaChild(child);child.emit('error',Object.assign(Error('synthetic kill failure'),{code:'EPERM'}));
+ const rawChild=new EventEmitter(); const child=rawChild as EventEmitter & {kill: (signal: string) => boolean}; const signals: string[]=[]; child.kill=(signal: string)=>{signals.push(signal);queueMicrotask(()=>child.emit('close',null,signal));return true;};
+ const owned=ownQaChild(child as unknown as ChildProcess);child.emit('error',Object.assign(Error('synthetic kill failure'),{code:'EPERM'}));
  assert.equal(owned.closed,false);
  const result=await owned.stop();assert.equal(owned.closed,true);assert.deepEqual(signals,['SIGTERM']);
  assert.deepEqual(result,{code:null,signal:'SIGTERM',error:{code:'EPERM',message:'synthetic kill failure'}});
@@ -15,7 +18,7 @@ test('native QA ownership records an error but only close confirms termination',
 
 test('native QA observes an actual nonexistent executable without an unhandled error',async()=>{
  const child=spawn('/mioon-synthetic-nonexistent/fixture',[],{stdio:'ignore'}),owned=ownQaChild(child);
- const result=await owned.done;assert.equal(result.error.code,'ENOENT');assert.equal(owned.closed,true);assert.notEqual(result.code,0);
+ const result=await owned.done;assert.equal(result.error?.code,'ENOENT');assert.equal(owned.closed,true);assert.notEqual(result.code,0);
 });
 
 test('native QA observes actual fast normal exit through immediately attached listeners',async()=>{
