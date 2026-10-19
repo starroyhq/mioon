@@ -20,7 +20,7 @@ test('production and development IDs are exact, distinct and immutable', () => {
   assert.notEqual(production.productName, development.productName);
   assert.notEqual(production.executableName, development.executableName);
   assert.ok(Object.isFrozen(production)); assert.ok(Object.isFrozen(development));
-  for (const invalid of ['', undefined, 'dev', 'test', '__proto__']) assert.throws(() => identityForChannel(invalid));
+  for (const invalid of ['', undefined, 'dev', 'test', '__proto__']) assert.throws(() => identityForChannel(invalid as unknown as Parameters<typeof identityForChannel>[0]));
 });
 
 test('build defaults to development and selects production only by an explicit validated argument', () => {
@@ -93,9 +93,10 @@ test('default channel directories isolate workspace, config and discovery from e
   const dev = dataPaths('/home/u/.config', undefined, 'development');
   assert.equal(prod.userData, '/home/u/.config/app.starroy.mioon');
   assert.equal(dev.userData, '/home/u/.config/app.starroy.mioon.dev');
-  for (const key of ['userData', 'dataDir', 'configFile']) assert.notEqual(prod[key], dev[key]);
+  const prodPaths = prod as unknown as Record<string, unknown>, devPaths = dev as unknown as Record<string, unknown>;
+  for (const key of ['userData', 'dataDir', 'configFile']) assert.notEqual(prodPaths[key], devPaths[key]);
   assert.equal(dataPaths('/other', '/explicit', 'production').userData, '/explicit');
-  assert.throws(() => dataPaths('/other', '/explicit', 'bad'));
+  assert.throws(() => dataPaths('/other', '/explicit', 'bad' as unknown as Parameters<typeof dataPaths>[2]));
   assert.throws(() => dataPaths('/other', '../relative', 'production'));
 });
 
@@ -136,7 +137,7 @@ test('new identity never moves legacy data; explicit migration copies into a fre
   try {
     const store = openStore(source); store.put('projects', { id: '12345678-1234-4234-8234-123456789abc', name: 'Legacy', revision: 1 }); store.close();
     await writeFile(path.join(source, 'media/legacy.txt'), 'unchanged original');
-    const hash = async file => createHash('sha256').update(await readFile(file)).digest('hex');
+    const hash = async (file: string): Promise<string> => createHash('sha256').update(await readFile(file)).digest('hex');
     const before = await hash(path.join(source, 'workbench.sqlite'));
     await ensureDataIdentity(prod, production);
     assert.deepEqual(await readdir(prod.userData), ['desktop-identity.json']);

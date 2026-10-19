@@ -23,7 +23,8 @@ const channels = [
 
 // Inspect only the simple, two-command manifest contract. Do not evaluate a
 // shell, resolve installed tools, invoke the CLI, or execute these command plans.
-function packagingPlan(script, expected) {
+type ChannelExpectation = typeof channels[number];
+function packagingPlan(script: string, expected: ChannelExpectation) {
   const steps = script.split('&&').map(step => step.trim().split(/\s+/));
   assert.equal(steps.length, 2, 'Build must succeed before electron-builder; no extra stages');
   for (const argv of steps) for (const token of argv) assert.match(token, /^[A-Za-z0-9_./=-]+$/, 'Only literal arguments are permitted');
@@ -39,13 +40,13 @@ function packagingPlan(script, expected) {
   const config = require(path.resolve(desktop, 'builder-config.ts')).builderConfig(expected.channel);
   // Synthetic Vite path: buildCommands only constructs argv and never reads it.
   const viteEntry = path.join(root, 'node_modules/vite/bin/vite.js');
-  const commands = buildCommands(root, { vite: { entry: viteEntry } }, options.channel);
+  const commands = buildCommands(root, { vite: { entry: viteEntry } } as unknown as Parameters<typeof buildCommands>[1], options.channel);
   return { commands, config, viteEntry };
 }
 
 for (const expected of channels) {
   test(`${expected.script} resolves the real tooling contract and plans Web before same-channel desktop staging`, () => {
-    const { commands, config, viteEntry } = packagingPlan(manifest.scripts[expected.script], expected);
+    const { commands, config, viteEntry } = packagingPlan(manifest.scripts[expected.script] as string, expected);
     assert.deepEqual(commands, [
       { command: process.execPath, args: ['--max-old-space-size=768', viteEntry, 'build'], cwd: path.join(root, 'apps/web') },
       { command: process.execPath, args: [path.join(desktop, 'scripts/build.ts'), `--channel=${expected.channel}`], cwd: root },
@@ -83,6 +84,7 @@ test('entrypoint checks reject the old staging-only path and channel or publicat
     assert.throws(() => packagingPlan(script.replace('--publish never', '--publish always'), expected), /Builder must retain the exact config, target and publication arguments/);
     assert.throws(() => packagingPlan(script.replace(`--channel=${expected.channel}`, ''), expected), /Build requires only the tooling path, build command and explicit channel/);
     const other = channels.find(item => item.channel !== expected.channel);
+    if (!other) throw new Error(`missing opposite-channel entry for ${expected.channel}`);
     assert.throws(() => packagingPlan(script.replace(`--channel=${expected.channel}`, `--channel=${other.channel}`), expected), /Build must select the expected channel/);
     assert.throws(() => packagingPlan(script.replace(expected.config, other.config), expected), /Builder must retain the exact config, target and publication arguments/);
   }
