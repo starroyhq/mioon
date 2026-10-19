@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
@@ -24,8 +24,8 @@ const sources = [
   'packages/contracts/src/timeline-segments.ts',
 ];
 
-async function snapshot(directory) {
-  const files = {};
+async function snapshot(directory: string): Promise<Record<string, string>> {
+  const files: Record<string, string> = {};
   for (const item of await readdir(directory, {withFileTypes: true})) {
     const file = path.join(directory, item.name);
     if (item.isDirectory()) {
@@ -38,7 +38,7 @@ async function snapshot(directory) {
   return files;
 }
 
-async function compile(directory, compiler) {
+async function compile(directory: string, compiler: Awaited<ReturnType<typeof installedTypeScript>>) {
   const before = await snapshot(directory);
   const result = spawnSync(process.execPath, [compiler.entry, '--project', path.join(directory, configurationName), '--noEmit', '--pretty', 'false'], {
     cwd: directory, env: toolingEnvironment(), encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024,
@@ -49,7 +49,7 @@ async function compile(directory, compiler) {
   return result;
 }
 
-test('strict real compiler rejects unsuppressed runner and coordinator implementation errors and recovers without emit', {timeout: 120000}, async t => {
+test('strict real compiler rejects unsuppressed runner and coordinator implementation errors and recovers without emit', {timeout: 120000}, async (t: TestContext) => {
   const compiler = await installedTypeScript(repository);
   const evidence = path.join(await realpath(repository), 'evidence');
   await mkdir(evidence, {recursive: true, mode: 0o700});
@@ -62,7 +62,7 @@ test('strict real compiler rejects unsuppressed runner and coordinator implement
   }
   // Preserve the formal project's strict options and real declarations. Only
   // its root files are narrowed to this isolated copy and its genuine consumers.
-  const formal = JSON.parse(await readFile(path.join(repository, configurationName), 'utf8'));
+  const formal = JSON.parse(await readFile(path.join(repository, configurationName), 'utf8')) as {compilerOptions: Record<string, unknown>};
   await writeFile(path.join(directory, configurationName), JSON.stringify({compilerOptions: formal.compilerOptions,
     files: [...sources.map(name => `../../${name}`), ...consumers.map(name => `./${name}`)]}));
   // The public package route must resolve to copied source as well. Zod is its
@@ -73,12 +73,14 @@ test('strict real compiler rejects unsuppressed runner and coordinator implement
   const initial = await compile(directory, compiler);
   assert.equal(initial.status, 0, initial.stdout + initial.stderr);
 
-  for (const mutation of [
+  const mutations: Array<{name: string; before: string; after: string; diagnostic: RegExp}> = [
+  
     {name: 'packages/business/src/media-streaming-runtime.ts', before: 'resolve({stdoutBytes});', after: 'resolve({stdoutBytes: "invalid"});',
       diagnostic: /media-streaming-runtime\.ts\(\d+,\d+\): error TS2322:/},
     {name: 'packages/business/src/timeline-audio-preview-coordinator.ts', before: 'await Promise.all([legacy.drain(), continuous.drain()]);',
       after: 'return "invalid";', diagnostic: /timeline-audio-preview-coordinator\.ts\(\d+,\d+\): error TS2322:/},
-  ]) {
+  ];
+  for (const mutation of mutations) {
     const file = path.join(directory, mutation.name), source = await readFile(file, 'utf8');
     assert.equal(source.split(mutation.before).length, 2, 'Mutation must target exactly one real implementation statement');
     await writeFile(file, source.replace(mutation.before, mutation.after));
