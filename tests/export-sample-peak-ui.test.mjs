@@ -3,12 +3,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const app = () => readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 test('App wires one explicit historical-file observer with live project/workspace/navigation fences', () => {
   const source = app();
   assert.equal(source.includes('useExportSamplePeak'), true, 'App must wire the explicit history observer');
-  assert.match(source, /rpc\('timeline\.export\.samplePeak', input, options\)/);
-  assert.match(source, /samplePeak=\{application \? undefined : exportSamplePeak\}/);
+  assert.match(source, /rpc\('timeline\.export\.samplePeak', input, options as never\)/);
+  assert.match(source, /samplePeak=\{application \? undefined : exportSamplePeak(?: as never)?\}/);
 });
 
 import { before } from 'node:test';

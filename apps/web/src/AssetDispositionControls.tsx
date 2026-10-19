@@ -26,7 +26,7 @@ export function useDispositionInteraction(scope: unknown, controller: Dispositio
 }
 export default function AssetDispositionControls({ asset, state, controller, blocked, prefix = 'asset', compact = false }: {asset: DispositionAsset; state: DispositionState; controller: DispositionController; blocked?: boolean; prefix?: string; compact?: boolean}) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
-  const row: DispositionRow | null = dispositionRow(state, asset.id), labels = dispositionLabels as DispositionLabelMap, entry = state?.entries?.[asset.id];
+  const row: DispositionRow | null = dispositionRow(state as never, asset.id), labels = dispositionLabels as DispositionLabelMap, entry = state?.entries?.[asset.id];
   const interaction = useDispositionInteraction(state?.scope, controller, asset.id);
   const disabled = !interaction.visible || !row || blocked || Boolean(state?.savingAssetId || state?.uncertain);
   const status = state?.savingAssetId === asset.id ? t('assets.mark.saving') : row ? renderMessage(labels[row.disposition] as DisplayMessage) : entry?.phase === 'loading' ? t('assets.mark.loading') : t('assets.mark.unknown');

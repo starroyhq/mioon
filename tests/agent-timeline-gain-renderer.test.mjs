@@ -13,6 +13,8 @@ import * as chat from '../apps/web/src/agent-chat.ts';
 import * as policy from '../apps/web/src/agent-tool-state.ts';
 import * as timing from '../apps/web/src/agent-timeline-context.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), instanceId = id(2), threadId = id(3), timelineId = id(4), clipId = id(5), trackId = id(6), runId = id(7), proposalId = id(8), requestId = id(9);
 const at = '2026-10-12T00:00:00.000Z';
@@ -253,7 +255,7 @@ test('actual App saved selection and review fences include connection, dirty for
   for (const patch of [{ workspaceMode: 'canvas' }, { propertiesPage: 'subtitle' }, { quickAssetId: id(99) }, { data: { project: { id: projectId }, assets: [savedAsset({ hasAudio: false })] } }]) assert.equal(build(patch).selection, null);
   assert.match(source, /selectedTimelineGainClip=\{agentTimelineGainSelection\} timelineGainBlockedReason=\{gainBlockedReason\}/);
   assert.match(source, /onDraftController=\{registerClipDraft\} onReviewBlockedChange=\{setAgentClipDraftBlocked\}/);
-  const appliedHandler = source.match(/onApplied=\{projectId => \{([^}]+)\}\}/)[1], calls = [];
+  const appliedHandler = source.match(/onApplied=\{\(projectId: string\) => \{([^}]+)\}\}/)[1], calls = [];
   const apply = Function('currentProject', 'refresh', `return projectId => { ${appliedHandler} };`)({ current: projectId }, id => calls.push(id));
   apply(projectId, applied()); apply(id(99), applied()); assert.deepEqual(calls, [projectId]); assert.doesNotMatch(appliedHandler, /setData|discard|save|render|draft|acknowledge/i);
 });

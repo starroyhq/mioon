@@ -109,14 +109,20 @@ function loadFixture(db, name) {
     for (const [table, {fields, rows}] of Object.entries(expected.tables)) {
       if (table === 'sqlite_sequence') continue;
       const statement = db.prepare(`INSERT INTO ${quote(table)}(rowid,${fields.map(quote).join(',')}) VALUES(${Array(fields.length + 1).fill('?').join(',')})`);
+      statement.setReadBigInts(true);
       for (const row of rows) statement.run(BigInt(row[0]), ...fields.map((_, i) => decode(row[1 + 2 * i], row[2 + 2 * i])));
     }
     if (expected.tables.sqlite_sequence) {
       db.exec('DELETE FROM sqlite_sequence');
+      const sequenceInsert = db.prepare('INSERT INTO sqlite_sequence(rowid,name,seq) VALUES(?,?,?)');sequenceInsert.setReadBigInts(true);
       for (const row of expected.tables.sqlite_sequence.rows) {
-        db.prepare('INSERT INTO sqlite_sequence(rowid,name,seq) VALUES(?,?,?)').run(BigInt(row[0]), decode(row[1], row[2]), decode(row[3], row[4]));
+        sequenceInsert.run(BigInt(row[0]), decode(row[1], row[2]), decode(row[3], row[4]));
       }
     }
+    // Node 26 node:sqlite converts the connection's last-insert rowid on every
+    // run(); preserved >MAX_SAFE_INTEGER rowids must not leak into later
+    // read-only classification. This temp insert changes no main-schema state.
+    db.exec('CREATE TEMP TABLE IF NOT EXISTS last_insert_rowid_reset(value);INSERT INTO last_insert_rowid_reset(rowid,value) VALUES(1,1);DELETE FROM last_insert_rowid_reset;DROP TABLE last_insert_rowid_reset;');
     for (const object of expected.objects) {
       if (object.type !== 'table' && object.sql !== null) db.exec(object.sql);
     }

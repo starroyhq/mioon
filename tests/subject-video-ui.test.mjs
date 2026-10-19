@@ -16,6 +16,8 @@ import * as api from '../apps/web/src/api.ts';
 import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.ts';
 import { referenceForShot } from '../apps/web/src/reference-connections.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const taskIntentModule = { exports: {} };
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
 const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
@@ -52,7 +54,7 @@ function harness(file, initial) {
   }; react.default = react;
   function load(filename) {
     if (modules.has(filename)) return modules.get(filename);
-    const module = { exports: {} }, code = transformSync(readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8'), { loader: filename.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code;
+    const module = { exports: {} }, code = transformSync(readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
     Function('module', 'exports', 'require', code)(module, module.exports, name => {
       if (name === 'react') return react;
       if (name === './i18n/I18nProvider.tsx') return { useI18n: () => i18nTestModule(h.locale).useI18n() };
@@ -287,12 +289,12 @@ test('App uses subjectVersionId only on wire, exact expected reference beside pe
   assert.match(submit, /subjectVersionId: subjectReference.subjectVersionId/);
   assert.match(submit, /expectedSubjectReference: subjectReference/);
   assert.doesNotMatch(submit, /subjectBinding|headVersion|referenceAssetIds|referenceBindings|lastFrameAssetId/);
-  assert.match(app, /isSubjectGenerationResponse\(operation, input, result, \{ projectId, subjectReference: stored.expectedSubjectReference \}\)/);
+  assert.match(app, /isSubjectGenerationResponse\(operation, input, result, \{ projectId: projectId as string, subjectReference: stored!\.expectedSubjectReference \}\)/);
   assert.match(app, /paid-subject-face-warning/);
   const inspector = readFileSync(new URL('../apps/web/src/Inspector.tsx', import.meta.url), 'utf8');
   const tasks = readFileSync(new URL('../apps/web/src/TaskCenter.tsx', import.meta.url), 'utf8');
-  assert.match(inspector, /SubjectVideoSummary reference=\{v.snapshot.subjectReference\}/);
-  assert.match(tasks, /SubjectVideoSummary reference=\{job.snapshot\?\.subjectReference\}/);
+  assert.match(inspector, /SubjectVideoSummary reference=\{v\.snapshot!\.subjectReference as unknown as React\.ComponentProps<typeof SubjectVideoSummary>\['reference'\]\}/);
+  assert.match(tasks, /SubjectVideoSummary reference=\{pass\(job\.snapshot\?\.subjectReference\)\}/);
 });
 
 test('actual App subject retry captures original public snapshot beside unchanged wire input; legacy retries remain unchanged', async () => {

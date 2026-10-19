@@ -15,6 +15,8 @@ import * as imeSubmitGuard from '../apps/web/src/opacity-ime-submit-guard.ts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
 import * as removalState from '../apps/web/src/timeline-removal.ts';
 import {hasOpenWorkbenchModal} from '../apps/web/src/workbench-modal-state.ts';
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const capability={profileId:VOLUME_ENVELOPE_PROFILE,editable:true};
 const normal={restored:false};
 const id=n=>`a1000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
@@ -175,7 +177,7 @@ test('retained Inspector adapter keeps exact composing owner across auth loss, m
 });
 test('late App boot inspect response cannot adopt workspace or project after composition begins',async()=>{
  const source=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');
- const start=source.indexOf('  async function boot() {'),end=source.indexOf('  useEffect(() => {',start);
+ const start=source.indexOf('  async function boot(): Promise<void> {'),end=source.indexOf('  useEffect(() => {',start);
  const body=source.slice(start,end);let pending=false,resolve,adopted=0;
  const oldWorkspace={restored:false};
  const dependencies={clipDraftRef:{current:{hasPendingComposition:()=>pending,hasUnsaved:()=>pending}},bootGuard:{current:{begin:()=>({}),isCurrent:()=>true}},preferenceScope:{current:'old'},audioRoleProbe:{current:null},audioRoleProbeEpoch:{current:1},setAudioRoleCapability:()=>{},migrateBrowserStorage:()=>{},rpc:()=>new Promise(r=>resolve=r),retainWorkspaceIdentity:()=>oldWorkspace,workspaceRef:{current:oldWorkspace},setWorkspace:()=>adopted++,setAuth:()=>{},notify:()=>{},readableError:String};

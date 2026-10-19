@@ -63,7 +63,7 @@ function fresh(t,{version=26,mock=false,file=':memory:'}={}){
  initializeWorkspaceSchemaThrough24(db);if(version===26)initializeWorkspaceSchema26(db);
  if(mock){
   createMockProvider({db,root:'/synthetic-unused-root'});
-  db.prepare('INSERT INTO mock_provider_tasks(rowid,provider_job_id,request_id,snapshot_json,snapshot_hash,scenario,created_at_ms,ready_at_ms,poll_count,download_attempts,cancelled) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(9007199254740993n,'mock-id','mock-request',Buffer.from([0,255,13,10]),'a'.repeat(64),'unknown',9007199254740993n,123.25,7,2,0);
+  const mockTaskInsert=db.prepare('INSERT INTO mock_provider_tasks(rowid,provider_job_id,request_id,snapshot_json,snapshot_hash,scenario,created_at_ms,ready_at_ms,poll_count,download_attempts,cancelled) VALUES(?,?,?,?,?,?,?,?,?,?,?)');mockTaskInsert.setReadBigInts(true);mockTaskInsert.run(9007199254740993n,'mock-id','mock-request',Buffer.from([0,255,13,10]),'a'.repeat(64),'unknown',9007199254740993n,123.25,7,2,0);
   db.prepare('INSERT INTO mock_provider_submissions(id,request_id,job_id,provider_job_id,created_at_ms,outcome) VALUES(?,?,?,?,?,?)').run(17,'mock-request',null,'mock-id',9007199254740993n,Buffer.from([0,254,13,10]));
   db.exec("UPDATE sqlite_sequence SET seq=9007199254740995 WHERE name='mock_provider_submissions'");
  }
@@ -81,9 +81,10 @@ function seedApplyStates(db){
  }
  const projectId=tasks[0].projectId;
  // Opaque old receipts must remain byte-for-byte; restoration is not repair.
- db.prepare('INSERT INTO timeline_requests(rowid,requestId,requestHash,response) VALUES(?,?,?,?)').run(9007199254740993n,randomUUID(),'a'.repeat(64),Buffer.from([0,255,13,10]));
- db.prepare('INSERT INTO timeline_history(rowid,id,projectId,position,operation,createdAt,beforeSnapshot,afterSnapshot) VALUES(?,?,?,?,?,?,?,?)')
-  .run(9007199254740995n,randomUUID(),projectId,1,'timeline.loudness.apply','at',raw({gain:0.25}),raw({gain:0.5}));
+ const timelineRequestInsert=db.prepare('INSERT INTO timeline_requests(rowid,requestId,requestHash,response) VALUES(?,?,?,?)');timelineRequestInsert.setReadBigInts(true);timelineRequestInsert.run(9007199254740993n,randomUUID(),'a'.repeat(64),Buffer.from([0,255,13,10]));
+ const historyInsert=db.prepare('INSERT INTO timeline_history(rowid,id,projectId,position,operation,createdAt,beforeSnapshot,afterSnapshot) VALUES(?,?,?,?,?,?,?,?)');
+ historyInsert.setReadBigInts(true);
+ historyInsert.run(9007199254740995n,randomUUID(),projectId,1,'timeline.loudness.apply','at',raw({gain:0.25}),raw({gain:0.5}));
  db.prepare('INSERT INTO timeline_history_cursors VALUES(?,1)').run(projectId);
  db.exec("UPDATE sqlite_sequence SET seq=9007199254740997 WHERE name='edit_tasks'");
  return tasks;

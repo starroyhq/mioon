@@ -10,6 +10,8 @@ import { rpc } from '../apps/web/src/api.ts';
 import * as rangeState from '../apps/web/src/export-range-state.ts';
 import * as rangeContracts from '@mioon/contracts/timeline-export-range';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const id = n => `70000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), timelineId = id(2), hash = 'a'.repeat(64);
 const context = patch => ({ scope: `${projectId}:1`, projectId, timelineId, revision: 4, connected: true, ...patch });
@@ -282,13 +284,13 @@ test('third dock integrates with original keep-mounted/inert panes, existing mod
   assert.match(appSource, /data-testid="export-timeline"[^>]+onClick={openTimelineExport}/);
   for (const tab of ['properties', 'agent', 'delivery']) { const shell = readFileSync(new URL('../apps/web/src/WorkbenchShell.tsx', import.meta.url), 'utf8'); assert.ok((appSource + shell).includes(`data-testid="right-dock-tab-${tab}"`)); assert.ok(appSource.includes(`<AgentDockPane id="right-dock-${tab}"`)); }
   assert.match(appSource, /<CollapsibleContent keepMounted className="inspector-region-content">/);
-  assert.match(appSource, /async function changeMode\(mode\)[\s\S]*?if \(!await guardNavigation\(\)\) return;/);
+  assert.match(appSource, /async function changeMode\(mode: WorkspaceMode\)[\s\S]*?if \(!await guardNavigation\(\)\) return;/);
   const inspect = appSource.slice(appSource.indexOf('  async function inspect('), appSource.indexOf('  async function addShot(')); assert.doesNotMatch(inspect, /setRightDockTab/);
   const controllerSource = readFileSync(new URL('../apps/web/src/export-preflight-state.ts', import.meta.url), 'utf8');
   const hook = readFileSync(new URL('../apps/web/src/use-export-preflight.ts', import.meta.url), 'utf8');
   assert.doesNotMatch(controllerSource + hook, /localStorage|sessionStorage|setInterval|setTimeout|timeline\.render/);
   assert.doesNotMatch(hook, /\.check\(|takeExportBinding|visibilitychange/);
-  assert.match(hook, /controller\.current\.setVisible\(visible\)/);
+  assert.match(hook, /controller\.current!\.setVisible\(visible\)/);
 });
 
 test('rpc optional signal preserves exact existing call shape and only attaches observer signal on request', async t => {

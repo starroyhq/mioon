@@ -1,5 +1,7 @@
 import * as i18n from '../packages/i18n/src/index.ts';
 import { createI18nTestContext as localeDisplay } from './helpers/i18n.ts';
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const localizedSource = source => source + JSON.stringify(Object.entries(i18n.catalogs).filter(([key]) => source.includes(key)).map(([, entry]) => entry['zh-Hans']));
 import test from 'node:test';
 import assert from 'node:assert/strict';

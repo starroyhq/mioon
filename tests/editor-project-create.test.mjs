@@ -10,6 +10,8 @@ import { createLauncherClient, LauncherCreateError } from '../apps/web/src/launc
 import { createProjectEntryController } from '../apps/web/src/project-entry-state.ts';
 import { ApiError } from '../apps/web/src/api.ts';
 
+import { lenientFunction, stripSourceTypes } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const app = readFileSync(process.env.MIOON_EDITOR_CREATE_APP_SOURCE || new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const id = n => `76000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const name = 'Private project name', description = 'Private project description';
@@ -25,7 +27,7 @@ function appFixture(options = {}) {
   const inputs = createEditorWindowInputs(), busy = new Set(), calls = [];
   let refreshCalls = 0;
   const read = navigation => inputs.read({ busy, navigation, defaultSettings: TIMELINE_EXPORT_DEFAULT_SETTINGS });
-  const env = { msg, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }),
+  const env = { application: null, clipConnectionBlocked: {current: false}, msg, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }),
     nativeWindow: options.web ? null : { context: { role: 'editor', initialProjectId: id(1) } }, editorInputs: { current: inputs },
     nativeProjectEntry: options.noEntry ? null : { show: mode => { calls.push(['scoped-entry', mode]); return Promise.resolve(true); } },
     projectCreateFlight: { current: null }, currentProject: { current: id(1) }, importSession: { current: { active: true, selection: 0 } },
@@ -66,9 +68,9 @@ const openResult = patch => ({ ok: true, reason: 'accepted', targetWindowId: id(
 // Execute the actual composition-root DI with the real transport error class
 // and contract schemas, rather than a test-only definitive-error predicate.
 const main = readFileSync(new URL('../apps/web/src/main.tsx', import.meta.url), 'utf8');
-const declaration = main.match(/^const launcherContracts = (.+);$/m);
+const declaration = main.match(/^const launcherContracts(?:: [^=]+)? = (.+);$/m);
 assert.ok(declaration, 'Main retains one narrow contract DI declaration');
-const checks = Function('ApiError', 'schemas', 'workspaceRestoreInspectionSchema', `return ${declaration[1]};`)(ApiError, schemas, workspaceRestoreInspectionSchema);
+const checks = Function('ApiError', 'schemas', 'workspaceRestoreInspectionSchema', `return (${stripSourceTypes('('+declaration[1]+')',{loader:'ts'}).trim().replace(/;$/,'')});`)(ApiError, schemas, workspaceRestoreInspectionSchema);
 async function entryFixture(options = {}) {
   const calls = [], opens = []; let current = nativeContext(), token = 100, controller;
   const failure = { inspect: false, list: false, describe: false };
@@ -257,5 +259,10 @@ test('Web real create/runSession preserves legacy retry and response semantics w
   let count = 0; const f = appFixture({ web: true, create: () => { if (!count++) throw Error('Lost old Web ACK'); return { id: id(2) }; } });
   assert.equal(await f.createProject(name, description), false); assert.equal(f.read().unknown, false);
   assert.equal(await f.createProject(name, description), true); assert.equal(f.posts().length, 2);
-  assert.equal(f.calls.filter(call => call[0] === 'run').every(call => call[1].length === 3), true);
+  const runs = f.calls.filter(call => call[0] === 'run');
+  assert.equal(runs.length, 2);
+  for (const [, args] of runs) {
+    assert.equal(args[0], 'project-create'); assert.equal(args[1], 'project.create'); assert.deepEqual(args[2], { name, description });
+  }
+  assert.equal(runs.every(([, args]) => args.length === 5), true);
 });

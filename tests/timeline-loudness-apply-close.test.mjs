@@ -18,6 +18,8 @@ import { submitTimelineLoudnessApply } from '../apps/web/src/timeline-loudness-a
 import { fixture, deferred, id, projectId, timelineId } from './helpers/timeline-mix-loudness-ui-fixture.mjs';
 import { message as messageKey, renderMessage } from './helpers/i18n.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 // Frozen pre-fix sources exercise the identical causal test without changing
 // the worktree. Only these four non-secret renderer files are substituted.
 const sourcePath = filename => process.env.MIOON_LOUDNESS_CLOSE_SOURCE_ROOT

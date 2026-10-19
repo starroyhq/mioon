@@ -10,6 +10,8 @@ import { submitTimelineLoudnessApply } from '../apps/web/src/timeline-loudness-a
 import { timelineLoudnessCandidateDigest } from '@mioon/contracts/timeline-loudness-apply';
 import { id, input, report, context as mixContext, projectId, timelineId, fixture } from './helpers/timeline-mix-loudness-ui-fixture.mjs';
 import { message as messageKey, renderMessage } from './helpers/i18n.ts';
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const part = (start, end) => app.slice(app.indexOf(start), app.indexOf(end, app.indexOf(start)));
 const durable = part('  async function run(', '  async function runSession(');
@@ -109,7 +111,7 @@ test('malformed application ACK cannot release durable lane or become UI success
 test('apply is nested in the existing delivery card and recovers through existing TaskCenter only', () => {
   assert.match(app, /<TimelineMixLoudness loudness=\{timelineMixLoudness\}[^>]*onRevokeApply/);
   assert.match(app, /apply=\{<TimelineLoudnessApply apply=\{timelineLoudnessApply\}/);
-  assert.match(app, /timelineLoudnessApplyRef\.current\?\.controller\.recovered\(acknowledgedTask, loudnessRecoveryScope\)/);
+  assert.match(app, /timelineLoudnessApplyRef\.current\?\.controller\.recovered\(\(acknowledgedTask as unknown as string \| null\), loudnessRecoveryScope as string \| null\)/);
   assert.doesNotMatch(apply, /rpc\(|exportSettings.*choose|localStorage|sessionStorage|gains/);
 });
 

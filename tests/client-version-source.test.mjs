@@ -94,7 +94,12 @@ test('source wiring keeps CLI, MCP, schema discovery and doctor on the shared VE
   for (const source of [cli, mcp]) {
     assert.ok(/import\s*\{[^}]*\bVERSION\b[^}]*\}\s*from\s*['"]@mioon\/client['"]/.test(source), 'consumer imports VERSION from the shared client');
   }
-  assert.ok(/function help\(operation\)\s*\{\s*return\s*\{name:\s*'mioon',\s*version:\s*VERSION/.test(cli), 'CLI help uses VERSION');
+  // Help presentation now lives in a typed module and receives the shared VERSION
+  // through its explicit dependency object; the source wiring must still keep it.
+  const cliHelp = await readFile(new URL('apps/cli/src/help.ts', root), 'utf8');
+  assert.ok(/import\s*\{help\}\s*from\s*'\.\/help\.ts'/.test(cli), 'CLI routes help through the shared help module');
+  assert.ok(/export function help\(operation: string \| undefined, \{[^}]*VERSION/.test(cliHelp), 'CLI help receives VERSION');
+  assert.ok(/version:\s*VERSION/.test(cliHelp), 'CLI help uses VERSION');
   assert.ok(/if\s*\(options\.version\)\s*data\s*=\s*\{name:\s*'mioon',\s*version:\s*VERSION\}/.test(cli), 'CLI --version uses VERSION');
   assert.ok(/new Server\(\{name:\s*'mioon',\s*version:\s*VERSION\}/.test(mcp), 'MCP server metadata uses VERSION');
   assert.ok(/return parsed\.operation\s*\?[^;]+:\s*\{version:\s*VERSION,/.test(clientSource), 'schema discovery uses VERSION');

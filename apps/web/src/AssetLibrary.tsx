@@ -15,6 +15,7 @@ import { assetKind, dragAsset } from './Timeline.tsx';
 import AssetDispositionControls, { useDispositionInteraction } from './AssetDispositionControls.tsx';
 import type { DispositionController, DispositionState } from './AssetDispositionControls.tsx';
 import { dispositionCounts, dispositionFilters, filterLibraryAssets } from './asset-disposition-state.ts';
+import type { AssetDispositionController, AssetDispositionState, DispositionFilter } from './asset-disposition-state.ts';
 import AssetTimelineUsage, { AssetTimelineUsageFilters, useAssetTimelineUsageFilter } from './AssetTimelineUsage.tsx';
 import type { UsageSnapshot } from './timeline-asset-usage.ts';
 import type { AppAsset, AppProject, AppShot, AppVersion, WorkspaceMode } from './App.tsx';
@@ -29,8 +30,7 @@ import type { TimelineAssetUse } from './timeline-asset-usage.ts';
 import type { SubjectsBundle } from './SubjectLibrary.tsx';
 
 type SelectChange = {target: {value: string}};
-interface LibraryDispositionState extends DispositionState {loading?: boolean; mutationError?: DisplayMessage | null; uncertain?: boolean}
-interface Dispositions {state: LibraryDispositionState | null; controller: DispositionController & {read(): unknown}}
+interface Dispositions {state: AssetDispositionState | null; controller: AssetDispositionController}
 interface Annotations {state: AnnotationState | null}
 type FilterChip = {key: string; label: string; remove: () => void};
 const filterKeys = [['all', 'assets.all'], ['image', 'assets.image'], ['video', 'assets.video'], ['audio', 'assets.audio']] as const;
@@ -78,18 +78,20 @@ export default function AssetLibrary({ mutationDisabled = false, assets, filter,
   const { layout, setLayout } = useAssetLibraryLayout(libraryScope);
   const libraryView = libraryTab.scope === libraryScope ? libraryTab.value : 'assets';
   const state = dispositions?.state, controller = dispositions?.controller;
+  // The validated controller scope is a string when set; other values stay null.
+  const dispositionScope = typeof state?.scope === 'string' ? state.scope : null;
   const [localFilter, setLocalFilter] = useState<{scope: string | null | undefined; value: string}>({ scope: null, value: 'all' });
-  const dispositionFilter = localFilter.scope === state?.scope ? localFilter.value : 'all';
-  const interaction = useDispositionInteraction(state?.scope, controller);
-  const chooseDispositionFilter = (value: string) => interaction.admit(() => setLocalFilter({ scope: state?.scope, value }));
-  const usageProps = { projectId: project?.id, scope: state?.scope || libraryScope, usage: timelineUsage, visible: interaction.visible && !collapsed && libraryView === 'assets' };
+  const dispositionFilter = localFilter.scope === dispositionScope ? localFilter.value : 'all';
+  const interaction = useDispositionInteraction(dispositionScope, controller as unknown as DispositionController | null | undefined);
+  const chooseDispositionFilter = (value: string) => interaction.admit(() => setLocalFilter({ scope: dispositionScope, value }));
+  const usageProps = { projectId: project?.id, scope: dispositionScope || libraryScope, usage: timelineUsage, visible: interaction.visible && !collapsed && libraryView === 'assets' };
   const [tagChoice, setTagChoice] = useState<{scope: unknown; value: string}>({ scope: null, value: '' });
   const tagFilter = tagChoice.scope === annotations?.state?.ownerScope ? tagChoice.value : '';
   const tags = annotationTags(annotations?.state);
   const unknownAnnotations = annotations ? assets.filter(asset => asset.projectId === project?.id && !annotationRow(annotations.state, asset.id)).length : 0;
-  const libraryFilters = { type: filter, search, disposition: dispositionFilter, state };
+  const libraryFilters = { type: filter, search, disposition: dispositionFilter as DispositionFilter, state: state ?? undefined };
   const usageFilter = useAssetTimelineUsageFilter({ ...usageProps, assets: filterLibraryAssets(assets.filter(asset => asset.projectId === project?.id && annotationMatches(annotations?.state, asset.id, tagFilter)), libraryFilters) });
-  const resetFilters = () => interaction.admit(() => { setLocalFilter({ scope: state?.scope, value: 'all' }); usageFilter.reset(); setTagChoice({ scope: annotations?.state?.ownerScope, value: '' }); onFilter('all'); onSearch(''); });
+  const resetFilters = () => interaction.admit(() => { setLocalFilter({ scope: dispositionScope, value: 'all' }); usageFilter.reset(); setTagChoice({ scope: annotations?.state?.ownerScope, value: '' }); onFilter('all'); onSearch(''); });
   // The usage filter is generic over the asset identity; the filtered array is the
   // caller's own AppAsset records.
   const visible = usageFilter.visibleAssets as readonly AppAsset[];
@@ -114,11 +116,11 @@ export default function AssetLibrary({ mutationDisabled = false, assets, filter,
            ...(usageFilter.filter !== 'all' ? [{ key: 'usage', label: t('assets.usage.unused'), remove: usageFilter.reset }] : []),
            ...(search ? [{ key: 'search', label: t('redesign.library.searchFilter', { query: search }), remove: () => onSearch('') }] : []),
          ] as FilterChip[]}>
-       {dispositions && <><div className="asset-disposition-filter" role="group" aria-label={t('assets.markFilter')}>{typedDispositionFilters.map(([value, label]) => <Button variant="ghost" size="sm" type="button" key={value} data-testid={`asset-disposition-filter-${value}`} aria-pressed={dispositionFilter === value} disabled={!interaction.visible || !state?.scope} onClick={() => chooseDispositionFilter(value)}>{renderMessage(label)}<span>{counts[value]}</span></Button>)}</div>
+       {dispositions && <><div className="asset-disposition-filter" role="group" aria-label={t('assets.markFilter')}>{typedDispositionFilters.map(([value, label]) => <Button variant="ghost" size="sm" type="button" key={value} data-testid={`asset-disposition-filter-${value}`} aria-pressed={dispositionFilter === value} disabled={!interaction.visible || !dispositionScope} onClick={() => chooseDispositionFilter(value)}>{renderMessage(label)}<span>{counts[value]}</span></Button>)}</div>
        <div className="asset-disposition-summary" data-testid="asset-disposition-summary">
          <span role="status" title={t('assets.loadedCountHint')}>{t('assets.loadingSummary', { count: counts.all, read: counts.all - counts.unknown })}{state?.loading ? t('assets.readingSuffix') : failed ? t('assets.failedSuffix') : ''}</span>
          <Button variant="ghost" className="text-button" type="button" data-testid="asset-disposition-refresh" aria-label={t('assets.reloadMarks')} disabled={!interaction.visible || !state?.scope || state.loading || Boolean(state.savingAssetId)} onClick={() => interaction.admit(() => controller!.read())}>{t('shell.refresh')}</Button>
-         <Button variant="ghost" className="text-button" type="button" data-testid="asset-filter-reset" aria-label={t('assets.resetFilters')} disabled={!interaction.visible || !state?.scope} onClick={resetFilters}>{t('shell.reset')}</Button>
+         <Button variant="ghost" className="text-button" type="button" data-testid="asset-filter-reset" aria-label={t('assets.resetFilters')} disabled={!interaction.visible || !dispositionScope} onClick={resetFilters}>{t('shell.reset')}</Button>
        </div></>}
        {annotations && <><label className="annotation-tag-filter" htmlFor="annotation-tag-filter">{t('annotations.filter')}<WorkbenchSelect id="annotation-tag-filter" data-testid="annotation-tag-filter" value={tagFilter} disabled={!interaction.visible || !annotations.state?.scope} onChange={(event: SelectChange) => { const value = event.target.value; interaction.admit(() => setTagChoice({ scope: annotations.state!.ownerScope, value })); }}><option value="">{t('annotations.allTags')}</option>{[...new Set([...tags, ...(tagFilter ? [tagFilter] : [])])].map(tag => <option value={tag} key={tag}>{tag}</option>)}</WorkbenchSelect></label>{unknownAnnotations > 0 && <p className="annotation-unverified" role="status">{t('annotations.unknownCount', { count: unknownAnnotations })}</p>}</>}
 
@@ -136,12 +138,12 @@ export default function AssetLibrary({ mutationDisabled = false, assets, filter,
             {state?.uncertain && <Button variant="ghost" className="text-button" type="button" onClick={() => interaction.admit(() => onShowTasks?.())}>{t('assets.viewPending')}</Button>}
             {hiddenUsed > 0 && <p data-testid="asset-filter-hidden-used">{t('assets.hiddenUsed', { count: hiddenUsed })}</p>}
           </div>}
-          {outsideSelected && <section className="asset-disposition-selected" data-testid="asset-filter-selected-outside" aria-label={t('assets.selectedHidden')}><strong title={outsideSelected.name}>{outsideSelected.name}</strong><p>{t('assets.selectedHiddenHint')}</p><Button variant="ghost" className="text-button" type="button" data-testid="asset-filter-show-selected" onClick={resetFilters}>{t('assets.showAllKeepSelection')}</Button><AssetDispositionControls asset={outsideSelected} state={state!} controller={controller!} blocked={dispositionBlocked} prefix="selected-asset" /></section>}
+          {outsideSelected && <section className="asset-disposition-selected" data-testid="asset-filter-selected-outside" aria-label={t('assets.selectedHidden')}><strong title={outsideSelected.name}>{outsideSelected.name}</strong><p>{t('assets.selectedHiddenHint')}</p><Button variant="ghost" className="text-button" type="button" data-testid="asset-filter-show-selected" onClick={resetFilters}>{t('assets.showAllKeepSelection')}</Button><AssetDispositionControls asset={outsideSelected} state={state as unknown as Parameters<typeof AssetDispositionControls>[0]['state']} controller={controller as unknown as Parameters<typeof AssetDispositionControls>[0]['controller']} blocked={dispositionBlocked} prefix="selected-asset" /></section>}
           {visible.map((asset: AppAsset) => { const kind = assetKind(asset); const version = versions.find(item => item.assetId === asset.id); const shot = version ? shots.find(item => item.id === version.shotId) : null; return <div className={`asset-card ${kind} ${selectedAsset?.id === asset.id ? 'selected' : ''}`} key={asset.id} data-testid={`asset-card-${asset.id}`} draggable={!mutationDisabled} onPointerDownCapture={(event: PointerEvent<HTMLDivElement>) => { event.currentTarget.draggable = !mutationDisabled && !(event.target as Element).closest?.('[data-no-asset-drag]'); }} onPointerUp={(event: PointerEvent<HTMLDivElement>) => { event.currentTarget.draggable = !mutationDisabled; }} onPointerCancel={(event: PointerEvent<HTMLDivElement>) => { event.currentTarget.draggable = !mutationDisabled; }} onDragStart={(e: DragEvent) => { if (mutationDisabled || (e.target as Element).closest?.('[data-no-asset-drag]')) { e.preventDefault(); return; } dragAsset(e, asset.id); }}>
             <Button variant="ghost" className="asset-thumbnail" onClick={() => onPreview(asset)} aria-label={t('assets.previewNamed', { name: asset.name })}><Media asset={asset} /><span className="asset-kind" title={t(`assets.${kind}` as MessageKey)}><Icon name={kind === 'video' ? 'play' : kind === 'audio' ? 'music' : 'image'} size={11} />{kind === 'image' ? t('assets.image') : `${kind === 'audio' ? t('assets.audio') : t('assets.video')} · ${asset.duration ? formatNumber(Number(asset.duration), { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + 's' : '—'}`}</span>{Number(asset.duration) > 0 && <span className="asset-duration">{formatNumber(Number(asset.duration), { maximumFractionDigits: 0 })}s</span>}</Button>
             <div className="asset-card-meta"><div><strong title={asset.name}>{asset.name}</strong><span>{asset.width && asset.height ? `${asset.width} × ${asset.height}` : `${formatNumber(asset.sizeBytes / 1024, { maximumFractionDigits: 0 })} KB`}</span>{version && <span className="asset-generated-badge" data-testid={`generated-badge-${asset.id}`} title={t('assets.generatedVersion', { name: shot?.title || t('assets.generatedShot'), number: version.number })}><Icon name="sparkle" size={10} /><span>{shot?.title || t('assets.generatedShot')} · V{version.number}</span>{shot?.selectedVersionId === version.id && <b>{t('assets.selected')}</b>}</span>}</div></div>
             {annotations && !annotationRow(annotations.state, asset.id) && <p className="annotation-unverified" data-testid={`annotation-unverified-${asset.id}`}>{t('annotations.unknown')}</p>}
-            {dispositions && <AssetDispositionControls asset={asset} state={state!} controller={controller!} blocked={dispositionBlocked} compact={layout === 'grid'} />}
+            {dispositions && <AssetDispositionControls asset={asset} state={state as unknown as Parameters<typeof AssetDispositionControls>[0]['state']} controller={controller as unknown as Parameters<typeof AssetDispositionControls>[0]['controller']} blocked={dispositionBlocked} compact={layout === 'grid'} />}
             <AssetTimelineUsage {...usageProps} compact={layout === 'grid'} assetId={asset.id} assetName={asset.name} onLocate={onLocateTimelineUse} />
             <div className="asset-card-actions">{onCanvas && <WorkbenchTooltip content={t('assets.addCanvasHint')}><Button variant="ghost" className={!editing ? 'mode-primary-action' : ''} data-testid={`asset-to-canvas-${asset.id}`} aria-label={t('assets.addCanvasNamed', { name: asset.name })} onClick={() => onCanvas(kind, asset)}><Icon name="grid" size={12} />{t('assets.addToCanvas')}</Button></WorkbenchTooltip>}<WorkbenchTooltip content={t('assets.addTimelineHint')}><Button variant="ghost" className={editing ? 'mode-primary-action' : ''} aria-label={t('assets.addTimelineNamed', { name: asset.name })} data-testid={`asset-to-timeline-${asset.id}`} disabled={mutationDisabled || !project || busy.timeline || typeof onTimeline !== 'function'} onClick={() => { if (!mutationDisabled && typeof onTimeline === 'function') onTimeline(asset.id); }}><Icon name="plus" size={12} />{t('assets.addToEditing')}</Button></WorkbenchTooltip></div>
           </div>; })}

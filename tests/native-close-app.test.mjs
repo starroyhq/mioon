@@ -5,6 +5,8 @@ import { readNativeLegacyClose } from '../apps/web/src/native-close-legacy.ts';
 import { createNativeCloseRegistry, installNativeCloseAdmission } from '../apps/web/src/native-close-state.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const app = readFileSync(process.env.MIOON_NATIVE_CLOSE_APP_SOURCE || new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 function harness() {
   const events = new Map(), registry = createNativeCloseRegistry(), settings = createSettingsNavigationRegistry();

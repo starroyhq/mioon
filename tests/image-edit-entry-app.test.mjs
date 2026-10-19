@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {captureImageEditIntent,imageEditIntentSource} from '../apps/web/src/image-edit-intent.ts';
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const app=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');
 const begin=app.indexOf('  function imageEditScope()'),end=app.indexOf('  if (auth === false && !retainWorkbenchForClip)',begin);
 assert.ok(begin>=0&&end>begin);const source=app.slice(begin,end);

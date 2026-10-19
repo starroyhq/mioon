@@ -191,8 +191,9 @@ for(const version of [25,27])for(const missing of [[],names])test(`restored${ver
 const mutationGuards=['reject_mutation_request_replacement','immutable_mutation_requests','retain_mutation_requests'];
 function seedMutationReceipt(db){
  const projectId=db.prepare('SELECT id FROM projects LIMIT 1').get().id;
- db.prepare('INSERT INTO mutation_requests(rowid,requestId,operation,projectId,canonicalInput,response) VALUES(?,?,?,?,?,?)')
-  .run(9007199254741111n,'retained-mutation-repair','shot.create',projectId,' \n{"raw":"\\u754c","n":2.00}\n ',' \n{"retained":true,"n":2.00}\n ');
+ const mutationInsert=db.prepare('INSERT INTO mutation_requests(rowid,requestId,operation,projectId,canonicalInput,response) VALUES(?,?,?,?,?,?)');
+ mutationInsert.setReadBigInts(true);
+ mutationInsert.run(9007199254741111n,'retained-mutation-repair','shot.create',projectId,' \n{"raw":"\\u754c","n":2.00}\n ',' \n{"retained":true,"n":2.00}\n ');
 }
 for(const version of [24,26])for(const missing of [mutationGuards,...mutationGuards.map(name=>[name])])test(`ordinary${version} restores missing historical mutation receipt guards: ${missing.join(',')}`,t=>{
  const db=fresh(t,version);seedRaw(db);seedMutationReceipt(db);drop(db,missing);const before=snapshot(db);
@@ -230,10 +231,12 @@ function seedRetainedState(db){
  seedRaw(db);seedMutationReceipt(db);
  const projectId=randomUUID(),timelineId=randomUUID();
  db.prepare('INSERT INTO projects(id,data) VALUES(?,?)').run(projectId,' \n{"name":"raw preservation"}\n ');
- db.prepare('INSERT INTO timelines(rowid,id,projectId,data) VALUES(?,?,?,?)')
-  .run(9007199254742001n,timelineId,projectId,' \n{"id":"'+timelineId+'","clips":[{"gain":0.2500}],"revision":4}\n ');
- db.prepare('INSERT INTO timeline_history(rowid,id,projectId,position,operation,createdAt,beforeSnapshot,afterSnapshot) VALUES(?,?,?,?,?,?,?,?)')
-  .run(9007199254742002n,randomUUID(),projectId,1,'timeline.clip.update','raw-time',' {"gain":0.5000} ',' {"gain":0.2500} ');
+ const timelineInsert=db.prepare('INSERT INTO timelines(rowid,id,projectId,data) VALUES(?,?,?,?)');
+ timelineInsert.setReadBigInts(true);
+ timelineInsert.run(9007199254742001n,timelineId,projectId,' \n{"id":"'+timelineId+'","clips":[{"gain":0.2500}],"revision":4}\n ');
+ const historyInsert=db.prepare('INSERT INTO timeline_history(rowid,id,projectId,position,operation,createdAt,beforeSnapshot,afterSnapshot) VALUES(?,?,?,?,?,?,?,?)');
+ historyInsert.setReadBigInts(true);
+ historyInsert.run(9007199254742002n,randomUUID(),projectId,1,'timeline.clip.update','raw-time',' {"gain":0.5000} ',' {"gain":0.2500} ');
  db.prepare('INSERT INTO timeline_history_cursors(projectId,position) VALUES(?,?)').run(projectId,1);
  db.exec("DELETE FROM sqlite_sequence WHERE name='edit_tasks'");
  const sequenceInsert=db.prepare("INSERT INTO sqlite_sequence(rowid,name,seq) VALUES(?,'edit_tasks',?)");sequenceInsert.setReadBigInts(true);sequenceInsert.run(9007199254742003n,9007199254740991);

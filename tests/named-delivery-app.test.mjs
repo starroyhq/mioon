@@ -8,6 +8,8 @@ import {createExportRangeController} from '../apps/web/src/export-range-state.ts
 import {readNativeLegacyClose} from '../apps/web/src/native-close-legacy.ts';
 import {message as msg} from '../packages/i18n/src/index.ts';
 
+import { lenientFunction, stripSourceTypes } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const source=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');
 function actual(start,end,environment){
  const first=source.indexOf(start),last=source.indexOf(end,first);
@@ -219,10 +221,10 @@ test('cancelled project confirmation does not consume a valid render capture',as
 });
 
 test('App wires name scope, validation, view identity, disclosure and independent unload guard',()=>{
- assert.match(source,/useTimelineDeliveryName\(\{ \.\.\.deliveryNameContext\(\), getContext: deliveryNameContext \}\)/);
+ assert.match(source,/useTimelineDeliveryName\(\{ \.\.\.deliveryNameContext\(\), getContext: deliveryNameContext \} as unknown as Parameters<typeof useTimelineDeliveryName>\[0\]\)/);
  assert.match(source,/deliveryNameRef\.current = deliveryName/);
- assert.match(source,/deliveryName: deliveryName\.controller\.getName/);
- assert.match(source,/deliveryNameVersion: deliveryName\.controller\.getVersion/);
+ assert.match(source,/deliveryName: deliveryName\.controller!\.getName/);
+ assert.match(source,/deliveryNameVersion: deliveryName\.controller!\.getVersion/);
  assert.match(source,/settingsVersion', 'deliveryNameVersion', 'rangeVersion'\]\.some/);
  assert.match(source,/!deliveryName\.error/);
  assert.match(source,/readLegacySnapshot: \(\) => readNativeLegacyClose\(\{[\s\S]*?delivery: deliveryNameRef\.current\?\.controller/);
@@ -235,7 +237,12 @@ test('actual App pure close read preserves an unacknowledged name and follows on
  // The actual App callback must read the real controller state without calling
  // context-synchronizing captures, acknowledgements, or other controller APIs.
  const delivery=new Proxy(f.controller,{get(target,key){assert.equal(key,'getState','Close must use only the pure delivery state getter');return target.getState;}});
- const read=actual('() => readNativeLegacyClose({ inspectorDirty:',',\n  }), []);',{
+ const readStart=source.indexOf('() => readNativeLegacyClose({ inspectorDirty:');
+ const readEndMarker='subject: subjectsRef.current?.controller }),';
+ const readEnd=source.indexOf(readEndMarker,readStart)+readEndMarker.length;
+ assert.ok(readStart>0&&readEnd>readStart,'Actual App legacy close snapshot boundaries must remain present');
+ const readSource=stripSourceTypes(source.slice(readStart,readEnd).replace(/,$/,''),{loader:'tsx'}).trim().replace(/;$/,'');
+ const read=Function('env',`with (env) { return (${readSource}); }`)({
   readNativeLegacyClose,dirtyRef:{current:false},shotTextRef:{current:null},shotCloseRef:{current:null},
   clipDraftRef:{current:null},timelineFormatRef:{current:null},deliveryNameRef:{current:{controller:delivery}},
   subtitlesRef:{current:null},subjectsRef:{current:null},

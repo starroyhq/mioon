@@ -9,6 +9,8 @@ import * as submissions from '../apps/web/src/submissions.ts';
 import { message as messageKey, renderMessage } from '../packages/i18n/src/index.ts';
 import { isMutationOperation } from '../apps/web/src/mutation-submissions.ts';
 import { creationParameter } from '../apps/web/src/creation-i18n.ts';
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const taskIntentModule = { exports: {} };
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
 const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
@@ -245,7 +247,7 @@ test('TaskCenter separates durable, legacy and generation details, retains gener
   for (const text of ['submission_unknown', 'providerJobId', 'outputReviewRequired', 'retryGeneration', 'job.cancel']) assert.ok(source.includes(text), text);
   assert.match(rendered('tasks.center.unknownSubmissionWarning'), /服务商可能已接受任务并计费/);
   assert.match(rendered('tasks.pending.mutationStorage'), /恢复记录仅存于当前浏览器会话/); assert.match(pending, /adopt-legacy-task/); assert.match(pending, /legacy-task-duplicate/);
-  assert.match(app, /void tasksRef.current.load\(id\)/);
+  assert.match(app, /void tasksRef\.current!?\.load\(id\)/);
   assert.match(app, /taskState.phase !== 'ready'/);
 });
 

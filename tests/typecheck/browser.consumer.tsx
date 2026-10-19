@@ -73,7 +73,7 @@ void checkProjectHomeContracts;
 
 import { createNativeCloseAdmission, createNativeCloseRegistry, installNativeCloseAdmission } from '../../apps/web/src/native-close-state.ts';
 import { createSettingsNavigationRegistry } from '../../apps/web/src/settings-navigation-state.ts';
-function checkNativeCloseContracts(page: Window): void {
+function checkNativeCloseContracts(page: Parameters<typeof installNativeCloseAdmission>[0]): void {
   const options = { registry: createNativeCloseRegistry(), settings: createSettingsNavigationRegistry(), readScope: () => 'scope', readLegacyDirty: () => false };
   const admission = createNativeCloseAdmission(options), inspected = admission.inspect();
   const allowed: boolean = admission.commit(inspected.token, { discardDirty: true, allowDrainFailure: false, expiresAt: Date.now() + 1000 });

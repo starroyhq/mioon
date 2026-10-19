@@ -87,7 +87,7 @@ export default function WorkspaceBackupPanel({ scope, getScope, connected, read,
   callbacks.current = { scope, getScope, connected, visible: visible && expanded, read, onUnauthorized };
   const currentCallbacks = callbacks.current;
   if (!controller.current) controller.current = createWorkspaceBackupController({
-    read: (input: unknown, options: unknown) => (callbacks.current as NonNullable<typeof callbacks.current>).read(input, options), onChange: (next: WorkspaceBackupState) => setState(next),
+    read: (input: unknown, options: unknown) => (callbacks.current as NonNullable<typeof callbacks.current>).read(input, options), onChange: ((next?: WorkspaceBackupState) => setState(next ?? null)) as never,
     getContext: () => ({ scope: currentCallbacks.getScope?.() ?? currentCallbacks.scope, connected: currentCallbacks.connected, visible: currentCallbacks.visible }),
     onUnauthorized: () => currentCallbacks.onUnauthorized?.(),
   });

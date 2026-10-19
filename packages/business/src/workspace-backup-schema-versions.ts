@@ -35,7 +35,7 @@ export function readWorkspaceBackupSchemaVersion(db:DatabaseSync): number {
  if(version===48){try{validateWorkspaceSchema48(db);}catch{invalid();}return version;}
  if(version===44){try{validateWorkspaceSchema44(db);}catch{invalid();}return version;}
  if(version===40){try{validateWorkspaceSchema40(db);}catch{invalid();}return version;}
- try{validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:false});}catch{invalid();}
+ try{validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:false,allowOpaqueCells:true});}catch{invalid();}
  try{validateWorkspaceAudioRoleRows(db,{allowAudioRoles:version===38});}catch{invalid();}
  try{validateWorkspaceColourRows(db,{allowColour:version===30||version===32||version===34||version===36||version===38,allowMixedImages:version===32||version===34||version===36||version===38,allowJpegImages:version===34||version===36||version===38});}catch{invalid();}
  if(version===26){

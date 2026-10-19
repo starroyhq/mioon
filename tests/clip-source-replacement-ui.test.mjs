@@ -11,6 +11,8 @@ import * as submissions from '../apps/web/src/submissions.ts';
 import { timelineHistoryState } from '../apps/web/src/timeline-history.ts';
 import { mutationNotApplied } from '../apps/web/src/mutation-submissions.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const taskIntentModule = { exports: {} };
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
 const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
@@ -323,7 +325,7 @@ test('source wiring uses the existing inline inspector, stable mutation key, ses
   assert.match(appSource, /displayedClipInspector\.clip\.versionId === clipSource\.version\.id/);
   assert.match(appSource, /CollapsibleContent keepMounted className="inspector-region-content"/);
   assert.match(appSource, /return run\('timeline:mutation', operation/);
-  const responseGuard = appSource.indexOf('!isTimelineMutationResponse(operation, input, result)'), exactClear = appSource.indexOf('clearPending(projectId, key, stored)');
+  const responseGuard = appSource.indexOf('!isTimelineMutationResponse(operation, input, result)'), exactClear = appSource.indexOf('clearPending(projectId as string, key, stored!)');
   assert.ok(responseGuard >= 0 && exactClear > responseGuard, 'Validate the exact response before compare-and-clear of its retained intent');
   const component = readFileSync(new URL('../apps/web/src/ClipSourceReplacement.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(component, /\brpc\(|requestId\(|Dialog|Modal|confirm\(/);

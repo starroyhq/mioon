@@ -4,12 +4,12 @@ import {createHash,randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {installWorkspaceRestoreSchema,validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.ts';
-import {open,fixture as ordinaryFixture,snapshot} from './workspace-schema26-fixtures.mjs';
+import {open,fixture as ordinaryFixture,snapshot,resetLastInsertRowid} from './workspace-schema26-fixtures.mjs';
 import {readCurrentWorkspaceRole,createWorkspaceSchemaDispatch} from '../packages/business/src/workspace-schema-dispatch.ts';
 const unsupported=error=>error.code==='RESTORE_SCHEMA_UNSUPPORTED';
 function fixture(t,versions,{metadata=false,marker=true,ddl='CREATE TABLE schema_version(version INTEGER PRIMARY KEY)'}={}){
  const db=new DatabaseSync(':memory:');t.after(()=>db.close());
- if(marker){db.exec(ddl);for(const version of versions)db.prepare('INSERT INTO schema_version VALUES(?)').run(version);}
+ if(marker){db.exec(ddl);const insertMarker=db.prepare('INSERT INTO schema_version VALUES(?)');insertMarker.setReadBigInts(true);for(const version of versions)insertMarker.run(version);resetLastInsertRowid(db);}
  if(metadata)db.exec('CREATE TABLE workspace_restoration(id INTEGER PRIMARY KEY)');
  return db;
 }

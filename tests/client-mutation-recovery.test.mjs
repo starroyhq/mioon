@@ -7,6 +7,8 @@ import { prepareMutation, isMutationOperation, mutationNotApplied, validateMutat
 import { readPending, clearPending, prepareSubmission, reconcilePending } from '../apps/web/src/submissions.ts';
 import { loudnessApplyFixture } from './fixtures/timeline-loudness-apply.mjs';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 class Storage {
   values = new Map();
   get length() { return this.values.size; }
@@ -102,7 +104,7 @@ test('historical responses must identify the original project and target before 
 
 test('App opts every six-op path in, uses explicit drawer replay, and never resumes a partial structure', async () => {
   const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
-  assert.match(app, /stored = mutation \? prepareMutation\(entry, \{ replay \}\) : prepareSubmission\(entry, \{ replay \}\)/);
+  assert.match(app, /stored = \(mutation \? prepareMutation\(entry as never, \{ replay \}\) : prepareSubmission\(entry as PendingEntry, \{ replay \}\)\) as PendingEntry/);
   assert.match(app, /mutation && replay \? null : result/);
   assert.match(readFileSync(new URL('../apps/web/src/TaskCenter.tsx', import.meta.url), 'utf8'), /entry\.input, message\('tasks\.center\.originalRecovered'\), restored \? \{ replay: true, pendingEntry: entry \} : \{ replay: true \}/);
   assert.equal(translate('zh-Hans', 'tasks.center.originalRecovered'), '原请求已恢复并确认');
@@ -158,7 +160,7 @@ test('App opts every six-op path in, uses explicit drawer replay, and never resu
   assert.doesNotMatch(app, /await rpc\('(shot\.create|shot\.update|shot\.reorder|node\.create|node\.update|version\.select)'/);
   const structure = app.slice(app.indexOf('async function addStructure()'), app.indexOf('async function addNode('));
   assert.match(structure, /owner !== currentProject\.current/);
-  assert.match(structure, /dataRef\.current\.shots\.length \|\| dataRef\.current\.nodes\.length/);
+  assert.match(structure, /dataRef\.current!\.shots\.length \|\| dataRef\.current!\.nodes\.length/);
   assert.match(structure, /if \(!isCurrent\(captured\)\) return/);
   assert.match(structure, /if \(!created\).*msg\('projects\.structureStopped', \{ count: done \}\).*return;/);
   assert.match(translate('zh-Hans', 'projects.structureStopped', { count: 1 }), /已确认 1\/3.*其余镜头不会自动创建/);

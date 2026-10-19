@@ -139,8 +139,8 @@ export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, p
   const configuration = snapshot?.settings.configuration;
   const inspectionPolicy = snapshot?.inspection as PolicyView | null | undefined, editPolicy = snapshot?.edit as PolicyView | null | undefined, timelineEditPolicy = snapshot?.timelineEdit as PolicyView | null | undefined;
   const timelineTargetView = state.timelineTarget as TimelineTargetView | null;
-  const inspectionAvailable = agentInspectionAvailable(snapshot), inspecting = state.contextMode === AGENT_PROJECT_CONTEXT;
-  const editAvailable = agentEditAvailable(snapshot), editing = state.contextMode === AGENT_EDIT_CONTEXT;
+  const inspectionAvailable = agentInspectionAvailable(snapshot as unknown as Parameters<typeof agentInspectionAvailable>[0]), inspecting = state.contextMode === AGENT_PROJECT_CONTEXT;
+  const editAvailable = agentEditAvailable(snapshot as unknown as Parameters<typeof agentEditAvailable>[0]), editing = state.contextMode === AGENT_EDIT_CONTEXT;
   const timelineAvailable = agentTimelineAvailable(snapshot), moving = state.contextMode === AGENT_TIMELINE_CONTEXT, selectedTarget = agentChatCurrentTarget(state);
   const gainAvailable = agentTimelineGainAvailable(snapshot), gaining = state.contextMode === AGENT_TIMELINE_GAIN_CONTEXT;
   // Presentation state is tied to the exact displayed disclosure, never approval.

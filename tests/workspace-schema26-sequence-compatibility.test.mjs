@@ -25,7 +25,7 @@ function sequence(db) {
 
 function setSequence(db, value, rowid = 9007199254741991n) {
   db.exec("DELETE FROM main.sqlite_sequence WHERE name='edit_tasks'");
-  db.prepare("INSERT INTO main.sqlite_sequence(rowid,name,seq) VALUES(?,'edit_tasks',?)").run(rowid, value);
+  const insertion=db.prepare("INSERT INTO main.sqlite_sequence(rowid,name,seq) VALUES(?,'edit_tasks',?)");insertion.setReadBigInts(true);insertion.run(rowid, value);
 }
 
 function transaction(db, fn) {
@@ -168,7 +168,7 @@ for (const duplicate of [8123n, 8123]) {
   test(`ordinary26 rejects duplicate INTEGER/REAL sequence rows even with valid high-water values (${typeof duplicate})`, t => {
     const db = database(t);
     setSequence(db, 8123);
-    db.prepare("INSERT INTO sqlite_sequence(name,seq) VALUES('edit_tasks',?)").run(duplicate);
+    const duplicateInsert=db.prepare("INSERT INTO sqlite_sequence(name,seq) VALUES('edit_tasks',?)");duplicateInsert.setReadBigInts(true);duplicateInsert.run(duplicate);
     const before = snapshot(db);
     assert.throws(() => initializeWorkspaceSchema26(db), {code: 'RESTORE_SCHEMA_UNSUPPORTED'});
     assert.deepEqual(snapshot(db), before);

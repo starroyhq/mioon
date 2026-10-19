@@ -6,6 +6,8 @@ import { LOCALES, validateCatalogs, translate, message, renderMessage } from '..
 import { referenceSourceDetails, referenceTargetOptions, referenceAttachIssueDescriptor, canvasEdge } from '../apps/web/src/reference-connections.ts';
 import { importFeedback, renderImportFeedback } from '../apps/web/src/import-feedback.ts';
 
+import { lenientFunction, stripSourceTypes } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 test('shell catalog has all four locales, exact placeholders, and no missing-key fallback', () => {
   assert.deepEqual(validateCatalogs(shellMessages), []);
   for (const [key, entry] of Object.entries(shellMessages)) {
@@ -92,8 +94,8 @@ test('header actions and native settings remain reachable without locale or resi
 
 test('known workspace/storage diagnostics retain actionable meaning without exposing raw server text', () => {
   const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
-  const source = app.slice(app.indexOf('function readableError(error)'), app.indexOf('function Modal('));
-  const readableError = Function('msg', `${source}; return readableError;`)(message);
+  const source = app.slice(app.indexOf('function readableError(error'), app.indexOf('function Modal('));
+  const readableError = Function('msg', `${stripSourceTypes(source,{loader:'tsx'})}; return readableError;`)(message);
   const cases = {
     STORAGE_MIGRATION_BLOCKED: 'shell.error.storageMigration', WORKSPACE_ORIGIN_UNVERIFIED: 'tasks.unverifiedWorkspace',
     RESTORED_RECORD_HELD: 'tasks.heldReason', RESTORE_WORKSPACE_ORIGIN_MISMATCH: 'shell.error.workspaceChanged',

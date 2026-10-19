@@ -80,7 +80,7 @@ export const agentEditImmutableKey = (proposal: AgentEditProposal): string => JS
 // The model's response text is never evidence of approval or application.
 export function safeAgentEditProposal(value: unknown, projectId: string): AgentEditProposal {
   if (isAgentTimelineGainProposal(value, { projectId })) return safeAgentTimelineGainProposal(value, projectId) as AgentEditProposal;
-  if (record(value) && value.operation === 'timeline.clip.update') return safeAgentTimelineProposal(value, projectId) as AgentEditProposal;
+  if (record(value) && value.operation === 'timeline.clip.update') return safeAgentTimelineProposal(value, projectId) as unknown as AgentEditProposal;
   if (!record(value) || !uuid(value.id) || value.projectId !== projectId || !uuid(value.runId) || !hash(value.digest) || !knownStatus(value.status) || !knownRunStatus(value.runStatus) || value.operation !== 'shot.update') invalid();
   const diff = record(value.diff) ? value.diff : null, before = diff && record(diff.before) ? diff.before : undefined, after = diff && record(diff.after) ? diff.after : undefined;
   const targetInput = { ...(record(value.target) ? value.target : {}), ...before };
@@ -292,7 +292,7 @@ export function createAgentEditsSession({ projectId, client = createAgentEditsCl
     if (!proposal || proposal !== expected || !['approve', 'reject', 'recover', 'retry_approval'].includes(action) ||
         state.uncertainIds.includes(proposal.id) && !['recover', 'retry_approval'].includes(action) ||
         (action === 'recover' ? !agentEditCanRecover(proposal) : !agentEditCanApprove(proposal)) ||
-        ['approve', 'retry_approval'].includes(action) && Boolean(agentTimelineApprovalIssue(proposal, timelineContext || {})) ||
+        ['approve', 'retry_approval'].includes(action) && Boolean(agentTimelineApprovalIssue(proposal as unknown as Parameters<typeof agentTimelineApprovalIssue>[0], timelineContext || {})) ||
         retry && (!state.uncertainIds.includes(proposal.id) || !proof || proof.proposal !== proposal || proof.instanceId !== state.instanceId || proof.serial !== serial)) return false;
     for (const [id, item] of pins) if (terminal(item)) pins.delete(id);
     if (!pins.has(proposal.id) && pins.size >= 50) { publish({ ...projection(), message: pinCapacityMessage, displayMessage: pinCapacityDescriptor }); return false; }

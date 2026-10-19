@@ -3,6 +3,7 @@ import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import { safeAgentAuthorizationSnapshot, agentAuthorizationKey, agentAuthorizationReceiptSchema } from './agent-authorization-state.ts';
 import type { AgentAuthorizationSnapshot } from '../../../packages/contracts/src/agent-authorization.ts';
 import { AGENT_PROTOCOLS, deriveAgentEndpoint, agentProtocolConfiguration, agentConfigurationEqual, isAgentProtocol, safeAgentSettings } from './agent-settings.ts';
+import type { AgentSnapshotLike } from './agent-tool-state.ts';
 import type { AgentConfiguration, AgentProtocolConfiguration, AgentSettingsSnapshot } from './agent-settings.ts';
 
 import { AGENT_TYPED_CONTEXT, AGENT_PROJECT_CONTEXT, AGENT_EDIT_CONTEXT, AGENT_TIMELINE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT, agentTimelineGainAvailable, safeAgentTimelineGainPolicy, safeAgentTimelineGainTarget, agentTimelineGainTargetPatch, agentTimelineAvailable, safeAgentTimelinePolicy, safeAgentTimelineTarget, agentEditAvailable, safeAgentEditPolicy, safeAgentEditTarget, agentEditTargetKey, agentInspectionAvailable, agentRunContextMode, agentRunProvenanceEqual, agentRunActivityCompatible, safeAgentInspectionPolicy, safeAgentRunInspection, agentChatOutboundConsent } from './agent-tool-state.ts';
@@ -206,7 +207,7 @@ export function safeAgentChatRun(value: unknown, projectId: string, threadId?: s
   const errorCode = record(value.error) && typeof value.error.code === 'string' ? value.error.code : undefined;
   return { id: value.id, requestId: value.requestId, threadId: value.threadId, projectId, status: value.status,
     userText: boundedText(value.userText, AGENT_CHAT_PROMPT_BYTES), assistantText: boundedText(value.assistantText, AGENT_CHAT_OUTPUT_BYTES),
-    configuration: protocolConfiguration, ...(safeAgentRunInspection(value, projectId) as Record<string, unknown>), createdAt: typeof value.createdAt === 'string' ? value.createdAt.slice(0, 40) : '', updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt.slice(0, 40) : '', lastEventId: value.lastEventId,
+    configuration: protocolConfiguration, ...(safeAgentRunInspection(value, projectId) as unknown as Record<string, unknown>), createdAt: typeof value.createdAt === 'string' ? value.createdAt.slice(0, 40) : '', updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt.slice(0, 40) : '', lastEventId: value.lastEventId,
     ...(value.error ? { error: { code: errorCode && codes.has(errorCode) ? errorCode : 'NETWORK' } } : {}) };
 }
 function safeRuns(value: Record<string, unknown>, projectId: string): AgentChatRun[] {
@@ -352,7 +353,7 @@ export const activeAgentChatRun = (state: AgentChatState | null | undefined): Ag
 export function agentChatConsentKey(snapshot: AgentChatSnapshot | null | undefined, contextMode = AGENT_TYPED_CONTEXT, editTarget?: unknown): string | null {
   if (!snapshot) return null;
   const configuration = snapshot.settings?.configuration;
-  try { const consent = agentChatOutboundConsent(snapshot, contextMode, deriveAgentEndpoint(configuration), editTarget); return consent ? agentAuthorizationKey(configuration, contextMode) : null; } catch { return null; }
+  try { const consent = agentChatOutboundConsent(snapshot as unknown as AgentSnapshotLike, contextMode, deriveAgentEndpoint(configuration), editTarget); return consent ? agentAuthorizationKey(configuration, contextMode) : null; } catch { return null; }
 }
 export function agentChatPromptIssue(message: unknown): string {
   if (typeof message !== 'string' || !message.trim()) return '请输入消息。';
@@ -361,7 +362,7 @@ export function agentChatPromptIssue(message: unknown): string {
   return '';
 }
 export const agentChatCurrentTarget = (state: AgentChatState | null | undefined): unknown => state?.contextMode === AGENT_TIMELINE_GAIN_CONTEXT ? state.timelineGainTarget : state?.contextMode === AGENT_TIMELINE_CONTEXT ? state.timelineTarget : state?.editTarget;
-export const agentChatCanSend = (state: AgentChatState | null | undefined): boolean => Boolean(state?.snapshot && state.phase === 'ready' && !state.pending && !activeAgentChatRun(state) && state.consent !== null && state.consent === agentChatConsentKey(state.snapshot, state.contextMode, agentChatCurrentTarget(state)) && state.snapshot.settings.configuration.baseUrl && state.snapshot.settings.configuration.model && !agentChatPromptIssue(state.draft) && !((state.contextMode === AGENT_TIMELINE_CONTEXT && state.timelineBlockedReason || state.contextMode === AGENT_TIMELINE_GAIN_CONTEXT && state.timelineGainBlockedReason)));
+export const agentChatCanSend = (state: AgentChatState | null | undefined): boolean => Boolean(state?.snapshot && state.phase === 'ready' && !state.pending && !activeAgentChatRun(state) && state.consent !== null && state.consent === agentChatConsentKey(state.snapshot as unknown as AgentChatSnapshot, state.contextMode, agentChatCurrentTarget(state)) && state.snapshot.settings.configuration.baseUrl && state.snapshot.settings.configuration.model && !agentChatPromptIssue(state.draft) && !((state.contextMode === AGENT_TIMELINE_CONTEXT && state.timelineBlockedReason || state.contextMode === AGENT_TIMELINE_GAIN_CONTEXT && state.timelineGainBlockedReason)));
 
 /** One immutable project/chat-page lifetime. Disposing detaches reads only. */
 export function createAgentChatSession({ projectId, client = createAgentChatClient(), receipts = createAgentChatReceipts(), requestId = () => globalThis.crypto.randomUUID(), onChange = () => {} }: AgentChatSessionOptions) {
@@ -436,7 +437,7 @@ export function createAgentChatSession({ projectId, client = createAgentChatClie
       }
       const previous = receipts.get(projectId), sessionLost = Boolean(previous && previous.instanceId !== snapshot.instanceId);
       const requestPending = state.pending?.requestId || previous?.requestId;
-      publish({ snapshot, ...((state.contextMode === AGENT_PROJECT_CONTEXT && !agentInspectionAvailable(snapshot) || state.contextMode === AGENT_EDIT_CONTEXT && !agentEditAvailable(snapshot) || state.contextMode === AGENT_TIMELINE_CONTEXT && !agentTimelineAvailable(snapshot) || state.contextMode === AGENT_TIMELINE_GAIN_CONTEXT && !agentTimelineGainAvailable(snapshot)) ? { contextMode: AGENT_TYPED_CONTEXT } : {}), sessionLost: sessionLost || state.sessionLost, pending: requestPending ? (state.pending || { requestId: requestPending }) : null, recoveredRun: null });
+      publish({ snapshot, ...((state.contextMode === AGENT_PROJECT_CONTEXT && !agentInspectionAvailable(snapshot as unknown as AgentSnapshotLike) || state.contextMode === AGENT_EDIT_CONTEXT && !agentEditAvailable(snapshot as unknown as AgentSnapshotLike) || state.contextMode === AGENT_TIMELINE_CONTEXT && !agentTimelineAvailable(snapshot) || state.contextMode === AGENT_TIMELINE_GAIN_CONTEXT && !agentTimelineGainAvailable(snapshot)) ? { contextMode: AGENT_TYPED_CONTEXT } : {}), sessionLost: sessionLost || state.sessionLost, pending: requestPending ? (state.pending || { requestId: requestPending }) : null, recoveredRun: null });
       const publishedSnapshot = state.snapshot;
       let accepted = requestPending && snapshot.runs.find(run => run.requestId === requestPending);
       if (requestPending && !accepted) {
@@ -521,7 +522,7 @@ export function createAgentChatSession({ projectId, client = createAgentChatClie
     },
     edit(value: unknown): boolean { if (!active || !visible || typeof value !== 'string' || value.length > AGENT_CHAT_PROMPT_BYTES) return false; publish({ draft: value }); return true; },
     setContextMode(value: string): boolean {
-      if (!active || !visible || state.phase !== 'ready' || state.pending || activeAgentChatRun(state) || ![AGENT_TYPED_CONTEXT, AGENT_PROJECT_CONTEXT, AGENT_EDIT_CONTEXT, AGENT_TIMELINE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT].includes(value) || (value === AGENT_PROJECT_CONTEXT && !agentInspectionAvailable(state.snapshot)) || (value === AGENT_EDIT_CONTEXT && !agentEditAvailable(state.snapshot)) || (value === AGENT_TIMELINE_CONTEXT && !agentTimelineAvailable(state.snapshot)) || (value === AGENT_TIMELINE_GAIN_CONTEXT && !agentTimelineGainAvailable(state.snapshot))) return false;
+      if (!active || !visible || state.phase !== 'ready' || state.pending || activeAgentChatRun(state) || ![AGENT_TYPED_CONTEXT, AGENT_PROJECT_CONTEXT, AGENT_EDIT_CONTEXT, AGENT_TIMELINE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT].includes(value) || (value === AGENT_PROJECT_CONTEXT && !agentInspectionAvailable(state.snapshot as unknown as AgentSnapshotLike)) || (value === AGENT_EDIT_CONTEXT && !agentEditAvailable(state.snapshot as unknown as AgentSnapshotLike)) || (value === AGENT_TIMELINE_CONTEXT && !agentTimelineAvailable(state.snapshot)) || (value === AGENT_TIMELINE_GAIN_CONTEXT && !agentTimelineGainAvailable(state.snapshot))) return false;
       publish({ contextMode: value, consent: null }); return true;
     },
     setEditTarget(value: unknown): boolean {
@@ -568,7 +569,7 @@ export function createAgentChatSession({ projectId, client = createAgentChatClie
       const configuration = Object.freeze(agentProtocolConfiguration(snapshot.settings.configuration));
       if (!configuration) return false;
       const input = { requestId: id, instanceId: snapshot.instanceId, expectedSettingsRevision: snapshot.settings.revision, expectedConversationRevision: snapshot.revision, message,
-        consent: agentChatOutboundConsent(snapshot, contextMode, deriveAgentEndpoint(configuration), editTarget) };
+        consent: agentChatOutboundConsent(snapshot as unknown as AgentSnapshotLike, contextMode, deriveAgentEndpoint(configuration), editTarget) };
       receipt({ instanceId: snapshot.instanceId, requestId: id });
       publish({ phase: 'submitting', pending: { requestId: id, userText: message, configuration, contextMode, ...([AGENT_EDIT_CONTEXT, AGENT_TIMELINE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT].includes(contextMode) ? { editTarget } : {}) }, consent: null, message: '', displayMessage: null });
       try {

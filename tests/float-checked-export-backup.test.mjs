@@ -91,7 +91,7 @@ test('cold backup verify and offline restore preserve v2 queued failed succeeded
   }
   assert.deepEqual(tree(source), sourceBefore); const backupBefore = tree(backup);
   const restored = await restoreWorkspaceBackup({directory: backup, destination});
-  assert.equal(restored.publication, 'confirmed'); assert.equal(restored.databaseSchemaVersion, 27);
+  assert.equal(restored.publication, 'confirmed'); assert.equal(restored.databaseSchemaVersion, 49);
   assert.equal(restored.heldCounts.exports, 3); assert.ok(restored.heldCounts.timeline_requests >= 3);
   assert.deepEqual(restored.inventory, created.inventory);
   assert.deepEqual(tree(source), sourceBefore); assert.deepEqual(tree(backup), backupBefore);

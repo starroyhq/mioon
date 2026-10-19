@@ -4,6 +4,7 @@ import { transformSync } from 'esbuild';
 import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { stripSourceTypes } from './helpers/eval-source.mjs';
 import { prepareMutation, isMutationOperation, assertMutationOwner, mutationNotApplied, validateMutationResponse } from '../apps/web/src/mutation-submissions.ts';
 import { prepareSubmission, readPending, clearPending, pendingForProject } from '../apps/web/src/submissions.ts';
 import { ApiError } from '../apps/web/src/api.ts';
@@ -14,7 +15,7 @@ const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url),
 const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end));
 const runSource = section('async function runSession(', 'async function inspect(').replace('async function runSession(', 'async function run(');
 const structureSource = section('async function addStructure()', 'async function addNode(');
-function compile(code, name, scope) { scope = { msg, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), ...scope }; return Function(...Object.keys(scope), `${code}; return ${name};`)(...Object.values(scope)); }
+function compile(code, name, scope) { scope = { msg, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), ...scope }; return Function(...Object.keys(scope), `${stripSourceTypes(code,{loader:'tsx'})}; return ${name};`)(...Object.values(scope)); }
 function storage(t) {
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage'), values = new Map();
   Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: { get length() { return values.size; }, key: i => [...values.keys()][i], getItem: k => values.get(k) ?? null, setItem: (k, v) => values.set(k, String(v)), removeItem: k => values.delete(k) } });

@@ -11,6 +11,8 @@ import * as chat from '../apps/web/src/agent-chat.ts';
 import * as policy from '../apps/web/src/agent-tool-state.ts';
 import * as timing from '../apps/web/src/agent-timeline-context.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), instanceId = id(2), threadId = id(3), timelineId = id(4), clipId = id(5), trackId = id(6), runId = id(7), proposalId = id(8), requestId = id(9);
 const at = '2026-10-12T00:00:00.000Z';

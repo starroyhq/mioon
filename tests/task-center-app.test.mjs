@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {captureTaskWorkspaceIntent, navigateTaskShot} from '../apps/web/src/task-workspace-intent.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 function section(start, end) { const a=app.indexOf(start),b=app.indexOf(end,a);assert.ok(a>=0&&b>a);return app.slice(a,b); }
 const bridge=section('  function readTaskRevealContext()', '  function openExportHistory()');
@@ -128,9 +130,9 @@ test('paid retry keeps its Tasks review and rejects a revoked pane before submis
 
 test('actual App keeps retained owners mounted and routes task opening through its overlay',()=>{
  assert.doesNotMatch(app,/\bshowJobs\b|\bsetShowJobs\b/);assert.match(app+readFileSync(new URL('../apps/web/src/TaskPopover.tsx',import.meta.url),'utf8'),/right-dock-tab-tasks/);assert.match(app,/id="right-dock-tasks"[\s\S]*?<TaskCenter taskViewScope=/);
- assert.match(app,/onInspectJob=\{inspectTaskJob\}/);assert.match(app,/setShowTasks\(false\); setShowDelivery\(false\);/);
+ assert.match(app,/onInspectJob=\{inspectTaskJob(?: as never)?\}/);assert.match(app,/setShowTasks\(false\); setShowDelivery\(false\);/);
  for(const page of ['properties','agent','image','delivery','tasks'])assert.match(app,new RegExp(`id="right-dock-${page}"`));
- assert.match(app,/onReload=\{\(\) => tasksRef\.current\.load\(currentProject\.current\)\}/);
+ assert.match(app,/onReload=\{\(\(\) => tasksRef\.current!\.load\(currentProject\.current as string\)\) as never\}/);
  assert.doesNotMatch(bridge,/\.execute\(|\.recover\(|\.acknowledge\(|\.load\(|\brpc\(|setInterval|setTimeout/);
 });
 

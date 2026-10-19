@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createClipDraftController } from '../apps/web/src/clip-draft-state.ts';
 
+import { lenientFunction, stripSourceTypes } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 // Execute the actual App callbacks with the real local-draft controller. Only
 // the persistence transport and React state setters are synthetic boundaries.
 const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
@@ -218,12 +220,14 @@ test('actual App draft discard leaves the original pending timeline request and 
 });
 
 test('actual Inspector save binding still routes the exact draft through the existing timeline mutation', async () => {
-  const saveSource = app.match(/onSave=\{(\(clipId, patch, revision, draftOptions\) => mutateTimeline\('timeline\.clip\.update',[\s\S]*?\))\} onRemove=/)?.[1];
+  const saveStart = app.indexOf('onSave={((clipId: string'), saveEnd = app.indexOf(')) as never}', saveStart);
+  assert.ok(saveStart >= 0 && saveEnd > saveStart, 'Find the real TimelineInspector save binding');
+  const saveSource = app.slice(saveStart + 'onSave={'.length, saveEnd + ')) as never'.length);
   assert.ok(saveSource, 'Find the real TimelineInspector save binding');
   const calls = [], saved = { revision: 8 }, patch = { name: 'Explicitly saved' };
   let current = true;
   const canExecute = () => current;
-  const save = Function('mutateTimeline', `return (${saveSource});`)((...args) => { calls.push(args); return Promise.resolve(saved); });
+  const save = Function('mutateTimeline', `return (${stripSourceTypes(saveSource,{loader:'tsx'}).trim().replace(/;$/,'')});`)((...args) => { calls.push(args); return Promise.resolve(saved); });
   assert.equal(await save(key.clipId, patch, 7, { canExecute }), saved);
   assert.deepEqual(calls, [['timeline.clip.update', { clipId: key.clipId, patch }, 7, { returnAfterNavigation: true, canExecute }]]);
   assert.equal(calls[0][1].patch, patch);

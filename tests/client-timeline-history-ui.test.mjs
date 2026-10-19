@@ -134,10 +134,13 @@ test('history controls render shared Base UI buttons with disabled states, label
 
 test('App invalidates history around mutation dispatch and uses the common refresh/recovery path', () => {
   const source = readFileSync(resolve(root, 'apps/web/src/App.tsx'), 'utf8');
-  assert.match(source, /invalidateHistory\(\);\s*dispatched = true;\s*const result = await rpc\(operation, input, invocation\);\s*invalidateHistory\(\);/);
+  assert.match(source, /invalidateHistory\(\);\s*dispatched = true;\s*const result = await rpc\(operation, input, invocation as never\);\s*invalidateHistory\(\);/);
   assert.match(source, /if \(dispatched\) invalidateHistory\(\);/);
   assert.match(source, /\+\+requestCounter\.current;\s*dataRef\.current = \{ \.\.\.dataRef\.current, timelineHistory: null \}/);
   assert.match(source, /return mutateTimeline\(`timeline\.\$\{direction\}`\)/);
   assert.match(source, /history: data\.timelineHistory/);
-  assert.match(source, /document\.querySelector\('\[role="dialog"\], \[role="alertdialog"\], \[aria-modal="true"\]'\)/);
+  const modalState = readFileSync(resolve(root, 'apps/web/src/workbench-modal-state.ts'), 'utf8');
+  assert.match(source, /import \{ hasOpenWorkbenchModal \} from '\.\/workbench-modal-state\.ts'/);
+  assert.match(source, /modalOpen: hasOpenWorkbenchModal\(document\)/);
+  assert.match(modalState, /querySelectorAll\('\[role="dialog"\], \[role="alertdialog"\], \[aria-modal="true"\]'\)/);
 });

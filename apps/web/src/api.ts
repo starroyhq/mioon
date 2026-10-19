@@ -1,10 +1,12 @@
 import { readTimelineClipLoudnessRpc } from './timeline-clip-loudness-rpc.ts';
+import type { TimelineClipLoudnessWireOptions } from './timeline-clip-loudness-rpc.ts';
 import { isTimelineClipLoudnessResponse } from '@mioon/contracts/timeline-clip-loudness';
 import { readLoudnessApplyRpc } from './timeline-loudness-apply-rpc.ts';
 import { isWorkspaceRestoreInspection } from '@mioon/contracts';
 import { readOpacityCandidateClientBinding } from './opacity-candidate-client-binding.ts';
 import { workspaceOriginOptions } from './workspace-origin.ts';
 import { readTimelineMixLoudnessRpc } from './timeline-mix-loudness-rpc.ts';
+import type { TimelineMixLoudnessWireOptions } from './timeline-mix-loudness-rpc.ts';
 import { isTimelineMixLoudnessResponse } from '@mioon/contracts/timeline-mix-loudness';
 
 export type RpcFetcher = typeof fetch;
@@ -32,7 +34,7 @@ export class ApiError extends Error {
   code: string;
   details: unknown;
   definitive: boolean;
-  status?: number;
+  declare status?: number;
   constructor(message: string, code?: string, details?: unknown, definitive = false, status?: number) {
     super(message);
     this.name = 'ApiError';
@@ -45,7 +47,7 @@ export class ApiError extends Error {
 
 export async function rpc<T = unknown>(operation: string, input: unknown = {}, { signal, expectedWorkspaceOrigin, fetcher = (...args: Parameters<RpcFetcher>): ReturnType<RpcFetcher> => fetch(...args), opacityBinding }: RpcOptions = {}): Promise<T> {
   const invocation = workspaceOriginOptions(expectedWorkspaceOrigin);
-  const mix = (operation === 'timeline.clip.loudness' ? await readTimelineClipLoudnessRpc(input, { ...invocation, signal, fetch: fetcher }) : operation === 'timeline.loudness.apply' ? await readLoudnessApplyRpc('/api/rpc', { operation, input, ...invocation }, { signal, fetcher }) : operation === 'timeline.loudness.prepare' ? await readTimelineMixLoudnessRpc(input, { ...invocation, signal, fetch: fetcher }) : null) as LoudnessRpcResult | null;
+  const mix = (operation === 'timeline.clip.loudness' ? await readTimelineClipLoudnessRpc(input, { ...invocation, signal, fetch: fetcher } as TimelineClipLoudnessWireOptions) : operation === 'timeline.loudness.apply' ? await readLoudnessApplyRpc('/api/rpc', { operation, input, ...invocation }, { signal, fetcher }) : operation === 'timeline.loudness.prepare' ? await readTimelineMixLoudnessRpc(input, { ...invocation, signal, fetch: fetcher } as TimelineMixLoudnessWireOptions) : null) as LoudnessRpcResult | null;
   const response = mix?.response ?? await fetcher('/api/rpc', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation, input, ...invocation }), ...(signal ? { signal } : {}) });
   let body: unknown;
   try { body = mix ? mix.body : await response.json(); } catch { throw protocolError(); }

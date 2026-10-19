@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {opacityInspectorImeFixture as fixture} from './helpers/opacity-inspector-ime-fixture.mjs';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
-const start = source.indexOf('  const guardRetainedInputInteraction = event => {');
+const start = source.indexOf('  const guardRetainedInputInteraction = (event: React.SyntheticEvent) => {');
 const end = source.indexOf('  if (auth === false', start);
 assert.ok(start >= 0 && end > start, 'Extract the actual App ancestor capture guard');
-assert.equal(source.indexOf('  const guardRetainedInputInteraction = event => {', start + 1), -1);
+assert.equal(source.indexOf('  const guardRetainedInputInteraction = (event: React.SyntheticEvent) => {', start + 1), -1);
 const guardSource = source.slice(start, end);
 function ancestorGuard({blocked = true, retained = true} = {}) {
   return Function('clipConnectionBlocked', 'retainWorkbenchForClip', `${guardSource};return guardRetainedInputInteraction;`)({current: blocked}, retained);

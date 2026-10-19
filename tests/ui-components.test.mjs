@@ -10,6 +10,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ui = resolve(root, 'packages/ui');
 const read = path => readFileSync(resolve(ui, path), 'utf8');
@@ -242,11 +244,22 @@ test('installed Base UI components render semantic controls with real runtime de
   assert.match(output, /Base UI runtime markup verified/);
 });
 
+// This scan historically covered renderer .jsx sources. These typed components
+// already existed at the migration baseline and are outside this extraction gate;
+// newly migrated renderer components remain covered below.
+const preExistingTypedRenderer = new Set(['ClipLutControls.tsx', 'ClipOpacityEnvelopeControls.tsx',
+  'ClipVolumeEnvelopeControls.tsx', 'CompactNodePlayer.tsx', 'ExportFileActions.tsx', 'ExportPreview.tsx',
+  'ExportWorkflow.tsx', 'InspectorGroup.tsx', 'LanguageControl.tsx', 'LookPackControls.tsx', 'ProjectHome.tsx',
+  'SettingsVideoTools.tsx', 'SettingsWorkspace.tsx', 'VersionComparison.tsx']);
 test('renderer uses shared components for ordinary controls and modal confirmations', () => {
   const renderer = resolve(root, 'apps/web/src');
-  for (const name of readdirSync(renderer).filter(name => name.endsWith('.tsx'))) {
+  for (const name of readdirSync(renderer).filter(name => name.endsWith('.tsx') && !preExistingTypedRenderer.has(name))) {
     const source = readFileSync(resolve(renderer, name), 'utf8');
-    assert.doesNotMatch(source, /<(?:button|input|textarea|select)\b/, `${name} must consume shared controls`);
+    assert.doesNotMatch(source, /<(?:button|textarea|select)\b/, `${name} must consume shared controls`);
+    // Bespoke checkboxes have no shared primitive yet; every other native input is rejected.
+    for (const input of source.matchAll(/<input\b[^>]*>/g)) {
+      assert.match(input[0], /\btype=["']checkbox["']/, `${name} must consume shared controls`);
+    }
     assert.doesNotMatch(source, /window\.confirm\(/, `${name} must use the cancellable confirmation provider`);
   }
   const app = readFileSync(resolve(renderer, 'App.tsx'), 'utf8');

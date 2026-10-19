@@ -84,7 +84,7 @@ test('native settings slot delegates before existing key clearing; Web fallback 
   const image = source('ImageSettings.tsx');
   assert.ok(image.indexOf('if (onRequestSelectSlot)') < image.indexOf("setKeyNotice(message('image.settings.keySwitched"));
   assert.match(image, /onRequestSelectSlot\(next\); return;/);
-  assert.match(source('ComfyImageSettings.tsx'), /else leave\(\(\) => onSelectSlot\(slot\)\)/);
+  assert.match(source('ComfyImageSettings.tsx'), /else leave\(\(\) => onSelectSlot\(slot\), undefined\)/);
   assert.match(source('SettingsRoot.tsx'), /window\.close\(\); return false/);
 });
 

@@ -31,6 +31,8 @@ import {rawOpacityEnvelopeFields} from '../apps/web/src/clip-opacity-envelope-st
 import {pinNewWorkspaceIntent} from '../apps/web/src/workspace-origin.ts';
 import {LOCALES, translate, validateCatalogs} from '../packages/i18n/src/index.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const root = fileURLToPath(new URL('../', import.meta.url));
 const appSource = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const runtime = {...legacy, rpc, createEditTaskClient};

@@ -10,6 +10,8 @@ import {timelineHistoryState} from '../apps/web/src/timeline-history.ts';
 import {timelineHistoryActionForKey} from '../apps/web/src/timeline-keyboard.ts';
 import {message as msg, renderMessage} from '../packages/i18n/src/index.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 // No application, HTTP server, browser, worker, media process or provider is started.
 // The first group executes unchanged ordinary-JS App functions, extracted exactly
 // as the existing edit-task-app tests do, against an explicitly synthetic task port.
@@ -135,7 +137,7 @@ for (const direction of ['undo', 'redo']) {
     // Execute the real readableError; a new Error.message does not by itself
     // make the historical browser assertion obsolete.
     assert.equal(message, '保存冲突：内容已在其他窗口更新。已刷新最新状态，请检查后再保存');
-    const browser = readFileSync(new URL('../tests/browser_timeline_history.ts', import.meta.url), 'utf8');
+    const browser = readFileSync(new URL('../tests/browser_timeline_history.mjs', import.meta.url), 'utf8');
     assert.ok(browser.includes(`getByText('${message}',{exact:true})`));
   });
 
@@ -177,7 +179,7 @@ for (const direction of ['undo', 'redo']) {
     const notices = h.state.notices.length; release.resolve(); await recovery;
     assert.equal(allowed, false); assert.equal(h.state.notices.length, notices);
     assert.equal(h.busy.size, 0);
-    assert.match(app, /canExecute: \(\) => !clipConnectionBlocked\.current && !acknowledgeOnly && isCurrent\(captured\) && canExecute\(\)/);
+    assert.match(app, /canExecute: \(\(\) => !clipConnectionBlocked\.current && !acknowledgeOnly && isCurrent\(captured\) && canExecute\(\)\) as unknown as never/);
     assert.match(app, /<TaskCenter taskViewScope=\{taskViewScope\}[^>]*captureView=\{captureTaskView\}/);
   });
 }

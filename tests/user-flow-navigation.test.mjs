@@ -5,6 +5,8 @@ import { readFileSync } from 'node:fs';
 import { createClipDraftController } from '../apps/web/src/clip-draft-state.ts';
 import { workspaceOriginScope } from '../apps/web/src/workspace-origin.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 // Run the actual selection callbacks, navigation guard, and clip draft controller.
 // Only React state setters, confirmation, and the local-draft transport are fixtures.
 const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
@@ -15,7 +17,7 @@ function section(start, end) {
   return app.slice(at, until);
 }
 const source = [
-  section('  const context = () =>', '  taskWorkspaceState.current ='),
+  section('  const context = (): CapturedContext =>', '  taskWorkspaceState.current ='),
   section('  async function guardNavigation(', '  async function guardProjectNavigation('),
   section('  function leaveReferencePage()', '  function checkGeneration('),
   section('  async function selectClip(', '  async function addTimelineAsset('),

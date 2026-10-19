@@ -145,7 +145,7 @@ export function UiPreferencesProvider({ children, client: supplied }: { children
 
   useEffect(() => {
     const owner = { reload, markOpened };
-    const target = window as Window & { __mioonUiPreferences?: typeof owner };
+    const target = window as unknown as { __mioonUiPreferences?: unknown };
     target.__mioonUiPreferences = owner;
     return () => { if (target.__mioonUiPreferences === owner) delete target.__mioonUiPreferences; };
   }, [reload, markOpened]);

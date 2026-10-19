@@ -1,53 +1,74 @@
 import { message } from '../../../packages/i18n/src/index.ts';
+import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import { isSubjectReference } from '@mioon/contracts';
+import type { SubjectReference } from '@mioon/contracts';
 
-export const SUBJECT_VIDEO_KINDS = ['character', 'product', 'location'];
+export interface SubjectRecord {readonly id: string; readonly projectId: string; readonly name: string; readonly kind: string; readonly [key: string]: unknown}
+export interface SubjectVersionRecord {
+  readonly id: string; readonly subjectId: string; readonly projectId: string; readonly assetId: string;
+  readonly sha256?: unknown; readonly mimeType?: unknown; readonly width?: unknown; readonly height?: unknown;
+  readonly provenance?: Record<string, unknown>|null; readonly [key: string]: unknown;
+}
+export interface SubjectAssetLike {readonly id?: unknown; readonly projectId?: unknown; readonly sha256?: unknown; readonly mimeType?: unknown; readonly width?: unknown; readonly height?: unknown; readonly [key: string]: unknown}
+export interface SubjectShotLike {readonly id?: unknown; readonly projectId?: unknown; readonly referenceAssetIds?: unknown; readonly lastFrameAssetId?: unknown; readonly [key: string]: unknown}
+export interface SubjectConflictOptions {readonly savedShot?: SubjectShotLike; readonly boundReference?: boolean}
+export interface SubjectProviderLike {
+  readonly id?: unknown; readonly providerRegion?: unknown; readonly inputProfileVersion?: unknown;
+  readonly inputProfiles?: readonly {readonly model?: unknown; readonly [key: string]: unknown}[];
+  readonly profileEvaluationDate?: unknown; readonly inputProfileEvaluations?: unknown;
+}
+export interface SubjectVideoReferenceIssueOptions {readonly assets?: readonly SubjectAssetLike[]; readonly projectId?: unknown}
+
+export const SUBJECT_VIDEO_KINDS = ['character', 'product', 'location'] as const;
 export const ARK_SUBJECT_MODEL = 'doubao-seedance-2-5-260628';
 export const ARK_SUBJECT_WARNING = 'Ark 不支持直接上传真实人脸图片。请勿选择含真实人脸的主体图；工作台不进行人脸检测，也不提供身份锁定。';
 export const MOCK_SUBJECT_WARNING = 'Mock 仅验证工作流，输出为测试图案，不会呈现主体图片或提示词描述的内容。';
-const contentKeys = ['sha256', 'mimeType', 'width', 'height'];
-const clone = value => JSON.parse(JSON.stringify(value));
-const freeze = value => { if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); } return value; };
+const contentKeys = ['sha256', 'mimeType', 'width', 'height'] as const;
+const isRecord=(value: unknown): value is Record<string, unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
+const property=(value: unknown,key: string): unknown=>isRecord(value)?value[key]:undefined;
+const clone=<T>(value: T): T=>JSON.parse(JSON.stringify(value)) as T;
+const freeze=<T>(value: T): Readonly<T>=>{ if (value && typeof value === 'object') { Object.values(value as unknown as Record<string, unknown>).forEach(item=>freeze(item)); Object.freeze(value); } return value; };
 
-export function subjectVideoChoice(subject, version) {
-  if (!subject || !version || !SUBJECT_VIDEO_KINDS.includes(subject.kind) || version.subjectId !== subject.id || version.projectId !== subject.projectId) return null;
+export function subjectVideoChoice(subject: SubjectRecord|null|undefined,version: SubjectVersionRecord|null|undefined): SubjectReference|null {
+  if (!subject || !version || !(SUBJECT_VIDEO_KINDS as readonly string[]).includes(subject.kind) || version.subjectId !== subject.id || version.projectId !== subject.projectId) return null;
   const reference = { subjectVersionId: version.id, subjectName: subject.name, subjectKind: subject.kind, subjectVersion: clone(version) };
   return isSubjectReference(reference) ? freeze(reference) : null;
 }
 
 // This is an explicit, unsent session choice. It never consults planning
 // bindings, resolves the latest head, changes a shot, or rewrites its prompt.
-export function subjectVideoConflictIssue(shot = {}, { savedShot = shot, boundReference = false } = {}) {
+export function subjectVideoConflictIssue(shot: SubjectShotLike = {},{ savedShot = shot, boundReference = false }: SubjectConflictOptions = {}): string {
   if (boundReference) return '主体图片不能与首帧连线一起提交。请先明确断开首帧连线，再选择本次主体输入。';
-  if ([shot, savedShot].some(value => value?.referenceAssetIds?.length || value?.lastFrameAssetId)) return '主体图片不能与首帧或尾帧组合。请手动清除首帧与尾帧选择，并保存镜头后再启用；不会自动清除素材。';
+  const hasFrame=(value: SubjectShotLike|undefined): boolean=>Boolean((Array.isArray(value?.referenceAssetIds) && value.referenceAssetIds.length) || value?.lastFrameAssetId);
+  if ([shot, savedShot].some(hasFrame)) return '主体图片不能与首帧或尾帧组合。请手动清除首帧与尾帧选择，并保存镜头后再启用；不会自动清除素材。';
   return '';
 }
 
-export function subjectVideoReferenceIssue(reference, assets = [], projectId) {
+export function subjectVideoReferenceIssue(reference: unknown,assets: readonly SubjectAssetLike[] = [],projectId?: unknown): string {
   if (!reference) return '请明确选择一个主体及其固定图片版本，不会自动选用当前版本或策划关联。';
   if (!isSubjectReference(reference)) return '主体固定版本记录不完整，请重新明确选择版本。';
   const version = reference.subjectVersion;
   if (projectId && version.projectId !== projectId) return '主体固定版本不属于当前项目，请重新选择。';
-  const asset = assets.find(item => item.id === version.assetId && item.projectId === version.projectId);
+  const asset = assets.find(item => property(item,'id') === version.assetId && property(item,'projectId') === version.projectId);
   if (!asset) return '主体固定版本的原图未加载或已缺失，不能提交。';
-  if (contentKeys.some(key => asset[key] !== version[key])) return '主体固定版本的原图内容或元数据已变化，不能替换后提交。请核对原图。';
+  if (contentKeys.some(key => property(asset,key) !== property(version,key))) return '主体固定版本的原图内容或元数据已变化，不能替换后提交。请核对原图。';
   return '';
 }
 
-export function subjectVideoSnapshot(shot, reference, assets) {
-  const version = reference?.subjectVersion;
-  const asset = assets.find(item => item.id === version?.assetId && item.projectId === version?.projectId);
+export function subjectVideoSnapshot(shot: SubjectShotLike,reference: SubjectReference,assets: readonly SubjectAssetLike[]) {
+  const version = reference.subjectVersion;
+  const asset = assets.find(item => property(item,'id') === version.assetId && property(item,'projectId') === version.projectId);
   return { ...shot, subjectReference: clone(reference), referenceAssetIds: [version.assetId],
     referenceAssets: [{ ...asset, role: 'subject_reference' }],
     referenceBindings: [{ role: 'subject_reference', assetId: version.assetId, sha256: version.sha256 }] };
 }
 
-export function subjectVideoIdentity(reference) {
+export function subjectVideoIdentity(reference: SubjectReference|null|undefined): string {
   return reference ? JSON.stringify(reference) : '';
 }
 
-export function subjectVideoSourceLabel(version) {
-  const provenance = version?.provenance;
+export function subjectVideoSourceLabel(version: SubjectVersionRecord|null|undefined): string {
+  const provenance = isRecord(version?.provenance)?version.provenance:null;
   if (!provenance) return '来源未提供';
   if (provenance.kind === 'user-import') return '用户导入图片';
   if (provenance.kind === 'extracted-frame') return '从视频提取的固定帧';
@@ -59,11 +80,11 @@ export function subjectVideoSourceLabel(version) {
 
 // A paid subject approval includes the exact server route and profile, as well
 // as immutable source metadata. Poll-only fields do not invalidate the review.
-export function subjectVideoProfileIdentity(provider, model) {
-  const canonical = value => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item)
+export function subjectVideoProfileIdentity(provider: SubjectProviderLike|null|undefined,model: unknown): string {
+  const canonical = (value: unknown): string => JSON.stringify(value, (_: string,item: unknown) => item && typeof item === 'object' && !Array.isArray(item)
     ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
   return canonical([provider?.id, model, provider?.providerRegion, provider?.inputProfileVersion,
-    provider?.inputProfiles?.filter(profile => profile.model === model), provider?.profileEvaluationDate,
+    (provider?.inputProfiles ?? []).filter(profile => profile.model === model), provider?.profileEvaluationDate,
     provider?.inputProfileEvaluations]);
 }
 
@@ -71,23 +92,24 @@ export function subjectVideoProfileIdentity(provider, model) {
 // no descriptor is added to frozen references, request snapshots, or provenance.
 export const ARK_SUBJECT_WARNING_MESSAGE = message('subjects.warning.ark');
 export const MOCK_SUBJECT_WARNING_MESSAGE = message('subjects.warning.mock');
-export function subjectVideoConflictDescriptor(shot = {}, { savedShot = shot, boundReference = false } = {}) {
+export function subjectVideoConflictDescriptor(shot: SubjectShotLike = {},{ savedShot = shot, boundReference = false }: SubjectConflictOptions = {}): DisplayMessage|null {
   if (boundReference) return message('subjects.conflict.boundFrame');
-  if ([shot, savedShot].some(value => value?.referenceAssetIds?.length || value?.lastFrameAssetId)) return message('subjects.conflict.frames');
+  const hasFrame=(value: SubjectShotLike|undefined): boolean=>Boolean((Array.isArray(value?.referenceAssetIds) && value.referenceAssetIds.length) || value?.lastFrameAssetId);
+  if ([shot, savedShot].some(hasFrame)) return message('subjects.conflict.frames');
   return null;
 }
-export function subjectVideoReferenceDescriptor(reference, assets = [], projectId) {
+export function subjectVideoReferenceDescriptor(reference: unknown,assets: readonly SubjectAssetLike[] = [],projectId?: unknown): DisplayMessage|null {
   if (!reference) return message('subjects.reference.choose');
   if (!isSubjectReference(reference)) return message('subjects.reference.incomplete');
   const version = reference.subjectVersion;
   if (projectId && version.projectId !== projectId) return message('subjects.reference.foreign');
-  const asset = assets.find(item => item.id === version.assetId && item.projectId === version.projectId);
+  const asset = assets.find(item => property(item,'id') === version.assetId && property(item,'projectId') === version.projectId);
   if (!asset) return message('subjects.reference.missing');
-  if (contentKeys.some(key => asset[key] !== version[key])) return message('subjects.reference.changed');
+  if (contentKeys.some(key => property(asset,key) !== property(version,key))) return message('subjects.reference.changed');
   return null;
 }
-export function subjectVideoSourceDescriptor(version) {
-  const provenance = version?.provenance;
+export function subjectVideoSourceDescriptor(version: SubjectVersionRecord|null|undefined): DisplayMessage {
+  const provenance = isRecord(version?.provenance)?version.provenance:null;
   if (!provenance) return message('subjects.source.missing');
   if (provenance.kind === 'user-import') return message('subjects.source.import');
   if (provenance.kind === 'extracted-frame') return message('subjects.source.frame');

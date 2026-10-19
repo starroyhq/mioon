@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { isAllowedRequest, isAllowedDownload, isAllowedNavigation } from '../apps/desktop/src/security.ts';
 import { captureComparison } from '../apps/web/src/version-comparison-state.ts';
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 test('exact comparison route inherits native same-origin media permission, not download/navigation/audio grants', () => {
   const binding = captureComparison({ scope: 'project:epoch', projectId: id(1), workspaceOrigin: 'normal', connected: true, visible: true, restored: false,
@@ -52,10 +54,10 @@ test('background visibility, exact comparison ownership and four-locale catalog 
   const background = app.indexOf('<WorkspaceVisibilityProvider visible={!comparisonId}>'), end = app.indexOf('</WorkspaceVisibilityProvider>', background), comparison = app.indexOf('<VersionComparison key=');
   assert.ok(background > 0 && end > background && comparison > end);
   for (const name of ['<Inspector ', '<Preview ', '<ExportPreview', '<Media asset={previewAsset}']) assert.ok(app.indexOf(name, background) < end);
-  assert.match(app, /visible=\{!comparisonId && workbenchReady && rightDockTab === 'delivery'/);
+  assert.match(app, /visible=\{!comparisonId && workbenchReady && showDelivery && !showExports\}/);
   assert.match(app, /onBeforePlay=\{beforeMainPreviewPlay\}/); assert.match(app, /onBeforePlay=\{beforeExportPreviewPlay\}/); assert.match(app, /onBeforePlay: beforeTimelineAudioPlay/);
   assert.doesNotMatch(app, /function Comparison\(/);
-  const i18n = readFileSync(new URL('../packages/i18n/src/index.ts', import.meta.url), 'utf8'); assert.match(i18n, /assertNoDuplicateMessageKeys\(comparisonMessages, annotationMessages/);
+  const i18n = readFileSync(new URL('../packages/i18n/src/index.ts', import.meta.url), 'utf8'); assert.match(i18n, /assertNoDuplicateMessageKeys\([^)]*comparisonMessages[^)]*annotationMessages/);
 });
 
 test('retained invalid Compare opener has no state or media effects; null always closes', () => {

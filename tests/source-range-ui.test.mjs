@@ -8,6 +8,8 @@ import { createSourceRangeController, sourceFrameCount, sourcePositionFrame, sou
 import { assertMutationOwner, prepareMutation, validateMutationResponse, isMutationOperation, mutationNotApplied } from '../apps/web/src/mutation-submissions.ts';
 import { readPending, clearPending, prepareSubmission, pendingForProject } from '../apps/web/src/submissions.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const taskIntentModule = { exports: {} };
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
 const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
@@ -150,7 +152,7 @@ test('App guards dirty clip before source selection, clears clip selection, and 
   assert.doesNotMatch(source, /setRightDockTab/);
   assert.match(app, /replay && operation === 'asset.range.set'/); assert.match(app, /setSourceRangeRefresh/);
   assert.match(app, /shotDirty \|\| clipDirty \|\| sourceDirty/);
-  assert.match(app, /quickAssetId && sourceAsset \? <SourceRangeInspector/);
+  assert.match(app, /quickAssetId && sourceAsset \? application \?/); assert.match(app, /: <SourceRangeInspector/);
   assert.match(app, /sourceInFrame: 0/); // Existing whole-asset route is retained.
 });
 

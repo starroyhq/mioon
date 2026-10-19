@@ -17,6 +17,8 @@ import { chooseInitialProject, retainLastProjectScope, createProjectBootGuard, a
 import {observeClipAudioRoleCapability} from '../apps/web/src/clip-audio-role-state.ts';
 import {canEditTimelineAudioRole, isWorkspaceRestoreInspection} from '@mioon/contracts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const root = fileURLToPath(new URL('../', import.meta.url));
 // The same assertions can run against an independently extracted baseline App.
 const app = readFileSync(process.env.MIOON_HOME_APP_SOURCE || join(root, 'apps/web/src/App.tsx'), 'utf8');
@@ -106,11 +108,11 @@ function environment(options = {}) {
 function harness(options = {}) {
   const { env, calls, registry } = environment(options);
   const source = [section('  function projectSessionReady()', '  const workbenchReady ='),
-    section('  const context = () =>', '  taskWorkspaceState.current ='),
+    section('  const context = (): CapturedContext =>', '  taskWorkspaceState.current ='),
     section('  async function prepareSettingsDeparture()', '  async function changeMode('),
     section('  const refresh = useCallback(', '  async function revealImageAsset('),
     section('  async function selectProject(', '  async function reloadPreferences('),
-    section('  async function boot() {', '  useEffect(() => {\n    bootGuard.current.activate();'),
+    section('  async function boot(): Promise<void> {', '  useEffect(() => {\n    bootGuard.current!.activate();'),
     section('  async function createProject(', '  async function addShot(')].join('\n');
   // A live lexical environment models React rerenders without reimplementing the
   // production functions. Only external services and unrelated draft guards are fakes.

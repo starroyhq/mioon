@@ -27,6 +27,20 @@ export function stripSourceTypes(source, {loader = 'tsx'} = {}) {
   return result.code.replace(/^["']use strict["'];?\s*/u, '');
 }
 
+// Function-constructor wrapper for retained test seams that now slice typed
+// TypeScript source. It keeps the historical contract: execute the exact
+// fragment with the supplied parameter names/values. If native parsing rejects
+// TypeScript syntax, erase those types with the same pinned esbuild transform
+// and retry once; any other SyntaxError is rethrown unchanged.
+export function lenientFunction(...args) {
+  try { return new Function(...args); }
+  catch (error) {
+    const body = args[args.length - 1];
+    if (!(error instanceof SyntaxError) || typeof body !== 'string') throw error;
+    return new Function(...args.slice(0, -1), stripSourceTypes(body, {loader: 'tsx'}));
+  }
+}
+
 // Execute a statement fragment with the same Function-constructor contract the
 // historical tests used. Callers pass the exact parameter names and values.
 export function evaluateSource(source, parameterNames = [], values = [], {loader = 'tsx'} = {}) {

@@ -213,7 +213,7 @@ export function generationInputIssue(shot: GenerationShot, provider: GenerationP
     const selected = generationProfileSelection(provider, model);
     const profile = selected.profile;
     if (!profile) return '主体输入配置尚未确认，请刷新服务商信息。';
-    const snapshot = { ...subjectVideoSnapshot(shot, subjectReference, assets), providerId: provider.id, model,
+    const snapshot = { ...subjectVideoSnapshot(shot, subjectReference as SubjectReference, assets), providerId: provider.id, model,
       inputProfileId: profile.profileId, inputProfileVersion: profile.profileVersion, providerRegion: selected.region };
     return generationIssueMessage(getGenerationIssue(snapshot, provider));
   }
@@ -329,7 +329,7 @@ export function generationInputIssueDescriptor(shot: GenerationShot, provider: G
     const selected = generationProfileSelection(provider, model);
     const profile = selected.profile;
     if (!profile) return message('connections.generation.subjectProfile');
-    const snapshot = { ...subjectVideoSnapshot(shot, subjectReference, assets), providerId: provider.id, model,
+    const snapshot = { ...subjectVideoSnapshot(shot, subjectReference as SubjectReference, assets), providerId: provider.id, model,
       inputProfileId: profile.profileId, inputProfileVersion: profile.profileVersion, providerRegion: selected.region };
     return generationIssueDescriptor(getGenerationIssue(snapshot, provider)) ?? '';
   }

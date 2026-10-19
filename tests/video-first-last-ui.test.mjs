@@ -16,6 +16,8 @@ import { RESTORE_DISABLED_REASON } from '../apps/web/src/restored-workspace.ts';
 import { referenceForShot } from '../apps/web/src/reference-connections.ts';
 import { imageEditSourceIssueDescriptor } from '../apps/web/src/image-generation.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const taskIntentModule = { exports: {} };
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
 const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
@@ -281,8 +283,8 @@ test('App paid review wires complete frames and count, frozen retries, asset-use
   assert.ok(inspectorStart >= 0 && inspectorEnd > inspectorStart);
   const inspectorTag = app.slice(inspectorStart, inspectorEnd);
   assert.match(inspectorTag, /\bactionScopeKey=\{`\$\{rightDockTab\}:\$\{propertiesPage\}`\}/);
-  assert.match(inspectorTag, /\bgenerationUnavailableReason=\{generationUnavailableReason\}/);
-  assert.match(app, /generationReferenceIdentity\(args.shot, dataRef.current.assets, \{ frozen, subjectReference: args.subjectReference \}\) !== args.referenceIdentity/);
+  assert.match(inspectorTag, /\bgenerationUnavailableReason=\{generationUnavailableReason(?: as never)?\}/);
+  assert.match(app, /generationReferenceIdentity\(args.shot, dataRef.current!\.assets, \{ frozen, subjectReference: args.subjectReference \}\) !== args.referenceIdentity/);
   assert.match(app, /currentShot.revision !== args.shot.revision/);
   const submit = app.slice(app.indexOf('const submitGeneration ='), app.indexOf('function generate('));
   assert.doesNotMatch(submit, /lastFrameAssetId|referenceAssetIds|approve|budget|limit/);

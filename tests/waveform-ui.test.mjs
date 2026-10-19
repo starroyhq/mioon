@@ -10,6 +10,8 @@ import * as removalState from '../apps/web/src/timeline-removal.ts';
 import {hasOpenWorkbenchModal} from '../apps/web/src/workbench-modal-state.ts';
 import { WAVEFORM_ALGORITHM } from '../packages/contracts/src/waveforms.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const projectId = '11111111-1111-4111-8111-111111111111';
 const otherProject = '22222222-2222-4222-8222-222222222222';
 const assetId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -292,8 +294,8 @@ test('actual Timeline renders decorative bounded SVG inside existing clip button
   assert.equal(h.find('timeline-waveform-toggle').props['aria-pressed'], true); assert.match(content(h.find('timeline-waveform-status')), /原始源音轨.*固定满刻度/);
   h.render({ busy: true }); assert.equal(h.find('timeline-clip-clip-one').props.draggable, false);
   const source = readFileSync(new URL('../apps/web/src/Timeline.tsx', import.meta.url), 'utf8');
-  assert.match(source, /session\.projectId === timeline\.projectId && session\.revision === timeline\.revision/);
-  assert.match(source, /if \(!allowed \|\| !payloadMatches \|\| value\.unchanged\) return/);
+  assert.match(source, /session\.projectId === timeline!\.projectId && session\.revision === timeline!\.revision/);
+  assert.match(source, /if \(!allowed \|\| !payloadMatches \|\| value!\.unchanged\) return/);
   const css = readFileSync(new URL('../apps/web/src/styles.css', import.meta.url), 'utf8'); assert.match(css, /\.timeline-waveform\{[^}]*pointer-events:none/); h.unmount();
 });
 

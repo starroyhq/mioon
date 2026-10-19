@@ -21,7 +21,7 @@ const record = (value: unknown): value is Record<string, unknown> => Boolean(val
 export default function ClipSourceReplacement({ context, getDirty, onReplace, onOpenRequests }: ClipSourceReplacementProps): ReactElement {
   const { t, renderMessage, formatNumber } = useI18n();
   const durationLabel = (asset: Record<string, unknown>): string => typeof asset.mimeType === 'string' && asset.mimeType.startsWith('image/') ? t('timeline.replace.still') : typeof asset.duration === 'number' && Number.isFinite(asset.duration) ? t('timeline.replace.duration', { seconds: formatNumber(asset.duration, { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: false }) }) : t('timeline.replace.unknownDuration');
-  const candidateLabel = (candidate: ReplacementChoice): string => candidate.version ? `${candidate.source.name || candidate.assetId} · ${candidate.version.shotTitle} · V${candidate.version.number}` : t('timeline.replace.assetChoice', { name: candidate.source.name || candidate.assetId });
+  const candidateLabel = (candidate: ReplacementChoice): string => candidate.version ? `${candidate.source.name || candidate.assetId} · ${candidate.version.shotTitle} · V${candidate.version.number}` : t('timeline.replace.assetChoice', { name: String(candidate.source.name || candidate.assetId) });
   const visible = useWorkspaceVisibility();
   const callbacks = useRef<ClipSourceReplacementCallbacks | null>(null);
   callbacks.current = { context: { ...context, visible: visible && context.visible !== false }, getDirty, onReplace };
@@ -45,7 +45,7 @@ export default function ClipSourceReplacement({ context, getDirty, onReplace, on
     <h3 id="clip-replacement-title">{t('timeline.replace.title')}</h3>
     <p className="clip-replacement-note">{t('timeline.replace.scope')}</p>
     {blocked && <p id="clip-replacement-blocked" className="clip-replacement-warning" role="status">{renderMessage(clipReplacementBlockedMessage(current))}</p>}
-    {suggested && <Button size="sm" type="button" data-testid="review-selected-version-replacement" onClick={() => { if (controller.begin() && controller.choose(suggested.key)) controller.review(); }}>{t('timeline.replace.suggested', { version: suggested.version?.number as string | number })}</Button>}
+    {suggested && <Button size="sm" type="button" data-testid="review-selected-version-replacement" onClick={() => { if (controller.begin() && controller.choose(suggested.key)) controller.review(); }}>{t('timeline.replace.suggested', { version: (suggested.version?.number ?? 0) as string | number })}</Button>}
     {phase === 'idle' && <Button variant="outline" size="sm" type="button" data-testid="begin-clip-replacement" disabled={Boolean(blocked)} aria-describedby={blocked ? 'clip-replacement-blocked' : undefined} onClick={() => controller.begin(selectionState)}>{t('timeline.replace.choose')}</Button>}
     {phase === 'choosing' && <>
       <Label className="field-label" htmlFor="clip-replacement-candidate">{t('timeline.replace.candidates')}</Label>
@@ -66,7 +66,7 @@ export default function ClipSourceReplacement({ context, getDirty, onReplace, on
         <div><dt>{t('timeline.replace.keepDuration')}</dt><dd>{t('timeline.replace.durationFrames', { frames: review.clip.durationFrames, seconds: formatNumber(review.clip.durationFrames / 30, { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: false }) })}</dd></div>
         <div><dt>{t('timeline.replace.keepPosition')}</dt><dd>{t('timeline.replace.position', { start: review.clip.startFrame, end: review.clip.startFrame + review.clip.durationFrames })}</dd></div>
       </dl>
-      {review.clip.colour && <p className="clip-replacement-warning" data-testid="clip-replacement-colour-warning">{t('timeline.replace.colourWarning')}</p>}
+      {Boolean(review.clip.colour) && <p className="clip-replacement-warning" data-testid="clip-replacement-colour-warning">{t('timeline.replace.colourWarning')}</p>}
       <p className="clip-replacement-note">{t('timeline.replace.preserveHint')}</p>
     </div>}
     {issue && <p className="clip-replacement-warning" id="clip-replacement-review-issue" role="alert">{renderMessage(phase === 'stale' ? state?.errorMessage ?? null : clipReplacementReviewMessage(review, current))}</p>}

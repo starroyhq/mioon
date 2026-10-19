@@ -20,6 +20,8 @@ import * as audioRoleState from '../apps/web/src/clip-audio-role-state.ts';
 import * as removalState from '../apps/web/src/timeline-removal.ts';
 import * as viewGeometry from '../apps/web/src/timeline-view-geometry.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const id = n => `73000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), timelineId = id(2);
 const context = patch => ({ scope: `${projectId}:1`, projectId, projectRevision: 2, timelineId: null, timelineRevision: 0, connected: true, pending: false, ...patch });

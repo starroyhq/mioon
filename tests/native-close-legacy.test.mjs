@@ -17,6 +17,8 @@ import { readNativeLegacyClose } from '../apps/web/src/native-close-legacy.ts';
 import { createNativeCloseAdmission, createNativeCloseRegistry } from '../apps/web/src/native-close-state.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 // The negative control loads the original real controller, with its original
 // dependencies. A missing pure close getter must fail rather than fall back to
 // mutating hasUnsaved/capture. No clean-state controller is substituted.

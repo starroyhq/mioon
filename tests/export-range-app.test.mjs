@@ -13,6 +13,8 @@ import {createExportPreflightController} from '../apps/web/src/export-preflight-
 import {createLocalDeliveryController} from '../apps/web/src/local-delivery-state.ts';
 import {pinNewWorkspaceIntent} from '../apps/web/src/workspace-origin.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const id = n => `89400000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), timelineId = id(2), scope = `${projectId}:1`, stamp = '2026-10-13T00:00:00.000Z';

@@ -35,7 +35,7 @@
 
 ### R1：正式 Mac 配置明确跳过签名，不能作为正式发布入口放行
 
-**证据：** `apps/desktop/builder-config.ts:44–46` 对两个渠道都设置 `hardenedRuntime:true`、`gatekeeperAssess:false`、`identity:null`；typed `apps/desktop/builder-config.ts` 也注明 unsigned production，生成的 CJS 入口来自同一配置。全配置 `builder-config.ts` 没有强制签名、公证成功或票据校验的发布门槛；相关桌面脚本没有项目自有的签名/公证 hook。
+**证据：** `apps/desktop/builder-config.ts` 对两个渠道都设置 `hardenedRuntime:true`、`gatekeeperAssess:false`、`identity:null`，并注明 unsigned production；生成的 CJS 入口来自同一 typed 配置。全配置 `builder-config.ts` 没有强制签名、公证成功或票据校验的发布门槛；相关桌面脚本没有项目自有的签名/公证 hook。
 
 **影响：** 使用当前 `package:mac` 不能据其成功退出宣称 Developer ID 签名、公证或 Gatekeeper 已通过。electron-builder v26 明确将 `identity:null` 定义为跳过签名；`hardenedRuntime:true` 本身不构成有效签名。[electron-builder v26 macOS 配置](https://www.electron.build/v26/docs/mac/)
 

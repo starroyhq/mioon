@@ -16,9 +16,13 @@ const fixtureFile = new URL('./fixtures/keychain-sync-9e9598d.json', import.meta
 const raw = await readFile(fixtureFile);
 const fixture = JSON.parse(raw);
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
-const expected = ['tests/keychain-timeout-audit.test.mjs', 'apps/desktop/identity.ts',
+// Frozen historical 9e path names. The source tree has since moved to .ts (and
+// identity.cjs to identity.ts), but this fixture is immutable regression evidence:
+// the replay child executes only the historical copies written under these names.
+// Current on-disk sources are checked separately below and never parsed from it.
+const expected = ['tests/keychain-timeout-audit.test.mjs', 'apps/desktop/identity.cjs',
   ...['secret-store', 'image-secret-store', 'image-secret-broker', 'secret-broker', 'security', 'shutdown', 'supervisor']
-    .map(name => `apps/desktop/src/${name}.ts`)];
+    .map(name => `apps/desktop/src/${name}.mjs`)];
 
 function verifyFixture() {
   assert.equal(digest(raw), 'db061a98ebd36429230efd92af12a2e053adb5a09cafc1e7ba18f82540012b6f');

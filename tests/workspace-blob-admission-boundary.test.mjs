@@ -63,11 +63,13 @@ function textInput(db, mockLedger) {
     for (const [table, {fields, rows}] of Object.entries(input.tables)) {
       if (table === 'sqlite_sequence') continue;
       const insert = db.prepare(`INSERT INTO main.${quote(table)}(rowid,${fields.map(quote).join(',')}) VALUES(${Array(fields.length + 1).fill('?').join(',')})`);
+      insert.setReadBigInts(true);
       for (const value of rows) insert.run(BigInt(value[0]), ...fields.map((_, i) => decode(value[1 + i * 2], value[2 + i * 2])));
     }
     db.exec('DELETE FROM sqlite_sequence');
+    const sequenceInsert = db.prepare('INSERT INTO sqlite_sequence(rowid,name,seq) VALUES(?,?,?)');sequenceInsert.setReadBigInts(true);
     for (const value of input.tables.sqlite_sequence.rows)
-      db.prepare('INSERT INTO sqlite_sequence(rowid,name,seq) VALUES(?,?,?)').run(BigInt(value[0]), decode(value[1], value[2]), decode(value[3], value[4]));
+      sequenceInsert.run(BigInt(value[0]), decode(value[1], value[2]), decode(value[3], value[4]));
     for (const object of input.objects) if (object.type !== 'table' && object.sql !== null) db.exec(object.sql);
     db.exec('COMMIT; PRAGMA foreign_keys=ON');
   } catch (error) {if (db.isTransaction) db.exec('ROLLBACK'); throw error;}

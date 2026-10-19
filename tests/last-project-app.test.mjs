@@ -14,6 +14,8 @@ import {createSettingsNavigationRegistry} from '../apps/web/src/settings-navigat
 import {createLastProjectController} from '../apps/web/src/last-project-state.ts';
 import {editorInitialSelection} from '../apps/web/src/editor-native-window.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const id=n=>`77000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const scope='a'.repeat(64),otherScope='b'.repeat(64),stamp='2026-10-12T00:00:00.000Z';
 const envelope={supported:true,workspaceScope:scope,instanceId:id(9),revision:1,projectId:id(2),updatedAt:stamp,targetStatus:'matching'};
@@ -27,7 +29,7 @@ const settingsSource=section('  async function prepareSettingsDeparture()', '  a
 const guardSource=section('  async function guardNavigation(', '  async function guardProjectNavigation(');
 const projectGuardSource=section('  async function guardProjectNavigation(', '  async function prepareSettingsDeparture(');
 const selectSource=section('  async function selectProject(', '  async function reloadPreferences(');
-const bootSource=section('  async function boot() {','  useEffect(() => {\n    bootGuard.current.activate();');
+const bootSource=section('  async function boot(): Promise<void> {','  useEffect(() => {\n    bootGuard.current!.activate();');
 const compile=(code,name,env)=>Function(...Object.keys(env),`${code}\nreturn ${name};`)(...Object.values(env));
 
 test('initial choice uses valid explicit URL then valid locator then ordinary fallback without mutation',()=>{

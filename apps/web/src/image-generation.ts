@@ -293,7 +293,7 @@ export function createImageGenerationSession({ projectId, api = rpc as unknown a
   let state: ImageGenerationState = initialImageGenerationState(), disposed = false, visible = true, readEpoch = 0, selectionEpoch = 0, interactionEpoch = 0, timer: number | null = null, polls = 0, reading = false, availabilityEpoch = 0;
   if (settings) state.settings = safeImageSettings(settings) as ImageSettingsView;
   if (customSettings) state.customSettings = safeImageSettings(customSettings, 'custom') as ImageSettingsView;
-  if (comfySettings) state.comfySettings = safeComfyImageSettings(comfySettings) as ImageSettingsView;
+  if (comfySettings) state.comfySettings = safeComfyImageSettings(comfySettings) as unknown as ImageSettingsView;
   if (comfyAvailability) { try { state.comfyAvailability = safeComfyConnectorAvailability(comfyAvailability); state.comfyAvailabilityPhase = 'ready'; } catch { state.comfyAvailabilityPhase = 'error'; } }
   const announced = new Set<string>(), tracked = new Map<string, ImageTaskView>(), calls = new Set<AbortController>();
   async function call(operation: string, input: Record<string, unknown>): Promise<unknown> {
@@ -434,7 +434,7 @@ export function createImageGenerationSession({ projectId, api = rpc as unknown a
         catch { if (!owned(epoch)) return false; emit({ customSettings: null }); }
       }
       if (comfySettingsReader) {
-        try { const latest = safeComfyImageSettings(await comfySettingsReader()) as ImageSettingsView; if (!owned(epoch)) return false; emit({ comfySettings: latest }); }
+        try { const latest = safeComfyImageSettings(await comfySettingsReader()) as unknown as ImageSettingsView; if (!owned(epoch)) return false; emit({ comfySettings: latest }); }
         catch { if (!owned(epoch)) return false; emit({ comfySettings: null }); }
       }
       const groupInput = { projectId, limit: IMAGE_LIMITS.pageSize, ...(state.groupCursor ? { cursor: state.groupCursor } : {}) };
@@ -651,7 +651,7 @@ export function createImageGenerationSession({ projectId, api = rpc as unknown a
     setSettings(value: unknown): boolean { if (disposed) return false; const settings = safeImageSettings(value) as ImageSettingsView; if (canonicalImageInput(state.settings) !== canonicalImageInput(settings)) interactionEpoch++; emit({ settings }); return true; },
     setCustomSettings(value: unknown): boolean { if (disposed) return false; const customSettings = safeImageSettings(value, 'custom') as ImageSettingsView; if (canonicalImageInput(state.customSettings) !== canonicalImageInput(customSettings)) interactionEpoch++; emit({ customSettings }); return true; },
     setComfyAvailability(value: unknown): boolean { if (disposed) return false; availabilityEpoch++; let comfyAvailability: unknown = null; try { comfyAvailability = safeComfyConnectorAvailability(value); } catch {} emit({ comfyAvailability, comfyAvailabilityPhase: comfyAvailability ? 'ready' : 'error' }); return Boolean(comfyAvailability); },
-    setComfySettings(value: unknown): boolean { if (disposed) return false; const comfySettings = safeComfyImageSettings(value) as ImageSettingsView; if (canonicalImageInput(state.comfySettings) !== canonicalImageInput(comfySettings)) interactionEpoch++; emit({ comfySettings }); return true; },
+    setComfySettings(value: unknown): boolean { if (disposed) return false; const comfySettings = safeComfyImageSettings(value) as unknown as ImageSettingsView; if (canonicalImageInput(state.comfySettings) !== canonicalImageInput(comfySettings)) interactionEpoch++; emit({ comfySettings }); return true; },
     selectMode(mode: string): boolean { if (!composerEditable() || !['text', 'edit'].includes(mode)) return false; interactionEpoch++; emit({ mode: mode as ImageMode, targetRequest: null, message: '', displayMessage: null }); return true; },
     selectSource(asset: ImageEditAsset | null | undefined): boolean {
       if (!composerEditable() || state.mode !== 'edit') return false;
@@ -711,7 +711,7 @@ export function createImageGenerationSession({ projectId, api = rpc as unknown a
       return dispatch(`image.task.${action}`, { projectId, taskId: current.id, expectedRevision: current.revision, requestId: requestId() });
     },
     async observeRemote(task: ImageTaskResponse | null | undefined): Promise<boolean> {
-      if (disposed || !visible || reading || state.pending || state.actionTaskId || state.reviewActionId || !task || !state.tasks.some(item => item.id === task.id && canonicalImageInput(item) === canonicalImageInput(task)) || !comfyCanObserve(state, task)) return false;
+      if (disposed || !visible || reading || state.pending || state.actionTaskId || state.reviewActionId || !task || !state.tasks.some(item => item.id === task.id && canonicalImageInput(item) === canonicalImageInput(task)) || !comfyCanObserve(state as unknown as Parameters<typeof comfyCanObserve>[0], task)) return false;
       stopTimer(); readEpoch++; reading = false;
       const accepted = await observations.observe(task);
       if (!disposed && visible) await load();

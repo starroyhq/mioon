@@ -3,8 +3,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
-const start = app.indexOf('  useEffect(() => {\n    const controller = preferencesRef.current;');
+const start = app.indexOf('  useEffect(() => {\n    const controller = preferencesRef.current!;');
 const end = app.indexOf('\n  }, []);', start);
 assert.ok(start >= 0 && end > start, 'Actual App lifecycle effect must be uniquely extractable');
 assert.equal(app.indexOf('  useEffect(() => {\n    const controller = preferencesRef.current;', start + 1), -1);

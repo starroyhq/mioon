@@ -7,6 +7,8 @@ import {createEditTaskClient} from '../apps/web/src/edit-task-client.ts';
 import {createOpacityCandidateApplication, readOpacityCandidateApplication} from '../apps/web/src/opacity-candidate-application.ts';
 import {LOCALES, translate} from '../packages/i18n/src/index.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const source = readFileSync(new URL('../apps/web/src/main.tsx', import.meta.url), 'utf8');
 const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const element = (type, props, ...children) => ({type, props: {...props, children}});
@@ -78,7 +80,7 @@ test('candidate App binds the actual task lane, Inspector v3 client and render r
   assert.match(app, /opacityCandidate=\{application\?\.inspectorBinding\}/);
   assert.match(app, /application && !application\.validateProjectSnapshot\(next, projectId\)/);
   assert.match(app, /const editorView = application \? \{ \.\.\.restored, activeMode: 'editing' \}/);
-  assert.match(app, /<Preview[^>]*opacityApplication=\{opacityApplication\}/);
+  assert.match(app, /<Preview[^>]*opacityApplication=\{opacityApplication(?: as never)?\}/);
   assert.match(app, /onCanvas=\{application \? undefined : \(\) => changeMode\('canvas'\)\}/);
   const history = app.match(/<ExportHistoryList\s[\s\S]*?\/>/)?.[0];
   assert.ok(history, 'The actual history composition remains in App');
@@ -87,7 +89,7 @@ test('candidate App binds the actual task lane, Inspector v3 client and render r
     /fileRecoveryEnabled=\{!restored && !application\}/,
     /candidateConnected=\{online && auth === true && workbenchReady && !loading\}/,
   ]) assert.match(history, prop);
-  assert.match(app, /onReplaceSource=\{application \? undefined : replaceTimelineClipSource\}/);
+  assert.match(app, /onReplaceSource=\{application \? undefined : replaceTimelineClipSource(?: as never)?\}/);
   assert.match(app, /<Timeline basicEditingOnly=\{Boolean\(application\)\}/);
   assert.match(app, /!application && <AgentWorkspace/);
   assert.match(app, /!application && <ImageGeneration/);
@@ -104,7 +106,7 @@ test('candidate Inspector describes saved preview/export behavior in all support
 });
 
 test('actual candidate Return to source keeps editing and uses the shared source-preview navigation guard', async () => {
-  const first = app.indexOf('  async function returnToSource(assetId) {');
+  const first = app.indexOf('  async function returnToSource(assetId: string): Promise<void> {');
   const last = app.indexOf('  async function moveTimelineClip(', first);
   assert.ok(first > 0 && last > first);
   const calls = [], asset = {id: 'source'};

@@ -11,32 +11,13 @@ import { WorkbenchSelect } from './WorkspaceControls.tsx';
 import { useWorkspaceVisibility } from './workspace-visibility.tsx';
 import { closeSettingsAfterPermission, createSettingsNavigationReporter } from './settings-navigation-state.ts';
 import { IMAGE_SETTINGS_LIMITS, CUSTOM_IMAGE_ENDPOINT_LIMIT, imageSettingsBindingChanged, imageSettingsDestination, createImageSettingsSession, imageSettingsCanSave, imageSettingsDirty, imageSettingsEditable, initialImageSettingsState } from './image-settings.ts';
+import type { ImageSettingsClient, ImageSettingsSession, ImageSettingsState } from './image-settings.ts';
 import Icon from './icons.tsx';
 import './image-settings.css';
 
 type TranslateFn = (key: MessageKey) => string;
-interface ImageSettingsSnapshotView {
-  revision: number;
-  configuration: {enabled: boolean; baseUrl: string; model: string};
-  secret: {configured: boolean; storage: 'none' | 'session' | 'persistent'};
-  storage: {persistentAvailable: boolean; sessionScope: string; reasonCode: string | null};
-}
-interface ImageSettingsDraftView {enabled: boolean; baseUrl: string; model: string}
-interface ImageSettingsState {
-  phase: string;
-  snapshot: ImageSettingsSnapshotView | null;
-  draft: ImageSettingsDraftView | null;
-  storage: string;
-  secretAction: 'keep' | 'remove';
-  recovery: unknown;
-  message: string;
-  displayMessages: DisplayMessage[];
-}
-type ImageSettingsSession = ReturnType<typeof createImageSettingsSession>;
 type NavigationReporter = ReturnType<typeof createSettingsNavigationReporter>;
 type NavigationInput = Parameters<NavigationReporter['update']>[0];
-type SessionOptions = NonNullable<Parameters<typeof createImageSettingsSession>[0]>;
-type ImageSettingsClient = NonNullable<SessionOptions['client']>;
 type ImageStorageState = {reasonCode?: string | null; persistentAvailable?: boolean} | null | undefined;
 const noop = () => {};
 const storageLabels: Readonly<Record<string, string>> = { none: 'image.settings.storageNone', session: 'image.settings.storageSession', persistent: 'connections.storage.persistent' };
@@ -66,7 +47,7 @@ export default function ImageSettings({ active = false, contextKey, client, slot
   const { t, renderMessage } = useI18n();
   if (!['official', 'custom'].includes(slot)) throw new TypeError('Unknown image settings slot');
   const custom = slot === 'custom', prefix = custom ? 'custom-image-settings' : 'image-settings';
-  const [state, setState] = useState<ImageSettingsState>(initialImageSettingsState as unknown as ImageSettingsState), [hasKey, setHasKey] = useState(false), [keyNotice, setKeyNotice] = useState<DisplayMessage | string>('');
+  const [state, setState] = useState<ImageSettingsState>(initialImageSettingsState), [hasKey, setHasKey] = useState(false), [keyNotice, setKeyNotice] = useState<DisplayMessage | string>('');
   const [pageVisible, setPageVisible] = useState(() => typeof document === 'undefined' || document.visibilityState !== 'hidden');
   const ancestorVisible = useWorkspaceVisibility(), visible = ancestorVisible && active && pageVisible;
   const keyInput = useRef<HTMLInputElement | null>(null), session = useRef<ImageSettingsSession | null>(null), lifetime = useRef<{closed: boolean} | null>(null), callbacks = useRef<{onSnapshot: (snapshot: unknown) => void; onDirtyChange: (dirty: boolean) => void}>({ onSnapshot, onDirtyChange }), navigation = useRef<NavigationReporter | null>(null);

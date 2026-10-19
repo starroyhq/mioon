@@ -28,7 +28,7 @@ export function resetLastInsertRowid(db) {
  // large preserved rowid would make unrelated cleanup run() calls throw.
  // One tiny temp-table insert restores a safe last-insert rowid without
  // touching main-schema rows, rowids, sequence high-water marks or bytes.
- db.exec('CREATE TEMP TABLE IF NOT EXISTS last_insert_rowid_reset(value);INSERT INTO last_insert_rowid_reset(rowid,value) VALUES(1,1);DELETE FROM last_insert_rowid_reset;');
+ db.exec('CREATE TEMP TABLE IF NOT EXISTS last_insert_rowid_reset(value);INSERT INTO last_insert_rowid_reset(rowid,value) VALUES(1,1);DELETE FROM last_insert_rowid_reset;DROP TABLE last_insert_rowid_reset;');
 }
 function decode(type, value) {
   if (type === 'null') return null;

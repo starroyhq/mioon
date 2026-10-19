@@ -35,7 +35,7 @@ function seedRaw(db){
  db.prepare('INSERT INTO jobs VALUES(?,?,?)').run(randomUUID(),projectId,JSON.stringify({id:'replace',projectId,status:'submission_unknown'}));
  // Make the application identity valid, independently from provider identities.
  const job=db.prepare('SELECT id FROM jobs LIMIT 1').get().id;db.prepare('UPDATE jobs SET data=? WHERE id=?').run(JSON.stringify({id:job,projectId,status:'submission_unknown'}),job);
- db.prepare('INSERT INTO mock_provider_tasks(rowid,provider_job_id,request_id,snapshot_json,snapshot_hash,scenario,created_at_ms,ready_at_ms,poll_count,download_attempts,cancelled) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(9007199254740993n,id,request,Buffer.from([0,255,13,10]),'f'.repeat(64),'opaque_original_outcome',9007199254740993n,123.25,7,2,0);
+ const mockTaskInsert=db.prepare('INSERT INTO mock_provider_tasks(rowid,provider_job_id,request_id,snapshot_json,snapshot_hash,scenario,created_at_ms,ready_at_ms,poll_count,download_attempts,cancelled) VALUES(?,?,?,?,?,?,?,?,?,?,?)');mockTaskInsert.setReadBigInts(true);mockTaskInsert.run(9007199254740993n,id,request,Buffer.from([0,255,13,10]),'f'.repeat(64),'opaque_original_outcome',9007199254740993n,123.25,7,2,0);
  db.prepare('INSERT INTO mock_provider_submissions(id,request_id,job_id,provider_job_id,created_at_ms,outcome) VALUES(?,?,?,?,?,?)').run(17,request,null,id,9007199254740993n,Buffer.from([0,254,13,10]));
  db.prepare('INSERT INTO mock_provider_submissions(id,request_id,job_id,provider_job_id,created_at_ms,outcome) VALUES(?,?,?,?,?,?)').run(99,'ambiguous-request',job,null,1,'  unknown\n');
  db.prepare("UPDATE sqlite_sequence SET seq=7001 WHERE name='mock_provider_submissions'").run();

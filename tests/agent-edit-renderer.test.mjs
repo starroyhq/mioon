@@ -11,6 +11,8 @@ import * as edits from '../apps/web/src/agent-edits.ts';
 import * as chat from '../apps/web/src/agent-chat.ts';
 import * as policy from '../apps/web/src/agent-tool-state.ts';
 
+import { lenientFunction } from './helpers/eval-source.mjs';
+const Function = lenientFunction;
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), instanceId = id(2), threadId = id(3), shotId = id(4), runId = id(5), proposalId = id(6), requestId = id(7);
 const target = { projectId, shotId, expectedRevision: 4, title: 'Saved title', prompt: 'Saved prompt <script>untrusted</script>' };
@@ -254,7 +256,7 @@ test('actual composer previews saved title/prompt, requires distinct edit mode a
 
 test('App confirmed-apply refresh is same-project and cannot mark an Inspector draft saved or remount it', () => {
   const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
-  const handler = app.match(/onApplied=\{projectId => \{([^}]+)\}\}/)?.[1]; assert.ok(handler); assert.match(handler, /currentProject.current === projectId/); assert.match(handler, /refresh\(projectId\)/);
+  const handler = app.match(/onApplied=\{\(projectId: string\) => \{([^}]+)\}\}/)?.[1]; assert.ok(handler); assert.match(handler, /currentProject.current === projectId/); assert.match(handler, /refresh\(projectId\)/);
   assert.doesNotMatch(handler, /setShotDirty|setClipDirty|setSourceDirty|setSubjectDirty|setSubtitleDirty|setInspectorEpoch|saveShot|setSelected|rpc/);
   const calls = [], apply = Function('currentProject', 'refresh', `return projectId => { ${handler} };`)({ current: projectId }, id => calls.push(id));
   apply(id(90)); assert.equal(calls.length, 0); apply(projectId); assert.deepEqual(calls, [projectId]);

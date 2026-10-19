@@ -30,7 +30,12 @@ type AgentProposal=AgentTimelineMoveProposal|AgentTimelineGainProposal;
 const isRecord=(value: unknown): value is Record<string, unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const property=(value: unknown,key: string): unknown=>isRecord(value)?value[key]:undefined;
 function invalid(): never {throw Object.assign(new Error('Invalid saved timeline move metadata.'), { code: 'INVALID_RESPONSE' });}
-const freeze=<T>(value: T): Readonly<T>=>Object.freeze(value);
+function freeze<T>(value: T): Readonly<T> {
+  if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
+    for (const child of Object.values(value as Record<string, unknown>)) if (child !== null && typeof child === 'object') freeze(child);
+  }
+  return Object.freeze(value);
+}
 const publicFields=['projectId','timelineId','clipId','trackId','expectedRevision','clipName','trackName','trackKind','fps','width','height'] as const;
 const timingFields=['startFrame','endFrame','durationFrames','timelineDurationFrames'] as const;
 const publicTarget=(value: unknown): Record<string, unknown>=>isRecord(value)?value:{};
