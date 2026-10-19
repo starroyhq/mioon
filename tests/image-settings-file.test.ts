@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
@@ -9,7 +9,7 @@ import {DEFAULT_IMAGE_CONFIGURATION, IMAGE_SETTINGS_NAMESPACE} from '../packages
 import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
 
 const envelope = (revision = 1) => ({version: 1, namespace: IMAGE_SETTINGS_NAMESPACE, revision, configuration: structuredClone(DEFAULT_IMAGE_CONFIGURATION), secret: null});
-async function fixture(t) {
+async function fixture(t: TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-image-file-'));
   t.after(() => rm(root, {recursive: true, force: true}));
   const directory = path.join(root, 'image-settings'), file = path.join(directory, 'settings.json');
@@ -37,7 +37,7 @@ test('image updates preserve independent Agent envelope bytes and neither adopt 
   assert.equal((await settings.get()).secret.configured, false);
   await settings.put({expectedRevision: 0, configuration: {...DEFAULT_IMAGE_CONFIGURATION, enabled: true}, secret: {action: 'replace', storage: 'session', value: 'synthetic-image-isolated'}});
   assert.equal(await readFile(agentFile, 'utf8'), original);
-  assert.equal((await f.persistence.load()).secret, null);
+  assert.equal((await f.persistence.load())!.secret, null);
   await settings.close();
   const wrongFile = createImageSettingsFile({directory: agentDirectory, privateRoot: f.root});
   await assert.rejects(wrongFile.load(), {code: 'IMAGE_SETTINGS_CORRUPT'});
@@ -57,7 +57,7 @@ test('plaintext update DTOs, nonimage envelopes, corrupt and oversized file cont
   await mkdir(f.directory, {mode: 0o700});
   for (const content of ['{"secret":"synthetic-corrupt', 'x'.repeat(64 * 1024 + 1), JSON.stringify({...envelope(), namespace: 'agent'})]) {
     await writeFile(f.file, content, {mode: 0o600});
-    await assert.rejects(f.persistence.load(), error => error.code === 'IMAGE_SETTINGS_CORRUPT' && !error.message.includes('synthetic'));
+    await assert.rejects(f.persistence.load(), (error: unknown) => {const failure = error as {code?: string; message?: string}; return failure.code === 'IMAGE_SETTINGS_CORRUPT' && !failure.message!.includes('synthetic');});
     const settings = await createImageSettings({persistence: f.persistence});
     await assert.rejects(settings.put({expectedRevision: 0, configuration: DEFAULT_IMAGE_CONFIGURATION, secret: {action: 'remove'}}), {code: 'IMAGE_SETTINGS_CORRUPT'});
     assert.equal(await readFile(f.file, 'utf8'), content);
@@ -100,7 +100,7 @@ test('unsafe file and directory permissions fail closed without chmod repair', {
 
 test('concurrent raw readers see complete envelopes and no leftover temporary files', async t => {
   const f = await fixture(t); await f.persistence.save(envelope());
-  const observed = [];
+  const observed: {revision: number}[] = [];
   const reader = (async () => { for (let index = 0; index < 40; index++) observed.push(JSON.parse(await readFile(f.file, 'utf8'))); })();
   for (let revision = 2; revision <= 10; revision++) await f.persistence.save(envelope(revision));
   await reader;

@@ -5,8 +5,11 @@ import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {createModuleFixture, configuration, imageRows, until, sha256} from './helpers/comfy-module-fixture.ts';
 
-const missingModule = error => error.code === 'COMFY_MODULE_UNAVAILABLE' && error.status === 503;
-const changes = f => f.store.db.prepare('SELECT total_changes() AS n').get().n;
+type ModuleFixture = Awaited<ReturnType<typeof createModuleFixture>>;
+type ModuleOptions = Parameters<typeof createModuleFixture>[1];
+const moduleOptions = (options: Record<string, unknown>): ModuleOptions => options as unknown as ModuleOptions;
+const missingModule = (error: unknown) => {const failure = error as {code?: string; status?: number}; return failure.code === 'COMFY_MODULE_UNAVAILABLE' && failure.status === 503;};
+const changes = (f: ModuleFixture) => (f.store.db.prepare('SELECT total_changes() AS n').get() as {n: number}).n;
 
 test('unavailable Comfy module refuses new generation, preparation and pending approval without mutations', async t => {
   for (const state of ['not_provided', 'not_loaded']) await t.test(state, async t => {
@@ -28,15 +31,15 @@ test('unavailable Comfy module refuses new generation, preparation and pending a
     assert.deepEqual(await f.settings.get(), setting);
     assert.deepEqual(f.calls, {post: 0, get: 0});
     const profiles = await f.call('image.profile.list', {});
-    assert.equal(profiles.items.find(item => item.providerId === 'comfy-local')?.enabled, false);
+    assert.equal(profiles.items.find((item: {providerId: string; enabled: boolean}) => item.providerId === 'comfy-local')?.enabled, false);
   });
 });
 
 test('completed Comfy receipts, reviews, remote journals and PNG bytes survive unavailable-module restarts exactly', async t => {
   const f = await createModuleFixture(t), {input, review, ack} = await f.accepted();
   const observation = await f.observationInput(ack.id), observed = await f.call('image.task.observeRemote', observation);
-  const finished = await until(() => f.task(ack.id), task => task.state === 'succeeded');
-  await until(() => f.remote(ack.id), result => result.observation?.state === 'finished');
+  const finished = await until(() => f.task(ack.id), (task: {state: string}) => task.state === 'succeeded');
+  await until(() => f.remote(ack.id), (result: {observation?: {state?: string}}) => result.observation?.state === 'finished');
   const prepared = await f.prepare(input), remote = await f.remote(ack.id);
   const versions = await f.call('image.version.list', {projectId: f.project.id, groupId: ack.groupId});
   const group = await f.call('image.group.get', {projectId: f.project.id, groupId: ack.groupId});
@@ -70,13 +73,13 @@ test('completed Comfy receipts, reviews, remote journals and PNG bytes survive u
 });
 
 test('unknown original task retains its identities and exact observation replay while missing module blocks a fresh query', async t => {
-  const f = await createModuleFixture(t, {
-    submit: args => { args.beforeSubmit(); throw Error('Synthetic lost acknowledgment'); },
-    observe: () => ({state: 'running', contentVerified: false}),
-  });
+  const f = await createModuleFixture(t, moduleOptions({
+    submit: (args: {beforeSubmit(): void}) => { args.beforeSubmit(); throw Error('Synthetic lost acknowledgment'); },
+    observe: () => ({state: 'running' as const, contentVerified: false}),
+  }));
   const {input, review, ack} = await f.accepted();
   const observation = await f.observationInput(ack.id), observed = await f.call('image.task.observeRemote', observation);
-  await until(() => f.remote(ack.id), result => result.observation?.state === 'finished');
+  await until(() => f.remote(ack.id), (result: {observation?: {state?: string}}) => result.observation?.state === 'finished');
   const before = imageRows(f.store), remote = await f.remote(ack.id);
   for (const state of ['not_provided', 'not_loaded']) {
     await f.reopen(state);
@@ -96,13 +99,13 @@ test('unknown original task retains its identities and exact observation replay 
 
 test('local-result recovery remains explicitly usable without the Comfy network module', async t => {
   let stop = true;
-  const f = await createModuleFixture(t, {fault: phase => {
+  const f = await createModuleFixture(t, moduleOptions({fault: (phase: string) => {
     if (phase === 'after_result_manifest' && stop) { stop = false; throw Error('Synthetic stop after durable local manifest'); }
-  }});
+  }}));
   const {ack} = await f.accepted();
   await f.call('image.task.observeRemote', await f.observationInput(ack.id));
-  const failed = await until(() => f.task(ack.id), task => task.state === 'local_result_error');
-  await until(() => f.remote(ack.id), result => result.observation?.state === 'finished');
+  const failed = await until(() => f.task(ack.id), (task: {state: string}) => task.state === 'local_result_error');
+  await until(() => f.remote(ack.id), (result: {observation?: {state?: string}}) => result.observation?.state === 'finished');
   const journal = imageRows(f.store, ['image_reviews', 'image_requests', 'image_remote_runs', 'image_remote_observations']);
   const manifest = readFileSync(path.join(f.root, 'image-staging', `${ack.id}.json`));
   await f.reopen('not_provided');
@@ -111,7 +114,7 @@ test('local-result recovery remains explicitly usable without the Comfy network 
   assert.deepEqual(await f.task(ack.id), failed, 'module absence must not auto-recover local results');
   const recovery = {projectId: f.project.id, taskId: ack.id, requestId: randomUUID(), expectedRevision: failed.revision};
   const recovered = await f.call('image.task.recoverResult', recovery);
-  await until(() => f.task(ack.id), task => task.state === 'succeeded');
+  await until(() => f.task(ack.id), (task: {state: string}) => task.state === 'succeeded');
   assert.deepEqual(await f.call('image.task.recoverResult', recovery), recovered);
   const version = (await f.call('image.version.list', {projectId: f.project.id, groupId: ack.groupId})).items[0];
   assert.deepEqual(readFileSync(path.join(f.root, 'media', `${version.assetId}.png`)), f.png);
@@ -119,33 +122,33 @@ test('local-result recovery remains explicitly usable without the Comfy network 
 });
 
 test('loaded connector still observes original frozen task when current settings disable generation or point elsewhere', async t => {
-  let seen;
-  const f = await createModuleFixture(t, {observe: args => { seen = args; return {state: 'running', contentVerified: false}; }});
+  let seen: {config?: unknown; execution?: unknown} | undefined;
+  const f = await createModuleFixture(t, moduleOptions({observe: (args: {config?: unknown; execution?: unknown}) => { seen = args; return {state: 'running' as const, contentVerified: false}; }}));
   const {ack, review} = await f.accepted();
   const changed = {...configuration, enabled: false, baseUrl: 'http://127.0.0.1:8190', model: 'different.safetensors'};
   await f.settings.put({expectedRevision: 1, configuration: changed});
   await f.reopen('available');
   await f.call('image.task.observeRemote', await f.observationInput(ack.id));
-  await until(() => f.remote(ack.id), result => result.observation?.state === 'finished');
+  await until(() => f.remote(ack.id), (result: {observation?: {state?: string}}) => result.observation?.state === 'finished');
   assert.equal((await f.settings.get()).configuration.enabled, false);
-  assert.deepEqual(seen.config, review.configuration);
-  assert.deepEqual(seen.execution, review.execution);
+  assert.deepEqual(seen!.config, review.configuration);
+  assert.deepEqual(seen!.execution, review.execution);
   assert.deepEqual(f.calls, {post: 1, get: 1});
   await assert.rejects(f.call('image.review.prepare', {input: f.input({model: changed.model}), settingsRevision: 2}), {code: 'IMAGE_LIVE_DISABLED'});
 });
 
 test('lost observation acknowledgment replays under module omission without resuming its interrupted query', async t => {
   let lost = true;
-  const f = await createModuleFixture(t, {fault: phase => {
+  const f = await createModuleFixture(t, moduleOptions({fault: (phase: string) => {
     if (phase === 'after_remote_observation_accept' && lost) { lost = false; throw Error('Synthetic lost observation ACK'); }
-  }});
+  }}));
   const {ack} = await f.accepted(), observation = await f.observationInput(ack.id);
   await assert.rejects(f.call('image.task.observeRemote', observation), /Synthetic lost observation ACK/);
   assert.deepEqual(f.calls, {post: 1, get: 0});
-  const original = f.store.db.prepare('SELECT canonicalInput,inputHash,response FROM image_remote_observations WHERE requestId=?').get(observation.requestId);
+  const original = f.store.db.prepare('SELECT canonicalInput,inputHash,response FROM image_remote_observations WHERE requestId=?').get(observation.requestId) as {canonicalInput: string; inputHash: string; response: string};
   await f.reopen('not_loaded');
   const interrupted = await f.remote(ack.id);
-  assert.equal(interrupted.observation.state, 'interrupted');
+  assert.equal((interrupted as {observation: {state: string}}).observation.state, 'interrupted');
   assert.equal((await f.task(ack.id)).state, 'outcome_unknown');
   const before = imageRows(f.store), total = changes(f);
   assert.deepEqual(await f.call('image.task.observeRemote', observation), JSON.parse(original.response));

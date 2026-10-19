@@ -8,30 +8,37 @@ import {IMAGE_GENERATION_ENDPOINT, IMAGE_NETWORK_LIMITS, IMAGE_PROFILES, createI
 import {renderMockImagePng} from '../packages/business/src/images/png.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS} from '../packages/contracts/src/images.ts';
 
-const snapshot = (providerId='openai',prompt='Synthetic offline adapter test') => ({providerId,model:IMAGE_MODELS[providerId],prompt,options:{...IMAGE_FIXED_OPTIONS}});
+type AdapterTransport = Parameters<typeof createOpenAIImageAdapter>[0] extends {transport?: infer T} ? (T extends undefined ? never : T) : never;
+interface ImageSocket extends EventEmitter {remoteAddress: string; remotePort: number; authorized: boolean; destroy(): void}
+interface ImageRequest extends EventEmitter {destroy(): void; end(payload?: unknown): void}
+interface ImageResponse extends Readable {statusCode: number; headers: Record<string, string>; complete: boolean}
+interface ImageRequestOptions {path: string; hostname: string; servername: string; port: number; agent: boolean; autoSelectFamily: boolean; rejectUnauthorized: boolean; headers: Record<string, string>; checkServerIdentity(name: string, cert: unknown): Error | undefined; lookup(host: string, options: {all: boolean}, callback: (error: Error | null, value?: {address: string; family: number}[]) => void): void}
+interface ImageFixtureState {calls: number; ends: number; destroyed: number; options?: ImageRequestOptions; payload?: unknown; response?: ImageResponse; request(options: ImageRequestOptions, callback: (response: ImageResponse) => void): ImageRequest}
+interface ImageFixtureOptions {body?: Buffer; status?: number; headers?: Record<string, string>; peer?: string; port?: number; authorized?: boolean; complete?: boolean; beforeConnect?: (state: ImageFixtureState) => void; beforeResponse?: (state: ImageFixtureState) => void; noConnect?: boolean; noResponse?: boolean; chunks?: Buffer[]}
+const snapshot = (providerId='openai',prompt='Synthetic offline adapter test') => ({providerId,model:(IMAGE_MODELS as Record<string, string>)[providerId],prompt,options:{...IMAGE_FIXED_OPTIONS}});
 const answers = async () => [{address:'8.8.8.8',family:4}];
 const key = 'offline-test-sentinel';
 const requestArgs = {body:'{}',beforeDispatch:()=>{}};
-function injectedRequest({body=Buffer.from('{}'),status=200,headers={'content-type':'application/json'},peer='8.8.8.8',port=443,authorized=true,complete=true,beforeConnect,beforeResponse,noConnect=false,noResponse=false,chunks}={}) {
-  const state={calls:0,ends:0,destroyed:0};
+function injectedRequest({body=Buffer.from('{}'),status=200,headers={'content-type':'application/json'},peer='8.8.8.8',port=443,authorized=true,complete=true,beforeConnect,beforeResponse,noConnect=false,noResponse=false,chunks}: ImageFixtureOptions = {}): ImageFixtureState {
+  const state = {calls:0,ends:0,destroyed:0} as unknown as ImageFixtureState;
   state.request=(options,callback)=>{
     state.calls++;state.options=options;
-    const request=new EventEmitter();
+    const request=new EventEmitter() as ImageRequest;
     request.destroy=()=>{state.destroyed++;};
-    request.end=payload=>{
+    request.end=(payload?: unknown)=>{
       state.ends++;state.payload=payload;beforeResponse?.(state);
       if(noResponse)return;
-      const response=Readable.from(chunks??[body]);Object.assign(response,{statusCode:status,headers,complete});state.response=response;callback(response);
+      const response=Readable.from(chunks??[body]) as ImageResponse;Object.assign(response,{statusCode:status,headers,complete});state.response=response;callback(response);
     };
     queueMicrotask(()=>{
-      const socket=new EventEmitter();Object.assign(socket,{remoteAddress:peer,remotePort:port,authorized,destroy(){state.destroyed++;}});
+      const socket=new EventEmitter() as ImageSocket;Object.assign(socket,{remoteAddress:peer,remotePort:port,authorized,destroy(){state.destroyed++;}});
       request.emit('socket',socket);beforeConnect?.(state);if(!noConnect)socket.emit('secureConnect');
     });
     return request;
   };
   return state;
 }
-const transportFor=(fixture,options={})=>createImageJsonTransport({lookup:answers,httpsRequest:fixture.request,apiKey:key,...options});
+const transportFor=(fixture: ImageFixtureState,options: Record<string, unknown> = {})=>createImageJsonTransport({lookup:answers,httpsRequest:fixture.request,apiKey:key,...options} as Parameters<typeof createImageJsonTransport>[0]);
 let generated;
 async function png() { return generated ??= await renderMockImagePng(); }
 async function goodBody(extra={}) {return Buffer.from(JSON.stringify({created:1,data:[{b64_json:(await png()).toString('base64')}],...extra}));}
@@ -40,7 +47,7 @@ test('production construction has no live fallback and fixed profile has no endp
   const snapshotProxy=new Proxy({},{get(){assert.fail('disabled adapter must not inspect snapshot');}});
   await assert.rejects(createOpenAIImageAdapter().generate(snapshotProxy),{code:'IMAGE_LIVE_DISABLED',dispatched:false,outcomeUnknown:false});
   for(const deps of [{},{lookup:answers},{httpsRequest:()=>assert.fail('no request')},{apiKey:key}]) assert.throws(()=>createImageJsonTransport(deps),{code:'IMAGE_LIVE_DISABLED'});
-  assert.equal(IMAGE_PROFILES.find(v=>v.providerId==='openai').enabled,false);
+  assert.equal(IMAGE_PROFILES.find(v=>v.providerId==='openai')!.enabled,false);
   assert.equal(IMAGE_GENERATION_ENDPOINT,'https://api.openai.com/v1/images/generations');
 });
 
@@ -52,7 +59,7 @@ test('wire body is exactly the verified pinned model/allowlist with no response_
 test('all DNS answers must be public and well-formed; no fallback around rejected answers',async()=>{
   for(const result of [[],[{address:'8.8.8.8',family:4},{address:'127.0.0.1',family:4}],[{address:'168.63.129.16',family:4}],[{address:'::ffff:8.8.8.8',family:6}],[{address:'8.8.8.8',family:6}],Array(65).fill({address:'8.8.8.8',family:4})]) await assert.rejects(resolveImageDestination({lookup:async()=>result}),{code:'IMAGE_NETWORK_DENIED'});
   let count=0;
-  assert.deepEqual(await resolveImageDestination({lookup:async(host,options)=>{count++;assert.equal(host,'api.openai.com');assert.deepEqual(options,{all:true,verbatim:true});return answers();}}),{hostname:'api.openai.com',port:443,secure:true,address:'8.8.8.8',family:4,path:'/v1/images/generations'});
+  assert.deepEqual(await resolveImageDestination({lookup:async(host: string,options: {all: boolean; verbatim: boolean})=>{count++;assert.equal(host,'api.openai.com');assert.deepEqual(options,{all:true,verbatim:true});return answers();}}),{hostname:'api.openai.com',port:443,secure:true,address:'8.8.8.8',family:4,path:'/v1/images/generations'});
   assert.equal(count,1);
 });
 
@@ -61,7 +68,7 @@ test('fixed HTTPS peer and certificate verified before synchronous fence and fir
   const fixture=injectedRequest({headers:{'content-type':'application/json; charset=utf-8','x-request-id':'req_offline-1'},beforeConnect:state=>{assert.equal(state.ends,0);assert.equal(fences,0);}});
   const result=await transportFor(fixture,{lookup:async()=>{lookups++;return answers();}})({...requestArgs,beforeDispatch:()=>{fences++;assert.equal(fixture.ends,0);}});
   assert.equal(lookups,1);assert.equal(fences,1);assert.equal(fixture.calls,1);assert.equal(fixture.ends,1);assert.equal(result.providerRequestId,'req_offline-1');assert.equal(result.dispatched,true);
-  const o=fixture.options;assert.equal(o.path,'/v1/images/generations');assert.equal(o.hostname,'api.openai.com');assert.equal(o.servername,'api.openai.com');assert.equal(o.port,443);assert.equal(o.agent,false);assert.equal(o.autoSelectFamily,false);assert.equal(o.rejectUnauthorized,true);assert.equal(o.headers.Authorization,`Bearer ${key}`);assert.equal(o.headers['Accept-Encoding'],'identity');assert.equal(o.headers.Cookie,undefined);
+  const o=fixture.options!;assert.equal(o.path,'/v1/images/generations');assert.equal(o.hostname,'api.openai.com');assert.equal(o.servername,'api.openai.com');assert.equal(o.port,443);assert.equal(o.agent,false);assert.equal(o.autoSelectFamily,false);assert.equal(o.rejectUnauthorized,true);assert.equal(o.headers.Authorization,`Bearer ${key}`);assert.equal(o.headers['Accept-Encoding'],'identity');assert.equal(o.headers.Cookie,undefined);
   assert.ok(o.checkServerIdentity('ignored',{subjectaltname:'DNS:wrong.example',subject:{CN:'wrong.example'}}) instanceof Error);
   assert.deepEqual(await new Promise((resolve,reject)=>o.lookup('rebind.invalid',{all:true},(error,value)=>error?reject(error):resolve(value))),[{address:'8.8.8.8',family:4}]);
 });
@@ -78,7 +85,7 @@ test('peer mismatch, bad port/TLS, DNS failure and fence failure cannot transmit
 
 test('redirects, compressed/non-JSON responses and incomplete/mismatched bodies fail without any retry',async()=>{
   for(const options of [{status:302},{status:429},{status:500},{headers:{'content-type':'text/html'}},{headers:{'content-type':'application/json','content-encoding':'gzip'}},{headers:{'content-type':'application/json','content-length':'3'}},{complete:false}]) {
-    const f=injectedRequest(options);await assert.rejects(transportFor(f)(requestArgs),error=>{assert.equal(error.dispatched,true);assert.equal(error.outcomeUnknown,true);return true;});assert.equal(f.calls,1);assert.equal(f.ends,1);
+    const f=injectedRequest(options as ImageFixtureOptions);await assert.rejects(transportFor(f)(requestArgs),(error: unknown)=>{const failure=error as {dispatched?: boolean; outcomeUnknown?: boolean};assert.equal(failure.dispatched,true);assert.equal(failure.outcomeUnknown,true);return true;});assert.equal(f.calls,1);assert.equal(f.ends,1);
   }
 });
 
@@ -125,7 +132,7 @@ test('OpenAI adapter fences once and preserves post-dispatch invalid PNG/transpo
   const g=injectedRequest({body:Buffer.from(JSON.stringify({data:[{b64_json:Buffer.from('not PNG').toString('base64')}]}))});
   await assert.rejects(createOpenAIImageAdapter({transport:transportFor(g)}).generate(snapshot(),{beforeDispatch:()=>{}}),{code:'IMAGE_PNG_INVALID',dispatched:true,outcomeUnknown:true});assert.equal(g.ends,1);
   const h=injectedRequest({noConnect:true});await assert.rejects(createOpenAIImageAdapter({transport:transportFor(h,{limits:{connectTimeoutMs:5}})}).generate(snapshot(),{beforeDispatch:()=>{}}),{code:'IMAGE_TIMEOUT',dispatched:false});assert.equal(h.ends,0);
-  let attempts=0;const broken=createOpenAIImageAdapter({transport:async({beforeDispatch})=>{attempts++;beforeDispatch();throw Error('private upstream fault');}});
+  let attempts=0;const broken=createOpenAIImageAdapter({transport:async({beforeDispatch}: {beforeDispatch: () => void})=>{attempts++;beforeDispatch();throw Error('private upstream fault');}});
   await assert.rejects(broken.generate(snapshot(),{beforeDispatch:()=>{}}),{code:'IMAGE_RESPONSE_INVALID',dispatched:true});assert.equal(attempts,1);
 });
 
@@ -148,6 +155,6 @@ test('Mock errors after the host fence preserve dispatched state without remote 
 });
 
 test('OpenAI malformed transport return after its fence stays conservatively dispatched',async()=>{
-  const transport=async({beforeDispatch})=>{beforeDispatch();return {};};
+  const transport=async({beforeDispatch}: {beforeDispatch: () => void})=>{beforeDispatch();return {};};
   await assert.rejects(createOpenAIImageAdapter({transport}).generate(snapshot(),{beforeDispatch:()=>{}}),{code:'IMAGE_RESPONSE_INVALID',dispatched:true,outcomeUnknown:true});
 });

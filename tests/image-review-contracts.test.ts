@@ -7,7 +7,7 @@ import {IMAGE_REVIEW_POLICY, IMAGE_REVIEW_DESTINATION, imageReviewSchemas, image
 
 const generation = () => ({projectId: randomUUID(), requestId: randomUUID(), name: 'A reviewed image',
   providerId: 'openai', model: IMAGE_MODELS.openai, prompt: 'Synthetic fixture only.', options: {...IMAGE_FIXED_OPTIONS}});
-function dto(input) {
+function dto(input: ReturnType<typeof generation>) {
   const timestamp = '2026-10-10T00:00:00.000Z';
   return {id: randomUUID(), projectId: input.projectId, requestId: input.requestId, input, inputHash: 'a'.repeat(64),
     settingsRevision: 1, destination: IMAGE_REVIEW_DESTINATION, policy: {...IMAGE_REVIEW_POLICY}, state: 'pending', revision: 1,

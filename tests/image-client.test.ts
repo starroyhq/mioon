@@ -3,23 +3,32 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {createClient} from '../packages/client/src/index.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, IMAGE_MUTATION_OPERATIONS} from '../packages/contracts/src/images.ts';
+import {errorView} from './helpers/test-error.ts';
+
+interface ImageTaskRecord {id: string; projectId: string; groupId: string; requestId: string; name: string; providerId: string;
+  model: string; prompt: string; options: Record<string, unknown>; state: string; revision: number; dispatched: boolean;
+  versionId: string | null; errorCode: string | null; createdAt: string; updatedAt: string}
+interface FixtureRecord {operation: string; input: Record<string, unknown>; value: ImageTaskRecord}
+interface ResponseView {status: number; ok: boolean; json: () => Promise<unknown>}
+interface HarnessContext {url: string; options: RequestInit; call: number}
+type Respond = (context: HarnessContext) => ResponseView | Promise<ResponseView>;
 
 const env = {MIOON_BASE_URL: 'http://127.0.0.1:4318', MIOON_TOKEN: 'synthetic-image-client-token'};
 const timestamp = '2026-10-10T12:00:00.000Z';
-const clone = value => structuredClone(value);
-function freeze(value) {
+const clone = <T>(value: T): T => structuredClone(value);
+function freeze<T>(value: T): T {
   if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); }
   return value;
 }
-const response = (body, status = 200) => ({status, ok: status >= 200 && status < 300, json: async () => body});
-const success = data => response({ok: true, data});
-function record() {
+const response = (body: unknown, status = 200): ResponseView => ({status, ok: status >= 200 && status < 300, json: async () => body});
+const success = (data: unknown): ResponseView => response({ok: true, data});
+function record(): ImageTaskRecord {
   return {id: randomUUID(), projectId: randomUUID(), groupId: randomUUID(), requestId: randomUUID(),
     name: 'Synthetic image', providerId: 'mock', model: IMAGE_MODELS.mock, prompt: 'Retain this exact prompt.',
     options: {...IMAGE_FIXED_OPTIONS}, state: 'queued', revision: 1, dispatched: false,
     versionId: null, errorCode: null, createdAt: timestamp, updatedAt: timestamp};
 }
-function fixture(operation, {existingGroup = false} = {}) {
+function fixture(operation: string, {existingGroup = false}: {existingGroup?: boolean} = {}): FixtureRecord {
   const value = record();
   if (operation === 'image.generate') {
     const {projectId, name, providerId, model, prompt, options, requestId} = value;
@@ -30,21 +39,22 @@ function fixture(operation, {existingGroup = false} = {}) {
   value.dispatched = operation === 'image.task.recoverResult'; value.revision = 8;
   return {operation, input: {projectId: value.projectId, taskId: value.id, expectedRevision: 7, requestId: randomUUID()}, value};
 }
-function harness(respond) {
-  const calls = [];
-  const client = createClient({env, fetchImpl: async (url, options) => {
+function harness(respond: Respond): {client: ReturnType<typeof createClient>; calls: {operation: string; input: unknown}[]} {
+  const calls: {operation: string; input: unknown}[] = [];
+  const client = createClient({env, fetchImpl: (async (url: string, options: RequestInit) => {
     assert.equal(url, 'http://127.0.0.1:4318/api/rpc');
     assert.equal(options.method, 'POST'); assert.equal(options.redirect, 'error');
-    calls.push(JSON.parse(options.body));
+    calls.push(JSON.parse(String(options.body)));
     return respond({url, options, call: calls.length});
-  }});
+  }) as unknown as typeof fetch});
   return {client, calls};
 }
-function uncertain(error, operation, input, code = 'BACKEND_PROTOCOL_ERROR') {
-  assert.equal(error.code, code);
-  assert.deepEqual(error.details, {operation, requestId: input.requestId, submissionMayHaveSucceeded: true,
+function uncertain(error: unknown, operation: string, input: Record<string, unknown>, code = 'BACKEND_PROTOCOL_ERROR'): boolean {
+  const failure = errorView(error);
+  assert.equal(failure.code, code);
+  assert.deepEqual(failure.details, {operation, requestId: input.requestId, submissionMayHaveSucceeded: true,
     recovery: 'Replay the exact original input with the same requestId; do not invent a replacement ID.'});
-  assert.equal(error.exitCode, 4);
+  assert.equal(failure.exitCode, 4);
   assert.ok(!JSON.stringify(error).includes(env.MIOON_TOKEN));
   return true;
 }
@@ -72,14 +82,14 @@ for (const operation of IMAGE_MUTATION_OPERATIONS) {
       {...f.value, options: {...f.value.options, n: 2}}, {...f.value, model: IMAGE_MODELS.openai},
       {...f.value, createdAt: 'not-a-date'}, {...f.value, stagedReceipt: {path: '/private/stage.png'}},
       {...f.value, dataBase64: 'not-an-allowed-field'}];
-    for (const field of Object.keys(f.value)) { const value = clone(f.value); delete value[field]; invalid.push(value); }
-    if (operation === 'image.generate') invalid.push({...f.value, requestId: randomUUID()},
+    for (const field of Object.keys(f.value)) { const value = clone(f.value) as unknown as Record<string, unknown>; delete value[field]; invalid.push(value as unknown as ImageTaskRecord); }
+    if (operation === 'image.generate') invalid.push({...f.value, requestId: randomUUID()} as unknown as ImageTaskRecord,
       {...f.value, groupId: randomUUID()}, {...f.value, name: 'Different name'}, {...f.value, prompt: 'Different prompt'},
       {...f.value, providerId: 'openai', model: IMAGE_MODELS.openai});
     else invalid.push({...f.value, id: randomUUID()});
     for (const value of invalid) {
       const {client, calls} = harness(() => success(value));
-      await assert.rejects(client.rpc(operation, f.input), error => uncertain(error, operation, original));
+      await assert.rejects(client.rpc(operation, f.input), (error: unknown) => uncertain(error, operation, original));
       assert.deepEqual(calls, [{operation, input: original}]);
       assert.deepEqual(f.input, original, 'unknown outcome never mutates the retained exact request');
     }
@@ -87,7 +97,7 @@ for (const operation of IMAGE_MUTATION_OPERATIONS) {
 
   test(`${operation}: malformed envelopes, unreadable JSON and lost transport preserve recovery identity`, async () => {
     const f = fixture(operation), original = clone(f.input); freeze(f.input);
-    const cases = [
+    const cases: [Respond, string][] = [
       [() => response(null), 'BACKEND_PROTOCOL_ERROR'],
       [() => response({ok: true}), 'BACKEND_PROTOCOL_ERROR'],
       [() => response({ok: 'true', data: f.value}), 'BACKEND_PROTOCOL_ERROR'],
@@ -97,7 +107,7 @@ for (const operation of IMAGE_MUTATION_OPERATIONS) {
     ];
     for (const [respond, code] of cases) {
       const {client, calls} = harness(respond);
-      await assert.rejects(client.rpc(operation, f.input), error => uncertain(error, operation, original, code));
+      await assert.rejects(client.rpc(operation, f.input), (error: unknown) => uncertain(error, operation, original, code));
       assert.deepEqual(calls, [{operation, input: original}]); assert.deepEqual(f.input, original);
     }
   });
@@ -105,7 +115,7 @@ for (const operation of IMAGE_MUTATION_OPERATIONS) {
   test(`${operation}: explicit replay after malformed ACK sends only the original complete input`, async () => {
     const f = fixture(operation, {existingGroup: true}), original = clone(f.input); freeze(f.input);
     const {client, calls} = harness(({call}) => success(call === 1 ? {...f.value, projectId: randomUUID()} : f.value));
-    await assert.rejects(client.rpc(operation, f.input), error => uncertain(error, operation, original));
+    await assert.rejects(client.rpc(operation, f.input), (error: unknown) => uncertain(error, operation, original));
     assert.equal(calls.length, 1);
     assert.deepEqual(await client.rpc(operation, f.input), f.value);
     assert.deepEqual(calls, [{operation, input: original}, {operation, input: original}]);
@@ -128,29 +138,30 @@ test('image mutation abort after dispatch keeps its original identity and never 
   const f = fixture('image.generate'), controller = new AbortController(), original = clone(f.input);
   freeze(f.input);
   const {client, calls} = harness(() => { controller.abort(); throw Error('synthetic abort during response'); });
-  await assert.rejects(client.rpc(f.operation, f.input, {signal: controller.signal}), error => {
-    assert.equal(error.code, 'INTERRUPTED'); assert.equal(error.details.requestId, original.requestId);
-    assert.equal(error.details.operation, f.operation); assert.equal(error.details.submissionMayHaveSucceeded, true);
+  await assert.rejects(client.rpc(f.operation, f.input, {signal: controller.signal}), (error: unknown) => {const failure = errorView(error);
+    assert.equal(failure.code, 'INTERRUPTED'); assert.equal((failure.details as {requestId?: string}).requestId, original.requestId);
+    assert.equal((failure.details as {operation?: string}).operation, f.operation); assert.equal((failure.details as {submissionMayHaveSucceeded?: boolean}).submissionMayHaveSucceeded, true);
     return true;
   });
   assert.deepEqual(calls, [{operation: f.operation, input: original}]);
   assert.deepEqual(f.input, original);
 });
 
-async function verifyRead(operation, input, value) {
+async function verifyRead(operation: string, input: Record<string, unknown>, value: unknown): Promise<void> {
   const original = clone(input), expected = clone(value); freeze(input); freeze(value);
   const {client, calls} = harness(() => success(value));
   assert.equal(await client.rpc(operation, input), value);
   assert.deepEqual(input, original); assert.deepEqual(value, expected);
   assert.deepEqual(calls, [{operation, input: original}]);
 }
-async function rejectRead(operation, input, values) {
+async function rejectRead(operation: string, input: Record<string, unknown>, values: unknown[]): Promise<void> {
   const original = clone(input); freeze(input);
   for (const value of values) {
     const {client, calls} = harness(() => success(value));
-    await assert.rejects(client.rpc(operation, input), error => {
-      assert.equal(error.code, 'BACKEND_PROTOCOL_ERROR');
-      assert.equal(error.details.submissionMayHaveSucceeded, undefined, 'read DTO rejection does not imply generation');
+    await assert.rejects(client.rpc(operation, input), (error: unknown) => {
+      const failure = errorView(error);
+      assert.equal(failure.code, 'BACKEND_PROTOCOL_ERROR');
+      assert.equal((failure.details as {submissionMayHaveSucceeded?: unknown}).submissionMayHaveSucceeded, undefined, 'read DTO rejection does not imply generation');
       return true;
     });
     assert.deepEqual(calls, [{operation, input: original}]); assert.deepEqual(input, original);
@@ -212,10 +223,10 @@ test('image profile DTO accepts explicit configured activation but rejects incon
     {...value, endpoint: 'https://unrequested.example'}]);
 });
 
-function pageFixture(operation) {
-  const task = record(), input = {projectId: task.projectId, limit: 2};
-  let item;
-  if (operation === 'image.task.list') { input.groupId = task.groupId; item = task; }
+function pageFixture(operation: string): {input: Record<string, unknown>; item: Record<string, unknown>; value: Record<string, unknown>} {
+  const task = record(), input: Record<string, unknown> = {projectId: task.projectId, limit: 2};
+  let item: Record<string, unknown>;
+  if (operation === 'image.task.list') { input.groupId = task.groupId; item = task as unknown as Record<string, unknown>; }
   else if (operation === 'image.group.list') item = {id: task.groupId, projectId: task.projectId, name: task.name,
     revision: 1, headVersionId: null, activeTaskId: task.id, createdAt: timestamp, updatedAt: timestamp};
   else {
@@ -249,7 +260,7 @@ for (const operation of ['image.task.list', 'image.group.list', 'image.version.l
 test('fresh-client request lookup after an uncertain generation is only a read and retains the same recovery key', async () => {
   const f = fixture('image.generate'), original = clone(f.input); freeze(f.input);
   const first = harness(() => { throw Error('synthetic dropped acknowledgement'); });
-  await assert.rejects(first.client.rpc(f.operation, f.input), error => uncertain(error, f.operation, original, 'BACKEND_UNAVAILABLE'));
+  await assert.rejects(first.client.rpc(f.operation, f.input), (error: unknown) => uncertain(error, f.operation, original, 'BACKEND_UNAVAILABLE'));
   const input = {projectId: original.projectId, requestId: original.requestId};
   const receipt = {...input, operation: f.operation, response: f.value};
   const fresh = harness(() => success(receipt));

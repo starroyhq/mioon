@@ -1,4 +1,5 @@
 import test from 'node:test';
+import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
@@ -17,17 +18,17 @@ import {hashComfyWorkflow} from '../packages/business/src/comfy/workflow.ts';
 import {startComfyFixture,COMFY_FIXTURE_MODEL} from './helpers/comfy-http-fixture.ts';
 
 const repo=fileURLToPath(new URL('..',import.meta.url)),token='synthetic-comfy-local-transport-token',model=COMFY_FIXTURE_MODEL;
-const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
-function childEnvironment(extra={}){
+const pause=(ms: number)=>new Promise<void>(resolve=>setTimeout(resolve,ms));
+const sha=(bytes: Uint8Array)=>createHash('sha256').update(bytes).digest('hex');
+function childEnvironment(extra: NodeJS.ProcessEnv = {}): Record<string, string> {
   const clean=Object.fromEntries(['PATH','HOME','TMPDIR','TEMP','LANG','SYSTEMROOT','COMSPEC'].filter(key=>typeof process.env[key]==='string').map(key=>[key,process.env[key]]));
-  return {...clean,TZ:'UTC',MIOON_ENABLE_LIVE_PROVIDER:'0',...extra};
+  return {...clean,TZ:'UTC',MIOON_ENABLE_LIVE_PROVIDER:'0',...extra} as Record<string, string>;
 }
-function publicOnly(value,root){
+function publicOnly(value: unknown,root: string){
   const text=JSON.stringify(value);assert.ok(!text.includes(token)&&!text.includes(root));
   assert.ok(!/"(?:apiKey|authorization|dataBase64|b64_json|relativePath|rawGraph|canonicalInput|stagedReceipt)"\s*:/i.test(text));
 }
-async function cli(operation,input,env){
+async function cli(operation: string,input: unknown,env: NodeJS.ProcessEnv){
   const child=spawn(process.execPath,[path.join(repo,'apps/cli/src/index.ts'),'rpc',operation,'--input',JSON.stringify(input)],{cwd:repo,env:childEnvironment(env),stdio:['ignore','pipe','pipe']});
   let stdout='',stderr='';
   child.stdout.setEncoding('utf8').on('data',chunk=>{stdout+=chunk;if(stdout.length>1024*1024)child.kill('SIGKILL');});
@@ -37,7 +38,7 @@ async function cli(operation,input,env){
   assert.equal(result[1],null,stderr);assert.equal(result[0],0,stdout+stderr);assert.ok(!stdout.includes(token)&&!stderr.includes(token));
   const envelope=JSON.parse(stdout);assert.equal(envelope.ok,true,stdout);return envelope.data;
 }
-async function withMcp(f,run){
+async function withMcp(f: {root: string; env: NodeJS.ProcessEnv},run: (call: (operation: string, input: unknown) => Promise<unknown>) => Promise<void>){
   const client=new Client({name:'synthetic-comfy-transport-acceptance',version:'1.0.0'},{capabilities:{}});
   const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.ts')],cwd:repo,env:childEnvironment(f.env),stderr:'pipe'});
   try{
@@ -46,33 +47,34 @@ async function withMcp(f,run){
     assert.ok(tools.some(item=>item.name===operationDefinition('image.task.observeRemote').toolName));
     assert.ok(!tools.some(item=>/comfy.*(?:settings|check)|image_review_approve/i.test(item.name)));
     await run(async(operation,input)=>{
-      const result=await client.callTool({name:operationDefinition(operation).toolName,arguments:input});
-      assert.equal(result.isError,false,JSON.stringify(result));assert.equal(result.structuredContent.ok,true);publicOnly(result,f.root);return result.structuredContent.data;
+      const result=await client.callTool({name:operationDefinition(operation).toolName,arguments:input as Record<string, unknown>});
+      const content=result.structuredContent as {ok: boolean; data: unknown};
+      assert.equal(result.isError,false,JSON.stringify(result));assert.equal(content.ok,true);publicOnly(result,f.root);return content.data;
     });
   }finally{await client.close();}
 }
-async function fixture(t,options={}){
+async function fixture(t: TestContext,options: {dropAck?: boolean; hold?: boolean; onCall?: unknown} = {}){
   const root=await mkdtemp(path.join(tmpdir(),'mioon-comfy-wire-')),comfy=await startComfyFixture({hold:true,...options});
-  let server;
+  let server!: Awaited<ReturnType<typeof startServer>>;
   t.after(async()=>{await server?.close();await comfy.close();await rm(root,{recursive:true,force:true});});
   // Production transport: no fake connector, httpRequest, settings or service.
   server=await startServer({dataDir:root,port:0,token});
   const f={root,comfy,get server(){return server;},get env(){return{MIOON_BASE_URL:server.url,MIOON_TOKEN:token};},get client(){return createClient({env:f.env});},
-    async request(route,{method='GET',input,authenticated=true,headers={}}={}){
+    async request(route: string,{method='GET',input,authenticated=true,headers={}}: {method?: string; input?: unknown; authenticated?: boolean; headers?: Record<string, string>}={}){
       const response=await fetch(server.url+route,{method,redirect:'error',signal:AbortSignal.timeout(10000),headers:{'Content-Type':'application/json',...(authenticated?{Authorization:`Bearer ${token}`}:{ }),...headers},...(input===undefined?{}:{body:JSON.stringify(input)})});
       const body=await response.json();publicOnly(body,root);return {status:response.status,body};
     },
-    async rpc(operation,input={}){const value=await f.request('/api/rpc',{method:'POST',input:{operation,input}});assert.equal(value.status,200,JSON.stringify(value.body));assert.equal(value.body.ok,true);return value.body.data;},
+    async rpc(operation: string,input: Record<string, unknown>={}){const value=await f.request('/api/rpc',{method:'POST',input:{operation,input}});assert.equal(value.status,200,JSON.stringify(value.body));assert.equal(value.body.ok,true);return value.body.data;},
     async configure(){
       const check=await f.request('/api/images/comfy-check',{method:'POST',input:{baseUrl:comfy.baseUrl}});assert.equal(check.status,200,JSON.stringify(check.body));assert.deepEqual(check.body.data.checkpoints,[model]);
       const configuration={...DEFAULT_COMFY_IMAGE_CONFIGURATION,enabled:true,baseUrl:comfy.baseUrl,model};
       const saved=await f.request('/api/images/comfy-settings',{method:'PUT',input:{expectedRevision:0,configuration}});assert.equal(saved.status,200,JSON.stringify(saved.body));assert.equal(saved.body.data.readiness.checked,true);return saved.body.data;
     },
-    async approve(review){const result=await f.request('/api/images/reviews/approve',{method:'POST',input:{projectId:review.projectId,reviewId:review.id,expectedRevision:1}});assert.equal(result.status,200,JSON.stringify(result.body));return result.body.data;},
-    task(ack){return f.rpc('image.task.get',{projectId:ack.projectId,taskId:ack.id});},
-    remote(ack){return f.rpc('image.task.remote.get',{projectId:ack.projectId,taskId:ack.id});},
-    async until(read,predicate){const end=Date.now()+10000;let value;while(Date.now()<end){value=await read();if(predicate(value))return value;await pause(10);}assert.fail(`Synthetic local state did not settle: ${JSON.stringify(value)}`);},
-    async asset(task){const versions=await f.rpc('image.version.list',{projectId:task.projectId,groupId:task.groupId});assert.equal(versions.items.length,1);const version=versions.items[0];
+    async approve(review: {projectId: string; id: string}){const result=await f.request('/api/images/reviews/approve',{method:'POST',input:{projectId:review.projectId,reviewId:review.id,expectedRevision:1}});assert.equal(result.status,200,JSON.stringify(result.body));return result.body.data;},
+    task(ack: {projectId: string; id: string}){return f.rpc('image.task.get',{projectId:ack.projectId,taskId:ack.id});},
+    remote(ack: {projectId: string; id: string}){return f.rpc('image.task.remote.get',{projectId:ack.projectId,taskId:ack.id});},
+    async until<T>(read: () => Promise<T>, predicate: (value: T) => boolean): Promise<T>{const end=Date.now()+10000;let value: T|undefined;while(Date.now()<end){value=await read();if(predicate(value as T))return value as T;await pause(10);}assert.fail(`Synthetic local state did not settle: ${JSON.stringify(value)}`);},
+    async asset(task: {projectId: string; groupId: string}){const versions=await f.rpc('image.version.list',{projectId:task.projectId,groupId:task.groupId});assert.equal(versions.items.length,1);const version=versions.items[0];
       const response=await fetch(`${server.url}/media/${version.assetId}`,{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(10000)});assert.equal(response.status,200);const bytes=Buffer.from(await response.arrayBuffer());
       assert.deepEqual(bytes,comfy.png);assert.equal(version.sha256,sha(bytes));assert.equal(version.width,512);assert.equal(version.height,512);assert.equal(version.providerId,'comfy-local');assert.equal(version.isMock,false);
       assert.deepEqual(await readFile(path.join(root,'media',`${version.assetId}.png`)),bytes);return version;},
@@ -80,7 +82,7 @@ async function fixture(t,options={}){
   };
   return f;
 }
-const inputFor=projectId=>({projectId,requestId:randomUUID(),name:'Synthetic local Comfy image',providerId:'comfy-local',model,prompt:'  Exact synthetic fox\nunder the moon. 中文  ',options:COMFY_IMAGE_OPTIONS});
+const inputFor=(projectId: string)=>({projectId,requestId:randomUUID(),name:'Synthetic local Comfy image',providerId:'comfy-local',model,prompt:'  Exact synthetic fox\nunder the moon. 中文  ',options:COMFY_IMAGE_OPTIONS});
 
 test('real loopback Comfy protocol crosses production HTTP, CLI and official MCP without automatic generation or observation retries',{timeout:120000},async t=>{
   const f=await fixture(t),project=await f.rpc('project.create',{name:'Comfy transport acceptance'});
@@ -98,7 +100,7 @@ test('real loopback Comfy protocol crosses production HTTP, CLI and official MCP
   const submitted=f.comfy.calls.find(c=>c.method==='POST').body;
   assert.equal(submitted.prompt_id,review.execution.promptId);assert.equal(submitted.client_id,review.execution.clientId);assert.deepEqual(submitted.prompt,review.execution.graph);assert.equal(submitted.extra_data.mioon.outputNonce,review.execution.outputNonce);
   assert.deepEqual(await f.approve(review),ack);assert.deepEqual(await cli('image.generate',input,f.env),ack);
-  await withMcp(f,async call=>{assert.deepEqual(await call('image.generate',input),ack);const value=await call('image.task.remote.get',{projectId:project.id,taskId:ack.id});assert.equal(value.remote.contentVerified,false);});
+  await withMcp(f,async call=>{assert.deepEqual(await call('image.generate',input),ack);const value=await call('image.task.remote.get',{projectId:project.id,taskId:ack.id}) as {remote: {contentVerified: boolean}};assert.equal(value.remote.contentVerified,false);});
   const beforeRestart=f.comfy.counts();await f.restart();await pause(30);assert.deepEqual(f.comfy.counts(),beforeRestart);assert.equal((await f.task(ack)).state,'outcome_unknown');assert.equal((await f.request('/api/images/comfy-settings')).body.data.readiness.checked,false);
   let remote=await f.remote(ack);
   const firstObservation={projectId:project.id,taskId:ack.id,requestId:randomUUID(),expectedRevision:remote.remote.revision};

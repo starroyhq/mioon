@@ -13,6 +13,11 @@ function fixture(){const input={projectId,requestId,name:'Local image',providerI
  const outputNonce=randomUUID(),seed=123,graph=buildComfyWorkflow({prompt:input.prompt,checkpoint:input.model,seed,outputNonce});
  const execution={workflowId:'comfy-t2i-png-v1',workflowVersion:1,comfyVersion:'0.39.0',seed,promptId:randomUUID(),clientId:randomUUID(),outputNonce,filenamePrefix:`mioon_${outputNonce}`,graph,graphHash:hashComfyWorkflow(graph)};
  return {input,configuration,execution};}
+type Fixture = ReturnType<typeof fixture>;
+type Graph = Fixture['execution']['graph'];
+type MutableGraph = Record<string, {class_type?: string; inputs?: Record<string, unknown>; _meta?: unknown}>;
+interface ReviewIntent {schemaVersion: number; reviewId: string; input: Fixture['input']; settingsRevision: number; destination: string; policy: unknown; configuration: Fixture['configuration']; execution: Fixture['execution']}
+interface JsonSchemaView {type?: unknown; anyOf?: {type?: unknown; additionalProperties?: unknown; required?: readonly string[]}[]}
 test('local endpoint syntax is exact loopback, explicit port, root, no authentication',()=>{
  for(const value of ['http://127.0.0.1:8188','http://[::1]:65535'])assert.ok(comfyImageBaseUrlSchema.safeParse(value).success);
  assert.equal(normalizeComfyImageBaseUrl('http://127.0.0.1:8188/'),'http://127.0.0.1:8188');
@@ -34,13 +39,13 @@ test('Comfy is a disjoint image generation branch; seed and graph can only appea
  assert.equal(imageReviewSchemas['image.review.prepare'].safeParse({input,settingsRevision:1,execution}).success,false);
  const adapter={providerId:input.providerId,model:input.model,prompt:input.prompt,options:input.options};assert.ok(imageAdapterInputSchema.safeParse(adapter).success);
  assert.ok(imageSnapshotSchema.safeParse({schemaVersion:1,projectId,groupId,taskId,name:input.name,...adapter}).success);
- const intent={schemaVersion:3,reviewId:randomUUID(),input,settingsRevision:1,destination:configuration.baseUrl+'/prompt',policy:COMFY_IMAGE_POLICY,configuration,execution};
+ const intent: ReviewIntent={schemaVersion:3,reviewId:randomUUID(),input,settingsRevision:1,destination:configuration.baseUrl+'/prompt',policy:COMFY_IMAGE_POLICY,configuration,execution};
  assert.ok(imageReviewIntentSchema.safeParse(intent).success);
- for(const mutate of [v=>v.schemaVersion=2,v=>v.policy=IMAGE_REVIEW_POLICY,v=>v.input.prompt='Different',v=>v.configuration.baseUrl='http://127.0.0.1:8189',v=>v.execution.graph['3'].inputs.text='Other',v=>v.execution.seed++,v=>v.execution.filenamePrefix='mioon_bad']){const value=structuredClone(intent);mutate(value);assert.equal(imageReviewIntentSchema.safeParse(value).success,false);}
+ for(const mutate of [(v: ReviewIntent)=>v.schemaVersion=2,(v: ReviewIntent)=>v.policy=IMAGE_REVIEW_POLICY,(v: ReviewIntent)=>v.input.prompt='Different',(v: ReviewIntent)=>v.configuration.baseUrl='http://127.0.0.1:8189',(v: ReviewIntent)=>v.execution.graph['3'].inputs.text='Other',(v: ReviewIntent)=>v.execution.seed++,(v: ReviewIntent)=>v.execution.filenamePrefix='mioon_bad']){const value=structuredClone(intent);mutate(value);assert.equal(imageReviewIntentSchema.safeParse(value).success,false);}
 });
 test('exact seven-node graph rejects arbitrary nodes, links, inputs and unknown fields',()=>{
  const {execution}=fixture();assert.ok(comfyImageExecutionSchema.safeParse(execution).success);
- for(const mutate of [g=>g['8']=g['7'],g=>delete g['1'],g=>g['1'].class_type='CustomNode',g=>g['2'].inputs.width=1024,g=>g['5'].inputs.steps=21,g=>g['4'].inputs.text='hidden',g=>g['6'].inputs.vae=['9',0],g=>g['7'].inputs.path='/tmp',g=>g['1']._meta={}]){const graph=structuredClone(execution.graph);mutate(graph);assert.equal(comfyImageGraphSchema.safeParse(graph).success,false);}
+ for(const mutate of [(g: MutableGraph)=>g['8']=g['7']!,(g: MutableGraph)=>delete g['1'],(g: MutableGraph)=>g['1']!.class_type='CustomNode',(g: MutableGraph)=>g['2']!.inputs!.width=1024,(g: MutableGraph)=>g['5']!.inputs!.steps=21,(g: MutableGraph)=>g['4']!.inputs!.text='hidden',(g: MutableGraph)=>g['6']!.inputs!.vae=['9',0],(g: MutableGraph)=>g['7']!.inputs!.path='/tmp',(g: MutableGraph)=>g['1']!._meta={}]){const graph=structuredClone(execution.graph) as unknown as MutableGraph;mutate(graph);assert.equal(comfyImageGraphSchema.safeParse(graph).success,false);}
 });
 test('Comfy PNG receipt is explicit schema2; legacy receipts retain exact schema1 shape',()=>{
  const old={schemaVersion:1,taskId,projectId,groupId,inputHash:'a'.repeat(64),assetId:randomUUID(),versionId:randomUUID(),sha256:'b'.repeat(64),mimeType:'image/png',width:1024,height:1024,byteLength:123,isMock:false};
@@ -54,11 +59,11 @@ test('remote observation has its own stable acknowledgement and remote-revision 
  const response={id:randomUUID(),projectId,taskId,requestId,state:'queued',revision:1,remoteRevision:4,createdAt:at};
  assert.ok(comfyRemoteSchemas['image.task.observeRemote'].safeParse(input).success);assert.ok(isComfyObserveResponse(input,response));
  for(const patch of [{remoteRevision:3},{requestId:randomUUID()},{state:'finished'},{revision:2},{graph:{}}])assert.equal(isComfyObserveResponse(input,{...response,...patch}),false);
- assert.equal(imageSchemas['image.task.observeRemote'],undefined,'legacy image request journal is unchanged');
+ assert.equal((imageSchemas as Record<string, unknown>)['image.task.observeRemote'],undefined,'legacy image request journal is unchanged');
 });
 test('catalog preserves strict image union branches and reports the common required replay key',()=>{
- const definition=operationDefinition('image.generate');assert.equal(definition.inputSchema.type,'object');assert.equal(definition.requiresRequestId,true);
- assert.equal(definition.inputSchema.anyOf.length,3);for(const branch of definition.inputSchema.anyOf){assert.equal(branch.type,'object');assert.equal(branch.additionalProperties,false);assert.ok(branch.required.includes('requestId'));}
+ const definition=operationDefinition('image.generate'),catalogSchema=definition.inputSchema as unknown as JsonSchemaView;assert.equal(catalogSchema.type,'object');assert.equal(definition.requiresRequestId,true);
+ const branches=catalogSchema.anyOf!;assert.equal(branches.length,3);for(const branch of branches){assert.equal(branch.type,'object');assert.equal(branch.additionalProperties,false);assert.ok(branch.required!.includes('requestId'));}
  assert.equal(operationDefinition('image.task.observeRemote').requiresRequestId,true);assert.equal(operationDefinition('image.task.remote.get').requiresRequestId,false);
  const scalar=jsonSchema(comfyRemoteSchemas['image.task.remote.get'].shape.taskId);assert.equal(scalar.type,'string');
 });

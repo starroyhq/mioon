@@ -5,12 +5,14 @@ import {createHash} from 'node:crypto';
 import {validatePng, renderMockImagePng} from '../packages/business/src/images/png.ts';
 
 const signature = Buffer.from([137,80,78,71,13,10,26,10]);
-function crc(data) { let c = 0xffffffff; for (const byte of data) { c ^= byte; for (let n=0;n<8;n++) c = c&1 ? 0xedb88320^(c>>>1) : c>>>1; } return (c^0xffffffff)>>>0; }
-function chunk(type, data=Buffer.alloc(0)) { const b=Buffer.alloc(data.length+12); b.writeUInt32BE(data.length); b.write(type,4); data.copy(b,8); b.writeUInt32BE(crc(b.subarray(4,-4)),b.length-4); return b; }
-function header({width=2,height=2,color=2,depth=8,interlace=0}={}) { const b=Buffer.alloc(13); b.writeUInt32BE(width); b.writeUInt32BE(height,4); b[8]=depth;b[9]=color;b[12]=interlace;return chunk('IHDR',b); }
-function png({raw=Buffer.alloc(14),compressed=deflateSync(raw),before=[],after=[],...options}={}) {return Buffer.concat([signature,header(options),...before,chunk('IDAT',compressed),...after,chunk('IEND')]);}
+function crc(data: Uint8Array): number { let c = 0xffffffff; for (const byte of data) { c ^= byte; for (let n=0;n<8;n++) c = c&1 ? 0xedb88320^(c>>>1) : c>>>1; } return (c^0xffffffff)>>>0; }
+function chunk(type: string, data: Buffer = Buffer.alloc(0)): Buffer { const b=Buffer.alloc(data.length+12); b.writeUInt32BE(data.length); b.write(type,4); data.copy(b,8); b.writeUInt32BE(crc(b.subarray(4,-4)),b.length-4); return b; }
+interface HeaderOptions {width?: number;height?: number;color?: number;depth?: number;interlace?: number}
+interface PngOptions extends HeaderOptions {raw?: Buffer;compressed?: Buffer;before?: Buffer[];after?: Buffer[]}
+function header({width=2,height=2,color=2,depth=8,interlace=0}: HeaderOptions = {}): Buffer { const b=Buffer.alloc(13); b.writeUInt32BE(width); b.writeUInt32BE(height,4); b[8]=depth;b[9]=color;b[12]=interlace;return chunk('IHDR',b); }
+function png({raw=Buffer.alloc(14),compressed=deflateSync(raw),before=[],after=[],...options}: PngOptions = {}): Buffer {return Buffer.concat([signature,header(options),...before,chunk('IDAT',compressed),...after,chunk('IEND')]);}
 const small = {width:2,height:2};
-const rejects = (bytes,code='IMAGE_PNG_INVALID',options=small) => assert.rejects(validatePng(bytes,options),{code});
+const rejects = (bytes: Buffer,code='IMAGE_PNG_INVALID',options: {width: number; height: number} = small) => assert.rejects(validatePng(bytes,options),{code});
 
 test('valid RGB, split IDAT, RGBA and all five row filters decode with exact metadata',async()=>{
   const b=png(); const m=await validatePng(b,small);

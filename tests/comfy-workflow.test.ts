@@ -10,6 +10,7 @@ function execution() {
     promptId: '11111111-1111-4111-8111-111111111111', clientId: '22222222-2222-4222-8222-222222222222',
     outputNonce: input.outputNonce, filenamePrefix: `mioon_${input.outputNonce}`, graph, graphHash: hashComfyWorkflow(graph)};
 }
+type Execution = ReturnType<typeof execution>;
 test('fixed graph has seven nodes, six built-in classes and exact user prompt, seed and nonce', () => {
   const value = execution();
   assert.equal(validateComfyExecution(value, {prompt: input.prompt, checkpoint: input.checkpoint}), value);
@@ -30,17 +31,17 @@ test('fixed graph has seven nodes, six built-in classes and exact user prompt, s
 test('workflow hash is canonical and rejects non-JSON, cycles, oversize and prototype keys', () => {
   assert.equal(hashComfyWorkflow({b:1,a:2}), hashComfyWorkflow({a:2,b:1}));
   assert.notEqual(hashComfyWorkflow({a:1}), hashComfyWorkflow({a:2}));
-  const cycle = {}; cycle.a = cycle;
+  const cycle: Record<string, unknown> = {}; cycle.a = cycle;
   for (const value of [cycle, {a:undefined}, {a:NaN}, {a:Infinity}, {a:-0}, {a:BigInt(2)}, {a:new Date()}, JSON.parse('{"__proto__":{}}'), {a:'x'.repeat(32769)}]) assert.throws(() => canonicalComfyJson(value), {code:'COMFY_INVALID_REQUEST'});
 });
 test('any graph parameter, edge, node class or hidden input mutation is rejected even with a new hash', () => {
   for (const mutate of [
-    v => { v.graph['2'].inputs.width = 1024; }, v => { v.graph['2'].inputs.batch_size = 2; },
-    v => { v.graph['3'].inputs.clip = ['1',0]; }, v => { v.graph['4'].inputs.text = 'secret'; },
-    v => { v.graph['5'].inputs.steps = 21; }, v => { v.graph['5'].inputs.sampler_name = 'dpmpp_2m'; },
-    v => { v.graph['7'].class_type = 'PartnerNode'; }, v => { v.graph['7'].inputs.filename_prefix = '../outside'; },
-    v => { v.graph['8'] = {class_type:'LoadImage',inputs:{image:'private.png'}}; },
-    v => { v.graph['5'].inputs.hidden = 'unreviewed'; }, v => { v.seed++; }, v => { v.filenamePrefix += '_other'; },
+    (v: Execution) => { v.graph['2'].inputs.width = 1024; }, (v: Execution) => { v.graph['2'].inputs.batch_size = 2; },
+    (v: Execution) => { v.graph['3'].inputs.clip = ['1',0]; }, (v: Execution) => { v.graph['4'].inputs.text = 'secret'; },
+    (v: Execution) => { v.graph['5'].inputs.steps = 21; }, (v: Execution) => { v.graph['5'].inputs.sampler_name = 'dpmpp_2m'; },
+    (v: Execution) => { v.graph['7'].class_type = 'PartnerNode'; }, (v: Execution) => { v.graph['7'].inputs.filename_prefix = '../outside'; },
+    (v: Execution) => { (v.graph as unknown as Record<string, unknown>)['8'] = {class_type:'LoadImage',inputs:{image:'private.png'}}; },
+    (v: Execution) => { v.graph['5'].inputs.hidden = 'unreviewed'; }, (v: Execution) => { v.seed++; }, (v: Execution) => { v.filenamePrefix += '_other'; },
   ]) {
     const value = execution(); mutate(value); value.graphHash = hashComfyWorkflow(value.graph);
     assert.throws(() => validateComfyExecution(value), {code:'COMFY_INVALID_REQUEST'});
