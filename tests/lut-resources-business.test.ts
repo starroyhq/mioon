@@ -10,22 +10,24 @@ import {validateLutResourceRows} from '../packages/business/src/lut-resource-val
 import {LUT_RESOURCE_LIMITS} from '../packages/contracts/src/lut-resources.ts';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
+interface FixtureState { owned: boolean; restored: boolean; fault: ((point: string) => void) | null }
+interface LutHandlers { 'lut.import': (input: Record<string, unknown>) => { requestId: string; resource: { id: string; sha256: string; sizeBytes: number; name: string; metadata: { size: number }; colourCompatibility: string; renderBinding: string } }; 'lut.inspect': (input: Record<string, unknown>) => { resource: unknown; integrity: string }; 'lut.list': (input: Record<string, unknown>) => { projectId: string; items: { id: string }[]; nextAfter: string | null } }
 const text='# exact original comment\r\nTITLE "Original"\r\nLUT_3D_SIZE 2\r\n0 0 0\r\n1 0 0\r\n0 1 0\r\n1 1 0\r\n0 0 1\r\n1 0 1\r\n0 1 1\r\n1 1 1';
-function fixture(t){
+function fixture(t: import('node:test').TestContext) {
  const db=new DatabaseSync(':memory:');db.exec('PRAGMA trusted_schema=OFF;PRAGMA foreign_keys=ON;CREATE TABLE projects(id TEXT PRIMARY KEY,data TEXT NOT NULL);'+WORKSPACE_LUT_SCHEMA_SQL);
  const projectId=randomUUID(),foreignId=randomUUID();for(const id of [projectId,foreignId])db.prepare('INSERT INTO projects VALUES(?,?)').run(id,JSON.stringify({id}));
- const state={owned:true,restored:false,fault:null};
+ const state: FixtureState={owned:true,restored:false,fault:null};
  const runtime={ownsLock:()=>state.owned,assertReadable(){},assertImportAllowed(){if(state.restored)throw Object.assign(Error('Restored'),{code:'RESTORE_OPERATION_UNAVAILABLE'});}};
- const fresh=()=>createLutResourceServices({db},{runtime,fault(point){state.fault?.(point);}}).handlers;
- const f={db,projectId,foreignId,state,fresh,handlers:fresh(),input:{projectId,requestId:'original-import-request',name:'original.cube',dataBase64:Buffer.from(text).toString('base64')}};
+ const fresh=()=>createLutResourceServices({db},{runtime,fault(point: string){state.fault?.(point);}}).handlers;
+ const f={db,projectId,foreignId,state,fresh,handlers:fresh() as unknown as LutHandlers,input:{projectId,requestId:'original-import-request',name:'original.cube',dataBase64:Buffer.from(text).toString('base64')}};
  t.after(()=>db.close());return f;
 }
-const count=db=>[Number(db.prepare('SELECT count(*) AS n FROM project_lut_resources').get().n),Number(db.prepare('SELECT count(*) AS n FROM lut_import_requests').get().n)];
+const count=(db: DatabaseSync): number[] => [Number((db.prepare('SELECT count(*) AS n FROM project_lut_resources').get() as {n: number}).n),Number((db.prepare('SELECT count(*) AS n FROM lut_import_requests').get() as {n: number}).n)];
 test('exact bytes, project ownership, immutable hash and metadata-only resource flow',t=>{
  const f=fixture(t),result=f.handlers['lut.import'](f.input),resource=result.resource;
  assert.equal(resource.sha256,createHash('sha256').update(text).digest('hex'));assert.equal(resource.sizeBytes,Buffer.byteLength(text));
  assert.equal(resource.colourCompatibility,'unverified');assert.equal(resource.renderBinding,'not_implemented');
- assert.deepEqual(Buffer.from(f.db.prepare('SELECT content FROM project_lut_resources').get().content),Buffer.from(text));
+ const contentRow=f.db.prepare('SELECT content FROM project_lut_resources').get() as {content: Uint8Array} | undefined;assert.ok(contentRow);assert.deepEqual(Buffer.from(contentRow.content),Buffer.from(text));
  assert.deepEqual(f.handlers['lut.inspect']({projectId:f.projectId,lutId:resource.id}),{resource,integrity:'verified'});
  assert.deepEqual(f.handlers['lut.list']({projectId:f.projectId}),{projectId:f.projectId,items:[resource],nextAfter:null});
  for(const field of ['content','dataBase64','path','relativePath','url'])assert.equal(JSON.stringify(result).includes('"'+field+'"'),false);
@@ -71,15 +73,15 @@ test('ownership and restored-workspace denial precede import admission',t=>{
 });
 test('every precommit interruption rolls back both BLOB and receipt, with explicit retry',t=>{
  for(const point of ['beforeInsert','afterResourceInsert','afterReceiptInsert','beforeCommit']){
-  const f=fixture(t);f.state.fault=current=>{if(current===point)throw Error('Injected interruption');};
+  const f=fixture(t);f.state.fault=(current: string)=>{if(current===point)throw Error('Injected interruption');};
   assert.throws(()=>f.handlers['lut.import'](f.input),{code:'LUT_STORAGE_UNAVAILABLE'});assert.deepEqual(count(f.db),[0,0]);
   f.state.fault=null;assert.ok(f.handlers['lut.import'](f.input).resource.id);assert.deepEqual(count(f.db),[1,1]);
  }
 });
 test('lease loss before commit cannot publish; lost response after commit exact-replays',t=>{
- const a=fixture(t);a.state.fault=point=>{if(point==='beforeCommit')a.state.owned=false;};
+ const a=fixture(t);a.state.fault=(point: string)=>{if(point==='beforeCommit')a.state.owned=false;};
  assert.throws(()=>a.handlers['lut.import'](a.input),{code:'LUT_OWNER_REQUIRED'});assert.deepEqual(count(a.db),[0,0]);
- const b=fixture(t);b.state.fault=point=>{if(point==='afterCommit')throw Error('Lost response');};
+ const b=fixture(t);b.state.fault=(point: string)=>{if(point==='afterCommit')throw Error('Lost response');};
  assert.throws(()=>b.handlers['lut.import'](b.input),{code:'LUT_IMPORT_UNCERTAIN'});assert.deepEqual(count(b.db),[1,1]);
  b.state.fault=null;const saved=b.handlers['lut.import'](b.input);assert.equal(saved.requestId,b.input.requestId);assert.deepEqual(count(b.db),[1,1]);
 });
@@ -107,10 +109,10 @@ test('content corruption fails inspect and strict offline validation, not metada
 test('real shared services persist through close/reopen, create no playable asset or file',async t=>{
  const root=mkdtempSync(path.join(os.tmpdir(),'mioon-lut-resource-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
  let store=openStore(root),services=createServices(store,new Map());
- const p=await services.call('project.create',{name:'LUT resource'}),i={projectId:p.id,requestId:'real-restart-import',name:'look.cube',dataBase64:Buffer.from(text).toString('base64')};
- const first=await services.call('lut.import',i);assert.deepEqual(await services.call('asset.list',{projectId:p.id}),[]);assert.deepEqual(readdirSync(path.join(root,'media')),[]);
+ const p=await services.call('project.create',{name:'LUT resource'}) as {id: string},i={projectId:p.id,requestId:'real-restart-import',name:'look.cube',dataBase64:Buffer.from(text).toString('base64')};
+ const first=await services.call('lut.import',i) as {resource: {id: string}};assert.deepEqual(await services.call('asset.list',{projectId:p.id}),[]);assert.deepEqual(readdirSync(path.join(root,'media')),[]);
  await services.drain();store.close();store=openStore(root);services=createServices(store,new Map());
- try{assert.deepEqual(await services.call('lut.import',i),first);assert.deepEqual((await services.call('lut.inspect',{projectId:p.id,lutId:first.resource.id})).resource,first.resource);}
+ try{assert.deepEqual(await services.call('lut.import',i),first);assert.deepEqual((await services.call('lut.inspect',{projectId:p.id,lutId:first.resource.id}) as {resource: unknown}).resource,first.resource);}
  finally{await services.drain();store.close();}
 });
 
@@ -119,22 +121,22 @@ test('fixed512MiB headroom checks use allocated pages, reject before write, and 
  // boundaries. Inserts/receipts/transactions below still use actual SQLite.
  for(const mode of ['headroom','fragmented','afterInsert']){
   const f=fixture(t);let reads=0;
-  const db={get isTransaction(){return f.db.isTransaction;},exec(sql){return f.db.exec(sql);},prepare(sql){
+  const db={get isTransaction(){return f.db.isTransaction;},exec(sql: string){return f.db.exec(sql);},prepare(sql: string){
    if(sql==='PRAGMA main.page_count')return {get(){reads++;return {page_count:mode==='afterInsert'&&reads===1?100:131073};}};
    if(sql==='PRAGMA main.page_size')return {get:()=>({page_size:4096})};
    if(sql.includes('freelist_count'))throw Error('Freelist must not discount physical backup bytes');
    return f.db.prepare(sql);
   }};
-  const service=createLutResourceServices({db},{runtime:{ownsLock:()=>true,assertReadable(){},assertImportAllowed(){}}}).handlers;
+  const service=createLutResourceServices({db} as unknown as Parameters<typeof createLutResourceServices>[0],{runtime:{ownsLock:()=>true,assertReadable(){},assertImportAllowed(){}}}).handlers;
   assert.throws(()=>service['lut.import'](f.input),{code:'LUT_CAPACITY'});assert.deepEqual(count(f.db),[0,0]);assert.equal(f.db.isTransaction,false);
  }
 });
 test('workspace512 count cap is global across projects while full-quota exactreplay remains available',t=>{
  const f=fixture(t),projects=[f.projectId,f.foreignId];for(let i=2;i<4;i++){const id=randomUUID();f.db.prepare('INSERT INTO projects VALUES(?,?)').run(id,JSON.stringify({id}));projects.push(id);}
- let first;for(let p=0;p<4;p++)for(let i=0;i<128;i++){const result=f.handlers['lut.import']({...f.input,projectId:projects[p],requestId:`global-${p}-${i}`});first??={input:{...f.input,projectId:projects[p],requestId:`global-${p}-${i}`},result};}
+ let first: {input: {projectId: string; requestId: string; name: string; dataBase64: string}; result: unknown} | undefined;for(let p=0;p<4;p++)for(let i=0;i<128;i++){const result=f.handlers['lut.import']({...f.input,projectId:projects[p],requestId:`global-${p}-${i}`});first??={input:{...f.input,projectId:projects[p],requestId:`global-${p}-${i}`},result};}
  assert.deepEqual(count(f.db),[512,512]);assert.equal(LUT_RESOURCE_LIMITS.receipts,4096,'separate workspace-global ceiling, dominated by immutable one-per-resource receipts in this slice');
  const id=randomUUID();f.db.prepare('INSERT INTO projects VALUES(?,?)').run(id,JSON.stringify({id}));
- assert.throws(()=>f.handlers['lut.import']({...f.input,projectId:id,requestId:'global-overflow'}),{code:'LUT_CAPACITY'});assert.deepEqual(f.handlers['lut.import'](first.input),first.result);assert.deepEqual(count(f.db),[512,512]);
+ assert.throws(()=>f.handlers['lut.import']({...f.input,projectId:id,requestId:'global-overflow'}),{code:'LUT_CAPACITY'});assert.ok(first);assert.deepEqual(f.handlers['lut.import'](first.input),first.result);assert.deepEqual(count(f.db),[512,512]);
 });
 
 test('largest admitted7MiB exact source round-trips without canonicalization; one extra byte refuses',t=>{
@@ -143,7 +145,7 @@ test('largest admitted7MiB exact source round-trips without canonicalization; on
  assert.equal(extra,0);const source=Buffer.from(header+rows.join(''));assert.equal(source.length,LUT_RESOURCE_LIMITS.sourceBytes);
  const response=f.handlers['lut.import']({...f.input,dataBase64:source.toString('base64')});
  assert.equal(response.resource.sizeBytes,LUT_RESOURCE_LIMITS.sourceBytes);assert.equal(response.resource.sha256,createHash('sha256').update(source).digest('hex'));
- assert.equal(response.resource.metadata.size,33);assert.deepEqual(Buffer.from(f.db.prepare('SELECT content FROM project_lut_resources').get().content),source);
+ assert.equal(response.resource.metadata.size,33);const largestRow=f.db.prepare('SELECT content FROM project_lut_resources').get() as {content: Uint8Array} | undefined;assert.ok(largestRow);assert.deepEqual(Buffer.from(largestRow.content),source);
  assert.throws(()=>f.handlers['lut.import']({...f.input,requestId:'one-byte-over-limit',dataBase64:Buffer.concat([source,Buffer.from('\n')]).toString('base64')}),{code:'LUT_SOURCE_TOO_LARGE'});
  assert.deepEqual(count(f.db),[1,1]);
 });
@@ -158,13 +160,13 @@ test('SQL and service enforce project64MiB/workspace128MiB byte quotas independe
  // these deliberately non-Cube blobs are never claimed as valid resources.
  const f=fixture(t),metadata=JSON.stringify({test:'quota-only'}),sourceBytes=LUT_RESOURCE_LIMITS.sourceBytes;
  const insert=f.db.prepare(`INSERT INTO project_lut_resources(id,projectId,name,sha256,sizeBytes,profile,metadata,content,createdAt) VALUES(?,?,?,'${'a'.repeat(64)}',?,'mioon-cube3d-normalized-tetrahedral-v1',?,zeroblob(?),'2026-10-14T00:00:00.000Z')`);
- const add=(projectId,bytes)=>insert.run(randomUUID(),projectId,'quota-only.cube',bytes,metadata,bytes);
+ const add=(projectId: string,bytes: number)=>insert.run(randomUUID(),projectId,'quota-only.cube',bytes,metadata,bytes);
  for(const projectId of [f.projectId,f.foreignId]){
   for(let i=0;i<9;i++)add(projectId,sourceBytes);
   add(projectId,1024*1024); // exactly64MiB
   assert.throws(()=>add(projectId,1),/LUT_RESOURCE_LIMIT/);
  }
- assert.equal(f.db.prepare('SELECT SUM(sizeBytes) AS bytes FROM project_lut_resources').get().bytes,128*1024*1024);
+ assert.equal((f.db.prepare('SELECT SUM(sizeBytes) AS bytes FROM project_lut_resources').get() as {bytes: number}).bytes,128*1024*1024);
  const projectId=randomUUID();f.db.prepare('INSERT INTO projects VALUES(?,?)').run(projectId,JSON.stringify({id:projectId}));
  assert.throws(()=>add(projectId,1),/LUT_RESOURCE_LIMIT/);
  assert.throws(()=>f.handlers['lut.import']({...f.input,projectId,requestId:'workspace-byte-overflow'}),{code:'LUT_CAPACITY'});

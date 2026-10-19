@@ -5,13 +5,17 @@ import {argumentsFor} from '../apps/cli/src/arguments.ts';
 import {help} from '../apps/cli/src/help.ts';
 import {localizeHelp, localizeToolDescription} from '../packages/i18n/src/presentation.ts';
 import {LOCALES, translate, renderMessage} from '../packages/i18n/src/index.ts';
+import type {DisplayMessage, Locale, MessageKey} from '../packages/i18n/src/index.ts';
+import type {ClientErrorEnvelope} from '@mioon/client';
 import {VERSION, EXIT_CODES, discoverSchema, schemas, operationDefinition, successEnvelope, ClientError, errorEnvelope} from '@mioon/client';
 const dependencies={VERSION, EXIT_CODES, discoverSchema, schemas};
-function parse(argv) {
-  let locale; const errors=new WeakMap();
-  const fail=(text,key,params)=>{const error=new ClientError('VALIDATION_ERROR',text);errors.set(error,{key,params});throw error;};
-  try { return {...argumentsFor(argv,fail,value=>{locale=value;}),locale}; }
-  catch(error) { return {json:errorEnvelope(error), display:locale ? renderMessage(locale,errors.get(error)) : error.message}; }
+interface ParsedCommand {words?: string[]; options?: Record<string, string | true>; locale?: Locale; json?: ClientErrorEnvelope; display?: unknown}
+type HelpView = {name: string; version: string; usage: string[]; options: Record<string, string>; connection: string[]; exitCodes: Readonly<Record<string, unknown>>; safety: string; operation?: unknown; operations?: string[]};
+function parse(argv: string[]): ParsedCommand {
+  let locale: Locale | undefined; const errors = new WeakMap<object, DisplayMessage>();
+  const fail = (text: string, key?: MessageKey, params?: Record<string, string | number>): never => { const error = new ClientError('VALIDATION_ERROR', text); errors.set(error, { key, params } as unknown as DisplayMessage); throw error; };
+  try { return {...argumentsFor(argv, fail, (value: Locale | undefined) => { locale = value; }), locale}; }
+  catch (error) { return { json:errorEnvelope(error as ClientError), display: locale ? renderMessage(locale, errors.get(error as object) as DisplayMessage) : (error as Error).message }; }
 }
 test('pure help retains exact legacy bytes and schema object content in every presentation locale',()=>{
   const original=help(undefined,dependencies);
@@ -30,12 +34,12 @@ test('pure help retains exact legacy bytes and schema object content in every pr
   for(const locale of LOCALES){
     const localized=localizeHelp(original,locale);
     assert.deepEqual(localized.usage,original.usage);
-    assert.deepEqual(localized.operations,original.operations);
+    assert.deepEqual((localized as HelpView).operations,(original as HelpView).operations);
     assert.deepEqual(localized.exitCodes,original.exitCodes);
-    assert.equal(localized.options['--input'],translate(locale,'cli.option.input'));
-    assert.equal(localized.options['--locale'],translate(locale,'cli.option.locale'));
+    assert.equal(((localized as HelpView).options)['--input'],translate(locale,'cli.option.input'));
+    assert.equal(((localized as HelpView).options)['--locale'],translate(locale,'cli.option.locale'));
     const command=help('project.create',dependencies),before=structuredClone(command);
-    assert.deepEqual(localizeHelp(command,locale).operation,discoverSchema({operation:'project.create'}));
+    assert.deepEqual((localizeHelp(command,locale) as HelpView).operation,discoverSchema({operation:'project.create'}));
     assert.deepEqual(command,before);
   }
   assert.equal(Object.hasOwn(original.options,'--locale'),false);
@@ -48,7 +52,7 @@ test('pure parser supports both locale forms and preserves input bytes and comma
       assert.deepEqual(result,{words:['project','create'],options:{locale,input},locale});
     }
     const result=parse(['--locale',locale,'--input','--locale']);
-    assert.equal(result.options.input,'--locale');
+    assert.equal((result as {options: Record<string, string | true>}).options.input,'--locale');
     assert.equal(result.locale,locale);
   }
   assert.deepEqual(parse(['project','list']),{words:['project','list'],options:{},locale:undefined});
@@ -64,14 +68,14 @@ test('owned parser diagnostics translate without modifying machine errors or all
       if(locale!=='en')assert.notEqual(localized.display,original.display);
     }
   }
-  for(const args of [['--locale','fr'],['--locale','zh-TW'],['--locale'],['--locale=ja','--locale=en']])assert.equal(parse(args).json.error.code,'VALIDATION_ERROR');
+  for(const args of [['--locale','fr'],['--locale','zh-TW'],['--locale'],['--locale=ja','--locale=en']])assert.equal((parse(args).json as ClientErrorEnvelope).error.code,'VALIDATION_ERROR');
 });
 test('all operation descriptions translate only their presentation slot; definitions stay unchanged',()=>{
   for(const operation of Object.keys(schemas)){
     const definition=operationDefinition(operation),before=structuredClone(definition);
     assert.equal(localizeToolDescription(operation,definition.description),definition.description);
     for(const locale of LOCALES){
-      assert.equal(localizeToolDescription(operation,definition.description,locale),translate(locale,`operation.${operation}`));
+      assert.equal(localizeToolDescription(operation,definition.description,locale),translate(locale,`operation.${operation}` as MessageKey));
       assert.deepEqual(definition,before);
     }
   }

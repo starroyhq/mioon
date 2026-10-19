@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import { normalizeLocale, resolveLocale, LOCALES, LANGUAGE_LABELS } from '../packages/i18n/src/locale.ts';
 import { parseLanguagePreference, serializeLanguagePreference, isLanguageRequest, isLanguageSnapshot } from '../packages/i18n/src/preference.ts';
 import { translate, message, renderMessage, validateCatalogs, assertNoDuplicateMessageKeys, formatDate, formatNumber } from '../packages/i18n/src/index.ts';
+import type { Locale, LanguagePreference } from '../packages/i18n/src/index.ts';
+import type { LanguageIPCEvent } from '../apps/desktop/src/app-language-host.ts';
+import type { LanguageBridge } from '../packages/i18n/src/preference.ts';
+const translateAny = translate as (locale: Locale, key: string, ...args: unknown[]) => string;
 import { foundationMessages } from '../packages/i18n/src/catalogs/foundation.ts';
 import { nativeMessages } from '../packages/i18n/src/catalogs/native.ts';
 import { createAppLanguageHost } from '../apps/desktop/src/app-language-host.ts';
@@ -20,10 +24,10 @@ test('invalid/unsupported system locale falls back to English and explicit choic
 test('foundation/native catalogs have complete four-language placeholders', () => {
   assert.deepEqual(validateCatalogs(foundationMessages), []); assert.deepEqual(validateCatalogs(nativeMessages), []);
   assert.equal(translate('en', 'common.cancel'), 'Cancel'); assert.equal(renderMessage('ja', message('common.cancel')), 'キャンセル');
-  assert.throws(() => translate('en', 'missing.key')); assert.equal(renderMessage('en', { key: 'missing.key' }), 'This message cannot be displayed right now');
-  assert.throws(() => translate('en', 'native.chooseExecutable'));
+  assert.throws(() => translateAny('en', 'missing.key')); assert.equal(renderMessage('en', { key: 'missing.key' } as never), 'This message cannot be displayed right now');
+  assert.throws(() => translateAny('en', 'native.chooseExecutable'));
   assert.equal(translate('en', 'native.chooseExecutable', { name: '<FFmpeg>' }), 'Choose the <FFmpeg> executable');
-  assert.equal(renderMessage('en', '用户内容'), '用户内容');
+  assert.equal(renderMessage('en', '用户内容' as never), '用户内容');
   assert.match(formatNumber('en', 1234), /1,234/u); assert.equal(formatDate('en', 'not a date'), 'Unknown time');
 });
 test('preference envelope and IPC are narrow, exact and data-only', () => {
@@ -37,30 +41,30 @@ test('preference envelope and IPC are narrow, exact and data-only', () => {
   assert.equal(isLanguageSnapshot({ version: 1, revision: 0, preference: 'ja', locale: 'en', persistence: 'saved' }), false);
 });
 test('native preference authorizes before any read/write, broadcasts and survives a fresh host', () => {
-  let raw = null; const events = [], owner = {}; let reads = 0, writes = 0;
-  const storage = { read: () => { reads++; return raw; }, write: value => { writes++; raw = value; } };
-  const options = { systemLanguages: () => ['zh-HK'], storage, isTrusted: event => event === owner, broadcast: (...args) => events.push(args) };
+  let raw: string | null = null; const events: unknown[][] = [], owner = {}; let reads = 0, writes = 0;
+  const storage = { read: () => { reads++; return raw; }, write: (value: string | null) => { writes++; raw = value; } };
+  const options = { systemLanguages: () => ['zh-HK'], storage, isTrusted: (event: unknown) => event === owner, broadcast: (...args: unknown[]) => { events.push(args); } };
   const host = createAppLanguageHost(options); assert.equal(reads, 1); assert.equal(host.snapshot().locale, 'zh-Hant');
-  assert.throws(() => host.dispatch({}, { action: 'set', preference: 'ja' })); assert.equal(writes, 0);
-  const saved = host.dispatch(owner, { action: 'set', preference: 'ja' }); assert.equal(saved.locale, 'ja'); assert.equal(saved.revision, 1); assert.equal(writes, 1); assert.equal(events.length, 1);
-  assert.deepEqual(JSON.parse(raw), { version: 1, preference: 'ja' }); assert.equal(createAppLanguageHost(options).snapshot().locale, 'ja');
-  host.dispatch(owner, { action: 'set', preference: 'system' }); assert.equal(host.snapshot().locale, 'zh-Hant');
+  assert.throws(() => host.dispatch({} as unknown as LanguageIPCEvent, { action: 'set', preference: 'ja' })); assert.equal(writes, 0);
+  const saved = host.dispatch(owner as unknown as LanguageIPCEvent, { action: 'set', preference: 'ja' }); assert.equal(saved.locale, 'ja'); assert.equal(saved.revision, 1); assert.equal(writes, 1); assert.equal(events.length, 1);
+  assert.ok(typeof raw === 'string'); assert.deepEqual(JSON.parse(raw), { version: 1, preference: 'ja' }); assert.equal(createAppLanguageHost(options).snapshot().locale, 'ja');
+  host.dispatch(owner as unknown as LanguageIPCEvent, { action: 'set', preference: 'system' }); assert.equal(host.snapshot().locale, 'zh-Hant');
 });
 test('corrupt/read-only preference never lies about persistence or overwrites on read', () => {
   let writes = 0; const host = createAppLanguageHost({ systemLanguages: () => ['ja'], isTrusted: () => true, broadcast() {}, storage: { read: () => '{', write() { writes++; throw new Error('read-only'); } } });
   assert.equal(host.snapshot().persistence, 'read-failed'); assert.equal(writes, 0);
-  const next = host.dispatch({}, { action: 'set', preference: 'en' }); assert.equal(next.locale, 'en'); assert.equal(next.persistence, 'session'); assert.equal(writes, 1);
+  const next = host.dispatch({} as unknown as LanguageIPCEvent, { action: 'set', preference: 'en' }); assert.equal(next.locale, 'en'); assert.equal(next.persistence, 'session'); assert.equal(writes, 1);
 });
 test('preload exposes fixed typed methods and rejects arbitrary channels/fields', async () => {
-  const calls = [], listeners = new Set(); const next = { version: 1, revision: 0, preference: 'en', locale: 'en', persistence: 'saved' };
-  const bridge = createAppLanguageBridge({ invoke: async (...args) => { calls.push(args); return next; }, on: (channel, listener) => listeners.add(listener), removeListener: (channel, listener) => listeners.delete(listener) });
-  assert.equal((await bridge.read()).locale, 'en'); await bridge.set('ja'); await assert.rejects(bridge.set('zh-TW')); assert.equal(calls.length, 2); assert.equal(calls[0][0], 'mioon:app-language:v1');
+  const calls: unknown[][] = [], listeners = new Set<(event: unknown, value: unknown) => void>(); const next = { version: 1 as const, revision: 0, preference: 'en' as LanguagePreference, locale: 'en' as Locale, persistence: 'saved' as const };
+  const bridge = createAppLanguageBridge({ invoke: async (...args: unknown[]) => { calls.push(args); return next; }, on: (_channel: string, listener: (event: unknown, value: unknown) => void) => { listeners.add(listener); }, removeListener: (_channel: string, listener: (event: unknown, value: unknown) => void) => { listeners.delete(listener); } } as Parameters<typeof createAppLanguageBridge>[0]);
+  assert.equal((await bridge.read()).locale, 'en'); await bridge.set('ja'); await assert.rejects(bridge.set('zh-TW' as never)); assert.equal(calls.length, 2); assert.equal(calls[0]?.[0], 'mioon:app-language:v1');
   let observed = 0; const release = bridge.subscribe(value => { assert.equal(value.locale, 'en'); observed++; });
   for (const listener of listeners) { listener({}, { ...next, secret: 'not allowed' }); listener({}, next); }
   assert.equal(observed, 1); release(); assert.equal(listeners.size, 0); assert.equal(Object.isFrozen(bridge), true);
 });
 test('web manual language persists independently and storage events do not write back', async () => {
-  const records = new Map(); let writes = 0; const storage = () => ({ getItem: key => records.get(key) ?? null, setItem: (key, value) => { writes++; records.set(key, value); } });
+  const records = new Map<string, string>(); let writes = 0; const storage = () => ({ getItem: (key: string) => records.get(key) ?? null, setItem: (key: string, value: string) => { writes++; records.set(key, value); } });
   const store = createLanguageStore({ systemLanguages: ['en'], storage }); await store.setPreference('ja'); assert.equal(store.getSnapshot().locale, 'ja'); assert.equal(writes, 1);
   assert.deepEqual([...records.keys()], ['mioon.app-language.v1']); assert.equal(createLanguageStore({ systemLanguages: ['en'], storage }).getSnapshot().locale, 'ja');
   store.receiveStorage(serializeLanguagePreference('zh-Hant')); assert.equal(store.getSnapshot().locale, 'zh-Hant'); assert.equal(writes, 1);
@@ -71,11 +75,11 @@ test('web storage failure is session-only without changing other app state', asy
   await store.setPreference('en'); assert.equal(store.getSnapshot().locale, 'en'); assert.equal(store.getSnapshot().persistence, 'session');
 });
 test('native stale reads cannot overwrite a newer broadcast and reconnect does not remount application state', async () => {
-  let resolveRead; const listeners = new Set(); let requests = 0;
-  const snapshot = (revision, preference) => ({ version: 1, revision, preference, locale: preference, persistence: 'saved' });
-  const bridge = { read: () => new Promise(resolve => { resolveRead = resolve; }), set: async preference => { requests++; return snapshot(2, preference); }, subscribe: listener => { listeners.add(listener); return () => listeners.delete(listener); } };
+  let resolveRead: ((value: unknown) => void) | undefined; const listeners = new Set<(value: unknown) => void>(); let requests = 0;
+  const snapshot = (revision: number, preference: LanguagePreference) => ({ version: 1 as const, revision, preference, locale: preference, persistence: 'saved' as const });
+  const bridge = { read: () => new Promise<unknown>(resolve => { resolveRead = resolve; }), set: async (preference: LanguagePreference) => { requests++; return snapshot(2, preference); }, subscribe: (listener: (value: unknown) => void) => { listeners.add(listener); return () => listeners.delete(listener); } } as unknown as LanguageBridge;
   const store = createLanguageStore({ systemLanguages: ['en'], bridge }); const release = store.connect(); assert.equal(store.getSnapshot().ready, false);
-  for (const listener of listeners) listener(snapshot(1, 'ja')); resolveRead(snapshot(0, 'en')); await Promise.resolve();
+  for (const listener of listeners) listener(snapshot(1, 'ja')); assert.ok(resolveRead); resolveRead(snapshot(0, 'en')); await Promise.resolve();
   assert.equal(store.getSnapshot().locale, 'ja'); await store.setPreference('zh-Hant'); assert.equal(store.getSnapshot().locale, 'zh-Hant'); assert.equal(requests, 1);
   release(); assert.equal(listeners.size, 0); const again = store.connect(); assert.equal(listeners.size, 1); again(); assert.equal(listeners.size, 0);
 });
@@ -109,12 +113,12 @@ test('unknown language requests reject accessors and unsupported prototypes with
 });
 
 test('a native system-language refresh updates menus and every window without persisting project data', () => {
-  let system = ['en'], writes = 0, menuUpdates = 0; const broadcasts = [];
+  let system = ['en'], writes = 0, menuUpdates = 0; const broadcasts: unknown[] = [];
   const host = createAppLanguageHost({ systemLanguages: () => system, isTrusted: () => true,
-    storage: { read: () => null, write: () => { writes++; } }, onChanged: () => { menuUpdates++; }, broadcast: (_channel, value) => broadcasts.push(value) });
-  system = ['ja']; const next = host.dispatch({}, { action: 'read' });
+    storage: { read: () => null, write: () => { writes++; } }, onChanged: () => { menuUpdates++; }, broadcast: (_channel: string, value: unknown) => { broadcasts.push(value); } });
+  system = ['ja']; const next = host.dispatch({} as unknown as LanguageIPCEvent, { action: 'read' });
   assert.equal(next.locale, 'ja'); assert.equal(next.revision, 1); assert.equal(menuUpdates, 1); assert.equal(broadcasts.length, 1); assert.equal(writes, 0);
-  host.dispatch({}, { action: 'read' }); assert.equal(broadcasts.length, 1);
-  host.dispatch({}, { action: 'set', preference: 'zh-Hant' }); system = ['en'];
-  assert.equal(host.dispatch({}, { action: 'read' }).locale, 'zh-Hant'); assert.equal(broadcasts.length, 2); assert.equal(writes, 1);
+  host.dispatch({} as unknown as LanguageIPCEvent, { action: 'read' }); assert.equal(broadcasts.length, 1);
+  host.dispatch({} as unknown as LanguageIPCEvent, { action: 'set', preference: 'zh-Hant' }); system = ['en'];
+  assert.equal(host.dispatch({} as unknown as LanguageIPCEvent, { action: 'read' }).locale, 'zh-Hant'); assert.equal(broadcasts.length, 2); assert.equal(writes, 1);
 });

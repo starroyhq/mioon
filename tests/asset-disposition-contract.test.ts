@@ -28,8 +28,9 @@ test('disposition schemas require a strict explicit bounded unique batch and sta
  for(const expectedRevision of [-1,.5,NaN,Infinity,-Infinity,Number.MAX_SAFE_INTEGER+1,'0',null])
   assert.throws(()=>parse('asset.disposition.set',{...input,expectedRevision}),{code:'VALIDATION_ERROR'});
  assert.equal(parse('asset.disposition.set',{...input,expectedRevision:Number.MAX_SAFE_INTEGER}).expectedRevision,Number.MAX_SAFE_INTEGER);
- for(const [operation,value] of [['asset.disposition.list',{projectId,assetIds:[assetId]}],['asset.disposition.set',input]])
-  assert.throws(()=>parse(operation,{...value,extra:true}),{code:'VALIDATION_ERROR'});
+ const operationCases: [string, Record<string, unknown>][] = [['asset.disposition.list',{projectId,assetIds:[assetId]}],['asset.disposition.set',input]];
+ for(const [operation,value] of operationCases)
+  assert.throws(()=>parse(operation as never,{...value,extra:true} as never),{code:'VALIDATION_ERROR'});
 });
 
 test('acknowledgements bind exact disposition identity and accepted revision while allowing historical replay',()=>{
@@ -62,14 +63,16 @@ test('discovery exposes bounded noncreating reads and required-key metadata-only
  const list=operationEffects['asset.disposition.list'],set=operationEffects['asset.disposition.set'];
  assert.equal(list.readOnly,true);assert.equal(list.databaseWrite,false);assert.equal(list.idempotent,true);
  assert.equal(set.readOnly,false);assert.equal(set.databaseWrite,true);assert.equal(set.idempotent,true);
- for(const effects of [list,set])for(const field of ['fileWrite','externalIO','localProcess','paidGeneration','openWorld'])assert.equal(effects[field],false);
+ for(const effects of [list,set])for(const field of ['fileWrite','externalIO','localProcess','paidGeneration','openWorld'])assert.equal((effects as unknown as Record<string, unknown>)[field],false);
  assert.equal(effectAnnotations(set).idempotentHint,true);
- const schema=jsonSchema(schemas['asset.disposition.set']),batch=jsonSchema(schemas['asset.disposition.list']);
+ interface JsonSchemaView { required: string[]; properties: Record<string, { minLength?: number; maxLength?: number; description?: string; minItems?: number; maxItems?: number }> }
+ const schema=jsonSchema(schemas['asset.disposition.set']) as unknown as JsonSchemaView,batch=jsonSchema(schemas['asset.disposition.list']) as unknown as JsonSchemaView;
  assert.ok(schema.required.includes('requestId'));assert.equal(schema.properties.requestId.minLength,8);assert.equal(schema.properties.requestId.maxLength,200);
- assert.match(schema.properties.requestId.description,/Required stable replay key/);assert.match(set.notes,/Requires a stable requestId/);
+ assert.match(String(schema.properties.requestId.description),/Required stable replay key/);assert.match(String(set.notes),/Requires a stable requestId/);
  assert.ok(batch.required.includes('assetIds'));assert.equal(batch.properties.assetIds.minItems,1);assert.equal(batch.properties.assetIds.maxItems,100);
  for(const operation of ['asset.disposition.list','asset.disposition.set'])assert.ok(descriptions[operation]);
+ const effectCatalog=operationEffects as unknown as Record<string, { idempotent?: boolean }>,schemaCatalog=schemas as unknown as Record<string, unknown>;
  for(const operation of LOCAL_MUTATION_OPERATIONS.slice(0,6)){
-  assert.equal(operationEffects[operation].idempotent,false);assert.ok(!jsonSchema(schemas[operation]).required.includes('requestId'));
+  assert.equal(effectCatalog[operation]?.idempotent,false);assert.ok(!(jsonSchema(schemaCatalog[operation] as never) as unknown as JsonSchemaView).required.includes('requestId'));
  }
 });

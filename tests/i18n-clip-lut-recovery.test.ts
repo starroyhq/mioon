@@ -6,12 +6,12 @@ test('LUT recovery preserves application-owned error codes, independent of diagn
   for (const text of ['Storage changed', '復元記録が変更されました', '']) {
     const original = new ClipLutRecoveryError('LUT_RECOVERY_CONFLICT', text);
     const recovery = createClipLutRecovery({ lock: async () => { throw original; } });
-    await assert.rejects(recovery.read(identity), error => error === original && error.code === 'LUT_RECOVERY_CONFLICT');
+    await assert.rejects(recovery.read(identity), (error: unknown) => error === original && (error as ClipLutRecoveryError).code === 'LUT_RECOVERY_CONFLICT');
   }
 });
 test('LUT-like text from an arbitrary storage error cannot impersonate a recovery error', async () => {
   for (const text of ['LUT external storage failed', '无法安全 external storage failed', 'Storage denied']) {
     const recovery = createClipLutRecovery({ lock: async () => { throw new Error(text); } });
-    await assert.rejects(recovery.read(identity), error => error instanceof ClipLutRecoveryError && error.code === 'LUT_RECOVERY_UNAVAILABLE');
+    await assert.rejects(recovery.read(identity), (error: unknown) => error instanceof ClipLutRecoveryError && error.code === 'LUT_RECOVERY_UNAVAILABLE');
   }
 });

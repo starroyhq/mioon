@@ -6,24 +6,30 @@ import {fileURLToPath} from 'node:url';
 import {readFileSync} from 'node:fs';
 import {schemas, operationDefinition, discoverSchema} from '@mioon/client';
 import {LOCALES, catalogs, validateCatalogs, translate} from '../packages/i18n/src/index.ts';
+import type {Locale, MessageKey} from '../packages/i18n/src/index.ts';
 import {presentationLocale, localizeHelp, localizeToolDescription} from '../packages/i18n/src/presentation.ts';
 import {operationMessages} from '../packages/i18n/src/catalogs/operations.ts';
 const root = fileURLToPath(new URL('../', import.meta.url));
-const cleanEnv = () => Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('MIOON_')));
-function cli(args, env = {}) {
+const cleanEnv = (): Record<string, string | undefined> => Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('MIOON_')));
+interface CliResult { status: number | null; stdout: string; stderr: string; json: Record<string, unknown> }
+interface McpToolView { name: string; description: string; [key: string]: unknown }
+interface McpResultView { result: Record<string, unknown> & { tools?: McpToolView[]; instructions?: string } }
+interface HelpDataView { options: Record<string, string>; usage: unknown; operations: unknown; exitCodes: unknown }
+interface McpHarness { request: (method: string, params?: Record<string, unknown>) => Promise<McpResultView>; initialized: Record<string, unknown> & { instructions?: string } }
+function cli(args: string[], env: Record<string, string | undefined> = {}): CliResult {
   const result = spawnSync(process.execPath, ['apps/cli/src/index.ts', ...args], {cwd:root, env:{...cleanEnv(), ...env}, encoding:'utf8', timeout:30000, maxBuffer:8*1024*1024});
   assert.ifError(result.error);
-  return {...result, json:JSON.parse(result.stdout)};
+  return {status: result.status, stdout: String(result.stdout), stderr: String(result.stderr), json: JSON.parse(String(result.stdout)) as Record<string, unknown>};
 }
 // Minimal bounded stdio harness: no backend, server bootstrap or generation.
-async function mcp(t, args = [], env = {}) {
+async function mcp(t: import('node:test').TestContext, args: string[] = [], env: Record<string, string | undefined> = {}): Promise<McpHarness> {
   const child = spawn(process.execPath, ['apps/mcp/src/index.ts', ...args], {cwd:root, env:{...cleanEnv(), ...env}, stdio:['pipe','pipe','pipe']});
-  let buffer = '', next = 0; const pending = new Map();
+  let buffer = '', next = 0; const pending = new Map<number, { resolve: (value: McpResultView) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
   child.stderr.resume();
   t.after(() => { child.kill('SIGKILL'); for (const entry of pending.values()) { clearTimeout(entry.timer); entry.reject(new Error('MCP closed')); } });
-  child.stdout.setEncoding('utf8').on('data', bytes => { buffer += bytes; let end; while ((end=buffer.indexOf('\n'))>=0) { const line=buffer.slice(0,end); buffer=buffer.slice(end+1); if (!line) continue; const result=JSON.parse(line), entry=pending.get(result.id); if (entry) {pending.delete(result.id); clearTimeout(entry.timer); entry.resolve(result);}} });
+  child.stdout.setEncoding('utf8').on('data', (bytes: string) => { buffer += bytes; let end; while ((end=buffer.indexOf('\n'))>=0) { const line=buffer.slice(0,end); buffer=buffer.slice(end+1); if (!line) continue; const result=JSON.parse(line) as {id?: number} & McpResultView, entry=result.id===undefined?undefined:pending.get(result.id); if (entry) {pending.delete(result.id as number); clearTimeout(entry.timer); entry.resolve(result);}} });
   child.on('error', error => { for (const entry of pending.values()) { clearTimeout(entry.timer); entry.reject(error); } pending.clear(); });
-  function request(method, params={}) { return new Promise((resolve,reject) => { const id=++next, timer=setTimeout(() => {pending.delete(id); child.kill('SIGKILL'); reject(new Error(`MCP ${method} exceeded 30 seconds`));},30000); pending.set(id,{resolve,reject,timer}); child.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method,params})+'\n'); }); }
+  function request(method: string, params: Record<string, unknown> = {}): Promise<McpResultView> { return new Promise<McpResultView>((resolve,reject) => { const id=++next, timer=setTimeout(() => {pending.delete(id); child.kill('SIGKILL'); reject(new Error(`MCP ${method} exceeded 30 seconds`));},30000); pending.set(id,{resolve,reject,timer}); child.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method,params})+'\n'); }); }
   const initialized = await request('initialize',{protocolVersion:'2024-11-05',capabilities:{},clientInfo:{name:'presentation-test',version:'1'}});
   child.stdin.write(JSON.stringify({jsonrpc:'2.0',method:'notifications/initialized'})+'\n');
   return {request, initialized:initialized.result};
@@ -45,7 +51,7 @@ test('continuous plan discovery has four explicit locales without changing machi
   for (const locale of LOCALES) {
     for (const name of Object.keys(schemas)) {
       const prose = localizeToolDescription(name, operationDefinition(name).description, locale);
-      assert.equal(prose, translate(locale, `operation.${name}`));
+      assert.equal(prose, translate(locale, `operation.${name}` as MessageKey));
       assert.ok(prose.length > 0);
     }
     const description = localizeToolDescription(operation, definition.description, locale);
@@ -74,12 +80,13 @@ test('CLI localizes only prose; default help snapshot, schema, version and error
   const version=cli(['--version']).stdout;
   const bad=cli(['--unknown']).stdout;
   for (const locale of LOCALES) {
-    const help=cli(['--locale',locale,'--help']).json.data;
+    const help=cli(['--locale',locale,'--help']).json.data as HelpDataView;
     assert.equal(help.options['--input'],translate(locale,'cli.option.input'));
     assert.equal(help.options['--locale'],translate(locale,'cli.option.locale'));
-    assert.deepEqual(help.usage,original.json.data.usage);
-    assert.deepEqual(help.operations,original.json.data.operations);
-    assert.deepEqual(help.exitCodes,original.json.data.exitCodes);
+    const originalData=original.json.data as HelpDataView;
+    assert.deepEqual(help.usage,originalData.usage);
+    assert.deepEqual(help.operations,originalData.operations);
+    assert.deepEqual(help.exitCodes,originalData.exitCodes);
     assert.equal(cli(['--locale',locale,'schema','project.create']).stdout,schema);
     assert.equal(cli(['--locale',locale,'--version']).stdout,version);
     const invalid=cli(['--locale',locale,'--unknown']);
@@ -89,31 +96,32 @@ test('CLI localizes only prose; default help snapshot, schema, version and error
   for (const args of [['--locale','fr'],['--locale'],['--locale=en','--locale=ja']]) assert.equal(cli(args).status,2);
 });
 test('MCP offline list/instructions translate while schemas, effects and call envelopes stay exact', {timeout:180000}, async t => {
-  const legacy=await mcp(t), baseline=(await legacy.request('tools/list')).result.tools;
-  for (const operation of Object.keys(schemas)) assert.equal(baseline.find(tool=>tool.name===operation.replaceAll('.','_')).description,operationDefinition(operation).description);
+  const legacy=await mcp(t), baseline=(await legacy.request('tools/list')).result.tools as McpToolView[];
+  for (const operation of Object.keys(schemas)) { const tool=baseline.find(value=>value.name===operation.replaceAll('.','_')); assert.ok(tool); assert.equal(tool.description,operationDefinition(operation).description); }
   const schemaResult=await legacy.request('tools/call',{name:'mioon_schema',arguments:{operation:'project.create'}});
   for (const locale of LOCALES) {
     const localized=await mcp(t,['--locale',locale]);
     assert.equal(localized.initialized.instructions,translate(locale,'mcp.instructions'));
-    const listing=(await localized.request('tools/list')).result.tools;
+    const listing=(await localized.request('tools/list')).result.tools as McpToolView[];
     assert.equal(listing.length,baseline.length);
     for (let i=0;i<listing.length;i++) {
       const {description:oldDescription,...old}=baseline[i],{description,...rest}=listing[i];
       assert.deepEqual(rest,old);
       const operation=Object.keys(schemas).find(key=>key.replaceAll('.','_')===listing[i].name);
-      assert.equal(description,translate(locale,operation?`operation.${operation}`:`mcp.${listing[i].name.slice(6)}`));
+      assert.equal(description,translate(locale,(operation?`operation.${operation}`:`mcp.${listing[i].name.slice(6)}`) as MessageKey));
     }
     const call=await localized.request('tools/call',{name:'mioon_schema',arguments:{operation:'project.create'}});
     assert.deepEqual(call.result,schemaResult.result);
   }
 });
 test('launch locale is stripped before RPC and never causes submission replay', {timeout:150000}, async t => {
-  const received=[];
+  const received: unknown[] = [];
   const server=createServer(async(req,res)=>{let body='';for await(const chunk of req)body+=chunk;received.push(JSON.parse(body));res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,data:[]}));});
-  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>server.close());
-  const env={MIOON_BASE_URL:`http://127.0.0.1:${server.address().port}`,MIOON_TOKEN:'synthetic-locale-test-token'};
+  await new Promise<void>(resolve => { server.listen(0,'127.0.0.1', () => resolve()); }); t.after(()=>server.close());
+  const address = server.address() as import('node:net').AddressInfo;
+  const env={MIOON_BASE_URL:`http://127.0.0.1:${address.port}`,MIOON_TOKEN:'synthetic-locale-test-token'};
   // Async child so the fixture server stays responsive.
-  for(const locale of LOCALES) await new Promise((resolve,reject)=>{
+  for(const locale of LOCALES) await new Promise<void>((resolve,reject)=>{
     const child=spawn(process.execPath,['apps/cli/src/index.ts','--locale',locale,'project','create','--input','{"name":"Keep 用户 日本語"}'],{cwd:root,env:{...cleanEnv(),...env},stdio:'ignore'});
     const timer=setTimeout(()=>{child.kill('SIGKILL');reject(new Error('CLI exceeded 30 seconds'));},30000);
     child.on('exit',code=>{clearTimeout(timer);code===0?resolve():reject(new Error(`CLI exit ${code}`));});child.on('error',reject);

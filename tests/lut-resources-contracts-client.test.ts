@@ -6,6 +6,10 @@ import {lutImportInputSchema,lutResourceSchema,lutListResponseSchema,lutRestoreP
 import {isLutRpcResponse} from '../packages/client/src/lut-resources.ts';
 import {createClient,discoverSchema} from '../packages/client/src/index.ts';
 import {ReadBuffer,STDIO_DEFAULT_MAX_BUFFER_SIZE} from '../node_modules/@modelcontextprotocol/sdk/dist/esm/shared/stdio.js';
+interface DiscoveryView { toolName: string; command: string; requiresRequestId?: boolean; effects: { paidGeneration: boolean; localProcess: boolean; externalIO: boolean } }
+interface OperationEffectView { idempotent?: boolean; databaseWrite?: boolean; readOnly?: boolean }
+interface RpcFailureDetails { requestId?: string; operation?: string; submissionMayHaveSucceeded?: boolean }
+interface RpcFailure { code?: string; details?: RpcFailureDetails }
 const projectId='11111111-1111-4111-8111-111111111111',id='22222222-2222-4222-8222-222222222222';
 const bytes=Buffer.from('LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n');
 const input={projectId,requestId:'shared-client-lut-request',name:'look.cube',dataBase64:bytes.toString('base64')};
@@ -14,10 +18,10 @@ const resource={id,projectId,name:input.name,kind:'cube3d',sha256:createHash('sh
 const ack={requestId:input.requestId,resource};
 test('shared strict RPC discovery separates resources from media and grading',()=>{
  for(const operation of ['lut.import','lut.list','lut.inspect']){
-  assert.ok(schemas[operation]);const schema=discoverSchema({operation});assert.equal(schema.toolName,operation.replaceAll('.','_'));assert.equal(schema.command,operation.replaceAll('.',' '));assert.equal(schema.effects.paidGeneration,false);assert.equal(schema.effects.localProcess,false);assert.equal(schema.effects.externalIO,false);
+  assert.ok((schemas as Record<string, unknown>)[operation]);const schema=discoverSchema({operation}) as unknown as DiscoveryView;assert.equal(schema.toolName,operation.replaceAll('.','_'));assert.equal(schema.command,operation.replaceAll('.',' '));assert.equal(schema.effects.paidGeneration,false);assert.equal(schema.effects.localProcess,false);assert.equal(schema.effects.externalIO,false);
  }
- assert.equal(discoverSchema({operation:'lut.import'}).requiresRequestId,true);assert.equal(operationEffect('lut.import').idempotent,true);assert.equal(operationEffect('lut.import').databaseWrite,true);
- for(const op of ['lut.list','lut.inspect'])assert.equal(operationEffect(op).readOnly,true);
+ assert.equal((discoverSchema({operation:'lut.import'}) as unknown as DiscoveryView).requiresRequestId,true);assert.equal((operationEffect('lut.import') as unknown as OperationEffectView).idempotent,true);assert.equal((operationEffect('lut.import') as unknown as OperationEffectView).databaseWrite,true);
+ for(const op of ['lut.list','lut.inspect'])assert.equal((operationEffect(op) as unknown as OperationEffectView).readOnly,true);
  for(const extra of [{path:'/private/x.cube'},{mimeType:'application/cube'},{strength:1},{clipId:id},{colourSpace:'sdr'},{profile:'anything'}])assert.equal(lutImportInputSchema.safeParse({...input,...extra}).success,false);
  for(const field of ['content','dataBase64','relativePath','url'])assert.equal(lutResourceSchema.safeParse({...resource,[field]:'secret'}).success,false);
 });
@@ -46,9 +50,9 @@ test('full maximum MCP message including worst escaped fields remains under unch
 });
 test('shared client rejects bad ACK with exact request recovery, and never retries on failure',async()=>{
  let calls=0;const client=createClient({env:{MIOON_BASE_URL:'http://127.0.0.1:9999',MIOON_TOKEN:'a'.repeat(64)},fetchImpl:async()=>{calls++;return new Response(JSON.stringify({ok:true,data:{...ack,resource:{...resource,sha256:'a'.repeat(64)}}}),{status:200});}});
- await assert.rejects(client.rpc('lut.import',input),error=>error.code==='BACKEND_PROTOCOL_ERROR'&&error.details.requestId===input.requestId&&error.details.submissionMayHaveSucceeded===true);assert.equal(calls,1);
+ await assert.rejects(client.rpc('lut.import',input),(error: unknown)=>{const failure=error as RpcFailure;return failure.code==='BACKEND_PROTOCOL_ERROR'&&failure.details?.requestId===input.requestId&&failure.details?.submissionMayHaveSucceeded===true;});assert.equal(calls,1);
  const down=createClient({env:{MIOON_BASE_URL:'http://127.0.0.1:9999',MIOON_TOKEN:'a'.repeat(64)},fetchImpl:async()=>{calls++;throw Error('Disconnected');}});
- await assert.rejects(down.rpc('lut.import',input),error=>error.code==='BACKEND_UNAVAILABLE'&&error.details.requestId===input.requestId&&error.details.submissionMayHaveSucceeded===true);assert.equal(calls,2);
+ await assert.rejects(down.rpc('lut.import',input),(error: unknown)=>{const failure=error as RpcFailure;return failure.code==='BACKEND_UNAVAILABLE'&&failure.details?.requestId===input.requestId&&failure.details?.submissionMayHaveSucceeded===true;});assert.equal(calls,2);
 });
 test('restored LUT disclosure is profile-specific; import is unavailable and no media/effect backdoor exists',()=>{
  for(const version of [25,27,29])for(const operation of ['lut.import','lut.list','lut.inspect'])assert.equal(lutRestorePolicy(operation,version).available,version===29&&operation!=='lut.import');
@@ -60,5 +64,5 @@ test('restored LUT disclosure is profile-specific; import is unavailable and no 
 
 test('explicit uncertain server result retains exact request recovery information',async()=>{
  let calls=0;const client=createClient({env:{MIOON_BASE_URL:'http://127.0.0.1:9999',MIOON_TOKEN:'a'.repeat(64)},fetchImpl:async()=>{calls++;return new Response(JSON.stringify({ok:false,error:{code:'LUT_IMPORT_UNCERTAIN',message:'Replay exact input',details:{}}}),{status:503});}});
- await assert.rejects(client.rpc('lut.import',input),error=>error.code==='LUT_IMPORT_UNCERTAIN'&&error.details.requestId===input.requestId&&error.details.operation==='lut.import'&&error.details.submissionMayHaveSucceeded===true);assert.equal(calls,1);
+ await assert.rejects(client.rpc('lut.import',input),(error: unknown)=>{const failure=error as RpcFailure;return failure.code==='LUT_IMPORT_UNCERTAIN'&&failure.details?.requestId===input.requestId&&failure.details?.operation==='lut.import'&&failure.details?.submissionMayHaveSucceeded===true;});assert.equal(calls,1);
 });

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { shellMessages } from '../packages/i18n/src/catalogs/shell.ts';
 import { LOCALES, validateCatalogs, translate, message, renderMessage } from '../packages/i18n/src/index.ts';
+import type { DisplayMessage, Locale, MessageKey } from '../packages/i18n/src/index.ts';
+const tr = (locale: Locale, key: string, params: Record<string, unknown> = {}): string => translate(locale, key as MessageKey, params as never);
 import { referenceSourceDetails, referenceTargetOptions, referenceAttachIssueDescriptor, canvasEdge } from '../apps/web/src/reference-connections.ts';
 import { importFeedback, renderImportFeedback } from '../apps/web/src/import-feedback.ts';
 
@@ -14,7 +16,7 @@ test('shell catalog has all four locales, exact placeholders, and no missing-key
     const template = typeof entry['zh-Hans'] === 'string' ? entry['zh-Hans'] : entry['zh-Hans'].other;
     const params = Object.fromEntries([...template.matchAll(/\{([A-Za-z][A-Za-z0-9_]*)\}/gu)].map(([, name]) => [name, name === 'count' ? 2 : '<literal 用户入力>']));
     for (const locale of LOCALES) {
-      const rendered = translate(locale, key, params);
+      const rendered = tr(locale, key, params);
       assert.ok(rendered.length, `${key}/${locale}`);
       assert.doesNotMatch(rendered, /\{[A-Za-z][A-Za-z0-9_]*\}/u, `${key}/${locale}`);
       assert.notEqual(rendered, 'This message cannot be displayed right now');
@@ -35,11 +37,11 @@ test('reference display changes language without changing record identity or ful
     const details = referenceSourceDetails({ sourceId: node.id, assetId: asset.id, projectId, nodes: [node], assets: [asset], locale });
     descriptions.add(details.description); assert.equal(details.source, node); assert.equal(details.asset, asset);
     assert.ok(details.description.includes(name)); assert.ok(details.description.includes(asset.name));
-    assert.equal(referenceTargetOptions([shot], projectId, locale)[0].shot, shot);
+    const targetOptions = referenceTargetOptions([shot], projectId, locale); assert.ok(targetOptions[0]); assert.equal(targetOptions[0].shot, shot);
     const shown = canvasEdge(edge, true, locale); assert.equal(shown.id, edge.id); assert.equal(shown.source, edge.source); assert.equal(shown.target, edge.target);
     assert.equal(shown.label, translate(locale, 'assets.reference.firstFrame'));
     const issue = referenceAttachIssueDescriptor({ source: node, shot, assets: [asset], edges: [edge], projectId });
-    assert.ok(renderMessage(locale, issue));
+    assert.ok(renderMessage(locale, issue as never));
   }
   assert.equal(descriptions.size, 4); assert.deepEqual({ node, asset, shot, edge }, before);
 });
@@ -95,7 +97,7 @@ test('header actions and native settings remain reachable without locale or resi
 test('known workspace/storage diagnostics retain actionable meaning without exposing raw server text', () => {
   const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const source = app.slice(app.indexOf('function readableError(error'), app.indexOf('function Modal('));
-  const readableError = Function('msg', `${stripSourceTypes(source,{loader:'tsx'})}; return readableError;`)(message);
+  const readableError = Function('msg', `${stripSourceTypes(source,{loader:'tsx'})}; return readableError;`)(message) as (error: { code?: string; message?: string; displayMessage?: DisplayMessage }) => { key: MessageKey; displayMessage?: DisplayMessage };
   const cases = {
     STORAGE_MIGRATION_BLOCKED: 'shell.error.storageMigration', WORKSPACE_ORIGIN_UNVERIFIED: 'tasks.unverifiedWorkspace',
     RESTORED_RECORD_HELD: 'tasks.heldReason', RESTORE_WORKSPACE_ORIGIN_MISMATCH: 'shell.error.workspaceChanged',
@@ -106,7 +108,7 @@ test('known workspace/storage diagnostics retain actionable meaning without expo
     const error = { code, message: 'Raw provider diagnostic 私有內容' }, before = structuredClone(error), descriptor = readableError(error);
     assert.equal(descriptor.key, key);
     for (const locale of LOCALES) {
-      assert.equal(renderMessage(locale, descriptor), translate(locale, key));
+      assert.equal(renderMessage(locale, descriptor), translate(locale, key as MessageKey));
       assert.ok(!renderMessage(locale, descriptor).includes(error.message));
     }
     assert.deepEqual(error, before);
