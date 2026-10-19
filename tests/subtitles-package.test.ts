@@ -10,19 +10,20 @@ import resources from '../apps/desktop/subtitle-resources.ts';
 import {createSubtitleTarVerifier,verifySubtitleResourceTarball} from '../apps/desktop/subtitle-package.ts';
 const base='mioon-0.4.1-linux-x64',prefix=base+'/resources/subtitles',expected=resources.SUBTITLE_RESOURCE_MANIFEST;
 const source=new URL('../packages/business/resources/subtitles/',import.meta.url);
-const bytes=Object.fromEntries(await Promise.all(Object.keys(expected).map(async name=>[name,await readFile(new URL(name,source))])));
-function header(name,{size=0,type='0',link=''}={}){
+const bytes=Object.fromEntries(await Promise.all(Object.keys(expected).map(async name=>[name,await readFile(new URL(name,source))]))) as Record<string, Buffer>;
+function header(name: string,{size=0,type='0',link=''}: {size?: number; type?: string; link?: string}={}): Buffer {
  const b=Buffer.alloc(512);b.write(name,0,100);b.write(type==='5'?'0000755\0':'0000644\0',100);b.write('0000000\0',108);b.write('0000000\0',116);b.write(size.toString(8).padStart(11,'0')+'\0',124);b.write('00000000000\0',136);b.fill(32,148,156);b.write(type,156);b.write(link,157,100);b.write('ustar\0',257);b.write('00',263);
  const sum=b.reduce((n,v)=>n+v,0);b.write(sum.toString(8).padStart(6,'0')+'\0 ',148);return b;
 }
-const regular=()=>Object.keys(expected).map(name=>({name:prefix+'/'+name,data:bytes[name]}));
-function archive(entries=regular()){
+interface TarEntry {name: string; data?: Buffer; size?: number; type?: string; link?: string}
+const regular=(): TarEntry[]=>Object.keys(expected).map(name=>({name:prefix+'/'+name,data:bytes[name] as Buffer}));
+function archive(entries: TarEntry[]=regular()): Buffer {
  const parts=[header(base,{type:'5'}),header(base+'/resources',{type:'5'}),header(prefix,{type:'5'})];
  for(const entry of entries){const data=entry.data??Buffer.alloc(0);parts.push(header(entry.name,{size:entry.size??data.length,type:entry.type??'0',link:entry.link??''}),data,Buffer.alloc((512-data.length%512)%512));}
  return Buffer.concat([...parts,Buffer.alloc(1024)]);
 }
-function inspect(input){const checker=createSubtitleTarVerifier(base);for(let at=0;at<input.length;at+=8191)checker.consume(input.subarray(at,at+8191));return checker.finish();}
-function paxEntry(value){let length=Buffer.byteLength(value)+3;while(Buffer.byteLength(`${length} ${value}\n`)!==length)length=Buffer.byteLength(`${length} ${value}\n`);return Buffer.from(`${length} ${value}\n`);}
+function inspect(input: Buffer){const checker=createSubtitleTarVerifier(base);for(let at=0;at<input.length;at+=8191)checker.consume(input.subarray(at,at+8191));return checker.finish();}
+function paxEntry(value: string){let length=Buffer.byteLength(value)+3;while(Buffer.byteLength(`${length} ${value}\n`)!==length)length=Buffer.byteLength(`${length} ${value}\n`);return Buffer.from(`${length} ${value}\n`);}
 
 test('delivered resource parser verifies exact five members in bounded arbitrary chunks',()=>{
  assert.deepEqual(inspect(archive()),expected);
@@ -35,8 +36,8 @@ test('delivered resource parser rejects missing, duplicate, unknown, link, chang
  const cases=[valid.slice(1),[...valid,valid[0]],[...valid,{name:prefix+'/unexpected.ttf',data:Buffer.from('font')}],
   valid.map((entry,i)=>i?entry:{...entry,type:'2',link:'/private/font',data:Buffer.alloc(0)}),
   valid.map((entry,i)=>i?entry:{...entry,type:'1',link:valid[1].name,data:Buffer.alloc(0)}),
-  valid.map((entry,i)=>i?entry:{...entry,size:entry.data.length+1}),
-  valid.map((entry,i)=>i?entry:{...entry,data:Buffer.alloc(entry.data.length)}),
+  valid.map((entry,i)=>i?entry:{...entry,size:(entry.data ?? Buffer.alloc(0)).length+1}),
+  valid.map((entry,i)=>i?entry:{...entry,data:Buffer.alloc((entry.data ?? Buffer.alloc(0)).length)}),
   [...valid,{name:base+'/resources/subtitles/../escaped',data:Buffer.alloc(0)}],
   [...valid,{name:prefix,type:'2',link:'/private',data:Buffer.alloc(0)}]];
  for(const entries of cases)assert.throws(()=>inspect(archive(entries)),/bounded archive verification/);

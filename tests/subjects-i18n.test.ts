@@ -9,10 +9,10 @@ test('subject catalog has exact locale and placeholder parity and is integrated 
   assert.ok(Object.keys(subjectsMessages).length >= 140);
   for (const [key, entry] of Object.entries(subjectsMessages)) {
     assert.ok(key.startsWith('subjects.'));
-    assert.equal(catalogs[key], entry);
+    assert.equal((catalogs as unknown as Record<string, unknown>)[key], entry);
     for (const locale of LOCALES) {
       const params = Object.fromEntries([...entry['zh-Hans'].matchAll(/\{(\w+)\}/g)].map(([, name]) => [name, name === 'count' ? 3 : 'Example 2']));
-      assert.ok(translate(locale, key, params).trim());
+      assert.ok(translate(locale, key as never, params as never).trim());
     }
   }
 });

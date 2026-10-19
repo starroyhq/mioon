@@ -13,8 +13,9 @@ test('image inputs are explicit, exact and fixed to bounded single-output preset
  assert.ok(imageSchemas['image.generate'].safeParse({...input,groupId,expectedRevision:2}).success);
  const {projectId:_,name:__,requestId:___,...adapter}=input;assert.ok(imageAdapterInputSchema.safeParse(adapter).success);assert.equal(imageAdapterInputSchema.safeParse(input).success,false);
  assert.ok(imageSnapshotSchema.safeParse({schemaVersion:1,projectId,groupId,taskId,name:input.name,...adapter}).success);
- for(const op of ['image.task.cancelQueued','image.task.recoverResult'])assert.ok(imageSchemas[op].safeParse({projectId,taskId,expectedRevision:1,requestId}).success);
- for(const op of ['image.task.list','image.group.list','image.version.list'])assert.equal(imageSchemas[op].safeParse({projectId,groupId,limit:51}).success,false);
+ const schemas=imageSchemas as unknown as Record<string, {safeParse(value: unknown): {success: boolean}}>;
+ for(const op of ['image.task.cancelQueued','image.task.recoverResult'])assert.ok(schemas[op].safeParse({projectId,taskId,expectedRevision:1,requestId}).success);
+ for(const op of ['image.task.list','image.group.list','image.version.list'])assert.equal(schemas[op].safeParse({projectId,groupId,limit:51}).success,false);
 });
 
 test('task receipts bind exact submitted intent and keep action key separate from generation key',()=>{

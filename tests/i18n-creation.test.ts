@@ -17,7 +17,7 @@ test('creation catalog has complete four-language templates with exact placehold
     const templates = typeof base === 'string' ? [base] : Object.values(base);
     const params = Object.fromEntries(templates.flatMap(template => [...template.matchAll(/\{(\w+)\}/g)].map(match => [match[1], 2])));
     if (typeof base !== 'string') params.count = 2;
-    for (const locale of LOCALES) { assert.ok(translate(locale, key, params).length); assert.doesNotMatch(translate(locale, key, params), /\{\w+\}/); }
+    for (const locale of LOCALES) { assert.ok(translate(locale, key as never, params as never).length); assert.doesNotMatch(translate(locale, key as never, params as never), /\{\w+\}/); }
   }
 });
 
@@ -46,7 +46,7 @@ test('validation display sidecars preserve the old validation decision without t
 
 test('generation provider display ignores backend translated labels and instructions', () => {
   for (const id of ['mock', 'runway', 'ark', 'veo', 'minimax', 'vidu']) for (const locale of LOCALES) {
-    const t = (key, params) => translate(locale, key, params);
+    const t = ((key: string, params?: Record<string, unknown>) => translate(locale, key as never, params as never)) as never;
     const provider = { id, name: 'INJECTED DISPLAY', configured: false, enabled: false };
     assert.equal(providerDisplayName(provider, t), providerDisplayName({ id }, t));
     assert.doesNotMatch(renderMessage(locale, providerAvailabilityDescriptor(provider)), /INJECTED DISPLAY/);
@@ -57,7 +57,7 @@ test('creation renderer text and lifecycle dependencies are locale-safe', () => 
   for (const filename of ['AgentPanel.tsx', 'AgentRunActivity.tsx', 'AgentEditProposal.tsx', 'AgentTimelineGain.tsx', 'AgentWorkspace.tsx', 'ImageGeneration.tsx', 'ComfyImageDetails.tsx', 'GenerationInputSummary.tsx', 'ProviderSettings.tsx', 'TaskCenter.tsx', 'TaskWorkspace.tsx', 'PendingSubmission.tsx']) {
     const source = readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8');
     const ast = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true, filename.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.JSX);
-    const visit = node => {
+    const visit = (node: ts.Node) => {
       if (ts.isJsxText(node) || ts.isStringLiteralLike(node)) assert.doesNotMatch(node.text, /[\u3400-\u9fff]/, filename);
       if (ts.isCallExpression(node) && ['useEffect', 'useLayoutEffect', 'useMemo'].includes(node.expression.getText(ast))) {
         const deps = node.arguments[1]; if (deps) assert.doesNotMatch(deps.getText(ast), /\blocale\b|\bt\b|\brenderMessage\b/, filename);
@@ -74,7 +74,7 @@ test('first/last-frame validation retains specific guidance from stable issue co
   const provider = { id: 'ark', configured: true, enabled: true };
   const missing = generationInputIssueDescriptor({ referenceAssetIds: [], lastFrameAssetId: tail }, provider, '', [], 'image');
   const same = generationInputIssueDescriptor({ referenceAssetIds: [first], lastFrameAssetId: first }, provider, '', [], 'image');
-  assert.equal(missing.key, 'generation.frame.tailNeedsFirst'); assert.equal(same.key, 'generation.frame.distinctFrames');
+  assert.equal((missing as {key: string}).key, 'generation.frame.tailNeedsFirst'); assert.equal((same as {key: string}).key, 'generation.frame.distinctFrames');
   assert.match(renderMessage('zh-Hans', missing), /尾帧必须与一张首帧/); assert.match(renderMessage('zh-Hans', same), /不同素材.*当前应用限制/);
   for (const locale of LOCALES) { assert.ok(renderMessage(locale, missing)); assert.ok(renderMessage(locale, same)); }
 });
@@ -121,7 +121,7 @@ test('actual provider renders creation details in all four locales and escapes u
   const rendered = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30_000 }));
   for (const locale of LOCALES) {
     const html = rendered[locale];
-    for (const key of ['generation.provider.heading', 'generation.provider.simulationWarning', 'image.comfy.details.observationScope', 'agent.proposal.before', 'tasks.workspace.heading']) assert.ok(html.includes(translate(locale, key)), `${locale}/${key}`);
+    for (const key of ['generation.provider.heading', 'generation.provider.simulationWarning', 'image.comfy.details.observationScope', 'agent.proposal.before', 'tasks.workspace.heading']) assert.ok(html.includes(translate(locale, key as never)), `${locale}/${key}`);
     assert.ok(html.includes('User &lt;script&gt; title')); assert.ok(html.includes('User &lt;img&gt; result'));
     assert.ok(html.includes('原文 / exact prompt / 日本語')); assert.ok(html.includes('模型输出 / model output / 生成結果'));
     assert.ok(html.includes('request-id-unchanged')); assert.ok(html.includes('fixed-model-id'));

@@ -59,7 +59,7 @@ test('both desktop channels whitelist only external subtitle resources and retai
  for(const channel of ['production','development']){
   const config=require('../apps/desktop/builder-config.ts').builderConfig(channel);
   assert.equal(config.asar,true);assert.deepEqual(config.extraResources,[{from:'build/subtitles',to:'subtitles',filter:[...SUBTITLE_RESOURCE_FILES]}]);
-  assert.equal(config.files.some(file=>file.includes('subtitles')),false);assert.equal(config.files.includes('licenses/**/*'),true);
+  assert.equal(config.files.some((file: string)=>file.includes('subtitles')),false);assert.equal(config.files.includes('licenses/**/*'),true);
  }
  assert.equal(packagedSubtitleDirectory({appOutDir:'/tmp/app',electronPlatformName:'linux'}),'/tmp/app/resources/subtitles');
  assert.equal(packagedSubtitleDirectory({appOutDir:'/tmp/app',electronPlatformName:'darwin',packager:{appInfo:{productFilename:'Mioon'}}}),'/tmp/app/Mioon.app/Contents/Resources/subtitles');

@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {parse,schemas,SUBJECT_MUTATION_OPERATIONS,SUBJECT_LIMITS,operationEffects,isSubjectResponse,isSubjectBindingResponse,isSubjectMutationResponse,isSubjectListResponse} from '@mioon/contracts';
+import {parse as contractParse,schemas,SUBJECT_MUTATION_OPERATIONS,SUBJECT_LIMITS,operationEffects,isSubjectResponse,isSubjectBindingResponse,isSubjectMutationResponse,isSubjectListResponse} from '@mioon/contracts';
 import {jsonSchema} from '@mioon/client';
 const projectId=randomUUID(),subjectId=randomUUID(),assetId=randomUUID(),shotId=randomUUID(),versionId=randomUUID(),requestId=randomUUID();
+const parseOperation=(operation: string, input: unknown): unknown=>contractParse(operation as never, input);
 const inputs={
  'subject.create':{projectId,kind:'character',name:'Character',assetId,requestId},
  'subject.version.add':{projectId,subjectId,assetId,expectedRevision:1,requestId},
@@ -16,16 +17,16 @@ const binding={id:randomUUID(),projectId,subjectId,shotId,role:'subject',revisio
 test('all subject mutations use strict bounded required-key inputs and explicit metadata-only effects',()=>{
  assert.deepEqual(SUBJECT_MUTATION_OPERATIONS,Object.keys(inputs));assert.equal(SUBJECT_LIMITS.inputBytes,8192);
  for(const [operation,input] of Object.entries(inputs)){
-  assert.deepEqual(parse(operation,input),input);assert.ok(jsonSchema(schemas[operation]).required.includes('requestId'));
-  const {requestId,...keyless}=input;assert.throws(()=>parse(operation,keyless),{code:'VALIDATION_ERROR'});
-  for(const requestId of ['', 'x'.repeat(7),'x'.repeat(201),null])assert.throws(()=>parse(operation,{...input,requestId}),{code:'VALIDATION_ERROR'});
-  for(const extra of [{url:'https://example.test'},{path:'/tmp/a'},{dataBase64:'AA=='},{provenance:'user-import'},{providerId:'mock'}])assert.throws(()=>parse(operation,{...input,...extra}),{code:'VALIDATION_ERROR'});
-  const effect=operationEffects[operation];assert.equal(effect.databaseWrite,true);assert.equal(effect.idempotent,true);assert.equal(effect.readOnly,false);
+  assert.deepEqual(parseOperation(operation,input),input);assert.ok((jsonSchema((schemas as unknown as Record<string, never>)[operation]) as {required: string[]}).required.includes('requestId'));
+  const {requestId,...keyless}=input;assert.throws(()=>parseOperation(operation,keyless),{code:'VALIDATION_ERROR'});
+  for(const requestId of ['', 'x'.repeat(7),'x'.repeat(201),null])assert.throws(()=>parseOperation(operation,{...input,requestId}),{code:'VALIDATION_ERROR'});
+  for(const extra of [{url:'https://example.test'},{path:'/tmp/a'},{dataBase64:'AA=='},{provenance:'user-import'},{providerId:'mock'}])assert.throws(()=>parseOperation(operation,{...input,...extra}),{code:'VALIDATION_ERROR'});
+  const effect=(operationEffects as unknown as Record<string, {databaseWrite: boolean; idempotent: boolean; readOnly: boolean; [key: string]: unknown}>)[operation];assert.equal(effect.databaseWrite,true);assert.equal(effect.idempotent,true);assert.equal(effect.readOnly,false);
   for(const field of ['fileWrite','externalIO','localProcess','paidGeneration','openWorld'])assert.equal(effect[field],false);
  }
- for(const name of ['',' '.repeat(5),'x'.repeat(121)])assert.throws(()=>parse('subject.create',{...inputs['subject.create'],name}),{code:'VALIDATION_ERROR'});
- for(const role of ['first_frame','last_frame','motion','character'])assert.throws(()=>parse('subject.binding.set',{...inputs['subject.binding.set'],role}),{code:'VALIDATION_ERROR'});
- assert.equal(parse('subject.binding.set',{...inputs['subject.binding.set'],subjectVersionId:null}).subjectVersionId,null);
+ for(const name of ['',' '.repeat(5),'x'.repeat(121)])assert.throws(()=>parseOperation('subject.create',{...inputs['subject.create'],name}),{code:'VALIDATION_ERROR'});
+ for(const role of ['first_frame','last_frame','motion','character'])assert.throws(()=>parseOperation('subject.binding.set',{...inputs['subject.binding.set'],role}),{code:'VALIDATION_ERROR'});
+ assert.equal((parseOperation('subject.binding.set',{...inputs['subject.binding.set'],subjectVersionId:null}) as {subjectVersionId: unknown}).subjectVersionId,null);
 });
 
 test('strict acknowledgements bind intent and frozen ownership without claiming freshness',()=>{
@@ -39,12 +40,13 @@ test('strict acknowledgements bind intent and frozen ownership without claiming 
 
 test('read contracts require one binding filter, bounded pages and exact response identities',()=>{
  for(const operation of ['subject.list','subject.version.list','subject.binding.list']){
-  assert.equal(operationEffects[operation].readOnly,true);assert.equal(operationEffects[operation].databaseWrite,false);
+  const effectFor=(operationEffects as unknown as Record<string, {readOnly: boolean; databaseWrite: boolean}>)[operation];
+  assert.equal(effectFor.readOnly,true);assert.equal(effectFor.databaseWrite,false);
   const input={projectId,...(operation==='subject.version.list'?{subjectId}:operation==='subject.binding.list'?{shotId}:{})};
-  assert.equal(isSubjectListResponse(operation,input,{projectId,items:[],nextCursor:null}),true);
-  for(const limit of [0,51,1.5])assert.throws(()=>parse(operation,{...input,limit}),{code:'VALIDATION_ERROR'});
+  assert.equal(isSubjectListResponse(operation as never,input,{projectId,items:[],nextCursor:null}),true);
+  for(const limit of [0,51,1.5])assert.throws(()=>parseOperation(operation,{...input,limit}),{code:'VALIDATION_ERROR'});
  }
- for(const input of [{projectId},{projectId,shotId,subjectId}])assert.throws(()=>parse('subject.binding.list',input),{code:'VALIDATION_ERROR'});
+ for(const input of [{projectId},{projectId,shotId,subjectId}])assert.throws(()=>parseOperation('subject.binding.list',input),{code:'VALIDATION_ERROR'});
  const input={projectId,shotId},result={projectId,items:[binding],nextCursor:null};assert.equal(isSubjectListResponse('subject.binding.list',input,result),true);
  assert.equal(isSubjectListResponse('subject.binding.list',{...input,shotId:randomUUID()},result),false);assert.equal(isSubjectListResponse('subject.binding.list',input,{...result,items:[binding,binding]}),false);
 });

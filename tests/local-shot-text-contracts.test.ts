@@ -10,10 +10,17 @@ import {
 
 const schemas=createLocalShotTextSchemas(value=>operations['shot.update'].safeParse(value).success);
 const stamp='2026-10-12T00:00:00.000Z';
-const copy=value=>structuredClone(value);
-const bytes=value=>Buffer.byteLength(JSON.stringify(value));
-const rejects=(schema,value)=>assert.equal(schema.safeParse(value).success,false);
-function fixture({baseText={title:'Saved title',prompt:'Saved prompt'},raw={title:'Edited title',prompt:'Saved prompt'},patch={title:raw.title}}={}){
+const copy=<T>(value: T): T=>structuredClone(value);
+const bytes=(value: unknown)=>Buffer.byteLength(JSON.stringify(value));
+const rejects=(schema: {safeParse(value: unknown): {success: boolean}}, value: unknown)=>assert.equal(schema.safeParse(value).success,false);
+interface ShotTextValue {title?: unknown; prompt?: unknown; [key: string]: unknown}
+interface ShotTextDraft {draftId: string; revision: number; raw: ShotTextValue; [key: string]: unknown}
+interface ShotTextSlot {projectId: string; shotId: string; draftRevision: number; draft: {draftId: string; baseRevision: number; baseText: ShotTextValue; raw: ShotTextValue; updatedAt: string; [key: string]: unknown}; intentRevision: number; intent: {outcome: Record<string, unknown>; draft: {revision: number; [key: string]: unknown}; input: {shotId: string; patch: ShotTextValue; [key: string]: unknown}; [key: string]: unknown}; [key: string]: unknown}
+interface ShotTextFixture {projectId: string; shotId: string; draftId: string; intentId: string; authority: {workspaceScope: string; instanceId: string};
+  input: {requestId: string; shotId: string; expectedRevision: number; patch: ShotTextValue; [key: string]: unknown}; raw: ShotTextValue;
+  baseText: ShotTextValue; draft: ShotTextDraft; prepare: Record<string, unknown>; intent: Record<string, unknown>;
+  slot: ShotTextSlot; envelope: Record<string, unknown>; put: Record<string, unknown>}
+function fixture({baseText={title:'Saved title',prompt:'Saved prompt'},raw={title:'Edited title',prompt:'Saved prompt'},patch={title:raw.title}}: {baseText?: ShotTextValue; raw?: ShotTextValue; patch?: ShotTextValue}={}): ShotTextFixture {
   const projectId=randomUUID(),shotId=randomUUID(),draftId=randomUUID(),intentId=randomUUID();
   const authority={workspaceScope:'a'.repeat(64),instanceId:randomUUID()};
   const input={requestId:randomUUID(),shotId,expectedRevision:4,patch};
@@ -25,13 +32,13 @@ function fixture({baseText={title:'Saved title',prompt:'Saved prompt'},raw={titl
   const put={...authority,projectId,shotId,expectedDraftRevision:0,draftId,baseRevision:4,baseText,raw};
   return {projectId,shotId,draftId,intentId,authority,input,raw,baseText,draft,prepare,intent,slot,envelope,put};
 }
-function receipt(f){
+function receipt(f: ShotTextFixture){
   return {id:f.shotId,projectId:f.projectId,title:Object.hasOwn(f.input.patch,'title')?f.input.patch.title:f.baseText.title,
     prompt:Object.hasOwn(f.input.patch,'prompt')?f.input.patch.prompt:f.baseText.prompt,
     referenceAssetIds:[],aspectRatio:'9:16',duration:2,parameters:{},position:{x:0,y:0},orderIndex:0,revision:5,
     selectedVersionId:null,createdAt:stamp,updatedAt:stamp};
 }
-function appliedEnvelope(f,response=receipt(f)){
+function appliedEnvelope(f: ShotTextFixture,response: ReturnType<typeof receipt>=receipt(f)){
   return {...f.envelope,intentRevision:2,projectPendingIntent:null,intent:{...f.intent,outcome:{status:'applied',shotRevision:5,
     responseSha256:createHash('sha256').update(JSON.stringify(response)).digest('hex'),resolvedAt:stamp}}};
 }
@@ -65,19 +72,19 @@ test('explicit project and shot key contains no arbitrary path or inferred targe
 
 test('prepare freezes exact caller input, key order, omission and canonical validator authority',()=>{
   const f=fixture({raw:{title:'  Edited e\u0301 🎬  ',prompt:'Saved prompt'}});
-  f.input.patch={title:f.raw.title};f.input={patch:f.input.patch,expectedRevision:4,shotId:f.shotId,requestId:f.input.requestId};
+  f.input.patch={title:f.raw.title as string};f.input={patch:f.input.patch,expectedRevision:4,shotId:f.shotId,requestId:f.input.requestId};
   f.prepare.input=f.input;const before=JSON.stringify(f.input),parsed=schemas.prepare.parse(f.prepare);
   assert.equal(parsed.input,f.input);assert.equal(parsed.input.patch,f.input.patch);assert.equal(JSON.stringify(parsed.input),before);
   assert.equal(Object.hasOwn(parsed.input.patch,'prompt'),false);assert.equal(parsed.input.patch.title,f.raw.title);
   for(const input of [{...f.input,projectId:f.projectId},{...f.input,operation:'shot.update'},
     {...f.input,shotId:randomUUID()},{...f.input,expectedRevision:5},{...f.input,requestId:undefined},
-    {...f.input,requestId:'short'},{...f.input,patch:{title:f.raw.title,prompt:undefined}},
+    {...f.input,requestId:'short'},{...f.input,patch:{title:f.raw.title as string,prompt:undefined}},
     {...f.input,patch:{title:null}},{...f.input,patch:{title:undefined}},{...f.input,patch:{}},
-    {...f.input,patch:{title:f.raw.title,position:{x:0,y:0}}},{...f.input,patch:{title:f.raw.title,lastFrameAssetId:null}},
-    {...f.input,patch:{title:f.raw.title,referenceAssetIds:[]}},{...f.input,patch:{title:f.raw.title.trim()}}])rejects(schemas.prepare,{...f.prepare,input});
+    {...f.input,patch:{title:f.raw.title as string,position:{x:0,y:0}}},{...f.input,patch:{title:f.raw.title as string,lastFrameAssetId:null}},
+    {...f.input,patch:{title:f.raw.title as string,referenceAssetIds:[]}},{...f.input,patch:{title:(f.raw.title as string).trim()}}])rejects(schemas.prepare,{...f.prepare,input});
   rejects(createLocalShotTextSchemas(()=>false).prepare,f.prepare);
   rejects(createLocalShotTextSchemas(()=>{throw Error('validator unavailable');}).prepare,f.prepare);
-  assert.throws(()=>createLocalShotTextSchemas(undefined),TypeError);
+  assert.throws(()=>createLocalShotTextSchemas(undefined as never),TypeError);
   // A permissive adapter cannot widen this fixed intent to another shot field.
   rejects(createLocalShotTextSchemas(()=>true).prepare,{...f.prepare,input:{...f.input,patch:{position:{x:0,y:0}}}});
 });
@@ -145,11 +152,11 @@ test('disk retains bounded no-eviction shot tombstones and forbids duplicate own
 test('readonly project pending reference blocks sibling ambiguity without exposing sibling text',()=>{
   const f=fixture();assert.deepEqual(schemas.envelope.parse(f.envelope),f.envelope);
   for(const projectPendingIntent of [null,{shotId:randomUUID(),intentId:f.intentId},{shotId:f.shotId,intentId:randomUUID()},
-    {...f.envelope.projectPendingIntent,raw:f.raw}])rejects(schemas.envelope,{...f.envelope,projectPendingIntent});
-  const sibling={...f.envelope,shotId:randomUUID(),draftRevision:0,draft:null,intentRevision:0,intent:null,draftTargetStatus:'unset',intentTargetStatus:'unset'};
+    {...(f.envelope.projectPendingIntent as Record<string, unknown>),raw:f.raw}])rejects(schemas.envelope,{...f.envelope,projectPendingIntent});
+  const sibling={...f.envelope,shotId:randomUUID(),draftRevision:0,draft:null,intentRevision:0,intent:null,draftTargetStatus:'unset',intentTargetStatus:'unset'} as {projectPendingIntent?: unknown; [key: string]: unknown};
   assert.deepEqual(schemas.envelope.parse(sibling),sibling);
-  rejects(schemas.envelope,{...sibling,projectPendingIntent:{shotId:sibling.shotId,intentId:f.intentId}});
-  const {projectPendingIntent:ignored,...missing}=sibling;void ignored;rejects(schemas.envelope,missing);
+  rejects(schemas.envelope,{...sibling,projectPendingIntent:{shotId:(sibling as {shotId: string}).shotId,intentId:f.intentId}});
+  const {projectPendingIntent:ignored,...missing}=sibling as {projectPendingIntent?: unknown; [key: string]: unknown};void ignored;rejects(schemas.envelope,missing);
 });
 
 test('outcomes carry only bounded authoritative references and applied revision is exact',()=>{
@@ -190,16 +197,16 @@ test('narrow original receipt guard binds project, shot, exact next revision and
   for(const f of [fixture(),fixture({raw:{title:'Saved title',prompt:''},patch:{prompt:''}})]){
     const response=receipt(f),original=JSON.stringify(response),envelope=appliedEnvelope(f,response);
     assert.ok(isLocalMutationResponse('shot.update',f.input,response,{projectId:f.projectId}));
-    assert.ok(isLocalShotTextMutationResponse(f.projectId,f.intent,response));
+    assert.ok(isLocalShotTextMutationResponse(f.projectId,f.intent as never,response));
     const parsed=schemas.execution.parse({envelope,response});assert.equal(parsed.response,response);assert.equal(JSON.stringify(parsed.response),original);
     for(const patch of [{id:randomUUID()},{projectId:randomUUID()},{revision:4},{revision:6},{title:'Unrelated title'},
       {prompt:'Unrelated prompt'},{prompt:undefined},{title:undefined}]){
-      const forged={...response,...patch};assert.equal(isLocalShotTextMutationResponse(f.projectId,f.intent,forged),false);
+      const forged: Record<string, unknown>={...response,...patch};assert.equal(isLocalShotTextMutationResponse(f.projectId,f.intent as never,forged),false);
       rejects(schemas.execution,{envelope,response:forged});
     }
-    assert.equal(isLocalShotTextMutationResponse(randomUUID(),f.intent,response),false);
-    const inherited=Object.create(response);assert.equal(isLocalShotTextMutationResponse(f.projectId,f.intent,inherited),false);
-    const {prompt:ignored,...missing}=response;void ignored;assert.equal(isLocalShotTextMutationResponse(f.projectId,f.intent,missing),false);
+    assert.equal(isLocalShotTextMutationResponse(randomUUID(),f.intent as never,response),false);
+    const inherited=Object.create(response);assert.equal(isLocalShotTextMutationResponse(f.projectId,f.intent as never,inherited),false);
+    const {prompt:ignored,...missing}=response;void ignored;assert.equal(isLocalShotTextMutationResponse(f.projectId,f.intent as never,missing),false);
     rejects(schemas.execution,{envelope:f.envelope,response});
     assert.equal(JSON.stringify(response),original);
   }
@@ -208,9 +215,9 @@ test('narrow original receipt guard binds project, shot, exact next revision and
 test('response and execution bounds are independent, explicit unknown/null, with historical receipt bytes unchanged',()=>{
   const f=fixture(),response={...receipt(f),padding:''};
   response.padding='x'.repeat(LOCAL_SHOT_TEXT_LIMITS.shotResponseBytes-bytes(response));
-  assert.equal(bytes(response),1024*1024);assert.ok(isLocalShotTextMutationResponse(f.projectId,f.intent,response));
+  assert.equal(bytes(response),1024*1024);assert.ok(isLocalShotTextMutationResponse(f.projectId,f.intent as never,response));
   const envelope=appliedEnvelope(f,response);assert.ok(schemas.execution.safeParse({envelope,response}).success);
-  const tooLarge={...response,padding:response.padding+'x'};assert.equal(isLocalShotTextMutationResponse(f.projectId,f.intent,tooLarge),false);
+  const tooLarge={...response,padding:response.padding+'x'};assert.equal(isLocalShotTextMutationResponse(f.projectId,f.intent as never,tooLarge),false);
   rejects(schemas.execution,{envelope,response:tooLarge});
   assert.equal(LOCAL_SHOT_TEXT_LIMITS.executeResponseBytes,LOCAL_SHOT_TEXT_LIMITS.shotResponseBytes+LOCAL_SHOT_TEXT_LIMITS.httpBytes);
   assert.ok(schemas.execution.safeParse({envelope:f.envelope,response:null}).success);

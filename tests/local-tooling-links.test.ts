@@ -8,10 +8,11 @@ import {tmpdir} from 'node:os';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {installedPackages, inspectPackageManager, toolingEnvironment} from '../scripts/lib/local-tooling.ts';
+import {type TestContext} from 'node:test';
 
 const exec = promisify(execFile);
 
-async function fixture(t) {
+async function fixture(t: TestContext): Promise<{repo: string; outside: string}> {
   const root = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-tooling-links-'));
   t.after(() => rm(root, {recursive: true, force: true}));
   const repo = path.join(root, 'repo'), outside = path.join(root, 'outside');
@@ -40,7 +41,7 @@ test('tooling refuses an entrypoint symlink outside an otherwise valid local pac
   await assert.rejects(installedPackages(repo), {code: 'LOCAL_DEPENDENCY_INVALID'});
 });
 
-async function managerFixture(t) {
+async function managerFixture(t: TestContext): Promise<{repo: string; outside: string; manager: string; entry: string; bin: string; options: {env: Record<string, string>; platform: NodeJS.Platform}}> {
   const {repo, outside} = await fixture(t);
   const manager = path.join(outside, 'pnpm'), bin = path.join(outside, 'bin');
   await mkdir(path.join(manager, 'bin'), {recursive: true}); await mkdir(bin);
@@ -48,7 +49,7 @@ async function managerFixture(t) {
   const entry = path.join(manager, 'bin/pnpm.cjs');
   await writeFile(entry, '#!/usr/bin/env node\nthrow Error("must not execute");\n', {mode: 0o755});
   await symlink(entry, path.join(bin, 'pnpm'));
-  return {repo, outside, manager, entry, bin, options: {env: {PATH: bin}, platform: 'linux'}};
+  return {repo, outside, manager, entry, bin, options: {env: {PATH: bin}, platform: 'linux' as NodeJS.Platform}};
 }
 test('doctor reads a linked pnpm package version without admitting it as a build dependency', async t => {
   const {repo, options} = await managerFixture(t);

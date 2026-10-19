@@ -7,10 +7,17 @@ import {
   localDeliveryDraftDeleteSchema,localDeliveryExecuteSchema,localDeliveryOutcomeSchema,
 } from '@mioon/contracts/local-delivery';
 
+interface DeliveryDraft {revision: number; [key: string]: unknown}
+interface DeliveryIntent {draft: DeliveryDraft; input: Record<string, unknown>; [key: string]: unknown}
+interface DeliverySlot {draftRevision: number; draft: Record<string, unknown>; intentRevision: number; intent: DeliveryIntent; [key: string]: unknown}
+interface DeliveryFixture {[key: string]: unknown; projectId: string; timelineId: string; draftId: string; intentId: string;
+  authority: {workspaceScope: string; instanceId: string}; input: Record<string, unknown>; raw: Record<string, unknown>;
+  draft: Record<string, unknown>; prepare: Record<string, unknown>; intent: DeliveryIntent; slot: DeliverySlot;
+  envelope: Record<string, unknown>}
 const schemas=createLocalDeliverySchemas(value=>operations['timeline.render'].safeParse(value).success);
 const stamp='2026-10-12T00:00:00.000Z';
-const copy=value=>structuredClone(value);
-function fixture(title='Saved title'){
+const copy=<T>(value: T): T=>structuredClone(value);
+function fixture(title='Saved title'): DeliveryFixture {
   const projectId=randomUUID(),timelineId=randomUUID(),draftId=randomUUID(),intentId=randomUUID();
   const authority={workspaceScope:'a'.repeat(64),instanceId:randomUUID()};
   const input={requestId:randomUUID(),purpose:'export',projectId,expectedRevision:4,...(title===''?{}:{deliveryName:title})};
@@ -21,7 +28,7 @@ function fixture(title='Saved title'){
   const envelope={supported:true,...authority,...slot,draftTargetStatus:'matching',intentTargetStatus:'matching'};
   return {projectId,timelineId,draftId,intentId,authority,input,raw,draft,prepare,intent,slot,envelope};
 }
-function receipt(f){
+function receipt(f: DeliveryFixture){
   const trackId=randomUUID(),assetId=randomUUID();
   const timeline={id:f.timelineId,projectId:f.projectId,revision:4,fps:30,width:720,height:1280,durationFrames:30,
     tracks:[{id:trackId,kind:'video',name:'Video',orderIndex:0,hidden:false,muted:false}],
@@ -32,7 +39,7 @@ function receipt(f){
       ...(Object.hasOwn(f.input,'exportSettings')?{delivery:resolveTimelineExportDelivery(timeline,f.input.exportSettings)}:{})},
     status:'queued',assetId:null,url:null,error:null,createdAt:stamp,updatedAt:stamp};
 }
-const rejects=(schema,value)=>assert.equal(schema.safeParse(value).success,false);
+const rejects=(schema: {safeParse(value: unknown): {success: boolean}}, value: unknown)=>assert.equal(schema.safeParse(value).success,false);
 
 test('local title stores invalid-but-bounded raw Unicode exactly without becoming a render schema',()=>{
   for(const deliveryName of ['', ' ', '\t\n\0', 'x'.repeat(121), 'x'.repeat(512), '🎬'.repeat(256), '  e\u0301  ']){
@@ -56,7 +63,7 @@ test('prepare preserves original input property order, omission, raw title and e
     {...f.input,preflightSnapshotHash:'not-a-hash'},{...f.input,exportSettings:{profileId:'invented'}}])rejects(schemas.prepare,{...f.prepare,input});
   rejects(createLocalDeliverySchemas(()=>false).prepare,f.prepare);
   rejects(createLocalDeliverySchemas(()=>{throw Error('unavailable');}).prepare,f.prepare);
-  assert.throws(()=>createLocalDeliverySchemas(undefined),TypeError);
+  assert.throws(()=>createLocalDeliverySchemas(undefined as never),TypeError);
 });
 
 test('blank title means exact legacy omission; no draft only authorizes unnamed input',()=>{

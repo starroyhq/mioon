@@ -7,29 +7,36 @@ import {
 } from '../apps/web/src/reference-connections.ts';
 import { prepareSubmission, readPending, clearPending, pendingForProject, reconcilePending } from '../apps/web/src/submissions.ts';
 import { generationSelection } from '../apps/web/src/generation-settings.ts';
+import {type TestContext} from 'node:test';
+
+interface ReferenceAsset {id: string; projectId: string; mimeType: string; url: string; [key: string]: unknown}
+interface ReferenceNode {id: string; projectId: string; type: string; assetId: string; revision: number; [key: string]: unknown}
+interface ReferenceShot {id: string; projectId: string; referenceAssetIds: string[]; revision: number; [key: string]: unknown}
+interface ReferenceEdge {id: string; projectId: string; kind: string; role: string; source: string; target: string; sourceAssetId: string; [key: string]: unknown}
+interface ReferenceOverrides {[key: string]: unknown}
 
 const projectId = 'project-a';
-const asset = { id: 'image-a', projectId, mimeType: 'image/png', url: '/media/image-a' };
-const source = { id: 'node-a', projectId, type: 'image', assetId: asset.id, revision: 2 };
-const shot = { id: 'shot-a', projectId, referenceAssetIds: [], revision: 4 };
-const edge = { id: 'edge-a', projectId, kind: 'reference', role: 'first_frame', source: source.id, target: shot.id, sourceAssetId: asset.id };
-const issue = overrides => referenceAttachIssue({ source, shot, assets: [asset], edges: [], projectId, ...overrides });
+const asset: ReferenceAsset = { id: 'image-a', projectId, mimeType: 'image/png', url: '/media/image-a' };
+const source: ReferenceNode = { id: 'node-a', projectId, type: 'image', assetId: asset.id, revision: 2 };
+const shot: ReferenceShot = { id: 'shot-a', projectId, referenceAssetIds: [], revision: 4 };
+const edge: ReferenceEdge = { id: 'edge-a', projectId, kind: 'reference', role: 'first_frame', source: source.id, target: shot.id, sourceAssetId: asset.id };
+const issue = (overrides: ReferenceOverrides = {}) => referenceAttachIssue({ source, shot, assets: [asset], edges: [], projectId, ...overrides } as never);
 
 class MemoryStorage {
-  values = new Map();
+  values = new Map<string, string>();
   get length() { return this.values.size; }
-  key(index) { return [...this.values.keys()][index] ?? null; }
-  getItem(key) { return this.values.get(key) ?? null; }
-  setItem(key, value) { this.values.set(key, String(value)); }
-  removeItem(key) { this.values.delete(key); }
+  key(index: number) { return [...this.values.keys()][index] ?? null; }
+  getItem(key: string) { return this.values.get(key) ?? null; }
+  setItem(key: string, value: unknown) { this.values.set(key, String(value)); }
+  removeItem(key: string) { this.values.delete(key); }
 }
-function storageFixture(t, storage = new MemoryStorage()) {
+function storageFixture(t: TestContext, storage = new MemoryStorage()) {
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
   Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: storage });
-  t.after(() => previous ? Object.defineProperty(globalThis, 'sessionStorage', previous) : delete globalThis.sessionStorage);
+  t.after(() => previous ? Object.defineProperty(globalThis, 'sessionStorage', previous) : delete (globalThis as {sessionStorage?: unknown}).sessionStorage);
   return storage;
 }
-function request(operation = 'reference.attach') {
+function request(operation: string = 'reference.attach'): {projectId: string; key: string; operation: string; createdAt: string; input: Record<string, unknown>} {
   return { projectId, key: 'reference:mutation', operation, createdAt: '2026-10-09T13:00:00.000Z', input: operation === 'reference.attach'
     ? { projectId, sourceNodeId: source.id, targetShotId: shot.id, role: 'first_frame', expectedSourceRevision: 2, expectedShotRevision: 4, requestId: 'original-reference-request' }
     : { projectId, edgeId: edge.id, expectedShotRevision: 5, requestId: 'original-reference-request' } };
