@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,writeFile,chmod,symlink} from 'node:fs/promises';
+import {mkdtemp,writeFile,chmod,symlink, realpath} from 'node:fs/promises';
 import path from 'node:path';
+import {tmpdir} from 'node:os';
 import {resolveConnection,validateLocalUrl} from '../apps/mcp/src/connection.ts';
 const token='synthetic-desktop-mcp-token-for-tests';
 test('MCP explicit credentials preserve existing loopback config',async()=>{
@@ -10,7 +11,7 @@ test('MCP explicit credentials preserve existing loopback config',async()=>{
  await assert.rejects(resolveConnection({}),/MIOON_TOKEN/);
 });
 test('MCP desktop discovery reads owner-only files and follows token rotation',async()=>{
- const dir=await mkdtemp('/tmp/wb-mcp-discovery-'),tokenFile=path.join(dir,'mcp-token'),file=path.join(dir,'mcp-connection.json');
+ const dir=await mkdtemp(path.join(await realpath(tmpdir()),'wb-mcp-discovery-')),tokenFile=path.join(dir,'mcp-token'),file=path.join(dir,'mcp-connection.json');
  const descriptor={version:1,url:'http://127.0.0.1:45123',tokenFile,pid:process.pid};
  await writeFile(tokenFile,token,{mode:0o600});await writeFile(file,JSON.stringify(descriptor),{mode:0o600});
  const env={MIOON_CONNECTION_FILE:file};assert.deepEqual(await resolveConnection(env),{base:descriptor.url,token});

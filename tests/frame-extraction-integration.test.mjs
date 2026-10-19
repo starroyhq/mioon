@@ -37,11 +37,11 @@ function hooksHarness(source, imports, exportName = 'default', extra = {}) {
 }
 function hookFixture(rpc) {
   const calls = [], configurations = [];
-  const imports = { './frame-extraction.js': { ...frame, createFrameExtractionController: options => {
+  const imports = { './frame-extraction.ts': { ...frame, createFrameExtractionController: options => {
     const controller = frame.createFrameExtractionController(options), configure = controller.configure;
     controller.configure = config => { configurations.push(config); return configure(config); }; return controller;
   } } };
-  const h = hooksHarness(text('use-frame-extraction.js'), imports, 'useFrameExtraction');
+  const h = hooksHarness(text('use-frame-extraction.ts'), imports, 'useFrameExtraction');
   const props = { projectId, sourceScope, sourceAsset, assets: [sourceAsset], visible: true, blocked: false,
     rpc: (operation, input) => { calls.push({ operation, input }); return rpc(operation, input); }, createRequestId: () => 'capture-original-key' };
   return { h, props, calls, configurations };
@@ -86,7 +86,7 @@ test('hook project switch/unmount reject late result callbacks without cancellin
 });
 
 test('actual App hook connects capture/rpc/reveal with source or narrow Properties visibility', async () => {
-  const app = text('App.jsx'), start = app.indexOf('  const frameExtraction = useFrameExtraction('), end = app.indexOf('\n\n', start);
+  const app = text('App.tsx'), start = app.indexOf('  const frameExtraction = useFrameExtraction('), end = app.indexOf('\n\n', start);
   assert.ok(start > 0 && end > start);
   const calls = [], controller = { capture: () => {} }, state = { visible: true }, refreshes = [];
   const env = { workbenchReady: true, data: { project: { id: projectId }, assets: [sourceAsset] }, sourceRangeScope: sourceScope, rangeAsset: sourceAsset, workspaceMode: 'editing', rightDockTab: 'agent', panelVisible: name => name === 'canvas', quickAssetId: sourceId, restored: false, sourceRangeBlocked: false, busy: {}, rpc: () => {}, requestId: () => 'stable-request-key', currentProject: { current: projectId }, refresh: pid => refreshes.push(pid), revealImageAsset: () => {}, useFrameExtraction: input => { calls.push(input); return { controller, state }; } };
@@ -95,7 +95,7 @@ test('actual App hook connects capture/rpc/reveal with source or narrow Properti
   assert.equal(configured.visible, true); assert.equal(configured.blocked, false); assert.equal(configured.rpc, env.rpc); assert.equal(configured.sourceScope, sourceScope); assert.equal(configured.revealAsset, env.revealImageAsset);
   env.workbenchReady = false; evaluate();
   const homeConfig = calls.at(-1); assert.equal(homeConfig.projectId, null); assert.equal(homeConfig.visible, false);
-  const homeCalls = [], home = hooksHarness(text('use-frame-extraction.js'), { './frame-extraction.js': frame }, 'useFrameExtraction');
+  const homeCalls = [], home = hooksHarness(text('use-frame-extraction.ts'), { './frame-extraction.ts': frame }, 'useFrameExtraction');
   home.render({ ...homeConfig, rpc: (...args) => { homeCalls.push(args); return page(); } }); await tick(); home.render();
   await home.value.controller.refreshTasks(); await home.value.controller.refreshActive();
   assert.deepEqual(homeCalls, [], 'Retained source metadata on home must not start project frame observation'); home.unmount();
@@ -107,7 +107,7 @@ test('actual App hook connects capture/rpc/reveal with source or narrow Properti
   env.panelVisible = () => false; env.rightDockTab = 'properties'; evaluate(); assert.equal(calls.at(-1).visible, false);
   env.restored = true; env.busy = {}; env.panelVisible = name => name === 'canvas'; evaluate();
   assert.equal(calls.at(-1).visible, true); assert.equal(calls.at(-1).blocked, true, 'a restored source remains blocked without other busy work');
-  const rpcCalls = [], h = hooksHarness(text('use-frame-extraction.js'), { './frame-extraction.js': frame }, 'useFrameExtraction');
+  const rpcCalls = [], h = hooksHarness(text('use-frame-extraction.ts'), { './frame-extraction.ts': frame }, 'useFrameExtraction');
   h.render({ ...calls.at(-1), rpc: (operation, input) => { rpcCalls.push({ operation, input }); return page(); } }); await tick(); h.render();
   assert.equal(await h.value.controller.capture({ sourceScope, sourceAssetId: sourceId, sourceHash: sha256, sourceFrame: 56 }), null);
   await h.value.controller.refreshTasks(); await h.value.controller.refreshActive();
@@ -120,7 +120,7 @@ test('actual App hook connects capture/rpc/reveal with source or narrow Properti
 });
 
 test('actual App source inspector keeps the normal frame panel and replaces it with the restored hold notice', () => {
-  const app = text('App.jsx'), start = app.indexOf('<SourceRangeInspector '), end = app.indexOf('</SourceRangeInspector>', start) + '</SourceRangeInspector>'.length;
+  const app = text('App.tsx'), start = app.indexOf('<SourceRangeInspector '), end = app.indexOf('</SourceRangeInspector>', start) + '</SourceRangeInspector>'.length;
   assert.ok(start > 0 && end > start);
   const controller = {}, rangeState = { dirty: true, draft: { inFrame: 12, outFrame: 88 } }, rangeController = {};
   for (const restored of [false, true]) {
@@ -143,7 +143,7 @@ test('actual source inspector children slot exposes frame history for video and 
   for (const mimeType of ['video/mp4', 'image/png']) {
     const child = { type: 'FrameHistory', props: { 'data-testid': 'retained-frame-history' } }, asset = { ...sourceAsset, mimeType };
     const controller = { snapshot: () => null, getState: () => ({ scope: sourceScope }) };
-    const h = hooksHarness(text('SourceRangeInspector.jsx'), { './source-range-state.js': ranges, './workspace-visibility.jsx': { useWorkspaceVisibility: () => true } });
+    const h = hooksHarness(text('SourceRangeInspector.tsx'), { './source-range-state.ts': ranges, './workspace-visibility.tsx': { useWorkspaceVisibility: () => true } });
     const tree = h.render({ asset, state: { scope: sourceScope, row: null, draft: { inFrame: 20, outFrame: 60 }, dirty: true, position: 30 }, controller, timeline: { projectId, tracks: [], clips: [] }, children: child });
     const all = nodes(tree), scroll = all.find(node => node.type === 'ScrollArea');
     assert.ok(nodes(scroll).includes(child)); assert.equal(all.filter(node => node.props?.['data-testid'] === 'source-range-save').length, mimeType.startsWith('video') ? 1 : 0);
@@ -152,7 +152,7 @@ test('actual source inspector children slot exposes frame history for video and 
 });
 
 test('actual App reveal only locates the library, keeps source-range draft, and rechecks supplied guard after await', async () => {
-  const app = text('App.jsx'), start = app.indexOf('  async function revealImageAsset('), end = app.indexOf('  async function selectProject(', start), source = app.slice(start, end).trim();
+  const app = text('App.tsx'), start = app.indexOf('  async function revealImageAsset('), end = app.indexOf('  async function selectProject(', start), source = app.slice(start, end).trim();
   for (const fail of [null, 'before', 'after', 'project', 'navigation', 'panel', 'missing']) {
     const hold = deferred(), actions = [], draft = { dirty: true, inFrame: 12, outFrame: 88 }, selected = { quickAssetId: sourceId, selectedClipId: null }; let current = fail !== 'before';
     const env = { currentProject: { current: projectId }, projectEpoch: { current: 1 }, navigationEpoch: { current: 1 }, panelIntent: { current: 1 }, dataRef: { current: { assets: [] } }, refresh: () => hold.promise,
@@ -172,7 +172,7 @@ test('hidden Properties unsubscribes and cancels its read timer while source con
   controller.configure({ projectId, sourceScope, sourceAsset, assets: [sourceAsset], visible: true }); await controller.refreshTasks();
   let visible = true, serial = 0, subscriptions = 0; const timers = new Map(), subscribe = controller.subscribe;
   controller.subscribe = listener => { subscriptions++; const release = subscribe(listener); return () => { subscriptions--; release(); }; };
-  const h = hooksHarness(text('FrameExtractionPanel.jsx'), { './frame-extraction.js': frame, './workspace-visibility.jsx': { useWorkspaceVisibility: () => visible } }, 'default', {
+  const h = hooksHarness(text('FrameExtractionPanel.tsx'), { './frame-extraction.ts': frame, './workspace-visibility.tsx': { useWorkspaceVisibility: () => visible } }, 'default', {
     setTimeout: fn => { const id = ++serial; timers.set(id, fn); return id; }, clearTimeout: id => timers.delete(id),
   });
   h.render({ controller }); await tick(); h.render(); assert.equal(timers.size, 1); assert.equal(subscriptions, 1);

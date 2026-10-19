@@ -11,6 +11,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { readFile } from 'node:fs/promises';
+import { stripTypeScriptTypes } from 'node:module';
 import { randomBytes, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import vm from 'node:vm';
@@ -30,7 +31,7 @@ import * as security from '../apps/desktop/src/security.ts';
 import { windowChromeOptions, MAC_TRAFFIC_LIGHT_POSITION } from '../apps/desktop/src/window-chrome.ts';
 import { createDesktopWindowAppearance } from '../apps/desktop/src/window-appearance.ts';
 
-const source = (await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
+const source = stripTypeScriptTypes((await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, ''), { mode: 'strip' });
 const tools = { ffmpeg: '/synthetic/ffmpeg', ffprobe: '/synthetic/ffprobe', versions: { ffmpeg: 'synthetic' } };
 const deferred = () => Promise.withResolvers();
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -241,7 +242,7 @@ async function harness(t, options = {}) {
     },
     storageFailureDialog: error => ({ title: 'Storage failure', detail: error.message })
   });
-  vm.runInContext(source, context, { filename: 'actual-desktop-main.mjs' });
+  vm.runInContext(source, context, { filename: 'actual-desktop-main.ts' });
   assert.deepEqual([...r.ipcHandlers.keys()].sort(),
     [APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, NATIVE_AUDIO_CHANNEL, PROJECT_WINDOW_CHANNEL, WORKSPACE_TOOLS_CHANNEL].sort());
   const get = text => vm.runInContext(text, context);

@@ -97,7 +97,7 @@ export function opacityInspectorImeFixture(t, {locale = 'en', restored = false, 
     if (name.includes('i18n/src/index')) return {message};
     if (name.includes('workbench-confirm')) return {useConfirmation: () => async () => true};
     if (name === '@mioon/contracts') return {isTimelineRecord, sourceFrameCount};
-    if (name.endsWith('/Timeline.jsx')) return {assetKind: asset => asset.mimeType.split('/')[0], framesLabel: String};
+    if (name.endsWith('/Timeline.tsx')) return {assetKind: asset => asset.mimeType.split('/')[0], framesLabel: String};
     if (name.endsWith('/clip-draft-state.ts')) return drafts;
     if (name.endsWith('/clip-opacity-envelope-state.ts')) return opacity;
     if (name.endsWith('/clip-volume-envelope-state.ts')) return volume;
@@ -110,9 +110,9 @@ export function opacityInspectorImeFixture(t, {locale = 'en', restored = false, 
       return {state: controller.getState(), controller};
     }};
     if (name.endsWith('/clip-audio-role-state.ts')) return {clipAudioRoleChanged: () => false};
-    if (name.endsWith('/clip-audio-state.js')) return {clipAudioIssue: () => ''};
-    if (name.endsWith('/timeline-format-state.js')) return {timelineRectIssue: () => '', timelineRectMessage: () => ''};
-    if (name.endsWith('/workspace-visibility.jsx')) return {useWorkspaceVisibility: () => true};
+    if (name.endsWith('/clip-audio-state.ts')) return {clipAudioIssue: () => ''};
+    if (name.endsWith('/timeline-format-state.ts')) return {timelineRectIssue: () => '', timelineRectMessage: () => ''};
+    if (name.endsWith('/workspace-visibility.tsx')) return {useWorkspaceVisibility: () => true};
     if (name.endsWith('/ClipOpacityEnvelopeControls.tsx')) return {__esModule: true, default: Controls};
     if (name.endsWith('.css')) return {};
     if (name.startsWith('@mioon/ui/')) return new Proxy({}, {get: (_, key) => stub(key)});

@@ -36,7 +36,7 @@ before(async () => {
   const fixtures = `import React from 'react';
     import { renderToStaticMarkup } from 'react-dom/server.browser';
     import ExportLoudness from './src/ExportLoudness.tsx';
-    import ExportHistoryList from './src/ExportHistoryList.jsx';
+    import ExportHistoryList from './src/ExportHistoryList.tsx';
     const values = ${JSON.stringify(values)}, props = ${JSON.stringify(historyProps)};
     const controller = { measure() { throw Error('Presentation may not decode'); }, setDraft() { throw Error('Presentation may not edit'); }, cancel() { throw Error('Presentation may not cancel'); } };
     export const html = Object.fromEntries(Object.entries(values).map(([name, {exportId,state}]) => [name, renderToStaticMarkup(<ExportLoudness exportId={exportId} loudness={{state,controller}} />)]));
@@ -123,7 +123,7 @@ test('actual cancel callback is bound to its row/attempt and cannot cancel newer
   f.reads[1].resolve(report(f.target(1))); f.reads[0].resolve(report(f.target())); await Promise.resolve(); await Promise.resolve(); assert.equal(f.state().report.exportId, f.target(1).exportId);
 });
 test('actual App hook wiring uses accepted live ownership, pinned invocation and exact read-only operation', async () => {
-  const app = source('App.jsx'), start = app.indexOf('  function exportSamplePeakContext()'), contextEnd = app.indexOf('  const exportSamplePeak =',start);
+  const app = source('App.tsx'), start = app.indexOf('  function exportSamplePeakContext()'), contextEnd = app.indexOf('  const exportSamplePeak =',start);
   const hookStart = app.indexOf('  const exportLoudness ='), hookEnd = app.indexOf('  function openTimelineExport()',hookStart);
   const block = app.slice(start,contextEnd) + app.slice(hookStart,hookEnd); assert.doesNotMatch(block, /timeline\?\.revision|refresh\(|setShowExports|setRightDockTab/); assert.match(app,/loudness=\{exportLoudness\}/);
   const live = context(), calls = [], dataRef = { current: { project: { id: projectId }, exports: live.exports, assets: live.assets } }, currentProject = { current: projectId };

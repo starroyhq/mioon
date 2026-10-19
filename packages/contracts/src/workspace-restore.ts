@@ -10,7 +10,7 @@ export const WORKSPACE_RESTORE_SCHEMA_VERSION = 25;
 export const WORKSPACE_RESTORE_LIMITS = Object.freeze({capturedRecords:20_000,historyArchiveBytes:64*1024*1024,
   databaseBytes:512*1024*1024,heldKinds:64,operations:160,taskPage:50});
 export const expectedWorkspaceOriginSchema = z.string().length(36).uuid();
-export function parseExpectedWorkspaceOrigin(value){
+export function parseExpectedWorkspaceOrigin(value: unknown): string | undefined {
   return value===undefined?undefined:expectedWorkspaceOriginSchema.parse(value);
 }
 
@@ -18,7 +18,7 @@ const uuid=z.string().length(36).uuid(),hash=z.string().length(64).regex(/^[a-f0
 const count=z.number().int().min(0).max(WORKSPACE_RESTORE_LIMITS.capturedRecords);
 const kind=z.string().min(1).max(64).regex(/^[a-z][a-z0-9_]*$/u);
 const operation=z.string().min(1).max(80).regex(/^[a-z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)+$/u);
-export const WORKSPACE_RESTORE_REASONS=Object.freeze(['AVAILABLE','RESTORE_OPERATION_UNAVAILABLE','RESTORE_GATE_PENDING']);
+export const WORKSPACE_RESTORE_REASONS=Object.freeze(['AVAILABLE','RESTORE_OPERATION_UNAVAILABLE','RESTORE_GATE_PENDING'] as const);
 const policy=z.object({operation,available:z.boolean(),reason:z.enum(WORKSPACE_RESTORE_REASONS)}).strict()
   .refine(value=>value.available===(value.reason==='AVAILABLE'),{message:'Restore operation availability and reason disagree.'});
 export const workspaceRestoreSchemas=Object.freeze({
@@ -37,15 +37,18 @@ const restoredInspection=z.object({
   if(value.audioRoleCapability&&value.audioRoleCapability.editable!==([39,41,45,49].includes(value.schemaVersion)))ctx.addIssue({code:z.ZodIssueCode.custom,message:'Audio role capability does not match the exact restored profile.'});
   if(value.volumeEnvelopeCapability&&value.volumeEnvelopeCapability.editable&&![41,45,49].includes(value.schemaVersion))ctx.addIssue({code:z.ZodIssueCode.custom,message:'Volume envelope capability requires a supported exact restored profile.'});
   validateWorkspaceRestorationPair({profile:value.profile,sourceSchema:value.source.schemaVersion,databaseSchemaVersion:value.schemaVersion},ctx);
-  for(const [field,key] of [['heldCounts','kind'],['operationPolicy','operation']])
-    if(new Set(value[field].map(item=>item[key])).size!==value[field].length)
+  for(const [field,key] of [['heldCounts','kind'],['operationPolicy','operation']] as const) {
+    const items = value[field] as {kind?: unknown; operation?: unknown}[];
+    if(new Set(items.map(item=>item[key])).size!==items.length)
       ctx.addIssue({code:z.ZodIssueCode.custom,path:[field],message:'Restore disclosure contains duplicate identities.'});
+  }
 });
 export const workspaceRestoreInspectionSchema=z.union([z.object({restored:z.literal(false),audioRoleCapability:timelineAudioRoleCapabilitySchema.optional(),volumeEnvelopeCapability:timelineVolumeEnvelopeCapabilitySchema.optional()}).strict(),restoredInspection]);
-export const isWorkspaceRestoreInspection=value=>workspaceRestoreInspectionSchema.safeParse(value).success;
+export type WorkspaceRestoreInspection = z.infer<typeof workspaceRestoreInspectionSchema>;
+export function isWorkspaceRestoreInspection(value: unknown): value is WorkspaceRestoreInspection {return workspaceRestoreInspectionSchema.safeParse(value).success;}
 /** Missing capability means an older backend, never permission to edit. */
-export function canEditTimelineVolumeEnvelope(inspection){return isWorkspaceRestoreInspection(inspection)&&inspection.volumeEnvelopeCapability?.editable===true;}
-export function canEditTimelineAudioRole(inspection){return isWorkspaceRestoreInspection(inspection)&&inspection.audioRoleCapability?.editable===true;}
+export function canEditTimelineVolumeEnvelope(inspection: unknown): boolean {return isWorkspaceRestoreInspection(inspection)&&inspection.volumeEnvelopeCapability?.editable===true;}
+export function canEditTimelineAudioRole(inspection: unknown): boolean {return isWorkspaceRestoreInspection(inspection)&&inspection.audioRoleCapability?.editable===true;}
 
 
 const epoch=z.union([z.literal('captured'),uuid]);

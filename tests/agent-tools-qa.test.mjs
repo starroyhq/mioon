@@ -7,7 +7,7 @@ import {createHash} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 import {DatabaseSync} from 'node:sqlite';
 import {readToolsQaAudit} from './agent-tools-qa-audit.mjs';
-import {startToolsQaMock, TOOLS_QA_HOSTILE_MARKER} from './agent-tools-qa-mock.mjs';
+import {startToolsQaMock, TOOLS_QA_HOSTILE_MARKER} from './agent-tools-qa-mock.ts';
 import {streamAgentResponse, buildAgentRequest} from '../packages/business/src/agent/agent-gateway.ts';
 import {CHAT_SYSTEM_INSTRUCTION} from '../packages/business/src/agent/chat-policy.ts';
 

@@ -233,19 +233,19 @@ function componentHarness({ hook = false, waveformState } = {}) {
       if (id === './ClipRemovalControls.tsx') return load('ClipRemovalControls.tsx');
       if (id === './TimelineToolbar.tsx') return load('TimelineToolbar.tsx');
       if (id === './workbench-modal-state.ts') return {hasOpenWorkbenchModal};
-      if (id === './waveform-state.js') return waveform;
-      if (id === './api.js') return { rpc: (operation, input) => { const pending = deferred(); requests.push({ operation, input, ...pending }); return pending.promise; }, assetUrl: () => '' };
-      if (id === './use-timeline-waveforms.js') return hook ? load('use-timeline-waveforms.js') : { useTimelineWaveforms: () => waveformState };
-      if (id === './TimelineWaveform.jsx') return load('TimelineWaveform.jsx');
-      if (id === './timeline-keyboard.js') return { rulerFrameForKey: () => null };
-      if (id === './timeline-snapping.js') return { timelineDropPreview: () => null };
+      if (id === './waveform-state.ts') return waveform;
+      if (id === './api.ts') return { rpc: (operation, input) => { const pending = deferred(); requests.push({ operation, input, ...pending }); return pending.promise; }, assetUrl: () => '' };
+      if (id === './use-timeline-waveforms.ts') return hook ? load('use-timeline-waveforms.ts') : { useTimelineWaveforms: () => waveformState };
+      if (id === './TimelineWaveform.tsx') return load('TimelineWaveform.tsx');
+      if (id === './timeline-keyboard.ts') return { rulerFrameForKey: () => null };
+      if (id === './timeline-snapping.ts') return { timelineDropPreview: () => null };
       if (id.startsWith('@mioon/ui/')) return primitive;
       return { default: 'Control', __esModule: true };
     }, module, module.exports, document, ResizeObserver, { addEventListener() {}, removeEventListener() {} });
     modules.set(file, module.exports); return module.exports;
   }
   let props = hook ? { timeline: timeline(), assets: [asset()], viewport: { current: element }, pixelsPerFrame: 2, active: true } : { timeline: timeline(), assets: [asset()], playhead: 0, visible: true, collapsed: false, onSelectClip: id => selections.push(id) };
-  const component = hook ? load('use-timeline-waveforms.js').useTimelineWaveforms : load('Timeline.jsx').default;
+  const component = hook ? load('use-timeline-waveforms.ts').useTimelineWaveforms : load('Timeline.tsx').default;
   const h = { requests, selections, element,
     render(next = {}) { props = { ...props, ...next }; let attempts = 0; do { cursor = 0; effects = []; needsRender = false; output = component(props); for (const index of effects) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].callback(); } assert.ok(++attempts < 20, 'Hook effects stabilize'); } while (needsRender); return output; },
     get value() { return output; },

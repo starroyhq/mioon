@@ -29,7 +29,7 @@ function harness(name) {
   const module = { exports: {} };
   Function('module', 'exports', 'require', code)(module, module.exports, id => {
     if (id === 'react') return react;
-    if (id === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => h.visible };
+    if (id === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => h.visible };
     if (id.startsWith('@mioon/ui/components/')) return primitive;
     throw Error(`Unexpected adapter dependency ${id}`);
   });
@@ -133,7 +133,7 @@ test('Tooltip hides its portal and rejects delayed hover/open callbacks after hi
 });
 
 test('all panel Select/Tooltip consumers use the app visibility-aware adapters without modifying shared primitives', () => {
-  for (const filename of ['App.jsx', 'AssetLibrary.jsx', 'Inspector.jsx', 'ProviderSettings.jsx', 'ReferenceConnections.jsx', 'TimelineInspector.jsx']) {
+  for (const filename of ['App.tsx', 'AssetLibrary.tsx', 'Inspector.tsx', 'ProviderSettings.tsx', 'ReferenceConnections.tsx', 'TimelineInspector.tsx']) {
     const text = readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8');
     assert.match(text, /from '\.\/WorkspaceControls\.jsx'/, filename);
     assert.doesNotMatch(text, /from '@mioon\/ui\/components\/workbench-(?:select|tooltip)'/, filename);

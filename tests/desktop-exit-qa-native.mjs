@@ -214,7 +214,7 @@ async function artifactHash(file){
 }
 async function metadata(){
   const c=await context(),sources={},artifacts={};
-  for(const name of ['exit-diagnostics.ts','backend.mjs','supervisor.mjs'])sources[name]=await artifactHash(path.join(repo,'apps/desktop/src',name));
+  for(const name of ['exit-diagnostics.ts','backend.ts','supervisor.ts'])sources[name]=await artifactHash(path.join(repo,'apps/desktop/src',name));
   sources['desktop-exit-qa-native.mjs']=await artifactHash(fileURLToPath(import.meta.url));
   for(const name of ['main.cjs','backend.cjs','preload.cjs','package.json'])artifacts[name]=await artifactHash(path.join(repo,'apps/desktop/build',name));
   const {stdout}=await executeFile('/usr/bin/sw_vers',['-productVersion'],{timeout:2000,maxBuffer:4096}),logs=await diagnostics(c);

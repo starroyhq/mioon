@@ -5,7 +5,14 @@ import { Input } from '@mioon/ui/components/input';
 import { Label } from '@mioon/ui/components/label';
 import { supportsClipAudioFades, clipAudioMessage } from './clip-audio-state.ts';
 
-export default function ClipAudioControls({ asset, kind, draft, onEdit, issue }) {
+interface ClipAudioAsset {name?: string; hasAudio?: boolean}
+type ClipAudioDraft = Record<string, string | number | undefined> & {
+  durationFrames?: string | number; gain?: string | number; fadeInFrames?: string | number; fadeOutFrames?: string | number;
+};
+interface ClipAudioControlsProps {
+  asset?: ClipAudioAsset | null; kind: string; draft: ClipAudioDraft; onEdit: (key: string, value: string) => void; issue?: unknown;
+}
+export default function ClipAudioControls({ asset, kind, draft, onEdit, issue }: ClipAudioControlsProps) {
   const { t, renderMessage } = useI18n();
   const issueMessage = clipAudioMessage(draft, asset);
   if (kind === 'image') return null;

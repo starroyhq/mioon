@@ -53,24 +53,24 @@ function harness(client) {
   }; react.default = react;
   const resolve = name => {
     const localized = creationTestDependency(name); if (localized) return localized;
-    if (name === './agent-timeline-context.js') return timing;
+    if (name === './agent-timeline-context.ts') return timing;
     if (name === './agent-timeline-gain-context.ts') return gainContext;
     if (name === './AgentTimelineGain.tsx') { const gain = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/AgentTimelineGain.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(gain, gain.exports, resolve); return gain.exports; }
     if (name === './editor-settings-scope.ts') { const scope = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/editor-settings-scope.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(scope, scope.exports, resolve); return scope.exports; }
     if (name === './native-close-sources.ts') return nativeCloseSources;
     if (name === 'react') return react;
-    if (name === './agent-chat.js') return { ...logic, createAgentChatSession: input => logic.createAgentChatSession({ ...input, client, receipts: localReceipts, requestId: () => requestId }) };
-    if (name === './agent-tool-state.js') return tools;
-    if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
-    if (name === './icons.jsx') return { default: 'Icon' };
+    if (name === './agent-chat.ts') return { ...logic, createAgentChatSession: input => logic.createAgentChatSession({ ...input, client, receipts: localReceipts, requestId: () => requestId }) };
+    if (name === './agent-tool-state.ts') return tools;
+    if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => visible };
+    if (name === './icons.tsx') return { default: 'Icon' };
     if (name.endsWith('.css')) return {};
-    if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.jsx') return new Proxy({}, { get: (_, key) => String(key) });
-    if (name === './AgentEditProposal.jsx') return { __esModule: true, default: 'AgentEditProposal' };
-    if (name === './AgentRunActivity.jsx') return load(name);
+    if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return new Proxy({}, { get: (_, key) => String(key) });
+    if (name === './AgentEditProposal.tsx') return { __esModule: true, default: 'AgentEditProposal' };
+    if (name === './AgentRunActivity.tsx') return load(name);
     throw Error(name);
   };
   const load = name => { const module = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL(`../apps/web/src/${name.slice(2)}`, import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, resolve); return module.exports; };
-  const panel = load('./AgentPanel.jsx').default;
+  const panel = load('./AgentPanel.tsx').default;
   const h = {
     render(project = owner) { owner = project; cursor = 0; effects = []; tree = panel({ projectId: owner, projectName: 'Chosen project', onClose() {}, onSettings() {} }); for (const i of effects) { slots[i].cleanup?.(); slots[i].cleanup = slots[i].fn(); } return tree; },
     find: id => nodes(tree).find(node => node.props['data-testid'] === id),

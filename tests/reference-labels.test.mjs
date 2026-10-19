@@ -111,10 +111,10 @@ function harness(name) {
   Function('module', 'exports', 'require', code)(module, module.exports, id => {
     if (id === 'react') return react;
     if (id.endsWith('/i18n/I18nProvider.tsx')) return i18nTestModule();
-    if (id === './reference-connections.js') return references;
-    if (id === './WorkspaceControls.jsx') return { WorkbenchSelect: 'WorkbenchSelect' };
-    if (id === './icons.jsx') return { default: 'Icon', __esModule: true };
-    if (id === './api.js') return { assetUrl: value => `/media/${value.id}` };
+    if (id === './reference-connections.ts') return references;
+    if (id === './WorkspaceControls.tsx') return { WorkbenchSelect: 'WorkbenchSelect' };
+    if (id === './icons.tsx') return { default: 'Icon', __esModule: true };
+    if (id === './api.ts') return { assetUrl: value => `/media/${value.id}` };
     if (id === '@mioon/ui/components/button') return { Button: 'Button' };
     if (id === '@mioon/ui/components/label') return { Label: 'Label' };
     throw Error(`Unexpected component dependency: ${id}`);

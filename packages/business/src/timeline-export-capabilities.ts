@@ -6,28 +6,39 @@ import {withProbePermit} from './media-probe.ts';
 import {proveTimelineFloatCapability} from './timeline-float-capability.ts';
 import {TIMELINE_EXPORT_FLOAT_PROFILE_ID} from '@mioon/contracts/timeline-export-float';
 
+interface TimelineExportDeliveryEffective {
+ profileId?: string;width: number;height: number;scaling: string;
+ videoCodec: string;preset: string;rateControl: {mode: string;crf?: number;targetKbps?: number};
+ bFrames: number;gopFrames: number;pixelFormat: string;fps: number;videoTrackTimescale: number;
+ audioCodec: string;audioKbps: number;audioSampleRate: number;audioChannels: number;
+}
+interface TimelineExportDelivery {effective: TimelineExportDeliveryEffective}
+interface Box {type: string;begin: number;end: number}
+interface CapabilityInspectOptions {signal?: AbortSignal;beforeEffect?: ()=>void;capabilityWorkRoot?: string}
+interface CapabilityResult {status: string;code: string}
+
 // Explicit local-compute check, separate from read-only source preflight. This
 // intentionally has one active check per Node process, no wait queue or cache.
 // The operation budget reserves the runner's fixed direct-child reap allowance.
 export const TIMELINE_EXPORT_CAPABILITY_LIMITS=Object.freeze({concurrent:1,queued:0,totalMs:15000,
  computeMs:15000-MEDIA_TERMINATION_POLICY.graceMs-MEDIA_TERMINATION_POLICY.reapMs,
  frames:3,stdoutBytes:1024*1024,encoderListBytes:128*1024,stderrBytes:64*1024});
-let active=null;
-const result=(status,code)=>({status,code});
-const error=code=>Object.assign(Error('The selected local export profile could not be verified.'),{code});
-const validDelivery=delivery=>TIMELINE_OUTPUT_PRESETS.some(timeline=>isTimelineExportDelivery(delivery,timeline));
-function advertisedEncoders(listing){
+let active: unknown=null;
+const result=(status: string,code: string): CapabilityResult=>({status,code});
+const error=(code: string): Error=>Object.assign(Error('The selected local export profile could not be verified.'),{code});
+const validDelivery=(delivery: unknown): boolean=>TIMELINE_OUTPUT_PRESETS.some(timeline=>isTimelineExportDelivery(delivery,timeline,undefined));
+function advertisedEncoders(listing: string): Set<string>{
  const lines=listing.split(/\r?\n/),separator=lines.findIndex(line=>line.trim()==='------');
  if(!lines.some(line=>line.trim()==='Encoders:')||separator<0)throw error('EXPORT_CAPABILITY_FAILED');
  const rows=lines.slice(separator+1).filter(line=>line.trim()),names=rows.map(line=>/^\s*[VAS][A-Z.]{5}\s+([A-Za-z0-9_-]+)\s+\S/.exec(line)?.[1]);
  // Absence is negative evidence only from a complete recognizable listing.
  // Empty, truncated/malformed, or otherwise unrecognized output is unknown.
  if(!names.length||names.some(name=>!name))throw error('EXPORT_CAPABILITY_FAILED');
- return new Set(names);
+ return new Set(names as string[]);
 }
 
 /** Fixed argv shared by the actual segment encoder and the synthetic proof. */
-export function timelineExportVideoArgs(delivery){
+export function timelineExportVideoArgs(delivery: TimelineExportDelivery): string[]{
  if(!validDelivery(delivery))throw error('INVALID_TIMELINE_SNAPSHOT');
  const p=delivery.effective;
  return ['-c:v',p.videoCodec,'-preset',p.preset,...(p.rateControl.mode==='crf'?['-crf',String(p.rateControl.crf)]:['-b:v',`${p.rateControl.targetKbps}k`]),
@@ -37,8 +48,8 @@ export function timelineExportVideoArgs(delivery){
 // This is deliberately a small check of our own bounded synthetic MP4 output,
 // not a general media parser. Only the required top-level boxes and the two
 // fixed sample entries are inspected; real exports are separately ffprobed.
-function boxes(bytes,begin=0,end=bytes.length){
- const found=[];
+function boxes(bytes: Buffer,begin=0,end: number=bytes.length): Box[]{
+ const found: Box[]=[];
  for(let at=begin;at<end;){
   if(end-at<8)throw error('EXPORT_CAPABILITY_FAILED');
   const size=bytes.readUInt32BE(at),type=bytes.toString('ascii',at+4,at+8);
@@ -47,18 +58,19 @@ function boxes(bytes,begin=0,end=bytes.length){
  }
  return found;
 }
-function child(bytes,parent,type){const matches=boxes(bytes,parent.begin,parent.end).filter(box=>box.type===type);if(matches.length!==1)throw error('EXPORT_CAPABILITY_FAILED');return matches[0];}
-function verifyProof(bytes,p){
- const top=boxes(bytes),of=type=>top.filter(box=>box.type===type);
+function child(bytes: Buffer,parent: Box,type: string): Box{const matches=boxes(bytes,parent.begin,parent.end).filter(box=>box.type===type);if(matches.length!==1)throw error('EXPORT_CAPABILITY_FAILED');return matches[0];}
+function verifyProof(bytes: Buffer,p: TimelineExportDeliveryEffective): void{
+ const top=boxes(bytes),of=(type: string)=>top.filter(box=>box.type===type);
  if(of('ftyp').length!==1||of('moov').length!==1||!of('moof').length||!of('mdat').some(box=>box.end>box.begin))throw error('EXPORT_CAPABILITY_FAILED');
  const tracks=boxes(bytes,of('moov')[0].begin,of('moov')[0].end).filter(box=>box.type==='trak');
  if(tracks.length!==2)throw error('EXPORT_CAPABILITY_FAILED');
- const types=[];
+ const types: string[]=[];
  for(const track of tracks){
   const mdia=child(bytes,track,'mdia'),handler=child(bytes,mdia,'hdlr'),minf=child(bytes,mdia,'minf'),stbl=child(bytes,minf,'stbl'),stsd=child(bytes,stbl,'stsd');
   if(handler.end-handler.begin<12||stsd.end-stsd.begin<8||bytes.readUInt32BE(stsd.begin+4)!==1)throw error('EXPORT_CAPABILITY_FAILED');
   const type=bytes.toString('ascii',handler.begin+8,handler.begin+12),entries=boxes(bytes,stsd.begin+8,stsd.end),entry=entries[0];
   if(entries.length!==1)throw error('EXPORT_CAPABILITY_FAILED');
+  if(!entry)throw error('EXPORT_CAPABILITY_FAILED');
   if(type==='vide'){
    if(entry.type!=='avc1'||entry.end-entry.begin<78||bytes.readUInt16BE(entry.begin+24)!==p.width||bytes.readUInt16BE(entry.begin+26)!==p.height)throw error('EXPORT_CAPABILITY_FAILED');
    const config=boxes(bytes,entry.begin+78,entry.end);
@@ -79,45 +91,48 @@ function verifyProof(bytes,p){
  * published artifact continues to use the frozen +faststart MP4 render path.
  * Results are observations, never authority tokens for a later render.
  */
-export async function inspectTimelineExportCapability(delivery,{signal,beforeEffect,capabilityWorkRoot}={}){
+export async function inspectTimelineExportCapability(delivery: unknown,{signal,beforeEffect,capabilityWorkRoot}: CapabilityInspectOptions={}): Promise<CapabilityResult>{
  checkMediaEffect(beforeEffect,signal);
  if(!validDelivery(delivery))return result('incomplete','EXPORT_CAPABILITY_CONFIGURATION');
  if(active)return result('incomplete','EXPORT_CAPABILITY_BUSY');
+ const typedDelivery=delivery as TimelineExportDelivery;
  const token={};active=token;
  const deadline=performance.now()+TIMELINE_EXPORT_CAPABILITY_LIMITS.computeMs;
- const timeout=()=>{const left=Math.floor(deadline-performance.now());if(left<=0)throw error('MEDIA_TIMEOUT');return left;};
+ const timeout=(): number=>{const left=Math.floor(deadline-performance.now());if(left<=0)throw error('MEDIA_TIMEOUT');return left;};
  let unconfirmed=false;
  try{
   const listing=await run('ffmpeg',['-hide_banner','-encoders'],{signal,beforeEffect,timeout:timeout(),maxStdoutBytes:TIMELINE_EXPORT_CAPABILITY_LIMITS.encoderListBytes,maxStderrBytes:TIMELINE_EXPORT_CAPABILITY_LIMITS.stderrBytes});
   checkMediaEffect(beforeEffect,signal);
   const encoders=advertisedEncoders(listing);
   if(!encoders.has('libx264')||!encoders.has('aac'))return result('unavailable','EXPORT_CAPABILITY_UNSUPPORTED');
-  const p=delivery.effective;
-  if(delivery.effective.profileId===TIMELINE_EXPORT_FLOAT_PROFILE_ID){
+  const p=typedDelivery.effective;
+  if(typedDelivery.effective.profileId===TIMELINE_EXPORT_FLOAT_PROFILE_ID){
    await proveTimelineFloatCapability({run,runStreaming,withProbePermit,checkMediaEffect,createPrivateTemporaryDirectory,validatePrivateDirectory,waitForMediaProcesses,
-    terminationMs:MEDIA_TERMINATION_POLICY.graceMs+MEDIA_TERMINATION_POLICY.reapMs,videoArgs:()=>timelineExportVideoArgs(delivery),verifyProof:bytes=>verifyProof(bytes,p)},
-    p,{signal,beforeEffect,workRoot:capabilityWorkRoot,remainingMs:timeout});
+    terminationMs:MEDIA_TERMINATION_POLICY.graceMs+MEDIA_TERMINATION_POLICY.reapMs,videoArgs:()=>timelineExportVideoArgs(typedDelivery),verifyProof:bytes=>verifyProof(bytes,p)},
+    p,{signal,beforeEffect,workRoot:capabilityWorkRoot as string,remainingMs:timeout});
    checkMediaEffect(beforeEffect,signal);return result('available','EXPORT_CAPABILITY_AVAILABLE');
   }
-  const chunks=[];
+  const chunks: Buffer[]=[];
   const output=await runStreaming('ffmpeg',['-hide_banner','-loglevel','error','-nostdin','-filter_complex_threads','1',
    '-f','lavfi','-i','color=c=black:s=64x64:r=30:d=0.1','-f','lavfi','-i','anullsrc=r=48000:cl=stereo:d=0.1',
    '-filter_complex',`[0:v]scale=${p.width}:${p.height}:flags=${p.scaling},setsar=1,format=${p.pixelFormat}[v]`,
-   '-map','[v]','-map','1:a:0',...timelineExportVideoArgs(delivery),'-frames:v',String(TIMELINE_EXPORT_CAPABILITY_LIMITS.frames),
+   '-map','[v]','-map','1:a:0',...timelineExportVideoArgs(typedDelivery),'-frames:v',String(TIMELINE_EXPORT_CAPABILITY_LIMITS.frames),
    '-c:a',p.audioCodec,'-b:a',`${p.audioKbps}k`,'-ar',String(p.audioSampleRate),'-ac',String(p.audioChannels),'-t','0.1',
    '-movflags','+frag_keyframe+empty_moov+default_base_moof','-f','mp4','pipe:1'],
-   {signal,beforeEffect,timeout:timeout(),maxStdoutBytes:TIMELINE_EXPORT_CAPABILITY_LIMITS.stdoutBytes,maxStderrBytes:TIMELINE_EXPORT_CAPABILITY_LIMITS.stderrBytes,onStdout:chunk=>{chunks.push(Buffer.from(chunk));}});
+   {signal,beforeEffect,timeout:timeout(),maxStdoutBytes:TIMELINE_EXPORT_CAPABILITY_LIMITS.stdoutBytes,maxStderrBytes:TIMELINE_EXPORT_CAPABILITY_LIMITS.stderrBytes,onStdout:(chunk: Uint8Array)=>{chunks.push(Buffer.from(chunk));}});
   checkMediaEffect(beforeEffect,signal);
   verifyProof(Buffer.concat(chunks,output.stdoutBytes),p);
   return result('available','EXPORT_CAPABILITY_AVAILABLE');
- }catch(failure){
-  if(failure.terminationUnconfirmed){unconfirmed=true;throw failure;}
-  if(isMediaEffectRestriction(failure))throw failure;
-  if(signal?.aborted||failure.code==='MEDIA_CANCELLED'){throwIfMediaAborted(signal);throw failure;}
+ }catch(rawFailure){
+  const failure=rawFailure as {terminationUnconfirmed?: boolean;code?: string};
+  if(failure.terminationUnconfirmed){unconfirmed=true;throw rawFailure;}
+  if(isMediaEffectRestriction(rawFailure))throw rawFailure;
+  if(signal?.aborted||failure.code==='MEDIA_CANCELLED'){throwIfMediaAborted(signal);throw rawFailure;}
   checkMediaEffect(beforeEffect,signal);
-  const codes={MEDIA_SPAWN_FAILED:['unavailable','EXPORT_CAPABILITY_TOOL_UNAVAILABLE'],MEDIA_INVALID_CONFIGURATION:['incomplete','EXPORT_CAPABILITY_CONFIGURATION'],
+  const codes: Record<string,[string,string]>={MEDIA_SPAWN_FAILED:['unavailable','EXPORT_CAPABILITY_TOOL_UNAVAILABLE'],MEDIA_INVALID_CONFIGURATION:['incomplete','EXPORT_CAPABILITY_CONFIGURATION'],
    MEDIA_TIMEOUT:['incomplete','EXPORT_CAPABILITY_TIMEOUT'],MEDIA_OUTPUT_LIMIT:['incomplete','EXPORT_CAPABILITY_OUTPUT_LIMIT']};
-  return result(...(codes[failure.code]||['incomplete','EXPORT_CAPABILITY_FAILED']));
+  const mapped=codes[failure.code as string]??['incomplete','EXPORT_CAPABILITY_FAILED'];
+  return result(mapped[0],mapped[1]);
  }finally{
   if(unconfirmed){
    // The runner retains the unconfirmed owned-child fence. Keep this stricter
@@ -127,7 +142,7 @@ export async function inspectTimelineExportCapability(delivery,{signal,beforeEff
  }
 }
 
-export async function assertTimelineExportCapability(delivery,options){
+export async function assertTimelineExportCapability(delivery: unknown,options: CapabilityInspectOptions={}): Promise<CapabilityResult>{
  const capability=await inspectTimelineExportCapability(delivery,options);
  checkMediaEffect(options?.beforeEffect,options?.signal);
  if(capability.status!=='available')throw error(capability.code);

@@ -62,7 +62,7 @@ function plain(value:unknown,depth=0,budget={nodes:0},fieldPath:string[]=[]):voi
 }
 function parsed<T>(schema:{safeParse(input:unknown):{success:true;data:T}|{success:false}},input:unknown):T{plain(input);const result=schema.safeParse(input);if(!result.success)fail('LOCAL_DRAFT_VALIDATION');return result.data;}
 type Identity={dev:number|bigint;ino:number|bigint;birthtimeMs?:number};
-interface PrivateOptions{root?:string;allowMissing?:boolean;private?:boolean;maxBytes?:number;encoding?:string;replace?:boolean}
+interface PrivateOptions{root?:string;allowMissing?:boolean;private?:boolean;maxBytes?:number;encoding?:BufferEncoding;replace?:boolean}
 export interface LocalDraftStorage {
   validatePrivateDirectory(directory:string,options?:{allowMissing?:boolean}):Identity|null|undefined;
   validateManagedFile(file:string,options:PrivateOptions):Identity|null|undefined;

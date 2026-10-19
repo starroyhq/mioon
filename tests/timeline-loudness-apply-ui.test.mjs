@@ -55,7 +55,7 @@ test('explicit export profile selector retains omitted legacy and default-v1 sha
   const captured = controller.getState(); assert.equal(controller.choose(choices[0],captured.scope,captured.version),true);
   assert.equal(controller.getSettings('project:1').profileId,floatModule.TIMELINE_EXPORT_FLOAT_PROFILE_ID);
   controller.setContext({scope:'project:2',enabled:true});assert.deepEqual(controller.getSettings('project:2'),TIMELINE_EXPORT_DEFAULT_SETTINGS);
-  assert.match(source('TimelineExportSettings.jsx'), /<TimelineExportProfile value=\{value\} disabled=\{disabled\} onChange=\{onChange\} Select=\{WorkbenchSelect\}/);
+  assert.match(source('TimelineExportSettings.tsx'), /<TimelineExportProfile value=\{value\} disabled=\{disabled\} onChange=\{onChange\} Select=\{WorkbenchSelect\}/);
 });
 function hookHarness() {
   const refs=[], effects=[], pending=[]; let cursor=0;

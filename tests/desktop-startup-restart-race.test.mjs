@@ -11,6 +11,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { readFile } from 'node:fs/promises';
+import { stripTypeScriptTypes } from 'node:module';
 import { randomBytes, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import vm from 'node:vm';
@@ -28,7 +29,7 @@ import { PROJECT_WINDOW_CHANNEL } from '../apps/desktop/src/project-window-proto
 import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
 import { createDesktopWindowAppearance } from '../apps/desktop/src/window-appearance.ts';
 
-const source = (await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
+const source = stripTypeScriptTypes((await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, ''), { mode: 'strip' });
 const tools = { ffmpeg: '/synthetic/ffmpeg', ffprobe: '/synthetic/ffprobe', versions: { ffmpeg: 'synthetic' } };
 const deferred = () => {
   let resolve, reject;

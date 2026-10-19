@@ -1,9 +1,19 @@
 import {realpath} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {parseArguments, preflight, discoverTests, buildCommands, testCommand, typecheckCommands, executeCommand, toolingEnvironment} from './lib/local-tooling.ts';
+
+interface ToolingFailure {
+  readonly code?: string;
+  readonly message?: string;
+  readonly cacheCleanupFailed?: boolean;
+  readonly exitCode?: number;
+}
+function failureOf(error: unknown): ToolingFailure {
+  return error !== null && typeof error === 'object' ? error as ToolingFailure : {};
+}
 const root = fileURLToPath(new URL('../', import.meta.url));
 
-export async function main(args = process.argv.slice(2)) {
+export async function main(args: readonly string[] = process.argv.slice(2)): Promise<number | undefined> {
   try {
     const options = parseArguments(args);
     if (options.command === 'typecheck') {
@@ -30,11 +40,12 @@ export async function main(args = process.argv.slice(2)) {
     }
     return 0;
   } catch (error) {
-    console.error(JSON.stringify({status: 'failed', code: error.code || 'TOOLING_FAILED',
-      message: error.code ? error.message : 'Local tooling failed. Check the documented options and prerequisites.',
-      ...(error.cacheCleanupFailed ? {cacheCleanupFailed: true} : {})}));
-    if (error.code === 'TEST_COMPILE_CACHE_INTERRUPTED') return error.exitCode;
-    return error.code === 'NATIVE_TEST_LANE_BLOCKED' ? 2 : 1;
+    const failure = failureOf(error);
+    console.error(JSON.stringify({status: 'failed', code: failure.code || 'TOOLING_FAILED',
+      message: failure.code ? failure.message : 'Local tooling failed. Check the documented options and prerequisites.',
+      ...(failure.cacheCleanupFailed ? {cacheCleanupFailed: true} : {})}));
+    if (failure.code === 'TEST_COMPILE_CACHE_INTERRUPTED') return failure.exitCode;
+    return failure.code === 'NATIVE_TEST_LANE_BLOCKED' ? 2 : 1;
   }
 }
 // Match Node's resolved module path even when argv retains a symlink or alias.

@@ -12,6 +12,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { stripTypeScriptTypes } from 'node:module';
 import vm from 'node:vm';
 import { BackendSupervisor, BACKEND_STOP_BUDGET } from '../apps/desktop/src/supervisor.ts';
 import { stopBackendForQuit } from '../apps/desktop/src/shutdown.ts';
@@ -315,7 +316,7 @@ test('native quit cleans only after confirmed failure and surfaces the failure w
   assert.equal(cleanups, 1);
   assert.equal(finishes, 0);
   const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
-  assert.match(main, /function requestApplicationQuit\(source\) \{ return quitRouter\.request\(source\)\.catch\(quitFailed\); \}/);
+  assert.match(main, /function requestApplicationQuit\(source[^)]*\)[^{]*\{ return quitRouter\.request\(source\)\.catch\(quitFailed\); \}/);
   assert.match(main, /const focused = BrowserWindow\.getFocusedWindow\(\);/);
   assert.match(main, /void requestApplicationQuit\(ownsWindow\(focused, windowContext\) && windowHost\.isTrustedDocument\(focused\) \? focused : undefined\);/);
   assert.doesNotMatch(main, /(?:quitCoordinator|quitRouter)\.request\([^)]*\)\.catch\(fatal\)/);
@@ -449,7 +450,7 @@ test('startup abort drains only its signal and retains an unconfirmed owned vali
 });
 
 async function mainStartupHarness({ validate, settings } = {}) {
-  const source = (await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
+  const source = stripTypeScriptTypes((await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, ''), { mode: 'strip' });
   const app = new EventEmitter();
   const counts = { forks: 0, settings: 0, quits: 0, cleanup: 0, exits: [], notices: [] };
   const expectedChannels = [APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL];
@@ -548,7 +549,7 @@ test('native smoke explicitly skips unsafe orphan-crash recovery without countin
 });
 
 async function backendHarness({ close = async () => {}, start, settingsClose = () => {}, imageClose = () => {}, imageRefresh = async () => {} } = {}) {
-  const source = (await readFile(new URL('../apps/desktop/src/backend.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
+  const source = stripTypeScriptTypes((await readFile(new URL('../apps/desktop/src/backend.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, ''), { mode: 'strip' });
   const port = new EventEmitter(), processEvents = new EventEmitter(), messages = [], exits = [];
   const nativeConfig = {version:1,backendId:'11111111-1111-4111-8111-111111111111',
     publicKey:'302a300506032b6570032100d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a'};

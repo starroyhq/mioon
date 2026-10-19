@@ -103,7 +103,7 @@ test('actual details close clears a report or pending observation, and reopening
   f.reads[1].resolve(report(f.calls[1].input)); await pending; assert.equal(f.state().report, null);
 });
 test('actual App wiring reads saved snapshot, pinned workspace and live draft controllers without crossing export extractor markers', async () => {
-  const app = source('App.jsx'), first = app.indexOf('  function timelineMixLoudnessContext()'), end = app.indexOf('  const nativePreviewPause =', first);
+  const app = source('App.tsx'), first = app.indexOf('  function timelineMixLoudnessContext()'), end = app.indexOf('  const nativePreviewPause =', first);
   assert.ok(first > 0 && end > first); assert.ok(end < app.indexOf('  function checkTimelineExport('));
   assert.match(app, /<TimelineMixLoudness loudness=\{timelineMixLoudness\} /);
   const saved = { id: timelineId, projectId, revision: 4, durationFrames: 60, fps: 30,

@@ -6,24 +6,32 @@ import path from 'node:path';
 import {TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256} from '@mioon/contracts';
 import {throwIfMediaAborted} from './media-processes.ts';
 import {checkMediaEffect,isMediaEffectRestriction} from './media-runtime.ts';
+import type {Stats} from 'node:fs';
+import type {FileHandle} from 'node:fs/promises';
+
+interface SubtitleFontOptions {
+ signal?: AbortSignal;destination?: string;beforeEffect?: (()=>void)|undefined;
+ openOwnedFile?: (file: string)=>Promise<FileHandle>;
+}
 
 export const SUBTITLE_FONT_FILE='mioon-subtitle-cjk-sc-v1.otf';
 export const SUBTITLE_FONT_BYTES=16437296;
 let resourceDirectory=fileURLToPath(new URL('../resources/subtitles/',import.meta.url)),initialized=false;
-const fault=(code,message)=>Object.assign(Error(message),{code});
-const same=(a,b)=>a.dev===b.dev&&a.ino===b.ino&&a.size===b.size&&a.mtimeMs===b.mtimeMs&&a.ctimeMs===b.ctimeMs;
+const fault=(code: string,message: string): Error=>Object.assign(Error(message),{code});
+const same=(a: Stats,b: Stats): boolean=>a.dev===b.dev&&a.ino===b.ino&&a.size===b.size&&a.mtimeMs===b.mtimeMs&&a.ctimeMs===b.ctimeMs;
 
 // Called once by the trusted Electron backend bootstrap, never RPC, renderer,
 // project data, model tools or environment. Source-mode uses the checked-in dir.
-export function initializeSubtitleResources(directory){
+export function initializeSubtitleResources(directory: unknown): void{
  if(initialized||typeof directory!=='string'||!path.isAbsolute(directory)||directory.includes('\0'))throw fault('SUBTITLE_RESOURCE_UNAVAILABLE','Subtitle resources could not be initialized.');
  resourceDirectory=path.resolve(directory);initialized=true;
 }
-export function validateSubtitleSnapshotProfile(snapshot){
+export function validateSubtitleSnapshotProfile(snapshot: {timeline?: {subtitles?: {cues?: unknown[]}};subtitleProfile?: unknown}|null|undefined): boolean{
  const cues=snapshot?.timeline?.subtitles?.cues;
  const nonempty=Array.isArray(cues)&&cues.length>0,profile=snapshot?.subtitleProfile;
  if(nonempty){
-  if(!profile||typeof profile!=='object'||Array.isArray(profile)||Object.keys(profile).length!==2||profile.profileId!==TIMELINE_SUBTITLE_PROFILE_ID||profile.fontSha256!==TIMELINE_SUBTITLE_FONT_SHA256)
+  const profileRecord=profile as {profileId?: unknown;fontSha256?: unknown}|null|undefined;
+  if(!profileRecord||typeof profileRecord!=='object'||Array.isArray(profileRecord)||Object.keys(profileRecord).length!==2||profileRecord.profileId!==TIMELINE_SUBTITLE_PROFILE_ID||profileRecord.fontSha256!==TIMELINE_SUBTITLE_FONT_SHA256)
    throw fault('INVALID_TIMELINE_SNAPSHOT','The saved subtitle rendering profile is invalid.');
  }else if(snapshot&&Object.hasOwn(snapshot,'subtitleProfile'))throw fault('INVALID_TIMELINE_SNAPSHOT','The saved subtitle rendering profile is invalid.');
  return nonempty;
@@ -32,9 +40,9 @@ export function validateSubtitleSnapshotProfile(snapshot){
 // Bounded regular-file hashing; there is no whole-font stdout or ASAR read.
 // Optionally write the verified bytes to one private render staging file. That
 // exact copy is reused for measurement and rendering, eliminating a font TOCTOU.
-export async function verifySubtitleFontResource({signal,destination,beforeEffect,openOwnedFile}={}){
+export async function verifySubtitleFontResource({signal,destination,beforeEffect,openOwnedFile}: SubtitleFontOptions={}): Promise<{profileId: string;fontSha256: string;bytes: number}>{
  checkMediaEffect(beforeEffect,signal);
- let source,output,failure;
+ let source: FileHandle|undefined,output: FileHandle|undefined,failure: unknown;
  try{
   const directory=await lstat(resourceDirectory);checkMediaEffect(beforeEffect,signal);
   if(!directory.isDirectory()||directory.isSymbolicLink())throw Error('Invalid resource directory');
@@ -63,7 +71,7 @@ export async function verifySubtitleFontResource({signal,destination,beforeEffec
   failure=error;
   if(isMediaEffectRestriction(error))throw error;
   throwIfMediaAborted(signal);
-  if(error.code==='MEDIA_CANCELLED'||error.terminationUnconfirmed)throw error;
+  if((error as {code?: string}).code==='MEDIA_CANCELLED'||(error as {terminationUnconfirmed?: boolean}).terminationUnconfirmed)throw error;
   throw fault('SUBTITLE_RESOURCE_UNAVAILABLE','The bundled subtitle font is missing or does not match this rendering profile.');
  }finally{await Promise.all([source?.close(),output?.close()]).catch(()=>{if(!isMediaEffectRestriction(failure))throw fault('SUBTITLE_RESOURCE_UNAVAILABLE','Subtitle resource handles could not be closed.');});if(!failure)checkMediaEffect(beforeEffect,signal);}
 }

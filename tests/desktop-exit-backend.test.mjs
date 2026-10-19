@@ -4,10 +4,11 @@ import assert from 'node:assert/strict';
 import { EventEmitter, once } from 'node:events';
 import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
+import { stripTypeScriptTypes } from 'node:module';
 import vm from 'node:vm';
 
-const source = (await readFile(new URL('../apps/desktop/src/backend.ts', import.meta.url), 'utf8'))
-  .replace(/^import .*;\n/gm, '');
+const source = stripTypeScriptTypes((await readFile(new URL('../apps/desktop/src/backend.ts', import.meta.url), 'utf8'))
+  .replace(/^import .*;\n/gm, ''), { mode: 'strip' });
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const privateData = 'private-key-request-body-media-/Users/private/project';
 

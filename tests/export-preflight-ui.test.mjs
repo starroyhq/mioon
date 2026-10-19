@@ -197,7 +197,7 @@ const textOf = tree => Array.isArray(tree) ? tree.map(textOf).join('') : tree &&
 const panelSource = readFileSync(new URL('../apps/web/src/TimelineExportPreflight.tsx', import.meta.url), 'utf8');
 function renderPanel(props) {
   const module = { exports: {} }, react = { createElement: element }; react.default = react;
-  Function('module', 'exports', 'require', transformSync(panelSource, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, name => name === './i18n/I18nProvider.tsx' ? i18nTestModule() : name === 'react' ? react : name.endsWith('export-preflight-state.js') ? preflightState : name.endsWith('icons.jsx') ? { __esModule: true, default: 'Icon' } : { Button: 'Button' });
+  Function('module', 'exports', 'require', transformSync(panelSource, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, name => name === './i18n/I18nProvider.tsx' ? i18nTestModule() : name === 'react' ? react : name.endsWith('export-preflight-state.ts') ? preflightState : name.endsWith('icons.tsx') ? { __esModule: true, default: 'Icon' } : { Button: 'Button' });
   return module.exports.default({ canCheck: true, onCheck() {}, onExport() {}, ...props });
 }
 

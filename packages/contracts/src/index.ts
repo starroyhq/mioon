@@ -99,7 +99,7 @@ const params=z.object({scenario:z.enum(['success','failure','delay','timeout','u
 const shotFields={title:z.string().min(1).max(150),prompt:z.string().max(5000),referenceAssetIds:z.array(id).max(8),lastFrameAssetId:id.nullable().describe('Optional saved last-frame image. Omission preserves the previous shape/selection; null explicitly clears it. First-frame references and reference edges are unchanged.'),aspectRatio:z.enum(['9:16','16:9','1:1','3:4','4:3','21:9']),duration:z.number().int().min(1).max(20),parameters:params,position};
 const frame=z.number().int().min(0).max(18000), durationFrames=z.number().int().min(1).max(18000);
 const sourceFrame=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER-18000);
-const even=(minimum,maximum)=>z.number().int().min(minimum).max(maximum).multipleOf(2);
+const even=(minimum: number, maximum: number)=>z.number().int().min(minimum).max(maximum).multipleOf(2);
 // Syntax admits the maximum supported envelope. The aggregate and ACK validate
 // against their own exact preset pair, including historical acknowledgements.
 const rect=z.object({x:even(0,1918),y:even(0,1918),width:even(2,1920),height:even(2,1920)}).strict().refine(r=>r.x+r.width<=1920&&r.y+r.height<=1920,{message:'Rectangle exceeds the supported output envelope'});
@@ -172,7 +172,7 @@ export const schemas={
 'timeline.track.add':z.object({...timelineMutation,kind:z.enum(['video','audio']),name:z.string().min(1).max(150).optional()}).strict(),
 'timeline.track.update':z.object({...timelineMutation,trackId:id,patch:z.object({name:z.string().min(1).max(150).optional(),hidden:z.boolean().optional(),muted:z.boolean().optional()}).strict().refine(p=>Object.keys(p).length>0)}).strict(),
 'timeline.clip.add':z.object({...timelineMutation,assetId:id,...clipFields,name:clipFields.name.optional(),sourceInFrame:sourceFrame.optional(),rect:rect.optional(),gain:clipFields.gain.optional()}).strict().refine(value=>!Object.hasOwn(value,'volumeEnvelope')||isVolumeEnvelope(value.volumeEnvelope,value.durationFrames),{message:'Envelope points exceed the clip duration.',path:['volumeEnvelope']}),
-'timeline.clip.update':z.object({...timelineMutation,clipId:id,patch:z.object(Object.fromEntries(Object.entries(clipFields).map(([k,v])=>[k,v.optional()]))).strict().refine(p=>Object.keys(p).length>0).refine(p=>!Object.hasOwn(p,'volumeEnvelope')||isVolumeEnvelope(p.volumeEnvelope,p.durationFrames??18000),{message:'Envelope points exceed the resulting clip duration.',path:['volumeEnvelope']})}).strict(),
+'timeline.clip.update':z.object({...timelineMutation,clipId:id,patch:z.object(Object.fromEntries(Object.entries(clipFields).map(([k,v])=>[k,v.optional()]))).strict().refine(p=>Object.keys(p).length>0).refine(p=>!Object.hasOwn(p,'volumeEnvelope')||isVolumeEnvelope(p.volumeEnvelope,(p.durationFrames as number | undefined)??18000),{message:'Envelope points exceed the resulting clip duration.',path:['volumeEnvelope']})}).strict(),
 'timeline.clip.replaceSource':z.object({...timelineMutation,clipId:id,assetId:id,versionId:id.optional().describe('Optional exact generated version to pin with its canonical shot. Must belong to the replacement asset and project. Omission keeps an asset-only fixed reference; no version is inferred.')}).strict(),
 'timeline.clip.remove':z.object({...timelineMutation,clipId:id}).strict(),
 'timeline.clip.rippleRemove':timelineRippleRemoveSchema,
@@ -183,7 +183,9 @@ export const schemas={
 // A new operation must receive an audited effect descriptor before discovery
 // or dispatch can initialize; never infer safety from an operation-name suffix.
 assertOperationEffectCoverage(schemas);
-export const descriptions={
+export type OperationName = keyof typeof schemas;
+export type OperationInput<K extends OperationName> = z.infer<(typeof schemas)[K]>;
+export const descriptions: Record<string, string> = {
 ...projectHomeDescriptions,
 'workspace.backup.inspect':'只读检查整个工作区的有界数据库计数；不复制文件、不恢复任务、不读取密钥。冷备份前必须正常关闭应用和同工作区后端。',
 'workspace.restore.inspect':'只读查看工作区恢复分支身份、隔离计数与可用操作，可显式请求已验证的音频角色与音量包络能力；不接收路径、不恢复或执行旧任务、不授予模型或付费权限。',
@@ -270,21 +272,44 @@ Object.assign(descriptions,{
  'timeline.render':'冻结完整多轨时间线和素材哈希，排队生成真实预览或导出；导出可指定30fps左闭右开的帧范围，快照保持完整；通过export_get查询'
 });
 export {AppError};
-export function parse(op,input){if(!schemas[op])throw new AppError('UNKNOWN_OPERATION','未知操作',404);const r=schemas[op].safeParse(input);if(!r.success)throw new AppError('VALIDATION_ERROR','输入字段无效',400,{issues:r.error.issues.map(x=>({path:x.path,message:x.message}))});return r.data;}
-export function publicValue(v){if(Array.isArray(v))return v.map(publicValue);if(v&&typeof v==='object'){const result=Object.fromEntries(Object.entries(v).filter(([k])=>!['path','relativePath','requestHash'].includes(k)).map(([k,x])=>[k,publicValue(x)]));if(v.shotId&&v.providerId&&v.status&&v.requestId)result.allowedActions=v.status==='failed'?['retry']:v.status==='submission_unknown'?['reconcile','cancel']:v.status==='cancelled'?['reconcile']:v.status==='succeeded'?[]:['cancel'];return result;}return v;}
+const operationSchemas = schemas as Record<string, z.ZodTypeAny>;
+export function parse<K extends OperationName>(op: K, input: unknown): OperationInput<K> {
+ if(!Object.hasOwn(schemas,op))throw new AppError('UNKNOWN_OPERATION','未知操作',404);
+ const r=operationSchemas[op].safeParse(input);
+ if(!r.success)throw new AppError('VALIDATION_ERROR','输入字段无效',400,{issues:r.error.issues.map(x=>({path:x.path,message:x.message}))});
+ return r.data as OperationInput<K>;
+}
+export function publicValue(value: unknown): unknown {
+ if(Array.isArray(value))return (value as unknown[]).map((item: unknown)=>publicValue(item));
+ if(value&&typeof value==='object'){
+  const result: Record<string, unknown> = Object.fromEntries(Object.entries(value).filter(([k])=>!['path','relativePath','requestHash'].includes(k)).map(([k,x])=>[k,publicValue(x)]));
+  const record = value as {shotId?: unknown; providerId?: unknown; status?: unknown; requestId?: unknown};
+  if(record.shotId&&record.providerId&&record.status&&record.requestId)result.allowedActions=record.status==='failed'?['retry']:record.status==='submission_unknown'?['reconcile','cancel']:record.status==='cancelled'?['reconcile']:record.status==='succeeded'?[]:['cancel'];
+  return result;
+ }
+ return value;
+}
 
 // Pure provider capability checks shared by HTTP/CLI/MCP validation and the renderer.
 // Reference bytes and paid authorization remain backend-only checks.
-export function findModelCapabilities(capabilities, model) {
- const models=Array.isArray(capabilities?.models)?capabilities.models:[];
- const id=model||(typeof models[0]==='string'?models[0]:models[0]?.id);
- if(Object.hasOwn(capabilities||{},'inputProfiles')){
-  const region=getGenerationProfileRegion(capabilities?.id,capabilities),profile=getCapabilityProfile(capabilities?.id,id,region);
-  if(!profile||capabilities.providerRegion!==region||capabilities.inputProfileVersion!==INPUT_PROFILE_VERSION||!Array.isArray(capabilities.inputProfiles))return null;
-  const profileMatches=capabilities.inputProfiles.filter(item=>item?.providerId===capabilities.id&&item?.model===id&&Array.isArray(item?.regions)&&item.regions.includes(region));
-  if(profileMatches.length!==1||profileMatches[0].profileId!==profile.profileId||profileMatches[0].profileVersion!==profile.profileVersion)return null;
+export function findModelCapabilities(capabilities: unknown, model?: unknown): Record<string, unknown> | null {
+ const capabilityRecord = capabilities as Record<string, unknown> | null | undefined;
+ const models=Array.isArray(capabilityRecord?.models)?capabilityRecord.models as unknown[]:[];
+ const firstModel=models[0];
+ const id=model||(typeof firstModel==='string'?firstModel:(firstModel as {id?: unknown} | null | undefined)?.id);
+ if(Object.hasOwn(capabilityRecord||{},'inputProfiles')){
+  const record = capabilityRecord as Record<string, unknown>;
+  const region=getGenerationProfileRegion(record.id,record),profile=getCapabilityProfile(record.id,id,region);
+  if(!profile||record.providerRegion!==region||record.inputProfileVersion!==INPUT_PROFILE_VERSION||!Array.isArray(record.inputProfiles))return null;
+  const profileMatches=(record.inputProfiles as unknown[]).filter(item=>{
+   const entry=item as {providerId?: unknown; model?: unknown; regions?: unknown} | null | undefined;
+   if(!entry||entry.providerId!==record.id||entry.model!==id||!Array.isArray(entry.regions))return false;
+   return (entry.regions as unknown[]).includes(region);
+  });
+  const match=profileMatches[0] as Record<string, unknown> | undefined;
+  if(!match||profileMatches.length!==1||match.profileId!==profile.profileId||match.profileVersion!==profile.profileVersion)return null;
   const image=profile.inputs.roles.first_frame;
-  const advertised=(Array.isArray(capabilities.modelCapabilities)?capabilities.modelCapabilities:[]).find(item=>item?.id===id);
+  const advertised=(Array.isArray(record.modelCapabilities)?record.modelCapabilities as unknown[]:[]).find(item=>(item as {id?: unknown} | null | undefined)?.id===id) as Record<string, unknown> | undefined;
   return {...advertised,id,name:advertised?.name||id,
    inputModes:profile.inputModes,aspectRatios:profile.aspectRatios,durations:profile.durationsSeconds,
    referenceImages:{min:profile.inputs.minReferences,max:profile.inputs.maxReferences,mimeTypes:image.mimeTypes,...(image.dimensions?{minDimension:image.dimensions.min,maxDimension:image.dimensions.max,matchAspectRatio:image.dimensions.matchAspectRatio}:{})},
@@ -292,49 +317,66 @@ export function findModelCapabilities(capabilities, model) {
  }
  // Legacy/custom capability fixtures retain their exact model lookup contract.
  // Production discovery uses the explicit profile branch above, never this union.
- return (Array.isArray(capabilities?.modelCapabilities)?capabilities.modelCapabilities:[]).find(item=>item?.id===id)||
-  (models.some(item=>(typeof item==='string'?item:item?.id)===id)?{...capabilities,id,referenceImages:{min:capabilities.inputModes?.includes('text')?0:1,max:capabilities.maxReferenceImages??1}}:null);
+ const advertisedLegacy=(Array.isArray(capabilityRecord?.modelCapabilities)?capabilityRecord.modelCapabilities as unknown[]:[]).find(item=>(item as {id?: unknown} | null | undefined)?.id===id);
+ if(advertisedLegacy!==undefined)return advertisedLegacy as Record<string, unknown>;
+ return models.some(item=>(typeof item==='string'?item:(item as {id?: unknown} | null | undefined)?.id)===id)
+  ?{...capabilityRecord,id,referenceImages:{min:(capabilityRecord?.inputModes as unknown[] | undefined)?.includes('text')?0:1,max:(capabilityRecord?.maxReferenceImages as number | undefined)??1}}
+  :null;
 }
-export function getGenerationIssue(snapshot, capabilities) {
- const issue=(code,message)=>({code,message});
- const dataRecord=value=>value&&typeof value==='object'&&!Array.isArray(value)&&[Object.prototype,null].includes(Object.getPrototypeOf(value))&&!Object.getOwnPropertySymbols(value).length&&Object.values(Object.getOwnPropertyDescriptors(value)).every(d=>!d.get&&!d.set&&d.enumerable);
- const denseArray=value=>{if(!Array.isArray(value)||Object.getPrototypeOf(value)!==Array.prototype||value.length>8)return false;const descriptors=Object.getOwnPropertyDescriptors(value);return Reflect.ownKeys(descriptors).length===value.length+1&&Reflect.ownKeys(descriptors).every(key=>key==='length'||typeof key==='string'&&/^(0|[1-9]\d*)$/.test(key)&&Number(key)<value.length&&!descriptors[key].get&&!descriptors[key].set&&descriptors[key].enumerable);};
+export interface GenerationIssue {code: string; message: string}
+interface GenerationReferenceMetadata {mimeType?: unknown; width?: unknown; height?: unknown; role?: unknown}
+interface ReferenceImageConstraints {min: number; max: number; mimeTypes?: unknown[]; minDimension?: number; maxDimension?: number | null; matchAspectRatio?: boolean}
+export function getGenerationIssue(snapshot: unknown, capabilities: unknown): GenerationIssue | null {
+ const issue=(code: string,message: string): GenerationIssue=>({code,message});
+ const dataRecord=(value: unknown): boolean=>Boolean(value&&typeof value==='object'&&!Array.isArray(value)&&[Object.prototype,null].includes(Object.getPrototypeOf(value))&&!Object.getOwnPropertySymbols(value).length&&Object.values(Object.getOwnPropertyDescriptors(value)).every(d=>!d.get&&!d.set&&d.enumerable));
+ const denseArray=(value: unknown): value is unknown[]=>{if(!Array.isArray(value)||Object.getPrototypeOf(value)!==Array.prototype||value.length>8)return false;const descriptors=Object.getOwnPropertyDescriptors(value);return Reflect.ownKeys(descriptors).length===value.length+1&&Reflect.ownKeys(descriptors).every(key=>key==='length'||typeof key==='string'&&/^(0|[1-9]\d*)$/.test(key)&&Number(key)<value.length&&!descriptors[key].get&&!descriptors[key].set&&descriptors[key].enumerable);};
  if(!dataRecord(snapshot))return issue('INVALID_INPUT','生成输入必须为对象');
+ const request = snapshot as Record<string, unknown>;
  const subjectIssue=getSubjectGenerationSnapshotIssue(snapshot);
  if(subjectIssue)return issue(subjectIssue.code,subjectIssue.message);
  // Keep the same legacy first-error pass as authoritative service validation.
  // Profile-only restrictions must not change established error precedence.
- const {inputProfiles:ignoredProfiles,...legacyCapabilities}=capabilities||{};
- const model=findModelCapabilities(legacyCapabilities,snapshot.model);
+ const capabilityRecord = capabilities as Record<string, unknown> | null | undefined;
+ const {inputProfiles: ignoredProfiles,...legacyCapabilities}=capabilityRecord||{};
+ const model=findModelCapabilities(legacyCapabilities,request.model);
  if(!model)return issue('UNSUPPORTED_MODEL','此供应商不支持所选模型');
- if(!model.aspectRatios?.includes(snapshot.aspectRatio)||!model.durations?.includes(snapshot.duration))return issue('UNSUPPORTED_PARAMETERS','此模型不支持所选画幅或时长');
- const refs=snapshot.referenceAssets??[];
- if(!denseArray(refs)||snapshot.referenceAssetIds!==undefined&&!denseArray(snapshot.referenceAssetIds))return issue('UNSUPPORTED_INPUT','参考素材必须为完整且有界的数组');
- const count=snapshot.referenceAssetIds?.length??refs.length;
+ const aspectRatios = model.aspectRatios as unknown[] | undefined;
+ const durations = model.durations as unknown[] | undefined;
+ if(!aspectRatios?.includes(request.aspectRatio)||!durations?.includes(request.duration))return issue('UNSUPPORTED_PARAMETERS','此模型不支持所选画幅或时长');
+ const assets = request.referenceAssets;
+ const refs = (assets===undefined||assets===null?[]:assets) as unknown[];
+ if(!denseArray(refs)||request.referenceAssetIds!==undefined&&!denseArray(request.referenceAssetIds))return issue('UNSUPPORTED_INPUT','参考素材必须为完整且有界的数组');
+ const referenceAssetIds = Array.isArray(request.referenceAssetIds)?request.referenceAssetIds as unknown[]:undefined;
+ const count=referenceAssetIds?.length??refs.length;
  const mode=count?'image':'text';
- if(!model.inputModes?.includes(mode))return issue('UNSUPPORTED_INPUT',mode==='text'?'此模型需要一张首帧参考图':'此模型不支持参考图输入');
- const declaredConstraints=model.referenceImages||{min:mode==='text'?0:1,max:1};
- const typedTail=refs.some(asset=>dataRecord(asset)&&asset.role==='last_frame')||(denseArray(snapshot.referenceBindings)&&snapshot.referenceBindings.some(binding=>dataRecord(binding)&&binding.role==='last_frame'));
- const activeProfile=getCapabilityProfile(capabilities?.id,model.id,getGenerationProfileRegion(capabilities?.id,capabilities));
+ const inputModes = model.inputModes as unknown[] | undefined;
+ if(!inputModes?.includes(mode))return issue('UNSUPPORTED_INPUT',mode==='text'?'此模型需要一张首帧参考图':'此模型不支持参考图输入');
+ const declaredConstraints=(model.referenceImages||{min:mode==='text'?0:1,max:1}) as ReferenceImageConstraints;
+ const typedHead=(value: unknown): GenerationReferenceMetadata=>value as GenerationReferenceMetadata;
+ const typedTail=refs.some(asset=>dataRecord(asset)&&typedHead(asset).role==='last_frame')||(denseArray(request.referenceBindings)&&request.referenceBindings.some(binding=>dataRecord(binding)&&typedHead(binding).role==='last_frame'));
+ const activeProfile=getCapabilityProfile(capabilityRecord?.id,model.id,getGenerationProfileRegion(capabilityRecord?.id,capabilityRecord));
  // A larger new pair envelope cannot relax the legacy first-only count pass.
  // In particular an old second reference never becomes an implicit tail.
- const subjectImage=Object.hasOwn(snapshot,'subjectReference')?activeProfile?.inputs.roles.subject_reference:null;
- if(Object.hasOwn(snapshot,'subjectReference')&&!subjectImage?.implemented)return issue('UNSUPPORTED_INPUT_ROLE','此供应商尚未实现主体参考生成');
+ const subjectImage=Object.hasOwn(request,'subjectReference')?activeProfile?.inputs.roles.subject_reference:null;
+ if(Object.hasOwn(request,'subjectReference')&&!subjectImage?.implemented)return issue('UNSUPPORTED_INPUT_ROLE','此供应商尚未实现主体参考生成');
  const subjectConstraints=subjectImage?.implemented?{min:1,max:1,mimeTypes:subjectImage.mimeTypes,...(subjectImage.dimensions?{minDimension:subjectImage.dimensions.min,maxDimension:subjectImage.dimensions.max,matchAspectRatio:subjectImage.dimensions.matchAspectRatio}:{})}:null;
- const constraints=subjectConstraints??(activeProfile?.inputs.roles.last_frame.implemented&&!typedTail?{...declaredConstraints,max:Math.min(declaredConstraints.max,1)}:declaredConstraints);
+ const constraints: ReferenceImageConstraints=subjectConstraints??(activeProfile?.inputs.roles.last_frame.implemented&&!typedTail?{...declaredConstraints,max:Math.min(declaredConstraints.max,1)}:declaredConstraints);
  if(count<constraints.min||count>constraints.max)return issue('UNSUPPORTED_INPUT',`此模型支持 ${constraints.min}–${constraints.max} 张参考图片`);
  if(refs.some(asset=>!dataRecord(asset)))return issue('UNSUPPORTED_INPUT','参考素材必须为普通数据对象');
- if(refs.some(asset=>!asset||typeof asset.mimeType!=='string'||!asset.mimeType.startsWith('image/')))return issue('UNSUPPORTED_INPUT','首帧参考素材必须为图片');
- if(constraints.mimeTypes&&refs.some(asset=>!constraints.mimeTypes.includes(asset.mimeType)))return issue('UNSUPPORTED_INPUT','此模型不支持所选参考图片格式');
- if(constraints.minDimension&&refs.some(asset=>asset.width<constraints.minDimension||asset.height<constraints.minDimension))return issue('UNSUPPORTED_INPUT',`参考图宽高均须至少 ${constraints.minDimension} 像素`);
- if(constraints.maxDimension&&refs.some(asset=>asset.width>constraints.maxDimension||asset.height>constraints.maxDimension))return issue('UNSUPPORTED_INPUT',`参考图宽高均须不超过 ${constraints.maxDimension} 像素`);
- if(constraints.matchAspectRatio&&refs.length){const [w,h]=snapshot.aspectRatio.split(':').map(Number);if(refs.some(asset=>asset.width*h!==asset.height*w))return issue('UNSUPPORTED_INPUT','此模型首帧参考图须与所选画幅比例一致');}
- if(model.promptRequired&&(typeof snapshot.prompt!=='string'||!snapshot.prompt.trim()||snapshot.prompt.length>(model.maxPromptLength||5000)))return issue('INVALID_PROMPT',`请填写 1–${model.maxPromptLength||5000} 字符的画面描述`);
- const parameters=snapshot.parameters??{};
+ if(refs.some(asset=>{const reference=typedHead(asset);return !asset||typeof reference.mimeType!=='string'||!reference.mimeType.startsWith('image/');}))return issue('UNSUPPORTED_INPUT','首帧参考素材必须为图片');
+ if(constraints.mimeTypes&&refs.some(asset=>!constraints.mimeTypes!.includes(typedHead(asset).mimeType)))return issue('UNSUPPORTED_INPUT','此模型不支持所选参考图片格式');
+ if(constraints.minDimension&&refs.some(asset=>{const reference=typedHead(asset);return (reference.width as number)<constraints.minDimension!||(reference.height as number)<constraints.minDimension!;}))return issue('UNSUPPORTED_INPUT',`参考图宽高均须至少 ${constraints.minDimension} 像素`);
+ if(constraints.maxDimension&&refs.some(asset=>{const reference=typedHead(asset);return (reference.width as number)>constraints.maxDimension!||(reference.height as number)>constraints.maxDimension!;}))return issue('UNSUPPORTED_INPUT',`参考图宽高均须不超过 ${constraints.maxDimension} 像素`);
+ if(constraints.matchAspectRatio&&refs.length){const [w,h]=(request.aspectRatio as string).split(':').map(Number);if(refs.some(asset=>{const reference=typedHead(asset);return (reference.width as number)*h!==(reference.height as number)*w;}))return issue('UNSUPPORTED_INPUT','此模型首帧参考图须与所选画幅比例一致');}
+ const maxPromptLength=(model.maxPromptLength as number | undefined)??5000;
+ if(model.promptRequired&&(typeof request.prompt!=='string'||!request.prompt.trim()||request.prompt.length>maxPromptLength))return issue('INVALID_PROMPT',`请填写 1–${maxPromptLength} 字符的画面描述`);
+ const parameters=(request.parameters??{}) as Record<string, unknown>;
  if(!dataRecord(parameters))return issue('UNSUPPORTED_PARAMETER','此模型不支持所选高级参数');
- if(model.parameters&&Object.keys(parameters).some(key=>!model.parameters.includes(key)))return issue('UNSUPPORTED_PARAMETER','此模型不支持所选高级参数');
- if(parameters.seed!==undefined&&model.seed&&(!Number.isInteger(parameters.seed)||parameters.seed<model.seed.min||parameters.seed>model.seed.max))return issue('INVALID_SEED',`随机种子须为 ${model.seed.min}–${model.seed.max} 之间的整数`);
- if(Object.hasOwn(capabilities||{},'inputProfiles')){const rich=getGenerationProfileIssue({...snapshot,model:model.id},capabilities);if(rich)return issue(rich.code,rich.message);}
+ const modelParameters = model.parameters as unknown[] | undefined;
+ if(modelParameters&&Object.keys(parameters).some(key=>!modelParameters.includes(key)))return issue('UNSUPPORTED_PARAMETER','此模型不支持所选高级参数');
+ const seedRule = model.seed as {min: number; max: number} | undefined;
+ if(parameters.seed!==undefined&&seedRule&&(typeof parameters.seed!=='number'||!Number.isInteger(parameters.seed)||parameters.seed<seedRule.min||parameters.seed>seedRule.max))return issue('INVALID_SEED',`随机种子须为 ${seedRule.min}–${seedRule.max} 之间的整数`);
+ if(Object.hasOwn(capabilityRecord||{},'inputProfiles')){const rich=getGenerationProfileIssue({...request,model:model.id},capabilities);if(rich)return issue(rich.code,rich.message);}
  return null;
 }
 

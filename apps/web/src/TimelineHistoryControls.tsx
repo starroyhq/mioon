@@ -3,7 +3,14 @@ import { Button } from '@mioon/ui/components/button';
 import Icon from './icons.tsx';
 import { useI18n } from './i18n/I18nProvider.tsx';
 
-export default function TimelineHistoryControls({ state, onHistory, busy = false }) {
+interface TimelineHistoryState {
+  canUndo?: boolean; canRedo?: boolean; synced?: boolean;
+  blockedMessage?: import('../../../packages/i18n/src/index.ts').DisplayMessage | null;
+  undoMessage?: import('../../../packages/i18n/src/index.ts').DisplayMessage | null;
+  redoMessage?: import('../../../packages/i18n/src/index.ts').DisplayMessage | null;
+  cursor: number; length: number;
+}
+export default function TimelineHistoryControls({ state, onHistory, busy = false }: {state: TimelineHistoryState; onHistory: (action: 'undo' | 'redo') => void; busy?: boolean}) {
   const { t, renderMessage } = useI18n();
   const blocked = renderMessage(state.blockedMessage), undo = renderMessage(state.undoMessage), redo = renderMessage(state.redoMessage);
   return <div className="timeline-history-controls" role="group" aria-label={t('timeline.history.group')} aria-busy={busy}>

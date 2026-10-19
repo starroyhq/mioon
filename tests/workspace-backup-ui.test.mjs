@@ -123,8 +123,8 @@ const primitive = new Proxy({ __esModule: true, default: 'Component' }, { get: (
 function component(visible = true) {
   const react = { createElement: element, useLayoutEffect() {}, useRef: current => ({ current }), useState: value => [value, () => {}] }; react.default = react;
   const module = { exports: {} };
-  Function('module', 'exports', 'require', transformSync(read('WorkspaceBackupPanel.jsx'), { loader: 'jsx', format: 'cjs' }).code)(module, module.exports,
-    key => key === './i18n/I18nProvider.tsx' ? i18n.i18nTestModule() : key === '../../../packages/i18n/src/index.ts' ? i18n : key === 'react' ? react : key === './workspace-backup-ui.js' ? backup : key === './workspace-visibility.jsx' ? { useWorkspaceVisibility: () => visible } : key.endsWith('.md?raw') ? { __esModule: true, default: 'Bundled offline backup guide' } : primitive);
+  Function('module', 'exports', 'require', transformSync(read('WorkspaceBackupPanel.tsx'), { loader: 'jsx', format: 'cjs' }).code)(module, module.exports,
+    key => key === './i18n/I18nProvider.tsx' ? i18n.i18nTestModule() : key === '../../../packages/i18n/src/index.ts' ? i18n : key === 'react' ? react : key === './workspace-backup-ui.ts' ? backup : key === './workspace-visibility.tsx' ? { useWorkspaceVisibility: () => visible } : key.endsWith('.md?raw') ? { __esModule: true, default: 'Bundled offline backup guide' } : primitive);
   return module.exports;
 }
 
@@ -150,11 +150,11 @@ test('actual details truthfully describe SQLite scope, exclusions, readonly limi
   const guide = nodes(tree).find(node => node.type === 'a');
   assert.equal(guide.props.href, '#workspace-backup-guide-text'); assert.equal(guide.props['aria-expanded'], false);
   let prevented = false; guide.props.onClick({ preventDefault() { prevented = true; } }); assert.equal(prevented, true, 'Guide expansion must not navigate or alter history');
-  assert.equal(guide.props.target, undefined); assert.match(read('WorkspaceBackupPanel.jsx'), /WORKSPACE-BACKUP-GUIDE\.zh-CN\.md\?raw/);
-  assert.doesNotMatch(read('WorkspaceBackupPanel.jsx'), /WORKSPACE-BACKUP\.md|window\.open|dangerouslySetInnerHTML/);
+  assert.equal(guide.props.target, undefined); assert.match(read('WorkspaceBackupPanel.tsx'), /WORKSPACE-BACKUP-GUIDE\.zh-CN\.md\?raw/);
+  assert.doesNotMatch(read('WorkspaceBackupPanel.tsx'), /WORKSPACE-BACKUP\.md|window\.open|dangerouslySetInnerHTML/);
   assert.equal(nodes(tree).filter(node => node.type === 'Button').length, 1);
   assert.equal(nodes(tree).find(node => node.props['data-testid'] === 'workspace-backup-count-projects').props.children[0], '2');
-  assert.doesNotMatch(read('WorkspaceBackupPanel.jsx'), /<input|<select|<button|role="dialog"|setInterval|setTimeout|fetch\(|clipboard|localStorage|sessionStorage/);
+  assert.doesNotMatch(read('WorkspaceBackupPanel.tsx'), /<input|<select|<button|role="dialog"|setInterval|setTimeout|fetch\(|clipboard|localStorage|sessionStorage/);
 });
 
 test('actual details show bounded missing counts, issues, current error and no fake all-clear', async () => {
@@ -175,7 +175,7 @@ test('actual retained details handler cannot read when hidden or after the proje
 });
 
 test('workspace settings keep one backup owner with an exact read-only dispatch and inactive admission', async () => {
-  const app = read('App.jsx'), jsx = app.match(/<WorkspaceBackupPanel\s[\s\S]*?\/>/)?.[0]; assert.ok(jsx);
+  const app = read('App.tsx'), jsx = app.match(/<WorkspaceBackupPanel\s[\s\S]*?\/>/)?.[0]; assert.ok(jsx);
   assert.equal((app.match(/<WorkspaceBackupPanel /g) || []).length, 1);
   const start = app.indexOf('export function SettingsConnectionForms('), end = app.indexOf('export default function App(');
   assert.ok(app.indexOf(jsx) > start && app.indexOf(jsx) < end);

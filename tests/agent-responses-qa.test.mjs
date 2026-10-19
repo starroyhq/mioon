@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {startChatQaMock} from './agent-chat-qa-mock.mjs';
+import {startChatQaMock} from './agent-chat-qa-mock.ts';
 import {streamAgentResponse} from '../packages/business/src/agent/agent-gateway.ts';
 import {CHAT_SYSTEM_INSTRUCTION} from '../packages/business/src/agent/chat-policy.ts';
 

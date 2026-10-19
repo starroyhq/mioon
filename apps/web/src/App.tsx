@@ -60,7 +60,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { schemas as productionSchemas, TIMELINE_EXPORT_DEFAULT_SETTINGS, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse as productionTimelineMutationResponse, isTimelineRenderRecord as productionTimelineRenderRecord, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, isSubjectGenerationResponse, isSubjectGenerationRetryResponse } from '@mioon/contracts';
 import { readOpacityCandidateApplication } from './opacity-candidate-application.ts';
 import OpacityRestoredNotice from './OpacityRestoredNotice.tsx';
-import { ReactFlow, Background, BackgroundVariant, MiniMap, applyNodeChanges, useReactFlow } from '@xyflow/react';
+import { ReactFlow, Background, BackgroundVariant, MiniMap, applyNodeChanges, useReactFlow, type Edge as FlowEdge, type Node as FlowNode } from '@xyflow/react';
 import { measuredFitPadding } from './canvas-fit.ts';
 import { chooseCanvasPosition } from './canvas-position.ts';
 import { staleClipSources } from './timeline-source-freshness.ts';
@@ -149,44 +149,221 @@ import { defaultWorkspaceLayout } from './workspace-layout.ts';
 import { PanelBoundary, PanelRecall, PanelResizeHandle, usePanelGeometry } from './WorkspacePanels.tsx';
 import { REFERENCE_SOURCE_HANDLE, REFERENCE_TARGET_HANDLE, isReferenceEdge, referenceForShot, isReferenceOperation, hasPendingReference, isImageReferenceNode, referenceAttachIssueDescriptor, canvasEdge } from './reference-connections.ts';
 
-const emptyData = { project: null, assets: [], shots: [], nodes: [], edges: [], jobs: [], versions: [], exports: [], timeline: null, timelineHistory: null };
-const emptyBusy = Object.freeze({});
+
+// Local view/state types. Runtime values stay untyped where the legacy modules
+// that own them are still being migrated; these interfaces describe exactly the
+// fields this shell reads and writes.
+export type WorkspaceMode = 'canvas' | 'editing';
+export type AuthState = true | false | 'error' | null;
+export type CapabilityStatus = string;
+export type ToastTone = 'success' | 'warning' | 'error';
+export interface AppProject {id: string; name: string; description?: string; revision: number; createdAt?: string; updatedAt?: string; [key: string]: unknown}
+export interface AppAsset {
+  id: string; projectId?: string; name: string; mimeType: string; sizeBytes: number;
+  width?: number | null; height?: number | null; duration?: number; sha256?: string; url?: string;
+  relativePath?: string; role?: string; [key: string]: unknown;
+}
+export interface AppShot {
+  id: string; projectId: string; title: string; prompt?: string; referenceAssetIds?: string[];
+  lastFrameAssetId?: string | null; aspectRatio?: string; duration?: number; parameters?: Record<string, unknown>;
+  position?: {x: number; y: number}; orderIndex: number; revision: number; selectedVersionId?: string | null;
+  subjectReference?: Record<string, unknown> | null; createdAt?: string; updatedAt?: string;
+  [key: string]: unknown;
+}
+export interface AppNode {
+  id: string; projectId?: string; type: string; label?: string; text?: string; assetId?: string | null;
+  position: {x: number; y: number}; revision?: number; [key: string]: unknown;
+}
+export interface AppEdge {
+  id: string; projectId?: string; source: string; target: string; sourceHandle?: string | null; targetHandle?: string | null;
+  kind?: string; role?: string; sourceAssetId?: string; createdAt?: string; [key: string]: unknown;
+}
+export interface AppJob {
+  id: string; projectId: string; shotId?: string; status: string; providerId?: string; model?: string;
+  progress?: number; versionId?: string | null; snapshot?: Record<string, unknown> | null; allowedActions?: string[];
+  error?: {code?: string; message?: string} | null; createdAt?: string; updatedAt?: string; [key: string]: unknown;
+}
+export interface AppVersion {
+  id: string; projectId: string; shotId: string; number: number; assetId?: string; sha256?: string; url?: string;
+  isMock?: boolean; snapshot?: Record<string, unknown>; createdAt?: string; [key: string]: unknown;
+}
+export interface AppExport {
+  id: string; projectId?: string; mode?: string; status: string; progress?: number; createdAt: string;
+  snapshot?: {exportRange?: unknown; deliveryName?: unknown; [key: string]: unknown} | null; [key: string]: unknown;
+}
+export interface AppTimelineClip {
+  id: string; trackId: string; assetId: string; name: string; startFrame: number; durationFrames: number;
+  sourceInFrame: number; rect: {x: number; y: number; width: number; height: number}; gain: number;
+  fadeInFrames?: number; fadeOutFrames?: number; colour?: unknown; audioRole?: unknown; volumeEnvelope?: unknown;
+  versionId?: string; shotId?: string; jobId?: string; [key: string]: unknown;
+}
+export interface AppTimelineTrack {id: string; name: string; kind: 'video' | 'audio'; orderIndex: number; hidden: boolean; muted: boolean; [key: string]: unknown}
+export interface AppTimelineCue {id: string; text?: string; startFrame: number; durationFrames: number; [key: string]: unknown}
+export interface AppTimeline {
+  id: string; projectId: string; revision: number; fps: number; width: number; height: number;
+  tracks: AppTimelineTrack[]; clips: AppTimelineClip[]; durationFrames: number; createdAt: string; updatedAt: string;
+  subtitles?: {cues: AppTimelineCue[]; [key: string]: unknown} | null; [key: string]: unknown;
+}
+export interface AppRestore {heldExportIds: string[]; [key: string]: unknown}
+export interface AppData {
+  project: AppProject | null;
+  assets: AppAsset[];
+  shots: AppShot[];
+  nodes: AppNode[];
+  edges: AppEdge[];
+  jobs: AppJob[];
+  versions: AppVersion[];
+  exports: AppExport[];
+  timeline: AppTimeline | null;
+  timelineHistory: AppTimelineHistory | null;
+  restore?: AppRestore | null;
+}
+export interface AppTimelineHistory {[key: string]: unknown}
+export interface CanvasViewState {
+  selectedId: string | null; selectedEdgeId: string | null; inspectorTab: string;
+  storyboardOpen: boolean; miniMap: boolean; highlightedVersionId: string | null;
+  viewport: {x: number; y: number; zoom: number} | null;
+  [key: string]: unknown;
+}
+export interface EditingViewState {
+  selectedClipId: string | null; quickAssetId: string | null; previewKind: string; playhead: number;
+  timelineCollapsed: boolean; [key: string]: unknown;
+}
+export interface SharedViewState {assetFilter: string; assetSearch: string; [key: string]: unknown}
+export interface LayoutModeState {assetsWidth: number; inspectorWidth: number; timelineHeight: number; assetsCollapsed: boolean; inspectorCollapsed: boolean; [key: string]: unknown}
+export interface ViewState {
+  activeMode: WorkspaceMode; canvas: CanvasViewState; editing: EditingViewState; shared: SharedViewState;
+  layout: Record<WorkspaceMode, LayoutModeState>;
+  [key: string]: unknown;
+}
+export interface WorkspaceState {restored?: boolean; workspaceOrigin?: string | null; workspaceScope?: string | null; channel?: string; root?: string; [key: string]: unknown}
+export interface ProviderRecord {id: string; name?: string; models?: unknown; mock?: boolean; [key: string]: unknown}
+export interface ToastState {message: string; type: ToastTone; time: number}
+export interface ProjectOpening {phase: 'home' | 'opening' | 'ready' | 'error'; projectId: string | null; error: string}
+export interface ProjectListStatus {busy: boolean; error: string}
+export interface PreferenceStatus {phase: string; pending: boolean; error?: unknown}
+export interface WebSettingsRequest {page: string; resolve: (value: boolean) => void}
+export interface PendingEntry {projectId: string; key: string; operation: string; input: Record<string, unknown>; [key: string]: unknown}
+export interface TaskItem {id: string; lane: string; operation: string; status: string; revision: number; [key: string]: unknown}
+export interface TaskState {phase: string; items: TaskItem[]; uncertain: unknown[]; busy: unknown[]; error: unknown; heldIds?: string[]; [key: string]: unknown}
+export interface GenerationOptionState {
+  providerId?: string; model?: string; scenario?: string; inputMode?: string;
+  subjectReference?: AppSubjectReference | null; [key: string]: unknown;
+}
+export interface AppSubjectReference {
+  subjectVersionId: string; subjectVersion: {subjectId?: string; assetId?: string; [key: string]: unknown}; [key: string]: unknown;
+}
+export interface GenerationReviewArgs {
+  shot: AppShot; providerId: string; model?: string; scenario?: string; inputMode?: string;
+  retryJobId?: string; subjectReference?: AppSubjectReference | null; expectedRetrySnapshot?: Record<string, unknown>;
+  taskViewGuard?: () => boolean; referenceAssets?: AppAsset[]; referenceIdentity?: unknown; subjectProviderIdentity?: unknown;
+  approvalContext?: unknown; approvalView?: unknown; [key: string]: unknown;
+}
+export interface ReviewOutcome {dispatched: boolean; rejected: boolean}
+export interface RunOptions {
+  replay?: boolean; returnAfterNavigation?: boolean; validateResponse?: (value: unknown) => void;
+  onFailure?: (error: unknown, outcome: ReviewOutcome) => void; errorMessage?: (error: unknown) => string;
+  expectedSubjectReference?: unknown; subjectRetry?: boolean; expectedRetrySnapshot?: unknown; pendingEntry?: PendingEntry;
+  canExecute?: (preparedTask: unknown) => boolean; canRevealTasks?: () => boolean; [key: string]: unknown;
+}
+export interface ClipDraftController {
+  hasPendingComposition(): boolean; hasUnsaved(): boolean; getState(): {candidate?: unknown; [key: string]: unknown};
+  capture(): unknown; discard(capture: unknown, canDiscard?: () => boolean): Promise<boolean> | boolean;
+  isCurrent(capture: unknown): boolean; supportsRestoredPersistence(origin?: string): boolean;
+  hasUnpersisted(): boolean; flushForClose(): Promise<unknown> | unknown;
+}
+export interface ShotTextController {
+  capture(): unknown; hasUnsaved(): boolean; isCurrent(capture: unknown): boolean; blocksLegacy(shotId?: string): boolean;
+  abandonCurrentInput(capture: unknown): boolean; hasUnpersisted(): boolean; flush(): unknown;
+}
+export interface ClipInspectorSnapshot {
+  key: string; scope: string; projectId: string; clip: AppTimelineClip; timeline: AppTimeline;
+  asset?: AppAsset; restored: boolean; workspaceOrigin?: string | null; [key: string]: unknown;
+}
+export interface ClipInspectorRetention {snapshot: ClipInspectorSnapshot | null; retained: boolean}
+export interface CapturedContext {projectId: string | null; epoch: number; workspace: WorkspaceState | null}
+export interface TaskRevealContext {
+  active: boolean; projectId: string; projectEpoch: number; navigationEpoch: number;
+  panelIntent: number; workspaceScope: string | null; [key: string]: unknown;
+}
+export interface TaskViewContext extends TaskRevealContext {[key: string]: unknown}
+export interface AssetDropSnapshot {projectId?: string | null; durationFrames?: number; expectedRevision?: number; [key: string]: unknown}
+export interface ComparisonBinding {shotId: string; versionId: string; [key: string]: unknown}
+export interface SourceRangeSnapshot {scope: string; projectId?: string | null; assetId: string; [key: string]: unknown}
+export interface TimelineMutationOptions extends RunOptions {}
+export interface DraftRangeInput {startText: string; endText: string; scope?: string; version?: number; [key: string]: unknown}
+export interface StringPatch {[key: string]: unknown}
+export interface TimelineFormatIntent {scope: string; projectId: string | null; input: Record<string, unknown>; [key: string]: unknown}
+export interface SubtitleIntent {scope: string; projectId: string | null; operation: string; input: Record<string, unknown>; selection?: unknown; timelineId?: string | null; [key: string]: unknown}
+export interface ClipReplacementReview {
+  projectId: string; expectedRevision: number; input: Record<string, unknown>; [key: string]: unknown;
+}
+export interface MediaPause {(): void}
+export interface NativeWindowLike {context: {initialProjectId: string}; [key: string]: unknown}
+export interface NativeProjectEntryLike {
+  open(projectId: string): Promise<boolean> | boolean; show(mode: string): Promise<unknown> | unknown;
+  readCloseSnapshot(): unknown; [key: string]: unknown;
+}
+export interface AppProps {
+  nativeWindow?: NativeWindowLike | null;
+  nativeProjectEntry?: NativeProjectEntryLike | null;
+  opacityApplication?: unknown;
+}
+export interface ModalProps {title: React.ReactNode; subtitle?: React.ReactNode; children: React.ReactNode; onClose: () => void; wide?: boolean}
+export interface CreateProjectProps {onClose: () => void; onCreate: (name: string, description: string, timelinePresetId?: string) => unknown; busy?: boolean}
+export interface SettingsConnectionFormsProps {
+  selected: string; page: string; visible: boolean; registry: unknown;
+  onSelect: (slot: string) => void; onPage: (page: string) => void; general: React.ReactNode;
+  connectionsAvailable?: boolean; beforeClose?: () => unknown; onClose?: () => void;
+}
+declare global {
+  interface Window {
+    __mioonNativeAudioPreview?: unknown;
+    __mioonUiPreferences?: {reload?: () => Promise<void> | void; markOpened?: (projectId: string) => Promise<void> | void; [key: string]: unknown};
+    __mioonNativeCloseAdmission?: {suppressLifecycleFlush?: (event: Event) => boolean; [key: string]: unknown};
+  }
+  var __mioonFlushWorkspacePreferences: (() => Promise<boolean>) | undefined;
+}
+
+const emptyData: AppData = { project: null, assets: [], shots: [], nodes: [], edges: [], jobs: [], versions: [], exports: [], timeline: null, timelineHistory: null };
+const emptyBusy: Readonly<Record<string, boolean>> = Object.freeze({});
 // Canvas fits leave room for the docks, heading and storyboard that float over the full-bleed pane.
-const canvasFitPadding = fallback => measuredFitPadding(document.querySelector('[data-testid="canvas-drop-zone"]'), fallback);
-function localizedError(displayMessage) { return Object.assign(new Error(renderCoreMessage('zh-Hans', displayMessage)), { displayMessage }); }
-function readableError(error) {
-  if (error?.displayMessage) return error.displayMessage;
-  if (error?.code === 'CONFLICT' || error?.code === 'REVISION_CONFLICT') return msg('shell.error.conflict');
-  if (['CLIP_OVERLAP', 'TIMELINE_OVERLAP', 'OVERLAP'].includes(error?.code)) return msg('shell.error.overlap');
-  if (error?.code === 'UNAUTHORIZED') return msg('shell.error.unauthorized');
-  if (error?.code === 'STORAGE_MIGRATION_BLOCKED') return msg('shell.error.storageMigration');
-  if (['WORKSPACE_ORIGIN_UNVERIFIED', 'RESTORE_WORKSPACE_ORIGIN_REQUIRED'].includes(error?.code)) return msg('tasks.unverifiedWorkspace');
-  if (error?.code === 'RESTORED_RECORD_HELD') return msg('tasks.heldReason');
-  if (error?.code === 'RESTORE_WORKSPACE_ORIGIN_MISMATCH') return msg('shell.error.workspaceChanged');
-  if (error?.code === 'WORKSPACE_INTENT_ALREADY_PINNED') return msg('shell.error.workspacePinned');
-  if (error?.code === 'RESTORE_OPERATION_UNAVAILABLE') return msg('recovery.restored.disabledReason');
-  if (error?.code === 'RESTORE_BACKUP_UNAVAILABLE') return msg('recovery.restored.backupReason');
-  if (error?.code === 'LAST_PROJECT_SCOPE_MISMATCH') return msg('shell.error.lastProjectScope');
+const canvasFitPadding = (fallback: number) => measuredFitPadding(document.querySelector('[data-testid="canvas-drop-zone"]'), fallback);
+function localizedError(displayMessage: unknown): Error & {displayMessage: unknown} { return Object.assign(new Error(renderCoreMessage('zh-Hans', displayMessage)), { displayMessage }); }
+function readableError(error: unknown): string {
+  const failure = error as {displayMessage?: unknown; code?: unknown} | null | undefined;
+  if (failure?.displayMessage) return failure.displayMessage as string;
+  if (failure?.code === 'CONFLICT' || failure?.code === 'REVISION_CONFLICT') return msg('shell.error.conflict');
+  if (['CLIP_OVERLAP', 'TIMELINE_OVERLAP', 'OVERLAP'].includes(failure?.code as string)) return msg('shell.error.overlap');
+  if (failure?.code === 'UNAUTHORIZED') return msg('shell.error.unauthorized');
+  if (failure?.code === 'STORAGE_MIGRATION_BLOCKED') return msg('shell.error.storageMigration');
+  if (['WORKSPACE_ORIGIN_UNVERIFIED', 'RESTORE_WORKSPACE_ORIGIN_REQUIRED'].includes(failure?.code as string)) return msg('tasks.unverifiedWorkspace');
+  if (failure?.code === 'RESTORED_RECORD_HELD') return msg('tasks.heldReason');
+  if (failure?.code === 'RESTORE_WORKSPACE_ORIGIN_MISMATCH') return msg('shell.error.workspaceChanged');
+  if (failure?.code === 'WORKSPACE_INTENT_ALREADY_PINNED') return msg('shell.error.workspacePinned');
+  if (failure?.code === 'RESTORE_OPERATION_UNAVAILABLE') return msg('recovery.restored.disabledReason');
+  if (failure?.code === 'RESTORE_BACKUP_UNAVAILABLE') return msg('recovery.restored.backupReason');
+  if (failure?.code === 'LAST_PROJECT_SCOPE_MISMATCH') return msg('shell.error.lastProjectScope');
   return msg('shell.error.incomplete');
 }
-function Modal({ title, subtitle, children, onClose, wide = false }) {
+function Modal({ title, subtitle, children, onClose, wide = false }: ModalProps) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }}><DialogContent className={`modal ${wide ? 'wide' : ''}`} showCloseButton={false}><header className="modal-header"><div><DialogTitle>{title}</DialogTitle><DialogDescription className={subtitle ? '' : 'sr-only'}>{subtitle || title}</DialogDescription></div><DialogClose render={<Button variant="ghost" className="icon-button" aria-label={t('shell.closeDialog')} />}><Icon name="close" /></DialogClose></header>{children}</DialogContent></Dialog>;
 }
-function CreateProject({ onClose, onCreate, busy }) {
+function CreateProject({ onClose, onCreate, busy }: CreateProjectProps) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const [name, setName] = useState(''); const [description, setDescription] = useState('');
   return <Modal title={t('projects.newStory')} subtitle={t('projects.newStoryHint')} onClose={onClose}><form className="modal-form" onSubmit={e => { e.preventDefault(); onCreate(name.trim(), description.trim()); }}><Label className="field-label" htmlFor="project-name">{t('projects.name')}</Label><Input id="project-name" data-testid="project-name" value={name} onChange={e => setName(e.target.value)} placeholder={t('projects.namePlaceholder')} maxLength={150} required autoFocus /><Label className="field-label" htmlFor="project-description">{t('projects.direction')}<span className="optional">{t('shell.optional')}</span></Label><Textarea id="project-description" rows={3} maxLength={2000} value={description} onChange={e => setDescription(e.target.value)} placeholder={t('projects.directionPlaceholder')} /><Button variant="ghost" className="button primary full" data-testid="create-project-submit" disabled={!name.trim() || busy} type="submit"><Icon name="plus" size={16} />{t('projects.create')}</Button></form></Modal>;
 }
 
-export function SettingsConnectionForms({ selected, page, visible, registry, onSelect, onPage, general, connectionsAvailable = true, beforeClose, onClose }) { const { t } = useI18n(); return <ProjectHomeConnections active={visible} workspace={<SettingsWorkspace active={visible && page === 'workspace'}><WorkspaceVisibilityProvider visible={visible && page === 'workspace'}><WorkspaceBackupPanel scope="settings:workspace" getScope={() => 'settings:workspace'} connected={connectionsAvailable && visible && page === 'workspace'} read={(input, options) => productionRpc('workspace.backup.inspect', input, options)} /></WorkspaceVisibilityProvider></SettingsWorkspace>} videoTools={<SettingsNavigationSlot registry={registry} slot="home:video-tools">{report => <SettingsVideoTools active={visible && page === 'video-tools'} onNavigationStateChange={report} />}</SettingsNavigationSlot>} selected={selected} page={page} connectionsAvailable={connectionsAvailable} onSelect={onSelect} onPage={onPage} general={<>{general}<SettingsNavigationSlot registry={registry} slot="home:appearance">{report => <SettingsAppearance active={visible && page === 'general'} onNavigationStateChange={report} />}</SettingsNavigationSlot></>} panes={{
+export function SettingsConnectionForms({ selected, page, visible, registry, onSelect, onPage, general, connectionsAvailable = true, beforeClose, onClose }: SettingsConnectionFormsProps) { const { t } = useI18n(); return <ProjectHomeConnections active={visible} workspace={<SettingsWorkspace active={visible && page === 'workspace'}><WorkspaceVisibilityProvider visible={visible && page === 'workspace'}><WorkspaceBackupPanel scope="settings:workspace" getScope={() => 'settings:workspace'} connected={connectionsAvailable && visible && page === 'workspace'} read={(input, options) => productionRpc('workspace.backup.inspect', input, options)} /></WorkspaceVisibilityProvider></SettingsWorkspace>} videoTools={<SettingsNavigationSlot registry={registry} slot="home:video-tools">{report => <SettingsVideoTools active={visible && page === 'video-tools'} onNavigationStateChange={report} />}</SettingsNavigationSlot>} selected={selected} page={page} connectionsAvailable={connectionsAvailable} onSelect={onSelect} onPage={onPage} general={<>{general}<SettingsNavigationSlot registry={registry} slot="home:appearance">{report => <SettingsAppearance active={visible && page === 'general'} onNavigationStateChange={report} />}</SettingsNavigationSlot></>} panes={{
   agent: <AgentDockPane visible={visible && connectionsAvailable && page === 'agent'}><SettingsNavigationSlot registry={registry} slot="home:agent">{report => <AgentSettings closeLabel={t('common.closeSettings')} beforeClose={beforeClose} onClose={onClose} onNavigationStateChange={report} />}</SettingsNavigationSlot></AgentDockPane>,
   official: <AgentDockPane visible={visible && connectionsAvailable && page === 'official'}><SettingsNavigationSlot registry={registry} slot="home:official">{report => <ImageSettings active={visible && connectionsAvailable && page === 'official'} contextKey="native-settings" closeLabel={t('common.closeSettings')} slot="official" onSelectSlot={onSelect} onRequestSelectSlot={onSelect} beforeClose={beforeClose} onClose={onClose} onNavigationStateChange={report} />}</SettingsNavigationSlot></AgentDockPane>,
   custom: <AgentDockPane visible={visible && connectionsAvailable && page === 'custom'}><SettingsNavigationSlot registry={registry} slot="home:custom">{report => <ImageSettings active={visible && connectionsAvailable && page === 'custom'} contextKey="native-settings" closeLabel={t('common.closeSettings')} slot="custom" onSelectSlot={onSelect} onRequestSelectSlot={onSelect} beforeClose={beforeClose} onClose={onClose} onNavigationStateChange={report} />}</SettingsNavigationSlot></AgentDockPane>,
   comfy: <AgentDockPane visible={visible && connectionsAvailable && page === 'comfy'}><SettingsNavigationSlot registry={registry} slot="home:comfy">{report => <ComfyImageSettings active={visible && connectionsAvailable && page === 'comfy'} contextKey="native-settings" closeLabel={t('common.closeSettings')} onSelectSlot={onSelect} onRequestSelectSlot={onSelect} beforeClose={beforeClose} onClose={onClose} onNavigationStateChange={report} />}</SettingsNavigationSlot></AgentDockPane>,
 }} />; }
 
-export default function App({ nativeWindow = null, nativeProjectEntry = null, opacityApplication = null } = {}) {
+export default function App({ nativeWindow = null, nativeProjectEntry = null, opacityApplication = null }: AppProps = {}) {
   // This capability comes only from the isolated build entry. Server payloads,
   // URL parameters and copied profile metadata cannot select candidate codecs.
   const requestedApplication = readOpacityCandidateApplication(opacityApplication);
@@ -204,115 +381,115 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   const nativeSettingsScope = useEditorSettingsScope(nativeWindow);
   const [nativeProjectLocation] = useState(() => nativeWindow ? createNativeProjectLocation(window, nativeWindow.context.initialProjectId) : null);
   const [nativeAudioAdmission] = useState(() => nativeWindow ? createNativeAudioPreviewAdmission(window.__mioonNativeAudioPreview ?? null) : null);
-  const [auth, setAuth] = useState(null);
+  const [auth, setAuth] = useState<AuthState>(null);
   useEffect(() => { if (auth === true) void window.__mioonUiPreferences?.reload?.(); }, [auth]);
   const [data, setData] = useState(emptyData);
-  const [workspace, setWorkspace] = useState(null);
-  const workspaceRef = useRef(null);
-  const [audioRoleCapability, setAudioRoleCapability] = useState('loading');
+  const [workspace, setWorkspace] = useState<WorkspaceState | null>(null);
+  const workspaceRef = useRef<WorkspaceState | null>(null);
+  const [audioRoleCapability, setAudioRoleCapability] = useState<CapabilityStatus>('loading');
   const audioRoleEditable = audioRoleCapability === 'editable';
-  const audioRoleProbe = useRef(null);
+  const audioRoleProbe = useRef<((() => void) | null)>(null);
   const audioRoleProbeEpoch = useRef(0);
   const restored = workspace?.restored === true;
   const opacityRestored = Boolean(application?.isRestoredWorkspace(workspace));
   const generationUnavailableReason = restored ? RESTORE_DISABLED_MESSAGE : '';
   const dataRef = useRef(data); dataRef.current = data;
-  const [projects, setProjects] = useState([]);
-  const [providers, setProviders] = useState([]);
-  const [generationOptions, setGenerationOptions] = useState({});
-  const generationOptionsRef = useRef(generationOptions); generationOptionsRef.current = generationOptions;
-  const updateGenerationOptions = useCallback((shotId, options) => { if (shotId) { const next = { ...generationOptionsRef.current, [shotId]: options }; generationOptionsRef.current = next; setGenerationOptions(next); } }, []);
+  const [projects, setProjects] = useState<AppProject[]>([]);
+  const [providers, setProviders] = useState<ProviderRecord[]>([]);
+  const [generationOptions, setGenerationOptions] = useState<Record<string, GenerationOptionState>>({});
+  const generationOptionsRef = useRef<Record<string, GenerationOptionState>>(generationOptions); generationOptionsRef.current = generationOptions;
+  const updateGenerationOptions = useCallback((shotId: string | null, options: GenerationOptionState) => { if (shotId) { const next = { ...generationOptionsRef.current, [shotId]: options }; generationOptionsRef.current = next; setGenerationOptions(next); } }, []);
   const [loading, setLoading] = useState(false);
-  const [projectOpening, setProjectOpening] = useState({ phase: 'home', projectId: null, error: '' });
-  const openedProject = useRef(null);
-  const projectCreateFlight = useRef(null);
-  const [homePage, setHomePage] = useState('projects');
-  const [webSettingsRequest, setWebSettingsRequest] = useState(null);
-  const webSettingsRequestRef = useRef(null);
+  const [projectOpening, setProjectOpening] = useState<ProjectOpening>({ phase: 'home', projectId: null, error: '' });
+  const openedProject = useRef<unknown>(null);
+  const projectCreateFlight = useRef<Record<string, unknown> | null>(null);
+  const [homePage, setHomePage] = useState<string>('projects');
+  const [webSettingsRequest, setWebSettingsRequest] = useState<WebSettingsRequest | null>(null);
+  const webSettingsRequestRef = useRef<WebSettingsRequest | null>(null);
   const [webSettingsOpen, setWebSettingsOpen] = useState(false);
-  const [projectListStatus, setProjectListStatus] = useState({ busy: false, error: '' });
+  const [projectListStatus, setProjectListStatus] = useState<ProjectListStatus>({ busy: false, error: '' });
   const projectListSerial = useRef(0);
-  const nativeCloseRegistry = useRef(null);
+  const nativeCloseRegistry = useRef<ReturnType<typeof createNativeCloseRegistry> | null>(null);
   if (!nativeCloseRegistry.current) nativeCloseRegistry.current = createNativeCloseRegistry();
-  const settingsNavigation = useRef(null);
+  const settingsNavigation = useRef<ReturnType<typeof createSettingsNavigationRegistry> | null>(null);
   if (!settingsNavigation.current) settingsNavigation.current = createSettingsNavigationRegistry();
-  const [busyByProject, setBusyByProject] = useState({});
-  const busyRef = useRef(new Set());
-  const editorInputs = useRef(null);
+  const [busyByProject, setBusyByProject] = useState<Record<string, Record<string, boolean>>>({});
+  const busyRef = useRef(new Set<string>());
+  const editorInputs = useRef<ReturnType<typeof createEditorWindowInputs> | null>(null);
   if (!editorInputs.current) editorInputs.current = createEditorWindowInputs();
-  const exportSettingsRef = useRef(null), exportRangeRef = useRef(null);
-  const [toast, setToast] = useState(null);
+  const exportSettingsRef = useRef<unknown>(null), exportRangeRef = useRef<unknown>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
 
   const [showProjects, setShowProjects] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [showProjectChooser, setShowProjectChooser] = useState(false);
   const [showTasks, setShowTasks] = useState(false);
   const [showDelivery, setShowDelivery] = useState(false);
-  const [deliveryAttempt, setDeliveryAttempt] = useState(null);
+  const [deliveryAttempt, setDeliveryAttempt] = useState<{projectId: string; id: string} | null>(null);
   const [deliveryReviewVersion, setDeliveryReviewVersion] = useState(0);
   const [showImage, setShowImage] = useState(false);
-  const [panelOverlay, setPanelOverlay] = useState(null);
+  const [panelOverlay, setPanelOverlay] = useState<string | null>(null);
   const [rightDockTab, setRightDockTabState] = useState('properties');
-  const setRightDockTab = value => { if (!clipDraftRef.current?.hasPendingComposition()) setRightDockTabState(value); };
+  const setRightDockTab = (value: string) => { if (!clipDraftRef.current?.hasPendingComposition()) setRightDockTabState(value); };
   const [propertiesPage, setPropertiesPageState] = useState('inspector');
-  const setPropertiesPage = value => { if (!clipDraftRef.current?.hasPendingComposition()) setPropertiesPageState(value); };
+  const setPropertiesPage = (value: string) => { if (!clipDraftRef.current?.hasPendingComposition()) setPropertiesPageState(value); };
   const [subtitleDirty, setSubtitleDirty] = useState(false);
-  const subtitlesRef = useRef(null);
+  const subtitlesRef = useRef<ReturnType<typeof useSubtitles> | null>(null);
   const [formatDirty, setFormatDirty] = useState(false);
-  const timelineFormatRef = useRef(null);
-  const timelineLoudnessApplyRef = useRef(null);
-  const deliveryNameRef = useRef(null);
-  const localDeliveryRef = useRef(null);
-  const clipDraftRef = useRef(null);
+  const timelineFormatRef = useRef<ReturnType<typeof useTimelineFormat> | null>(null);
+  const timelineLoudnessApplyRef = useRef<ReturnType<typeof useTimelineLoudnessApply> | null>(null);
+  const deliveryNameRef = useRef<ReturnType<typeof useTimelineDeliveryName> | null>(null);
+  const localDeliveryRef = useRef<ReturnType<typeof useLocalDelivery> | null>(null);
+  const clipDraftRef = useRef<ClipDraftController | null>(null);
   const [clipCompositionPending, setClipCompositionPending] = useState(false);
-  const clipInspectorRetention = useRef({ snapshot: null, retained: false });
+  const clipInspectorRetention = useRef<ClipInspectorRetention>({ snapshot: null, retained: false });
   const clipConnectionBlocked = useRef(false);
   const [agentClipDraftBlocked, setAgentClipDraftBlocked] = useState(true);
-  const shotTextRef = useRef(null), shotCloseRef = useRef(null);
-  const registerShotText = useCallback((controller, readLocalClose) => {
+  const shotTextRef = useRef<ShotTextController | null>(null), shotCloseRef = useRef<{controller: ShotTextController; readLocalClose: unknown} | null>(null);
+  const registerShotText = useCallback((controller: ShotTextController, readLocalClose: unknown) => {
     const owner = { controller, readLocalClose };
     shotTextRef.current = controller; shotCloseRef.current = owner;
     return () => { if (shotCloseRef.current === owner) { shotCloseRef.current = null; if (shotTextRef.current === controller) shotTextRef.current = null; } };
   }, []);
-  const registerClipDraft = useCallback(controller => {
+  const registerClipDraft = useCallback((controller: ClipDraftController) => {
     clipDraftRef.current = controller;
     return () => { if (clipDraftRef.current === controller) clipDraftRef.current = null; };
   }, []);
-  const [agentPage, setAgentPage] = useState('chat');
+  const [agentPage, setAgentPage] = useState<string>('chat');
   const agentDraft = useRef(false);
-  const onAgentDraftChange = useCallback(value => { agentDraft.current = value; }, []);
+  const onAgentDraftChange = useCallback((value: boolean) => { agentDraft.current = value; }, []);
   const imageDraft = useRef(false);
-  const [imageEditIntent, updateImageEditIntent] = useState(null), imageEditIntentRef = useRef(null);
-  const setImageEditIntent = intent => { imageEditIntentRef.current = intent; updateImageEditIntent(intent); };
-  const onImageDraftChange = useCallback(value => { imageDraft.current = value; }, []);
+  const [imageEditIntent, updateImageEditIntent] = useState<unknown>(null), imageEditIntentRef = useRef<unknown>(null);
+  const setImageEditIntent = (intent: unknown) => { imageEditIntentRef.current = intent; updateImageEditIntent(intent); };
+  const onImageDraftChange = useCallback((value: boolean) => { imageDraft.current = value; }, []);
   const [showExports, setShowExports] = useState(false);
-  const [comparisonId, updateComparisonId] = useState(null);
-  const comparisonIdRef = useRef(null);
-  const [previewAsset, updatePreviewAsset] = useState(null);
-  const previewAssetRef = useRef(null), canvasAssetSelectionRef = useRef(null), clipLoudnessEpoch = useRef(0);
-  const setPreviewAsset = value => { previewAssetRef.current = value; if (value) canvasAssetSelectionRef.current = { id: value.id, projectId: currentProject.current, epoch: projectEpoch.current }; clipLoudnessEpoch.current++; updatePreviewAsset(value); };
-  const [realConfirm, setRealConfirm] = useState(null);
-  const realConfirmRef = useRef(null);
-  const generationReviewScope = useRef(null);
+  const [comparisonId, updateComparisonId] = useState<string | null>(null);
+  const comparisonIdRef = useRef<string | null>(null);
+  const [previewAsset, updatePreviewAsset] = useState<AppAsset | null>(null);
+  const previewAssetRef = useRef<AppAsset | null>(null), canvasAssetSelectionRef = useRef<{id: string; projectId: string | null; epoch: number} | null>(null), clipLoudnessEpoch = useRef(0);
+  const setPreviewAsset = (value: AppAsset | null) => { previewAssetRef.current = value; if (value) canvasAssetSelectionRef.current = { id: value.id, projectId: currentProject.current, epoch: projectEpoch.current }; clipLoudnessEpoch.current++; updatePreviewAsset(value); };
+  const [realConfirm, setRealConfirm] = useState<GenerationReviewArgs | null>(null);
+  const realConfirmRef = useRef<GenerationReviewArgs | null>(null);
+  const generationReviewScope = useRef<{key?: string} | null>(null);
   realConfirmRef.current = realConfirm;
-  const [nodes, setNodes] = useState([]);
+  const [nodes, setNodes] = useState<FlowNode[]>([]);
   const [shotDirty, setShotDirty] = useState(false);
   const [clipDirty, setClipDirty] = useState(false);
   const [sourceDirty, setSourceDirty] = useState(false);
   const [subjectDirty, setSubjectDirty] = useState(false);
-  const [subjectRefresh, setSubjectRefresh] = useState({});
-  const subjectsRef = useRef(null);
-  const [sourceRangeRefresh, setSourceRangeRefresh] = useState({});
-  const [dispositionRefresh, setDispositionRefresh] = useState({});
-  const [annotationRefresh, setAnnotationRefresh] = useState({});
+  const [subjectRefresh, setSubjectRefresh] = useState<Record<string, number>>({});
+  const subjectsRef = useRef<ReturnType<typeof useSubjects> | null>(null);
+  const [sourceRangeRefresh, setSourceRangeRefresh] = useState<Record<string, number>>({});
+  const [dispositionRefresh, setDispositionRefresh] = useState<Record<string, number>>({});
+  const [annotationRefresh, setAnnotationRefresh] = useState<Record<string, number>>({});
   const inspectorDirty = shotDirty || clipDirty || sourceDirty || subjectDirty || subtitleDirty;
-  const dirtyRef = useRef(inspectorDirty); dirtyRef.current = inspectorDirty;
+  const dirtyRef = useRef<boolean>(inspectorDirty); dirtyRef.current = inspectorDirty;
 
   const [showGuide, setShowGuide] = useState(false);
-  const [lastSync, setLastSync] = useState(null);
+  const [lastSync, setLastSync] = useState<Date | null>(null);
   const [online, setOnline] = useState(true);
-  const [volumeEnvelopeObservation, setVolumeEnvelopeObservation] = useState({ epoch: 0, status: 'loading' });
-  const volumeEnvelopeProbeEpoch = useRef(0), volumeEnvelopeConnection = useRef(null);
+  const [volumeEnvelopeObservation, setVolumeEnvelopeObservation] = useState<{epoch: number; status: string}>({ epoch: 0, status: 'loading' });
+  const volumeEnvelopeProbeEpoch = useRef(0), volumeEnvelopeConnection = useRef<{workspace: WorkspaceState | null; online: boolean; auth: AuthState} | null>(null);
   if (!volumeEnvelopeConnection.current || volumeEnvelopeConnection.current.workspace !== workspace || volumeEnvelopeConnection.current.online !== online || volumeEnvelopeConnection.current.auth !== auth) {
     volumeEnvelopeConnection.current = { workspace, online, auth };
     volumeEnvelopeProbeEpoch.current++;
@@ -323,41 +500,41 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   const [zoom, setZoom] = useState(100);
 
   const [mobilePanel, setMobilePanel] = useState('canvas');
-  const [sequenceDrag, setSequenceDrag] = useState(null);
+  const [sequenceDrag, setSequenceDrag] = useState<unknown>(null);
 
-  const [pending, setPending] = useState([]);
+  const [pending, setPending] = useState<PendingEntry[]>([]);
 
-  const [reconcileIds, setReconcileIds] = useState({});
-  const fileInput = useRef(null);
-  const importSession = useRef({ active: true, selection: 0 });
+  const [reconcileIds, setReconcileIds] = useState<Record<string, unknown>>({});
+  const fileInput = useRef<HTMLInputElement | null>(null);
+  const importSession = useRef<{active: boolean; selection: number}>({ active: true, selection: 0 });
   useEffect(() => {
     importSession.current.active = true;
     return () => { importSession.current.active = false; importSession.current.selection++; requestCounter.current++; };
   }, []);
-  const currentProject = useRef(null);
-  const [taskState, setTaskState] = useState({ phase: 'idle', items: [], uncertain: [], busy: [], error: null });
-  const tasksRef = useRef(null);
+  const currentProject = useRef<string | null>(null);
+  const [taskState, setTaskState] = useState<TaskState>({ phase: 'idle', items: [], uncertain: [], busy: [], error: null });
+  const tasksRef = useRef<ReturnType<typeof createEditTaskController> | null>(null);
   if (!tasksRef.current) tasksRef.current = createEditTaskController({ ...(application ? { client: application.taskClient } : {}), getWorkspace: () => workspaceRef.current, onChange: (projectId, snapshot) => {
     if (currentProject.current === projectId) setTaskState(snapshot);
   } });
   const navigationEpoch = useRef(0);
   const [, setNavigationPresentation] = useState(0);
   const projectEpoch = useRef(0);
-  const preferenceScope = useRef(null);
-  const locatorIdentity = useRef(null);
-  const bootGuard = useRef(null);
+  const preferenceScope = useRef<string | null>(null);
+  const locatorIdentity = useRef<unknown>(null);
+  const bootGuard = useRef<ReturnType<typeof createProjectBootGuard> | null>(null);
   if (!bootGuard.current) bootGuard.current = createProjectBootGuard(() => projectEpoch.current);
-  const [lastProjectStatus, setLastProjectStatus] = useState(null);
-  const lastProjectRef = useRef(null);
+  const [lastProjectStatus, setLastProjectStatus] = useState<unknown>(null);
+  const lastProjectRef = useRef<ReturnType<typeof createLastProjectController> | null>(null);
   if (!lastProjectRef.current) lastProjectRef.current = createLastProjectController({
     getEpoch: () => projectEpoch.current, onChange: setLastProjectStatus,
   });
   const [inspectorEpoch, setInspectorEpoch] = useState(0);
-  const [view, setView] = useState(defaultWorkspaceState);
-  const viewRef = useRef(view); viewRef.current = view;
+  const [view, setView] = useState<ViewState>(defaultWorkspaceState);
+  const viewRef = useRef<ViewState>(view); viewRef.current = view;
   const viewReady = useRef(false);
-  const [preferenceStatus, setPreferenceStatus] = useState({ phase: 'loading', pending: false });
-  const preferencesRef = useRef(null);
+  const [preferenceStatus, setPreferenceStatus] = useState<PreferenceStatus>({ phase: 'loading', pending: false });
+  const preferencesRef = useRef<ReturnType<typeof createWorkspacePreferences> | null>(null);
   if (!preferencesRef.current) preferencesRef.current = createWorkspacePreferences({
     getWorkspace: () => workspaceRef.current, getStorageScope: () => lastProjectRef.current.getState().identityBlocked ? null : preferenceScope.current,
     onStatus: (projectId, status) => { if (currentProject.current === projectId) setPreferenceStatus(status); }
@@ -367,24 +544,25 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   const activeTasks = taskState.items.filter(task => !taskState.heldIds?.includes(task.id));
   const referencePending = hasPendingReference(activePending) || activeTasks.some(task => task.lane === 'reference:mutation');
   const referenceBusy = Boolean(busy['reference:mutation'] || referencePending || taskState.phase !== 'ready');
-  const updateView = useCallback((section, patch, { passive = false } = {}) => {
+  const updateView = useCallback((section: string, patch: unknown, { passive = false }: {passive?: boolean} = {}) => {
     if (!viewReady.current || dataRef.current.project?.id !== currentProject.current) return;
     const previous = viewRef.current;
     if (clipDraftRef.current?.hasPendingComposition() && (section === 'activeMode' || section === 'editing')) return;
-    const value = typeof patch === 'function' ? patch(previous[section]) : patch;
-    const next = section === 'activeMode' ? { ...previous, activeMode: value } : { ...previous, [section]: { ...previous[section], ...value } };
+    const currentSection = previous[section] as Record<string, unknown>;
+    const value = typeof patch === 'function' ? (patch as (value: unknown) => unknown)(currentSection) : patch as Record<string, unknown>;
+    const next: ViewState = section === 'activeMode' ? { ...previous, activeMode: value as WorkspaceMode } : { ...previous, [section]: { ...currentSection, ...value } };
     if (JSON.stringify(next) === JSON.stringify(previous)) return;
     if (next.activeMode !== previous.activeMode || ['selectedClipId', 'quickAssetId', 'previewKind'].some(key => next.editing[key] !== previous.editing[key])) clipLoudnessEpoch.current++;
     viewRef.current = next; setView(next);
     if (currentProject.current && !application?.isRestoredWorkspace(workspaceRef.current)) {
       const frequent = ['viewport', 'playhead', 'pixelsPerSecond', 'scrollLeft', 'scrollTop', 'assetSearch'];
-      const immediate = section === 'activeMode' || Object.keys(value).some(key => !frequent.includes(key));
+      const immediate = section === 'activeMode' || Object.keys(value as Record<string, unknown>).some(key => !frequent.includes(key));
       preferencesRef.current.update(currentProject.current, next, { immediate, ...(!passive && workspaceRef.current?.restored ? pinNewWorkspaceIntent({}, workspaceRef.current) : {}) });
     }
   }, []);
-  const field = (section, key) => {
+  const field = (section: 'canvas' | 'editing' | 'shared', key: string) => {
     const owner = currentProject.current, ownerEpoch = projectEpoch.current;
-    return value => { if (owner === currentProject.current && ownerEpoch === projectEpoch.current) updateView(section, previous => ({ [key]: typeof value === 'function' ? value(previous[key]) : value })); };
+    return (value: unknown) => { if (owner === currentProject.current && ownerEpoch === projectEpoch.current) updateView(section, (previous: ViewState) => ({ [key]: typeof value === 'function' ? (value as (current: unknown) => unknown)((previous[section] as Record<string, unknown>)[key]) : value })); };
   };
   const { selectedId, selectedEdgeId, inspectorTab: tab, storyboardOpen: sequenceOpen, miniMap, highlightedVersionId } = view.canvas;
   const { selectedClipId, quickAssetId, previewKind, playhead, timelineCollapsed } = view.editing;
@@ -401,11 +579,11 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   const { assetsCollapsed, inspectorCollapsed } = geometry.effective;
   const markPanelIntent = () => { panelIntent.current++; setPanelChange(value => value + 1); };
   const layoutOwner = currentProject.current, layoutOwnerEpoch = projectEpoch.current;
-  function updateModeLayout(mode, patch) {
+  function updateModeLayout(mode: WorkspaceMode, patch: Record<string, unknown>) {
     if (layoutOwner !== currentProject.current || layoutOwnerEpoch !== projectEpoch.current) return;
-    updateView('layout', previous => ({ [mode]: { ...previous[mode], ...patch } }));
+    updateView('layout', (previous: ViewState) => ({ [mode]: { ...previous.layout[mode], ...patch } }));
   }
-  function setPanelOpen(name, open, mode = viewRef.current.activeMode) {
+  function setPanelOpen(name: string, open: boolean, mode: WorkspaceMode = viewRef.current.activeMode) {
     if (clipDraftRef.current?.hasPendingComposition() || layoutOwner !== currentProject.current || layoutOwnerEpoch !== projectEpoch.current) return;
     markPanelIntent(); setPanelOverlay(null);
     if (name === 'timeline') updateView('editing', { timelineCollapsed: !open });
@@ -423,36 +601,36 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     else updateView('editing', { timelineCollapsed: false });
     setMobilePanel('canvas');
   }
-  function resizePanel(field, value) { markPanelIntent(); updateModeLayout(workspaceMode, { [field]: value }); }
-  function togglePanelOverlay(name) { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setPanelOverlay(value => value === name ? null : name); }
+  function resizePanel(field: string, value: number) { markPanelIntent(); updateModeLayout(workspaceMode, { [field]: value }); }
+  function togglePanelOverlay(name: string) { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setPanelOverlay(value => value === name ? null : name); }
   useEffect(() => { setPanelOverlay(null); }, [workspaceMode, data.project?.id, geometry.compact, geometry.narrow]);
-  const panelVisible = name => name === panelOverlay || (name === 'canvas' ? !geometry.narrow || mobilePanel === 'canvas' : !(name === 'assets' ? assetsCollapsed : name === 'inspector' ? inspectorCollapsed : timelineCollapsed) && (!geometry.narrow || mobilePanel === name));
+  const panelVisible = (name: string): boolean => name === panelOverlay || (name === 'canvas' ? !geometry.narrow || mobilePanel === 'canvas' : !(name === 'assets' ? assetsCollapsed : name === 'inspector' ? inspectorCollapsed : timelineCollapsed) && (!geometry.narrow || mobilePanel === name));
   const timelineContainerVisible = panelVisible('timeline') || !geometry.narrow && timelineCollapsed;
   function toggleTimelinePanel() {
     if (workspaceMode !== 'editing' || viewRef.current.activeMode !== 'editing') return;
     setPanelOpen('timeline', Boolean(viewRef.current.editing.timelineCollapsed), 'editing');
   }
-  function mobileNavigate(name) { if (clipDraftRef.current?.hasPendingComposition()) return; if (name === 'canvas') { markPanelIntent(); setMobilePanel('canvas'); } else setPanelOpen(name, true); }
-  const panelFallback = name => geometry.narrow ? `[data-testid=mobile-panel-${name}]` : `[data-testid=reopen-${name}]`;
-  const resizeHandle = (name, field) => <PanelResizeHandle name={name} field={field} value={geometry.effective[field]} max={geometry.maxima[field]} scope={`${panelScope}:${geometry.size.width}:${geometry.size.height}`} enabled={!geometry.narrow && (name !== 'timeline' || !timelineCollapsed) && panelOverlay !== name && panelVisible(name) && !loading} onPreview={geometry.preview} onCommit={resizePanel} />;
+  function mobileNavigate(name: string) { if (clipDraftRef.current?.hasPendingComposition()) return; if (name === 'canvas') { markPanelIntent(); setMobilePanel('canvas'); } else setPanelOpen(name, true); }
+  const panelFallback = (name: string) => geometry.narrow ? `[data-testid=mobile-panel-${name}]` : `[data-testid=reopen-${name}]`;
+  const resizeHandle = (name: string, field: string) => <PanelResizeHandle name={name} field={field} value={geometry.effective[field]} max={geometry.maxima[field]} scope={`${panelScope}:${geometry.size.width}:${geometry.size.height}`} enabled={!geometry.narrow && (name !== 'timeline' || !timelineCollapsed) && panelOverlay !== name && panelVisible(name) && !loading} onPreview={geometry.preview} onCommit={resizePanel} />;
   const setSelectedId = field('canvas', 'selectedId'), setSelectedEdgeId = field('canvas', 'selectedEdgeId'), setTab = field('canvas', 'inspectorTab'), setSequenceOpen = field('canvas', 'storyboardOpen'), setMiniMap = field('canvas', 'miniMap');
   const setSelectedClipId = field('editing', 'selectedClipId'), setQuickAssetId = field('editing', 'quickAssetId'), setPreviewKind = field('editing', 'previewKind'), setPlayhead = field('editing', 'playhead'), setTimelineCollapsed = field('editing', 'timelineCollapsed');
   const setAssetFilter = field('shared', 'assetFilter'), setAssetSearch = field('shared', 'assetSearch');
-  const setAssetsCollapsed = value => setPanelOpen('assets', !value), setInspectorCollapsed = value => setPanelOpen('inspector', !value);
+  const setAssetsCollapsed = (value: boolean) => setPanelOpen('assets', !value), setInspectorCollapsed = (value: boolean) => setPanelOpen('inspector', !value);
   const generationReviewKey = `${workspaceMode}:${selectedId}:${tab}:${rightDockTab}:${propertiesPage}:${JSON.stringify(generationOptions)}`;
   if (generationReviewScope.current?.key !== generationReviewKey) generationReviewScope.current = { key: generationReviewKey };
-  const context = () => ({ projectId: currentProject.current, epoch: navigationEpoch.current, workspace: workspaceRef.current });
-  const isCurrent = captured => captured.projectId === currentProject.current && captured.epoch === navigationEpoch.current && workspaceOriginScope(captured.workspace) === workspaceOriginScope(workspaceRef.current);
+  const context = (): CapturedContext => ({ projectId: currentProject.current, epoch: navigationEpoch.current, workspace: workspaceRef.current });
+  const isCurrent = (captured: CapturedContext): boolean => captured.projectId === currentProject.current && captured.epoch === navigationEpoch.current && workspaceOriginScope(captured.workspace) === workspaceOriginScope(workspaceRef.current);
   taskWorkspaceState.current = { visible: workbenchReady && showTasks, connected: workbenchReady && online && auth === true && !loading };
   const taskViewScope = JSON.stringify([currentProject.current, projectEpoch.current, navigationEpoch.current, panelIntent.current, workspaceMode, showTasks, workspaceOriginScope(workspaceRef.current)]);
-  const isBusy = (key, projectId = currentProject.current) => busyRef.current.has(`${projectId || 'none'}:${key}`);
-  function markBusy(projectId, key, value) {
+  const isBusy = (key: string, projectId: string | null = currentProject.current) => busyRef.current.has(`${projectId || 'none'}:${key}`);
+  function markBusy(projectId: string | null, key: string, value: boolean) {
     const scope = projectId || 'none';
     editorInputs.current.changed();
     if (value) busyRef.current.add(`${scope}:${key}`); else busyRef.current.delete(`${scope}:${key}`);
     setBusyByProject(all => ({ ...all, [scope]: { ...all[scope], [key]: value } }));
   }
-  async function guardNavigation(message = msg('shell.confirm.switchWorkspace'), additionalDirty = false, canDiscard = () => true) {
+  async function guardNavigation(message: unknown = msg('shell.confirm.switchWorkspace'), additionalDirty = false, canDiscard: () => boolean = () => true): Promise<boolean> {
     if (clipDraftRef.current?.hasPendingComposition()) return false;
     if (nativeWindow && !editorWindowCanNavigate()) return false;
     if (nativeWindow) { const originalCanDiscard = canDiscard; canDiscard = () => originalCanDiscard() && editorWindowCanNavigate(); }
@@ -467,7 +645,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     if (dirtyRef.current || subtitleUnsaved || clipUnsaved || shotUnsaved) { subtitleController?.discardDraft(); subjectsRef.current?.controller.discardDrafts(subjectsRef.current.state?.scope); dirtyRef.current = false; setShotDirty(false); setClipDirty(false); setSourceDirty(false); setSubjectDirty(false); setSubtitleDirty(false); setInspectorEpoch(value => value + 1); }
     return true;
   }
-  async function guardProjectNavigation(message, additionalDirty = false, canLeaveSettings = () => true) {
+  async function guardProjectNavigation(message: unknown, additionalDirty = false, canLeaveSettings: () => boolean = () => true): Promise<boolean> {
     if (clipDraftRef.current?.hasPendingComposition()) return false;
     if (nativeWindow && !editorWindowCanNavigate()) return false;
     const retainedCurrent = () => !nativeWindow || editorWindowCanNavigate();
@@ -483,19 +661,19 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     controller?.discardDraft();
     return true;
   }
-  async function prepareSettingsDeparture() {
+  async function prepareSettingsDeparture(): Promise<unknown> {
     const captured = context(), lifetime = importSession.current.selection, ticket = settingsNavigation.current.capture();
     if (!settingsNavigation.current.canLeave(ticket)) { notify(msg('shell.settingsBusyRetained'), 'warning'); return null; }
     if (settingsNavigation.current.needsConfirmation(ticket) && !await confirm(msg('shell.confirm.leaveConnections'))) return null;
     return importSession.current.active && importSession.current.selection === lifetime && isCurrent(captured) && settingsNavigation.current.canLeave(ticket) ? ticket : null;
   }
-  function openGlobalSettings(page = 'general') {
+  function openGlobalSettings(page = 'general'): Promise<boolean> {
     if (restored && page !== 'general') { notify(msg('shell.restoredNoConnections'), 'warning'); return Promise.resolve(false); }
     if (nativeWindow) return nativeSettingsScope.open(page === 'general' ? 'agent' : page);
     webSettingsRequestRef.current?.resolve?.(false);
     return new Promise(resolve => { const request = { page, resolve }; webSettingsRequestRef.current = request; setWebSettingsRequest(request); });
   }
-  async function changeHomePage(page) {
+  async function changeHomePage(page: string): Promise<void> {
     if (loading || projectCreateFlight.current || isBusy('project-create') || !['projects', 'settings'].includes(page)) return;
     if (page === 'settings') { openGlobalSettings(); return; }
     if (page === homePage) return;
@@ -515,14 +693,14 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
       setProjectListStatus({ busy: false, error: readableError(error) });
     }
   }
-  async function changeMode(mode) {
+  async function changeMode(mode: WorkspaceMode): Promise<void> {
     if (application || !viewReady.current || loading || !['canvas', 'editing'].includes(mode) || mode === viewRef.current.activeMode) return;
     if (!await guardNavigation()) return;
     navigationEpoch.current++; dragging.current = false;
     updateView('activeMode', mode); setMobilePanel('canvas');
     setPreviewAsset(null); setComparisonId(null);
   }
-  function revealCanvas(id) {
+  function revealCanvas(id?: string | null): void {
     const captured = context();
     requestAnimationFrame(() => requestAnimationFrame(() => {
       if (isCurrent(captured) && viewRef.current.activeMode === 'canvas') flow.fitView({ ...(id ? { nodes: [{ id }] } : {}), padding: canvasFitPadding(.25), duration: 0, minZoom: .65, maxZoom: 1 });
@@ -532,9 +710,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   const requestCounter = useRef(0);
   const dragging = useRef(false);
   const flow = useReactFlow();
-  const notify = useCallback((message, type = 'success') => setToast({ message, type, time: Date.now() }), []);
+  const notify = useCallback((message: string, type: ToastTone = 'success') => setToast({ message, type, time: Date.now() }), []);
   useEffect(() => { if (toast && toast.type !== 'error') { const t = setTimeout(() => setToast(null), 5000); return () => clearTimeout(t); } }, [toast]);
-  const refresh = useCallback(async (projectId = currentProject.current, quiet = true, { opening = false } = {}) => {
+  const refresh = useCallback(async (projectId: string | null = currentProject.current, quiet = true, { opening = false }: {opening?: boolean} = {}) => {
     if (!projectId || currentProject.current !== projectId || !opening && !projectSessionReady()) return null;
     const call = ++requestCounter.current, epoch = projectEpoch.current, capturedWorkspace = workspaceRef.current;
     try {
@@ -556,7 +734,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
       return null;
     }
   }, [notify]);
-  async function revealImageAsset(assetId, projectId, isStillCurrent = () => true) {
+  async function revealImageAsset(assetId: string, projectId: string, isStillCurrent: () => boolean = () => true): Promise<boolean> {
     if (currentProject.current !== projectId || !isStillCurrent()) return false;
     const epoch = projectEpoch.current, navigation = navigationEpoch.current, panelChoice = panelIntent.current;
     const snapshot = dataRef.current.assets.some(asset => asset.id === assetId) ? dataRef.current : await refresh(projectId);
@@ -568,7 +746,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     updateView('shared', { assetSearch: asset.name, assetFilter: 'all' }); setPanelOpen('assets', true); setMobilePanel('assets');
     return true;
   }
-  async function selectProject(id, initial = false, fromHistory = false, reloadPreferences = false) {
+  async function selectProject(id: string, initial = false, fromHistory = false, reloadPreferences = false): Promise<boolean> {
     if (nativeWindow && id !== nativeWindow.context.initialProjectId) return nativeProjectEntry?.open(id) ?? false;
     const selection = context(), lifetime = importSession.current.selection, settingsTicket = await prepareSettingsDeparture();
     if (!settingsTicket || !importSession.current.active || importSession.current.selection !== lifetime || !isCurrent(selection)) return false;
@@ -630,7 +808,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
       if (importSession.current.active && currentProject.current === id && projectEpoch.current === epoch && workspaceOriginScope(workspaceRef.current) === attempt.workspaceScope) setLoading(false);
     }
   }
-  async function showProjectHome(fromHistory = false) {
+  async function showProjectHome(fromHistory = false): Promise<boolean> {
     if (nativeWindow) { await nativeProjectEntry?.show('open'); return false; }
     if (loading || projectCreateFlight.current || clipDraftRef.current?.hasPendingComposition()) return false;
     const captured = context(), lifetime = importSession.current.selection, ticket = await prepareSettingsDeparture();
@@ -650,7 +828,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     void refreshHomeProjects();
     return true;
   }
-  async function reloadPreferences() {
+  async function reloadPreferences(): Promise<void> {
     const captured = context();
     if (!await confirm(msg('shell.confirm.loadSavedView'))) return;
     if (isCurrent(captured)) await selectProject(captured.projectId, false, true, true);
@@ -668,7 +846,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
       () => volumeEnvelopeProbeEpoch.current === epoch && workspaceRef.current === workspace && !clipInspectorRetention.current.retained,
       publish);
   }, [workspace, online, auth]);
-  async function boot() {
+  async function boot(): Promise<void> {
     if (clipDraftRef.current?.hasPendingComposition() || clipDraftRef.current?.hasUnsaved()) return;
     const ticket = bootGuard.current.begin();
     preferenceScope.current = null;
@@ -757,11 +935,11 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     const onPop = async () => { if (nativeProjectLocation) { nativeProjectLocation.restore(); return; } const id = new URLSearchParams(window.location.search).get('project'); if (id === currentProject.current) return; const accepted = id ? await selectProject(id, false, true) : await showProjectHome(true); if (!accepted) { const url = new URL(window.location.href); url.searchParams.set('project', currentProject.current); window.history.pushState({ projectId: currentProject.current }, '', url); } };
     window.addEventListener('popstate', onPop); return () => window.removeEventListener('popstate', onPop);
   });
-  function readEditorWindowInputs(navigation = false) {
+  function readEditorWindowInputs(navigation = false): unknown {
     return editorInputs.current.read({ clip: clipDraftRef.current, shot: shotTextRef.current, delivery: localDeliveryRef.current?.controller,
       busy: busyRef.current, navigation, settings: exportSettingsRef.current, range: exportRangeRef.current, defaultSettings: TIMELINE_EXPORT_DEFAULT_SETTINGS });
   }
-  function editorWindowCanNavigate() {
+  function editorWindowCanNavigate(): boolean {
     const snapshot = readEditorWindowInputs(true);
     if (!snapshot.busy && !snapshot.unknown) return true;
     notify(msg('shell.pendingKeepWindow'), 'warning');
@@ -785,13 +963,13 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     document.addEventListener('visibilitychange', onVisible);
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
   }, [auth, workbenchReady, data.project?.id, refresh]);
-  async function run(key, operation, input, message, options = {}) {
+  async function run(key: string, operation: string, input: Record<string, unknown>, message?: unknown, options: RunOptions = {}): Promise<unknown> {
     if (clipConnectionBlocked.current) return null;
     const invocationOptions = { ...options, canRevealTasks: captureTaskWorkspaceIntent(readTaskRevealContext) || (() => false) };
     if (isDurableEditOperation(operation) && !options.replay) return runDurable(key, operation, input, message, invocationOptions);
     return runSession(key, operation, input, message, invocationOptions);
   }
-  async function runDurable(key, operation, input, message, { returnAfterNavigation = false, validateResponse, onFailure, errorMessage = readableError, canExecute, canRevealTasks = captureTaskWorkspaceIntent(readTaskRevealContext) || (() => false) } = {}) {
+  async function runDurable(key: string, operation: string, input: Record<string, unknown>, message?: unknown, { returnAfterNavigation = false, validateResponse, onFailure, errorMessage = readableError, canExecute, canRevealTasks = captureTaskWorkspaceIntent(readTaskRevealContext) || (() => false) }: RunOptions = {}): Promise<unknown> {
     if (clipConnectionBlocked.current) return null;
     const captured = context(), projectId = captured.projectId;
     if (isBusy(key, projectId)) return null;
@@ -848,7 +1026,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
       return null;
     } finally { markBusy(projectId, key, false); }
   }
-  async function recoverTask(task, acknowledgeOnly = false, canExecute = () => true) {
+  async function recoverTask(task: TaskItem, acknowledgeOnly = false, canExecute: () => boolean = () => true): Promise<unknown> {
     if (clipConnectionBlocked.current) return null;
     const captured = context(), loudnessRecoveryScope = task.operation === 'timeline.loudness.apply' ? readTimelineLoudnessRecoveryScope() : null;
     if (!canExecute()) return;
@@ -870,7 +1048,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     } catch (error) { if (isCurrent(captured)) { if (error.code === 'UNAUTHORIZED') setAuth(false); if (canExecute()) notify(readableError(error), 'error'); } }
     finally { markBusy(task.projectId, `task:${task.id}`, false); }
   }
-  async function adoptLegacyTask(entry) {
+  async function adoptLegacyTask(entry: PendingEntry): Promise<unknown> {
     if (clipConnectionBlocked.current) return null;
     const captured = context();
     if (entry.projectId !== captured.projectId || isBusy(entry.key, entry.projectId)) return;
@@ -889,7 +1067,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     } catch (error) { if (isCurrent(captured)) notify(readableError(error), 'error'); }
     finally { markBusy(entry.projectId, entry.key, false); }
   }
-  async function runSession(key, operation, input, message, { returnAfterNavigation = false, replay = false, validateResponse, onFailure, errorMessage = readableError, expectedSubjectReference, subjectRetry = false, expectedRetrySnapshot, pendingEntry, canRevealTasks = captureTaskWorkspaceIntent(readTaskRevealContext) || (() => false) } = {}) {
+  async function runSession(key: string, operation: string, input: Record<string, unknown>, message?: unknown, { returnAfterNavigation = false, replay = false, validateResponse, onFailure, errorMessage = readableError, expectedSubjectReference, subjectRetry = false, expectedRetrySnapshot, pendingEntry, canRevealTasks = captureTaskWorkspaceIntent(readTaskRevealContext) || (() => false) }: RunOptions = {}): Promise<unknown> {
     if (clipConnectionBlocked.current) return null;
     const captured = context(), projectId = captured.projectId;
     if (operation === 'job.retry' && dataRef.current.jobs?.length) subjectRetry = subjectRetry || isSubjectRetryPending({ projectId, key, operation, input }, dataRef.current.jobs);
@@ -984,7 +1162,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   // Picking a shot, node or clip means "show me its properties". The Tasks and Delivery pages are reference views
   // (Tasks even opens by itself after a generation), so they give way; Agent and Image keep following the selection.
   function leaveReferencePage() { setShowTasks(false); setShowDelivery(false); }
-  async function inspect(id, nextTab = 'settings', versionId = null, { reveal = false } = {}) {
+  async function inspect(id: string | null, nextTab = 'settings', versionId: string | null = null, { reveal = false }: {reveal?: boolean} = {}): Promise<boolean> {
     const captured = context(), panelChoice = panelIntent.current, timelineId = dataRef.current.timeline?.id, timelineRevision = dataRef.current.timeline?.revision;
     const canDiscard = () => isCurrent(captured) && panelChoice === panelIntent.current && timelineId === dataRef.current.timeline?.id && timelineRevision === dataRef.current.timeline?.revision && [...dataRef.current.shots, ...dataRef.current.nodes].some(record => record.id === id);
     if ((id !== selectedId || workspaceMode !== 'canvas') && !await guardNavigation(msg('shell.confirm.viewCanvasSource'), false, canDiscard)) return false;
@@ -997,7 +1175,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     if (reveal) { setPanelOpen('inspector', true, 'canvas'); if (geometry.narrow) setMobilePanel('inspector'); }
     return true;
   }
-  function checkGeneration(shot, provider, model, inputMode, frozen = false, subjectReference) {
+  function checkGeneration(shot: AppShot, provider: ProviderRecord | undefined, model: string | null | undefined, inputMode: string, frozen = false, subjectReference?: AppSubjectReference | null): boolean {
     if (generationUnavailableReason) { notify(generationUnavailableReason, 'warning'); return false; }
     if (!frozen && !workspaceRef.current?.restored && (!shotTextRef.current || shotTextRef.current.blocksLegacy(shot.id))) { notify(msg('shell.generationCheckText'), 'warning'); return false; }
     if (referenceWorkBlocked()) return false;
@@ -1006,7 +1184,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     if (dataRef.current.jobs.some(j => j.shotId === shot.id && j.status === 'submission_unknown')) { notify(msg('shell.generationBillingUnknown'), 'error'); openTasks(); return false; }
     return true;
   }
-  const submitGeneration = async ({ shot, providerId, model, scenario, inputMode, retryJobId, subjectReference, expectedRetrySnapshot }) => {
+  const submitGeneration = async ({ shot, providerId, model, scenario, inputMode, retryJobId, subjectReference, expectedRetrySnapshot }: GenerationReviewArgs): Promise<void> => {
     const canRevealTasks = captureTaskWorkspaceIntent(readTaskRevealContext) || (() => false);
     const provider = providers.find(item => item.id === providerId);
     if (!checkGeneration(shot, provider, model, inputMode, Boolean(retryJobId), subjectReference)) return;
@@ -1018,7 +1196,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     const result = await run(`generate:${shot.id}`, 'generation.submit', { shotId: shot.id, expectedRevision: shot.revision, requestId: requestId(), providerId, ...(model ? { model } : {}), ...(providerId === 'mock' ? { parameters: { scenario } } : {}), ...(subjectReference ? { subjectVersionId: subjectReference.subjectVersionId } : {}) }, undefined, subjectReference ? { expectedSubjectReference: subjectReference } : {});
     if (result) { notify(result.status === 'submission_unknown' ? msg('shell.generationUnconfirmed') : msg('shell.generationSubmitted'), result.status === 'submission_unknown' ? 'warning' : 'success'); openTasks(canRevealTasks); }
   };
-  function generate(shot, options = generationOptionsRef.current[shot.id] || {}) {
+  function generate(shot: AppShot, options: GenerationOptionState = generationOptionsRef.current[shot.id] || {}): void {
     const { provider, model, scenario, inputMode } = generationSelection(providers, options, shot);
     const subjectReference = inputMode === 'subject' ? options.subjectReference : undefined;
     const currentOptions = generationOptionsRef.current[shot.id] || {};
@@ -1028,7 +1206,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     const args = { shot, providerId: provider.id, model, scenario, inputMode, ...(subjectReference ? { subjectReference: structuredClone(subjectReference) } : {}) };
     if (!provider.mock) reviewGeneration(args); else submitGeneration(args);
   }
-  function retryGeneration(job, stillCurrent = () => true) {
+  function retryGeneration(job: AppJob, stillCurrent: () => boolean = () => true): void {
     if (!stillCurrent()) return;
     const provider = providers.find(item => item.id === job.providerId);
     const shot = { ...job.snapshot, id: job.shotId };
@@ -1037,7 +1215,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     const args = { shot, providerId: job.providerId, model: job.model, inputMode, retryJobId: job.id, ...(job.snapshot.subjectReference ? { expectedRetrySnapshot: structuredClone(job.snapshot) } : {}) };
     if (!provider.mock) reviewGeneration(args, stillCurrent); else submitGeneration(args);
   }
-  function reviewGeneration(args, taskViewGuard) {
+  function reviewGeneration(args: GenerationReviewArgs, taskViewGuard?: () => boolean): void {
     const frozen = Boolean(args.retryJobId);
     const referenceOptions = { frozen, subjectReference: args.subjectReference };
     const review = { ...structuredClone(args), ...(taskViewGuard ? { taskViewGuard } : {}), ...(args.subjectReference || args.shot.subjectReference ? { subjectProviderIdentity: subjectVideoProfileIdentity(providers.find(provider => provider.id === args.providerId), args.model) } : {}), approvalContext: context(), approvalView: generationReviewScope.current,
@@ -1046,7 +1224,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
       referenceAssets: structuredClone(dataRef.current.assets.filter(asset => generationReferences(args.shot, referenceOptions).references.some(reference => reference.assetId === asset.id))) };
     realConfirmRef.current = review; setRealConfirm(review);
   }
-  function confirmGeneration(args) {
+  function confirmGeneration(args: GenerationReviewArgs): void {
     if (realConfirmRef.current !== args) return;
     realConfirmRef.current = null; setRealConfirm(null);
     const frozen = Boolean(args.retryJobId);
@@ -1061,13 +1239,13 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     if (stale) { notify(msg('shell.generationInputsChanged'), 'warning'); return; }
     submitGeneration(args);
   }
-  async function createProject(name, description, timelinePresetId) {
+  async function createProject(name: string, description: string, timelinePresetId?: string): Promise<boolean> {
     if (application?.isRestoredWorkspace(workspaceRef.current)) return false;
     if (nativeWindow) { void nativeProjectEntry?.show('new'); return false; }
     if (projectCreateFlight.current) return false;
     if (nativeWindow && !editorInputs.current.canCreateProject()) { notify(msg('projects.previousCreateKeep'), 'warning'); return false; }
-    const flight = {}; projectCreateFlight.current = flight;
-    let nativeCreate = null;
+    const flight: Record<string, unknown> = {}; projectCreateFlight.current = flight;
+    let nativeCreate: unknown = null;
     const captured = context(), lifetime = importSession.current.selection;
     const alive = () => importSession.current.active && importSession.current.selection === lifetime;
     const current = () => alive() && isCurrent(captured);
@@ -1101,7 +1279,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
       if (alive()) markBusy(captured.projectId, 'project-create-flow', false);
     }
   }
-  async function addShot() {
+  async function addShot(): Promise<void> {
     if (!data.project) return setShowCreate(true);
     if (!await guardNavigation(msg('shell.confirm.createShot'))) return;
     const state = dataRef.current, count = state.shots.length;
@@ -1109,7 +1287,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     const shot = await run('shot-create', 'shot.create', { projectId: state.project.id, title: t('projects.default.shot', { number: String(count + 1).padStart(2, '0') }), prompt: '', duration: 2, aspectRatio: '9:16', referenceAssetIds: [], position });
     if (shot && await inspect(shot.id)) revealCanvas(shot.id);
   }
-  async function addStructure() {
+  async function addStructure(): Promise<void> {
     const owner = data.project?.id;
     if (!owner || owner !== currentProject.current || dataRef.current.project?.id !== owner || dataRef.current.shots.length || dataRef.current.nodes.length || isBusy('structure')) return;
     if (!await guardNavigation(msg('shell.confirm.createStructure'))) return;
@@ -1129,7 +1307,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
       if (isCurrent(captured) && next) { const first = next.shots.find(shot => shot.orderIndex === base); if (first && await inspect(first.id)) revealCanvas(); notify(msg('projects.structureReady')); }
     } catch (e) { if (isCurrent(captured)) notify(readableError(e), 'error'); await refresh(projectId); } finally { markBusy(projectId, 'structure', false); }
   }
-  async function addNode(type, asset, dropPosition) {
+  async function addNode(type: string, asset?: AppAsset, dropPosition?: {x: number; y: number}): Promise<void> {
     if (!data.project) return setShowCreate(true);
     if (!await guardNavigation(msg('shell.confirm.addCanvas'))) return;
     const state = dataRef.current;
@@ -1139,7 +1317,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     const node = await run('node-create', 'node.create', { projectId: state.project.id, type, label: type === 'text' ? t('projects.default.note') : asset.name, ...(type === 'text' ? { text: '' } : { assetId: asset.id }), position: chooseCanvasPosition([...state.shots, ...state.nodes], location) });
     if (node && await inspect(node.id)) revealCanvas(node.id);
   }
-  async function importFiles(files) {
+  async function importFiles(files?: FileList | File[]): Promise<void> {
     if (application?.isRestoredWorkspace(workspaceRef.current)) return;
     if (!importSession.current.active || !files?.length) return;
     const selection = ++importSession.current.selection;
@@ -1199,7 +1377,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
       }
     }
   }
-  function shotTextContext() {
+  function shotTextContext(): Record<string, unknown> {
     const projectId = currentProject.current;
     let legacyPending = true;
     try { legacyPending = pendingForProject(projectId, { workspace: workspaceRef.current, activeOnly: true }).some(entry => isMutationOperation(entry.operation) || REFERENCE_MUTATION_OPERATIONS.includes(entry.operation)); }
@@ -1212,18 +1390,18 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
       executionEpoch: `${navigationEpoch.current}:${panelIntent.current}`,
     };
   }
-  async function saveShot(shotId, expectedRevision, patch) {
+  async function saveShot(shotId: string, expectedRevision: number, patch: Record<string, unknown>): Promise<unknown> {
     if (referenceWorkBlocked()) return null;
     return run(`save:${shotId}`, 'shot.update', { shotId, expectedRevision, patch }, msg('projects.shotSaved'), { returnAfterNavigation: true });
   }
-  async function saveNode(nodeId, expectedRevision, patch) { return run(`save:${nodeId}`, 'node.update', { nodeId, expectedRevision, patch }, msg('projects.nodeSaved'), { returnAfterNavigation: true }); }
-  async function savePosition(_, node) {
+  async function saveNode(nodeId: string, expectedRevision: number, patch: Record<string, unknown>): Promise<unknown> { return run(`save:${nodeId}`, 'node.update', { nodeId, expectedRevision, patch }, msg('projects.nodeSaved'), { returnAfterNavigation: true }); }
+  async function savePosition(_: React.MouseEvent, node: FlowNode): Promise<void> {
     const snapshot = dataRef.current;
     const record = snapshot.shots.find(s => s.id === node.id) || snapshot.nodes.find(n => n.id === node.id);
     if (record) await run(`position:${node.id}`, snapshot.shots.some(s => s.id === node.id) ? 'shot.update' : 'node.update', { [snapshot.shots.some(s => s.id === node.id) ? 'shotId' : 'nodeId']: record.id, expectedRevision: record.revision, patch: { position: node.position } });
     dragging.current = false;
   }
-  function referenceWorkBlocked() {
+  function referenceWorkBlocked(): boolean {
     if (shotTextRef.current?.blocksLegacy()) { notify(msg('shell.shotTextPending'), 'warning'); return true; }
     if (tasksRef.current.blocked(currentProject.current, 'reference:mutation')) { notify(msg('shell.referenceRecoveryPending'), 'warning'); openTasks(); return true; }
     if (pendingForProject(currentProject.current, { workspace: workspaceRef.current, activeOnly: true }).some(entry => isMutationOperation(entry.operation))) { notify(msg('shell.projectEditPending'), 'warning'); openTasks(); return true; }
@@ -1231,7 +1409,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     if (hasPendingReference(pendingForProject(currentProject.current, { workspace: workspaceRef.current, activeOnly: true }))) { notify(msg('shell.referencePending'), 'warning'); openTasks(); return true; }
     return false;
   }
-  async function attachReference(sourceNodeId, targetShotId) {
+  async function attachReference(sourceNodeId: string, targetShotId: string): Promise<unknown> {
     if (referenceWorkBlocked()) return null;
     if (inspectorDirty) { notify(msg('shell.referenceSaveBeforeConnect'), 'warning'); return null; }
     const state = dataRef.current;
@@ -1241,7 +1419,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     if (issue) { notify(issue, 'warning'); return null; }
     return run('reference:mutation', 'reference.attach', { projectId: state.project.id, sourceNodeId, targetShotId, expectedSourceRevision: source.revision, expectedShotRevision: shot.revision, requestId: requestId(), role: 'first_frame' }, msg('shell.referenceConnected'));
   }
-  async function detachReference(edgeId) {
+  async function detachReference(edgeId: string): Promise<unknown> {
     if (referenceWorkBlocked()) return null;
     if (inspectorDirty) { notify(msg('shell.referenceSaveBeforeDisconnect'), 'warning'); return null; }
     const state = dataRef.current;
@@ -1252,7 +1430,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     if (currentProject.current !== state.project.id || referenceWorkBlocked()) return null;
     return run('reference:mutation', 'reference.detach', { projectId: state.project.id, edgeId, expectedShotRevision: shot.revision, requestId: requestId() }, msg('shell.referenceDisconnected'));
   }
-  async function connect(connection) {
+  async function connect(connection: {source: string; target: string; sourceHandle?: string | null; targetHandle?: string | null}): Promise<unknown> {
     if (connection.source === connection.target) return notify(msg('shell.differentNodes'), 'warning');
     if (connection.sourceHandle === REFERENCE_SOURCE_HANDLE || connection.targetHandle === REFERENCE_TARGET_HANDLE) {
       if (connection.sourceHandle !== REFERENCE_SOURCE_HANDLE || connection.targetHandle !== REFERENCE_TARGET_HANDLE) return notify(msg('shell.referencePortHint'), 'warning');
@@ -1260,33 +1438,33 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     }
     await run(`edge:${connection.source}:${connection.target}`, 'edge.create', { projectId: dataRef.current.project.id, source: connection.source, target: connection.target }, msg('shell.visualLinkAdded'));
   }
-  function beforeDeleteEdges({ edges: removed }) {
+  function beforeDeleteEdges({ edges: removed }: {nodes: FlowNode[]; edges: FlowEdge[]}): Promise<{nodes: FlowNode[]; edges: FlowEdge[]}> {
     const selected = removed.filter(edge => edge.id === selectedEdgeId);
     if (selected.some(edge => isReferenceEdge(dataRef.current.edges.find(item => item.id === edge.id)))) notify(msg('shell.referenceDisconnectHint'), 'warning');
     return Promise.resolve({ nodes: [], edges: selected.filter(edge => !isReferenceEdge(dataRef.current.edges.find(item => item.id === edge.id))) });
   }
-  async function selectVersion(shot, versionId) { return run(`version:${shot.id}`, 'version.select', { shotId: shot.id, versionId, expectedRevision: shot.revision }, msg('projects.versionUpdated')); }
-  async function reorder(id, targetIndex) {
+  async function selectVersion(shot: AppShot, versionId: string): Promise<unknown> { return run(`version:${shot.id}`, 'version.select', { shotId: shot.id, versionId, expectedRevision: shot.revision }, msg('projects.versionUpdated')); }
+  async function reorder(id: string, targetIndex: number): Promise<void> {
     const ordered = [...dataRef.current.shots].sort((a, b) => a.orderIndex - b.orderIndex); const from = ordered.findIndex(s => s.id === id);
     if (from < 0 || targetIndex < 0 || targetIndex >= ordered.length || from === targetIndex) return;
     ordered.splice(targetIndex, 0, ordered.splice(from, 1)[0]);
     await run('reorder', 'shot.reorder', { projectId: data.project.id, expectedRevision: dataRef.current.project.revision, shotIds: ordered.map(s => s.id) }, msg('projects.storyboardReordered'));
   }
-  function readTaskRevealContext() {
+  function readTaskRevealContext(): TaskRevealContext {
     return { active: importSession.current.active && projectSessionReady() && viewReady.current && taskWorkspaceState.current?.connected === true,
       projectId: currentProject.current || '', projectEpoch: projectEpoch.current, navigationEpoch: navigationEpoch.current,
       panelIntent: panelIntent.current, workspaceScope: workspaceOriginScope(workspaceRef.current) };
   }
-  function readTaskViewContext() {
+  function readTaskViewContext(): TaskViewContext {
     const current = readTaskRevealContext();
     return { ...current, active: current.active && taskWorkspaceState.current?.visible === true };
   }
-  function captureTaskView() { return captureTaskWorkspaceIntent(readTaskViewContext); }
-  function openTasks(canReveal = () => true) {
+  function captureTaskView(): unknown { return captureTaskWorkspaceIntent(readTaskViewContext); }
+  function openTasks(canReveal: () => boolean = () => true): boolean {
     if (clipDraftRef.current?.hasPendingComposition() || !canReveal() || !currentProject.current || !viewReady.current) return false;
     markPanelIntent(); setShowDelivery(false); setShowImage(false); setShowTasks(true); return true;
   }
-  function inspectTaskJob(job, stillCurrent) {
+  function inspectTaskJob(job: AppJob, stillCurrent: () => boolean): unknown {
     const attempt = ++taskShotAttempt.current;
     const target = { projectId: currentProject.current || '', jobId: job.id, shotId: job.shotId, tab: job.status === 'succeeded' ? 'versions' : 'settings' };
     return navigateTaskShot(target, {
@@ -1303,8 +1481,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
       },
     });
   }
-  function openExportHistory() { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setShowTasks(false); setShowImage(false); setShowExports(true); setShowDelivery(true); }
-  async function createExport() { const panelChoice = panelIntent.current, projectId = currentProject.current; const result = await run('export', 'export.create', { projectId: data.project.id, requestId: requestId() }); if (result) { if (panelChoice === panelIntent.current && projectId === currentProject.current) openExportHistory(); notify(msg('shell.storyboardExportCreated')); } }
+  function openExportHistory(): void { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setShowTasks(false); setShowImage(false); setShowExports(true); setShowDelivery(true); }
+  async function createExport(): Promise<void> { const panelChoice = panelIntent.current, projectId = currentProject.current; const result = await run('export', 'export.create', { projectId: data.project.id, requestId: requestId() }); if (result) { if (panelChoice === panelIntent.current && projectId === currentProject.current) openExportHistory(); notify(msg('shell.storyboardExportCreated')); } }
   const timeline = data.timeline;
   const timelinePending = taskState.phase !== 'ready' || activeTasks.some(task => task.lane === 'timeline:mutation') || activePending.some(entry => entry.operation.startsWith('timeline.') && entry.operation !== 'timeline.render');
   const timelineBusy = Boolean(busy['timeline:mutation'] || timelinePending);
@@ -1314,14 +1492,14 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   const nextTimelineUsage = useMemo(() => deriveTimelineAssetUsage({ projectId: data.project?.id || '', assets: data.assets, timeline, ready: assetUsageReady }), [data.project?.id, data.assets, timeline, assetUsageReady]);
   const timelineUsage = retainTimelineAssetUsage(assetUsageSnapshot.current, nextTimelineUsage);
   assetUsageSnapshot.current = timelineUsage;
-  function readAssetUsageNavigation() {
+  function readAssetUsageNavigation(): Record<string, unknown> {
     const projectId = currentProject.current || '', snapshot = dataRef.current;
     return { active: importSession.current.active && projectSessionReady() && viewReady.current, projectId, projectEpoch: projectEpoch.current,
       navigationEpoch: navigationEpoch.current, panelIntent: panelIntent.current, attempt: assetUsageAttempt.current, workspaceScope: workspaceOriginScope(workspaceRef.current),
       usage: deriveTimelineAssetUsage({ projectId, assets: snapshot.assets, timeline: snapshot.timeline,
         ready: assetUsageAvailability.current?.ready && snapshot.project?.id === projectId && !isBusy('timeline:mutation') }) };
   }
-  async function locateAssetUse(use, isStillVisible = () => true) {
+  async function locateAssetUse(use: unknown, isStillVisible: () => boolean = () => true): Promise<unknown> {
     assetUsageAttempt.current++;
     return locateTimelineAssetUse(use, { read: readAssetUsageNavigation, isVisible: isStillVisible,
       confirm: canDiscard => guardNavigation(msg('shell.confirm.locateClip'), false, canDiscard),
@@ -1336,14 +1514,14 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
           () => document.querySelector('[data-testid="timeline-scroll"]'), callback => requestAnimationFrame(callback));
       } });
   }
-  function timelineFormatContext() {
+  function timelineFormatContext(): Record<string, unknown> & {scope: string; projectId: string | null; connected: boolean; pending: boolean} {
     const projectId = currentProject.current, snapshot = dataRef.current;
     return { scope: `${projectId}:${projectEpoch.current}`, projectId: projectSessionReady() && snapshot.project?.id === projectId ? projectId : null,
       projectRevision: snapshot.project?.revision, timelineId: snapshot.timeline?.id || null, timelineRevision: snapshot.timeline?.revision || 0,
       connected: workbenchReady && online && auth === true && !loading,
       pending: !projectId || tasksRef.current.blocked(projectId) || pendingForProject(projectId, { workspace: workspaceRef.current, activeOnly: true }).some(entry => isMutationOperation(entry.operation) || entry.operation.startsWith('timeline.')) };
   }
-  async function saveTimelineFormat(intent) {
+  async function saveTimelineFormat(intent: TimelineFormatIntent): Promise<{status: string; timeline?: unknown; error?: unknown}> {
     const live = timelineFormatContext();
     if (intent.scope !== live.scope || intent.projectId !== live.projectId || !live.connected || live.pending || !isDurableEditOperation('timeline.format.set')) return { status: 'rejected' };
     let failure, acknowledged;
@@ -1362,16 +1540,16 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     onUnauthorized: () => setAuth(false) });
   timelineFormatRef.current = timelineFormat;
   useEffect(() => { setFormatDirty(Boolean(timelineFormat.state?.dirty || timelineFormat.state?.submitting)); }, [timelineFormat.state?.dirty, timelineFormat.state?.submitting]);
-  function openTimelineFormat() {
+  function openTimelineFormat(): void {
     setShowProjects(false); setPropertiesPage('format'); setRightDockTab('properties'); setPanelOpen('inspector', true);
   }
-  function subtitleContext() {
+  function subtitleContext(): Record<string, unknown> & {scope: string; projectId: string | null; timeline: AppTimeline | null; connected: boolean; pending: boolean; visible: boolean} {
     const projectId = currentProject.current, snapshot = dataRef.current;
     return { scope: `${projectId}:${projectEpoch.current}`, projectId: projectSessionReady() && snapshot.project?.id === projectId ? projectId : null, timeline: snapshot.timeline,
       connected: workbenchReady && online && auth === true && !loading, pending: !projectId || isBusy('timeline:mutation') || tasksRef.current.blocked(projectId, 'timeline:mutation') || pendingForProject(projectId, { workspace: workspaceRef.current, activeOnly: true }).some(entry => entry.operation.startsWith('timeline.') && entry.operation !== 'timeline.render'),
       visible: workbenchReady && workspaceMode === 'editing' && propertiesPage === 'subtitle' && rightDockTab === 'properties' && panelVisible('inspector') };
   }
-  async function saveSubtitle(intent) {
+  async function saveSubtitle(intent: SubtitleIntent): Promise<{status: string; timeline?: unknown; error?: unknown}> {
     const live = subtitleContext();
     if (intent.scope !== live.scope || intent.projectId !== live.projectId || intent.timelineId !== live.timeline?.id || intent.input.expectedRevision !== live.timeline?.revision || !live.connected || live.pending || !live.visible || !isDurableEditOperation(intent.operation)) return { status: 'rejected' };
     let failure, acknowledged;
@@ -1385,7 +1563,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   }
   const subtitles = useSubtitles({ ...subtitleContext(), getContext: subtitleContext, submit: saveSubtitle, createRequestId: requestId, onDirtyChange: setSubtitleDirty });
   subtitlesRef.current = subtitles;
-  async function openSubtitle(cueId, frame = viewRef.current.editing.playhead) {
+  async function openSubtitle(cueId: string | null, frame: number = viewRef.current.editing.playhead): Promise<void> {
     const captured = context(), panelChoice = panelIntent.current, controller = subtitlesRef.current?.controller, selected = controller?.getState();
     if (!controller || viewRef.current.activeMode !== 'editing' || loading) return;
     const sameSelection = selected.draft && (cueId ? selected.cueId === cueId : !selected.cueId && Number(selected.draft.startFrame) === frame);
@@ -1399,14 +1577,14 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     if (!sameSelection && !(cueId ? controller.select(cueId, selected.scope) : controller.begin(frame, selected.scope))) return;
     setPropertiesPage('subtitle'); setRightDockTab('properties'); setPanelOpen('inspector', true);
   }
-  function clipReplacementContext() {
+  function clipReplacementContext(): Record<string, unknown> {
     const state = dataRef.current, editing = viewRef.current.editing;
     return { scope: `${currentProject.current}:${projectEpoch.current}:${inspectorEpoch}`, projectId: projectSessionReady() && state.project?.id === currentProject.current ? currentProject.current : null,
       timeline: state.timeline, clipId: editing.selectedClipId, assets: state.assets, versions: state.versions, shots: state.shots,
       dirty: dirtyRef.current, busy: isBusy('timeline:mutation'), pending: tasksRef.current.blocked(currentProject.current, 'timeline:mutation') || pendingForProject(currentProject.current, { workspace: workspaceRef.current, activeOnly: true }).some(entry => entry.operation.startsWith('timeline.') && entry.operation !== 'timeline.render'),
       connected: workbenchReady && online && auth === true && !loading, visible: projectSessionReady() && viewRef.current.activeMode === 'editing' && !editing.quickAssetId };
   }
-  async function replaceTimelineClipSource(review) {
+  async function replaceTimelineClipSource(review: ClipReplacementReview): Promise<{status: string; timeline?: unknown; error?: unknown}> {
     // UI candidate metadata cannot authorize a mutation. Recheck the exact
     // reviewed owner, revision, content and draft against live App refs.
     const issue = clipReplacementReviewIssue(review, clipReplacementContext());
@@ -1421,12 +1599,12 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     const unresolved = tasksRef.current.blocked(review.projectId, 'timeline:mutation') || pendingForProject(review.projectId, { workspace: workspaceRef.current, activeOnly: true }).some(entry => entry.key === 'timeline:mutation');
     return { status: unresolved || (failure?.dispatched && !failure.rejected) ? 'unknown' : 'rejected', error: failure?.error };
   }
-  function exportSettingsContext() {
+  function exportSettingsContext(): Record<string, unknown> & {scope: string; enabled: boolean} {
     return { scope: `${currentProject.current}:${projectEpoch.current}`, enabled: Boolean(projectSessionReady() && dataRef.current.project?.id === currentProject.current && online && auth === true && !loading && !isBusy('timeline:render:export') && !pendingForProject(currentProject.current, { workspace: workspaceRef.current, activeOnly: true }).some(entry => entry.key === 'timeline:render:export')) };
   }
   const exportSettings = useExportSettings({ ...exportSettingsContext(), getContext: exportSettingsContext });
   exportSettingsRef.current = exportSettings.controller;
-  function exportRangeContext() {
+  function exportRangeContext(): Record<string, unknown> & {scope: string; enabled: boolean} {
     const base = exportSettingsContext(), local = localDeliveryRef.current?.controller.getState();
     return { ...base, enabled: base.enabled && showDelivery && !showExports && !(local?.scope === base.scope && (local.busy || local.pending)),
       projectId: projectSessionReady() && dataRef.current.project?.id === currentProject.current ? currentProject.current : null,
@@ -1435,10 +1613,10 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   }
   const exportRange = useExportRange({ ...exportRangeContext(), getContext: exportRangeContext });
   exportRangeRef.current = exportRange.controller;
-  function deliveryNameContext() { return { ...exportSettingsContext(), projectId: projectSessionReady() && dataRef.current.project?.id === currentProject.current ? currentProject.current : null }; }
+  function deliveryNameContext(): Record<string, unknown> & {projectId: string | null} { return { ...exportSettingsContext(), projectId: projectSessionReady() && dataRef.current.project?.id === currentProject.current ? currentProject.current : null }; }
   const deliveryName = useTimelineDeliveryName({ ...deliveryNameContext(), getContext: deliveryNameContext });
   deliveryNameRef.current = deliveryName;
-  function localDeliveryContext() {
+  function localDeliveryContext(): Record<string, unknown> & {scope: string} {
     const scope = `${currentProject.current}:${projectEpoch.current}`;
     return { scope, projectId: projectSessionReady() && dataRef.current.project?.id === currentProject.current ? currentProject.current : null,
       timelineId: dataRef.current.timeline?.id || null, timelineRevision: dataRef.current.timeline?.revision || null,
@@ -1454,7 +1632,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     onRestore: (draft, captured) => deliveryNameRef.current?.controller.choose(draft.raw.deliveryName, captured.scope, captured.nameVersion) === true,
     onAccepted: async ({ intent }) => { if (currentProject.current === intent.input.projectId) await refresh(intent.input.projectId); } });
   localDeliveryRef.current = localDelivery;
-  function exportCheckContext() {
+  function exportCheckContext(): Record<string, unknown> & {scope: string} {
     return { scope: `${currentProject.current}:${projectEpoch.current}`, projectId: projectSessionReady() && dataRef.current.project?.id === currentProject.current ? currentProject.current : null,
       timelineId: dataRef.current.timeline?.id, revision: dataRef.current.timeline?.revision, connected: workbenchReady && online && auth === true && !loading,
       exportSettings: exportSettings.controller.getSettings(`${currentProject.current}:${projectEpoch.current}`), settingsVersion: exportSettings.controller.getVersion(`${currentProject.current}:${projectEpoch.current}`),
@@ -1470,17 +1648,17 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   const pendingTimelineExport = activePending.some(entry => entry.key === 'timeline:render:export') || (!restored && localDelivery.state.pending);
   const [exportPreviewAttempt, setExportPreviewAttempt] = useState(null);
   const [sampleRangeDraft, setSampleRangeDraft] = useState(null);
-  function sampleExportContext() {
+  function sampleExportContext(): Record<string, unknown> & {scope: string} {
     const base = exportCheckContext(), draft = sampleRangeDraft?.scope === base.scope ? sampleRangeDraft : null;
     const range = draft && /^\d+$/.test(draft.startText) && /^\d+$/.test(draft.endText) ? { startFrame: Number(draft.startText), endFrame: Number(draft.endText) } : null;
     return { ...base, exportRange: isExportPreviewRange(range, dataRef.current.timeline?.durationFrames) ? range : null, rangeVersion: draft?.version || 0 };
   }
-  function sampleExportContextKey() { return exportPreviewContextKey({ ...sampleExportContext(), scope: `${exportCheckContext().scope}:${workspaceOriginScope(workspaceRef.current)}` }, dataRef.current.timeline, dataRef.current.assets); }
-  function chooseSampleExportRange(draft) {
+  function sampleExportContextKey(): string { return exportPreviewContextKey({ ...sampleExportContext(), scope: `${exportCheckContext().scope}:${workspaceOriginScope(workspaceRef.current)}` }, dataRef.current.timeline, dataRef.current.assets); }
+  function chooseSampleExportRange(draft: DraftRangeInput): void {
     if (!exportRangeContext().enabled || localDelivery.state.busy || pendingTimelineExport) return;
     setSampleRangeDraft(previous => ({ ...draft, scope: exportCheckContext().scope, version: (previous?.version || 0) + 1 }));
   }
-  function selectSampleExportRange() {
+  function selectSampleExportRange(): void {
     const range = suggestedExportPreviewRange(dataRef.current.timeline?.durationFrames, viewRef.current.editing.playhead, exportRange.value);
     if (range) chooseSampleExportRange({ startText: String(range.startFrame), endText: String(range.endFrame) });
   }
@@ -1488,7 +1666,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   const sampleExportPreflight = useExportPreflight({ ...sampleExportView, getContext: sampleExportContext, getInvocation: () => pinNewWorkspaceIntent({}, workspaceRef.current), visible: workbenchReady && showDelivery && !showExports,
     read: (input, options) => rpc('timeline.export.preflight', input, options),
     readCapabilities: (input, options) => rpc('timeline.export.capabilities', input, options), onUnauthorized: () => setAuth(false) });
-  function clipLoudnessContext() {
+  function clipLoudnessContext(): Record<string, unknown> {
     const saved = dataRef.current.timeline, workspaceScope = workspaceOriginScope(workspaceRef.current), editing = viewRef.current.editing;
     return { ...savedClipLoudnessFields(saved, dataRef.current.assets, editing.selectedClipId),
       scope: workspaceScope === null ? null : `${currentProject.current}:${projectEpoch.current}:${workspaceScope}`,
@@ -1501,7 +1679,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
       hasUnsavedDrafts: inspectorDirty || formatDirty || Boolean(clipDraftRef.current?.hasUnsaved() || clipDraftRef.current?.getState().candidate || subtitlesRef.current?.controller.hasUnsaved() || timelineFormatRef.current?.controller.hasUnsaved()),
       pending: timelineBusy || isBusy('timeline:mutation') };
   }
-  function timelineMixLoudnessContext() {
+  function timelineMixLoudnessContext(): Record<string, unknown> {
     const workspaceScope = workspaceOriginScope(workspaceRef.current), saved = dataRef.current.timeline;
     return { scope: workspaceScope === null ? null : `${currentProject.current}:${projectEpoch.current}:${workspaceScope}`,
       projectId: projectSessionReady() && dataRef.current.project?.id === currentProject.current ? currentProject.current : null,
@@ -1519,7 +1697,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     read: (input, options) => rpc('timeline.loudness.prepare', input, options), onUnauthorized: () => setAuth(false) });
   const nativePreviewPause = useRef(null), exportPreviewPause = useRef(null), comparisonPreviewPause = useRef(null);
   const registerComparisonPreviewPause = useCallback(pause => { comparisonPreviewPause.current = pause; return () => { if (comparisonPreviewPause.current === pause) comparisonPreviewPause.current = null; }; }, []);
-  function setComparisonId(id) {
+  function setComparisonId(id: string | null): void {
     if (id && (!projectSessionReady() || dataRef.current.project?.id !== currentProject.current ||
       dataRef.current.shots.filter(shot => shot.id === id && shot.projectId === currentProject.current).length !== 1)) return;
     clipLoudnessEpoch.current++;
@@ -1528,7 +1706,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     if (id) { audioPreview.controller.revoke(); nativePreviewPause.current?.(); exportPreviewPause.current?.(); }
     updateComparisonId(id);
   }
-  function comparisonContext() {
+  function comparisonContext(): Record<string, unknown> {
     const state = dataRef.current, workspaceScope = workspaceOriginScope(workspaceRef.current);
     return { scope: workspaceScope === null ? null : `${currentProject.current}:${projectEpoch.current}:${workspaceScope}`,
       projectId: currentProject.current, workspaceOrigin: workspaceScope,
@@ -1536,26 +1714,26 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
       visible: Boolean(comparisonIdRef.current && workbenchReady && !webSettingsOpen), restored: workspaceRef.current?.restored === true,
       shot: state.shots.find(shot => shot.id === comparisonIdRef.current) || null, versions: state.versions, assets: state.assets };
   }
-  function useComparedVersion(binding) {
+  function useComparedVersion(binding: ComparisonBinding): unknown {
     const current = comparisonContext();
     if (!comparisonCurrent(binding, current) || isBusy(`version:${binding.shotId}`)) return;
     return selectVersion(current.shot, binding.versionId);
   }
-  function beforeMainPreviewPlay() {
+  function beforeMainPreviewPlay(): void {
     if (comparisonIdRef.current) { nativePreviewPause.current?.(); return; }
     comparisonPreviewPause.current?.(); exportPreviewPause.current?.();
   }
-  function beforeExportPreviewPlay() {
+  function beforeExportPreviewPlay(): void {
     if (comparisonIdRef.current) { exportPreviewPause.current?.(); return; }
     comparisonPreviewPause.current?.(); audioPreview.controller.revoke(); nativePreviewPause.current?.();
   }
-  function beforeTimelineAudioPlay() {
+  function beforeTimelineAudioPlay(): void {
     if (comparisonIdRef.current) { audioPreview.controller.revoke(); return; }
     comparisonPreviewPause.current?.(); exportPreviewPause.current?.(); nativePreviewPause.current?.();
   }
   const registerExportPreviewPause = useCallback(pause => { exportPreviewPause.current = pause; return () => { if (exportPreviewPause.current === pause) exportPreviewPause.current = null; }; }, []);
   const registerNativePreviewPause = useCallback(pause => { nativePreviewPause.current = pause; return () => { if (nativePreviewPause.current === pause) nativePreviewPause.current = null; }; }, []);
-  function soundAuditionContext() {
+  function soundAuditionContext(): Record<string, unknown> {
     const workspaceScope = workspaceOriginScope(workspaceRef.current), saved = dataRef.current.timeline, editing = viewRef.current.editing;
     return { scope: workspaceScope === null ? null : `${currentProject.current}:${projectEpoch.current}:${workspaceScope}`,
       executionScope: `${navigationEpoch.current}:${viewRef.current.activeMode}:${editing.previewKind}:${editing.selectedClipId}:${editing.quickAssetId}`,
@@ -1571,7 +1749,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     readContinuousPlan: (input, options) => rpc('timeline.audioPreview.continuousPlan', input, options),
     getInvocation: () => pinNewWorkspaceIntent({}, workspaceRef.current), onUnauthorized: () => setAuth(false),
     onExplicitPosition: setPlayhead, onBeforePlay: beforeTimelineAudioPlay });
-  function readTimelineLoudnessRecoveryScope() {
+  function readTimelineLoudnessRecoveryScope(): unknown {
     return timelineLoudnessApplyRecoveryScope(lastProjectRef.current.getState().identityBlocked ? null : preferenceScope.current, workspaceOriginScope(workspaceRef.current));
   }
   const timelineLoudnessApply = useTimelineLoudnessApply({
@@ -1587,7 +1765,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   timelineLoudnessApplyRef.current = timelineLoudnessApply;
   const effectivePlayhead = timelineAudioPreviewPosition(audioPreview, playhead);
   const seekTimelineSound = frame => seekTimelineAudioPreview(audioPreview, frame, setPlayhead);
-  function exportSamplePeakContext() {
+  function exportSamplePeakContext(): Record<string, unknown> {
     const workspaceScope = workspaceOriginScope(workspaceRef.current);
     return { scope: workspaceScope === null ? null : `${currentProject.current}:${projectEpoch.current}:${workspaceScope}`,
       projectId: projectSessionReady() && dataRef.current.project?.id === currentProject.current ? currentProject.current : null,
@@ -1599,7 +1777,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   const exportSamplePeak = useExportSamplePeak({ context: exportSamplePeakContext(), getContext: exportSamplePeakContext,
     isRenderRecord: isTimelineRenderRecord, getInvocation: () => pinNewWorkspaceIntent({}, workspaceRef.current),
     read: (input, options) => rpc('timeline.export.samplePeak', input, options), onUnauthorized: () => setAuth(false) });
-  function checkTimelineExport(review) {
+  function checkTimelineExport(review?: Record<string, unknown> | null): unknown {
     const current = exportCheckContext();
     if (review && ['scope', 'projectId', 'timelineId', 'revision', 'settingsVersion', 'deliveryNameVersion', 'rangeVersion'].some(key => review[key] !== current[key])) return null;
     if (!workspaceRef.current?.restored && (localDeliveryRef.current?.controller.getState().baselineConflict || localDeliveryRef.current?.controller.getState().candidate)) return null;
@@ -1609,7 +1787,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   const exportLoudness = useExportLoudness({ context: exportSamplePeakContext(), getContext: exportSamplePeakContext,
     isRenderRecord: isTimelineRenderRecord, getInvocation: () => pinNewWorkspaceIntent({}, workspaceRef.current),
     read: (input, options) => rpc('timeline.export.loudness', input, options), onUnauthorized: () => setAuth(false) });
-  function openTimelineExport() {
+  function openTimelineExport(): void {
     if (clipDraftRef.current?.hasPendingComposition()) return;
     markPanelIntent(); setShowTasks(false); setShowImage(false); setShowExports(false); setShowDelivery(true);
     exportPreflight.controller.setVisible(true);
@@ -1617,7 +1795,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   }
   const historyState = timelineHistoryState({ projectId: data.project?.id, timeline, history: data.timelineHistory, busy: Boolean(busy['timeline:mutation']), pending: timelinePending, dirty: clipDirty || subtitleDirty, online: online && auth === true && !loading });
   const splitState = timelineSplitState({ projectId: data.project?.id, timeline, history: data.timelineHistory, busy: Boolean(busy['timeline:mutation']), pending: timelinePending, dirty: clipDirty || subtitleDirty, online: online && auth === true && !loading, selectedClipId: propertiesPage === 'subtitle' ? null : selectedClipId, playhead: effectivePlayhead, mode: workspaceMode });
-  async function splitTimelineClip() {
+  async function splitTimelineClip(): Promise<unknown> {
     if (application) return null;
     if (currentProject.current !== dataRef.current.project?.id) return null;
     const latest = timelineSplitState({ projectId: currentProject.current, timeline: dataRef.current.timeline, history: dataRef.current.timelineHistory, busy: isBusy('timeline:mutation'), pending: timelinePending, dirty: clipDirty || subtitleDirty, online: online && auth === true && !loading, selectedClipId: propertiesPage === 'subtitle' ? null : viewRef.current.editing.selectedClipId, playhead: timelineAudioPreviewPosition(audioPreview, viewRef.current.editing.playhead), mode: viewRef.current.activeMode });
@@ -1627,7 +1805,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     if (result) notify(msg('shell.clipSplit', { frame: latest.atFrame, left: latest.leftDuration, right: latest.rightDuration }));
     return result;
   }
-  function changeTimelineHistory(direction) {
+  function changeTimelineHistory(direction: string): unknown {
     if (workspaceMode !== 'editing' || !['undo', 'redo'].includes(direction) || currentProject.current !== dataRef.current.project?.id) return null;
     const latest = timelineHistoryState({ projectId: currentProject.current, timeline: dataRef.current.timeline, history: dataRef.current.timelineHistory, busy: isBusy('timeline:mutation'), pending: timelinePending, dirty: clipDirty || subtitleDirty, online: online && auth === true && !loading });
     if (!(direction === 'undo' ? latest.canUndo : latest.canRedo)) return null;
@@ -1649,14 +1827,14 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   });
-  async function mutateTimeline(operation, input = {}, expectedRevision, options) {
+  async function mutateTimeline(operation: string, input: Record<string, unknown> = {}, expectedRevision?: number, options?: RunOptions): Promise<unknown> {
     if (application?.isRestoredWorkspace(workspaceRef.current) && !['timeline.clip.update', 'timeline.undo', 'timeline.redo'].includes(operation)) return null;
     if (clipDraftRef.current?.hasPendingComposition()) return null;
     if (!dataRef.current.timeline) return null;
     if (tasksRef.current.blocked(currentProject.current, 'timeline:mutation') || timelinePending) { notify(msg('shell.timelinePending'), 'warning'); openTasks(); return null; }
     return run('timeline:mutation', operation, { projectId: currentProject.current, expectedRevision: expectedRevision ?? dataRef.current.timeline.revision, requestId: requestId(), ...input }, undefined, options);
   }
-  async function selectClip(id, showPreview = true) {
+  async function selectClip(id: string, showPreview = true): Promise<void> {
     if (clipDraftRef.current?.hasPendingComposition()) return;
     const captured = context(), panelChoice = panelIntent.current, timelineId = dataRef.current.timeline?.id, timelineRevision = dataRef.current.timeline?.revision;
     const canDiscard = () => isCurrent(captured) && panelChoice === panelIntent.current && timelineId === dataRef.current.timeline?.id && timelineRevision === dataRef.current.timeline?.revision && dataRef.current.timeline?.clips.some(clip => clip.id === id);
@@ -1671,7 +1849,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     updateView('editing', { selectedClipId: id, quickAssetId: null, playhead: clip.startFrame, ...(showPreview ? { previewKind: 'source' } : {}) });
     updateView('activeMode', 'editing'); setMobilePanel('canvas');
   }
-  async function addTimelineAsset(assetId, trackId, startFrame, dropSnapshot) {
+  async function addTimelineAsset(assetId: string, trackId?: string | null, startFrame?: number, dropSnapshot?: AssetDropSnapshot): Promise<void> {
     if (application?.isRestoredWorkspace(workspaceRef.current)) return;
     const panelChoice = panelIntent.current;
     if (dropSnapshot && dropSnapshot.projectId !== currentProject.current) return;
@@ -1697,7 +1875,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
       notify(msg('shell.clipAdded'));
     }
   }
-  async function returnToSource(assetId) {
+  async function returnToSource(assetId: string): Promise<void> {
     const source = sourceForAsset(dataRef.current, assetId); if (!source) return;
     if (application) return previewSource(source.asset);
     if (source.shot) { if (await inspect(source.shot.id, 'versions', source.version.id, { reveal: true })) revealCanvas(source.shot.id); }
@@ -1708,7 +1886,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
       updateView('shared', { assetSearch: source.asset.name, assetFilter: 'all' }); setPanelOpen('assets', true, 'canvas'); setMobilePanel('assets'); setPreviewAsset(source.asset);
     }
   }
-  async function moveTimelineClip(clipId, trackId, startFrame, dropSnapshot) {
+  async function moveTimelineClip(clipId: string, trackId: string, startFrame: number, dropSnapshot?: AssetDropSnapshot): Promise<void> {
     if (dropSnapshot && dropSnapshot.projectId !== currentProject.current) return;
     if (clipDirty && !await guardNavigation(msg('shell.confirm.moveClip'))) return;
     const clip = dataRef.current.timeline?.clips.find(c => c.id === clipId);
@@ -1719,8 +1897,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     const result = await mutateTimeline('timeline.clip.update', { clipId, patch: { trackId, startFrame } }, dropSnapshot?.expectedRevision);
     if (result) { setSelectedClipId(clipId); setPlayhead(startFrame); }
   }
-  function renderUncheckedTimeline(intent) { return renderTimeline('export', null, intent); }
-  async function renderTimeline(purpose, binding, uncheckedIntent, sample = false) {
+  function renderUncheckedTimeline(intent: unknown): Promise<void> { return renderTimeline('export', null, intent); }
+  async function renderTimeline(purpose: string, binding?: unknown, uncheckedIntent?: unknown, sample = false): Promise<void> {
     if (!dataRef.current.timeline?.clips.length) return;
     if (sample && (purpose !== 'export' || uncheckedIntent || dirtyRef.current || timelineFormatRef.current?.controller.hasUnsaved() || !isExportPreviewRange(sampleExportContext().exportRange, dataRef.current.timeline.durationFrames))) return;
     let exportInput;
@@ -1751,7 +1929,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     if (sample) setExportPreviewAttempt(previous => previous?.input.requestId === input.requestId ? { ...previous, submitting: false, ...(result && isTimelineRenderRecord(result, input) ? { exportId: result.id, receipt: result } : {}) } : previous);
     if (result) { const matchingDelivery = !deliveryCapture || deliveryNameRef.current?.controller.acknowledge(deliveryCapture, result); if (purpose === 'preview') { updateView('activeMode', 'editing'); setPreviewKind('timeline'); } else if (!sample && matchingDelivery && deliveryPanelChoice === panelIntent.current && deliveryProjectId === currentProject.current && deliveryRangeVersion === exportCheckContext().rangeVersion) { setDeliveryAttempt({ projectId: deliveryProjectId, id: result.id }); setShowExports(false); } notify(purpose === 'preview' ? msg('shell.previewRendering') : msg('shell.timelineExportStarted')); }
   }
-  async function previewSource(asset) {
+  async function previewSource(asset: AppAsset): Promise<void> {
     const owner = context();
     if (viewRef.current.activeMode === 'canvas') {
       const choice = panelIntent.current;
@@ -1769,7 +1947,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     setPropertiesPage('inspector');
     updateView('editing', { quickAssetId: asset.id, selectedClipId: null, previewKind: 'source' });
   }
-  async function addSavedSourceRange(snapshot) {
+  async function addSavedSourceRange(snapshot: SourceRangeSnapshot): Promise<void> {
     const captured = context(), panelChoice = panelIntent.current;
     if (!snapshot || snapshot.scope !== sourceRangeScope || snapshot.projectId !== captured.projectId || !sameSourceSnapshot(snapshot, sourceRanges.controller.snapshot())) return;
     const state = dataRef.current;
@@ -1783,7 +1961,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     if (panelIntent.current === panelChoice) setPanelOpen('timeline', true, 'editing');
     notify(msg('shell.savedRangeAdded'));
   }
-  function canvasDrop(event) {
+  function canvasDrop(event: React.DragEvent<HTMLDivElement>): void {
     const assetId = event.dataTransfer.getData(ASSET_DRAG);
     if (!assetId) return;
     event.preventDefault(); const asset = dataRef.current.assets.find(a => a.id === assetId);

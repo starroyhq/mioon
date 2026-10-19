@@ -34,7 +34,7 @@ function harness(t, dispatch) {
     rpc: async (operation, input) => { state.calls.push({ operation, input: structuredClone(input) }); return dispatch(operation, input, state); },
     refresh: async id => { state.refreshes.push(id); }, notify: (message, type) => state.notices.push({ message: renderCoreMessage('zh-Hans', message), type }),
     openTasks: (canReveal = () => true) => { if (canReveal()) state.jobs = true; }, setAuth: value => { state.auth = value; }, readableError: error => error.message,
-    requestCounter: { current: 0 }, dataRef: { current: { project: { id: 'project-a' }, shots: [{ id: 'shot-a', projectId: 'project-a' }], nodes: [] } }, setData: () => {},
+    requestCounter: { current: 0 }, clipConnectionBlocked: { current: false }, dataRef: { current: { project: { id: 'project-a' }, shots: [{ id: 'shot-a', projectId: 'project-a' }], nodes: [] } }, setData: () => {},
   };
   Object.assign(scope, { captureTaskWorkspaceIntent, readTaskRevealContext: () => { const captured = scope.context(); return { active: true, projectId: captured.projectId, projectEpoch: 0, navigationEpoch: captured.epoch || 0, panelIntent: 0, workspaceScope: JSON.stringify(captured.workspace || 'test-workspace') }; } });
   return { state, currentProject, busy, dataRef: scope.dataRef, run: compile(runSource, 'run', scope) };

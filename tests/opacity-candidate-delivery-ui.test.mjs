@@ -24,13 +24,13 @@ before(() => {
   const fixtures = {exported, preview, named, invalid, fakeUrl};
   const fixture = `import React from 'react';
     import {renderToStaticMarkup} from 'react-dom/server.browser';
-    import Preview from './src/Preview.jsx';
-    import ExportHistoryList from './src/ExportHistoryList.jsx';
+    import Preview from './src/Preview.tsx';
+    import ExportHistoryList from './src/ExportHistoryList.tsx';
     import ExportPreview from './src/ExportPreview.tsx';
     import {createOpacityCandidateApplication, readOpacityCandidateApplication} from './src/opacity-candidate-application.ts';
     import * as contracts from '@mioon/contracts';
-    import {rpc} from './src/api.js';
-    import {createEditTaskClient} from './src/edit-task-client.js';
+    import {rpc} from './src/api.ts';
+    import {createEditTaskClient} from './src/edit-task-client.ts';
     import {exportPreviewResult} from './src/export-preview-state.ts';
     const f = ${JSON.stringify(fixtures)}, projectId = ${JSON.stringify(projectId)};
     const token = createOpacityCandidateApplication({...contracts,rpc,createEditTaskClient}, () => {throw Error('presentation must not fetch');});

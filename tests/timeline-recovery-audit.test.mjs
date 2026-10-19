@@ -135,7 +135,7 @@ for (const direction of ['undo', 'redo']) {
     // Execute the real readableError; a new Error.message does not by itself
     // make the historical browser assertion obsolete.
     assert.equal(message, '保存冲突：内容已在其他窗口更新。已刷新最新状态，请检查后再保存');
-    const browser = readFileSync(new URL('../tests/browser_timeline_history.mjs', import.meta.url), 'utf8');
+    const browser = readFileSync(new URL('../tests/browser_timeline_history.ts', import.meta.url), 'utf8');
     assert.ok(browser.includes(`getByText('${message}',{exact:true})`));
   });
 

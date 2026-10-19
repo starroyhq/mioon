@@ -124,17 +124,17 @@ function renderer(filename, fixture, options = {}) {
     if (name === './native-close-sources.ts') return sources;
     if (name === './image-edit-intent.ts') return imageEditIntent;
     if (name === '@mioon/contracts') return contracts;
-    if (name === './agent-chat.js') return { ...chat, createAgentChatSession: input => session = chat.createAgentChatSession({ ...input, client: fixture.client, receipts: fixture.receipts, requestId: () => requestId }) };
-    if (name === './agent-edits.js') return { ...edits, createAgentEditsSession: input => session = edits.createAgentEditsSession({ ...input, client: fixture.client }) };
-    if (name === './image-generation.js') return { ...image, createImageGenerationSession: input => session = image.createImageGenerationSession({ ...input, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) };
-    if (name === './agent-tool-state.js') return toolState;
-    if (name === './agent-timeline-context.js') return timing;
-    if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
-    if (name === './image-settings.js') return { createImageSettingsClient: () => fixture.settingsClient };
-    if (name === './comfy-image-settings.js') return { ...comfySettings, createComfyImageSettingsClient: () => fixture.comfySettingsClient };
-    if (name === './AgentTimelineGain.tsx' || name === './ComfyImageDetails.jsx') return primitives;
-    if (['./AgentEditProposal.jsx', './AgentRunActivity.jsx', './ImageSettings.jsx', './ComfyImageSettings.jsx', './SettingsNavigationSlot.tsx', './icons.jsx'].includes(name)) return { __esModule: true, default: name };
-    if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.jsx') return primitives;
+    if (name === './agent-chat.ts') return { ...chat, createAgentChatSession: input => session = chat.createAgentChatSession({ ...input, client: fixture.client, receipts: fixture.receipts, requestId: () => requestId }) };
+    if (name === './agent-edits.ts') return { ...edits, createAgentEditsSession: input => session = edits.createAgentEditsSession({ ...input, client: fixture.client }) };
+    if (name === './image-generation.ts') return { ...image, createImageGenerationSession: input => session = image.createImageGenerationSession({ ...input, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) };
+    if (name === './agent-tool-state.ts') return toolState;
+    if (name === './agent-timeline-context.ts') return timing;
+    if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => visible };
+    if (name === './image-settings.ts') return { createImageSettingsClient: () => fixture.settingsClient };
+    if (name === './comfy-image-settings.ts') return { ...comfySettings, createComfyImageSettingsClient: () => fixture.comfySettingsClient };
+    if (name === './AgentTimelineGain.tsx' || name === './ComfyImageDetails.tsx') return primitives;
+    if (['./AgentEditProposal.tsx', './AgentRunActivity.tsx', './ImageSettings.tsx', './ComfyImageSettings.tsx', './SettingsNavigationSlot.tsx', './icons.tsx'].includes(name)) return { __esModule: true, default: name };
+    if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return primitives;
     if (name.endsWith('.css')) return {};
     throw Error(`Unexpected close test import: ${name}`);
   };
@@ -169,7 +169,7 @@ const safeMetadata = state => {
 // MIOON_NATIVE_CLOSE_COMPONENT_ROOT to baseline JSX makes it red, with no mocked
 // clean/dirty controller replacing the omission under test.
 test('actual Agent draft and held send report before React rerender; accepted stream is close-neutral', async () => {
-  const held = deferred(), f = chatFixture({ start: () => held.promise }), ui = renderer('AgentPanel.jsx', f);
+  const held = deferred(), f = chatFixture({ start: () => held.promise }), ui = renderer('AgentPanel.tsx', f);
   ui.render(); await flush(); ui.render(); safeMetadata(ui.state()); assert.equal(ui.state().busy, false);
   ui.edit('agent-chat-prompt', 'PRIVATE_DRAFT'); assert.equal(ui.state().dirty, true);
   const first = ui.state().version; ui.edit('agent-chat-prompt', 'PRIVATE_DRAFT_2'); assert.ok(ui.state().version > first);
@@ -187,8 +187,8 @@ test('actual Agent draft and held send report before React rerender; accepted st
 
 test('Agent unrecovered receipt stays blocked on initial failed read, and stopping blocks synchronously', async () => {
   const broken = chatFixture({ read: () => { throw Error('Offline'); } }); broken.receiptMap.set(projectId, { instanceId, requestId });
-  const ui = renderer('AgentPanel.jsx', broken); ui.render(); await flush(); assert.equal(ui.session.getState().pending, null); assert.equal(ui.state().blocked, true); ui.unmount();
-  const stop = deferred(), f = chatFixture({ read: () => chatSnapshot({ revision: 1, runs: [chatRun()] }), stop: () => stop.promise }), running = renderer('AgentPanel.jsx', f);
+  const ui = renderer('AgentPanel.tsx', broken); ui.render(); await flush(); assert.equal(ui.session.getState().pending, null); assert.equal(ui.state().blocked, true); ui.unmount();
+  const stop = deferred(), f = chatFixture({ read: () => chatSnapshot({ revision: 1, runs: [chatRun()] }), stop: () => stop.promise }), running = renderer('AgentPanel.tsx', f);
   running.render(); await flush(); running.render(); assert.equal(running.state().blocked, false); running.click('agent-chat-stop'); assert.equal(running.state().busy, true);
   stop.resolve(envelope(chatRun({ status: 'stopped' }), 2)); await flush(); assert.equal(running.state().busy, false); running.unmount();
 });
@@ -198,13 +198,13 @@ test('hidden Image constructor immediately reports restored generation/remote in
   const observation = { version: 1, operation: 'image.task.observeRemote', input: { projectId, taskId, expectedRevision: 1, requestId } };
   for (const [key, value] of [[`mioon.image-intent.v1:${projectId}`, generation], [`mioon.comfy-observation.v1:${projectId}`, observation], [`mioon.image-intent.v1:${projectId}`, 'corrupt']]) {
     const storage = memory(); storage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
-    const f = imageFixture({ storage }), ui = renderer('ImageGeneration.jsx', f, { visible: false }); ui.render();
+    const f = imageFixture({ storage }), ui = renderer('ImageGeneration.tsx', f, { visible: false }); ui.render();
     safeMetadata(ui.state()); assert.equal(ui.state().blocked, true); assert.equal(f.calls.length, 0); assert.equal(storage.map.has(key), true); ui.unmount();
   }
 });
 
 test('actual Image edits report synchronously and accepted durable generation never requires cancellation', async () => {
-  const held = deferred(), f = imageFixture({ api: operation => operation === 'image.generate' ? held.promise : undefined }), ui = renderer('ImageGeneration.jsx', f);
+  const held = deferred(), f = imageFixture({ api: operation => operation === 'image.generate' ? held.promise : undefined }), ui = renderer('ImageGeneration.tsx', f);
   ui.render(); await flush(); ui.render(); ui.edit('image-generation-name', 'PRIVATE_NAME'); ui.edit('image-generation-prompt', 'PRIVATE_PROMPT'); assert.equal(ui.state().dirty, true);
   const before = ui.state().version; ui.edit('image-generation-prompt', 'PRIVATE_PROMPT_2'); assert.ok(ui.state().version > before); ui.render();
   ui.form().props.onSubmit({ preventDefault() {} }); assert.equal(ui.state().busy, true); assert.equal(ui.state().blocked, true);
@@ -215,7 +215,7 @@ test('actual Image edits report synchronously and accepted durable generation ne
 });
 
 test('actual Image lost rejection ACK remains blocked until an exact readonly rejected review is read', async () => {
-  const saved = review(), f = imageFixture({ reviews: [saved] }), ui = renderer('ImageGeneration.jsx', f);
+  const saved = review(), f = imageFixture({ reviews: [saved] }), ui = renderer('ImageGeneration.tsx', f);
   ui.render(); await flush(); ui.render(); ui.click('image-review-reject'); assert.equal(ui.state().busy, true); assert.equal(ui.state().blocked, true);
   await flush(); await turn(); assert.equal(ui.state().busy, false); assert.equal(ui.state().blocked, true); assert.equal(ui.session.getState().pending, null);
   f.data.reviews = []; await ui.session.load(); assert.equal(ui.state().blocked, true);
@@ -228,7 +228,7 @@ test('actual Agent proposal mutation and uncertainty are independent of chat sou
   const held = deferred(), proposal = { id: proposalId, projectId, runId, digest: 'c'.repeat(64), status: 'pending', runStatus: 'completed', operation: 'shot.update', target: { projectId, shotId, expectedRevision: 1 }, patch: { title: 'After' }, diff: { before: { title: 'Before', prompt: '' }, after: { title: 'After', prompt: '' } }, provenance: { runId, toolCallId: 'call', toolName: 'mioon_propose_shot_update' }, createdAt: at, updatedAt: at };
   let current = proposal, writes = 0;
   const client = { list: async () => ({ instanceId, projectId, proposals: [current], nextCursor: null }), get: async () => ({ instanceId, projectId, proposal: current }), act: () => { writes++; return held.promise; } };
-  const ui = renderer('AgentEditProposal.jsx', { client }); ui.render(); await flush(); ui.render(); assert.equal(ui.state().slot, 'agent-edits'); assert.equal(ui.state().blocked, false);
+  const ui = renderer('AgentEditProposal.tsx', { client }); ui.render(); await flush(); ui.render(); assert.equal(ui.state().slot, 'agent-edits'); assert.equal(ui.state().blocked, false);
   ui.click('agent-edit-approve'); assert.equal(ui.state().busy, true); assert.equal(ui.state().blocked, true);
   held.reject(Error('Unknown')); await flush(); assert.equal(ui.state().busy, false); assert.equal(ui.state().blocked, true);
   current = { ...proposal, status: 'applied', approval: { requestId, approvedAt: at }, outcome: { status: 'applied', shotId, revision: 2 } };
@@ -236,8 +236,8 @@ test('actual Agent proposal mutation and uncertainty are independent of chat sou
 });
 
 test('replaced source owner cannot be released or updated by stale callback', async () => {
-  const registry = createNativeCloseRegistry(), held = deferred(), old = renderer('AgentPanel.jsx', chatFixture({ read: () => held.promise }), { registry }); old.render();
-  const fresh = renderer('AgentPanel.jsx', chatFixture(), { registry }); fresh.render(); await flush(); fresh.render(); fresh.edit('agent-chat-prompt', 'PRIVATE_FRESH');
+  const registry = createNativeCloseRegistry(), held = deferred(), old = renderer('AgentPanel.tsx', chatFixture({ read: () => held.promise }), { registry }); old.render();
+  const fresh = renderer('AgentPanel.tsx', chatFixture(), { registry }); fresh.render(); await flush(); fresh.render(); fresh.edit('agent-chat-prompt', 'PRIVATE_FRESH');
   const capture = registry.capture(); old.unmount(); held.resolve(chatSnapshot()); await flush(); assert.equal(registry.isCurrent(capture), true); assert.equal(fresh.state().dirty, true); fresh.unmount();
 });
 
@@ -310,7 +310,7 @@ test('disposed hash/reconciliation completions cannot publish or reset a replace
 
 test('readonly concurrent approval/dispatched proof resolves lost rejection without cancelling durable work', async () => {
   for (const status of ['approved', 'dispatched']) {
-    const saved = review(), f = imageFixture({ reviews: [saved] }), ui = renderer('ImageGeneration.jsx', f);
+    const saved = review(), f = imageFixture({ reviews: [saved] }), ui = renderer('ImageGeneration.tsx', f);
     ui.render(); await flush(); ui.render(); ui.click('image-review-reject'); await flush(); assert.equal(ui.state().blocked, true);
     f.data.reviews = [review({ state: status, revision: status === 'approved' ? 2 : 3, taskId, approvedAt: at, ...(status === 'dispatched' ? { dispatchedAt: at, postAttempts: 1 } : {}) })];
     await ui.session.load(); await ui.waitForState(() => !ui.state().blocked);

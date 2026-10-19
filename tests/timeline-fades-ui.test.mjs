@@ -69,8 +69,8 @@ async function inspectorHarness(patch = {}, lutRpc = async () => { throw Error('
       if (id === './ClipRemovalControls.tsx') return load('ClipRemovalControls.tsx');
       if (id === './workbench-modal-state.ts') return {hasOpenWorkbenchModal};
       if (id === '../../../packages/i18n/src/index.ts') return i18nCore;
-      if (id === './clip-audio-state.js') return audio;
-      if (id === './timeline-format-state.js') return timelineFormat;
+      if (id === './clip-audio-state.ts') return audio;
+      if (id === './timeline-format-state.ts') return timelineFormat;
       if (id === './clip-draft-state.ts') return clipDraft;
       if (id === './clip-audio-role-state.ts') return roleState;
       if (id === './clip-volume-envelope-state.ts') return envelopeState;
@@ -80,22 +80,22 @@ async function inspectorHarness(patch = {}, lutRpc = async () => { throw Error('
       if (id === './ClipAudioRoleControls.tsx') return load('ClipAudioRoleControls.tsx');
       if (id === './clip-lut-state.ts') return { ...clipLut, createClipLutController: options => clipLut.createClipLutController({ ...options, recovery: createClipLutRecovery({ storage: () => ({ getItem: () => null, setItem() {}, removeItem() {} }), lock: async (_name, action) => action() }) }) };
       if (id === './ClipLutControls.tsx') return load('ClipLutControls.tsx');
-      if (id === './api.js') return { rpc: lutRpc };
+      if (id === './api.ts') return { rpc: lutRpc };
       if (id === './clip-draft-client.ts') return { createClipDraftClient: () => client };
       if (id === './clip-draft-hook.ts') return load('clip-draft-hook.ts');
       if (id === './ClipDraftRecovery.tsx') return load('ClipDraftRecovery.tsx');
       if (id === './RecoveryStorageDetails.tsx') return load('RecoveryStorageDetails.tsx');
-      if (id === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => true };
-      if (id === './ClipAudioControls.jsx') return load('ClipAudioControls.jsx');
-      if (id === './Timeline.jsx') return { assetKind: value => value?.mimeType?.split('/')[0] || 'image', framesLabel: String };
+      if (id === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => true };
+      if (id === './ClipAudioControls.tsx') return load('ClipAudioControls.tsx');
+      if (id === './Timeline.tsx') return { assetKind: value => value?.mimeType?.split('/')[0] || 'image', framesLabel: String };
       if (id === '@mioon/contracts') return { sourceFrameCount: duration => Math.floor(duration * 30), isTimelineRecord };
       if (id === '@mioon/ui/components/workbench-confirm') return { useConfirmation: () => async () => true };
-      if (id === './icons.jsx') return { default: 'Icon', __esModule: true };
+      if (id === './icons.tsx') return { default: 'Icon', __esModule: true };
       return primitive;
     }, module, module.exports);
     modules.set(filename, module.exports); return module.exports;
   }
-  const component = load('TimelineInspector.jsx').default;
+  const component = load('TimelineInspector.tsx').default;
   const flush = queue => { for (const i of queue) { slots[i].cleanup?.(); slots[i].cleanup = slots[i].callback(); } };
   const h = {
     dirtyEvents, saves,

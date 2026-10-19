@@ -2,6 +2,7 @@ import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { evaluateSource } from './helpers/eval-source.mjs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,7 +26,7 @@ function section(source, start, end) {
   assert.equal(source.indexOf(start, a + start.length), -1, `Ambiguous source seam: ${start}`);
   return source.slice(a, b);
 }
-const compile = (source, name, env) => Function(...Object.keys(env), `${source}\nreturn ${name};`)(...Object.values(env));
+const compile = (source, name, env) => evaluateSource(`${source}\nreturn ${name};`, Object.keys(env), Object.values(env), {loader: 'tsx'});
 const modesMarkup = section(app, '<Tabs value={workspaceMode} onValueChange={changeMode}', '<details className="topbar-status"');
 const homeBoundary = section(app, '  if (!workbenchReady) return <ProjectHome ', '  return <main className={`workbench');
 const refreshSource = section(app, '  const refresh = useCallback(', '  async function revealImageAsset(');

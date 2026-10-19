@@ -107,7 +107,7 @@ test('history controls render shared Base UI buttons with disabled states, label
   const fixtureSource = `
     import React from 'react';
     import { renderToStaticMarkup } from 'react-dom/server.browser';
-    import TimelineHistoryControls from './src/TimelineHistoryControls.jsx';
+    import TimelineHistoryControls from './src/TimelineHistoryControls.tsx';
     export const ready = renderToStaticMarkup(<TimelineHistoryControls state={${JSON.stringify(timelineHistoryState(fixture()))}} onHistory={() => {}} />);
     export const pending = renderToStaticMarkup(<TimelineHistoryControls state={${JSON.stringify(timelineHistoryState({ ...fixture(), pending: true }))}} busy onHistory={() => {}} />);
   `;

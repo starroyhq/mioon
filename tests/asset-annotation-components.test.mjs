@@ -88,16 +88,16 @@ test('actual AssetLibrary composes saved tag, type, name, disposition and unused
     if (name === 'react') return react;
     if (name.includes('I18nProvider')) return { useI18n: () => ({ t: (key, params) => translate('en', key, params), renderMessage: value => renderMessage('en', value), formatNumber: value => String(value) }) };
     if (name === './asset-annotation-state.ts') return annotationState;
-    if (name === './asset-disposition-state.js') return dispositions;
-    if (name === './AssetDispositionControls.jsx') return { __esModule: true, default: 'disposition', useDispositionInteraction: () => ({ visible: true, admit: action => action() }) };
+    if (name === './asset-disposition-state.ts') return dispositions;
+    if (name === './AssetDispositionControls.tsx') return { __esModule: true, default: 'disposition', useDispositionInteraction: () => ({ visible: true, admit: action => action() }) };
     if (name === './AssetTimelineUsage.tsx') return { __esModule: true, default: 'usage', AssetTimelineUsageFilters: 'usage-filter', useAssetTimelineUsageFilter: input => { captured = input.assets; return { visibleAssets: input.assets.filter(asset => asset.id !== 'used'), filter: 'unused', reset() {}, choose() {} }; } };
     // Layout owns presentation only; keep the real annotation/disposition
     // filters and their input to the usage filter under test below.
     if (name === './AssetLibraryToolbar.tsx') return { __esModule: true, default: 'asset-library-toolbar', useAssetLibraryLayout: scope => { assert.equal(scope, projectId); return { layout: 'grid', setLayout() {} }; } };
-    if (name === './Timeline.jsx') return { assetKind: () => 'image', dragAsset() {} };
+    if (name === './Timeline.tsx') return { assetKind: () => 'image', dragAsset() {} };
     if (name === './AssetAnnotations.tsx') return { __esModule: true, default: 'annotations-editor' };
     if (name.endsWith('.css')) return {};
-    if (name.startsWith('@mioon/') || ['./WorkspaceControls.jsx', './workspace-visibility.jsx', './Nodes.jsx'].includes(name)) return primitives;
+    if (name.startsWith('@mioon/') || ['./WorkspaceControls.tsx', './workspace-visibility.tsx', './Nodes.tsx'].includes(name)) return primitives;
     return { __esModule: true, default: name };
   });
   const tree = module.exports.default({ assets, filter: 'image', search: 'needle', project: { id: projectId }, busy: {}, dispositions: { state, controller: {} }, annotations, selectedAsset: assets[1], timelineUsage: {}, onFilter() {}, onSearch() {} });

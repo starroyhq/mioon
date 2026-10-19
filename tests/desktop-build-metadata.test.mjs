@@ -4,8 +4,8 @@ import { createRequire } from 'node:module';
 import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm, unlink, realpath, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import desktopBuildMetadata from '../apps/desktop/build-metadata.cjs';
-import desktopIdentity from '../apps/desktop/identity.cjs';
+import desktopBuildMetadata from '../apps/desktop/build-metadata.ts';
+import desktopIdentity from '../apps/desktop/identity.ts';
 
 const { readBuildMetadata, validateBuildMetadata, validateStagedMetadata } = desktopBuildMetadata;
 const { identityForChannel } = desktopIdentity;

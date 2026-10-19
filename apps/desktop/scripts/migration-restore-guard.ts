@@ -6,30 +6,44 @@
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {constants,lstatSync,realpathSync,openSync,closeSync,fstatSync,readSync,writeSync,fsyncSync} from 'node:fs';
+import type {Stats} from 'node:fs';
 import {setImmediate as yieldIO} from 'node:timers/promises';
 import {DatabaseSync} from 'node:sqlite';
 import {assertStoragePrivacyAvailable,createPrivateTemporaryDirectory,validatePrivateDirectory} from '@mioon/contracts/private-storage';
 import {detectCurrentWorkspaceRestoreEvidence,validateCurrentWorkspaceColourProfile} from '@mioon/business/db';
 import {sameFile,sameNode,inspectFile,removeOwnedFile,removeOwnedDirectory} from '@mioon/business/workspace-backup-storage';
 
-const refuse=()=>Object.assign(new Error('Restored working branches cannot use legacy migration. Keep the original backup and use the dedicated restore workflow with a new destination.'),{code:'RESTORE_MIGRATION_UNAVAILABLE'});
-const changed=()=>Object.assign(new Error('The source database changed while checking migration eligibility.'),{code:'MIGRATION_SOURCE_CHANGED'});
-function cold(file){
+interface MigrationError extends Error { code: string }
+/** POSIX-only script: privacy checks below have already established this platform. */
+const currentUid = (): number => process.getuid!();
+function errorCode(error: unknown): string | undefined {
+  return error !== null && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : undefined;
+}
+const refuse=(): MigrationError => Object.assign(new Error('Restored working branches cannot use legacy migration. Keep the original backup and use the dedicated restore workflow with a new destination.'),{code:'RESTORE_MIGRATION_UNAVAILABLE'});
+const changed=(): MigrationError => Object.assign(new Error('The source database changed while checking migration eligibility.'),{code:'MIGRATION_SOURCE_CHANGED'});
+function cold(file: string): void {
  for(const target of [path.join(path.dirname(file),'server.lock'),file+'-wal',file+'-journal']){
-  let info;try{info=lstatSync(target);}catch(error){if(error.code==='ENOENT')continue;throw error;}
+  let info: Stats;try{info=lstatSync(target);}catch(error){if(errorCode(error)==='ENOENT')continue;throw error;}
   if(target.endsWith('server.lock')||!info.isFile()||info.isSymbolicLink()||info.size)throw changed();
  }
 }
-function sourceFile(file){
+function sourceFile(file: string): Stats {
  const info=lstatSync(file);
- if(!info.isFile()||info.isSymbolicLink()||info.uid!==process.getuid()||info.nlink!==1||(info.mode&0o022)||!Number.isSafeInteger(info.size)||info.size<16)throw changed();
+ if(!info.isFile()||info.isSymbolicLink()||info.uid!==currentUid()||info.nlink!==1||(info.mode&0o022)||!Number.isSafeInteger(info.size)||info.size<16)throw changed();
  return info;
 }
-export async function withOrdinaryMigrationSource(file,consume){
+export interface MigrationSourceCheck {
+ readonly file: string;
+ check(): void;
+}
+export async function withOrdinaryMigrationSource<T>(file: string, consume: (checked: MigrationSourceCheck) => Promise<T>): Promise<T> {
  assertStoragePrivacyAvailable();
  cold(file);
  const before=sourceFile(file),directory=createPrivateTemporaryDirectory(realpathSync(tmpdir()),'mioon-migration-profile-'),directoryIdentity=validatePrivateDirectory(directory);
- const candidate=path.join(directory,'profile.sqlite');let input,output,db,created,error,result;const owned=new Map();
+ if(!directoryIdentity)throw changed();
+ const candidate=path.join(directory,'profile.sqlite');
+ let input: number | undefined,output: number | undefined,db: DatabaseSync | undefined,created: Stats | undefined,error: unknown,outcome: {value: T} | undefined;
+ const owned=new Map<string, Stats>();
  try{
   input=openSync(file,constants.O_RDONLY|constants.O_NOFOLLOW|(constants.O_NONBLOCK||0));
   if(!sameFile(before,fstatSync(input)))throw changed();
@@ -42,7 +56,7 @@ export async function withOrdinaryMigrationSource(file,consume){
   }
   if(!sameFile(before,fstatSync(input))||!sameFile(before,sourceFile(file)))throw changed();
   fsyncSync(output);closeSync(output);output=undefined;closeSync(input);input=undefined;
-  const ready=inspectFile(candidate,directory,{private:true,maxBytes:before.size});if(!sameNode(created,ready)||ready.size!==before.size)throw changed();owned.set(candidate,ready);
+  const ready=inspectFile(candidate,directory,{private:true,maxBytes:before.size});if(!ready||!sameNode(created,ready)||ready.size!==before.size)throw changed();owned.set(candidate,ready);
   db=new DatabaseSync(candidate,{readOnly:true,enableForeignKeyConstraints:false,enableDoubleQuotedStringLiterals:false});
   db.exec('PRAGMA trusted_schema=OFF; PRAGMA query_only=ON;');
   if(detectCurrentWorkspaceRestoreEvidence(db))throw refuse();
@@ -50,21 +64,25 @@ export async function withOrdinaryMigrationSource(file,consume){
   const check=()=>{cold(file);if(!sameFile(before,sourceFile(file))||!sameFile(ready,inspectFile(candidate,directory,{private:true,maxBytes:before.size})))throw changed();};
   // The consumer uses this verified copy, never reopens the original for copy.
   // Close SQLite first; the copy remains private until consumer settlement.
+  // SQLite may update the -shm header during close; only capture sidecar
+  // identities after the connection has fully closed.
+  db.close();db=undefined;
   for(const suffix of ['-wal','-shm','-journal']){const sidecar=inspectFile(candidate+suffix,directory,{allowMissing:true,private:true,maxBytes:64*1024*1024});if(sidecar)owned.set(candidate+suffix,sidecar);}
-  db.close();db=undefined;check();
-  result=await consume(Object.freeze({file:candidate,check}));check();
+  check();
+  outcome={value: await consume(Object.freeze({file:candidate,check}))};check();
  }catch(cause){error=cause;}
  finally{
   try{
    // Match the shared disposable-copy ownership policy: fixed SQLite sidecars
    // are recorded only while this connection owns this private directory.
-   if(db)for(const suffix of ['-wal','-shm','-journal']){const sidecar=inspectFile(candidate+suffix,directory,{allowMissing:true,private:true,maxBytes:64*1024*1024});if(sidecar)owned.set(candidate+suffix,sidecar);}
-   db?.close();db=undefined;if(input!==undefined){closeSync(input);input=undefined;}if(output!==undefined){closeSync(output);output=undefined;}
+   db?.close();db=undefined;
+   for(const suffix of ['-wal','-shm','-journal']){const sidecar=inspectFile(candidate+suffix,directory,{allowMissing:true,private:true,maxBytes:64*1024*1024});if(sidecar)owned.set(candidate+suffix,sidecar);}if(input!==undefined){closeSync(input);input=undefined;}if(output!==undefined){closeSync(output);output=undefined;}
    if(created){const current=inspectFile(candidate,directory,{allowMissing:true,private:true,maxBytes:before.size});if(current){if(!sameNode(created,current))throw changed();owned.set(candidate,current);}}
    for(const [name,identity] of owned)if(!removeOwnedFile(name,directory,identity))throw changed();
    removeOwnedDirectory(directory,directory,directoryIdentity);
   }catch(cause){try{db?.close();}catch{}try{if(input!==undefined)closeSync(input);}catch{}try{if(output!==undefined)closeSync(output);}catch{}error??=cause;}
  }
  if(error)throw error;
- return result;
+ if(!outcome)throw changed();
+ return outcome.value;
 }

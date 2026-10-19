@@ -249,13 +249,13 @@ test('renderer uses shared components for ordinary controls and modal confirmati
     assert.doesNotMatch(source, /<(?:button|input|textarea|select)\b/, `${name} must consume shared controls`);
     assert.doesNotMatch(source, /window\.confirm\(/, `${name} must use the cancellable confirmation provider`);
   }
-  const app = readFileSync(resolve(renderer, 'App.jsx'), 'utf8');
-  const main = readFileSync(resolve(renderer, 'main.jsx'), 'utf8');
+  const app = readFileSync(resolve(renderer, 'App.tsx'), 'utf8');
+  const main = readFileSync(resolve(renderer, 'main.tsx'), 'utf8');
   assert.match(main, /<ConfirmationProvider labels=\{\{ title: t\('common.confirmTitle'\), cancel: t\('common.cancel'\), continue: t\('common.continue'\) \}\} renderMessage=\{renderMessage\}>/);
   assert.match(app, /async function inspect\(/);
   assert.match(app, /async function selectClip\(/);
   assert.match(app, /if \(!await inspect\(shot\.id\)\) return;/);
-  const taskCenter = readFileSync(resolve(renderer, 'TaskCenter.jsx'), 'utf8');
+  const taskCenter = readFileSync(resolve(renderer, 'TaskCenter.tsx'), 'utf8');
   assert.match(taskCenter, /onInspectJob\(job, stillCurrent\)/);
   assert.match(taskCenter, /<TaskWorkspace activeCount=\{activeCount\}>/);
   assert.doesNotMatch(taskCenter, /Dialog(?:Content|Title|Description)?|aria-modal/);

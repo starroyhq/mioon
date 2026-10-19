@@ -11,15 +11,107 @@ export const SUBJECT_REFERENCE_PROFILE_VERSION = 'mioon-input-profiles/3';
 export const REVIEWED_ON = '2026-10-10';
 export const INPUT_ROLES = Object.freeze(['first_frame', 'last_frame', 'subject_reference', 'style_reference', 'motion_reference']);
 export const MOCK_SCENARIOS = Object.freeze(['success', 'failure', 'delay', 'timeout', 'unknown', 'reject', 'download_fail_once', 'rejected_before_accept', 'accepted_then_response_lost', 'poll_timeout_then_recover', 'terminal_failure']);
-export function deepFreeze(value) {
+
+export interface GenerationInputDimensions {
+  min: number;
+  max: number | null;
+  matchAspectRatio: boolean;
+  minAspectRatio?: number;
+  maxAspectRatio?: number;
+}
+export interface GenerationInputRole {
+  implemented: boolean;
+  min: number;
+  max: number;
+  semantics?: string;
+  reason?: string;
+  mimeTypes?: string[];
+  maxBytes?: number;
+  maxBytesSource?: string;
+  maxDataUriBytes?: number;
+  dimensions?: GenerationInputDimensions | null;
+}
+/** A role the selected adapter actually implements; its image limits are present. */
+export interface ImplementedGenerationInputRole extends GenerationInputRole {
+  implemented: true;
+  mimeTypes: string[];
+  maxBytes: number;
+  maxBytesSource: string;
+  dimensions: GenerationInputDimensions | null;
+}
+export interface GenerationInputs {
+  minReferences: number;
+  maxReferences: number;
+  combinations: string[][];
+  roles: Record<string, GenerationInputRole>;
+  distinctAssetsRequired?: boolean;
+  distinctAssetsReason?: string;
+}
+export type GenerationParameterRule =
+  | {type: 'integer'; min: number; max: number}
+  | {type: 'enum'; values: readonly string[]};
+export interface GenerationProfileOutput {
+  ratioPixels?: Record<string, string>;
+  audio?: string;
+  resolution?: string;
+  width?: number;
+  height?: number;
+  depictsPromptOrReferences?: boolean;
+  exactImageOutputDimensions?: string;
+  [key: string]: unknown;
+}
+export interface GenerationProfileLifecycle {
+  status: string;
+  earliestShutdownDate: string;
+  checkedOn: string;
+  source: string;
+  replacementImplemented: boolean;
+  policy: string;
+}
+export interface GenerationInputProfile {
+  profileVersion: string;
+  reviewedOn: string;
+  implemented: boolean;
+  liveVerified: boolean;
+  runtimeAvailability: string;
+  prompt: {required: boolean; maxCodeUnits: number};
+  aspectRatios: string[];
+  durationsSeconds: number[];
+  parameters: Record<string, GenerationParameterRule>;
+  approvalRequired: boolean;
+  requiresManagedImageVerification: boolean;
+  providerId: string;
+  model: string;
+  profileId: string;
+  regions: string[];
+  regionMeaning: string;
+  apiFamily: string;
+  origins: Record<string, string>;
+  adapterSource: string;
+  inputModes: string[];
+  output: GenerationProfileOutput;
+  inputs: GenerationInputs;
+  lifecycle?: GenerationProfileLifecycle;
+  simulationOnly?: boolean;
+  requiresReviewedOutputHosts?: boolean;
+}
+
+export function deepFreeze<T>(value: T): T {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
-    for (const item of Object.values(value)) deepFreeze(item);
+    for (const item of Object.values(value as object)) deepFreeze(item);
     Object.freeze(value);
   }
   return value;
 }
 const MiB = 1024 * 1024;
-const roles = (min, image, simulation = false) => ({
+interface GenerationInputImageLimits {
+  mimeTypes: string[];
+  maxBytes: number;
+  maxBytesSource: string;
+  maxDataUriBytes?: number;
+  dimensions: GenerationInputDimensions | null;
+}
+const roles = (min: number, image: GenerationInputImageLimits, simulation = false): GenerationInputs => ({
   minReferences: min, maxReferences: 1,
   combinations: min ? [['first_frame']] : [[], ['first_frame']],
   roles: Object.fromEntries(INPUT_ROLES.map(role => [role, role === 'first_frame'
@@ -33,8 +125,9 @@ const common = {
   aspectRatios: ['9:16', '16:9'], durationsSeconds: [4, 8], parameters: {},
   approvalRequired: true, requiresManagedImageVerification: true,
 };
-const image = { mimeTypes: ['image/png', 'image/jpeg'], maxBytes: 10 * MiB, maxBytesSource: 'Mioon managedImage default', dimensions: null };
-const profile = (providerId, model, fields) => ({ ...common, providerId, model, profileId: `${providerId}:${model}:v1`, ...fields });
+const image: GenerationInputImageLimits = { mimeTypes: ['image/png', 'image/jpeg'], maxBytes: 10 * MiB, maxBytesSource: 'Mioon managedImage default', dimensions: null };
+const profile = (providerId: string, model: string, fields: Partial<GenerationInputProfile>): GenerationInputProfile =>
+  ({ ...common, providerId, model, profileId: `${providerId}:${model}:v1`, ...fields } as GenerationInputProfile);
 const legacyProfiles = deepFreeze([
   profile('runway', 'gen4_turbo', {
     regions: ['global'], regionMeaning: 'Fixed Runway API endpoint label; not a data-residency guarantee.',
@@ -90,7 +183,7 @@ const legacyProfiles = deepFreeze([
     inputs: roles(0, { ...image, mimeTypes: ['image/png', 'image/jpeg', 'image/webp'], maxBytes: 30 * MiB, maxBytesSource: 'Mioon asset.import cap; mock does not read reference image bytes' }, true),
   }),
 ]);
-const withFramePair = legacy => ({
+const withFramePair = (legacy: GenerationInputProfile): GenerationInputProfile => ({
   ...legacy, profileId: `${legacy.providerId}:${legacy.model}:v2`, profileVersion: FRAME_PAIR_PROFILE_VERSION,
   reviewedOn: '2026-10-11',
   inputs: {
@@ -102,7 +195,7 @@ const withFramePair = legacy => ({
   },
 });
 const framePairProfiles = legacyProfiles.filter(profile => ['ark', 'mock'].includes(profile.providerId)).map(withFramePair);
-const withSubjectReference = pair => ({
+const withSubjectReference = (pair: GenerationInputProfile): GenerationInputProfile => ({
   ...pair, profileId: `${pair.providerId}:${pair.model}:v3`, profileVersion: SUBJECT_REFERENCE_PROFILE_VERSION,
   inputs: {
     ...pair.inputs, combinations: [...pair.inputs.combinations, ['subject_reference']],
@@ -114,34 +207,35 @@ const withSubjectReference = pair => ({
   },
 });
 export const CAPABILITY_PROFILES = deepFreeze(legacyProfiles.map(profile =>
-  ['ark', 'mock'].includes(profile.providerId) ? withSubjectReference(framePairProfiles.find(pair => pair.providerId === profile.providerId)) : profile));
+  ['ark', 'mock'].includes(profile.providerId) ? withSubjectReference(framePairProfiles.find(pair => pair.providerId === profile.providerId)!) : profile));
 // Keep both generations unchanged. Pins never inherit an active role or limit.
 export const ARCHIVED_CAPABILITY_PROFILES = deepFreeze([
   ...legacyProfiles.filter(profile => ['ark', 'mock'].includes(profile.providerId)), ...framePairProfiles,
 ]);
 const exactProfiles = [...CAPABILITY_PROFILES, ...ARCHIVED_CAPABILITY_PROFILES];
 /** Exact lookup. Optional pins must be complete; never fall back to current policy. */
-export function getCapabilityProfile(providerId, model, region, pin) {
-  if (![providerId, model, region].every(value => typeof value === 'string')) return null;
-  const matches = p => p.providerId === providerId && p.model === model && p.regions.includes(region);
+export function getCapabilityProfile(providerId: unknown, model: unknown, region: unknown, pin?: unknown): GenerationInputProfile | null {
+  if (typeof providerId !== 'string' || typeof model !== 'string' || typeof region !== 'string') return null;
+  const matches = (p: GenerationInputProfile) => p.providerId === providerId && p.model === model && p.regions.includes(region);
   if (pin === undefined) return CAPABILITY_PROFILES.find(matches) ?? null;
   if (!pin || typeof pin !== 'object' || Array.isArray(pin) || ![Object.prototype, null].includes(Object.getPrototypeOf(pin)) ||
-      Object.getOwnPropertySymbols(pin).length || Object.values(Object.getOwnPropertyDescriptors(pin)).some(d => d.get || d.set || !d.enumerable) ||
-      Object.keys(pin).length !== 2 || !Object.hasOwn(pin, 'profileId') || !Object.hasOwn(pin, 'profileVersion') || typeof pin.profileId !== 'string' || typeof pin.profileVersion !== 'string') return null;
-  return exactProfiles.find(p => matches(p) && p.profileId === pin.profileId && p.profileVersion === pin.profileVersion) ?? null;
+      Object.getOwnPropertySymbols(pin).length || Object.values(Object.getOwnPropertyDescriptors(pin)).some(d => d.get || d.set || !d.enumerable)) return null;
+  const candidate = pin as Record<string, unknown>;
+  if (Object.keys(pin).length !== 2 || !Object.hasOwn(pin, 'profileId') || !Object.hasOwn(pin, 'profileVersion') || typeof candidate.profileId !== 'string' || typeof candidate.profileVersion !== 'string') return null;
+  return exactProfiles.find(p => matches(p) && p.profileId === candidate.profileId && p.profileVersion === candidate.profileVersion) ?? null;
 }
 /** Only for already-frozen jobs that predate profile pins. Never new discovery. */
-export function getLegacyCapabilityProfile(providerId, model, region) {
-  if (![providerId, model, region].every(value => typeof value === 'string')) return null;
+export function getLegacyCapabilityProfile(providerId: unknown, model: unknown, region: unknown): GenerationInputProfile | null {
+  if (typeof providerId !== 'string' || typeof model !== 'string' || typeof region !== 'string') return null;
   return legacyProfiles.find(p => p.providerId === providerId && p.model === model && p.regions.includes(region)) ?? null;
 }
 
 // Fixed-origin labels are endpoint identities, not selectable browser regions.
-export function getGenerationProfileRegion(providerId, capabilities = {}) {
+export function getGenerationProfileRegion(providerId: unknown, capabilities: {region?: unknown} | null = {}): string | null {
   if (providerId === 'mock') return 'local';
   if (providerId === 'runway' || providerId === 'veo') return 'global';
   if (providerId === 'ark') return 'cn-beijing';
-  if (providerId === 'minimax' || providerId === 'vidu') return capabilities?.region ?? null;
+  if (providerId === 'minimax' || providerId === 'vidu') return (capabilities?.region ?? null) as string | null;
   return null;
 }
 export const INPUT_PROFILE_VERSION = PROFILE_VERSION;

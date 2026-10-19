@@ -137,7 +137,7 @@ test('real stored video audio-presence parity rejects both mismatches and verifi
 function originalRendererSource(current){
   let source=current;
   for(const [replacement,original] of [
-    ["import {timelineAudioSilenceFilter,timelineClipAudioFilter,timelineMixedAudioFilter} from './timeline-audio-filter-graph.ts';","import {timelineAudioFadeFilters} from './timeline-audio.mjs';"],
+    ["import {timelineAudioSilenceFilter,timelineClipAudioFilter,timelineMixedAudioFilter} from './timeline-audio-filter-graph.ts';","import {timelineAudioFadeFilters} from './timeline-audio.ts';"],
     ['timelineAudioSilenceFilter(samples)','`anullsrc=r=48000:cl=stereo,atrim=end_sample=${samples},asetpts=N/SR/TB[silence]`'],
     ['timelineClipAudioFilter(clip,begin,samples,input,asset.audioStreamIndex)','`[${input}:${asset.audioStreamIndex??\'a:0\'}]asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=${clip.gain},apad,atrim=end_sample=${samples},${timelineAudioFadeFilters(clip,begin)}asetpts=N/SR/TB[${label}]`'],
     ['timelineMixedAudioFilter(sounds,samples,selected.audioOutputTrim)','`${sounds.map(s=>`[${s}]`).join(\'\')}amix=inputs=${sounds.length}:duration=first:dropout_transition=0:normalize=0,atrim=end_sample=${samples},${selected.audioOutputTrim}asetpts=N/SR/TB[outa]`'],
@@ -151,19 +151,19 @@ function originalRendererSource(current){
  * forwards every call/options to the same real runner. Instrumented copies of
  * media and capability modules also expose their real ffprobe/proof argv. */
 async function instrumentedRenderers(root){
-  const business=new URL('../packages/business/src/',import.meta.url),runtimeURL=new URL('media-runtime.mjs',business).href;
+  const business=new URL('../packages/business/src/',import.meta.url),runtimeURL=new URL('media-runtime.ts',business).href;
   const captureURL=pathToFileURL(path.join(root,'capture-runtime.mjs')).href;
   await writeFile(new URL(captureURL),`import * as actual from ${JSON.stringify(runtimeURL)};\nexport const calls=[];\nexport {checkMediaEffect,isMediaEffectRestriction} from ${JSON.stringify(runtimeURL)};\nexport const run=(command,args,options)=>{calls.push({lane:'run',command,args:[...args]});return actual.run(command,args,options);};\nexport const runStreaming=(command,args,options)=>{calls.push({lane:'streaming',command,args:[...args]});return actual.runStreaming(command,args,options);};\n`,{flag:'wx',mode:0o600});
-  const copiedMediaURL=pathToFileURL(path.join(root,'captured-media.mjs')).href,copiedCapabilityURL=pathToFileURL(path.join(root,'captured-capability.mjs')).href;
-  const redirect=new Map([[runtimeURL,captureURL],[new URL('media.mjs',business).href,copiedMediaURL],[new URL('timeline-export-capabilities.mjs',business).href,copiedCapabilityURL]]);
+  const copiedMediaURL=pathToFileURL(path.join(root,'captured-media.ts')).href,copiedCapabilityURL=pathToFileURL(path.join(root,'captured-capability.mjs')).href;
+  const redirect=new Map([[runtimeURL,captureURL],[new URL('media.ts',business).href,copiedMediaURL],[new URL('timeline-export-capabilities.ts',business).href,copiedCapabilityURL]]);
   const resolveImports=(source,origin)=>source.replace(/\bfrom\s+(['"])([^'"]+)\1/gu,(_match,_quote,specifier)=>{
     const resolved=specifier.startsWith('.')?new URL(specifier,origin).href:import.meta.resolve(specifier);
     return `from ${JSON.stringify(redirect.get(resolved)??resolved)}`;
   });
-  for(const [file,target] of [['media.mjs',copiedMediaURL],['timeline-export-capabilities.mjs',copiedCapabilityURL]]){
+  for(const [file,target] of [['media.ts',copiedMediaURL],['timeline-export-capabilities.ts',copiedCapabilityURL]]){
     const origin=new URL(file,business);await writeFile(new URL(target),resolveImports(await readFile(origin,'utf8'),origin),{flag:'wx',mode:0o600});
   }
-  const rendererURL=new URL('timeline-media.mjs',business),current=await readFile(rendererURL,'utf8'),old=originalRendererSource(current);
+  const rendererURL=new URL('timeline-media.ts',business),current=await readFile(rendererURL,'utf8'),old=originalRendererSource(current);
   const modules=[];
   for(const [name,source] of [['old',old],['new',current]]){
     const file=pathToFileURL(path.join(root,`${name}-renderer.mjs`));await writeFile(file,resolveImports(source,rendererURL),{flag:'wx',mode:0o600});modules.push(await import(file.href));

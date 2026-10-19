@@ -4,20 +4,20 @@
 import path from 'node:path';
 import {validatePrivateDirectory,validateManagedFile,readPrivateFile,writePrivateFileAtomic,removePrivateFile} from '@mioon/contracts/private-storage';
 
-const identityKeys=['dev','ino','size','mtimeMs','ctimeMs'];
-export function acquireWorkspaceLock(root,{allowStale=false}={}){
+const identityKeys=['dev','ino','size','mtimeMs','ctimeMs'] as const;
+export function acquireWorkspaceLock(root: string,{allowStale=false}: {allowStale?: boolean}={}): Readonly<{isOwned: ()=>boolean;release: ()=>boolean}>{
  validatePrivateDirectory(root);
  const lockPath=path.join(root,'server.lock'),token=String(process.pid);
  const previous=readPrivateFile(lockPath,{root,allowMissing:true,private:false,maxBytes:64,encoding:'utf8'});
  if(previous!==null){
   if(!allowStale)throw Object.assign(Error('The workspace has an existing lock. Stop the backend and review the lock before retrying.'),{code:'WORKSPACE_BACKUP_LOCKED'});
   const pid=Number(previous);let active=false;
-  if(Number.isSafeInteger(pid)&&pid>0){try{process.kill(pid,0);active=true;}catch(error){if(error.code!=='ESRCH')active=true;}}
+  if(Number.isSafeInteger(pid)&&pid>0){try{process.kill(pid,0);active=true;}catch(error){if((error as {code?: unknown}).code!=='ESRCH')active=true;}}
   if(active)throw Error('This data directory already has a running backend');
   removePrivateFile(lockPath,{root,private:false,maxBytes:64});
  }
  writePrivateFileAtomic(lockPath,token,{root,maxBytes:64,replace:false});
- const identity=validateManagedFile(lockPath,{root,private:true,maxBytes:64});
+ const identity=validateManagedFile(lockPath,{root,private:true,maxBytes:64})!;
  let active=true,released=false;
  function isOwned(){
   if(!active)return false;

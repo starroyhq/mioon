@@ -184,11 +184,11 @@ test('actual App view updates remain in memory for43 and continue using the exis
 function renderComponents(f) {
   const data = {timeline: f.timeline, asset: f.store.get('assets', f.assetId), project: f.store.get('projects', f.projectId)};
   const fixture = `import React from 'react';import {renderToStaticMarkup} from 'react-dom/server.browser';
-    import AssetLibrary from './src/AssetLibrary.jsx';import Timeline from './src/Timeline.jsx';import Preview from './src/Preview.jsx';
-    import TimelineInspector from './src/TimelineInspector.jsx';import ProjectHome from './src/ProjectHome.tsx';import OpacityRestoredNotice from './src/OpacityRestoredNotice.tsx';
+    import AssetLibrary from './src/AssetLibrary.tsx';import Timeline from './src/Timeline.tsx';import Preview from './src/Preview.tsx';
+    import TimelineInspector from './src/TimelineInspector.tsx';import ProjectHome from './src/ProjectHome.tsx';import OpacityRestoredNotice from './src/OpacityRestoredNotice.tsx';
     import {I18nProvider} from './src/i18n/I18nProvider.tsx';import {ConfirmationProvider} from '@mioon/ui/components/workbench-confirm';
     import {createOpacityCandidateApplication,readOpacityCandidateApplication} from './src/opacity-candidate-application.ts';
-    import * as contracts from '@mioon/contracts';import {rpc} from './src/api.js';import {createEditTaskClient} from './src/edit-task-client.js';
+    import * as contracts from '@mioon/contracts';import {rpc} from './src/api.ts';import {createEditTaskClient} from './src/edit-task-client.ts';
     const f=${JSON.stringify(data)}, noop=()=>{}, token=createOpacityCandidateApplication({...contracts,rpc,createEditTaskClient},()=>{throw Error('SSR must never fetch');}), app=readOpacityCandidateApplication(token);
     const components={assets:<AssetLibrary mutationDisabled assets={[f.asset]} project={f.project} mode="editing" filter="all" search="" onFilter={noop} onSearch={noop} onPreview={noop} busy={{}}/>,
       timeline:<Timeline basicEditingOnly structureReadOnly sessionViewOnly waveformReadOnly timeline={f.timeline} assets={[f.asset]} playhead={0} historyState={{canUndo:true,canRedo:true}} onHistory={noop} onSeek={noop} onRender={noop} onCollapse={noop}/>,
@@ -251,16 +251,16 @@ function timelineActionsHarness(timeline, asset) {
       if (name === './UiPreferencesProvider.tsx') return {useUiPreferences:()=>({preferences:DEFAULT_UI_PREFERENCES})};
       if (name === './timeline-view-geometry.ts') return geometry;
       if (name === './timeline-removal.ts') return {displayTimelineFrame};
-      if (name === './timeline-keyboard.js') return {rulerFrameForKey};
-      if (name === './timeline-snapping.js') return {timelineDropPreview};
+      if (name === './timeline-keyboard.ts') return {rulerFrameForKey};
+      if (name === './timeline-snapping.ts') return {timelineDropPreview};
       if (name === './timeline-source-freshness.ts') return {staleSourceSentence};
       if (name === './TimelineToolbar.tsx') return load('TimelineToolbar.tsx');
       if (name === './ClipRemovalControls.tsx') return {ClipActionsMenu:'ClipActionsMenu',TimelineRemovalShortcuts:'TimelineRemovalShortcuts',useClipRemoval:()=>({request(){},dialog:null})};
-      if (name === './use-timeline-waveforms.js') return {useTimelineWaveforms:()=>({enabled:false,windows:[],entries:new Map(),setEnabled(){},retry(){}})};
-      if (name === './TimelineWaveform.jsx') return {default:'TimelineWaveform',TimelineWaveformControls:'TimelineWaveformControls',__esModule:true};
-      if (name === './waveform-state.js') return {WAVEFORM_LIMITS};
-      if (name === './api.js') return {assetUrl:()=>''};
-      if (name === './Nodes.jsx') return {Media:'Media'};
+      if (name === './use-timeline-waveforms.ts') return {useTimelineWaveforms:()=>({enabled:false,windows:[],entries:new Map(),setEnabled(){},retry(){}})};
+      if (name === './TimelineWaveform.tsx') return {default:'TimelineWaveform',TimelineWaveformControls:'TimelineWaveformControls',__esModule:true};
+      if (name === './waveform-state.ts') return {WAVEFORM_LIMITS};
+      if (name === './api.ts') return {assetUrl:()=>''};
+      if (name === './Nodes.tsx') return {Media:'Media'};
       if (name.startsWith('@mioon/ui/')) return new Proxy({}, {get:(_,key)=>String(key)});
       if (name.endsWith('.css')) return {};
       if (name.endsWith('.jsx')) return {default:name,__esModule:true};
@@ -268,7 +268,7 @@ function timelineActionsHarness(timeline, asset) {
     },module,module.exports);
     modules.set(file,module.exports);return module.exports;
   }
-  const Timeline = load('Timeline.jsx').default, Toolbar = load('TimelineToolbar.tsx').default;
+  const Timeline = load('Timeline.tsx').default, Toolbar = load('TimelineToolbar.tsx').default;
   return {writes, render(structureReadOnly, overrides={}) {
     cursor=0;
     const tree=Timeline({timeline,assets:[asset],playhead:0,visible:true,presentationVisible:true,collapsed:false,basicEditingOnly:true,structureReadOnly,sessionViewOnly:true,waveformReadOnly:true,

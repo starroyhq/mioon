@@ -150,7 +150,7 @@ test('API CLI MCP share discovery and read-only effects; built-in Agent tool aut
  assert.deepEqual(definition.inputSchema.required,['projectId','lutId']);assert.equal(definition.inputSchema.additionalProperties,false);
  assert.deepEqual(effectAnnotations(operationEffect('lut.look.inspect')),{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false});
  for(const key of ['databaseWrite','fileWrite','externalIO','localProcess','paidGeneration'])assert.equal(definition.effects[key],false);
- for(const file of ['read-tool-policy.mjs','read-tool-runner.mjs','tool-wire.mjs'])assert.equal(readFileSync(new URL('../packages/business/src/agent/'+file,import.meta.url),'utf8').includes('lut.look.inspect'),false);
+ for(const file of ['read-tool-policy.ts','read-tool-runner.ts','tool-wire.ts'])assert.equal(readFileSync(new URL('../packages/business/src/agent/'+file,import.meta.url),'utf8').includes('lut.look.inspect'),false);
  const implementation=readFileSync(new URL('../packages/business/src/look-pack-inspection.ts',import.meta.url),'utf8');
  for(const forbidden of ['node:fs','node:child_process','node:http','node:https','fetch(','INSERT INTO','UPDATE main.','DELETE FROM'])assert.equal(implementation.includes(forbidden),false,forbidden);
 });

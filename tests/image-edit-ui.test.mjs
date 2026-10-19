@@ -147,16 +147,16 @@ function renderer(f) {
     }
     if (name === 'react') return react;
     if (name === '@mioon/contracts') return contracts;
-    if (name === './image-generation.js') return { ...logic, createImageGenerationSession: value => logic.createImageGenerationSession({ ...value, api: f.api, storage: f.storage, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) };
-    if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
-    if (name === './ImageSettings.jsx' || name === './ComfyImageSettings.jsx') return { __esModule: true, default: name };
+    if (name === './image-generation.ts') return { ...logic, createImageGenerationSession: value => logic.createImageGenerationSession({ ...value, api: f.api, storage: f.storage, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) };
+    if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => visible };
+    if (name === './ImageSettings.tsx' || name === './ComfyImageSettings.tsx') return { __esModule: true, default: name };
     if (name === './SettingsNavigationSlot.tsx') return { __esModule: true, default: 'SettingsNavigationSlot' };
-    if (name === './ComfyImageDetails.jsx') return primitive;
-    if (name === './image-settings.js') return { createImageSettingsClient: value => value?.slot === 'custom' ? f.customSettingsClient : f.settingsClient };
-    if (name === './comfy-image-settings.js') return { comfyConnectorAvailabilityDescriptor, createComfyImageSettingsClient: () => ({ read: async () => { throw Error('Not configured'); } }) };
-    if (name === './icons.jsx') return { default: 'Icon' };
+    if (name === './ComfyImageDetails.tsx') return primitive;
+    if (name === './image-settings.ts') return { createImageSettingsClient: value => value?.slot === 'custom' ? f.customSettingsClient : f.settingsClient };
+    if (name === './comfy-image-settings.ts') return { comfyConnectorAvailabilityDescriptor, createComfyImageSettingsClient: () => ({ read: async () => { throw Error('Not configured'); } }) };
+    if (name === './icons.tsx') return { default: 'Icon' };
     if (name.endsWith('.css')) return {};
-    if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.jsx') return primitive;
+    if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return primitive;
     throw Error(name);
   };
   Function('module', 'exports', 'require', transformSync(component, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, require);

@@ -104,9 +104,9 @@ function checkTasks(db: DatabaseSync, tables: Set<string>): void {
     // application's task coordinator. Preserve such projects in40 instead of
     // publishing a copy whose task history fails get/list after reopening.
     if (!isOpacityApplicationTask(task)) fail('SOURCE_UNSUPPORTED');
-    const family = row.lane === 'timeline:mutation' ? ['timeline-recovery.mjs', 'readTimelineReceipt', 'createTimelineRecoveryBoundary']
-      : row.lane === 'reference:mutation' ? ['reference-recovery.mjs', 'readReferenceReceipt', 'createReferenceRecoveryBoundary']
-      : row.lane === 'subject:mutation' ? ['subject-recovery.mjs', 'readSubjectReceipt', 'createSubjectRecoveryBoundary'] : fail();
+    const family = row.lane === 'timeline:mutation' ? ['timeline-recovery.ts', 'readTimelineReceipt', 'createTimelineRecoveryBoundary']
+      : row.lane === 'reference:mutation' ? ['reference-recovery.ts', 'readReferenceReceipt', 'createReferenceRecoveryBoundary']
+      : row.lane === 'subject:mutation' ? ['subject-recovery.ts', 'readSubjectReceipt', 'createSubjectRecoveryBoundary'] : fail();
     const module = './' + family[0], receipt = invoke(module, family[1]!, [db, input, row.operation]) ?? null;
     if (row.status === 'not_applied') {
       if (receipt !== null || row.receiptDigest !== null || invoke('../../contracts/src/index.ts', 'hasRequestNotAppliedProof', [{code: row.errorCode, status: 409, details: {mutationOutcome: 'not_applied', operation: row.operation, projectId: row.projectId, requestId: row.requestId}}, input, {operation: row.operation}]) !== true) fail();

@@ -1,6 +1,7 @@
 import {z} from 'zod';
 
-export const ASSET_DISPOSITIONS = Object.freeze(['neutral','favorite','rejected']);
+export const ASSET_DISPOSITIONS = Object.freeze(['neutral','favorite','rejected'] as const);
+export type AssetDisposition = (typeof ASSET_DISPOSITIONS)[number];
 export const ASSET_DISPOSITION_BATCH_LIMIT = 100;
 const id = z.string().uuid();
 const revision = z.number().finite().int().min(0).max(Number.MAX_SAFE_INTEGER);
@@ -16,24 +17,32 @@ export const assetDispositionSchemas = Object.freeze({
   }).strict(),
 });
 
-const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-const exactKeys = (value,keys) => object(value) && Object.keys(value).length===keys.length && keys.every(key=>Object.hasOwn(value,key));
-const validId = value => typeof value==='string' && id.safeParse(value).success;
-export function isAssetDispositionResponse(value) {
+export type AssetDispositionListInput = z.infer<typeof assetDispositionSchemas['asset.disposition.list']>;
+export type AssetDispositionSetInput = z.infer<typeof assetDispositionSchemas['asset.disposition.set']>;
+export interface AssetDispositionResponse {id: string; assetId: string; projectId: string; revision: number; disposition: AssetDisposition}
+export interface AssetDispositionListResponse {projectId: string; items: AssetDispositionResponse[]}
+
+const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
+const exactKeys = (value: unknown, keys: readonly string[]): value is Record<string, unknown> => object(value) && Object.keys(value).length===keys.length && keys.every(key=>Object.hasOwn(value,key));
+const validId = (value: unknown): value is string => typeof value==='string' && id.safeParse(value).success;
+const isDisposition = (value: unknown): value is AssetDisposition => typeof value==='string' && (ASSET_DISPOSITIONS as readonly string[]).includes(value);
+export function isAssetDispositionResponse(value: unknown): value is AssetDispositionResponse {
   return exactKeys(value,['id','assetId','projectId','revision','disposition']) &&
     validId(value.assetId) && value.id===value.assetId && validId(value.projectId) &&
-    Number.isSafeInteger(value.revision) && value.revision>=0 && ASSET_DISPOSITIONS.includes(value.disposition) &&
+    Number.isSafeInteger(value.revision) && (value.revision as number)>=0 && isDisposition(value.disposition) &&
     (value.revision!==0 || value.disposition==='neutral');
 }
 
 // Bind successful batch reads to the exact request, including order. Callers
 // must not treat an omitted item or a failed read as a confirmed neutral value.
-export function isAssetDispositionListResponse(value,input) {
+export function isAssetDispositionListResponse(value: unknown, input?: unknown): value is AssetDispositionListResponse {
   if (!exactKeys(value,['projectId','items']) || !validId(value.projectId) || !Array.isArray(value.items) ||
       value.items.length<1 || value.items.length>ASSET_DISPOSITION_BATCH_LIMIT ||
       !value.items.every(item=>isAssetDispositionResponse(item) && item.projectId===value.projectId) ||
       new Set(value.items.map(item=>item.assetId)).size!==value.items.length) return false;
-  return !input || (assetDispositionSchemas['asset.disposition.list'].safeParse(input).success &&
-    value.projectId===input.projectId && value.items.length===input.assetIds.length &&
-    value.items.every((item,index)=>item.assetId===input.assetIds[index]));
+  if (!input) return true;
+  if (!assetDispositionSchemas['asset.disposition.list'].safeParse(input).success) return false;
+  const request = input as AssetDispositionListInput;
+  return value.projectId===request.projectId && value.items.length===request.assetIds.length &&
+    value.items.every((item,index)=>item.assetId===request.assetIds[index]);
 }

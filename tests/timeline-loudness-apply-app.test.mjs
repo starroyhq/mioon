@@ -9,6 +9,7 @@ import { timelineMixLoudnessViewState } from '../apps/web/src/timeline-mix-loudn
 import { submitTimelineLoudnessApply } from '../apps/web/src/timeline-loudness-apply-submit.ts';
 import { timelineLoudnessCandidateDigest } from '@mioon/contracts/timeline-loudness-apply';
 import { id, input, report, context as mixContext, projectId, timelineId, fixture } from './helpers/timeline-mix-loudness-ui-fixture.mjs';
+import { message as messageKey, renderMessage } from './helpers/i18n.ts';
 const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const part = (start, end) => app.slice(app.indexOf(start), app.indexOf(end, app.indexOf(start)));
 const durable = part('  async function run(', '  async function runSession(');
@@ -59,11 +60,13 @@ async function harness(wire, onBusy = () => {}) {
   const currentProject = { current: projectId }, dataRef = { current: { project: { id: projectId }, timeline: { id: timelineId, revision: 4 }, timelineHistory: { revision: 4 } } };
   let options, keys = 0, epoch = 0;
   const env = {
+    application: null, clipDraftRef: { current: null }, setSubjectRefresh: () => undefined, msg: messageKey,
+    localizedError: value => Object.assign(new Error(renderMessage('zh-Hans', value)), { displayMessage: value }),
     readTimelineLoudnessRecoveryScope: () => 'test-workspace-identity', nativeCloseRegistry: { current: undefined }, isDurableEditOperation, isTimelineMutationResponse, submitTimelineLoudnessApply, tasksRef: { current: tasks }, currentProject, dataRef,
     timelinePending: false, requestId: () => `unused-generated-key-${++keys}`, context: () => ({ projectId: currentProject.current, epoch }), isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === epoch,
     captureTaskWorkspaceIntent: () => () => true, readTaskRevealContext: () => ({}), pendingForProject: () => [], isMutationOperation: () => false,
     isBusy: key => busy.has(key), markBusy: (_projectId, key, value) => { if (value) busy.add(key); else busy.delete(key); onBusy(value); },
-    requestCounter: { current: 0 }, setData: update => { dataRef.current = update(dataRef.current); }, refresh: async owner => { refreshed.push(owner); },
+    requestCounter: { current: 0 }, clipConnectionBlocked: { current: false }, setData: update => { dataRef.current = update(dataRef.current); }, refresh: async owner => { refreshed.push(owner); },
     notify: message => notices.push(message), openTasks: () => undefined, setAuth: () => undefined, readableError: error => error.message,
     runSession: () => { throw Error('Loudness must not use the legacy session path'); },
     timelineFormatRef: { current: null }, subtitlesRef: { current: null }, timelineLoudnessApplyRef: { current: { controller: { recovered: task => recovered.push(task) } } },

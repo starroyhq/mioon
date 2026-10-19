@@ -7,7 +7,12 @@ import { isMutationOperation } from './mutation-submissions.ts';
 import { TIMELINE_MUTATION_OPERATIONS } from '@mioon/contracts';
 import { isReferenceOperation } from './reference-connections.ts';
 
-export default function PendingSubmission({ entry, busy, onReplay, onAdopt, duplicate, heldReason, heldCode }) {
+interface PendingSubmissionEntry {readonly operation: string; readonly createdAt: string}
+interface PendingSubmissionProps {
+  entry: PendingSubmissionEntry; busy?: boolean; onReplay: () => void; onAdopt?: () => void;
+  duplicate?: boolean; heldReason?: string | null; heldCode?: string | null;
+}
+export default function PendingSubmission({ entry, busy, onReplay, onAdopt, duplicate, heldReason, heldCode }: PendingSubmissionProps) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const mutation = isMutationOperation(entry.operation) || TIMELINE_MUTATION_OPERATIONS.includes(entry.operation) || isReferenceOperation(entry.operation);
   return <div className="job-card submission_unknown" data-testid="pending-submission">

@@ -34,7 +34,7 @@ const lifecycleSource = appSource.slice(appSource.indexOf('  const importSession
 const refreshSource = appSource.slice(appSource.indexOf('  const refresh = useCallback('), appSource.indexOf('  async function revealImageAsset('));
 function actualApiDependency(name) {
   if (name === '@mioon/contracts') return contracts;
-  if (name === './workspace-origin.js') return workspaceOrigin;
+  if (name === './workspace-origin.ts') return workspaceOrigin;
   if (name === './timeline-loudness-apply-rpc.ts') return loudnessApplyRpc;
   if (name === './timeline-clip-loudness-rpc.ts') return clipLoudnessRpc;
   if (name === '@mioon/contracts/timeline-clip-loudness') return clipLoudnessContracts;
@@ -419,7 +419,7 @@ test('home presentation never starts project polling or performs the loaded-proj
 
 test('actual API harness loads the exact current real dependencies and rejects any unlisted module', () => {
   const names = [...apiSource.matchAll(/^import .+ from ['"]([^'"]+)['"];$/gm)].map(match => match[1]);
-  const expected = [['./timeline-clip-loudness-rpc.ts', clipLoudnessRpc], ['@mioon/contracts/timeline-clip-loudness', clipLoudnessContracts], ['./timeline-loudness-apply-rpc.ts', loudnessApplyRpc], ['@mioon/contracts', contracts], ['./opacity-candidate-client-binding.ts', opacityClientBinding], ['./workspace-origin.js', workspaceOrigin], ['./timeline-mix-loudness-rpc.ts', mixLoudnessRpc], ['@mioon/contracts/timeline-mix-loudness', mixLoudnessContracts]];
+  const expected = [['./timeline-clip-loudness-rpc.ts', clipLoudnessRpc], ['@mioon/contracts/timeline-clip-loudness', clipLoudnessContracts], ['./timeline-loudness-apply-rpc.ts', loudnessApplyRpc], ['@mioon/contracts', contracts], ['./opacity-candidate-client-binding.ts', opacityClientBinding], ['./workspace-origin.ts', workspaceOrigin], ['./timeline-mix-loudness-rpc.ts', mixLoudnessRpc], ['@mioon/contracts/timeline-mix-loudness', mixLoudnessContracts]];
   assert.deepEqual(names, expected.map(([name]) => name));
   for (const [name, module] of expected) assert.equal(actualApiDependency(name), module);
   for (const name of ['./timeline-loudness-apply-rpc.js', './timeline-mix-loudness-rpc.js', './arbitrary.ts', '@mioon/contracts/arbitrary', 'node:fs']) {

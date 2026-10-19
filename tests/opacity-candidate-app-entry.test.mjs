@@ -22,10 +22,10 @@ function entry(candidate) {
     if (name === 'react') return {...react, default: react};
     if (name === 'react-dom/client') return {createRoot: () => ({render: value => {rendered = value;}})};
     if (name === '@mioon/contracts') return contracts;
-    if (name.endsWith('/api.js')) return {rpc, ApiError: class extends Error {}};
-    if (name.endsWith('/edit-task-client.js')) return {createEditTaskClient};
+    if (name.endsWith('/api.ts')) return {rpc, ApiError: class extends Error {}};
+    if (name.endsWith('/edit-task-client.ts')) return {createEditTaskClient};
     if (name.endsWith('/opacity-candidate-application.ts')) return {createOpacityCandidateApplication(runtime) {calls++; token = createOpacityCandidateApplication(runtime);return token;}};
-    if (name.endsWith('/App.jsx')) return {__esModule: true, default: 'App', SettingsConnectionForms: 'SettingsConnectionForms'};
+    if (name.endsWith('/App.tsx')) return {__esModule: true, default: 'App', SettingsConnectionForms: 'SettingsConnectionForms'};
     if (name.endsWith('/DesktopRoot.tsx')) return {__esModule: true, default: 'DesktopRoot'};
     if (name.endsWith('/desktop-frame.ts')) return {desktopFrame: () => null};
     if (name.includes('I18nProvider.tsx')) return {I18nProvider: 'I18nProvider', useI18n: () => ({t: key => key, renderMessage: String})};

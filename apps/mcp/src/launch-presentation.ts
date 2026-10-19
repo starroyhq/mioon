@@ -1,8 +1,8 @@
 import {presentationLocale} from '@mioon/i18n/presentation';
-import type {Locale} from '@mioon/i18n';
+import type {Locale, MessageKey} from '@mioon/i18n';
 
 /** Only explicit validated values establish presentation language, even on failure. */
-export function localizedLaunchOptions<T>(argv: readonly string[], originOptions: (value: string | undefined) => T, fail: (text: string, key: string) => never, onLocale: (value: Locale | undefined) => void) {
+export function localizedLaunchOptions<T>(argv: readonly string[], originOptions: (value: string | undefined) => T, fail: (text: string, key: MessageKey) => never, onLocale: (value: Locale | undefined) => void) {
   let origin: string | undefined, locale: Locale | undefined;
   const supplied = new Set<string>();
   for (let index = 0; index < argv.length; index++) {

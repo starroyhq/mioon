@@ -58,7 +58,7 @@ test('generation and Comfy display descriptors use stable statuses, preserve ori
 });
 
 test('settings components have no untranslated CJK literals or locale-dependent lifecycle keys/effects', () => {
-  for (const filename of ['AgentSettings.jsx', 'ImageSettings.jsx', 'ComfyImageSettings.jsx']) {
+  for (const filename of ['AgentSettings.tsx', 'ImageSettings.tsx', 'ComfyImageSettings.tsx']) {
     const source = readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8');
     const ast = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
     function visit(node) {

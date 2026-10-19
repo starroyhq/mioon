@@ -1,8 +1,13 @@
+import type {IncomingMessage, ServerResponse} from 'node:http';
 import {operationEffect} from '@mioon/contracts';
 
+/** Minimal transport surface shared by ordinary and verified candidate services. */
+export interface ObservedRpcService {
+  call(operation: string, input: unknown, context?: Record<string, unknown>): Promise<unknown>;
+}
 /** Only an advisory read may be stopped by losing its HTTP observer. Never
  * propagate socket lifetime into mutation, generation or render cancellation. */
-export async function callObservedRpc(req, res, services, operation, input, context = {}) {
+export async function callObservedRpc(req: IncomingMessage, res: ServerResponse, services: ObservedRpcService, operation: string, input: unknown, context: Record<string, unknown> = {}): Promise<unknown> {
   if (!['timeline.export.preflight', 'timeline.export.capabilities', 'timeline.export.samplePeak', 'timeline.export.loudness', 'timeline.loudness.prepare', 'timeline.clip.loudness'].includes(operation)) return services.call(operation, input, context);
   const effect = operationEffect(operation);
   // Explicit opt-in plus semantic guards: a later effect change cannot silently

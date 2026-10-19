@@ -1,16 +1,17 @@
 import path from 'node:path';
 import {readFile} from 'node:fs/promises';
 import ts from 'typescript';
+import type {OnLoadArgs, OnLoadResult, Plugin, PluginBuild} from 'esbuild';
 
 /** Typed adapters keep legacy JS behind unknown when checked by tsc. esbuild
  * cannot trace createRequire aliases, so expose only their statically verified
  * relative calls to the bundler. Application sources and frozen catalogs stay
  * intact; dynamic or escaped require capabilities fail the build. */
-export function exposeLocalRequire(source,filename){
+export function exposeLocalRequire(source: string, filename: string): string | null {
   const declaration='const require = createRequire(import.meta.url);';
   if(!source.includes(declaration))return null;
   const file=ts.createSourceFile(filename,source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS);
-  let statement;
+  let statement: ts.VariableStatement | undefined;
   for(const node of file.statements){
     if(ts.isVariableStatement(node)&&node.declarationList.flags&ts.NodeFlags.Const&&node.declarationList.declarations.length===1){
       const item=node.declarationList.declarations[0];
@@ -18,7 +19,7 @@ export function exposeLocalRequire(source,filename){
     }
   }
   if(!statement)throw new Error(`Unsupported local require declaration: ${filename}`);
-  function visit(node){
+  function visit(node: ts.Node): void {
     if(node===statement)return;
     if(ts.isIdentifier(node)&&node.text==='require'){
       const call=node.parent,arg=ts.isCallExpression(call)?call.arguments[0]:undefined;
@@ -30,10 +31,10 @@ export function exposeLocalRequire(source,filename){
   return source.slice(0,statement.getStart(file))+source.slice(statement.end);
 }
 
-export function localRequireBundlePlugin(root){
+export function localRequireBundlePlugin(root: string): Plugin {
   const owned=[['packages','business','src'],['packages','contracts','src'],['apps','server','src']].map(parts=>path.join(path.resolve(root),...parts)+path.sep);
-  return {name:'mioon-static-legacy-adapters',setup(build){
-    build.onLoad({filter:/\.ts$/},async args=>{
+  return {name:'mioon-static-legacy-adapters',setup(build: PluginBuild){
+    build.onLoad({filter:/\.ts$/},async (args: OnLoadArgs): Promise<OnLoadResult | null>=>{
       if(!owned.some(directory=>args.path.startsWith(directory)))return null;
       const contents=exposeLocalRequire(await readFile(args.path,'utf8'),args.path);
       return contents===null?null:{contents,loader:'ts',resolveDir:path.dirname(args.path)};

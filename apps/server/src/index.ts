@@ -10,6 +10,7 @@ import {isTimelineRenderRecord, isTimelineMutationResponse, hasRequestNotApplied
 import {getWorkspaceRestoreContext} from '@mioon/business/workspace-restore-schema';
 import {isUnavailableRestoredRoute,workspaceRestoreError} from '@mioon/business/workspace-restore-policy';
 import http from 'node:http';
+import type {IncomingMessage, ServerResponse, Server} from 'node:http';
 import {createChatRuntime} from '@mioon/business/agent/chat-runtime';
 import {createAgentAuthorizations} from '../../../packages/business/src/agent/authorizations.ts';
 import {createUiPreferences} from '../../../packages/business/src/ui-preferences.ts';
@@ -37,6 +38,7 @@ import {createLocalDraftHttp} from './local-drafts-http.ts';
 import {createLastProjectHttp} from './last-project-http.ts';
 import {createLocalDeliveryHttp} from './local-delivery-http.ts';
 import {createChatHttp} from './chat-http.ts';
+import type {ChatHttp} from './chat-http.ts';
 import {createEditTasksHttp} from './edit-tasks-http.ts';
 import {createImageHttp} from './image-http.ts';
 import {createComfyHttp} from './comfy-http.ts';
@@ -47,6 +49,7 @@ import {createImageSettings,createCustomImageSettings} from '@mioon/business/ima
 import {createImageSettingsFile,createCustomImageSettingsFile} from '@mioon/business/images/settings-file';
 import {createLiveImageGateway,createCompatibleImageGateway} from '@mioon/business/images/gateway';
 import {createFileResponses} from './file-response.ts';
+import type {FileResponses} from './file-response.ts';
 import {createOwnedMediaGraphReader} from '@mioon/business/inspection';
 import {createVersionComparisonMediaHttp} from './version-comparison-media.ts';
 import {callObservedRpc} from './rpc-observation.ts';
@@ -54,33 +57,123 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomBytes, timingSafeEqual} from 'node:crypto';
 import {createAgentSettings, sanitizeAgentSettingsError, sanitizeAgentSettingsResult} from '@mioon/business/agent/settings';
+import type {AgentSettingsService, SettingsContextOptions} from '@mioon/business/agent/settings';
 import {createAgentSettingsFile} from '@mioon/business/agent/settings-file';
 import {MAX_AGENT_SETTINGS_BYTES} from '@mioon/business/agent/config';
 import {openStore, createServices, startWorker, safePath, createProviderRegistry, createWorkspacePreferences, MAX_WORKSPACE_PREFERENCES_BYTES} from '@mioon/business';
 import {validateWorkspaceStorage,ownsStoreLock} from '@mioon/business/db';
+import type {WorkspaceStore} from '@mioon/business/db';
 import {readPrivateFile, writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile,validateManagedDirectory} from '@mioon/contracts/private-storage';
 import {assertMediaTerminated, boundedShutdown, checkpoint} from '@mioon/business/operation-lifecycle';
 import {terminateMediaProcesses,onMediaProcess} from '@mioon/business/media-processes';
+import type {NativeAudioPreviewAuthority} from '@mioon/business/native-audio-preview';
+import type {ComfyModuleMode} from '../../../packages/contracts/src/comfy-availability.ts';
+import type {ComfyTransportOptions} from '../../../packages/business/src/comfy/network.ts';
+import type {ReviewedImageGatewayOptions} from '../../../packages/business/src/images/gateway.ts';
+import type {WorkspaceInfo} from '../../../packages/contracts/src/workspace-info.ts';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
-const validToken = value => {
+type LocalDraftChannel = WorkspaceInfo['channel'];
+type HttpHandler = (req: IncomingMessage, res: ServerResponse, url: URL) => Promise<boolean>;
+type Services = ReturnType<typeof createServices>;
+type OrdinaryServices = Services;
+/** Cross-path transport surface shared by ordinary and verified candidate services. */
+type ServiceCall = (operation: string, input: unknown, context?: Record<string, unknown>) => Promise<unknown>;
+type ServiceDrain = () => Promise<void>;
+type EditTasks = ReturnType<typeof createEditTasks>;
+type ChatRuntime = ReturnType<typeof createChatRuntime>;
+type CandidateEditor = ReturnType<typeof createOpacityCandidateApplicationEditorAssembly>;
+type CandidateDomain = ReturnType<typeof createOpacityCandidateDomain>;
+type VersionComparisonMedia = ReturnType<typeof createVersionComparisonMediaHttp>;
+type AgentAuthorizations = ReturnType<typeof createAgentAuthorizations>;
+type UiPreferences = ReturnType<typeof createUiPreferences>;
+type ImageSettings = Awaited<ReturnType<typeof createImageSettings>>;
+type CustomImageSettings = Awaited<ReturnType<typeof createCustomImageSettings>>;
+type ComfySettings = Awaited<ReturnType<typeof createComfySettings>>;
+type ComfyConnector = ReturnType<typeof createComfyConnector>;
+type LocalShotText = ReturnType<typeof createLocalShotText>;
+type LocalDrafts = ReturnType<typeof createLocalDrafts>;
+type LocalDelivery = ReturnType<typeof createLocalDelivery>;
+type LastProject = ReturnType<typeof createLastProject>;
+type ExportFileRecovery = ReturnType<typeof createExportFileRecovery>;
+type WorkspacePreferences = ReturnType<typeof createWorkspacePreferences>;
+type LocalDraftHttpHandler = ReturnType<typeof createLocalDraftHttp> | CandidateEditor['localDraftHttp'];
+type ChatRuntimeOptions = Parameters<typeof createChatRuntime>[0];
+type EditTasksOptions = Parameters<typeof createEditTasks>[0];
+type TaskFault = NonNullable<EditTasksOptions extends {fault?: infer F} ? F : never>;
+type AgentEditServiceOptions = Parameters<typeof createAgentEditService>[0];
+type AgentEditFault = NonNullable<AgentEditServiceOptions extends {fault?: infer F} ? F : never>;
+type AgentGatewaySeam = ChatRuntimeOptions extends {gateway?: infer G} ? NonNullable<G> : never;
+interface SecretOperationOptions {signal?: AbortSignal | undefined; isActive?: (() => boolean) | undefined}
+interface ImageSecretStorageState {readonly persistentAvailable: boolean; readonly sessionScope: 'server'; readonly reasonCode: 'OS_SECRET_STORE_UNAVAILABLE' | 'LINUX_BASIC_TEXT' | null}
+/** Trusted utility-only codec surface; never supplied from HTTP/environment. */
+interface ImageSecretCodecPort {
+  storage(options?: SecretOperationOptions): ImageSecretStorageState;
+  refreshStorage(options?: SecretOperationOptions): Promise<unknown>;
+  encrypt(plaintext: string, options?: SecretOperationOptions): Promise<string>;
+  decrypt(ciphertext: string, options?: SecretOperationOptions): Promise<string>;
+}
+/** Persisted Agent settings surface, whether composed locally or proxied from
+ * the trusted desktop main process. It is never HTTP/environment-configurable.
+ * The proxy returns already-sanitized values, hence the unknown result types;
+ * createChatRuntime re-sanitizes every read at this boundary. */
+interface AgentSettingsPort {
+  get(options?: SettingsContextOptions & {selfPort?: number | undefined}): Promise<unknown>;
+  put(input: unknown, options?: SettingsContextOptions & {selfPort?: number | undefined}): Promise<unknown>;
+  close(): unknown;
+}
+interface ImageNetworkSeam {lookup?: ReviewedImageGatewayOptions['lookup']; httpsRequest?: ReviewedImageGatewayOptions['httpsRequest']}
+interface ComfyNetworkSeam {httpRequest: NonNullable<ComfyTransportOptions['httpRequest']>}
+export interface ServerOptions {
+  dataDir?: string;
+  port?: number;
+  distDir?: string;
+  token?: string;
+  agentSettings?: AgentSettingsPort;
+  imageSecretCodec?: ImageSecretCodecPort;
+  imageNetwork?: ImageNetworkSeam;
+  comfyNetwork?: ComfyNetworkSeam;
+  comfyModule?: ComfyModuleMode;
+  chatGateway?: AgentGatewaySeam;
+  agentEditFault?: AgentEditFault;
+  taskFault?: TaskFault;
+  localDraftChannel?: LocalDraftChannel;
+  nativeAudioPreview?: NativeAudioPreviewAuthority;
+  opacityCandidateLaunch?: object;
+}
+interface ServerInstance {
+  url: string;
+  port: number;
+  token: string;
+  tokenFile: string;
+  dataDir: string;
+  close(): Promise<void>;
+  handleRequest?: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
+}
+type HttpErrorFields = {status?: number | undefined; code?: string | undefined; message?: string | undefined; details?: unknown};
+const field = (value: unknown, name: string): unknown => value !== null && typeof value === 'object' && name in value ? (value as Record<string, unknown>)[name] : undefined;
+const errorFields = (error: unknown): HttpErrorFields => (error !== null && typeof error === 'object' ? error : {}) as HttpErrorFields;
+/** Parsed JSON from trusted same-origin handlers. Each route validates its own
+ * fixed fields; a non-object body fails exactly like the former untyped code. */
+const jsonObject = (value: unknown): Record<string, unknown> => value as Record<string, unknown>;
+const validToken = (value: unknown): string => {
   if (typeof value !== 'string' || value.length < 20 || Buffer.byteLength(value, 'utf8') > 4096 || /[\r\n\0]/.test(value)) {
     throw Error('MIOON_TOKEN must contain at least 20 characters, at most 4096 bytes, and no line breaks or NUL bytes');
   }
   return value;
 };
-const equal = (a, b) => {
+const equal = (a: unknown, b: unknown): boolean => {
   if (typeof a !== 'string' || typeof b !== 'string') return false;
   const left = Buffer.from(a), right = Buffer.from(b);
   return left.length === right.length && timingSafeEqual(left, right);
 };
-const json = (res, status, data) => {
+const json = (res: ServerResponse, status: number, data: unknown): void => {
   res.writeHead(status, {'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store'});
   res.end(JSON.stringify(data));
 };
-async function body(req, max = 42 * 1024 * 1024) {
+async function body(req: IncomingMessage, max = 42 * 1024 * 1024): Promise<unknown> {
   let size = 0;
-  const chunks = [];
+  const chunks: Buffer[] = [];
   for await (const chunk of req) {
     size += chunk.length;
     if (size > max) throw Object.assign(Error('Request too large'), {status: 413});
@@ -93,14 +186,14 @@ async function body(req, max = 42 * 1024 * 1024) {
 /** Transport lifecycle shared by the CLI and the Electron utility process.
  * No signal handlers, process exits, UI imports or host-runtime spawning here.
  */
-export async function startServer(options = {}) {
+export async function startServer(options: ServerOptions = {}): Promise<ServerInstance> {
   try {return await composeServer(options, true);}
   catch(error){closeUnusedOpacityCandidateLaunch(options.opacityCandidateLaunch);throw error;}
 }
 
 /** In-memory request composition for isolated tests. This never listens or
  * starts a worker, and requires the same exact fresh42 launch proof. */
-export async function createOpacityCandidateRequestApplication(options = {}) {
+export async function createOpacityCandidateRequestApplication(options: ServerOptions = {}): Promise<ServerInstance> {
   if (!options.opacityCandidateLaunch) throw Object.assign(Error('A fresh42 development launch is required.'), {code: 'OPACITY_CANDIDATE_LAUNCH_REQUIRED'});
   try {return await composeServer(options, false);}
   catch(error){closeUnusedOpacityCandidateLaunch(options.opacityCandidateLaunch);throw error;}
@@ -122,7 +215,7 @@ async function composeServer({
   localDraftChannel = 'web', // Trusted desktop build identity only; never HTTP/environment configuration.
   nativeAudioPreview, // Trusted per-utility authority only; never HTTP/environment configuration.
   opacityCandidateLaunch, // Exact one-shot internal dev proof; never payload/environment.
-} = {}, listen = true) {
+}: ServerOptions = {}, listen = true): Promise<ServerInstance> {
   if (!Number.isInteger(port) || (port !== 0 && (port < 1024 || port > 65535))) throw Error('Invalid PORT');
   if (comfyNetwork !== undefined && (comfyNetwork === null || typeof comfyNetwork.httpRequest !== 'function')) throw Error('Invalid local ComfyUI transport');
   if (!['load','skip','not-provided'].includes(comfyModule)) throw Error('Invalid official ComfyUI module composition');
@@ -144,23 +237,47 @@ async function composeServer({
     if (token === undefined) {
       const stored = readPrivateFile(tokenFile, {root, allowMissing: true, maxBytes: 4098, encoding: 'utf8'});
       // Preserve the server/client token-file whitespace normalization contract.
-      if (stored !== null) token = validToken(stored.trim());
+      if (stored !== null) token = validToken((stored as string).trim());
     }
   } catch (error) {candidate?.store.close();throw error;}
   const store = candidate ? candidate.store : openStore(root);
+  // candidate === null selects the ordinary store; candidate stores never reach
+  // the ordinary service, worker, chat or local-mutation factories below.
+  const ordinaryStore = store as WorkspaceStore;
   const shutdown = new AbortController();
   const deletionGate=createProjectDeletionGate({subscribeMedia:onMediaProcess,signal:shutdown.signal,
     busy:()=>{throw new AppError('PROJECT_DELETE_BUSY','工作区仍有媒体、请求或文件传输在执行，请结束后再删除项目。',409);}});
-  let worker, server, agentSettings, agentAuthorizations, uiPreferences, imageSettings, customImageSettings, comfySettings, chatRuntime, chatHttp, services, editTasks, candidateEditor;
+  let worker: ReturnType<typeof startWorker> | undefined, server: Server | undefined, agentSettings: AgentSettingsPort | undefined,
+    agentAuthorizations: AgentAuthorizations | undefined, uiPreferences: UiPreferences | undefined, imageSettings: ImageSettings | undefined,
+    customImageSettings: CustomImageSettings | undefined, comfySettings: ComfySettings | undefined, chatRuntime: ChatRuntime | undefined,
+    chatHttp: ChatHttp | undefined, editTasks!: EditTasks, candidateEditor: CandidateEditor | undefined;
+  let services!: Services;
+  let serviceCall!: ServiceCall;
+  let serviceDrain!: ServiceDrain;
   const ownsLock = () => candidate ? candidate.assembly.ownsLock() : ownsStoreLock(store);
   const isRestored = () => Boolean(candidate ? candidate.assembly.getRestoreContext() : getWorkspaceRestoreContext(store));
-  let candidateDomain, files, versionComparisonMedia;
+  let candidateDomain: CandidateDomain | null, files!: FileResponses, versionComparisonMedia!: VersionComparisonMedia;
+  const serverPort = (): number | undefined => {
+    const address = server?.address();
+    return address !== null && typeof address === 'object' ? address.port : undefined;
+  };
+  // Preserve the original fail-fast behavior when a route needs the bound port.
+  const listeningPort = (): number => {
+    const address = server?.address();
+    if (address === undefined || address === null || typeof address === 'string') throw new TypeError('The local HTTP listener is not bound to a TCP port.');
+    return address.port;
+  };
   try {
   candidateDomain = candidate ? createOpacityCandidateDomain(store) : null;
   files = createFileResponses({signal: shutdown.signal});
   versionComparisonMedia = createVersionComparisonMediaHttp({db: store.db, root, signal: shutdown.signal,
     readGraph: projectId => createOwnedMediaGraphReader(store.db, projectId), resolvePath: safePath, createFiles: createFileResponses,
-    validateFile: file => validateManagedFile(file, {root}),
+    validateFile: file => {
+      const metadata = validateManagedFile(file, {root});
+      // No allowMissing is passed, so an existing file must produce metadata.
+      if (metadata === null) throw Object.assign(Error('本地文件不可用。'), {code: 'FILE_UNAVAILABLE', status: 404});
+      return metadata;
+    },
     assertAvailable: () => {
       if (candidate || getWorkspaceRestoreContext(store)) throw workspaceRestoreError();
       if (!ownsStoreLock(store)) throw Object.assign(Error('本地文件不可用。'), {code: 'FILE_UNAVAILABLE', status: 404});
@@ -171,15 +288,16 @@ async function composeServer({
     }
     const restored=candidate ? candidate.assembly.getRestoreContext() : getWorkspaceRestoreContext(store);
     const providers = restored || candidate ? new Map() : createProviderRegistry({db: store.db, root});
-    let imageHttp=async()=>false,comfyHttp=async()=>false;
+    let imageHttp: HttpHandler=async()=>false,comfyHttp: HttpHandler=async()=>false;
     if(!restored && !candidate){
-    agentSettings = suppliedAgentSettings || await createAgentSettings({
+    const createdSettings = await createAgentSettings({
       persistence: createAgentSettingsFile({directory: path.join(root, 'agent-settings')}),
     });
+    agentSettings = suppliedAgentSettings || createdSettings;
     agentAuthorizations = createAgentAuthorizations({root,channel:localDraftChannel,signal:shutdown.signal,
       storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
       guards:{ownsLock,isRestored},readCurrentTarget:async()=>{
-        const settings=sanitizeAgentSettingsResult(await agentSettings.get({selfPort:server?.address()?.port}));
+        const settings=sanitizeAgentSettingsResult(await agentSettings!.get({selfPort:serverPort()}));
         return {destination:deriveAgentEndpoint(settings.configuration),model:settings.configuration.model,settingsRevision:settings.revision};
       }});
     imageSettings = await createImageSettings({persistence:createImageSettingsFile({directory:path.join(root,'image-settings'),privateRoot:root}),
@@ -188,37 +306,50 @@ async function composeServer({
       ...(imageSecretCodec?{secretCodec:imageSecretCodec,storage:()=>imageSecretCodec.storage()}: {})});
     // Evaluate at every real I/O boundary, including desktop's port:0 binding.
     // This process knows its backend listener, not unrelated frontend processes.
-    const comfyReservedPorts = () => new Set([port, server?.address()?.port].filter(value => Number.isInteger(value) && value > 0));
+    const comfyReservedPorts = (): Set<number> => new Set([port, serverPort()].filter((value): value is number => value !== undefined && Number.isInteger(value) && value > 0));
     comfySettings = await createComfySettings({directory:path.join(root,'comfy-settings'),privateRoot:root,reservedPorts:comfyReservedPorts});
     const {connector:comfyConnector,availability:comfyModuleAvailability} = composeOfficialComfyModule(comfyModule,()=>createComfyConnector({reservedPorts:comfyReservedPorts,...(comfyNetwork ? {networkDeps:{httpRequest:comfyNetwork.httpRequest}} : {})}));
-    services = createServices(store, providers, {signal: shutdown.signal,agentAuthorizations,readRecentOpened:()=>uiPreferences?.get().recentOpened??{},imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettings:customImageSettings,customGateway:createCompatibleImageGateway({settings:customImageSettings,...imageNetwork}),comfySettings,comfyConnector,comfyModuleAvailability}});
-    imageHttp=createImageHttp({settings:imageSettings,customSettings:customImageSettings,approve:services.imageApproval,reject:services.imageRejection,signal:shutdown.signal});
+    const composed = createServices(ordinaryStore, providers, {signal: shutdown.signal,agentAuthorizations,readRecentOpened:()=>uiPreferences?.get().recentOpened??{},imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettings:customImageSettings,customGateway:createCompatibleImageGateway({settings:customImageSettings,...imageNetwork}),comfySettings,comfyConnector,comfyModuleAvailability}});
+    services = composed;
+    serviceCall = (operation, input, context) => composed.call(operation, input, context);
+    serviceDrain = () => composed.drain();
+    imageHttp=createImageHttp({settings:imageSettings,customSettings:customImageSettings,approve:composed.imageApproval,reject:composed.imageRejection,signal:shutdown.signal});
     comfyHttp=createComfyHttp({settings:comfySettings,connector:comfyConnector,availability:comfyModuleAvailability,signal:shutdown.signal});
     }else if(candidate){
       candidateEditor=createOpacityCandidateApplicationEditorAssembly(store,{signal:shutdown.signal});
-      services=candidateEditor.services;editTasks=candidateEditor.tasks;
-    }else services=createServices(store,providers,{signal:shutdown.signal});
-    if(!candidate)editTasks = createEditTasks({store, services, ...(taskFault ? {fault: taskFault} : {})});
+      // The candidate coordinator exposes its bounded task subset; candidateEditor.drain()
+      // owns candidate shutdown instead of tasks.drain().
+      const candidateServices = candidateEditor.services;
+      serviceCall = (operation, input, context) => candidateServices.call(operation, input, context);
+      serviceDrain = () => candidateServices.drain();
+      editTasks=candidateEditor.tasks as EditTasks;
+    }else {
+      const restoredServices = createServices(ordinaryStore,providers,{signal:shutdown.signal});
+      services = restoredServices;
+      serviceCall = (operation, input, context) => restoredServices.call(operation, input, context);
+      serviceDrain = () => restoredServices.drain();
+    }
+    if(!candidate)editTasks = createEditTasks({store: ordinaryStore, services, ...(taskFault ? {fault: taskFault} : {})});
     // openStore already owns the exclusive workspace lock. Startup only
     // reconciles durable evidence and never dispatches a prepared edit.
     await editTasks.reconcileStartup();
     const editTasksHttp = createEditTasksHttp({tasks: editTasks, signal: shutdown.signal});
-    const workspacePreferences = createWorkspacePreferences(store);
+    const workspacePreferences: WorkspacePreferences = createWorkspacePreferences(ordinaryStore);
     uiPreferences = createUiPreferences({root,channel:localDraftChannel,signal:shutdown.signal,
       storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
       guards:{ownsLock,isReadOnly:()=>Boolean(restored||candidate),hasProject:projectId=>readLastProjectTarget(store.db,projectId)!==null}});
-    const localDrafts = candidate ? null : createLocalDrafts({root,channel:localDraftChannel,signal:shutdown.signal,
+    const localDrafts: LocalDrafts | null = candidate ? null : createLocalDrafts({root,channel:localDraftChannel,signal:shutdown.signal,
       storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
       guards:{ownsLock,isRestored,
         readTimeline:projectId=>createTimelineRecoveryBoundary(store.db,{projectId}).read(),
         readClipAsset:(projectId,clip)=>createTimelineRecoveryBoundary(store.db,{projectId}).clipSource(clip)}});
-    const localDraftHttp = candidate ? candidateEditor.localDraftHttp : createLocalDraftHttp({drafts:localDrafts,signal:shutdown.signal});
-    const lastProject = createLastProject({root,channel:localDraftChannel,signal:shutdown.signal,
+    const localDraftHttp: LocalDraftHttpHandler = candidate ? candidateEditor!.localDraftHttp : createLocalDraftHttp({drafts:localDrafts!,signal:shutdown.signal});
+    const lastProject: LastProject = createLastProject({root,channel:localDraftChannel,signal:shutdown.signal,
       storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
       guards:{ownsLock,isRestored,
         readProject:projectId=>readLastProjectTarget(store.db,projectId)}});
     const lastProjectHttp = createLastProjectHttp({lastProject,signal:shutdown.signal});
-    const localDelivery = createLocalDelivery({root,channel:localDraftChannel,signal:shutdown.signal,
+    const localDelivery: LocalDelivery = createLocalDelivery({root,channel:localDraftChannel,signal:shutdown.signal,
       storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
       guards:{ownsLock,isRestored,
         readTimeline:projectId=>candidateDomain ? candidateDomain.boundary({projectId}).read({sourceSemantics:false}) : createTimelineRecoveryBoundary(store.db,{projectId}).read({sourceSemantics:false}),
@@ -229,66 +360,75 @@ async function composeServer({
           const saved=readTimelineReceipt(store.db,input,'timeline.render');
           if(!saved)return null;
           if(saved.requestHash!==hash({operation:'timeline.render',input}))throw new AppError('IDEMPOTENCY_CONFLICT','原导出请求身份与内容不一致。',409);
-          return publicValue((candidateDomain ? candidateDomain.boundary(input) : createTimelineRecoveryBoundary(store.db,input)).replay('timeline.render',saved.response));
+          return publicValue((candidateDomain ? candidateDomain.boundary(input) : createTimelineRecoveryBoundary(store.db,input)).replay('timeline.render',saved.response as string));
         },
-        render:async input=>{const response=await services.call('timeline.render',input);return candidate ? publicValue(response) : response;}}});
+        render:async input=>{const response=await serviceCall('timeline.render',input);return candidate ? publicValue(response) : response;}}});
     const localDeliveryHttp = createLocalDeliveryHttp({delivery:localDelivery,signal:shutdown.signal});
-    const exportFileRecovery=createExportFileRecovery({root,db:store.db,signal:shutdown.signal,hold:deletionGate.hold,
+    const exportFileRecovery: ExportFileRecovery=createExportFileRecovery({root,db:store.db,signal:shutdown.signal,hold:deletionGate.hold,
       guards:{isTimelineRenderRecord,readOwnedAsset:(projectId,assetId)=>readOwnedTimelineAsset(store.db,projectId,assetId)},
       assertAvailable:()=>{if(restored||candidate)throw workspaceRestoreError();if(!ownsStoreLock(store))throw new AppError('EXPORT_FILE_UNAVAILABLE','导出文件不可用。',409);},
       validateFile:(file,allowMissing)=>validateManagedFile(file,{root,allowMissing}),validateDirectory:directory=>validateManagedDirectory(directory,{root})});
-    let localShotText,localShotTextHttp=async()=>false,audioPreviewHttp=async()=>false,continuousAudioHttp=async()=>false;
+    let localShotText!: LocalShotText,localShotTextHttp: HttpHandler=async()=>false,audioPreviewHttp: HttpHandler=async()=>false,continuousAudioHttp: HttpHandler=async()=>false;
     if(!candidate){
+    const ordinary = services;
     const neverMutate=()=>{throw new Error('Read-only shot receipt boundary');};
-    const shotReplay=createLocalMutationServices(store,{canonical,readOnly:true,check:neverMutate,now:neverMutate,references:{guardManualUpdate:neverMutate}});
+    // candidate === null selects the ordinary store in this branch.
+    const ordinaryStore = store as ReturnType<typeof openStore>;
+    const shotReplay=createLocalMutationServices(ordinaryStore,{canonical,readOnly:true,check:neverMutate,now:neverMutate,references:{guardManualUpdate:neverMutate}});
     const shotTextDomain=createLocalShotTextDomain({db:store.db,canonical,
       replay:(projectId,input)=>shotReplay.updateShotInProject(projectId,input),
-      validateAsset:(projectId,asset)=>validateImageConsumption(store.db,asset,projectId),
+      // Domain reads cross-project ownership before this fixed consumption check;
+      // the stored asset record always starts with its string id.
+      validateAsset:(projectId,asset)=>validateImageConsumption(store.db,asset as Record<string, unknown> & {id: string},projectId),
       isRevisionConflict:error=>error instanceof AppError&&error.code==='REVISION_CONFLICT',
-      updateShotInProject:(projectId,input)=>services.updateShotInProject(projectId,input)});
+      updateShotInProject:(projectId,input)=>ordinary.updateShotInProject(projectId,input)});
     localShotText=createLocalShotText({root,channel:localDraftChannel,signal:shutdown.signal,
       storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
       guards:{...shotTextDomain,ownsLock:()=>ownsStoreLock(store),isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),
         isShotUpdateInput:value=>schemas['shot.update'].safeParse(value).success}});
     localShotTextHttp=createLocalShotTextHttp({shotText:localShotText,signal:shutdown.signal});
-    nativeAudioPreview?.bind(services.audioPreview);
-    audioPreviewHttp=createTimelineAudioPreviewHttp({service:services.audioPreview,nativeAdmission:nativeAudioPreview,signal:shutdown.signal,assertAvailable:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();}});
-    continuousAudioHttp=createTimelineAudioContinuousHttp({service:services.audioPreview,nativeAdmission:nativeAudioPreview,signal:shutdown.signal,assertAvailable:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();}});
+    nativeAudioPreview?.bind(ordinary.audioPreview);
+    audioPreviewHttp=createTimelineAudioPreviewHttp({service:ordinary.audioPreview,nativeAdmission:nativeAudioPreview,signal:shutdown.signal,assertAvailable:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();}});
+    continuousAudioHttp=createTimelineAudioContinuousHttp({service:ordinary.audioPreview,nativeAdmission:nativeAudioPreview,signal:shutdown.signal,assertAvailable:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();}});
     }
     // Desktop injects a narrow trusted-main proxy. Web mode persists only
     // nonsecret metadata here; newly entered Agent keys remain in backend RAM.
     if(!restored && !candidate){
-    services.setProjectDeletionCompanions({
+    const ordinary = services;
+    ordinary.setProjectDeletionCompanions({
       assertDeletable:projectId=>{
         deletionGate.assertIdle(projectId);
-        localDrafts.assertProjectDeletable(projectId);localDelivery.assertProjectDeletable(projectId);localShotText.assertProjectDeletable(projectId);
+        localDrafts!.assertProjectDeletable(projectId);localDelivery.assertProjectDeletable(projectId);localShotText.assertProjectDeletable(projectId);
       },
       removeProject:projectId=>{
-        localDrafts.removeProject(projectId);localDelivery.removeProject(projectId);localShotText.removeProject(projectId);uiPreferences.removeProject(projectId);
+        localDrafts!.removeProject(projectId);localDelivery.removeProject(projectId);localShotText.removeProject(projectId);uiPreferences!.removeProject(projectId);
       },
     });
-    const editService = createAgentEditService({store, services, ...(agentEditFault ? {fault: agentEditFault} : {})});
-    chatRuntime = createChatRuntime({store, agentSettings, authorizations:agentAuthorizations, editService, inspection: services.inspection, ...(chatGateway ? {gateway: chatGateway, mode: 'simulated'} : {}), selfPort: () => server.address()?.port});
+    const editService = createAgentEditService({store: ordinaryStore, services: ordinary, ...(agentEditFault ? {fault: agentEditFault} : {})});
+    // The trusted desktop proxy validates and sanitizes these values itself; the
+    // local engine exposes the same dependency. createChatRuntime re-sanitizes reads.
+    const chatSettings = agentSettings as unknown as AgentSettingsService;
+    chatRuntime = createChatRuntime({store: ordinaryStore, agentSettings: chatSettings, authorizations:agentAuthorizations, editService, inspection: ordinary.inspection, ...(chatGateway ? {gateway: chatGateway, mode: 'simulated'} : {}), selfPort: () => listeningPort()});
     chatHttp = createChatHttp({runtime: chatRuntime});
     }
-    const origins = new Set(), hosts = new Set();
-    const auth = req => {
+    const origins = new Set<string>(), hosts = new Set<string>();
+    const auth = (req: IncomingMessage): boolean => {
       const bearer = req.headers.authorization?.replace(/^Bearer /, '');
       const cookie = (req.headers.cookie || '').split(';').map(x => x.trim()).find(x => x.startsWith('mioon_session='))?.slice('mioon_session='.length);
       return equal(bearer, token) || equal(cookie, token);
     };
     let actualPort = port;
-    const handleRequest = async (req, res) => {
+    const handleRequest = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
       try {
         checkpoint(shutdown.signal);
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('Referrer-Policy', 'no-referrer');
         res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'");
-        if (!hosts.has(req.headers.host) || (req.headers.origin && !origins.has(req.headers.origin))) return json(res, 403, {ok: false, error: {code: 'ORIGIN_REJECTED', message: '本地来源校验失败'}});
-        const url = new URL(req.url, `http://127.0.0.1:${actualPort}`);
-        if (url.pathname === '/health') return json(res, 200, {ok: true, service: 'mioon', version: '0.4.0', sqlite: store.db.prepare('select sqlite_version() v').get().v});
+        if (!hosts.has(req.headers.host ?? '') || (req.headers.origin && !origins.has(req.headers.origin))) return json(res, 403, {ok: false, error: {code: 'ORIGIN_REJECTED', message: '本地来源校验失败'}});
+        const url = new URL(String(req.url), `http://127.0.0.1:${actualPort}`);
+        if (url.pathname === '/health') return json(res, 200, {ok: true, service: 'mioon', version: '0.4.0', sqlite: field(store.db.prepare('select sqlite_version() v').get(), 'v')});
         if (url.pathname === '/api/login' && req.method === 'POST') {
-          const input = await body(req, 4096);
+          const input = jsonObject(await body(req, 4096));
           checkpoint(shutdown.signal);
           if (!equal(input.token, token)) return json(res, 401, {ok: false, error: {code: 'UNAUTHORIZED', message: '访问令牌无效'}});
           res.setHeader('Set-Cookie', [`mioon_session=${token}; HttpOnly; SameSite=Strict; Path=/`, 'wb_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0']);
@@ -298,19 +438,19 @@ async function composeServer({
           if (!auth(req)) return json(res, 401, {ok: false, error: {code: 'UNAUTHORIZED', message: '请使用本地访问令牌登录'}});
           deletionGate.track(res);
         }
-        if(restored&&isUnavailableRestoredRoute(url.pathname,req.method))throw workspaceRestoreError();
+        if(restored&&isUnavailableRestoredRoute(url.pathname,req.method ?? ''))throw workspaceRestoreError();
         if(candidate && /^\/api\/(?:agent|images|comfy|timeline-audio-preview)(?:\/|$)/u.test(url.pathname))throw workspaceRestoreError();
         if (url.pathname === '/api/version-comparison/media' && await versionComparisonMedia.handle(req, res, url)) return;
         if (url.pathname === '/api/agent/settings') {
           try {
-            const context = {selfPort: server.address().port};
-            if (req.method === 'GET') return json(res, 200, {ok: true, data: sanitizeAgentSettingsResult(await agentSettings.get(context))});
+            const context = {selfPort: listeningPort()};
+            if (req.method === 'GET') return json(res, 200, {ok: true, data: sanitizeAgentSettingsResult(await agentSettings!.get(context))});
             if (req.method === 'PUT') {
               let input;
               try { input = await body(req, MAX_AGENT_SETTINGS_BYTES); }
-              catch (error) { return json(res, error.status === 413 ? 413 : 400, {ok: false, error: {code: 'AGENT_SETTINGS_VALIDATION', message: 'Agent 设置请求过大或 JSON 格式无效。', details: {}, retryable: false}}); }
+              catch (error) { const fields = errorFields(error); return json(res, fields.status === 413 ? 413 : 400, {ok: false, error: {code: 'AGENT_SETTINGS_VALIDATION', message: 'Agent 设置请求过大或 JSON 格式无效。', details: {}, retryable: false}}); }
               checkpoint(shutdown.signal);
-              return json(res, 200, {ok: true, data: sanitizeAgentSettingsResult(await agentSettings.put(input, context))});
+              return json(res, 200, {ok: true, data: sanitizeAgentSettingsResult(await agentSettings!.put(input, context))});
             }
             res.setHeader('Allow', 'GET, PUT');
             return json(res, 405, {ok: false, error: {code: 'METHOD_NOT_ALLOWED', message: '请使用 GET 或 PUT'}});
@@ -333,26 +473,26 @@ async function composeServer({
         checkpoint(shutdown.signal);
         if (url.pathname === '/api/workspace-info' && req.method === 'GET') {
           return json(res,200,{ok:true,data:await readWorkspaceInfo({root,channel:localDraftChannel,version:packageMetadata.version,tools:{ffmpeg:mediaExecutable('ffmpeg'),ffprobe:mediaExecutable('ffprobe')},signal:shutdown.signal,
-            pendingProjectCleanup:restored||candidate?0:store.db.prepare('SELECT count(*) AS n FROM project_deletion_cleanup').get().n})});
+            pendingProjectCleanup:restored||candidate?0:Number(field(store.db.prepare('SELECT count(*) AS n FROM project_deletion_cleanup').get(), 'n'))})});
         }
         if (url.pathname === '/api/media-tools/check' && req.method === 'POST') {
           if(restored||candidate)throw workspaceRestoreError();
-          const input=await body(req,64);
-          if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).length)throw new AppError('VALIDATION_ERROR','工具检测不接受路径或命令参数。',400);
+          const raw=await body(req,64);
+          if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).length)throw new AppError('VALIDATION_ERROR','工具检测不接受路径或命令参数。',400);
           return json(res,200,{ok:true,data:await inspectMediaTools({ffmpeg:mediaExecutable('ffmpeg'),ffprobe:mediaExecutable('ffprobe')},{execute:runMedia,signal:shutdown.signal})});
         }
         if (url.pathname === '/api/ui-preferences') {
-          if (req.method === 'GET') return json(res,200,{ok:true,data:uiPreferences.get()});
-          if (req.method === 'PUT') return json(res,200,{ok:true,data:uiPreferences.put(await body(req,8192))});
+          if (req.method === 'GET') return json(res,200,{ok:true,data:uiPreferences!.get()});
+          if (req.method === 'PUT') return json(res,200,{ok:true,data:uiPreferences!.put(await body(req,8192))});
           res.setHeader('Allow','GET, PUT');
           return json(res,405,{ok:false,error:{code:'METHOD_NOT_ALLOWED',message:'请使用 GET 或 PUT'}});
         }
         if (url.pathname === '/api/ui-preferences/opened' && req.method === 'POST') {
-          const input=await body(req,1024);
+          const input=jsonObject(await body(req,1024));
           if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).length!==1||!Object.hasOwn(input,'projectId'))
             throw new AppError('VALIDATION_ERROR','项目打开记录参数无效',400);
-          uiPreferences.markOpened(input.projectId);
-          return json(res,200,{ok:true,data:uiPreferences.get()});
+          uiPreferences!.markOpened(input.projectId);
+          return json(res,200,{ok:true,data:uiPreferences!.get()});
         }
         const preferencesRoute = /^\/api\/workspace-preferences\/([^/]+)$/.exec(url.pathname);
         if (preferencesRoute) {
@@ -361,7 +501,7 @@ async function composeServer({
           catch { return json(res, 400, {ok: false, error: {code: 'VALIDATION_ERROR', message: '项目 ID 无效'}}); }
           if (req.method === 'GET') return json(res, 200, {ok: true, data: workspacePreferences.get(projectId)});
           if (req.method === 'PUT') {
-            const input = await body(req, MAX_WORKSPACE_PREFERENCES_BYTES);
+            const input = jsonObject(await body(req, MAX_WORKSPACE_PREFERENCES_BYTES));
             checkpoint(shutdown.signal);
             return json(res, 200, {ok: true, data: await workspacePreferences.put(projectId, Object.hasOwn(input,'expectedWorkspaceOrigin')?Object.fromEntries(Object.entries(input).filter(([key])=>key!=='expectedWorkspaceOrigin')):input, {signal:shutdown.signal,...(Object.hasOwn(input,'expectedWorkspaceOrigin')?{expectedWorkspaceOrigin:input.expectedWorkspaceOrigin}:{})})});
           }
@@ -369,71 +509,78 @@ async function composeServer({
           return json(res, 405, {ok: false, error: {code: 'METHOD_NOT_ALLOWED', message: '请使用 GET 或 PUT'}});
         }
         if (url.pathname === '/api/rpc' && req.method === 'POST') {
-          const input = await body(req);
+          const input = jsonObject(await body(req));
           checkpoint(shutdown.signal);
           if (typeof input.operation !== 'string') return json(res, 400, {ok: false, error: {code: 'VALIDATION_ERROR', message: '缺少 operation'}});
           deletionGate.rpc(res,input.operation,input.input);
-          const data = await callObservedRpc(req, res, services, input.operation, input.input || {},Object.hasOwn(input,'expectedWorkspaceOrigin')?{expectedWorkspaceOrigin:input.expectedWorkspaceOrigin}:{});
+          const data = await callObservedRpc(req, res, {call: serviceCall}, input.operation, input.input || {},Object.hasOwn(input,'expectedWorkspaceOrigin')?{expectedWorkspaceOrigin:input.expectedWorkspaceOrigin}:{});
           if (res.destroyed || res.writableEnded) return;
           return json(res, 200, {ok: true, data:candidate ? publicValue(data) : data});
         }
-        if (url.pathname.startsWith('/media/') && ['GET', 'HEAD'].includes(req.method)) {
+        if (url.pathname.startsWith('/media/') && ['GET', 'HEAD'].includes(req.method ?? '')) {
           const preview = url.searchParams.has('preview');
           const named = url.searchParams.has('exportId');
-          const deliveryGuards = candidate ? createOpacityCandidateTimelineDeliveryGuards(store) : {isTimelineRenderRecord, readOwnedAsset: (projectId, assetId) => readOwnedTimelineAsset(store.db, projectId, assetId)};
+          const deliveryGuards = candidate ? createOpacityCandidateTimelineDeliveryGuards(store) : {isTimelineRenderRecord, readOwnedAsset: (projectId: string, assetId: string) => readOwnedTimelineAsset(store.db, projectId, assetId)};
           const playback = preview ? readTimelineExportPreviewMedia(store.db, url, deliveryGuards) : null;
           const delivery = named && !preview ? readTimelineDeliveryDownload(store.db, url, deliveryGuards) : null;
           const rawAsset = preview || named ? null : candidate ? readOpacityCandidateApplicationSource(store,url.pathname.slice(7)) : store.get('assets', url.pathname.slice(7));
           const asset = preview ? playback : named ? delivery : rawAsset;
           if (!asset) return json(res, 404, {ok: false, error: {code: 'NOT_FOUND', message: '素材不存在'}});
+          const relativePath = field(asset, 'relativePath'), mimeType = field(asset, 'mimeType');
+          if (typeof relativePath !== 'string' || typeof mimeType !== 'string') return json(res, 404, {ok: false, error: {code: 'NOT_FOUND', message: '素材不存在'}});
           let file;
-          try { file = await safePath(root, asset.relativePath); }
+          try { file = await safePath(root, relativePath); }
           catch { return json(res, 404, {ok: false, error: {code: 'FILE_UNAVAILABLE', message: '本地文件不可用。'}}); }
-          const headers = {'Content-Type': asset.mimeType, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=3600'};
-          if (!delivery && url.searchParams.has('download')) headers['Content-Disposition'] = `attachment; filename="mioon.${asset.mimeType === 'video/mp4' ? 'mp4' : 'bin'}"`;
-          return await files.send(req, res, {file, headers: playback ? () => timelineExportPreviewResponseHeaders(store.db, url, deliveryGuards, playback) : delivery ? () => timelineDeliveryResponseHeaders(store.db, url, deliveryGuards, delivery) : candidate ? () => {assertOpacityCandidateApplicationSource(store,asset);return headers;} : headers, ranges: true});
+          const headers: Record<string, string> = {'Content-Type': mimeType, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=3600'};
+          if (!delivery && url.searchParams.has('download')) headers['Content-Disposition'] = `attachment; filename="mioon.${mimeType === 'video/mp4' ? 'mp4' : 'bin'}"`;
+          return await files.send(req, res, {file, headers: playback ? () => timelineExportPreviewResponseHeaders(store.db, url, deliveryGuards, playback) : delivery ? () => timelineDeliveryResponseHeaders(store.db, url, deliveryGuards, delivery) : candidate ? () => {assertOpacityCandidateApplicationSource(store,asset as Record<string, unknown>);return headers;} : headers, ranges: true});
         }
         if (url.pathname.startsWith('/api/') || req.method !== 'GET') return json(res, 404, {ok: false, error: {code: 'NOT_FOUND', message: '接口不存在'}});
         const requested = decodeURIComponent(url.pathname);
-        if (requested.includes('..') || requested.includes('\\')) return res.writeHead(400).end();
+        if (requested.includes('..') || requested.includes('\\')) { res.writeHead(400).end(); return; }
         const file = path.join(dist, requested === '/' ? indexFile : requested);
-        if (!file.startsWith(dist + path.sep) && file !== dist) return res.writeHead(403).end();
-        return await files.send(req, res, {file, fallbackFile: path.join(dist, indexFile), headers: selected => ({
-          'Content-Type': {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png'}[path.extname(selected)] || 'application/octet-stream',
-          'Cache-Control': 'no-cache',
-        })});
+        if (!file.startsWith(dist + path.sep) && file !== dist) { res.writeHead(403).end(); return; }
+        return await files.send(req, res, {file, fallbackFile: path.join(dist, indexFile), headers: selected => {
+          const types: Readonly<Record<string,string>> = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png'};
+          return {
+            'Content-Type': types[path.extname(selected)] || 'application/octet-stream',
+            'Cache-Control': 'no-cache',
+          };
+        }});
       } catch (error) {
         if (res.destroyed || res.writableEnded) return;
-        if (res.headersSent) return res.destroy();
-        json(res, error.status || 500, {ok: false, error: {code: error.code || 'INTERNAL_ERROR', message: error.status ? error.message : '操作失败，请检查输入或后端状态', details: error.details || {}, retryable: false}});
+        if (res.headersSent) { res.destroy(); return; }
+        const fields = errorFields(error);
+        const status = fields.status || 500;
+        json(res, status, {ok: false, error: {code: fields.code || 'INTERNAL_ERROR', message: status !== 500 ? fields.message : '操作失败，请检查输入或后端状态', details: fields.details || {}, retryable: false}});
       }
     };
     if(listen){
       server = http.createServer(handleRequest);
-      await new Promise((resolve, reject) => {
-        server.once('error', reject);
-        server.listen(port, '127.0.0.1', resolve);
+      await new Promise<void>((resolve, reject) => {
+        server!.once('error', reject);
+        server!.listen(port, '127.0.0.1', resolve);
       });
-      actualPort = server.address().port;
+      actualPort = listeningPort();
     }
     for (const hostname of ['127.0.0.1', 'localhost']) {
       hosts.add(`${hostname}:${actualPort}`);
       origins.add(`http://${hostname}:${actualPort}`);
     }
     if(listen)worker = startWorker(store, services, providers, {signal: shutdown.signal});
-    let closing;
-    const close = () => closing ??= (async () => {
+    let closing: Promise<void> | undefined;
+    const close = (): Promise<void> => closing ??= (async () => {
       // Fence all async RPC/worker continuations before taking any child snapshot.
       shutdown.abort();
       // Abort inference and close long-lived SSE BEFORE HTTP drain and SQLite.
       chatRuntime?.close();
       chatHttp?.close();
-      const drain = server ? new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve())) : Promise.resolve();
+      const drain = server ? new Promise<void>((resolve, reject) => server!.close(error => error ? reject(error) : resolve())) : Promise.resolve();
       const forceDrain = setTimeout(() => server?.closeAllConnections(), 3000);
       forceDrain.unref();
       try {
         await boundedShutdown(Promise.all([
-          worker?.stop(), candidateEditor ? candidateEditor.drain() : services.drain(), candidateEditor ? undefined : editTasks.drain(), files.close(), versionComparisonMedia.close(),
+          worker?.stop(), candidateEditor ? candidateEditor.drain() : serviceDrain(), candidateEditor ? undefined : editTasks.drain(), files.close(), versionComparisonMedia.close(),
           terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), drain,
           !suppliedAgentSettings ? agentSettings?.close() : undefined, imageSettings?.close(), customImageSettings?.close(), comfySettings?.close(),
         ]), 'SERVER_STOP_TIMEOUT');
@@ -445,9 +592,9 @@ async function composeServer({
   } catch (error) {
     shutdown.abort();
     chatRuntime?.close(); chatHttp?.close();
-    const drain = server?.listening ? new Promise(resolve => server.close(resolve)) : Promise.resolve();
+    const drain = server?.listening ? new Promise<void>(resolve => server!.close(() => resolve())) : Promise.resolve();
     server?.closeAllConnections();
-    await boundedShutdown(Promise.all([drain, files?.close(), versionComparisonMedia?.close(), worker?.stop(), candidateEditor ? candidateEditor.drain() : services?.drain(), candidateEditor ? undefined : editTasks?.drain(), terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), !suppliedAgentSettings ? agentSettings?.close() : undefined, imageSettings?.close(), customImageSettings?.close(), comfySettings?.close()]), 'SERVER_STOP_TIMEOUT');
+    await boundedShutdown(Promise.all([drain, files?.close(), versionComparisonMedia?.close(), worker?.stop(), candidateEditor ? candidateEditor.drain() : serviceDrain(), candidateEditor ? undefined : editTasks?.drain(), terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), !suppliedAgentSettings ? agentSettings?.close() : undefined, imageSettings?.close(), customImageSettings?.close(), comfySettings?.close()]), 'SERVER_STOP_TIMEOUT');
     store.close();
     throw error;
   }

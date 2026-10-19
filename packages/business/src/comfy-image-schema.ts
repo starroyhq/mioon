@@ -1,21 +1,24 @@
+import type {DatabaseSync} from 'node:sqlite';
+
 // The caller owns one transaction including review rebuild and schema marker.
 // Legacy rows and request journals remain byte-exact. One lifecycle trigger
 // gains only the verified, explicitly observed local-Comfy failure branch.
-export function migrateComfyImageSchema(db) {
+export function migrateComfyImageSchema(db: DatabaseSync): void {
   if(!db.isTransaction)throw new Error('Comfy image migration requires a transaction');
   db.exec(COMFY_IMAGE_SCHEMA_19_SQL);
   const trigger=db.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='image_task_state_transitions'").get();
   if(!trigger)throw new Error('Comfy image migration requires image lifecycle schema');
-  if(!trigger.sql.includes('image_remote_observations')){
+  const triggerSql=trigger.sql as string;
+  if(!triggerSql.includes('image_remote_observations')){
     const old="(OLD.state IN ('local_result_error','outcome_unknown') AND NEW.state='persisting'))";
-    if(!trigger.sql.includes(old))throw new Error('Unrecognized image lifecycle transition trigger');
+    if(!triggerSql.includes(old))throw new Error('Unrecognized image lifecycle transition trigger');
     const narrowed=`(OLD.state IN ('local_result_error','outcome_unknown') AND NEW.state='persisting') OR
  (OLD.state='outcome_unknown' AND NEW.state='failed' AND json_extract(OLD.input,'$.providerId')='comfy-local'
  AND EXISTS(SELECT 1 FROM image_remote_runs r JOIN image_remote_observations o ON o.taskId=r.taskId AND o.projectId=r.projectId
  WHERE r.taskId=OLD.id AND r.projectId=OLD.projectId AND r.state='failed' AND r.contentVerified=1
  AND o.state='running' AND r.revision>o.remoteRevision)))`;
     db.exec('DROP TRIGGER image_task_state_transitions');
-    db.exec(trigger.sql.replace(old,narrowed));
+    db.exec(triggerSql.replace(old,narrowed));
   }
 }
 const COMFY_IMAGE_SCHEMA_19_SQL=`

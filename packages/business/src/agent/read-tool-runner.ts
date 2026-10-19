@@ -1,35 +1,75 @@
 import {AGENT_TIMELINE_MOVE_CONTEXT, AGENT_TIMELINE_MOVE_PROVENANCE, AGENT_TIMELINE_GAIN_CONTEXT, AGENT_TIMELINE_GAIN_PROVENANCE} from '@mioon/contracts';
-import {agentChatError} from './chat-errors.ts';
+import {agentChatError, errorCode} from './chat-errors.ts';
 import {buildAgentRequest} from './agent-gateway.ts';
+import type {AgentGateway, AgentStreamDone} from './agent-gateway.ts';
+import type {AgentConfiguration} from './config.ts';
 import {toolScope} from './tool-wire.ts';
+import type {WireMessage, ToolCall} from './tool-wire.ts';
 import {READ_TOOL_LIMITS, READ_TOOL_OPERATIONS} from './read-tool-policy.ts';
+const wellFormed = (value: string): boolean => Buffer.from(value, 'utf8').toString('utf8') === value;
+import type {ChatJournal, ChatStoredEvent} from './chat-journal.ts';
+import type {ChatStep} from './chat-step-journal.ts';
+
+export interface InspectionService {
+  createContext(input: {projectId: string; capabilities: unknown; maxCalls: number; maxResultBytes: number; maxTotalBytes: number}): unknown;
+  dispatch(context: unknown, operation: string, arguments_: Record<string, unknown>): unknown;
+}
+export interface EditProposalService {
+  createInside(input: {projectId: string; runId: string; target: unknown; changes: Record<string, unknown>; toolCall: ToolCall}): {id: string; digest: string};
+}
+export interface WorkflowControl {
+  signal?: AbortSignal;
+  live(): boolean;
+  commit<T>(operation: () => T): T;
+  publish(events: ChatStoredEvent[]): void;
+  beforeSubmit?: () => void;
+  flush(): void;
+  text(text: string): void;
+}
+export interface ReadToolWorkflowOptions {
+  runId: string;
+  projectId: string;
+  configuration: AgentConfiguration;
+  messages: readonly WireMessage[];
+  provenance: unknown;
+  apiKey?: string | null;
+  gateway: AgentGateway;
+  selfPort?: number;
+  journal: ChatJournal;
+  inspection: InspectionService;
+  editService?: EditProposalService;
+  target?: unknown;
+  contextMode: string;
+  control: WorkflowControl;
+}
 
 /** Bounded orchestration with a closed read-or-propose scope. Reads use the
  * branded inspection dispatcher; edits only create review proposals atomically.
  * Nothing here runs on startup, and no model output can apply a mutation. */
 export async function runReadToolWorkflow({runId, projectId, configuration, messages, provenance,
-  apiKey, gateway, selfPort, journal, inspection, editService, target, contextMode, control}) {
+  apiKey, gateway, selfPort, journal, inspection, editService, target, contextMode, control}: ReadToolWorkflowOptions): Promise<void> {
   const timelineEdit = contextMode === AGENT_TIMELINE_MOVE_CONTEXT, timelineGain = contextMode === AGENT_TIMELINE_GAIN_CONTEXT;
   const scopeOptions = target ? {scope: timelineGain ? AGENT_TIMELINE_GAIN_CONTEXT : timelineEdit ? AGENT_TIMELINE_MOVE_CONTEXT : 'selected_shot_edit'} : {}, scope = toolScope(scopeOptions);
   if ((timelineEdit || timelineGain) && !target) throw agentChatError('AGENT_CHAT_VALIDATION');
-  const committed = operation => {
+  const committed = <T>(operation: () => T): T => {
     const saved = control.commit(operation);
-    if (saved.events?.length) control.publish(saved.events);
+    const events = (saved as {events?: ChatStoredEvent[]} | null | undefined)?.events;
+    if (events?.length) control.publish(events);
     return saved;
   };
-  const first = control.commit(() => journal.steps(projectId, runId)).find(step => step.kind === 'model');
+  const first = committed(() => journal.steps(projectId, runId)).find(step => step.kind === 'model');
   if (!first || !control.live()) return;
-  async function request(step, readTools) {
+  async function request(step: ChatStep, readTools: unknown): Promise<AgentStreamDone | null> {
     if (!control.live()) return null;
     control.beforeSubmit?.();
     committed(() => journal.modelDispatch(runId, step.id));
     if (!control.live()) return null;
-    let terminal = null;
-    for await (const item of gateway({configuration: {...configuration}, apiKey, messages: structuredClone(messages),
+    let terminal: AgentStreamDone | null = null;
+    for await (const item of gateway({configuration: {...configuration}, apiKey, messages: structuredClone(messages) as WireMessage[],
       readTools: structuredClone(readTools), signal: control.signal, selfPort, ...(control.beforeSubmit ? {beforeSubmit: control.beforeSubmit} : {})})) {
       if (!control.live()) return null;
       if (terminal) throw agentChatError('AGENT_CHAT_PROTOCOL_ERROR');
-      if (item?.type === 'delta' && typeof item.text === 'string' && item.text.isWellFormed()) control.text(item.text);
+      if (item?.type === 'delta' && typeof item.text === 'string' && wellFormed(item.text)) control.text(item.text);
       else if (item?.type === 'done') {
         if (item.finishReason === 'length') throw agentChatError('AGENT_CHAT_TRUNCATED');
         if (item.finishReason === 'content_filter') throw agentChatError('AGENT_CHAT_PROVIDER_ERROR');
@@ -39,7 +79,7 @@ export async function runReadToolWorkflow({runId, projectId, configuration, mess
     }
     if (!control.live()) return null;
     if (!terminal) throw agentChatError('AGENT_CHAT_TRUNCATED');
-    if (readTools.phase === 'answer' && (terminal.finishReason !== 'stop' || terminal.toolCall)) throw agentChatError('AGENT_CHAT_TOOLS_UNSUPPORTED');
+    if (readTools !== null && (readTools as {phase?: unknown}).phase === 'answer' && (terminal.finishReason !== 'stop' || terminal.toolCall)) throw agentChatError('AGENT_CHAT_TOOLS_UNSUPPORTED');
     if (terminal.finishReason === 'tool_calls') {
       const call = terminal.toolCall;
       if (!call || !terminal.providerOutput) throw agentChatError('AGENT_CHAT_PROTOCOL_ERROR');
@@ -53,7 +93,7 @@ export async function runReadToolWorkflow({runId, projectId, configuration, mess
   }
   const completed = await request(first, {phase: 'request', ...scopeOptions});
   if (!completed || !control.live() || completed.finishReason === 'stop') return;
-  const call = completed.toolCall, parsed = scope.parse(call.name, call.argumentsJson);
+  const call = completed.toolCall as ToolCall, parsed = scope.parse(call.name, call.argumentsJson);
   const toolProvenance = {category: timelineGain ? AGENT_TIMELINE_GAIN_PROVENANCE : timelineEdit ? AGENT_TIMELINE_MOVE_PROVENANCE : target ? 'project_selected_shot_text' : 'project_saved_text_metadata', projectId, operation: parsed.operation};
   const intent = committed(() => journal.toolIntent(runId, first.id, {toolCall: call, provenance: toolProvenance}));
   if (!control.live()) return;
@@ -63,7 +103,7 @@ export async function runReadToolWorkflow({runId, projectId, configuration, mess
   const captured = committed(() => journal.captureTool(runId, intent.step.id, () => {
     if (!control.live()) throw agentChatError('AGENT_CHAT_ABORTED');
     if (target) {
-      const proposal = editService.createInside({projectId, runId, target, changes: parsed.arguments, toolCall: call});
+      const proposal = (editService as EditProposalService).createInside({projectId, runId, target, changes: parsed.arguments, toolCall: call});
       const result = {kind: timelineGain ? 'untrusted_timeline_clip_gain_proposal' : timelineEdit ? 'untrusted_timeline_clip_move_proposal' : 'untrusted_shot_update_proposal', operation: parsed.operation, status: 'pending_review',
         applied: false, proposalId: proposal.id, digest: proposal.digest};
       const resultJson = JSON.stringify(result);
@@ -73,7 +113,7 @@ export async function runReadToolWorkflow({runId, projectId, configuration, mess
     let data;
     try { data = inspection.dispatch(inspectionScope, parsed.operation, parsed.dispatchArguments); }
     catch (error) {
-      if (error?.code === 'INSPECTION_BUDGET_EXCEEDED') throw agentChatError('AGENT_CHAT_LIMIT');
+      if (errorCode(error) === 'INSPECTION_BUDGET_EXCEEDED') throw agentChatError('AGENT_CHAT_LIMIT');
       throw agentChatError('AGENT_CHAT_INSPECTION_UNAVAILABLE');
     }
     const result = {kind: 'untrusted_project_inspection', projectId, operation: parsed.operation, data};

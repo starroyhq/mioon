@@ -13,7 +13,7 @@ before(() => {
   const fixture = `import React from 'react';
     import {renderToStaticMarkup} from 'react-dom/server.browser';
     import DeliveryWorkspace from './src/DeliveryWorkspace.tsx';
-    import {AgentDockPane} from './src/AgentWorkspace.jsx';
+    import {AgentDockPane} from './src/AgentWorkspace.tsx';
     export const html = Object.fromEntries(['compose', 'history'].map(page => [page, renderToStaticMarkup(
       <DeliveryWorkspace page={page} onPage={() => { throw Error('Rendering may not change pages'); }}>
         <AgentDockPane id="delivery-compose-pane" labelledBy="delivery-compose-tab" visible={page === 'compose'} fallbackFocus="[data-testid=delivery-page-compose]">

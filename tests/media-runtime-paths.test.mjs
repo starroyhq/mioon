@@ -1,14 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,symlink,mkdir} from 'node:fs/promises';
+import {mkdtemp,symlink,mkdir, realpath} from 'node:fs/promises';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import path from 'node:path';
+import {tmpdir} from 'node:os';
 import {pathToFileURL} from 'node:url';
 const exec=promisify(execFile);
 
 test('mock generation and probe use selected absolute executables with no host PATH',async()=>{
- const root=await mkdtemp('/tmp/wb-media-runtime-');
+ const root=await mkdtemp(path.join(await realpath(tmpdir()),'wb-media-runtime-'));
  const bin=path.join(root,'selected media tools');await mkdir(bin);
  const {stdout:ffmpeg}=await exec('/bin/sh',['-c','command -v ffmpeg']);
  const {stdout:ffprobe}=await exec('/bin/sh',['-c','command -v ffprobe']);

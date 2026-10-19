@@ -1,15 +1,23 @@
+import type {AgentProtocol} from '../../../contracts/src/agent-protocol.ts';
+import type {AgentConfiguration} from './config.ts';
+
 // Documentation-backed starting values only. This catalog performs no network I/O.
 // Account/model access and protocol compatibility remain untested.
-const source = (label, url) => ({label, url});
-const platform = (id, label, baseUrl, model, sources, notes, baseUrlTemplate) => ({id, label, baseUrl, model, sources, ...(notes ? {notes} : {}), ...(baseUrlTemplate ? {baseUrlTemplate} : {})});
+export interface AgentPresetSource {label: string; url: string}
+export interface AgentPresetPlatform {id: string; label: string; baseUrl: string; model: string; sources: AgentPresetSource[]; notes?: string; baseUrlTemplate?: string}
+export interface AgentPresetBase {id: string; label: string; description: string; platforms: AgentPresetPlatform[]}
+export interface AgentPresetProtocols {defaultProtocol: 'chat_completions'; availableProtocols: AgentProtocol[]}
+export interface AgentPresetEntry extends AgentPresetProtocols {id: string; label: string; description: string; platforms: Array<AgentPresetPlatform & AgentPresetProtocols>; supportedModelHints?: {responses: string[]}; protocolNotes?: {responses: string}}
+const source = (label: string, url: string): AgentPresetSource => ({label, url});
+const platform = (id: string, label: string, baseUrl: string, model: string, sources: AgentPresetSource[], notes?: string, baseUrlTemplate?: string): AgentPresetPlatform => ({id, label, baseUrl, model, sources, ...(notes ? {notes} : {}), ...(baseUrlTemplate ? {baseUrlTemplate} : {})});
 const qwenSources = [source('官方端点与区域', 'https://www.alibabacloud.com/help/en/model-studio/base-url'), source('Responses API', 'https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-responses')];
-const catalog = [
+const catalog: AgentPresetBase[] = [
   {id: 'openai', label: 'OpenAI', description: '非推理文本基线；可明确选择 Chat Completions 或 Responses。', platforms: [platform('global', 'OpenAI', 'https://api.openai.com/v1', 'gpt-4.1-mini', [source('模型文档', 'https://developers.openai.com/api/docs/models/gpt-4.1-mini')])]},
   {id: 'deepseek', label: 'DeepSeek', description: '非思考模式文本基线；可明确选择 Chat Completions 或 Responses。', platforms: [platform('global', 'DeepSeek API', 'https://api.deepseek.com', 'deepseek-flash', [source('Chat API', 'https://api-docs.deepseek.com/api/create-chat-completion/'), source('Responses API', 'https://api-docs.deepseek.com/guides/responses_api/')])]},
   {id: 'qwen', label: 'Qwen / DashScope', description: '区域、工作空间和按量付费账户必须匹配；不继承 Coding Plan 凭证。', platforms: [
     platform('beijing', '北京 · 按量付费', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen-plus', qwenSources),
     platform('singapore', '新加坡 · 按量付费', 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', 'qwen-plus', qwenSources),
-    ...[['cn-beijing', '北京'], ['ap-southeast-1', '新加坡'], ['us-east-1', '美国东部'], ['cn-hongkong', '香港'], ['ap-northeast-1', '东京'], ['eu-central-1', '法兰克福']].map(([region, label]) => platform(`workspace-${region}`, `${label} · 工作空间端点`, '', 'qwen-plus', qwenSources, '请填写账户实际工作空间端点；模板不是可直接使用的地址。', `https://{WorkspaceId}.${region}.maas.aliyuncs.com/compatible-mode/v1`)),
+    ...([['cn-beijing', '北京'], ['ap-southeast-1', '新加坡'], ['us-east-1', '美国东部'], ['cn-hongkong', '香港'], ['ap-northeast-1', '东京'], ['eu-central-1', '法兰克福']] as const).map(([region, label]) => platform(`workspace-${region}`, `${label} · 工作空间端点`, '', 'qwen-plus', qwenSources, '请填写账户实际工作空间端点；模板不是可直接使用的地址。', `https://{WorkspaceId}.${region}.maas.aliyuncs.com/compatible-mode/v1`)),
   ]},
   {id: 'zhipu', label: 'Zhipu / Z.ai', description: '中国 BigModel 与国际 Z.ai 是独立平台，密钥不假定通用。', platforms: [
     platform('china', '中国 · BigModel', 'https://open.bigmodel.cn/api/paas/v4', 'glm-4.7', [source('中国平台', 'https://docs.bigmodel.cn/cn/guide/start/quick-start')]),
@@ -27,19 +35,19 @@ const catalog = [
   {id: 'custom', label: '自定义兼容服务', description: '仅远程 HTTPS；地址和模型由你填写，兼容性未验证。', platforms: [platform('custom', '自定义 · 远程 HTTPS', '', '', [])]},
   {id: 'ollama', label: 'Ollama 本地', description: '仅本机回环 /v1；通常无需密钥，不下载模型，不包含云端路由授权。', platforms: [platform('local', '本机 · Ollama', 'http://127.0.0.1:11434/v1', 'qwen3:8b', [source('OpenAI 兼容接口', 'https://docs.ollama.com/api/openai-compatibility')])]},
 ];
-function freeze(value) { for (const item of Object.values(value)) if (item && typeof item === 'object') freeze(item); return Object.freeze(value); }
+function freeze<T extends object>(value: T): Readonly<T> { for (const child of Object.values(value as Record<string, unknown>)) if (child && typeof child === 'object') freeze(child as object); return Object.freeze(value); }
 // These choices describe implemented request/parser profiles, not vendor-wide
 // availability or a live compatibility certification. Defaults stay unchanged.
-const responseModelHints = {
+const responseModelHints: Record<string, string[]> = {
   openai: ['gpt-4.1-mini', 'gpt-4.1-mini-2025-04-14'],
   deepseek: ['deepseek-flash'],
   qwen: ['qwen3.8-flash'],
   custom: [],
   ollama: ['qwen3:8b'],
 };
-export const AGENT_PRESETS = freeze(catalog.map(preset => {
+export const AGENT_PRESETS: readonly AgentPresetEntry[] = freeze(catalog.map(preset => {
   const hasResponses = Object.hasOwn(responseModelHints, preset.id);
-  const protocols = {
+  const protocols: AgentPresetProtocols & Pick<AgentPresetEntry, 'supportedModelHints' | 'protocolNotes'> = {
     defaultProtocol: 'chat_completions',
     availableProtocols: hasResponses ? ['chat_completions', 'responses'] : ['chat_completions'],
     ...(hasResponses ? {supportedModelHints: {responses: responseModelHints[preset.id]}} : {}),
@@ -47,4 +55,4 @@ export const AGENT_PRESETS = freeze(catalog.map(preset => {
   };
   return {...preset, ...protocols, platforms: preset.platforms.map(item => ({...item, ...protocols}))};
 }));
-export const DEFAULT_AGENT_CONFIGURATION = Object.freeze({presetId: 'openai', platformId: 'global', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4.1-mini', protocol: 'chat_completions'});
+export const DEFAULT_AGENT_CONFIGURATION: Readonly<AgentConfiguration> = Object.freeze({presetId: 'openai', platformId: 'global', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4.1-mini', protocol: 'chat_completions'});

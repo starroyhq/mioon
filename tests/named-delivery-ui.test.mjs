@@ -40,7 +40,7 @@ before(() => {
   const fixture = `import React from 'react';
     import { renderToStaticMarkup } from 'react-dom/server.browser';
     import TimelineDeliveryName from './src/TimelineDeliveryName.tsx';
-    import ExportHistoryList from './src/ExportHistoryList.jsx';
+    import ExportHistoryList from './src/ExportHistoryList.tsx';
     import ActualExportFileActions from 'test:actual-export-file-actions';
     const fixtures = ${JSON.stringify(fixtures)};
     function freeze(value) { if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); } return value; }

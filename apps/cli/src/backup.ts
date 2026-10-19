@@ -6,6 +6,7 @@ import path from 'node:path';
 import {backupPresentationArguments, localizeBackupHelp, backupDiagnostic} from './backup-presentation.ts';
 import {fileURLToPath} from 'node:url';
 import {readFileSync} from 'node:fs';
+import type {Locale} from '@mioon/i18n';
 
 const messages = Object.freeze({
   RESTORE_BACKUP_UNAVAILABLE: 'This restored working branch cannot create another backup until recursive restore is supported. No backup destination was created; keep the original verified backup.',
@@ -39,33 +40,44 @@ const messages = Object.freeze({
   STORAGE_PRIVATE_REQUIRED: 'The operation requires private, current-user-owned storage with safe files and ancestry. No permissions were changed.',
   STORAGE_PRIVACY_UNAVAILABLE: 'Required storage privacy checks are unavailable on this platform. The operation was not performed.',
 });
+type BackupCode = keyof typeof messages;
+export interface BackupHelp {command: 'help'; topic?: string | undefined}
+export interface BackupVersion {command: 'version'}
+export interface BackupCreate {command: 'create'; source: string; destination: string}
+export interface BackupVerify {command: 'verify'; directory: string}
+export interface BackupRestore {command: 'restore'; directory: string; destination: string}
+export interface BackupRestoreStatusDirectory {command: 'restore-status'; directory: string; destination: string}
+export interface BackupRestoreStatusExact {command: 'restore-status'; destination: string; restorationId: string; sourceBackupId: string; manifestHash: string; sourceDbHash: string}
+export type BackupInvocation = BackupHelp | BackupVersion | BackupCreate | BackupVerify | BackupRestore | BackupRestoreStatusDirectory | BackupRestoreStatusExact;
+interface BackupSafeError {code: BackupCode; message: string; details: Record<string, unknown>; retryable: false}
+interface ResultSchema {safeParse(value: unknown): {success: true; data: unknown} | {success: false; error: unknown}}
 
-function fail(code = 'VALIDATION_ERROR') {
+function fail(code: BackupCode = 'VALIDATION_ERROR'): never {
   throw Object.assign(new Error(messages[code]), {code});
 }
 
-function absoluteDirectory(value) {
+function absoluteDirectory(value: unknown): string {
   if (typeof value !== 'string' || !value || value.includes('\0') || !path.isAbsolute(value) || path.resolve(value) !== value) {
     fail('WORKSPACE_BACKUP_INVALID_PATH');
   }
   return value;
 }
 
-export function parseBackupArguments(argv, onLocale = () => {}) {
+export function parseBackupArguments(argv: readonly string[], onLocale: (locale: Locale | undefined) => void = () => {}): BackupInvocation {
   if (!Array.isArray(argv) || argv.some(value => typeof value !== 'string')) fail();
-  let visit = () => {};
+  let visit: (index: number, allowLocale?: boolean) => void = () => {};
   if (argv.some(value => value === '--locale' || value.startsWith('--locale='))) ({argv, visit} = backupPresentationArguments(argv, fail, onLocale));
   visit(0);
   if (argv.length === 0 || (argv.length === 1 && argv[0] === '--help')) { visit(Infinity); return {command: 'help'}; }
   if (argv.length === 1 && argv[0] === '--version') { visit(Infinity); return {command: 'version'}; }
   const [command, ...options] = argv;
-  if (!['create', 'verify', 'restore', 'restore-status'].includes(command)) fail();
+  if (command !== 'create' && command !== 'verify' && command !== 'restore' && command !== 'restore-status') fail();
   if (options.length === 1 && options[0] === '--help') { visit(Infinity); return {command: 'help', topic: command}; }
   const allowed = command === 'create' ? ['--source', '--destination'] : command === 'restore' ? ['--directory', '--destination'] : command === 'restore-status' ? (options.includes('--directory') ? ['--directory', '--destination'] : ['--destination', '--restoration-id', '--backup-id', '--manifest-hash', '--source-db-hash']) : ['--directory'];
-  const values = Object.create(null);
+  const values: Record<string, string | undefined> = Object.create(null);
   for (let index = 0; index < options.length; index += 2) {
     visit(index + 1);
-    const flag = options[index], value = options[index + 1];
+    const flag = options[index], value: string | undefined = options[index + 1];
     if (!allowed.includes(flag) || Object.hasOwn(values, flag)) fail();
     visit(index + 2, false);
     if (value === undefined || value.startsWith('--')) fail();
@@ -78,22 +90,22 @@ export function parseBackupArguments(argv, onLocale = () => {}) {
   }
   visit(Infinity);
   if (allowed.some(flag => !Object.hasOwn(values, flag))) fail();
-  if (command === 'restore') return {command, directory: values['--directory'], destination: values['--destination']};
-  if (command === 'restore-status' && values['--directory']) return {command, directory: values['--directory'], destination: values['--destination']};
-  if (command === 'restore-status') return {command, destination: values['--destination'], restorationId: values['--restoration-id'], sourceBackupId: values['--backup-id'], manifestHash: values['--manifest-hash'], sourceDbHash: values['--source-db-hash']};
+  if (command === 'restore') return {command, directory: values['--directory']!, destination: values['--destination']!};
+  if (command === 'restore-status' && values['--directory']) return {command, directory: values['--directory'], destination: values['--destination']!};
+  if (command === 'restore-status') return {command, destination: values['--destination']!, restorationId: values['--restoration-id']!, sourceBackupId: values['--backup-id']!, manifestHash: values['--manifest-hash']!, sourceDbHash: values['--source-db-hash']!};
   return command === 'create'
-    ? {command, source: values['--source'], destination: values['--destination']}
-    : {command, directory: values['--directory']};
+    ? {command, source: values['--source']!, destination: values['--destination']!}
+    : {command, directory: values['--directory']!};
 }
 
-function version() {
-  const value = JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')).version;
+function version(): string {
+  const value: unknown = JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')).version;
   if (typeof value !== 'string' || !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.+-]+)?$/.test(value)) fail('WORKSPACE_BACKUP_IO');
   return value;
 }
 
-function help(topic) {
-  const commands = {
+function help(topic: string | undefined) {
+  const commands: Readonly<Record<string, string>> = {
     create: 'node apps/cli/src/backup.ts create --source /absolute/workspace --destination /absolute/new-backup',
     verify: 'node apps/cli/src/backup.ts verify --directory /absolute/backup',
     restore: 'node apps/cli/src/backup.ts restore --directory /absolute/verified-backup --destination /absolute/new-workspace',
@@ -131,25 +143,27 @@ function help(topic) {
 
 // Diagnostics are an allowlist; never forward raw exception messages, causes,
 // paths, input values, SQLite rows, stack traces or validation details.
-function safeError(error, command) {
-  const code = typeof error?.code === 'string' && Object.hasOwn(messages, error.code) ? error.code : 'WORKSPACE_BACKUP_IO';
-  const details = error?.cleanupUnconfirmed === true ? {[command === 'restore' ? 'destinationLockRelease' : 'sourceLockRelease']: 'unconfirmed'} : {};
-  if (code === 'WORKSPACE_RESTORE_PUBLICATION_UNCONFIRMED' && error?.publication) {
-    const p = error.publication, uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i, hash = /^[a-f0-9]{64}$/;
-    if (['restorationId', 'workspaceOrigin', 'sourceBackupId'].every(key => typeof p[key] === 'string' && p[key].length === 36 && uuid.test(p[key])) && ['manifestHash', 'sourceDbHash'].every(key => typeof p[key] === 'string' && p[key].length === 64 && hash.test(p[key]))) {
-      details.publication = Object.fromEntries(['restorationId', 'workspaceOrigin', 'sourceBackupId', 'manifestHash', 'sourceDbHash'].map(key => [key, p[key]]));
-      details.publication.state = 'unconfirmed';
+function safeError(error: unknown, command: string | undefined): BackupSafeError {
+  const candidate = error !== null && typeof error === 'object' ? error as {code?: unknown; cleanupUnconfirmed?: unknown; publication?: unknown} : {};
+  const code: BackupCode = typeof candidate.code === 'string' && Object.hasOwn(messages, candidate.code) ? candidate.code as BackupCode : 'WORKSPACE_BACKUP_IO';
+  const details: Record<string, unknown> = candidate.cleanupUnconfirmed === true ? {[command === 'restore' ? 'destinationLockRelease' : 'sourceLockRelease']: 'unconfirmed'} : {};
+  if (code === 'WORKSPACE_RESTORE_PUBLICATION_UNCONFIRMED' && candidate.publication) {
+    const p = candidate.publication as Record<string, unknown>, uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i, hash = /^[a-f0-9]{64}$/;
+    if (['restorationId', 'workspaceOrigin', 'sourceBackupId'].every(key => typeof p[key] === 'string' && p[key].length === 36 && uuid.test(p[key] as string)) && ['manifestHash', 'sourceDbHash'].every(key => typeof p[key] === 'string' && p[key].length === 64 && hash.test(p[key] as string))) {
+      const publication: Record<string, unknown> = Object.fromEntries(['restorationId', 'workspaceOrigin', 'sourceBackupId', 'manifestHash', 'sourceDbHash'].map(key => [key, p[key]]));
+      publication.state = 'unconfirmed';
+      details.publication = publication;
     }
   }
   return {code, message: messages[code], details, retryable: false};
 }
 
-function output(stream, text) {
+function output(stream: NodeJS.WritableStream, text: string): Promise<boolean> {
   // Respect pipe backpressure, including the largest bounded issue list. A
   // closed pipe is handled within this write rather than a global exit hook.
-  return new Promise(resolve => {
+  return new Promise<boolean>(resolve => {
     let settled = false;
-    const finish = value => {
+    const finish = (value: boolean) => {
       if (settled) return;
       settled = true;
       stream.removeListener('error', onError);
@@ -168,10 +182,10 @@ function output(stream, text) {
   });
 }
 
-export async function runBackupCli(argv = process.argv.slice(2)) {
-  let firstSignal, command, locale;
-  let data;
-  let error;
+export async function runBackupCli(argv: readonly string[] = process.argv.slice(2)): Promise<number> {
+  let firstSignal: 'SIGINT' | 'SIGTERM' | undefined, command: string | undefined, locale: Locale | undefined;
+  let data: unknown;
+  let error: BackupSafeError | undefined;
   try {
     const input = parseBackupArguments(argv, value => { locale = value; });
     command = input.command;
@@ -179,7 +193,7 @@ export async function runBackupCli(argv = process.argv.slice(2)) {
     else if (input.command === 'version') data = {name: 'mioon-backup', version: version()};
     else {
       const controller = new AbortController();
-      const interrupt = signal => {
+      const interrupt = (signal: 'SIGINT' | 'SIGTERM') => {
         firstSignal ??= signal;
         controller.abort();
       };
@@ -188,7 +202,7 @@ export async function runBackupCli(argv = process.argv.slice(2)) {
       process.on('SIGINT', onInterrupt);
       process.on('SIGTERM', onTerminate);
       try {
-        let result, resultSchema;
+        let result: unknown, resultSchema: ResultSchema;
         if (input.command === 'restore' || input.command === 'restore-status') {
           const {restoreWorkspaceBackup, inspectWorkspaceRestorePublication} = await import('../../../packages/business/src/workspace-restore.ts');
           const {workspaceRestoreOfflineResultSchema, workspaceRestorePublicationStatusSchema} = await import('../../../packages/contracts/src/workspace-restore-offline.ts');

@@ -4,11 +4,25 @@ import {ListToolsRequestSchema, CallToolRequestSchema} from '@modelcontextprotoc
 import {createClient, workspaceOriginOptions, schemas, operationDefinition, discoverySchemas, discoveryEffects, effectAnnotations, discoverSchema, validateDiscovery, jsonSchema, successEnvelope, errorEnvelope, ClientError, VERSION} from '@mioon/client';
 
 import {translate} from '@mioon/i18n';
+import type {Locale, MessageKey} from '@mioon/i18n';
 import {localizeToolDescription} from '@mioon/i18n/presentation';
 
 import {localizedLaunchOptions} from './launch-presentation.ts';
-const displayErrors = new WeakMap();
-function launchFailure(text, key) {
+type WorkspaceInvocation = ReturnType<typeof workspaceOriginOptions>;
+type JsonSchema = ReturnType<typeof jsonSchema>;
+type EffectAnnotations = ReturnType<typeof effectAnnotations>;
+interface ToolCallOptions {signal?: AbortSignal | undefined; expectedWorkspaceOrigin?: string | undefined}
+interface McpTool {
+  name: string;
+  description: string;
+  inputSchema: JsonSchema;
+  annotations: EffectAnnotations;
+  call(input: unknown, options: ToolCallOptions): Promise<unknown>;
+}
+type DiscoveryName = 'doctor' | 'capabilities' | 'schema';
+interface LaunchOptions {invocation: WorkspaceInvocation; locale: Locale | undefined}
+const displayErrors = new WeakMap<object, MessageKey>();
+function launchFailure(text: string, key: MessageKey): never {
   const error = new ClientError('VALIDATION_ERROR', text);
   displayErrors.set(error, key);
   throw error;
@@ -17,10 +31,10 @@ function launchFailure(text, key) {
 // Use the official SDK's low-level tool handlers deliberately: validation failures
 // and backend errors share the same safe, structured result envelope as the CLI.
 // No backend or credentials are required just to initialize/list/schema-discover.
-function launchOptions(argv, onLocale) {
+function launchOptions(argv: readonly string[], onLocale: (value: Locale | undefined) => void): LaunchOptions {
   // Preserve every legacy launch diagnostic when no presentation option is used.
   if (!argv.some(argument => argument === '--locale' || argument.startsWith('--locale='))) {
-    let origin, supplied = false;
+    let origin: string | undefined, supplied = false;
     for (let index = 0; index < argv.length; index++) {
       const argument = argv[index];
       if (supplied || !(argument === '--workspace-origin' || argument.startsWith('--workspace-origin=')))
@@ -33,34 +47,35 @@ function launchOptions(argv, onLocale) {
   }
   return localizedLaunchOptions(argv, value => {
     try { return workspaceOriginOptions(value); }
-    catch (error) { displayErrors.set(error, 'mcp.error.origin'); throw error; }
+    catch (error) { if (error !== null && typeof error === 'object') displayErrors.set(error, 'mcp.error.origin'); throw error; }
   }, launchFailure, onLocale);
 }
-let invocation, locale;
+let invocation: WorkspaceInvocation, locale: Locale | undefined;
 try { ({invocation, locale} = launchOptions(process.argv.slice(2), value => { locale = value; })); }
 catch (error) {
   const envelope = errorEnvelope(error);
-  const key = displayErrors.get(error);
+  const key = error !== null && typeof error === 'object' ? displayErrors.get(error) : undefined;
   process.stderr.write(`${envelope.error.code}: ${locale === undefined || !key ? envelope.error.message : translate(locale, key)}\n`);
   process.exit(2);
 }
 // Immutable for this process. Connection/token reloads never update this pin.
 const client = createClient();
-const tools = new Map(Object.keys(schemas).map(operation => {
+const tools = new Map<string, McpTool>(Object.keys(schemas).map(operation => {
   const definition = operationDefinition(operation);
   return [definition.toolName, {
     name: definition.toolName,
     description: localizeToolDescription(operation, definition.description, locale),
     inputSchema: definition.inputSchema,
     annotations: effectAnnotations(definition.effects),
-    call: (input, options) => client.rpc(operation, input, options),
+    call: (input: unknown, options: ToolCallOptions) => client.rpc(operation, input, options),
   }];
 }));
-for (const [name, description, call] of [
+const discoveryTools: ReadonlyArray<readonly [DiscoveryName, string, (input: unknown, options: ToolCallOptions) => Promise<unknown>]> = [
   ['doctor', 'Check authenticated local backend readiness and provider capabilities without revealing credential paths or tokens.', (_, options) => client.doctor(options)],
   ['capabilities', 'List current configured provider and per-model capabilities from the running backend. This does not submit generation.', (_, options) => client.capabilities(options)],
-  ['schema', 'Discover exact shared RPC JSON Schemas, stable requestId requirements, and advisory operation effects. Works without a running backend.', input => discoverSchema(input)],
-]) tools.set(`mioon_${name}`, {name: `mioon_${name}`, description: locale === undefined ? description : translate(locale, `mcp.${name}`), inputSchema: jsonSchema(discoverySchemas[name]), annotations: effectAnnotations(discoveryEffects[name]), call: (input, options) => call(validateDiscovery(name, input), options)});
+  ['schema', 'Discover exact shared RPC JSON Schemas, stable requestId requirements, and advisory operation effects. Works without a running backend.', async input => discoverSchema(input)],
+];
+for (const [name, description, call] of discoveryTools) tools.set(`mioon_${name}`, {name: `mioon_${name}`, description: locale === undefined ? description : translate(locale, `mcp.${name}`), inputSchema: jsonSchema(discoverySchemas[name]), annotations: effectAnnotations(discoveryEffects[name]), call: async (input: unknown, options: ToolCallOptions) => call(validateDiscovery(name, input), options)});
 
 const server = new Server({name: 'mioon', version: VERSION}, {
   capabilities: {tools: {}},

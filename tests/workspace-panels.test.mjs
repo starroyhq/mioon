@@ -62,9 +62,9 @@ function harness(name) {
     if (id === './i18n/I18nProvider.tsx') return i18nTestModule();
     if (id === 'react') return react;
     if (id.startsWith('@mioon/ui/')) return ui;
-    if (id === './workspace-layout.js') return layout;
-    if (id === './workspace-visibility.jsx') return { WorkspaceVisibilityProvider: 'WorkspaceVisibilityProvider' };
-    if (id === './icons.jsx') return { __esModule: true, default: 'Icon' };
+    if (id === './workspace-layout.ts') return layout;
+    if (id === './workspace-visibility.tsx') return { WorkspaceVisibilityProvider: 'WorkspaceVisibilityProvider' };
+    if (id === './icons.tsx') return { __esModule: true, default: 'Icon' };
     throw Error(`Unexpected panel dependency ${id}`);
   };
   const module = { exports: {} };
@@ -340,7 +340,7 @@ test('real React and Base UI render separator, inert boundary, recall button, an
   const fixture = `
     import React from 'react';
     import { renderToStaticMarkup } from 'react-dom/server.browser';
-    import { PanelBoundary, PanelRecall, PanelResizeHandle, PanelsMenu } from './src/WorkspacePanels.jsx';
+    import { PanelBoundary, PanelRecall, PanelResizeHandle, PanelsMenu } from './src/WorkspacePanels.tsx';
     const noop = () => {};
     export const html = renderToStaticMarkup(<>
       <PanelBoundary name="inspector" visible={false} scope="project:canvas"><input defaultValue="Retained draft" /></PanelBoundary>

@@ -102,7 +102,7 @@ test('four locale component labels/statuses and placeholders are present, zh-Han
   }
 });
 test('actual host binds selected saved clip and shared RPC; comparison/source overlays and draft conflicts fence analysis', () => {
-  const app = source('App.jsx'), inspector = source('TimelineInspector.jsx'), api = source('api.js');
+  const app = source('App.tsx'), inspector = source('TimelineInspector.tsx'), api = source('api.ts');
   assert.match(app, /savedClipLoudnessFields\(saved, dataRef.current.assets, editing.selectedClipId\)/);
   assert.match(app, /clipLoudnessEpoch.current\+\+/); assert.match(app, /!previewAssetRef.current && !comparisonIdRef.current && !webSettingsOpen/);
   assert.match(app, /loudnessContext=\{clipLoudnessContext\}/); assert.match(app, /loudnessInvocation=\{\(\) => pinNewWorkspaceIntent\(\{\}, workspaceRef.current\)\}/);

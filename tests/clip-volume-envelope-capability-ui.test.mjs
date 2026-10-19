@@ -67,7 +67,7 @@ function inspector(locale='en', eligible=true, supported=true){
   if(name.includes('i18n/src/index'))return {message:(key)=>({key})};
   if(name.includes('workbench-confirm'))return {useConfirmation:()=>async()=>{calls.push('confirm');return true;}};
   if(name==='@mioon/contracts')return {sourceFrameCount:()=>10,isTimelineRecord:()=>true};
-  if(name.endsWith('/Timeline.jsx'))return {assetKind:a=>a.mimeType.split('/')[0],framesLabel:String};
+  if(name.endsWith('/Timeline.tsx'))return {assetKind:a=>a.mimeType.split('/')[0],framesLabel:String};
   if(name.endsWith('clip-draft-hook.ts'))return {useClipDraft:()=>({state,controller})};
   if(name.endsWith('clip-draft-state.ts'))return {clipDraftRaw:clip=>({...raw,volumeEnvelope:clip.volumeEnvelope}),clipDraftSource:()=>({}),clipDraftPatch:()=>({})};
   if(name.endsWith('clip-volume-envelope-state.ts'))return {rawVolumeEnvelopeChanged};
@@ -75,9 +75,9 @@ function inspector(locale='en', eligible=true, supported=true){
   if(name.endsWith('clip-opacity-candidate-assembly.ts'))return opacityAssembly;
   if(name.endsWith('opacity-ime-submit-guard.ts'))return imeSubmitGuard;
   if(name.endsWith('clip-audio-role-state.ts'))return {clipAudioRoleChanged:()=>false};
-  if(name.endsWith('clip-audio-state.js'))return {clipAudioIssue:()=>''};
-  if(name.endsWith('timeline-format-state.js'))return {timelineRectIssue:()=>'',timelineRectMessage:()=>''};
-  if(name.endsWith('workspace-visibility.jsx'))return {useWorkspaceVisibility:()=>true};
+  if(name.endsWith('clip-audio-state.ts'))return {clipAudioIssue:()=>''};
+  if(name.endsWith('timeline-format-state.ts'))return {timelineRectIssue:()=>'',timelineRectMessage:()=>''};
+  if(name.endsWith('workspace-visibility.tsx'))return {useWorkspaceVisibility:()=>true};
   if(name.endsWith('.css'))return {};
   if(name.startsWith('@mioon/ui/'))return new Proxy({}, {get:(_,key)=>stub(key)});
   return {__esModule:true,default:stub(name)};

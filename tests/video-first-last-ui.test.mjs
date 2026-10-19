@@ -71,31 +71,31 @@ function harness(patch = {}) {
       // These passive leaves do not participate in saved frame drafts or their
       // confirmation epochs; keep the actual Inspector/frame controls below.
       if (['./AssetAnnotations.tsx','./CanvasOverview.tsx','./BoardInspectorGroup.tsx','./VersionCardPreview.tsx'].includes(name)) return { default: name, __esModule: true };
-      if (name === './image-generation.js') return { imageEditSourceIssueDescriptor };
+      if (name === './image-generation.ts') return { imageEditSourceIssueDescriptor };
       if (name === '@mioon/contracts') return contracts;
       if (name === '@mioon/contracts/local-shot-text') return { LOCAL_SHOT_TEXT_LIMITS };
-      if (name === './generation-settings.js') return settings;
-      if (name === './subject-video.js') return subjectVideo;
-      if (['./SubjectVideoSelection.jsx', './SubjectVideoSummary.jsx'].includes(name)) return { default: name, __esModule: true };
-      if (name === './api.js') return api;
-      if (name === './reference-connections.js') return { referenceForShot };
-      if (name === './VideoFrameControls.jsx') return load('VideoFrameControls.jsx');
-      if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => h.visible };
+      if (name === './generation-settings.ts') return settings;
+      if (name === './subject-video.ts') return subjectVideo;
+      if (['./SubjectVideoSelection.tsx', './SubjectVideoSummary.tsx'].includes(name)) return { default: name, __esModule: true };
+      if (name === './api.ts') return api;
+      if (name === './reference-connections.ts') return { referenceForShot };
+      if (name === './VideoFrameControls.tsx') return load('VideoFrameControls.tsx');
+      if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => h.visible };
       if (name === '@mioon/ui/components/workbench-confirm') return { useConfirmation: () => message => h.confirm(message) };
       if (name.endsWith('.css')) return {};
-      if (name === './icons.jsx') return { default: 'Icon', __esModule: true };
+      if (name === './icons.tsx') return { default: 'Icon', __esModule: true };
       if (name.startsWith('@mioon/ui/')) return primitive;
-      if (name === './Nodes.jsx') return { Media: 'Media' };
-      if (name === './Timeline.jsx') return { dragAsset() {} };
-      if (name === './ProviderSettings.jsx') return { default: 'ProviderSettings', __esModule: true };
-      if (name === './ShotSubjectBindings.jsx') return { default: 'ShotSubjectBindings', __esModule: true };
-      if (name === './WorkspaceControls.jsx') return { WorkbenchSelect: 'WorkbenchSelect' };
-      if (name === './ReferenceConnections.jsx') return { BoundReference: 'BoundReference', ReferenceSourcePanel: 'ReferenceSourcePanel' };
+      if (name === './Nodes.tsx') return { Media: 'Media' };
+      if (name === './Timeline.tsx') return { dragAsset() {} };
+      if (name === './ProviderSettings.tsx') return { default: 'ProviderSettings', __esModule: true };
+      if (name === './ShotSubjectBindings.tsx') return { default: 'ShotSubjectBindings', __esModule: true };
+      if (name === './WorkspaceControls.tsx') return { WorkbenchSelect: 'WorkbenchSelect' };
+      if (name === './ReferenceConnections.tsx') return { BoundReference: 'BoundReference', ReferenceSourcePanel: 'ReferenceSourcePanel' };
       throw Error(`Unexpected dependency ${name}`);
     }, module, module.exports);
     modules.set(filename, module.exports); return module.exports;
   }
-  const Component = load('Inspector.jsx').default;
+  const Component = load('Inspector.tsx').default;
   const flush = queue => { for (const i of queue) { slots[i].cleanup?.(); slots[i].cleanup = slots[i].callback(); } };
   Object.assign(h, {
     render(next = {}) { assert.equal(unmounted, false); props = { ...props, ...next }; let tries = 0; do { needsRender = false; cursor = 0; layouts = []; effects = []; tree = Component(props); flush(layouts); flush(effects); assert.ok(++tries < 20); } while (needsRender); return tree; },

@@ -97,6 +97,7 @@ const textSites = {
   "tests/helpers/workspace-restore-offline-fixture.mjs": 2,
   "tests/workspace-origin-transports.test.mjs": 2,
   "tests/workspace-backup-cli.test.mjs": 2,
+  "tests/opacity-candidate-backup-cli.test.mjs": 2,
   "tests/workspace-backup-inspection-transports.test.mjs": 3,
   "tests/agent-chat-durable-crash.test.mjs": 1,
   "tests/agent-edit-scope.test.mjs": 1,
@@ -120,6 +121,7 @@ const textSites = {
   "tests/frame-transports.test.mjs": 3,
   "tests/generation-input-transports.test.mjs": 4,
   "tests/helpers/agent-edit-wire-lifecycle.ts": 3,
+  "tests/helpers/inspection-wire-lifecycle.mjs": 3,
   "tests/helpers/agent-edit-wire-lifecycle-cases.ts": 1,
   "tests/helpers/edit-tasks-http-fixture.mjs": 1,
   "tests/http-file-shutdown.test.mjs": 2,
@@ -129,7 +131,6 @@ const textSites = {
   "tests/image-edit-transports.test.mjs": 5,
   "tests/image-profile-discovery.test.mjs": 3,
   "tests/inspection-wire.test.mjs": 3,
-  "tests/helpers/inspection-wire-lifecycle.mjs": 3,
   "tests/integration.test.mjs": 2,
   "tests/keychain-timeout-audit.test.mjs": 1,
   "tests/mcp-v4.test.mjs": 1,
@@ -166,7 +167,10 @@ const textSites = {
   // Actual CLI stdout/stderr and official MCP stderr are bounded UTF-8 text.
   'tests/timeline-loudness-apply-transports.test.mjs': 3,
   // Only SDK stderr has a direct listener; CLI execFile owns UTF-8 decoding, SDK owns JSON stdout.
-  'tests/timeline-mix-loudness-real-transports.test.mjs': 1
+  'tests/timeline-mix-loudness-real-transports.test.mjs': 1,
+  'tests/opacity-upgrade-cli.test.mjs': 2,
+  'tests/timeline-audio-role-transports.test.mjs': 5,
+  'tests/timeline-ripple-transports.test.mjs': 2,
 };
 const binarySites = {
   'tests/http-streams-qa-native.mjs': 1,
@@ -183,6 +187,11 @@ const binarySites = {
 // These are not appendFile loggers or streaming text decoders. Keep each exact
 // Buffer collection and final sink explicit: no directory/file-wide exemption.
 const bufferedSites = {
+  'tests/project-lifecycle-transports.test.mjs': {
+    count: 1, kind: 'diagnostic-string',
+    registration: "child.stderr.on('data',chunk=>{stderr+=chunk;});",
+    sink: "assert.equal(outcome[1],'SIGKILL',stderr);",
+  },
   'tests/desktop-exit-backend.test.mjs': {
     count: 1, kind: 'complete-message',
     registration: "child.stdout.on('data', chunk => chunks.push(chunk))",

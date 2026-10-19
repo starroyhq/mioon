@@ -1,3 +1,4 @@
+type Rec = Record<string, unknown>;
 export {TIMELINE_COLOUR_PREFLIGHT_MESSAGES,TIMELINE_COLOUR_PREFLIGHT_CODES} from './timeline-colour.ts';
 import {timelineExportRangeSchema,isTimelineExportRangeInput,isTimelineExportRangeWithinDuration,isTimelineExportRangeSnapshot} from './timeline-export-range.ts';
 import {timelineDeliveryNameSchema,isTimelineDeliveryNameInput,isTimelineDeliveryNameSnapshot} from './timeline-delivery.ts';
@@ -17,7 +18,7 @@ export const EXPORT_PREFLIGHT_LIMITS = Object.freeze({
 
 const id = z.string().uuid();
 const revision = z.number().int().positive();
-const count = maximum => z.number().int().min(0).max(maximum);
+const count = (maximum: number) => z.number().int().min(0).max(maximum);
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 
 export const exportPreflightSchemas = Object.freeze({
@@ -69,19 +70,19 @@ export const exportPreflightResponseSchema = z.object({
     clipId: id.optional(),
   }).strict()).max(EXPORT_PREFLIGHT_LIMITS.issues),
 }).strict().superRefine((value, context) => {
-  const fail = (path, message) => context.addIssue({code: z.ZodIssueCode.custom, path, message});
+  const fail = (path: (string | number)[], message: string) => context.addIssue({code: z.ZodIssueCode.custom, path, message});
   if (value.checks.checkedAssets > value.checks.totalAssets)
     fail(['checks', 'checkedAssets'], 'Checked assets must not exceed the total asset count.');
   if (value.summary) {
     if(!isTimelineDeliveryNameInput(value.summary))fail(['summary','deliveryName'],'Delivery name must be explicitly valid.');
     if(!isTimelineExportRangeWithinDuration(value.summary,value.summary.durationFrames))fail(['summary','exportRange'],'Export range must fit the full composition duration.');
     if(value.summary.delivery&&!isTimelineExportDelivery(value.summary.delivery,value.summary))fail(['summary','delivery'],'Delivery must match the composition dimensions and frozen settings.');
-    for (const key of ['visualClipCount', 'audibleClipCount'])
+    for (const key of ['visualClipCount', 'audibleClipCount'] as const)
       if (value.summary[key] > value.summary.clipCount)
         fail(['summary', key], 'Visual and audible counts must not exceed the clip count.');
   }
   if (value.status === 'ready') {
-    for (const key of ['timelineId', 'timelineRevision', 'snapshotHash', 'summary'])
+    for (const key of ['timelineId', 'timelineRevision', 'snapshotHash', 'summary'] as const)
       if (value[key] === null) fail([key], 'Ready reports require a complete existing timeline binding.');
     if (value.timelineRevision !== value.expectedRevision)
       fail(['timelineRevision'], 'Ready reports must match the requested timeline revision.');
@@ -95,8 +96,11 @@ export const exportPreflightResponseSchema = z.object({
 
 // Bind acknowledgements to their intended project/revision when caller input is
 // available. A report is a point-in-time check, never a durable replay receipt.
-export function isExportPreflightResponse(value, input) {
+export type ExportPreflightResponse = z.infer<typeof exportPreflightResponseSchema>;
+export function isExportPreflightResponse(value: unknown, input?: unknown): boolean {
   if (!exportPreflightResponseSchema.safeParse(value).success) return false;
-  return !input || (isTimelineDeliveryNameInput(input) && isTimelineExportRangeInput(input) && value.projectId === input.projectId && value.expectedRevision === input.expectedRevision &&
-    (!value.summary || isTimelineDeliveryNameSnapshot(value.summary,{input}) && isTimelineExportRangeSnapshot({...value.summary,timeline:value.summary},{input}) && (input.exportSettings!==undefined)===Object.hasOwn(value.summary,'delivery') && (input.exportSettings===undefined||isTimelineExportDelivery(value.summary.delivery,value.summary,input.exportSettings))));
+  if (!input) return true;
+  const request = input as Rec, response = value as ExportPreflightResponse;
+  if (!(isTimelineDeliveryNameInput(input) && isTimelineExportRangeInput(input) && response.projectId === request.projectId && response.expectedRevision === request.expectedRevision)) return false;
+  return !response.summary || (isTimelineDeliveryNameSnapshot(response.summary,{input}) && isTimelineExportRangeSnapshot({...response.summary,timeline:response.summary},{input}) && (request.exportSettings!==undefined)===Object.hasOwn(response.summary,'delivery') && (request.exportSettings===undefined||isTimelineExportDelivery(response.summary.delivery,response.summary,request.exportSettings)));
 }

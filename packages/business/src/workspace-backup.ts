@@ -14,35 +14,79 @@ import {detectCurrentWorkspaceRestoreEvidence as detectWorkspaceRestoreEvidence}
 import {hasWorkspaceBackupRestoreEvidence} from './workspace-backup-schema-versions.ts';
 import {OPACITY_CANDIDATE_BACKUP_PROFILE} from './opacity-candidate-backup-profile.ts';
 
+import type {Stats} from 'node:fs';
+
 const applicationVersion=applicationPackage.version;
-const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
+
+export interface WorkspaceBackupProfile {
+ manifestSchema: {safeParse(value: unknown): {success: boolean}};
+ resultSchema: {safeParse(value: unknown): {success: boolean}};
+ manifestMetadata: Record<string, unknown>;
+ resultMetadata: Record<string, unknown>;
+ requireSource: (db: DatabaseSync)=>void;
+ readSchemaVersion: (db: DatabaseSync)=>number;
+}
+export interface WorkspaceBackupResult {
+ format: string;formatVersion: number;backupId: string;integrity: string;restoration: string;
+ databaseSchemaVersion: number;fileCount: number;payloadBytes: number;inventory: unknown;
+ warnings?: string[];
+}
+export interface BackupManifestEntry {path: string;role: string;bytes: number;sha256: string}
+export interface VerifiedWorkspaceBackupFile {entry: BackupManifestEntry;identity: Stats}
+export interface VerifiedWorkspaceBackupContext {
+ directory: string;
+ manifest: BackupManifestLike;
+ manifestHash: string;
+ result: WorkspaceBackupResult;
+ files: VerifiedWorkspaceBackupFile[];
+ check: ()=>void;
+ checkFiles: ()=>void;
+ recheck: ()=>Promise<void>;
+}
+export interface BackupManifestLike {
+ backupId: string;databaseSchemaVersion: number;entries: BackupManifestEntry[];inventory: unknown;
+}
+interface BackupCompleteMarker {format: string;formatVersion: number;backupId: string;manifestSha256: string;fileCount: number;payloadBytes: number}
+interface DisposableDatabaseOptions {
+ database: string;databaseRoot: string;temporaryParent: string;signal?: AbortSignal;check: ()=>void;databasePrivate?: boolean;
+}
+interface BackupRestoreCheckOptions {
+ database: string;source: string;destination: string;signal?: AbortSignal;check: ()=>void;
+}
+interface VerifyTreeOptions {signal?: AbortSignal;check: ()=>void}
+interface BackupOptions {source?: string;destination?: string;signal?: AbortSignal}
+interface VerifyBackupOptions {directory?: string;signal?: AbortSignal;inspectDatabaseCopy?: (db: DatabaseSync)=>Promise<void>|void}
+interface VerifiedWorkOptions {signal?: AbortSignal;check: ()=>void}
+interface SchemaLike {safeParse(value: unknown): {success: boolean}}
+
+const digest=(bytes: Buffer|Uint8Array|string): string=>createHash('sha256').update(bytes).digest('hex');
 const sourceDirectories=['media','image-staging','frame-staging'];
-function checkCold(source){
+function checkCold(source: string): void{
  for(const name of ['workbench.sqlite-wal','workbench.sqlite-journal','workbench.sqlite-shm']){
   const info=inspectFile(path.join(source,name),source,{allowMissing:true,maxBytes:limits.databaseBytes});
   if(info&&info.size>0&&name!=='workbench.sqlite-shm')fail('NOT_COLD');
  }
 }
-function sourceDirectorySnapshot(source){
- return sourceDirectories.map(name=>[name,validateManagedDirectory(path.join(source,name),{root:source,allowMissing:true,private:name!=='media'})]);
+function sourceDirectorySnapshot(source: string): [string, Stats|null][]{
+ return sourceDirectories.map((name): [string, Stats|null]=>[name,validateManagedDirectory(path.join(source,name),{root:source,allowMissing:true,private:name!=='media'})]);
 }
-function checkSourceDirectories(source,snapshots){
+function checkSourceDirectories(source: string,snapshots: [string, Stats|null][]): void{
  for(const [name,before] of snapshots){
   const after=validateManagedDirectory(path.join(source,name),{root:source,allowMissing:true,private:name!=='media'});
   if(before?!sameFile(before,after):after!==null)fail('CHANGED');
  }
 }
-function validated(schema,value,reason='CORRUPT'){
- if(!schema.safeParse(value).success)fail(reason);return value;
+function validated<T>(schema: SchemaLike,value: unknown,reason='CORRUPT'): T{
+ if(!schema.safeParse(value).success)fail(reason);return value as T;
 }
-function checkFixedProfile(fixedProfile){
+function checkFixedProfile(fixedProfile: WorkspaceBackupProfile|undefined): void{
  // Only this module-owned fixed candidate is an alternate offline assembly.
  // Public options, copied objects and arbitrary schema-reader callbacks cannot
  // select a new source profile or weaken the historical default reader.
  if(fixedProfile!==undefined&&fixedProfile!==OPACITY_CANDIDATE_BACKUP_PROFILE&&fixedProfile!==OPACITY_RIPPLE_CANDIDATE_BACKUP_PROFILE)fail('DATABASE_INVALID');
 }
-function resultFor(manifest,fixedProfile){
- return validated(fixedProfile?fixedProfile.resultSchema:workspaceBackupResultSchema,{format,formatVersion,backupId:manifest.backupId,integrity:'verified',restoration:'not_tested',
+function resultFor(manifest: BackupManifestLike,fixedProfile: WorkspaceBackupProfile|undefined): WorkspaceBackupResult{
+ return validated<WorkspaceBackupResult>(fixedProfile?fixedProfile.resultSchema:workspaceBackupResultSchema,{format,formatVersion,backupId:manifest.backupId,integrity:'verified',restoration:'not_tested',
   databaseSchemaVersion:manifest.databaseSchemaVersion,fileCount:manifest.entries.length,payloadBytes:manifest.entries.reduce((sum,entry)=>sum+entry.bytes,0),inventory:manifest.inventory,
   ...(fixedProfile?fixedProfile.resultMetadata:{})});
 }
@@ -50,9 +94,9 @@ function resultFor(manifest,fixedProfile){
 // SQLite's pathname-only API is restricted to this private disposable copy.
 // Even readOnly WAL-mode SQLite may make temporary -wal/-shm files. They never
 // appear beside the source database or the published byte-for-byte payload.
-export async function withDisposableDatabase({database,databaseRoot,temporaryParent,signal,check,databasePrivate=true},fn){
+export async function withDisposableDatabase<T>({database,databaseRoot,temporaryParent,signal,check,databasePrivate=true}: DisposableDatabaseOptions,fn: (db: DatabaseSync)=>Promise<T>|T): Promise<T>{
  const directory=path.join(temporaryParent,`.inspection-${randomUUID()}`),identity=createNewDirectory(directory,temporaryParent);
- const file=path.join(directory,'workbench.sqlite');let db,copied;const sidecars=new Map();let result,error;
+ const file=path.join(directory,'workbench.sqlite');let db: DatabaseSync|undefined,copied: Awaited<ReturnType<typeof streamFile>>|undefined;const sidecars=new Map<string, Stats>();let result: T|undefined,error: unknown;
  const captureSidecars=()=>{
   for(const suffix of ['-wal','-shm','-journal']){
    const name=file+suffix,current=inspectFile(name,directory,{allowMissing:true,maxBytes:64*1024*1024});
@@ -88,7 +132,7 @@ export async function withDisposableDatabase({database,databaseRoot,temporaryPar
    removeOwnedDirectory(directory,temporaryParent,identity);
   }catch(cause){try{db?.close();}catch{}error??=cause;}
  }
- if(error)throw error;return result;
+ if(error)throw error;return result as T;
 }
 
 // A restored working branch cannot produce a second-generation backup until
@@ -96,7 +140,7 @@ export async function withDisposableDatabase({database,databaseRoot,temporaryPar
 // disposable copy before creating the user's requested destination. Ordinary
 // backup keeps its original permissive byte-preservation/inventory semantics;
 // this is not source-schema migration or a general legacy schema validator.
-async function refuseRestoredCapture({database,source,destination,signal,check},fixedProfile){
+async function refuseRestoredCapture({database,source,destination,signal,check}: BackupRestoreCheckOptions,fixedProfile: WorkspaceBackupProfile|undefined): Promise<void>{
  const temporary=path.join(path.dirname(destination),`.backup-profile-${randomUUID()}`),identity=createDestination(temporary);
  try{
   await withDisposableDatabase({database,databaseRoot:source,temporaryParent:temporary,signal,check,databasePrivate:false},db=>{
@@ -113,35 +157,35 @@ async function refuseRestoredCapture({database,source,destination,signal,check},
  * SQLite, constructs services, repairs sidecars, resumes tasks or restores data.
  * Excluded credential/settings/browser files do not make user-authored DB text
  * secret-free. The private backup needs the same care as the source workspace. */
-export async function createWorkspaceBackup({source,destination,signal}={},fixedProfile){
- let lease,result,operationError;
+export async function createWorkspaceBackup({source,destination,signal}: BackupOptions={},fixedProfile?: WorkspaceBackupProfile): Promise<WorkspaceBackupResult>{
+ let lease: {isOwned: ()=>boolean;release: ()=>boolean}|undefined,result: WorkspaceBackupResult|undefined,operationError: (Error & {cleanupUnconfirmed?: boolean})|undefined;
  try{
   checkFixedProfile(fixedProfile);
-  source=explicitPath(source);destination=explicitPath(destination);checkSeparate(source,destination);checkCancelled(signal);
+  source=explicitPath(source);destination=explicitPath(destination);checkSeparate(source as string,destination as string);checkCancelled(signal);
   const sourceIdentity=validatePrivateDirectory(source);
   // This shared exclusion is acquired before database/media/staging inspection.
   // It refuses every preexisting lock without deleting even an apparently stale one.
   lease=acquireWorkspaceLock(source);
-  const check=()=>{checkCancelled(signal);if(!lease.isOwned())fail('LOCK_LOST');if(!sameNode(sourceIdentity,validatePrivateDirectory(source)))fail('CHANGED');};
+  const check=()=>{checkCancelled(signal);if(!lease!.isOwned())fail('LOCK_LOST');if(!sameNode(sourceIdentity,validatePrivateDirectory(source as string)))fail('CHANGED');};
   check();checkCold(source);
   const sourceDirs=sourceDirectorySnapshot(source),databasePath=path.join(source,'workbench.sqlite');
-  const databaseIdentity=inspectFile(databasePath,source,{maxBytes:limits.databaseBytes});if(databaseIdentity.size===0)fail('DATABASE_INVALID');
-  await refuseRestoredCapture({database:databasePath,source,destination,signal,check},fixedProfile);
+  const databaseIdentity=inspectFile(databasePath,source,{maxBytes:limits.databaseBytes})!;if(databaseIdentity.size===0)fail('DATABASE_INVALID');
+  await refuseRestoredCapture({database:databasePath,source:source as string,destination:destination as string,signal,check},fixedProfile);
   if(!sameFile(databaseIdentity,inspectFile(databasePath,source,{maxBytes:limits.databaseBytes})))fail('CHANGED');
-  const destinationIdentity=createDestination(destination);syncDestinationParent(destination);check();
-  const destinationCheck=()=>{check();checkDirectoryIdentity(destination,destination,destinationIdentity);};
-  const payload=path.join(destination,'payload');createNewDirectory(payload,destination);
+  const destinationIdentity=createDestination(destination as string);syncDestinationParent(destination as string);check();
+  const destinationCheck=(): void=>{check();checkDirectoryIdentity(destination as string,destination as string,destinationIdentity);};
+  const payload=path.join(destination as string,'payload');createNewDirectory(payload,destination as string);
   const database=await streamFile({file:databasePath,root:source,destination:path.join(payload,'workbench.sqlite'),destinationRoot:destination,
    signal,check:destinationCheck,maxBytes:limits.databaseBytes,expected:databaseIdentity});
-  const databaseEntry={path:'payload/workbench.sqlite',role:'database',bytes:database.bytes,sha256:database.sha256},issues=createIssueCollector();
-  const inventory=await withDisposableDatabase({database:path.join(payload,'workbench.sqlite'),databaseRoot:destination,temporaryParent:destination,signal,check:destinationCheck},
-   db=>buildWorkspaceInventory({db,source,signal,check:destinationCheck,issues,databaseEntry},fixedProfile));
-  const entries=[databaseEntry],directories=new Set([payload]),outputIdentities=new Map([[databaseEntry.path,database.savedIdentity]]);let copiedBytes=database.bytes;
+  const databaseEntry: BackupManifestEntry={path:'payload/workbench.sqlite',role:'database',bytes:database.bytes,sha256:database.sha256},issues=createIssueCollector();
+  const inventory=await withDisposableDatabase({database:path.join(payload,'workbench.sqlite'),databaseRoot:destination as string,temporaryParent:destination as string,signal,check:destinationCheck},
+   db=>buildWorkspaceInventory({db,source:source as string,signal,check:destinationCheck,issues,databaseEntry},fixedProfile));
+  const entries: BackupManifestEntry[]=[databaseEntry],directories=new Set([payload]),outputIdentities=new Map<string, Stats|undefined>([[databaseEntry.path,database.savedIdentity]]);let copiedBytes=database.bytes;
   for(const candidate of inventory.plan){
    destinationCheck();
    const output=path.join(payload,candidate.relative),parent=path.dirname(output);
-   if(!directories.has(parent)){createNewDirectory(parent,destination);directories.add(parent);}
-   const value=await streamFile({file:path.join(source,candidate.relative),root:source,destination:output,destinationRoot:destination,
+   if(!directories.has(parent)){createNewDirectory(parent,destination as string);directories.add(parent);}
+   const value=await streamFile({file:path.join(source as string,candidate.relative),root:source as string,destination:output,destinationRoot:destination as string,
     signal,check:destinationCheck,expected:candidate.identity,private:candidate.relative.includes('-staging/')});
    copiedBytes+=value.bytes;if(copiedBytes>limits.totalBytes||entries.length>=limits.fileCount)fail('LIMIT');
    if((candidate.sha256&&candidate.sha256!==value.sha256)||(candidate.bytes!==undefined&&candidate.bytes!==value.bytes))issues.add(candidate.role==='asset'?'REGISTERED_MEDIA_MISMATCH':'INCONSISTENT_STAGE_RECEIPT',candidate.relative);
@@ -159,19 +203,19 @@ export async function createWorkspaceBackup({source,destination,signal}={},fixed
   // copying, so a changed earlier file cannot silently become a mixed capture.
   destinationCheck();checkCold(source);checkSourceDirectories(source,sourceDirs);
   if(!sameFile(databaseIdentity,inspectFile(databasePath,source,{maxBytes:limits.databaseBytes})))fail('CHANGED');
-  for(const candidate of inventory.plan)if(!sameFile(candidate.identity,inspectFile(path.join(source,candidate.relative),source,{private:candidate.relative.includes('-staging/')})))fail('CHANGED');
+  for(const candidate of inventory.plan)if(!sameFile(candidate.identity,inspectFile(path.join(source as string,candidate.relative),source as string,{private:candidate.relative.includes('-staging/')})))fail('CHANGED');
   entries.sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);
-  const manifest=validated(fixedProfile?fixedProfile.manifestSchema:workspaceBackupManifestSchema,{format,formatVersion,backupId:randomUUID(),createdAt:new Date().toISOString(),applicationVersion,
+  const manifest=validated<BackupManifestLike>(fixedProfile?fixedProfile.manifestSchema:workspaceBackupManifestSchema,{format,formatVersion,backupId:randomUUID(),createdAt:new Date().toISOString(),applicationVersion,
    databaseSchemaVersion:inventory.databaseSchemaVersion,scope:'whole_workspace',entries,inventory:issues.result(),...(fixedProfile?fixedProfile.manifestMetadata:{})},'DATABASE_INVALID');
   const bytes=Buffer.from(JSON.stringify(manifest));
-  writeBoundedFile(path.join(destination,'manifest.json'),destination,bytes,limits.manifestBytes);
-  for(const directory of [...directories].sort((a,b)=>b.length-a.length))syncDirectory(directory,destination);
-  syncDirectory(destination,destination);syncDestinationParent(destination);destinationCheck();
-  for(const entry of entries)if(!sameFile(outputIdentities.get(entry.path),inspectFile(path.join(destination,entry.path),destination,{private:true})))fail('CHANGED');
-  const complete=validated(workspaceBackupCompleteSchema,{format,formatVersion,backupId:manifest.backupId,manifestSha256:digest(bytes),fileCount:entries.length,payloadBytes:copiedBytes});
+  writeBoundedFile(path.join(destination as string,'manifest.json'),destination as string,bytes,limits.manifestBytes);
+  for(const directory of [...directories].sort((a,b)=>b.length-a.length))syncDirectory(directory,destination as string);
+  syncDirectory(destination as string,destination as string);syncDestinationParent(destination as string);destinationCheck();
+  for(const entry of entries)if(!sameFile(outputIdentities.get(entry.path),inspectFile(path.join(destination as string,entry.path),destination as string,{private:true})))fail('CHANGED');
+  const complete=validated<BackupCompleteMarker>(workspaceBackupCompleteSchema,{format,formatVersion,backupId:manifest.backupId,manifestSha256:digest(bytes),fileCount:entries.length,payloadBytes:copiedBytes});
   // COMPLETE is the sole publication point. Every payload, manifest and newly
   // created directory is durable before this no-clobber marker is linked.
-  publishMarker(path.join(destination,'COMPLETE.json'),destination,Buffer.from(JSON.stringify(complete)),destinationCheck);
+  publishMarker(path.join(destination as string,'COMPLETE.json'),destination as string,Buffer.from(JSON.stringify(complete)),destinationCheck);
   result=resultFor(manifest,fixedProfile);return result;
  }catch(error){operationError=safeBackupError(error);throw operationError;}
  finally{
@@ -185,12 +229,12 @@ export async function createWorkspaceBackup({source,destination,signal}={},fixed
  }
 }
 
-async function verifyExactTree(directory,manifest,{signal,check}){
+async function verifyExactTree(directory: string,manifest: BackupManifestLike,{signal,check}: VerifyTreeOptions): Promise<void>{
  const expected=new Set(['manifest.json','COMPLETE.json','payload',...manifest.entries.map(entry=>entry.path)]),directories=new Set(['','payload']);
  for(const entry of manifest.entries){const parent=path.posix.dirname(entry.path);directories.add(parent);expected.add(parent);}
  const budget={count:0},found=new Set();
  for(const relative of directories){
-  await scanDirectory(path.join(directory,relative),directory,{signal,check,budget,private:true,visit:async name=>{
+  await scanDirectory(path.join(directory,relative),directory,{signal,check,budget,private:true,visit:async (name: string)=>{
    const target=relative?`${relative}/${name}`:name;
    if(!expected.has(target))fail('CORRUPT');
    const full=path.join(directory,target);
@@ -204,20 +248,20 @@ async function verifyExactTree(directory,manifest,{signal,check}){
 
 /** Rehash exact captured bytes and inspect only a disposable database copy.
  * Integrity is not authenticity, inventory completeness or restoration proof. */
-export async function withVerifiedWorkspaceBackup({directory,signal,inspectDatabaseCopy}={},use,fixedProfile){
+export async function withVerifiedWorkspaceBackup<T=WorkspaceBackupResult>({directory,signal,inspectDatabaseCopy}: VerifyBackupOptions={},use?: (context: VerifiedWorkspaceBackupContext)=>Promise<T>|T,fixedProfile?: WorkspaceBackupProfile): Promise<T|WorkspaceBackupResult>{
   checkFixedProfile(fixedProfile);
-  directory=explicitPath(directory);checkCancelled(signal);const rootIdentity=validatePrivateDirectory(directory);
-  const check=()=>{checkCancelled(signal);checkDirectoryIdentity(directory,directory,rootIdentity);};
+  directory=explicitPath(directory);checkCancelled(signal);const rootIdentity=validatePrivateDirectory(directory)!;
+  const check=()=>{checkCancelled(signal);checkDirectoryIdentity(directory as string,directory as string,rootIdentity);};
   const marker=readJsonFile(path.join(directory,'COMPLETE.json'),directory,4096,{allowMissing:true});if(!marker)fail('INCOMPLETE');
-  const complete=validated(workspaceBackupCompleteSchema,marker.value);
-  const input=readJsonFile(path.join(directory,'manifest.json'),directory,limits.manifestBytes);
+  const complete=validated<BackupCompleteMarker>(workspaceBackupCompleteSchema,marker.value);
+  const input=readJsonFile(path.join(directory as string,'manifest.json'),directory as string,limits.manifestBytes)!;
   if(digest(input.raw)!==complete.manifestSha256)fail('CORRUPT');
-  const manifest=validated(fixedProfile?fixedProfile.manifestSchema:workspaceBackupManifestSchema,input.value),result=resultFor(manifest,fixedProfile);
+  const manifest=validated<BackupManifestLike>(fixedProfile?fixedProfile.manifestSchema:workspaceBackupManifestSchema,input.value),result=resultFor(manifest,fixedProfile);
   if(complete.backupId!==manifest.backupId||complete.fileCount!==result.fileCount||complete.payloadBytes!==result.payloadBytes)fail('CORRUPT');
   const markerIdentity=inspectFile(path.join(directory,'COMPLETE.json'),directory,{private:true,maxBytes:4096});
   const manifestIdentity=inspectFile(path.join(directory,'manifest.json'),directory,{private:true,maxBytes:limits.manifestBytes});
   await verifyExactTree(directory,manifest,{signal,check});
-  const verified=[];
+  const verified: [BackupManifestEntry, Stats][]=[];
   for(const entry of manifest.entries){
    const value=await streamFile({file:path.join(directory,entry.path),root:directory,signal,check,maxBytes:entry.role==='database'?limits.databaseBytes:limits.fileBytes,private:true});
    if(value.bytes!==entry.bytes||value.sha256!==entry.sha256)fail('CORRUPT');verified.push([entry,value.identity]);
@@ -238,13 +282,13 @@ export async function withVerifiedWorkspaceBackup({directory,signal,inspectDatab
   if(!use)return result;
   // Trusted offline embedding only. This is not registered in the RPC catalog.
   // Freeze all supplied evidence; callers cannot mutate our later rechecks.
-  const freeze=value=>{if(value&&typeof value==='object'&&!Object.isFrozen(value)){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
-  const context=Object.freeze({directory,manifest:freeze(manifest),manifestHash:complete.manifestSha256,
-   result:freeze(result),files:Object.freeze(verified.map(([entry,identity])=>Object.freeze({entry,identity:Object.freeze(identity)}))),check,checkFiles,recheck});
+  const freeze=(value: unknown): unknown=>{if(value&&typeof value==='object'&&!Object.isFrozen(value)){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
+  const context: VerifiedWorkspaceBackupContext=Object.freeze({directory,manifest:freeze(manifest) as BackupManifestLike,manifestHash:complete.manifestSha256,
+   result:freeze(result),files:Object.freeze(verified.map(([entry,identity])=>Object.freeze({entry,identity:Object.freeze(identity)}))),check,checkFiles,recheck}) as unknown as VerifiedWorkspaceBackupContext;
   return use?await use(context):result;
 }
 
-export async function verifyWorkspaceBackup({directory,signal}={},fixedProfile){
+export async function verifyWorkspaceBackup({directory,signal}: VerifyBackupOptions={},fixedProfile?: WorkspaceBackupProfile): Promise<unknown>{
  try{return await withVerifiedWorkspaceBackup({directory,signal},undefined,fixedProfile);}
  catch(error){throw safeBackupError(error);}
 }

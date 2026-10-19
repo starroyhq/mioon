@@ -99,10 +99,10 @@ test('wired ProviderSettings renders accessible compact summaries and all role d
   const fixtureSource = `
     import React from 'react';
     import { renderToStaticMarkup } from 'react-dom/server.browser';
-    import ProviderSettings from './ProviderSettings.jsx';
-    import GenerationInputSummary, { GenerationInputDetails } from './GenerationInputSummary.jsx';
-    import { generationProfileSelection, generationSelection } from './generation-settings.js';
-    import { WorkspaceVisibilityProvider } from './workspace-visibility.jsx';
+    import ProviderSettings from './ProviderSettings.tsx';
+    import GenerationInputSummary, { GenerationInputDetails } from './GenerationInputSummary.tsx';
+    import { generationProfileSelection, generationSelection } from './generation-settings.ts';
+    import { WorkspaceVisibilityProvider } from './workspace-visibility.tsx';
     const providers = ${JSON.stringify(providers)};
     const blocked = ${JSON.stringify(blocked)};
     export const markup = Object.fromEntries(providers.map(provider => {
@@ -176,10 +176,10 @@ function disclosureHarness() {
   Function('module', 'exports', 'require', code)(module, module.exports, name => {
     const i18nDependency = creationTestDependency(name); if (i18nDependency) return i18nDependency;
     if (name === 'react') return react;
-    if (name === './generation-settings.js') return { generationProfileSelection, generationIssueDescriptor };
-    if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => h.visible };
+    if (name === './generation-settings.ts') return { generationProfileSelection, generationIssueDescriptor };
+    if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => h.visible };
     if (name.endsWith('.css')) return {};
-    if (name === './icons.jsx') return { default: 'Icon', __esModule: true };
+    if (name === './icons.tsx') return { default: 'Icon', __esModule: true };
     if (name.startsWith('@mioon/ui/')) return new Proxy({}, { get: (_, key) => String(key) });
     throw Error(`Unexpected dependency: ${name}`);
   });

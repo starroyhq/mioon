@@ -63,7 +63,7 @@ function harness(dispatch, { projectSnapshot } = {}) {
     isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === state.epoch,
     isBusy: (name, owner) => busy.has(`${owner}:${name}`),
     markBusy: (owner, name, value) => value ? busy.add(`${owner}:${name}`) : busy.delete(`${owner}:${name}`),
-    requestCounter: { current: 0 }, setData: update => { dataRef.current = typeof update === 'function' ? update(dataRef.current) : update; state.dataWrites.push(clone(dataRef.current)); },
+    requestCounter: { current: 0 }, clipConnectionBlocked: { current: false }, setData: update => { dataRef.current = typeof update === 'function' ? update(dataRef.current) : update; state.dataWrites.push(clone(dataRef.current)); },
     setPending: entries => { state.pending = entries; state.pendingUpdates.push(clone(entries)); },
     openTasks: (canReveal = () => true) => { if (canReveal()) state.jobs = true; }, setAuth: value => { state.auth = value; },
     readableError: error => error.message, clipReplacementErrorDescriptor: error => error.message,
@@ -75,7 +75,7 @@ function harness(dispatch, { projectSnapshot } = {}) {
     },
   };
   if (projectSnapshot) {
-    const refreshScope = { ...scope, ...projectOpening, projectSessionReady: () => state.projectReady, importSession: { current: { active: true } }, useCallback: callback => callback, emptyData: {}, projectEpoch,
+    const refreshScope = { ...scope, ...projectOpening, application: null, clipDraftRef: { current: null }, projectSessionReady: () => state.projectReady, importSession: { current: { active: true } }, useCallback: callback => callback, emptyData: {}, projectEpoch,
       setProviders() {}, setLastSync() {}, setOnline() {}, reconcileWorkspaceState, viewRef, viewReady: { current: true },
       setView: value => { viewRef.current = value; }, preferencesRef: { current: { update: (...args) => state.preferenceWrites.push(args) } } };
     delete refreshScope.refresh;

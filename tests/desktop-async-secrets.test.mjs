@@ -15,7 +15,7 @@ const data = source => 'data:text/javascript;base64,' + Buffer.from(source).toSt
 
 // No installed dependencies are used or borrowed. Real Agent config/settings,
 // codecs, brokers, supervisor and quit-helper bodies use import-only rewriting.
-// Six explicitly reviewed TypeScript modules use Node's strip-only erasure;
+// Every approved TypeScript module uses Node's strip-only erasure;
 // their type-only imports must never become runtime imports. Native audition
 // schemas are a counted rejecting double: this secrets-only fixture supplies no
 // audio configuration and must never execute an audio admission or proof.
@@ -54,8 +54,7 @@ const approved = new Set(['apps/desktop/src/app-language-text.ts', 'packages/i18
   'apps/desktop/src/security.ts', 'apps/desktop/src/timeline-delivery-download.ts', 'apps/desktop/src/exit-diagnostics.ts',
   'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/shutdown.ts', 'packages/business/src/agent/settings.ts', 'packages/business/src/agent/config.ts',
   'packages/business/src/agent/presets.ts']);
-const reviewedTypeScript = new Set(['apps/desktop/src/app-language-text.ts', 'packages/i18n/src/catalogs/native.ts', 'apps/desktop/src/timeline-delivery-download.ts',
-  'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/exit-diagnostics.ts']);
+const reviewedTypeScript = approved;
 const urls = new Map();
 function moduleUrl(name) {
   if (urls.has(name)) return urls.get(name);
@@ -66,8 +65,8 @@ function moduleUrl(name) {
   source = source.replace(/\bfrom\s+(['"])([^'"]+)\1/g, (_, quote, specifier) => {
     let url = overrides.get(specifier);
     if (!url && ['node:path', 'node:crypto', 'node:net', 'node:events'].includes(specifier)) url = specifier;
-    if (!url && specifier === '../identity.cjs') {
-      const identity = new URL('apps/desktop/identity.cjs', root);
+    if (!url && specifier === '../identity.ts') {
+      const identity = new URL('apps/desktop/identity.ts', root);
       assert.doesNotMatch(readFileSync(identity, 'utf8'), /\bimport\b|\brequire\s*\(/);
       url = identity.href;
     }
@@ -170,7 +169,8 @@ test('import fixture permits only six reviewed erased modules and refuses runtim
   }
   assert.equal(deliveryParser.calls, 0);
   assert.equal(nativeAudioContracts.calls, 0);
-  assert.deepEqual([...reviewedTypeScript].sort(), ['apps/desktop/src/app-language-text.ts', 'apps/desktop/src/exit-diagnostics.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/timeline-delivery-download.ts', 'packages/i18n/src/catalogs/native.ts']);
+  assert.equal(reviewedTypeScript.size, approved.size);
+  for (const name of approved) assert.ok(reviewedTypeScript.has(name), name);
   for (const adapter of reviewedTypeScript) assert.ok(urls.has(adapter));
 });
 

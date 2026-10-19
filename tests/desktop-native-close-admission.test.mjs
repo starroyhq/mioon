@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { readFile } from 'node:fs/promises';
+import { stripTypeScriptTypes } from 'node:module';
 import vm from 'node:vm';
 import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
 import { createProjectRendererRecovery } from '../apps/desktop/src/project-window-recovery.ts';
@@ -10,6 +11,7 @@ import { installPreferencesCloseDrain, installUnsavedGuard, QuitCoordinator } fr
 import { createNativeCloseAdmission, createNativeCloseRegistry } from '../apps/web/src/native-close-state.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 
+const executable = source => stripTypeScriptTypes(source, { mode: 'strip' });
 const deferred = () => Promise.withResolvers();
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -559,11 +561,11 @@ test('real renderer binds reload to the exact current document URL and action', 
 
 test('main routes user reload through admission and only proved initial empty load failures remain recoverable', async () => {
   const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
-  assert.match(main, /windowAdmissions\.get\(window\)\?\.captureRecoveryDecision\(\)\.reload\(\)\.catch\(fatal\)/);
+  assert.match(main, /windowAdmissions\.get\(window!?\)\?\.captureRecoveryDecision\(\)\.reload\(\)\.catch\(fatal\)/);
   assert.match(main, /capture: window => windowAdmissions\.get\(window\)\?\.captureRecoveryDecision\(\)/);
   assert.match(main, /const rendererFailed = createProjectRendererRecovery\(/);
   const start = main.indexOf('async function openWindow('), end = main.indexOf('\nfunction prepareOwnedWindow(', start);
-  const source = main.slice(start, end);
+  const source = stripTypeScriptTypes(main.slice(start, end), { mode: 'strip' });
   assert.match(source, /await windowHost\.loadFor\(window\)/);
   assert.doesNotMatch(source, /requestReload/);
   const window = {}, startupError = Object.assign(Error('Startup failed'), { code: 'ERR_ABORTED' });
@@ -851,7 +853,7 @@ test('cancel/Escape in the actual recovery dialog retains window, backend and un
   const context = vm.createContext({ nt: nativeText, createProjectRendererRecovery, quitRouter: {allowsWindows: true}, windowAdmissions: new WeakMap([[f.win, f.admission]]),
     ownsWindow: () => true, dialog: { showMessageBox: async (parent, options) => { assert.equal(parent, f.win); dialogOptions = options; return { response: options.cancelId }; } },
     app: { quit() { assert.fail('Cancel cannot quit'); } }, window: f.win, ownerContext: {incident: {failed: false}} });
-  vm.runInContext(main.slice(from, to), context);
+  vm.runInContext(executable(main.slice(from, to)), context);
   await vm.runInContext('rendererFailed(window, ownerContext)', context);
   assert.equal(dialogOptions.cancelId, 2);
   assert.deepEqual(Array.from(dialogOptions.buttons), ['重新载入界面', '退出应用', '保留窗口']);
@@ -867,7 +869,7 @@ test('the actual recovery dialog authorizes Exit only for explicit response one'
   const context = vm.createContext({ nt: nativeText, createProjectRendererRecovery, quitRouter: {allowsWindows: true}, windowAdmissions: new WeakMap([[f.win, f.admission]]),
     ownsWindow: () => true, dialog: { showMessageBox: async () => ({ response: 1 }) },
     app: { quit() { assert.fail('Explicit recovery must use its captured scoped decision'); } }, window: f.win, ownerContext: {incident: {failed: false}} });
-  vm.runInContext(main.slice(from, to), context);
+  vm.runInContext(executable(main.slice(from, to)), context);
   await vm.runInContext('rendererFailed(window, ownerContext)', context);
   assert.equal(f.win.destroyed, true); assert.equal(f.stats().stopped, 1); assert.equal(f.stats().finished, 1);
   assert.deepEqual(f.scripts, []);
@@ -881,7 +883,7 @@ async function recoveryDialogHarness(t, f, show, isCurrent = () => true) {
     ownsWindow: () => isCurrent() && !f.win.destroyed,
     dialog: { showMessageBox: (parent, options) => { assert.equal(parent, f.win); calls.push(options); return show(calls.length, options); } },
     window: f.win, ownerContext: {incident: {failed: false}} });
-  vm.runInContext(main.slice(from, to), context);
+  vm.runInContext(executable(main.slice(from, to)), context);
   const onFailure = () => pending.push(vm.runInContext('rendererFailed(window, ownerContext)', context).catch(error => errors.push(error)));
   f.win.webContents.on('unresponsive', onFailure); f.win.webContents.on('render-process-gone', onFailure);
   t.after(() => { f.win.webContents.removeListener('unresponsive', onFailure); f.win.webContents.removeListener('render-process-gone', onFailure); });
@@ -947,7 +949,7 @@ async function reloadMenuHarness(f, isCurrent = () => true) {
   const context = vm.createContext({ nt: nativeText, process: { platform: 'linux' }, windowContext: {incident: {failed: false}}, windowHost: {preferredWindow: () => f.win}, initialWindowLoads: new WeakMap(), win: f.win, BrowserWindow: { getFocusedWindow: () => f.win },
     windowAdmissions: new WeakMap([[f.win, f.admission]]), ownsWindow: () => isCurrent() && !f.win.destroyed,
     Menu: { buildFromTemplate: value => value, setApplicationMenu: value => { menu = value; } }, fatal: error => errors.push(error) });
-  vm.runInContext(main.slice(from, to) + '\ninstallMenu();', context);
+  vm.runInContext(executable(main.slice(from, to)) + '\ninstallMenu();', context);
   return { reload: () => menu.find(item => item.label === '应用').submenu.find(item => item.label === '重新载入界面').click(), errors };
 }
 
@@ -988,7 +990,7 @@ async function actualMainAdmissionCallbacks(dialog, window = {}, owner = () => t
     windowAdmissions: new WeakMap(), installNativeCloseAdmission: (_window, value) => { callbacks = value; return {}; },
     ownsWindow: owner, isAllowedNavigation: () => true, smokeOutput: false, smokeDiscardDecision: undefined,
     dialog, quitCoordinator: { cancel() {}, request: () => Promise.resolve(false) }, quitFailed() {}, ...bindings });
-  vm.runInContext(main.slice(from, to), context);
+  vm.runInContext(executable(main.slice(from, to)), context);
   return callbacks;
 }
 

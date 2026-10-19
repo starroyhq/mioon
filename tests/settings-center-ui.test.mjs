@@ -43,7 +43,7 @@ function shellHarness() {
     '@mioon/ui/components/button': { Button: 'Button' },
     '@mioon/ui/components/workbench-icons': {WorkbenchIcon:'WorkbenchIcon'},
     './LanguageControl.tsx': { __esModule: true, default: 'LanguageControl' },
-    './workspace-visibility.jsx': { WorkspaceVisibilityProvider: 'WorkspaceVisibilityProvider' },
+    './workspace-visibility.tsx': { WorkspaceVisibilityProvider: 'WorkspaceVisibilityProvider' },
     './settings-window-state.ts': { isSettingsConnectionPage: page => slots.includes(page) },
     './SettingsExtraPages.tsx': { SettingsAbout:'SettingsAbout', SettingsShortcuts:'SettingsShortcuts', SettingsModelServices:'SettingsModelServices' },
   }).default;
@@ -103,7 +103,7 @@ test('visibility composition hides descendants without dropping children or crea
   const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
     createContext: initial => ({ Provider: 'VisibilityContext', initial }), useContext: () => ancestor,
   }; react.default = react;
-  const { WorkspaceVisibilityProvider } = componentModule('workspace-visibility.jsx', react, {});
+  const { WorkspaceVisibilityProvider } = componentModule('workspace-visibility.tsx', react, {});
   const child = { type: 'form', props: { value: 'retained-draft' } };
   for (const parent of [true, false]) for (const visible of [true, false]) {
     ancestor = parent; const tree = WorkspaceVisibilityProvider({ visible, children: child });
@@ -174,7 +174,7 @@ test('new settings copy has complete locale coverage and category identity remai
 });
 
 test('shared native center receives page routing and visibility without replacing existing close admission', () => {
-  const native = source('SettingsRoot.tsx'), app = source('App.jsx');
+  const native = source('SettingsRoot.tsx'), app = source('App.tsx');
   const main = app.slice(app.indexOf('export function SettingsConnectionForms('), app.indexOf('export default function App('));
   assert.match(native, /installNativeCloseAdmission/u); assert.match(native, /navigation\.selectPage/u);
   assert.match(native, /page:\s*navigation\.page/u); assert.match(native, /window\.close\(\); return false/u);
@@ -288,12 +288,12 @@ test('restored web requests normalize to General and cannot activate model pages
   assert.equal(forms.props.connectionsAvailable, false); assert.equal(forms.props.registry, h.registry);
   forms.props.onSelect('custom'); forms.props.onPage('comfy');
   assert.equal(h.controllers[0].page, 'general'); assert.deepEqual(h.registry.capture(), []);
-  const app = source('App.jsx'); assert.match(app, /connectionsAvailable=\{!application && !restored\}/u);
+  const app = source('App.tsx'); assert.match(app, /connectionsAvailable=\{!application && !restored\}/u);
   h.unmount();
 });
 
 test('web center stays first keyed sibling across home and workbench rather than replacing the editor tree', () => {
-  const app = source('App.jsx');
+  const app = source('App.tsx');
   assert.match(app, /const webSettingsCenter = nativeWindow \? null : <WebSettingsCenter key="global-settings-center" request=\{webSettingsRequest\} registry=\{settingsNavigation\.current\}/u);
   assert.match(app, /if \(!workbenchReady && !retainWorkbenchForClip\) return <>\{webSettingsCenter\}<ProjectHome/u);
   assert.match(app, /return <>\{webSettingsCenter\}<main className=\{`workbench/u);
@@ -329,7 +329,7 @@ test('only reachable modals block shortcuts, including hidden/inert/closed/aria-
 });
 
 test('actual App Ctrl+B and undo handlers work before settings opens and after close, but not with an open confirmation', () => {
-  const app = source('App.jsx'), guards = app.indexOf('const guards = { modalOpen: hasOpenWorkbenchModal(document) }');
+  const app = source('App.tsx'), guards = app.indexOf('const guards = { modalOpen: hasOpenWorkbenchModal(document) }');
   assert.ok(guards >= 0); const start = app.lastIndexOf('    const onKeyDown = event => {', guards), end = app.indexOf("    window.addEventListener('keydown', onKeyDown);", guards);
   assert.ok(start >= 0 && end > start);
   const settings = modalElement({ role: 'dialog', hidden: '' }), confirmation = modalElement({ role: 'alertdialog', 'data-closed': '' });
@@ -367,11 +367,11 @@ function composerSettingsHandler(kind, callback) {
   };
   let click;
   if (kind === 'agent') {
-    const code = source('AgentPanel.jsx'), start = code.indexOf('  const usable ='), end = code.indexOf('  const { snapshot, phase } = state;', start);
+    const code = source('AgentPanel.tsx'), start = code.indexOf('  const usable ='), end = code.indexOf('  const { snapshot, phase } = state;', start);
     assert.ok(start >= 0 && end > start);
     click = Function('env', `with (env) { ${code.slice(start, end)}; return () => dismiss(true); }`)(env);
   } else {
-    const code = source('ImageGeneration.jsx'), button = code.indexOf('data-testid="image-settings-open"');
+    const code = source('ImageGeneration.tsx'), button = code.indexOf('data-testid="image-settings-open"');
     const start = code.indexOf('onClick={', button) + 'onClick={'.length, end = code.indexOf('})}><Icon name="settings"', start) + 2;
     assert.ok(button >= 0 && start > button && end > start);
     env.run = action => action(env.session.current);

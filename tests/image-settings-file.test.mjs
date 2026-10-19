@@ -110,7 +110,7 @@ test('concurrent raw readers see complete envelopes and no leftover temporary fi
 
 test('settings file path is absolute and bounded by a private root', () => {
   for (const options of [{directory: 'relative'}, {directory: '/tmp/image-settings', privateRoot: '/tmp/other'},
-    {directory: '/tmp/image-settings', filename: '../agent-settings.json'}, {directory: '/tmp/image-settings', filename: '/settings.json'}]) {
+    {directory: '/tmp/image-settings', filename: '../agent-settings.tson'}, {directory: '/tmp/image-settings', filename: '/settings.json'}]) {
     assert.throws(() => createImageSettingsFile(options), {code: 'IMAGE_SETTINGS_CORRUPT'});
   }
 });

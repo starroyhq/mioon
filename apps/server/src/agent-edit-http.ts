@@ -1,18 +1,22 @@
+import type {IncomingMessage, ServerResponse} from 'node:http';
 import {safeChatRuntimeError} from '@mioon/business/agent/chat-runtime';
+import type {createChatRuntime} from '@mioon/business/agent/chat-runtime';
 import {agentChatError} from '@mioon/business/agent/chat-errors';
 
-const uuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(value);
-const json = (res, status, data) => {
+type ChatRuntime = ReturnType<typeof createChatRuntime>;
+type AgentEditRuntime = Pick<ChatRuntime, 'editList' | 'editGet' | 'editApprove' | 'editReject' | 'editRecover'>;
+const uuid = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(value);
+const json = (res: ServerResponse, status: number, data: unknown): void => {
   res.writeHead(status, {'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store'});
   res.end(JSON.stringify(data));
 };
-function query(url, allowed) {
+function query(url: URL, allowed: readonly string[]): void {
   const keys = [...url.searchParams.keys()];
   if (new Set(keys).size !== keys.length || keys.some(key => !allowed.includes(key))) throw agentChatError('AGENT_CHAT_VALIDATION');
 }
-async function approvalBody(req) {
+async function approvalBody(req: IncomingMessage): Promise<unknown> {
   if (!/^application\/json(?:\s*;|$)/iu.test(req.headers['content-type'] || '')) throw agentChatError('AGENT_CHAT_VALIDATION');
-  let size = 0; const chunks = [];
+  let size = 0; const chunks: Buffer[] = [];
   for await (const chunk of req) {
     size += chunk.length;
     if (size > 1024) throw agentChatError('AGENT_CHAT_LIMIT');
@@ -25,13 +29,13 @@ async function approvalBody(req) {
 /** User review endpoints only. The parent server authenticates every request
  * and checks Host/Origin before this module runs. No endpoint is a model tool;
  * GET never approves, dispatches, retries or acquires a provider credential. */
-export function createAgentEditHttp({runtime}) {
-  return async function handle(req, res, url) {
+export function createAgentEditHttp({runtime}: {runtime: AgentEditRuntime}) {
+  return async function handle(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
     if (!/^\/api\/agent\/chat\/[^/]+\/edits(?:\/|$)/u.test(url.pathname)) return false;
     try {
       const match = /^\/api\/agent\/chat\/([^/]+)\/edits(?:\/([^/]+)(?:\/(approve|reject|recover))?)?$/u.exec(url.pathname);
       if (!match) throw agentChatError('AGENT_CHAT_NOT_FOUND');
-      let projectId, proposalId;
+      let projectId: string, proposalId: string | undefined;
       try { projectId = decodeURIComponent(match[1]); proposalId = match[2] ? decodeURIComponent(match[2]) : undefined; }
       catch { throw agentChatError('AGENT_CHAT_VALIDATION'); }
       if (!uuid(projectId) || proposalId !== undefined && !uuid(proposalId)) throw agentChatError('AGENT_CHAT_VALIDATION');

@@ -1,5 +1,7 @@
 import React from 'react';
-const paths = {
+import type {ReactNode, SVGProps} from 'react';
+export interface IconProps extends Omit<SVGProps<SVGSVGElement>, 'name'> { name: string; size?: number }
+const paths: Record<string, ReactNode> = {
   magnet: <><path d="M5 3v10a7 7 0 0 0 14 0V3h-5v10a2 2 0 0 1-4 0V3Z" /><path d="M5 7h5m4 0h5" /></>,
   music: <><path d="M9 18V5l11-2v13M9 8l11-2" /><ellipse cx="6" cy="18" rx="3" ry="2.5" /><ellipse cx="17" cy="16" rx="3" ry="2.5" /></>,
   plus: <path d="M12 5v14M5 12h14" />,
@@ -35,4 +37,4 @@ const paths = {
   lock: <><rect x="5" y="10" width="14" height="11" rx="2" /><path d="M8 10V6a4 4 0 0 1 8 0v4m-4 4v3" /></>,
   search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
 };
-export default function Icon({ name, size = 18, ...props }) { return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>{paths[name] || paths.film}</svg>; }
+export default function Icon({ name, size = 18, ...props }: IconProps) { return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>{paths[name] || paths.film}</svg>; }

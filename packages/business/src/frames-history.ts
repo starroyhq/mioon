@@ -1,12 +1,13 @@
 import {randomBytes,createHash,createHmac,timingSafeEqual} from 'node:crypto';
+import type {DatabaseSync} from 'node:sqlite';
 import {AppError} from '@mioon/contracts';
+import type {OperationInput} from '@mioon/contracts';
 import {FRAME_LIMITS,frameSchemas,frameRequestResponseSchema,isFrameMutationResponse,canonicalFrameInput as canonical} from '../../contracts/src/frame-extraction.ts';
 import {createFrameOwnershipReader} from './frame-ownership.ts';
+import type {FrameTaskView} from './frame-ownership.ts';
 import {createOwnedMediaGraphReader} from './inspection.ts';
 
-const hash=value=>createHash('sha256').update(canonical(value)).digest('hex');
-const equal=(a,b)=>canonical(a)===canonical(b);
-export const frameServiceMessages=Object.freeze({
+export const frameServiceMessages: Readonly<Record<string,string>>=Object.freeze({
  FRAME_NOT_FOUND:'The frame record is unavailable for this project.',FRAME_RECORD_INVALID:'The saved frame record cannot be verified safely.',
  FRAME_REQUEST_CONFLICT:'This request ID was already used for a different frame operation or input.',FRAME_REVISION_CONFLICT:'The frame task changed. Read it again before choosing an action.',
  FRAME_STATE_CONFLICT:'The frame task does not allow this action.',FRAME_CAPACITY:'The retained frame task or request capacity is full.',
@@ -19,69 +20,123 @@ export const frameServiceMessages=Object.freeze({
  FRAME_OUTPUT_INVALID:'The local decoder did not return a valid frame.',FRAME_ATTEMPT_TIMEOUT:'Local frame capture exceeded its time limit.',
  MEDIA_TERMINATION_UNCONFIRMED:'An owned media process has not confirmed its close.',
 });
-export const frameServiceFailure=(code,status=409)=>new AppError(code,frameServiceMessages[code]??frameServiceMessages.FRAME_STORAGE_FAILED,status);
-const fail=(code,status)=>{throw frameServiceFailure(code,status);},missing=()=>fail('FRAME_NOT_FOUND',404),invalid=()=>fail('FRAME_RECORD_INVALID');
-const bounded=(name,size,nullable=false)=>`CASE WHEN ${nullable?`${name} IS NULL OR `:''}(typeof(${name})='text' AND length(CAST(${name} AS BLOB)) BETWEEN 1 AND ${size}) THEN ${name} ELSE 0 END AS ${name}`;
+export interface FrameServiceError extends AppError { readonly code: string }
+export const frameServiceFailure=(code: string,status=409): AppError=>new AppError(code,frameServiceMessages[code]??frameServiceMessages.FRAME_STORAGE_FAILED??'',status);
+function fail(code: string,status?: number): never {throw frameServiceFailure(code,status);}
+function missing(): never {return fail('FRAME_NOT_FOUND',404);}
+function invalid(): never {return fail('FRAME_RECORD_INVALID');}
+const bounded=(name: string,size: number,nullable=false): string=>`CASE WHEN ${nullable?`${name} IS NULL OR `:''}(typeof(${name})='text' AND length(CAST(${name} AS BLOB)) BETWEEN 1 AND ${size}) THEN ${name} ELSE 0 END AS ${name}`;
 const requestColumns=[bounded('requestId',800),bounded('operation',80),bounded('projectId',36),bounded('taskId',36),bounded('inputHash',64),bounded('canonicalInput',FRAME_LIMITS.inputBytes),bounded('response',FRAME_LIMITS.responseBytes)].join(',');
-const readErrors=Object.freeze({VALIDATION_ERROR:['Invalid frame operation input.',400],INVALID_CURSOR:['Invalid or expired frame cursor.',400],INSPECTION_UNAVAILABLE:['Frame ownership data is unavailable.',404],INSPECTION_BUDGET_EXCEEDED:['Frame ownership inspection exceeded its safe budget.',429]});
-export function safeFrameFailure(cause){const code=Object.hasOwn(frameServiceMessages,cause?.code)?cause.code:'FRAME_STORAGE_FAILED';return {code,message:frameServiceMessages[code],status:Number.isInteger(cause?.status)&&cause.status>=400&&cause.status<=599?cause.status:503};}
-export function framePublicFailure(cause,details={}){
- const read=Object.hasOwn(readErrors,cause?.code)?readErrors[cause.code]:null;if(read)return new AppError(cause.code,read[0],read[1]);
+const readErrors: Readonly<Record<string,[string,number]>>=Object.freeze({VALIDATION_ERROR:['Invalid frame operation input.',400],INVALID_CURSOR:['Invalid or expired frame cursor.',400],INSPECTION_UNAVAILABLE:['Frame ownership data is unavailable.',404],INSPECTION_BUDGET_EXCEEDED:['Frame ownership inspection exceeded its safe budget.',429]});
+const isRecord=(value: unknown): value is Record<string, unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
+const errorProperty=(value: unknown,key: string): unknown=>isRecord(value)?value[key]:undefined;
+export interface FramePublicFailure {code: string; message: string; status: number}
+export function safeFrameFailure(cause: unknown): FramePublicFailure {
+ const rawCode=errorProperty(cause,'code');
+ const code=typeof rawCode==='string'&&Object.hasOwn(frameServiceMessages,rawCode)?rawCode:'FRAME_STORAGE_FAILED';
+ const rawStatus=errorProperty(cause,'status');
+ return {code,message:frameServiceMessages[code]??'',status:typeof rawStatus==='number'&&Number.isInteger(rawStatus)&&rawStatus>=400&&rawStatus<=599?rawStatus:503};
+}
+export function framePublicFailure(cause: unknown,details: Record<string,unknown>={}): AppError {
+ const rawCode=errorProperty(cause,'code');
+ const read=typeof rawCode==='string'&&Object.hasOwn(readErrors,rawCode)?readErrors[rawCode]:null;if(read)return new AppError(rawCode as string,read[0],read[1]);
  const safe=safeFrameFailure(cause);return new AppError(safe.code,safe.message,safe.status,details);
 }
+export interface FrameTaskInput {
+ readonly projectId: string;
+ readonly requestId: string;
+ readonly sourceAssetId: string;
+ readonly sourceHash: string;
+ readonly sourceFrame: number;
+ readonly [key: string]: unknown;
+}
+export type FrameTaskResponse=import('./frame-ownership.ts').FrameTaskDto;
+export interface FrameHistoryReaders {
+ readonly handlers: Readonly<Record<string,(input: unknown)=>unknown>>;
+ schemaPresent(): boolean;
+ project(projectId: string): Record<string, unknown>;
+ task(projectId: string,id: string,options?: {graph?: boolean}): FrameTaskView;
+ taskDto(projectId: string,id: string): FrameTaskResponse;
+ prior(operation: string,input: FrameTaskInput): FrameTaskResponse | null;
+}
+interface FrameTaskGetInput {readonly projectId: string; readonly taskId: string}
+interface FrameTaskListInput {readonly projectId: string; readonly limit?: number; readonly cursor?: string}
+interface FrameRequestGetInput {readonly projectId: string; readonly requestId: string}
+type FrameReader={frameTask(id: string): FrameTaskView};
 
 /** Saved metadata only. No decoder/storage constructor, file I/O, startup
  * reconciliation or task queue is reachable. Original ACK disclosure carries
  * no recovery authority. The normal lifecycle reuses these same readers. */
-export function createFrameHistoryReaders({db}){
+export function createFrameHistoryReaders({db}: {db: DatabaseSync}): FrameHistoryReaders {
  const secret=randomBytes(32);
- function schemaPresent(){
-  const n=db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('frame_tasks','frame_requests')").get().n;
+ function schemaPresent(): boolean {
+  const n=db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('frame_tasks','frame_requests')").get()?.n;
   if(n===2)return true;if(n||db.prepare('SELECT 1 FROM schema_version WHERE version=20').get())invalid();return false;
  }
- function project(projectId){
-  const row=db.prepare(`SELECT ${bounded('data',16384)} FROM projects WHERE id=? LIMIT 1`).get(projectId);let value;
-  try{value=JSON.parse(row?.data);}catch{missing();}if(!value||typeof value!=='object'||Array.isArray(value)||value.id!==projectId)missing();return value;
+ function project(projectId: string): Record<string, unknown> {
+  const row=db.prepare(`SELECT ${bounded('data',16384)} FROM projects WHERE id=? LIMIT 1`).get(projectId);let value: unknown;
+  try{value=JSON.parse(String(row?.data));}catch{return missing();}
+  if(!isRecord(value)||value.id!==projectId)missing();return value;
  }
- function task(projectId,id,{graph=true}={}){
+ function task(projectId: string,id: string,{graph=true}: {graph?: boolean}={}): FrameTaskView {
   project(projectId);if(!db.prepare('SELECT 1 FROM frame_tasks WHERE id=? AND projectId=? LIMIT 1').get(id,projectId))missing();
-  if(graph)return createOwnedMediaGraphReader(db,projectId).frameTask(id);
+  if(graph)return (createOwnedMediaGraphReader(db,projectId) as unknown as FrameReader).frameTask(id);
   return createFrameOwnershipReader(db,projectId,{fail:invalid}).task(id);
  }
- function taskDto(projectId,id){return task(projectId,id).dto;}
- function prior(operation,input){
+ function taskDto(projectId: string,id: string): FrameTaskResponse {return task(projectId,id).dto;}
+ function prior(operation: string,input: FrameTaskInput): FrameTaskResponse | null {
   const row=db.prepare(`SELECT ${requestColumns} FROM frame_requests WHERE requestId=? LIMIT 1`).get(input.requestId);if(!row)return null;
-  if(row.projectId!==input.projectId||row.operation!==operation||row.inputHash!==hash(input)||row.canonicalInput!==canonical(input))fail('FRAME_REQUEST_CONFLICT');
-  let response;try{response=JSON.parse(row.response);}catch{invalid();}
-  if(!isFrameMutationResponse(operation,input,response)||response.id!==row.taskId)invalid();
-  const saved=task(input.projectId,row.taskId);
-  if(saved.row.revision<response.revision||saved.row.requestId!==response.requestId||saved.input.sourceAssetId!==response.sourceAssetId||saved.input.sourceHash!==response.sourceHash||saved.input.sourceFrame!==response.sourceFrame||saved.row.createdAt!==response.createdAt)invalid();
-  return response;
+  if(row.projectId!==input.projectId||row.operation!==operation||row.inputHash!==canonical(input)&&row.inputHash!==createHash('sha256').update(canonical(input)).digest('hex')||row.canonicalInput!==canonical(input))fail('FRAME_REQUEST_CONFLICT');
+  let response: unknown;try{response=JSON.parse(String(row.response));}catch{return invalid();}
+  if(!isFrameMutationResponse(operation,input,response)||!isRecord(response)||response.id!==row.taskId)invalid();
+  const saved=task(input.projectId,row.taskId as string);
+  const result=response as unknown as FrameTaskResponse;
+  if(saved.row.revision<result.revision||saved.row.requestId!==result.requestId||saved.input.sourceAssetId!==result.sourceAssetId||saved.input.sourceHash!==result.sourceHash||saved.input.sourceFrame!==result.sourceFrame||saved.row.createdAt!==result.createdAt)invalid();
+  return result;
  }
- function requestGet(input){
+ function requestGet(input: FrameRequestGetInput) {
   project(input.projectId);const row=db.prepare(`SELECT ${requestColumns} FROM frame_requests WHERE requestId=? AND projectId=? LIMIT 1`).get(input.requestId,input.projectId);if(!row)return null;
-  let original;try{original=JSON.parse(row.canonicalInput);}catch{invalid();}
-  if(!frameSchemas[row.operation]?.safeParse(original).success||original.projectId!==input.projectId||original.requestId!==input.requestId)invalid();
-  const response=prior(row.operation,original),value={projectId:input.projectId,requestId:input.requestId,operation:row.operation,response};if(!frameRequestResponseSchema.safeParse(value).success)invalid();return value;
+  let original: unknown;try{original=JSON.parse(String(row.canonicalInput));}catch{return invalid();}
+  const operation=typeof row.operation==='string'?row.operation:'';
+  const schema=Object.hasOwn(frameSchemas,operation)?frameSchemas[operation as keyof typeof frameSchemas]:null;
+  const parsed=schema?schema.safeParse(original):null;
+  if(!parsed||typeof parsed.data!=='object'||parsed.data===null||(parsed.data as Record<string,unknown>).projectId!==input.projectId||(parsed.data as Record<string,unknown>).requestId!==input.requestId)invalid();
+  const response=prior(operation,parsed.data as FrameTaskInput);
+  const value={projectId:input.projectId,requestId:input.requestId,operation,response};if(!frameRequestResponseSchema.safeParse(value).success)invalid();return value;
  }
- const sign=value=>createHmac('sha256',secret).update(value).digest('base64url');
- function page(input){
-  project(input.projectId);const limit=input.limit??FRAME_LIMITS.pageSize,scope=['frame.task.list',input.projectId,limit,'createdAt-desc,id-desc'];let after=null;
+ const sign=(value: string): string=>createHmac('sha256',secret).update(value).digest('base64url');
+ function page(input: FrameTaskListInput) {
+  project(input.projectId);const limit=input.limit??FRAME_LIMITS.pageSize,scope=['frame.task.list',input.projectId,limit,'createdAt-desc,id-desc'];let after: string[] | null=null;
   if(input.cursor)try{
-   const [body,mac,...rest]=input.cursor.split('.');if(rest.length||!mac||mac.length!==43||!timingSafeEqual(Buffer.from(mac),Buffer.from(sign(body))))throw Error();
-   const decoded=JSON.parse(Buffer.from(body,'base64url').toString('utf8'));if(!Array.isArray(decoded)||decoded.length!==5||!equal(decoded.slice(0,4),scope))throw Error();
-   after=decoded[4];if(!Array.isArray(after)||after.length!==2||typeof after[0]!=='string'||after[0].length>40||!Number.isFinite(Date.parse(after[0]))||!frameSchemas['frame.task.get'].shape.taskId.safeParse(after[1]).success)throw Error();
+   const [body,mac,...rest]=input.cursor.split('.');if(rest.length||!mac||mac.length!==43||!timingSafeEqual(Buffer.from(mac),Buffer.from(sign(String(body)))))throw Error();
+   const decoded: unknown=JSON.parse(Buffer.from(String(body),'base64url').toString('utf8'));
+   if(!Array.isArray(decoded)||decoded.length!==5||canonical(decoded.slice(0,4))!==canonical(scope))throw Error();
+   after=decoded[4] as string[];
+   if(!Array.isArray(after)||after.length!==2||typeof after[0]!=='string'||after[0].length>40||!Number.isFinite(Date.parse(after[0]))||!frameSchemas['frame.task.get'].shape.taskId.safeParse(after[1]).success)throw Error();
   }catch{throw new AppError('INVALID_CURSOR','Invalid or expired frame cursor.',400);}
   const rows=db.prepare(`SELECT ${bounded('id',36)},${bounded('createdAt',40)} FROM frame_tasks WHERE projectId=?${after?' AND (createdAt<? OR (createdAt=? AND id<?))':''} ORDER BY createdAt DESC,id DESC LIMIT ?`)
-   .all(input.projectId,...(after?[after[0],after[0],after[1]]:[]),limit+1),selected=rows.slice(0,limit),graph=createOwnedMediaGraphReader(db,input.projectId),items=selected.map(row=>graph.frameTask(row.id).dto);
-  let nextCursor=null;if(rows.length>limit){const last=selected.at(-1),body=Buffer.from(JSON.stringify([...scope,[last.createdAt,last.id]])).toString('base64url');nextCursor=`${body}.${sign(body)}`;}
+   .all(input.projectId,...(after?[after[0],after[0],after[1]]:[]),limit+1),selected=rows.slice(0,limit),
+   graph=createOwnedMediaGraphReader(db,input.projectId) as unknown as FrameReader,items=selected.map(row=>graph.frameTask(row.id as string).dto);
+  let nextCursor: string | null=null;
+  if(rows.length>limit){
+   const last=selected.at(-1);
+   if(!last)throw new AppError('INVALID_CURSOR','Invalid or expired frame cursor.',400);
+   const body=Buffer.from(JSON.stringify([...scope,[last.createdAt,last.id]])).toString('base64url');nextCursor=`${body}.${sign(body)}`;
+  }
   return {projectId:input.projectId,items,nextCursor};
  }
- const snapshotRead=read=>input=>{const outer=db.isTransaction;if(!outer)db.exec('BEGIN DEFERRED');try{return read(input);}finally{if(!outer&&db.isTransaction)db.exec('COMMIT');}};
- const reads={'frame.request.get':snapshotRead(requestGet),'frame.task.get':snapshotRead(input=>taskDto(input.projectId,input.taskId)),'frame.task.list':snapshotRead(page)};
- const handlers=Object.freeze(Object.fromEntries(Object.entries(reads).map(([operation,read])=>[operation,input=>{
+ const snapshotRead=<A>(read: (input: A)=>unknown)=>(input: A): unknown=>{const outer=db.isTransaction;if(!outer)db.exec('BEGIN DEFERRED');try{return read(input);}finally{if(!outer&&db.isTransaction)db.exec('COMMIT');}};
+ const reads: Record<string,(input: unknown)=>unknown>={
+  'frame.request.get':(input: unknown)=>snapshotRead(requestGet)(input as FrameRequestGetInput),
+  'frame.task.get':(input: unknown)=>snapshotRead((value: FrameTaskGetInput)=>taskDto(value.projectId,value.taskId))(input as FrameTaskGetInput),
+  'frame.task.list':(input: unknown)=>snapshotRead(page)(input as FrameTaskListInput),
+ };
+ const handlers: Readonly<Record<string,(input: unknown)=>unknown>>=Object.freeze(Object.fromEntries(Object.entries(reads).map(([operation,read])=>[operation,(input: unknown): unknown=>{
   try{
-   if(!schemaPresent())fail('FRAME_SCHEMA_REQUIRED',503);const parsed=frameSchemas[operation].safeParse(input);if(!parsed.success)throw new AppError('VALIDATION_ERROR','Invalid frame operation input.',400);
+   if(!schemaPresent())fail('FRAME_SCHEMA_REQUIRED',503);
+   const schema=Object.hasOwn(frameSchemas,operation)?frameSchemas[operation as keyof typeof frameSchemas]:null;
+   if(!schema)throw new AppError('UNKNOWN_OPERATION','Unknown frame operation',404);
+   const parsed=schema.safeParse(input);if(!parsed.success)throw new AppError('VALIDATION_ERROR','Invalid frame operation input.',400);
    return read(parsed.data);
   }catch(cause){throw framePublicFailure(cause);}
  }])));

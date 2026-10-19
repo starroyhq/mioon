@@ -1,17 +1,18 @@
+import type {DatabaseSync} from 'node:sqlite';
 import {FRAME_LIMITS,FRAME_PROFILE_ID,FRAME_SELECTION_RULE} from './workspace-schema-v24-constants.ts';
 import {INSPECTION_VERSION_ASSET_EXPRESSION,INSPECTION_ROW_LIMITS} from './workspace-schema-v24-constants.ts';
 
 // Schema20 only adds two retained tables and new indexes/triggers. The caller
 // owns the transaction and marker; all pre-existing SQL and row bytes survive.
-export function migrateFrameSchema(db){
+export function migrateFrameSchema(db: DatabaseSync): void{
  if(!db.isTransaction)throw new Error('Frame migration requires a transaction');
  db.exec(FRAME_SCHEMA_20_SQL);
 }
-const legacyOwner=asset=>`EXISTS(SELECT 1 FROM versions WHERE ${INSPECTION_VERSION_ASSET_EXPRESSION}=${asset})
+const legacyOwner=(asset: string): string=>`EXISTS(SELECT 1 FROM versions WHERE ${INSPECTION_VERSION_ASSET_EXPRESSION}=${asset})
  OR EXISTS(SELECT 1 FROM versions WHERE length(CAST(data AS BLOB))>${INSPECTION_ROW_LIMITS.versions}
  AND CASE WHEN json_valid(data) THEN json_extract(data,'$.assetId') END=${asset})`;
-const receiptAsset=alias=>`CASE WHEN json_valid(${alias}.stagedReceipt) THEN json_extract(${alias}.stagedReceipt,'$.assetId') END`;
-const taskOwner=asset=>`EXISTS(SELECT 1 FROM frame_tasks WHERE assetId=${asset}
+const receiptAsset=(alias: string): string=>`CASE WHEN json_valid(${alias}.stagedReceipt) THEN json_extract(${alias}.stagedReceipt,'$.assetId') END`;
+const taskOwner=(asset: string): string=>`EXISTS(SELECT 1 FROM frame_tasks WHERE assetId=${asset}
  OR CASE WHEN json_valid(stagedReceipt) THEN json_extract(stagedReceipt,'$.assetId') END=${asset})`;
 const FRAME_SCHEMA_20_SQL=`
 CREATE TABLE IF NOT EXISTS frame_tasks(

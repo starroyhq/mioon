@@ -1,6 +1,6 @@
 /** Real browser acceptance using the supported CUA tab API.
  * Bundle for the CUA REPL's workspace-package resolver before running:
- *   node -e "import('esbuild').then(b=>b.build({entryPoints:['tests/browser_timeline_history.mjs'],bundle:true,platform:'node',format:'esm',outfile:'evidence/timeline-history/runtime/browser-qa.bundle.mjs'}))"
+ *   node -e "import('esbuild').then(b=>b.build({entryPoints:['tests/browser_timeline_history.ts'],bundle:true,platform:'node',format:'esm',outfile:'evidence/timeline-history/runtime/browser-qa.bundle.mjs'}))"
  * In the own-cloud CUA REPL, with a signed-in tab displaying the copied synthetic
  * multitrack project:
  *   const qa = await import('/workspace/shared/video-workbench/evidence/timeline-history/runtime/browser-qa.bundle.mjs');

@@ -25,7 +25,7 @@ function mounted(filename, getProps) {
   const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), useId: () => slots[cursor++] ||= `stable-id-${cursor}`, useRef: current => slots[cursor++] ||= { current } }; react.default = react;
   const useI18n = () => { const { locale } = store.getSnapshot(); return { locale, t: (key, params) => i18n.translate(locale, key, params), renderMessage: value => i18n.renderMessage(locale, value), formatDate: (value, options) => i18n.formatDate(locale, value, options), formatNumber: (value, options) => i18n.formatNumber(locale, value, options) }; };
   const module = { exports: {} }, source = readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8');
-  Function('require', 'module', 'exports', transformSync(source, { loader: filename.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code)(name => name === 'react' ? react : name === './i18n/I18nProvider.tsx' ? { useI18n } : name === './export-range-state.ts' ? range : name === './export-delivery-state.ts' ? delivery : name === '@mioon/contracts/timeline-delivery' ? deliveryContracts : name === './restored-workspace.js' ? restored : name.endsWith('packages/i18n/src/index.ts') ? i18n : name.endsWith('.css') ? {} : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
+  Function('require', 'module', 'exports', transformSync(source, { loader: filename.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code)(name => name === 'react' ? react : name === './i18n/I18nProvider.tsx' ? { useI18n } : name === './export-range-state.ts' ? range : name === './export-delivery-state.ts' ? delivery : name === '@mioon/contracts/timeline-delivery' ? deliveryContracts : name === './restored-workspace.ts' ? restored : name.endsWith('packages/i18n/src/index.ts') ? i18n : name.endsWith('.css') ? {} : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
   const render = () => { cursor = 0; renders++; tree = module.exports.default(getProps()); };
   const release = store.subscribe(render); render();
   return { store, render, nodes: () => nodes(tree), text: () => text(tree), renders: () => renders, find: id => nodes(tree).find(node => node.props?.['data-testid'] === id), close: () => { release(); store.dispose(); } };
@@ -103,7 +103,7 @@ test('mounted recovery disclosures relabel without opening, reading, restoring o
 
 test('mounted restored-workspace notice preserves original provenance and held records in every locale', async () => {
   const workspace = { restored: true, heldCounts: [{ kind: 'render', count: 1 }, { kind: 'generation', count: 0 }], operationPolicy: ['asset.import', 'shot.update', 'timeline.render'].map(operation => ({ operation, available: true })), createdAt: '2026-10-15T00:30:00.000Z', source: { backupId: literal }, workspaceOrigin: 'b'.repeat(64) };
-  const before = structuredClone(workspace), ui = mounted('RestoredWorkspace.jsx', () => ({ workspace })), labels = new Set();
+  const before = structuredClone(workspace), ui = mounted('RestoredWorkspace.tsx', () => ({ workspace })), labels = new Set();
   for (const locale of i18n.LOCALES) {
     await ui.store.setPreference(locale); labels.add(ui.text());
     assert.ok(ui.text().includes(literal)); assert.ok(ui.text().includes(workspace.workspaceOrigin)); assert.deepEqual(workspace, before);

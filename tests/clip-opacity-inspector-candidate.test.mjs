@@ -76,7 +76,7 @@ function inspector(t, { locale = 'en', binding = 'exact', kind = 'image', clipPa
     if (name.includes('i18n/src/index')) return { message };
     if (name.includes('workbench-confirm')) return { useConfirmation: () => async () => { calls.push('confirm'); return true; } };
     if (name === '@mioon/contracts') return { sourceFrameCount, isTimelineRecord(value, options) { checks.push(structuredClone(value)); return isTimelineRecord(value, options); } };
-    if (name.endsWith('/Timeline.jsx')) return { assetKind: value => value?.mimeType?.split('/')[0] || 'image', framesLabel: String };
+    if (name.endsWith('/Timeline.tsx')) return { assetKind: value => value?.mimeType?.split('/')[0] || 'image', framesLabel: String };
     if (name.endsWith('clip-draft-hook.ts')) return { useClipDraft(options) {
       hookOptions.push(options);
       if (!controller) {
@@ -93,9 +93,9 @@ function inspector(t, { locale = 'en', binding = 'exact', kind = 'image', clipPa
     if (name.endsWith('opacity-ime-submit-guard.ts')) return imeSubmit;
     if (name.endsWith('clip-volume-envelope-state.ts')) return volumeState;
     if (name.endsWith('clip-audio-role-state.ts')) return { clipAudioRoleChanged: () => false };
-    if (name.endsWith('clip-audio-state.js')) return { clipAudioIssue: () => '' };
-    if (name.endsWith('timeline-format-state.js')) return { timelineRectIssue: () => '', timelineRectMessage: () => '' };
-    if (name.endsWith('workspace-visibility.jsx')) return { useWorkspaceVisibility: () => true };
+    if (name.endsWith('clip-audio-state.ts')) return { clipAudioIssue: () => '' };
+    if (name.endsWith('timeline-format-state.ts')) return { timelineRectIssue: () => '', timelineRectMessage: () => '' };
+    if (name.endsWith('workspace-visibility.tsx')) return { useWorkspaceVisibility: () => true };
     if (name.endsWith('.css')) return {};
     if (name.startsWith('@mioon/ui/')) return new Proxy({}, { get: (_, key) => stub(key) });
     return { __esModule: true, default: stub(name) };

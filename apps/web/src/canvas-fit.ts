@@ -1,6 +1,6 @@
 // In Canvas mode the flow pane is full-bleed and the docks, heading and storyboard float over it, so a plain
 // fit-to-view would park nodes underneath them. These helpers turn the overlays' real geometry into per-side
-// padding for React Flow's fitView. The selectors name the overlays rendered by App.jsx / WorkspacePanels.jsx.
+// padding for React Flow's fitView. The selectors name the overlays rendered by App.tsx / WorkspacePanels.tsx.
 export type FitPadding = { top: string; right: string; bottom: string; left: string };
 export type Box = { left: number; top: number; right: number; bottom: number };
 export type Side = 'left' | 'right' | 'top' | 'bottom';

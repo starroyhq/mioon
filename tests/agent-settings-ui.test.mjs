@@ -207,10 +207,10 @@ function uiHarness(client) {
     if (id === 'react') return react;
     if (id === './settings-navigation-state.ts') return navigation;
     if (id === './AgentAuthorizations.tsx') return {__esModule:true,default:'AgentAuthorizations'};
-    if (id === './agent-settings.js') return { ...logic, createAgentSettingsSession: options => logic.createAgentSettingsSession({ ...options, client }) };
-    if (id === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
-    if (id === './icons.jsx') return { default: 'Icon' };
-    if (id.startsWith('@mioon/ui/') || id === './WorkspaceControls.jsx') return primitive;
+    if (id === './agent-settings.ts') return { ...logic, createAgentSettingsSession: options => logic.createAgentSettingsSession({ ...options, client }) };
+    if (id === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => visible };
+    if (id === './icons.tsx') return { default: 'Icon' };
+    if (id.startsWith('@mioon/ui/') || id === './WorkspaceControls.tsx') return primitive;
     throw Error(id);
   });
   const h = {

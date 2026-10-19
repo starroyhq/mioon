@@ -5,7 +5,7 @@ import {mkdtemp, mkdir, chmod, stat, lstat, writeFile, readFile, readdir, rm, sy
 import {lstatSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import desktopIdentity from '../apps/desktop/identity.cjs';
+import desktopIdentity from '../apps/desktop/identity.ts';
 import {dataPaths, prepareDesktopStorage, showStorageStartupFailure, storageFailureDialog, ensureDataIdentity,
   readToolConfig, saveToolConfig, writeConnection, removeConnection, removeConnectionOnShutdown} from '../apps/desktop/src/config.ts';
 import {createDesktopAgentSettings} from '../apps/desktop/src/secret-store.ts';

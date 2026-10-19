@@ -2,6 +2,12 @@ import {TIMELINE_MUTATION_OPERATIONS,REFERENCE_MUTATION_OPERATIONS,SUBJECT_MUTAT
 import {getWorkspaceRestoreContext, isRestoredRecordHeld} from './workspace-restore-schema.ts';
 import {assertRestoreInvocation,restoreDigest} from './workspace-restore-invocation.ts';
 import {ownsStoreLock} from './db.ts';
+import type {DatabaseSync} from 'node:sqlite';
+
+interface RestoreStore {db: DatabaseSync}
+interface RestoredContextLike {workspaceOrigin: string}
+type RestoreErrorCode='RESTORE_OPERATION_UNAVAILABLE'|'RESTORED_RECORD_HELD'|'RESTORE_WORKSPACE_ORIGIN_REQUIRED'|'RESTORE_WORKSPACE_ORIGIN_MISMATCH';
+const restoreErrorCodes: ReadonlySet<string>=new Set(['RESTORE_OPERATION_UNAVAILABLE','RESTORED_RECORD_HELD','RESTORE_WORKSPACE_ORIGIN_REQUIRED','RESTORE_WORKSPACE_ORIGIN_MISMATCH']);
 
 // This catalogue is an execution boundary, not an inference from readOnly hints
 // or operation suffixes. New local effects require a live pinned invocation.
@@ -26,20 +32,21 @@ export const RESTORE_DENIED_OPERATIONS = Object.freeze([
  'timeline.clip.loudness','timeline.loudness.prepare','timeline.loudness.apply','timeline.audioPreview.plan','timeline.export.samplePeak','timeline.export.loudness','workspace.backup.inspect','provider.list','generation.submit','job.retry','job.cancel','job.reconcile','asset.waveform.request',
  'frame.extract','frame.task.cancelQueued','frame.task.recoverResult','image.profile.list','image.review.prepare','image.review.get','image.review.list','image.generate','image.task.cancelQueued','image.task.recoverResult','image.task.remote.get','image.task.observeRemote',
 ]);
-const messages=Object.freeze({
+const messages: Readonly<Record<RestoreErrorCode, string>>=Object.freeze({
  RESTORE_OPERATION_UNAVAILABLE:'This operation is unavailable in this restored workspace.',
  RESTORED_RECORD_HELD:'This captured record is held and cannot execute or change in this restored workspace.',
  RESTORE_WORKSPACE_ORIGIN_REQUIRED:'A new explicit action must supply this restored workspace origin.',
  RESTORE_WORKSPACE_ORIGIN_MISMATCH:'The action belongs to a different workspace origin.',
 });
-export function workspaceRestoreError(code='RESTORE_OPERATION_UNAVAILABLE') {
- const key=Object.hasOwn(messages,code)?code:'RESTORE_OPERATION_UNAVAILABLE';
+export function workspaceRestoreError(code: string='RESTORE_OPERATION_UNAVAILABLE') {
+ const key: RestoreErrorCode=restoreErrorCodes.has(code)?code as RestoreErrorCode:'RESTORE_OPERATION_UNAVAILABLE';
  return new AppError(key,messages[key],409);
 }
-export function safeWorkspaceRestoreError(error) {
- return Object.hasOwn(messages,error?.code)?workspaceRestoreError(error.code):null;
+export function safeWorkspaceRestoreError(error: unknown) {
+ const code=(error as {code?: unknown}|null|undefined)?.code;
+ return typeof code==='string'&&restoreErrorCodes.has(code)?workspaceRestoreError(code):null;
 }
-export function assertWorkspaceRestoreOrigin(store,context={}) {
+export function assertWorkspaceRestoreOrigin(store: RestoreStore,context: {expectedWorkspaceOrigin?: unknown}={}): RestoredContextLike|null {
  const restored=getWorkspaceRestoreContext(store);
  if(!restored)return null;
  const origin=context?.expectedWorkspaceOrigin;
@@ -49,13 +56,13 @@ export function assertWorkspaceRestoreOrigin(store,context={}) {
  if(!ownsStoreLock(store))throw workspaceRestoreError();
  return restored;
 }
-const targets=Object.freeze({
+const targets: Readonly<Record<string, readonly [string,...string[]]>>=Object.freeze({
  'job.retry':['jobs','jobId'], 'job.cancel':['jobs','jobId'], 'job.reconcile':['jobs','jobId'],
  'frame.task.cancelQueued':['frame_tasks','taskId'], 'frame.task.recoverResult':['frame_tasks','taskId'],
  'image.task.cancelQueued':['image_tasks','taskId'], 'image.task.recoverResult':['image_tasks','taskId'],
  'image.task.observeRemote':['image_tasks','taskId'],
 });
-export function refuseRestoredOperation(store,operation,input) {
+export function refuseRestoredOperation(store: RestoreStore,operation: string,input: Record<string, unknown>|undefined): void {
  const context=getWorkspaceRestoreContext(store);
  if(!context)return;
  if(operation==='timeline.clip.rippleRemove'&&![45,49].includes(context.schemaVersion))throw workspaceRestoreError();
@@ -66,32 +73,33 @@ export function refuseRestoredOperation(store,operation,input) {
  }
  const target=Object.hasOwn(targets,operation)?targets[operation]:null;
  if(target&&typeof input?.[target[1]]==='string'){
+  const targetId=input[target[1]] as string;
   // A foreign target and a missing target receive the same refusal. Relational
   // ownership is checked before captured membership or stored JSON is read.
-  const row=store.db.prepare(`SELECT projectId FROM ${target[0]} WHERE id=?`).get(input[target[1]]);
-  if(row&&(input.projectId===undefined||row.projectId===input.projectId)&&isRestoredRecordHeld(store,target[0],input[target[1]]))
+  const row=store.db.prepare(`SELECT projectId FROM ${target[0]} WHERE id=?`).get(targetId);
+  if(row&&(input.projectId===undefined||row.projectId===input.projectId)&&isRestoredRecordHeld(store,target[0],targetId))
    throw workspaceRestoreError('RESTORED_RECORD_HELD');
  }
  throw workspaceRestoreError();
 }
-export function refuseRestoredTask(store,taskId,projectId) {
+export function refuseRestoredTask(store: RestoreStore,taskId: unknown,projectId: unknown): void {
  if(!getWorkspaceRestoreContext(store))return;
  if(typeof taskId==='string'&&typeof projectId==='string'&&store.db.prepare('SELECT 1 FROM edit_tasks WHERE id=? AND projectId=?').get(taskId,projectId)&&isRestoredRecordHeld(store,'edit_tasks',taskId))throw workspaceRestoreError('RESTORED_RECORD_HELD');
  throw workspaceRestoreError();
 }
 // Fixed special-route families are refused before constructing or entering a
 // settings/approval/Agent runtime. No URI segment provides an execution grant.
-export function isUnavailableRestoredRoute(pathname,method) {
+export function isUnavailableRestoredRoute(pathname: string,method: string): boolean {
  return /^\/api\/agent(?:\/|$)/u.test(pathname)||/^\/api\/images(?:\/|$)/u.test(pathname);
 }
 
 // Captured intents reserve their original business key even when they never
 // reached a domain receipt. Ownership precedes disclosure of captured presence.
-export function assertRestoreRequestVacant(store,operation,input){
+export function assertRestoreRequestVacant(store: RestoreStore,operation: string,input: {requestId?: string;projectId?: string;shotId?: string;nodeId?: string}|undefined): void{
  if(!getWorkspaceRestoreContext(store)||typeof input?.requestId!=='string')return;
- const projectId=input.projectId??(operation==='shot.update'||operation==='version.select'?store.db.prepare('SELECT projectId FROM shots WHERE id=?').get(input.shotId)?.projectId:operation==='node.update'?store.db.prepare('SELECT projectId FROM nodes WHERE id=?').get(input.nodeId)?.projectId:undefined);
+ const projectId: string|undefined=input.projectId??(operation==='shot.update'||operation==='version.select'?store.db.prepare('SELECT projectId FROM shots WHERE id=?').get(input.shotId as string)?.projectId as string|undefined:operation==='node.update'?store.db.prepare('SELECT projectId FROM nodes WHERE id=?').get(input.nodeId as string)?.projectId as string|undefined:undefined);
  if(!projectId||!store.db.prepare('SELECT 1 FROM projects WHERE id=?').get(projectId))throw workspaceRestoreError();
- const namespace=operation==='export.create'?'export':TIMELINE_MUTATION_OPERATIONS.includes(operation)?'timeline':REFERENCE_MUTATION_OPERATIONS.includes(operation)?'reference':'local-mutation';
+ const namespace=operation==='export.create'?'export':(TIMELINE_MUTATION_OPERATIONS as readonly string[]).includes(operation)?'timeline':(REFERENCE_MUTATION_OPERATIONS as readonly string[]).includes(operation)?'reference':'local-mutation';
  const taskLane=namespace==='timeline'?'timeline:mutation':namespace==='reference'?'reference:mutation':namespace==='local-mutation'?'subject:mutation':null;
  const captured=store.db.prepare('SELECT projectId FROM workspace_restore_holds WHERE requestId=? AND namespace IN (?,?) LIMIT 2').all(input.requestId,namespace,taskLane);
  if(captured.length)throw workspaceRestoreError(captured.every(row=>row.projectId===projectId)?'RESTORED_RECORD_HELD':'RESTORE_OPERATION_UNAVAILABLE');
@@ -104,7 +112,7 @@ export function assertRestoreRequestVacant(store,operation,input){
  const rows=store.db.prepare(`SELECT p.id,p.projectId,p.runId,p.digest,CASE WHEN length(CAST(p.definition AS BLOB)) BETWEEN 1 AND 131072 THEN p.definition END AS definition FROM agent_edit_proposals p JOIN workspace_restore_holds h ON h.kind='agent_edit_proposals' AND h.id=p.id WHERE p.projectId=? LIMIT 2049`).all(projectId);
  if(rows.length>2048)throw workspaceRestoreError();
  for(const row of rows){
-  let definition;try{definition=JSON.parse(row.definition);}catch{throw workspaceRestoreError();}
+  let definition;try{definition=JSON.parse(row.definition as string);}catch{throw workspaceRestoreError();}
   if(!definition||definition.id!==row.id||definition.projectId!==projectId||definition.runId!==row.runId||restoreDigest(definition)!==row.digest||!['shot.update','timeline.clip.update'].includes(definition.operation)||typeof definition.input?.requestId!=='string')throw workspaceRestoreError();
   if(definition.operation===proposalOperation&&definition.input.requestId===input.requestId)throw workspaceRestoreError('RESTORED_RECORD_HELD');
  }

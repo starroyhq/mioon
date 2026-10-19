@@ -60,7 +60,7 @@ function schema(db: DatabaseSync): Catalog {
  }
  return result;
 }
-// Optional constructor-owned schema from providers/mock.mjs, deliberately kept
+// Optional constructor-owned schema from providers/mock.ts, deliberately kept
 // as fixed SQL here so restored startup never imports/constructs a provider.
 // Dedicated tests compare all five objects to the actual ordinary constructor.
 const MOCK_SCHEMA_SQL=`

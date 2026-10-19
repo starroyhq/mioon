@@ -40,7 +40,7 @@ function fixture(slot, options = {}) {
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
 const equalDeps = (a, b) => a && b && a.length === b.length && a.every((value, index) => Object.is(value, b[index]));
 function renderer(slot, f, callback, options = {}) {
-  const filename = slot === 'agent' ? 'AgentSettings.jsx' : slot === 'comfy' ? 'ComfyImageSettings.jsx' : 'ImageSettings.jsx';
+  const filename = slot === 'agent' ? 'AgentSettings.tsx' : slot === 'comfy' ? 'ComfyImageSettings.tsx' : 'ImageSettings.tsx';
   // Allows the same behavioral assertions to run against a separately extracted
   // baseline component, without changing the working tree or weakening tests.
   const source = readFileSync(process.env.MIOON_SETTINGS_COMPONENT_ROOT ? resolve(process.env.MIOON_SETTINGS_COMPONENT_ROOT, filename) : new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8');
@@ -59,15 +59,15 @@ function renderer(slot, f, callback, options = {}) {
     if (name === './i18n/I18nProvider.tsx') return i18nTestModule();
     if (name.includes('packages/i18n/src/index.ts')) return i18nCore;
     if (name === './settings-navigation-state.ts') return navigation;
-    if (name === './agent-settings.js') return { ...agent, createAgentSettingsSession: options => agent.createAgentSettingsSession({ ...options, client: f.client }) };
-    if (name === './image-settings.js') return image;
-    if (name === './comfy-image-settings.js') return comfy;
-    if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
+    if (name === './agent-settings.ts') return { ...agent, createAgentSettingsSession: options => agent.createAgentSettingsSession({ ...options, client: f.client }) };
+    if (name === './image-settings.ts') return image;
+    if (name === './comfy-image-settings.ts') return comfy;
+    if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => visible };
     // Authorization management is a separate presentation leaf; this fixture
     // executes the settings session and its navigation callbacks.
     if (name === './AgentAuthorizations.tsx') return { default: 'AgentAuthorizations', __esModule: true };
-    if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.jsx') return primitives;
-    if (name === './icons.jsx') return { default: 'Icon' };
+    if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return primitives;
+    if (name === './icons.tsx') return { default: 'Icon' };
     if (name.endsWith('.css')) return {};
     throw Error(`Unexpected import ${name}`);
   });

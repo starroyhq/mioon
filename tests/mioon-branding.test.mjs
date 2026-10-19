@@ -3,7 +3,7 @@ import { LOCALES } from '../packages/i18n/src/index.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
-import { identityForChannel } from '../apps/desktop/identity.cjs';
+import { identityForChannel } from '../apps/desktop/identity.ts';
 import { resolveConnection, connectionSource } from '@mioon/client/connection';
 import { COOKIE_NAME, sessionCookie } from '../apps/desktop/src/security.ts';
 const read = name => readFile(new URL(`../${name}`, import.meta.url), 'utf8');

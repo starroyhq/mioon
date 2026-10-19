@@ -214,11 +214,11 @@ test('actual source Preview visibly discloses unprocessed audio and image while 
       if (name === './i18n/I18nProvider.tsx') return i18nTestModule(locale);
       if (name === './UiPreferencesProvider.tsx') return {useUiPreferences:() => ({preferences:DEFAULT_UI_PREFERENCES})};
       if (name === './creation-i18n.ts') return creationI18n;
-      if (name === './export-settings-state.js') return exportSettings;
-      if (name === './source-range-state.js') return sourceRanges;
-      if (name === './api.js') return {assetUrl:asset => asset?.url || ''};
-      if (name === './Timeline.jsx') return {assetKind:asset => asset?.mimeType?.split('/')[0]};
-      if (name === './workspace-visibility.jsx') return {useWorkspaceVisibility:() => true};
+      if (name === './export-settings-state.ts') return exportSettings;
+      if (name === './source-range-state.ts') return sourceRanges;
+      if (name === './api.ts') return {assetUrl:asset => asset?.url || ''};
+      if (name === './Timeline.tsx') return {assetKind:asset => asset?.mimeType?.split('/')[0]};
+      if (name === './workspace-visibility.tsx') return {useWorkspaceVisibility:() => true};
       if (name.endsWith('.css')) return {};
       return new Proxy({}, {get:(_, key) => String(key)});
     }, module, module.exports);

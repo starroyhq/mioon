@@ -143,8 +143,8 @@ test('observation duplicate, hide and disposal preserve exact durable key withou
 
 test('Comfy UI exposes separate prepare/observe/full graph, shared controls and truthful resource disclosures', () => {
   const read = name => readFileSync(new URL(`../apps/web/src/${name}`, import.meta.url), 'utf8');
-  for (const name of ['ImageGeneration.jsx', 'ComfyImageSettings.jsx', 'ComfyImageDetails.jsx']) assert.doesNotThrow(() => transformSync(read(name), { loader: 'jsx', format: 'esm' }));
-  const compose = read('ImageGeneration.jsx'), details = read('ComfyImageDetails.jsx'), settings = read('ComfyImageSettings.jsx');
+  for (const name of ['ImageGeneration.tsx', 'ComfyImageSettings.tsx', 'ComfyImageDetails.tsx']) assert.doesNotThrow(() => transformSync(read(name), { loader: 'jsx', format: 'esm' }));
+  const compose = read('ImageGeneration.tsx'), details = read('ComfyImageDetails.tsx'), settings = read('ComfyImageSettings.tsx');
   for (const text of ['image-provider-comfy', 'prepareComfy()', 'image-observe-remote', 'observeRemote(task)', 'image-recover-result', 'recoverResult', 'ComfyImageReviewDetails', '批准此冻结工作流并运行']) assert.ok((/[\u3400-\u9fff]/.test(text) ? localizedSource(compose) : compose).includes(text), text);
   for (const text of ['execution.seed', 'execution.graphHash', 'JSON.stringify(execution.graph', 'contentVerified', 'remote?.state', 'GPU 工作可能继续', '不保证免费、可信或完全离线']) assert.ok((/[\u3400-\u9fff]/.test(text) ? localizedSource(details) : details).includes(text), text);
   for (const text of ['<Label', '<Input', '<WorkbenchSelect', 'useWorkspaceVisibility', 'visibilitychange', 'contextKey', '检查连接与已安装模型', '不探测服务', '不会下载模型']) assert.ok((/[\u3400-\u9fff]/.test(text) ? localizedSource(settings) : settings).includes(text), text);
@@ -169,14 +169,14 @@ function componentHarness(filename, resolve, props) {
       Function('module', 'exports', 'require', code)(settingsModule, settingsModule.exports, dependency => { assert.equal(dependency, 'react'); return react; });
       return settingsModule.exports;
     }
-    if (name === './native-close-sources.ts') return nativeCloseSources; if (name === 'react') return react; if (name === './settings-navigation-state.ts') return navigation; if (name === './SettingsNavigationSlot.tsx') return { __esModule: true, default: 'SettingsNavigationSlot' }; if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => ancestor }; if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.jsx') return primitive; if (name === './icons.jsx') return { default: 'Icon' }; if (name.endsWith('.css')) return {}; return resolve(name); };
+    if (name === './native-close-sources.ts') return nativeCloseSources; if (name === 'react') return react; if (name === './settings-navigation-state.ts') return navigation; if (name === './SettingsNavigationSlot.tsx') return { __esModule: true, default: 'SettingsNavigationSlot' }; if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => ancestor }; if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return primitive; if (name === './icons.tsx') return { default: 'Icon' }; if (name.endsWith('.css')) return {}; return resolve(name); };
   Function('module', 'exports', 'require', transformSync(readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, require);
   const ui = { render(patch = {}) { currentProps = { ...currentProps, ...patch }; index = 0; effects = []; tree = module.exports.default(currentProps); for (const slot of effects) { slots[slot].cleanup?.(); slots[slot].cleanup = slots[slot].fn(); } return tree; }, find(id) { return nodes(tree).find(node => node.props['data-testid'] === id); }, form() { return nodes(tree).find(node => node.type === 'form'); }, hide(value) { ancestor = !value; return ui.render(); }, change(id, value) { ui.find(id).props.onChange({ target: { value, checked: value } }); ui.render(); }, click(id) { ui.find(id).props.onClick(); ui.render(); }, setLocale(value) { locale = value; return ui.render(); }, unmount() { for (const slot of slots) slot.cleanup?.(); } }; return ui;
 }
 
 test('actual Comfy settings controls use shared components and stale project/hidden callbacks cannot check or save', async () => {
   const logic = await import('../apps/web/src/comfy-image-settings.ts'), f = settingsFixture();
-  const ui = componentHarness('ComfyImageSettings.jsx', name => { if (name === './comfy-image-settings.js') return logic; throw Error(name); }, { active: true, contextKey: projectId, client: f.client }); ui.render(); await flush(); let tree = ui.render();
+  const ui = componentHarness('ComfyImageSettings.tsx', name => { if (name === './comfy-image-settings.ts') return logic; throw Error(name); }, { active: true, contextKey: projectId, client: f.client }); ui.render(); await flush(); let tree = ui.render();
   const enable = ui.find('comfy-image-settings-enable'); assert.equal(enable.type, 'Input'); assert.equal(enable.props.type, 'checkbox'); assert.ok(nodes(tree).some(n => n.type === 'Label' && n.props.htmlFor === enable.props.id)); assert.equal(ui.find('comfy-image-settings-model').type, 'WorkbenchSelect');
   const oldCheck = ui.find('comfy-image-settings-check').props.onClick, oldSubmit = ui.form().props.onSubmit;
   ui.hide(true); oldCheck(); oldSubmit({ preventDefault() {} }); assert.equal(f.calls.filter(c => !['read', 'availability'].includes(c[0])).length, 0);
@@ -222,14 +222,14 @@ test('an unknown older observation can replay its receipt after another observer
 test('actual Comfy composer prepares first and stale hidden approval handlers never run', async () => {
   const contracts = await import('@mioon/contracts'), logic = await import('../apps/web/src/image-generation.ts'), settingsLogic = await import('../apps/web/src/comfy-image-settings.ts'), f = generationFixture();
   const localClient = { read: async () => settings(), readAvailability: async () => availability() }, legacyClient = { read: async () => null };
-  const ui = componentHarness('ImageGeneration.jsx', name => {
+  const ui = componentHarness('ImageGeneration.tsx', name => {
     if (name === '@mioon/contracts') return contracts;
-    if (name === './image-generation.js') return { ...logic, createImageGenerationSession: options => logic.createImageGenerationSession({ ...options, requestId: () => id(4), setTimer: () => 1, clearTimer() {} }) };
-    if (name === './ImageSettings.jsx') return { __esModule: true, default: 'ImageSettings' };
-    if (name === './ComfyImageSettings.jsx') return { __esModule: true, default: 'ComfyImageSettings' };
-    if (name === './ComfyImageDetails.jsx') return { ComfyImageReviewDetails: 'ComfyImageReviewDetails', ComfyImageTaskDetails: 'ComfyImageTaskDetails' };
-    if (name === './image-settings.js') return { createImageSettingsClient: () => legacyClient };
-    if (name === './comfy-image-settings.js') return { ...settingsLogic, createComfyImageSettingsClient: () => localClient };
+    if (name === './image-generation.ts') return { ...logic, createImageGenerationSession: options => logic.createImageGenerationSession({ ...options, requestId: () => id(4), setTimer: () => 1, clearTimer() {} }) };
+    if (name === './ImageSettings.tsx') return { __esModule: true, default: 'ImageSettings' };
+    if (name === './ComfyImageSettings.tsx') return { __esModule: true, default: 'ComfyImageSettings' };
+    if (name === './ComfyImageDetails.tsx') return { ComfyImageReviewDetails: 'ComfyImageReviewDetails', ComfyImageTaskDetails: 'ComfyImageTaskDetails' };
+    if (name === './image-settings.ts') return { createImageSettingsClient: () => legacyClient };
+    if (name === './comfy-image-settings.ts') return { ...settingsLogic, createComfyImageSettingsClient: () => localClient };
     throw Error(name);
   }, { projectId, projectName: '本地测试项目', api: f.api, storage: f.storage, reviewClient: f.reviewClient, settingsClient: legacyClient, customSettingsClient: legacyClient, comfySettingsClient: localClient });
   ui.render(); await flush(); ui.render(); ui.click('image-provider-comfy'); ui.change('image-generation-name', input().name); ui.change('image-generation-prompt', input().prompt); assert.equal(ui.find('image-generate').props.type, 'button'); assert.equal(ui.find('image-generate').props.disabled, false); assert.match(JSON.stringify(ui.find('image-fixed-options')), /512/); assert.doesNotMatch(JSON.stringify(ui.find('image-fixed-options')), /low|1024/);
@@ -346,7 +346,7 @@ test('actual settings show independent module status and disabled network button
   const logic = await import('../apps/web/src/comfy-image-settings.ts');
   for (const status of [null, availability('not_provided'), availability('not_loaded')]) {
     const f = settingsFixture({ readAvailability: () => status });
-    const ui = componentHarness('ComfyImageSettings.jsx', name => { if (name === './comfy-image-settings.js') return logic; throw Error(name); }, { active: true, contextKey: projectId, client: f.client });
+    const ui = componentHarness('ComfyImageSettings.tsx', name => { if (name === './comfy-image-settings.ts') return logic; throw Error(name); }, { active: true, contextKey: projectId, client: f.client });
     ui.render(); await flush(); ui.render(); assert.equal(ui.find('comfy-image-settings-module').props['data-state'], status?.state || 'unknown');
     assert.equal(ui.find('comfy-image-settings-check').props.disabled, true); assert.equal(ui.find('comfy-image-settings-enable').props.disabled, false); assert.equal(ui.find('comfy-image-settings-save').props.disabled, false);
     ui.click('comfy-image-settings-check'); await flush(); assert.equal(f.calls.filter(([op]) => op === 'check').length, 0); assert.match(JSON.stringify(ui.render()), /仅控制新生成准入/);
@@ -359,14 +359,14 @@ test('actual unavailable-module composer retains old preview/details/recovery an
   for (const status of [null, availability('not_provided'), availability('not_loaded')]) {
     const f = generationFixture(); f.data.tasks = [task()]; f.data.groups = [historicalGroup()]; f.data.versions = [historicalVersion()]; f.data.reviews = [review()];
     const localClient = { read: async () => settings(), readAvailability: async () => status }, legacyClient = { read: async () => null };
-    const ui = componentHarness('ImageGeneration.jsx', name => {
+    const ui = componentHarness('ImageGeneration.tsx', name => {
       if (name === '@mioon/contracts') return contracts;
-      if (name === './image-generation.js') return { ...logic, createImageGenerationSession: options => logic.createImageGenerationSession({ ...options, setTimer: () => 1, clearTimer() {} }) };
-      if (name === './ImageSettings.jsx') return { __esModule: true, default: 'ImageSettings' };
-      if (name === './ComfyImageSettings.jsx') return { __esModule: true, default: 'ComfyImageSettings' };
-      if (name === './ComfyImageDetails.jsx') return { ComfyImageReviewDetails: 'ComfyImageReviewDetails', ComfyImageTaskDetails: 'ComfyImageTaskDetails' };
-      if (name === './image-settings.js') return { createImageSettingsClient: () => legacyClient };
-      if (name === './comfy-image-settings.js') return settingsLogic;
+      if (name === './image-generation.ts') return { ...logic, createImageGenerationSession: options => logic.createImageGenerationSession({ ...options, setTimer: () => 1, clearTimer() {} }) };
+      if (name === './ImageSettings.tsx') return { __esModule: true, default: 'ImageSettings' };
+      if (name === './ComfyImageSettings.tsx') return { __esModule: true, default: 'ComfyImageSettings' };
+      if (name === './ComfyImageDetails.tsx') return { ComfyImageReviewDetails: 'ComfyImageReviewDetails', ComfyImageTaskDetails: 'ComfyImageTaskDetails' };
+      if (name === './image-settings.ts') return { createImageSettingsClient: () => legacyClient };
+      if (name === './comfy-image-settings.ts') return settingsLogic;
       throw Error(name);
     }, { projectId, api: f.api, storage: f.storage, reviewClient: f.reviewClient, settingsClient: legacyClient, customSettingsClient: legacyClient, comfySettingsClient: localClient });
     ui.render(); await flush(); ui.render(); ui.click('image-provider-comfy'); ui.change('image-generation-name', 'New'); ui.change('image-generation-prompt', 'New prompt');
@@ -379,7 +379,7 @@ test('actual unavailable-module composer retains old preview/details/recovery an
 
 test('four-language rerenders preserve Comfy draft and never probe, save, or reload on locale changes', async () => {
   const logic = await import('../apps/web/src/comfy-image-settings.ts'), f = settingsFixture();
-  const ui = componentHarness('ComfyImageSettings.jsx', name => { if (name === './comfy-image-settings.js') return logic; throw Error(name); }, { active: true, contextKey: projectId, client: f.client });
+  const ui = componentHarness('ComfyImageSettings.tsx', name => { if (name === './comfy-image-settings.ts') return logic; throw Error(name); }, { active: true, contextKey: projectId, client: f.client });
   ui.render(); await flush(); ui.render(); ui.change('comfy-image-settings-base-url', 'http://127.0.0.1:8288');
   const calls = structuredClone(f.calls);
   for (const locale of i18n.LOCALES) {

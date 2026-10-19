@@ -1,9 +1,11 @@
+import type {DatabaseSync} from 'node:sqlite';
+
 // One guarded expression shared by the read boundary and its index. Legacy
 // receipts are never parsed/re-serialized or backfilled during this migration.
 export const TIMELINE_RECEIPT_PROJECT_EXPRESSION = `CASE WHEN typeof(response)='text' AND length(CAST(response AS BLOB)) BETWEEN 1 AND 4194304
  THEN CASE WHEN json_valid(response) THEN CASE WHEN json_type(response,'$.projectId')='text' AND length(CAST(json_extract(response,'$.projectId') AS BLOB))=36
  THEN json_extract(response,'$.projectId') END END END`;
-export function migrateTimelineFormatSchema(db){
+export function migrateTimelineFormatSchema(db: DatabaseSync): void{
  if(!db.isTransaction)throw new Error('Timeline format migration requires a transaction');
  db.exec(`CREATE TABLE timeline_format_requests(
  requestId TEXT NOT NULL PRIMARY KEY REFERENCES timeline_requests(requestId) CHECK(length(requestId) BETWEEN 8 AND 200),

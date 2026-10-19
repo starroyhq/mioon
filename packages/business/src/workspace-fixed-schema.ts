@@ -11,8 +11,9 @@ import {migrateComfyImageSchema} from './comfy-image-schema.ts';
 import {migrateFrameSchema} from './frame-schema.ts';
 import {migrateTimelineFormatSchema} from './timeline-format-schema.ts';
 import {migrateAgentEditProposalSchema} from './agent/edit-proposal-schema.ts';
+import type {DatabaseSync} from 'node:sqlite';
 
-export function initializeLegacyWorkspaceSchema(db){
+export function initializeLegacyWorkspaceSchema(db: DatabaseSync): void{
  db.exec(`CREATE TABLE IF NOT EXISTS schema_version(version INTEGER PRIMARY KEY);INSERT OR IGNORE INTO schema_version VALUES(1);
  CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY,data TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS assets(id TEXT PRIMARY KEY,projectId TEXT NOT NULL REFERENCES projects(id),data TEXT NOT NULL);
@@ -356,7 +357,7 @@ export function initializeLegacyWorkspaceSchema(db){
   if(db.isTransaction)throw new Error('Image edit migration requires an isolated startup connection');
   try{
    db.exec('PRAGMA foreign_keys=OFF');
-   if(db.prepare('PRAGMA foreign_keys').get().foreign_keys!==0)throw new Error('Could not guard image edit migration');
+   if(db.prepare('PRAGMA foreign_keys').get()!.foreign_keys!==0)throw new Error('Could not guard image edit migration');
    db.exec('BEGIN IMMEDIATE');
    migrateImageEditReviewSchema(db);
    db.exec('INSERT INTO schema_version VALUES(23);COMMIT;');

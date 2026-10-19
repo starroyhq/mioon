@@ -3,35 +3,40 @@ import {withRestoreInvocation,freezeRestoreInput} from './workspace-restore-invo
 import {refuseRestoredOperation,assertWorkspaceRestoreOrigin} from './workspace-restore-policy.ts';
 import {AppError, schemas} from '@mioon/contracts';
 import {getOpacityCandidateAssembly,isOpacityCandidateApplicationStore} from './opacity-candidate-store.ts';
+import type {DatabaseSync} from 'node:sqlite';
+
+type PreferencesRow = {revision: number;state: string};
+interface PreferencesStore {db: DatabaseSync;tx: <T>(callback: ()=>T)=>T;get: (table: string,id: string)=>unknown}
 
 // This is a renderer-only whitelist, deliberately separate from operation
 // schemas and project/timeline records. Free text and request recovery IDs do
 // not belong here. Keep its bounds aligned with apps/web/src/workspace-state.ts.
 export const MAX_WORKSPACE_PREFERENCES_BYTES = 16 * 1024;
 const entityId = schemas['project.get'].shape.projectId;
-const invalid = (path, message) => { throw new AppError('VALIDATION_ERROR', '工作区偏好字段无效', 400, {issues: [{path, message}]}); };
-function object(value, keys, path, optional = []) {
+const invalid: (path: string[], message: string)=>never = (path, message) => { throw new AppError('VALIDATION_ERROR', '工作区偏好字段无效', 400, {issues: [{path, message}]}); };
+function object(value: unknown, keys: string[], path: string[], optional: string[] = []): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value) || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) invalid(path, 'Expected an object');
-  const actual = Reflect.ownKeys(value);
-  if (keys.some(key => !Object.hasOwn(value, key)) || actual.some(key => !keys.includes(key) && !optional.includes(key))) invalid(path, 'Expected exactly the documented fields');
-  return value;
+  const record=value as Record<string, unknown>;
+  const actual = Reflect.ownKeys(record);
+  if (keys.some(key => !Object.hasOwn(record, key)) || actual.some(key => !keys.includes(String(key)) && !optional.includes(String(key)))) invalid(path, 'Expected exactly the documented fields');
+  return record;
 }
-function oneOf(value, choices, path) {
+function oneOf(value: unknown, choices: readonly unknown[], path: string[]): unknown {
   if (!choices.includes(value)) invalid(path, 'Invalid preference value');
   return value;
 }
-function numeric(value, min, max, path, integer = false) {
+function numeric(value: unknown, min: number, max: number, path: string[], integer = false): number {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max || (integer && !Number.isSafeInteger(value))) invalid(path, 'Number is outside the supported range');
   return Object.is(value, -0) ? 0 : value;
 }
-function id(value, path, nullable = true) {
+function id(value: unknown, path: string[], nullable = true): string|null {
   if (nullable && value === null) return null;
   if (typeof value !== 'string' || value.length > 199 || !entityId.safeParse(value).success) invalid(path, 'Expected a valid entity ID');
   return value;
 }
-const bool = (value, path) => oneOf(value, [true, false], path);
+const bool = (value: unknown, path: string[]): unknown => oneOf(value, [true, false], path);
 
-function panelLayout(value, mode) {
+function panelLayout(value: unknown, mode: string): {assetsWidth: number;inspectorWidth: number;assetsCollapsed: unknown;inspectorCollapsed: unknown;timelineHeight?: number} {
   const path = ['state', 'layout', mode];
   const source = object(value, ['assetsWidth', 'inspectorWidth', 'assetsCollapsed', 'inspectorCollapsed', ...(mode === 'editing' ? ['timelineHeight'] : [])], path);
   return {
@@ -43,7 +48,7 @@ function panelLayout(value, mode) {
   };
 }
 
-export function parseWorkspacePreferencesState(value) {
+export function parseWorkspacePreferencesState(value: unknown): Record<string, unknown> {
   const s = object(value, ['version', 'activeMode', 'canvas', 'editing', 'shared'], ['state'], ['layout']);
   const c = object(s.canvas, ['viewport', 'selectedId', 'selectedEdgeId', 'inspectorTab', 'highlightedVersionId', 'storyboardOpen', 'miniMap'], ['state', 'canvas']);
   const e = object(s.editing, ['selectedClipId', 'quickAssetId', 'previewKind', 'playhead', 'pixelsPerSecond', 'scrollLeft', 'scrollTop', 'timelineCollapsed'], ['state', 'editing'], ['snappingEnabled']);
@@ -104,7 +109,7 @@ export function parseWorkspacePreferencesState(value) {
   };
 }
 
-export function createWorkspacePreferences(store) {
+export function createWorkspacePreferences(store: PreferencesStore) {
   const {db, tx} = store;
   // Only the explicit fresh42 application handle can use this fixed local
   // companion. Ordinary/reopened42 and restored43 gain no new permission.
@@ -115,22 +120,22 @@ export function createWorkspacePreferences(store) {
     if(candidateAssembly&&getOpacityCandidateAssembly(store)!==candidateAssembly)throw new AppError('RESTORE_OPERATION_UNAVAILABLE','This internal candidate workspace is unavailable.',409);
     if(candidate&&(!isOpacityCandidateApplicationStore(store)||getOpacityCandidateAssembly(store)!==candidate))throw new AppError('RESTORE_OPERATION_UNAVAILABLE','This internal candidate workspace is unavailable.',409);
   };
-  const requireProject = projectId => {
+  const requireProject = (projectId: string): void => {
     id(projectId, ['projectId'], false);
     if (!store.get('projects', projectId)) throw new AppError('NOT_FOUND', '找不到项目', 404, {projectId});
   };
-  const current = projectId => db.prepare('SELECT revision,state FROM workspace_preferences WHERE projectId=?').get(projectId);
+  const current = (projectId: string): PreferencesRow|undefined => db.prepare('SELECT revision,state FROM workspace_preferences WHERE projectId=?').get(projectId) as PreferencesRow|undefined;
   // Normalize legacy v1 records in memory, without changing their stored bytes
   // or revision on reads or exact replay.
-  const canonical = state => JSON.stringify(parseWorkspacePreferencesState(JSON.parse(state)));
-  const result = (projectId, row) => ({projectId, revision: row?.revision ?? 0, state: row ? parseWorkspacePreferencesState(JSON.parse(row.state)) : null});
+  const canonical = (state: string): string => JSON.stringify(parseWorkspacePreferencesState(JSON.parse(state)));
+  const result = (projectId: string, row: PreferencesRow|undefined|null) => ({projectId, revision: row?.revision ?? 0, state: row ? parseWorkspacePreferencesState(JSON.parse(row.state)) : null});
   return {
-    get(projectId) {
+    get(projectId: string) {
       candidateCheckpoint();
       requireProject(projectId);
       return result(projectId, current(projectId));
     },
-    put(projectId, input, context = {}) {
+    put(projectId: string, input: unknown, context: {signal?: AbortSignal} = {}) {
       candidateCheckpoint();
       // Candidate43 has no workspace.preferences.put execution capability.
       // Its DB is not registered in the historical restore WeakMap, so never
@@ -143,7 +148,7 @@ export function createWorkspacePreferences(store) {
       if (Buffer.byteLength(state) > MAX_WORKSPACE_PREFERENCES_BYTES) invalid(['state'], 'Preferences are too large');
       const identity=freezeRestoreInput({projectId,expectedRevision,state});
       const apply=()=>tx(() => {
-        if(candidate)candidateCheckpoint();else refuseRestoredOperation(store,'workspace.preferences.put',identity);
+        if(candidate)candidateCheckpoint();else refuseRestoredOperation(store as never,'workspace.preferences.put',identity);
         requireProject(projectId);
         const previous = current(projectId), revision = previous?.revision ?? 0;
         // Only an exact retry of the most recent accepted write is replayable.
@@ -159,8 +164,8 @@ export function createWorkspacePreferences(store) {
       });
       if(candidate){candidateCheckpoint();return apply();}
       if(!getWorkspaceRestoreContext(store))return apply();
-      assertWorkspaceRestoreOrigin(store,context);
-      return withRestoreInvocation(store,'workspace.preferences.put',identity,{signal:context.signal},apply);
+      assertWorkspaceRestoreOrigin(store as never,context as unknown as {expectedWorkspaceOrigin?: unknown});
+      return withRestoreInvocation(store as never,'workspace.preferences.put',identity,{signal:context.signal},apply);
     },
   };
 }

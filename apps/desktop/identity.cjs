@@ -13,7 +13,7 @@ function identityForChannel(channel) {
 function buildChannel(args = []) {
   if (args.length === 0) return 'development';
   if (args.length !== 1 || !args[0].startsWith('--channel=')) {
-    throw new Error('Usage: build.mjs [--channel=production|development]');
+    throw new Error('Usage: build.ts [--channel=production|development]');
   }
   return identityForChannel(args[0].slice('--channel='.length)).channel;
 }

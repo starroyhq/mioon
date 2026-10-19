@@ -1,13 +1,19 @@
 import {lookPackInspectEffects} from './look-pack-inspection.ts';
 import {timelineColourEffects} from './timeline-colour.ts';
 import {lutResourceEffects} from './lut-resources.ts';
-// Audited against services.mjs, local-mutations.mjs, references.mjs, timeline.mjs and jobs.mjs.
+// Audited against services.ts, local-mutations.mjs, references.ts, timeline.ts and jobs.ts.
 // Effects include work the call schedules/resumes, not just its synchronous RPC.
 // These are advisory descriptions, never permission checks or authorization.
 // Missing fields use conservative values; missing operations have no fallback.
+export interface OperationEffect {
+  readOnly: boolean; idempotent: boolean; destructive: boolean; openWorld: boolean;
+  databaseWrite: boolean; fileWrite: boolean; externalIO: boolean; localProcess: boolean;
+  paidGeneration: boolean; notes: string | undefined;
+}
+export type OperationEffectInput = Partial<Omit<OperationEffect, 'notes'>> & {notes?: string};
 const define = ({readOnly = false, idempotent = false, destructive = true,
   openWorld = true, databaseWrite = true, fileWrite = true, externalIO = true,
-  localProcess = true, paidGeneration = true, notes}) => Object.freeze({
+  localProcess = true, paidGeneration = true, notes}: OperationEffectInput): Readonly<OperationEffect> => Object.freeze({
   readOnly, idempotent, destructive, openWorld, databaseWrite, fileWrite,
   externalIO, localProcess, paidGeneration, notes,
 });
@@ -129,23 +135,24 @@ export const operationEffects = Object.freeze({
   'timeline.render': define({...render,notes:'Queues a frozen timeline render once per exact request. Optional export-only fixed delivery settings invoke bounded local capability compute before fresh acceptance; historical replay runs no probe. Later worker work revalidates and invokes local FFmpeg/ffprobe and writes managed output. Omission retains the legacy path. No provider call.'}),
 });
 
-export function assertOperationEffectCoverage(schemas, effects = operationEffects) {
+export function assertOperationEffectCoverage(schemas: object, effects: Readonly<Record<string, unknown>> = operationEffects): void {
   const missing = Object.keys(schemas).filter(operation => !Object.hasOwn(effects, operation));
   const unknown = Object.keys(effects).filter(operation => !Object.hasOwn(schemas, operation));
   if (missing.length || unknown.length)
     throw new Error(`Operation effect coverage mismatch; missing: ${missing.join(', ') || 'none'}; unknown: ${unknown.join(', ') || 'none'}`);
 }
 
-export function operationEffect(operation) {
+export function operationEffect(operation: string): Readonly<OperationEffect> {
   if (!Object.hasOwn(operationEffects, operation)) throw new Error(`Operation effects are not defined: ${operation}`);
-  return operationEffects[operation];
+  return (operationEffects as Record<string, Readonly<OperationEffect>>)[operation];
 }
 
 // Official MCP SDK 1.32.1 ToolAnnotations: these hints describe possible
 // environment effects, not response freshness or permission to execute a tool.
-export function effectAnnotations(effects) {
-  const fields = ['readOnly', 'destructive', 'idempotent', 'openWorld'];
-  if (!effects || fields.some(field => typeof effects[field] !== 'boolean'))
+export function effectAnnotations(effects: unknown): Record<string, boolean> {
+  const fields = ['readOnly', 'destructive', 'idempotent', 'openWorld'] as const;
+  const source = effects as Partial<Record<(typeof fields)[number], unknown>> | null | undefined;
+  if (!source || typeof source !== 'object' || fields.some(field => typeof source[field] !== 'boolean'))
     throw new Error('Explicit operation effects are required for MCP annotations.');
-  return Object.fromEntries(fields.map(field => [`${field}Hint`, effects[field]]));
+  return Object.fromEntries(fields.map(field => [`${field}Hint`, source[field]])) as Record<string, boolean>;
 }

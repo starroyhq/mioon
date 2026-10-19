@@ -10,7 +10,7 @@ export const WAVEFORM_MAX_DURATION = 600;
 export const WAVEFORM_MAX_SOURCE_FRAMES = WAVEFORM_FPS * WAVEFORM_MAX_DURATION;
 export const WAVEFORM_MAX_POINTS = 2048;
 export const WAVEFORM_DEFAULT_POINTS = 512;
-export const WAVEFORM_STATUSES = Object.freeze(['missing','queued','running','ready','interrupted','error','unsupported']);
+export const WAVEFORM_STATUSES = Object.freeze(['missing','queued','running','ready','interrupted','error','unsupported'] as const);
 
 const id = z.string().uuid();
 const sourceStartFrame = z.number().int().min(0).max(WAVEFORM_MAX_SOURCE_FRAMES - 1);
@@ -30,6 +30,8 @@ export const waveformSchemas = Object.freeze({
   }).strict().refine(value => value.sourceEndFrame === undefined || value.sourceEndFrame > value.sourceStartFrame,
     {path: ['sourceEndFrame'], message: 'Waveform source end must be greater than source start.'}),
 });
+export type WaveformRequestInput = z.infer<typeof waveformSchemas['asset.waveform.request']>;
+export type WaveformGetInput = z.infer<typeof waveformSchemas['asset.waveform.get']>;
 
 // Strict public cache acknowledgement: no source hashes, filenames, URLs,
 // commands or raw decoder diagnostics cross the transport boundary.
@@ -49,28 +51,32 @@ export const waveformResponseSchema = z.object({
   peaks: z.array(z.number().finite().min(0).max(1).nullable()).min(1).max(WAVEFORM_MAX_POINTS).optional(),
   clipped: z.boolean().optional(),
 }).strict().superRefine((value, context) => {
-  const fail = (path, message) => context.addIssue({code: z.ZodIssueCode.custom, path: [path], message});
+  const fail = (path: string, message: string) => context.addIssue({code: z.ZodIssueCode.custom, path: [path], message});
   if (value.status === 'ready') {
-    for (const key of ['duration','sourceFrames','decodedSampleFrames','clipped','attemptId'])
+    for (const key of ['duration','sourceFrames','decodedSampleFrames','clipped','attemptId'] as const)
       if (value[key] === undefined) fail(key, 'Ready waveforms require confirmed source and decoded-coverage metadata.');
     if (value.sourceFrames !== sourceFrameCount(value.duration))
       fail('sourceFrames', 'Source frames must match the 30fps asset duration.');
-    if (Math.abs(value.decodedSampleFrames / WAVEFORM_SAMPLE_RATE - value.duration) > 0.1 + 1e-6)
+    if (Math.abs(value.decodedSampleFrames! / WAVEFORM_SAMPLE_RATE - value.duration!) > 0.1 + 1e-6)
       fail('decodedSampleFrames', 'Decoded coverage must stay within 100ms of the source duration.');
   }
   if ((value.sourceStartFrame === undefined) !== (value.sourceEndFrame === undefined))
     fail('sourceEndFrame', 'Waveform source bounds must be returned together.');
-  if (value.sourceEndFrame !== undefined && (value.sourceEndFrame <= value.sourceStartFrame ||
+  if (value.sourceEndFrame !== undefined && (value.sourceEndFrame <= value.sourceStartFrame! ||
       (value.sourceFrames !== undefined && value.sourceEndFrame > value.sourceFrames)))
     fail('sourceEndFrame', 'Waveform source bounds must stay inside the source duration.');
   if (value.peaks !== undefined && (value.status !== 'ready' || value.sourceStartFrame === undefined || value.sourceFrames === undefined || value.decodedSampleFrames === undefined))
     fail('peaks', 'Waveform peaks require ready state, confirmed source bounds and decoded sample coverage.');
 });
+export type WaveformResponse = z.infer<typeof waveformResponseSchema>;
 
-export function isWaveformResponse(value, input) {
+export function isWaveformResponse(value: unknown, input?: unknown): boolean {
   if (!waveformResponseSchema.safeParse(value).success) return false;
-  return !input || (value.projectId === input.projectId && value.assetId === input.assetId &&
-    (value.peaks === undefined || (value.peaks.length <= (input.points ?? WAVEFORM_DEFAULT_POINTS) &&
-      value.sourceStartFrame === (input.sourceStartFrame ?? 0) &&
-      value.sourceEndFrame === (input.sourceEndFrame ?? value.sourceFrames))));
+  const response = value as WaveformResponse;
+  if (!input) return true;
+  const request = input as Partial<WaveformGetInput>;
+  return response.projectId === request.projectId && response.assetId === request.assetId &&
+    (response.peaks === undefined || (response.peaks.length <= (request.points ?? WAVEFORM_DEFAULT_POINTS) &&
+      response.sourceStartFrame === (request.sourceStartFrame ?? 0) &&
+      response.sourceEndFrame === (request.sourceEndFrame ?? response.sourceFrames)));
 }

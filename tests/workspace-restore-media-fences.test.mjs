@@ -23,7 +23,7 @@ const metadata={streams:[{index:0,codec_type:'video',codec_name:'h264',width:720
 const listing='Encoders:\n ------\n V....D libx264 Synthetic video\n A..... aac Synthetic audio\n';
 async function sandbox(t){const root=await mkdtemp(path.join(tmpdir(),'mioon-restore-media-'));t.after(()=>rm(root,{recursive:true,force:true}));return root;}
 async function fixture(t){
- const root=await sandbox(t),binary=path.join(root,'synthetic-media.mjs');
+ const root=await sandbox(t),binary=path.join(root,'synthetic-media.ts');
  await writeFile(binary,`#!${process.execPath}\nimport {writeFileSync} from 'node:fs';
  const args=process.argv.slice(2);
  if(args.includes('-show_streams'))process.stdout.write(${JSON.stringify(JSON.stringify(metadata))});

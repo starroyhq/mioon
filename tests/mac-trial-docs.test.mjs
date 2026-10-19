@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {DURABLE_EDIT_OPERATIONS, EDIT_TASK_LIMITS} from '../packages/contracts/src/edit-tasks.ts';
 import {getStoragePrivacyCapability} from '../packages/contracts/src/private-storage.ts';
 import {parseArguments, nativeReadiness} from '../scripts/lib/local-tooling.ts';
-import identity from '../apps/desktop/identity.cjs';
+import identity from '../apps/desktop/identity.ts';
 
 // Documentation/contract checks only: no documented command is executed, no
 // dependency installation, application launch, private data or network access.
@@ -121,7 +121,7 @@ test('all local Markdown links in the three trial documents resolve, including a
 
 test('Mac follow-up reports retain their own title and implementation subject rather than a copied neighboring report', () => {
   const specifications = [
-    ['docs/KEYCHAIN-TIMEOUT-AUDIT.md', '# Electron 密钥库超时审查', ['image-secret-broker.mjs', 'secret-store.mjs', '2000', 'Atomics.wait']],
+    ['docs/KEYCHAIN-TIMEOUT-AUDIT.md', '# Electron 密钥库超时审查', ['image-secret-broker.ts', 'secret-store.ts', '2000', 'Atomics.wait']],
     ['docs/TIMELINE-RECOVERY-AUDIT.md', '# Timeline Undo/Redo 恢复审查', ['timeline-recovery-audit.test.mjs', 'undo', 'redo']],
     ['docs/KEYCHAIN-ASYNC-FEASIBILITY.md', '# Electron 44.7.0 Keychain 异步可行性', ['isAsyncEncryptionAvailable', 'encryptStringAsync', 'decryptStringAsync']],
     ['docs/CLIENT-VERSION-SOURCE.md', '# CLI / MCP 客户端版本来源', ['packages/client/src/index.ts', 'package.json', 'VERSION']],

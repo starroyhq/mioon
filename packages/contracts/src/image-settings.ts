@@ -27,7 +27,8 @@ const storageSchema = z.object({persistentAvailable: z.boolean(), sessionScope: 
 export const imageSettingsResultSchema = z.object({revision, configuration: imageConfigurationSchema,
   secret: z.object({configured: z.boolean(), storage: z.enum(['none', 'session', 'persistent'])}).strict()
     .refine(value => value.configured === (value.storage !== 'none'), 'Inconsistent credential state'), storage: storageSchema}).strict();
-export const isImageSettingsResult = value => imageSettingsResultSchema.safeParse(value).success;
+export type ImageSettingsResult = z.infer<typeof imageSettingsResultSchema>;
+export function isImageSettingsResult(value: unknown): value is ImageSettingsResult { return imageSettingsResultSchema.safeParse(value).success; }
 
 // A separate explicit slot. The official settings, namespace and key binding
 // above remain unchanged; selecting this slot never adopts an official key.
@@ -43,10 +44,15 @@ export const customImageConfigurationSchema = z.object({enabled: z.boolean(), pr
   options: imageOptionsSchema}).strict().refine(value =>
     value.baseUrl === '' || value.model === '' ? !value.enabled && value.baseUrl === '' && value.model === '' : true,
   'Custom configuration must be complete, or an empty disabled slot');
-export const isCompleteCustomImageConfiguration = value => customImageConfigurationSchema.safeParse(value).success && value.baseUrl !== '' && value.model !== '';
+export type CustomImageConfiguration = z.infer<typeof customImageConfigurationSchema>;
+export function isCompleteCustomImageConfiguration(value: unknown): boolean {
+  const parsed = customImageConfigurationSchema.safeParse(value);
+  return parsed.success && parsed.data.baseUrl !== '' && parsed.data.model !== '';
+}
 export const customImageSettingsUpdateSchema = z.object({expectedRevision: revision, configuration: customImageConfigurationSchema, secret}).strict();
 export const customImageSettingsResultSchema = z.object({revision, configuration: customImageConfigurationSchema,
   secret: z.object({configured: z.boolean(), storage: z.enum(['none', 'session', 'persistent'])}).strict()
     .refine(value => value.configured === (value.storage !== 'none'), 'Inconsistent credential state'), storage: storageSchema}).strict()
   .refine(value => !value.secret.configured || isCompleteCustomImageConfiguration(value.configuration), 'Incomplete custom slot cannot own a credential');
-export const isCustomImageSettingsResult = value => customImageSettingsResultSchema.safeParse(value).success;
+export type CustomImageSettingsResult = z.infer<typeof customImageSettingsResultSchema>;
+export function isCustomImageSettingsResult(value: unknown): value is CustomImageSettingsResult { return customImageSettingsResultSchema.safeParse(value).success; }

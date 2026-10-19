@@ -1,6 +1,8 @@
 import { nativeText as nt } from './app-language-text.ts';
 import path from 'node:path';
-import desktopIdentity from '../identity.cjs';
+import type {Stats} from 'node:fs';
+import type {App, Dialog, MessageBoxOptions} from 'electron';
+import desktopIdentity from '../identity.ts';
 import {providerEnvironmentKeys} from '@mioon/business';
 import { run as runMedia } from '@mioon/business/media-runtime';
 import { throwIfMediaAborted } from '@mioon/business/media-processes';
@@ -14,10 +16,41 @@ const IDENTITY_MAX_BYTES = 4096;
 const CONFIG_MAX_BYTES = 64 * 1024;
 const CONNECTION_MAX_BYTES = 16 * 1024;
 const TOKEN_MAX_BYTES = 4096;
-const desktopStorageError = (code, message) => Object.assign(new Error(message), { code });
+export type DesktopChannel = 'production' | 'development';
+/** The reviewed build identity; values come from identity.cjs, never the environment. */
+export interface DesktopIdentity {
+  readonly channel: DesktopChannel;
+  readonly appId: string;
+  readonly productName: string;
+  readonly executableName: string;
+}
+export interface DesktopPaths {
+  readonly userData: string;
+  readonly dataDir: string;
+  readonly configFile: string;
+}
+export interface ToolPaths { readonly ffmpeg: string; readonly ffprobe: string }
+export interface ToolValidation { readonly ffmpeg: string; readonly ffprobe: string; readonly versions: ToolPaths }
+interface StorageFailureDialog extends MessageBoxOptions {
+  readonly type: 'error'; readonly title: string; readonly message: string; readonly detail: string;
+  readonly buttons: string[]; readonly defaultId: number; readonly cancelId: number;
+}
+interface CodedFailure { readonly code?: string; readonly reason?: string }
+function codedFailure(error: unknown): CodedFailure {
+  return error !== null && typeof error === 'object' ? error as CodedFailure : {};
+}
+function errorMessage(error: unknown): string {
+  const message = error !== null && typeof error === 'object' && 'message' in error ? error.message : error;
+  return typeof message === 'string' ? message : 'Unknown error';
+}
+function privateText(contents: Buffer | string | null): string | null {
+  if (contents === null) return null;
+  return typeof contents === 'string' ? contents : contents.toString('utf8');
+}
+const desktopStorageError = (code: string, message: string): Error => Object.assign(new Error(message), { code });
 
-export function dataPaths(appDataPath, override, channel = 'development') {
-  const identity = desktopIdentity.identityForChannel(channel);
+export function dataPaths(appDataPath: string, override?: string, channel: DesktopChannel = 'development'): DesktopPaths {
+  const identity: DesktopIdentity = desktopIdentity.identityForChannel(channel);
   if (override && !path.isAbsolute(override)) throw desktopStorageError('DESKTOP_USER_DATA_INVALID', 'MIOON_DESKTOP_USER_DATA must be an absolute path');
   const userData = override || path.join(appDataPath, identity.appId);
   return { userData, dataDir: path.join(userData, 'workspace'), configFile: path.join(userData, 'desktop-config.json') };
@@ -25,22 +58,22 @@ export function dataPaths(appDataPath, override, channel = 'development') {
 
 // Must run synchronously before Electron can write caches or a single-instance
 // lock. Existing directories are inspected, never repaired implicitly.
-export function prepareDesktopStorage(app, override, channel = 'development') {
+export function prepareDesktopStorage(app: App, override?: string, channel: DesktopChannel = 'development'): DesktopPaths {
   const paths = dataPaths(app.getPath('appData'), override, channel);
   validateDesktopStorage(paths);
-  const identity = desktopIdentity.identityForChannel(channel);
-  const contents = readPrivateFile(path.join(paths.userData, 'desktop-identity.json'),
-    { root: paths.userData, maxBytes: IDENTITY_MAX_BYTES, encoding: 'utf8', allowMissing: true });
+  const identity: DesktopIdentity = desktopIdentity.identityForChannel(channel);
+  const contents = privateText(readPrivateFile(path.join(paths.userData, 'desktop-identity.json'),
+    { root: paths.userData, maxBytes: IDENTITY_MAX_BYTES, encoding: 'utf8', allowMissing: true }));
   if (contents !== null) checkDataIdentity(contents, identity);
   ensurePrivateDirectory(paths.userData, { create: true });
   app.setPath('userData', paths.userData);
   return paths;
 }
 
-export function validateDesktopStorage(paths) {
+export function validateDesktopStorage(paths: DesktopPaths): void {
   if (!validatePrivateDirectory(paths.userData, { allowMissing: true })) return;
   for (const [name, maxBytes] of [['desktop-identity.json', IDENTITY_MAX_BYTES], ['desktop-config.json', CONFIG_MAX_BYTES],
-    ['app-preferences.json', 4096], ['mcp-token', TOKEN_MAX_BYTES], ['mcp-connection.json', CONNECTION_MAX_BYTES]]) {
+    ['app-preferences.json', 4096], ['mcp-token', TOKEN_MAX_BYTES], ['mcp-connection.json', CONNECTION_MAX_BYTES]] as const) {
     validateManagedFile(path.join(paths.userData, name), { root: paths.userData, private: true, allowMissing: true, maxBytes });
   }
   const directory = path.join(paths.userData, 'agent-settings');
@@ -50,28 +83,29 @@ export function validateDesktopStorage(paths) {
   validateWorkspaceStorage(paths.dataDir);
 }
 
-export function storageFailureDialog(error) {
+export function storageFailureDialog(error: unknown): StorageFailureDialog {
+  const failure = codedFailure(error);
   let message = nt('native.storageMessage');
   let detail = nt('native.storageDetail');
   let recovery = nt('native.storageRecovery');
-  if (error?.code === 'DESKTOP_CHANNEL_MISMATCH') {
+  if (failure.code === 'DESKTOP_CHANNEL_MISMATCH') {
     message = nt('native.channelMessage');
     detail = nt('native.channelDetail');
     recovery = nt('native.channelRecovery');
-  } else if (error?.code === 'DESKTOP_IDENTITY_INVALID') {
+  } else if (failure.code === 'DESKTOP_IDENTITY_INVALID') {
     message = nt('native.identityMessage');
     detail = nt('native.identityDetail');
     recovery = nt('native.identityRecovery');
-  } else if (error?.code === 'DESKTOP_USER_DATA_INVALID') {
+  } else if (failure.code === 'DESKTOP_USER_DATA_INVALID') {
     message = nt('native.pathMessage');
     detail = nt('native.pathDetail');
-  } else if (error?.code === 'STORAGE_PRIVACY_UNAVAILABLE') {
+  } else if (failure.code === 'STORAGE_PRIVACY_UNAVAILABLE') {
     message = nt('native.privacyMessage');
     detail = nt('native.privacyDetail');
     recovery = nt('native.privacyRecovery');
-  } else if (error?.reason === 'SYMBOLIC_LINK') {
+  } else if (failure.reason === 'SYMBOLIC_LINK') {
     detail = nt('native.linkDetail');
-  } else if (error?.reason === 'SIZE_LIMIT') {
+  } else if (failure.reason === 'SIZE_LIMIT') {
     detail = nt('native.sizeDetail');
   }
   return { type: 'error', title: nt('native.storageTitle'), message,
@@ -83,9 +117,10 @@ export function storageFailureDialog(error) {
 // verified private directory lets Electron show the fatal dialog without ever
 // touching the rejected userData or its normal default location. This is only
 // an error-display session: no lock, workspace, settings, token or main window.
-export async function showStorageStartupFailure(app, dialog, error, { temporaryRoot = tmpdir() } = {}) {
+export async function showStorageStartupFailure(app: App, dialog: Dialog, error: unknown, { temporaryRoot = tmpdir() }: {temporaryRoot?: string} = {}): Promise<void> {
   const message = storageFailureDialog(error);
-  let diagnostic, created;
+  let diagnostic: string;
+  let created: Stats | null;
   try {
     diagnostic = createPrivateTemporaryDirectory(temporaryRoot, 'mioon-startup-error-');
     created = validatePrivateDirectory(diagnostic);
@@ -94,7 +129,7 @@ export async function showStorageStartupFailure(app, dialog, error, { temporaryR
         const current = validatePrivateDirectory(diagnostic);
         // Never recursively remove an ambiguous/replaced path. The same-user
         // directory-swap race remains outside the OS-user isolation guarantee.
-        if (current.dev === created.dev && current.ino === created.ino) rmSync(diagnostic, { recursive: true });
+        if (current && created && current.dev === created.dev && current.ino === created.ino) rmSync(diagnostic, { recursive: true });
       } catch { /* A private diagnostic directory may remain if removal fails. */ }
     };
     app.once('quit', cleanup);
@@ -109,28 +144,30 @@ export async function showStorageStartupFailure(app, dialog, error, { temporaryR
   } finally { app.exit(1); }
 }
 
-function checkDataIdentity(contents, expected) {
-  let stored;
+function checkDataIdentity(contents: string, expected: DesktopIdentity): void {
+  let stored: unknown;
   try { stored = JSON.parse(contents); }
   catch { throw desktopStorageError('DESKTOP_IDENTITY_INVALID', 'Desktop data identity is unreadable; choose a separate MIOON_DESKTOP_USER_DATA directory'); }
-  if (!stored || stored.version !== 1 || !['production', 'development'].includes(stored.channel) ||
-    desktopIdentity.identityForChannel(stored.channel).appId !== stored.appId) {
+  const record = stored !== null && typeof stored === 'object' && !Array.isArray(stored) ? stored as Record<string, unknown> : null;
+  const channel = record?.channel;
+  if (!record || record.version !== 1 || (channel !== 'production' && channel !== 'development') ||
+    desktopIdentity.identityForChannel(channel).appId !== record.appId) {
     throw desktopStorageError('DESKTOP_IDENTITY_INVALID', 'Desktop data identity is unreadable; choose a separate MIOON_DESKTOP_USER_DATA directory');
   }
-  if (stored.channel !== expected.channel || stored.appId !== expected.appId) {
+  if (record.channel !== expected.channel || record.appId !== expected.appId) {
     throw desktopStorageError('DESKTOP_CHANNEL_MISMATCH', 'Desktop data belongs to another app channel; choose a separate MIOON_DESKTOP_USER_DATA directory');
   }
 }
 
 // A deliberate path override must not silently reuse the other channel's database.
 // This adds one non-secret marker; it never moves, removes or imports legacy data.
-export async function ensureDataIdentity(paths, identity) {
-  const expected = desktopIdentity.identityForChannel(identity.channel);
+export async function ensureDataIdentity(paths: DesktopPaths, identity: DesktopIdentity): Promise<void> {
+  const expected: DesktopIdentity = desktopIdentity.identityForChannel(identity.channel);
   if (expected.appId !== identity.appId) throw new Error('Invalid desktop identity');
   validateDesktopStorage(paths);
   ensurePrivateDirectory(paths.userData, { create: true });
   const file = path.join(paths.userData, 'desktop-identity.json');
-  let contents = readPrivateFile(file, { root: paths.userData, maxBytes: IDENTITY_MAX_BYTES, encoding: 'utf8', allowMissing: true });
+  let contents = privateText(readPrivateFile(file, { root: paths.userData, maxBytes: IDENTITY_MAX_BYTES, encoding: 'utf8', allowMissing: true }));
   if (contents === null) {
     try {
       writePrivateFileAtomic(file, JSON.stringify({ version: 1, channel: expected.channel, appId: expected.appId }, null, 2) + '\n',
@@ -138,27 +175,32 @@ export async function ensureDataIdentity(paths, identity) {
       return;
     } catch (error) {
       // A concurrently created marker must still match; never overwrite it.
-      contents = readPrivateFile(file, { root: paths.userData, maxBytes: IDENTITY_MAX_BYTES, encoding: 'utf8', allowMissing: true });
+      contents = privateText(readPrivateFile(file, { root: paths.userData, maxBytes: IDENTITY_MAX_BYTES, encoding: 'utf8', allowMissing: true }));
       if (contents === null) throw error;
     }
   }
   checkDataIdentity(contents, expected);
 }
 
-export async function readToolConfig(configFile, env = process.env) {
-  let stored = {};
-  const contents = readPrivateFile(configFile, { maxBytes: CONFIG_MAX_BYTES, encoding: 'utf8', allowMissing: true });
+export async function readToolConfig(configFile: string, env: NodeJS.ProcessEnv = process.env): Promise<ToolPaths> {
+  let stored: Record<string, unknown> = {};
+  const contents = privateText(readPrivateFile(configFile, { maxBytes: CONFIG_MAX_BYTES, encoding: 'utf8', allowMissing: true }));
   if (contents !== null) {
     try {
-      stored = JSON.parse(contents);
-      if (!stored || typeof stored !== 'object' || Array.isArray(stored) ||
-        ['ffmpeg', 'ffprobe'].some(key => stored[key] !== undefined && typeof stored[key] !== 'string')) throw new Error();
+      const parsed: unknown = JSON.parse(contents);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) ||
+        ['ffmpeg', 'ffprobe'].some(key => (parsed as Record<string, unknown>)[key] !== undefined && typeof (parsed as Record<string, unknown>)[key] !== 'string')) throw new Error();
+      stored = parsed as Record<string, unknown>;
     } catch { throw new Error('desktop-config.json is unreadable or invalid'); }
   }
-  return { ffmpeg: env.MIOON_FFMPEG_PATH || stored.ffmpeg || '', ffprobe: env.MIOON_FFPROBE_PATH || stored.ffprobe || '' };
+  const ffmpeg = typeof stored.ffmpeg === 'string' ? stored.ffmpeg : '';
+  const ffprobe = typeof stored.ffprobe === 'string' ? stored.ffprobe : '';
+  return { ffmpeg: env.MIOON_FFMPEG_PATH || ffmpeg, ffprobe: env.MIOON_FFPROBE_PATH || ffprobe };
 }
 
-export async function validateTool(file, name, { execute = runMedia, signal } = {}) {
+export async function validateTool(file: string, name: string, { execute = runMedia, signal }: {
+  execute?: typeof runMedia; signal?: AbortSignal;
+} = {}): Promise<{path: string; version: string}> {
   throwIfMediaAborted(signal);
   if (typeof file !== 'string' || !path.isAbsolute(file)) throw new Error(`${name} 必须指定绝对路径`);
   const resolved = await realpath(file);
@@ -174,7 +216,9 @@ export async function validateTool(file, name, { execute = runMedia, signal } = 
   return { path: resolved, version: stdout.split('\n')[0] };
 }
 
-export async function validateTools(config, { execute = runMedia, signal } = {}) {
+export async function validateTools(config: ToolPaths, { execute = runMedia, signal }: {
+  execute?: typeof runMedia; signal?: AbortSignal;
+} = {}): Promise<ToolValidation> {
   const options = { execute, signal };
   const [ffmpeg, ffprobe] = await Promise.all([validateTool(config.ffmpeg, 'ffmpeg', options), validateTool(config.ffprobe, 'ffprobe', options)]);
   // Export depends on these encoders; fail before accepting editing work if unavailable.
@@ -186,27 +230,33 @@ export async function validateTools(config, { execute = runMedia, signal } = {})
   return { ffmpeg: ffmpeg.path, ffprobe: ffprobe.path, versions: { ffmpeg: ffmpeg.version, ffprobe: ffprobe.version } };
 }
 
-export async function saveToolConfig(file, config) {
+export async function saveToolConfig(file: string, config: ToolPaths): Promise<void> {
   ensurePrivateDirectory(path.dirname(file), { create: true });
   writePrivateFileAtomic(file, JSON.stringify({ ffmpeg: config.ffmpeg, ffprobe: config.ffprobe }, null, 2) + '\n', { maxBytes: CONFIG_MAX_BYTES });
 }
 
-export function utilityEnvironment(env, tools) {
+export function utilityEnvironment(env: NodeJS.ProcessEnv, tools: ToolPaths): Record<string, string> {
   // Never inherit Node injection options or unrelated credentials into the utility.
-  const result = {};
+  const result: Record<string, string> = {};
   for (const key of ['HOME', 'USERPROFILE', 'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'SYSTEMROOT', 'WINDIR', 'MIOON_COMFY_MODULE',
     ...providerEnvironmentKeys]) {
-    if (typeof env[key] === 'string') result[key] = env[key];
+    const value = env[key];
+    if (typeof value === 'string') result[key] = value;
   }
   result.MIOON_FFMPEG_PATH = tools.ffmpeg;
   result.MIOON_FFPROBE_PATH = tools.ffprobe;
   return result;
 }
 
-export async function writeConnection(paths, { url, token, pid, identity }) {
+export async function writeConnection(paths: DesktopPaths, { url, token, pid, identity }: {
+  url: string; token: string; pid: number; identity?: DesktopIdentity;
+}): Promise<string> {
   const tokenFile = path.join(paths.userData, 'mcp-token');
   const connectionFile = path.join(paths.userData, 'mcp-connection.json');
-  const files = [[tokenFile, token + '\n', TOKEN_MAX_BYTES], [connectionFile, JSON.stringify({ version: 1, url, tokenFile, pid, ...(identity ? { appId: identity.appId, channel: identity.channel } : {}) }, null, 2) + '\n', CONNECTION_MAX_BYTES]];
+  const files: Array<[file: string, contents: string, maxBytes: number]> = [
+    [tokenFile, token + '\n', TOKEN_MAX_BYTES],
+    [connectionFile, JSON.stringify({ version: 1, url, tokenFile, pid, ...(identity ? { appId: identity.appId, channel: identity.channel } : {}) }, null, 2) + '\n', CONNECTION_MAX_BYTES]
+  ];
   // Preflight both existing entries before changing either discovery file.
   for (const [file, , maxBytes] of files) validateManagedFile(file, { root: paths.userData, allowMissing: true, private: true, maxBytes });
   for (const [file, contents, maxBytes] of files) {
@@ -215,10 +265,10 @@ export async function writeConnection(paths, { url, token, pid, identity }) {
   return connectionFile;
 }
 
-export async function removeConnection(paths) {
+export async function removeConnection(paths: DesktopPaths): Promise<void> {
   // Only transient discovery files belong to the backend lifetime. App-level
   // language preferences must survive service restart and application quit.
-  const files = [['mcp-connection.json', CONNECTION_MAX_BYTES], ['mcp-token', TOKEN_MAX_BYTES]];
+  const files: Array<[name: string, maxBytes: number]> = [['mcp-connection.json', CONNECTION_MAX_BYTES], ['mcp-token', TOKEN_MAX_BYTES]];
   for (const [name, maxBytes] of files) validateManagedFile(path.join(paths.userData, name), { root: paths.userData, allowMissing: true, private: true, maxBytes });
   for (const [name, maxBytes] of files) removePrivateFile(path.join(paths.userData, name), { root: paths.userData, maxBytes });
 }
@@ -226,19 +276,22 @@ export async function removeConnection(paths) {
 // The backend is already stopped when this runs. A refused privacy check must
 // preserve the discovery files, not turn quit into a repeating fatal/quit loop.
 // The warning is fixed text: never include native errors, paths or token bytes.
-export async function removeConnectionOnShutdown(paths, { warn = message => console.warn(message) } = {}) {
+export async function removeConnectionOnShutdown(paths: DesktopPaths, { warn = (message: string) => console.warn(message) }: {
+  warn?: (message: string) => void;
+} = {}): Promise<boolean> {
   try { await removeConnection(paths); return true; }
   catch (error) {
-    if (!['STORAGE_PRIVATE_REQUIRED', 'STORAGE_PRIVACY_UNAVAILABLE'].includes(error?.code)) throw error;
+    const code = codedFailure(error).code;
+    if (code !== 'STORAGE_PRIVATE_REQUIRED' && code !== 'STORAGE_PRIVACY_UNAVAILABLE') throw error;
     try { warn('DESKTOP_DISCOVERY_CLEANUP_SKIPPED: Discovery files were preserved because storage privacy checks failed.'); } catch {}
     return false;
   }
 }
 
 // Small independent app preference document, outside workspace backups.
-export function readAppLanguagePreference(paths) {
-  return readPrivateFile(path.join(paths.userData, 'app-preferences.json'), { root: paths.userData, maxBytes: 4096, encoding: 'utf8', allowMissing: true });
+export function readAppLanguagePreference(paths: DesktopPaths): string | null {
+  return privateText(readPrivateFile(path.join(paths.userData, 'app-preferences.json'), { root: paths.userData, maxBytes: 4096, encoding: 'utf8', allowMissing: true }));
 }
-export function writeAppLanguagePreference(paths, text) {
+export function writeAppLanguagePreference(paths: DesktopPaths, text: string): void {
   writePrivateFileAtomic(path.join(paths.userData, 'app-preferences.json'), text, { root: paths.userData, maxBytes: 4096 });
 }

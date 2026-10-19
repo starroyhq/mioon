@@ -1,6 +1,8 @@
+import type {DatabaseSync} from 'node:sqlite';
+
 // Additive only. The caller owns the synchronous migration transaction and its
 // schema marker. No old table, receipt, sequence, trigger, or row is rewritten.
-export function migrateImageReviewSchema(db) {
+export function migrateImageReviewSchema(db: DatabaseSync): void {
   if (!db.isTransaction) throw new Error('Image review migration requires a transaction');
   db.exec(IMAGE_REVIEW_SCHEMA_17_SQL);
 }
@@ -63,12 +65,12 @@ const IMAGE_REVIEW_SCHEMA_17_SQL = `
 // Only this table needs replacement: schema17 pins official OpenAI in CHECKs.
 // The owner commits the new schema marker in the same transaction. Existing
 // identity/CAS triggers are restored verbatim after historical states are copied.
-export function migrateCustomImageReviewSchema(db) {
+export function migrateCustomImageReviewSchema(db: DatabaseSync): void {
   if (!db.isTransaction) throw new Error('Custom image review migration requires a transaction');
-  const existing = db.prepare("SELECT sql FROM sqlite_schema WHERE type='table' AND name='image_reviews'").get();
+  const existing = db.prepare("SELECT sql FROM sqlite_schema WHERE type='table' AND name='image_reviews'").get() as {sql: string} | undefined;
   if (!existing) throw new Error('Custom image review migration requires schema17');
   if (existing.sql.includes('image_review_intent_v18')) return;
-  const retainedObjects = db.prepare("SELECT type,name,sql FROM sqlite_schema WHERE tbl_name='image_reviews' AND type IN ('index','trigger') AND sql IS NOT NULL ORDER BY type,name").all();
+  const retainedObjects = db.prepare("SELECT type,name,sql FROM sqlite_schema WHERE tbl_name='image_reviews' AND type IN ('index','trigger') AND sql IS NOT NULL ORDER BY type,name").all() as {sql: string}[];
   const columns = ['id','projectId','requestId','inputHash','canonicalInput','intentHash','canonicalIntent','state','revision','taskId','postAttempts','createdAt','updatedAt','approvedAt','rejectedAt','dispatchedAt'];
   const shape = `rowid,${columns.join(',')}`;
   const intentChecks = `
@@ -121,13 +123,13 @@ export function migrateCustomImageReviewSchema(db) {
 
 // Extend only the named v18 intent CHECK. Copy raw SQL values and rowids, then
 // restore all preexisting indexes/triggers verbatim within the caller's tx.
-export function migrateComfyImageReviewSchema(db) {
+export function migrateComfyImageReviewSchema(db: DatabaseSync): void {
   if(!db.isTransaction)throw new Error('Comfy image review migration requires a transaction');
-  const existing=db.prepare("SELECT sql FROM sqlite_schema WHERE type='table' AND name='image_reviews'").get();
+  const existing=db.prepare("SELECT sql FROM sqlite_schema WHERE type='table' AND name='image_reviews'").get() as {sql: string} | undefined;
   if(!existing)throw new Error('Comfy image review migration requires schema18');
   if(existing.sql.includes('image_review_intent_v19'))return;
   if(!existing.sql.includes('image_review_intent_v18'))throw new Error('Comfy image review migration requires schema18');
-  const retainedObjects=db.prepare("SELECT type,name,sql FROM sqlite_schema WHERE tbl_name='image_reviews' AND type IN ('index','trigger') AND sql IS NOT NULL ORDER BY type,name").all();
+  const retainedObjects=db.prepare("SELECT type,name,sql FROM sqlite_schema WHERE tbl_name='image_reviews' AND type IN ('index','trigger') AND sql IS NOT NULL ORDER BY type,name").all() as {sql: string}[];
   const boundary="      ),\n      CHECK(json_extract(canonicalIntent,'$.policy.maxPostAttempts')";
   const localBranch=`
         OR
@@ -181,7 +183,7 @@ ${boundary}`;
     .replace('CONSTRAINT image_review_intent_v18','CONSTRAINT image_review_intent_v19').replace(boundary,localBranch);
   if(!create.startsWith('CREATE TABLE image_reviews_v19('))throw new Error('Unrecognized image review table');
   db.exec(create);
-  const columns=db.prepare('PRAGMA table_info(image_reviews)').all().map(row=>row.name);
+  const columns=(db.prepare('PRAGMA table_info(image_reviews)').all() as {name: string}[]).map(row=>row.name);
   const shape=`rowid,${columns.map(name=>`"${name}"`).join(',')}`;
   db.exec(`INSERT INTO image_reviews_v19(${shape}) SELECT ${shape} FROM image_reviews ORDER BY rowid`);
   for(const [left,right] of [['image_reviews','image_reviews_v19'],['image_reviews_v19','image_reviews']])
@@ -197,19 +199,19 @@ ${boundary}`;
 // off before BEGIN on its unexposed connection because retained Comfy runs may
 // reference this parent table. No child table, receipt, or historical JSON is
 // rebuilt. foreign_key_check verifies the final graph before the owner commits.
-export function migrateImageEditReviewSchema(db) {
+export function migrateImageEditReviewSchema(db: DatabaseSync): void {
   if (!db.isTransaction) throw new Error('Image edit review migration requires a transaction');
-  const existing = db.prepare("SELECT sql FROM sqlite_schema WHERE type='table' AND name='image_reviews'").get();
+  const existing = db.prepare("SELECT sql FROM sqlite_schema WHERE type='table' AND name='image_reviews'").get() as {sql: string} | undefined;
   if (!existing) throw new Error('Image edit review migration requires schema19');
   if (existing.sql.includes('image_review_intent_v23')) return;
   if (!existing.sql.includes('image_review_intent_v19')) throw new Error('Image edit review migration requires schema19');
-  if (db.prepare('PRAGMA foreign_keys').get().foreign_keys !== 0) throw new Error('Image edit review rebuild requires the isolated startup foreign-key guard');
-  const retainedObjects = db.prepare("SELECT type,name,CASE WHEN length(CAST(sql AS BLOB))<=65536 THEN sql END AS sql FROM sqlite_schema WHERE tbl_name='image_reviews' AND type IN ('index','trigger') AND sql IS NOT NULL ORDER BY type,name LIMIT 129").all();
+  if ((db.prepare('PRAGMA foreign_keys').get() as {foreign_keys: number}).foreign_keys !== 0) throw new Error('Image edit review rebuild requires the isolated startup foreign-key guard');
+  const retainedObjects = db.prepare("SELECT type,name,CASE WHEN length(CAST(sql AS BLOB))<=65536 THEN sql END AS sql FROM sqlite_schema WHERE tbl_name='image_reviews' AND type IN ('index','trigger') AND sql IS NOT NULL ORDER BY type,name LIMIT 129").all() as {sql: string | null; name: string}[];
   // SQLite validates trigger bodies during RENAME, including triggers owned by
   // other tables. Remove only references to the briefly absent parent, then
   // restore their exact original SQL inside this same rollback boundary.
   const externalTriggerQuery = "SELECT type,name,tbl_name,CASE WHEN length(CAST(sql AS BLOB))<=65536 THEN sql END AS sql FROM sqlite_schema WHERE type='trigger' AND tbl_name!='image_reviews' AND instr(lower(sql),'image_reviews')>0 ORDER BY name LIMIT 129";
-  const externalTriggers = db.prepare(externalTriggerQuery).all();
+  const externalTriggers = db.prepare(externalTriggerQuery).all() as {sql: string | null; name: string}[];
   if (retainedObjects.length > 128 || externalTriggers.length > 128 || [...retainedObjects,...externalTriggers].some(object=>object.sql===null || Buffer.byteLength(object.name)>1024)) throw new Error('Image review SQL objects exceed migration bounds');
   const foreignKeys = db.prepare('PRAGMA foreign_key_list(image_reviews)').all();
   const boundary = "      ),\n      CHECK(json_extract(canonicalIntent,'$.policy.maxPostAttempts')";
@@ -219,7 +221,7 @@ export function migrateImageEditReviewSchema(db) {
     .replace(boundary, `${IMAGE_EDIT_REVIEW_V23_BRANCH}\n      ),\n${IMAGE_EDIT_REVIEW_V23_SEPARATION}\n      CHECK(json_extract(canonicalIntent,'$.policy.maxPostAttempts')`);
   if (!create.startsWith('CREATE TABLE image_reviews_v23(')) throw new Error('Unrecognized image review table');
   db.exec(create);
-  const columns = db.prepare('PRAGMA table_info(image_reviews)').all().map(row => row.name);
+  const columns = (db.prepare('PRAGMA table_info(image_reviews)').all() as {name: string}[]).map(row => row.name);
   const shape = `rowid,${columns.map(name => `"${name}"`).join(',')}`;
   db.exec(`INSERT INTO image_reviews_v23(${shape}) SELECT ${shape} FROM image_reviews ORDER BY rowid`);
   for (const [left,right] of [['image_reviews','image_reviews_v23'],['image_reviews_v23','image_reviews']]) {
@@ -228,7 +230,7 @@ export function migrateImageEditReviewSchema(db) {
   }
   for (const trigger of externalTriggers) db.exec(`DROP TRIGGER "${trigger.name.replaceAll('"','""')}"`);
   db.exec('DROP TABLE image_reviews; ALTER TABLE image_reviews_v23 RENAME TO image_reviews;');
-  for (const object of [...retainedObjects,...externalTriggers]) db.exec(object.sql);
+  for (const object of [...retainedObjects,...externalTriggers]) db.exec(object.sql!);
   const afterObjects = db.prepare("SELECT type,name,CASE WHEN length(CAST(sql AS BLOB))<=65536 THEN sql END AS sql FROM sqlite_schema WHERE tbl_name='image_reviews' AND type IN ('index','trigger') AND sql IS NOT NULL ORDER BY type,name LIMIT 129").all();
   if (JSON.stringify(afterObjects) !== JSON.stringify(retainedObjects) || JSON.stringify(db.prepare(externalTriggerQuery).all()) !== JSON.stringify(externalTriggers)) throw new Error('Image edit review migration changed SQL objects');
   if (JSON.stringify(db.prepare('PRAGMA foreign_key_list(image_reviews)').all()) !== JSON.stringify(foreignKeys)) throw new Error('Image edit review migration changed foreign keys');

@@ -195,20 +195,20 @@ function uiHarness(client, receipts = memoryReceipts(), languageStore) {
   const module = { exports: {} }, primitive = new Proxy({}, { get: (_, key) => String(key) });
   const resolve = id => {
     const i18nDependency = creationTestDependency(id, languageStore); if (i18nDependency) return i18nDependency;
-    if (id === './agent-timeline-context.js') return timing;
+    if (id === './agent-timeline-context.ts') return timing;
     if (id === './agent-timeline-gain-context.ts') return gainContext;
     if (id === './AgentTimelineGain.tsx') { const gain = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/AgentTimelineGain.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(gain, gain.exports, resolve); return gain.exports; }
     if (id === './editor-settings-scope.ts') { const scope = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/editor-settings-scope.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(scope, scope.exports, resolve); return scope.exports; }
     if (id === './native-close-sources.ts') return nativeCloseSources;
     if (id === 'react') return react;
-    if (id === './agent-chat.js') return { ...logic, createAgentChatSession: options => componentSession = logic.createAgentChatSession({ ...options, client, receipts, requestId: () => requestId }) };
-    if (id === './agent-tool-state.js') return toolLogic;
-    if (id === './AgentEditProposal.jsx') return { __esModule: true, default: 'AgentEditProposal' };
-    if (id === './AgentRunActivity.jsx') { const child = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/AgentRunActivity.tsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code)(child, child.exports, resolve); return child.exports; }
-    if (id === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
-    if (id === './icons.jsx') return { default: 'Icon' };
+    if (id === './agent-chat.ts') return { ...logic, createAgentChatSession: options => componentSession = logic.createAgentChatSession({ ...options, client, receipts, requestId: () => requestId }) };
+    if (id === './agent-tool-state.ts') return toolLogic;
+    if (id === './AgentEditProposal.tsx') return { __esModule: true, default: 'AgentEditProposal' };
+    if (id === './AgentRunActivity.tsx') { const child = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/AgentRunActivity.tsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code)(child, child.exports, resolve); return child.exports; }
+    if (id === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => visible };
+    if (id === './icons.tsx') return { default: 'Icon' };
     if (id === './agent-chat-history.css') return {};
-    if (id.startsWith('@mioon/ui/') || id === './WorkspaceControls.jsx') return primitive;
+    if (id.startsWith('@mioon/ui/') || id === './WorkspaceControls.tsx') return primitive;
     throw Error(id);
   };
   Function('module', 'exports', 'require', transformed)(module, module.exports, resolve);
@@ -522,7 +522,7 @@ function workspaceHarness(exportName = 'default') {
   const slots = []; let cursor = 0, effects = [], visible = true;
   const react = { createElement: (type, props, ...children) => type === 'SettingsNavigationSlot' ? children[0](() => {}) : element(type, props, ...children), useRef: value => slots[cursor++] ||= { current: value }, useLayoutEffect(callback, deps) { const i = cursor++, old = slots[i]; if (old && depsEqual(deps, old.deps)) return; slots[i] = { deps, callback }; effects.push(i); } }; react.default = react;
   const module = { exports: {} };
-  Function('module', 'exports', 'require', transformSync(workspaceSource, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, id => creationTestDependency(id) || (id === 'react' ? react : id === './AgentPanel.jsx' ? { __esModule: true, default: 'AgentPanel' } : id === './AgentSettings.jsx' ? { __esModule: true, default: 'AgentSettings' } : id === './SettingsNavigationSlot.tsx' ? { __esModule: true, default: 'SettingsNavigationSlot' } : { useWorkspaceVisibility: () => visible, WorkspaceVisibilityProvider: 'VisibilityProvider' }));
+  Function('module', 'exports', 'require', transformSync(workspaceSource, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, id => creationTestDependency(id) || (id === 'react' ? react : id === './AgentPanel.tsx' ? { __esModule: true, default: 'AgentPanel' } : id === './AgentSettings.tsx' ? { __esModule: true, default: 'AgentSettings' } : id === './SettingsNavigationSlot.tsx' ? { __esModule: true, default: 'SettingsNavigationSlot' } : { useWorkspaceVisibility: () => visible, WorkspaceVisibilityProvider: 'VisibilityProvider' }));
   return { render(props) { cursor = 0; effects = []; const tree = module.exports[exportName](props); for (const i of effects) slots[i].callback(); return tree; }, setAncestorVisible(value) { visible = value; } };
 }
 

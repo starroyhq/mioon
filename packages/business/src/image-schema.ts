@@ -1,8 +1,9 @@
+import type {DatabaseSync} from 'node:sqlite';
 import {INSPECTION_VERSION_ASSET_EXPRESSION,INSPECTION_ROW_LIMITS} from './workspace-schema-v24-constants.ts';
 
 // Schema16 is additive. The caller owns BEGIN/COMMIT and the version marker;
 // no old table, JSON, receipt, index or trigger is replaced or rewritten.
-export function migrateImageSchema(db){
+export function migrateImageSchema(db: DatabaseSync): void{
  if(!db.isTransaction)throw new Error('Image migration requires a transaction');
  db.exec(`
  CREATE TABLE IF NOT EXISTS image_groups(

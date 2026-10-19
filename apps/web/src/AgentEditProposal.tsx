@@ -1,5 +1,7 @@
 import { agentEditStatusDescriptor } from './agent-edits.ts';
-import { agentTimelineApprovalIssueDescriptor } from './agent-timeline-context.ts';
+import type { AgentEditProposal as AgentEditProposalRecord, AgentEditsState } from './agent-edits.ts';
+import { agentTimelineApprovalIssueDescriptor, isAgentTimelineMoveProposal, isAgentTimelineGainProposal } from './agent-timeline-context.ts';
+import type { NativeCloseSourceRegistry } from './native-close-sources.ts';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import { creationParameter, agentTimelineFrameDisplay } from './creation-i18n.ts';
 import { createAgentEditsCloseReporter } from './native-close-sources.ts';
@@ -8,28 +10,39 @@ import { Button } from '@mioon/ui/components/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@mioon/ui/components/collapsible';
 import { useWorkspaceVisibility } from './workspace-visibility.tsx';
 import { agentEditCanApprove, agentEditCanRecover, agentEditStatusText, agentTimelineApprovalIssue, agentTimelineFrameText, createAgentEditsSession, initialAgentEditsState } from './agent-edits.ts';
-import { isAgentTimelineGainProposal, isAgentTimelineMoveProposal, AGENT_TIMELINE_GAIN_CONTEXT } from './agent-timeline-context.ts';
+import { AGENT_TIMELINE_GAIN_CONTEXT } from './agent-timeline-context.ts';
 import { AgentTimelineGainDiff } from './AgentTimelineGain.tsx';
+import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
+import type { AgentTimelineMoveReviewTarget } from '../../../packages/contracts/src/agent-timeline-move.ts';
+import type { AgentTimelineGainReviewTarget } from '../../../packages/contracts/src/agent-timeline-gain.ts';
 import './agent-edits.css';
 
-export function AgentEditDiff({ proposal }) {
+type AgentEditsSession = ReturnType<typeof createAgentEditsSession>;
+interface AgentEditsOwner { projectId: string; closed: boolean }
+interface ShotDiff {before: Record<string, string>; after: Record<string, string>}
+/** Display-only projection of the already validated shot.update proposal diff. */
+const shotDiff = (proposal: AgentEditProposalRecord): ShotDiff =>
+  ({before: proposal.diff.before as Record<string, string>, after: proposal.diff.after as Record<string, string>});
+
+export function AgentEditDiff({ proposal }: {proposal: AgentEditProposalRecord}) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
+  const { before, after } = shotDiff(proposal);
   return <div className="agent-edit-diff" data-testid="agent-edit-diff" aria-label={t('agent.proposal.diffAria')}>
-    {['title', 'prompt'].map(field => <section key={field} data-field={field} data-changed={proposal.diff.before[field] !== proposal.diff.after[field]}>
-      <h4>{field === 'title' ? t('agent.proposal.shotTitle') : t('agent.proposal.visualDescription')}{proposal.diff.before[field] === proposal.diff.after[field] && <span> {t('agent.proposal.unchangedBadge')}</span>}</h4>
-      <div className="agent-edit-diff-side"><span>{t('agent.proposal.before')}</span><pre data-testid={`agent-edit-before-${field}`}>{proposal.diff.before[field] || t('agent.proposal.empty')}</pre></div>
+    {['title', 'prompt'].map(field => <section key={field} data-field={field} data-changed={before[field] !== after[field]}>
+      <h4>{field === 'title' ? t('agent.proposal.shotTitle') : t('agent.proposal.visualDescription')}{before[field] === after[field] && <span> {t('agent.proposal.unchangedBadge')}</span>}</h4>
+      <div className="agent-edit-diff-side"><span>{t('agent.proposal.before')}</span><pre data-testid={`agent-edit-before-${field}`}>{before[field] || t('agent.proposal.empty')}</pre></div>
       <div className="agent-edit-diff-arrow" aria-hidden="true">↓</div>
-      <div className="agent-edit-diff-side is-after"><span>{t('agent.proposal.proposedAfter')}</span><pre data-testid={`agent-edit-after-${field}`}>{proposal.diff.after[field] || t('agent.proposal.cleared')}</pre></div>
+      <div className="agent-edit-diff-side is-after"><span>{t('agent.proposal.proposedAfter')}</span><pre data-testid={`agent-edit-after-${field}`}>{after[field] || t('agent.proposal.cleared')}</pre></div>
     </section>)}
   </div>;
 }
 
-export function AgentTimelineMoveDiff({ proposal, visible = true }) {
+export function AgentTimelineMoveDiff({ proposal, visible = true }: {proposal: import('../../../packages/contracts/src/agent-timeline-move.ts').AgentTimelineMoveProposal; visible?: boolean}) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const { before, after } = proposal.diff, fps = proposal.target.fps;
   return <div className="agent-edit-diff agent-timeline-diff" data-testid="agent-timeline-diff" tabIndex={visible ? 0 : -1} aria-label={t('agent.proposal.moveDiffAria')}>
     <section><h4>{t('agent.proposal.clipPosition', { fps: creationParameter(fps) })}</h4>
-      {['before', 'after'].map(side => <div key={side} className={`agent-edit-diff-side ${side === 'after' ? 'is-after' : ''}`}>
+      {(['before', 'after'] as const).map(side => <div key={side} className={`agent-edit-diff-side ${side === 'after' ? 'is-after' : ''}`}>
         <span>{side === 'before' ? t('agent.proposal.beforeMove') : t('agent.proposal.afterMove')}</span>
         <p data-testid={`agent-timeline-${side}-start`}>{t('agent.proposal.startTime', { value: creationParameter(agentTimelineFrameDisplay(proposal.diff[side].startFrame, fps, t)) })}</p>
         <p data-testid={`agent-timeline-${side}-end`}>{t('agent.proposal.endTime', { value: creationParameter(agentTimelineFrameDisplay(proposal.diff[side].endFrame, fps, t)) })}</p>
@@ -42,12 +55,27 @@ export function AgentTimelineMoveDiff({ proposal, visible = true }) {
   </div>;
 }
 
+export interface AgentEditProposalProps {
+  nativeCloseRegistry?: NativeCloseSourceRegistry;
+  projectId: string;
+  refreshKey?: unknown;
+  blockedRunIds?: readonly string[];
+  selectedTimelineClip?: AgentTimelineMoveReviewTarget | null;
+  timelineEditBlockedReason?: string;
+  timelineEditBlockedDescriptor?: DisplayMessage | null;
+  selectedTimelineGainClip?: AgentTimelineGainReviewTarget | null;
+  timelineGainBlockedReason?: string;
+  timelineGainBlockedDescriptor?: DisplayMessage | null;
+  contextMode: string;
+  onApplied?: (projectId: string, proposal: AgentEditProposalRecord) => void;
+}
+
 // This review surface shares the right dock. Model prose has no action authority;
 // only the independently loaded, persisted proposal controls these buttons.
-export default function AgentEditProposal({ nativeCloseRegistry, projectId, refreshKey, blockedRunIds = [], selectedTimelineClip = null, timelineEditBlockedReason = '', timelineEditBlockedDescriptor = null, selectedTimelineGainClip = null, timelineGainBlockedReason = '', timelineGainBlockedDescriptor = null, contextMode, onApplied = () => {} }) {
+export default function AgentEditProposal({ nativeCloseRegistry, projectId, refreshKey, blockedRunIds = [], selectedTimelineClip = null, timelineEditBlockedReason = '', timelineEditBlockedDescriptor = null, selectedTimelineGainClip = null, timelineGainBlockedReason = '', timelineGainBlockedDescriptor = null, contextMode, onApplied = () => {} }: AgentEditProposalProps) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
-  const visible = useWorkspaceVisibility(), [state, setState] = useState(initialAgentEditsState);
-  const session = useRef(null), lifetime = useRef(null), visibleRef = useRef(visible), appliedRef = useRef(onApplied);
+  const visible = useWorkspaceVisibility(), [state, setState] = useState<AgentEditsState>(initialAgentEditsState);
+  const session = useRef<AgentEditsSession | null>(null), lifetime = useRef<AgentEditsOwner | null>(null), visibleRef = useRef(visible), appliedRef = useRef(onApplied);
   const selectedTarget = contextMode === AGENT_TIMELINE_GAIN_CONTEXT ? selectedTimelineGainClip : selectedTimelineClip;
   const blockedDescriptor = contextMode === AGENT_TIMELINE_GAIN_CONTEXT ? timelineGainBlockedDescriptor : timelineEditBlockedDescriptor;
   const blockedReason = contextMode === AGENT_TIMELINE_GAIN_CONTEXT ? timelineGainBlockedReason : timelineEditBlockedReason;
@@ -55,11 +83,11 @@ export default function AgentEditProposal({ nativeCloseRegistry, projectId, refr
   const interaction = useMemo(() => ({ visible, projectId, blocked: blockedRunIds.join('|'), timelineKey }), [visible, projectId, blockedRunIds.join('|'), timelineKey]), interactionRef = useRef(interaction);
   appliedRef.current = onApplied;
   useLayoutEffect(() => {
-    const owner = { projectId, closed: false }; lifetime.current = owner;
+    const owner: AgentEditsOwner = { projectId, closed: false }; lifetime.current = owner;
     const closeReport = createAgentEditsCloseReporter(nativeCloseRegistry);
     const current = createAgentEditsSession({ projectId,
-      onChange: next => { if (!owner.closed && lifetime.current === owner) { closeReport.publish(next); setState(next); } },
-      onApplied: (id, proposal) => { if (!owner.closed && lifetime.current === owner && id === owner.projectId) appliedRef.current(id, proposal); },
+      onChange: (next: AgentEditsState) => { if (!owner.closed && lifetime.current === owner) { closeReport.publish(next); setState(next); } },
+      onApplied: (id: string, proposal: AgentEditProposalRecord) => { if (!owner.closed && lifetime.current === owner && id === owner.projectId) appliedRef.current(id, proposal); },
     });
     session.current = current; closeReport.publish(current.getState()); setState(initialAgentEditsState());
     const page = typeof document === 'undefined' ? null : document;
@@ -69,7 +97,7 @@ export default function AgentEditProposal({ nativeCloseRegistry, projectId, refr
   }, [projectId, nativeCloseRegistry]);
   useLayoutEffect(() => { interactionRef.current = interaction; visibleRef.current = visible; session.current?.setVisible(visible && (typeof document === 'undefined' || document.visibilityState !== 'hidden')); }, [interaction]);
   useLayoutEffect(() => { session.current?.setTimelineContext({ target: selectedTarget, blockedReason, contextMode }); }, [projectId, timelineKey]);
-  const lastRefresh = useRef(null);
+  const lastRefresh = useRef<unknown>(null);
   useLayoutEffect(() => { if (lastRefresh.current !== null && lastRefresh.current !== refreshKey) void session.current?.load(); lastRefresh.current = refreshKey; }, [refreshKey]);
   const owner = lifetime.current;
   const usable = () => Boolean(visible && interactionRef.current === interaction && owner && !owner.closed && lifetime.current === owner && owner.projectId === projectId);
@@ -101,7 +129,7 @@ export default function AgentEditProposal({ nativeCloseRegistry, projectId, refr
         {proposal.status === 'pending' && !reviewable && <p>{t('agent.proposal.completedRunRequired')}</p>}
         {proposal.status === 'pending' && reviewable && selectionIssue && <p role="status" data-testid="agent-timeline-approval-blocked">{renderMessage(blockedReason && blockedDescriptor ? blockedDescriptor : agentTimelineApprovalIssueDescriptor(proposal, { target: selectedTarget, blockedReason, contextMode }))}</p>}
         {proposal.status === 'failed' && <p data-testid="agent-edit-failed">{t('agent.proposal.notAppliedReceipt', { value: creationParameter(proposal.outcome?.code === 'REVISION_CONFLICT' || proposal.outcome?.code === 'CONFLICT' ? t('agent.proposal.revisionConflictDetail') : t('agent.proposal.reviewCurrentContent')) })}</p>}
-        {proposal.status === 'applied' && <p data-testid="agent-edit-applied">{t('agent.proposal.appliedHistoricalReceipt', { value: creationParameter(timelineEdit ? t('agent.proposal.timelineObject') : t('agent.proposal.shotObject')), revision: creationParameter(proposal.outcome.revision) })}</p>}
+        {proposal.status === 'applied' && <p data-testid="agent-edit-applied">{t('agent.proposal.appliedHistoricalReceipt', { value: creationParameter(timelineEdit ? t('agent.proposal.timelineObject') : t('agent.proposal.shotObject')), revision: creationParameter(proposal.outcome?.revision) })}</p>}
         {uncertain && retryable && <p>{t('agent.proposal.retryApprovalDisclosure')}</p>}
         {recoverable && <p>{t('agent.proposal.recoverOriginalDisclosure')}</p>}
         <div className="agent-edit-controls">

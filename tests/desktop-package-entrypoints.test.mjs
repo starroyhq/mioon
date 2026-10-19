@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArguments, buildCommands } from '../scripts/lib/local-tooling.ts';
-import desktopIdentity from '../apps/desktop/identity.cjs';
+import desktopIdentity from '../apps/desktop/identity.ts';
 
 const require = createRequire(import.meta.url);
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -48,9 +48,9 @@ for (const expected of channels) {
     const { commands, config, viteEntry } = packagingPlan(manifest.scripts[expected.script], expected);
     assert.deepEqual(commands, [
       { command: process.execPath, args: ['--max-old-space-size=768', viteEntry, 'build'], cwd: path.join(root, 'apps/web') },
-      { command: process.execPath, args: [path.join(desktop, 'scripts/build.mjs'), `--channel=${expected.channel}`], cwd: root },
+      { command: process.execPath, args: [path.join(desktop, 'scripts/build.ts'), `--channel=${expected.channel}`], cwd: root },
     ]);
-    assert.equal(realpathSync(commands[1].args[0]), realpathSync(path.join(desktop, 'scripts/build.mjs')));
+    assert.equal(realpathSync(commands[1].args[0]), realpathSync(path.join(desktop, 'scripts/build.ts')));
     const channel = desktopIdentity.buildChannel(commands[1].args.slice(1));
     assert.equal(channel, expected.channel);
     const identity = desktopIdentity.identityForChannel(channel);
@@ -76,7 +76,7 @@ test('entrypoint checks reject the old staging-only path and channel or publicat
     // cannot make an unrelated negative assertion pass for the wrong reason.
     const builder = `electron-builder --config ${expected.config} ${expected.targetArgs.join(' ')} --publish never`;
     const script = `node ../../scripts/tooling.ts build --channel=${expected.channel} && ${builder}`;
-    const old = `node scripts/build.mjs --channel=${expected.channel} && ${builder}`;
+    const old = `node scripts/build.ts --channel=${expected.channel} && ${builder}`;
     assert.throws(() => packagingPlan(old, expected), /shared Web→desktop entrypoint/);
     assert.throws(() => packagingPlan(script.replace('&&', ';'), expected), /Build must succeed before electron-builder; no extra stages/);
     assert.throws(() => packagingPlan(script.replace('&&', ''), expected), /Build must succeed before electron-builder; no extra stages/);
@@ -114,10 +114,10 @@ test('entrypoint checks reject missing, reversed or extra stages and misrouted b
 test('other desktop entrypoints retain their existing behavior', () => {
   const otherScripts = Object.fromEntries(Object.entries(manifest.scripts).filter(([name]) => !channels.some(item => item.script === name)));
   assert.deepEqual(otherScripts, {
-    build: 'node scripts/build.mjs',
+    build: 'node scripts/build.ts',
     start: 'electron build',
     smoke: 'node scripts/smoke.ts',
-    'build:production': 'node scripts/build.mjs --channel=production',
+    'build:production': 'node scripts/build.ts --channel=production',
   });
 });
 

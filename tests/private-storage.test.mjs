@@ -23,7 +23,7 @@ function mockBuiltin(t, name, replacement, check) {
 
 test('private policy is an explicit Node-only subpath and capability metadata cannot enable Windows', () => {
   const manifest = JSON.parse(fs.readFileSync(new URL('../packages/contracts/package.json', import.meta.url), 'utf8'));
-  assert.equal(manifest.exports['./private-storage'], './src/private-storage.mjs');
+  assert.equal(manifest.exports['./private-storage'], './src/private-storage.ts');
   assert.ok(!fs.readFileSync(new URL('../packages/contracts/src/index.ts', import.meta.url), 'utf8').includes('private-storage'));
   assert.deepEqual(getStoragePrivacyCapability('win32'), {available: false, backend: 'unavailable', code: 'STORAGE_PRIVACY_UNAVAILABLE', reason: 'WINDOWS_ACL_UNIMPLEMENTED'});
   assert.equal(getStoragePrivacyCapability('unknown').available, false);

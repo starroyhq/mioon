@@ -78,7 +78,7 @@ test('task controller errors remain descriptors across relabeling with no extra 
 });
 
 test('every retained local task diagnostic has an adjacent explicit display descriptor', () => {
-  for (const file of ['submissions.js', 'mutation-submissions.js', 'edit-task-client.js', 'edit-task-controller.js']) {
+  for (const file of ['submissions.ts', 'mutation-submissions.ts', 'edit-task-client.ts', 'edit-task-controller.ts']) {
     const source = readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8');
     const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
     let diagnostics = 0;

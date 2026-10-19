@@ -55,7 +55,7 @@ test('stored uncertainty notices re-render without changing filenames, outcomes,
 });
 
 test('shell component controllers are not keyed or reconstructed by locale', () => {
-  for (const name of ['App.jsx', 'ProjectHome.tsx', 'ProjectEntry.tsx', 'SettingsRoot.tsx', 'Inspector.jsx', 'AssetLibrary.jsx', 'ReferenceConnections.jsx']) {
+  for (const name of ['App.tsx', 'ProjectHome.tsx', 'ProjectEntry.tsx', 'SettingsRoot.tsx', 'Inspector.tsx', 'AssetLibrary.tsx', 'ReferenceConnections.tsx']) {
     const source = readFileSync(new URL(`../apps/web/src/${name}`, import.meta.url), 'utf8');
     assert.doesNotMatch(source, /key=\{locale\}|key=\{language\}/u, name);
   }

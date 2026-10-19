@@ -43,7 +43,7 @@ before(async () => {
   const fixtures = `import React from 'react';
     import { renderToStaticMarkup } from 'react-dom/server.browser';
     import ExportSamplePeak from './src/ExportSamplePeak.tsx';
-    import ExportHistoryList from './src/ExportHistoryList.jsx';
+    import ExportHistoryList from './src/ExportHistoryList.tsx';
     import ActualExportFileActions from 'test:actual-export-file-actions';
     const values = ${JSON.stringify(values)}, props = ${JSON.stringify(historyProps)};
     const controller = { check() { throw Error('Rendering may not dispatch a check'); }, cancel() { throw Error('Rendering may not cancel a render'); } };

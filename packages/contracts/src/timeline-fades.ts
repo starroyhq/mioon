@@ -1,10 +1,14 @@
 // Fades use the 30fps timeline clock. Missing keys are legacy zeroes; this
 // validator never normalizes or mutates clips, snapshots, or caller inputs.
 export const TIMELINE_FADE_MAX_FRAMES = 18000;
-export function getTimelineFadeIssue(clip, asset) {
+export interface TimelineFadeClip {id: string; durationFrames: number; fadeInFrames?: number; fadeOutFrames?: number}
+export interface TimelineFadeAsset {id?: string; hasAudio?: boolean | null; mimeType?: string}
+export type TimelineFadeIssueCode = 'INVALID_FADE' | 'FADE_AUDIO_UNSUPPORTED';
+export interface TimelineFadeIssue {code: TimelineFadeIssueCode; message: string; details: Record<string, unknown>}
+export function getTimelineFadeIssue(clip: TimelineFadeClip, asset?: TimelineFadeAsset | null): TimelineFadeIssue | null {
   const fadeInFrames = clip.fadeInFrames === undefined ? 0 : clip.fadeInFrames;
   const fadeOutFrames = clip.fadeOutFrames === undefined ? 0 : clip.fadeOutFrames;
-  const details = {clipId: clip.id, durationFrames: clip.durationFrames, fadeInFrames, fadeOutFrames};
+  const details: Record<string, unknown> = {clipId: clip.id, durationFrames: clip.durationFrames, fadeInFrames, fadeOutFrames};
   for (const [field, value] of Object.entries({fadeInFrames, fadeOutFrames})) {
     if (!Number.isInteger(value) || value < 0 || value > TIMELINE_FADE_MAX_FRAMES)
       return {code: 'INVALID_FADE', message: '音频淡入和淡出必须为 0–18000 之间的整数帧', details: {...details, field}};

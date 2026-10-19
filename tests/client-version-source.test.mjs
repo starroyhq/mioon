@@ -6,7 +6,7 @@ import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import desktopBuildMetadata from '../apps/desktop/build-metadata.cjs';
+import desktopBuildMetadata from '../apps/desktop/build-metadata.ts';
 
 const root = new URL('../', import.meta.url);
 const clientFile = new URL('packages/client/src/index.ts', root);

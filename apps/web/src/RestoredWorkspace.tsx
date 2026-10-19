@@ -3,14 +3,22 @@ import React from 'react';
 import { RESTORE_DISABLED_REASON, RESTORE_BACKUP_REASON } from './restored-workspace.ts';
 import './restored-workspace.css';
 
-export function RestoredUnavailable({ title, backup = false }) {
+export function RestoredUnavailable({ title, backup = false }: {title?: React.ReactNode; backup?: boolean}) {
   const { t, locale, formatDate, formatNumber, renderMessage } = useI18n();
   return <section className="restored-unavailable notice" role="status" data-testid={backup ? 'restored-backup-unavailable' : 'restored-operation-unavailable'}>
     <strong>{title ?? t('recovery.restored.unavailable')}</strong><p>{t(backup ? 'recovery.restored.backupReason' : 'recovery.restored.disabledReason')}</p>
     {!backup && <p>{t('recovery.restored.records')}</p>}
   </section>;
 }
-export default function RestoredWorkspace({ workspace }) {
+export interface RestoredWorkspaceView {
+  readonly restored?: boolean;
+  readonly heldCounts: ReadonlyArray<{readonly count: number}>;
+  readonly operationPolicy: ReadonlyArray<{readonly operation: string; readonly available: boolean}>;
+  readonly createdAt: string;
+  readonly source: {readonly backupId: string};
+  readonly workspaceOrigin: string;
+}
+export default function RestoredWorkspace({ workspace }: {workspace?: RestoredWorkspaceView | null}) {
   const { t, locale, formatDate, formatNumber, renderMessage } = useI18n();
   if (!workspace?.restored) return null;
   const count = workspace.heldCounts.reduce((sum, item) => sum + item.count, 0);

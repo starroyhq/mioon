@@ -11,7 +11,9 @@ export const IMAGE_GENERATION_ENDPOINT = 'https://api.openai.com/v1/images/gener
 // https://developers.openai.com/api/reference/resources/images/methods/edit
 export const IMAGE_EDIT_ENDPOINT = 'https://api.openai.com/v1/images/edits';
 export const IMAGE_NETWORK_LIMITS = Object.freeze({connectTimeoutMs: 10000, totalTimeoutMs: 180000, maxRequestBytes: 16384, maxResponseBytes: 42 * 1024 * 1024, maxDecodedBytes: 30 * 1024 * 1024, maxHeaderBytes: 16384, maxDnsAnswers: 64});
-function editBody(input, base64) {
+export type ImageAdapterInput = ReturnType<typeof imageAdapterInputSchema.parse>;
+export interface ImageAdapterError extends Error {code: string; dispatched: boolean; outcomeUnknown: boolean}
+function editBody(input: {model: string; prompt: string}, base64: string): string {
   return JSON.stringify({model: input.model, prompt: input.prompt, images: [{image_url: `data:image/png;base64,${base64}`}], n: 1, quality: 'low', size: '1024x1024', output_format: 'png', background: 'opaque', moderation: 'auto'});
 }
 // Exact worst-case bound for this fixed JSON shape: canonical source base64,
@@ -33,7 +35,7 @@ export const CUSTOM_IMAGE_JSON_PROFILE = Object.freeze({
   request: Object.freeze({method: 'POST', contentType: 'application/json', moderation: 'auto', options: IMAGE_FIXED_OPTIONS}),
   response: Object.freeze({format: 'b64_json', mimeType: 'image/png', count: 1}),
 });
-const messages = Object.freeze({
+const messages: Readonly<Record<string, string>> = Object.freeze({
   IMAGE_LIVE_DISABLED: 'Live image generation is disabled.',
   IMAGE_INVALID_REQUEST: 'Image request does not match the fixed image profile.',
   IMAGE_CANCELLED: 'Image generation was cancelled; a dispatched request may still complete remotely.',
@@ -48,18 +50,18 @@ const messages = Object.freeze({
   IMAGE_PNG_UNSUPPORTED: 'Image bytes use an unsupported PNG feature.',
   IMAGE_PNG_TOO_LARGE: 'Image pixels or metadata exceeded the local limit.',
 });
-export function imageAdapterError(code, {dispatched = false, outcomeUnknown = dispatched} = {}) {
-  if (!Object.hasOwn(messages, code)) code = 'IMAGE_RESPONSE_INVALID';
-  return Object.assign(new Error(messages[code]), {code, dispatched: dispatched === true, outcomeUnknown: outcomeUnknown === true});
+export function imageAdapterError(code: unknown, {dispatched = false, outcomeUnknown = dispatched}: {dispatched?: boolean; outcomeUnknown?: boolean} = {}): ImageAdapterError {
+  const selected = typeof code === 'string' && Object.hasOwn(messages, code) ? code : 'IMAGE_RESPONSE_INVALID';
+  return Object.assign(new Error(messages[selected]), {code: selected, dispatched: dispatched === true, outcomeUnknown: outcomeUnknown === true});
 }
-export function parseImageAdapterInput(snapshot, expectedProvider) {
+export function parseImageAdapterInput(snapshot: unknown, expectedProvider: string): ImageAdapterInput {
   const parsed = imageAdapterInputSchema.safeParse(snapshot);
   if (!parsed.success || parsed.data.providerId !== expectedProvider) throw imageAdapterError('IMAGE_INVALID_REQUEST');
   return parsed.data;
 }
-function generationBody(snapshot, providerId) {
+function generationBody(snapshot: unknown, providerId: string): string {
   const input = parseImageAdapterInput(snapshot, providerId);
-  if (input.purpose !== undefined) throw imageAdapterError('IMAGE_INVALID_REQUEST');
+  if ('purpose' in input && input.purpose !== undefined) throw imageAdapterError('IMAGE_INVALID_REQUEST');
   const body = JSON.stringify({model: input.model, prompt: input.prompt, n: 1, quality: 'low', size: '1024x1024', output_format: 'png', background: 'opaque', moderation: 'auto'});
   if (Buffer.byteLength(body) > IMAGE_NETWORK_LIMITS.maxRequestBytes) throw imageAdapterError('IMAGE_INVALID_REQUEST');
   return body;
@@ -67,15 +69,16 @@ function generationBody(snapshot, providerId) {
 
 // Both explicit slots use this bounded single-PNG JSON profile. Provider/model
 // validation remains distinct, and no response-format negotiation is attempted.
-export function createImageGenerationBody(snapshot) { return generationBody(snapshot, 'openai'); }
-export function createCompatibleImageGenerationBody(snapshot) { return generationBody(snapshot, 'openai-compatible'); }
+export function createImageGenerationBody(snapshot: unknown): string { return generationBody(snapshot, 'openai'); }
+export function createCompatibleImageGenerationBody(snapshot: unknown): string { return generationBody(snapshot, 'openai-compatible'); }
 
 /** sourceBytes is backend-only and never part of a JSON/RPC snapshot. Even a
  * malformed trusted caller must pass the complete source contract, exact hash,
  * byte count, and bounded PNG validation before any transport can be invoked. */
-export async function validateImageEditSource(snapshot, sourceBytes, {signal, providerId = 'openai'} = {}) {
+export interface ImageEditSourceVerification {input: ImageAdapterInput; bytes: Buffer}
+export async function validateImageEditSource(snapshot: unknown, sourceBytes: unknown, {signal, providerId = 'openai'}: {signal?: AbortSignal; providerId?: string} = {}): Promise<ImageEditSourceVerification> {
   const input = parseImageAdapterInput(snapshot, providerId);
-  if (!['mock', 'openai'].includes(providerId) || input.purpose !== 'edit' || !input.sourceImage || !Buffer.isBuffer(sourceBytes) || !sourceBytes.length || sourceBytes.length > IMAGE_EDIT_LIMITS.sourceBytes || sourceBytes.length !== input.sourceImage.byteLength) throw imageAdapterError('IMAGE_INVALID_REQUEST');
+  if (!['mock', 'openai'].includes(providerId) || !('purpose' in input) || input.purpose !== 'edit' || !input.sourceImage || !Buffer.isBuffer(sourceBytes) || !sourceBytes.length || sourceBytes.length > IMAGE_EDIT_LIMITS.sourceBytes || sourceBytes.length !== input.sourceImage.byteLength) throw imageAdapterError('IMAGE_INVALID_REQUEST');
   if (signal?.aborted) throw imageAdapterError('IMAGE_CANCELLED');
   // Copy before the first await: caller mutations cannot change the authorized
   // data URL during PNG validation, DNS or TLS waits. The gateway also copies
@@ -86,11 +89,11 @@ export async function validateImageEditSource(snapshot, sourceBytes, {signal, pr
   try {
     const metadata = await validatePng(bytes, {width: input.sourceImage.width, height: input.sourceImage.height, signal, opaque: true});
     if (metadata.sha256 !== sha256 || metadata.byteLength !== input.sourceImage.byteLength) throw imageAdapterError('IMAGE_INVALID_REQUEST');
-  } catch (error) { throw imageAdapterError(error?.code); }
+  } catch (error) { throw imageAdapterError(typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined); }
   if (signal?.aborted) throw imageAdapterError('IMAGE_CANCELLED');
   return {input, bytes};
 }
-export async function createImageEditBody(snapshot, sourceBytes, {signal} = {}) {
+export async function createImageEditBody(snapshot: unknown, sourceBytes: unknown, {signal}: {signal?: AbortSignal} = {}): Promise<string> {
   const {input, bytes} = await validateImageEditSource(snapshot, sourceBytes, {signal});
   const body = editBody(input, bytes.toString('base64'));
   if (Buffer.byteLength(body) > IMAGE_EDIT_NETWORK_LIMITS.maxRequestBytes) throw imageAdapterError('IMAGE_INVALID_REQUEST');

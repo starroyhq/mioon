@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, stat, cp } from 'node
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import desktopIdentity from '../apps/desktop/identity.cjs';
+import desktopIdentity from '../apps/desktop/identity.ts';
 import { dataPaths, ensureDataIdentity, writeConnection, removeConnection } from '../apps/desktop/src/config.ts';
 import { migrateData } from '../apps/desktop/scripts/migrate-data.ts';
 import { openStore } from '@mioon/business';
@@ -60,7 +60,7 @@ test('both package configs retain security and separate identities, names and ou
 test('packaging refuses missing or opposite-channel staging, including packaged development', async () => {
   const root = await temp();
   await cp(new URL('../packages/business/resources/subtitles/',import.meta.url),path.join(root,'subtitles'),{recursive:true});
-  const { appVersion } = require('../apps/desktop/build-metadata.cjs').readBuildMetadata();
+  const { appVersion } = require('../apps/desktop/build-metadata.ts').readBuildMetadata();
   try {
     for (const identity of [production, development]) {
       const config = require(identity.channel === 'production' ? '../apps/desktop/electron-builder.cjs' : '../apps/desktop/electron-builder.dev.cjs');

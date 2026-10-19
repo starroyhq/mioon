@@ -14,7 +14,7 @@ await mkdir(path.dirname(output), { recursive: true });
 // Only the repository's original geometric/tonal synthetic example is seeded.
 // Migration deliberately excludes tokens, locks and Chromium state.
 await migrateData(path.resolve(desktop, '../../examples/multitrack-project'), path.join(directory, 'user-data/workspace'));
-const env = { ...process.env, MIOON_DESKTOP_USER_DATA: path.join(directory, 'user-data'), MIOON_DESKTOP_SMOKE_OUTPUT: output,
+const env: NodeJS.ProcessEnv = { ...process.env, MIOON_DESKTOP_USER_DATA: path.join(directory, 'user-data'), MIOON_DESKTOP_SMOKE_OUTPUT: output,
   MIOON_ENABLE_LIVE_PROVIDER: '0' };
 for (const name of ['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', ...providerEnvironmentKeys.filter(key=>key!=='MIOON_ENABLE_LIVE_PROVIDER')]) delete env[name];
 const args = [path.join(desktop, 'build')];

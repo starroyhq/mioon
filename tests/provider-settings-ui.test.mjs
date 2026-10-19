@@ -10,7 +10,7 @@ test('provider readiness uses compact, safe, collapsed Base UI controls for ever
   const fixture = `
     import * as React from 'react';
     import { renderToStaticMarkup } from 'react-dom/server.browser';
-    import ProviderSettings from './ProviderSettings.jsx';
+    import ProviderSettings from './ProviderSettings.tsx';
     const capabilities = { id: 'local-model', name: 'Local model', inputModes: ['text'], durations: [4, 8], aspectRatios: ['9:16'] };
     const base = { id: 'example', name: 'Example', modelCapabilities: [capabilities], configuration: {
       missing: ['EXAMPLE_API_KEY', 'EXAMPLE_OUTPUT_HOSTS', 'EXAMPLE_API_KEY', ' EXAMPLE_OUTPUT_HOSTS '],

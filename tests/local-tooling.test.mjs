@@ -24,7 +24,7 @@ test('tooling CLI entry handles canonical and aliased script paths identically',
   const alias = path.join(directory, 'scripts alias 中');
   await symlink(path.join(root, 'scripts'), alias, process.platform === 'win32' ? 'junction' : 'dir');
   const canonical = await realpath(path.join(root, 'scripts/tooling.ts'));
-  const entries = [canonical, path.join(alias, 'tooling.mjs')];
+  const entries = [canonical, path.join(alias, 'tooling.ts')];
   // Windows uses the directory junction above; file symlinks can require privileges.
   if (process.platform !== 'win32') {
     const scriptAlias = path.join(directory, 'tooling alias 中.mjs');
@@ -238,6 +238,13 @@ test('portable manifest is explicit, sorted, present and not broadened by filena
   assert.equal((await discoverTests(directory, {suite: 'full', platform: 'linux'})).at(-1), 'tests/z-native.test.mjs');
   await assert.rejects(discoverTests(directory, {suite: 'full', platform: 'win32'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});
   await assert.rejects(discoverTests(directory, {suite: 'full', platform: 'darwin'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});
+});
+test('full Linux selection supports more than the old 512-file limit within the argv budget', async t => {
+  const {directory} = await fixture(t);
+  for (let index = 0; index < 600; index += 1) await writeFile(path.join(directory, 'tests', `bulk-${index}.test.mjs`), '');
+  const files = await discoverTests(directory, {suite: 'full', platform: 'linux'});
+  assert.ok(files.length >= 600, files.length);
+  assert.equal(files.filter(name => name.endsWith('bulk-0.test.mjs')).length, 1);
 });
 test('missing portable test fails rather than silently skipping it', async t => {
   const {directory} = await fixture(t); await rm(path.join(directory, 'tests', PORTABLE_TEST_FILES[0]));

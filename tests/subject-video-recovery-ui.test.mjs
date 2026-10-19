@@ -108,7 +108,7 @@ function appHarness(t,dispatch,jobs=[]){
   rpc:async(operation,input)=>{state.calls.push({operation,input:copy(input)});return dispatch(operation,input);},
   setPending:items=>{state.pending=items;},openTasks:(canReveal=()=>true)=>{if(canReveal())state.showJobs=true;},setAuth:()=>{},
   refresh:async project=>{state.refreshes.push(project);},notify:(text,type)=>state.notices.push({text,type}),readableError:error=>error.message,
-  requestCounter:{current:0},dataRef:{current:{project:{id:id(1)},shots:[],nodes:[],jobs}},setData:()=>{}};
+  requestCounter:{current:0},clipConnectionBlocked:{current:false},dataRef:{current:{project:{id:id(1)},shots:[],nodes:[],jobs}},setData:()=>{}};
   Object.assign(scope, { captureTaskWorkspaceIntent, readTaskRevealContext: () => { const captured = scope.context(); return { active: true, projectId: captured.projectId, projectEpoch: 0, navigationEpoch: captured.epoch || 0, panelIntent: 0, workspaceScope: JSON.stringify(captured.workspace || 'test-workspace') }; } });
  const run=Function(...Object.keys(scope),`${actual};return runSession;`)(...Object.values(scope));
  return {run,state,currentProject,busy};

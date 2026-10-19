@@ -1,6 +1,8 @@
+import type {DatabaseSync} from 'node:sqlite';
+
 // Additive only. The caller owns the migration transaction and schema version.
 // Never recreate an old table, rewrite legacy JSON, or alter older receipts.
-export function migrateSubjectSchema(db){
+export function migrateSubjectSchema(db: DatabaseSync): void{
  db.exec(`
  CREATE TABLE IF NOT EXISTS subjects(
  id TEXT PRIMARY KEY CHECK(length(CAST(id AS BLOB))=36),projectId TEXT NOT NULL REFERENCES projects(id),

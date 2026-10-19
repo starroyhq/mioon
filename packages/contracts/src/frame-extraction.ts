@@ -1,3 +1,4 @@
+type Rec = Record<string, unknown>;
 import {z} from 'zod';
 import {SOURCE_RANGE_FPS,sourceFrameCount} from './source-range.ts';
 
@@ -6,8 +7,8 @@ import {SOURCE_RANGE_FPS,sourceFrameCount} from './source-range.ts';
 export const FRAME_PROFILE_ID='local-png-1024-v1';
 export const FRAME_SELECTION_RULE='first-pts-at-or-after-v1';
 export const FRAME_PROFILE=Object.freeze({id:FRAME_PROFILE_ID,maxEdge:1024,mimeType:'image/png',upscale:false,selectionRule:FRAME_SELECTION_RULE});
-export const FRAME_STATES=Object.freeze(['queued','running','persisting','succeeded','cancelled_before_start','interrupted','local_result_error','failed']);
-export const FRAME_MUTATION_OPERATIONS=Object.freeze(['frame.extract','frame.task.cancelQueued','frame.task.recoverResult']);
+export const FRAME_STATES=Object.freeze(['queued','running','persisting','succeeded','cancelled_before_start','interrupted','local_result_error','failed'] as const);
+export const FRAME_MUTATION_OPERATIONS=Object.freeze(['frame.extract','frame.task.cancelQueued','frame.task.recoverResult'] as const);
 export const FRAME_LIMITS=Object.freeze({
  inputBytes:4096,snapshotBytes:4096,receiptBytes:4096,taskBytes:16384,requestBytes:12288,responseBytes:4096,
  pageSize:20,maxPageSize:50,cursorBytes:768,activeGlobal:1,queuedPerProject:2,queuedGlobal:8,
@@ -15,10 +16,10 @@ export const FRAME_LIMITS=Object.freeze({
  sourceBytes:512*1024*1024,sourceDuration:600,sourceMaxEdge:4096,sourceMaxPixels:8*1024*1024,
  resultBytes:4*1024*1024,resultMaxEdge:1024,resultMaxPixels:1024*1024,relativePathBytes:1024,
 });
-export const canonicalFrameInput=value=>JSON.stringify(value,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.entries(v).sort(([a],[b])=>a.localeCompare(b))):v);
+export const canonicalFrameInput=(value: unknown): string=>JSON.stringify(value,(_key: string,v: unknown)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.entries(v).sort(([a],[b])=>a.localeCompare(b))):v);
 const encoder=new TextEncoder();
-const bytes=value=>encoder.encode(typeof value==='string'?value:JSON.stringify(value)).length;
-const bounded=(schema,limit)=>schema.refine(value=>bytes(value)<=limit,'Frame record exceeds its byte limit');
+const bytes=(value: unknown): number=>encoder.encode(typeof value==='string'?value:JSON.stringify(value)).length;
+const bounded=<T extends z.ZodTypeAny>(schema: T,limit: number)=>schema.refine(value=>bytes(value)<=limit,'Frame record exceeds its byte limit');
 const id=z.string().uuid(),hash=z.string().regex(/^[a-f0-9]{64}$/);
 const requestId=z.string().min(8).max(200).refine(value=>bytes(value)<=800,'Request ID exceeds its byte limit');
 const revision=z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
@@ -49,7 +50,7 @@ export const frameSnapshotSchema=bounded(z.object({
   duration:z.number().finite().positive().max(FRAME_LIMITS.sourceDuration),width:sourceDimension,height:sourceDimension}).strict(),
  requested:z.object({sourceFrame:frame,fps:z.literal(SOURCE_RANGE_FPS)}).strict(),profile:frameProfileSchema,
 }).strict().refine(value=>value.source.width*value.source.height<=FRAME_LIMITS.sourceMaxPixels,'Source geometry exceeds profile')
- .refine(value=>sourceFrameCount(value.source.duration)!==null&&value.requested.sourceFrame<sourceFrameCount(value.source.duration),'Requested mark is outside frozen source bounds'),FRAME_LIMITS.snapshotBytes);
+ .refine(value=>sourceFrameCount(value.source.duration)!==null&&value.requested.sourceFrame<(sourceFrameCount(value.source.duration) as number),'Requested mark is outside frozen source bounds'),FRAME_LIMITS.snapshotBytes);
 export const frameProbeSchema=z.object({streamIndex:z.number().int().min(0).max(255),timeBaseNumerator:z.literal(1),timeBaseDenominator:z.number().int().min(1).max(1_000_000_000),
  width:sourceDimension,height:sourceDimension,rotation:z.literal(0),sarNumerator:z.literal(1),sarDenominator:z.literal(1)}).strict()
  .refine(value=>value.width*value.height<=FRAME_LIMITS.sourceMaxPixels,'Probe geometry exceeds profile');
@@ -72,15 +73,22 @@ export const frameRequestResponseSchema=z.object({projectId:id,requestId,operati
  .refine(value=>value.operation==='frame.extract'?value.response.state==='queued'&&value.response.revision===1&&!value.response.started:
   value.operation==='frame.task.cancelQueued'?value.response.state==='cancelled_before_start'&&value.response.revision>1&&!value.response.started:
   value.response.state==='persisting'&&value.response.revision>1&&value.response.started,'Receipt must describe the original operation acknowledgement').nullable();
-export const isFrameTaskResponse=value=>frameTaskResponseSchema.safeParse(value).success;
-export const isFrameRequestResponse=value=>frameRequestResponseSchema.safeParse(value).success;
-export function isFrameMutationResponse(operation,input,result){
- if(!FRAME_MUTATION_OPERATIONS.includes(operation)||!frameSchemas[operation].safeParse(input).success||!isFrameTaskResponse(result)||result.projectId!==input.projectId)return false;
- if(operation==='frame.extract')return result.requestId===input.requestId&&result.sourceAssetId===input.sourceAssetId&&result.sourceHash===input.sourceHash&&result.sourceFrame===input.sourceFrame&&result.state==='queued'&&result.revision===1&&!result.started&&result.result===null;
- if(result.id!==input.taskId||result.revision!==input.expectedRevision+1)return false;
- return operation==='frame.task.cancelQueued'?result.state==='cancelled_before_start'&&!result.started:result.state==='persisting'&&result.started;
+const frameOperationSchemas = frameSchemas as Record<string, z.ZodTypeAny>;
+export type FrameTaskResponse = z.infer<typeof frameTaskResponseSchema>;
+export type FrameRequestResponse = z.infer<typeof frameRequestResponseSchema>;
+export const isFrameTaskResponse=(value: unknown): value is FrameTaskResponse=>frameTaskResponseSchema.safeParse(value).success;
+export const isFrameRequestResponse=(value: unknown): value is FrameRequestResponse=>frameRequestResponseSchema.safeParse(value).success;
+export function isFrameMutationResponse(operation: unknown,input: unknown,result: unknown): boolean {
+ const request=input as Rec;
+ if(typeof operation!=='string'||!(FRAME_MUTATION_OPERATIONS as readonly string[]).includes(operation)||!frameOperationSchemas[operation].safeParse(input).success||!isFrameTaskResponse(result)||result.projectId!==request.projectId)return false;
+ const response=result as unknown as Rec;
+ if(operation==='frame.extract')return response.requestId===request.requestId&&response.sourceAssetId===request.sourceAssetId&&response.sourceHash===request.sourceHash&&response.sourceFrame===request.sourceFrame&&response.state==='queued'&&response.revision===1&&!response.started&&response.result===null;
+ if(response.id!==request.taskId||response.revision!==(request.expectedRevision as number)+1)return false;
+ return operation==='frame.task.cancelQueued'?response.state==='cancelled_before_start'&&!response.started:response.state==='persisting'&&response.started===true;
 }
-export function isFrameListResponse(operation,input,result){
- if(operation!=='frame.task.list'||!frameSchemas[operation].safeParse(input).success||!result||typeof result!=='object'||Array.isArray(result)||Object.keys(result).sort().join(',')!=='items,nextCursor,projectId'||result.projectId!==input.projectId||!Array.isArray(result.items)||result.items.length>(input.limit??FRAME_LIMITS.pageSize)||(result.nextCursor!==null&&!cursor.safeParse(result.nextCursor).success))return false;
- return new Set(result.items.map(value=>value?.id)).size===result.items.length&&result.items.every(value=>isFrameTaskResponse(value)&&value.projectId===input.projectId);
+export function isFrameListResponse(operation: unknown,input: unknown,result: unknown): boolean {
+ const request=input as Rec, response=result as Rec | null | undefined;
+ if(operation!=='frame.task.list'||!frameOperationSchemas[operation].safeParse(input).success||!response||typeof response!=='object'||Array.isArray(response)||Object.keys(response).sort().join(',')!=='items,nextCursor,projectId'||response.projectId!==request.projectId||!Array.isArray(response.items)||response.items.length>((request.limit as number|undefined)??FRAME_LIMITS.pageSize)||(response.nextCursor!==null&&!cursor.safeParse(response.nextCursor).success))return false;
+ const items=response.items as Rec[];
+ return new Set(items.map(value=>value?.id)).size===items.length&&items.every(value=>isFrameTaskResponse(value)&&value.projectId===request.projectId);
 }

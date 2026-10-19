@@ -2,7 +2,7 @@ import {z} from 'zod';
 
 // Source ranges use the output timeline's clock, not native/VFR frame indexes.
 export const SOURCE_RANGE_FPS = 30;
-export function sourceFrameCount(duration) {
+export function sourceFrameCount(duration: unknown): number | null {
   if (typeof duration !== 'number' || !Number.isFinite(duration) || duration <= 0) return null;
   // Ignore only binary rounding at an exact timeline-frame boundary. A partial
   // final frame cannot provide a complete 30fps output frame.
@@ -23,18 +23,32 @@ export const sourceRangeSchemas = Object.freeze({
   }).strict().refine(value=>value.outFrame>value.inFrame,{path:['outFrame'],message:'Source range must contain at least one complete frame.'}),
 });
 
-const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-const exactKeys = (value, keys) => object(value) && Object.keys(value).length === keys.length && keys.every(key=>Object.hasOwn(value,key));
+export type SourceRangeGetInput = z.infer<typeof sourceRangeSchemas['asset.range.get']>;
+export type SourceRangeSetInput = z.infer<typeof sourceRangeSchemas['asset.range.set']>;
+export interface SourceRange {inFrame: number; outFrame: number}
+export interface SourceRangeResponse {
+  id: string;
+  assetId: string;
+  projectId: string;
+  revision: number;
+  range: SourceRange | null;
+  sourceFrameCount: number;
+  fps: typeof SOURCE_RANGE_FPS;
+}
+
+const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
+const exactKeys = (value: unknown, keys: readonly string[]): value is Record<string, unknown> => object(value) && Object.keys(value).length === keys.length && keys.every(key=>Object.hasOwn(value,key));
+const integer = (value: unknown): value is number => Number.isSafeInteger(value);
 // Strict acknowledgement envelope. Returning a historical revision is allowed;
 // neither this guard nor request replay asserts that a result is the latest one.
-export function isSourceRangeResponse(value) {
+export function isSourceRangeResponse(value: unknown): value is SourceRangeResponse {
   if (!exactKeys(value,['id','assetId','projectId','revision','range','sourceFrameCount','fps']) ||
       typeof value.assetId !== 'string' || !value.assetId || value.id !== value.assetId ||
       typeof value.projectId !== 'string' || !value.projectId ||
-      !Number.isSafeInteger(value.revision) || value.revision < 0 ||
-      !Number.isSafeInteger(value.sourceFrameCount) || value.sourceFrameCount < 1 || value.fps !== SOURCE_RANGE_FPS) return false;
+      !integer(value.revision) || value.revision < 0 ||
+      !integer(value.sourceFrameCount) || value.sourceFrameCount < 1 || value.fps !== SOURCE_RANGE_FPS) return false;
   if (value.revision === 0) return value.range === null;
-  return exactKeys(value.range,['inFrame','outFrame']) && Number.isSafeInteger(value.range.inFrame) &&
-    value.range.inFrame >= 0 && Number.isSafeInteger(value.range.outFrame) &&
+  return exactKeys(value.range,['inFrame','outFrame']) && integer(value.range.inFrame) &&
+    value.range.inFrame >= 0 && integer(value.range.outFrame) &&
     value.range.outFrame > value.range.inFrame && value.range.outFrame <= value.sourceFrameCount;
 }

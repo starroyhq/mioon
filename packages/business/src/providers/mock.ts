@@ -4,14 +4,21 @@ import {run} from '../media-runtime.ts';
 import {createMockRendererCapability, DRAWTEXT_MESSAGE} from './mock-renderer-capability.ts';
 import { mkdir, realpath, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
+import type {DatabaseSync, SQLInputValue} from 'node:sqlite';
 import { SUBJECT_REFERENCE_PROFILE_VERSION, getSubjectGenerationSnapshotIssue } from '@mioon/contracts';
+import { providerError } from './live-common.ts';
+import type { ProviderContext, ProviderSnapshotView, ProviderReferenceAsset } from './live-common.ts';
 
-const ALIASES = { rejected_before_accept: 'reject', terminal_failure: 'failure', poll_timeout_then_recover: 'timeout' };
+const ALIASES: Readonly<Record<string, string>> = { rejected_before_accept: 'reject', terminal_failure: 'failure', poll_timeout_then_recover: 'timeout' };
 const SCENARIOS = new Set(['success', 'failure', 'delay', 'timeout', 'unknown', 'reject', 'download_fail_once', 'accepted_then_response_lost', ...Object.keys(ALIASES)]);
-const error = (code, message, tags = {}) => Object.assign(new Error(message), { code, ...tags });
-const stable = value => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
+const error = providerError;
+const object = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' ? value as Record<string, unknown> : null;
+const stable = (value: unknown): string => JSON.stringify(value, (_key, item: unknown) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
 
-async function managedDestination(root, destination, signal) {
+export interface MockProviderFactoryOptions {db: DatabaseSync; root: string; now?: () => number}
+type MockTaskRow = Record<string, unknown> & {provider_job_id: string; request_id: string; snapshot_json: string; snapshot_hash: string; scenario: string; created_at_ms: number; ready_at_ms: number; poll_count: number; download_attempts: number; cancelled: number};
+
+async function managedDestination(root: string, destination: string, signal?: AbortSignal): Promise<string> {
   throwIfMediaAborted(signal);
   const base = await realpath(root);
   throwIfMediaAborted(signal);
@@ -29,19 +36,20 @@ async function managedDestination(root, destination, signal) {
 // Unknown capability preserves the existing retryable render path.
 const lacksDrawtext = createMockRendererCapability({run, throwIfMediaAborted});
 
-async function runFfmpeg(args, signal) {
+async function runFfmpeg(args: string[], signal?: AbortSignal): Promise<void> {
   try { await run('ffmpeg', args, { timeout: 60_000, signal }); }
   catch (cause) {
-    if (cause.code === 'MEDIA_CANCELLED' || cause.terminationUnconfirmed) throw cause;
-    if (cause.code !== 'MEDIA_INVALID_CONFIGURATION' && cause.code !== 'MEDIA_SPAWN_FAILED' && await lacksDrawtext(signal)) throw error('MOCK_RENDERER_UNSUPPORTED', DRAWTEXT_MESSAGE, { retryable: false });
-    const message = cause.code === 'MEDIA_INVALID_CONFIGURATION' ? 'Configured renderer must be an absolute executable path.'
-      : cause.code === 'MEDIA_SPAWN_FAILED' ? 'Could not start the simulated video renderer.' : 'Simulated video rendering failed.';
-    throw error('MOCK_RENDER_FAILED', message, { retryable: true, ...(cause.terminationUnconfirmed ? { terminationUnconfirmed: true } : {}) });
+    const failure = object(cause), code = failure?.code;
+    if (code === 'MEDIA_CANCELLED' || failure?.terminationUnconfirmed) throw cause;
+    if (code !== 'MEDIA_INVALID_CONFIGURATION' && code !== 'MEDIA_SPAWN_FAILED' && await lacksDrawtext(signal)) throw error('MOCK_RENDERER_UNSUPPORTED', DRAWTEXT_MESSAGE, { retryable: false });
+    const message = code === 'MEDIA_INVALID_CONFIGURATION' ? 'Configured renderer must be an absolute executable path.'
+      : code === 'MEDIA_SPAWN_FAILED' ? 'Could not start the simulated video renderer.' : 'Simulated video rendering failed.';
+    throw error('MOCK_RENDER_FAILED', message, { retryable: true, ...(failure?.terminationUnconfirmed ? { terminationUnconfirmed: true } : {}) });
   }
 }
 
 /** A durable simulated provider ledger, intentionally independent of application jobs. */
-export function createMockProvider({ db, root, now = Date.now }) {
+export function createMockProvider({ db, root, now = Date.now }: MockProviderFactoryOptions) {
   if (!db?.prepare || !root) throw new TypeError('Mock provider requires a SQLite database and managed root.');
   db.exec(`
     CREATE TABLE IF NOT EXISTS mock_provider_tasks (
@@ -57,41 +65,52 @@ export function createMockProvider({ db, root, now = Date.now }) {
     );
     CREATE INDEX IF NOT EXISTS mock_provider_submissions_request ON mock_provider_submissions(request_id);
   `);
-  const get = id => {
-    const row = db.prepare('SELECT * FROM mock_provider_tasks WHERE provider_job_id = ?').get(id);
+  const get = (id: unknown): MockTaskRow => {
+    const row = db.prepare('SELECT * FROM mock_provider_tasks WHERE provider_job_id = ?').get(id as SQLInputValue) as MockTaskRow | undefined;
     if (!row) throw error('PROVIDER_TASK_NOT_FOUND', 'Simulated provider task was not found.');
     return row;
   };
-  const statusOf = row => {
-    if (row.cancelled) return { status: 'failed', progress: 0, error: { code: 'PROVIDER_CANCELLED', message: 'Simulated provider task was cancelled.' } };
+  const statusOf = (row: MockTaskRow) => {
+    if (row.cancelled) return { status: 'failed' as const, progress: 0, error: { code: 'PROVIDER_CANCELLED', message: 'Simulated provider task was cancelled.' } };
     if (row.scenario === 'timeout' && row.poll_count <= 2) throw error('PROVIDER_POLL_TIMEOUT', 'Simulated provider status request timed out; the task may still be running.', { retryable: true });
-    if (now() < row.ready_at_ms) return { status: 'running', progress: Math.max(0, Math.min(0.95, (now() - row.created_at_ms) / Math.max(1, row.ready_at_ms - row.created_at_ms))) };
-    if (row.scenario === 'failure') return { status: 'failed', progress: 1, error: { code: 'MOCK_GENERATION_FAILED', message: 'Simulated generation failure. You can retry this failed job.' } };
-    return { status: 'succeeded', progress: 1 };
+    if (now() < row.ready_at_ms) return { status: 'running' as const, progress: Math.max(0, Math.min(0.95, (now() - row.created_at_ms) / Math.max(1, row.ready_at_ms - row.created_at_ms))) };
+    if (row.scenario === 'failure') return { status: 'failed' as const, progress: 1, error: { code: 'MOCK_GENERATION_FAILED', message: 'Simulated generation failure. You can retry this failed job.' } };
+    return { status: 'succeeded' as const, progress: 1 };
   };
-  function validate(snapshot) {
-    if (!snapshot || typeof snapshot !== 'object') throw error('INVALID_SNAPSHOT', 'A generation snapshot is required.');
-    if ((snapshot.model ?? 'mock-motion-v1') !== 'mock-motion-v1') throw error('UNSUPPORTED_MODEL', 'Only the simulated motion model is implemented.');
-    const subjectIssue=getSubjectGenerationSnapshotIssue(snapshot,{requireProfilePin:true});
-    if(subjectIssue)throw error(subjectIssue.code,subjectIssue.message);
-    const subject=Object.hasOwn(snapshot,'subjectReference');
-    const references=snapshot.referenceAssets??[];
+  function validate(snapshot: unknown): true {
+    const value = object(snapshot) as ProviderSnapshotView | null;
+    if (!value) throw error('INVALID_SNAPSHOT', 'A generation snapshot is required.');
+    if ((value.model ?? 'mock-motion-v1') !== 'mock-motion-v1') throw error('UNSUPPORTED_MODEL', 'Only the simulated motion model is implemented.');
+    const subjectIssue = getSubjectGenerationSnapshotIssue(snapshot, {requireProfilePin: true});
+    if(subjectIssue)throw error(subjectIssue.code, subjectIssue.message);
+    const subject = Object.hasOwn(value, 'subjectReference');
+    const references: ProviderReferenceAsset[] = (value.referenceAssets ?? []) as ProviderReferenceAsset[];
     if(!Array.isArray(references)||references.length>2)throw error('INVALID_REFERENCE_COUNT','Mock supports text, one first frame, or an explicit frame pair.');
-    if(snapshot.inputProfileVersion===SUBJECT_REFERENCE_PROFILE_VERSION)for(const asset of references){
-      if(!asset||!['first_frame','last_frame','subject_reference'].includes(asset.role))throw error('INVALID_REFERENCE_MANIFEST','Version 3 references require explicit supported roles.');
+    if(value.inputProfileVersion === SUBJECT_REFERENCE_PROFILE_VERSION)for(const asset of references){
+      if(!asset || !['first_frame', 'last_frame', 'subject_reference'].includes(asset.role as string))throw error('INVALID_REFERENCE_MANIFEST','Version 3 references require explicit supported roles.');
     }
-    if(snapshot.lastFrameAssetId!=null&&references.length!==2)throw error('INVALID_REFERENCE_MANIFEST','A declared last frame requires a complete explicit frame pair.');
-    if(snapshot.referenceAssetIds!==undefined&&(!Array.isArray(snapshot.referenceAssetIds)||snapshot.referenceAssetIds.length!==references.length||snapshot.referenceAssetIds.some((id,index)=>id!==references[index]?.id)))throw error('INVALID_REFERENCE_MANIFEST','Reference identities differ from the explicit frame manifest.');
-    if(references.length===2&&(references[0]?.role!=='first_frame'||references[1]?.role!=='last_frame'||!references[0].id||!references[1].id||references[0].id===references[1].id))throw error('INVALID_REFERENCE_MANIFEST','Mock frame pairs require distinct assets and explicit first_frame/last_frame roles.');
-    if(references.length===2&&Object.hasOwn(snapshot,'lastFrameAssetId')&&snapshot.lastFrameAssetId!==references[1].id)throw error('INVALID_REFERENCE_MANIFEST','Last-frame selection differs from the explicit frame manifest.');
-    if(snapshot.referenceBindings!==undefined){const bindings=snapshot.referenceBindings;if(!Array.isArray(bindings)||bindings.length!==references.length||Object.keys(bindings).length!==bindings.length||bindings.some((binding,index)=>!binding||Object.keys(binding).some(key=>!['role','assetId','sha256'].includes(key))||binding.assetId!==references[index].id||binding.sha256!==references[index].sha256||binding.role!==(references[index].role??'first_frame')))throw error('INVALID_REFERENCE_MANIFEST','Explicit frame bindings differ from the frozen image manifest.');}
-    if(!subject&&references.length===1&&references[0]?.role!==undefined&&references[0].role!=='first_frame')throw error(['first_frame','last_frame','reference_image','subject_reference','style_reference'].includes(references[0].role)?'UNSUPPORTED_INPUT_ROLE':'UNKNOWN_INPUT_ROLE','A last frame requires a first frame; other reference roles are unsupported.');
-    const requestedScenario = snapshot.parameters?.scenario ?? 'success';
-    if (!SCENARIOS.has(requestedScenario)) throw error('INVALID_SCENARIO', 'Unknown mock scenario.');
-    if (snapshot.aspectRatio !== '9:16' || ![2, 4, 8].includes(snapshot.duration)) throw error('UNSUPPORTED_CAPABILITY', 'Mock supports portrait 9:16 and 2, 4, or 8 seconds.');
+    if(value.lastFrameAssetId != null && references.length !== 2)throw error('INVALID_REFERENCE_MANIFEST','A declared last frame requires a complete explicit frame pair.');
+    if(value.referenceAssetIds !== undefined){
+      const ids = value.referenceAssetIds;
+      if(!Array.isArray(ids) || ids.length !== references.length || ids.some((id, index) => id !== references[index]?.id))throw error('INVALID_REFERENCE_MANIFEST','Reference identities differ from the explicit frame manifest.');
+    }
+    if(references.length === 2 && (references[0]?.role !== 'first_frame' || references[1]?.role !== 'last_frame' || !references[0].id || !references[1].id || references[0].id === references[1].id))throw error('INVALID_REFERENCE_MANIFEST','Mock frame pairs require distinct assets and explicit first_frame/last_frame roles.');
+    if(references.length === 2 && Object.hasOwn(value, 'lastFrameAssetId') && value.lastFrameAssetId !== references[1].id)throw error('INVALID_REFERENCE_MANIFEST','Last-frame selection differs from the explicit frame manifest.');
+    if(value.referenceBindings !== undefined){
+      const bindings = value.referenceBindings;
+      if(!Array.isArray(bindings) || bindings.length !== references.length || Object.keys(bindings).length !== bindings.length || bindings.some((rawBinding, index) => {
+        const binding = object(rawBinding);
+        return !binding || Object.keys(binding).some(key => !['role', 'assetId', 'sha256'].includes(key)) || binding.assetId !== references[index].id || binding.sha256 !== references[index].sha256 || binding.role !== (references[index].role ?? 'first_frame');
+      }))throw error('INVALID_REFERENCE_MANIFEST','Explicit frame bindings differ from the frozen image manifest.');
+    }
+    if(!subject && references.length === 1 && references[0]?.role !== undefined && references[0].role !== 'first_frame')throw error(['first_frame','last_frame','reference_image','subject_reference','style_reference'].includes(references[0].role as string) ? 'UNSUPPORTED_INPUT_ROLE' : 'UNKNOWN_INPUT_ROLE','A last frame requires a first frame; other reference roles are unsupported.');
+    const parameters = object(value.parameters ?? {}) ?? {};
+    const requestedScenario = parameters.scenario ?? 'success';
+    if (typeof requestedScenario !== 'string' || !SCENARIOS.has(requestedScenario)) throw error('INVALID_SCENARIO', 'Unknown mock scenario.');
+    if (value.aspectRatio !== '9:16' || typeof value.duration !== 'number' || ![2, 4, 8].includes(value.duration)) throw error('UNSUPPORTED_CAPABILITY', 'Mock supports portrait 9:16 and 2, 4, or 8 seconds.');
     const scenario = ALIASES[requestedScenario] ?? requestedScenario;
-    const delayMs = snapshot.parameters?.delayMs ?? (scenario === 'delay' ? 2000 : 250);
-    if (!Number.isFinite(delayMs) || delayMs < 0 || delayMs > 120_000) throw error('INVALID_DELAY', 'Mock delay must be between 0 and 120000 milliseconds.');
+    const delayMs = parameters.delayMs ?? (scenario === 'delay' ? 2000 : 250);
+    if (typeof delayMs !== 'number' || !Number.isFinite(delayMs) || delayMs < 0 || delayMs > 120_000) throw error('INVALID_DELAY', 'Mock delay must be between 0 and 120000 milliseconds.');
     return true;
   }
   return {
@@ -101,24 +120,25 @@ export function createMockProvider({ db, root, now = Date.now }) {
       aspectRatios: ['9:16'], durations: [2, 4, 8], maxReferenceImages: 2, referenceSimulation: 'metadata-only', depictsPromptOrReferences: false, mock: true, configured: true, enabled: true,
       scenarios: [...SCENARIOS], supportsRemoteCancel: true, reconciliation: 'request-id',
     },
-    async submit(snapshot, context = {}) {
+    async submit(snapshot: unknown, context: ProviderContext = {}): Promise<{providerJobId: string}> {
       throwIfMediaAborted(context.signal);
       validate(snapshot);
       const requestId = context.requestId;
       if (typeof requestId !== 'string' || !requestId || requestId.length > 256) throw error('INVALID_REQUEST_ID', 'A bounded request ID is required.');
-      const requestedScenario = snapshot.parameters?.scenario ?? 'success';
-      const scenario = ALIASES[requestedScenario] ?? requestedScenario;
-      const delayMs = snapshot.parameters?.delayMs ?? (scenario === 'delay' ? 2000 : 250);
+      const value = snapshot as ProviderSnapshotView, parameters = object(value.parameters ?? {}) ?? {};
+      const requestedScenario = parameters.scenario ?? 'success';
+      const scenario = typeof requestedScenario === 'string' ? (ALIASES[requestedScenario] ?? requestedScenario) : 'success';
+      const delayMs = typeof parameters.delayMs === 'number' ? parameters.delayMs : (scenario === 'delay' ? 2000 : 250);
       const json = stable(snapshot), hash = createHash('sha256').update(json).digest('hex');
       const timestamp = now();
       context.beforeSubmit?.();throwIfMediaAborted(context.signal);
       db.exec('SAVEPOINT mock_submission');
-      let taskId, failure;
+      let taskId: string | undefined, failure: Error | undefined;
       try {
         // Counts invocations, not accepted tasks: a hidden duplicate POST is observable.
         const record = db.prepare('INSERT INTO mock_provider_submissions(request_id,job_id,created_at_ms,outcome) VALUES(?,?,?,?)').run(requestId, context.jobId ?? null, timestamp, 'attempted');
-        const existing = db.prepare('SELECT * FROM mock_provider_tasks WHERE request_id = ?').get(requestId);
-        let outcome;
+        const existing = db.prepare('SELECT * FROM mock_provider_tasks WHERE request_id = ?').get(requestId) as MockTaskRow | undefined;
+        let outcome: string;
         if (existing) {
           if (existing.snapshot_hash !== hash) {
             failure = error('IDEMPOTENCY_CONFLICT', 'Request ID was already used for a different snapshot.');
@@ -143,23 +163,23 @@ export function createMockProvider({ db, root, now = Date.now }) {
         throw cause;
       }
       if (failure) throw failure;
-      return { providerJobId: taskId };
+      return { providerJobId: taskId as string };
     },
-    async poll(providerJobId, context = {}) {
+    async poll(providerJobId: string, context: ProviderContext = {}) {
       throwIfMediaAborted(context.signal);
       get(providerJobId);
       db.prepare('UPDATE mock_provider_tasks SET poll_count = poll_count + 1 WHERE provider_job_id = ?').run(providerJobId);
       const status = statusOf(get(providerJobId));
       // A render that cannot succeed on this FFmpeg ends the job now instead of retrying the download for ever.
-      if (status.status === 'succeeded' && await lacksDrawtext(context.signal)) return { status: 'failed', progress: 1, error: { code: 'MOCK_RENDERER_UNSUPPORTED', message: DRAWTEXT_MESSAGE, retryable: false } };
+      if (status.status === 'succeeded' && await lacksDrawtext(context.signal)) return { status: 'failed' as const, progress: 1, error: { code: 'MOCK_RENDERER_UNSUPPORTED', message: DRAWTEXT_MESSAGE, retryable: false } };
       return status;
     },
-    async reconcile(requestId, context = {}) {
+    async reconcile(requestId: string, context: ProviderContext = {}) {
       throwIfMediaAborted(context.signal);
-      const row = db.prepare('SELECT provider_job_id FROM mock_provider_tasks WHERE request_id = ?').get(requestId);
+      const row = db.prepare('SELECT provider_job_id FROM mock_provider_tasks WHERE request_id = ?').get(requestId) as {provider_job_id: string} | undefined;
       return row ? { providerJobId: row.provider_job_id } : null;
     },
-    async download(providerJobId, destination, context = {}) {
+    async download(providerJobId: string, destination: string, context: ProviderContext = {}) {
       const { signal } = context;
       throwIfMediaAborted(signal);
       const row = get(providerJobId);
@@ -169,7 +189,7 @@ export function createMockProvider({ db, root, now = Date.now }) {
       const output = await managedDestination(root, destination, signal);
       throwIfMediaAborted(signal);
       const temporary = `${output}.${randomUUID()}.partial.mp4`;
-      const snapshot = JSON.parse(row.snapshot_json);
+      const snapshot = JSON.parse(row.snapshot_json) as {duration: number};
       const hue = parseInt(row.snapshot_hash.slice(0, 4), 16) % 360;
       try {
         await runFfmpeg([
@@ -184,7 +204,7 @@ export function createMockProvider({ db, root, now = Date.now }) {
       } finally { await rm(temporary, { force: true }); }
       return { mimeType: 'video/mp4', width: 360, height: 640, duration: snapshot.duration, isMock: true };
     },
-    async cancel(providerJobId, context = {}) {
+    async cancel(providerJobId: string, context: ProviderContext = {}) {
       throwIfMediaAborted(context.signal);
       const row = get(providerJobId);
       if (row.cancelled) return { cancelled: true, remoteCancelled: true, scope: 'remote' };
@@ -193,11 +213,11 @@ export function createMockProvider({ db, root, now = Date.now }) {
       db.prepare('UPDATE mock_provider_tasks SET cancelled = 1 WHERE provider_job_id = ?').run(providerJobId);
       return { cancelled: true, remoteCancelled: true, scope: 'remote' };
     },
-    stats(requestId) {
+    stats(requestId?: unknown) {
       const filter = requestId === undefined ? '' : ' WHERE request_id = ?';
-      const args = requestId === undefined ? [] : [requestId];
-      const submitted = db.prepare(`SELECT COUNT(*) AS n FROM mock_provider_submissions${filter}`).get(...args);
-      const tasks = db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(download_attempts),0) AS downloads, COALESCE(SUM(poll_count),0) AS polls FROM mock_provider_tasks${filter}`).get(...args);
+      const args: SQLInputValue[] = requestId === undefined ? [] : [requestId as SQLInputValue];
+      const submitted = db.prepare(`SELECT COUNT(*) AS n FROM mock_provider_submissions${filter}`).get(...args) as {n: number};
+      const tasks = db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(download_attempts),0) AS downloads, COALESCE(SUM(poll_count),0) AS polls FROM mock_provider_tasks${filter}`).get(...args) as {n: number; downloads: number; polls: number};
       return { submissionCount: submitted.n, taskCount: tasks.n, downloadAttempts: tasks.downloads, pollCount: tasks.polls };
     },
   };

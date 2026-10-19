@@ -241,19 +241,19 @@ function renderer(f, options = {}) {
     }
     if (name === 'react') return react;
     if (name === '@mioon/contracts') return { IMAGE_LIMITS };
-    if (name === './image-generation.js') return { ...imageLogic, createImageGenerationSession: options => createImageGenerationSession({ ...options, api: f.api, storage: f.storage, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) };
+    if (name === './image-generation.ts') return { ...imageLogic, createImageGenerationSession: options => createImageGenerationSession({ ...options, api: f.api, storage: f.storage, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) };
     if (name === './image-edit-intent.ts') return imageEditIntents;
-    if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
-    if (name === './ComfyImageSettings.jsx') return { __esModule: true, default: 'ComfyImageSettings' };
-    if (name === './ComfyImageDetails.jsx') return { ComfyImageReviewDetails: 'ComfyImageReviewDetails', ComfyImageTaskDetails: 'ComfyImageTaskDetails' };
-    if (name === './comfy-image-settings.js') return { comfyConnectorAvailabilityDescriptor, createComfyImageSettingsClient: () => ({ read: async () => null }) };
+    if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => visible };
+    if (name === './ComfyImageSettings.tsx') return { __esModule: true, default: 'ComfyImageSettings' };
+    if (name === './ComfyImageDetails.tsx') return { ComfyImageReviewDetails: 'ComfyImageReviewDetails', ComfyImageTaskDetails: 'ComfyImageTaskDetails' };
+    if (name === './comfy-image-settings.ts') return { comfyConnectorAvailabilityDescriptor, createComfyImageSettingsClient: () => ({ read: async () => null }) };
     // This element-tree harness adapts only the status wrapper; owner semantics have dedicated tests.
     if (name === './SettingsNavigationSlot.tsx') return { __esModule: true, default: 'SettingsNavigationSlot' };
-    if (name === './ImageSettings.jsx') return { __esModule: true, default: 'ImageSettings' };
-    if (name === './image-settings.js') return { createImageSettingsClient: options => options?.slot === 'custom' ? f.customSettingsClient : f.settingsClient };
-    if (name === './icons.jsx') return { default: 'Icon' };
+    if (name === './ImageSettings.tsx') return { __esModule: true, default: 'ImageSettings' };
+    if (name === './image-settings.ts') return { createImageSettingsClient: options => options?.slot === 'custom' ? f.customSettingsClient : f.settingsClient };
+    if (name === './icons.tsx') return { default: 'Icon' };
     if (name === './image-generation.css') return {};
-    if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.jsx') return primitive;
+    if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return primitive;
     throw Error(name);
   };
   Function('module', 'exports', 'require', transformSync(componentSource, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, require);

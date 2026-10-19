@@ -1,16 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp} from 'node:fs/promises';
+import {mkdtemp, realpath} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import http from 'node:http';
+import path from 'node:path';
+import {tmpdir} from 'node:os';
 import {startServer} from '@mioon/server';
 const require=createRequire(new URL('../apps/web/package.json',import.meta.url));
 const {createServer}=await import(require.resolve('vite'));
 
 test('Vite dev proxy validates incoming origins before adapting to the strict backend boundary',async()=>{
  const token='synthetic-development-proxy-test-token';
- const backend=await startServer({dataDir:await mkdtemp('/tmp/wb-proxy-'),port:4318,token});
+ const backend=await startServer({dataDir:await mkdtemp(path.join(await realpath(tmpdir()),'wb-proxy-')),port:4318,token});
  let vite;
  try{
   vite=await createServer({root:fileURLToPath(new URL('../apps/web',import.meta.url)),configFile:fileURLToPath(new URL('../apps/web/vite.config.ts',import.meta.url)),logLevel:'silent'});await vite.listen();

@@ -15,7 +15,7 @@ let closing = false;
 async function close() {
   if (closing) return;
   closing = true;
-  try { await service.close(); } catch (error) { console.error('Shutdown failed:', error.code || error.name); process.exitCode = 1; }
+  try { await service.close(); } catch (error) { const fields = error as {code?: unknown; name?: unknown} | null; console.error('Shutdown failed:', fields?.code || fields?.name); process.exitCode = 1; }
 }
 process.on('SIGTERM', close);
 process.on('SIGINT', close);

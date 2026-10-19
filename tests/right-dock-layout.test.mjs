@@ -7,7 +7,7 @@ const read = name => readFileSync(new URL(`../apps/web/src/${name}`, import.meta
 const css = read('styles.css');
 
 test('the clip inspector leads with the fields people edit most and keeps source and replacement after them', () => {
-  const source = read('TimelineInspector.jsx');
+  const source = read('TimelineInspector.tsx');
   const order = ['id="clip-name"', 'id="clip-track"', 'id="clip-start"', 'id="clip-source-in"',
     "timeline.inspector.rect", '<ClipAudioControls', '<div className="clip-source">', '<ClipSourceReplacement', '<footer className="edit-inspector-save"'];
   const at = order.map(marker => source.indexOf(marker));
@@ -21,7 +21,7 @@ test('the clip inspector leads with the fields people edit most and keeps source
 });
 
 test('Agent authorization status, review entrance and send stay in the sticky composer; explicit consent belongs to its review dialog', () => {
-  const source = read('AgentPanel.jsx');
+  const source = read('AgentPanel.tsx');
   const start = source.indexOf('<div className="agent-chat-composer-input">'), end = source.indexOf('<p className="agent-chat-stop-note">');
   assert.ok(start > 0 && end > start);
   const block = source.slice(start, end);
@@ -41,7 +41,7 @@ test('Agent authorization status, review entrance and send stay in the sticky co
 });
 
 test('selecting a shot, node or clip closes reference overlays after the existing navigation fence', () => {
-  const app = read('App.jsx');
+  const app = read('App.tsx');
   assert.match(app, /function leaveReferencePage\(\) \{ setShowTasks\(false\); setShowDelivery\(false\); \}/);
   const inspect = app.slice(app.indexOf('async function inspect('), app.indexOf('function checkGeneration('));
   const selectClip = app.slice(app.indexOf('async function selectClip('), app.indexOf('async function selectClip(') + 2000);
@@ -56,13 +56,13 @@ test('selecting a shot, node or clip closes reference overlays after the existin
 });
 
 test('the generate button explains why it is idle while the title or prompt text still has to be saved', () => {
-  const inspector = read('Inspector.jsx');
+  const inspector = read('Inspector.tsx');
   assert.match(inspector, /data-testid="generation-save-first"[^>]*>[\s\S]*?inspector\.saveTextFirst/);
   assert.match(inspector, /dirty && !textBlocksLegacy \? t\('inspector.saveGenerate'\) : t\('inspector.generateShot'\)/);
 });
 
 test('an empty timeline is flagged before Check, and the empty preview offers building it from the storyboard', () => {
-  const app = read('App.jsx'), preview = read('Preview.jsx'), preflight = read('TimelineExportPreflight.jsx');
+  const app = read('App.tsx'), preview = read('Preview.tsx'), preflight = read('TimelineExportPreflight.tsx');
   // The topbar button stays an always-open entrance to recovery (export-preflight-ui pins its exact source).
   assert.match(app, /<WorkbenchButton variant="primary"[^>]*data-testid="export-timeline" disabled=\{!canOpenExport\} onClick=\{openTimelineExport\}>/);
   assert.match(preflight, /Array\.isArray\(timeline\?\.clips\) && timeline\.clips\.length === 0 && <p className="notice warning" data-testid="preflight-empty-timeline">/);

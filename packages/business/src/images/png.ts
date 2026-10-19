@@ -12,30 +12,31 @@ const crcTable = Uint32Array.from({length: 256}, (_, value) => {
   for (let bit = 0; bit < 8; bit++) value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
   return value >>> 0;
 });
-const invalid = (code = 'IMAGE_PNG_INVALID') => Object.assign(new Error(code === 'IMAGE_CANCELLED' ? 'Image validation cancelled.' : 'Image bytes do not match the supported PNG profile.'), {code, dispatched: false, outcomeUnknown: false});
-function checkAbort(signal) { if (signal?.aborted) throw invalid('IMAGE_CANCELLED'); }
-function crc32(data) {
+export interface ImagePngError extends Error {code: string; dispatched: boolean; outcomeUnknown: boolean}
+const invalid = (code = 'IMAGE_PNG_INVALID'): ImagePngError => Object.assign(new Error(code === 'IMAGE_CANCELLED' ? 'Image validation cancelled.' : 'Image bytes do not match the supported PNG profile.'), {code, dispatched: false, outcomeUnknown: false});
+function checkAbort(signal?: AbortSignal): void { if (signal?.aborted) throw invalid('IMAGE_CANCELLED'); }
+function crc32(data: Uint8Array): number {
   let crc = 0xffffffff;
   for (const byte of data) crc = crcTable[(crc ^ byte) & 255] ^ (crc >>> 8);
   return (crc ^ 0xffffffff) >>> 0;
 }
-function chunk(type, data) {
+function chunk(type: string, data: Buffer): Buffer {
   const result = Buffer.alloc(data.length + 12);
   result.writeUInt32BE(data.length, 0); result.write(type, 4, 4, 'ascii'); data.copy(result, 8);
   result.writeUInt32BE(crc32(result.subarray(4, data.length + 8)), data.length + 8);
   return result;
 }
-function validDimensions(width, height) {
-  return Number.isSafeInteger(width) && Number.isSafeInteger(height) && width > 0 && height > 0 && width <= IMAGE_PNG_LIMITS.maxEdge && height <= IMAGE_PNG_LIMITS.maxEdge && width * height <= IMAGE_PNG_LIMITS.maxPixels;
+function validDimensions(width: unknown, height: unknown): boolean {
+  return typeof width === 'number' && typeof height === 'number' && Number.isSafeInteger(width) && Number.isSafeInteger(height) && width > 0 && height > 0 && width <= IMAGE_PNG_LIMITS.maxEdge && height <= IMAGE_PNG_LIMITS.maxEdge && width * height <= IMAGE_PNG_LIMITS.maxPixels;
 }
-function keywordEnd(data) {
+function keywordEnd(data: Buffer): number {
   const end = data.indexOf(0);
   if (end < 1 || end > 79) throw invalid();
   const keyword = data.subarray(0, end);
   if (keyword[0] === 32 || keyword.at(-1) === 32 || keyword.some((byte, index) => !((byte >= 32 && byte <= 126) || byte >= 161) || (byte === 32 && keyword[index - 1] === 32))) throw invalid();
   return end;
 }
-function validateAncillary(type, data, {colorType, beforeData, beforePalette, seen}) {
+function validateAncillary(type: string, data: Buffer, {colorType, beforeData, beforePalette, seen}: {colorType: number | undefined; beforeData: boolean; beforePalette: boolean; seen: Set<string>}): void {
   const single = ['cHRM', 'gAMA', 'sRGB', 'sBIT', 'pHYs', 'bKGD', 'tIME', 'caBX'];
   if (single.includes(type) && seen.has(type)) throw invalid();
   if (['cHRM', 'gAMA', 'sRGB', 'sBIT'].includes(type) && (!beforeData || !beforePalette)) throw invalid();
@@ -72,24 +73,25 @@ function validateAncillary(type, data, {colorType, beforeData, beforePalette, se
     default: throw invalid('IMAGE_PNG_UNSUPPORTED');
   }
 }
-function paeth(a, b, c) {
+function paeth(a: number, b: number, c: number): number {
   const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
   return pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
 }
 /** Validate every compressed scanline without retaining a decoded image. At most
  * two rows plus one 16 KiB inflate chunk are live. The compressed input must be
  * exactly one complete zlib stream (no ignored tail, concatenation or truncation). */
-async function validateScanlines(idat, width, height, channels, {signal, requireOpaque}) {
+async function validateScanlines(idat: readonly Buffer[], width: number, height: number, channels: number, {signal, requireOpaque}: {signal?: AbortSignal; requireOpaque: boolean}): Promise<void> {
   const stride = width * channels, expected = (stride + 1) * height;
   let current = Buffer.alloc(stride), previous = Buffer.alloc(stride), position = 0, rows = 0, outputBytes = 0, filter = 0;
   const inflater = createInflate({chunkSize: 16 * 1024});
   const source = Readable.from(idat);
   const abort = () => { source.destroy(invalid('IMAGE_CANCELLED')); inflater.destroy(invalid('IMAGE_CANCELLED')); };
-  source.on('error', error => inflater.destroy(error));
+  source.on('error', (error: Error) => inflater.destroy(error));
   signal?.addEventListener('abort', abort, {once: true});
   try {
     checkAbort(signal); source.pipe(inflater);
-    for await (const bytes of inflater) {
+    for await (const chunk of inflater) {
+      const bytes: Buffer = chunk;
       checkAbort(signal);
       outputBytes += bytes.length;
       if (outputBytes > expected) throw invalid('IMAGE_PNG_TOO_LARGE');
@@ -106,15 +108,19 @@ async function validateScanlines(idat, width, height, channels, {signal, require
     if (outputBytes !== expected || position !== 0 || rows !== height || inflater.bytesWritten !== idat.reduce((sum, item) => sum + item.length, 0)) throw invalid();
   } catch (error) {
     if (signal?.aborted) throw invalid('IMAGE_CANCELLED');
-    if (['IMAGE_PNG_INVALID', 'IMAGE_PNG_UNSUPPORTED', 'IMAGE_PNG_TOO_LARGE'].includes(error?.code)) throw error;
+    const code = typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string' ? error.code : undefined;
+    if (code && ['IMAGE_PNG_INVALID', 'IMAGE_PNG_UNSUPPORTED', 'IMAGE_PNG_TOO_LARGE'].includes(code)) throw error;
     throw invalid();
   } finally { signal?.removeEventListener('abort', abort); source.destroy(); inflater.destroy(); }
 }
-export async function validatePng(bytes, {width = 1024, height = 1024, signal, opaque = true} = {}) {
+export interface PngMetadata {mimeType: 'image/png'; width: number; height: number; byteLength: number; sha256: string}
+export interface ValidatePngOptions {width?: unknown; height?: unknown; signal?: AbortSignal; opaque?: boolean}
+export async function validatePng(bytes: unknown, {width = 1024, height = 1024, signal, opaque = true}: ValidatePngOptions = {}): Promise<PngMetadata> {
   checkAbort(signal);
   if (!validDimensions(width, height) || !Buffer.isBuffer(bytes) || bytes.length < 57 || bytes.length > IMAGE_PNG_LIMITS.maxBytes || !bytes.subarray(0, 8).equals(signature)) throw invalid();
-  const idat = [], seen = new Set();
-  let offset = 8, count = 0, colorType, dataStarted = false, dataEnded = false, ended = false, metadataBytes = 0;
+  const outputWidth = width as number, outputHeight = height as number;
+  const idat: Buffer[] = [], seen = new Set<string>();
+  let offset = 8, count = 0, colorType: number | undefined, dataStarted = false, dataEnded = false, ended = false, metadataBytes = 0;
   while (offset < bytes.length) {
     checkAbort(signal);
     if (++count > IMAGE_PNG_LIMITS.maxChunks || bytes.length - offset < 12) throw invalid();
@@ -148,22 +154,22 @@ export async function validatePng(bytes, {width = 1024, height = 1024, signal, o
     if (ended) break;
   }
   if (!ended || offset !== bytes.length) throw invalid();
-  await validateScanlines(idat, width, height, colorType === 6 ? 4 : 3, {signal, requireOpaque: opaque});
+  await validateScanlines(idat, outputWidth, outputHeight, colorType === 6 ? 4 : 3, {signal, requireOpaque: opaque});
   checkAbort(signal);
-  return {mimeType: 'image/png', width, height, byteLength: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex')};
+  return {mimeType: 'image/png', width: outputWidth, height: outputHeight, byteLength: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex')};
 }
 
 const deflateAsync = promisify(deflate);
-const letters = {M: ['10001','11011','10101','10101','10001','10001','10001'], O: ['01110','10001','10001','10001','10001','10001','01110'], C: ['01111','10000','10000','10000','10000','10000','01111'], K: ['10001','10010','10100','11000','10100','10010','10001']};
+const letters: Readonly<Record<string, readonly string[]>> = {M: ['10001','11011','10101','10101','10001','10001','10001'], O: ['01110','10001','10001','10001','10001','10001','01110'], C: ['01111','10000','10000','10000','10000','10000','01111'], K: ['10001','10010','10100','11000','10100','10010','10001']};
 /** An unmistakable, static synthetic test card. No prompt or provider data is
  * used to draw it; this is never described as a model depiction of the prompt. */
-export async function renderMockImagePng({signal} = {}) {
+export async function renderMockImagePng({signal}: {signal?: AbortSignal} = {}): Promise<Buffer> {
   checkAbort(signal);
   const width = 1024, height = 1024, stride = width * 3 + 1, raw = Buffer.alloc(stride * height);
   for (let y = 0; y < height; y++) {
     if (y % 32 === 0) { await yieldTurn(); checkAbort(signal); }
     for (let x = 0; x < width; x++) {
-      let color = [20, 29, 48];
+      let color: readonly [number, number, number] = [20, 29, 48];
       if (x % 64 < 2 || y % 64 < 2) color = [32, 44, 66];
       if (x >= 112 && x < 912 && y >= 112 && y < 912) color = [35, 54, 81];
       if (x >= 144 && x < 880 && y >= 144 && y < 552) color = [93, 165, 205];
@@ -175,7 +181,7 @@ export async function renderMockImagePng({signal} = {}) {
         const letter = 'MOCK'[Math.floor(tx / 6)], column = tx % 6;
         if (column < 5 && letters[letter]?.[ty][column] === '1') color = [242, 202, 118];
       }
-      const at = y * stride + 1 + x * 3; raw[at] = color[0]; raw[at + 1] = color[1]; raw[at + 2] = color[2];
+      const at = y * stride + 1 + x * 3; raw[at] = color[0]!; raw[at + 1] = color[1]!; raw[at + 2] = color[2]!;
     }
   }
   const compressed = await deflateAsync(raw, {level: 6}); checkAbort(signal);

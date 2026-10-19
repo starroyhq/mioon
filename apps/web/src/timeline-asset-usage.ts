@@ -32,7 +32,7 @@ export interface TimelineAssetUsageInput {
 }
 
 // Current saved-timeline structural limits, from timeline-replacement.mjs and
-// timeline-inputs.mjs. This projection deliberately does not validate render
+// timeline-inputs.ts. This projection deliberately does not validate render
 // settings, codec support, source availability, geometry relationships,
 // subtitles or drafts. Extra source metadata only fences navigation identity.
 const MAX_TRACKS = 12;

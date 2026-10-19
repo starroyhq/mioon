@@ -3,11 +3,13 @@ import { createDesktopLutRecoveryStore } from './lut-recovery-store.ts';
 import { CLIP_LUT_RECOVERY_CHANNEL } from '../../../packages/contracts/src/clip-lut-recovery.ts';
 import { calculateWorkspaceScope } from '../../../packages/contracts/src/workspace-scope.ts';
 import { validatePrivateDirectory, validateManagedFile, readPrivateFile, removePrivateFile, writePrivateFileAtomic } from '@mioon/contracts/private-storage';
+import type {ReadPrivateFileOptions} from '@mioon/contracts/private-storage';
 import { createAppLanguageHost } from './app-language-host.ts';
 import { APP_LANGUAGE_CHANNEL } from '../../../packages/i18n/src/preference.ts';
 import { resolveLocale } from '../../../packages/i18n/src/locale.ts';
 import { nativeText as nt, setNativeLanguageReader } from './app-language-text.ts';
 import { app, BrowserWindow, Menu, session, dialog, utilityProcess, safeStorage, ipcMain, shell, nativeTheme } from 'electron';
+import type {IpcMainInvokeEvent, MenuItemConstructorOptions, Session, WebContents} from 'electron';
 import {createWorkspaceToolsHost} from './workspace-tools-host.ts';
 import {WORKSPACE_TOOLS_CHANNEL} from '../../../packages/contracts/src/workspace-info.ts';
 import {inspectMediaTools} from '../../../packages/business/src/media-tool-diagnostics.ts';
@@ -16,92 +18,144 @@ import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { prepareDesktopStorage, readAppLanguagePreference, writeAppLanguagePreference, showStorageStartupFailure, storageFailureDialog, ensureDataIdentity, readToolConfig, validateTools, saveToolConfig, utilityEnvironment, writeConnection, removeConnectionOnShutdown } from './config.ts';
-import desktopIdentity from '../identity.cjs';
+import type {DesktopIdentity, DesktopPaths, ToolPaths, ToolValidation} from './config.ts';
+import desktopIdentity from '../identity.ts';
 import { BackendSupervisor } from './supervisor.ts';
+import type {BackendReady, BackendRuntime} from './supervisor.ts';
 import { stopBackendForQuit } from './shutdown.ts';
 import { createDesktopStartup } from './startup.ts';
 import { createDesktopAgentSettings } from './secret-store.ts';
+import type {DesktopAgentSettings} from './secret-store.ts';
 import { createDesktopImageSecretCodec } from './image-secret-store.ts';
 import { createProjectWindowHost } from './project-window-host.ts';
+import type {ProjectWindowFrame, ProjectWindowOwner, ProjectWindowWebContents} from './project-window-host.ts';
 import { createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity } from './native-audio-preview-host.ts';
 import { NATIVE_AUDIO_CHANNEL } from './native-audio-preview-protocol.ts';
 import { consumeNativeProjectEntry } from './project-entry-admission.ts';
 import { observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident } from './project-window-recovery.ts';
 import { MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjectWindowQuitRouter } from './project-window-quit.ts';
+import type {ProjectWindowQuitRouter} from './project-window-quit.ts';
 import { confirmOwnedWindowRestart } from './project-window-confirmation.ts';
 import { PROJECT_WINDOW_CHANNEL } from './project-window-protocol.ts';
 import { installNativeCloseAdmission } from './native-close.ts';
 import { secureWebPreferences, sessionCookie, installSessionPolicy, installWindowPolicy, isAllowedNavigation } from './security.ts';
 import { windowChromeOptions } from './window-chrome.ts';
 import { createDesktopWindowAppearance } from './window-appearance.ts';
+import type {DesktopStartReport} from './smoke-checks.ts';
+
+type DesktopStartup = ReturnType<typeof createDesktopStartup>;
+type ProjectWindowHost = ReturnType<typeof createProjectWindowHost<BrowserWindow>>;
+type DesktopAppearance = ReturnType<typeof createDesktopWindowAppearance<BrowserWindow>>;
+type NativeAudioHost = ReturnType<typeof createNativeAudioPreviewHost>;
+type LutRecoveryHost = ReturnType<typeof createDesktopLutRecoveryHost<IpcMainInvokeEvent>>;
+type LanguageHost = ReturnType<typeof createAppLanguageHost>;
+type WorkspaceToolsHost = ReturnType<typeof createWorkspaceToolsHost<IpcMainInvokeEvent>>;
+type NativeCloseAdmission = ReturnType<typeof installNativeCloseAdmission>;
+type BackendIncident = ReturnType<typeof createProjectBackendIncident>;
+type InitialWindowLoad = ReturnType<typeof observeInitialProjectLoad>;
+interface DesktopWindowContext {
+  readonly startup: DesktopStartup;
+  readonly ready: BackendReady;
+  readonly session: Session;
+  readonly incident: BackendIncident;
+  /** Assigned immediately after construction; every reader runs after wiring. */
+  appearance: DesktopAppearance;
+  audioHost?: NativeAudioHost;
+}
+interface CodedFailure {
+  readonly code?: string;
+  readonly reason?: string;
+  readonly message?: string;
+}
+function codedFailure(error: unknown): CodedFailure {
+  return error !== null && typeof error === 'object' ? error as CodedFailure : {};
+}
+function errorCode(error: unknown): string | undefined {
+  return codedFailure(error).code;
+}
+function errorMessage(error: unknown): string {
+  const message = codedFailure(error).message ?? error;
+  return typeof message === 'string' ? message : 'Unknown error';
+}
+/** Read-only storage reads never request text; the appearance/LUT stores take bytes. */
+function storageRead(file: string, options: ReadPrivateFileOptions): Buffer | null {
+  const value = readPrivateFile(file, options);
+  return typeof value === 'string' ? Buffer.from(value) : value;
+}
+/** The build-injected channel moves windows between launcher/editor projects only. */
+function requestApplicationQuit(source: BrowserWindow | undefined): Promise<boolean | void> { return quitRouter.request(source).catch(quitFailed); }
 
 // The renderer never receives privileged Electron APIs or native filesystem paths.
 app.enableSandbox();
-// Embedded by build.mjs. Runtime env and app.isPackaged cannot change the channel.
-const identity = desktopIdentity.identityForChannel(__MIOON_DESKTOP_CHANNEL__);
+// Embedded by build.ts. Runtime env and app.isPackaged cannot change the channel.
+const identity: DesktopIdentity = desktopIdentity.identityForChannel(__MIOON_DESKTOP_CHANNEL__);
 app.setName(identity.productName);
 app.setAppUserModelId(identity.appId);
 if (process.platform === 'linux') {
   app.setDesktopName(`${identity.appId}.desktop`);
   app.commandLine.appendSwitch('class', identity.appId);
 }
-let languageHost;
-const systemLanguages = () => { try { return app.getPreferredSystemLanguages(); } catch { return [process.env.LC_ALL || process.env.LANG || 'en']; } };
+let languageHost: LanguageHost | null = null;
+const systemLanguages = (): readonly string[] => { try { return app.getPreferredSystemLanguages(); } catch { return [process.env.LC_ALL || process.env.LANG || 'en']; } };
 setNativeLanguageReader(() => languageHost?.snapshot().locale ?? resolveLocale('system', systemLanguages()));
-let paths, startupStorageError;
+let paths!: DesktopPaths;
+let startupStorageError: unknown;
 try { paths = prepareDesktopStorage(app, process.env.MIOON_DESKTOP_USER_DATA, identity.channel); }
 catch (error) { startupStorageError = error; }
-let win, backend, activeSession, ready, restarting = false, quitting = false;
-let agentSettings;
-let startupOperation;
-let windowContext, windowHost, nativeAudioHost, lutRecoveryHost;
-let workspaceToolsHost;
-const windowAdmissions = new WeakMap();
-const initialWindowLoads = new WeakMap();
-const cancelledStartupErrors = new WeakSet();
-let quitFailureNotice;
-let smokeDiscardDecision;
-const smokeOutput = !app.isPackaged && process.env.MIOON_DESKTOP_USER_DATA && process.env.MIOON_DESKTOP_SMOKE_OUTPUT;
+let win: BrowserWindow | null = null, backend: BackendSupervisor | null = null, activeSession: Session | null = null, ready: BackendReady | null = null, restarting = false, quitting = false;
+let agentSettings: DesktopAgentSettings | null = null;
+let startupOperation: DesktopStartup | null = null;
+let windowContext: DesktopWindowContext | null | undefined, windowHost: ProjectWindowHost | null | undefined, nativeAudioHost: NativeAudioHost | null | undefined, lutRecoveryHost: LutRecoveryHost | null | undefined;
+let workspaceToolsHost: WorkspaceToolsHost | null = null;
+const windowAdmissions = new WeakMap<BrowserWindow, NativeCloseAdmission>();
+const initialWindowLoads = new WeakMap<BrowserWindow, InitialWindowLoad>();
+const cancelledStartupErrors = new WeakSet<Error>();
+let quitFailureNotice: Promise<void> | null = null;
+let smokeDiscardDecision: boolean | undefined;
+const smokeOutput: string | false | undefined = !app.isPackaged && process.env.MIOON_DESKTOP_USER_DATA && process.env.MIOON_DESKTOP_SMOKE_OUTPUT;
 
-async function toolsFromUser(startup) {
-  let configuration;
+async function toolsFromUser(startup: DesktopStartup): Promise<ToolValidation> {
+  let stored: ToolPaths;
   try {
-    configuration = await readToolConfig(paths.configFile);
+    stored = await readToolConfig(paths.configFile);
     startup.checkpoint();
-    return await validateTools(configuration, { signal: startup.signal });
+    return await validateTools(stored, { signal: startup.signal });
   }
   catch (error) {
     startup.checkpoint();
-    if (error?.code?.startsWith('STORAGE_')) throw error;
+    if (errorCode(error)?.startsWith('STORAGE_')) throw error;
     if (smokeOutput) throw error;
     const result = await dialog.showMessageBox({ type: 'warning', title: nt('native.toolsTitle'),
       message: nt('native.toolsMessage'),
-      detail: nt('native.toolsDetail') + '\n\n' + nt('native.originalDiagnostic', { detail: error.message }),
+      detail: nt('native.toolsDetail') + '\n\n' + nt('native.originalDiagnostic', { detail: errorMessage(error) }),
       buttons: [nt('native.chooseTools'), nt('native.quit')], defaultId: 0, cancelId: 1 });
     startup.checkpoint();
     if (result.response !== 0) throw new Error('未配置 FFmpeg');
   }
-  const choose = async name => {
+  const choose = async (name: 'ffmpeg' | 'ffprobe'): Promise<string> => {
     const result = await dialog.showOpenDialog({ title: nt('native.chooseExecutable', { name }), buttonLabel: nt('native.chooseTools'), properties: ['openFile'] });
     startup.checkpoint();
     if (result.canceled || result.filePaths.length !== 1) throw new Error(`未选择 ${name}`);
     return result.filePaths[0];
   };
-  configuration = await validateTools({ ffmpeg: await choose('ffmpeg'), ffprobe: await choose('ffprobe') }, { signal: startup.signal });
+  const configuration = await validateTools({ ffmpeg: await choose('ffmpeg'), ffprobe: await choose('ffprobe') }, { signal: startup.signal });
   startup.checkpoint();
   await saveToolConfig(paths.configFile, configuration);
   return configuration;
 }
 
-function cancelledStartupError() {
+function cancelledStartupError(): Error {
   // Only this exact result belongs to an explicitly cancelled start. A provider
   // or cleanup error with the same code must still reach fatal().
   const error = Object.assign(new Error('本地服务启动已取消。'), { code: 'DESKTOP_START_CANCELLED' });
   cancelledStartupErrors.add(error);
   return error;
 }
+function isCancelledStartup(error: unknown): boolean {
+  return error !== null && typeof error === 'object' && cancelledStartupErrors.has(error as Error);
+}
 
-async function start() {
+async function start(): Promise<DesktopStartReport> {
   if (quitting) throw cancelledStartupError();
   const startup = startupOperation = createDesktopStartup();
   let closingCancelledSettings = false;
@@ -124,12 +178,12 @@ async function start() {
     startup.checkpoint();
     const token = randomBytes(32).toString('hex');
     const backendId = randomUUID(), nativeAudioIdentity = createNativeAudioPreviewSigningIdentity(backendId);
-    let ownedAudioHost, backendExitObserved = false;
+    let ownedAudioHost: NativeAudioHost | undefined, backendExitObserved = false;
     backend = new BackendSupervisor({ fork: utilityProcess.fork,
       modulePath: path.join(app.getAppPath(), 'backend.cjs'), environment: utilityEnvironment(process.env, tools), agentSettings,
       imageSecretCodec: createDesktopImageSecretCodec({ safeStorage, appId: identity.appId }) });
     const ownedBackend = backend, incident = createProjectBackendIncident();
-    ownedBackend.on('exit', ({ expected }) => {
+    ownedBackend.on('exit', ({ expected }: {expected?: boolean}) => {
       backendExitObserved = true; ownedAudioHost?.notifyBackendExit();
       if (!expected) incident.fail();
       if (!expected && backend === ownedBackend && !quitting) { windowHost?.refresh(); if (windowContext?.incident === incident && !smokeOutput) void backendFailed(ownedBackend, incident); }
@@ -140,21 +194,21 @@ async function start() {
     incident.assertAlive();
     ready = started;
     activeSession = session.fromPartition(`${identity.appId}-${randomUUID()}`, { cache: false });
-    installSessionPolicy(activeSession, ready.url, contents => windowHost?.windowForContents(contents), { downloadsDirectory: app.getPath('downloads') });
-    await activeSession.cookies.set(sessionCookie(ready.url, token));
+    installSessionPolicy(activeSession, started.url, contents => windowHost?.windowForContents(contents as ProjectWindowWebContents), { downloadsDirectory: app.getPath('downloads') });
+    await activeSession.cookies.set(sessionCookie(started.url, token));
     startup.checkpoint();
     incident.assertAlive();
-    await writeConnection(paths, { url: ready.url, token, pid: ready.runtime.pid, identity });
+    await writeConnection(paths, { url: started.url, token, pid: started.runtime.pid, identity });
     startup.checkpoint();
     incident.assertAlive();
     // A backend handshake alone is not permission to open a window. Publish its
     // context only after this start owns a prepared session and discovery file.
-    const context = windowContext = { startup, ready: started, session: activeSession, incident };
-    context.appearance = createDesktopWindowAppearance({root:paths.dataDir,channel:identity.channel,nativeTheme,signal:startup.signal,
-      storage:{validatePrivateDirectory,validateManagedFile,readPrivateFile},isCurrent:()=>ownsWindowContext(context),
+    const context = windowContext = { startup, ready: started, session: activeSession, incident } as DesktopWindowContext;
+    context.appearance = createDesktopWindowAppearance<BrowserWindow>({root:paths.dataDir,channel:identity.channel,nativeTheme,signal:startup.signal,
+      storage:{validatePrivateDirectory,validateManagedFile,readPrivateFile: storageRead},isCurrent:()=>ownsWindowContext(context),
       getWindows:()=>windowHost?.windows()||[],ownsWindow:window=>ownsWindow(window,context)});
-    windowHost = createProjectWindowHost({
-      backendId, launcherUrl: `${started.url}/`, editorUrl: projectId => `${started.url}/?project=${projectId}`,
+    windowHost = createProjectWindowHost<BrowserWindow>({
+      backendId, launcherUrl: `${started.url}/`, editorUrl: (projectId: string) => `${started.url}/?project=${projectId}`,
       isCurrent: () => ownsWindowContext(context),
       canInteract: () => quitRouter.allowsWindows && !context.incident.failed,
       createWindow: () => new BrowserWindow({ title: identity.productName, width: 1500, height: 960,
@@ -164,7 +218,7 @@ async function start() {
         webPreferences: { ...secureWebPreferences(context.session), preload: path.join(app.getAppPath(), 'preload.cjs') } }),
       prepareWindow: (window, owner) => prepareOwnedWindow(window, context, owner),
       consumeProjectEntry: consumeNativeProjectEntry,
-      onDocumentInvalidated: owner => ownedAudioHost?.revokeOwner(owner, false),
+      onDocumentInvalidated: owner => ownedAudioHost?.revokeOwner({ ...owner, projectId: owner.projectId as string }, false),
       onWebContentsDestroyed: windowId => ownedAudioHost?.revokeWindowDestroyed(windowId),
       onLoadError: (error, window) => { if (ownsWindow(window, context) && !smokeOutput) void initialWindowFailed(window, context).catch(fatal); },
     });
@@ -172,7 +226,7 @@ async function start() {
       request: (command, onPending) => ownedBackend.requestNativeAudio(command, onPending),
       isAdmissionAllowed: () => ownsWindowContext(context) && backend === ownedBackend && quitRouter.allowsWindows && !context.incident.failed,
       isBackendExitConfirmed: () => backendExitObserved && ownedBackend.child === null && ownedBackend.stopOutcome?.exitConfirmed === true && !ownedBackend.hasUnconfirmedMedia,
-      ownerForContents: contents => { const owner = windowHost?.ownerForContents(contents); return owner?.role === 'editor' ? { ...owner, contents } : null; },
+      ownerForContents: contents => { const owner = windowHost?.ownerForContents(contents as unknown as ProjectWindowWebContents); return owner?.role === 'editor' ? { ...owner, projectId: owner.projectId as string, contents } : null; },
     });
     nativeAudioHost = context.audioHost = ownedAudioHost;
     // Host authority is independent of the renderer's workspace claim and of
@@ -186,7 +240,7 @@ async function start() {
       return calculateWorkspaceScope({ channel: identity.channel, root: paths.dataDir, directory, db });
     };
     const lutWorkspaceScope = currentLutWorkspaceScope();
-    lutRecoveryHost = createDesktopLutRecoveryHost({
+    lutRecoveryHost = createDesktopLutRecoveryHost<IpcMainInvokeEvent>({
       currentWorkspaceScope: () => {
         const scope = currentLutWorkspaceScope();
         if (scope !== lutWorkspaceScope) throw new Error('LUT recovery workspace changed.');
@@ -198,13 +252,19 @@ async function start() {
         return { projectId: owner.projectId, isCurrent: () => ownsWindowContext(context) && owner.isCurrent() &&
           event.senderFrame === owner.frame && event.senderFrame === event.sender.mainFrame && event.senderFrame?.url === owner.url };
       },
-      createStore: guard => createDesktopLutRecoveryStore({ userData: paths.userData, guard, storage: { validatePrivateDirectory, validateManagedFile, readPrivateFile, removePrivateFile, writePrivateFileAtomic } }),
+      createStore: guard => createDesktopLutRecoveryStore({ userData: paths.userData, guard, storage: {
+        validatePrivateDirectory: directory => validatePrivateDirectory(directory),
+        validateManagedFile: (file, options) => validateManagedFile(file, options),
+        readPrivateFile: (file, options) => storageRead(file, options),
+        removePrivateFile: (file, options) => removePrivateFile(file, options),
+        writePrivateFileAtomic: (file, bytes, options) => writePrivateFileAtomic(file, bytes, options),
+      } }),
     });
 
     activeSession.webRequest.onBeforeSendHeaders((details, callback) => callback(ownedAudioHost.beforeSendHeaders(details)));
     await openWindow(context);
     startup.checkpoint();
-    return { identity, runtime: ready.runtime, tools: tools.versions };
+    return { identity, runtime: started.runtime, tools: tools.versions };
   } catch (error) {
     if(windowContext?.startup===startup)windowContext.appearance?.dispose();
     // stop()/quit abort this scope before draining, so an old result may arrive
@@ -214,25 +274,25 @@ async function start() {
   }
 }
 
-function ownsWindowContext(context) {
+function ownsWindowContext(context: DesktopWindowContext | null | undefined): boolean {
   return Boolean(context && context === windowContext && context.startup === startupOperation &&
     !context.startup.signal.aborted && context.ready === ready && context.session === activeSession && !quitting);
 }
 
-function ownsWindow(window, context) {
+function ownsWindow(window: BrowserWindow | null | undefined, context: DesktopWindowContext | null | undefined): window is BrowserWindow {
   return Boolean(window && windowHost?.owns(window) && !window.isDestroyed() && ownsWindowContext(context));
 }
 
 async function openWindow(context = windowContext) {
   if (!ownsWindowContext(context)) return;
   const window = windowHost?.ensureLauncher();
-  if (window) {
+  if (window && windowHost) {
     try { await windowHost.loadFor(window); }
     catch (error) { if (!ownsWindow(window, context) || !initialWindowLoads.get(window)?.failed) throw error; }
   }
 }
 
-function prepareOwnedWindow(window, context, owner) {
+function prepareOwnedWindow(window: BrowserWindow, context: DesktopWindowContext, owner: ProjectWindowOwner<BrowserWindow>): void {
   win = window;
   const contents = window.webContents;
   const refreshAppearance = () => context.appearance.refresh();
@@ -247,9 +307,9 @@ function prepareOwnedWindow(window, context, owner) {
     consumeInitialEmptyClose: () => initialLoad.consumeClose(),
     beforeReload: signal => {
       if (owner.role !== 'editor') return true;
-      const document = windowHost?.ownerForContents(contents);
+      const document = windowHost?.ownerForContents(contents as ProjectWindowWebContents);
       return document?.window === window && document.backendId === owner.backendId
-        ? context.audioHost?.retireOwnerForReload({ ...document, contents }, signal) ?? false : false;
+        ? context.audioHost?.retireOwnerForReload({ ...document, projectId: document.projectId as string, contents }, signal) ?? false : false;
     },
     confirmClose: action => Boolean(smokeOutput) || dialog.showMessageBox(window, { type: 'warning', title: nt('native.draftTitle'),
       message: nt(action === 'reload' ? 'native.draftReloadMessage' : 'native.draftQuitMessage'),
@@ -296,11 +356,11 @@ async function cleanupStoppedBackend() {
   ready = null;
 }
 
-async function restart() {
+async function restart(): Promise<boolean> {
   return restartCoordinator.request();
 }
 
-async function backendFailed(failedBackend = backend, incident = windowContext?.incident) {
+async function backendFailed(failedBackend: BackendSupervisor | null = backend, incident: BackendIncident | undefined = windowContext?.incident): Promise<void> {
   if (restarting || quitting || backend !== failedBackend || !incident?.claimPrompt()) return;
   const failedContext = windowContext;
   if (backend?.hasUnconfirmedMedia) return quitFailed({ code: 'BACKEND_MEDIA_EXIT_UNCONFIRMED' });
@@ -314,14 +374,14 @@ async function backendFailed(failedBackend = backend, incident = windowContext?.
 }
 
 const rendererFailed = createProjectRendererRecovery({
-  isCurrent: (window, context) => ownsWindow(window, context) && quitRouter.allowsWindows && !context.incident.failed,
+  isCurrent: (window: BrowserWindow, context: DesktopWindowContext) => ownsWindow(window, context) && quitRouter.allowsWindows && !context.incident.failed,
   capture: window => windowAdmissions.get(window)?.captureRecoveryDecision(),
   prompt: window => dialog.showMessageBox(window, { type: 'warning', title: nt('native.rendererTitle'),
     message: nt('native.rendererMessage'),
     detail: nt('native.rendererDetail'),
     buttons: [nt('native.reload'), nt('native.quitApplication'), nt('native.keepWindow')], defaultId: 0, cancelId: 2 }).then(result => result.response),
 });
-async function initialWindowFailed(window, context) {
+async function initialWindowFailed(window: BrowserWindow, context: DesktopWindowContext): Promise<void> {
   const proof = initialWindowLoads.get(window)?.captureFailure();
   if (!proof) return rendererFailed(window, context, 'load-error');
   const { response } = await dialog.showMessageBox(window, { type: 'error', title: nt('native.emptyWindowTitle'),
@@ -332,21 +392,21 @@ async function initialWindowFailed(window, context) {
   else if (response === 1) proof.close();
 }
 
-async function fatal(error) {
-  if (cancelledStartupErrors.has(error)) return;
+async function fatal(error: unknown): Promise<void> {
+  if (isCancelledStartup(error)) return;
   if (smokeOutput) {
     await mkdir(path.dirname(smokeOutput), { recursive: true });
-    await writeFile(smokeOutput, JSON.stringify({ ok: false, error: error.message }, null, 2));
+    await writeFile(smokeOutput, JSON.stringify({ ok: false, error: errorMessage(error) }, null, 2));
     process.exitCode = 1;
   } else {
-    await dialog.showMessageBox(error?.code?.startsWith('STORAGE_') ? storageFailureDialog(error) :
-      { type: 'error', title: nt('native.cannotStartTitle'), message: nt('native.cannotStartMessage'), detail: nt('native.originalDiagnostic', { detail: error.message }), buttons: [nt('native.quit')] });
+    await dialog.showMessageBox(errorCode(error)?.startsWith('STORAGE_') ? storageFailureDialog(error) :
+      { type: 'error', title: nt('native.cannotStartTitle'), message: nt('native.cannotStartMessage'), detail: nt('native.originalDiagnostic', { detail: errorMessage(error) }), buttons: [nt('native.quit')] });
   }
   app.quit();
 }
 
-function installMenu() {
-  const template = [];
+function installMenu(): void {
+  const template: MenuItemConstructorOptions[] = [];
   if (process.platform === 'darwin') template.push({ label: identity.productName, submenu: [
     { role: 'about', label: nt('native.about') }, { type: 'separator' }, { role: 'services', label: nt('native.services') },
     { type: 'separator' }, { role: 'hide', label: nt('native.hide') }, { role: 'hideOthers', label: nt('native.hideOthers') },
@@ -358,9 +418,9 @@ function installMenu() {
     { label: nt('native.connections'), click: () => windowHost?.showSettings('agent') },
     { label: nt('native.reload'), accelerator: 'CmdOrCtrl+R', click: () => {
       const window = windowHost?.preferredWindow(BrowserWindow.getFocusedWindow());
-      if (ownsWindow(window, windowContext) && !windowContext.incident.failed) {
-        if (initialWindowLoads.get(window)?.failed) void initialWindowFailed(window, windowContext).catch(fatal);
-        else void windowAdmissions.get(window)?.captureRecoveryDecision().reload().catch(fatal);
+      if (ownsWindow(window, windowContext) && windowContext && !windowContext.incident.failed) {
+        if (initialWindowLoads.get(window!)?.failed) void initialWindowFailed(window!, windowContext).catch(fatal);
+        else void windowAdmissions.get(window!)?.captureRecoveryDecision().reload().catch(fatal);
       }
     } },
     { label: nt('native.restartService'), click: () => confirmOwnedWindowRestart({
@@ -374,16 +434,16 @@ function installMenu() {
   ] }, { label: nt('native.edit'), submenu: [
     { role: 'undo', label: nt('native.undo') }, { role: 'redo', label: nt('native.redo') }, { type: 'separator' },
     { role: 'cut', label: nt('native.cut') }, { role: 'copy', label: nt('native.copy') }, { role: 'paste', label: nt('native.paste') },
-    ...(process.platform === 'darwin' ? [{ role: 'pasteAndMatchStyle', label: nt('native.pasteMatch') }] : []),
+    ...(process.platform === 'darwin' ? [{ role: 'pasteAndMatchStyle' as const, label: nt('native.pasteMatch') }] : []),
     { role: 'delete', label: nt('native.delete') }, { role: 'selectAll', label: nt('native.selectAll') },
   ] }, { label: nt('native.window'), submenu: [
     { role: 'minimize', label: nt('native.minimize') }, { role: 'zoom', label: nt('native.zoom') },
-    ...(process.platform === 'darwin' ? [{ type: 'separator' }, { role: 'front', label: nt('native.front') }] : [{ role: 'close', label: nt('native.closeWindow') }]),
+    ...(process.platform === 'darwin' ? [{ type: 'separator' as const }, { role: 'front' as const, label: nt('native.front') }] : [{ role: 'close' as const, label: nt('native.closeWindow') }]),
   ] });
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-const quitCoordinator = new MultiWindowQuitCoordinator({ getWindows: () => windowHost?.windows() || [],
+const quitCoordinator: MultiWindowQuitCoordinator<BrowserWindow> = new MultiWindowQuitCoordinator<BrowserWindow>({ getWindows: () => windowHost?.windows() || [],
   onStateChange: () => windowHost?.refresh(),
   stop: async () => {
     quitting = true;
@@ -407,14 +467,13 @@ const quitCoordinator = new MultiWindowQuitCoordinator({ getWindows: () => windo
     });
   }, finish: () => app.quit() });
 
-const restartCoordinator = new MultiWindowRestartCoordinator({
+const restartCoordinator: MultiWindowRestartCoordinator<BrowserWindow> = new MultiWindowRestartCoordinator<BrowserWindow>({
   getWindows: () => windowHost?.windows() || [],
   canRequest: () => quitCoordinator.state === 'idle' && !quitting && !quitRouter.isPending,
   onStateChange: state => { restarting = state !== 'idle'; windowHost?.refresh(); },
   stop, start,
 });
-const quitRouter = createProjectWindowQuitRouter({ quit: quitCoordinator, restart: restartCoordinator, onPendingChange: () => windowHost?.refresh() });
-function requestApplicationQuit(source) { return quitRouter.request(source).catch(quitFailed); }
+const quitRouter: ProjectWindowQuitRouter<BrowserWindow> = createProjectWindowQuitRouter<BrowserWindow>({ quit: quitCoordinator, restart: restartCoordinator, onPendingChange: () => windowHost?.refresh() });
 ipcMain.handle(CLIP_LUT_RECOVERY_CHANNEL, (event, request) => lutRecoveryHost?.dispatch(event, request) ?? { ok: false, code: 'LUT_RECOVERY_UNAVAILABLE' });
 ipcMain.handle(WORKSPACE_TOOLS_CHANNEL,(event,request)=>{
   if(!workspaceToolsHost)throw new Error('Workspace tools are unavailable.');
@@ -430,11 +489,11 @@ ipcMain.handle(PROJECT_WINDOW_CHANNEL, (event, request) => {
   return windowHost.dispatch(event, request);
 });
 
-async function quitFailed(error) {
+async function quitFailed(error: unknown): Promise<void> {
   return quitFailureNotice ??= (async () => {
   // Never route a failed quit back through fatal() -> app.quit(). In particular,
   // an unconfirmed owned process must remain supervised, not be abandoned.
-  if (!smokeOutput) await dialog.showMessageBox(error?.code === 'BACKEND_MEDIA_EXIT_UNCONFIRMED' ? {
+  if (!smokeOutput) await dialog.showMessageBox(errorCode(error) === 'BACKEND_MEDIA_EXIT_UNCONFIRMED' ? {
     type: 'error', title: nt('native.mediaExitTitle'), message: nt('native.mediaExitMessage'),
     detail: nt('native.mediaExitDetail'),
     buttons: [nt('native.quitApplication')]
@@ -459,15 +518,17 @@ else {
     if (quitCoordinator.state === 'finished') return;
     event.preventDefault();
     const focused = BrowserWindow.getFocusedWindow();
-    void requestApplicationQuit(ownsWindow(focused, windowContext) && windowHost.isTrustedDocument(focused) ? focused : undefined);
+    if (windowHost) {
+      void requestApplicationQuit(ownsWindow(focused, windowContext) && windowHost.isTrustedDocument(focused) ? focused : undefined);
+    } else void requestApplicationQuit(undefined);
   });
   process.on('SIGTERM', () => app.quit());
   process.on('SIGINT', () => app.quit());
   app.whenReady().then(async () => {
     if (process.platform === 'darwin') app.dock?.setIcon(path.join(app.getAppPath(), 'icons/icon.png'));
-    workspaceToolsHost=createWorkspaceToolsHost({
+    workspaceToolsHost=createWorkspaceToolsHost<IpcMainInvokeEvent>({
       isTrusted:event=>{
-        const window=windowHost?.windowForContents(event.sender),owner=windowHost?.ownerForContents(event.sender);
+        const window=windowHost?.windowForContents(event.sender as ProjectWindowWebContents),owner=windowHost?.ownerForContents(event.sender as ProjectWindowWebContents);
         return Boolean(!restarting&&quitCoordinator.state==='idle'&&window&&owner&&ownsWindow(window,windowContext)&&owner.isCurrent()&&
           event.senderFrame===window.webContents.mainFrame&&event.senderFrame===owner.frame&&event.senderFrame?.url===owner.url);
       },
@@ -491,7 +552,7 @@ else {
       },
       broadcast: (channel, state) => {
         for (const window of windowHost?.windows() || []) {
-          try { if (windowHost.isTrustedDocument(window)) window.webContents.send(channel, state); }
+          try { if (windowHost?.isTrustedDocument(window)) window.webContents.send(channel, state); }
           catch { /* A disappearing window cannot block other windows or reject a saved preference. */ }
         }
       },
@@ -500,11 +561,12 @@ else {
     installMenu();
     const report = await start();
     if (smokeOutput) {
+      const output = smokeOutput;
       const { runSmoke } = await import('./smoke-checks.ts');
       await runSmoke({ app, getWindow: () => win, getSession: () => activeSession,
-        getProjectWindow: projectId => windowHost?.windows().find(window => windowHost.contextFor(window)?.initialProjectId === projectId),
+        getProjectWindow: (projectId: string) => windowHost?.windows().find(window => windowHost?.contextFor(window)?.initialProjectId === projectId),
         getReady: () => ready, getBackend: () => backend, restart,
-        reload: () => windowAdmissions.get(win)?.requestReload() ?? Promise.resolve(false), paths, report, output: smokeOutput,
+        reload: () => win ? windowAdmissions.get(win)?.requestReload() ?? Promise.resolve(false) : Promise.resolve(false), paths, report, output,
         attemptDirtyQuit: async () => {
           smokeDiscardDecision = false;
           try { return await quitCoordinator.request(); }

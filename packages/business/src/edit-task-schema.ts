@@ -1,3 +1,4 @@
+import type {DatabaseSync} from 'node:sqlite';
 export {migrateTimelineSubtitleEditTasks} from './timeline-subtitle-schema.ts';
 // Fixed backend-owned schema definitions. No operation or table name comes from RPC input.
 // The historical v14 bootstrap remains byte-equivalent for existing operation rows.
@@ -56,19 +57,19 @@ const protections = ` CREATE UNIQUE INDEX IF NOT EXISTS edit_task_one_pending_la
  BEGIN SELECT RAISE(ABORT,'invalid edit task transition');END;
 `;
 
-export function bootstrapEditTaskSchema(db) {
+export function bootstrapEditTaskSchema(db: DatabaseSync): void {
  db.exec(`BEGIN IMMEDIATE;${tableDefinition()}${protections}
  INSERT OR IGNORE INTO schema_version VALUES(14);COMMIT;`);
 }
 
 // Called inside schema15's transaction, before its final version marker. SQLite
 // cannot extend CHECK lists in place. Copy raw columns, never parse/rewrite inputs.
-export function migrateSubjectEditTasks(db) {
+export function migrateSubjectEditTasks(db: DatabaseSync): void {
  if (!db.isTransaction) throw new Error('Subject task migration requires a transaction');
  if (db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='edit_tasks_subjects'").get())
   throw new Error('Subject task migration staging table already exists');
- const sequence = db.prepare("SELECT seq FROM sqlite_sequence WHERE name='edit_tasks'").get();
- const maximum = db.prepare('SELECT MAX(position) AS value FROM edit_tasks').get().value;
+ const sequence = db.prepare("SELECT seq FROM sqlite_sequence WHERE name='edit_tasks'").get() as {seq: number|bigint}|undefined;
+ const maximum = (db.prepare('SELECT MAX(position) AS value FROM edit_tasks').get() as {value: number|bigint|null}|undefined)!.value;
  if (sequence && (!Number.isSafeInteger(sequence.seq) || sequence.seq < 0 || (maximum !== null && sequence.seq < maximum)) || !sequence && maximum !== null)
   throw new Error('Edit task sequence is inconsistent');
  db.exec(tableDefinition(true, true));
@@ -84,12 +85,12 @@ export function migrateSubjectEditTasks(db) {
 
 // Schema21 changes only the operation CHECK whitelist. Preserve raw task bytes,
 // state, claims, indexes/triggers and the exact AUTOINCREMENT high-water mark.
-export function migrateTimelineFormatEditTasks(db) {
+export function migrateTimelineFormatEditTasks(db: DatabaseSync): void {
  if(!db.isTransaction)throw new Error('Timeline format task migration requires a transaction');
  if(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='edit_tasks_formats'").get())
   throw new Error('Timeline format task migration staging table already exists');
- const sequence=db.prepare("SELECT rowid AS rowid,seq FROM sqlite_sequence WHERE name='edit_tasks'").get();
- const maximum=db.prepare('SELECT MAX(position) AS value FROM edit_tasks').get().value;
+ const sequence=db.prepare("SELECT rowid AS rowid,seq FROM sqlite_sequence WHERE name='edit_tasks'").get() as {rowid: number|bigint;seq: number|bigint}|undefined;
+ const maximum=(db.prepare('SELECT MAX(position) AS value FROM edit_tasks').get() as {value: number|bigint|null}|undefined)!.value;
  if(sequence&&(!Number.isSafeInteger(sequence.seq)||sequence.seq<0||(maximum!==null&&sequence.seq<maximum))||!sequence&&maximum!==null)
   throw new Error('Edit task sequence is inconsistent');
  db.exec(tableDefinition(true,true,true));

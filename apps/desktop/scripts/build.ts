@@ -3,8 +3,8 @@ import { rm, mkdir, cp, readFile, writeFile, readdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import desktopIdentity from '../identity.cjs';
-import desktopBuildMetadata from '../build-metadata.cjs';
+import desktopIdentity from '../identity.ts';
+import desktopBuildMetadata from '../build-metadata.ts';
 import {main as checkTypes} from '../../../scripts/tooling.ts';
 import {localRequireBundlePlugin} from './bundle-local-require.ts';
 const identity = desktopIdentity.identityForChannel(desktopIdentity.buildChannel(process.argv.slice(2)));
@@ -45,7 +45,7 @@ await mkdir(path.join(output, 'licenses'), { recursive: true });
 const seen = new Set(), notices = ['# Third-party notices', '',
   'Packaged Electron and Chromium notices: LICENSE.electron.txt and LICENSES.chromium.html.',
   'On macOS they are in the application bundle at Contents/Resources/licenses; on Linux they are beside the executable.', ''];
-async function collectLicenses(packageFile) {
+async function collectLicenses(packageFile: string): Promise<void> {
   const metadata = JSON.parse(await readFile(packageFile, 'utf8'));
   const key = `${metadata.name}@${metadata.version}`;
   if (seen.has(key)) return;

@@ -4,11 +4,14 @@
 // pathname-only API. No chmod/chown or destructive repair is performed here.
 import path from 'node:path';
 import {randomBytes} from 'node:crypto';
-import {constants, lstatSync, mkdirSync, mkdtempSync, openSync, fstatSync, readSync, writeFileSync, fsyncSync, closeSync, renameSync, linkSync, unlinkSync} from 'node:fs';
+import {constants, lstatSync, mkdirSync, mkdtempSync, openSync, fstatSync, readSync, writeFileSync, fsyncSync, closeSync, renameSync, linkSync, unlinkSync, type Stats} from 'node:fs';
 
 const recovery = 'Choose a canonical, private directory owned by your account. Review its permissions and links before retrying; existing data has not been repaired or removed.';
 export class PrivateStorageError extends Error {
-  constructor(reason, message, code = 'STORAGE_PRIVATE_REQUIRED') {
+  declare code: string;
+  declare reason: string;
+  declare recovery: string;
+  constructor(reason: string, message: string, code = 'STORAGE_PRIVATE_REQUIRED') {
     super(message);
     this.name = 'PrivateStorageError';
     this.code = code;
@@ -18,32 +21,48 @@ export class PrivateStorageError extends Error {
       : recovery;
   }
 }
-const fail = (reason, message) => { throw new PrivateStorageError(reason, message); };
-const safe = fn => {
+function fail(reason: string, message: string): never { throw new PrivateStorageError(reason, message); }
+const safe = <T>(fn: () => T): T => {
   try { return fn(); }
   catch (error) {
     if (error instanceof PrivateStorageError) throw error;
-    if (error?.code === 'ENOENT') fail('MISSING', 'The private storage directory or file is missing.');
-    if (error?.code === 'EEXIST') fail('ALREADY_EXISTS', 'The private storage file already exists; it was not replaced.');
+    const code = (error as {code?: unknown} | null | undefined)?.code;
+    if (code === 'ENOENT') fail('MISSING', 'The private storage directory or file is missing.');
+    if (code === 'EEXIST') fail('ALREADY_EXISTS', 'The private storage file already exists; it was not replaced.');
     fail('IO_ERROR', 'Cannot safely access private storage. Check its ownership, permissions and availability.');
   }
 };
 
+export interface StoragePrivacyCapability {
+  available: boolean;
+  backend: 'posix-owner-mode' | 'unavailable';
+  code: 'STORAGE_PRIVACY_UNAVAILABLE' | null;
+  reason: 'WINDOWS_ACL_UNIMPLEMENTED' | 'PLATFORM_UNSUPPORTED' | null;
+}
 /** Informational only: a platform argument can never change operational checks. */
-export function getStoragePrivacyCapability(platform = process.platform) {
+export function getStoragePrivacyCapability(platform: string = process.platform): StoragePrivacyCapability {
   const available = ['linux', 'darwin', 'freebsd', 'openbsd', 'netbsd', 'aix', 'sunos'].includes(platform);
   return Object.freeze({available, backend: available ? 'posix-owner-mode' : 'unavailable',
     code: available ? null : 'STORAGE_PRIVACY_UNAVAILABLE',
     reason: available ? null : platform === 'win32' ? 'WINDOWS_ACL_UNIMPLEMENTED' : 'PLATFORM_UNSUPPORTED'});
 }
 
+export interface PrivateStoragePolicyOptions {windowsAclVerifier?: () => unknown}
+export interface WalkAncestorsOptions {create?: boolean; allowMissing?: boolean; privateLeaf?: boolean}
+export interface PrivateDirectoryOptions {create?: boolean; allowMissing?: boolean}
+export interface ManagedDirectoryOptions {root?: string; allowMissing?: boolean; private?: boolean}
+export interface ManagedFileOptions {root?: string; allowMissing?: boolean; private?: boolean; maxBytes?: number}
+export interface ReadPrivateFileOptions {root?: string; allowMissing?: boolean; maxBytes?: number; private?: boolean; encoding?: BufferEncoding}
+export interface WritePrivateFileOptions {root?: string; maxBytes?: number; replace?: boolean}
+export interface RemovePrivateFileOptions {root?: string; maxBytes?: number; private?: boolean}
+
 /** Reserved, code-injected Windows readiness seam. An ACL verifier alone cannot
  * enable storage: private creation and reparse-safe access are not implemented.
  * Neither configuration, environment variables nor caller platform strings can
  * turn this release's Windows gate into a successful POSIX-mode assertion. */
-export function createPrivateStoragePolicy({windowsAclVerifier} = {}) {
+export function createPrivateStoragePolicy({windowsAclVerifier}: PrivateStoragePolicyOptions = {}) {
   const platform = process.platform;
-  function assertStoragePrivacyAvailable() {
+  function assertStoragePrivacyAvailable(): void {
     const capability = getStoragePrivacyCapability(platform);
     if (!capability.available || typeof process.getuid !== 'function' || !constants.O_NOFOLLOW) {
       if (platform === 'win32' && typeof windowsAclVerifier === 'function') {
@@ -55,42 +74,42 @@ export function createPrivateStoragePolicy({windowsAclVerifier} = {}) {
         'Private storage protection is unavailable on this platform.', 'STORAGE_PRIVACY_UNAVAILABLE');
     }
   }
-  const absolute = value => {
+  const absolute = (value: unknown): string => {
     if (typeof value !== 'string' || !value || value.includes('\0')) fail('INVALID_PATH', 'A valid private storage path is required.');
     return path.resolve(value);
   };
-  const metadata = file => {
+  const metadata = (file: string): Stats | null => {
     try { return lstatSync(file); }
-    catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+    catch (error) { if ((error as {code?: unknown} | null | undefined)?.code === 'ENOENT') return null; throw error; }
   };
-  const same = (a, b) => a && b && a.dev === b.dev && a.ino === b.ino;
-  const owner = info => {
-    if (info.uid !== process.getuid()) fail('FOREIGN_OWNER', 'Private storage must be owned by the current account.');
+  const same = (a: Stats | null, b: Stats | null): boolean => Boolean(a && b && a.dev === b.dev && a.ino === b.ino);
+  const owner = (info: Stats): void => {
+    if (info.uid !== process.getuid!()) fail('FOREIGN_OWNER', 'Private storage must be owned by the current account.');
   };
-  const directoryType = info => {
+  const directoryType = (info: Stats): void => {
     if (info.isSymbolicLink()) fail('SYMBOLIC_LINK', 'Private storage cannot traverse symbolic links. Select a canonical directory path.');
     if (!info.isDirectory()) fail('DIRECTORY_TYPE', 'Private storage requires a regular directory.');
   };
-  const directoryPermissions = (info, privateMode) => {
+  const directoryPermissions = (info: Stats, privateMode: boolean): void => {
     directoryType(info); owner(info);
     if (info.mode & (privateMode ? 0o077 : 0o022)) fail('DIRECTORY_PERMISSIONS', privateMode
       ? 'The private storage directory must allow access only to its owner (0700).'
       : 'Managed storage directories must not be writable by other accounts.');
   };
-  const ancestor = info => {
+  const ancestor = (info: Stats): void => {
     directoryType(info);
     // Even mode 0755 lets its owner rename children or change permissions.
-    if (![0, process.getuid()].includes(info.uid)) fail('FOREIGN_ANCESTOR', 'Storage ancestors must be owned by the current account or the system administrator.');
+    if (![0, process.getuid!()].includes(info.uid)) fail('FOREIGN_ANCESTOR', 'Storage ancestors must be owned by the current account or the system administrator.');
     // Ordinary 0755 ancestors are fine. Sticky shared temporary directories are
     // fine only when owned by this account or root; other writable ancestors
     // could let another OS user replace the supposedly private root itself.
-    if ((info.mode & 0o022) && !((info.mode & 0o1000) && [0, process.getuid()].includes(info.uid))) {
+    if ((info.mode & 0o022) && !((info.mode & 0o1000) && [0, process.getuid!()].includes(info.uid))) {
       fail('UNSAFE_ANCESTOR', 'A storage ancestor is writable by other accounts without a trusted sticky-directory boundary.');
     }
   };
-  function walkAncestors(directory, {create = false, allowMissing = false, privateLeaf = true} = {}) {
+  function walkAncestors(directory: string, {create = false, allowMissing = false, privateLeaf = true}: WalkAncestorsOptions = {}): Stats | null {
     let current = path.parse(directory).root;
-    ancestor(metadata(current));
+    ancestor(metadata(current)!);
     const parts = directory.slice(current.length).split(path.sep).filter(Boolean);
     for (let index = 0; index < parts.length; index++) {
       current = path.join(current, parts[index]);
@@ -102,24 +121,24 @@ export function createPrivateStoragePolicy({windowsAclVerifier} = {}) {
         }
         // All existing ancestors have been checked before the first mkdir.
         try { mkdirSync(current, {mode: 0o700}); }
-        catch (error) { if (error.code !== 'EEXIST') throw error; }
+        catch (error) { if ((error as {code?: unknown} | null | undefined)?.code !== 'EEXIST') throw error; }
         info = metadata(current);
-        directoryPermissions(info, true);
+        directoryPermissions(info!, true);
       }
-      if (index === parts.length - 1 && privateLeaf) directoryPermissions(info, true);
-      else ancestor(info);
+      if (index === parts.length - 1 && privateLeaf) directoryPermissions(info!, true);
+      else ancestor(info!);
     }
     const result = metadata(directory);
-    if (privateLeaf) directoryPermissions(result, true); else ancestor(result);
+    if (privateLeaf) directoryPermissions(result!, true); else ancestor(result!);
     return result;
   }
-  function ensurePrivateDirectory(directory, {create = false, allowMissing = false} = {}) {
+  function ensurePrivateDirectory(directory: string, {create = false, allowMissing = false}: PrivateDirectoryOptions = {}): Stats | null {
     return safe(() => { assertStoragePrivacyAvailable(); return walkAncestors(absolute(directory), {create, allowMissing}); });
   }
-  function validatePrivateDirectory(directory, options = {}) {
+  function validatePrivateDirectory(directory: string, options: PrivateDirectoryOptions = {}): Stats | null {
     return ensurePrivateDirectory(directory, {...options, create: false});
   }
-  function createPrivateTemporaryDirectory(parent, prefix = 'mioon-private-') {
+  function createPrivateTemporaryDirectory(parent: string, prefix = 'mioon-private-'): string {
     return safe(() => {
       assertStoragePrivacyAvailable();
       if (typeof prefix !== 'string' || !/^[a-zA-Z0-9.-]{1,80}$/.test(prefix)) fail('INVALID_PATH', 'A safe temporary directory prefix is required.');
@@ -130,7 +149,7 @@ export function createPrivateStoragePolicy({windowsAclVerifier} = {}) {
       return created;
     });
   }
-  function managed(file, root, allowMissing, includeLeaf) {
+  function managed(file: string, root: string, allowMissing: boolean, includeLeaf: boolean): {target: string; missing: boolean} {
     const target = absolute(file), base = absolute(root);
     const relative = path.relative(base, target);
     if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) fail('OUTSIDE_ROOT', 'Managed storage must stay inside its private root.');
@@ -148,19 +167,19 @@ export function createPrivateStoragePolicy({windowsAclVerifier} = {}) {
     }
     return {target, missing: false};
   }
-  function validateManagedDirectory(directory, {root = path.dirname(directory), allowMissing = false, private: privateMode = false} = {}) {
+  function validateManagedDirectory(directory: string, {root = path.dirname(directory), allowMissing = false, private: privateMode = false}: ManagedDirectoryOptions = {}): Stats | null {
     return safe(() => {
       assertStoragePrivacyAvailable();
       const {target, missing} = managed(directory, root, allowMissing, true);
       if (missing) return null;
-      const info = metadata(target); directoryPermissions(info, privateMode);
+      const info = metadata(target); directoryPermissions(info!, privateMode);
       return info;
     });
   }
-  const limit = maxBytes => {
-    if (maxBytes !== undefined && (!Number.isSafeInteger(maxBytes) || maxBytes < 0 || maxBytes > 64 * 1024 * 1024)) fail('INVALID_LIMIT', 'A safe storage byte limit is required.');
+  const limit = (maxBytes: unknown): void => {
+    if (maxBytes !== undefined && (typeof maxBytes !== 'number' || !Number.isSafeInteger(maxBytes) || maxBytes < 0 || maxBytes > 64 * 1024 * 1024)) fail('INVALID_LIMIT', 'A safe storage byte limit is required.');
   };
-  const fileMetadata = (info, {private: privateMode = false, maxBytes} = {}) => {
+  const fileMetadata = (info: Stats, {private: privateMode = false, maxBytes}: {private?: boolean; maxBytes?: number} = {}): Stats => {
     if (info.isSymbolicLink()) fail('SYMBOLIC_LINK', 'Managed storage files must not be symbolic links.');
     if (!info.isFile()) fail('FILE_TYPE', 'Managed storage requires a regular file.');
     owner(info);
@@ -171,7 +190,7 @@ export function createPrivateStoragePolicy({windowsAclVerifier} = {}) {
     if (maxBytes !== undefined && info.size > maxBytes) fail('SIZE_LIMIT', 'The private storage file exceeds its safe size limit.');
     return info;
   };
-  function validateManagedFile(file, {root = path.dirname(file), allowMissing = false, private: privateMode = false, maxBytes} = {}) {
+  function validateManagedFile(file: string, {root = path.dirname(file), allowMissing = false, private: privateMode = false, maxBytes}: ManagedFileOptions = {}): Stats | null {
     return safe(() => {
       assertStoragePrivacyAvailable(); limit(maxBytes);
       const {target, missing} = managed(file, root, allowMissing, false);
@@ -184,11 +203,11 @@ export function createPrivateStoragePolicy({windowsAclVerifier} = {}) {
       return fileMetadata(info, {private: privateMode, maxBytes});
     });
   }
-  function readPrivateFile(file, {root = path.dirname(file), allowMissing = false, maxBytes = 4096, private: privateMode = true, encoding} = {}) {
+  function readPrivateFile(file: string, {root = path.dirname(file), allowMissing = false, maxBytes = 4096, private: privateMode = true, encoding}: ReadPrivateFileOptions = {}): Buffer | string | null {
     return safe(() => {
       const before = validateManagedFile(file, {root, allowMissing, private: privateMode, maxBytes});
       if (!before) return null;
-      let fd;
+      let fd: number | undefined;
       try {
         // NONBLOCK avoids hanging if a same-user race substitutes a FIFO.
         fd = openSync(absolute(file), constants.O_RDONLY | constants.O_NOFOLLOW | (constants.O_NONBLOCK || 0));
@@ -210,7 +229,7 @@ export function createPrivateStoragePolicy({windowsAclVerifier} = {}) {
       } finally { if (fd !== undefined) closeSync(fd); }
     });
   }
-  function writePrivateFileAtomic(file, bytes, {root = path.dirname(file), maxBytes = 4096, replace = true} = {}) {
+  function writePrivateFileAtomic(file: string, bytes: Buffer | string | Uint8Array, {root = path.dirname(file), maxBytes = 4096, replace = true}: WritePrivateFileOptions = {}): void {
     return safe(() => {
       assertStoragePrivacyAvailable(); limit(maxBytes);
       const contents = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
@@ -221,7 +240,7 @@ export function createPrivateStoragePolicy({windowsAclVerifier} = {}) {
       validateManagedDirectory(parent, {root});
       if (!replace && before) fail('ALREADY_EXISTS', 'The private storage file already exists; it was not replaced.');
       const temporary = path.join(parent, `.${path.basename(target)}.${randomBytes(16).toString('hex')}.tmp`);
-      let fd, created, committed = false;
+      let fd: number | undefined, created: Stats | undefined, committed = false;
       try {
         fd = openSync(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
         created = fileMetadata(fstatSync(fd), {private: true, maxBytes});
@@ -239,7 +258,7 @@ export function createPrivateStoragePolicy({windowsAclVerifier} = {}) {
         if (!replace) { try { if (same(created, metadata(temporary))) unlinkSync(temporary); } catch {} }
         // A successful commit must not be reported as a failed save because a
         // filesystem does not support directory fsync.
-        let directoryFd;
+        let directoryFd: number | undefined;
         try { directoryFd = openSync(parent, constants.O_RDONLY | constants.O_NOFOLLOW); fsyncSync(directoryFd); }
         catch {} finally { if (directoryFd !== undefined) { try { closeSync(directoryFd); } catch {} } }
       } finally {
@@ -250,7 +269,7 @@ export function createPrivateStoragePolicy({windowsAclVerifier} = {}) {
       }
     });
   }
-  function removePrivateFile(file, {root = path.dirname(file), maxBytes = 4096, private: privateMode = true} = {}) {
+  function removePrivateFile(file: string, {root = path.dirname(file), maxBytes = 4096, private: privateMode = true}: RemovePrivateFileOptions = {}): void {
     return safe(() => {
       const before = validateManagedFile(file, {root, allowMissing: true, private: privateMode, maxBytes});
       if (!before) return;

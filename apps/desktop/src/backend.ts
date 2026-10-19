@@ -2,12 +2,22 @@ import { startServer } from '@mioon/server';
 import {comfyModuleModeFromEnvironment} from '../../server/src/comfy-module.ts';
 import { DatabaseSync } from 'node:sqlite';
 import { onMediaProcess } from '@mioon/business/media-processes';
+import type {MediaProcessEvent} from '@mioon/business/media-processes';
 import { initializeSubtitleResources } from '@mioon/business/subtitle-resources';
 import { createAgentSettingsClient } from './secret-broker.ts';
 import { createImageSecretClient } from './image-secret-broker.ts';
 import { createNativeAudioPreviewAuthority } from '@mioon/business/native-audio-preview';
+import type {NativeAudioPreviewAuthority} from '@mioon/business/native-audio-preview';
 
-function reportExitDiagnostic(reason) {
+/** Fixed diagnostic categories only; never a native error message or path. */
+type ExitDiagnosticReason = 'startup-failed' | 'unhandled-rejection' | 'uncaught-exception' | 'stop-requested'
+  | 'lease-expired' | 'signal-term' | 'signal-int' | 'shutdown-failed';
+interface BackendServer {
+  readonly url: string;
+  close(): unknown | Promise<unknown>;
+}
+
+function reportExitDiagnostic(reason: ExitDiagnosticReason) {
   // The diagnostic channel accepts fixed categories only. Errors may contain
   // credentials, request data, media content, or user paths.
   try { process.parentPort?.postMessage({ type: 'exit-diagnostic', reason }); }
@@ -26,13 +36,13 @@ process.on('uncaughtExceptionMonitor', (_error, origin) => {
   reportExitDiagnostic(origin === 'unhandledRejection' ? 'unhandled-rejection' : 'uncaught-exception');
 });
 
-let server, starting = false, startFailed = false, closing = false, lastPing = Date.now();
-let initialization;
-let nativeAudioPreview;
+let server: BackendServer | undefined, starting = false, startFailed = false, closing = false, lastPing = Date.now();
+let initialization: Promise<void> | undefined;
+let nativeAudioPreview: NativeAudioPreviewAuthority | undefined;
 const agentSettings = createAgentSettingsClient({ port: process.parentPort });
 const imageSecretCodec = createImageSecretClient({ port: process.parentPort });
-onMediaProcess(({ type, pid, kind }) => process.parentPort.postMessage({ type: 'media-process', event: type, pid, kind }));
-async function shutdown(reason) {
+onMediaProcess(({ type, pid, kind }: MediaProcessEvent) => process.parentPort!.postMessage({ type: 'media-process', event: type, pid, kind }));
+async function shutdown(reason: ExitDiagnosticReason) {
   if (closing) return;
   closing = true;
   reportExitDiagnostic(reason);
@@ -44,7 +54,7 @@ async function shutdown(reason) {
   try { imageSecretCodec.close(); } catch { exitCode = 1; }
   if (exitCode !== 0) reportExitDiagnostic('shutdown-failed');
   try {
-    process.parentPort.postMessage(exitCode === 0 ? { type: 'stopped' } : {
+    process.parentPort!.postMessage(exitCode === 0 ? { type: 'stopped' } : {
       type: 'shutdown-failed', code: 'BACKEND_STOP_FAILED', message: '本地服务退出时未能完成正常清理。'
     });
   } catch { exitCode = 1; }
@@ -58,7 +68,7 @@ process.parentPort.on('message', ({ data }) => {
   if (data?.type === 'stop') { void shutdown('stop-requested'); return; }
   if (data?.type === 'native-audio:reserve' || data?.type === 'native-audio:retire') {
     if (nativeAudioPreview && !closing) void nativeAudioPreview.command(data).then(
-      reply => process.parentPort.postMessage(reply), () => { /* No fabricated retirement acknowledgment. */ });
+      reply => process.parentPort!.postMessage(reply), () => { /* No fabricated retirement acknowledgment. */ });
     return;
   }
   if (data?.type !== 'start' || starting || closing) return;
@@ -73,13 +83,13 @@ process.parentPort.on('message', ({ data }) => {
       // back to the ordinary Web PCM lane because main wiring was incomplete.
       nativeAudioPreview = createNativeAudioPreviewAuthority(data.nativeAudioPreview);
       server = await startServer({ comfyModule: comfyModuleModeFromEnvironment(process.env.MIOON_COMFY_MODULE), dataDir: data.dataDir, port: 0, distDir: data.distDir, token: data.token, agentSettings, imageSecretCodec, nativeAudioPreview, localDraftChannel: __MIOON_DESKTOP_CHANNEL__ });
-      if (!closing) process.parentPort.postMessage({ type: 'ready', url: server.url,
+      if (!closing) process.parentPort!.postMessage({ type: 'ready', url: server.url,
         runtime: { electron: process.versions.electron, node: process.versions.node, sqlite: process.versions.sqlite, pid: process.pid } });
     } catch (error) {
       startFailed = true;
       reportExitDiagnostic('startup-failed');
       // No stack, token, provider key, raw body, or entire config in process messages.
-      process.parentPort.postMessage({ type: 'failed', code: 'BACKEND_START_FAILED',
+      process.parentPort!.postMessage({ type: 'failed', code: 'BACKEND_START_FAILED',
         message: '本地服务启动失败。请检查数据目录是否被其他进程占用，以及应用文件是否完整。' });
       clearInterval(lease);
       agentSettings.close();

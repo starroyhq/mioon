@@ -20,12 +20,21 @@ const errors = Object.freeze({
   AGENT_CHAT_INSPECTION_UNAVAILABLE: [422, '所选项目的这项资料无法安全读取；没有继续发送模型请求。'],
   AGENT_CHAT_REASONING_UNSUPPORTED: [422, '模型返回了推理或续接数据；当前阶段仅支持非思考文本模式。'],
   AGENT_CHAT_PROVIDER_ERROR: [502, '模型服务在回复过程中报告错误，已保留收到的文本。'],
-});
-export function agentChatError(code = 'AGENT_CHAT_CONNECT_FAILED') {
-  if (typeof code !== 'string' || !Object.hasOwn(errors, code)) code = 'AGENT_CHAT_CONNECT_FAILED';
-  return Object.assign(new Error(errors[code][1]), {code, status: errors[code][0]});
+} as const);
+export type AgentChatErrorCode = keyof typeof errors;
+export type AgentChatFailure = Error & {code: AgentChatErrorCode; status: number};
+/** Narrow structural access to an arbitrary thrown value's `code`. */
+export function errorCode(error: unknown): string | undefined {
+  if (error === null || typeof error !== 'object' || !('code' in error)) return undefined;
+  const code: unknown = (error as {code?: unknown}).code;
+  return typeof code === 'string' ? code : undefined;
 }
-export function safeAgentChatError(error) {
-  const safe = agentChatError(error?.code);
+export function agentChatError(code: string = 'AGENT_CHAT_CONNECT_FAILED'): AgentChatFailure {
+  const known = typeof code === 'string' && Object.hasOwn(errors, code);
+  const resolved = (known ? code : 'AGENT_CHAT_CONNECT_FAILED') as AgentChatErrorCode;
+  return Object.assign(new Error(errors[resolved][1]), {code: resolved, status: errors[resolved][0]});
+}
+export function safeAgentChatError(error: unknown): {code: AgentChatErrorCode; status: number; message: string} {
+  const safe = agentChatError(errorCode(error) || 'AGENT_CHAT_CONNECT_FAILED');
   return {code: safe.code, status: safe.status, message: safe.message};
 }

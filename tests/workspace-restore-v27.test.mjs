@@ -30,11 +30,11 @@ const zodURL=pathToFileURL(createRequire(new URL('../packages/contracts/package.
 function oldSource(name,backupURL){
  const source=fs.readFileSync(new URL(`legacy-contracts/${name}`,oldFixtureRoot),'utf8');
  assert.equal(createHash('sha256').update(source).digest('hex'),oldManifest.files[name]);
- const expected=name==='workspace-restore-offline.mjs'?['zod','./workspace-backup.mjs']:['zod'];
+ const expected=name==='workspace-restore-offline.mjs'?['zod','./workspace-backup.ts']:['zod'];
  const imports=[...source.matchAll(/from\s+['"]([^'"]+)['"]/g)].map(match=>match[1]);assert.deepEqual(imports,expected);
- return 'data:text/javascript;base64,'+Buffer.from(source.replace("from 'zod'",`from '${zodURL}'`).replace("from './workspace-backup.mjs'",`from '${backupURL}'`)).toString('base64');
+ return 'data:text/javascript;base64,'+Buffer.from(source.replace("from 'zod'",`from '${zodURL}'`).replace("from './workspace-backup.ts'",`from '${backupURL}'`)).toString('base64');
 }
-const oldBackupURL=oldSource('workspace-backup.mjs');
+const oldBackupURL=oldSource('workspace-backup.ts');
 const {workspaceBackupManifestSchema:oldManifestSchema,workspaceBackupResultSchema:oldResultSchema}=await import(oldBackupURL);
 const {workspaceRestoreOfflineResultSchema:oldRestoreResultSchema}=await import(oldSource('workspace-restore-offline.mjs',oldBackupURL));
 const {workspaceRestoreInspectionSchema:oldRestoreInspectionSchema}=await import(oldSource('workspace-restore.mjs'));

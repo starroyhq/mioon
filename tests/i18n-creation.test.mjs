@@ -54,7 +54,7 @@ test('generation provider display ignores backend translated labels and instruct
 });
 
 test('creation renderer text and lifecycle dependencies are locale-safe', () => {
-  for (const filename of ['AgentPanel.jsx', 'AgentRunActivity.jsx', 'AgentEditProposal.jsx', 'AgentTimelineGain.tsx', 'AgentWorkspace.jsx', 'ImageGeneration.jsx', 'ComfyImageDetails.jsx', 'GenerationInputSummary.jsx', 'ProviderSettings.jsx', 'TaskCenter.jsx', 'TaskWorkspace.tsx', 'PendingSubmission.jsx']) {
+  for (const filename of ['AgentPanel.tsx', 'AgentRunActivity.tsx', 'AgentEditProposal.tsx', 'AgentTimelineGain.tsx', 'AgentWorkspace.tsx', 'ImageGeneration.tsx', 'ComfyImageDetails.tsx', 'GenerationInputSummary.tsx', 'ProviderSettings.tsx', 'TaskCenter.tsx', 'TaskWorkspace.tsx', 'PendingSubmission.tsx']) {
     const source = readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8');
     const ast = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true, filename.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.JSX);
     const visit = node => {
@@ -87,9 +87,9 @@ test('actual provider renders creation details in all four locales and escapes u
     import React from 'react';
     import { renderToStaticMarkup } from 'react-dom/server.browser';
     import { I18nProvider, createLanguageStore } from './i18n/I18nProvider.tsx';
-    import ProviderSettings from './ProviderSettings.jsx';
-    import { ComfyImageTaskDetails } from './ComfyImageDetails.jsx';
-    import { AgentEditDiff } from './AgentEditProposal.jsx';
+    import ProviderSettings from './ProviderSettings.tsx';
+    import { ComfyImageTaskDetails } from './ComfyImageDetails.tsx';
+    import { AgentEditDiff } from './AgentEditProposal.tsx';
     import TaskWorkspace from './TaskWorkspace.tsx';
     export async function renderAll() {
       const result = {};

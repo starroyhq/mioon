@@ -12,13 +12,13 @@ export const WORKSPACE_BACKUP_ISSUE_CODES=Object.freeze([
  'MISSING_STAGE_MANIFEST','MISSING_RECEIPT_MEDIA','INVALID_STAGE_MANIFEST','INCONSISTENT_STAGE_RECEIPT',
  'UNRECOGNIZED_FILE_EXCLUDED','PARTIAL_RESULT_PRESERVED','UNCOMMITTED_RESULT_PRESERVED',
  'UNRESOLVED_TASK_RETAINED','REGISTERED_MEDIA_MISMATCH','RECORD_INSPECTION_LIMIT',
-]);
+] as const);
 const integer=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const hash=z.string().regex(/^[a-f0-9]{64}$/);
 const uuid='[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}';
 const media=new RegExp(`^payload/media/(?:${uuid}\\.(?:png|jpg|jpeg|webp|mp4|webm|wav|mp3|m4a)|result-${uuid}\\.mp4(?:\\.part\\.mp4)?|export-${uuid}-${uuid}\\.mp4(?:\\.part\\.mp4)?)$`,'i');
 const stage=new RegExp(`^payload/(image|frame)-staging/${uuid}\\.(png|json)$`,'i');
-export function isWorkspaceBackupPayloadPath(value){return typeof value==='string'&&(value==='payload/workbench.sqlite'||media.test(value)||stage.test(value));}
+export function isWorkspaceBackupPayloadPath(value: unknown): boolean {return typeof value==='string'&&(value==='payload/workbench.sqlite'||media.test(value)||stage.test(value));}
 const payloadPath=z.string().max(240).refine(isWorkspaceBackupPayloadPath,{message:'Expected a canonical fixed backup payload path.'});
 const issuePath=z.string().max(240).regex(/^payload\/(?:media|image-staging|frame-staging)\/[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/);
 export const workspaceBackupInventorySchema=z.object({
@@ -73,4 +73,5 @@ export const workspaceBackupInspectionSchema=z.object({
  const complete=value.databaseSchemaVersion!==null&&[...Object.values(value.counts),...Object.values(value.unresolved)].every(v=>v!==null)&&value.issues.length===0;
  if(value.inspectionComplete!==complete||new Set(value.issues).size!==value.issues.length)ctx.addIssue({code:z.ZodIssueCode.custom,message:'Inspection completeness must reflect bounded known counts.'});
 });
-export function isWorkspaceBackupInspection(value){return workspaceBackupInspectionSchema.safeParse(value).success;}
+export type WorkspaceBackupInspection = z.infer<typeof workspaceBackupInspectionSchema>;
+export function isWorkspaceBackupInspection(value: unknown): value is WorkspaceBackupInspection {return workspaceBackupInspectionSchema.safeParse(value).success;}

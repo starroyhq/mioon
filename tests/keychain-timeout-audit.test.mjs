@@ -16,7 +16,7 @@ const fixtureFile = new URL('./fixtures/keychain-sync-9e9598d.json', import.meta
 const raw = await readFile(fixtureFile);
 const fixture = JSON.parse(raw);
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
-const expected = ['tests/keychain-timeout-audit.test.mjs', 'apps/desktop/identity.cjs',
+const expected = ['tests/keychain-timeout-audit.test.mjs', 'apps/desktop/identity.ts',
   ...['secret-store', 'image-secret-store', 'image-secret-broker', 'secret-broker', 'security', 'shutdown', 'supervisor']
     .map(name => `apps/desktop/src/${name}.ts`)];
 
