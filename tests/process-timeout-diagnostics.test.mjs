@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {EventEmitter, once} from 'node:events';
 import {PassThrough} from 'node:stream';
+import {stripSourceTypes} from './helpers/eval-source.ts';
 
 const wire = readFileSync(new URL('./asset-disposition-transports.test.mjs', import.meta.url), 'utf8');
 const guard = readFileSync(new URL('./helpers/inspection-wire-fixture.ts', import.meta.url), 'utf8');
@@ -16,7 +17,7 @@ const boundedCode = section(wire, 'async function bounded(', '// Only owned Chil
 const stopCode = section(wire, 'async function stopOwned(', '// Test-only observation');
 const finishCode = section(wire, 'async function finishOwned(', 'function launch(');
 const launchCode = section(wire, 'function launch(', 'async function fixture(');
-const create = (names, code, name, values) => new Function(...names, `${code}; return ${name};`)(...values);
+const create = (names, code, name, values) => new Function(...names, `${stripSourceTypes(code)}; return ${name};`)(...values);
 
 function child() {
   const value = new EventEmitter();
@@ -92,10 +93,10 @@ test('actual CLI snapshot bounds and allowlists phase data without args, raw out
   assert.ok(captured.stdoutBytes > 0 && captured.stderrBytes > 0);
 });
 
-const fetchCode = section(guard, '  const nativeFetch = globalThis.fetch;', "  for (const name of ['request', 'get'])");
+const fetchCode = section(guard, '  const nativeFetch = globalThis.fetch;', "  for (const name of ['request', 'get']");
 function guardedFetch(nativeFetch, onFetchStage, checkURL = () => {}) {
   const target = {fetch: nativeFetch};
-  new Function('globalThis', 'onFetchStage', 'checkURL', fetchCode)(target, onFetchStage, checkURL);
+  new Function('globalThis', 'onFetchStage', 'checkURL', stripSourceTypes(fetchCode))(target, onFetchStage, checkURL);
   return target.fetch;
 }
 test('optional fetch phases preserve exact responses/rejections, guard order and default promise identity', async () => {
@@ -115,11 +116,11 @@ test('optional fetch phases preserve exact responses/rejections, guard order and
 test('fixture phases are opt-in, constant-only, capped16 and use no process lifecycle hook', () => {
   const phaseCode = section(fixture, 'let phaseCount = 0;', "if (process.env.MIOON_DISPOSITION_WIRE_GUARD");
   const writes = [], fakeProcess = {env: {MIOON_DISPOSITION_PHASE_TRACE: '1'}, resourceUsage: () => ({userCPUTime: 1, systemCPUTime: 2, maxRSS: 3, extra: 'private'}), uptime: () => 1, stderr: {write: text => writes.push(text)}};
-  const trace = new Function('process', phaseCode + ';return phaseTrace;')(fakeProcess);
+  const trace = new Function('process', stripSourceTypes(phaseCode) + ';return phaseTrace;')(fakeProcess);
   for (let i = 0; i < 30; i++) trace('fetch-start');
   assert.equal(writes.length, 16); assert.doesNotMatch(writes.join(''), /private|extra/);
   assert.deepEqual(Object.keys(JSON.parse(writes[0].slice('MIOON_WIRE_PHASE '.length))), ['stage', 'uptimeMs', 'userCPUTime', 'systemCPUTime', 'maxRSS']);
-  assert.equal(new Function('process', phaseCode + ';return phaseTrace;')({env: {}}), undefined);
+  assert.equal(new Function('process', stripSourceTypes(phaseCode) + ';return phaseTrace;')({env: {}}), undefined);
 });
 
 const recovery = readFileSync(new URL('./edit-task-process-recovery.test.mjs', import.meta.url), 'utf8');
@@ -163,7 +164,7 @@ test('actual worker observations are capped and omit raw output, unknown phases 
 test('worker fixture milestones contain fixed labels and numeric resource counters only', () => {
   const phaseCode = section(workerSource, 'const startupEntered', 'const crashAt'), observations = [];
   const fakeProcess = {hrtime: {bigint: () => 1000000n}, resourceUsage: () => ({userCPUTime: 1, fsRead: 0, maxRSS: 10, secret: 'private', systemCPUTime: -1})};
-  const phase = new Function('process', 'report', phaseCode + ';return startupPhase;')(fakeProcess, value => observations.push(value));
+  const phase = new Function('process', 'report', stripSourceTypes(phaseCode) + ';return startupPhase;')(fakeProcess, value => observations.push(value));
   phase('open-store-start');
   assert.equal(observations[0].phase, 'entry-after-imports');
   assert.deepEqual(observations[1].resourceUsage, {userCPUTime: 1, maxRSS: 10, fsRead: 0});
