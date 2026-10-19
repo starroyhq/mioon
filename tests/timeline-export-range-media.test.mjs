@@ -88,9 +88,19 @@ function frameMae(reference,selected,referenceFrame,selectedFrame=0){
 }
 function compareSourceMarkers(reference,selected,expectedFrames,palette){
  let worstSourceError=0,worstMaskMismatch=0,worstMae=0,nearestWrongFrameMargin=Infinity;
- const closest=color=>palette.reduce((best,entry,index)=>{
-  const error=entry.reduce((sum,value,channel)=>sum+(value-color[channel])**2,0);return error<best.error?{index,error}:best;
- },{index:-1,error:Infinity}).index;
+ const nearest=color=>{let best={index:-1,error:Infinity},second={error:Infinity};
+  for(const [index,entry] of palette.entries()){
+   const error=entry.reduce((sum,value,channel)=>sum+(value-color[channel])**2,0);
+   if(error<best.error){second=best;best={index,error};}else if(error<second.error)second={error};
+  }
+  return {index:best.index,margin:Math.sqrt(second.error)-Math.sqrt(best.error)};
+ };
+ // Codec noise can flip the nearest-color identity only for pixels that already
+ // sit within a few levels of a palette decision boundary; those pixels cannot
+ // identify a composition/timing mistake (a wrong source frame differs by more
+ // than minimumSeparation>40 per channel). Count the mismatch only over pixels
+ // whose nearest-color margin is at least MIN_MASK_MARGIN.
+ const MIN_MASK_MARGIN=8;
  for(let frame=0;frame<expectedFrames.length;frame++){
   for(const [pixels,at] of [[reference,frame+24],[selected,frame]]){
    const markers=markerColors(pixels,at);
@@ -99,12 +109,17 @@ function compareSourceMarkers(reference,selected,expectedFrames,palette){
     assert.ok(error<20,`Frame ${frame+24}, marker ${marker}: source color differs by ${error}`);
    }
   }
-  let mismatches=0;
+  let mismatches=0,confident=0;
   for(let pixel=0;pixel<32*24;pixel++){
    const a=(frame+24)*32*24*3+pixel*3,b=frame*32*24*3+pixel*3;
-   if(closest(reference.subarray(a,a+3))!==closest(selected.subarray(b,b+3)))mismatches++;
+   const referenceColor=reference.subarray(a,a+3),selectedColor=selected.subarray(b,b+3);
+   const referenceNearest=nearest(referenceColor),selectedNearest=nearest(selectedColor);
+   if(referenceNearest.margin<MIN_MASK_MARGIN||selectedNearest.margin<MIN_MASK_MARGIN)continue;
+   confident++;
+   if(referenceNearest.index!==selectedNearest.index)mismatches++;
   }
-  const mismatch=mismatches/(32*24);worstMaskMismatch=Math.max(worstMaskMismatch,mismatch);
+  assert.ok(confident>=32*24*0.9,`Frame ${frame+24}: too few unambiguous source-color pixels (${confident})`);
+  const mismatch=mismatches/confident;worstMaskMismatch=Math.max(worstMaskMismatch,mismatch);
   assert.ok(mismatch<.03,`Frame ${frame+24}: source-color composition masks differ over ${mismatch*100}% of pixels`);
   worstMae=Math.max(worstMae,frameMae(reference,selected,frame+24,frame));
   for(const neighbor of [frame-1,frame+1])if(neighbor>=0&&neighbor<expectedFrames.length&&JSON.stringify(expectedFrames[neighbor])!==JSON.stringify(expectedFrames[frame])){
