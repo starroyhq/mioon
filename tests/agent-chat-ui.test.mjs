@@ -547,7 +547,7 @@ test('actual nested dock page combines ancestor visibility, keeps children and m
 });
 
 test('App right-dock tabs preserve existing layout, resize and Inspector subtree and ordinary selection never changes tabs', () => {
-  assert.match(appSource, /rightDockTab, setRightDockTabState\] = useState\('properties'\)/); assert.match(appSource, /const setRightDockTab = \(value: string\) => \{ if \(!clipDraftRef\.current\?\.hasPendingComposition\(\)\) setRightDockTabState\(value\); \}/);
+  assert.match(appSource, /rightDockTab, setRightDockTabState\] = useState\('properties'\)/); assert.match(appSource, /const setRightDockTab = \(value: string(?: \| \(\(previous: string\) => string\))?\) => \{ if \(!clipDraftRef\.current\?\.hasPendingComposition\(\)\) setRightDockTabState\(value\); \}/);
   for (const id of ['right-dock-tab-properties', 'right-dock-tab-agent', 'right-dock-tab-image']) assert.ok((appSource + readFileSync(new URL('../apps/web/src/WorkbenchShell.tsx', import.meta.url), 'utf8') + readFileSync(new URL('../apps/web/src/CanvasToolbar.tsx', import.meta.url), 'utf8')).includes(`data-testid="${id}"`));
   assert.match(appSource, /<AgentDockPane id="right-dock-properties"[^>]+visible={rightDockTab === 'properties'}/);
   assert.match(appSource, /<AgentDockPane id="right-dock-agent"[^>]+visible={rightDockTab === 'agent'}/);
