@@ -1,4 +1,5 @@
 import test, {mock} from 'node:test';
+import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync, rmSync} from 'node:fs';
 import path from 'node:path';
@@ -14,35 +15,35 @@ import {mkdtempPortable} from './helpers/temp-root.ts';
 
 const stamp = '2026-10-16T00:00:00.000Z';
 const curve = {profileId: 'mioon-clip-linear-opacity-v1', points: [{frame: 0, opacity: 0}, {frame: 30, opacity: 1}]};
-async function fixture(t, purpose = 'export', named = false) {
+async function fixture(t: TestContext, purpose: 'preview' | 'export' = 'export', named = false) {
   const parent = mkdtempPortable('mioon-opacity-delivery-'), store = openNewOpacityCandidateApplicationStore(path.join(parent, 'fresh42'));
   const services = createOpacityCandidateApplicationServices(store);
   t.after(async () => {try {await services.drain(); store.close();} finally {rmSync(parent, {recursive: true, force: true});}});
-  const project = await services.call('project.create', {name: 'Synthetic delivery'}), sourceId = randomUUID();
+  const project = await services.call('project.create', {name: 'Synthetic delivery'}) as unknown as {id: string}, sourceId = randomUUID();
   store.put('assets', {id: sourceId, projectId: project.id, name: 'Synthetic metadata', mimeType: 'video/mp4', duration: 1,
     width: 720, height: 1280, hasVideo: true, hasAudio: false, sha256: 'a'.repeat(64), relativePath: `media/${sourceId}.mp4`, createdAt: stamp});
-  let timeline = await services.call('timeline.get', {projectId: project.id});
+  let timeline = await services.call('timeline.get', {projectId: project.id}) as unknown as {revision: number; tracks: Array<{id: string}>};
   timeline = await services.call('timeline.clip.add', {projectId: project.id, requestId: randomUUID(), expectedRevision: timeline.revision,
-    assetId: sourceId, trackId: timeline.tracks[0].id, startFrame: 0, durationFrames: 30, opacityEnvelope: curve});
+    assetId: sourceId, trackId: timeline.tracks[0]!.id, startFrame: 0, durationFrames: 30, opacityEnvelope: curve}) as unknown as typeof timeline;
   const queued = await services.call('timeline.render', {projectId: project.id, requestId: randomUUID(), expectedRevision: timeline.revision, purpose,
-    ...(named ? {deliveryName: 'Synthetic named delivery'} : {})});
+    ...(named ? {deliveryName: 'Synthetic named delivery'} : {})}) as unknown as {id: string};
   const assetId = randomUUID(), bytes = Buffer.from('synthetic metadata only; no output file is opened');
   const asset = {id: assetId, projectId: project.id, mimeType: 'video/mp4', provenance: 'export', name: 'Synthetic output',
     relativePath: `media/export-${queued.id}-${randomUUID()}.mp4`, url: `/media/${assetId}`,
     sha256: createHash('sha256').update(bytes).digest('hex'), sizeBytes: bytes.length, createdAt: stamp};
   store.put('assets', asset);
-  const record = {...queued, status: 'succeeded', assetId, url: asset.url, updatedAt: stamp}; store.put('exports', record);
+  const record = {...queued, status: 'succeeded', assetId, url: asset.url, updatedAt: stamp} as unknown as Record<string, unknown> & {id: string; requestId: string}; store.put('exports', record);
   const guards = createOpacityCandidateTimelineDeliveryGuards(store);
-  const url = key => new URL(`/media/${assetId}?${key}=1&exportId=${record.id}`, 'http://127.0.0.1:4319');
+  const url = (key: string) => new URL(`/media/${assetId}?${key}=1&exportId=${record.id}`, 'http://127.0.0.1:4319');
   const before = () => JSON.stringify(['projects', 'assets', 'timelines', 'timeline_requests', 'timeline_history', 'exports'].map(table => store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()));
   return {store, services, asset, record, queued, project, guards, url, before};
 }
 
-test('fixed application guards play both purposes and download only exports, including unnamed, without effects', async t => {
+test('fixed application guards play both purposes and download only exports, including unnamed, without effects', async (t: TestContext) => {
   let children = 0;
-  for (const name of ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork']) mock.method(cp, name, () => {children++; throw Error('No native process');});
+  for (const name of ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork']) (mock.method as unknown as (object: object, name: string, impl: () => never) => unknown)(cp, name, () => {children++; throw Error('No native process');});
   syncBuiltinESMExports();t.after(() => {mock.restoreAll();syncBuiltinESMExports();assert.equal(children, 0);});
-  for (const [purpose, named] of [['preview', false], ['export', false], ['export', true]]) {
+  for (const [purpose, named] of [['preview', false], ['export', false], ['export', true]] as const) {
     const f = await fixture(t, purpose, named), before = f.before();
     const playback = readTimelineExportPreviewMedia(f.store.db, f.url('preview'), f.guards); assert.ok(playback);
     assert.equal(timelineExportPreviewResponseHeaders(f.store.db, f.url('preview'), f.guards, playback)['Content-Disposition'], 'inline');
@@ -60,12 +61,12 @@ test('fixed application guards play both purposes and download only exports, inc
   }
 });
 
-test('candidate media binds exact owner, queued receipt, output path and late response fence', async t => {
+test('candidate media binds exact owner, queued receipt, output path and late response fence', async (t: TestContext) => {
   const f = await fixture(t, 'export', true), descriptor = readTimelineExportPreviewMedia(f.store.db, f.url('preview'), f.guards);
   const download = readTimelineDeliveryDownload(f.store.db, f.url('download'), f.guards);assert.ok(descriptor);assert.ok(download);
   const bound = {isTimelineRenderRecord: f.guards.isTimelineRenderRecord.bind(f.guards), readOwnedAsset: f.guards.readOwnedAsset.bind(f.guards)};
   assert.ok(readTimelineDeliveryDownload(f.store.db, f.url('download'), bound), 'a trusted wrapper still checks the fixed owner and receipt');
-  const foreign = await f.services.call('project.create', {name: 'Foreign output owner'});
+  const foreign = await f.services.call('project.create', {name: 'Foreign output owner'}) as unknown as {id: string};
   f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(foreign.id, f.asset.id);
   assert.equal(readTimelineExportPreviewMedia(f.store.db, f.url('preview'), f.guards), null);
   assert.throws(() => timelineExportPreviewResponseHeaders(f.store.db, f.url('preview'), f.guards, descriptor), {code: 'FILE_UNAVAILABLE'});
@@ -81,7 +82,7 @@ test('candidate media binds exact owner, queued receipt, output path and late re
   assert.equal(readTimelineDeliveryDownload(f.store.db, f.url('download'), bound), null, 'wrapping fixed methods cannot skip original receipt proof');
 });
 
-test('ordinary42, copied stores and a closed application never grant candidate delivery rules', async t => {
+test('ordinary42, copied stores and a closed application never grant candidate delivery rules', async (t: TestContext) => {
   const f = await fixture(t);
   assert.throws(() => createOpacityCandidateTimelineDeliveryGuards({...f.store}), {code: 'FILE_UNAVAILABLE'});
   const parent = mkdtempPortable('mioon-opacity-delivery-ordinary-'), ordinary = openOpacityCandidateStore(parent);
@@ -92,7 +93,7 @@ test('ordinary42, copied stores and a closed application never grant candidate d
   assert.equal(readTimelineExportPreviewMedia(f.store.db, f.url('preview'), f.guards), null);
 });
 
-test('raw candidate media only serves managed imports and cannot relabel an output to skip receipt proof', async t => {
+test('raw candidate media only serves managed imports and cannot relabel an output to skip receipt proof', async (t: TestContext) => {
   const f = await fixture(t), id = randomUUID();
   const imported = {...f.asset, id, url: `/media/${id}`, name: 'Imported metadata', provenance: 'user-import', relativePath: `media/${id}.mp4`};
   f.store.put('assets', imported);

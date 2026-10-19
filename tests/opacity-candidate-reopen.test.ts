@@ -1,4 +1,5 @@
 import test, {mock, after} from 'node:test';
+import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -20,14 +21,14 @@ import {mkdtempPortable} from './helpers/temp-root.ts';
 
 let attempts=0;
 const forbidden=()=>{attempts++;throw Error('No listener or native process in reopen qualification');};
-mock.method(http.Server.prototype,'listen',forbidden);
-for(const name of ['spawn','spawnSync','exec','execSync','execFile','execFileSync','fork'])mock.method(cp,name,forbidden);
+(mock.method as unknown as (object: object, name: string, impl: () => never) => unknown)(http.Server.prototype,'listen',forbidden);
+for(const name of ['spawn','spawnSync','exec','execSync','execFile','execFileSync','fork'])(mock.method as unknown as (object: object, name: string, impl: () => never) => unknown)(cp,name,forbidden);
 syncBuiltinESMExports();
 after(()=>{mock.restoreAll();syncBuiltinESMExports();assert.equal(attempts,0);});
-const hash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const hash=(file: string)=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const metadata=()=>({restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:'2026-10-16T00:00:00.000Z'});
-function parent(t){const root=mkdtempPortable('mioon-opacity-reopen-');t.after(()=>fs.rmSync(root,{recursive:true,force:true}));return root;}
-function seedDatabase(root,version){
+function parent(t: TestContext){const root=mkdtempPortable('mioon-opacity-reopen-');t.after(()=>fs.rmSync(root,{recursive:true,force:true}));return root;}
+function seedDatabase(root: string,version: number){
  fs.mkdirSync(root,{mode:0o700});const db=new DatabaseSync(path.join(root,'workbench.sqlite'));
  try{
   db.exec('PRAGMA trusted_schema=OFF;PRAGMA foreign_keys=ON;');
@@ -37,7 +38,7 @@ function seedDatabase(root,version){
  }finally{db.close();}
 }
 
-test('explicit reopen never creates missing roots/databases and keeps new/open CLI actions exclusive',t=>{
+test('explicit reopen never creates missing roots/databases and keeps new/open CLI actions exclusive',(t: TestContext)=>{
  const base=parent(t),missing=path.join(base,'missing'),empty=path.join(base,'empty');
  assert.throws(()=>reopenOpacityCandidateApplicationStore(missing));assert.equal(fs.existsSync(missing),false);
  fs.mkdirSync(empty,{mode:0o700});assert.throws(()=>reopenOpacityCandidateApplicationStore(empty));assert.deepEqual(fs.readdirSync(empty),[]);
@@ -46,7 +47,7 @@ test('explicit reopen never creates missing roots/databases and keeps new/open C
  assert.throws(()=>createExistingOpacityCandidateLaunch('relative'),{code:'OPACITY_CANDIDATE_LAUNCH_REQUIRED'});
 });
 
-test('reopen refuses exact40/41/43, unknown catalog and corrupt SQLite without modifying original database bytes',t=>{
+test('reopen refuses exact40/41/43, unknown catalog and corrupt SQLite without modifying original database bytes',(t: TestContext)=>{
  const base=parent(t);
  for(const version of [40,41,43]){
   const root=path.join(base,`profile${version}`);seedDatabase(root,version);const file=path.join(root,'workbench.sqlite'),before=hash(file);
@@ -61,16 +62,16 @@ test('reopen refuses exact40/41/43, unknown catalog and corrupt SQLite without m
  }
 });
 
-test('occupied owner lock and unsafe managed files are refused without taking over or repairing them',t=>{
+test('occupied owner lock and unsafe managed files are refused without taking over or repairing them',(t: TestContext)=>{
  const base=parent(t),root=path.join(base,'owned'),owned=openNewOpacityCandidateApplicationStore(root),lock=path.join(root,'server.lock');
- const before=fs.readFileSync(lock);try{assert.throws(()=>reopenOpacityCandidateApplicationStore(root),/running backend/);assert.deepEqual(fs.readFileSync(lock),before);assert.equal(getOpacityCandidateAssembly(owned).ownsLock(),true);}finally{owned.close();}
+ const before=fs.readFileSync(lock);try{assert.throws(()=>reopenOpacityCandidateApplicationStore(root),/running backend/);assert.deepEqual(fs.readFileSync(lock),before);assert.equal(getOpacityCandidateAssembly(owned)!.ownsLock(),true);}finally{owned.close();}
  const link=path.join(base,'linked');fs.mkdirSync(link,{mode:0o700});fs.symlinkSync(path.join(root,'workbench.sqlite'),path.join(link,'workbench.sqlite'));
- assert.throws(()=>reopenOpacityCandidateApplicationStore(link),error=>error.code==='STORAGE_PRIVATE_REQUIRED');assert.equal(fs.lstatSync(path.join(link,'workbench.sqlite')).isSymbolicLink(),true);
+ assert.throws(()=>reopenOpacityCandidateApplicationStore(link),(error: unknown)=>(error as {code?: string}).code==='STORAGE_PRIVATE_REQUIRED');assert.equal(fs.lstatSync(path.join(link,'workbench.sqlite')).isSymbolicLink(),true);
 });
 
-test('clean reopened application gets a new exact owner capability and preserved project while generic copies do not',async t=>{
+test('clean reopened application gets a new exact owner capability and preserved project while generic copies do not',async (t: TestContext)=>{
  const base=parent(t),root=path.join(base,'app'),first=openNewOpacityCandidateApplicationStore(root),services=createOpacityCandidateApplicationServices(first);
- const project=await services.call('project.create',{name:'Reopened exact42'}),old=getOpacityCandidateAssembly(first);
+ const project=await services.call('project.create',{name:'Reopened exact42'}) as unknown as {id: string},old=getOpacityCandidateAssembly(first)!;
  await services.drain();first.close();
  const launch=createExistingOpacityCandidateLaunch(root);
  for(const value of [{...launch},JSON.parse(JSON.stringify(launch))])assert.throws(()=>consumeOpacityCandidateLaunch(value),{code:'OPACITY_CANDIDATE_LAUNCH_REQUIRED'});
@@ -82,12 +83,12 @@ test('clean reopened application gets a new exact owner capability and preserved
  const unused=createExistingOpacityCandidateLaunch(root);closeUnusedOpacityCandidateLaunch(unused);assert.equal(fs.existsSync(path.join(root,'server.lock')),false);
 });
 
-test('reopen retains complete raw opacity/source ownership validation',async t=>{
+test('reopen retains complete raw opacity/source ownership validation',async (t: TestContext)=>{
  const base=parent(t),root=path.join(base,'invalid-source'),store=openNewOpacityCandidateApplicationStore(root),services=createOpacityCandidateApplicationServices(store);
- const project=await services.call('project.create',{name:'Opacity source owner'}),foreign=await services.call('project.create',{name:'Foreign owner'}),assetId=randomUUID();
+ const project=await services.call('project.create',{name:'Opacity source owner'}) as unknown as {id: string},foreign=await services.call('project.create',{name:'Foreign owner'}) as unknown as {id: string},assetId=randomUUID();
  store.put('assets',{id:assetId,projectId:project.id,name:'Synthetic metadata',mimeType:'video/mp4',duration:1,width:720,height:1280,hasVideo:true,hasAudio:false,sha256:'a'.repeat(64),relativePath:`media/${assetId}.mp4`,createdAt:'2026-10-16T00:00:00.000Z'});
- const timeline=await services.call('timeline.get',{projectId:project.id});
- await services.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId,trackId:timeline.tracks[0].id,startFrame:0,durationFrames:30,
+ const timeline=await services.call('timeline.get',{projectId:project.id}) as unknown as {revision: number; tracks: Array<{id: string}>};
+ await services.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId,trackId:timeline.tracks[0]!.id,startFrame:0,durationFrames:30,
   opacityEnvelope:{profileId:'mioon-clip-linear-opacity-v1',points:[{frame:0,opacity:0},{frame:30,opacity:1}]}});
  store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(foreign.id,assetId);await services.drain();store.close();
  const before=hash(path.join(root,'workbench.sqlite'));assert.throws(()=>reopenOpacityCandidateApplicationStore(root),{code:'WORKSPACE_OPACITY_INVALID'});
