@@ -93,15 +93,21 @@ export async function runReadToolWorkflow({runId, projectId, configuration, mess
   }
   const completed = await request(first, {phase: 'request', ...scopeOptions});
   if (!completed || !control.live() || completed.finishReason === 'stop') return;
+  control.beforeSubmit?.();
   const call = completed.toolCall as ToolCall, parsed = scope.parse(call.name, call.argumentsJson);
   const toolProvenance = {category: timelineGain ? AGENT_TIMELINE_GAIN_PROVENANCE : timelineEdit ? AGENT_TIMELINE_MOVE_PROVENANCE : target ? 'project_selected_shot_text' : 'project_saved_text_metadata', projectId, operation: parsed.operation};
   const intent = committed(() => journal.toolIntent(runId, first.id, {toolCall: call, provenance: toolProvenance}));
   if (!control.live()) return;
+  // Publishing the durable intent can reenter the host and revoke authority.
+  control.beforeSubmit?.();
   // Context identity and its capabilities are created solely by the backend.
   const inspectionScope = target ? null : inspection.createContext({projectId, capabilities: Object.values(READ_TOOL_OPERATIONS), maxCalls: 1,
     maxResultBytes: READ_TOOL_LIMITS.maxResultBytes - 1024, maxTotalBytes: READ_TOOL_LIMITS.maxResultBytes - 1024});
   const captured = committed(() => journal.captureTool(runId, intent.step.id, () => {
     if (!control.live()) throw agentChatError('AGENT_CHAT_ABORTED');
+    // captureTool commits dispatch_started separately. Recheck after that
+    // boundary, with no async gap before the synchronous tool effect.
+    control.beforeSubmit?.();
     if (target) {
       const proposal = (editService as EditProposalService).createInside({projectId, runId, target, changes: parsed.arguments, toolCall: call});
       const result = {kind: timelineGain ? 'untrusted_timeline_clip_gain_proposal' : timelineEdit ? 'untrusted_timeline_clip_move_proposal' : 'untrusted_shot_update_proposal', operation: parsed.operation, status: 'pending_review',

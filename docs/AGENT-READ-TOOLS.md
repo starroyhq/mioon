@@ -73,6 +73,13 @@ Tool execution has three boundaries:
 3. Perform the synchronous shared inspection and commit its checked exact result
    in one SQLite transaction, then publish the saved activity/result.
 
+The runtime rechecks the persistent authorization after the first response,
+after intent publication, and inside the capture callback immediately before
+the synchronous tool effect. A committed revocation at any of these boundaries
+prevents the read or proposal and the answer request. Authorization denial
+fails only that run; a dispatch-started tool without a result remains unknown
+and is never retried on replay or restart.
+
 The next request is reconstructed only from committed artifacts, saved before
 dispatch, and compared against the original profile/context and tool result.
 Replaying an observed tool returns its saved observation, never re-reads current

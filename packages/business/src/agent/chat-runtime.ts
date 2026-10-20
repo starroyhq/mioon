@@ -166,7 +166,7 @@ export function createChatRuntime({store, agentSettings, gateway = streamAgentRe
     try { return operation(); }
     catch (error) {
       const code = errorCode(error);
-      if (code !== undefined && (['AGENT_CHAT_STORAGE_LIMIT', 'AGENT_CHAT_NOT_FOUND', 'AGENT_CHAT_BUSY', 'AGENT_CHAT_INSPECTION_UNAVAILABLE', 'AGENT_CHAT_LIMIT', 'AGENT_CHAT_ABORTED', 'TIMELINE_SOURCE_UNAVAILABLE', 'INVALID_TIMELINE_SNAPSHOT', 'INSPECTION_BUDGET_EXCEEDED'].includes(code) || code.startsWith('AGENT_EDIT_'))) throw error;
+      if (code !== undefined && (['AGENT_CHAT_STORAGE_LIMIT', 'AGENT_CHAT_NOT_FOUND', 'AGENT_CHAT_BUSY', 'AGENT_CHAT_INSPECTION_UNAVAILABLE', 'AGENT_CHAT_LIMIT', 'AGENT_CHAT_ABORTED', 'AGENT_CHAT_CONSENT_REQUIRED', 'AGENT_CHAT_CONTEXT_CHANGED', 'TIMELINE_SOURCE_UNAVAILABLE', 'INVALID_TIMELINE_SNAPSHOT', 'INSPECTION_BUDGET_EXCEEDED'].includes(code) || code.startsWith('AGENT_EDIT_'))) throw error;
       throw storageFault();
     }
   }
@@ -295,7 +295,8 @@ export function createChatRuntime({store, agentSettings, gateway = streamAgentRe
     const gainFence = state.execution?.policy.context === AGENT_TIMELINE_GAIN_CONTEXT ? createAgentGainContextFence({
       live: () => live(state), checkTarget: () => (editService as AgentEditService).assertTimelineGainTarget(state.execution?.target)}) : undefined;
     // A saved grant never authorizes later steps after revocation. This same
-    // fence runs after async credential acquisition and at each model POST.
+    // fence runs after async credential acquisition, at each model POST, and
+    // immediately before a synchronous tool read or proposal capture.
     const beforeSubmit = (): void => { requireAuthorization(configuration, state.authorizationScope); gainFence?.(); };
     try {
       validateAgentGatewayConfiguration(configuration, {selfPort: selfPort(), ...(state.execution ? {readTools: {phase: 'request', ...(state.execution.target ? {scope: state.execution.policy.context} : {})}} : {})});
