@@ -1,3 +1,9 @@
+import {transformSync} from 'esbuild';
+import {i18nTestModule} from './helpers/i18n.ts';
+import * as settingsState from '../apps/web/src/export-settings-state.ts';
+import * as deliveryState from '../apps/web/src/export-delivery-state.ts';
+import * as rangeState from '../apps/web/src/export-range-state.ts';
+import {exportHistoryStatusMessage} from '../apps/web/src/export-display.ts';
 import { formatDate } from './helpers/i18n.ts';
 import test, {before} from 'node:test';
 import assert from 'node:assert/strict';
@@ -20,6 +26,8 @@ const fixtures = {
   escaped: {projectName: '片名 <script> " & 单引号\'', orderedExports: [row('escaped', {url: '/media/synthetic?download=1&label=%22%E4%B8%AD%22', error: '<img src=x onerror=alert(1)>'})]},
   escapedDownload: {fileRecoveryEnabled: false, orderedExports: [row('escaped', {url: '/media/synthetic?download=1&label=%22%E4%B8%AD%22&quoted="<&name=片名'})]},
   order: {orderedExports: [row('first', {url: '/media/order-first', createdAt: '2020-01-01'}), row('second', {url: '/media/order-second', createdAt: '2030-01-01'})]},
+  sizes:{projectId:'original-project',outputAssets:[{id:'owned-output',projectId:'original-project',sizeBytes:2*1024*1024},{id:'foreign-output',projectId:'other-project',sizeBytes:3*1024*1024}],orderedExports:[row('sized',{assetId:'owned-output',sizeBytes:99*1024*1024}),row('foreign-asset',{assetId:'foreign-output'}),row('foreign-row',{projectId:'other-project',assetId:'owned-output'}),row('missing-output',{sizeBytes:99*1024*1024})]},
+  invalidSizes:{projectId:'original-project',outputAssets:[0,-1,1.5,Number.MAX_SAFE_INTEGER+1].map((sizeBytes,index)=>({id:`invalid-size-${index}`,projectId:'original-project',sizeBytes})),orderedExports:[0,1,2,3].map(index=>row(`bad-${index}`,{assetId:`invalid-size-${index}`}))},
 };
 let rendered, actions, fileActions, unchanged;
 before(() => {
@@ -53,12 +61,12 @@ before(() => {
       build.onLoad({filter:/.*/, namespace:'file-action-capture'}, () => ({contents:${JSON.stringify(capture)}, loader:'tsx', resolveDir:${JSON.stringify(path.join(root, 'apps/web'))}}));
     }}]});
     const result = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].text).toString('base64'));
-    process.stdout.write(JSON.stringify(result.result)); process.exit(0);`;
+    await new Promise(resolve=>process.stdout.write(JSON.stringify(result.result),resolve)); process.exit(0);`;
   ({html: rendered, actions, fileActions, unchanged} = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], {cwd: root, input: script, encoding: 'utf8', timeout: 30000})));
 });
 
 test('export history preserves its empty-state text and original single wrapper', () => {
-  assert.match(rendered.empty, /^<div class="export-list"><div class="small-empty">/);
+  assert.match(rendered.empty, /^<div class="export-history-table-view export-list">/); assert.match(rendered.empty, /<table class="export-history-table">/); assert.match(rendered.empty, /colSpan="6"/i);
   assert.match(rendered.empty, /还没有导出记录/); assert.match(rendered.empty, /将媒体编排到时间线后导出，或为镜头选好版本后使用分镜导出/);
   assert.doesNotMatch(rendered.empty, /download-export|role="dialog"|export-card/);
   assert.deepEqual(actions.empty, []);
@@ -81,7 +89,7 @@ test('ready rows pass exact URL precedence and identity to the async file check 
     assert.match(html, /data-testid="export-file-check"/);
     assert.doesNotMatch(html, /download-export|href=|download=/);
   }
-  assert.ok(rendered.success.includes(formatDate('zh-Hans', date, { dateStyle: 'medium', timeStyle: 'medium' })));
+  assert.ok(rendered.success.includes(formatDate('zh-Hans', date, { dateStyle: 'short', timeStyle: 'short' })));
 });
 test('snapshot labels preserve preview/export/storyboard and strict revision comparison', () => {
   assert.match(rendered.snapshots, /时间线预览 · 修订版 7 · 当前/); assert.match(rendered.snapshots, /时间线导出 · 修订版 6 · 旧快照/);
@@ -115,7 +123,13 @@ test('presentation uses supplied order and never mutates frozen input rows', () 
   assert.ok(rendered.order.indexOf('data-export-id="first"') < rendered.order.indexOf('data-export-id="second"'));
   assert.ok(Object.values(unchanged).every(Boolean));
   const source = readFileSync(path.join(root, 'apps/web/src/ExportHistoryList.tsx'), 'utf8');
-  assert.doesNotMatch(source, /useState|useEffect|useRef|\bfetch\s*\(|\brpc\s*\(|\.sort\s*\(|navigationEpoch|requestId/);
+  assert.doesNotMatch(source, /useEffect|useRef|\bfetch\s*\(|\brpc\s*\(|\.sort\s*\(|navigationEpoch|requestId/);
+});
+test('history derives size only from the matching owned output asset without trusting receipt extras',()=>{
+ const sizes=html=>[...html.matchAll(/data-testid="export-history-size">([^<]*)<\/td>/g)].map(match=>match[1]);
+ assert.deepEqual(sizes(rendered.sizes),['2 MB','—','—','—']);
+ assert.deepEqual(sizes(rendered.invalidSizes),['—','—','—','—']);
+ assert.equal(unchanged.sizes,true);assert.equal(unchanged.invalidSizes,true);
 });
 test('App keeps history in the controlled export dialog with visibility, recovery and immutable identity inputs', () => {
   const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
@@ -130,7 +144,7 @@ test('App keeps history in the controlled export dialog with visibility, recover
     'fileRecoveryEnabled={!restored && !application}', 'projectId={data.project?.id}',
     'candidateConnected={online && auth === true && workbenchReady && !loading}', 'opacityApplication={opacityApplication}',
     'samplePeak={application ? undefined : exportSamplePeak as never}', 'loudness={application ? undefined : exportLoudness as never}',
-    'heldExportIds={data.restore?.heldExportIds}', 'orderedExports={orderedExports}',
+    'heldExportIds={data.restore?.heldExportIds}', 'orderedExports={orderedExports}', 'outputAssets={data.assets}',
     'projectName={data.project?.name}', 'timelineRevision={timeline?.revision}',
   ]) assert.ok(history.includes(expected), expected);
   assert.match(history, /onReexport=\{\(\) => \{ if \(clipDraftRef\.current\?\.hasPendingComposition\(\) \|\| !canOpenExport\) return; setDeliveryAttempt\(null\); setDeliveryReviewVersion\(value => value \+ 1\); openTimelineExport\(\); \}\}/);
@@ -142,4 +156,23 @@ test('App keeps history in the controlled export dialog with visibility, recover
   assert.match(app, /<DialogTitle>\{title\}<\/DialogTitle>/); assert.match(app, /aria-label=\{t\('shell\.closeDialog'\)\}/);
   assert.match(app, /setShowTasks\(false\); setShowDelivery\(false\); setShowImage\(false\); setShowProjectChooser\(false\); setShowExports\(false\); setComparisonId\(null\)/);
   assert.doesNotMatch(app, /className="export-card"/);
+});
+
+
+test('history filters actual retained rows locally and a project switch discards the previous filter',()=>{
+ const source=readFileSync(new URL('../apps/web/src/ExportHistoryList.tsx',import.meta.url),'utf8');
+ let state,tree,props={projectId:'one',orderedExports:[row('done'),row('failed',{status:'failed'}),row('cancelled',{status:'failed',error:{code:'EXPORT_CANCELLED'}}),row('running',{status:'running'})]};
+ const original=JSON.stringify(props.orderedExports),react={createElement:(type,props,...children)=>({type,props:{...props,children}}),useState(initial){state??=initial;return[state,next=>{state=typeof next==='function'?next(state):next;}];}};
+ const mod={exports:{}};Function('module','exports','require',transformSync(source,{loader:'tsx',format:'cjs'}).code)(mod,mod.exports,name=>{
+  if(name==='react')return react;if(name.endsWith('I18nProvider.tsx'))return i18nTestModule();
+  if(name.endsWith('export-settings-state.ts'))return settingsState;if(name.endsWith('export-delivery-state.ts'))return deliveryState;if(name.endsWith('export-range-state.ts'))return rangeState;if(name.endsWith('export-display.ts'))return{exportHistoryStatusMessage};
+  if(name.endsWith('opacity-candidate-render-presentation.ts'))return{opacityCandidateRenderPresentation:()=>null};
+  if(name==='@mioon/ui/components/button')return{Button:'Button'};if(name==='@mioon/ui/components/badge')return{Badge:'Badge'};
+  return{__esModule:true,default:name};
+ });
+ const nodes=value=>Array.isArray(value)?value.flatMap(nodes):value&&typeof value==='object'?[value,...nodes(value.props?.children)]:[];
+ const render=patch=>{props={...props,...patch};tree=mod.exports.default(props);return nodes(tree).filter(node=>node.props.className==='export-history-row');};
+ const filter=value=>nodes(tree).find(node=>node.props['data-testid']===`export-history-filter-${value}`);
+ assert.equal(render().length,4);filter('complete').props.onClick();assert.equal(render().length,1);filter('failed').props.onClick();let rows=render();assert.equal(rows.length,1);assert.equal(rows[0].props['data-status'],'failed');
+ const old=filter('failed').props.onClick;render({projectId:'two'});old();assert.equal(render().length,4);assert.equal(filter('all').props['aria-pressed'],true);assert.equal(JSON.stringify(props.orderedExports),original);
 });

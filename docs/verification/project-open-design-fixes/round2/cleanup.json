@@ -1,0 +1,11 @@
+{
+  "ownedQaServerStopped": true,
+  "ownedEmptyServerStopped": true,
+  "ownedChromeProfileStopped": true,
+  "finalNativeExportInstanceStopped": true,
+  "testDataDirectoriesRetainedForInspection": true,
+  "originalWorkspaceUnchanged": true,
+  "committed": false,
+  "pushed": false,
+  "nativeBackupRestoreInstanceStopped": true
+}

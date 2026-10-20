@@ -1,0 +1,8 @@
+{
+  "baseline": "b8d6f4e7897d0d32aeb07749a6605637787de4f6",
+  "errors": [
+    "Cannot read properties of null (reading 'list')",
+    "Cannot read properties of null (reading 'list')"
+  ],
+  "workbenchCount": 0
+}

@@ -1,0 +1,44 @@
+[
+  {
+    "file": "tests/i18n-catalog-integrity.test.ts",
+    "exit": 0,
+    "summary": [],
+    "log": "i18n-catalog-integrity.test.log"
+  },
+  {
+    "file": "tests/i18n-connections.test.ts",
+    "exit": 0,
+    "summary": [],
+    "log": "i18n-connections.test.log"
+  },
+  {
+    "file": "tests/i18n-creation.test.ts",
+    "exit": 0,
+    "summary": [],
+    "log": "i18n-creation.test.log"
+  },
+  {
+    "file": "tests/i18n-shell.test.ts",
+    "exit": 0,
+    "summary": [],
+    "log": "i18n-shell.test.log"
+  },
+  {
+    "file": "tests/project-home-app.test.mjs",
+    "exit": 0,
+    "summary": [],
+    "log": "project-home-app.test.log"
+  },
+  {
+    "file": "tests/settings-center-navigation.test.ts",
+    "exit": 0,
+    "summary": [],
+    "log": "settings-center-navigation.test.log"
+  },
+  {
+    "file": "tests/workspace-tools.test.mjs",
+    "exit": 0,
+    "summary": [],
+    "log": "workspace-tools.test.log"
+  }
+]

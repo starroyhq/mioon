@@ -8,12 +8,15 @@ import { createAgentSettingsClient } from './secret-broker.ts';
 import { createImageSecretClient } from './image-secret-broker.ts';
 import { createNativeAudioPreviewAuthority } from '@mioon/business/native-audio-preview';
 import type {NativeAudioPreviewAuthority} from '@mioon/business/native-audio-preview';
+import {workspaceNativeUtilityRequestSchema} from '../../../packages/contracts/src/workspace-native.ts';
+import {workspaceSettingsSchema} from '../../../packages/contracts/src/workspace-configuration.ts';
 
 /** Fixed diagnostic categories only; never a native error message or path. */
 type ExitDiagnosticReason = 'startup-failed' | 'unhandled-rejection' | 'uncaught-exception' | 'stop-requested'
   | 'lease-expired' | 'signal-term' | 'signal-int' | 'shutdown-failed';
 interface BackendServer {
   readonly url: string;
+  setBackupDirectory(directory:string):unknown|Promise<unknown>;
   close(): unknown | Promise<unknown>;
 }
 
@@ -66,6 +69,15 @@ const lease = setInterval(() => { if (Date.now() - lastPing > 30000) void shutdo
 process.parentPort.on('message', ({ data }) => {
   if (data?.type === 'ping') { lastPing = Date.now(); return; }
   if (data?.type === 'stop') { void shutdown('stop-requested'); return; }
+  if(data?.type==='workspace-native:setBackupDirectory') {
+    const parsed=workspaceNativeUtilityRequestSchema.safeParse(data);
+    if(!parsed.success||closing||!server)return;
+    const owned=server,request=parsed.data;
+    void Promise.resolve().then(()=>{if(closing||server!==owned)throw Error('Unavailable');return owned.setBackupDirectory(request.directory);}).then(value=>{
+      if(!closing&&server===owned)process.parentPort!.postMessage({type:'workspace-native:reply',requestId:request.requestId,ok:true,settings:workspaceSettingsSchema.parse(value)});
+    }).catch(()=>{if(!closing&&server===owned)process.parentPort!.postMessage({type:'workspace-native:reply',requestId:request.requestId,ok:false,code:'WORKSPACE_NATIVE_UNAVAILABLE'});});
+    return;
+  }
   if (data?.type === 'native-audio:reserve' || data?.type === 'native-audio:retire') {
     if (nativeAudioPreview && !closing) void nativeAudioPreview.command(data).then(
       reply => process.parentPort!.postMessage(reply), () => { /* No fabricated retirement acknowledgment. */ });

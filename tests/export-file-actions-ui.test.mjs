@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
+import {exportOutputSchema} from '../packages/contracts/src/export-controls.ts';
 import {exportFileStatusSchema} from '../packages/contracts/src/export-file-recovery.ts';
 import {i18nTestModule} from './helpers/i18n.ts';
 
@@ -15,21 +16,22 @@ const element = (type, props, ...children) => ({type,props:{...props,children}})
 const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value==='object' ? [value,...nodes(value.props?.children)] : [];
 function harness(patch = {}) {
   let props={...initial,...patch},visible=true,cursor=0,dirty=false,tree,mounted=true,inputElement=null,clicks=0;
-  const hooks=[],layout=[],passive=[],calls=[],writes=[];
+  const hooks=[],layout=[],passive=[],calls=[],writes=[],copied=[],testWindow={},testNavigator={clipboard:{async writeText(value){copied.push(value);}}};
   const effect = queue => (run,deps) => {const index=cursor++,old=hooks[index];if(!old||deps.some((value,i)=>value!==old.deps?.[i])){const next={deps,run,cleanup:old?.cleanup};hooks[index]=next;queue.push(()=>{next.cleanup?.();next.cleanup=run();});}};
   const react={createElement:element,Fragment:'Fragment',useEffect:effect(passive),useLayoutEffect:effect(layout),
     useMemo(run,deps){const index=cursor++,old=hooks[index];if(!old||deps.some((value,i)=>value!==old.deps[i]))hooks[index]={deps,value:run()};return hooks[index].value;},
     useRef(value){const index=cursor++;return hooks[index]??={current:value};},
     useState(value){const index=cursor++;hooks[index]??={value};return[hooks[index].value,next=>{assert.equal(mounted,true,'Unmounted owners must not publish state');const value=typeof next==='function'?next(hooks[index].value):next;if(value!==hooks[index].value){hooks[index].value=value;dirty=true;writes.push(index);}}];}};
   const module={exports:{}};
-  Function('require','module','exports','fetch',transformSync(readFileSync(new URL('../apps/web/src/ExportFileActions.tsx',import.meta.url),'utf8'),{loader:'tsx',format:'cjs',jsx:'transform'}).code)(name=>{
+  Function('require','module','exports','fetch','window','navigator',transformSync(readFileSync(new URL('../apps/web/src/ExportFileActions.tsx',import.meta.url),'utf8'),{loader:'tsx',format:'cjs',jsx:'transform'}).code)(name=>{
     if(name==='react')return react;
     if(name.endsWith('workspace-visibility.tsx'))return{useWorkspaceVisibility:()=>visible};
     if(name.endsWith('I18nProvider.tsx'))return i18nTestModule();
+    if(name.endsWith('export-controls.ts'))return{exportOutputSchema};
     if(name.endsWith('export-file-recovery.ts'))return{exportFileStatusSchema};
     if(name==='@mioon/ui/components/workbench-controls')return{WorkbenchButton:'Button',WorkbenchAlert:'Alert'};
     assert.fail(`Unexpected file action dependency ${name}`);
-  },module,module.exports,(url,options={})=>{const waiting=deferred();calls.push({url,options,...waiting});return waiting.promise;});
+  },module,module.exports,(url,options={})=>{const waiting=deferred();calls.push({url,options,...waiting});return waiting.promise;},testWindow,testNavigator);
   function render(patch={}) {
     props={...props,...patch};let commits=0;
     do {dirty=false;cursor=0;tree=module.exports.default(props);const input=nodes(tree).find(node=>node.type==='input');
@@ -40,7 +42,7 @@ function harness(patch = {}) {
   }
   const find = testId => nodes(tree).find(node=>node.props?.['data-testid']===testId);
   function choose(file={size:4}) {find('export-file-locate').props.onClick();const node=nodes(tree).find(node=>node.type==='input'),input=inputElement;input.files=[file];return{node,input,send:()=>node.props.onChange({currentTarget:input,target:input})};}
-  return{render,find,calls,writes,props:()=>props,visible(next){visible=next;},nodes:()=>nodes(tree),input:()=>inputElement,clicks:()=>clicks,choose,
+  return{render,find,calls,writes,copied,setNative(bridge){testWindow.__mioonExportFiles=bridge;},props:()=>props,visible(next){visible=next;},nodes:()=>nodes(tree),input:()=>inputElement,clicks:()=>clicks,choose,
     async missing(){calls.at(-1).resolve(response(status(props)));await tick();render();},
     async settle(call,value){call.resolve(response(value));await tick();render();},
     unmount(){for(const hook of hooks)hook?.cleanup?.();mounted=false;}};
@@ -96,4 +98,21 @@ test('size and immutable response mismatches retain the original record and rele
   const h=harness();h.render();await h.missing();const wrong=h.choose({size:3});wrong.send();await tick();h.render();assert.equal(h.calls.length,1);assert.ok(h.nodes().some(node=>node.type==='Alert'));assert.equal(h.find('export-file-locate').props.disabled,false);
   const selected=h.choose();selected.send();const post=h.calls.at(-1);await h.settle(post,status(initial,{status:'present',sha256:'b'.repeat(64)}));assert.ok(h.nodes().some(node=>node.type==='Alert'));assert.equal(h.nodes().some(node=>node.props?.render?.props?.href),false);assert.equal(h.find('export-file-locate').props.disabled,false);
   const next=h.choose();next.send();await h.settle(h.calls.at(-1),status(initial,{status:'present'}));assert.equal(h.nodes().find(node=>node.props?.render)?.props.render.props.href,initial.downloadHref);
+});
+
+const output=(patch={})=>({projectId:initial.projectId,exportId:initial.exportId,assetId:id(3),fileLocation:'/private/local/output.mp4',sizeBytes:4,sha256:'a'.repeat(64),url:initial.downloadHref,...patch});
+test('completed output shows the exact managed location, copies it explicitly and invokes native identity actions',async()=>{
+ const native=[],h=harness({output:output(),detailed:true});h.setNative({async open(identity){native.push(['open',identity]);},async reveal(identity){native.push(['reveal',identity]);}});h.render();
+ assert.ok(h.find('export-output-location'));h.find('export-file-copy').props.onClick();await tick();h.render();assert.deepEqual(h.copied,[output().fileLocation]);
+ h.find('export-file-open').props.onClick();h.find('export-file-reveal').props.onClick();await tick();assert.deepEqual(native,[['open',{projectId:initial.projectId,exportId:initial.exportId}],['reveal',{projectId:initial.projectId,exportId:initial.exportId}]]);h.unmount();
+});
+test('browser reveal reads strict output metadata only on demand and never substitutes another export',async()=>{
+ const h=harness();h.render();await h.settle(h.calls[0],status(initial,{status:'present'}));assert.equal(h.calls.length,1);
+ h.find('export-file-reveal').props.onClick();assert.equal(h.calls.length,2);const call=h.calls[1];assert.deepEqual(JSON.parse(call.options.body),{operation:'export.output.get',input:{projectId:initial.projectId,exportId:initial.exportId}});
+ await h.settle(call,output());assert.ok(h.find('export-output-location'));h.find('export-file-copy').props.onClick();await tick();assert.deepEqual(h.copied,[output().fileLocation]);h.unmount();
+ const g=harness();g.render();await g.settle(g.calls[0],status(initial,{status:'present'}));g.find('export-file-reveal').props.onClick();await g.settle(g.calls[1],output({exportId:id(99)}));assert.equal(g.find('export-output-location'),undefined);assert.deepEqual(g.copied,[]);g.unmount();
+});
+test('stale output actions cannot open, reveal or publish a copied path after hide/reopen',async()=>{
+ const native=[],h=harness({output:output(),detailed:true});h.setNative({async open(value){native.push(value);},async reveal(value){native.push(value);}});h.render();const open=h.find('export-file-open').props.onClick,reveal=h.find('export-file-reveal').props.onClick,copy=h.find('export-file-copy').props.onClick;
+ h.visible(false);h.render();h.visible(true);h.render();open();reveal();copy();await tick();assert.deepEqual(native,[]);assert.deepEqual(h.copied,[]);h.unmount();
 });

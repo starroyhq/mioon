@@ -121,8 +121,8 @@ export function normalizedCapabilities(provider: Provider,_env: NodeJS.ProcessEn
   ...(c.mock?{parameters:['scenario','delayMs','seed']}:{parameters:['seed'],seed:{min:0,max:4294967295},promptRequired:true,maxPromptLength:1000}),
  }));
  const configured=Boolean(c.configured);
- const missing=settings?(c.configuration?.missing||(!configured?[settings.credential]:[])):[];
- const enabled=Boolean(c.enabled);
+ const missing=settings?[...(!configured?[settings.credential]:[]),...(_env.MIOON_ENABLE_LIVE_PROVIDER!=='1'?['MIOON_ENABLE_LIVE_PROVIDER']:[])]:[];
+ const enabled=settings&&usesInputProfiles(provider)?configured&&_env.MIOON_ENABLE_LIVE_PROVIDER==='1':Boolean(c.enabled);
  const status=!configured?'not_configured':enabled?'available':'disabled';
  const providerRegion=getGenerationProfileRegion(provider.id,c);
  const inputProfiles=(requireInputProfiles?c.models.map(model=>getCapabilityProfile(provider.id,typeof model==='string'?model:model.id,providerRegion)):[]).filter((profile): profile is CapabilityProfile=>profile!==null);

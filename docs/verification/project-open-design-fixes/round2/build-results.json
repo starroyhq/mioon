@@ -1,0 +1,41 @@
+{
+  "typecheck": {
+    "command": "node scripts/tooling.ts typecheck",
+    "exitCode": 0,
+    "log": "/private/tmp/mioon-round2-final-typecheck.log"
+  },
+  "fullDevelopmentBuild": {
+    "command": "node scripts/tooling.ts build --channel=development",
+    "exitCode": 0,
+    "log": "/private/tmp/mioon-round2-final-build4.log"
+  },
+  "lastWebBuild": {
+    "command": "node --max-old-space-size=768 node_modules/vite/bin/vite.js build",
+    "cwd": "apps/web",
+    "exitCode": 0,
+    "log": "/private/tmp/mioon-round2-final-tooltip-web.log"
+  },
+  "lastDesktopBuild": {
+    "command": "node apps/desktop/scripts/build.ts --channel=development",
+    "exitCode": 0,
+    "log": "/private/tmp/mioon-round2-final-desktop.log",
+    "includesTypeGate": true
+  },
+  "officialFullLauncher": {
+    "command": "node scripts/tooling.ts test --suite=full --concurrency=1",
+    "exitCode": 2,
+    "code": "NATIVE_TEST_LANE_BLOCKED",
+    "log": "/private/tmp/mioon-round2-official-full-launcher.log",
+    "countedAsPass": false
+  },
+  "builtArtifacts": [
+    {
+      "file": "apps/web/dist/index.html",
+      "sha256": "deea957f60d26173b8740601084829b8a87e5a3f9e41627559fb41c5ae8ff671"
+    },
+    {
+      "file": "apps/desktop/build/package.json",
+      "sha256": "2a9834f86e94b05f98ae388d284960cf942084e24bcdb76d1f730b757e623b35"
+    }
+  ]
+}

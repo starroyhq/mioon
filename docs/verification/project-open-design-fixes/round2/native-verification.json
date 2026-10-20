@@ -1,0 +1,11 @@
+{
+  "automaticBackup": true,
+  "nativePicker": true,
+  "createdAndVerified": true,
+  "restartViaNativeBridge": true,
+  "activationState": "active",
+  "newProjectDisabled": true,
+  "trafficLights": "inactive geometry verified; active colours not verified",
+  "originalSchema": 50,
+  "restoredSchema": 51
+}

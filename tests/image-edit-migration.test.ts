@@ -1,5 +1,6 @@
 import test from 'node:test';
 import {errorView} from './helpers/test-error.ts';
+import {currentMarkerChain,currentOrdinary50Delta} from './helpers/current-schema-delta.ts';
 import assert from 'node:assert/strict';
 import {normalizeAgentEditProposalObject,legacyAgentEditProposalRows,assertAgentEditTargetTrigger} from './agent-edit-migration-preservation.mjs';
 import {DatabaseSync} from 'node:sqlite';
@@ -91,6 +92,12 @@ function normalizeStartupTaskObject(row: SchemaObject): SchemaObject {
 }
 function sameOld(db: DatabaseSync,before: Snapshot,{startupMigrations=false}: {startupMigrations?: boolean}={}): void {
  const after=snapshot(db),next=new Map(after.objects.map(value=>[value.name,value]));
+ if(startupMigrations){
+  const names=new Set(currentOrdinary50Delta.objects.map(value=>value.name));
+  assert.deepEqual(after.objects.filter(value=>names.has(value.name)).map(value=>({...value})),currentOrdinary50Delta.objects,'schema50 matches its independent exact delta');
+  for(const table of Object.keys(currentOrdinary50Delta.tables))assert.deepEqual(after.rows[table],[],table);
+  after.objects=after.objects.filter(value=>!names.has(value.name));
+ }
  assert.equal(after.objects.length,before.objects.length+(startupMigrations?currentStartupAdditions.length:0));
  if(startupMigrations){
   const added=after.objects.filter(value=>!before.objects.some(old=>old.type===value.type&&old.name===value.name));
@@ -202,7 +209,7 @@ test('schema23 admits only a bound official edit descriptor and rejects cross-br
 });
 
 test('fresh startup and frozen schema22 upgrade restore FK enforcement and restart without rewriting old bytes',()=>{
- for(const mode of ['fresh','upgrade']){const root=mkdtempSync(path.join(tmpdir(),'mioon-edit-migration-'));let db,store;try{let before;if(mode==='upgrade'){db=database(path.join(root,'workbench.sqlite'));populate(db);before=snapshot(db);db.close();db=null;}store=openStore(root);assert.deepEqual(store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...Array.from({length:24},(_,index)=>index+1),26,28,30,32,34,36,38,40,44,48]);assert.equal(store.db.prepare('PRAGMA foreign_keys').get()!.foreign_keys,1);if(before)sameOld(store.db,before,{startupMigrations:true});const after=snapshot(store.db);store.close();store=openStore(root);assert.deepEqual(snapshot(store.db),after);}finally{db?.close();store?.close();rmSync(root,{recursive:true,force:true});}}
+ for(const mode of ['fresh','upgrade']){const root=mkdtempSync(path.join(tmpdir(),'mioon-edit-migration-'));let db,store;try{let before;if(mode==='upgrade'){db=database(path.join(root,'workbench.sqlite'));populate(db);before=snapshot(db);db.close();db=null;}store=openStore(root);assert.deepEqual(store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...currentMarkerChain]);assert.equal(store.db.prepare('PRAGMA foreign_keys').get()!.foreign_keys,1);if(before)sameOld(store.db,before,{startupMigrations:true});const after=snapshot(store.db);store.close();store=openStore(root);assert.deepEqual(snapshot(store.db),after);}finally{db?.close();store?.close();rmSync(root,{recursive:true,force:true});}}
 });
 
 test('startup marker failure preserves frozen database and enables a later successful retry',()=>{

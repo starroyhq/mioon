@@ -5,8 +5,9 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { buildSync, transformSync } from 'esbuild';
-import { LOCALES, translate, validateCatalogs } from '../packages/i18n/src/index.ts';
+import { LANGUAGE_LABELS, LOCALES, translate, validateCatalogs } from '../packages/i18n/src/index.ts';
 import { shellMessages } from '../packages/i18n/src/catalogs/shell.ts';
+import { settingsRedesignMessages } from '../packages/i18n/src/catalogs/settings-redesign.ts';
 import { createI18nTestContext } from './helpers/i18n.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 import { createWebSettingsNavigation } from '../apps/web/src/web-settings-navigation.ts';
@@ -44,6 +45,7 @@ function shellHarness() {
     '@mioon/ui/components/button': { Button: 'Button' },
     '@mioon/ui/components/workbench-icons': {WorkbenchIcon:'WorkbenchIcon'},
     './LanguageControl.tsx': { __esModule: true, default: 'LanguageControl' },
+    './icons.tsx': { __esModule: true, default: 'Icon' },
     './workspace-visibility.tsx': { WorkspaceVisibilityProvider: 'WorkspaceVisibilityProvider' },
     './settings-window-state.ts': { isSettingsConnectionPage: page => slots.includes(page) },
     './SettingsExtraPages.tsx': { SettingsAbout:'SettingsAbout', SettingsShortcuts:'SettingsShortcuts', SettingsModelServices:'SettingsModelServices' },
@@ -59,21 +61,34 @@ test('settings shell has eight stable categories while connection owners retain 
     const tree = h.render({page});
     assert.equal(find(tree,'settings-center').props['data-page'],page);
     for(const id of categories) assert.equal(find(tree,`settings-category-${id}`).props['aria-current'],category===id?'page':undefined);
+    for(const id of categories) assert.ok(find(tree,`settings-category-icon-${id}`));
     const nav=nodes(tree).find(node=>node.props?.className==='settings-service-nav');
-    const expected=category==='models'?['settings-service-official']:category==='extensions'?['settings-service-custom','settings-service-comfy']:[];
+    const expected=category==='extensions'?['settings-service-custom','settings-service-comfy']:[];
     assert.equal(nav.props.hidden,!expected.length);assert.equal(nav.props.inert,!expected.length);
     assert.deepEqual(nodes(nav).filter(node=>node.type==='Button').map(node=>node.props['data-testid']),expected);
   }
 });
+
+test('General derives its read-only number-format example from the current language without adding an editable setting', () => {
+  const h = shellHarness();
+  for (const locale of LOCALES) {
+    const tree = h.render({ page: 'general' }, locale), example = find(tree, 'settings-number-format-example');
+    assert.equal(example.type, 'output');
+    assert.equal(example.props.onChange, undefined);
+    assert.equal(text(example), createI18nTestContext(locale).formatNumber(12345.6));
+    assert.ok(text(find(tree, 'settings-number-format')).includes(translate(locale, 'redesign.settings.followLanguage')));
+  }
+  assert.deepEqual(h.calls, []);
+});
 test('category and connection navigation delegates once without selecting a page locally',()=>{
  const h=shellHarness();let tree=h.render({page:'general'});find(tree,'settings-category-models').props.onClick();
- tree=h.render({page:'models'});find(tree,'settings-service-official').props.onClick();find(tree,'settings-category-extensions').props.onClick();
+ tree=h.render({page:'models'});nodes(tree).find(node=>node.type==='SettingsModelServices').props.onOpenOfficial();find(tree,'settings-category-extensions').props.onClick();
  tree=h.render({page:'extensions'});find(tree,'settings-service-custom').props.onClick();find(tree,'settings-category-agent').props.onClick();
  assert.deepEqual(h.calls,[['page','models'],['page','official'],['page','extensions'],['page','custom'],['page','agent']]);assert.equal(find(tree,'settings-center').props['data-page'],'extensions');
 });
 test('legacy consumers can select connection slots but internal categories never become IPC slots',()=>{
  const h=shellHarness();let tree=h.render({page:undefined,onPage:undefined,selected:'official'});
- find(tree,'settings-service-official').props.onClick();
+ nodes(tree).find(node=>node.type==='SettingsModelServices').props.onOpenOfficial();
  for(const id of ['general','workspace','models','extensions','shortcuts','about'])find(tree,`settings-category-${id}`).props.onClick();
  assert.deepEqual(h.calls,[['slot','official']]);
 });
@@ -129,6 +144,15 @@ test('General language controls and category copy change in four locales without
   assert.equal(headings.size, 4); assert.deepEqual(h.calls, LOCALES.map(() => ['page', 'models']));
 });
 
+test('retained language menu loses visibility when its page or settings owner is inactive', () => {
+  const h = shellHarness();
+  for (const active of [true, false]) for (const page of ['general', 'models']) {
+    const general = find(h.render({ active, page }), 'settings-general');
+    const language = nodes(general).find(node => node.type === 'LanguageControl');
+    assert.equal(language.props.visible, active && page === 'general');
+  }
+});
+
 let presentation;
 function renderPresentation(locale, page) {
   if (!presentation) {
@@ -156,7 +180,9 @@ test('actual shared controls render accessible four-language settings and one co
     assert.ok(html.includes(`aria-label="${htmlText(translate(locale, 'settings.categories'))}"`));
     for (const key of ['settings.general', 'redesign.settings.models', 'redesign.settings.extensions', 'settings.languageHint']) assert.ok(html.includes(htmlText(translate(locale, key))), `${locale}/${key}`);
     assert.equal((html.match(/data-testid="language-select"/gu) || []).length, 1);
-    for (const value of ['system', ...LOCALES]) assert.ok(html.includes(`value="${value}"`));
+    assert.match(html, /role="combobox"/u);
+    assert.ok(html.includes(`aria-label="${htmlText(translate(locale, 'language.label'))}"`));
+    assert.ok(html.includes(htmlText(LANGUAGE_LABELS[locale])), `${locale} selected language`);
     assert.doesNotMatch(html, /data-owner=/u, 'Opening General must not mount connection forms or read provider settings');
     assert.doesNotMatch(html, /This message cannot be displayed right now\.|此提示暂时无法显示/u);
   }
@@ -166,6 +192,7 @@ test('actual shared controls render accessible four-language settings and one co
 test('new settings copy has complete locale coverage and category identity remains outside native IPC', () => {
   const messages = Object.fromEntries(Object.entries(shellMessages).filter(([key]) => key.startsWith('settings.') || key === 'common.closeSettings'));
   assert.ok(Object.keys(messages).length >= 10); assert.deepEqual(validateCatalogs(messages), []);
+  assert.deepEqual(validateCatalogs(settingsRedesignMessages), []);
   const desktop = readFileSync(join(root, 'apps/desktop/src/project-window-protocol.ts'), 'utf8');
   const slot = desktop.match(/export type ProjectWindowSettingsSlot\s*=\s*([^;]+);/u);
   assert.ok(slot); assert.doesNotMatch(slot[1], /general|models|extensions/u);

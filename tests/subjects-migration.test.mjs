@@ -1,6 +1,6 @@
 import test from 'node:test';
 import {currentMarkerChain} from './helpers/current-schema-delta.ts';
-import {currentOrdinary48Delta,reviewedObjectSql} from './helpers/current-schema-delta.ts';
+import {currentOrdinary48Delta,currentOrdinary50Delta,reviewedObjectSql} from './helpers/current-schema-delta.ts';
 import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.ts';
 import assert from 'node:assert/strict';
 import {normalizeAgentEditProposalObject,legacyAgentEditProposalRows,assertAgentEditTargetTrigger} from './agent-edit-migration-preservation.mjs';
@@ -85,7 +85,8 @@ const schema = db => db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_maste
 const editObjects = db => schema(db).filter(row => row.tbl_name==='edit_tasks' && row.type!=='table');
 const sequence = db => db.prepare("SELECT * FROM sqlite_sequence WHERE name='edit_tasks'").all();
 const current48Tables = new Set([...Object.keys(currentOrdinary48Delta.lifecycleTables),'asset_annotations','asset_annotation_requests','lut_import_requests','project_lut_resources']);
-const allRecords = db => Object.fromEntries(schema(db).filter(row=>row.type==='table' && row.name!=='schema_version' && !SUBJECT_TABLES.includes(row.name) && !LATER_IMAGE_TABLES.includes(row.name) && !LATER_FRAME_TABLES.includes(row.name) && row.name!=='timeline_format_requests' && !current48Tables.has(row.name)).map(row=>[row.name,rows(db,row.name)]));
+const current50Tables = new Set(Object.keys(currentOrdinary50Delta.tables));
+const allRecords = db => Object.fromEntries(schema(db).filter(row=>row.type==='table' && row.name!=='schema_version' && !SUBJECT_TABLES.includes(row.name) && !LATER_IMAGE_TABLES.includes(row.name) && !LATER_FRAME_TABLES.includes(row.name) && row.name!=='timeline_format_requests' && !current48Tables.has(row.name) && !current50Tables.has(row.name)).map(row=>[row.name,rows(db,row.name)]));
 export const snapshotSchema14 = db => ({records:allRecords(db),schema:schema(db),editTasks:rows(db,'edit_tasks'),
  inputBytes:db.prepare('SELECT position,hex(CAST(input AS BLOB)) AS raw FROM edit_tasks ORDER BY position').all(),
  editObjects:editObjects(db),sequence:sequence(db),versions:rows(db,'schema_version')});
@@ -228,6 +229,9 @@ function assertLegacyPreserved(db,before) {
  assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
 }
 function assertNewSchema(db) {
+ const names=new Set(currentOrdinary50Delta.objects.map(value=>value.name));
+ assert.deepEqual(schema(db).filter(value=>names.has(value.name)).map(value=>({...value})),currentOrdinary50Delta.objects,'schema50 matches its independent exact delta');
+ for(const table of current50Tables)assert.deepEqual(rows(db,table),[],'later task disposition migration never manufactures task records');
  assert.deepEqual(SUBJECT_TABLES.filter(name=>db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name)),SUBJECT_TABLES);
  assert.equal(db.prepare('SELECT count(*) n FROM schema_version WHERE version=15').get().n,1);
  assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...currentMarkerChain]);

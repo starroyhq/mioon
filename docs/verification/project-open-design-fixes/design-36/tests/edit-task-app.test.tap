@@ -1,0 +1,112 @@
+TAP version 13
+# Subtest: actual App routes only the twenty explicit writes into Task prepare/execute while excluded and legacy paths remain session based
+ok 1 - actual App routes only the twenty explicit writes into Task prepare/execute while excluded and legacy paths remain session based
+  ---
+  duration_ms: 21.653
+  type: 'test'
+  ...
+# Subtest: actual App rejects stale owner and existing legacy lane before creating any new identity
+ok 2 - actual App rejects stale owner and existing legacy lane before creating any new identity
+  ---
+  duration_ms: 3.628917
+  type: 'test'
+  ...
+# Subtest: actual App keeps drafts and durable identity after unknown loss, and recovery never installs historical ACK into Inspector
+ok 3 - actual App keeps drafts and durable identity after unknown loss, and recovery never installs historical ACK into Inspector
+  ---
+  duration_ms: 3.742459
+  type: 'test'
+  ...
+# Subtest: actual App format recovery notifies the current draft owner only after the exact durable request is confirmed
+ok 4 - actual App format recovery notifies the current draft owner only after the exact durable request is confirmed
+  ---
+  duration_ms: 3.930958
+  type: 'test'
+  ...
+# Subtest: format rejected recovery also notifies its owner, while an unconfirmed acknowledgment never releases its draft fence
+ok 5 - format rejected recovery also notifies its owner, while an unconfirmed acknowledgment never releases its draft fence
+  ---
+  duration_ms: 5.979625
+  type: 'test'
+  ...
+# Subtest: actual App preserves fresh-save navigation fences and only refreshes the current project
+ok 6 - actual App preserves fresh-save navigation fences and only refreshes the current project
+  ---
+  duration_ms: 5.086875
+  type: 'test'
+  ...
+# Subtest: actual App same-project fresh save may acknowledge its mounted editor but suppresses old navigation message
+ok 7 - actual App same-project fresh save may acknowledge its mounted editor but suppresses old navigation message
+  ---
+  duration_ms: 2.144375
+  type: 'test'
+  ...
+# Subtest: actual App preparation finishing after navigation is durable but does not execute from the obsolete view
+ok 8 - actual App preparation finishing after navigation is durable but does not execute from the obsolete view
+  ---
+  duration_ms: 2.339541
+  type: 'test'
+  ...
+# Subtest: actual App respects a replaced subject draft fence after durable prepare without dispatching it
+ok 9 - actual App respects a replaced subject draft fence after durable prepare without dispatching it
+  ---
+  duration_ms: 3.114708
+  type: 'test'
+  ...
+# Subtest: actual App recovery finishing lookup after project change leaves unknown untouched and does not execute
+ok 10 - actual App recovery finishing lookup after project change leaves unknown untouched and does not execute
+  ---
+  duration_ms: 6.409167
+  type: 'test'
+  ...
+# Subtest: actual App acknowledges only fresh bound not_applied state; ordinary 4xx cannot clear unknown
+ok 11 - actual App acknowledges only fresh bound not_applied state; ordinary 4xx cannot clear unknown
+  ---
+  duration_ms: 9.358
+  type: 'test'
+  ...
+# Subtest: actual App terminal close rereads after a dropped ACK and releases the lane without retrying stale acknowledgment
+ok 12 - actual App terminal close rereads after a dropped ACK and releases the lane without retrying stale acknowledgment
+  ---
+  duration_ms: 10.496875
+  type: 'test'
+  ...
+# Subtest: actual App terminal close observes another window ACK and never executes a changed nonterminal response
+ok 13 - actual App terminal close observes another window ACK and never executes a changed nonterminal response
+  ---
+  duration_ms: 4.057708
+  type: 'test'
+  ...
+# Subtest: actual App explicit adoption alone removes exact old session receipt only after strict server ACK
+ok 14 - actual App explicit adoption alone removes exact old session receipt only after strict server ACK
+  ---
+  duration_ms: 5.515958
+  type: 'test'
+  ...
+# Subtest: actual App malformed adoption and race with a newer receipt never clear original or newer storage
+ok 15 - actual App malformed adoption and race with a newer receipt never clear original or newer storage
+  ---
+  duration_ms: 3.451667
+  type: 'test'
+  ...
+# Subtest: TaskCenter separates durable, legacy and generation details, retains generation recovery/cancel/retry controls
+ok 16 - TaskCenter separates durable, legacy and generation details, retains generation recovery/cancel/retry controls
+  ---
+  duration_ms: 0.6255
+  type: 'test'
+  ...
+# Subtest: actual TaskCenter does not render an empty-list claim when loading or error and keeps unknown card visible
+ok 17 - actual TaskCenter does not render an empty-list claim when loading or error and keeps unknown card visible
+  ---
+  duration_ms: 14.601917
+  type: 'test'
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 524.150041

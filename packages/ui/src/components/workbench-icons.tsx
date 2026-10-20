@@ -1,7 +1,7 @@
 import React from 'react';
-import { AlertCircleIcon, CheckIcon, EllipsisIcon, Grid2X2Icon, ListIcon, PlusIcon, Settings2Icon, UploadIcon, XIcon } from 'lucide-react';
+import { AlertCircleIcon, CheckIcon, EllipsisIcon, Grid2X2Icon, ListIcon, PlusIcon, SettingsIcon, SearchIcon, UploadIcon, XIcon } from 'lucide-react';
 import type { LucideProps } from 'lucide-react';
-const icons = { warning:AlertCircleIcon, check:CheckIcon, more:EllipsisIcon, grid:Grid2X2Icon, list:ListIcon, plus:PlusIcon, settings:Settings2Icon, upload:UploadIcon, close:XIcon };
+const icons = { warning:AlertCircleIcon, check:CheckIcon, more:EllipsisIcon, grid:Grid2X2Icon, list:ListIcon, plus:PlusIcon, settings:SettingsIcon, search:SearchIcon, upload:UploadIcon, close:XIcon };
 export function WorkbenchIcon({ name, size = 16, ...props }: LucideProps & {name:keyof typeof icons}) {
   const Component = icons[name];
   return <Component size={size} aria-hidden="true" {...props} />;

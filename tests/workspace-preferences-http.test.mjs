@@ -168,7 +168,13 @@ test('official MCP discovery and calls cannot reach renderer workspace preferenc
   await client.connect(transport);
   const tools = (await client.listTools()).tools;
   assert.ok(!tools.some(tool => /preference/.test(tool.name)), 'renderer preferences remain outside public discovery');
-  assert.deepEqual(tools.filter(tool => /workspace/.test(tool.name)).map(tool => tool.name), ['workspace_backup_inspect', 'workspace_restore_inspect'], 'only the two explicit DB-only workspace inspections are public');
+  assert.deepEqual(tools.filter(tool => /workspace/.test(tool.name)).map(tool => tool.name).sort(), ['workspace_backup_create','workspace_backup_inspect','workspace_backup_list','workspace_backup_restore_stage','workspace_backup_status','workspace_restore_inspect','workspace_settings_get','workspace_settings_set'].sort(), 'only explicit managed settings, backup actions and DB inspections are public');
+  for(const name of ['workspace_settings_get','workspace_settings_set','workspace_backup_status','workspace_backup_list','workspace_backup_create','workspace_backup_restore_stage']){
+    const tool=tools.find(value=>value.name===name);assert.equal(tool.inputSchema.additionalProperties,false);
+    for(const field of ['source','destination','path','directory','projectId','preferences'])assert.equal(Object.hasOwn(tool.inputSchema.properties??{},field),false,`${name}: ${field}`);
+  }
+  assert.deepEqual(tools.find(tool=>tool.name==='workspace_backup_create').inputSchema.required,['requestId']);
+  assert.deepEqual(tools.find(tool=>tool.name==='workspace_backup_restore_stage').inputSchema.required,['requestId','backupId','confirmation']);
   const restoreInspection = tools.find(tool => tool.name === 'workspace_restore_inspect');
   assert.equal(restoreInspection.annotations.readOnlyHint, true);
   // Discovery exposes only the two explicit opt-in evidence flags from the
@@ -182,7 +188,7 @@ test('official MCP discovery and calls cannot reach renderer workspace preferenc
   const backupInspection = tools.find(tool => tool.name === 'workspace_backup_inspect');
   assert.equal(backupInspection.annotations.readOnlyHint, true);
   assert.deepEqual(backupInspection.inputSchema.properties, {}); assert.equal(backupInspection.inputSchema.additionalProperties, false);
-  for (const name of ['workspace_preferences_get', 'workspace_preferences_put', 'workspace_backup_create', 'workspace_backup_verify', 'workspace_backup_restore', 'workspace_restore_create', 'workspace_restore_execute']) {
+  for (const name of ['workspace_preferences_get', 'workspace_preferences_put', 'workspace_backup_verify', 'workspace_backup_restore', 'workspace_restore_create', 'workspace_restore_execute']) {
     const result = await client.callTool({name, arguments: {projectId: randomUUID()}});
     assert.equal(result.isError, true); assert.equal(result.structuredContent.error.code, 'UNKNOWN_OPERATION');
   }

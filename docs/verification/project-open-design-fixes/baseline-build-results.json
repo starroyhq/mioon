@@ -1,0 +1,12 @@
+[
+  {
+    "step": "typecheck",
+    "exit": 0,
+    "log": "/private/tmp/mioon-project-open-verify-yfi9724c/baseline-typecheck.log"
+  },
+  {
+    "step": "build",
+    "exit": 0,
+    "log": "/private/tmp/mioon-project-open-verify-yfi9724c/baseline-build.log"
+  }
+]

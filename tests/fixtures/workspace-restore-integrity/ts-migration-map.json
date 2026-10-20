@@ -215,8 +215,8 @@
       "legacyPath": "packages/contracts/src/lut-resources.ts",
       "currentPath": "packages/contracts/src/lut-resources.ts",
       "mode": "type-erased",
-      "currentBytes": 6899,
-      "currentSha256": "f30708c213d1fcc4380aa7f048f361f378fab9466a8685eb92626dd67d3458d2",
+      "currentBytes": 6923,
+      "currentSha256": "58c589436abf80fae4f0a528cb41b300f6d2d235eb86888ea4e46e52cbe1d9c9",
       "legacyBytes": 7006,
       "legacySha256": "5658797cd03a25f8c047b1700fc53f1df91ecab58da8698630e715c673e3a21b"
     }

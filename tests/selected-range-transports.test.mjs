@@ -91,7 +91,15 @@ test('actual offline CLI and official MCP discover the same optional strict sele
   }
   assert.equal(discoverSchema({operation: 'timeline.export.preflight'}).effects.readOnly, true);
   assert.equal(discoverSchema({operation: 'timeline.render'}).requiresRequestId, true);
-  assert.equal(catalog.operations.some(value => /export.*cancel|timeline.*cancel/.test(value.operation)), false, 'no invented export cancellation operation');
+  const cancellations=catalog.operations.filter(value => /export.*cancel|timeline.*cancel/.test(value.operation));
+  assert.deepEqual(cancellations.map(value=>value.operation),['export.cancel'],'only the explicit owned-export cancellation operation is exposed');
+  const cancellation=discoverSchema({operation:'export.cancel'}),cancellationTool=tools.find(value=>value.name==='export_cancel');
+  assert.deepEqual(cancellation.inputSchema.required,['projectId','exportId']);assert.equal(cancellation.inputSchema.additionalProperties,false);
+  assert.deepEqual(Object.keys(cancellation.inputSchema.properties),['projectId','exportId']);
+  for(const key of ['projectId','exportId'])assert.equal(cancellation.inputSchema.properties[key].format,'uuid');
+  assert.equal(cancellation.effects.idempotent,true);assert.equal(cancellation.effects.databaseWrite,true);assert.equal(cancellation.effects.fileWrite,true);
+  assert.equal(cancellation.effects.localProcess,true);assert.equal(cancellation.effects.externalIO,false);assert.equal(cancellation.effects.paidGeneration,false);
+  assert.deepEqual(cancellationTool.inputSchema,cancellation.inputSchema);assert.deepEqual(cancellationTool.annotations,effectAnnotations(cancellation.effects));
 });
 
 test('real HTTP, CLI and official MCP preflight/render preserve exact range, full graph and immutable lost-ACK replay', {timeout: 120_000}, async t => {

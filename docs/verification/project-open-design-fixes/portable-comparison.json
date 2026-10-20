@@ -1,0 +1,64 @@
+{
+  "results": [
+    {
+      "command": [
+        "node",
+        "scripts/tooling.ts",
+        "test",
+        "--suite=portable",
+        "--concurrency=1"
+      ],
+      "cwd": "/private/tmp/mioon-project-open-verify-yfi9724c/verify",
+      "TMPDIR": "/private/tmp",
+      "exitCode": 0,
+      "durationSeconds": 53.893,
+      "log": "/Users/kouzen/.codex/worktrees/project-open-design-fixes/mioon/docs/verification/project-open-design-fixes/portable-baseline.log",
+      "tests": 98,
+      "suites": 0,
+      "pass": 98,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "platformBlocked": false,
+      "logSha256": "4e62ec350f2f1db3bd45d35ff1289cae1fd11aa68d3a0830af9f1cd2e1731bea"
+    },
+    {
+      "command": [
+        "node",
+        "scripts/tooling.ts",
+        "test",
+        "--suite=portable",
+        "--concurrency=1"
+      ],
+      "cwd": "/Users/kouzen/.codex/worktrees/project-open-design-fixes/mioon",
+      "TMPDIR": "/private/tmp",
+      "exitCode": 0,
+      "durationSeconds": 52.287,
+      "log": "/Users/kouzen/.codex/worktrees/project-open-design-fixes/mioon/docs/verification/project-open-design-fixes/portable-worktree.log",
+      "tests": 98,
+      "suites": 0,
+      "pass": 98,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "platformBlocked": false,
+      "logSha256": "136e7cb51c976a30ab3a37e7afc02149cdf8fae55900703d637915605b00c273"
+    }
+  ],
+  "difference": {
+    "tests": 0,
+    "pass": 0,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0
+  },
+  "nodeVersion": "v26.9.0",
+  "samePassingTestNames": true,
+  "passingTestNameCount": [
+    98,
+    98
+  ]
+}

@@ -1,0 +1,156 @@
+TAP version 13
+# Subtest: tail omission stays omitted in legacy drafts/saves; explicit null and saved tail retain exact semantics
+ok 1 - tail omission stays omitted in legacy drafts/saves; explicit null and saved tail retain exact semantics
+  ---
+  duration_ms: 55.442667
+  type: 'test'
+  ...
+# Subtest: tail picker persists through normal save/reload, reset restores omission, clear writes only explicit null
+ok 2 - tail picker persists through normal save/reload, reset restores omission, clear writes only explicit null
+  ---
+  duration_ms: 15.732791
+  type: 'test'
+  ...
+# Subtest: restored Inspector retains frame history and local tail edits while blocking save-and-generate
+ok 3 - restored Inspector retains frame history and local tail edits while blocking save-and-generate
+  ---
+  duration_ms: 13.790459
+  type: 'test'
+  ...
+# Subtest: bound first frame does not lock tail; busy, pending and conflicting reference work block both
+ok 4 - bound first frame does not lock tail; busy, pending and conflicting reference work block both
+  ---
+  duration_ms: 37.258083
+  type: 'test'
+  ...
+# Subtest: tail-only and same-image drafts remain saveable but cannot submit; provider switch retains tail visibly
+ok 5 - tail-only and same-image drafts remain saveable but cannot submit; provider switch retains tail visibly
+  ---
+  duration_ms: 21.195417
+  type: 'test'
+  ...
+# Subtest: text mode explicitly confirms clearing both frames and never invents null for old first-only shots
+ok 6 - text mode explicitly confirms clearing both frames and never invents null for old first-only shots
+  ---
+  duration_ms: 15.577125
+  type: 'test'
+  ...
+# Subtest: all four languages update an open frame confirmation while retaining the exact unsaved draft and approval
+ok 7 - all four languages update an open frame confirmation while retaining the exact unsaved draft and approval
+  ---
+  duration_ms: 43.373083
+  type: 'test'
+  ...
+# Subtest: late clear/mode confirmations cannot overwrite edits, hidden/reopened panels, changed tabs or unmounted shots
+ok 8 - late clear/mode confirmations cannot overwrite edits, hidden/reopened panels, changed tabs or unmounted shots
+  ---
+  duration_ms: 116.035167
+  type: 'test'
+  ...
+# Subtest: late save acknowledges the saved draft but cannot generate after tab/provider change or a newer tail edit
+ok 9 - late save acknowledges the saved draft but cannot generate after tab/provider change or a newer tail edit
+  ---
+  duration_ms: 54.93825
+  type: 'test'
+  ...
+# Subtest: preflight counts and validates complete role-aware pair and never appends a present-day tail to frozen jobs
+ok 10 - preflight counts and validates complete role-aware pair and never appends a present-day tail to frozen jobs
+  ---
+  duration_ms: 0.746084
+  type: 'test'
+  ...
+# Subtest: history summary includes both frozen human labels/thumbnails with collapsed expandable IDs and hash
+ok 11 - history summary includes both frozen human labels/thumbnails with collapsed expandable IDs and hash
+  ---
+  duration_ms: 9.613958
+  type: 'test'
+  ...
+# Subtest: App paid review wires complete frames and count, frozen retries, asset-use and tab scope without new submission fields
+ok 12 - App paid review wires complete frames and count, frozen retries, asset-use and tab scope without new submission fields
+  ---
+  duration_ms: 2.087584
+  type: 'test'
+  ...
+# Subtest: actual App confirmation sends once and rejects changed content, navigation, provider or stale view scope
+ok 13 - actual App confirmation sends once and rejects changed content, navigation, provider or stale view scope
+  ---
+  duration_ms: 14.480458
+  type: 'test'
+  ...
+# Subtest: actual save runner keeps malformed tail ACK pending and preserves draft; exact historical replay clears only original key
+    # Subtest: select / missing
+    ok 1 - select / missing
+      ---
+      duration_ms: 18.212709
+      type: 'test'
+      ...
+    # Subtest: select / wrong
+    ok 2 - select / wrong
+      ---
+      duration_ms: 12.980292
+      type: 'test'
+      ...
+    # Subtest: select / null-vs-present
+    ok 3 - select / null-vs-present
+      ---
+      duration_ms: 10.12775
+      type: 'test'
+      ...
+    # Subtest: clear / missing
+    ok 4 - clear / missing
+      ---
+      duration_ms: 16.488833
+      type: 'test'
+      ...
+    # Subtest: clear / wrong
+    ok 5 - clear / wrong
+      ---
+      duration_ms: 14.824541
+      type: 'test'
+      ...
+    # Subtest: clear / null-vs-present
+    ok 6 - clear / null-vs-present
+      ---
+      duration_ms: 18.294709
+      type: 'test'
+      ...
+    1..6
+ok 14 - actual save runner keeps malformed tail ACK pending and preserves draft; exact historical replay clears only original key
+  ---
+  duration_ms: 91.913167
+  type: 'test'
+  ...
+# Subtest: actual create runner rejects missing explicit null or UUID tail ACK, while omitted-tail requests keep legacy ACK shape
+    # Subtest: 00000000-0000-4000-8000-000000000004
+    ok 1 - 00000000-0000-4000-8000-000000000004
+      ---
+      duration_ms: 5.466584
+      type: 'test'
+      ...
+    # Subtest: null
+    ok 2 - null
+      ---
+      duration_ms: 3.102583
+      type: 'test'
+      ...
+    # Subtest: undefined
+    ok 3 - undefined
+      ---
+      duration_ms: 3.313667
+      type: 'test'
+      ...
+    1..3
+ok 15 - actual create runner rejects missing explicit null or UUID tail ACK, while omitted-tail requests keep legacy ACK shape
+  ---
+  duration_ms: 12.418959
+  type: 'test'
+  ...
+1..15
+# tests 24
+# suites 0
+# pass 24
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 929.365833

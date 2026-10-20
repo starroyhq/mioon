@@ -21,7 +21,7 @@ export default function ClipAudioControls({ asset, kind, draft, onEdit, issue }:
   const maximum = Number.isSafeInteger(duration) && duration > 0 ? duration : 0;
   return <>
     <Label className="field-label" htmlFor="clip-gain">{t('audio.clip.gain')}</Label>
-    <Input id="clip-gain" data-testid="clip-gain" type="number" min="0" max="2" step="0.05" required value={draft.gain} onChange={event => onEdit('gain', event.target.value)} />
+    <div className="clip-gain-controls"><Input aria-label={t('audio.clip.gain')} data-testid="clip-gain-slider" type="range" min="0" max="2" step="0.01" value={Math.min(2, Math.max(0, Number(draft.gain) || 0))} onChange={event => onEdit('gain', event.target.value)} /><Input id="clip-gain" data-testid="clip-gain" type="number" min="0" max="2" step="0.05" required value={draft.gain} onChange={event => onEdit('gain', event.target.value)} /></div>
     <Separator className="section-divider" />
     <div className="section-heading"><span>{t('audio.clip.fades')}</span></div>
     <div className="field-row">

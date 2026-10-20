@@ -629,5 +629,6 @@ export const nativeMessages = {
     "zh-Hant": "關閉視窗",
     "en": "Close window",
     "ja": "ウィンドウを閉じる"
-  }
+  },
+  'native.chooseBackupLocation': { 'zh-Hans': '选择备份位置', 'zh-Hant': '選擇備份位置', en: 'Choose backup location', ja: 'バックアップ先を選択' },
 } as const satisfies MessageCatalog;

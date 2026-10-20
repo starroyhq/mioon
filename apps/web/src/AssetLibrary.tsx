@@ -33,10 +33,13 @@ type SelectChange = {target: {value: string}};
 interface Dispositions {state: AssetDispositionState | null; controller: AssetDispositionController}
 interface Annotations {state: AnnotationState | null}
 type FilterChip = {key: string; label: string; remove: () => void};
+export type AssetLibraryTab = 'assets' | 'subjects';
 const filterKeys = [['all', 'assets.all'], ['image', 'assets.image'], ['video', 'assets.video'], ['audio', 'assets.audio']] as const;
 // Asset disposition labels are already-localized descriptors from the typed state module.
 const typedDispositionFilters = dispositionFilters as unknown as ReadonlyArray<readonly [string, DisplayMessage]>;
 export interface AssetLibraryProps {
+  activeTab?: AssetLibraryTab;
+  onTabChange?: (tab: AssetLibraryTab) => void;
   mutationDisabled?: boolean;
   assets: AppAsset[];
   filter: string;
@@ -70,19 +73,25 @@ export interface AssetLibraryProps {
   restored?: unknown;
   confirm?: unknown;
 }
-export default function AssetLibrary({ mutationDisabled = false, assets, filter, onFilter, search, onSearch, onImport, onFiles, onPreview, onCanvas, onTimeline, busy, collapsed, onCollapse, project, mode = 'canvas', versions = [], shots = [], dispositions, dispositionBlocked, selectedAsset, inUseAssetIds = new Set<string>(), onShowTasks, subjects, subjectBlocked, onInspectShot, timelineUsage, onLocateTimelineUse, annotations, annotationBlocked, restored, confirm }: AssetLibraryProps) {
+export default function AssetLibrary({ activeTab, onTabChange, mutationDisabled = false, assets, filter, onFilter, search, onSearch, onImport, onFiles, onPreview, onCanvas, onTimeline, busy, collapsed, onCollapse, project, mode = 'canvas', versions = [], shots = [], dispositions, dispositionBlocked, selectedAsset, inUseAssetIds = new Set<string>(), onShowTasks, subjects, subjectBlocked, onInspectShot, timelineUsage, onLocateTimelineUse, annotations, annotationBlocked, restored, confirm }: AssetLibraryProps) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const editing = mode === 'editing';
-  const [libraryTab, setLibraryTab] = useState<{scope: string | undefined; value: string}>({ scope: undefined, value: 'assets' });
+  const [libraryTab, setLibraryTab] = useState<{scope: string | undefined; value: AssetLibraryTab}>({ scope: undefined, value: 'assets' });
   const libraryScope = project?.id;
   const { layout, setLayout } = useAssetLibraryLayout(libraryScope);
-  const libraryView = libraryTab.scope === libraryScope ? libraryTab.value : 'assets';
+  const requestedTab = activeTab ?? (libraryTab.scope === libraryScope ? libraryTab.value : 'assets');
+  const libraryView = requestedTab === 'subjects' && subjects ? 'subjects' : 'assets';
   const state = dispositions?.state, controller = dispositions?.controller;
   // The validated controller scope is a string when set; other values stay null.
   const dispositionScope = typeof state?.scope === 'string' ? state.scope : null;
   const [localFilter, setLocalFilter] = useState<{scope: string | null | undefined; value: string}>({ scope: null, value: 'all' });
   const dispositionFilter = localFilter.scope === dispositionScope ? localFilter.value : 'all';
   const interaction = useDispositionInteraction(dispositionScope, controller as unknown as DispositionController | null | undefined);
+  const chooseLibraryTab = (value: AssetLibraryTab) => interaction.admit(() => {
+    if (value === 'subjects' && !subjects) return;
+    if (activeTab === undefined) setLibraryTab({ scope: libraryScope, value });
+    onTabChange?.(value);
+  });
   const chooseDispositionFilter = (value: string) => interaction.admit(() => setLocalFilter({ scope: dispositionScope, value }));
   const usageProps = { projectId: project?.id, scope: dispositionScope || libraryScope, usage: timelineUsage, visible: interaction.visible && !collapsed && libraryView === 'assets' };
   const [tagChoice, setTagChoice] = useState<{scope: unknown; value: string}>({ scope: null, value: '' });
@@ -104,7 +113,7 @@ export default function AssetLibrary({ mutationDisabled = false, assets, filter,
   return <Collapsible open={!collapsed} onOpenChange={open => { if (!open) onCollapse(); }} className={`asset-panel ${collapsed ? 'panel-collapsed' : ''}`} render={<aside aria-label={t('assets.indexedLibrary')} />} data-testid="asset-panel" onDragOver={(e: DragEvent) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); if (mutationDisabled) e.dataTransfer.dropEffect = 'none'; } }} onDrop={(e: DragEvent) => { if (e.dataTransfer.files.length) { e.preventDefault(); if (!mutationDisabled && typeof onFiles === 'function') onFiles(Array.from(e.dataTransfer.files)); } }}>
      {!subjects && <div className="asset-panel-heading"><h2>{t('assets.library')}</h2><span>{assets.length}</span><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label={t('assets.collapse')} title={t('assets.collapse')} data-testid="toggle-assets" />}><Icon name="minus" size={16} /></CollapsibleTrigger></div>}
      <CollapsibleContent keepMounted className="asset-panel-content">
-       {subjects && <div className="library-view-tabs" role="tablist" aria-label={t('assets.assetsSubjects')}><Button variant="ghost" size="sm" role="tab" id="library-assets-tab" aria-controls="library-assets-pane" aria-selected={libraryView === 'assets'} data-testid="library-assets-tab" onClick={() => interaction.admit(() => setLibraryTab({ scope: libraryScope, value: 'assets' }))}>{t('assets.assets')}</Button><Button variant="ghost" size="sm" role="tab" id="library-subjects-tab" aria-controls="library-subjects-pane" aria-selected={libraryView === 'subjects'} data-testid="library-subjects-tab" onClick={() => interaction.admit(() => setLibraryTab({ scope: libraryScope, value: 'subjects' }))}>{t('subjects.subjects')}</Button><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label={t('assets.collapse')} title={t('assets.collapse')} data-testid="toggle-assets" />}><Icon name="minus" size={16} /></CollapsibleTrigger></div>}
+       {subjects && <div className="library-view-tabs" role="tablist" aria-label={t('assets.assetsSubjects')}><Button variant="ghost" size="sm" role="tab" id="library-assets-tab" aria-controls="library-assets-pane" aria-selected={libraryView === 'assets'} data-testid="library-assets-tab" onClick={() => chooseLibraryTab('assets')}>{t('assets.assets')}</Button><Button variant="ghost" size="sm" role="tab" id="library-subjects-tab" aria-controls="library-subjects-pane" aria-selected={libraryView === 'subjects'} data-testid="library-subjects-tab" onClick={() => chooseLibraryTab('subjects')}>{t('subjects.subjects')}</Button><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label={t('assets.collapse')} title={t('assets.collapse')} data-testid="toggle-assets" />}><Icon name="minus" size={16} /></CollapsibleTrigger></div>}
        <WorkspaceVisibilityProvider visible={libraryView === 'assets'}><div className="library-view-pane" id="library-assets-pane" role="tabpanel" aria-labelledby="library-assets-tab" hidden={libraryView !== 'assets'} inert={libraryView !== 'assets'}>
        <Button variant="outline" className="button import-button full" data-testid="import-button" title={editing ? t('assets.inspectEditHint') : t('assets.inspectCanvasHint')} disabled={mutationDisabled || busy.import || typeof onImport !== 'function'} onClick={onImport}>{busy.import ? <span className="spinner" /> : <Icon name="upload" size={15} />}{busy.import ? t('assets.importing') : t('assets.importMedia')}</Button>
        <p className="asset-drag-help">{mutationDisabled ? t('opacity.restored.assetsReadOnly') : editing ? t('assets.editHint') : t('assets.canvasHint')}</p>

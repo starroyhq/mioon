@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createClipDraftController } from '../apps/web/src/clip-draft-state.ts';
+import { touchesLockedTrack } from '../apps/web/src/timeline-track-locks.ts';
 
 import { lenientFunction, stripSourceTypes } from './helpers/eval-source.ts';
 const Function = lenientFunction;
@@ -207,6 +208,7 @@ test('actual App draft discard leaves the original pending timeline request and 
     application: null, // The ordinary App entry has no candidate application capability.
     clipDraftRef: { current: f.controller },
     dataRef: { current: { timeline: { revision: 7 } } }, currentProject: { current: key.projectId },
+    touchesLockedTrack,trackLocksRef:{current:{}},
     tasksRef: { current: { blocked: (...args) => { calls.push(['blocked', ...args]); return Boolean(tasks.current); } } },
     timelinePending: false, notify: (...args) => calls.push(['notify', ...args]), openTasks: (canReveal = () => true) => { if (canReveal()) calls.push(['jobs', true]); },
     requestId: () => assert.fail('No new request ID while the original request is unresolved'), run: () => assert.fail('No automatic retry or changed replacement intent'),

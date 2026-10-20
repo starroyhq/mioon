@@ -7,6 +7,8 @@ import type {DatabaseSync,SQLInputValue} from 'node:sqlite';
 import {projectRenameInputSchema,projectDeleteInputSchema,projectDeleteManifestSchema} from '../../contracts/src/project-lifecycle.ts';
 import type {ProjectDeleteManifest} from '../../contracts/src/project-lifecycle.ts';
 import {validateWorkspaceSchema48} from './workspace-schema-v48.ts';
+import {validateWorkspaceSchema50} from './workspace-schema-v50.ts';
+const validateLifecycleSchema=(db:DatabaseSync):void=>{if(db.prepare('SELECT 1 FROM schema_version WHERE version=50').get())validateWorkspaceSchema50(db);else validateWorkspaceSchema48(db);};
 
 interface Store{db:DatabaseSync;root:string;get(table:string,id:string):unknown;put(table:string,value:Record<string,unknown>):unknown;tx<T>(callback:()=>T):T}
 export interface ProjectDeletionCompanions{assertDeletable(projectId:string):void;removeProject(projectId:string):void}
@@ -169,7 +171,7 @@ export function createProjectLifecycleServices(store:Store,{ownsLock,isReadOnly,
     owned();db.prepare('DELETE FROM project_deletion_cleanup WHERE requestId=?').run(requestId);return 'complete';
   }
   function rename(value:unknown):unknown{
-    owned();const input=parse(projectRenameInputSchema,value),digest=hash(input);validateWorkspaceSchema48(db);
+    owned();const input=parse(projectRenameInputSchema,value),digest=hash(input);validateLifecycleSchema(db);
     return store.tx(()=>{owned();const previous=db.prepare('SELECT projectId,digest,response FROM project_mutation_requests WHERE requestId=?').get(input.requestId);
       if(previous){if(previous.projectId!==input.projectId||previous.digest!==digest)fail('IDEMPOTENCY_CONFLICT');return decoded(previous.response);}
       const current=project(input.projectId);revision(current,input.expectedRevision);if(input.expectedRevision===Number.MAX_SAFE_INTEGER)fail('REVISION_CONFLICT');
@@ -178,7 +180,7 @@ export function createProjectLifecycleServices(store:Store,{ownsLock,isReadOnly,
     });
   }
   function remove(value:unknown):unknown{
-    owned();const input=parse(projectDeleteInputSchema,value),digest=hash(input);validateWorkspaceSchema48(db);
+    owned();const input=parse(projectDeleteInputSchema,value),digest=hash(input);validateLifecycleSchema(db);
     const previous=db.prepare('SELECT projectId,digest FROM project_deletion_receipts WHERE requestId=?').get(input.requestId);
     if(previous){if(previous.projectId!==input.projectId||previous.digest!==digest)fail('IDEMPOTENCY_CONFLICT');return {requestId:input.requestId,projectId:input.projectId,deleted:true,cleanup:cleanup(input.requestId)};}
     if(!companions)fail('PROJECT_DELETE_COMPANION_UNAVAILABLE',503);

@@ -217,7 +217,11 @@ test('actual right-dock review renders full immutable before/after and honest pr
   const f = fixture(), h = harness('AgentEditProposal', { client: f.client }); h.render(); await flush(); h.render();
   assert.equal(h.find('agent-edit-before-title').props.children, target.title); assert.equal(h.find('agent-edit-after-title').props.children, 'Proposed title'); assert.equal(h.find('agent-edit-after-prompt').props.children, '（清空）');
   assert.equal(h.find('agent-edit-status').props.children, '已提议，尚未应用'); assert.equal(h.find('agent-edit-approve').props.disabled, false);
-  assert.match(JSON.stringify(h.render()), /shot.update|基准版本|模型文字可能说/);
+  const card=h.find('agent-edit-proposal'), heading=nodes(card).find(node=>node.type==='h4'), identity=nodes(card).find(node=>node.props.className==='agent-edit-identity');
+  assert.equal(heading.props.children, '修改建议'); assert.doesNotMatch(JSON.stringify(heading), /shot.update|基准版本|00000000/);
+  assert.match(JSON.stringify(identity), /shot.update|基准版本/); assert.match(JSON.stringify(identity), new RegExp(shotId));
+  const targetSummary=nodes(card).find(node=>node.props.className==='agent-edit-target');assert.equal(targetSummary.props.children,target.title);
+  assert.equal(nodes(h.find('agent-edit-diff')).filter(node=>node.props.className==='agent-edit-diff-arrow').every(node=>node.props.children==='→'),true);
   assert.equal(nodes(h.render()).some(node => ['Dialog', 'Modal', 'input', 'textarea', 'a', 'img', 'script', 'iframe'].includes(node.type) || node.props.dangerouslySetInnerHTML), false);
   assert.equal(f.calls.some(call => call[0] === 'act'), false); h.unmount();
 });
@@ -408,7 +412,7 @@ test('complete selected text starts expanded, requires explicit consent to compa
   h.showOptions(); h.find('agent-edit-selected-disclosure').props.onOpenChange(false); h.render(); assert.equal(h.find('agent-edit-selected-disclosure').props.open, true);
   h.change('agent-chat-prompt', 'Improve selected shot'); h.submit(); await flush(); h.render(); assert.equal(f.calls.length, 0); assert.equal(h.find('agent-edit-selected-disclosure').props.open, true);
   h.change('agent-chat-consent', true); await flush(); h.render(); assert.equal(h.find('agent-edit-selected-disclosure').props.open, true); h.submit(); await flush(); h.render();
-  assert.equal(f.calls.length, 1); assert.equal(h.find('agent-edit-selected-disclosure').props.open, false); assert.match(JSON.stringify(h.find('agent-edit-target-summary')), new RegExp(shotId)); assert.match(JSON.stringify(h.find('agent-edit-target-summary')), /基准版本/);
+  assert.equal(f.calls.length, 1); assert.equal(h.find('agent-edit-selected-disclosure').props.open, false); assert.equal(h.find('agent-edit-target-summary').props.children, selected.title); assert.doesNotMatch(JSON.stringify(h.find('agent-edit-target-summary')), /基准版本|00000000/); assert.match(JSON.stringify(h.find('agent-edit-target-identity')), new RegExp(shotId)); assert.match(JSON.stringify(h.find('agent-edit-target-identity')), /基准版本/);
   h.showOptions(); assert.match(h.find('agent-edit-selected-details-toggle').props.children, /展开已核对/); assert.equal(h.find('agent-edit-selected-details-toggle').props.disabled, false);
   h.find('agent-edit-selected-disclosure').props.onOpenChange(true); h.render(); assert.equal(h.find('agent-edit-selected-disclosure').props.open, true); assert.equal(h.find('agent-edit-selected-prompt').props.children, selected.prompt); assert.equal(f.calls.length, 1); h.unmount();
 });
@@ -446,11 +450,45 @@ test('late accepted Send cannot compact a newer selected shot or a new project d
   }
 });
 
-test('proposal cards reserve a bounded readable review viewport while the existing outer dock keeps all consent reachable', () => {
-  const css = readFileSync(new URL('../apps/web/src/agent-edits.css', import.meta.url), 'utf8'), base = readFileSync(new URL('../apps/web/src/styles.css', import.meta.url), 'utf8');
-  const declaration = css.match(/\.agent-workspace \.agent-chat-scroll:has\(\.agent-edit-card\)\{([^}]+)\}/)?.[1]; assert.ok(declaration);
-  assert.match(declaration, /min-height:clamp\(320px,50dvh,480px\)/); assert.match(declaration, /flex-basis:clamp\(320px,50dvh,480px\)/); assert.match(declaration, /flex-shrink:0/);
-  assert.doesNotMatch(declaration, /overflow:hidden|position:fixed|display:none/);
-  assert.match(base, /\.agent-chat-page,\.agent-settings-page\{[^}]*overflow:auto/); assert.match(base, /\.agent-chat-scroll\{[^}]*overflow-y:auto/);
-  for (const height of [480, 650, 760, 1200]) { const pane = Math.min(480, Math.max(320, height * 0.5)); assert.ok(pane >= 320 && pane <= 480); }
+test('proposal review scrolls inside the dock while the full destination and input stay together outside that scroll region', async () => {
+  const css = readFileSync(new URL('../apps/web/src/agent-chat-history.css', import.meta.url), 'utf8'), editsCss = readFileSync(new URL('../apps/web/src/agent-edits.css', import.meta.url), 'utf8');
+  const rule = selector => {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const declaration = css.match(new RegExp(`${escaped}\\s*\\{([^}]+)\\}`))?.[1];
+    assert.ok(declaration, `Missing dock layout rule: ${selector}`); return declaration;
+  };
+  const scope = '.agent-workspace .agent-chat-page';
+  const messages = rule(`${scope} .agent-chat-scroll`);
+  assert.match(messages, /flex:\s*1 1 0%/); assert.match(messages, /min-height:\s*0/); assert.match(messages, /overflow-y:\s*auto/);
+  assert.doesNotMatch(messages, /overflow:\s*hidden|position:\s*fixed|display:\s*none/);
+  // A non-shrinking minimum used to push the target summary and input offscreen
+  // whenever a proposal card was present, especially in the minimum window.
+  assert.doesNotMatch(editsCss, /\.agent-chat-scroll:has\(\.agent-edit-card\)/);
+  const composer = rule(`${scope} .agent-chat-composer`), input = rule(`${scope} .agent-chat-composer-input`);
+  assert.match(composer, /display:\s*flex/); assert.match(composer, /flex-direction:\s*column/); assert.match(composer, /min-height:\s*0/); assert.match(composer, /max-height:\s*65%/);
+  assert.match(input, /position:\s*static/); assert.match(input, /flex:\s*none/);
+  const summary = rule(`${scope} .agent-chat-composer-summary`), summaryText = rule(`${scope} .agent-chat-composer-summary > span`);
+  assert.match(summary, /flex:\s*none/); assert.match(summaryText, /overflow:\s*visible/); assert.match(summaryText, /white-space:\s*normal/); assert.match(summaryText, /overflow-wrap:\s*anywhere/);
+  const options = rule(`${scope} .agent-chat-composer-options`);
+  assert.match(options, /min-height:\s*0/); assert.match(options, /max-height:\s*36dvh/); assert.match(options, /overflow-y:\s*auto/);
+  const f = chatFixture(), h = harness('AgentPanel', { chatClient: f.client, receipts: f.receipts });
+  h.render(); await flush(); h.render(); h.change('agent-chat-consent', true); await flush(); h.render();
+  const tree = h.render(), history = h.find('agent-chat-history'), form = nodes(tree).find(node => node.type === 'form');
+  assert.ok(nodes(history).some(node => node.type === 'AgentEditProposal'));
+  assert.equal(nodes(history).includes(form), false);
+  assert.ok(nodes(form).includes(h.find('agent-chat-options-toggle'))); assert.ok(nodes(form).includes(h.find('agent-chat-prompt')));
+  assert.ok(nodes(form).includes(h.find('agent-chat-composer-options'))); assert.equal(f.calls.length, 0); h.unmount();
+});
+
+test('first selected-shot authorization sends the original request and only then compacts the reviewed target', async()=>{
+  const f=chatFixture(),h=harness('AgentPanel',{chatClient:f.client,receipts:f.receipts});h.render();await flush();h.render();h.change('agent-chat-mode-edit',true);h.change('agent-chat-prompt','Improve selected shot');h.submit();h.render();
+  h.find('agent-chat-consent').props.onChange({target:{checked:true}});h.render();
+  assert.equal(h.find('agent-chat-authorization-confirm').props.children,'确认并发送');h.find('agent-chat-authorization-confirm').props.onClick();await flush();h.render();
+  assert.equal(f.calls.length,1);assert.equal(f.calls[0].message,'Improve selected shot');assert.equal(f.calls[0].consent.shotId,selected.id);assert.equal(f.calls[0].consent.expectedRevision,selected.revision);assert.equal(h.find('agent-edit-selected-disclosure').props.open,false);h.unmount();
+});
+test('an authorization in flight never sends for a changed selected shot or revision',async()=>{
+  for(const patch of [{id:id(88)},{revision:5},{title:'Updated saved title'}]){
+    const held=deferred(),f=chatFixture(),authorize=f.client.authorize;f.client.authorize=async(...args)=>{await held.promise;return authorize(...args);};
+    const h=harness('AgentPanel',{chatClient:f.client,receipts:f.receipts});h.render();await flush();h.render();h.change('agent-chat-mode-edit',true);h.change('agent-chat-prompt','Improve selected shot');h.submit();h.render();h.find('agent-chat-consent').props.onChange({target:{checked:true}});h.render();h.find('agent-chat-authorization-confirm').props.onClick();await flush();h.render({selectedShot:{...selected,...patch}});held.resolve();await flush();h.render();assert.equal(f.calls.length,0);h.unmount();
+  }
 });

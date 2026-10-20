@@ -1,3 +1,9 @@
+import {exportControlSchemas,exportControlDescriptions} from './export-controls.ts';
+export * from './export-controls.ts';
+import {workspaceConfigurationSchemas} from './workspace-configuration.ts';
+export * from './workspace-configuration.ts';
+import {taskDispositionSchemas,taskDispositionDescriptions} from './task-dispositions.ts';
+export * from './task-dispositions.ts';
 import {AppError} from './app-error.ts';
 export * from './timeline-volume-envelope-capability.ts';
 import {isVolumeEnvelope} from './timeline-volume-envelope-processing.ts';
@@ -111,6 +117,9 @@ const clipFields={volumeEnvelope:volumeEnvelope.optional(),audioRole:clipAudioRo
  fadeInFrames:frame.describe('Optional audio fade-in in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional(),
  fadeOutFrames:frame.describe('Optional audio fade-out in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional()};
 export const schemas={
+...exportControlSchemas,
+...workspaceConfigurationSchemas,
+...taskDispositionSchemas,
 ...projectLifecycleSchemas,
 ...projectHomeSchemas,
 ...agentAuthorizationSchemas,
@@ -186,6 +195,14 @@ assertOperationEffectCoverage(schemas);
 export type OperationName = keyof typeof schemas;
 export type OperationInput<K extends OperationName> = z.infer<(typeof schemas)[K]>;
 export const descriptions: Record<string, string> = {
+ ...exportControlDescriptions,
+ 'workspace.settings.get':'读取工作区设置',
+ 'workspace.settings.set':'按修订号保存真实生成与自动备份设置',
+ 'workspace.backup.status':'读取本地备份状态与恢复暂存状态',
+ 'workspace.backup.list':'列出已验证本地备份',
+ 'workspace.backup.create':'在空闲工作区创建一致的本地离线备份',
+ 'workspace.backup.restore.stage':'明确确认后将备份恢复到独立目录，下次启动切换到受限恢复工作区',
+ ...taskDispositionDescriptions,
 ...projectHomeDescriptions,
 'workspace.backup.inspect':'只读检查整个工作区的有界数据库计数；不复制文件、不恢复任务、不读取密钥。冷备份前必须正常关闭应用和同工作区后端。',
 'workspace.restore.inspect':'只读查看工作区恢复分支身份、隔离计数与可用操作，可显式请求已验证的音频角色与音量包络能力；不接收路径、不恢复或执行旧任务、不授予模型或付费权限。',

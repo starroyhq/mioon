@@ -30,6 +30,18 @@ const generation = {...localAdd,idempotent:true,openWorld:true,fileWrite:true,
 const render = {...localAdd,idempotent:true,fileWrite:true,localProcess:true};
 
 export const operationEffects = Object.freeze({
+  'export.cancel':define({...localEdit,idempotent:true,fileWrite:true,localProcess:true,notes:'Cancels one local export and terminates only its owned media operation; source files and acceptance receipt remain.'}),
+  'export.activity.get':define({...read,notes:'Reads only one owned export stage and elapsed time; unavailable encoding progress is null'}),
+  'export.output.get':define({...read,notes:'Verifies and reads only an owned managed export file and location.'}),
+  'workspace.settings.get':define({...read,notes:'Reads workspace appearance-independent live generation and backup preferences without exposing credentials'}),
+  'workspace.settings.set':define({...read,readOnly:false,idempotent:false,fileWrite:true,notes:'Saves only revision-checked workspace live opt-in and backup preferences; accepts no filesystem path or credentials'}),
+  'workspace.backup.status':define({...read,notes:'Reads local backup status, retained errors and pending restore activation without starting work'}),
+  'workspace.backup.list':define({...read,notes:'Lists the bounded registered local backup inventory without reading media or dispatching work'}),
+  'workspace.backup.create':define({...read,readOnly:false,fileWrite:true,localProcess:false,notes:'Captures an idle ordinary workspace through an online SQLite snapshot and verified immutable managed-file inventory; exact request replay creates no duplicate'}),
+  'workspace.backup.restore.stage':define({...read,readOnly:false,fileWrite:true,notes:'Explicitly restores a registered backup into a separate guarded workspace and stages restart activation; original workspace and backups are preserved'}),
+  'task.disposition.list':define({...read,notes:'Reads local disposition metadata for an explicit bounded owned task batch without polling or changing tasks'}),
+  'task.disposition.markFailed':define({...replayEdit,notes:'Records a confirmed local failure marker under task status and disposition revision CAS; raw unknown status, original request and reconciliation stay unchanged'}),
+  'task.disposition.archiveCompleted':define({...replayEdit,notes:'Atomically archives only explicitly selected terminal reconciled tasks; preserves all original records, outputs, assets and exact receipts'}),
   'project.rename': define({...replayEdit,notes:'Renames one owned project under project CAS and stable requestId, retaining the exact acknowledgement. Does not alter timeline, shots, media, or external services. Unavailable in restored/candidate workspaces.'}),
   'project.delete': define({...replayEdit,fileWrite:true,notes:'Explicit confirmed permanent deletion of an idle owned project and exclusively owned managed media. Commits scoped database deletion with a retained cleanup manifest; stable-key retries only resume local file/companion cleanup. Refuses unresolved work and active streams. Preserves shared/external files and existing backups. No model/provider calls or local media processes. Unavailable in restored/candidate workspaces.'}),
   'project.summary.list': define({...read,notes:'Reads bounded project-home metadata and existing owned cover URLs from saved rows. Does not initialize timelines, generate thumbnails, read media bytes, spawn processes, mutate database/files or call providers.'}),

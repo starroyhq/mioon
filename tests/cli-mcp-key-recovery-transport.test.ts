@@ -206,6 +206,10 @@ test('real CLI and MCP preserve proof-specific rejection and HTTP status semanti
 test('nested review commits survive real wire loss and exact cross-client replay without approval', {timeout: 60000}, async (t: TestContext) => {
   const f = await fixture(t, 'nested-review-replay', {business: true});
   const project = await f.rpc('project.create', {name: 'Synthetic review transport acceptance'});
+  // Live review preparation now requires the persisted workspace opt-in. This
+  // fixture still rejects every provider I/O and never approves a paid review.
+  const workspace = await f.rpc('workspace.settings.get');
+  await f.rpc('workspace.settings.set', {expectedRevision: workspace.revision, liveGeneration: true});
   // The existing preparation guard requires a configured slot. This generated
   // fake value stays in this backend session; network adapters reject all I/O.
   const settings = await f.raw('/api/images/settings', {expectedRevision: 0, configuration: {...DEFAULT_IMAGE_CONFIGURATION, enabled: true}, secret: {action: 'replace', storage: 'session', value: f.syntheticSecret()}}, 'PUT');

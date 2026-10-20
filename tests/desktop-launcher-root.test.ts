@@ -26,6 +26,7 @@ function homeHarness(patch: Record<string, unknown> = {}) {
     useState(value: unknown): [unknown, (next: unknown) => void] {
       const index = cursor++; if (!(index in slots)) slots[index] = value;
       return [slots[index], (next: unknown) => { slots[index] = typeof next === 'function' ? (next as (prev: unknown) => unknown)(slots[index]) : next; }]; },
+    useMemo<T>(factory: () => T, deps: readonly unknown[]): T { const index=cursor++, old=slots[index] as {deps:readonly unknown[];value:T}|undefined; if(!old||deps.some((value,at)=>!Object.is(value,old.deps[at])))slots[index]={deps,value:factory()}; return (slots[index] as {value:T}).value; },
     useRef(value: unknown): {current: unknown} { const index = cursor++; if (!(index in slots)) slots[index] = { current: value }; return slots[index] as {current: unknown}; },
     useEffect(): void { cursor++; },
   };
@@ -35,7 +36,7 @@ function homeHarness(patch: Record<string, unknown> = {}) {
     if (name.endsWith('/i18n/I18nProvider.tsx')) return i18nTestModule();
     if (name.includes('packages/i18n/src/index.ts')) return i18nCore;
     if (name === './LanguageControl.tsx') return { default: () => null };
-    return Object.fromEntries(['Button', 'Input', 'Textarea', 'Label', 'Dialog', 'WorkbenchDialogContent'].map(key => [key, key.toLowerCase()]));
+    return Object.fromEntries(['Button', 'Input', 'Textarea', 'Label', 'Dialog', 'WorkbenchButton', 'WorkbenchIcon', 'WorkbenchDialogContent'].map(key => [key, key.toLowerCase()]));
   }, module, module.exports);
   const props: Record<string, unknown> = { projects: [], phase: 'home', busy: false, listBusy: false, page: 'projects', onPage() {}, onOpen() {}, onRetry() {}, onRefresh() {}, onCreate: async () => true, settings: null,
     onCreateStateChange: (state: CreateReport) => reports.push(state), ...patch };

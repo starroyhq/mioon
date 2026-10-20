@@ -1,3 +1,5 @@
+import { WORKSPACE_NATIVE_CHANNEL } from '../packages/contracts/src/workspace-native.ts';
+import { createWorkspaceNativeHost } from '../apps/desktop/src/workspace-native-host.ts';
 import { createAppLanguageHost } from '../apps/desktop/src/app-language-host.ts';
 import { nativeText, setNativeLanguageReader } from '../apps/desktop/src/app-language-text.ts';
 import { resolveLocale } from '../packages/i18n/src/locale.ts';
@@ -165,7 +167,7 @@ async function harness(t, options = {}) {
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
     prepareDesktopStorage: () => ({ userData: '/synthetic/userData', dataDir: '/synthetic/workspace', configFile: '/synthetic/config' }),
     CLIP_LUT_RECOVERY_CHANNEL, createDesktopLutRecoveryHost, calculateWorkspaceScope,
-    WORKSPACE_TOOLS_CHANNEL, createWorkspaceToolsHost,
+    WORKSPACE_TOOLS_CHANNEL, createWorkspaceToolsHost, WORKSPACE_NATIVE_CHANNEL, createWorkspaceNativeHost,
     nativeTheme: Object.assign(new EventEmitter(), {shouldUseDarkColors:true}),
     createDesktopWindowAppearance: options => createDesktopWindowAppearance({...options,
       // This lifecycle fixture has no persistent appearance sidecar. Keep the
@@ -222,7 +224,7 @@ async function harness(t, options = {}) {
     createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity, consumeNativeProjectEntry,
     observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident,
     ipcMain: { handle(channel, handler) {
-      assert.ok([APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
+      assert.ok([APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
       r.ipcHandlers ??= new Map(); assert.equal(r.ipcHandlers.has(channel), false); r.ipcHandlers.set(channel, handler);
       if (channel === PROJECT_WINDOW_CHANNEL) r.bridge = handler; else if (channel === NATIVE_AUDIO_CHANNEL) r.audioBridge = handler;
     } },
@@ -244,7 +246,7 @@ async function harness(t, options = {}) {
   });
   vm.runInContext(source, context, { filename: 'actual-desktop-main.ts' });
   assert.deepEqual([...r.ipcHandlers.keys()].sort(),
-    [APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, NATIVE_AUDIO_CHANNEL, PROJECT_WINDOW_CHANNEL, WORKSPACE_TOOLS_CHANNEL].sort());
+    [APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, NATIVE_AUDIO_CHANNEL, PROJECT_WINDOW_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL].sort());
   const get = text => vm.runInContext(text, context);
   t.after(async () => {
     get('quitting = true'); options.release?.();

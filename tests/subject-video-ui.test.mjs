@@ -327,7 +327,7 @@ test('TaskCenter routes marked or observed subject retries to strict recovery an
   ];
   const h = harness('TaskCenter.tsx', { captureView: () => () => true, taskViewScope: 'subject-retry-current-view', activeCount: 0, pending: entries, busy: {}, jobs: [], data: { assets: [], shots: [], jobs: [{ id: id(90), projectId, snapshot: { subjectReference: reference() } }] }, tasks: { phase: 'ready', items: [], uncertain: [], busy: [] }, run: (...args) => calls.push(args), onClose() {} });
   const rows = h.nodes().filter(node => node.type === './PendingSubmission.tsx'); assert.equal(rows.length, 3);
-  rows[0].props.onReplay(); rows[1].props.onReplay(); rows[2].props.onReplay();
+  for (const entry of entries) { h.render({ selectedTaskId: `pending:legacy:${entry.key}` }); h.nodes().find(node => node.type === './PendingSubmission.tsx' && node.props.entry.key === entry.key).props.onReplay(); }
   assert.deepEqual(calls[0][4], { replay: true, subjectRetry: true }); assert.deepEqual(calls[1][4], { replay: true });
   assert.deepEqual(calls[0][2], entries[0].input); assert.deepEqual(calls[2][4], { replay: true, subjectRetry: true });
 });

@@ -7,6 +7,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
+import type {Readable} from 'node:stream';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from '../apps/server/src/index.ts';
@@ -155,8 +156,8 @@ async function cli(args: string[], env: Record<string, string | undefined>): Pro
   const closed = new Promise<{code: number | null; signal: string | null}>(resolve => { child.once('close', (code: number | null, signal: string | null) => resolve({code, signal})); });
   child.once('error', error => { failure = error; });
   assert.ok(child.stdout && child.stderr);
-  for (const [name, stream] of [['stdout', child.stdout], ['stderr', child.stderr]] as [string, NodeJS.ReadableStream][])
-    stream.on('data', (value: string) => {
+  for (const [name, stream] of [['stdout', child.stdout], ['stderr', child.stderr]] as [string, Readable][])
+    stream.setEncoding('utf8').on('data', (value: string) => {
       if (name === 'stdout') stdout += value; else stderr += value;
       if (Buffer.byteLength(stdout) + Buffer.byteLength(stderr) > 256 * 1024) {
         failure = Error('Owned image CLI output exceeded its bound'); child.kill('SIGKILL');
@@ -252,7 +253,7 @@ async function fixture(t: import('node:test').TestContext): Promise<TransportFix
       const stdio = new StdioClientTransport({command: process.execPath, cwd: repo, stderr: 'pipe',
         args: ['--import', wireGuard, 'apps/mcp/src/index.ts'], env: childEnvironment(root, server.url, audit)}); transport = stdio;
       let stderr = '';
-      assert.ok(stdio.stderr);(stdio.stderr as unknown as NodeJS.ReadableStream).on('data', (value: string) => { stderr = (stderr + value).slice(-65_536); });
+      assert.ok(stdio.stderr);(stdio.stderr as Readable).setEncoding('utf8').on('data', (value: string) => { stderr = (stderr + value).slice(-65_536); });
       await bounded(client.connect(stdio), 'Owned image MCP connect');
       return {client, async call(name: string, value: Record<string, unknown>): Promise<WireEnvelope> {
         const result = await client.callTool({name, arguments: value} as never, undefined, {timeout: 5_000}) as {content: {type: string; text: string}[]; structuredContent: WireEnvelope; isError?: boolean};

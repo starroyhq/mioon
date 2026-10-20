@@ -295,7 +295,7 @@ function harness(t) {
     notify: (...args) => calls.push(['notify', ...args]), readableError: error => error.message, URL,
     window: { location: { href: 'http://127.0.0.1:4318/' }, history: { pushState() {}, replaceState() {} } },
     refresh: async (id, _quiet, options) => { assert.equal(options?.opening, true); env.dataRef.current = { project: { id }, shots: [], nodes: [] }; return env.dataRef.current; },
-    ...Object.fromEntries(['setProjectOpening', 'setHomePage', 'setAuth', 'setPropertiesPage', 'setTaskState', 'setPending', 'setShowProjects', 'setData', 'setNodes', 'setLoading',
+    ...Object.fromEntries(['setProjectOpening', 'setHomePage', 'setAuth', 'setPropertiesPage', 'setTaskState', 'setSelectedTaskId', 'setPending', 'setShowProjects', 'setData', 'setNodes', 'setLoading',
       'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setRightDockTab', 'setPanelOverlay',
       'setShowTasks', 'setShowDelivery', 'setShowImage', 'setShowProjectChooser', 'setWebSettingsRequest',
       'setShowExports', 'setComparisonId', 'setPreviewAsset', 'setRealConfirm', 'setToast', 'setMobilePanel', 'setZoom']

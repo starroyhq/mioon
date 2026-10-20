@@ -29,7 +29,8 @@ test('Agent authorization status, review entrance and send stay in the sticky co
   const approval = source.slice(source.indexOf('<Dialog open={Boolean(visible&&!sendConsented&&authorizationIntent.key===disclosureKey)}'));
   assert.ok(approval.includes('data-testid="agent-chat-consent"'), 'The explicit checkbox remains in the current visible disclosure dialog');
   assert.match(approval, /data-testid="agent-chat-authorization-confirm" disabled=\{!authorizationReady\|\|!authorizationIntent\.checked\}/);
-  assert.match(source, /if\(!sendConsented\)\{if\(canStart\)setAuthorizationIntent\(\{key:disclosureKey,checked:false,sendAfterApproval:true\}\);return;\}/,'Send without consent must enter review before dispatch');
+  assert.match(source, /if\(!sendConsented\)\{if\(canStart\)setAuthorizationIntent\(\{key:disclosureKey,checked:false,sendAfterApproval:true,message:state\.draft\}\);return;\}/,'Send without consent must enter review and capture the exact draft before dispatch');
+  assert.match(source,/if\(sendAfterApproval&&current\?\.getState\(\)\.draft!==message\)return/,'Approval must reject a draft changed since review opened');
   assert.ok(source.indexOf('data-testid="agent-chat-destination"') < start, 'the send destination stays above the consent it describes');
   // The scope, target and destination sit in their own block above it, so the sticky block can pin to the page itself:
   // the form is display: contents, otherwise a short dock would leave the form (its containing block) off screen.

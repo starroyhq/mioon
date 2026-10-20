@@ -254,7 +254,7 @@ test('TaskCenter separates durable, legacy and generation details, retains gener
 test('actual TaskCenter does not render an empty-list claim when loading or error and keeps unknown card visible', () => {
   const source = readFileSync(new URL('../apps/web/src/TaskCenter.tsx', import.meta.url), 'utf8');
   const module = { exports: {} }, react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
-    useMemo: factory => factory(), useRef: current => ({ current }), useLayoutEffect: callback => callback() };
+    useMemo: factory => factory(), useRef: current => ({ current }), useState: initial => [initial, () => {}], useLayoutEffect: callback => callback() };
   const workspace = { exports: {} };
   const i18n = { useI18n: () => ({ t: (key, ...args) => renderMessage('zh-Hans', messageKey(key, ...args)),
     renderMessage: value => renderMessage('zh-Hans', value), formatDate: value => String(value), formatNumber: value => String(value) }) };

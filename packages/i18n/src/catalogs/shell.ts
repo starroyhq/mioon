@@ -58,10 +58,10 @@ const shellCoreMessages = {
     "ja": "既存のローカル ComfyUI 接続を管理します。拡張機能のインストール、アンインストール、動的読み込みは行いません"
   },
   "settings.languageHint": {
-    "zh-Hans": "界面语言在此管理。切换语言不会保存连接或执行生成",
-    "zh-Hant": "在此管理介面語言。切換語言不會儲存連線或執行生成",
-    "en": "Choose the interface language. Changing it does not save connections or start generation",
-    "ja": "表示言語を選択します。言語を変更しても、接続の保存や生成は実行されません"
+    "zh-Hans": "切换后立即生效，项目内容不受影响",
+    "zh-Hant": "切換後立即生效，專案內容不受影響",
+    "en": "Changes apply immediately without changing project content",
+    "ja": "変更はすぐに反映され、プロジェクトの内容には影響しません"
   },
   "settings.workspaceStatus": {
     "zh-Hans": "工作区与恢复状态",
@@ -280,10 +280,10 @@ const shellCoreMessages = {
     "ja": "プロジェクトがありません"
   },
   "projects.emptyBody": {
-    "zh-Hans": "从一个新故事开始。创建项目后，就可以组织镜头、添加素材和剪辑成片",
-    "zh-Hant": "從一個新故事開始。建立專案後，就能整理鏡頭、新增素材並剪輯成片",
-    "en": "Start a new story. Create a project to organize shots, add assets, and edit your film",
-    "ja": "新しいストーリーを始めましょう。プロジェクトを作成すると、ショットの整理、素材の追加、映像の編集ができます"
+    "zh-Hans": "新建一个项目，在画板中构思镜头，再到剪辑中完成成片",
+    "zh-Hant": "建立一個專案，在畫板中構思鏡頭，再到剪輯中完成影片",
+    "en": "Create a project, plan your shots on the canvas, then finish your film in the editor",
+    "ja": "プロジェクトを作成し、キャンバスでショットを構想してから、編集画面で映像を仕上げます"
   },
   "projects.open": {
     "zh-Hans": "打开项目",

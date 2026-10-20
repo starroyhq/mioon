@@ -1,0 +1,118 @@
+TAP version 13
+# Subtest: saved timeline selection projects explicit safe timing, excludes sources and is detached from drafts
+ok 1 - saved timeline selection projects explicit safe timing, excludes sources and is detached from drafts
+  ---
+  duration_ms: 3.000375
+  type: 'test'
+  ...
+# Subtest: timeline capability, provenance, tool and proposal discriminators fail closed while old shot policy survives
+ok 2 - timeline capability, provenance, tool and proposal discriminators fail closed while old shot policy survives
+  ---
+  duration_ms: 3.044125
+  type: 'test'
+  ...
+# Subtest: timeline authorization survives saved target revisions without widening the outbound per-send schema
+ok 3 - timeline authorization survives saved target revisions without widening the outbound per-send schema
+  ---
+  duration_ms: 3.359208
+  type: 'test'
+  ...
+# Subtest: accepted run must match complete displayed timing even when identifiers and revision match
+ok 4 - accepted run must match complete displayed timing even when identifiers and revision match
+  ---
+  duration_ms: 0.749958
+  type: 'test'
+  ...
+# Subtest: fresh approval requires exact current saved selection and context; review does not silently rebase
+ok 5 - fresh approval requires exact current saved selection and context; review does not silently rebase
+  ---
+  duration_ms: 1.506333
+  type: 'test'
+  ...
+# Subtest: approved unknown discovery and reload stay GET-only; explicit historical recovery retains original keys despite new selection
+ok 6 - approved unknown discovery and reload stay GET-only; explicit historical recovery retains original keys despite new selection
+  ---
+  duration_ms: 0.452375
+  type: 'test'
+  ...
+# Subtest: unknown remains visible across another window recovery dispatch, and stale GET cannot downgrade an applied receipt
+ok 7 - unknown remains visible across another window recovery dispatch, and stale GET cannot downgrade an applied receipt
+  ---
+  duration_ms: 0.704459
+  type: 'test'
+  ...
+# Subtest: lost ACK reads same proposal, never posts twice, and a late POST cannot refresh a disposed project
+ok 8 - lost ACK reads same proposal, never posts twice, and a late POST cannot refresh a disposed project
+  ---
+  duration_ms: 3.126458
+  type: 'test'
+  ...
+# Subtest: actual timeline review renders names, immutable frames and seconds, unchanged fields and total-duration warning
+ok 9 - actual timeline review renders names, immutable frames and seconds, unchanged fields and total-duration warning
+  ---
+  duration_ms: 42.28175
+  type: 'test'
+  ...
+# Subtest: actual timeline review disables stale selection/draft/context callbacks, preserves Reject and gates Stop
+ok 10 - actual timeline review disables stale selection/draft/context callbacks, preserves Reject and gates Stop
+  ---
+  duration_ms: 8.319709
+  type: 'test'
+  ...
+# Subtest: actual timeline composer requires separate consent, bounds intervals, clears consent on dirty and preserves draft
+ok 11 - actual timeline composer requires separate consent, bounds intervals, clears consent on dirty and preserves draft
+  ---
+  duration_ms: 40.303833
+  type: 'test'
+  ...
+# Subtest: actual timeline activity safely separates proposal from application and never displays media or authority buttons
+ok 12 - actual timeline activity safely separates proposal from application and never displays media or authority buttons
+  ---
+  duration_ms: 21.072291
+  type: 'test'
+  ...
+# Subtest: durable unknown discovered on reload cannot disappear silently when another window finishes recovery
+ok 13 - durable unknown discovered on reload cannot disappear silently when another window finishes recovery
+  ---
+  duration_ms: 0.601333
+  type: 'test'
+  ...
+# Subtest: legacy shot unknown also reconciles disappearance by exact GET while historical applied discovery stays read-only
+ok 14 - legacy shot unknown also reconciles disappearance by exact GET while historical applied discovery stays read-only
+  ---
+  duration_ms: 0.518833
+  type: 'test'
+  ...
+# Subtest: three-page discovery of 60 mixed unknown proposals never pins old pages over fetched rows
+ok 15 - three-page discovery of 60 mixed unknown proposals never pins old pages over fetched rows
+  ---
+  duration_ms: 10.180667
+  type: 'test'
+  ...
+# Subtest: local transport uncertainty never displaces a fetched full page when advancing the cursor
+ok 16 - local transport uncertainty never displaces a fetched full page when advancing the cursor
+  ---
+  duration_ms: 2.6355
+  type: 'test'
+  ...
+# Subtest: 50 local pins block a new approval without losing keys, while exact existing recovery clears a pin
+ok 17 - 50 local pins block a new approval without losing keys, while exact existing recovery clears a pin
+  ---
+  duration_ms: 15.392459
+  type: 'test'
+  ...
+# Subtest: actual review labels an off-page local uncertainty and retains its exact identity beside all fetched rows
+ok 18 - actual review labels an off-page local uncertainty and retains its exact identity beside all fetched rows
+  ---
+  duration_ms: 27.418583
+  type: 'test'
+  ...
+1..18
+# tests 18
+# suites 0
+# pass 18
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 543.732916

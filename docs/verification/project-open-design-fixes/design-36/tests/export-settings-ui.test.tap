@@ -1,0 +1,232 @@
+TAP version 13
+# Subtest: settings use semantic identities, retain legacy omission, and freeze nested values
+ok 1 - settings use semantic identities, retain legacy omission, and freeze nested values
+  ---
+  duration_ms: 1.37725
+  type: 'test'
+  ...
+# Subtest: ephemeral choices reset by project epoch, never rewrite geometry, and reject disabled or old control closures
+ok 2 - ephemeral choices reset by project epoch, never rewrite geometry, and reject disabled or old control closures
+  ---
+  duration_ms: 0.616291
+  type: 'test'
+  ...
+# Subtest: UI describes all output dimensions separately from 720×1280 editing geometry
+ok 3 - UI describes all output dimensions separately from 720×1280 editing geometry
+  ---
+  duration_ms: 1.285166
+  type: 'test'
+  ...
+# Subtest: UI describes all output dimensions separately from 1280×720 editing geometry
+ok 4 - UI describes all output dimensions separately from 1280×720 editing geometry
+  ---
+  duration_ms: 0.300958
+  type: 'test'
+  ...
+# Subtest: UI describes all output dimensions separately from 720×720 editing geometry
+ok 5 - UI describes all output dimensions separately from 720×720 editing geometry
+  ---
+  duration_ms: 0.234459
+  type: 'test'
+  ...
+# Subtest: one explicit check sequences capability computation then read-only media preflight with identical settings
+ok 6 - one explicit check sequences capability computation then read-only media preflight with identical settings
+  ---
+  duration_ms: 2.2625
+  type: 'test'
+  ...
+# Subtest: unavailable/EXPORT_CAPABILITY_UNSUPPORTED never runs media preflight or offers an unchecked capability bypass
+ok 7 - unavailable/EXPORT_CAPABILITY_UNSUPPORTED never runs media preflight or offers an unchecked capability bypass
+  ---
+  duration_ms: 0.652542
+  type: 'test'
+  ...
+# Subtest: incomplete/EXPORT_CAPABILITY_TIMEOUT never runs media preflight or offers an unchecked capability bypass
+ok 8 - incomplete/EXPORT_CAPABILITY_TIMEOUT never runs media preflight or offers an unchecked capability bypass
+  ---
+  duration_ms: 0.351
+  type: 'test'
+  ...
+# Subtest: incomplete/EXPORT_CAPABILITY_FAILED never runs media preflight or offers an unchecked capability bypass
+ok 9 - incomplete/EXPORT_CAPABILITY_FAILED never runs media preflight or offers an unchecked capability bypass
+  ---
+  duration_ms: 0.312084
+  type: 'test'
+  ...
+# Subtest: incomplete/EXPORT_CAPABILITY_BUSY never runs media preflight or offers an unchecked capability bypass
+ok 10 - incomplete/EXPORT_CAPABILITY_BUSY never runs media preflight or offers an unchecked capability bypass
+  ---
+  duration_ms: 0.310167
+  type: 'test'
+  ...
+# Subtest: blocked/INVALID_TIMELINE_SNAPSHOT never runs media preflight or offers an unchecked capability bypass
+ok 11 - blocked/INVALID_TIMELINE_SNAPSHOT never runs media preflight or offers an unchecked capability bypass
+  ---
+  duration_ms: 0.228167
+  type: 'test'
+  ...
+# Subtest: stale/EXPORT_CAPABILITY_STALE never runs media preflight or offers an unchecked capability bypass
+ok 12 - stale/EXPORT_CAPABILITY_STALE never runs media preflight or offers an unchecked capability bypass
+  ---
+  duration_ms: 0.248625
+  type: 'test'
+  ...
+# Subtest: capability unknown is distinct from unavailable and transport failures expose no raw paths
+ok 13 - capability unknown is distinct from unavailable and transport failures expose no raw paths
+  ---
+  duration_ms: 0.191209
+  type: 'test'
+  ...
+# Subtest: malformed or misbound capability is rejected: {"exportSettings":{"profileId":"mp4_h264_v1","resolution":"short_360","rateControl":{"mode":"crf","quality":"standard"}}}
+ok 14 - malformed or misbound capability is rejected: {"exportSettings":{"profileId":"mp4_h264_v1","resolution":"short_360","rateControl":{"mode":"crf","quality":"standard"}}}
+  ---
+  duration_ms: 0.218541
+  type: 'test'
+  ...
+# Subtest: malformed or misbound capability is rejected: {"projectId":"79000000-0000-4000-8000-000000000008"}
+ok 15 - malformed or misbound capability is rejected: {"projectId":"79000000-0000-4000-8000-000000000008"}
+  ---
+  duration_ms: 0.169292
+  type: 'test'
+  ...
+# Subtest: malformed or misbound capability is rejected: {"expectedRevision":99}
+ok 16 - malformed or misbound capability is rejected: {"expectedRevision":99}
+  ---
+  duration_ms: 0.160625
+  type: 'test'
+  ...
+# Subtest: malformed or misbound capability is rejected: {"timelineId":"79000000-0000-4000-8000-000000000009"}
+ok 17 - malformed or misbound capability is rejected: {"timelineId":"79000000-0000-4000-8000-000000000009"}
+  ---
+  duration_ms: 2.330125
+  type: 'test'
+  ...
+# Subtest: malformed or misbound capability is rejected: {"delivery":null}
+ok 18 - malformed or misbound capability is rejected: {"delivery":null}
+  ---
+  duration_ms: 0.385084
+  type: 'test'
+  ...
+# Subtest: settings changes abort capability observation and obsolete authorization errors never log out the new owner
+ok 19 - settings changes abort capability observation and obsolete authorization errors never log out the new owner
+  ---
+  duration_ms: 0.448833
+  type: 'test'
+  ...
+# Subtest: same-revision settings changes abort media reads and keep late responses from binding
+ok 20 - same-revision settings changes abort media reads and keep late responses from binding
+  ---
+  duration_ms: 0.431959
+  type: 'test'
+  ...
+# Subtest: hiding the panel aborts capability observation; reopening never probes or exports automatically
+ok 21 - hiding the panel aborts capability observation; reopening never probes or exports automatically
+  ---
+  duration_ms: 0.12925
+  type: 'test'
+  ...
+# Subtest: hiding the panel aborts media observation; reopening never probes or exports automatically
+ok 22 - hiding the panel aborts media observation; reopening never probes or exports automatically
+  ---
+  duration_ms: 0.212042
+  type: 'test'
+  ...
+# Subtest: checked export is settings-bound, one-use, and synchronously rejects stale live closures
+ok 23 - checked export is settings-bound, one-use, and synchronously rejects stale live closures
+  ---
+  duration_ms: 0.585375
+  type: 'test'
+  ...
+# Subtest: unchecked export is settings-bound, one-use, and synchronously rejects stale live closures
+ok 24 - unchecked export is settings-bound, one-use, and synchronously rejects stale live closures
+  ---
+  duration_ms: 0.363959
+  type: 'test'
+  ...
+# Subtest: A→B→A settings version invalidates late checks and old checked closures even if semantic values match
+ok 25 - A→B→A settings version invalidates late checks and old checked closures even if semantic values match
+  ---
+  duration_ms: 0.407583
+  type: 'test'
+  ...
+# Subtest: equivalent settings objects do not invalidate a checked binding or issue another read
+ok 26 - equivalent settings objects do not invalidate a checked binding or issue another read
+  ---
+  duration_ms: 0.407208
+  type: 'test'
+  ...
+# Subtest: actual App open is passive, explicit Check performs both operations, and export freezes exactly one selected request
+ok 27 - actual App open is passive, explicit Check performs both operations, and export freezes exactly one selected request
+  ---
+  duration_ms: 51.171708
+  type: 'test'
+  ...
+# Subtest: actual Check rejects unresolved local candidate and saved-baseline conflict before any preflight work
+ok 28 - actual Check rejects unresolved local candidate and saved-baseline conflict before any preflight work
+  ---
+  duration_ms: 5.064
+  type: 'test'
+  ...
+# Subtest: restored export retains exact checked settings on the original session runner
+ok 29 - restored export retains exact checked settings on the original session runner
+  ---
+  duration_ms: 3.125917
+  type: 'test'
+  ...
+# Subtest: actual App pending export cannot be replaced by settings or another confirmation; preview retains omission
+ok 30 - actual App pending export cannot be replaced by settings or another confirmation; preview retains omission
+  ---
+  duration_ms: 2.5075
+  type: 'test'
+  ...
+# Subtest: session render receipts retain exact bytes and key across new settings, reconciliation and explicit recovery
+ok 31 - session render receipts retain exact bytes and key across new settings, reconciliation and explicit recovery
+  ---
+  duration_ms: 8.587208
+  type: 'test'
+  ...
+# Subtest: actual selectors show separate editing/output dimensions, explicit CRF and bitrate semantics, upscale warning and fixed audio/timebase
+ok 32 - actual selectors show separate editing/output dimensions, explicit CRF and bitrate semantics, upscale warning and fixed audio/timebase
+  ---
+  duration_ms: 2.599125
+  type: 'test'
+  ...
+# Subtest: actual capability panel labels unknown and unsupported safely and never presents failure as an unchecked export
+ok 33 - actual capability panel labels unknown and unsupported safely and never presents failure as an unchecked export
+  ---
+  duration_ms: 2.847083
+  type: 'test'
+  ...
+# Subtest: history renders the actual frozen settings and output dimensions; old records retain their labels and file URL
+ok 34 - history renders the actual frozen settings and output dimensions; old records retain their labels and file URL
+  ---
+  duration_ms: 7.67225
+  type: 'test'
+  ...
+# Subtest: successful timeline preview keeps its original download and never probes the export-only recovery endpoint
+ok 35 - successful timeline preview keeps its original download and never probes the export-only recovery endpoint
+  ---
+  duration_ms: 3.631125
+  type: 'test'
+  ...
+# Subtest: actual playback keeps the produced artifact URL and shows its frozen dimensions instead of editor preview dimensions
+ok 36 - actual playback keeps the produced artifact URL and shows its frozen dimensions instead of editor preview dimensions
+  ---
+  duration_ms: 3.420792
+  type: 'test'
+  ...
+# Subtest: actual Check control fences the viewed project, saved revision and settings version before capability work
+ok 37 - actual Check control fences the viewed project, saved revision and settings version before capability work
+  ---
+  duration_ms: 15.049417
+  type: 'test'
+  ...
+1..37
+# tests 37
+# suites 0
+# pass 37
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 488.570959

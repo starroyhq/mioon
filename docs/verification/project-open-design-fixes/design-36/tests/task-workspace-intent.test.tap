@@ -1,0 +1,274 @@
+TAP version 13
+# Subtest: capture retains a fixed value snapshot even when the reader reuses a mutable object
+ok 1 - capture retains a fixed value snapshot even when the reader reuses a mutable object
+  ---
+  duration_ms: 1.743541
+  type: 'test'
+  ...
+# Subtest: equal replacement context preserves authority and every declared field participates
+ok 2 - equal replacement context preserves authority and every declared field participates
+  ---
+  duration_ms: 0.157458
+  type: 'test'
+  ...
+# Subtest: capture rejects missing, inactive and malformed context without granting a callback
+ok 3 - capture rejects missing, inactive and malformed context without granting a callback
+  ---
+  duration_ms: 0.192792
+  type: 'test'
+  ...
+# Subtest: a previously captured callback refuses an unavailable or malformed live reader result
+ok 4 - a previously captured callback refuses an unavailable or malformed live reader result
+  ---
+  duration_ms: 0.088083
+  type: 'test'
+  ...
+# Subtest: valid settings navigation discards and synchronously reveals its immutable copied target exactly once
+ok 5 - valid settings navigation discards and synchronously reveals its immutable copied target exactly once
+  ---
+  duration_ms: 0.475375
+  type: 'test'
+  ...
+# Subtest: valid versions navigation discards and synchronously reveals its immutable copied target exactly once
+ok 6 - valid versions navigation discards and synchronously reveals its immutable copied target exactly once
+  ---
+  duration_ms: 0.129791
+  type: 'test'
+  ...
+# Subtest: cancelled confirmation neither discards nor reveals and is never retried
+ok 7 - cancelled confirmation neither discards nor reveals and is never retried
+  ---
+  duration_ms: 0.091041
+  type: 'test'
+  ...
+# Subtest: held confirmation fences unmount or inactive view before the discard boundary and before reveal
+ok 8 - held confirmation fences unmount or inactive view before the discard boundary and before reveal
+  ---
+  duration_ms: 0.086875
+  type: 'test'
+  ...
+# Subtest: held confirmation fences new project before the discard boundary and before reveal
+ok 9 - held confirmation fences new project before the discard boundary and before reveal
+  ---
+  duration_ms: 0.117083
+  type: 'test'
+  ...
+# Subtest: held confirmation fences project epoch before the discard boundary and before reveal
+ok 10 - held confirmation fences project epoch before the discard boundary and before reveal
+  ---
+  duration_ms: 0.106125
+  type: 'test'
+  ...
+# Subtest: held confirmation fences project A to B to A before the discard boundary and before reveal
+ok 11 - held confirmation fences project A to B to A before the discard boundary and before reveal
+  ---
+  duration_ms: 0.068958
+  type: 'test'
+  ...
+# Subtest: held confirmation fences new navigation choice before the discard boundary and before reveal
+ok 12 - held confirmation fences new navigation choice before the discard boundary and before reveal
+  ---
+  duration_ms: 0.064917
+  type: 'test'
+  ...
+# Subtest: held confirmation fences panel choice before the discard boundary and before reveal
+ok 13 - held confirmation fences panel choice before the discard boundary and before reveal
+  ---
+  duration_ms: 0.045375
+  type: 'test'
+  ...
+# Subtest: held confirmation fences collapsed Tasks panel before the discard boundary and before reveal
+ok 14 - held confirmation fences collapsed Tasks panel before the discard boundary and before reveal
+  ---
+  duration_ms: 0.0465
+  type: 'test'
+  ...
+# Subtest: held confirmation fences hidden Tasks tab before the discard boundary and before reveal
+ok 15 - held confirmation fences hidden Tasks tab before the discard boundary and before reveal
+  ---
+  duration_ms: 0.042167
+  type: 'test'
+  ...
+# Subtest: held confirmation fences Tasks tab hide and return before the discard boundary and before reveal
+ok 16 - held confirmation fences Tasks tab hide and return before the discard boundary and before reveal
+  ---
+  duration_ms: 0.039333
+  type: 'test'
+  ...
+# Subtest: held confirmation fences workspace identity before the discard boundary and before reveal
+ok 17 - held confirmation fences workspace identity before the discard boundary and before reveal
+  ---
+  duration_ms: 0.036584
+  type: 'test'
+  ...
+# Subtest: held confirmation fences missing live workspace before the discard boundary and before reveal
+ok 18 - held confirmation fences missing live workspace before the discard boundary and before reveal
+  ---
+  duration_ms: 0.037042
+  type: 'test'
+  ...
+# Subtest: held confirmation fences missing live context before the discard boundary and before reveal
+ok 19 - held confirmation fences missing live context before the discard boundary and before reveal
+  ---
+  duration_ms: 0.031291
+  type: 'test'
+  ...
+# Subtest: held confirmation fences removed job before the discard boundary and before reveal
+ok 20 - held confirmation fences removed job before the discard boundary and before reveal
+  ---
+  duration_ms: 0.049
+  type: 'test'
+  ...
+# Subtest: held confirmation fences removed shot before the discard boundary and before reveal
+ok 21 - held confirmation fences removed shot before the discard boundary and before reveal
+  ---
+  duration_ms: 0.038583
+  type: 'test'
+  ...
+# Subtest: held confirmation fences shot reassigned to another job before the discard boundary and before reveal
+ok 22 - held confirmation fences shot reassigned to another job before the discard boundary and before reveal
+  ---
+  duration_ms: 0.039542
+  type: 'test'
+  ...
+# Subtest: held confirmation fences job reassigned to another project before the discard boundary and before reveal
+ok 23 - held confirmation fences job reassigned to another project before the discard boundary and before reveal
+  ---
+  duration_ms: 0.02975
+  type: 'test'
+  ...
+# Subtest: preflight rejects a hidden view, missing relation or foreign target without invoking guard
+ok 24 - preflight rejects a hidden view, missing relation or foreign target without invoking guard
+  ---
+  duration_ms: 0.135375
+  type: 'test'
+  ...
+# Subtest: malformed targets are refused before reading context or asking to discard
+ok 25 - malformed targets are refused before reading context or asking to discard
+  ---
+  duration_ms: 0.180292
+  type: 'test'
+  ...
+# Subtest: caller mutation cannot redirect a pending choice to another job, shot or inspector tab
+ok 26 - caller mutation cannot redirect a pending choice to another job, shot or inspector tab
+  ---
+  duration_ms: 0.055125
+  type: 'test'
+  ...
+# Subtest: a guard returning true cannot bypass the final unmount or inactive view check
+ok 27 - a guard returning true cannot bypass the final unmount or inactive view check
+  ---
+  duration_ms: 0.045791
+  type: 'test'
+  ...
+# Subtest: a guard returning true cannot bypass the final new project check
+ok 28 - a guard returning true cannot bypass the final new project check
+  ---
+  duration_ms: 0.024
+  type: 'test'
+  ...
+# Subtest: a guard returning true cannot bypass the final project epoch check
+ok 29 - a guard returning true cannot bypass the final project epoch check
+  ---
+  duration_ms: 0.024125
+  type: 'test'
+  ...
+# Subtest: a guard returning true cannot bypass the final project A to B to A check
+ok 30 - a guard returning true cannot bypass the final project A to B to A check
+  ---
+  duration_ms: 0.02275
+  type: 'test'
+  ...
+# Subtest: a guard returning true cannot bypass the final new navigation choice check
+ok 31 - a guard returning true cannot bypass the final new navigation choice check
+  ---
+  duration_ms: 0.0225
+  type: 'test'
+  ...
+# Subtest: a guard returning true cannot bypass the final panel choice check
+ok 32 - a guard returning true cannot bypass the final panel choice check
+  ---
+  duration_ms: 0.035583
+  type: 'test'
+  ...
+# Subtest: a guard returning true cannot bypass the final collapsed Tasks panel check
+ok 33 - a guard returning true cannot bypass the final collapsed Tasks panel check
+  ---
+  duration_ms: 0.023417
+  type: 'test'
+  ...
+# Subtest: a guard returning true cannot bypass the final hidden Tasks tab check
+ok 34 - a guard returning true cannot bypass the final hidden Tasks tab check
+  ---
+  duration_ms: 0.031292
+  type: 'test'
+  ...
+# Subtest: a guard returning true cannot bypass the final Tasks tab hide and return check
+ok 35 - a guard returning true cannot bypass the final Tasks tab hide and return check
+  ---
+  duration_ms: 0.026916
+  type: 'test'
+  ...
+# Subtest: a guard returning true cannot bypass the final workspace identity check
+ok 36 - a guard returning true cannot bypass the final workspace identity check
+  ---
+  duration_ms: 0.0255
+  type: 'test'
+  ...
+# Subtest: a guard returning true cannot bypass the final missing live workspace check
+ok 37 - a guard returning true cannot bypass the final missing live workspace check
+  ---
+  duration_ms: 0.029875
+  type: 'test'
+  ...
+# Subtest: a guard returning true cannot bypass the final missing live context check
+ok 38 - a guard returning true cannot bypass the final missing live context check
+  ---
+  duration_ms: 0.027958
+  type: 'test'
+  ...
+# Subtest: a guard returning true cannot bypass the final removed job check
+ok 39 - a guard returning true cannot bypass the final removed job check
+  ---
+  duration_ms: 0.025291
+  type: 'test'
+  ...
+# Subtest: a guard returning true cannot bypass the final removed shot check
+ok 40 - a guard returning true cannot bypass the final removed shot check
+  ---
+  duration_ms: 0.028333
+  type: 'test'
+  ...
+# Subtest: a guard returning true cannot bypass the final shot reassigned to another job check
+ok 41 - a guard returning true cannot bypass the final shot reassigned to another job check
+  ---
+  duration_ms: 0.026625
+  type: 'test'
+  ...
+# Subtest: a guard returning true cannot bypass the final job reassigned to another project check
+ok 42 - a guard returning true cannot bypass the final job reassigned to another project check
+  ---
+  duration_ms: 0.0255
+  type: 'test'
+  ...
+# Subtest: a newer held choice wins even if both confirmations eventually return true
+ok 43 - a newer held choice wins even if both confirmations eventually return true
+  ---
+  duration_ms: 0.06375
+  type: 'test'
+  ...
+# Subtest: guard failure is propagated without a reveal or automatic retry
+ok 44 - guard failure is propagated without a reveal or automatic retry
+  ---
+  duration_ms: 0.117041
+  type: 'test'
+  ...
+1..44
+# tests 44
+# suites 0
+# pass 44
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 219.736416

@@ -49,7 +49,8 @@ export default function DeliveryDraftRecovery({ state, controller, disabled = fa
         : original?.outcome.status === 'pending' ? t('recovery.delivery.pending')
           : original?.outcome.status === 'accepted' ? t('recovery.delivery.accepted')
             : original?.outcome.status === 'not_applied' ? t('recovery.delivery.notApplied') : '';
-  return <section className="notice delivery-draft-recovery" data-testid="delivery-draft-recovery" aria-label={t('recovery.delivery.label')}>
+  const recoveryNeeded = Boolean(state.candidate || state.baselineConflict || state.draftFailure || state.draftError || state.autosavePaused || state.intentUncertain || state.intentFailure || unconfirmedPreparation);
+  return <section className="notice delivery-draft-recovery" data-testid="delivery-draft-recovery" data-recovery-needed={recoveryNeeded} aria-label={t('recovery.delivery.label')}>
     <p role="status" aria-live="polite" data-testid="delivery-draft-status">{status}</p>
     <RecoveryStorageDetails domain="delivery" />
     {state.phase === 'unsupported' && <p className="input-hint">{t('recovery.delivery.unsupportedHelp')}</p>}
@@ -78,7 +79,8 @@ export default function DeliveryDraftRecovery({ state, controller, disabled = fa
     {(state.phase === 'error' || state.autosavePaused || state.intentUncertain || state.intentFailure) && <Button type="button" size="sm" variant="ghost" data-testid="reload-local-delivery" disabled={blocked} onClick={() => { void controller.load(); }}>{t('recovery.common.recheck')}</Button>}
     {(original || state.intentUncertain || state.intentPhase === 'preparing') && <div data-testid="delivery-original-intent">
       <p role="status" aria-live="polite">{intentLabel}</p>
-      {originalInput && <>
+      {originalInput && <details open={recoveryNeeded || original?.outcome.status !== 'accepted'}>
+        <summary>{t('recovery.delivery.originalDetails')}</summary>
         <p>{t('recovery.delivery.originalName')}<strong style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{title(originalInput.deliveryName ?? '', t)}</strong></p>
         <p className="input-hint">{t('recovery.delivery.originalProfile', { revision: originalRevision ?? '', profile: frozenProfile(originalInput, t) })}</p>
         <ExportRangeSummary input={originalInput} label={t('recovery.delivery.originalRange')} showWhole testId="delivery-original-range" />
@@ -87,7 +89,7 @@ export default function DeliveryDraftRecovery({ state, controller, disabled = fa
         {original?.outcome.status === 'accepted' && !state.intentUncertain && <p className="input-hint">{t('recovery.delivery.acceptedHelp')}</p>}
         {original?.outcome.status === 'not_applied' && !state.intentUncertain && <p className="input-hint">{t('recovery.delivery.notAppliedHelp')}</p>}
         {(original?.outcome.status === 'pending' || state.intentUncertain) && <Button type="button" size="sm" variant="outline" data-testid="recover-original-delivery" disabled={blocked} onClick={() => { void controller.recover(); }}>{t('recovery.delivery.recover')}</Button>}
-      </>}
+      </details>}
       {state.intentUncertain && !original && <p className="input-hint">{t('recovery.delivery.noAcknowledgement')}</p>}
     </div>}
     {state.intentFailure && <p className="input-hint" data-testid="delivery-intent-failure-kind">{state.intentFailure.kind === 'refused' && !state.pending ? t('recovery.delivery.intentRefused') : state.intentFailure.kind === 'conflict' ? t('recovery.delivery.intentConflict') : t('recovery.delivery.intentUnknown')}</p>}

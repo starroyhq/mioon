@@ -463,7 +463,7 @@ function projectNavigation({ draft = true, imageDraft = false, dirty = false, co
     context, isCurrent: guardEnv.isCurrent, confirm: guardEnv.confirm, notify: (...args) => calls.push(['notify', ...args]), readableError: error => error.message,
     openedProject: { current: projectOpenAttempt(navigationProjectId, 0, 'normal') }, settingsNavigation: { current: createSettingsNavigationRegistry() },
     loading: false, importSession: { current: { active: true, selection: 0 } }, lastProjectRef: { current: { invalidateNavigation: () => {}, rememberOpened: () => {} } }, tasksRef: { current: { getState: () => ({ phase: 'idle', items: [] }), load: async id => { calls.push(['loadTasks', id]); } } }, currentProject, agentDraft: { current: draft }, imageDraft: { current: imageDraft }, guardNavigation, guardProjectNavigation, navigationEpoch, projectEpoch, requestCounter: { current: 0 }, preferencesRef: { current: { flush: () => calls.push(['flush']), load: async id => { calls.push(['load', id]); return restored; }, getStatus: () => ({ phase: 'ready' }) } }, viewReady: { current: true }, dataRef: { current: { project: { id: navigationProjectId } } }, emptyData: {}, pendingForProject: () => [], dragging: { current: false }, viewRef: { current: restored }, updateView: () => {}, URL,
-    window: { location: { href: 'https://workbench.example.com/' }, history: { pushState: () => calls.push(['history']), replaceState: () => calls.push(['history']) } }, localStorage: { setItem: () => {} }, ...Object.fromEntries(['setProjectOpening', 'setHomePage', 'setAuth', 'setPropertiesPage', 'setTaskState', 'setPreferenceStatus', 'setPending', 'setShowProjects', 'setData', 'setNodes', 'setLoading', 'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setRightDockTab', 'setShowExports', 'setPanelOverlay', 'setShowTasks', 'setShowDelivery', 'setShowImage', 'setShowProjectChooser', 'setComparisonId', 'setPreviewAsset', 'setRealConfirm', 'setToast', 'setMobilePanel', 'setView', 'setZoom'].map(name => [name, value => calls.push([name, value])])) };
+    window: { location: { href: 'https://workbench.example.com/' }, history: { pushState: () => calls.push(['history']), replaceState: () => calls.push(['history']) } }, localStorage: { setItem: () => {} }, ...Object.fromEntries(['setProjectOpening', 'setHomePage', 'setAuth', 'setPropertiesPage', 'setTaskState', 'setSelectedTaskId', 'setPreferenceStatus', 'setPending', 'setShowProjects', 'setData', 'setNodes', 'setLoading', 'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setRightDockTab', 'setShowExports', 'setPanelOverlay', 'setShowTasks', 'setShowDelivery', 'setShowImage', 'setShowProjectChooser', 'setComparisonId', 'setPreviewAsset', 'setRealConfirm', 'setToast', 'setMobilePanel', 'setView', 'setZoom'].map(name => [name, value => calls.push([name, value])])) };
   env.refresh = async (id, _quiet, options) => { assert.equal(options?.opening, true); env.dataRef.current = { project: { id }, shots: [], nodes: [] }; return env.dataRef.current; };
   env.prepareSettingsDeparture = () => Function(...Object.keys(env), `${stripSourceTypes(settingsDepartureSource,{loader:'tsx'})}\nreturn prepareSettingsDeparture();`)(...Object.values(env));
   env.projectSessionReady = () => Function(...Object.keys(env), `${stripSourceTypes(sessionReadySource,{loader:'tsx'})}\nreturn projectSessionReady();`)(...Object.values(env));
@@ -481,6 +481,7 @@ test('actual App project guard Confirm permits project-key isolation; no draft o
   const f = projectNavigation(); assert.equal(await f.selectProject(navigationNextId), true); assert.equal(f.currentProject.current, navigationNextId); assert.equal(f.env.projectSessionReady(), true);
   assert.equal(f.calls.filter(call => call[0] === 'confirm').length, 1); assert.equal(f.calls.filter(call => call[0] === 'setData').length, 1);
   assert.deepEqual(f.calls.filter(call => call[0] === 'setSourceDirty'), [['setSourceDirty', false]]);
+  assert.deepEqual(f.calls.filter(call => call[0] === 'setSelectedTaskId'), [['setSelectedTaskId', undefined]]);
   const g = projectNavigation({ draft: false }); assert.equal(await g.selectProject(navigationNextId), true); assert.equal(g.calls.some(call => call[0] === 'confirm'), false);
   assert.doesNotMatch(projectSource, /activeAgentChatRun|\.stop\(|setRightDockTab\((?!value => value === 'tasks' \? 'properties' : value\))/);
   const resetTab = f.calls.find(call => call[0] === 'setRightDockTab')[1];
@@ -492,6 +493,7 @@ test('actual App image draft guard Cancel preserves project and Confirm changes 
   assert.equal(await cancelled.selectProject(navigationNextId), false); assert.equal(cancelled.currentProject.current, navigationProjectId); assert.equal(cancelled.env.imageDraft.current, true);
   assert.equal(cancelled.calls.length, 1); assert.match(createI18nTestContext().renderMessage(cancelled.calls[0][1]), /图像工坊有未发送的草稿/);
   const confirmed = projectNavigation({ draft: false, imageDraft: true }); assert.equal(await confirmed.selectProject(navigationNextId), true); assert.equal(confirmed.currentProject.current, navigationNextId); assert.equal(confirmed.calls.filter(call => call[0] === 'confirm').length, 1);
+  assert.deepEqual(confirmed.calls.filter(call => call[0] === 'setSelectedTaskId'), [['setSelectedTaskId', undefined]]);
   const both = projectNavigation({ imageDraft: true, confirmation: false }); await both.selectProject(navigationNextId); assert.match(createI18nTestContext().renderMessage(both.calls[0][1]), /Agent 和图像工坊都有未发送的草稿/);
   assert.doesNotMatch(projectSource, /image\.task\.|image\.generate|setRightDockTab\((?!value => value === 'tasks' \? 'properties' : value\))/);
   assert.equal(confirmed.calls.find(call => call[0] === 'setRightDockTab')[1]('image'), 'image');
@@ -762,4 +764,48 @@ test('four-language changes relabel the mounted Agent without clearing exact typ
   const sends = f.calls.filter(call => call[0] === 'start'); assert.equal(sends.length, 1);
   assert.equal(sends[0][2].message, prompt);
   h.unmount(); store.dispose();
+});
+
+
+const openSendAuthorization = h => {
+  h.form().props.onSubmit({preventDefault(){}}); h.render();
+  h.find('agent-chat-consent').props.onChange({target:{checked:true}}); h.render();
+};
+test('send-triggered authorization summarizes three boundaries and confirms the original message exactly once', async () => {
+  const f=fixture(),h=uiHarness(f.client);h.render();await flush();h.render();h.change('agent-chat-prompt','The exact original question');
+  openSendAuthorization(h);
+  const dialog=h.find('agent-chat-authorization-dialog'), summary=nodes(dialog).find(node=>node.props.className==='agent-authorization-summary');
+  assert.equal(nodes(summary).filter(node=>node.type==='dt').length,3);
+  assert.equal(h.find('agent-chat-authorization-confirm').props.children,'确认并发送');
+  const endpoint=nodes(summary).find(node=>node.props.className==='agent-chat-endpoint');assert.equal(endpoint.props.title,logic.deriveAgentEndpoint(configuration));
+  assert.equal(f.calls.some(call=>call[0]==='start'),false);
+  const confirm=h.find('agent-chat-authorization-confirm').props.onClick;confirm();confirm();await flush();h.render();
+  const sends=f.calls.filter(call=>call[0]==='start');assert.equal(sends.length,1);assert.equal(sends[0][2].message,'The exact original question');h.unmount();
+});
+test('an explicit permission review saves permission without claiming to send a message', async()=>{
+  const f=fixture(),h=uiHarness(f.client);h.render();await flush();h.render();h.change('agent-chat-prompt','Still a draft');
+  h.find('agent-chat-authorization-open').props.onClick();h.render();assert.equal(h.find('agent-chat-authorization-confirm').props.children,'保存授权');
+  h.find('agent-chat-consent').props.onChange({target:{checked:true}});h.render();h.find('agent-chat-authorization-confirm').props.onClick();await flush();h.render();
+  assert.equal(f.calls.some(call=>call[0]==='start'),false);assert.equal(h.find('agent-chat-prompt').props.value,'Still a draft');h.unmount();
+});
+test('a changed draft before confirmation cannot authorize or substitute a different send', async()=>{
+  const f=fixture(),h=uiHarness(f.client);let grants=0;const authorize=f.client.authorize;f.client.authorize=async(...args)=>{grants++;return authorize(...args);};
+  h.render();await flush();h.render();h.change('agent-chat-prompt','Original');openSendAuthorization(h);
+  const confirm=h.find('agent-chat-authorization-confirm').props.onClick;h.change('agent-chat-prompt','Replacement');confirm();await flush();h.render();
+  assert.equal(grants,0);assert.equal(f.calls.some(call=>call[0]==='start'),false);assert.equal(h.find('agent-chat-prompt').props.value,'Replacement');h.unmount();
+});
+test('approval completion cannot send after draft, visibility, scope, project or destination changes', async()=>{
+  for(const change of ['draft','hide','hide-reopen','scope','project','destination','unmount']){
+    const held=deferred();let current=inspectedComposer();const f=fixture({read:async()=>current}),authorize=f.client.authorize;
+    f.client.authorize=async(...args)=>{await held.promise;return authorize(...args);};
+    const h=uiHarness(f.client);h.render();await flush();h.render();h.change('agent-chat-prompt','Original');openSendAuthorization(h);
+    h.find('agent-chat-authorization-confirm').props.onClick();await flush();h.render();
+    if(change==='draft')h.change('agent-chat-prompt','Replacement');
+    if(change==='hide'||change==='hide-reopen'){h.setVisible(false);if(change==='hide-reopen'){h.setVisible(true);await flush();h.render();}}
+    if(change==='scope')h.change('agent-chat-mode-project',true);
+    if(change==='project'){h.render('project-two');await flush();h.render();}
+    if(change==='destination'){current=inspectedComposer({settings:settings({revision:1,configuration:{...configuration,model:'new-model'}})});await h.reload();h.render();}
+    if(change==='unmount')h.unmount();
+    held.resolve();await flush();h.render();assert.equal(f.calls.some(call=>call[0]==='start'),false,change);h.unmount();
+  }
 });

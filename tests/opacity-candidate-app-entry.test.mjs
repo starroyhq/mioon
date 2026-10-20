@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
+import ts from 'typescript';
 import * as contracts from '@mioon/contracts';
 import {createEditTaskClient} from '../apps/web/src/edit-task-client.ts';
 import {createOpacityCandidateApplication, readOpacityCandidateApplication} from '../apps/web/src/opacity-candidate-application.ts';
@@ -90,7 +91,12 @@ test('candidate App binds the actual task lane, Inspector v3 client and render r
     /candidateConnected=\{online && auth === true && workbenchReady && !loading\}/,
   ]) assert.match(history, prop);
   assert.match(app, /onReplaceSource=\{application \? undefined : replaceTimelineClipSource(?: as never)?\}/);
-  assert.match(app, /<Timeline basicEditingOnly=\{Boolean\(application\)\}/);
+  const parsed=ts.createSourceFile('App.tsx',app,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX),timelines=[];
+  function visit(node){if(ts.isJsxSelfClosingElement(node)&&node.tagName.getText(parsed)==='Timeline')timelines.push(node);ts.forEachChild(node,visit);}
+  visit(parsed);assert.equal(timelines.length,1,'Inspect the actual Timeline composition, independently of prop order');
+  const attribute=timelines[0].attributes.properties.find(value=>ts.isJsxAttribute(value)&&value.name.getText(parsed)==='basicEditingOnly');
+  assert.ok(attribute&&ts.isJsxAttribute(attribute)&&attribute.initializer&&ts.isJsxExpression(attribute.initializer));
+  assert.equal(attribute.initializer.expression?.getText(parsed),'Boolean(application)');
   assert.match(app, /!application && <AgentWorkspace/);
   assert.match(app, /!application && <ImageGeneration/);
   assert.match(app, /!application && workbenchReady \? data\.project\?\.id : null/);

@@ -1,0 +1,107 @@
+{
+  "formatVersion": 1,
+  "synthetic": true,
+  "baseSchema": 48,
+  "targetSchema": 50,
+  "provenance": "Reviewed task disposition schema50 additive delta, frozen once on 2026-10-20. Historical golden.json and current-ordinary-48-delta.json remain unchanged. Tests never reconstruct this expectation from application schema definitions.",
+  "schemaVersionRows": [
+    [
+      "50",
+      "integer",
+      "3530"
+    ]
+  ],
+  "objects": [
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_task_disposition_requests_1",
+      "tbl_name": "task_disposition_requests",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_task_dispositions_1",
+      "tbl_name": "task_dispositions",
+      "sql": null
+    },
+    {
+      "type": "table",
+      "name": "task_disposition_requests",
+      "tbl_name": "task_disposition_requests",
+      "sql": "CREATE TABLE task_disposition_requests(\n    requestId TEXT PRIMARY KEY CHECK(length(requestId) BETWEEN 8 AND 200 AND length(CAST(requestId AS BLOB))<=800),\n    projectId TEXT NOT NULL REFERENCES projects(id),operation TEXT NOT NULL CHECK(operation IN ('task.disposition.markFailed','task.disposition.archiveCompleted')),\n    digest TEXT NOT NULL CHECK(length(CAST(digest AS BLOB))=64),response TEXT NOT NULL CHECK(json_valid(response) AND length(CAST(response AS BLOB))<=131072))"
+    },
+    {
+      "type": "table",
+      "name": "task_dispositions",
+      "tbl_name": "task_dispositions",
+      "sql": "CREATE TABLE task_dispositions(\n    projectId TEXT NOT NULL REFERENCES projects(id),kind TEXT NOT NULL CHECK(kind IN ('generation','render','edit')),\n    taskId TEXT NOT NULL CHECK(length(CAST(taskId AS BLOB))=36),revision INTEGER NOT NULL CHECK(typeof(revision)='integer' AND revision BETWEEN 1 AND 9007199254740991),\n    markedFailedAt TEXT,archivedAt TEXT,sourceStatus TEXT NOT NULL CHECK(length(CAST(sourceStatus AS BLOB)) BETWEEN 1 AND 40),\n    sourceRequestId TEXT,createdAt TEXT NOT NULL,updatedAt TEXT NOT NULL,\n    CHECK(markedFailedAt IS NOT NULL OR archivedAt IS NOT NULL),PRIMARY KEY(projectId,kind,taskId))"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_task_disposition_identity",
+      "tbl_name": "task_dispositions",
+      "sql": "CREATE TRIGGER immutable_task_disposition_identity BEFORE UPDATE ON task_dispositions\n    WHEN NEW.projectId IS NOT OLD.projectId OR NEW.kind IS NOT OLD.kind OR NEW.taskId IS NOT OLD.taskId OR NEW.createdAt IS NOT OLD.createdAt OR\n      NEW.sourceRequestId IS NOT OLD.sourceRequestId OR NEW.revision!=OLD.revision+1 OR OLD.revision>=9007199254740991 OR\n      (OLD.markedFailedAt IS NOT NULL AND NEW.markedFailedAt IS NOT OLD.markedFailedAt) OR (OLD.archivedAt IS NOT NULL AND NEW.archivedAt IS NOT OLD.archivedAt)\n    BEGIN SELECT RAISE(ABORT,'task disposition identity and audit markers must be retained');END"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_task_disposition_requests",
+      "tbl_name": "task_disposition_requests",
+      "sql": "CREATE TRIGGER immutable_task_disposition_requests BEFORE UPDATE ON task_disposition_requests\n    BEGIN SELECT RAISE(ABORT,'task disposition responses are immutable');END"
+    },
+    {
+      "type": "trigger",
+      "name": "retain_task_disposition_replacement",
+      "tbl_name": "task_dispositions",
+      "sql": "CREATE TRIGGER retain_task_disposition_replacement BEFORE INSERT ON task_dispositions\n    WHEN EXISTS(SELECT 1 FROM task_dispositions WHERE rowid=NEW.rowid OR (projectId=NEW.projectId AND kind=NEW.kind AND taskId=NEW.taskId))\n    BEGIN SELECT RAISE(ABORT,'task disposition history must not be replaced');END"
+    },
+    {
+      "type": "trigger",
+      "name": "retain_task_disposition_request_replacement",
+      "tbl_name": "task_disposition_requests",
+      "sql": "CREATE TRIGGER retain_task_disposition_request_replacement BEFORE INSERT ON task_disposition_requests\n    WHEN EXISTS(SELECT 1 FROM task_disposition_requests WHERE rowid=NEW.rowid OR requestId=NEW.requestId)\n    BEGIN SELECT RAISE(ABORT,'task disposition responses must not be replaced');END"
+    },
+    {
+      "type": "trigger",
+      "name": "retain_task_disposition_requests",
+      "tbl_name": "task_disposition_requests",
+      "sql": "CREATE TRIGGER retain_task_disposition_requests BEFORE DELETE ON task_disposition_requests\n    WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='task_disposition_requests' AND rowId=OLD.rowid)\n    BEGIN SELECT RAISE(ABORT,'task disposition responses must be retained');END"
+    },
+    {
+      "type": "trigger",
+      "name": "retain_task_dispositions",
+      "tbl_name": "task_dispositions",
+      "sql": "CREATE TRIGGER retain_task_dispositions BEFORE DELETE ON task_dispositions\n    WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='task_dispositions' AND rowId=OLD.rowid)\n    BEGIN SELECT RAISE(ABORT,'task disposition history must be retained');END"
+    }
+  ],
+  "tables": {
+    "task_dispositions": {
+      "fields": [
+        "projectId",
+        "kind",
+        "taskId",
+        "revision",
+        "markedFailedAt",
+        "archivedAt",
+        "sourceStatus",
+        "sourceRequestId",
+        "createdAt",
+        "updatedAt"
+      ],
+      "rows": 0
+    },
+    "task_disposition_requests": {
+      "fields": [
+        "requestId",
+        "projectId",
+        "operation",
+        "digest",
+        "response"
+      ],
+      "rows": 0
+    }
+  },
+  "catalog": {
+    "count": 10,
+    "sha256": "17d99a7902549bf1118960dc7bb0f45bcf26a2307e1b5d464f9c4ae9b6237762"
+  }
+}

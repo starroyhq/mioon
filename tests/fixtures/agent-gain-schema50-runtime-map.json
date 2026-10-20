@@ -1,0 +1,35 @@
+{
+  "formatVersion": 1,
+  "reviewedOn": "2026-10-20",
+  "reason": "Independent reviewed current-runtime pins for explicitly authorized schema50/51 and task/workspace/export operation additions. Historical baseline sources, legacy SHA256 values, frozen validator closure and TypeScript migration-map remain unchanged. Frozen old modules continue to execute fixture source text; these pins only detect later drift in the separately reviewed current files. Reviewed follow-up: operation-effects notes completed for the ten new operations; historical pins unchanged. Reviewed cancellation cleanup follow-up: export.cancel declares fileWrite:true for its owned part/unpublished output cleanup, retaining localProcess and existing admission gates. Reviewed restored-catalog follow-up: explicitly disclose the twelve new ordinary-only operations as denied, preserving restored execution refusals.",
+  "mapping": {
+    "packages/business/src/workspace-restore-policy.mjs": {
+      "currentPath": "packages/business/src/workspace-restore-policy.ts",
+      "previousCurrentSha256": "a3c1e45b8e2e8cbf1b1356610ceb655bcb9f0aad70c5afd57e93be677fc8b589",
+      "previousTypeErasedSha256": "39024c84ed530267ef91b53d0d9d6efe1eae91822df57c1f76d75599352c3a5e",
+      "currentSha256": "8683ddb6dc93eca25089e3d4bac5c82af03e5d9c0adf6bf59c04207fbdfdd5d6",
+      "typeErasedSha256": "6aa25fb08363e6bfc1304741fd390e4a0a695beaf4739abcfff4cf9a0bb37556"
+    },
+    "packages/contracts/src/index.mjs": {
+      "currentPath": "packages/contracts/src/index.ts",
+      "previousCurrentSha256": "d44dc1e577f4e135ca37c621ae9300cdb3c34f75d3d306153ac9ce24733d4eca",
+      "previousTypeErasedSha256": "41a775bf7cc81c350407278165b7e8cd33ac88a713a83eabd4e130f8375a0156",
+      "currentSha256": "485ed7d1f9582b2a5ff44a2a976651837183aca893cc827d9a6e5de6e4fae374",
+      "typeErasedSha256": "19a8eda1c5cb029d9e36e6f2bd441f8db15604adf6fe5c89ab93b7a7874246b0"
+    },
+    "packages/contracts/src/operation-effects.mjs": {
+      "currentPath": "packages/contracts/src/operation-effects.ts",
+      "previousCurrentSha256": "2715741d905db762fe8ce399a52c3681ac96a0483d4d1522d706d72fa1dd1235",
+      "previousTypeErasedSha256": "184b4c592c03df7747dee00377ad85072a0331043a334ba29de414a2720633de",
+      "currentSha256": "676f04ce4c3180f24db10f59acf7a204dc968d3fad5eb9fb9f39704daff293f5",
+      "typeErasedSha256": "762deaa164a2f56c25bd0d876db9ae23ecd29ad534a77d8860477e37a6d4a102"
+    },
+    "packages/contracts/src/workspace-restore.mjs": {
+      "currentPath": "packages/contracts/src/workspace-restore.ts",
+      "previousCurrentSha256": "2a8b9c800cf88192ba118d268a3f957375179f23db0af44095b99e3b40cc5660",
+      "previousTypeErasedSha256": "efa27e46605dddaf7b2730da9d056f2fdda2bbaf9dfa44e7caffaadd49044fdc",
+      "currentSha256": "8cc7bcd949da35a8b5b07be556a712cd1e3882577bf53d2c7502243453eb34cf",
+      "typeErasedSha256": "0b6b6e1d8c5a5ee7457225d44e572c072a00870f2c109ffc67228010a11f096f"
+    }
+  }
+}

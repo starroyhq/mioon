@@ -1,0 +1,818 @@
+[
+  {
+    "key": "entry-01",
+    "name": "登录",
+    "status": "verified",
+    "screenshots": [
+      "entry-01.png"
+    ],
+    "functional": [
+      "令牌主按钮与应用语言选择；空令牌禁用"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "entry-02",
+    "name": "首页空状态",
+    "status": "verified",
+    "screenshots": [
+      "entry-02.png"
+    ],
+    "functional": [
+      "空首页中央主按钮、全部项目标题、帮助入口；无重复创建入口"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "entry-03",
+    "name": "首页有项目",
+    "status": "verified",
+    "screenshots": [
+      "entry-03.png"
+    ],
+    "functional": [
+      "有项目列表及完整竖屏封面；实际重新打开项目"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "entry-04",
+    "name": "新建项目",
+    "status": "verified",
+    "screenshots": [
+      "entry-04.png"
+    ],
+    "functional": [
+      "新建标题/按钮及三种1080画幅图标、单选"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "canvas-01",
+    "name": "空画板",
+    "status": "verified",
+    "screenshots": [
+      "canvas-01.png"
+    ],
+    "functional": [
+      "空画板引导与镜头/素材入口"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "canvas-02",
+    "name": "镜头与节点",
+    "status": "verified",
+    "screenshots": [
+      "canvas-02.png"
+    ],
+    "functional": [
+      "实际导入素材并添加图像、镜头及文字节点"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "canvas-03",
+    "name": "选中镜头",
+    "status": "verified",
+    "screenshots": [
+      "canvas-03.png"
+    ],
+    "functional": [
+      "选中镜头属性、已同步折叠行、比例及时长首屏可见"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "canvas-04",
+    "name": "版本页",
+    "status": "verified_with_fixture",
+    "screenshots": [
+      "canvas-04.png"
+    ],
+    "functional": [
+      "V1/V2版本卡完整显示；合成MP4版本夹具"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [
+      "本机FFmpeg缺drawtext，成功Mock生成发布链路未通过；版本页使用明确的本地媒体夹具，不替代生产发布验证"
+    ],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "canvas-05",
+    "name": "版本对比",
+    "status": "verified_with_fixture",
+    "screenshots": [
+      "canvas-05.png"
+    ],
+    "functional": [
+      "两个实际MP4播放器、完整竖屏contain、同步播放与暂停"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [
+      "本机FFmpeg缺drawtext，成功Mock生成发布链路未通过；版本页使用明确的本地媒体夹具，不替代生产发布验证"
+    ],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "canvas-06",
+    "name": "生成中",
+    "status": "verified",
+    "screenshots": [
+      "canvas-06.png"
+    ],
+    "functional": [
+      "实际本地Mock请求生成中5%状态，节点完整可见"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [
+      "本机FFmpeg缺drawtext，成功Mock生成发布链路未通过；版本页使用明确的本地媒体夹具，不替代生产发布验证"
+    ],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "editing-01",
+    "name": "空时间线",
+    "status": "verified",
+    "screenshots": [
+      "editing-01.png"
+    ],
+    "functional": [
+      "空时间线、预览和片段属性空态"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "editing-02",
+    "name": "选中片段与画面属性",
+    "status": "verified",
+    "screenshots": [
+      "editing-02.png"
+    ],
+    "functional": [
+      "选中实际片段、基础/画面分组与保存栏"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "editing-03",
+    "name": "预览过期",
+    "status": "verified",
+    "screenshots": [
+      "editing-03.png"
+    ],
+    "functional": [
+      "修改片段后预览过期提示与更新入口"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "editing-04",
+    "name": "预览渲染中",
+    "status": "verified",
+    "screenshots": [
+      "editing-04.png"
+    ],
+    "functional": [
+      "实际重新合成的进行状态，之后播放器得到合成MP4"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "editing-05",
+    "name": "音频分组",
+    "status": "verified",
+    "screenshots": [
+      "editing-05.png"
+    ],
+    "functional": [
+      "音频分组、增益及淡入淡出等既有输入"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "editing-06",
+    "name": "片段更多菜单",
+    "status": "verified",
+    "screenshots": [
+      "editing-06.png"
+    ],
+    "functional": [
+      "更多菜单及源素材、来源、移除/波纹删除入口"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "adaptations": [
+      "使用已实现的安全动作，未增加改变持久业务语义的设计占位操作；详见分组报告"
+    ]
+  },
+  {
+    "key": "editing-07",
+    "name": "移除片段确认",
+    "status": "verified",
+    "screenshots": [
+      "editing-07.png"
+    ],
+    "functional": [
+      "移除确认弹窗；本轮取消并保留片段"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "export-01",
+    "name": "导出检查",
+    "status": "verified",
+    "screenshots": [
+      "export-01.png"
+    ],
+    "functional": [
+      "实际检查完成与有效快照，下一步可用"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "export-02",
+    "name": "导出设置",
+    "status": "verified",
+    "screenshots": [
+      "export-02.png"
+    ],
+    "functional": [
+      "名称、分辨率/画质、音频与范围输入，技术说明折叠"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "export-03",
+    "name": "导出确认",
+    "status": "verified",
+    "screenshots": [
+      "export-03.png"
+    ],
+    "functional": [
+      "确认摘要两列与真实检查结果，原确认提交入口"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "export-04",
+    "name": "导出进行中",
+    "status": "verified",
+    "screenshots": [
+      "export-04.png"
+    ],
+    "functional": [
+      "真实导出任务和实际百分比；关闭弹窗后继续"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "adaptations": [
+      "使用已实现的安全动作，未增加改变持久业务语义的设计占位操作；详见分组报告"
+    ]
+  },
+  {
+    "key": "export-05",
+    "name": "导出完成",
+    "status": "verified",
+    "screenshots": [
+      "export-05.png"
+    ],
+    "functional": [
+      "完成显示具名文件、1080×1920/30fps，下载HTTP200"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "export-06",
+    "name": "导出记录",
+    "status": "verified",
+    "screenshots": [
+      "export-06.png"
+    ],
+    "functional": [
+      "实际历史与下载入口，音频技术检查默认折叠"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "panels-01",
+    "name": "任务浮层",
+    "status": "verified",
+    "screenshots": [
+      "panels-01.png"
+    ],
+    "functional": [
+      "任务浮层未知状态与对应详情直达"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "panels-02",
+    "name": "任务未知结果详情",
+    "status": "verified",
+    "screenshots": [
+      "panels-02.png"
+    ],
+    "functional": [
+      "左列表/右详情、原requestId、未知结果警告与对账；本地搜索及四类筛选"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "adaptations": [
+      "使用已实现的安全动作，未增加改变持久业务语义的设计占位操作；详见分组报告"
+    ]
+  },
+  {
+    "key": "panels-03",
+    "name": "助理首次授权",
+    "status": "verified_with_fixture",
+    "screenshots": [
+      "panels-03.png"
+    ],
+    "functional": [
+      "实际向纯本地SSE模型目标首次授权，不自动授予模型工具权限"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "adaptations": [
+      "仅连接纯本地SSE测试模型；没有调用真实外部供应商"
+    ]
+  },
+  {
+    "key": "panels-04",
+    "name": "助理对话与修改建议",
+    "status": "verified_with_fixture",
+    "screenshots": [
+      "panels-04.png"
+    ],
+    "functional": [
+      "本地模型真实返回待审阅提议；单独批准使镜头修订2→3，另一个提议保留待审阅"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "adaptations": [
+      "仅连接纯本地SSE测试模型；没有调用真实外部供应商"
+    ]
+  },
+  {
+    "key": "panels-05",
+    "name": "设置通用",
+    "status": "verified",
+    "screenshots": [
+      "panels-05.png"
+    ],
+    "functional": [
+      "通用分组、8项图标、语言/数字格式说明、主题等分段、底部保存栏"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "panels-06",
+    "name": "设置模型服务",
+    "status": "verified",
+    "screenshots": [
+      "panels-06.png"
+    ],
+    "functional": [
+      "Seedance2.5/Veo3.1、本地模拟、只读真实总开关与检测入口"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "panels-07",
+    "name": "设置工作区",
+    "status": "verified",
+    "screenshots": [
+      "panels-07.png"
+    ],
+    "functional": [
+      "展开工作区核对与离线备份说明；长技术说明默认折叠"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "adaptations": [
+      "现有离线备份流程，不增加尚无后端支持的自动备份/恢复占位动作"
+    ]
+  },
+  {
+    "key": "panels-08",
+    "name": "设置视频工具",
+    "status": "verified",
+    "screenshots": [
+      "panels-08.png"
+    ],
+    "functional": [
+      "实际FFmpeg/ffprobe版本、编码能力及缺失滤镜警告"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  },
+  {
+    "key": "compact-01",
+    "name": "紧凑画板",
+    "status": "verified",
+    "screenshots": [
+      "compact-01.png"
+    ],
+    "functional": [
+      "1050×680左44图标栏与固定属性栏的画板"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1050,
+      "height": 680,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    }
+  },
+  {
+    "key": "compact-02",
+    "name": "素材临时浮层",
+    "status": "verified",
+    "screenshots": [
+      "compact-02.png"
+    ],
+    "functional": [
+      "素材临时浮层、关闭/固定及多入口"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1050,
+      "height": 680,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    }
+  },
+  {
+    "key": "compact-03",
+    "name": "紧凑剪辑",
+    "status": "verified",
+    "screenshots": [
+      "compact-03.png"
+    ],
+    "functional": [
+      "紧凑剪辑，时间线最小160；键盘Home有效且无异常"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1050,
+      "height": 680,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    }
+  },
+  {
+    "key": "compact-04",
+    "name": "时间线收起",
+    "status": "verified",
+    "screenshots": [
+      "compact-04.png"
+    ],
+    "functional": [
+      "时间线40工具栏收起，右属性栏保留"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1050,
+      "height": 680,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    }
+  },
+  {
+    "key": "compact-05",
+    "name": "属性面板收起",
+    "status": "verified",
+    "screenshots": [
+      "compact-05.png"
+    ],
+    "functional": [
+      "左右44图标栏与底部40时间线工具栏"
+    ],
+    "visual": [
+      "已按对应设计页复核明显布局、入口、层级与遮挡，详见分组视觉报告"
+    ],
+    "blockers": [],
+    "pageErrors": [],
+    "viewport": {
+      "width": 1050,
+      "height": 680,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    }
+  }
+]

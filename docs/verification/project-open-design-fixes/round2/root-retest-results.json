@@ -1,0 +1,53 @@
+[
+  {
+    "file": "tests/asset-disposition-transports.test.mjs",
+    "log": "/private/tmp/mioon-round2-asset-disposition-final.tap",
+    "command": "TMPDIR=/private/tmp node --test --test-reporter=tap --test-concurrency=1 tests/asset-disposition-transports.test.mjs",
+    "scope": "full-file",
+    "fullFile": true,
+    "status": "pass",
+    "exitCode": 0,
+    "counts": {
+      "tests": 10,
+      "pass": 10,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0
+    },
+    "note": ""
+  },
+  {
+    "file": "tests/typecheck-runtime.test.mjs",
+    "log": "/private/tmp/mioon-round2-typecheck-runtime-final.tap",
+    "command": "TMPDIR=/private/tmp node --test --test-reporter=tap --test-concurrency=1 tests/typecheck-runtime.test.mjs",
+    "scope": "full-file",
+    "fullFile": true,
+    "status": "pass",
+    "exitCode": 0,
+    "counts": {
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0
+    },
+    "note": ""
+  },
+  {
+    "file": "tests/ui-components.test.mjs",
+    "log": "/private/tmp/mioon-round2-ui-components-final.tap",
+    "command": "TMPDIR=/private/tmp node --test --test-reporter=tap --test-concurrency=1 tests/ui-components.test.mjs",
+    "scope": "full-file",
+    "fullFile": true,
+    "status": "pass",
+    "exitCode": 0,
+    "counts": {
+      "tests": 29,
+      "pass": 29,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0
+    },
+    "note": "Full file rechecked alone with explicit TAP reporter; no ignored path"
+  }
+]

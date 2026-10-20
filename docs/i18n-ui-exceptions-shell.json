@@ -429,13 +429,6 @@
       "reason": "Fixed upstream software/project and MIT license identifiers in the About acknowledgements; technical proper names remain verbatim across locales."
     },
     {
-      "file": "apps/web/src/SettingsWorkspace.tsx",
-      "category": "visible-jsx",
-      "hash": "9221db0f72a6e7ee7cbf600eade275e5e8728c11958d28b4501e6b5346190c40",
-      "owner": "shell",
-      "reason": "Fixed storage-size unit beside a formatted numeric value; not prose, and changing locale does not change stored byte counts."
-    },
-    {
       "file": "apps/web/src/StoryboardStrip.tsx",
       "category": "visible-jsx",
       "hash": "83d6e86209a5b7d486da38558a8baddc3737d3fcb2deab1db100da0f1b9575cb",

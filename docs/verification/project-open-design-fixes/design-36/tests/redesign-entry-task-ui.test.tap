@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: task popover is passive and retained commands lose authority on scope or visibility change
+ok 1 - task popover is passive and retained commands lose authority on scope or visibility change
+  ---
+  duration_ms: 32.268834
+  type: 'test'
+  ...
+# Subtest: render tasks show only current-project timeline records and held results never claim live progress
+ok 2 - render tasks show only current-project timeline records and held results never claim live progress
+  ---
+  duration_ms: 3.217375
+  type: 'test'
+  ...
+# Subtest: task popover preserves warning tone for an unconfirmed result without dispatching actions
+ok 3 - task popover preserves warning tone for an unconfirmed result without dispatching actions
+  ---
+  duration_ms: 30.611167
+  type: 'test'
+  ...
+# Subtest: unknown task detail link opens its exact original job and stale scopes cannot navigate
+ok 4 - unknown task detail link opens its exact original job and stale scopes cannot navigate
+  ---
+  duration_ms: 3.948083
+  type: 'test'
+  ...
+# Subtest: login preserves one in-flight token request and accepts only the exact successful envelope
+ok 5 - login preserves one in-flight token request and accepts only the exact successful envelope
+  ---
+  duration_ms: 29.386416
+  type: 'test'
+  ...
+# Subtest: late login success after unmount cannot grant entry
+ok 6 - late login success after unmount cannot grant entry
+  ---
+  duration_ms: 10.596625
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 380.615875

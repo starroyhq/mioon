@@ -1,0 +1,88 @@
+TAP version 13
+# Subtest: only an own key in this project ready snapshot means zero; absence stays unknown
+ok 1 - only an own key in this project ready snapshot means zero; absence stays unknown
+  ---
+  duration_ms: 39.458208
+  type: 'test'
+  ...
+# Subtest: unused is a pure local view, combines existing results, and keeps unknown assets visible
+ok 2 - unused is a pure local view, combines existing results, and keeps unknown assets visible
+  ---
+  duration_ms: 6.839833
+  type: 'test'
+  ...
+# Subtest: filter resets on each project epoch and obsolete or hidden handlers cannot change it
+ok 3 - filter resets on each project epoch and obsolete or hidden handlers cannot change it
+  ---
+  duration_ms: 3.858417
+  type: 'test'
+  ...
+# Subtest: compact count expands explicit destinations and sends precisely the chosen immutable use
+ok 4 - compact count expands explicit destinations and sends precisely the chosen immutable use
+  ---
+  duration_ms: 20.083375
+  type: 'test'
+  ...
+# Subtest: unchanged saved polling preserves expansion and pending choice; changed source metadata invalidates
+ok 5 - unchanged saved polling preserves expansion and pending choice; changed source metadata invalidates
+  ---
+  duration_ms: 9.036334
+  type: 'test'
+  ...
+# Subtest: unknown, unavailable and foreign assets cannot claim unused or expose destinations
+ok 6 - unknown, unavailable and foreign assets cannot claim unused or expose destinations
+  ---
+  duration_ms: 27.46725
+  type: 'test'
+  ...
+# Subtest: navigation callbacks and in-flight predicates expire on hide, scope, snapshot, asset change and unmount
+ok 7 - navigation callbacks and in-flight predicates expire on hide, scope, snapshot, asset change and unmount
+  ---
+  duration_ms: 25.71575
+  type: 'test'
+  ...
+# Subtest: controls do not nest buttons or drag assets; target labels remain narrow-panel keyboard buttons
+ok 8 - controls do not nest buttons or drag assets; target labels remain narrow-panel keyboard buttons
+  ---
+  duration_ms: 4.88075
+  type: 'test'
+  ...
+# Subtest: actual library composes usage filter, preserves hidden selected source and resets all filters
+ok 9 - actual library composes usage filter, preserves hidden selected source and resets all filters
+  ---
+  duration_ms: 8.752584
+  type: 'test'
+  ...
+# Subtest: usage, type and mark filters compose once in the shared filter popover above the scrolling cards
+ok 10 - usage, type and mark filters compose once in the shared filter popover above the scrolling cards
+  ---
+  duration_ms: 10.198708
+  type: 'test'
+  ...
+# Subtest: actual library passes explicit hidden and subjects visibility to usage controls
+ok 11 - actual library passes explicit hidden and subjects visibility to usage controls
+  ---
+  duration_ms: 8.776459
+  type: 'test'
+  ...
+# Subtest: filter copy identifies saved revision and unavailable data, and stays guarded while hidden
+ok 12 - filter copy identifies saved revision and unavailable data, and stays guarded while hidden
+  ---
+  duration_ms: 12.350041
+  type: 'test'
+  ...
+# Subtest: real React and shared Button render safe compact HTML without network or storage
+ok 13 - real React and shared Button render safe compact HTML without network or storage
+  ---
+  duration_ms: 539.438917
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1236.886417

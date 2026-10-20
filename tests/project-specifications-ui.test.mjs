@@ -7,8 +7,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as exportSettings from '../apps/web/src/export-settings-state.ts';
+import * as exportRange from '../apps/web/src/export-range-state.ts';
 import * as format from '../apps/web/src/timeline-format-state.ts';
 import { createTimelineDeliveryNameController } from '../apps/web/src/export-delivery-state.ts';
+import * as deliveryHistory from '../apps/web/src/export-delivery-state.ts';
 import { createLocalDeliveryController } from '../apps/web/src/local-delivery-state.ts';
 import * as contracts from '@mioon/contracts';
 import * as audio from '../apps/web/src/clip-audio-state.ts';
@@ -173,7 +175,7 @@ const primitive = new Proxy({ __esModule: true, default: 'Component' }, { get: (
 function component(name, imports = {}) {
   const react = { createElement: element, useEffect() {}, useLayoutEffect() {}, useRef: current => ({ current }), useState: value => [typeof value === 'function' ? value() : value, () => {}] }; react.default = react;
   const module = { exports: {} };
-  Function('module', 'exports', 'require', transformSync(read(name), { loader: name.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code)(module, module.exports, key => key === './creation-i18n.ts' ? creationI18n : key === './i18n/I18nProvider.tsx' ? i18nTestModule() : key.endsWith('packages/i18n/src/index.ts') ? i18n : key === 'react' ? react : key === '@mioon/contracts' ? contracts : key === './timeline-format-state.ts' ? format : key === './export-settings-state.ts' ? exportSettings : key === './clip-opacity-envelope-state.ts' ? opacityState : key === './clip-opacity-candidate-assembly.ts' ? opacityAssembly : key === './clip-volume-envelope-state.ts' ? volumeState : key === './clip-audio-role-state.ts' ? audioRoleState : key === './timeline-removal.ts' ? removalState : key === './timeline-view-geometry.ts' ? viewGeometry : key === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : key === './ClipRemovalControls.tsx' ? component('ClipRemovalControls.tsx') : imports[key] || primitive);
+  Function('module', 'exports', 'require', transformSync(read(name), { loader: name.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code)(module, module.exports, key => key === './creation-i18n.ts' ? creationI18n : key === './i18n/I18nProvider.tsx' ? i18nTestModule() : key.endsWith('packages/i18n/src/index.ts') ? i18n : key === 'react' ? react : key === '@mioon/contracts' ? contracts : key === './timeline-format-state.ts' ? format : key === './export-settings-state.ts' ? exportSettings : key === './export-range-state.ts' ? exportRange : key === './export-delivery-state.ts' ? deliveryHistory : key === './clip-opacity-envelope-state.ts' ? opacityState : key === './clip-opacity-candidate-assembly.ts' ? opacityAssembly : key === './clip-volume-envelope-state.ts' ? volumeState : key === './clip-audio-role-state.ts' ? audioRoleState : key === './timeline-removal.ts' ? removalState : key === './timeline-view-geometry.ts' ? viewGeometry : key === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : key === './ClipRemovalControls.tsx' ? component('ClipRemovalControls.tsx') : imports[key] || primitive);
   return module.exports;
 }
 

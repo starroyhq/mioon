@@ -34,7 +34,7 @@ function fixture(locale = 'en', patch = {}) {
   return {
     state, edits, reports, calls,
     render(active = true) { cursor = 0; effects = []; tree = module.exports.default({ active, onNavigationStateChange: report }); for (const index of effects) { const hook = hooks[index]; hook.cleanup?.(); hook.cleanup = hook.callback(); } return tree; },
-    node(id) { return nodes(tree).find(node => node.props?.['data-testid'] === id); },
+    node(id) { const owner = nodes(tree).find(node => node.props?.['data-testid'] === id); return nodes(owner).find(node => node.type === 'WorkbenchTabs') ?? owner; },
     button(label) { return nodes(tree).find(node => node.type === 'WorkbenchButton' && text(node) === label); },
     get tree() { return tree; },
     unmount() { for (const hook of hooks) hook?.cleanup?.(); },
@@ -43,35 +43,35 @@ function fixture(locale = 'en', patch = {}) {
 
 for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) test(`actual ${locale} settings present dark, light and system with approved localized labels`, () => {
   const f = fixture(locale); f.render(); const select = f.node('appearance-theme');
-  const options = nodes(select).filter(node => node.type === 'option');
-  assert.deepEqual(options.map(node => node.props.value), ['dark', 'light', 'system']);
-  assert.deepEqual(options.map(text), ['dark', 'light', 'system'].map(value => appearanceMessages[`appearance.${value}`][locale]));
-  assert.equal(select.props.disabled, false); assert.equal(select.props.value, 'dark');
+  const options = select.props.options;
+  assert.deepEqual(options.map(option => option.value), ['dark', 'light', 'system']);
+  assert.deepEqual(options.map(option => option.label), ['dark', 'light', 'system'].map(value => appearanceMessages[`appearance.${value}`][locale]));
+  assert.ok(select.props.options.every(option => option.disabled === false)); assert.equal(select.props.value, 'dark');
   assert.doesNotMatch(text(f.tree), /under review|until approval|尚在确认|仍在確認|確認中|現在はダーク/);
 });
 
 test('all three explicit theme choices reach the existing edit/report path while unknown values are rejected', () => {
   const f = fixture(); f.render();
-  for (const theme of ['dark', 'light', 'system']) f.node('appearance-theme').props.onChange({ target: { value: theme } });
+  for (const theme of ['dark', 'light', 'system']) f.node('appearance-theme').props.onValueChange(theme);
   assert.deepEqual(f.edits, [{ theme: 'dark' }, { theme: 'light' }, { theme: 'system' }]);
   assert.equal(f.reports.at(-1).dirty, true);
-  const count = f.reports.length; f.node('appearance-theme').props.onChange({ target: { value: 'unknown' } });
+  const count = f.reports.length; f.node('appearance-theme').props.onValueChange('unknown');
   assert.equal(f.edits.length, 3); assert.equal(f.reports.length, count);
 });
 
 test('hidden and unmounted setting callbacks cannot edit, save or discard a theme draft', () => {
   const f = fixture('en', { dirty: true }); f.render();
-  const choose = f.node('appearance-theme').props.onChange, save = f.node('appearance-save').props.onClick, discard = f.button('Discard').props.onClick;
-  f.render(false); choose({ target: { value: 'light' } }); save(); discard();
+  const choose = f.node('appearance-theme').props.onValueChange, save = f.node('appearance-save').props.onClick, discard = f.button('Discard').props.onClick;
+  f.render(false); choose('light'); save(); discard();
   assert.deepEqual(f.edits, []); assert.deepEqual(f.calls, []);
-  f.render(true); choose({ target: { value: 'light' } }); assert.deepEqual(f.edits, [{ theme: 'light' }]);
-  f.unmount(); choose({ target: { value: 'system' } }); save(); discard();
+  f.render(true); choose('light'); assert.deepEqual(f.edits, [{ theme: 'light' }]);
+  f.unmount(); choose('system'); save(); discard();
   assert.equal(f.edits.length, 1); assert.deepEqual(f.calls, []);
 });
 
 for (const patch of [{ phase: 'loading' }, { phase: 'saving' }, { pending: true }, { saved: { writable: false } }]) test(`theme input preserves its existing admission fence ${JSON.stringify(patch)}`, () => {
   const f = fixture('en', patch); f.render(); const select = f.node('appearance-theme');
-  assert.equal(select.props.disabled, true); select.props.onChange({ target: { value: 'light' } }); assert.deepEqual(f.edits, []);
+  assert.ok(select.props.options.every(option => option.disabled === true)); select.props.onValueChange('light'); assert.deepEqual(f.edits, []);
 });
 
 test('a controlled saved light value is shown and save/discard continue through the existing owner', () => {

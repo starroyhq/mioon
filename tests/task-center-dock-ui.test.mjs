@@ -49,7 +49,7 @@ before(() => {
     const javascript = outputFiles.find(file => file.path.endsWith('.js'));
     if (!javascript) throw Error('Task dock fixture did not emit JavaScript');
     const result = await import('data:text/javascript;base64,' + Buffer.from(javascript.text).toString('base64'));
-    process.stdout.write(JSON.stringify(result.html)); process.exit(0);`;
+    await new Promise((resolve, reject) => process.stdout.write(JSON.stringify(result.html), error => error ? reject(error) : resolve())); process.exit(0);`;
   rendered = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30000 }));
 });
 
@@ -84,6 +84,7 @@ function harness(languageStore) {
   const storage = new Proxy({}, { get: forbidden, set: forbidden });
   const react = {
     createElement(type, props, ...children) { const value = { ...props, children }; return typeof type === 'function' ? type(value) : { type, props: value }; },
+    useState(value) { const index = cursor++; if (!(index in slots)) slots[index] = typeof value === 'function' ? value() : value; return [slots[index], next => { slots[index] = typeof next === 'function' ? next(slots[index]) : next; }]; },
     useRef(value) { const index = cursor++; return slots[index] ||= { current: value }; },
     useMemo(factory, deps) { const index = cursor++; if (!slots[index] || deps.some((value, i) => value !== slots[index].deps[i])) slots[index] = { value: factory(), deps }; return slots[index].value; },
     useLayoutEffect(effect, deps) { const index = cursor++; if (!slots[index] || deps.some((value, i) => value !== slots[index].deps[i])) { slots[index] = { effect, deps, cleanup: slots[index]?.cleanup }; effects.push(index); } },
@@ -115,7 +116,7 @@ function harness(languageStore) {
     effects.forEach(index => { slots[index].cleanup?.(); slots[index].cleanup = slots[index].effect(); });
     return tree;
   };
-  h.unmount = () => slots.forEach(slot => slot.cleanup?.());
+  h.unmount = () => slots.forEach(slot => slot?.cleanup?.());
   return h;
 }
 
@@ -140,37 +141,109 @@ function actions(tree, fixture) {
   ];
 }
 
-test('mount, rerender and disclosure expansion execute nothing; explicit current clicks retain exact operation inputs', async () => {
+test('mount, rerender and disclosure expansion execute nothing; selected tasks retain exact operation inputs', async () => {
   const h = harness(), f = actionFixture();
-  h.render(f.props); const tree = h.render(f.props);
+  h.render(f.props); let tree = h.render(f.props);
   assert.deepEqual(h.calls, []); assert.equal(h.captureCalls, 0);
   const disclosure = find(tree, 'recovery-task-storage-disclosure'); disclosure.props.open = true;
   assert.deepEqual(h.calls, []); assert.equal(h.captureCalls, 0);
-  for (const invoke of actions(tree, f)) await invoke();
-  const durable = h.calls.filter(call => call[0] === 'onRecover');
-  assert.equal(durable.length, 2);
-  assert.deepEqual(durable.map(call => call.slice(0, 3)), [['onRecover', f.unknown, false], ['onRecover', f.applied, true]]);
-  assert.ok(durable.every(call => call[3]() === true));
+  const selected = key => h.render({ ...f.props, selectedTaskId: key });
+  find(selected(`local:${f.unknown.id}`), 'recover-durable-task').props.onClick();
+  const unknownFence = h.calls.at(-1)[3]; assert.equal(unknownFence(), true);
+  find(selected(`local:${f.applied.id}`), 'acknowledge-task').props.onClick();
+  const appliedFence = h.calls.at(-1)[3]; assert.equal(appliedFence(), true); assert.equal(unknownFence(), false);
+  tree = selected(`pending:legacy:${f.entry.key}`); find(tree, 'adopt-legacy-task').props.onClick(); find(tree, 'resume-pending').props.onClick();
+  tree = selected(f.uncertain.id); find(tree, `reconcile-job-${f.uncertain.id}`).props.onClick();
+  nodes(find(tree, `job-${f.uncertain.id}`)).find(node => node.type === 'Input').props.onChange({ target: { value: 'changed-provider-id' } });
+  tree = selected(f.failed.id); find(tree, `retry-job-${f.failed.id}`).props.onClick(); button(tree, '查看镜头').props.onClick();
+  for (const name of ['retryGeneration', 'onInspectJob']) { const call = h.calls.find(call => call[0] === name); assert.equal(call[1], f.failed); assert.equal(call[2](), true); }
+  tree = selected(f.running.id); await button(find(tree, `job-${f.running.id}`), '停止等待').props.onClick();
+  button(tree, '重新载入任务').props.onClick();
+  assert.deepEqual(h.calls.filter(call => call[0] === 'onRecover').map(call => call.slice(0, 3)), [['onRecover', f.unknown, false], ['onRecover', f.applied, true]]);
   assert.deepEqual(h.calls.find(call => call[0] === 'onAdopt'), ['onAdopt', f.entry]);
   assert.deepEqual(h.calls.filter(call => call[0] === 'run'), [
     ['run', f.entry.key, f.entry.operation, f.entry.input, message('tasks.center.originalRecovered'), { replay: true }],
     ['run', `reconcile:${f.uncertain.id}`, 'job.reconcile', { jobId: f.uncertain.id, providerJobId: 'provider-original' }, message('tasks.center.existingStatusChecked')],
     ['run', `cancel:${f.running.id}`, 'job.cancel', { jobId: f.running.id }, message('tasks.center.stopRequested')],
   ]);
-  for (const name of ['retryGeneration', 'onInspectJob']) {
-    const call = h.calls.find(call => call[0] === name); assert.equal(call[1], f.failed); assert.equal(call[2](), true);
-  }
   const update = h.calls.find(call => call[0] === 'setReconcileIds')[1];
   assert.deepEqual(update({ retained: 'other' }), { retained: 'other', [f.uncertain.id]: 'changed-provider-id' });
 });
 
+test('task list selects one full detail, prioritizes unknown outcomes and preserves visible reconciliation identities', () => {
+  const h = harness(), uncertain = { ...job(11, 'submission_unknown'), requestId: 'original-generation-request' }, running = job(12, 'running');
+  let tree = h.render({jobs:[running,uncertain]});
+  const panes = () => nodes(tree).filter(node => node.props?.className === 'task-center-detail-pane');
+  assert.equal(panes().filter(node => !node.props.hidden).length, 1);
+  assert.equal(panes().find(node => !node.props.hidden).props['data-task-detail-key'], uncertain.id);
+  const unknownCard = find(tree, `job-${uncertain.id}`), details = nodes(unknownCard).filter(node => node.type === 'details');
+  assert.equal(details.length, 1); assert.equal(details[0].props.open, undefined);
+  assert.equal(find(details[0], `reconcile-job-${uncertain.id}`), undefined);
+  assert.ok(find(unknownCard, `reconcile-job-${uncertain.id}`));
+  assert.match(text(unknownCard), /original-generation-request/); assert.doesNotMatch(text(details[0]), /original-generation-request/);
+  assert.ok(nodes(unknownCard).some(node => node.props?.className === 'notice warning'));
+  find(tree, `task-select-${running.id}`).props.onClick();
+  tree = h.render({jobs:[running,uncertain]});
+  assert.equal(panes().find(node => !node.props.hidden).props['data-task-detail-key'], running.id);
+  assert.equal(find(tree, `task-select-${running.id}`).props['aria-pressed'], true);
+  assert.deepEqual(h.calls, []);
+});
+
+test('switching task details revokes retained actions and pending confirmations without dispatching on selection', async () => {
+  const h = harness(), uncertain = job(11, 'submission_unknown'), running = job(12, 'running'), decision = defer();
+  const props = { jobs: [uncertain, running], confirm: () => decision.promise };
+  let tree = h.render(props); const retained = find(tree, `reconcile-job-${uncertain.id}`).props.onClick;
+  find(tree, `task-select-${running.id}`).props.onClick(); retained(); assert.deepEqual(h.calls, [], 'Selection revokes the previous detail before commit');
+  tree = h.render(props); const waiting = button(find(tree, `job-${running.id}`), '停止等待').props.onClick();
+  find(tree, `task-select-${uncertain.id}`).props.onClick(); h.render(props); decision.resolve(true); await waiting;
+  retained(); assert.deepEqual(h.calls, [], 'An old selected card cannot revive after a leave-return');
+});
+
+test('local search and status filters use loaded entries only, keep cards mounted and revoke hidden detail actions', () => {
+  const h = harness(), f = actionFixture(), complete = job(13, 'succeeded');
+  const props = { ...f.props, jobs: [f.running, f.uncertain, f.failed, complete], selectedTaskId: f.uncertain.id };
+  let tree = h.render(props); const oldReconcile = find(tree, `reconcile-job-${f.uncertain.id}`).props.onClick;
+  const visibleKey = () => nodes(tree).find(node => node.props?.className === 'task-center-detail-pane' && !node.props.hidden)?.props['data-task-detail-key'];
+  const rows = () => nodes(find(tree, 'task-center-list')).filter(node => node.props?.className === 'task-center-row');
+  find(tree, 'task-filter-active').props.onClick(); oldReconcile(); assert.deepEqual(h.calls, []);
+  tree = h.render(props); assert.deepEqual(rows().map(node => node.props['data-testid']), [`task-select-${f.running.id}`]); assert.equal(visibleKey(), f.running.id);
+  assert.ok(find(tree, `job-${f.uncertain.id}`), 'Filtered details remain mounted');
+  find(tree, 'task-filter-finished').props.onClick(); tree = h.render(props);
+  assert.deepEqual(rows().map(node => node.props['data-testid']), [`task-select-local:${f.applied.id}`, `task-select-${f.failed.id}`, `task-select-${complete.id}`]); assert.equal(visibleKey(), `local:${f.applied.id}`);
+  find(tree, 'task-filter-uncertain').props.onClick(); tree = h.render(props);
+  assert.deepEqual(rows().map(node => node.props['data-testid']), [`task-select-local:${f.unknown.id}`, `task-select-pending:legacy:${f.entry.key}`, `task-select-${f.uncertain.id}`]);
+  find(tree, 'task-filter-all').props.onClick(); tree = h.render(props);
+  find(tree, 'task-center-search').props.onChange({target:{value:f.applied.requestId}}); tree = h.render(props);
+  assert.deepEqual(rows().map(node => node.props['data-testid']), [`task-select-local:${f.applied.id}`]); assert.equal(visibleKey(), `local:${f.applied.id}`);
+  const staleSearch = find(tree, 'task-center-search').props.onChange;
+  staleSearch({target:{value:'no matching loaded task'}}); tree = h.render(props);
+  assert.equal(rows().length, 0); assert.ok(find(tree, 'task-center-filter-empty')); assert.equal(visibleKey(), undefined);
+  assert.ok(nodes(tree).filter(node => node.props?.className === 'task-center-detail-pane').every(node => node.props.hidden && node.props.inert));
+  oldReconcile(); staleSearch({target:{value:''}}); assert.deepEqual(h.calls, []);
+  tree = h.render(props); assert.equal(find(tree, 'task-center-search').props.value, 'no matching loaded task');
+  tree = h.render({ ...props, selectedTaskId: complete.id }); assert.equal(find(tree, 'task-center-search').props.value, ''); assert.equal(visibleKey(), complete.id); assert.equal(rows().length, 7);
+});
+
+test('search, filters and no-match state relabel in four languages without fetching or changing task data', async () => {
+  const store = createLanguageStore({systemLanguages:['zh-Hans']}), h = harness(store), props = {jobs:[job(11,'submission_unknown')]};
+  let tree=h.render(props); find(tree,'task-center-search').props.onChange({target:{value:'missing-local-item'}});
+  for(const locale of ['zh-Hans','zh-Hant','en','ja']) {
+    await store.setPreference(locale);tree=h.render(props);const ctx=createI18nTestContext(locale);
+    assert.equal(find(tree,'task-center-search').props['aria-label'],ctx.t('redesign.tasks.search'));
+    for(const filter of ['all','active','uncertain','finished']) assert.equal(text(find(tree,`task-filter-${filter}`)),ctx.t(`redesign.tasks.${filter}`));
+    assert.match(text(find(tree,'task-center-filter-empty')),new RegExp(ctx.t('redesign.tasks.noMatch')));
+    assert.equal(find(tree,'task-center-search').props.value,'missing-local-item');assert.deepEqual(h.calls,[]);
+  }
+  h.unmount();store.dispose();
+});
+
 test('all retained task actions reject hidden, unmounted, changed-scope and leave-return pane lifetimes', async () => {
   for (const mode of ['hidden', 'hidden-return', 'unmounted', 'scope-change', 'scope-return', 'live-view-invalid']) {
-    const h = harness(), f = actionFixture(), tree = h.render(f.props);
+    const h = harness(), f = actionFixture(), tree = h.render({ ...f.props, selectedTaskId: f.failed.id });
     const handlers = actions(tree, f);
     button(tree, '查看镜头').props.onClick();
     const acceptedPredicate = h.calls.pop()[2]; assert.equal(acceptedPredicate(), true);
-    if (mode === 'hidden' || mode === 'hidden-return') { h.visible = false; h.render(f.props); if (mode === 'hidden-return') { h.visible = true; h.render(f.props); } }
+    if (mode === 'hidden' || mode === 'hidden-return') { h.visible = false; h.render({ ...f.props, selectedTaskId: f.failed.id }); if (mode === 'hidden-return') { h.visible = true; h.render({ ...f.props, selectedTaskId: f.failed.id }); } }
     if (mode === 'scope-change' || mode === 'scope-return') { h.scope = 'project:2:tasks'; h.render(f.props); if (mode === 'scope-return') { h.scope = 'project:1:tasks'; h.render(f.props); } }
     if (mode === 'unmounted') h.unmount();
     if (mode === 'live-view-invalid') h.current = false;
@@ -194,9 +267,9 @@ test('hidden initial render cannot admit clicks and a null or false App capture 
 test('cancel confirmation admits only the current context and pane after the awaited decision', async () => {
   for (const mode of ['approved', 'declined', 'context-stale', 'hidden', 'hidden-return', 'unmounted', 'view-stale']) {
     const h = harness(), f = actionFixture(), decision = defer();
-    const tree = h.render({ ...f.props, confirm: () => decision.promise, isCurrent: () => mode !== 'context-stale' });
+    const tree = h.render({ ...f.props, selectedTaskId: f.running.id, confirm: () => decision.promise, isCurrent: () => mode !== 'context-stale' });
     const cancelling = button(tree, '停止等待').props.onClick();
-    if (mode.startsWith('hidden')) { h.visible = false; h.render(f.props); if (mode === 'hidden-return') { h.visible = true; h.render(f.props); } }
+    if (mode.startsWith('hidden')) { h.visible = false; h.render({ ...f.props, selectedTaskId: f.failed.id }); if (mode === 'hidden-return') { h.visible = true; h.render({ ...f.props, selectedTaskId: f.failed.id }); } }
     if (mode === 'unmounted') h.unmount();
     if (mode === 'view-stale') h.current = false;
     decision.resolve(mode !== 'declined'); await cancelling;
@@ -205,7 +278,7 @@ test('cancel confirmation admits only the current context and pane after the awa
   }
 });
 
-test('narrow-dock styles keep only the body scrollable and wrap long IDs and shared action buttons', () => {
+test('task list and details scroll independently while narrow docks wrap and retain action controls', () => {
   const css = read('TaskWorkspace.css');
   assert.match(css, /\.task-workspace\{[^}]*min-width:0[^}]*min-height:0[^}]*overflow:hidden/);
   assert.match(css, /\.task-workspace-heading\{[^}]*flex:none/);
@@ -218,10 +291,13 @@ test('narrow-dock styles keep only the body scrollable and wrap long IDs and sha
   assert.match(css, /\.inspector-region-heading>\.right-dock-tabs \[data-slot="tabs-list"\]\{[^}]*width:max-content/);
   assert.match(css, /\.inspector-region-heading>\[data-testid="toggle-inspector"\]\{[^}]*flex:none/);
   assert.doesNotMatch(css, /position:fixed|min-width:(240|310|420)px/);
+  assert.match(css, /\.task-center-browser\{[^}]*grid-template-columns:280px minmax\(0,1fr\)/);
+  assert.match(css, /\.task-center-sidebar,\.task-center-detail\{[^}]*overflow:auto/);
+  assert.match(css, /@container task-center \(max-width:620px\)/);
   const shell = read('TaskWorkspace.tsx'), taskCenter = read('TaskCenter.tsx');
   assert.doesNotMatch(shell, /\bfetch\s*\(|\brpc\s*\(|sessionStorage|localStorage|setInterval|setTimeout|createPortal|Dialog|Modal|:\s*any\b|as\s+any\b|@ts-ignore|@ts-nocheck/);
   assert.doesNotMatch(shell, /workspace-visibility\.jsx|TaskWorkspace\.css/);
-  assert.match(taskCenter, /useTaskWorkspaceInteraction\(pass\(captureView\), taskViewScope, Boolean\(useWorkspaceVisibility\(\)\)\)/);
+  assert.match(taskCenter, /useTaskWorkspaceInteraction\(pass\(captureView\), taskViewScope, visible\)/);
   assert.doesNotMatch(taskCenter, /components\/dialog|onClose|setShowJobs|\binspect\(/);
 });
 
@@ -229,10 +305,10 @@ test('pending task confirmation relabels across four languages while retaining i
   const store = createLanguageStore({ systemLanguages: ['zh-Hans'] }), h = harness(store), f = actionFixture();
   let resolve, descriptor; const waiting = new Promise(done => { resolve = done; });
   const props = { ...f.props, confirm: value => { descriptor = value; return waiting; } };
-  const tree = h.render(props), action = button(tree, '停止等待').props.onClick();
+  const tree = h.render({ ...props, selectedTaskId: f.running.id }), action = button(tree, '停止等待').props.onClick();
   assert.deepEqual(descriptor, message('tasks.center.stopWaitConfirmation')); assert.deepEqual(h.calls, []);
   for (const locale of ['zh-Hant', 'en', 'ja', 'zh-Hans']) {
-    await store.setPreference(locale); const next = h.render(props);
+    await store.setPreference(locale); const next = h.render({ ...props, selectedTaskId: f.running.id });
     assert.ok(JSON.stringify(next).includes(createI18nTestContext(locale).t('tasks.center.stopWaiting')));
     assert.equal(createI18nTestContext(locale).renderMessage(descriptor), createI18nTestContext(locale).t('tasks.center.stopWaitConfirmation'));
     assert.deepEqual(h.calls, []);
@@ -255,4 +331,30 @@ test('local task list error descriptors relabel without leaking raw diagnostics 
     assert.equal(h.calls.length, 0);
   }
   h.unmount(); store.dispose();
+});
+
+test('local dispositions preserve unknown reconciliation and require confirmation before a current mark-failed action', async () => {
+  const h=harness(),uncertain={...job(11,'submission_unknown'),requestId:'original-generation-request'},done=job(12,'succeeded'),calls=[];
+  const saved={projectId:id(90),kind:'generation',taskId:uncertain.id,revision:0,markedFailed:false,archived:false,updatedAt:null,sourceStatus:'submission_unknown',sourceRequestId:uncertain.requestId,canMarkFailed:true,canArchive:false};
+  const archived={...saved,taskId:done.id,sourceStatus:'succeeded',canMarkFailed:false,canArchive:true,archived:true,revision:1,updatedAt:stamp};
+  const dispositions={phase:'ready',items:[saved,archived],busy:false,mutationUncertain:false,markFailed:item=>calls.push(['mark',item]),archiveCompleted:items=>calls.push(['archive',items]),reload(){},retry(){}};
+  let tree=h.render({jobs:[uncertain,done],dispositions,confirm:async()=>false});assert.equal(find(tree,`task-select-${done.id}`),undefined);assert.ok(find(tree,`reconcile-job-${uncertain.id}`));await find(tree,'task-mark-failed').props.onClick();assert.deepEqual(calls,[]);
+  tree=h.render({jobs:[uncertain,done],dispositions,confirm:async()=>true});await find(tree,'task-mark-failed').props.onClick();assert.deepEqual(calls,[['mark',saved]]);
+  const gate=defer();tree=h.render({jobs:[uncertain,done],dispositions,confirm:()=>gate.promise});const waiting=find(tree,'task-mark-failed').props.onClick();h.visible=false;h.render({jobs:[uncertain,done],dispositions});gate.resolve(true);await waiting;assert.equal(calls.length,1);
+  h.visible=true;tree=h.render({jobs:[uncertain],dispositions:{...dispositions,items:[{...saved,markedFailed:true,revision:1,updatedAt:stamp}]}});assert.ok(find(tree,'task-local-failed-marker'));assert.ok(find(tree,`reconcile-job-${uncertain.id}`));assert.equal(find(tree,'task-mark-failed'),undefined);
+});
+
+test('task identifier copy uses the real clipboard result and exposes failures without changing task state', async () => {
+  const h=harness(),uncertain={...job(11,'submission_unknown'),requestId:'original-generation-request'},prior=Object.getOwnPropertyDescriptor(navigator,'clipboard'),writes=[];
+  try {Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async value=>{writes.push(value);}}});let tree=h.render({jobs:[uncertain]});await find(tree,'task-copy-id').props.onClick();tree=h.render({jobs:[uncertain]});assert.deepEqual(writes,[uncertain.id]);assert.match(text(find(tree,'task-copy-result')),/已复制/);
+    Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async()=>{throw Error('denied');}}});await find(tree,'task-copy-id').props.onClick();tree=h.render({jobs:[uncertain]});assert.match(text(find(tree,'task-copy-result')),/复制失败/);assert.deepEqual(h.calls,[]);
+  } finally {if(prior)Object.defineProperty(navigator,'clipboard',prior);else delete navigator.clipboard;}
+});
+
+
+test('session pending copies its original request ID and never fabricates a backend task ID',async()=>{
+ const h=harness(),requestId='original-pending-request-id',entry={projectId:id(90),key:'timeline:mutation',operation:'timeline.track.update',input:{requestId},createdAt:stamp},prior=Object.getOwnPropertyDescriptor(navigator,'clipboard'),writes=[];
+ try{Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async value=>writes.push(value)}});let tree=h.render({pending:[entry]});assert.match(text(find(tree,'task-detail-summary')),/原请求 ID/);await find(tree,'task-copy-id').props.onClick();assert.deepEqual(writes,[requestId]);assert.doesNotMatch(text(find(tree,'task-detail-summary')),/pending:legacy/);
+  tree=h.render({pending:[{...entry,input:{}}]});assert.equal(find(tree,'task-copy-id').props.disabled,true);assert.match(text(find(tree,'task-detail-summary')),/无后台任务 ID/);await find(tree,'task-copy-id').props.onClick();assert.deepEqual(writes,[requestId]);
+ }finally{if(prior)Object.defineProperty(navigator,'clipboard',prior);else delete navigator.clipboard;}
 });

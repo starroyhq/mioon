@@ -19,6 +19,7 @@ import { fixture, deferred, id, projectId, timelineId } from './helpers/timeline
 import { message as messageKey, renderMessage } from './helpers/i18n.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
+import { touchesLockedTrack } from '../apps/web/src/timeline-track-locks.ts';
 const Function = lenientFunction;
 // Frozen pre-fix sources exercise the identical causal test without changing
 // the worktree. Only these four non-secret renderer files are substituted.
@@ -106,7 +107,7 @@ async function harness(t: import('node:test').TestContext, { lose = 'execute' }:
   const currentProject = { current: projectId }, dataRef = { current: { project: { id: projectId }, timeline: { id: timelineId, revision: 4 }, timelineHistory: { revision: 4 } } };
   let keys = 0, epoch = 0;
   const env: Record<string, unknown> = {
-    application: null, clipDraftRef: { current: null }, setSubjectRefresh: () => undefined, msg: messageKey,
+    application: null, clipDraftRef: { current: null }, trackLocksRef: { current: {} }, touchesLockedTrack, setSubjectRefresh: () => undefined, msg: messageKey,
     localizedError: (value: never) => Object.assign(new Error(renderMessage('zh-Hans', value)), { displayMessage: value }),
     workspaceOriginScope, workspaceRef: { current: { restored: false } }, preferenceScope: { current: 'a'.repeat(64) },
     lastProjectRef: { current: { getState: () => ({ identityBlocked: false }) } }, timelineLoudnessApplyRecoveryScope: currentApplyState.timelineLoudnessApplyRecoveryScope, isDurableEditOperation, isTimelineMutationResponse, submitTimelineLoudnessApply, tasksRef: { current: tasks }, currentProject, dataRef,

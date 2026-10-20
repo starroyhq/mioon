@@ -1,5 +1,7 @@
 # MCP agent integration (V4)
 
+工作区开关、应用内备份、任务处置和导出控制已进入官方工具发现与四语言描述，见[工作区设置](WORKSPACE-SETTINGS.md)、[任务处置](TASK-DISPOSITIONS.md)和[导出控制](EXPORT-CONTROLS.md)。通过 `mioon_schema` 查询严格参数；这些管理操作不会自动成为内置智能助理的模型工具
+
 Mioon exposes an **official MCP SDK stdio server**. It talks to the same authenticated local HTTP operation layer as the Web app, Electron, and [CLI](CLI.md); it does not open a database or start another backend. Streamable HTTP MCP is not implemented or required. Start the normal backend or Electron separately before calling stateful tools.
 
 Node.js 24+ and installed source workspace dependencies are required for this optional source bridge. The Electron app itself uses bundled Node, but it does not bundle a standalone MCP executable.

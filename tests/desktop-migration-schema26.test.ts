@@ -7,9 +7,10 @@ import {tmpdir} from 'node:os';
 import {randomUUID,createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {openStore,installCurrentWorkspaceRestoreSchema} from '@mioon/business/db';
+import {currentMarkerChain} from './helpers/current-schema-delta.ts';
 import {migrateData} from '../apps/desktop/scripts/migrate-data.ts';
 
-const ordinaryVersions=[...Array.from({length:24},(_,index)=>index+1),26,28,30,32,34,36,38,40,44,48];
+const ordinaryVersions=[...currentMarkerChain];
 const metadata=()=>({restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:'2026-10-14T00:00:00.000Z'});
 
 function fixture(t: TestContext) {
@@ -62,18 +63,18 @@ test('desktop migration accepts current ordinary workspace from current openStor
 });
 
 for(const [label,change,code] of ([
- ['complete restored49',db=>{
+ ['complete restored51',db=>{
   const restored=installCurrentWorkspaceRestoreSchema(db,metadata());
-  assert.equal(restored.schemaVersion,49);assert.equal(restored.sourceSchema,48);
-  assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row => Number(row.version)),[...ordinaryVersions,49]);
+  assert.equal(restored.schemaVersion,51);assert.equal(restored.sourceSchema,50);
+  assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row => Number(row.version)),[...ordinaryVersions,51]);
  },'RESTORE_MIGRATION_UNAVAILABLE'],
- ['partial restoration metadata on ordinary34',db=>db.exec('CREATE TABLE workspace_restoration(id TEXT)'),'RESTORE_SCHEMA_UNSUPPORTED'],
- ['partial restoration evidence on ordinary34',db=>db.exec('CREATE TABLE workspace_restore_evidence(id TEXT)'),'RESTORE_SCHEMA_UNSUPPORTED'],
- ['execution epoch without restore marker on ordinary34',db=>db.exec('ALTER TABLE edit_tasks ADD COLUMN executionEpoch TEXT'),'RESTORE_SCHEMA_UNSUPPORTED'],
+ ['partial restoration metadata on ordinary50',db=>db.exec('CREATE TABLE workspace_restoration(id TEXT)'),'RESTORE_SCHEMA_UNSUPPORTED'],
+ ['partial restoration evidence on ordinary50',db=>db.exec('CREATE TABLE workspace_restore_evidence(id TEXT)'),'RESTORE_SCHEMA_UNSUPPORTED'],
+ ['execution epoch without restore marker on ordinary50',db=>db.exec('ALTER TABLE edit_tasks ADD COLUMN executionEpoch TEXT'),'RESTORE_SCHEMA_UNSUPPORTED'],
  ['orphan restored marker on ordinary',db=>db.exec('INSERT INTO schema_version VALUES(35)'),'RESTORE_SCHEMA_UNSUPPORTED'],
- ['mixed historical restore25 and ordinary34 markers',db=>db.exec('INSERT INTO schema_version VALUES(25)'),'RESTORE_SCHEMA_UNSUPPORTED'],
- ['future50 marker on ordinary48',db=>db.exec('INSERT INTO schema_version VALUES(50)'),'RESTORE_SCHEMA_UNSUPPORTED'],
- ['mixed historical restore27 and ordinary34 markers',db=>db.exec('INSERT INTO schema_version VALUES(27)'),'RESTORE_SCHEMA_UNSUPPORTED'],
+ ['mixed historical restore25 and ordinary50 markers',db=>db.exec('INSERT INTO schema_version VALUES(25)'),'RESTORE_SCHEMA_UNSUPPORTED'],
+ ['future52 marker on ordinary50',db=>db.exec('INSERT INTO schema_version VALUES(52)'),'RESTORE_SCHEMA_UNSUPPORTED'],
+ ['mixed historical restore27 and ordinary50 markers',db=>db.exec('INSERT INTO schema_version VALUES(27)'),'RESTORE_SCHEMA_UNSUPPORTED'],
 ] as Array<[string, (db: DatabaseSync) => void, string]>))test(`desktop migration rejects ${label} before destination creation without changing source`,async t=>{
  const f=fixture(t);mutate(f.file,change);
  const before=snapshot(f.source),siblings=fs.readdirSync(f.base).sort();

@@ -30,9 +30,8 @@
 .agent-edit-selected-text>span{font-size:10px;color:var(--wb-soft)}
 .agent-edit-selected pre{font-size:10px}
 
-/* A proposal needs a readable review viewport even when the composer is tall.
-   The existing outer dock scroll keeps the full consent and composer reachable. */
-.agent-workspace .agent-chat-scroll:has(.agent-edit-card){min-height:clamp(320px,50dvh,480px);flex-basis:clamp(320px,50dvh,480px);flex-shrink:0}
+/* Proposal cards share the message area's scroll space; their content must not
+   impose a minimum dock height or push the composer outside the panel. */
 .agent-edit-selected-details>p{font-size:10px;line-height:1.7;color:var(--wb-soft);overflow-wrap:anywhere;margin:4px 0}
 .agent-edit-selected-disclosure>.agent-chat-details-trigger{font-size:10px;line-height:1.7}
 
@@ -43,3 +42,15 @@
 .agent-timeline-intervals li{font-size:10px;line-height:1.8;break-inside:avoid;color:var(--wb-text)}
 .agent-timeline-selected [data-testid=agent-timeline-context-blocked],.agent-edit-card [data-testid=agent-timeline-approval-blocked]{color:var(--wb-warning)}
 @media(max-width:420px){.agent-timeline-intervals ol{columns:1}}
+
+/* Human-readable changes remain complete; technical identities stay disclosed
+   separately and do not compete with the before/after comparison. */
+.agent-edit-diff>section[data-field]{display:grid;grid-template-columns:minmax(0,1fr) 12px minmax(0,1fr);gap:5px;align-items:start}
+.agent-edit-diff>section[data-field]>h4{grid-column:1/-1;margin-bottom:0}
+.agent-edit-diff>section[data-field]>.agent-edit-diff-arrow{padding-top:24px}
+.agent-edit-diff>section[data-field]>.agent-edit-diff-side{height:100%;box-sizing:border-box;border:1px solid var(--wb-line);background:var(--wb-input);border-radius:var(--wb-radius-control)}
+.agent-edit-diff>section[data-field]>.agent-edit-diff-side.is-after{background:var(--wb-selected);border-color:var(--wb-line-strong)}
+.agent-edit-card>.agent-edit-target{color:var(--wb-text);font-weight:500;margin-top:4px}
+.agent-edit-authority>.agent-chat-details-trigger,.agent-edit-identity>.agent-chat-details-trigger{font-size:var(--wb-text-caption);text-decoration:none;color:var(--wb-muted)}
+.agent-edit-card>.agent-edit-controls{justify-content:flex-end}
+.agent-edit-card>.agent-edit-controls>[data-testid=agent-edit-approve]{min-width:96px;background:var(--wb-accent);color:var(--wb-accent-foreground);border-color:var(--wb-accent)}
