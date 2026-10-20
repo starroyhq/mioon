@@ -65,11 +65,14 @@ const overrides = new Map([
   ['@mioon/contracts/native-audio-preview', nativeAudioContractsUrl],
   ['@mioon/contracts', data('export {AGENT_PROTOCOLS} from ' + JSON.stringify(new URL('packages/contracts/src/agent-protocol.ts', root).href) + '; export const IMAGE_SETTINGS_LIMITS = {ciphertextCharacters: 49152};')],
   ['@mioon/business/images/settings', data('const accepted = ' + JSON.stringify(imagePlaintexts) + '; export function validateImageSecretPlaintext(value) { if (!accepted.includes(value)) throw Object.assign(new Error("Synthetic Images validation"), {code: "IMAGE_SETTINGS_VALIDATION"}); } export const imageSettingsError = code => Object.assign(new Error("Synthetic Images error"), {code});')],
+  // Video crypto is outside this Agent/Images vault fixture; its fixed namespace
+  // has an independent real-code suite. Importing the new broker grants no crypto.
+  ['../../../packages/business/src/video/settings.ts', data('export function validateVideoSecretPlaintext() { throw Object.assign(new Error("Video credentials are outside this fixture"), {code: "VIDEO_SETTINGS_VALIDATION"}); }')],
   ['@mioon/business/agent/settings-file', data('export const createAgentSettingsFile = ' + forbidden.toString())],
   ['@mioon/contracts/private-storage', data('export const validatePrivateDirectory = ' + forbidden.toString() + '; export const ensurePrivateDirectory = validatePrivateDirectory')],
 ]);
 const approved = new Set(['apps/desktop/src/app-language-text.ts', 'packages/i18n/src/catalogs/native.ts', 'apps/desktop/src/secret-store-linux.ts', 'apps/desktop/src/secret-store.ts', 'apps/desktop/src/image-secret-store.ts',
-  'apps/desktop/src/image-secret-broker.ts', 'apps/desktop/src/secret-broker.ts', 'apps/desktop/src/supervisor.ts',
+  'apps/desktop/src/image-secret-broker.ts', 'apps/desktop/src/video-secret-broker.ts', 'apps/desktop/src/secret-broker.ts', 'apps/desktop/src/supervisor.ts',
   'apps/desktop/src/security.ts', 'apps/desktop/src/timeline-delivery-download.ts', 'apps/desktop/src/exit-diagnostics.ts',
   'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/shutdown.ts', 'packages/business/src/agent/settings.ts', 'packages/business/src/agent/config.ts',
   'packages/business/src/agent/presets.ts']);

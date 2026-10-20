@@ -27,6 +27,7 @@ import { createDesktopStartup } from './startup.ts';
 import { createDesktopAgentSettings } from './secret-store.ts';
 import type {DesktopAgentSettings} from './secret-store.ts';
 import { createDesktopImageSecretCodec } from './image-secret-store.ts';
+import { createDesktopVideoSecretCodec } from './video-secret-store.ts';
 import { createProjectWindowHost } from './project-window-host.ts';
 import type {ProjectWindowFrame, ProjectWindowOwner, ProjectWindowWebContents} from './project-window-host.ts';
 import { createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity } from './native-audio-preview-host.ts';
@@ -196,7 +197,8 @@ async function start(): Promise<DesktopStartReport> {
     let ownedAudioHost: NativeAudioHost | undefined, backendExitObserved = false;
     backend = new BackendSupervisor({ fork: utilityProcess.fork,
       modulePath: path.join(app.getAppPath(), 'backend.cjs'), environment: utilityEnvironment(process.env, tools), agentSettings,
-      imageSecretCodec: createDesktopImageSecretCodec({ safeStorage, appId: identity.appId }) });
+      imageSecretCodec: createDesktopImageSecretCodec({ safeStorage, appId: identity.appId }),
+      videoSecretCodec: createDesktopVideoSecretCodec({ safeStorage, appId: identity.appId }) });
     const ownedBackend = backend, incident = createProjectBackendIncident();
     ownedBackend.on('exit', ({ expected }: {expected?: boolean}) => {
       backendExitObserved = true; ownedAudioHost?.notifyBackendExit();

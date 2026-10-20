@@ -1,0 +1,19 @@
+These SVG assets are sourced from LobeHub Lobe Icons
+(@lobehub/icons-static-svg version 1.90.0, MIT License, Copyright (c) 2023 LobeHub).
+The complete upstream license is included in LICENSE alongside these files.
+
+Source: https://github.com/lobehub/lobe-icons
+Fixed commit: ea0a5d9207d7f4f5dbf35531dcce06c1926e57b6
+Upstream path: packages/static-svg/icons/
+
+- runway.svg: Runway
+- volcengine-color.svg: Volcengine / Ark Seedance
+- google-color.svg: Google / Veo
+- minimax-color.svg: MiniMax
+- vidu-color.svg: Vidu
+- kling-color.svg: Kling
+- alibabacloud-color.svg: Alibaba Cloud / Wan
+
+Volcengine, Google and Alibaba Cloud identify the original providers, rather
+than implying that this package contains separate Seedance, Veo or Wan marks.
+Brand names and trademarks belong to their respective owners.

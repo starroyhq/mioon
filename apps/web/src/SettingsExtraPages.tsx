@@ -6,7 +6,7 @@ import type { WorkspaceInfo } from '../../../packages/contracts/src/workspace-in
 import { browserRpc } from './browser-rpc.ts';
 
 const services = [
-  { id: 'runway', label: 'Runway', variable: 'RUNWAYML_API_SECRET' }, { id: 'ark', label: 'Ark', variable: 'ARK_API_KEY' },
+  { id: 'ark', label: 'Ark', variable: 'ARK_API_KEY' },
   { id: 'veo', label: 'Gemini', variable: 'GEMINI_API_KEY' }, { id: 'minimax', label: 'MiniMax', variable: 'MINIMAX_API_KEY' },
   { id: 'vidu', label: 'Vidu', variable: 'VIDU_API_KEY' },
 ] as const;
@@ -23,7 +23,7 @@ export function SettingsModelServices({ active }: { active: boolean }) {
     }).catch(() => { if (live) setFailed(true); });
     return () => { live = false; abort.abort(); };
   }, [active, version]);
-  return <section className="settings-services" data-testid="settings-model-services"><p className="settings-appearance-hint">{t('redesign.settings.serverOnly')}</p>
+  return <section className="settings-services" data-testid="settings-model-services"><h3>{t('video.providers.environment')}</h3><p className="settings-appearance-hint">{t('redesign.settings.serverOnly')}</p>
     {failed && <p role="alert">{t('redesign.settings.statusFailed')}</p>}
     <dl>{services.map(service => <div key={service.id}><dt>{service.label}<code>{service.variable}</code></dt><dd><WorkbenchBadge tone={status?.[service.id] ? 'success' : 'neutral'}>{status ? t(status[service.id] ? 'redesign.settings.configured' : 'redesign.settings.notConfigured') : t('projects.loadingList')}</WorkbenchBadge></dd></div>)}</dl>
     <WorkbenchButton variant="ghost" disabled={!active} onClick={() => { if (active) refresh(value => value + 1); }}>{t('projects.refreshList')}</WorkbenchButton>

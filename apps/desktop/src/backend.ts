@@ -6,6 +6,7 @@ import type {MediaProcessEvent} from '@mioon/business/media-processes';
 import { initializeSubtitleResources } from '@mioon/business/subtitle-resources';
 import { createAgentSettingsClient } from './secret-broker.ts';
 import { createImageSecretClient } from './image-secret-broker.ts';
+import { createVideoSecretClient } from './video-secret-client.ts';
 import { createNativeAudioPreviewAuthority } from '@mioon/business/native-audio-preview';
 import type {NativeAudioPreviewAuthority} from '@mioon/business/native-audio-preview';
 
@@ -41,6 +42,7 @@ let initialization: Promise<void> | undefined;
 let nativeAudioPreview: NativeAudioPreviewAuthority | undefined;
 const agentSettings = createAgentSettingsClient({ port: process.parentPort });
 const imageSecretCodec = createImageSecretClient({ port: process.parentPort });
+const videoSecretCodec = createVideoSecretClient({ port: process.parentPort });
 onMediaProcess(({ type, pid, kind }: MediaProcessEvent) => process.parentPort!.postMessage({ type: 'media-process', event: type, pid, kind }));
 async function shutdown(reason: ExitDiagnosticReason) {
   if (closing) return;
@@ -52,6 +54,7 @@ async function shutdown(reason: ExitDiagnosticReason) {
   catch { exitCode = 1; }
   try { agentSettings.close(); } catch { exitCode = 1; }
   try { imageSecretCodec.close(); } catch { exitCode = 1; }
+  try { videoSecretCodec.close(); } catch { exitCode = 1; }
   if (exitCode !== 0) reportExitDiagnostic('shutdown-failed');
   try {
     process.parentPort!.postMessage(exitCode === 0 ? { type: 'stopped' } : {
@@ -78,11 +81,12 @@ process.parentPort.on('message', ({ data }) => {
       // A missing/locked OS vault disables persistent Images writes; it never
       // turns them into plaintext writes or prevents unrelated editing startup.
       try { await imageSecretCodec.refreshStorage(); } catch { /* Fail-closed cached availability. */ }
+      try { await videoSecretCodec.refreshStorage(); } catch { /* Session-only remains available. */ }
       initializeSubtitleResources(data.subtitleResourcesDir);
       // A desktop utility without the fixed public-key gate must never fall
       // back to the ordinary Web PCM lane because main wiring was incomplete.
       nativeAudioPreview = createNativeAudioPreviewAuthority(data.nativeAudioPreview);
-      server = await startServer({ comfyModule: comfyModuleModeFromEnvironment(process.env.MIOON_COMFY_MODULE), dataDir: data.dataDir, port: 0, distDir: data.distDir, token: data.token, agentSettings, imageSecretCodec, nativeAudioPreview, localDraftChannel: __MIOON_DESKTOP_CHANNEL__ });
+      server = await startServer({ comfyModule: comfyModuleModeFromEnvironment(process.env.MIOON_COMFY_MODULE), dataDir: data.dataDir, port: 0, distDir: data.distDir, token: data.token, agentSettings, imageSecretCodec, videoSecretCodec, nativeAudioPreview, localDraftChannel: __MIOON_DESKTOP_CHANNEL__ });
       if (!closing) process.parentPort!.postMessage({ type: 'ready', url: server.url,
         runtime: { electron: process.versions.electron, node: process.versions.node, sqlite: process.versions.sqlite, pid: process.pid } });
     } catch (error) {
@@ -94,6 +98,7 @@ process.parentPort.on('message', ({ data }) => {
       clearInterval(lease);
       agentSettings.close();
       imageSecretCodec.close();
+      videoSecretCodec.close();
       process.exitCode = 1;
       setImmediate(() => process.exit(1));
     }

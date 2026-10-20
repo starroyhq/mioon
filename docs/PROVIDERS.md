@@ -1,5 +1,73 @@
 # Video provider adapters
 
+## UI-configured provider connections (2026-10-20)
+
+Open **Settings → Model services** to add named connections for Ark Seedance,
+Google Veo, MiniMax, Vidu, Kling and Alibaba Wan. Each connection has
+its own regional credentials and model directory. The application derives API
+addresses from official region templates; third-party relays, arbitrary API
+origins and executable provider scripts are not supported. Wan also accepts an
+official workspace ID. Multiple accounts of the same provider remain separate.
+
+Runway is omitted from the UI's connection and generation choices. Its stored
+configuration and adapter remain readable for historical task recovery; removing
+it from the choices does not delete data or silently switch an existing selection.
+
+Add or edit a model's request ID, label, protocol template, input modes, ratios,
+duration/resolution combinations, audio policy and seed support. These are bounded
+by the implemented template, not a declaration that every vendor model is
+compatible. Custom entries remain **not live verified**. The directory is managed
+manually; saving does not discover models, probe accounts or generate media.
+Kling initially uses the current API-Key protocol with `kling-3.0`; Wan uses the
+2.7 text and first-frame templates (`wan2.7-t2v`, `wan2.7-i2v`), not the older
+2.6 request shape. Reference video/audio and arbitrary workflow import are outside
+this increment. Existing Ark frame-pair and one-image subject modes are retained.
+
+Enter the API key, choose its storage scope and explicitly enable the connection.
+Web keys last for the backend lifetime. Desktop can use the existing supported OS
+encrypted storage; unavailable secure storage has no plaintext fallback. Settings
+reads disclose only configuration and storage status. Video keys are isolated from
+Agent and Images credentials and never enter jobs, versions, logs or backups.
+For Vidu, Kling and Wan, configure independently reviewed exact output hostnames
+under Advanced before submitting; no output host is inferred from a generation
+response. Existing providers retain their existing default output-host policy.
+
+The generation panel selects an explicit connection and directory entry. The
+existing paid-generation confirmation reviews the selected destination, model,
+parameters and references. This confirmation authorizes the frozen managed image
+hashes for that task, so UI connections do not need the legacy environment flags
+or hash lists. Actual bytes, ownership, MIME type, dimensions, hashes and output
+media continue to be checked. Configuration alone grants no generation request.
+
+Every accepted task pins its connection revision, protocol/model configuration,
+region, endpoint and an opaque credential reference. Editing, disabling or
+archiving a connection never retargets an existing task. Removed/session-expired
+credentials pause the task; explicitly restore the corresponding historical
+credential to resume. Replacing the current key does not silently change old
+tasks. Unknown acceptance is never resubmitted, and download recovery does not
+create another paid task. Kling can reconcile an existing external request ID;
+an empty lookup still does not authorize a POST. Successful outputs use the
+existing decode checks, asset publication and immutable version transaction.
+
+Connection configuration and encrypted credentials live in the private
+`video-settings/settings.json` sidecar, excluded from business backups. No SQL
+tables or historical schema constructors change. Restored/candidate workspaces
+cannot configure or execute these connections. The five environment-configured
+adapters remain independent: old requests and jobs never acquire a UI connection.
+
+Private management uses `GET/PUT /api/video-providers/settings`, with
+`expectedRevision` on writes. Read-only `video.connection.list` returns safe
+connection/model capabilities; `provider.list` retains its previous response.
+New generation submissions supply `connectionId`, `configurationRevision` and
+`modelEntryId` together, optionally selecting supported `resolution` and
+`generateAudio` parameters. The shared CLI/MCP schemas can read the directory and
+select an existing connection; configuration management is available only through
+the private UI route and never exposes credentials to these tools or the Agent.
+
+The notes below describe the original environment-configured adapter baseline;
+their enable flags and image approval lists still apply to that legacy path.
+The supported UI protocols remain offline tested rather than real-account verified.
+
 Implementation and official documentation checked 2026-10-09. No live generation, external reference upload, account mutation, paid call, or remote cancellation has been performed for any real provider. Live verification remains **pending separate authorization**. Passing injected-HTTP tests does not establish account eligibility, real provider availability, output quality, price, or end-to-end generation.
 
 The production registry now publishes and enforces [exact model input limits](GENERATION-INPUT-LIMITS.md), including the dated Veo lifecycle policy. These implemented app profiles do not enable broader vendor reference modes.
