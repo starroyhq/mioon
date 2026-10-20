@@ -137,6 +137,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ffmpeg tar fonts-dejavu-core fonts-noto-cjk \
+            build-essential pkg-config nasm yasm xz-utils \
+            libx264-dev libass-dev libfontconfig1-dev libfreetype6-dev \
+            libharfbuzz-dev libwebp-dev libzimg-dev libfribidi-dev libvpx-dev libmp3lame-dev zlib1g-dev \
             libgtk-3-0 libnss3 libgbm1 libasound2 libatk-bridge2.0-0 \
             libxss1 libdrm2 libx11-xcb1 xvfb dbus-x11 xdotool
 
@@ -161,10 +164,14 @@ jobs:
       - name: Install frozen dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install verified FFmpeg 7.1.5 from source
+        if: runner.os == 'Linux'
+        run: node .github/scripts/install-ffmpeg.ts
+
       - name: Resolve external media tools and probe capabilities
         id: media
         run: |
-          node --input-type=module -e 'import {realpathSync,appendFileSync} from "node:fs"; import {execFileSync} from "node:child_process"; for(const [key,name] of [["MIOON_FFMPEG_PATH","ffmpeg"],["MIOON_FFPROBE_PATH","ffprobe"]]){const value=realpathSync(execFileSync("which",[name],{encoding:"utf8"}).trim()); appendFileSync(process.env.GITHUB_ENV,key+"="+value+"\n");}'
+          node --input-type=module -e 'import {realpathSync,appendFileSync} from "node:fs"; import {execFileSync} from "node:child_process"; for(const [key,name] of [["MIOON_FFMPEG_PATH","ffmpeg"],["MIOON_FFPROBE_PATH","ffprobe"]]){const value=realpathSync(process.env[key] || execFileSync("which",[name],{encoding:"utf8"}).trim()); appendFileSync(process.env.GITHUB_ENV,key+"="+value+"\n");}'
           node .github/scripts/media-environment.ts --platform="$MIOON_PLATFORM" --output="artifacts/desktop-$MIOON_TARGET/media.json"
 
       - name: Build production application

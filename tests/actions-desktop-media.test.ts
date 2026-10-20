@@ -4,8 +4,13 @@ import {mkdtemp, realpath, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {startServer} from '../apps/server/src/index.ts';
-import {command, executable} from '../.github/scripts/media-environment.ts';
+import {command, executable, probeMediaCli} from '../.github/scripts/media-environment.ts';
 import {exerciseComposition, smokeEnvironment} from '../.github/scripts/desktop-smoke.ts';
+
+test('required file-valued filters, fps_mode and PNG encoding-decoding execute real single-frame probes', {timeout: 60000}, async () => {
+  const ffmpeg = await executable('ffmpeg', process.env.MIOON_FFMPEG_PATH);
+  assert.deepEqual(await probeMediaCli(ffmpeg), {filterArgumentFromFile: true, complexFilterArgumentFromFile: true, fpsModePassthrough: true, pngEncode: true, pngDecode: true});
+});
 
 // Source-only integration of the exact native-smoke HTTP recipe. It does not
 // claim Electron window, signing, notarization or native shutdown verification.

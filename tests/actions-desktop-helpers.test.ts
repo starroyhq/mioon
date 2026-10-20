@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp, readFile, rm} from 'node:fs/promises';
+import {mkdtemp, readFile, readdir, realpath, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {argumentsFor, cleanEnvironment, command, mediaCapabilities, safeFailure, targetArch, targetPlatform, CheckFailure, report} from '../.github/scripts/media-environment.ts';
+import {argumentsFor, cleanEnvironment, command, mediaCapabilities, probeMediaCli, safeFailure, targetArch, targetPlatform, CheckFailure, report} from '../.github/scripts/media-environment.ts';
 import {boundedPoll, extractedTarFor, mountedDmgFor, smokeEnvironment, smokeTimeouts, validateDiscovery} from '../.github/scripts/desktop-smoke.ts';
 import {validateArchitecture, validateTarListing, verifySigningIdentity} from '../.github/scripts/inspect-desktop.ts';
 
@@ -22,6 +22,26 @@ test('strict Linux media admission requires every named filter and encoder', () 
   assert.equal(mediaCapabilities('linux', filters.replace(' subtitles ', ' unavailable '), encoders).filters.subtitles, false);
   assert.equal(mediaCapabilities('linux', filters, encoders.replace(' libwebp_anim ', ' libwebp_anim_fake ')).encoders.libwebp_anim, false);
   assert.deepEqual(mediaCapabilities('darwin', '', ' V....D libx264 fixture\n A..... aac fixture'), {filters: {}, encoders: {libx264: true, aac: true}});
+});
+
+test('CLI capability probes keep scripts private and clean them after success and parser failure', async () => {
+  const directory = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-cli-probe-test-'));
+  try {
+    const calls: string[] = [];
+    const run: typeof command = async (_file, args, code) => {
+      calls.push(code);
+      for (const flag of ['-/filter:v', '-/filter_complex']) if (args.includes(flag)) {
+        const file = args[args.indexOf(flag) + 1];
+        assert.equal(await readFile(file, 'utf8'), flag === '-/filter:v' ? 'null' : '[0:v]null[outv]');
+        assert.ok(path.basename(file).includes(' '), 'file argument must remain one argv element');
+      }
+      return '';
+    };
+    assert.deepEqual(await probeMediaCli('synthetic-tool', {temporaryRoot: directory, execute: run}), {filterArgumentFromFile: true, complexFilterArgumentFromFile: true, fpsModePassthrough: true, pngEncode: true, pngDecode: true});
+    assert.equal(calls.length, 5); assert.deepEqual(await readdir(directory), []);
+    await assert.rejects(probeMediaCli('synthetic-tool', {temporaryRoot: directory, execute: async () => { throw new CheckFailure('FFMPEG_FILTER_FILE_ARGUMENT_UNSUPPORTED'); }}), {message: 'FFMPEG_FILTER_FILE_ARGUMENT_UNSUPPORTED'});
+    assert.deepEqual(await readdir(directory), []);
+  } finally { await rm(directory, {recursive: true, force: true}); }
 });
 
 test('native child environment cannot inherit provider, GitHub, Apple or Node injection secrets', () => {

@@ -31,6 +31,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ffmpeg tar fonts-dejavu-core fonts-noto-cjk \
+            build-essential pkg-config nasm yasm xz-utils \
+            libx264-dev libass-dev libfontconfig1-dev libfreetype6-dev \
+            libharfbuzz-dev libwebp-dev libzimg-dev libfribidi-dev libvpx-dev libmp3lame-dev zlib1g-dev \
             libgtk-3-0 libnss3 libgbm1 libasound2 libatk-bridge2.0-0 \
             libxss1 libdrm2 libx11-xcb1 xvfb dbus-x11 xdotool
 
@@ -49,6 +52,9 @@ jobs:
 
       - name: Install frozen dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Install verified FFmpeg 7.1.5 from source
+        run: node .github/scripts/install-ffmpeg.ts
 
       - name: Check workflow syntax
         run: |
@@ -148,7 +154,7 @@ jobs:
 
       - name: Test CI and release helpers
         id: helpers
-        run: node --test --test-reporter=tap tests/actions-release.test.ts tests/actions-desktop-helpers.test.ts
+        run: node --test --test-reporter=tap tests/actions-release.test.ts tests/actions-desktop-helpers.test.ts tests/actions-ffmpeg-install.test.ts
 
       - name: Write safe diagnostics
         if: always()

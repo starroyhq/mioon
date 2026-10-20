@@ -11,6 +11,7 @@
 | `pnpm install --frozen-lockfile` | 通过，复用 397 个依赖，锁文件未改 |
 | `node scripts/tooling.ts typecheck` | 通过，包含 `.github/scripts/**/*.ts` |
 | `node scripts/tooling.ts build --channel=development` | 通过 |
+| `node scripts/tooling.ts build --channel=production` | 本地暂存构建通过，未等同安装包验收 |
 | `node scripts/tooling.ts test --suite=portable --concurrency=1 --reporter=tap` | 98/98 通过，无跳过 |
 | `node --test tests/actions-release.test.ts tests/actions-desktop-helpers.test.ts tests/actions-desktop-media.test.ts` | 30/30 通过，无跳过 |
 | actionlint `1.7.12`、`git diff --check` | 通过 |
@@ -27,6 +28,12 @@
 [首轮运行](https://github.com/starroyhq/mioon/actions/runs/39387931266) 的 Ubuntu actionlint 启用了本机未安装的 shellcheck，指出内嵌 JavaScript 模板字符串的 SC2016 提示；已改为等价字符串拼接，保留完整 lint 门禁。独立审查发现的组合符号链接逃逸边界也已补回归：Linux 归档链接禁止向上路径段，实际包不符合时严格拒绝
 
 [跨平台运行](https://github.com/starroyhq/mioon/actions/runs/39388344465) 中 macOS 全部通过；Windows 的两个既有 portable 测试暴露原生路径键与换行问题。已统一编译测试的路径键并增加 Windows 路径回归；`.gitattributes` 仅固定五个字幕资源的字节表示，原生产尺寸和 SHA 校验保持不变。临时 Git 索引模拟 `core.autocrlf=true`，确认四份文本未经约束时全部偏离既有尺寸/哈希，应用属性后全部恢复；相关两文件本地 17/17 通过
+
+后续 Ubuntu 日志确认系统包为 FFmpeg 4.4.2。对照官方 [4.4.2 参数实现](https://raw.githubusercontent.com/FFmpeg/FFmpeg/n4.4.2/fftools/cmdutils.c)与 [7.1.5 参数实现](https://raw.githubusercontent.com/FFmpeg/FFmpeg/n7.1.5/fftools/cmdutils.c)，前者不支持当前生产代码的文件值参数；`-fps_mode` 也不在 4.4 中。CI 改为校验固定源码哈希后构建 7.1.5，保留 Ubuntu 22.04 和生产参数，新增真实命令探针，防止仅滤镜列表通过便进入长时间全量测试。官方源码压缩包签名已用发布密钥指纹 `FCF986EA15E6E293A5644F10B4322F04D67658D8` 独立核验；未导入用户钥匙环
+
+已知环境不兼容的[运行](https://github.com/starroyhq/mioon/actions/runs/39389024360)主动取消，其 Linux full 不计为通过；该轮 macOS、Windows 各有 portable 99/99、辅助 29/29 通过。后续完整复验使用固定工具环境，继续保留全部既有测试
+
+固定工具安装与实际参数/PNG探针补齐后，本地严格类型检查、actionlint、diff-check通过；发布、原生辅助、工具安装及真实媒体测试合计 **41/41 通过，无跳过**。源码编译的实际结果由 Ubuntu 后续运行验证，本机未冒充 Linux 编译通过
 
 签名发布尚未验收：仓库级 Apple Secrets 当前为空，组织级授权未知；本地没有最终签名安装包。需要维护者配置文档列出的七项凭据，并在工作流合入 main 后运行 `release_tag` 留空的演练，实际完成三平台打包、macOS 签名和公证、Gatekeeper 与最终包原生冒烟
 
