@@ -16,6 +16,31 @@ import {readCurrentWorkspaceRole} from '../packages/business/src/workspace-schem
 const ordinary = {schemaVersion: 42, profile: 'ordinary'};
 const restored = {schemaVersion: 43, sourceSchema: 42, profile: 'restored-local-v10'};
 const root = new URL('../', import.meta.url);
+// b3ce8bf added clip LRA exports and narrowed historical loudness admission.
+// Reverse only these exact unique additions when comparing the unchanged
+// current-runtime pins; historical bytes and classifier tests remain intact.
+const loudnessRangeInverses = Object.freeze({
+  'packages/business/src/workspace-volume-envelope-validation.ts': Object.freeze([
+    {before: '', after: '// Historical workspace profiles admit the original observation shape only.\n// New ephemeral LRA/target candidates do not extend old backup evidence.\nconst historicalClipLoudness=(value:Record<string,unknown>):boolean=>\n ![\'loudnessRange\',\'target\',\'candidate\'].some(key=>own(value,key))&&isTimelineClipLoudnessResponse(value);\n'},
+    {before: 'if(!isTimelineClipLoudnessResponse(value)&&!isTimelineMixLoudnessResponse(value))invalid(true);', after: 'if(!historicalClipLoudness(value)&&!isTimelineMixLoudnessResponse(value))invalid(true);'},
+  ]),
+  'packages/contracts/package.json': Object.freeze([
+    {before: '', after: '    "./loudness-range": "./src/loudness-range.ts",\n'},
+  ]),
+  'packages/contracts/src/index.mjs': Object.freeze([
+    {before: '', after: "export * from './loudness-range.ts';\n"},
+  ]),
+});
+function reverseReviewedLoudnessRange(file, bytes) {
+  const inverses = loudnessRangeInverses[file];
+  if (!inverses) return bytes;
+  let source = bytes.toString('utf8');
+  for (const inverse of inverses) {
+    assert.equal(source.split(inverse.after).length - 1, 1, `${file}: reviewed loudness-range inverse must match exactly once`);
+    source = source.replace(inverse.after, inverse.before);
+  }
+  return Buffer.from(source);
+}
 
 test('only explicit dormant42/43 descriptors are accepted, with no numeric inheritance', () => {
   assert.deepEqual([OPACITY_ORDINARY_SCHEMA_CANDIDATE, OPACITY_RESTORED_SCHEMA_CANDIDATE, OPACITY_RESTORED_PROFILE_CANDIDATE], [42, 43, 'restored-local-v10']);
@@ -137,8 +162,9 @@ test('historical25–41 pins survive only finite reviewed integration deltas and
     assert.equal(sha256(reverseReviewed(path, bytes, pinned)), pinned, path);
     const mapping=currentMap.mapping[path],currentPath=mapping?.currentPath??path,currentBytes=readFileSync(new URL(currentPath,root));
     const assertCurrent=value=>{
-      assert.equal(sha256(value),mapping?.currentRawSha256??sha256(bytes),`${path}: current raw source`);
-      if(mapping?.typeErasedSha256!==null&&mapping?.typeErasedSha256!==undefined)assert.equal(sha256(transformSync(value.toString('utf8'),{loader:'ts',format:'esm',target:'es2022'}).code),mapping.typeErasedSha256,`${path}: current executable source`);
+      const reviewed=reverseReviewedLoudnessRange(path,value);
+      assert.equal(sha256(reviewed),mapping?.currentRawSha256??sha256(bytes),`${path}: current raw source`);
+      if(mapping?.typeErasedSha256!==null&&mapping?.typeErasedSha256!==undefined)assert.equal(sha256(transformSync(reviewed.toString('utf8'),{loader:'ts',format:'esm',target:'es2022'}).code),mapping.typeErasedSha256,`${path}: current executable source`);
     };
     if(mapping){assert.equal(mapping.historicalSourceSha256,sha256(bytes));assert.equal(mapping.baselineRawSha256,sha256(gitSource(currentMap.baselineCommit,currentPath)));assert.ok(mapping.authorization.length>40);}
     assertCurrent(currentBytes);
@@ -150,6 +176,23 @@ test('historical25–41 pins survive only finite reviewed integration deltas and
   assert.equal(unchanged, 63); assert.equal(exception.unchangedBaselineFiles, unchanged);
   assert.equal(rawUnchanged, 54);
   t.diagnostic('Fixed49a548f source:54 original files retain raw SHA-256 bytes; ten finite inverse deltas recover all63 dependency pins and the approved renderer seam. Original64-file manifest unchanged; current typed/runtime sources independently pinned with byte-drift negative cases');
+});
+
+test('finite LRA inverses preserve all prior raw/runtime pins and reject changed, duplicated or unknown additions', () => {
+  const map = JSON.parse(readFileSync(new URL('./fixtures/opacity-current-ts-runtime-map.json', import.meta.url))).mapping;
+  const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
+  for (const [file, inverses] of Object.entries(loudnessRangeInverses)) {
+    const mapping = map[file], bytes = readFileSync(new URL(mapping.currentPath, root)), source = bytes.toString('utf8');
+    const assertPinned = value => {
+      const reviewed = reverseReviewedLoudnessRange(file, Buffer.from(value));
+      assert.equal(sha256(reviewed), mapping.currentRawSha256, `${file}: unchanged current raw pin`);
+      if (mapping.typeErasedSha256 !== null) assert.equal(sha256(transformSync(reviewed.toString('utf8'), {loader: 'ts', format: 'esm', target: 'es2022'}).code), mapping.typeErasedSha256, `${file}: unchanged executable pin`);
+    };
+    assertPinned(source);
+    for (const inverse of inverses) {
+      for (const changed of [source.replace(inverse.after, inverse.after + ' '), source.replace(inverse.after, inverse.after + inverse.after), source.replace(inverse.after, ''), source + '\n// synthetic unreviewed source addition\n']) assert.throws(() => assertPinned(changed));
+    }
+  }
 });
 
 test('candidate modules remain absent from production exports, startup, operations and permissions', () => {

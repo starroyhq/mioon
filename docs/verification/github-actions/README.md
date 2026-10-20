@@ -13,7 +13,7 @@
 | `node scripts/tooling.ts build --channel=development` | 通过 |
 | `node scripts/tooling.ts build --channel=production` | 本地暂存构建通过，未等同安装包验收 |
 | `node scripts/tooling.ts test --suite=portable --concurrency=1 --reporter=tap` | 98/98 通过，无跳过 |
-| `node --test tests/actions-release.test.ts tests/actions-desktop-helpers.test.ts tests/actions-desktop-media.test.ts` | 30/30 通过，无跳过 |
+| `node --test tests/actions-{release,desktop-helpers,desktop-media,ffmpeg-install,test-shards}.test.ts` | 49/49 通过，无跳过 |
 | actionlint `1.7.12`、`git diff --check` | 通过 |
 | macOS 基础 FFmpeg/ffprobe 探针 | 通过；仅证明本地合成所需基础编码能力 |
 
@@ -42,6 +42,14 @@
 导出两项旧断言按已合入 `01a83cb` 的输出保护升级同步：持久记录遭替换时精确保留本次唯一空 part 的名称/inode/字节和全部文件集合；输出 inode 被替换时先报告输出身份错误，替换字节与 inode 必须原样保留。生产清理和所有权围栏未改。定点 6/6、整文件 19/20 通过；唯一未通过项为本机缺字幕滤镜的画幅矩阵，留给 Linux 实际复验
 
 分片辅助测试 8/8、当前 785 文件的真实 full 选择校验、严格类型和 actionlint 通过；四片为 197/196/196/196 文件，并集完整、无重复，全集 SHA-256 一致。历史保留测试 13/13、两份 Agent harness 24/24 与 18/18、说明文案测试 17/17 均通过
+
+[首次四分片运行](https://github.com/starroyhq/mioon/actions/runs/39395989355) 的 macOS、Windows 各通过 portable 99/99、辅助 47/47，无跳过。Linux 分片 2 的 3687 项中仅一项失败：历史渲染回归需要 `git show` 固定旧提交，而默认浅克隆缺少对应对象。该提交仍属于干净 main 的祖先，原源码哈希保持不变；Linux full 改为完整检出历史，继续执行原回归，不替换基线或放宽哈希
+
+该轮 Linux 四片均执行完成，785 个文件覆盖清单已下载核对：同一源码 SHA、同一全集哈希、并集完整且互不重叠。合计 12687 项，12678 通过、7 失败、2 个既有条件跳过、0 取消。失败归为浅克隆两项、已合入 LRA 扩展的历史源码比较两项、当前普通 schema 的旧期望一项、已合入导出所有权围栏的保守清理期望两项。历史比较继续使用原哈希和有限精确逆变换，清理检查继续核对确切 inode、字节、请求回执和完整文件集合；未改生产业务行为
+
+两项既有跳过分别要求 POSIX 更换文件所有者能力和原生 Windows ACL 环境；非 root Linux runner 不伪装这些能力，也不将其报告为通过。后续完整复验结果见 PR 的最新 `CI` 检查
+
+本地修复验证：原历史渲染回归 1/1、opacity 历史比较 7/7、restore 源码保护 77/77、两处 owner 回归 2/2 通过。preflight 整文件 45/46，唯一未通过项为本机缺 `libwebp`，该项在上述 Linux 完整运行已通过；Look 媒体链仍受本机缺 `zscale` 限制，独立真实备份/恢复已确认普通 50 → 备份 50 → 恢复 51，完整链留给固定工具环境复验
 
 签名发布尚未验收：仓库级 Apple Secrets 当前为空，组织级授权未知；本地没有最终签名安装包。需要维护者配置文档列出的七项凭据，并在工作流合入 main 后运行 `release_tag` 留空的演练，实际完成三平台打包、macOS 签名和公证、Gatekeeper 与最终包原生冒烟
 
