@@ -18,9 +18,9 @@ const hash=z.string().regex(/^[a-f0-9]{64}$/);
 const uuid='[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}';
 const media=new RegExp(`^payload/media/(?:${uuid}\\.(?:png|jpg|jpeg|webp|mp4|webm|wav|mp3|m4a)|result-${uuid}\\.mp4(?:\\.part\\.mp4)?|export-${uuid}-${uuid}\\.mp4(?:\\.part\\.mp4)?)$`,'i');
 const stage=new RegExp(`^payload/(image|frame)-staging/${uuid}\\.(png|json)$`,'i');
-export function isWorkspaceBackupPayloadPath(value: unknown): boolean {return typeof value==='string'&&(value==='payload/workbench.sqlite'||media.test(value)||stage.test(value));}
+export function isWorkspaceBackupPayloadPath(value: unknown): boolean {return typeof value==='string'&&(value==='payload/workbench.sqlite'||media.test(value)||stage.test(value)||new RegExp(`^payload/agent-imports/${uuid}\\.bin$`,'i').test(value));}
 const payloadPath=z.string().max(240).refine(isWorkspaceBackupPayloadPath,{message:'Expected a canonical fixed backup payload path.'});
-const issuePath=z.string().max(240).regex(/^payload\/(?:media|image-staging|frame-staging)\/[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/);
+const issuePath=z.string().max(240).regex(/^payload\/(?:media|image-staging|frame-staging|agent-imports)\/[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/);
 export const workspaceBackupInventorySchema=z.object({
  complete:z.boolean(),totalIssues:integer,
  issues:z.array(z.object({code:z.enum(WORKSPACE_BACKUP_ISSUE_CODES),path:issuePath.optional()}).strict()).max(WORKSPACE_BACKUP_LIMITS.issues),
@@ -29,7 +29,7 @@ export const workspaceBackupInventorySchema=z.object({
  if(value.totalIssues<value.issues.length||value.truncated!==(value.totalIssues>value.issues.length)||value.complete!==(value.totalIssues===0))ctx.addIssue({code:z.ZodIssueCode.custom,message:'Inventory issue totals and completeness disagree.'});
 });
 export const workspaceBackupEntrySchema=z.object({
- path:payloadPath,role:z.enum(['database','asset','image_stage','frame_stage','receipt_media','uncommitted_video','uncommitted_export']),
+ path:payloadPath,role:z.enum(['database','asset','image_stage','frame_stage','receipt_media','uncommitted_video','uncommitted_export','agent_import']),
  bytes:integer.max(WORKSPACE_BACKUP_LIMITS.fileBytes),sha256:hash,
 }).strict().superRefine((value,ctx)=>{
  const valid=value.role==='database'?value.path==='payload/workbench.sqlite'&&value.bytes>0&&value.bytes<=WORKSPACE_BACKUP_LIMITS.databaseBytes:
@@ -37,6 +37,7 @@ export const workspaceBackupEntrySchema=z.object({
  value.role==='frame_stage'?value.path.startsWith('payload/frame-staging/'):
  value.role==='uncommitted_video'?value.path.startsWith('payload/media/result-'):
  value.role==='uncommitted_export'?value.path.startsWith('payload/media/export-'):
+ value.role==='agent_import'?value.path.startsWith('payload/agent-imports/'):
  value.role==='receipt_media'?new RegExp(`^payload/media/${uuid}\\.png$`,'i').test(value.path):media.test(value.path);
  if(!valid)ctx.addIssue({code:z.ZodIssueCode.custom,message:'Payload role does not match its path or size.'});
 });
@@ -46,6 +47,7 @@ export const workspaceBackupManifestSchema=z.object({
  databaseSchemaVersion:workspaceBackupSourceSchemaVersion,scope:z.literal('whole_workspace'),
  entries:z.array(workspaceBackupEntrySchema).min(1).max(WORKSPACE_BACKUP_LIMITS.fileCount),inventory:workspaceBackupInventorySchema,
 }).strict().superRefine((value,ctx)=>{
+ if(value.databaseSchemaVersion!==52&&value.entries.some(entry=>entry.role==='agent_import'))ctx.addIssue({code:z.ZodIssueCode.custom,message:'Managed Agent inputs require the exact schema52 backup source.'});
  let bytes=0;const paths=new Set();let databases=0,previous='';
  for(const entry of value.entries){bytes+=entry.bytes;if(paths.has(entry.path)||entry.path<=previous)ctx.addIssue({code:z.ZodIssueCode.custom,message:'Entries must have unique, lexically sorted paths.'});paths.add(entry.path);previous=entry.path;if(entry.role==='database')databases++;}
  if(databases!==1||bytes>WORKSPACE_BACKUP_LIMITS.totalBytes)ctx.addIssue({code:z.ZodIssueCode.custom,message:'Exactly one database and a bounded total payload are required.'});

@@ -30,7 +30,7 @@ async function fixture(t: TestContext){
 const target=(input: Record<string, unknown>)=>({destination:input.destination,model:input.model,scope:input.scope});
 
 test('closed scopes reject arbitrary authority fields and distinguish move from gain',()=>{
-  assert.equal(AGENT_AUTHORIZATION_SCOPES.length,5);
+  assert.equal(AGENT_AUTHORIZATION_SCOPES.length,6);
   const base={requestId:randomUUID(),expectedRevision:0,expectedSettingsRevision:0,destination:'https://api.openai.com/v1/responses',model:'gpt-test'};
   for(const scope of AGENT_AUTHORIZATION_SCOPES)assert.ok(agentAuthorizationSchemas['agent.authorization.grant'].safeParse({...base,scope}).success);
   for(const patch of [{scope:'all'},{scope:'project_inspection',secret:'never'},{scope:'typed_chat_only',destination:'https://user:secret@api.openai.com/v1/responses'},{scope:'typed_chat_only',destination:'https://api.openai.com/v1/../responses'}])

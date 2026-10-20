@@ -30,7 +30,7 @@ function component(locale: Locale = 'en'): ComponentHarness {
   const state = { scope: 's', ownerScope: 'o', projectId, assetIds: [assetId], version: 1, dirtyCount: 1, uncertainCount: 0, entries: { [assetId]: { row: { revision: 0, tags: [], note: '' }, draft: { tags: ['<tag>'], note: '<b>literal</b>', tagInput: '' }, dirty: true, verified: true, loading: false, saving: false, uncertain: false, conflict: false } } };
   const controller = { getState: () => state, save: () => { saved++; }, editNote: (id: string, note: string) => { edited.push([id, note]); }, editTagInput() {}, addTag() {}, removeTag() {}, clear() {}, discard() {}, refresh() {}, discardRetained: (version: number) => { discarded.push(version); } };
   props = { asset: { id: assetId, projectId, name: 'Named asset' }, state, controller, blocked: false, confirm: async () => true };
-  Function('module', 'exports', 'require', compile('AssetAnnotations.tsx'))(module, module.exports, (name: string) => name === 'react' ? h.react : name.includes('I18nProvider') ? { useI18n: () => ({ t: (key: string, params?: Record<string, unknown>) => translate(locale, key as never, params as never), renderMessage: (value: unknown) => renderMessage(locale, value as never), formatNumber: (value: number) => formatNumber(locale, value) }) } : name.includes('workspace-visibility') ? { useWorkspaceVisibility: () => visible } : name.includes('/button') ? { Button: 'button' } : name.includes('/input') ? { Input: 'input' } : name.includes('/textarea') ? { Textarea: 'textarea' } : assert.fail(name));
+  Function('module', 'exports', 'require', compile('AssetAnnotations.tsx'))(module, module.exports, (name: string) => name === 'react' ? h.react : name.includes('I18nProvider') ? { useI18n: () => ({ t: (key: string, params?: Record<string, unknown>) => translate(locale, key as never, params as never), renderMessage: (value: unknown) => renderMessage(locale, value as never), formatNumber: (value: number) => formatNumber(locale, value) }) } : name.includes('AgentEditingBoundary') ? { __esModule: true, default: 'editing-boundary' } : name.includes('workspace-visibility') ? { useWorkspaceVisibility: () => visible } : name.includes('/button') ? { Button: 'button' } : name.includes('/input') ? { Input: 'input' } : name.includes('/textarea') ? { Textarea: 'textarea' } : assert.fail(name));
   const componentDefault = (module.exports as { default: (componentProps: Record<string, unknown>) => TestNode }).default;
   return { props, state, saved: () => saved, edited, discarded,
     render(patch: Record<string, unknown> = {}) { Object.assign(props, patch); h.reset(); tree = componentDefault(props); h.flush(); return tree; },
@@ -118,4 +118,17 @@ test('actual AssetLibrary composes saved tag, type, name, disposition and unused
   const dispositionNode = find(selectedOutside, node => node.type === 'disposition'); assert.ok(dispositionNode); const dispositionAsset = (dispositionNode.props as { asset?: { id?: string } }).asset; assert.ok(dispositionAsset); assert.equal(dispositionAsset.id, 'wrongTag');
   assert.equal(find(tree, node => node.type === 'annotations-editor'), undefined, 'Annotation editing now belongs to Inspector');
   assert.ok(find(tree, node => node.props?.['data-testid'] === 'annotation-unverified-unknown'));
+});
+
+test('annotation protection uses the actual asset owner and cannot release a dirty or unknown draft', () => {
+  const h = component(), tree = h.render();
+  assert.equal(tree.type, 'editing-boundary');
+  assert.equal(tree.props?.projectId, projectId);
+  assert.deepEqual(tree.props?.targets, [{kind:'asset_annotation',id:assetId,revision:0}]);
+  const release = tree.props?.canRelease as () => boolean;
+  assert.equal(release(), false);
+  h.state.entries[assetId].dirty = false;
+  assert.equal(release(), true);
+  h.state.entries[assetId].uncertain = true;
+  assert.equal(release(), false);
 });

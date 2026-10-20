@@ -9,7 +9,7 @@ import {spawn} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {DatabaseSync} from 'node:sqlite';
 import {openStore,classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
-import {currentMarkerChain,currentOrdinary48Delta,currentOrdinary50Delta} from './helpers/current-schema-delta.ts';
+import {currentMarkerChain,currentOrdinary48Delta,currentOrdinary50Delta,currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
 import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createAgentEditService} from '../packages/business/src/agent/edit-proposals.ts';
@@ -30,6 +30,9 @@ const compatibility=JSON.parse(fs.readFileSync(new URL('./fixtures/agent-gain-c3
 const migrationMap=JSON.parse(fs.readFileSync(new URL('./fixtures/agent-gain-ts-migration-map.json',import.meta.url),'utf8')).mapping;
 const schema50RuntimeMap=JSON.parse(fs.readFileSync(new URL('./fixtures/agent-gain-schema50-runtime-map.json',import.meta.url),'utf8')).mapping;
 assert.deepEqual(Object.keys(schema50RuntimeMap).sort(),['packages/business/src/workspace-restore-policy.mjs','packages/contracts/src/index.mjs','packages/contracts/src/operation-effects.mjs','packages/contracts/src/workspace-restore.mjs'].sort());
+const schema52RuntimeMap=JSON.parse(fs.readFileSync(new URL('./fixtures/agent-gain-schema52-runtime-map.json',import.meta.url),'utf8')).mapping;
+assert.deepEqual(Object.keys(schema52RuntimeMap).sort(),['packages/business/src/db.mjs','packages/business/src/workspace-restore-policy.mjs','packages/contracts/src/index.mjs','packages/contracts/src/operation-effects.mjs','packages/contracts/src/subject-generation.mjs','packages/contracts/src/workspace-backup.mjs','packages/contracts/src/workspace-restore.mjs'].sort());
+const subjectClosure=JSON.parse(fs.readFileSync(new URL('./fixtures/agent-gain-origin-main-subject-closure.json',import.meta.url),'utf8'));
 const currentPath=file=>migrationMap[file]?.currentPath??file;
 // Deterministic drift detection: every mapped legacy key pins the current
 // whole-body hash in all environments, and additionally pins an esbuild
@@ -44,7 +47,9 @@ function assertPinnedCurrent(file,read=null){
  const mapping=migrationMap[file];if(!mapping)return;
  const reviewed=schema50RuntimeMap[file];
  if(reviewed){assert.equal(reviewed.currentPath,mapping.currentPath);assert.equal(reviewed.previousCurrentSha256,mapping.currentSha256);assert.equal(reviewed.previousTypeErasedSha256,mapping.typeErasedSha256);}
- const pin=reviewed??mapping;
+ const prior=reviewed??mapping,next=schema52RuntimeMap[file];
+ if(next){assert.equal(next.currentPath,mapping.currentPath);assert.equal(next.previousCurrentSha256,prior.currentSha256);assert.equal(next.previousTypeErasedSha256,prior.typeErasedSha256);}
+ const pin=next??prior;
  const text=(read?read(file):fs.readFileSync(path.join(repo,mapping.currentPath))).toString();
  assert.equal(sha(text),pin.currentSha256,`Baseline dependency changed: ${file}; explicitly freeze and review it before using this harness.`);
  const erased=eraseSource(text);
@@ -62,7 +67,10 @@ function allRows(db){return Object.fromEntries(db.prepare("SELECT name FROM sqli
 const domain=db=>Object.fromEntries(['projects','assets','shots','jobs','versions','timelines','timeline_history','timeline_history_cursors','timeline_requests'].map(table=>[table,tableRows(db,table)]));
 const fields=(f,extra={})=>({projectId:f.project.id,expectedRevision:f.current().revision,requestId:randomUUID(),...extra});
 function sqlState(db){return {objects:objects(db),sequence:sequences(db),markers:markers(db)};}
-function reviewedCurrentObjects(actual){
+function reviewedCurrentObjects(all){
+ const reviewedNames=new Set(currentOrdinary52Delta.objectNames),v2=all.filter(object=>reviewedNames.has(object.name));
+ assert.equal(v2.length,currentOrdinary52Delta.v2Catalog.count,'reviewed v2 catalog size');assert.equal(sha(JSON.stringify(v2)),currentOrdinary52Delta.v2Catalog.sha256,'reviewed v2 catalog sha256');
+ const actual=all.filter(object=>!reviewedNames.has(object.name));
  // Reviewed current-schema48 view of the historical24 catalog: retained objects
  // keep their frozen historical SQL except for reviewed objectSql upgrades;
  // annotation/LUT/lifecycle additions are pinned by the reviewed catalog hashes
@@ -83,7 +91,7 @@ function reviewedCurrentObjects(actual){
  assert.deepEqual(actual.filter(object=>taskNames.has(object.name)),currentOrdinary50Delta.objects);
  const unreviewed=actual.filter(object=>!expected.some(value=>value.name===object.name)&&!additions.some(value=>value.name===object.name));
  assert.deepEqual(unreviewed,[],'only reviewed current-schema additions');
- return [...expected,...additions].sort((a,b)=>a.type.localeCompare(b.type)||a.name.localeCompare(b.name));
+ return [...expected,...additions,...v2].sort((a,b)=>a.type.localeCompare(b.type)||a.name.localeCompare(b.name));
 }
 function legacyRows(db){return Object.fromEntries(Object.entries(baseline.tables).filter(([table])=>!['schema_version','agent_chat_quota'].includes(table)).map(([table,rows])=>{
  const ids=rows.map(row=>row.id??row.requestId??row.projectId),key=Object.hasOwn(rows[0],'id')?'id':Object.hasOwn(rows[0],'requestId')?'requestId':'projectId';
@@ -121,11 +129,11 @@ function legacyFixture(t){
 // against genuine trusted24 DDL containing the same retained scalar values,
 // rather than changing its detector or relabeling a26 table as24.
 function historicalStore(t,source){
- const db=new DatabaseSync(':memory:');t.after(()=>db.close());const before=allRows(source.db);
+ const db=new DatabaseSync(':memory:');t.after(()=>db.close());const before=allRows(source.db),frozenTables=new Set(baseline.objects.filter(object=>object.type==='table').map(object=>object.name));
  db.exec('PRAGMA trusted_schema=OFF;PRAGMA foreign_keys=OFF;BEGIN');
  for(const object of baseline.objects)if(object.type==='table'&&object.name!=='sqlite_sequence')db.exec(object.sql);
  for(const table of Object.keys(before)){
-  if(table==='sqlite_sequence')continue;
+  if(table==='sqlite_sequence'||!frozenTables.has(table))continue;
   const rows=source.db.prepare(`SELECT rowid AS __rowid__,* FROM "${table}" ORDER BY rowid`).all();
   for(const row of rows){
    // The frozen harness reconstructs only the trusted historical24 marker chain;
@@ -143,7 +151,6 @@ function historicalStore(t,source){
  // marker rows are outside this frozen view; normalize the expectation to the
  // frozen object catalog plus the historical marker chain instead of asserting
  // the current migration additions inside a fake old database.
- const frozenTables=new Set(baseline.objects.filter(object=>object.type==='table').map(object=>object.name));
  const expected={};
  for(const [table,rows]of Object.entries(before)){
   if(!frozenTables.has(table))continue;
@@ -171,7 +178,8 @@ async function loadFrozenValidators(fixture=baseline,readDependency=file=>fs.rea
   'packages/business/src/inspection.mjs':'2e65efe72987b3f7f9e370387081431147f09eb05cdf2a0f71d713a5d7e7c995',
   'packages/business/src/timeline-inputs.mjs':'ec83abd83d7477d20db55a140d8197e0931403ad27686c8bb660a3a3a871cd7e',
  });
- fixture={...fixture,sources:{...fixture.sources,...compatibility.sources},dependencyHashes:{...fixture.dependencyHashes,...compatibility.dependencyHashes}};
+ assert.equal(subjectClosure.sourceCommit,baseline.sourceCommit);assert.deepEqual(Object.keys(subjectClosure.sources),['packages/contracts/src/subject-generation.mjs']);for(const[file,saved]of Object.entries(subjectClosure.sources)){assert.equal(saved.sha256,baseline.dependencyHashes[file]);assert.equal(sha(saved.text),saved.sha256);}
+ fixture={...fixture,sources:{...fixture.sources,...compatibility.sources,...subjectClosure.sources},dependencyHashes:{...fixture.dependencyHashes,...compatibility.dependencyHashes}};
  for(const [file,hash]of Object.entries(fixture.dependencyHashes)){
   const frozenSource=fixture.sources[file];
   if(frozenSource){assert.equal(sha(frozenSource.text),hash,`Baseline dependency changed: ${file}; explicitly freeze and review it before using this harness.`);continue;}
@@ -204,7 +212,7 @@ async function loadFrozenValidators(fixture=baseline,readDependency=file=>fs.rea
      if(resolved==='packages/business/src/services.mjs')destination=canonical;
      else if(Object.hasOwn(fixture.sources,resolved))destination=url(resolved);
      else{assert.ok(Object.hasOwn(fixture.dependencyHashes,resolved),`Unpinned frozen-validator import: ${file} -> ${resolved}`);destination=absolute(currentPath(resolved));}
-    }else if(specifier==='zod'&&['packages/contracts/src/index.mjs','packages/contracts/src/timeline-export-profile.mjs','packages/contracts/src/local-delivery.ts','packages/contracts/src/workspace-backup.mjs','packages/contracts/src/workspace-restore-offline.mjs','packages/contracts/src/workspace-restore.mjs','packages/contracts/src/edit-tasks.mjs'].includes(file))destination=pathToFileURL(requireContracts.resolve('zod')).href;
+    }else if(specifier==='zod'&&['packages/contracts/src/index.mjs','packages/contracts/src/timeline-export-profile.mjs','packages/contracts/src/local-delivery.ts','packages/contracts/src/workspace-backup.mjs','packages/contracts/src/workspace-restore-offline.mjs','packages/contracts/src/workspace-restore.mjs','packages/contracts/src/edit-tasks.mjs','packages/contracts/src/subject-generation.mjs'].includes(file))destination=pathToFileURL(requireContracts.resolve('zod')).href;
     else assert.ok(['node:crypto','node:net'].includes(specifier)||file==='packages/business/src/db.mjs'&&['node:sqlite','node:util/types','node:path'].includes(specifier)||file==='packages/business/src/workspace-restore-schema.mjs'&&specifier==='node:sqlite',`Unexpected frozen-validator import: ${file} -> ${specifier}`);
     return prefix+JSON.stringify(destination);
    });
@@ -259,7 +267,7 @@ test('frozen c3a0a57 schema dependency cycle preserves exact original source has
  }
 });
 test('reviewed schema50 current-runtime pins reject every additional source byte while preserving old pins',()=>{
- for(const file of Object.keys(schema50RuntimeMap)){assertPinnedCurrent(file);assert.throws(()=>assertPinnedCurrent(file,()=>fs.readFileSync(path.join(repo,currentPath(file)),'utf8')+'\n// synthetic unauthorized drift\n'),/Baseline dependency changed/);}
+ for(const file of new Set([...Object.keys(schema50RuntimeMap),...Object.keys(schema52RuntimeMap)])){assertPinnedCurrent(file);assert.throws(()=>assertPinnedCurrent(file,()=>fs.readFileSync(path.join(repo,currentPath(file)),'utf8')+'\n// synthetic unauthorized drift\n'),/Baseline dependency changed/);}
 });
 
 test('frozen validator loader rejects changed historical source before import',async()=>{
@@ -314,7 +322,7 @@ test('fixed c3a0a57 shot, move and inspection catalogs stay exact and reject eve
 
 test('fixed real v1/v2 records survive startup, read, pagination and recovery with every raw byte and sequence intact',async t=>{
  const f=legacyFixture(t),beforeRows=allRows(f.store.db),beforeSql=sqlState(f.store.db);
- assert.deepEqual(objects(f.store.db),reviewedCurrentObjects(objects(f.store.db)));assert.deepEqual(sequences(f.store.db),baseline.sequence);assert.equal(classifyCurrentWorkspaceSchema(f.store.db).schemaVersion,50);
+ assert.deepEqual(objects(f.store.db),reviewedCurrentObjects(objects(f.store.db)));assert.deepEqual(sequences(f.store.db),baseline.sequence);assert.equal(classifyCurrentWorkspaceSchema(f.store.db).schemaVersion,52);
  for(const p of baseline.proposals){const row=f.store.db.prepare('SELECT definition,approval FROM agent_edit_proposals WHERE id=?').get(p.id);assert.ok(row.definition.startsWith(' \n'));assert.ok(row.approval.startsWith(' \n'));assert.equal(JSON.parse(row.definition).version,p.version);}
  f.reopen();let calls=0;const services=createServices(f.store,new Map()),edits=createAgentEditService({store:f.store,services:{...services,updateShotInProject(){calls++;throw Error('legacy dispatch forbidden');},moveTimelineClipInProject(){calls++;throw Error('legacy dispatch forbidden');},setTimelineClipGainInProject(){calls++;throw Error('gain dispatch forbidden');}}});
  assert.equal(edits.reconcile().reconciled,0);let cursor,ids=[];do{const page=edits.list({projectId:baseline.projectId,view:'all',limit:1,...(cursor?{cursor}:{})});ids.push(...page.proposals.map(p=>p.id));cursor=page.nextCursor;}while(cursor);
@@ -328,7 +336,7 @@ test('v3 uses existing SQL only and the frozen old validator rejects or holds ne
  const services={updateShotInProject(){calls++;throw Error('no dispatch');},moveTimelineClipInProject(){calls++;throw Error('no dispatch');},setTimelineClipGainInProject(){calls++;throw Error('no dispatch');}};
  const current=allRows(f.store.db);assert.throws(()=>old.createAgentEditService({store:f.store,services}),code('RESTORE_STORE_UNVERIFIED'));assert.deepEqual(allRows(f.store.db),current);
  const historical=historicalStore(t,f.store),oldEdits=old.createAgentEditService({store:historical,services}),before=domain(historical.db),legacy=legacyRows(historical.db),schema=sqlState(historical.db);
- assert.deepEqual(objects(f.store.db),reviewedCurrentObjects(objects(f.store.db)));assert.equal(classifyCurrentWorkspaceSchema(f.store.db).profile,'ordinary');assert.equal(markers(f.store.db).at(-1).version,50);assert.deepEqual(schema.objects,baseline.objects);
+ assert.deepEqual(objects(f.store.db),reviewedCurrentObjects(objects(f.store.db)));assert.equal(classifyCurrentWorkspaceSchema(f.store.db).profile,'ordinary');assert.equal(markers(f.store.db).at(-1).version,52);assert.deepEqual(schema.objects,baseline.objects);
  assert.throws(()=>old.parseChatConsent({context:'selected_timeline_clip_gain',destination:'http://127.0.0.1:11434/v1',protocol:'chat_completions',model:'synthetic',projectId:f.project.id,gain:0.4}),code('AGENT_CHAT_VALIDATION'));
  for(const {proposal:p}of proposals){assert.throws(()=>oldEdits.get({projectId:f.project.id,proposalId:p.id}),code('AGENT_EDIT_STORAGE_UNAVAILABLE'));await assert.rejects(oldEdits.approve(f.request(p)),code('AGENT_EDIT_STORAGE_UNAVAILABLE'));await assert.rejects(oldEdits.recover(f.request(p)),code('AGENT_EDIT_STORAGE_UNAVAILABLE'));}
  assert.equal(calls,0);assert.deepEqual(domain(historical.db),before);assert.deepEqual(sqlState(historical.db),schema);
@@ -351,18 +359,18 @@ test('frozen old definition version gate rejects v3 even when a valid old move m
  assert.equal(calls,0);assert.deepEqual(allRows(db),before);assert.deepEqual(objects(db),baseline.objects);
 });
 
-test('actual offline backup CLI retains mixed legacy and v3 gain bytes; restored-local-v14 schema51 holds inherited authority while fresh manual gain stays local',{timeout:120000},async t=>{
+test('actual offline backup CLI retains mixed legacy and v3 gain bytes; restored-local-v15 schema53 holds inherited authority while fresh manual gain stays local',{timeout:120000},async t=>{
  const {f,proposals}=await capturedGainStates(t),source=f.root,before=allRows(f.store.db),beforeSql=sqlState(f.store.db),legacy=legacyRows(f.store.db);
  const base=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'mioon-gain-backup-')),backup=path.join(base,'backup'),destination=path.join(base,'branch');t.after(()=>fs.rmSync(base,{recursive:true,force:true}));
  f.store.close();const sourceTree=tree(source);
- const created=await backupCli(t,['create','--source',source,'--destination',backup]);assert.equal(created.databaseSchemaVersion,50);const backupTree=tree(backup);
+ const created=await backupCli(t,['create','--source',source,'--destination',backup]);assert.equal(created.databaseSchemaVersion,52);const backupTree=tree(backup);
  const verified=await backupCli(t,['verify','--directory',backup]);assert.deepEqual(verified,created);
- const restored=await backupCli(t,['restore','--directory',backup,'--destination',destination]);assert.equal(restored.databaseSchemaVersion,51);assert.equal(restored.publication,'confirmed');
+ const restored=await backupCli(t,['restore','--directory',backup,'--destination',destination]);assert.equal(restored.databaseSchemaVersion,53);assert.equal(restored.publication,'confirmed');
  assert.deepEqual(tree(source),sourceTree);assert.deepEqual(tree(backup),backupTree);
  let store=openStore(destination);t.after(()=>store.close());let services=createServices(store,new Map());
- assert.deepEqual(classifyCurrentWorkspaceSchema(store.db),{schemaVersion:51,profile:'restored-local-v14'});
- const after=allRows(store.db);for(const [table,rows]of Object.entries(before)){if(table==='schema_version'){assert.deepEqual(after[table].filter(row=>row.version<=50),rows);continue;}if(table==='edit_tasks'){assert.deepEqual(after[table].map(row=>{const result={...row};delete result.executionEpoch;return result;}),rows);continue;}assert.deepEqual(after[table],rows,table);}
- assert.deepEqual(sequences(store.db),beforeSql.sequence);assert.deepEqual(legacyRows(store.db),legacy);assert.equal(markers(store.db).length,36);
+ assert.deepEqual(classifyCurrentWorkspaceSchema(store.db),{schemaVersion:53,profile:'restored-local-v15'});
+ const after=allRows(store.db);for(const [table,rows]of Object.entries(before)){if(table==='schema_version'){assert.deepEqual(after[table].filter(row=>row.version<=52),rows);continue;}if(table==='edit_tasks'){assert.deepEqual(after[table].map(row=>{const result={...row};delete result.executionEpoch;return result;}),rows);continue;}assert.deepEqual(after[table],rows,table);}
+ assert.deepEqual(sequences(store.db),beforeSql.sequence);assert.deepEqual(legacyRows(store.db),legacy);assert.equal(markers(store.db).length,37);
  // Existing SQL is unchanged except the two documented restoration edit-task
  // additions and new restore-owned objects; all Agent SQL remains exact.
  for(const object of beforeSql.objects.filter(value=>value.tbl_name.startsWith('agent_')))assert.deepEqual(objects(store.db).find(value=>value.name===object.name),object);

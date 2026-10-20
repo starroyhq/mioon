@@ -3,6 +3,7 @@ import {createWorkspaceBackupRuntime} from './workspace-backup-runtime.ts';
 import {createExportControlServices} from './export-controls.ts';
 import {createTaskDispositionServices} from './task-dispositions.ts';
 import {createManagedAssetImportHandler} from './managed-asset-import.ts';
+import {bindAgentTaskJobInside,assertAgentTaskJobEffect,assertTaskEffectOrigin,setAgentTaskJobStopper,withAgentTaskJobOrigin} from './agent/task-effects-v2.ts';
 import {freezeStoryboardOutputGeometry} from './storyboard-output.ts';
 import {AgentAuthorizationError} from './agent/authorizations.ts';
 import type {AgentAuthorizations} from './agent/authorizations.ts';
@@ -120,6 +121,7 @@ export interface OrdinaryServices {
  updateShotInProject: (projectId: string,input: unknown)=>Promise<unknown>;
  moveTimelineClipInProject: (projectId: string,input: unknown,target: unknown)=>unknown;
  setTimelineClipGainInProject: (projectId: string,input: unknown,target: unknown)=>unknown;
+ compensateAgentTimelineInside:ReturnType<typeof createTimelineServices>['compensateAgentTargetsInside'];
  required: (table: string,id: string)=>ServiceRow;
  check: (value: ServiceRow,revision: unknown)=>void;
  event: (job: ServiceRow,entry: ServiceRow)=>void;
@@ -222,10 +224,13 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const idem=(scope: string,key: string,h: string,id: string): void=>{db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run(scope,key,h,id);};
  const event=(job: ServiceRow,entry: ServiceRow): void=>{if(restored)disabled();db.prepare('INSERT INTO job_events(jobId,event,createdAt) VALUES(?,?,?)').run(job.id as string,JSON.stringify(entry),now());};
  const saveJob=(job: JobRecord,patch: ServiceRow): ServiceRow=>{
-  if(restored)disabled();const current=required('jobs',job.id);
-  const currentRevision=typeof current.revision==='number'?current.revision:0,jobRevision=typeof job.revision==='number'?job.revision:0;
-  if(currentRevision!==jobRevision)return current;
-  const result: ServiceRow={...current,...patch,revision:currentRevision+1,updatedAt:now()};put('jobs',result);event(result,{status:result.status,phase:result.phase,error:result.error});return result;
+  if(restored)disabled();
+  const save=():ServiceRow=>{
+   const current=required('jobs',job.id);
+   const currentRevision=typeof current.revision==='number'?current.revision:0,jobRevision=typeof job.revision==='number'?job.revision:0;
+   if(currentRevision!==jobRevision)return current;
+   const result: ServiceRow={...current,...patch,revision:currentRevision+1,updatedAt:now()};put('jobs',result);event(result,{status:result.status,phase:result.phase,error:result.error});return result;
+  };return db.isTransaction?save():tx(save);
  };
  const profilePolicy=restored?false:usesInputProfiles(providers),currentProfileDate=()=>new Date(profileNow()).toISOString().slice(0,10);
  const runtimeEnv=configuration.environment();
@@ -327,15 +332,16 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   const {model,assets,referenceAssetIds,capabilities,inputFields}=validateProvider({...source,referenceConnections},input.providerId,input.model,isRecord(parameters)?parameters:undefined,shot.projectId,Boolean(retrySnapshot),subjectGraph);
   const snapshot: ServiceRow=retrySnapshot??{shotId:shot.id,shotRevision:shot.revision,title:shot.title,prompt:shot.prompt,referenceAssetIds:[...referenceAssetIds],...(shot.lastFrameAssetId!=null?{lastFrameAssetId:shot.lastFrameAssetId}:{}),referenceAssets:(assets as GenerationAsset[]).map(a=>({id:a.id,relativePath:a.relativePath,mimeType:a.mimeType,sha256:a.sha256,width:a.width,height:a.height,...(Object.hasOwn(a,'role')?{role:a.role}:{}),...(inputFields?{sizeBytes:a.sizeBytes}:{})})),referenceConnections,aspectRatio:shot.aspectRatio,duration:shot.duration,providerId:input.providerId,model,parameters,capabilities,...(inputFields||{}),...(subjectMode?{subjectReference:property(source,'subjectReference')}:{})};
   const job: JobRecord={id:randomUUID(),projectId:shot.projectId,shotId:shot.id,requestId:input.requestId,requestHash,providerId:input.providerId,model,revision:1,status:'queued',phase:'waiting',progress:0,snapshot,providerJobId:null,submissionCount:0,error:null,createdAt:now(),updatedAt:now(),versionId:null,cancelScope:null,retryOfJobId};
-  put('jobs',job);idem('generation',input.requestId,requestHash,job.id);event(job,{status:'queued'});
+  put('jobs',job);idem('generation',input.requestId,requestHash,job.id);event(job,{status:'queued'});bindAgentTaskJobInside(db,'job',job.id);
   if(subjectMode)replaySubjectJob(job,input,retryOfJobId);
   return job;
  });
  const exportAdmission=createTimelineExportAdmissionServices(store,{...exportOptions,signal:ownerSignal,hash});
  const timeline=createTimelineServices(store as unknown as Parameters<typeof createTimelineServices>[0],{required,check,hash,now,exportAdmission} as Parameters<typeof createTimelineServices>[1]);
- const preflight=createTimelinePreflightServices(store,{signal:ownerSignal});
+ const assertOrdinaryObservation=():void=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();assertTaskEffectOrigin();};
+ const preflight=createTimelinePreflightServices(store,{signal:ownerSignal,beforeEffect:assertTaskEffectOrigin});
  const samplePeak=restored?{...inactive(),handlers:{'timeline.export.samplePeak':disabled as ServiceHandler}}:createExportSamplePeakServices(store,{signal:ownerSignal,runtime:{
-  assertOrdinaryWorkspace:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();},
+  assertOrdinaryWorkspace:assertOrdinaryObservation,
   ownsLock:()=>ownsStoreLock(store),isTimelineRenderRecord,
   readOwnedAsset:(projectId: string,assetId: string)=>readOwnedTimelineAsset(db,projectId,assetId),
   validateSource:validateManagedSource,hash:verifiedManagedHash,
@@ -343,7 +349,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   terminate:(signal?: AbortSignal)=>terminateMediaProcesses({signal}),waitForClose:(signal?: AbortSignal)=>waitForMediaProcesses({signal}),boundedShutdown,
  }});
  const loudness=restored?{...inactive(),handlers:{'timeline.export.loudness':disabled as ServiceHandler}}:createExportLoudnessServices(store,{signal:ownerSignal,runtime:{
-  assertOrdinaryWorkspace:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();},
+  assertOrdinaryWorkspace:assertOrdinaryObservation,
   ownsLock:()=>ownsStoreLock(store),isTimelineRenderRecord,
   readOwnedAsset:(projectId: string,assetId: string)=>readOwnedTimelineAsset(db,projectId,assetId),
   validateSource:validateManagedSource,hash:verifiedManagedHash,
@@ -358,14 +364,14 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   }finally{if(!outer&&db.isTransaction)db.exec('COMMIT');}
  };
  const clipLoudness=restored?{...inactive(),handlers:{'timeline.clip.loudness':disabled as ServiceHandler}}:createTimelineClipLoudnessServices(store,{signal:ownerSignal,runtime:{
-  assertOrdinaryWorkspace:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();},ownsLock:()=>ownsStoreLock(store),
+  assertOrdinaryWorkspace:assertOrdinaryObservation,ownsLock:()=>ownsStoreLock(store),
   readSavedTimeline,
   validateSource:validateManagedSource,hash:verifiedManagedHash,
   decode:createTimelineClipLoudnessDecoder({run,runStreaming,withProbePermit,checkMediaEffect}),
   terminate:(signal?: AbortSignal)=>terminateMediaProcesses({signal}),waitForClose:(signal?: AbortSignal)=>waitForMediaProcesses({signal}),boundedShutdown,
  }});
  const mixLoudness=restored?{...inactive(),handlers:{'timeline.loudness.prepare':disabled as ServiceHandler}}:createTimelineMixLoudnessServices(store,{signal:ownerSignal,runtime:{
-  assertOrdinaryWorkspace:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();},ownsLock:()=>ownsStoreLock(store),
+  assertOrdinaryWorkspace:assertOrdinaryObservation,ownsLock:()=>ownsStoreLock(store),
   readSavedTimeline,
   validateSource:validateManagedSource,hash:verifiedManagedHash,
   decode:createTimelineMixLoudnessDecoder({run,runStreaming,withProbePermit,checkMediaEffect}),
@@ -381,24 +387,24 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   validate:(timeline,assets)=>validateTimeline(timeline,assets,{structureOnly:true}),
  });
  const audioPreviewV1=restored?{...inactive(),handlers:{'timeline.audioPreview.plan':disabled as ServiceHandler},consumeSource:disabled as (...args: unknown[])=>never}:createTimelineAudioPreviewServices(store,{signal:ownerSignal,runtime:{
-  assertOrdinaryWorkspace:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();},ownsLock:()=>ownsStoreLock(store),
+  assertOrdinaryWorkspace:assertOrdinaryObservation,ownsLock:()=>ownsStoreLock(store),
   readSavedTimeline:readSavedAudioTimeline,
   validateSource:validateManagedSource,hash:verifiedManagedHash,
   decode:createTimelineAudioPreviewDecoder({run,runStreaming,withProbePermit,checkMediaEffect}),
   terminate:(signal?: AbortSignal)=>terminateMediaProcesses({signal}),waitForClose:(signal?: AbortSignal)=>waitForMediaProcesses({signal}),boundedShutdown,
  }});
  const continuousAudio=restored?{...inactive(),handlers:{'timeline.audioPreview.continuousPlan':disabled as ServiceHandler},consumeBlock:disabled as (...args: unknown[])=>never,retireSession:disabled as (...args: unknown[])=>never,retireSessionById:disabled as (...args: unknown[])=>never,assertNoContinuousSession:disabled as (...args: unknown[])=>never}:createTimelineAudioContinuousServices(store,{signal:ownerSignal,runtime:{
-  assertOrdinaryWorkspace:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();},ownsLock:()=>ownsStoreLock(store),
+  assertOrdinaryWorkspace:assertOrdinaryObservation,ownsLock:()=>ownsStoreLock(store),
   readSavedTimeline:readSavedAudioTimeline,validateSource:validateManagedSource,hash:verifiedManagedHash,
   decoder:createTimelineAudioContinuousDecoder({run,runStreamingWithBackpressure,withProbePermit,checkMediaEffect}),boundedShutdown,
  }});
  const audioPreview=createTimelineAudioPreviewCoordinator(audioPreviewV1 as unknown as Parameters<typeof createTimelineAudioPreviewCoordinator>[0],continuousAudio as unknown as Parameters<typeof createTimelineAudioPreviewCoordinator>[1],AppError);
  const imageColourSource=restored?{...inactive(),handlers:{'timeline.colour.image.inspect':disabled as ServiceHandler,'timeline.colour.jpeg.inspect':disabled as ServiceHandler}}:createTimelineImageSourceServices(store,{signal:ownerSignal,runtime:{validateSource:validateManagedSource,runStreaming,waitForMediaProcesses,
-  assertOrdinaryWorkspace:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();},ownsLock:()=>ownsStoreLock(store),
+  assertOrdinaryWorkspace:assertOrdinaryObservation,ownsLock:()=>ownsStoreLock(store),
   readOwnedAsset:(projectId: string,assetId: string)=>readOwnedTimelineAsset(db,projectId,assetId),
  }});
  const colourSource=restored?{...inactive(),handlers:{'timeline.colour.source.inspect':disabled as ServiceHandler}}:createTimelineColourSourceServices(store,{signal:ownerSignal,runtime:{
-  assertOrdinaryWorkspace:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();},ownsLock:()=>ownsStoreLock(store),
+  assertOrdinaryWorkspace:assertOrdinaryObservation,ownsLock:()=>ownsStoreLock(store),
   readOwnedAsset:(projectId: string,assetId: string)=>readOwnedTimelineAsset(db,projectId,assetId),
   validateSource:validateManagedSource,hash:verifiedManagedHash,
   probe:createTimelineColourSourceProbe({run,withProbePermit,checkMediaEffect}),
@@ -475,8 +481,8 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   'project.get':(input: ServiceRow)=>tx(()=>{const project=required('projects',stringValue(input.projectId) as string);return {project,timeline:timeline.ensure(stringValue(input.projectId) as string),timelineHistory:timeline.history(stringValue(input.projectId) as string),...Object.fromEntries(['assets','shots','nodes','edges','jobs','versions','exports'].map(t=>[t,(t==='exports'?exportValues(stringValue(input.projectId) as string):list(t,stringValue(input.projectId)).map(value=>subjectDisclosure(t,value as ServiceRow,stringValue(input.projectId)))).sort(t==='shots'?(a: ServiceRow,b: ServiceRow)=>(Number(a.orderIndex)||0)-(Number(b.orderIndex)||0):(a: ServiceRow,b: ServiceRow)=>String(a.createdAt??'').localeCompare(String(b.createdAt??'')))]))};}),
   'asset.import':createManagedAssetImportHandler(store,{required,now,signal:ownerSignal,guarded:Boolean(restored),effectFence:()=>restoreEffectFence(store),unsafe:workspaceRestoreError,safeError:(error: unknown)=>Boolean(safeWorkspaceRestoreError(error))}) as ServiceHandler,
   'asset.list':(input: ServiceRow)=>{required('projects',stringValue(input.projectId) as string);return list('assets',stringValue(input.projectId));},
-  'edge.create':(input: ServiceRow)=>{required('projects',stringValue(input.projectId) as string);for(const id of [input.source,input.target]){const n=(get('shots',String(id))||get('nodes',String(id))) as ServiceRow|null;if(!n||n.projectId!==input.projectId)throw new AppError('INVALID_EDGE','只能连接同项目的节点');}if(input.source===input.target)throw new AppError('INVALID_EDGE','不能连接到自身');const existing=list('edges',stringValue(input.projectId)).find(edge=>property(edge,'kind')!=='reference'&&property(edge,'source')===input.source&&property(edge,'target')===input.target) as ServiceRow|undefined;return existing||put('edges',{id:randomUUID(),...input,kind:'decorative'});},
-  'edge.delete':(input: ServiceRow)=>{const edge=required('edges',stringValue(input.edgeId) as string);if(edge.kind==='reference')throw new AppError('REFERENCE_CONNECTED','首帧参考连线会影响生成输入；请使用 reference.detach 按镜头版本断开',409,{edgeId:edge.id});db.prepare('DELETE FROM edges WHERE id=?').run(stringValue(input.edgeId) as string);return {deleted:true};},
+  'edge.create':(input: ServiceRow)=>tx(()=>{required('projects',stringValue(input.projectId) as string);for(const id of [input.source,input.target]){const n=(get('shots',String(id))||get('nodes',String(id))) as ServiceRow|null;if(!n||n.projectId!==input.projectId)throw new AppError('INVALID_EDGE','只能连接同项目的节点');}if(input.source===input.target)throw new AppError('INVALID_EDGE','不能连接到自身');const existing=list('edges',stringValue(input.projectId)).find(edge=>property(edge,'kind')!=='reference'&&property(edge,'source')===input.source&&property(edge,'target')===input.target) as ServiceRow|undefined;return existing||put('edges',{id:randomUUID(),...input,kind:'decorative'});}),
+  'edge.delete':(input: ServiceRow)=>tx(()=>{const edge=required('edges',stringValue(input.edgeId) as string);if(edge.kind==='reference')throw new AppError('REFERENCE_CONNECTED','首帧参考连线会影响生成输入；请使用 reference.detach 按镜头版本断开',409,{edgeId:edge.id});db.prepare('DELETE FROM edges WHERE id=?').run(stringValue(input.edgeId) as string);return {deleted:true};}),
   'provider.list':()=>{const asOf=currentProfileDate();return [...providers.values()].map(provider=>capabilitiesFor(provider,asOf));},
   'video.connection.list':()=>{if(restored)disabled();return listVideoConnections(videoSettings,currentProfileDate());},
   'generation.submit':(input: GenerationSubmitInput)=>createJob(input),
@@ -523,12 +529,18 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    return disclose(saveJob(j,{status:'running',phase:'polling',providerJobId:found.providerJobId,error:null,cancelScope:null}));
   },
   'version.list':(input: ServiceRow)=>{const s=required('shots',stringValue(input.shotId) as string);return list('versions',stringValue(s.projectId)).filter(v=>property(v,'shotId')===s.id).map(value=>subjectDisclosure('versions',value as ServiceRow,stringValue(s.projectId))).sort((a,b)=>(Number(a.number)||0)-(Number(b.number)||0));},
-  'export.create':(input: ServiceRow)=>tx(()=>{const h=hash(input),prior=dedupe('export',stringValue(input.requestId) as string,h,'exports');if(prior)return prior;required('projects',stringValue(input.projectId) as string);const shots=list('shots',stringValue(input.projectId)).sort((a: unknown,b: unknown)=>(Number(property(a,'orderIndex'))||0)-(Number(property(b,'orderIndex'))||0));if(!shots.length||shots.some((s: unknown)=>!property(s,'selectedVersionId')))throw new AppError('MISSING_SELECTION','请为每个镜头选择已生成的视频版本');const versions=shots.map((s: unknown): ServiceRow=>{const shot=s as ServiceRow;const version=required('versions',String(property(shot,'selectedVersionId')));if(restored){const graph=createOwnedMediaGraphReader(db,stringValue(input.projectId) as string),owned=graph.version(String(version.id),String(property(shot,'id')),String(version.assetId)),asset=graph.asset(String(property(owned,'assetId')));if(typeof property(owned,'sha256')!=='string'||property(owned,'sha256')!==property(asset,'sha256'))throw workspaceRestoreError();return owned as ServiceRow;}return version;});const e={id:randomUUID(),projectId:stringValue(input.projectId),requestId:stringValue(input.requestId),status:'queued',outputGeometry:freezeStoryboardOutputGeometry(db,stringValue(input.projectId) as string),orderedVersionIds:versions.map(v=>v.id),snapshot:versions.map(v=>({versionId:v.id,assetId:v.assetId,sha256:v.sha256,shotId:v.shotId})),assetId:null,url:null,error:null,createdAt:now(),updatedAt:now()};put('exports',e);idem('export',stringValue(input.requestId) as string,h,String(e.id));bindRestoredExport(store,'export.create',input as unknown as {projectId: string; requestId: string},e as unknown as Parameters<typeof bindRestoredExport>[3],h);return e;}),
+  'export.create':(input: ServiceRow)=>tx(()=>{const h=hash(input),prior=dedupe('export',stringValue(input.requestId) as string,h,'exports');if(prior)return prior;required('projects',stringValue(input.projectId) as string);const shots=list('shots',stringValue(input.projectId)).sort((a: unknown,b: unknown)=>(Number(property(a,'orderIndex'))||0)-(Number(property(b,'orderIndex'))||0));if(!shots.length||shots.some((s: unknown)=>!property(s,'selectedVersionId')))throw new AppError('MISSING_SELECTION','请为每个镜头选择已生成的视频版本');const versions=shots.map((s: unknown): ServiceRow=>{const shot=s as ServiceRow;const version=required('versions',String(property(shot,'selectedVersionId')));if(restored){const graph=createOwnedMediaGraphReader(db,stringValue(input.projectId) as string),owned=graph.version(String(version.id),String(property(shot,'id')),String(version.assetId)),asset=graph.asset(String(property(owned,'assetId')));if(typeof property(owned,'sha256')!=='string'||property(owned,'sha256')!==property(asset,'sha256'))throw workspaceRestoreError();return owned as ServiceRow;}return version;});const e={id:randomUUID(),projectId:stringValue(input.projectId),requestId:stringValue(input.requestId),status:'queued',outputGeometry:freezeStoryboardOutputGeometry(db,stringValue(input.projectId) as string),orderedVersionIds:versions.map(v=>v.id),snapshot:versions.map(v=>({versionId:v.id,assetId:v.assetId,sha256:v.sha256,shotId:v.shotId})),assetId:null,url:null,error:null,createdAt:now(),updatedAt:now()};put('exports',e);bindAgentTaskJobInside(db,'export',e.id);idem('export',stringValue(input.requestId) as string,h,String(e.id));bindRestoredExport(store,'export.create',input as unknown as {projectId: string; requestId: string},e as unknown as Parameters<typeof bindRestoredExport>[3],h);return e;}),
   'export.get':(input: ServiceRow)=>subjectDisclosure('exports',required('exports',stringValue(input.exportId) as string),undefined,stringValue(input.exportId)),
  } as unknown as ServiceHandlers;
  // Public handlers are the same invocation boundary as RPC. Raw internal
  // mutation closures remain protected at their shared transaction precondition.
  const domainHandlers: ServiceHandlers={...handlers};
+ const removeJobStopper=setAgentTaskJobStopper(db,'job',(runId,stepId)=>{
+  for(const row of db.prepare("SELECT j.id,j.projectId FROM jobs j JOIN agent_task_job_origins_v2 o ON o.kind='job' AND o.jobId=j.id AND o.projectId=j.projectId WHERE o.runId=? AND (? IS NULL OR o.stepId=?) AND json_valid(j.data) AND json_extract(j.data,'$.status')='queued'").all(runId,stepId??null,stepId??null))withAgentTaskJobOrigin(db,'job',String(row.id),()=>domainHandlers['job.cancel']!({jobId:String(row.id)} as never));
+ });
+ const removeExportStopper=setAgentTaskJobStopper(db,'export',(runId,stepId)=>{
+  for(const row of db.prepare("SELECT e.id,e.projectId FROM exports e JOIN agent_task_job_origins_v2 o ON o.kind='export' AND o.jobId=e.id AND o.projectId=e.projectId WHERE o.runId=? AND (? IS NULL OR o.stepId=?) AND json_valid(e.data) AND json_extract(e.data,'$.status')='queued'").all(runId,stepId??null,stepId??null))withAgentTaskJobOrigin(db,'export',String(row.id),()=>domainHandlers['export.cancel']!({projectId:String(row.projectId),exportId:String(row.id)} as never));
+ });
  if(restored)for(const op of Object.keys({...domainHandlers,...(restoredReads?.handlers??{})}))handlers[op]=(input: never,context: ServiceHandlerContext={})=>call(op,input,context);
  async function call(op: string,input: unknown,context: ServiceHandlerContext={}): Promise<unknown> {
   if(op==='lut.look.inspect')assertLookPackInspectInput(input);
@@ -546,7 +558,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     // Frozen restored profiles admit only their own colour generation: video
     // in 31, video/PNG in 33, and video/PNG/JFIF in 35. No numeric widening.
     if(op==='timeline.clip.add'&&Object.hasOwn(parsed,'colour')||op==='timeline.clip.update'&&isRecord(parsed.patch)&&Object.hasOwn(parsed.patch,'colour')){
-     if(![31,33,35,37,39,41,45,49,51].includes(restored.schemaVersion))throw workspaceRestoreError();
+     if(![31,33,35,37,39,41,45,49,51,53].includes(restored.schemaVersion))throw workspaceRestoreError();
      const patch=isRecord(parsed.patch)?parsed.patch:null;
      const colour=op==='timeline.clip.add'?parsed.colour:patch?.colour;
      if(restored.schemaVersion===31&&!nullableTimelineClipColourSchema.safeParse(colour).success)throw workspaceRestoreError();
@@ -572,6 +584,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  // Drain async RPC work before closing SQLite. Rejection is a settled operation;
  // an unbounded filesystem operation is a shutdown failure, never a safe close.
  const drain=async(): Promise<void>=>{
+  removeJobStopper();removeExportStopper();
   restoredLifetime?.abort();backups.stop();await backups.drain();
   // Derived cache work may outlive its quick queued RPC acknowledgement. Stop
   // and join its explicit owner before SQLite can close, including late decode.
@@ -603,6 +616,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  // polling, download and reconciliation deliberately never call this boundary.
  function validateGenerationDispatch(job: JobRecord): unknown {
   if(restored)disabled();
+  assertAgentTaskJobEffect(db,'job',job.id);
   const binding=readVideoBinding(job.snapshot);
   if(binding){
    configuration.assertLiveEnabled();
@@ -636,5 +650,5 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    return saveJob(current as JobRecord,patch);
   });
  }
- return {setProjectDeletionCompanions:projectLifecycle.setProjectDeletionCompanions,call,drain,isQuiescent:()=>active.size===0,configuration,backups,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,updateShotInProject:restored?disabled:updateShotInProject,moveTimelineClipInProject:restored?disabled:moveTimelineClipInProject,setTimelineClipGainInProject:restored?disabled:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed as (input: unknown)=>unknown,imageRejection:images.rejectReview as (input: unknown)=>unknown} as OrdinaryServices;
+ return {compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,setProjectDeletionCompanions:projectLifecycle.setProjectDeletionCompanions,call,drain,isQuiescent:()=>active.size===0,configuration,backups,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,updateShotInProject:restored?disabled:updateShotInProject,moveTimelineClipInProject:restored?disabled:moveTimelineClipInProject,setTimelineClipGainInProject:restored?disabled:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed as (input: unknown)=>unknown,imageRejection:images.rejectReview as (input: unknown)=>unknown} as OrdinaryServices;
 }

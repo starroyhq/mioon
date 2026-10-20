@@ -15,6 +15,12 @@ import {isUnavailableRestoredRoute,workspaceRestoreError} from '@mioon/business/
 import http from 'node:http';
 import type {IncomingMessage, ServerResponse, Server} from 'node:http';
 import {createChatRuntime} from '@mioon/business/agent/chat-runtime';
+import {createAgentTaskRuntime} from '@mioon/business/agent/task-runtime-v2';
+import type {AgentTaskRuntime} from '@mioon/business/agent/task-runtime-v2';
+import {createAgentTaskTools} from '@mioon/business/agent/task-tools-v2';
+import type {AgentTaskTools} from '@mioon/business/agent/task-tools-v2';
+import type {TaskGateway} from '@mioon/business/agent/task-gateway-v2';
+import {createAgentTaskHttp} from './agent-task-http-v2.ts';
 import {createAgentAuthorizations} from '../../../packages/business/src/agent/authorizations.ts';
 import {createUiPreferences} from '../../../packages/business/src/ui-preferences.ts';
 import {createProjectDeletionGate} from './project-deletion-gate.ts';
@@ -142,6 +148,7 @@ export interface ServerOptions {
   comfyNetwork?: ComfyNetworkSeam;
   comfyModule?: ComfyModuleMode;
   chatGateway?: AgentGatewaySeam;
+  taskGatewayV2?: TaskGateway;
   agentEditFault?: AgentEditFault;
   taskFault?: TaskFault;
   localDraftChannel?: LocalDraftChannel;
@@ -219,6 +226,7 @@ async function composeServer({
   comfyNetwork, // Trusted synthetic HTTP fixture only; never HTTP/environment.
   comfyModule = 'load', // Trusted launcher/distribution composition, never HTTP/RPC input.
   chatGateway, // Trusted synthetic QA injection; never configurable through HTTP or environment.
+  taskGatewayV2, // Trusted synthetic v2 QA injection; never HTTP/environment.
   agentEditFault, // Trusted crash-boundary tests only; never HTTP/environment configuration.
   taskFault, // Trusted durable-edit crash-boundary tests only; never HTTP/environment configuration.
   localDraftChannel = 'web', // Trusted desktop build identity only; never HTTP/environment configuration.
@@ -261,7 +269,8 @@ async function composeServer({
   let worker: ReturnType<typeof startWorker> | undefined, server: Server | undefined, agentSettings: AgentSettingsPort | undefined,
     agentAuthorizations: AgentAuthorizations | undefined, uiPreferences: UiPreferences | undefined, imageSettings: ImageSettings | undefined,
     customImageSettings: CustomImageSettings | undefined, videoSettings: VideoSettings | undefined, comfySettings: ComfySettings | undefined, chatRuntime: ChatRuntime | undefined,
-    chatHttp: ChatHttp | undefined, editTasks!: EditTasks, candidateEditor: CandidateEditor | undefined;
+    chatHttp: ChatHttp | undefined, taskRuntimeV2: AgentTaskRuntime | undefined, taskToolsV2: AgentTaskTools | undefined,
+    taskHttpV2: ReturnType<typeof createAgentTaskHttp> | undefined, editTasks!: EditTasks, candidateEditor: CandidateEditor | undefined;
   let services!: Services;
   let serviceCall!: ServiceCall;
   let serviceDrain!: ServiceDrain;
@@ -324,7 +333,7 @@ async function composeServer({
     const comfyReservedPorts = (): Set<number> => new Set([port, serverPort()].filter((value): value is number => value !== undefined && Number.isInteger(value) && value > 0));
     comfySettings = await createComfySettings({directory:path.join(root,'comfy-settings'),privateRoot:root,reservedPorts:comfyReservedPorts});
     const {connector:comfyConnector,availability:comfyModuleAvailability} = composeOfficialComfyModule(comfyModule,()=>createComfyConnector({reservedPorts:comfyReservedPorts,...(comfyNetwork ? {networkDeps:{httpRequest:comfyNetwork.httpRequest}} : {})}));
-    const composed = createServices(ordinaryStore, providers, {env:providerEnv,workspaceBaseRoot:baseRoot,backupQuiescent:()=>deletionGate.isQuiescent(['workspace.backup.create','workspace.backup.restore.stage','workspace.backup.import']),signal: shutdown.signal,videoSettings,agentAuthorizations,readRecentOpened:()=>uiPreferences?.get().recentOpened??{},imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettings:customImageSettings,customGateway:createCompatibleImageGateway({settings:customImageSettings,...imageNetwork}),comfySettings,comfyConnector,comfyModuleAvailability}});
+    const composed = createServices(ordinaryStore, providers, {env:providerEnv,workspaceBaseRoot:baseRoot,backupQuiescent:()=>!taskRuntimeV2?.isBusy()&&deletionGate.isQuiescent(['workspace.backup.create','workspace.backup.restore.stage','workspace.backup.import']),signal: shutdown.signal,videoSettings,agentAuthorizations,readRecentOpened:()=>uiPreferences?.get().recentOpened??{},imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettings:customImageSettings,customGateway:createCompatibleImageGateway({settings:customImageSettings,...imageNetwork}),comfySettings,comfyConnector,comfyModuleAvailability}});
     services = composed;
     serviceCall = (operation, input, context) => composed.call(operation, input, context);
     serviceDrain = () => composed.drain();
@@ -413,6 +422,7 @@ async function composeServer({
     const ordinary = services;
     ordinary.setProjectDeletionCompanions({
       assertDeletable:projectId=>{
+        if(taskRuntimeV2?.isBusy())throw new AppError('PROJECT_DELETE_BUSY','智能助理仍有请求在执行，请暂停或停止后再删除项目。',409);
         deletionGate.assertIdle(projectId);
         localDrafts!.assertProjectDeletable(projectId);localDelivery.assertProjectDeletable(projectId);localShotText.assertProjectDeletable(projectId);
       },
@@ -426,6 +436,15 @@ async function composeServer({
     const chatSettings = agentSettings as unknown as AgentSettingsService;
     chatRuntime = createChatRuntime({store: ordinaryStore, agentSettings: chatSettings, authorizations:agentAuthorizations, editService, inspection: ordinary.inspection, ...(chatGateway ? {gateway: chatGateway, mode: 'simulated'} : {}), selfPort: () => listeningPort()});
     chatHttp = createChatHttp({runtime: chatRuntime});
+    taskToolsV2=createAgentTaskTools({store:ordinaryStore,services:ordinary});
+    taskRuntimeV2=createAgentTaskRuntime({store:ordinaryStore,agentSettings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,selfPort:()=>listeningPort(),assertMutationAllowed:()=>ordinary.backups.assertMutationAllowed(),...(taskGatewayV2?{gateway:taskGatewayV2}:{})});
+    taskHttpV2=createAgentTaskHttp({runtime:taskRuntimeV2,tools:taskToolsV2,assertMutationAllowed:()=>ordinary.backups.assertMutationAllowed()});
+    }
+    if(restored?.schemaVersion===53&&!candidate){
+      if(!agentSettings)agentSettings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{throw workspaceRestoreError();}}});
+      taskRuntimeV2=createAgentTaskRuntime({store:ordinaryStore,agentSettings:agentSettings as unknown as AgentSettingsService,
+        authorizations:{assertAuthorized(){throw workspaceRestoreError();},snapshot(){return {revision:0,scopes:[]};}},selfPort:()=>listeningPort(),readOnly:true});
+      taskHttpV2=createAgentTaskHttp({runtime:taskRuntimeV2});
     }
     const origins = new Set<string>(), hosts = new Set<string>();
     const auth = (req: IncomingMessage): boolean => {
@@ -454,7 +473,8 @@ async function composeServer({
           if (!auth(req)) return json(res, 401, {ok: false, error: {code: 'UNAUTHORIZED', message: '请使用本地访问令牌登录'}});
           deletionGate.track(res);
         }
-        if(restored&&(isUnavailableRestoredRoute(url.pathname,req.method ?? '')||/^\/api\/video-providers(?:\/|$)/u.test(url.pathname)))throw workspaceRestoreError();
+        const restoredTaskHistory=restored?.schemaVersion===53&&!candidate&&(url.pathname==='/api/agent/tasks/v2'||url.pathname.startsWith('/api/agent/tasks/v2/'));
+        if(restored&&(!restoredTaskHistory&&isUnavailableRestoredRoute(url.pathname,req.method ?? '')||/^\/api\/video-providers(?:\/|$)/u.test(url.pathname)))throw workspaceRestoreError();
         if(candidate && /^\/api\/(?:agent|images|comfy|video-providers|timeline-audio-preview)(?:\/|$)/u.test(url.pathname))throw workspaceRestoreError();
         if(!candidate&&!restored&&req.method!=='GET'&&url.pathname.startsWith('/api/')&&url.pathname!=='/api/rpc'&&!url.pathname.startsWith('/api/workspace-backups/'))(services as OrdinaryServices).backups.assertMutationAllowed();
         if (url.pathname === '/api/version-comparison/media' && await versionComparisonMedia.handle(req, res, url)) return;
@@ -494,6 +514,7 @@ async function composeServer({
         if (await imageHttp(req,res,url)) return;
         if (await videoHttp(req,res,url)) return;
         if (await chatHttp?.handle(req, res, url)) return;
+        if (await taskHttpV2?.handle(req,res,url)) return;
         if (await editTasksHttp(req, res, url)) return;
         if (await localDraftHttp(req, res, url)) return;
         if (await lastProjectHttp(req, res, url)) return;
@@ -609,27 +630,30 @@ async function composeServer({
       // Abort inference and close long-lived SSE BEFORE HTTP drain and SQLite.
       chatRuntime?.close();
       chatHttp?.close();
+      taskRuntimeV2?.close();taskHttpV2?.close();
       const drain = server ? new Promise<void>((resolve, reject) => server!.close(error => error ? reject(error) : resolve())) : Promise.resolve();
       const forceDrain = setTimeout(() => server?.closeAllConnections(), 3000);
       forceDrain.unref();
       try {
         await boundedShutdown(Promise.all([
-          worker?.stop(), candidateEditor ? candidateEditor.drain() : serviceDrain(), candidateEditor ? undefined : editTasks.drain(), files.close(), versionComparisonMedia.close(),
+          worker?.stop(), taskRuntimeV2?.drain(), candidateEditor ? candidateEditor.drain() : serviceDrain(), candidateEditor ? undefined : editTasks.drain(), files.close(), versionComparisonMedia.close(),
           terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), drain,
           !suppliedAgentSettings ? agentSettings?.close() : undefined, imageSettings?.close(), customImageSettings?.close(), videoSettings?.close(), comfySettings?.close(),
         ]), 'SERVER_STOP_TIMEOUT');
       }
       finally { clearTimeout(forceDrain); }
+      taskToolsV2?.dispose();
       store.close();
     })();
     return {url: `http://127.0.0.1:${actualPort}`, port: actualPort, token, tokenFile, dataDir: root,setBackupDirectory:(directory:string)=>{if(candidate||restored||shutdown.signal.aborted)throw workspaceRestoreError();const ordinary=services as OrdinaryServices;ordinary.backups.assertMutationAllowed();return ordinary.configuration.setBackupDirectory(directory);}, close,...(!listen?{handleRequest}:{})};
   } catch (error) {
     shutdown.abort();
     chatRuntime?.close(); chatHttp?.close();
+    taskRuntimeV2?.close();taskHttpV2?.close();
     const drain = server?.listening ? new Promise<void>(resolve => server!.close(() => resolve())) : Promise.resolve();
     server?.closeAllConnections();
-    await boundedShutdown(Promise.all([drain, files?.close(), versionComparisonMedia?.close(), worker?.stop(), candidateEditor ? candidateEditor.drain() : serviceDrain(), candidateEditor ? undefined : editTasks?.drain(), terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), !suppliedAgentSettings ? agentSettings?.close() : undefined, imageSettings?.close(), customImageSettings?.close(), videoSettings?.close(), comfySettings?.close()]), 'SERVER_STOP_TIMEOUT');
-    store.close();
+    await boundedShutdown(Promise.all([drain, taskRuntimeV2?.drain(), files?.close(), versionComparisonMedia?.close(), worker?.stop(), candidateEditor ? candidateEditor.drain() : serviceDrain(), candidateEditor ? undefined : editTasks?.drain(), terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), !suppliedAgentSettings ? agentSettings?.close() : undefined, imageSettings?.close(), customImageSettings?.close(), videoSettings?.close(), comfySettings?.close()]), 'SERVER_STOP_TIMEOUT');
+    taskToolsV2?.dispose();store.close();
     throw error;
   }
 }

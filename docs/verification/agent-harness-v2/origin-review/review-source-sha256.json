@@ -1,0 +1,513 @@
+{
+  "baseline": "cfa2f83e1a4febeec335ccd5a51d09b35d72a76b",
+  "branch": "codex/agent-harness-v2-origin-review",
+  "review": {
+    "standards": "round 3 and final serialization increment: no finding",
+    "specExecution": "round 2: no finding",
+    "specUiApiStorage": "round 2 and final serialization increment: no finding"
+  },
+  "files": [
+    {
+      "path": "apps/desktop/scripts/migrate-data.ts",
+      "sha256": "c301d5b0e87dcc98f8c23758608397ec67ff9e7954a5542eb59c75e5a4db0554"
+    },
+    {
+      "path": "apps/server/src/agent-task-http-v2.ts",
+      "sha256": "c017730f51eac4d84a3de7f9950647243d15f514837c66cee4df59bb13f0efc5"
+    },
+    {
+      "path": "apps/server/src/index.ts",
+      "sha256": "d79d82df86e567fd480a3f37476fcb1cfe8e30c6445d47c64dcbc0760449a8ec"
+    },
+    {
+      "path": "apps/web/src/AgentEditingBoundary.tsx",
+      "sha256": "c854a6ad7582a59bf9e5b035100491672f613cb375017f568d0baa0329d9c821"
+    },
+    {
+      "path": "apps/web/src/AgentLegacyHistory.tsx",
+      "sha256": "18337b89f55becbc4cb798fa876ec8809f83e788115d50f76b3a785a5a253923"
+    },
+    {
+      "path": "apps/web/src/AgentRetainedEditing.tsx",
+      "sha256": "a43a74cd22d2d98f303886964d16f145ef974eda2e39cdcfb427755c6b5f80c6"
+    },
+    {
+      "path": "apps/web/src/AgentSettings.tsx",
+      "sha256": "c6b8564661a1ddb2a8c9e1cb80980bfd76eab40784d806673d7d2f89969bfe6b"
+    },
+    {
+      "path": "apps/web/src/AgentTaskPanel.tsx",
+      "sha256": "0925ef176098995ef48312bd7193b1c21c22fca7e8554cfabc455a0d02e0168f"
+    },
+    {
+      "path": "apps/web/src/AgentTaskPolicy.tsx",
+      "sha256": "6e586a80f86ce3942626db4b2300097f4445b40f4e63871413e0bd7730e44e95"
+    },
+    {
+      "path": "apps/web/src/AgentWorkspace.tsx",
+      "sha256": "97cfb9e34bd3b26d13235c90fa799f862aa480fd61dcbe00e7e3c0b470097be3"
+    },
+    {
+      "path": "apps/web/src/App.tsx",
+      "sha256": "0d968456211675e3e1f21311ea4e01045f362b50dfc82be9d87c470e65f03140"
+    },
+    {
+      "path": "apps/web/src/AssetAnnotations.tsx",
+      "sha256": "c7967e9084ca0fc89e6a7197a4749816aa031261a75a7f45b532e68b56f79bdd"
+    },
+    {
+      "path": "apps/web/src/AssetDispositionControls.tsx",
+      "sha256": "82e66a0fd9da75ab0b6b30eb27c50df4a96a936498cc4b2cf199ff0e07de949f"
+    },
+    {
+      "path": "apps/web/src/AssetLibrary.tsx",
+      "sha256": "2186c4a486838ea0aa9051d4b94d5ba11d54c690236c74f5f95da8d78aaeb670"
+    },
+    {
+      "path": "apps/web/src/Inspector.tsx",
+      "sha256": "cba4c99a0229b7245f077057f23f47a96473b582836f9eac55a65b44f6718e66"
+    },
+    {
+      "path": "apps/web/src/SubjectLibrary.tsx",
+      "sha256": "1b632483f45af52b63b210dfe6a158623ab1243a13a39c0c82e61ad60c6c8abb"
+    },
+    {
+      "path": "apps/web/src/Timeline.tsx",
+      "sha256": "840ccde765aea5e8dd9298e17332b45763a2ac065e9a340c4b57808a7ca30fa1"
+    },
+    {
+      "path": "apps/web/src/TimelineInspector.tsx",
+      "sha256": "eb24088f6b904e676f08280c8ad81d854cfaa1e0179caa602267712000f655ba"
+    },
+    {
+      "path": "apps/web/src/agent-editing-proof.ts",
+      "sha256": "f9e6547cedf12dd14f8458778ca81d662bbc7a4c029232131331342a328688c0"
+    },
+    {
+      "path": "apps/web/src/agent-editing-protection.ts",
+      "sha256": "82e0534f2e74edc5eee509853d7dad0b390353736db8b45e6d708c8582d43d5a"
+    },
+    {
+      "path": "apps/web/src/agent-task-location.ts",
+      "sha256": "684aef0c0d0cb22e74981ea86749294341b194cede13791bf508f7d5d9f27653"
+    },
+    {
+      "path": "apps/web/src/agent-task-v2.css",
+      "sha256": "c5fbdde43e160a8a1679fe3b13f3fc192e9d40fc0a8d91d135037e848c876e6c"
+    },
+    {
+      "path": "apps/web/src/agent-tasks-v2.ts",
+      "sha256": "bc1f40cc3efada14ae6e150c1c2b1b5130a89f52945a0cf9ed368cbf4ad9fe21"
+    },
+    {
+      "path": "apps/web/src/clip-draft-state.ts",
+      "sha256": "e6937b8e310314df49256cfd9b2581f4044d0e45c0ccdc76f61191835763e1a4"
+    },
+    {
+      "path": "apps/web/src/clip-inspector-retention.ts",
+      "sha256": "00a4bc528ba8e2a951f262f6dc37666c30da42023845e96c316792aff1119d3e"
+    },
+    {
+      "path": "apps/web/src/native-close-sources.ts",
+      "sha256": "f5a42865a0e51eb6140e40a9de634ccda95780c9880fb272ef3b7cce1d6edf8c"
+    },
+    {
+      "path": "apps/web/src/native-close-state.ts",
+      "sha256": "a744657ad7ed0686d46bc0e8212147bfebe1a503870dad7ab8c4b280ad4a3dc8"
+    },
+    {
+      "path": "apps/web/src/subtitle-state.ts",
+      "sha256": "d6d66c4e968fdc32651ff1f5efd5c02ac8121890a3f0aa8e4b0e4191bdb47938"
+    },
+    {
+      "path": "apps/web/src/use-subtitles.ts",
+      "sha256": "e7c9a4a562283c445dbb016753961c9f319decb50bca51bbbb9c0accc5840548"
+    },
+    {
+      "path": "apps/web/src/workspace-preferences.ts",
+      "sha256": "a3a73ecc6c6c06bd4ab690f0e38a20223d5eb1a6dbe46f90bf6c6c07cb0b9b7d"
+    },
+    {
+      "path": "packages/business/src/agent/chat-runtime.ts",
+      "sha256": "8d26bfc82c3c4ca5a3275c8e5848e3f137131bfa58dc314a709a87a270b521ba"
+    },
+    {
+      "path": "packages/business/src/agent/read-tool-runner.ts",
+      "sha256": "a297464ea35469f06813e09af11c6a8b39d9f85e0d7ea0b74378ed2758ab56f8"
+    },
+    {
+      "path": "packages/business/src/agent/task-effects-v2.ts",
+      "sha256": "1fd31f6f0294e5ab6866caa23b58d8cf1c4847d17f14e215487f3ea66a54aa32"
+    },
+    {
+      "path": "packages/business/src/agent/task-gateway-v2.ts",
+      "sha256": "1f4ff622f5818b1046489f78c42f3a3c08d0bb7c4979384ecdb31d65d081dbdc"
+    },
+    {
+      "path": "packages/business/src/agent/task-journal-v2.ts",
+      "sha256": "b5adc2e642edd92d87cda2ead630a9976c3d6b36ad71cde22a2ab07b5cff6f2a"
+    },
+    {
+      "path": "packages/business/src/agent/task-runtime-v2.ts",
+      "sha256": "a49ba57f167a69272ee15600182393d849b1dc5f572f9306b6970652995e368d"
+    },
+    {
+      "path": "packages/business/src/agent/task-schema-v2.ts",
+      "sha256": "9e713870cf412e4202fac4b3d3c3696acbe9a73f1f46b2a9edf6807d6ad343c2"
+    },
+    {
+      "path": "packages/business/src/agent/task-tool-schemas-v2.ts",
+      "sha256": "c69e078b20390087e99cc1d8b250816285b35d9c76769499dd2e077a8e109774"
+    },
+    {
+      "path": "packages/business/src/agent/task-tools-v2.ts",
+      "sha256": "b6d00352ab070b62264abdbfbd5068d2877896a4a7f0c13bb5027da42311e9f8"
+    },
+    {
+      "path": "packages/business/src/backup-readiness.ts",
+      "sha256": "9373f9e082822c5a78e8a55809d6ac3dcef0e169c23f66f1f8d4d5817d712d9e"
+    },
+    {
+      "path": "packages/business/src/db.ts",
+      "sha256": "828ad0f57179b5090fd0a650780bf31765974f957c27bd41d8532b14be85d2cb"
+    },
+    {
+      "path": "packages/business/src/edit-tasks.ts",
+      "sha256": "b967282f2c312efaf7c090e29010103facb472d35acbd7b3308448907bb62fdb"
+    },
+    {
+      "path": "packages/business/src/frames.ts",
+      "sha256": "6e78ffae75f49359f685ec765d5852cd40d7c765cd79d1db4c46b732ab7787f9"
+    },
+    {
+      "path": "packages/business/src/images.ts",
+      "sha256": "d91846e9d3e12fcd222ca3f411c356a1f345bfb63669426be313e23486dca53a"
+    },
+    {
+      "path": "packages/business/src/jobs.ts",
+      "sha256": "215ac7149e112178b7404f790f33556b5b093a3feb6ef299341e4f0766710c06"
+    },
+    {
+      "path": "packages/business/src/lut-resources.ts",
+      "sha256": "aace1a467a1a217c731946cdcb94f9363a4f99ed35ed5452eb5aa050951ecae9"
+    },
+    {
+      "path": "packages/business/src/managed-asset-import.ts",
+      "sha256": "5b593d9309c1615e50a19b6b358fb07898a87b1c13f2a967aa7f554f0b281e56"
+    },
+    {
+      "path": "packages/business/src/media.ts",
+      "sha256": "e7de3895e92f00048a051370547f3b8f14dcb921017ecd658e5a70bf8f14f306"
+    },
+    {
+      "path": "packages/business/src/project-lifecycle.ts",
+      "sha256": "e578f3921447e7151c6105b02873204f395076558d5922108ed716772169721f"
+    },
+    {
+      "path": "packages/business/src/services.ts",
+      "sha256": "32d017aca224bf076a7f8dde968e0a83bdc1bae9f721254ff9146a9b114fdbe9"
+    },
+    {
+      "path": "packages/business/src/task-dispositions.ts",
+      "sha256": "ae4b92e6e24cae5bcea156e83332638c98fd173be36dec608aecffb3bafe2175"
+    },
+    {
+      "path": "packages/business/src/timeline-audio-role-business.ts",
+      "sha256": "0659816e0ab0f048242037b274ba624bcbf2becc15f77eadbb4fe08ebb57678d"
+    },
+    {
+      "path": "packages/business/src/timeline-media.ts",
+      "sha256": "f4150ce725c187ef0c207a8dd613434e766acf96fbd343942862bf1f01a88aad"
+    },
+    {
+      "path": "packages/business/src/timeline-preflight.ts",
+      "sha256": "5d361c5a4fd1c67856b242bff44222ee6bbcfc1a33b71c51c8f951f3f17af764"
+    },
+    {
+      "path": "packages/business/src/timeline-volume-envelope-admission.ts",
+      "sha256": "50f9889f7edfeb2328c2066a8c15e4138fb048185c63489e8105d88edbc94a80"
+    },
+    {
+      "path": "packages/business/src/timeline-volume-envelope-capability.ts",
+      "sha256": "b8fc0193b427513a23f41d73d9bc6e95b527326f5084e42b78a59295ced2908d"
+    },
+    {
+      "path": "packages/business/src/timeline.ts",
+      "sha256": "29f59522d281ca1b39e3ecc5c7fcf0e395331fcef0cacc4f7e9f151bc6aa7172"
+    },
+    {
+      "path": "packages/business/src/workspace-backup-inventory.ts",
+      "sha256": "7410d1ade8ed29a159854317f64f6cf1d80ec32ab6efbbdf279b37121dd18d2a"
+    },
+    {
+      "path": "packages/business/src/workspace-backup-schema-versions.ts",
+      "sha256": "021c38a7cdf49cef1124d5d5da8b13c5fd9893b2517abda66a15bfa4890b70d3"
+    },
+    {
+      "path": "packages/business/src/workspace-backup.ts",
+      "sha256": "66734eae84b32e76d0397e4adb436b529c68d71761c90d1e0cd12949b63502db"
+    },
+    {
+      "path": "packages/business/src/workspace-restore-policy.ts",
+      "sha256": "12574f7afd166d7425dafefa6b5dfed948aefe93cba4bce5b4e2295c0428737e"
+    },
+    {
+      "path": "packages/business/src/workspace-restore-read.ts",
+      "sha256": "3180f4415b711d69606444956124a06aecb0b1737806dcd815440c700a3bc647"
+    },
+    {
+      "path": "packages/business/src/workspace-restore-schema-v53.ts",
+      "sha256": "0fd2635c3c0a71037bead486d477fda93d5abe5e306035d0be5ed45e09d8efa7"
+    },
+    {
+      "path": "packages/business/src/workspace-restore.ts",
+      "sha256": "14436460981cf88cbfc4f3d9e227d90781f76e091bc288813dd4f5a60e2e3d4d"
+    },
+    {
+      "path": "packages/business/src/workspace-schema-dispatch.ts",
+      "sha256": "28fe444cf9a6eabeb2b451547c34e80c222069322728348c8d0d095a4e86a62e"
+    },
+    {
+      "path": "packages/business/src/workspace-schema-v52.ts",
+      "sha256": "9739690387d5e74e1f84e33c185616235b17c8b6c217d82cfcab7ee7f5ea8319"
+    },
+    {
+      "path": "packages/contracts/package.json",
+      "sha256": "834f278da97be115249aa5b8e86236f680b2fa782d331c63fca78a3f5c756bed"
+    },
+    {
+      "path": "packages/contracts/src/agent-authorization.ts",
+      "sha256": "461c00f3c754e35a6218dad89b019d5fa3390b24dd7557e3e1977fd39bd2f09a"
+    },
+    {
+      "path": "packages/contracts/src/agent-tasks-v2.ts",
+      "sha256": "82431a0c81efab23ea570ea6e863a6fd53e9f9527978450fbcc72144978aff67"
+    },
+    {
+      "path": "packages/contracts/src/index.ts",
+      "sha256": "5296d7009a373567cfde38dd390416b1e8e126a713e6b6020a019af6b76797d6"
+    },
+    {
+      "path": "packages/contracts/src/project-lifecycle.ts",
+      "sha256": "53487a750676b04dfe0876c3d1b511a1332176b99b0784bb668fe9f5a4354592"
+    },
+    {
+      "path": "packages/contracts/src/workspace-backup.ts",
+      "sha256": "f8dce7c78242f4a2233c058c1006f0f2b558919f5ba19cc20a24a8cce254f461"
+    },
+    {
+      "path": "packages/contracts/src/workspace-restore.ts",
+      "sha256": "e9d19d73a72f7f701a30d640296e06f98cc096208450cc252f3ec9c96a4458d7"
+    },
+    {
+      "path": "packages/contracts/src/workspace-schema-profiles.ts",
+      "sha256": "43805de996bd3754e775707ed0b2d6431540c5048eeee21e43218b28e5e03b32"
+    },
+    {
+      "path": "packages/i18n/src/catalogs/agent-tasks.ts",
+      "sha256": "d567a69c7b4b06016c4712ce73e33fbd2aa933e5aef8856602441fc40da7cc17"
+    },
+    {
+      "path": "packages/i18n/src/index.ts",
+      "sha256": "5ac0634e021d9876a97f1e9a6983bc67cb272c7f96a9ef46f8ad0e2f57c4ff06"
+    },
+    {
+      "path": "scripts/generate-agent-task-schemas.ts",
+      "sha256": "1f53cd7e6d6800df27878e43fc9077be0f9e9ee4f1b8d9d7607d4a4a7dd44658"
+    },
+    {
+      "path": "tests/agent-authorizations.test.ts",
+      "sha256": "5833dfd6210b1833508304c004715de888745ec65e35544f8fc5f85a918c566e"
+    },
+    {
+      "path": "tests/agent-chat-ui.test.mjs",
+      "sha256": "18168ec33a3a8e7678e1f2758d28cfb3d03127e6d6b58fa3fb3c9d36ffa3b62f"
+    },
+    {
+      "path": "tests/agent-editing-boundaries-v2.test.mjs",
+      "sha256": "6c60d4327a43003c40bc68971d6d32c8d4fff8ad896a1e762964554034d5c94c"
+    },
+    {
+      "path": "tests/agent-editing-protection.test.ts",
+      "sha256": "b05d279e0030cc03f2b11a4dbf1f8ebe8820a0b3e0dafd6ec8b2fde23545b615"
+    },
+    {
+      "path": "tests/agent-manual-collaboration.test.ts",
+      "sha256": "fb6b417f7dd889da37cc33d1f27d6b3deedb5797c302d6cea7b1d4bcbf5a3abc"
+    },
+    {
+      "path": "tests/agent-settings-ui.test.mjs",
+      "sha256": "13a68d2a91bf0ce43daf2fd73f103231fd8ab242fa911de9faeef02ee1f6d3ac"
+    },
+    {
+      "path": "tests/agent-task-boundaries-v2.test.ts",
+      "sha256": "03c6bd27964ac7a855d6c797aeed416668a4b87745e578d70260067cd0fd7b55"
+    },
+    {
+      "path": "tests/agent-task-crash-v2.test.ts",
+      "sha256": "9c3775fb282f27881d1824e774ed7674c779ab0c7b487caac3cc8d4e726484b3"
+    },
+    {
+      "path": "tests/agent-task-gateway-v2.test.ts",
+      "sha256": "2e9a93525358ad93e9d48014976281bc3c9abff7f00b48ba6d959fc591292829"
+    },
+    {
+      "path": "tests/agent-task-http-v2.test.ts",
+      "sha256": "1c860fbb307d89964401160d2740ae70fc249fdabf4cbd420798fe7bef40e3c0"
+    },
+    {
+      "path": "tests/agent-task-journal-v2.test.ts",
+      "sha256": "531e926bb2a9e510e0405465a2d461c01a893f97a993e6651531527f260dd5c0"
+    },
+    {
+      "path": "tests/agent-task-panel-v2-components.test.mjs",
+      "sha256": "d3620c522fc0b2225d23c616e631055553b6856550119bdd74a2bb4de503a807"
+    },
+    {
+      "path": "tests/agent-task-runtime-v2.test.ts",
+      "sha256": "a8a9ba55b915ae085ea8c615a5f55bc41506ac14ee58f9e2e4f6c9cb09ae0e2c"
+    },
+    {
+      "path": "tests/agent-task-tools-v2.test.ts",
+      "sha256": "b07368c41a2d3c701770f4f45babe01ec48ffcc903acff8e30d02a2d8305a432"
+    },
+    {
+      "path": "tests/agent-tasks-v2-ui.test.ts",
+      "sha256": "e6749a02b7044c765890ad40f43b14be83185f2c9ba1fd30f2585344bdd7a812"
+    },
+    {
+      "path": "tests/agent-timeline-gain-preservation.test.mjs",
+      "sha256": "6b83ac454c43bd1fad2f15e66c04c618fdc0565baee7f6ed357a3b59f04595e5"
+    },
+    {
+      "path": "tests/agent-tool-authorization-race.test.ts",
+      "sha256": "fb63d76d67fa6484ddc04d8260bf584b098ffe9b1d6d19eba20b842bb22dc8e2"
+    },
+    {
+      "path": "tests/asset-annotation-components.test.ts",
+      "sha256": "5d6c78bd48e97c871911cd464c4944a0a48d6d50e30e28e97ede488e1ced5d32"
+    },
+    {
+      "path": "tests/asset-disposition-ui.test.mjs",
+      "sha256": "53a580cc29ee74c37391be1b269d5dc4405dc9fd5c59af7ff066bc939b597656"
+    },
+    {
+      "path": "tests/desktop-migration-schema26.test.ts",
+      "sha256": "7dd8704144f0ce47993575572c222098197853e3d34c8132fdef63be3763e1ee"
+    },
+    {
+      "path": "tests/desktop-static-adapters.test.ts",
+      "sha256": "68cf963f5f4a300ab36ba1b82e566193ec8cd41ea75bce18a3e9a07b6a0e5037"
+    },
+    {
+      "path": "tests/fixtures/agent-gain-origin-main-subject-closure.json",
+      "sha256": "299f7a907b0f805e6f7b7a6d4b1a15b8da31b2f0f4e3835d70e68f869fcce31c"
+    },
+    {
+      "path": "tests/fixtures/agent-gain-schema52-runtime-map.json",
+      "sha256": "3d8b54bc6f0e4de585c756a96dc22f6f42fee9f7ede4e4a2f92a5a9288763502"
+    },
+    {
+      "path": "tests/fixtures/workspace-schema-profiles/current-ordinary-52-delta.json",
+      "sha256": "e4e0612bb6d1157113296f208ee1f054a00a033abb29ab30169bf71d35b97f75"
+    },
+    {
+      "path": "tests/helpers/agent-task-v2-crash-process.ts",
+      "sha256": "fef50ed5d7b69a8329eeef74991a097b173bda1a8f2f1a49e71c3ec1f2685723"
+    },
+    {
+      "path": "tests/helpers/current-schema-delta.ts",
+      "sha256": "de35d34c49a63abee631e729726b0a4787453414a69174cd71628eb879d3ceca"
+    },
+    {
+      "path": "tests/helpers/workspace-schema50.ts",
+      "sha256": "81b36fc5f4de51355d4db1bf5b358470cd848314cc4c4fee283f90df33909596"
+    },
+    {
+      "path": "tests/image-generation-business.test.ts",
+      "sha256": "ae681eb76d9da90cfecbedd55e2c9861792c389fb2ed574e06efc0ba7f2f252c"
+    },
+    {
+      "path": "tests/local-delivery-backup.test.ts",
+      "sha256": "21d97ab22a2fb1e5e7876c5113fad15a4fbdbe132fa147a892047e14ee5367f5"
+    },
+    {
+      "path": "tests/lut-resources-transports.test.mjs",
+      "sha256": "7d2342a1bbf87017e0703d4351b910fb67cc6555a90041a63d2d9cb0813204e8"
+    },
+    {
+      "path": "tests/project-lifecycle.test.mjs",
+      "sha256": "f0f320bad423f96d3b26addb9a72788c95f94f0fdd4de8671fb1ae0d467e1810"
+    },
+    {
+      "path": "tests/subjects-ui.test.mjs",
+      "sha256": "9c5c0fba2563857048676a4a0bb477f24484b14e94e5536da80616e7121da5d2"
+    },
+    {
+      "path": "tests/task-dispositions.test.ts",
+      "sha256": "f6d4742e7e7e3aa0be29d67f96a824164df28e4918ca11bc6a2ec2555f2d252a"
+    },
+    {
+      "path": "tests/timeline-volume-envelope-owned-startup.test.mjs",
+      "sha256": "27893f6141025624fa9f22042996129232b0700f759ae182c62b998d610e5c9b"
+    },
+    {
+      "path": "tests/workspace-backup-marker-bounds.test.ts",
+      "sha256": "3da98152492b68626fc34bf05c692d5647e9384123ccbf17b322267d07435ba9"
+    },
+    {
+      "path": "tests/workspace-backup-readiness.test.ts",
+      "sha256": "a395d1ea3964d8aaa373d899f8e35fed6abc1494b22459d73e367e194186692c"
+    },
+    {
+      "path": "tests/workspace-preferences-client-service.test.mjs",
+      "sha256": "cd52b390212b77771cff8d401cd2b15100dff9b9d8f986b1333ca49f845f87f6"
+    },
+    {
+      "path": "tests/workspace-project-lifecycle-schema.test.mjs",
+      "sha256": "b0978520c006f30af8fe3a99eab7adcb6a3a03c5bd554d9b9a208b1b17e091d4"
+    },
+    {
+      "path": "tests/workspace-restore-apply-replay.test.ts",
+      "sha256": "186ee3d9f398c4a8866818c557ad1f225ceebecc871eb20ee1901581db186e50"
+    },
+    {
+      "path": "tests/workspace-restore-v27.test.mjs",
+      "sha256": "18eeb6ad832b9064e2c13ab88ec42978a93a0d758f83ebeef8113553a39c079e"
+    },
+    {
+      "path": "tests/workspace-schema-dispatch.test.mjs",
+      "sha256": "23e54e08557bd5417352371930c7cd96080dad639d9ab04efd47dc881a69b61c"
+    },
+    {
+      "path": "tests/workspace-schema36.test.mjs",
+      "sha256": "dc948eb2a895299d13ec6ae4938b7abf26e9a73063af4ae91824637cc0243f24"
+    },
+    {
+      "path": "tests/workspace-schema40-dispatch.test.mjs",
+      "sha256": "cd00fdd2ec1e3dc3cbe236305469667f9df807a2ee6caa9e8f932f8e6bfd927e"
+    }
+  ],
+  "unchangedHistoricalFiles": [
+    {
+      "path": "packages/business/src/workspace-schema-v50.ts",
+      "sha256": "b241fba5d575c9b930156fb9ab8e8c86397cea744ac467c3f18259c9d7cb4af1"
+    },
+    {
+      "path": "packages/business/src/workspace-restore-schema-v51.ts",
+      "sha256": "e84d8171818af2d199e2a042d80f807a3305003f2bd25430c95159e9aeee1d77"
+    },
+    {
+      "path": "tests/fixtures/workspace-schema-profiles/current-ordinary-50-delta.json",
+      "sha256": "c0270cb46c4595d0045ef7debbd69c4dc50e06efa22b19283737329c2f2440c7"
+    },
+    {
+      "path": "tests/fixtures/agent-gain-ts-migration-map.json",
+      "sha256": "024733f16f4eead34913b67721c81a84fa5a5346a2f372b3d5160af20ef4066e"
+    },
+    {
+      "path": "tests/fixtures/agent-gain-schema50-runtime-map.json",
+      "sha256": "ceb4f2713e001bc4bee70a9e2af9adfe2fad74c0ba01c2a8cf2d0f04ad30fc2c"
+    }
+  ]
+}

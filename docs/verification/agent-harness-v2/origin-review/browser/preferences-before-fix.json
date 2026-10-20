@@ -1,0 +1,73 @@
+{
+  "method": "PUT",
+  "url": "http://127.0.0.1:52750/api/workspace-preferences/bde7224b-77b2-4777-a5e4-bef6b0c7b9c0",
+  "requestBody": {
+    "expectedRevision": 0,
+    "state": {
+      "version": 1,
+      "activeMode": "canvas",
+      "canvas": {
+        "viewport": {
+          "x": 160,
+          "y": 316,
+          "zoom": 1
+        },
+        "selectedId": "5b046867-84f5-4634-9fba-842ac9099956",
+        "selectedEdgeId": null,
+        "inspectorTab": "settings",
+        "highlightedVersionId": null,
+        "storyboardOpen": false,
+        "miniMap": false
+      },
+      "editing": {
+        "selectedClipId": null,
+        "quickAssetId": null,
+        "previewKind": "timeline",
+        "playhead": 0,
+        "pixelsPerSecond": 76,
+        "scrollLeft": 0,
+        "scrollTop": 0,
+        "timelineCollapsed": false,
+        "snappingEnabled": true
+      },
+      "shared": {
+        "assetFilter": "all",
+        "assetsCollapsed": false,
+        "inspectorCollapsed": false
+      },
+      "layout": {
+        "canvas": {
+          "assetsWidth": 260,
+          "inspectorWidth": 320,
+          "assetsCollapsed": false,
+          "inspectorCollapsed": false
+        },
+        "editing": {
+          "assetsWidth": 260,
+          "inspectorWidth": 320,
+          "assetsCollapsed": false,
+          "inspectorCollapsed": false,
+          "timelineHeight": 300
+        }
+      }
+    },
+    "key": "{\"version\":1,\"activeMode\":\"canvas\",\"canvas\":{\"viewport\":{\"x\":160,\"y\":316,\"zoom\":1},\"selectedId\":\"5b046867-84f5-4634-9fba-842ac9099956\",\"selectedEdgeId\":null,\"inspectorTab\":\"settings\",\"highlightedVersionId\":null,\"storyboardOpen\":false,\"miniMap\":false},\"editing\":{\"selectedClipId\":null,\"quickAssetId\":null,\"previewKind\":\"timeline\",\"playhead\":0,\"pixelsPerSecond\":76,\"scrollLeft\":0,\"scrollTop\":0,\"timelineCollapsed\":false,\"snappingEnabled\":true},\"shared\":{\"assetFilter\":\"all\",\"assetsCollapsed\":false,\"inspectorCollapsed\":false},\"layout\":{\"canvas\":{\"assetsWidth\":260,\"inspectorWidth\":320,\"assetsCollapsed\":false,\"inspectorCollapsed\":false},\"editing\":{\"assetsWidth\":260,\"inspectorWidth\":320,\"assetsCollapsed\":false,\"inspectorCollapsed\":false,\"timelineHeight\":300}}}",
+    "invocation": {}
+  },
+  "response": {
+    "ok": false,
+    "error": {
+      "code": "VALIDATION_ERROR",
+      "message": "工作区偏好字段无效",
+      "details": {
+        "issues": [
+          {
+            "path": [],
+            "message": "Expected exactly the documented fields"
+          }
+        ]
+      },
+      "retryable": false
+    }
+  }
+}

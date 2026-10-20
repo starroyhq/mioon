@@ -31,6 +31,7 @@ export interface MediaFileInfo {
   hasAudio: boolean;
 }
 export interface StitchOptions extends MediaEffectOptions {
+ beforeStart?:()=>void;
   outputGeometry?: TimelineOutputGeometry;
 }
 
@@ -88,7 +89,7 @@ export async function safePath(root: string, relative: string): Promise<string> 
   if(!target.startsWith(base+path.sep))throw Error('Media path outside managed directory');
   return target;
 }
-export async function stitch(files: readonly string[], destination: string, {signal,beforeEffect,outputGeometry={fps:30,width:1080,height:1920}}: StitchOptions = {}): Promise<void> {
+export async function stitch(files: readonly string[], destination: string, {signal,beforeEffect,beforeStart,outputGeometry={fps:30,width:1080,height:1920}}: StitchOptions = {}): Promise<void> {
  checkMediaEffect(beforeEffect,signal);
  const output = timelineOutputPreset(outputGeometry);
  if(!output)throw Object.assign(Error('Invalid frozen storyboard output geometry'),{code:'INVALID_TIMELINE_SNAPSHOT'});
@@ -108,6 +109,6 @@ export async function stitch(files: readonly string[], destination: string, {sig
  });
  chains.push(files.map((_,i)=>`[v${i}][a${i}]`).join('')+`concat=n=${files.length}:v=1:a=1[outv][outa]`);
  args.push('-filter_complex',chains.join(';'),'-map','[outv]','-map','[outa]','-c:v','libx264','-preset','veryfast','-crf','23','-pix_fmt','yuv420p','-c:a','aac','-b:a','128k','-movflags','+faststart',destination);
- await run('ffmpeg',args,{timeout:300000,signal,beforeEffect});
+ beforeStart?.();await run('ffmpeg',args,{timeout:300000,signal,beforeEffect});
  checkMediaEffect(beforeEffect,signal);await probe(destination,{signal,beforeEffect});checkMediaEffect(beforeEffect,signal);
 }

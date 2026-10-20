@@ -63,6 +63,19 @@ export function agentChatCloseState(state: AgentChatCloseInput): Projection {
 }
 export const createAgentChatCloseReporter = (registry?: NativeCloseSourceRegistry) => createReporter(registry, 'agent-chat', agentChatCloseState);
 
+interface AgentTaskCloseInput {
+  readonly draft: string;
+  readonly phase: string;
+  readonly pending: { readonly requestId: string; readonly runId: string | null; readonly action: string } | null;
+  readonly snapshot: { readonly run: { readonly id: string; readonly status: string }; readonly steps: readonly { readonly id: string; readonly status: string }[] } | null;
+}
+export function agentTaskCloseState(state: AgentTaskCloseInput): Projection {
+  const unknown = state.snapshot?.steps.filter(step => step.status === 'unknown').map(step => step.id).sort() ?? [];
+  return { dirty: Boolean(state.draft.trim()) && !state.pending, busy: state.phase === 'submitting', blocked: Boolean(state.pending || unknown.length) || ['unknown', 'error'].includes(state.phase),
+    identity: [state.draft, state.pending?.requestId, state.pending?.runId, state.pending?.action, state.snapshot?.run.id, ...unknown] };
+}
+export const createAgentTaskCloseReporter = (registry?: NativeCloseSourceRegistry) => createReporter(registry, 'agent-task-v2', agentTaskCloseState);
+
 interface ImageCloseInput {
   readonly draft: { readonly name: string; readonly prompt: string };
   readonly phase: string;

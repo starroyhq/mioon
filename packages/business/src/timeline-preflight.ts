@@ -25,7 +25,7 @@ type PreflightInput = {[key: string]: unknown;projectId: string;expectedRevision
 interface PreflightChecks {totalAssets: number;checkedAssets: number;bytesHashed: number;fullDecode: boolean;subtitles?: {profileId: string;fontVerified: boolean;inkMeasured: boolean}}
 interface PreflightIssue {code: string;severity: string;message: string|undefined;assetId?: string}
 export interface TimelinePreflightReport {projectId: string;timelineId: string|null;timelineRevision: number|null;expectedRevision: number;snapshotHash: string|null;checkedAt: string;status: string;summary: unknown;checks: PreflightChecks;issues: PreflightIssue[]}
-interface PreflightServiceOptions {signal?: AbortSignal;probe?: (file: string,options: PreflightProbeOptions)=>Promise<PreflightProbeResult>;limits?: PreflightLimits}
+interface PreflightServiceOptions {signal?: AbortSignal;probe?: (file: string,options: PreflightProbeOptions)=>Promise<PreflightProbeResult>;limits?: PreflightLimits;/** Trusted host fence; never accepted from RPC input. */beforeEffect?:()=>void}
 interface PreflightCallOptions {signal?: AbortSignal}
 interface PreflightAttempt {controller: AbortController;task: Promise<unknown>|null}
 
@@ -78,13 +78,16 @@ function classify(error: unknown,opacity=false): [string,string]{
  * ownership, bytes, streams and renderer rules; a report cannot promise future
  * bytes or full decode success. Owned children are joined before drain/close.
  */
-export function createTimelinePreflightServices(store: PreflightStore,{signal:ownerSignal,probe=probeTimelineSource,limits=EXPORT_PREFLIGHT_LIMITS}: PreflightServiceOptions={}){
+export function createTimelinePreflightServices(store: PreflightStore,{signal:ownerSignal,probe=probeTimelineSource,limits=EXPORT_PREFLIGHT_LIMITS,beforeEffect:hostBeforeEffect}: PreflightServiceOptions={}){
  const opacity=createOpacityCandidatePreflightRuntime(store);
  const readSnapshot=(input: PreflightInput): {timeline: TimelineRecord|null;snapshot: TimelinePreflightSnapshot|null}=>opacity?opacity.readSnapshot(input) as {timeline: TimelineRecord|null;snapshot: TimelinePreflightSnapshot|null}:readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings,input);
  const active=new Set<PreflightAttempt>();let stopped=false,shutdownFailure: unknown;
  async function preflight(input: PreflightInput,{signal:callSignal}: PreflightCallOptions={}): Promise<TimelinePreflightReport>{
   if(opacity)input=opacity.parse(input) as unknown as PreflightInput;
-  const beforeEffect=opacity?opacity.begin(input):(refuseRestoredOperation(store,'timeline.export.preflight',input),restoreEffectFence(store));
+  const workspaceBeforeEffect=opacity?opacity.begin(input):(refuseRestoredOperation(store,'timeline.export.preflight',input),restoreEffectFence(store));
+  let hostEffectFailure:unknown;
+  const beforeEffect=hostBeforeEffect?()=>{try{hostBeforeEffect();}catch(error){hostEffectFailure??=error;throw hostEffectFailure;}workspaceBeforeEffect?.();}:workspaceBeforeEffect;
+  beforeEffect?.();
   const started=performance.now();
   const external=ownerSignal&&callSignal&&ownerSignal!==callSignal?AbortSignal.any([ownerSignal,callSignal]):ownerSignal||callSignal;
   checkpoint(external);if(shutdownFailure)throw shutdownFailure;if(stopped)throw new AppError('OPERATION_CANCELLED','Operation interrupted by shutdown',503);
@@ -143,6 +146,7 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
    }catch(rawError){
     const error=rawError as {terminationUnconfirmed?: boolean;code?: string;timelineAssetId?: string};
     if(error.terminationUnconfirmed){shutdownFailure=rawError;throw rawError;}
+    if(hostEffectFailure)throw hostEffectFailure;
     if(safeWorkspaceRestoreError(rawError)||opacity&&error.code==='RESTORE_STORE_UNVERIFIED')throw rawError;
     checkpoint(external);if(stopped)checkpoint(controller.signal);
     const [status,code]=timedOut?['incomplete','PREFLIGHT_TIMEOUT']:classify(rawError,Boolean(opacity));
@@ -157,8 +161,8 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
    // Recheck a fresh coherent snapshot only after all asynchronous reads. A
    // changed row, owner, frozen metadata or revision can never publish ready.
    let current;
-   try{current=readSnapshot(input);}
-   catch(error){const failure=error as {code?: string};if(opacity&&(safeWorkspaceRestoreError(error)||failure.code==='RESTORE_STORE_UNVERIFIED'))throw error;current=null;}
+   try{beforeEffect?.();current=readSnapshot(input);}
+   catch(error){if(hostEffectFailure)throw hostEffectFailure;const failure=error as {code?: string};if(opacity&&(safeWorkspaceRestoreError(error)||failure.code==='RESTORE_STORE_UNVERIFIED'))throw error;current=null;}
    if(!current?.snapshot||timelineSnapshotHash(current.snapshot)!==report.snapshotHash){report.status='stale';report.issues=[issue('PREFLIGHT_STALE')];}
    return report;
   })();

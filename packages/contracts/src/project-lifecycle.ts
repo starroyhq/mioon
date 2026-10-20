@@ -8,7 +8,7 @@ export const projectLifecycleDescriptions={
   'project.delete':'危险操作：明确确认后永久删除无运行或待对账任务的项目及独占托管文件、项目草稿；保留外部源文件和原备份。清理未完成时返回pending，原requestId可安全查询并继续本地清理。',
 };
 export const projectDeleteResponseSchema=z.object({requestId:id,projectId:id,deleted:z.literal(true),cleanup:z.enum(['complete','pending'])}).strict();
-const fileIdentity=z.object({relativePath:z.string().regex(/^(?:media|image-staging|frame-staging)\/[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/u),dev:z.number().int().nonnegative(),ino:z.number().int().nonnegative(),size:z.number().int().nonnegative(),mtimeMs:z.number().nonnegative(),birthtimeMs:z.number().nonnegative()}).strict();
+const fileIdentity=z.object({relativePath:z.string().regex(/^(?:media|image-staging|frame-staging|agent-imports)\/[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/u),dev:z.number().int().nonnegative(),ino:z.number().int().nonnegative(),size:z.number().int().nonnegative(),mtimeMs:z.number().nonnegative(),birthtimeMs:z.number().nonnegative()}).strict();
 export const projectDeleteManifestSchema=z.object({version:z.literal(1),projectId:id,files:z.array(fileIdentity).max(8192),companions:z.boolean()}).strict();
 export type ProjectDeleteManifest=z.infer<typeof projectDeleteManifestSchema>;
 export type ProjectRenameInput=z.infer<typeof projectRenameInputSchema>;

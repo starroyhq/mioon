@@ -26,6 +26,15 @@ export interface WorkspaceStore {
   tx<T>(callback: () => T): T;
   close(): void;
 }
+/** Backend-owned transaction observers run inside the domain transaction. An
+ * observer failure rolls back both domain rows and its journal writes. */
+const transactionFences=new WeakMap<DatabaseSync,Set<()=>void>>();
+export function registerWorkspaceTransactionFence(db:DatabaseSync,fence:()=>void):()=>void{let set=transactionFences.get(db);if(!set){set=new Set();transactionFences.set(db,set);}set.add(fence);return ()=>{set?.delete(fence);};}
+const transactionObservers=new WeakMap<DatabaseSync,Set<(result:unknown)=>void>>();
+export function registerWorkspaceTransactionObserver(db:DatabaseSync,observer:(result:unknown)=>void):()=>void{
+ let observers=transactionObservers.get(db);if(!observers){observers=new Set();transactionObservers.set(db,observers);}observers.add(observer);
+ return ()=>{observers?.delete(observer);};
+}
 /** The minimum identity used by lock/restore ownership proofs. */
 export interface StoreIdentity {
   readonly db: DatabaseSync;
@@ -102,6 +111,7 @@ export function validateWorkspaceStorage(root: string): void {
  validateManagedDirectory(path.join(root,'media'),{root,allowMissing:true});
  validateManagedDirectory(path.join(root,'image-staging'),{root,allowMissing:true,private:true});
  validateManagedDirectory(path.join(root,'frame-staging'),{root,allowMissing:true,private:true});
+ validateManagedDirectory(path.join(root,'agent-imports'),{root,allowMissing:true,private:true});
  for(const name of ['workbench.sqlite','workbench.sqlite-wal','workbench.sqlite-shm','workbench.sqlite-journal']){
   validateManagedFile(path.join(root,name),{root,allowMissing:true});
  }
@@ -153,11 +163,13 @@ export function openStore(root: string,{lock=true}: {lock?: boolean} = {}): Work
   if(database.isTransaction)throw new Error('Nested transactions are not supported');
   database.exec('BEGIN IMMEDIATE');
   try{
+   for(const fence of transactionFences.get(database)??[])fence();
    const result=fn();
    if(isThenable(result)){
     if(isPromise(result))Promise.resolve(result).catch(()=>{});
     throw new TypeError('Transactions require a synchronous result');
    }
+   for(const observer of transactionObservers.get(database)??[])observer(result);
    database.exec('COMMIT');return result;
   }catch(error){if(database.isTransaction)database.exec('ROLLBACK');throw error;}
  };

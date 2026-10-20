@@ -308,3 +308,15 @@ test('shared library keeps an excluded source editable and resets filters withou
   const preferences = readFileSync(new URL('../apps/web/src/workspace-state.ts', import.meta.url), 'utf8');
   assert.doesNotMatch(preferences, /dispositionFilter|assetDisposition/);
 });
+
+test('disposition protection claims only the displayed asset and holds while its submission is unresolved', () => {
+  const h = controlHarness(), state = { projectId, scope: `${projectId}:1`, entries: { [assetId(1)]: { phase: 'ready', row: row() } } }, controller = { getState: () => ({ scope: state.scope }), set() {} };
+  const boundary = h.render({ asset: asset(), state, controller }).find(node => Array.isArray(node.props?.targets));
+  assert.equal(boundary.props.projectId, projectId);
+  assert.deepEqual(boundary.props.targets, [{ kind: 'asset_disposition', id: assetId(1), revision: row().revision }]);
+  assert.equal(boundary.props.canRelease(), true);
+  state.uncertain = true;
+  assert.equal(boundary.props.canRelease(), false);
+  state.uncertain = false; state.savingAssetId = assetId(1);
+  assert.equal(boundary.props.canRelease(), false);
+});

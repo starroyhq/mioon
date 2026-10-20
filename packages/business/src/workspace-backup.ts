@@ -60,7 +60,7 @@ interface VerifiedWorkOptions {signal?: AbortSignal;check: ()=>void}
 interface SchemaLike {safeParse(value: unknown): {success: boolean}}
 
 const digest=(bytes: Buffer|Uint8Array|string): string=>createHash('sha256').update(bytes).digest('hex');
-const sourceDirectories=['media','image-staging','frame-staging'];
+const sourceDirectories=['media','image-staging','frame-staging','agent-imports'];
 function checkCold(source: string): void{
  for(const name of ['workbench.sqlite-wal','workbench.sqlite-journal','workbench.sqlite-shm']){
   const info=inspectFile(path.join(source,name),source,{allowMissing:true,maxBytes:limits.databaseBytes});
