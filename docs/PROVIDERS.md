@@ -44,7 +44,11 @@ region, endpoint and an opaque credential reference. Editing, disabling or
 archiving a connection never retargets an existing task. Removed/session-expired
 credentials pause the task; explicitly restore the corresponding historical
 credential to resume. Replacing the current key does not silently change old
-tasks. Unknown acceptance is never resubmitted, and download recovery does not
+tasks. Recovery also supports the current missing reference and, with explicit
+session storage and re-entered credentials, an unavailable OS store. Recovering a
+credential preserves unsaved connection/model edits for a separate save. Each
+download request and redirect rechecks the task's original credential binding.
+Unknown acceptance is never resubmitted, and download recovery does not
 create another paid task. Kling can reconcile an existing external request ID;
 an empty lookup still does not authorize a POST. Successful outputs use the
 existing decode checks, asset publication and immutable version transaction.
@@ -63,6 +67,11 @@ New generation submissions supply `connectionId`, `configurationRevision` and
 `generateAudio` parameters. The shared CLI/MCP schemas can read the directory and
 select an existing connection; configuration management is available only through
 the private UI route and never exposes credentials to these tools or the Agent.
+
+An unreadable or invalid video directory disables its configured connections and
+shows a persistent status notice; project loading, local editing and legacy
+environment providers remain available. Refreshing after recovery clears the
+notice. Authentication failures still invalidate the session.
 
 The notes below describe the original environment-configured adapter baseline;
 their enable flags and image approval lists still apply to that legacy path.

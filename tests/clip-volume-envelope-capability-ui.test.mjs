@@ -5,6 +5,7 @@ import { transformSync } from 'esbuild';
 import { isWorkspaceRestoreInspection, canEditTimelineVolumeEnvelope } from '../packages/contracts/src/workspace-restore.ts';
 import { VOLUME_ENVELOPE_PROFILE } from '../packages/contracts/src/timeline-volume-envelope.ts';
 import { clipVolumeEnvelopeCapabilityMatches, observeClipVolumeEnvelopeCapability } from '../apps/web/src/clip-volume-envelope-capability.ts';
+import { readGenerationProviderDirectory } from '../apps/web/src/video-provider-directory.ts';
 import { validateCatalogs, translate } from '../packages/i18n/src/index.ts';
 import { volumeEnvelopeMessages } from '../packages/i18n/src/catalogs/volume-envelope.ts';
 import { i18nTestModule } from './helpers/i18n.ts';
@@ -180,7 +181,7 @@ test('late App boot inspect response cannot adopt workspace or project after com
  const start=source.indexOf('  async function boot(): Promise<void> {'),end=source.indexOf('  useEffect(() => {',start);
  const body=source.slice(start,end);let pending=false,resolve,adopted=0;
  const oldWorkspace={restored:false};
- const dependencies={clipDraftRef:{current:{hasPendingComposition:()=>pending,hasUnsaved:()=>pending}},bootGuard:{current:{begin:()=>({}),isCurrent:()=>true}},preferenceScope:{current:'old'},audioRoleProbe:{current:null},audioRoleProbeEpoch:{current:1},setAudioRoleCapability:()=>{},migrateBrowserStorage:()=>{},rpc:()=>new Promise(r=>resolve=r),retainWorkspaceIdentity:()=>oldWorkspace,workspaceRef:{current:oldWorkspace},setWorkspace:()=>adopted++,setAuth:()=>{},notify:()=>{},readableError:String};
+ const dependencies={clipDraftRef:{current:{hasPendingComposition:()=>pending,hasUnsaved:()=>pending}},bootGuard:{current:{begin:()=>({}),isCurrent:()=>true}},preferenceScope:{current:'old'},audioRoleProbe:{current:null},audioRoleProbeEpoch:{current:1},setAudioRoleCapability:()=>{},migrateBrowserStorage:()=>{},readGenerationProviderDirectory,setVideoDirectoryUnavailable:()=>{},rpc:()=>new Promise(r=>resolve=r),retainWorkspaceIdentity:()=>oldWorkspace,workspaceRef:{current:oldWorkspace},setWorkspace:()=>adopted++,setAuth:()=>{},notify:()=>{},readableError:String};
  const boot=Function(...Object.keys(dependencies),`${body};return boot;`)(...Object.values(dependencies));
  const running=boot();await tick();pending=true;resolve({restored:false});await running;assert.equal(adopted,0);assert.equal(dependencies.workspaceRef.current,oldWorkspace);
  // Already pending must not even clear the original preference scope or read.

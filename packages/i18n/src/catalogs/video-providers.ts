@@ -52,6 +52,8 @@ export const videoProviderMessages = {
   "video.providers.saving": {"zh-Hans": "正在保存", "zh-Hant": "正在儲存", "en": "Saving", "ja": "保存中"},
   "video.providers.saved": {"zh-Hans": "连接设置已保存", "zh-Hant": "連線設定已儲存", "en": "Connection settings saved", "ja": "接続設定を保存しました"},
   "video.providers.loadFailed": {"zh-Hans": "无法读取连接设置，请重试", "zh-Hant": "無法讀取連線設定，請重試", "en": "Could not load connections. Retry", "ja": "接続設定を読み込めませんでした。再試行してください"},
+  "video.providers.directoryUnavailable": {"zh-Hans": "视频连接目录不可用", "zh-Hant": "影片連線目錄無法使用", "en": "Video connection catalog unavailable", "ja": "動画接続カタログを利用できません"},
+  "video.providers.directoryUnavailableHint": {"zh-Hans": "视频连接目录读取失败，相关连接已暂停。请在设置 → 模型服务中检查并重试；项目仍可编辑", "zh-Hant": "影片連線目錄讀取失敗，相關連線已暫停。請在設定 → 模型服務中檢查並重試；專案仍可編輯", "en": "The video connection catalog could not be loaded and its connections are paused. Check Model services in Settings and retry. Projects remain editable", "ja": "動画接続カタログを読み込めず、該当する接続を一時停止しました。設定のモデルサービスで確認して再試行してください。プロジェクトは引き続き編集できます"},
   "video.providers.invalid": {"zh-Hans": "请核对连接、官方地址、凭据存储及模型能力", "zh-Hant": "請核對連線、官方位址、憑證儲存及模型能力", "en": "Check the connection, official endpoint, credential storage and model capabilities", "ja": "接続、公式アドレス、認証情報の保存方法、モデル機能を確認してください"},
   "video.providers.conflict": {"zh-Hans": "设置已被其他窗口更新。草稿已保留，请读取最新设置后重新核对", "zh-Hant": "設定已被其他視窗更新。草稿已保留，請讀取最新設定後重新核對", "en": "Another window changed the settings. Your draft is retained; load the latest settings and review", "ja": "別のウィンドウで設定が変更されました。下書きを保持しています。最新の設定を読み込んで確認してください"},
   "video.providers.unknown": {"zh-Hans": "保存结果尚未确认，请读取服务器状态。不会自动重试", "zh-Hant": "儲存結果尚未確認，請讀取伺服器狀態。不會自動重試", "en": "The save result is unconfirmed. Read the server state; no automatic retry", "ja": "保存結果を確認できません。サーバーの状態を読み込んでください。自動再試行は行いません"},

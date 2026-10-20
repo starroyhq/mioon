@@ -16,6 +16,8 @@ import { defaultWorkspaceState } from '../apps/web/src/workspace-state.ts';
 import { chooseInitialProject, retainLastProjectScope, createProjectBootGuard, assertLastProjectBootIdentity } from '../apps/web/src/last-project-navigation.ts';
 import {observeClipAudioRoleCapability} from '../apps/web/src/clip-audio-role-state.ts';
 import {canEditTimelineAudioRole, isWorkspaceRestoreInspection} from '@mioon/contracts';
+import {videoConnectionProviders} from '../apps/web/src/generation-settings.ts';
+import {readGenerationProviderDirectory} from '../apps/web/src/video-provider-directory.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
@@ -38,7 +40,7 @@ function section(start, end) {
 function environment(options = {}) {
   const calls = [], registry = createSettingsNavigationRegistry();
   const env = { LanguageControl: () => null, renderImportFeedback: (locale, value) => renderCoreMessage(locale, value), msg, ...createI18nTestContext(), localizedError: displayMessage => Object.assign(new Error(renderCoreMessage('zh-Hans', displayMessage)), { displayMessage }),
-    ...opening, workspaceOriginScope, retainWorkspaceIdentity, validateProjectWorkspace,
+    ...opening, workspaceOriginScope, retainWorkspaceIdentity, validateProjectWorkspace, videoConnectionProviders, readGenerationProviderDirectory,
     editorInitialSelection, revealNativeProjects, application: null, opacityRestored: false, nativeWindow: options.nativeWindow ?? null,
     clipDraftRef: {current: null}, retainWorkbenchForClip: false, guardRetainedInputInteraction() {},
     audioRoleProbe: {current: null}, audioRoleProbeEpoch: {current: 0}, observeClipAudioRoleCapability,
@@ -51,7 +53,7 @@ function environment(options = {}) {
     useEditorWindowStatus: (...args) => calls.push(['editorWindowStatus', ...args]),
     useEditorSettingsScope: binding => { calls.push(['editorSettingsScope', binding]); return undefined; },
     chooseInitialProject, retainLastProjectScope, assertLastProjectBootIdentity, URL, URLSearchParams,
-    useCallback: callback => callback, emptyData, loading: false, auth: true, online: true,
+    useCallback: callback => callback, emptyData, loading: false, auth: true, online: true, videoDirectoryUnavailable: false,
     data: emptyData, projects, projectOpening: { phase: 'home', projectId: null, error: '' },
     homePage: 'projects', homeConnection: 'agent', webSettingsRequest: null, webSettingsOpen: false, projectListStatus: { busy: false, error: '' }, busy: {}, toast: null,
     currentProject: { current: null }, projectEpoch: { current: 0 }, navigationEpoch: { current: 0 },
@@ -82,6 +84,7 @@ function environment(options = {}) {
     } },
     rpc: async (operation, input) => {
       calls.push(['rpc', operation, input]);
+      if (operation === 'video.connection.list') return options.videoDirectory ? options.videoDirectory() : [];
       if (options.rpc) return options.rpc(operation, input);
       if (operation === 'project.get') return options.get ? options.get(input.projectId) : snapshot(input.projectId);
       if (operation === 'workspace.restore.inspect') return { restored: false };
@@ -97,7 +100,7 @@ function environment(options = {}) {
   for (const name of ['ProjectOpening', 'HomePage', 'ProjectListStatus', 'Auth', 'Online', 'Data', 'Projects', 'Providers', 'LastSync',
     'PropertiesPage', 'TaskState', 'PreferenceStatus', 'Pending', 'ShowProjects', 'Nodes', 'Loading', 'ShotDirty', 'ClipDirty', 'SourceDirty',
     'SubjectDirty', 'SubtitleDirty', 'InspectorEpoch', 'RightDockTab', 'ShowExports', 'ComparisonId', 'PreviewAsset', 'RealConfirm',
-    'Toast', 'MobilePanel', 'PanelOverlay', 'ShowTasks', 'ShowDelivery', 'ShowImage', 'ShowProjectChooser', 'View', 'Zoom', 'Workspace', 'ShowCreate', 'WebSettingsRequest', 'WebSettingsOpen', 'AudioRoleCapability']) {
+    'Toast', 'MobilePanel', 'PanelOverlay', 'ShowTasks', 'ShowDelivery', 'ShowImage', 'ShowProjectChooser', 'View', 'Zoom', 'Workspace', 'ShowCreate', 'WebSettingsRequest', 'WebSettingsOpen', 'AudioRoleCapability', 'VideoDirectoryUnavailable']) {
     const key = name[0].toLowerCase() + name.slice(1);
     env[`set${name}`] = value => { env[key] = typeof value === 'function' ? value(env[key]) : value; calls.push([`set${name}`, env[key]]); };
   }
@@ -134,6 +137,43 @@ function refreshHarness(options = {}) {
   h.refresh = Function('env', `with (env) { ${source}\nreturn refresh; }`)(h.env);
   return h;
 }
+
+test('video directory corruption and network failures keep project startup and local editing available and clear after recovery', async () => {
+  for (const code of ['VIDEO_SETTINGS_CORRUPT', 'NETWORK']) {
+    let videoError = code;
+    const h = harness({ videoDirectory: async () => { if (videoError) throw failure(videoError); return []; } });
+    h.env.window.location.search = `?project=${id(1)}`; await h.boot();
+    assert.equal(h.env.auth, true, code); assert.equal(h.eligible(), true, code); assert.equal(h.projectSessionReady(), true, code);
+    assert.equal(h.env.videoDirectoryUnavailable, true); assert.equal(h.env.data.project.id, id(1));
+    h.env.viewRef.current.activeMode = 'editing'; h.env.viewRef.current.editing.playhead = 42;
+    assert.equal((await h.refresh(id(1))).project.id, id(1));
+    assert.equal(h.projectSessionReady(), true); assert.equal(h.env.viewRef.current.activeMode, 'editing'); assert.equal(h.env.viewRef.current.editing.playhead, 42);
+    assert.equal(h.env.videoDirectoryUnavailable, true);
+    videoError = null; assert.equal((await h.refresh(id(1))).project.id, id(1));
+    assert.equal(h.env.videoDirectoryUnavailable, false); assert.equal(h.eligible(), true);
+  }
+});
+
+test('stale video directory results cannot publish project data or directory failure state over a newer selection', async () => {
+  for (const reject of [false, true]) {
+    const held = deferred(); let reads = 0;
+    const h = harness({ videoDirectory: () => ++reads === 1 ? held.promise : [] }), old = h.boot(); await tick();
+    assert.equal(await h.selectProject(id(2)), true); const count = h.calls.length;
+    if (reject) held.reject(failure('VIDEO_SETTINGS_CORRUPT')); else held.resolve([]);
+    await old; assert.equal(h.calls.length, count); assert.equal(h.env.data.project.id, id(2));
+    assert.equal(h.env.videoDirectoryUnavailable, false); assert.equal(h.eligible(), true);
+  }
+});
+
+test('video directory authorization failures still log out current startup and project refresh', async () => {
+  for (const error of [failure('UNAUTHORIZED'), Object.assign(Error('HTTP 401'), { status: 401 })]) {
+    const boot = harness({ videoDirectory: async () => { throw error; } }); await boot.boot();
+    assert.equal(boot.env.auth, false); assert.equal(boot.eligible(), false);
+    let denied = false; const active = harness({ videoDirectory: async () => { if (denied) throw error; return []; } });
+    assert.equal(await active.selectProject(id(1)), true); denied = true;
+    assert.equal(await active.refresh(id(1)), null); assert.equal(active.env.auth, false);
+  }
+});
 
 test('causal regression: actual refresh quarantines wrong-project data before reconciling pending operations', async () => {
   const h = refreshHarness({ get: async () => snapshot(id(2)) });
@@ -444,6 +484,21 @@ test('actual auth and restored-home branches retain their existing protections',
   const restored = render(h); assert.match(restored.html, /data-testid="project-home"/);
   assert.ok(restored.mounted.includes('RestoredUnavailable')); assert.equal(restored.mounted.includes('AgentSettings'), false);
   assert.equal(restored.mounted.includes('ImageSettings'), false); assert.equal(restored.mounted.includes('ComfyImageSettings'), false);
+});
+
+test('actual home keeps optional video directory failure visible across toast changes and clears it on recovery', async () => {
+  let unavailable = true;
+  const h = harness({ videoDirectory: async () => { if (unavailable) throw failure('VIDEO_SETTINGS_CORRUPT'); return []; }, rpc: async operation => operation === 'workspace.restore.inspect' ? { restored: false } : [] });
+  await h.boot(); assert.equal(h.env.auth, true); assert.equal(h.env.videoDirectoryUnavailable, true);
+  const render = boundaryRenderer();
+  for (const locale of i18nCore.LOCALES) {
+    Object.assign(h.env, createI18nTestContext(locale)); h.env.toast = null;
+    const shown = render(h).html;
+    assert.match(shown, /data-testid="video-directory-unavailable"/);
+    assert.ok(shown.includes(i18nCore.translate(locale, 'video.providers.directoryUnavailableHint')));
+  }
+  unavailable = false; await h.boot();
+  assert.equal(h.env.videoDirectoryUnavailable, false); assert.doesNotMatch(render(h).html, /data-testid="video-directory-unavailable"/);
 });
 
 test('actual App shares authenticated settled project readiness between workbench display and geometry observation', () => {
