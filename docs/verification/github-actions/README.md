@@ -22,7 +22,9 @@
 
 ## 远端与发布验收边界
 
-PR 中运行 Ubuntu full、macOS portable、Windows portable；最终结果与运行链接在后续提交补充。Linux full 不在 macOS 上伪装执行成功
+[PR #12](https://github.com/starroyhq/mioon/pull/12) 中运行 Ubuntu full、macOS portable、Windows portable，最终状态以 PR 的 `CI` 总检查为准。Linux full 不在 macOS 上伪装执行成功
+
+[首轮运行](https://github.com/starroyhq/mioon/actions/runs/39387931266) 的 Ubuntu actionlint 启用了本机未安装的 shellcheck，指出内嵌 JavaScript 模板字符串的 SC2016 提示；已改为等价字符串拼接，保留完整 lint 门禁。独立审查发现的组合符号链接逃逸边界也已补回归：Linux 归档链接禁止向上路径段，实际包不符合时严格拒绝
 
 签名发布尚未验收：仓库级 Apple Secrets 当前为空，组织级授权未知；本地没有最终签名安装包。需要维护者配置文档列出的七项凭据，并在工作流合入 main 后运行 `release_tag` 留空的演练，实际完成三平台打包、macOS 签名和公证、Gatekeeper 与最终包原生冒烟
 

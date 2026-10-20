@@ -164,7 +164,7 @@ jobs:
       - name: Resolve external media tools and probe capabilities
         id: media
         run: |
-          node --input-type=module -e 'import {realpathSync,appendFileSync} from "node:fs"; import {execFileSync} from "node:child_process"; for(const [key,name] of [["MIOON_FFMPEG_PATH","ffmpeg"],["MIOON_FFPROBE_PATH","ffprobe"]]){const value=realpathSync(execFileSync("which",[name],{encoding:"utf8"}).trim()); appendFileSync(process.env.GITHUB_ENV,`${key}=${value}\n`);}'
+          node --input-type=module -e 'import {realpathSync,appendFileSync} from "node:fs"; import {execFileSync} from "node:child_process"; for(const [key,name] of [["MIOON_FFMPEG_PATH","ffmpeg"],["MIOON_FFPROBE_PATH","ffprobe"]]){const value=realpathSync(execFileSync("which",[name],{encoding:"utf8"}).trim()); appendFileSync(process.env.GITHUB_ENV,key+"="+value+"\n");}'
           node .github/scripts/media-environment.ts --platform="$MIOON_PLATFORM" --output="artifacts/desktop-$MIOON_TARGET/media.json"
 
       - name: Build production application
@@ -216,7 +216,7 @@ jobs:
           pnpm exec electron-builder --config .generated/electron-builder.cjs --mac dmg "--$MIOON_ARCH" --publish never \
             "-c.mac.identity=$signing_qualifier" -c.mac.notarize=true -c.dmg.sign=true -c.forceCodeSigning=true
           # v26 notarizes the application, so submit the final signed DMG too.
-          dmg=$(node --input-type=module -e 'import {readdirSync} from "node:fs"; import path from "node:path"; const dir=path.resolve("../../release/desktop/production"); const names=readdirSync(dir).filter(name=>name.endsWith(`-mac-${process.env.MIOON_ARCH}.dmg`)); if(names.length!==1)process.exit(1); process.stdout.write(path.join(dir,names[0]));')
+          dmg=$(node --input-type=module -e 'import {readdirSync} from "node:fs"; import path from "node:path"; const dir=path.resolve("../../release/desktop/production"); const names=readdirSync(dir).filter(name=>name.endsWith("-mac-"+process.env.MIOON_ARCH+".dmg")); if(names.length!==1)process.exit(1); process.stdout.write(path.join(dir,names[0]));')
           notarization_report="$RUNNER_TEMP/mioon-apple-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/dmg-notarization.json"
           xcrun notarytool submit "$dmg" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY_ID" \
             --issuer "$APPLE_API_ISSUER" --wait --timeout 30m --output-format json > "$notarization_report"
@@ -297,7 +297,7 @@ jobs:
       - name: Clean owned DMG mount after interruption
         if: always() && runner.os == 'macOS'
         run: |
-          node --input-type=module -e 'import {readFileSync,realpathSync} from "node:fs"; import {execFileSync} from "node:child_process"; import path from "node:path"; import os from "node:os"; let report; try{report=JSON.parse(readFileSync(process.env.MIOON_DESKTOP_INSPECTION_REPORT,"utf8"));}catch{process.exit(0);} const mount=report.mountPoint; const temp=realpathSync(os.tmpdir()); if(typeof mount==="string" && mount.startsWith(`${temp}${path.sep}mioon-ci-dmg-`)){try{execFileSync("hdiutil",["detach",mount],{stdio:"ignore"});}catch{const info=execFileSync("hdiutil",["info"],{encoding:"utf8"});if(info.includes(mount))process.exit(1);}}'
+          node --input-type=module -e 'import {readFileSync,realpathSync} from "node:fs"; import {execFileSync} from "node:child_process"; import path from "node:path"; import os from "node:os"; let report; try{report=JSON.parse(readFileSync(process.env.MIOON_DESKTOP_INSPECTION_REPORT,"utf8"));}catch{process.exit(0);} const mount=report.mountPoint; const temp=realpathSync(os.tmpdir()); if(typeof mount==="string" && mount.startsWith(temp+path.sep+"mioon-ci-dmg-")){try{execFileSync("hdiutil",["detach",mount],{stdio:"ignore"});}catch{const info=execFileSync("hdiutil",["info"],{encoding:"utf8"});if(info.includes(mount))process.exit(1);}}'
 
       - name: Clean owned Linux archive extraction after interruption
         if: always() && runner.os == 'Linux'
