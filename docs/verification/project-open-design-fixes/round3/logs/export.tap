@@ -1,0 +1,39 @@
+✔ actual sample submission freezes exact short input through durable path without touching final range or opening history (24.820083ms)
+✔ failure and pending recovery never alter final range or silently submit a second request (2.615875ms)
+✔ sample settings/range changes while durable prepare waits prevent execution (0.878833ms)
+✔ actual trial-range setter owns only trial state; timeline preview excludes selected-range exports (0.822959ms)
+✔ one explicit generate action selects only a missing range, awaits checks and uses the exact current controller binding (1.932708ms)
+✔ an invalid user-entered sample range is retained and never silently replaced or submitted (3.375291ms)
+✔ closing or leaving during checks, range edits and new unsaved drafts prevent sample submission (6.055709ms)
+✔ range is explicitly bounded to 1–300 integer frames inside saved duration (0.811667ms)
+✔ exact request/export/asset produces only dedicated preview URL, never a supplied row URL (2.312375ms)
+✔ duplicate or conflicting exact requests fail closed even with known export ID (0.169459ms)
+✔ owner, stale, connection and held boundaries remove playback without changing request (0.45025ms)
+✔ in-flight, uncertain, running and failure states never manufacture playable files (0.31675ms)
+✔ staleness binds settings/range versions, saved timeline and referenced source identity, not unrelated assets (0.252209ms)
+✔ actual TSX guards both play events and reciprocal pause without autoplay (1.522125ms)
+✔ late events cannot restart hidden, closed, stale, background or unmounted media (0.587ms)
+✔ close/reopen only changes player presentation and all four locales render standalone (0.447166ms)
+✔ step-specific preview never labels a sample as a running or completed formal output (0.148167ms)
+✔ custom player controls play and seek only their exact visible media owner (0.184417ms)
+✔ all three review steps expose a real empty-player action and one compact range row (1.617167ms)
+✔ sample generation is single-flight and old actions lose authority after visibility or step changes (0.220958ms)
+✔ checking, a running sample, unknown outcome and disabled admission cannot dispatch a new sample (0.339208ms)
+✔ workflow opens passively and latest check phase fences retained next handlers (29.039625ms)
+✔ retained sections become both hidden and inert outside their step (2.876708ms)
+✔ settings estimate and the single check action stay in the fixed navigation footer (2.596208ms)
+✔ a shared sample-export lock blocks admission without becoming a formal export progress receipt (3.32325ms)
+✔ pending and completed exports show their bound result without automatically checking or resubmitting (3.433916ms)
+✔ unmeasurable activity stays indeterminate and observations cannot cross export identities (16.072417ms)
+✔ cancellation is explicit, single-dispatch and cannot continue after owner changes (17.108167ms)
+✔ confirmation follows the latest cancellation callback when the same export starts running (3.631083ms)
+✔ an old cancel button cannot target a replacement export and project changes reset the workflow (1.996208ms)
+✔ restored completion preserves existing download authority without enabling file recovery or native actions (2.671834ms)
+ℹ tests 31
+ℹ suites 0
+ℹ pass 31
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1152.321167

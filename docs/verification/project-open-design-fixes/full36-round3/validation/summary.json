@@ -1,0 +1,17 @@
+{
+  "files": 76,
+  "filePass": 76,
+  "fileFailures": [],
+  "counts": {
+    "tests": 1041,
+    "pass": 1041,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0
+  },
+  "durationSeconds": 156.648,
+  "fullSuiteRun": false,
+  "timeouts": 0,
+  "scope": "76 explicitly selected affected files; each isolated process; does not certify full repository suite or all 36 browser pages"
+}

@@ -1,0 +1,55 @@
+{
+  "synthetic": true,
+  "realProviderCalls": 0,
+  "realModelCalls": 0,
+  "original": {
+    "lufs": -28,
+    "truePeakDbtp": -27.06,
+    "lraLu": 0
+  },
+  "candidate": {
+    "lufs": -26,
+    "truePeakDbtp": -25.06,
+    "gainDb": 2
+  },
+  "gainLimitRefused": true,
+  "peakConflictRefused": true,
+  "invalidTargetPreservedAndBlocked": true,
+  "targetChangeClearsReport": true,
+  "noAutomaticAnalysisOnOpenOrResize": true,
+  "layoutResizeInvalidatesCandidate": true,
+  "stagingDoesNotMutateTimeline": true,
+  "revisions": [
+    7,
+    8,
+    9,
+    10
+  ],
+  "gains": [
+    0.5011872336272722,
+    0.6308545553349859,
+    0.5011872336272722,
+    0.6308545553349859
+  ],
+  "alreadyMatchedButtonDisabled": true,
+  "negativeZeroDisplayRemoved": true,
+  "viewports": [
+    {
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "width": 1050,
+      "height": 680
+    }
+  ],
+  "themes": [
+    "dark",
+    "light"
+  ],
+  "languages": [
+    "zh-Hans",
+    "en"
+  ],
+  "pageErrors": []
+}

@@ -53,9 +53,9 @@
     {
       "file": "apps/web/src/SettingsRoot.tsx",
       "category": "visible-jsx",
-      "hash": "e4bb1d84af3d68f8d7999c5aa5b4cbaec430ad95d2cbfb148a9659b1c1b66235",
+      "hash": "7a46cf2292a4ae656546bfaaf227049188aa7afe5b12953101345c8916893762",
       "owner": "shell",
-      "reason": "Exact Mioon application brand, including its existing lowercase logo/accessible brand spelling; product identity must not be translated."
+      "reason": "Exact Mioon application brand; product identity must not be translated."
     },
     {
       "file": "apps/web/src/ShotSubjectBindings.tsx",

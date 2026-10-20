@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: timeline catalog has all four locales and exact placeholders for every presentation message
+ok 1 - timeline catalog has all four locales and exact placeholders for every presentation message
+  ---
+  duration_ms: 20.989417
+  type: 'test'
+  ...
+# Subtest: real language store relabels the mounted subtitle inspector without recreating its controller or replaying uncertain input
+ok 2 - real language store relabels the mounted subtitle inspector without recreating its controller or replaying uncertain input
+  ---
+  duration_ms: 23.145417
+  type: 'test'
+  ...
+# Subtest: language switches preserve frame extraction unknown identity, hash, source name and output format draft
+ok 3 - language switches preserve frame extraction unknown identity, hash, source name and output format draft
+  ---
+  duration_ms: 2.400167
+  type: 'test'
+  ...
+# Subtest: presentation lifecycle does not key controllers or business effects by language
+ok 4 - presentation lifecycle does not key controllers or business effects by language
+  ---
+  duration_ms: 1.061417
+  type: 'test'
+  ...
+# Subtest: revision labels are localized rather than carrying English shorthand into non-English interfaces
+ok 5 - revision labels are localized rather than carrying English shorthand into non-English interfaces
+  ---
+  duration_ms: 2.057792
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 344.729416

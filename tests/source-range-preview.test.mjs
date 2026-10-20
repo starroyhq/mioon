@@ -37,6 +37,23 @@ function harness() {
 }
 const props = (patch = {}) => ({ visible: true, kind: 'source', asset: { id: 'source-a', name: 'Source', url: '/media/a', duration: 1200, mimeType: 'video/mp4' }, playhead: 800, onSeek: () => {}, sourceScope: 'project-a:1:source-a:1', sourcePosition: 0, onSourcePosition: () => {}, ...patch });
 
+test('audio source shows the project format without substituting it for a completed snapshot format', () => {
+  const timeline = { width: 1080, height: 1920, fps: 30, revision: 4, durationFrames: 300 };
+  const label = (h, patch) => {
+    h.render(props(patch));
+    return h.all().find(node => node.props?.className === 'edit-preview-format').props.children.join('');
+  };
+  const audio = { ...props().asset, mimeType: 'audio/wav' };
+  for (const clip of [undefined, {id: 'audio-clip', startFrame: 0, sourceInFrame: 0, durationFrames: 300}]) {
+    assert.equal(label(harness(), {asset: audio, timeline, clip}), '1080 × 1920 · 30 fps');
+  }
+  assert.equal(label(harness(), {asset: audio}), '');
+  assert.equal(label(harness(), {asset: {...props().asset, width: 640, height: 360}, timeline}), '640 × 360 · 30 fps');
+  const job = {id: 'saved-render', status: 'succeeded', url: '/media/render', timelineRevision: 1};
+  assert.equal(label(harness(), {kind: 'timeline', asset: audio, timeline, job}), '快照规格不可用');
+  assert.equal(label(harness(), {kind: 'timeline', asset: audio, timeline, job: {...job, snapshot: {timeline: {width: 1280, height: 720, fps: 30}}}}), '1280 × 720 · 30 fps');
+});
+
 for (const kind of ['video', 'audio']) {
   test(`${kind}: native playback and paused seek publish source position without moving the timeline or feedback-seeking`, () => {
     const h = harness(), positions = [], timeline = [];

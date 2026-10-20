@@ -7,8 +7,32 @@
 
 .edit-inspector-draft{border-bottom:1px solid var(--wb-line-subtle);padding:0 12px}.edit-inspector-draft>summary{font-size:var(--wb-text-caption);line-height:28px;color:var(--wb-muted);cursor:pointer}.edit-inspector-draft [data-testid=clip-draft-recovery]{margin:0 0 10px!important;background:var(--wb-card);border-color:var(--wb-line);font-size:var(--wb-text-caption)}
 
-/* Keep the actual linear gain and metadata controls compact; long capability
- * hints and the exact envelope/measurement editors retain their full width. */
-.edit-inspector-audio>.edit-inspector-group-content:not([hidden]){display:grid;grid-template-columns:72px minmax(0,1fr);gap:6px 8px;align-items:center}.edit-inspector-audio .clip-audio-role{grid-column:1/-1;display:grid;grid-template-columns:72px minmax(0,1fr);gap:6px 8px;align-items:center}.dock-workbench .edit-clip-inspector .edit-inspector-audio>.edit-inspector-group-content>.field-label,.dock-workbench .edit-clip-inspector .edit-inspector-audio .clip-audio-role>.field-label{margin:0}.edit-inspector-audio .clip-audio-role>.input-hint,.edit-inspector-audio>.edit-inspector-group-content>:is(.section-heading,.field-row,.input-hint,section,details){grid-column:1/-1}.edit-inspector-audio .clip-audio-role>[data-slot=select-trigger]{width:100%}
-
-.edit-clip-inspector .clip-gain-controls{display:flex;align-items:center;gap:8px;min-width:0}.edit-clip-inspector .clip-gain-controls input[type=range]{flex:1;min-width:0;padding:0;accent-color:var(--wb-accent)}.edit-clip-inspector .clip-gain-controls input[type=number]{width:58px}.edit-inspector-audio .input-hint,.edit-inspector-audio .notice{overflow:visible;white-space:normal;max-height:none}.dock-workbench .edit-clip-inspector .inspector-scroll{min-height:0;overflow-y:auto;padding-bottom:12px}
+/* Each audio tool owns one full-width row; nested fieldsets never become grid cells. */
+.edit-inspector-audio>.edit-inspector-group-content:not([hidden]){display:flex;flex-direction:column;gap:12px;align-items:stretch}
+.edit-inspector-audio :is(section,fieldset,details,.clip-audio-volume){min-width:0;max-width:100%}
+.edit-inspector-audio fieldset{margin:0;padding:0;border:0}
+.edit-inspector-audio legend{font-size:var(--wb-text-label);font-weight:500;margin-bottom:8px}
+.dock-workbench .edit-clip-inspector .edit-inspector-audio .field-label{margin:0 0 4px;min-height:0}
+.edit-clip-inspector .clip-gain-controls{display:flex;align-items:center;gap:6px;min-width:0}
+.edit-clip-inspector .clip-gain-controls input[type=range]{flex:1;min-width:30px;padding:0;accent-color:var(--wb-accent);border:0;background:transparent}
+.edit-clip-inspector .clip-gain-controls>button{width:28px;min-width:28px;padding:0;font-size:11px}
+.clip-db-input{display:flex;align-items:center;gap:4px;max-width:90px}.dock-workbench .edit-clip-inspector .clip-db-input input{width:57px;min-width:0;text-align:right;font-family:var(--wb-font-mono)}
+.clip-db-input>span,.clip-frame-input>span{color:var(--wb-soft);font-size:var(--wb-text-caption);white-space:nowrap}
+.edit-clip-inspector .clip-audio-fades .section-heading{display:flex;align-items:center;justify-content:space-between;margin:0 0 8px}
+.clip-audio-curve{font-size:var(--wb-text-caption);color:var(--wb-soft)}.clip-frame-input{display:flex;align-items:center;gap:5px;min-width:0}.clip-frame-input input{width:100%;min-width:0}
+.edit-inspector-audio .clip-audio-fades>.field-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.edit-inspector-audio .clip-audio-fades .field-row>div{min-width:0}
+.clip-audio-help>summary,.clip-envelope-editor>summary{cursor:pointer;color:var(--wb-soft);font-size:var(--wb-text-caption);line-height:24px}
+.clip-audio-help:not([open])>summary,.clip-envelope-editor:not([open])>summary{list-style-position:inside}.clip-audio-help[open]>summary,.clip-envelope-editor[open]>summary{margin-bottom:6px}
+.clip-envelope-heading{display:flex;align-items:center;justify-content:space-between;font-size:var(--wb-text-label);margin-bottom:6px}
+.dock-workbench .edit-clip-inspector .clip-envelope-toggle{height:18px;min-height:18px;width:32px;min-width:32px;border-radius:999px;padding:2px;background:var(--wb-line-strong);border:0;display:flex;justify-content:flex-start}
+.dock-workbench .edit-clip-inspector .clip-envelope-toggle[aria-checked=true]{background:var(--wb-accent);justify-content:flex-end}.clip-envelope-toggle>span{height:14px;width:14px;border-radius:50%;background:var(--wb-text)}.clip-envelope-toggle[aria-checked=true]>span{background:var(--wb-accent-foreground)}
+.clip-envelope-graph{height:44px;width:100%;display:block;border-radius:var(--wb-radius-control);background:var(--wb-input);border:1px solid var(--wb-line-subtle);padding:3px}
+.clip-envelope-graph :is(path,polyline){fill:none;stroke:var(--wb-accent);stroke-width:1.5;vector-effect:non-scaling-stroke}.clip-envelope-graph .clip-envelope-grid{stroke:var(--wb-line-subtle);stroke-width:1}.clip-envelope-graph .clip-envelope-inactive{stroke:var(--wb-muted);stroke-dasharray:3 3}
+.clip-envelope-editor>fieldset{padding:8px 0;border-top:1px solid var(--wb-line-subtle);margin-top:8px}.clip-envelope-editor>fieldset>.field-row{display:flex;gap:6px;margin-top:8px}
+.clip-envelope-editor label,.volume-envelope-row label{display:flex;flex-direction:column;gap:4px;font-size:var(--wb-text-caption);min-width:0}.clip-envelope-editor select,.clip-envelope-editor input{width:100%}
+.volume-envelope-row{display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:end;margin-top:8px}.volume-envelope-row>button{max-width:74px;white-space:normal;font-size:var(--wb-text-caption)}
+.clip-envelope-editor button{min-height:24px;border:1px solid var(--wb-line);background:var(--wb-card);border-radius:var(--wb-radius-control);font-size:var(--wb-text-caption);padding:4px 7px}.clip-envelope-editor>button{margin:8px 6px 0 0}
+.clip-audio-classification .clip-audio-role{display:grid;grid-template-columns:72px minmax(0,1fr);gap:6px 8px;align-items:center}.clip-audio-classification .clip-audio-role>.input-hint{grid-column:1/-1}
+.edit-inspector-audio .input-hint,.edit-inspector-audio .notice{overflow:visible;white-space:normal;max-height:none}.dock-workbench .edit-clip-inspector .inspector-scroll{min-height:0;overflow-y:auto;padding-bottom:12px}
+/* Keep the displayed dB value readable inside the 320px inspector. */
+.edit-clip-inspector .clip-db-input{max-width:98px}.dock-workbench .edit-clip-inspector .clip-db-input input{width:68px;min-width:68px;appearance:textfield;-moz-appearance:textfield;padding-right:6px;padding-left:6px}.clip-db-input input::-webkit-inner-spin-button,.clip-db-input input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}

@@ -493,3 +493,25 @@ test('compact dock exposes saved-snapshot scope and dirty warning while showing 
   assert.match(css, /\.export-preflight-actions\{display:flex;flex:none;/);
   assert.match(css, /\.export-preflight-body\{min-height:0;flex:1;overflow:auto;/);
 });
+
+test('passive check instructions are collapsed while current state and explicit check remain visible', () => {
+  let checks = 0;
+  const tree = renderPanel({ state: { phase: 'idle' }, canCheck: true, exportBusy: false, onCheck: () => { checks++; } });
+  const help = findNode(tree, 'preflight-help-details');
+  assert.equal(help.type, 'details');
+  assert.equal(help.props.open, undefined);
+  assert.match(textOf(nodes(help).find(node => node.type === 'summary')), /说明/);
+  assert.match(textOf(help), /打开面板不会开始检查/);
+  assert.match(textOf(help), /短时合成编码与 MP4 封装/);
+  assert.match(textOf(help), /100 个片段/);
+  assert.match(textOf(findNode(tree, 'export-check-result')), /尚未检查/);
+  const check = findNode(tree, 'preflight-check');
+  assert.equal(nodes(help).some(node => node.props['data-testid'] === 'preflight-check'), false);
+  assert.equal(check.props.disabled, false);
+  assert.equal(checks, 0);
+  (check.props.onClick as () => void)();
+  assert.equal(checks, 1);
+  const readyHelp = findNode(renderPanel({ state: { phase: 'ready' } }), 'preflight-help-details');
+  assert.doesNotMatch(textOf(readyHelp), /打开面板不会开始检查/);
+  assert.match(textOf(readyHelp), /短时合成编码与 MP4 封装/);
+});

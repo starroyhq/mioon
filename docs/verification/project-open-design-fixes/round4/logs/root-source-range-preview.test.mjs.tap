@@ -1,0 +1,35 @@
+✔ audio source shows the project format without substituting it for a completed snapshot format (2.524542ms)
+✔ video: native playback and paused seek publish source position without moving the timeline or feedback-seeking (0.670791ms)
+✔ audio: native playback and paused seek publish source position without moving the timeline or feedback-seeking (0.196542ms)
+✔ explicit source seek tokens apply once and same-frame repeat seeks are deliberate (0.217584ms)
+✔ hidden callbacks cannot play, seek, or publish; reopening pauses and preserves position (0.226042ms)
+✔ project/asset epochs and source replacement reject old callbacks and obsolete seek requests (0.193083ms)
+✔ next-frame source seek does not stall one millisecond before an integer frame boundary (0.105959ms)
+✔ native source pause publishes the actual newer frame, while hidden pause remains inert (0.407208ms)
+✔ source playback position is restored across preview tabs without replaying an older explicit seek (0.202084ms)
+✔ exclusive source end seeks to EOF and publishes count instead of sticking on count minus one (0.18725ms)
+✔ microsecond-quantized native seeks advance every source frame and retain strict duration bounds (0.633416ms)
+✔ explicit seek intent survives seeked/timeupdate/play ordering and clears when native playback moves away (0.665667ms)
+✔ source replacement cannot reuse an old quantized seek intent or accept its late callbacks (0.412667ms)
+✔ video: an unacknowledged explicit source seek survives rerender before metadata (0.324542ms)
+✔ audio: an unacknowledged explicit source seek survives rerender before metadata (0.120292ms)
+✔ video: metadata-unready playback callbacks cannot acknowledge or publish an explicit seek (0.195625ms)
+✔ video: newest token wins through an older metadata callback and pending rerenders (0.205958ms)
+✔ video: a seek finishing while hidden is acknowledged only on visible reopening (0.225583ms)
+✔ video: an unacknowledged seek survives preview-tab replacement and old callbacks stay inert (0.23825ms)
+✔ video: stable native scrubbing can supersede an unacknowledged explicit seek (0.153458ms)
+✔ audio: metadata-unready playback callbacks cannot acknowledge or publish an explicit seek (0.113375ms)
+✔ audio: newest token wins through an older metadata callback and pending rerenders (0.143833ms)
+✔ audio: a seek finishing while hidden is acknowledged only on visible reopening (0.147375ms)
+✔ audio: an unacknowledged seek survives preview-tab replacement and old callbacks stay inert (0.127125ms)
+✔ audio: stable native scrubbing can supersede an unacknowledged explicit seek (0.1245ms)
+✔ video: pending metadata seek retains integer intent through quantized playback and pause (0.227583ms)
+✔ audio: pending metadata seek retains integer intent through quantized playback and pause (0.18075ms)
+ℹ tests 27
+ℹ suites 0
+ℹ pass 27
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 654.246875

@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: candidate exact small positive attenuation cannot be replaced within an absolute epsilon
+ok 1 - candidate exact small positive attenuation cannot be replaced within an absolute epsilon
+  ---
+  duration_ms: 2.711583
+  type: 'test'
+  ...
+# Subtest: same PCM binds the range peak exactly while legacy reports remain valid without LRA
+ok 2 - same PCM binds the range peak exactly while legacy reports remain valid without LRA
+  ---
+  duration_ms: 4.964416
+  type: 'test'
+  ...
+# Subtest: response target identity includes both fields and rejects an omitted requested candidate
+ok 3 - response target identity includes both fields and rejects an omitted requested candidate
+  ---
+  duration_ms: 0.935125
+  type: 'test'
+  ...
+# Subtest: candidate accepts exact gain 2 and refuses a mathematically larger gain without clamping
+ok 4 - candidate accepts exact gain 2 and refuses a mathematically larger gain without clamping
+  ---
+  duration_ms: 19.808042
+  type: 'test'
+  ...
+# Subtest: candidate measurement includes float32 scaling and fresh EOF true-peak reconstruction
+ok 5 - candidate measurement includes float32 scaling and fresh EOF true-peak reconstruction
+  ---
+  duration_ms: 18.1775
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 218.874542

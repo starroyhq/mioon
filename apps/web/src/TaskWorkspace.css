@@ -72,7 +72,7 @@
 .task-workspace .job-card:is(.unknown,.submission_unknown) .job-title>svg,.task-workspace .submission_unknown .job-state-icon,.task-workspace .submission_unknown .job-status>span:first-child,.task-workspace .submission_unknown .job-error{color:var(--wb-warning)}
 .task-workspace .submission_unknown .job-state-icon{background:var(--wb-warning-subtle)}
 .task-workspace .notice.warning{margin:14px 0;padding:10px 12px;border:1px solid color-mix(in srgb,var(--wb-warning) 45%,transparent);border-radius:var(--wb-radius-control);background:var(--wb-warning-subtle);color:var(--wb-warning);font-size:var(--wb-text-caption);line-height:1.5}
-.task-workspace .reconcile-job{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:14px;padding:12px;border:1px solid var(--wb-line);border-radius:var(--wb-radius-control);background:var(--wb-card)}
+.task-workspace .reconcile-job{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin-top:14px;padding:12px;border:1px solid var(--wb-line);border-radius:var(--wb-radius-control);background:var(--wb-card)}
 .task-workspace .reconcile-job>.field-label{grid-column:1/-1;display:flex;justify-content:space-between;margin:0;font-size:var(--wb-text-caption)}
 .task-workspace .reconcile-job>[data-slot="input"]{height:32px;min-height:32px;padding:3px 8px}
 .task-workspace .reconcile-job>button{align-self:start;max-width:220px;margin:0;font-size:var(--wb-text-caption);line-height:1.4}
@@ -81,6 +81,9 @@
 .task-card-details>.helper{margin-top:8px;font-size:var(--wb-text-caption);line-height:1.5}
 .task-workspace .job-actions{align-items:center;margin-top:16px;padding-top:12px;border-top:1px solid var(--wb-line-subtle)}
 .task-workspace .job-actions>.text-button{margin-right:auto}
+.task-workspace .job-actions>:is(.task-mark-failed,.task-reconcile-action){min-height:32px;padding:6px 10px;border:1px solid var(--wb-line);border-radius:var(--wb-radius-control);background:var(--wb-card);color:var(--wb-text)}
+.task-workspace .job-actions>:is(.task-mark-failed,.task-reconcile-action):hover:not(:disabled){background:var(--wb-hover);border-color:var(--wb-soft)}
+.task-workspace .job-actions>:is(.task-mark-failed,.task-reconcile-action):focus-visible{outline:1.5px solid var(--wb-accent-line);outline-offset:2px}
 .task-workspace .small-empty{padding:40px 12px}
 .task-workspace .task-workspace-note{padding:8px 16px;border-color:var(--wb-line-subtle);background:var(--wb-raised);font-size:var(--wb-text-caption);line-height:1.5}
 @container task-center (max-width:620px){.task-center-browser{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(90px,38%) minmax(0,1fr)}.task-center-sidebar{border-right:0;border-bottom:1px solid var(--wb-line)}.task-center-detail{padding:14px}.task-workspace-heading{flex-wrap:wrap}}
@@ -103,3 +106,5 @@
 .task-id-copy>button{flex:none;height:26px;padding:2px 8px;font-size:var(--wb-text-min)}
 .task-detail-summary>[role="status"],.task-reconciliation-explanation{margin:12px 0 0;color:var(--wb-muted);font-size:var(--wb-text-caption);line-height:1.6}
 @container task-center (max-width:620px){.task-center-list-tools{flex-wrap:wrap;padding:8px}.task-center-list-tools>[data-slot="input"]{max-width:none;flex-basis:100%}.task-center-filters{flex:1}.task-detail-summary dl{grid-template-columns:72px minmax(0,1fr);gap:8px}.task-center-list-tools>[data-testid="task-archive-completed"]{margin:0}}
+
+.task-workspace .reconcile-job>.task-reconciliation-explanation{grid-column:1/-1;margin:0 0 4px;font-size:var(--wb-text-caption);line-height:1.6;color:var(--wb-soft)}

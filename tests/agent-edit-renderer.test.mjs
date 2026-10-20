@@ -468,7 +468,7 @@ test('proposal review scrolls inside the dock while the full destination and inp
   assert.match(composer, /display:\s*flex/); assert.match(composer, /flex-direction:\s*column/); assert.match(composer, /min-height:\s*0/); assert.match(composer, /max-height:\s*65%/);
   assert.match(input, /position:\s*static/); assert.match(input, /flex:\s*none/);
   const summary = rule(`${scope} .agent-chat-composer-summary`), summaryText = rule(`${scope} .agent-chat-composer-summary > span`);
-  assert.match(summary, /flex:\s*none/); assert.match(summaryText, /overflow:\s*visible/); assert.match(summaryText, /white-space:\s*normal/); assert.match(summaryText, /overflow-wrap:\s*anywhere/);
+  assert.match(summary, /flex:\s*none/); assert.match(summaryText, /overflow:\s*hidden/); assert.match(summaryText, /white-space:\s*nowrap/); assert.match(summaryText, /text-overflow:\s*ellipsis/);
   const options = rule(`${scope} .agent-chat-composer-options`);
   assert.match(options, /min-height:\s*0/); assert.match(options, /max-height:\s*36dvh/); assert.match(options, /overflow-y:\s*auto/);
   const f = chatFixture(), h = harness('AgentPanel', { chatClient: f.client, receipts: f.receipts });

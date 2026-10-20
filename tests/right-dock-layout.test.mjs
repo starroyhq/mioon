@@ -22,7 +22,7 @@ test('the clip inspector leads with the fields people edit most and keeps source
 
 test('Agent authorization status, review entrance and send stay in the sticky composer; explicit consent belongs to its review dialog', () => {
   const source = read('AgentPanel.tsx');
-  const start = source.indexOf('<div className="agent-chat-composer-input">'), end = source.indexOf('<p className="agent-chat-stop-note">');
+  const start = source.indexOf('<div className="agent-chat-composer-input">'), end = source.indexOf('</form>', start);
   assert.ok(start > 0 && end > start);
   const block = source.slice(start, end);
   for (const marker of ['data-testid="agent-chat-authorization-status"', 'data-testid="agent-chat-authorization-open"', 'data-testid="agent-chat-prompt"', 'data-testid="agent-chat-send"']) assert.ok(block.includes(marker), `${marker} must stay inside the sticky block`);

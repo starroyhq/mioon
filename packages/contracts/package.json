@@ -25,6 +25,7 @@
     "./lut-resources": "./src/lut-resources.ts",
     "./timeline-colour": "./src/timeline-colour.ts",
     "./workspace-scope": "./src/workspace-scope.ts",
+    "./loudness-range": "./src/loudness-range.ts",
     "./timeline-clip-loudness": "./src/timeline-clip-loudness.ts"
   },
   "dependencies": {

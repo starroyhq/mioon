@@ -136,11 +136,11 @@ test('undo/redo snapshots refresh a clean selection, preserve dirty edits, and e
   h.controller.discardDraft(); assert.equal(h.controller.getState().draft.text, cue().text);
 });
 
-function componentHarness(filename, imports = {}) {
+function componentHarness(filename, imports = {}, locale = 'zh-Hans') {
   let slots = [], cursor = 0, visible = true, props, tree, confirm = async () => true;
   const hooks = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), useRef: value => { const i = cursor++; return slots[i] ||= { current: value }; }, useLayoutEffect: (fn, deps) => { const i = cursor++, prior = slots[i]; if (!prior || deps.some((value, n) => value !== prior.deps[n])) { prior?.cleanup?.(); slots[i] = { deps, cleanup: fn() }; } } };
   const source = readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8'), module = { exports: {} };
-  const require = name => name === './i18n/I18nProvider.tsx' ? i18nTestModule() : name.endsWith('packages/i18n/src/index.ts') ? i18n : name === 'react' ? { ...hooks, default: hooks } : name.endsWith('workbench-confirm') ? { useConfirmation: () => (...args) => confirm(...args) } : name.endsWith('workspace-visibility.tsx') ? { useWorkspaceVisibility: () => visible } : name.endsWith('subtitle-state.ts') ? subtitles : name.endsWith('.css') ? {} : imports[name] || new Proxy({}, { get: (_, key) => String(key) });
+  const require = name => name === './i18n/I18nProvider.tsx' ? i18nTestModule(locale) : name.endsWith('packages/i18n/src/index.ts') ? i18n : name === 'react' ? { ...hooks, default: hooks } : name.endsWith('workbench-confirm') ? { useConfirmation: () => (...args) => confirm(...args) } : name.endsWith('workspace-visibility.tsx') ? { useWorkspaceVisibility: () => visible } : name.endsWith('subtitle-state.ts') ? subtitles : name.endsWith('.css') ? {} : imports[name] || new Proxy({}, { get: (_, key) => String(key) });
   Function('require', 'module', 'exports', transformSync(source, { loader: 'tsx', format: 'cjs' }).code)(require, module, module.exports);
   const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
   return { render(next = props) { props = next; cursor = 0; tree = module.exports.default(props); return tree; }, find: testId => nodes(tree).find(node => node.props?.['data-testid'] === testId), nodes: () => nodes(tree),
@@ -174,6 +174,17 @@ test('actual lane buttons select and add once, reject hidden/unmounted and super
   calls.length = 0; const old = ui.find('subtitle-add').props.onClick; ui.render({ ...props, timeline: timeline({ revision: 8 }) }); old(); assert.deepEqual(calls, []);
   const current = ui.find('subtitle-add').props.onClick; ui.render({ ...props, visible: false }); current(); assert.deepEqual(calls, []);
   ui.render(props); const last = ui.find('subtitle-add').props.onClick; ui.unmount(); last(); assert.deepEqual(calls, []);
+});
+
+test('English subtitle track uses a short visible name with full count and add action labels', () => {
+  const ui = componentHarness('SubtitleLane.tsx', {}, 'en');
+  ui.render({timeline: timeline(), pixelsPerFrame: 2, pixelsPerSecond: 60, width: 780, playhead: 120, visible: true, onSelect() {}, onAdd() {}, onSeek() {}});
+  const name = ui.nodes().find(node => node.type === 'strong');
+  assert.deepEqual(name.props.children, ['Subtitles']);
+  assert.equal(name.props.title, 'Manual subtitles · 2/100');
+  assert.equal(ui.find('subtitle-add').props['aria-label'], 'Add at playhead');
+  assert.equal(ui.find('subtitle-add').props.children[0].props.name, 'plus');
+  ui.unmount();
 });
 
 const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');

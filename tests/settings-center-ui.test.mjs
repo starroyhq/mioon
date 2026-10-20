@@ -215,6 +215,14 @@ test('shared native center receives page routing and visibility without replacin
   assert.match(native, /<ProjectHomeConnections selected="agent" page="general" connectionsAvailable=\{false\}/u);
   assert.match(native, /panes=\{\{ agent: null, official: null, custom: null, comfy: null \}\}/u);
   assert.doesNotMatch(native, /general:\s*<details/u);
+  assert.match(native, /className="project-home-brand">Mioon<\/span>/u);
+  assert.doesNotMatch(native, />mioon\.</u);
+  assert.match(native, /className="native-settings-center-body"/u);
+  const css = source('settings-center.css');
+  assert.match(css, /:is\(\.web-settings-dialog, \.project-home-settings-window\) \.settings-center \{[^}]*flex: 1;[^}]*min-height: 0/u);
+  assert.match(css, /:is\(\.web-settings-dialog, \.project-home-settings-window\) \.settings-appearance-actions \{ flex: none; position: static;/u);
+  assert.match(css, /\.project-home-settings-window > \.project-home-settings \{[^}]*min-height: 0; overflow: hidden;/u);
+  assert.match(css, /\.native-settings-center-body \{[^}]*flex: 1;[^}]*min-height: 0;[^}]*overflow: hidden;/u);
 });
 
 test('unavailable connections leave General usable while disabled categories and stale handlers cannot mount providers', () => {

@@ -1,0 +1,370 @@
+[
+  {
+    "step": 1,
+    "key": "entry-01",
+    "name": "登录",
+    "status": "verified",
+    "screenshot": "screens/entry-01.jpg",
+    "result": "填令牌启用主按钮；应用语言选择有效；本轮浅色登录为已确认主题适配",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 2,
+    "key": "entry-02",
+    "name": "首页空状态",
+    "status": "verified",
+    "screenshot": "native/entry-02-final-native-1440.png",
+    "result": "原生空首页状态条已修复；帮助保留正常详情，错误/恢复状态未隐藏",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 3,
+    "key": "entry-03",
+    "name": "首页有项目",
+    "status": "verified",
+    "screenshot": "screens/entry-03.jpg",
+    "result": "实际打开项目后返回首页，摘要与排序可用",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 4,
+    "key": "entry-04",
+    "name": "新建项目",
+    "status": "verified",
+    "screenshot": "screens/entry-04.jpg",
+    "result": "三种1080画幅实际切换；默认竖屏，创建后成功打开",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 5,
+    "key": "canvas-01",
+    "name": "空画板",
+    "status": "verified",
+    "screenshot": "screens/canvas-01.jpg",
+    "result": "新建项目空画板引导及入口",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 6,
+    "key": "canvas-02",
+    "name": "镜头与节点",
+    "status": "verified",
+    "screenshot": "screens/canvas-02.jpg",
+    "result": "实际本地媒体的镜头/图片/文字节点；素材数来自合成夹具",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 7,
+    "key": "canvas-03",
+    "name": "选中镜头",
+    "status": "verified",
+    "screenshot": "screens/canvas-03.jpg",
+    "result": "只读Mock 9:16与真实能力适配；创作参数分组，无重复加入时间线按钮",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 8,
+    "key": "canvas-04",
+    "name": "版本页",
+    "status": "visual_verified_with_functional_limit",
+    "screenshot": "screens/canvas-04.jpg",
+    "result": "两版本卡与操作完整；版本来自标注的本地MP4夹具",
+    "blockers": [
+      "FFMPEG_DRAWTEXT"
+    ],
+    "currentRun": true
+  },
+  {
+    "step": 9,
+    "key": "canvas-05",
+    "name": "版本对比",
+    "status": "visual_verified_with_functional_limit",
+    "screenshot": "screens/canvas-05.jpg",
+    "result": "双路实际MP4 readyState4、contain、参数表与底栏；切换同步播放有效",
+    "blockers": [
+      "FFMPEG_DRAWTEXT"
+    ],
+    "currentRun": true
+  },
+  {
+    "step": 10,
+    "key": "canvas-06",
+    "name": "生成中",
+    "status": "visual_verified_with_functional_limit",
+    "screenshot": "screens/canvas-06.jpg",
+    "result": "既有本地Mock任务14%真实进行中；完成发布链路受缺滤镜限制",
+    "blockers": [
+      "FFMPEG_DRAWTEXT"
+    ],
+    "currentRun": true
+  },
+  {
+    "step": 11,
+    "key": "editing-01",
+    "name": "空时间线",
+    "status": "verified",
+    "screenshot": "screens/editing-01.jpg",
+    "result": "空时间线、播放器与属性空态",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 12,
+    "key": "editing-02",
+    "name": "选中片段与画面属性",
+    "status": "verified",
+    "screenshot": "screens/editing-02.jpg",
+    "result": "基础/画面与固定保存栏；本轮实际修改名称并保存",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 13,
+    "key": "editing-03",
+    "name": "预览过期",
+    "status": "verified",
+    "screenshot": "screens/editing-03.jpg",
+    "result": "保存后旧预览修订过期，更新入口有效",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 14,
+    "key": "editing-04",
+    "name": "预览渲染中",
+    "status": "verified",
+    "screenshot": "screens/editing-04.jpg",
+    "result": "本轮真实合成中内联说明，完成后得到MP4；截图不虚构百分比",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 15,
+    "key": "editing-05",
+    "name": "音频分组",
+    "status": "verified",
+    "screenshot": "screens/editing-05.jpg",
+    "result": "真实-26LUFS/-25.06dBTP/LRA0，目标-25候选+1dB；上部音量/包络见矩阵补图",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 16,
+    "key": "editing-06",
+    "name": "片段更多菜单",
+    "status": "verified",
+    "screenshot": "screens/editing-06.jpg",
+    "result": "现有分割/库定位/替换来源及危险操作置底；无后端的占位菜单不展示",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 17,
+    "key": "editing-07",
+    "name": "移除片段确认",
+    "status": "verified",
+    "screenshot": "screens/editing-07.jpg",
+    "result": "移除确认居中；取消后片段保留",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 18,
+    "key": "export-01",
+    "name": "导出检查",
+    "status": "verified",
+    "screenshot": "screens/export-01.jpg",
+    "result": "打开被动，不自动检查；空样片主按钮与范围行可操作",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 19,
+    "key": "export-02",
+    "name": "导出设置",
+    "status": "verified",
+    "screenshot": "screens/export-02.jpg",
+    "result": "本轮真实9秒样片；999帧越界禁用，改名称后重检并重生成",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 20,
+    "key": "export-03",
+    "name": "导出确认",
+    "status": "verified",
+    "screenshot": "screens/export-03.jpg",
+    "result": "确认页同一video src，具名1080×1920/30fps",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 21,
+    "key": "export-04",
+    "name": "导出进行中",
+    "status": "verified",
+    "screenshot": "screens/export-04.jpg",
+    "result": "真实提交待确认/进度不可测瞬态；第二次导出进行中关闭后仍完成",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 22,
+    "key": "export-05",
+    "name": "导出完成",
+    "status": "verified",
+    "screenshot": "screens/export-05.jpg",
+    "result": "具名真实成片、尺寸/帧率、文件路径与下载；HTTP200及ffprobe/完整解码通过",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 23,
+    "key": "export-06",
+    "name": "导出记录",
+    "status": "verified",
+    "screenshot": "screens/export-06.jpg",
+    "result": "真实记录与下载入口，包含本轮后台完成的第二次正式导出",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 24,
+    "key": "panels-01",
+    "name": "任务浮层",
+    "status": "verified",
+    "screenshot": "screens/panels-01.jpg",
+    "result": "任务浮层分组、计数和详情直达；进行中/未知均有真实记录",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 25,
+    "key": "panels-02",
+    "name": "任务未知结果详情",
+    "status": "verified",
+    "screenshot": "screens/panels-02.jpg",
+    "result": "本轮新提交Mock未知任务的原requestId与对账入口，未盲目重发",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 26,
+    "key": "panels-03",
+    "name": "助理首次授权",
+    "status": "verified",
+    "screenshot": "screens/panels-03.jpg",
+    "result": "精确本地目标/模型/范围授权，保存后同范围第二次发送未再弹授权",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 27,
+    "key": "panels-04",
+    "name": "助理对话与修改建议",
+    "status": "verified",
+    "screenshot": "screens/panels-04.jpg",
+    "result": "本轮本地合成回复与既有待审阅差异；IAB断流只读恢复另列，未调用真实模型",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 28,
+    "key": "panels-05",
+    "name": "设置通用",
+    "status": "verified",
+    "screenshot": "screens/panels-05.jpg",
+    "result": "通用设置分段、8项导航与固定保存栏；矩阵覆盖四语言/两主题",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 29,
+    "key": "panels-06",
+    "name": "设置模型服务",
+    "status": "verified",
+    "screenshot": "screens/panels-06.jpg",
+    "result": "真实生成总开关、服务名、变量名、本地模拟和检测入口；保持live关闭",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 30,
+    "key": "panels-07",
+    "name": "设置工作区",
+    "status": "visual_verified_with_functional_limit",
+    "screenshot": "screens/panels-07.jpg",
+    "result": "路径/复制同行、空间独立行、展开自动备份/恢复；归档实际路径另列限制",
+    "blockers": [
+      "GNU_TAR"
+    ],
+    "currentRun": true
+  },
+  {
+    "step": 31,
+    "key": "panels-08",
+    "name": "设置视频工具",
+    "status": "verified",
+    "screenshot": "screens/panels-08.jpg",
+    "result": "本轮真实工具检测，版本/编码器/缺滤镜警告",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 32,
+    "key": "compact-01",
+    "name": "紧凑画板",
+    "status": "verified",
+    "screenshot": "screens/compact-01.jpg",
+    "result": "1050×680左44图标栏、右属性固定；模式各自布局不混用",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 33,
+    "key": "compact-02",
+    "name": "素材临时浮层",
+    "status": "verified",
+    "screenshot": "screens/compact-02.jpg",
+    "result": "素材临时浮层开/关/固定入口，右属性保留",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 34,
+    "key": "compact-03",
+    "name": "紧凑剪辑",
+    "status": "verified",
+    "screenshot": "screens/compact-03.jpg",
+    "result": "键盘Home设160；完整V1/A1及横向滚动条，补图核对配乐整轨",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 35,
+    "key": "compact-04",
+    "name": "时间线收起",
+    "status": "verified",
+    "screenshot": "screens/compact-04.jpg",
+    "result": "40px收起工具栏，右属性固定、预览扩大",
+    "blockers": [],
+    "currentRun": true
+  },
+  {
+    "step": 36,
+    "key": "compact-05",
+    "name": "属性面板收起",
+    "status": "verified",
+    "screenshot": "screens/compact-05.jpg",
+    "result": "左右44图标栏、底部40工具栏，展开可恢复",
+    "blockers": [],
+    "currentRun": true
+  }
+]

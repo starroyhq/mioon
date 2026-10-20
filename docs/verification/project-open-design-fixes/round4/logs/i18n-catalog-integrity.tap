@@ -1,0 +1,13 @@
+✔ every composed UI and native catalog has exact four-locale and placeholder parity (87.755291ms)
+✔ UI literal ledger rejects unexplained, newly introduced and stale exceptions (1.0525ms)
+✔ current source has no unreviewed or stale static UI literal exceptions (1129.033375ms)
+✔ static semantic keys used by UI translation calls exist in the composed catalog (609.1635ms)
+✔ visible template guard distinguishes app copy from dynamic semantic keys (0.465334ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2575.145916

@@ -37,6 +37,8 @@
 [data-testid="timeline-export-dialog"] .delivery-workspace-heading { display: none; }
 [data-testid="timeline-export-dialog"] .delivery-workspace-tabs { height: 100%; display: flex; flex-direction: column; min-height: 0; gap: 0; }
 [data-testid="timeline-export-dialog"] .delivery-workspace-tablist { flex: none; height: 48px; border-bottom: 1px solid var(--wb-line-subtle); padding-left: 68px; padding-right: 40px; border-radius: 0; background: var(--wb-raised); }
+/* The Japanese heading occupies four full-width glyphs beside the tab list. */
+[data-testid="timeline-export-dialog"] .delivery-workspace:lang(ja) .delivery-workspace-tablist { padding-left: calc(68px + 2em); }
 [data-testid="timeline-export-dialog"] .delivery-workspace-content, [data-testid="timeline-export-dialog"] #delivery-compose-pane { flex: 1; min-height: 0; overflow: hidden; height: 100%; }
 [data-testid="timeline-export-dialog"] #delivery-history-pane { min-height: 0; height: 100%; overflow-y: auto; padding: 16px 24px; }
 @media (max-height: 720px) { .export-workflow-preview .export-preview-player { max-height: 280px; } .export-workflow-steps { margin-bottom: 16px; } }
@@ -105,6 +107,19 @@
 .export-preview-actions label{display:flex;align-items:center;gap:5px;min-width:0;font-size:var(--wb-text-caption);color:var(--wb-soft)}
 .export-preview-actions input{width:64px;min-width:0;height:28px;font-size:var(--wb-text-caption);padding:4px}
 .export-preview-actions .button{height:28px;min-height:28px;padding:0 7px;font-size:var(--wb-text-caption)}
+.export-preview-placeholder p{margin:0 0 14px}
+.export-workflow-preview .export-preview-placeholder .button.primary{min-height:36px;padding:0 14px}
+.export-sample-range{display:grid;grid-template-columns:max-content minmax(0,1fr) 8px minmax(0,1fr) max-content;align-items:center;gap:5px;flex:none;min-width:0;color:var(--wb-soft);font-size:var(--wb-text-caption)}
+.export-sample-range>span{white-space:nowrap}
+.export-sample-range label{display:block;min-width:0}
+.export-sample-range input{width:100%;min-width:0;height:28px;padding:3px 4px;border:1px solid var(--wb-line);border-radius:var(--wb-radius-control);background:var(--wb-input);color:var(--wb-text);font-size:var(--wb-text-caption);font-variant-numeric:tabular-nums;appearance:textfield}
+.export-sample-range input::-webkit-inner-spin-button,.export-sample-range input::-webkit-outer-spin-button{appearance:none;margin:0}
+.export-sample-range .button{height:28px;min-height:28px;padding:0 7px;font-size:var(--wb-text-caption);white-space:nowrap;background:var(--wb-card);border:1px solid var(--wb-line)}
+.export-workflow-preview .export-sample-note{color:var(--wb-muted)}
+.export-workflow-preview .export-sample-status{color:var(--wb-soft)}
+.export-sample-details>p,.export-sample-details>small{margin:8px 0;font-size:var(--wb-text-caption);line-height:1.5;overflow-wrap:anywhere}
+.export-sample-details>.export-preview-actions{flex-wrap:wrap;margin-top:8px}
+.export-sample-details .notice{padding:8px;font-size:var(--wb-text-caption)}
 .export-workflow-main{padding:18px 24px 12px}
 .export-workflow-steps{margin-bottom:22px;gap:6px}
 .export-workflow-steps button{font-size:var(--wb-text-caption);white-space:nowrap}

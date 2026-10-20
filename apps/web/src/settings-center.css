@@ -54,7 +54,7 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
 .web-settings-dialog.project-home { position: fixed; inset: 0; transform: none; gap: 0; width: min(1180px, calc(100vw - 48px)); height: min(900px, calc(100dvh - 48px)); max-width: none; max-height: none; margin: auto; padding: 0; border: 1px solid var(--border); border-radius: 14px; background: var(--background); color: var(--foreground); }
 .web-settings-dialog[hidden] { display: none !important; }
 .web-settings-dialog:not([hidden]) { display: flex; flex-direction: column; }
-.web-settings-dialog .settings-back { margin-left: auto; }
+:is(.web-settings-dialog, .project-home-settings-window) .settings-back { margin-left: auto; }
 .web-settings-scroll { min-height: 0; overflow: auto; padding: 32px; }
 @media (max-width: 600px) {
   .web-settings-dialog.project-home { width: 100vw; height: 100dvh; border-radius: 0; }
@@ -67,28 +67,28 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
  * transform so the centered inset layout is not shifted a second time. */
 .web-settings-dialog.project-home { inset: 0; left: 0; top: 0; translate: none; transform: none; width: min(960px, calc(100vw - 40px)); height: min(640px, calc(100dvh - 40px)); border-radius: var(--wb-radius-dialog); background: var(--wb-raised); }
 .web-settings-dialog .web-settings-scroll { display: flex; flex: 1; overflow: hidden; padding: 0; }
-.web-settings-dialog .settings-center { flex: 1; min-height: 0; grid-template-columns: 220px minmax(0, 1fr); gap: 0; }
+:is(.web-settings-dialog, .project-home-settings-window) .settings-center { flex: 1; min-height: 0; grid-template-columns: 220px minmax(0, 1fr); gap: 0; }
 .settings-center-close { position: absolute; top: 10px; right: 10px; z-index: 4; width: var(--wb-control); height: var(--wb-control); padding: 0; color: var(--wb-soft); font-size: 21px; }
-.web-settings-dialog .settings-center-nav { gap: 2px; min-height: 0; padding: 20px 8px 12px; border-right: 1px solid var(--wb-line-subtle); background: var(--wb-panel); }
-.web-settings-dialog .settings-center-nav-label { padding: 0 12px 14px; color: var(--wb-text); font-size: var(--wb-text-title); letter-spacing: 0; font-weight: 600; }
-.web-settings-dialog .settings-center-nav [data-slot="button"] { min-height: 32px; height: 32px; gap: var(--wb-space-2); padding: 0 12px; border-radius: var(--wb-radius-control); color: var(--wb-soft); }
-.web-settings-dialog .settings-center [aria-current="page"] { background: var(--wb-hover); color: var(--wb-text); }
-.web-settings-dialog .settings-center-nav > p { margin: auto 10px 0; font-size: var(--wb-text-caption); line-height: 1.5; color: var(--wb-muted); }
-.web-settings-dialog .settings-center-content { overflow-y: auto; overscroll-behavior: contain; min-height: 0; padding: 16px 24px 0; scrollbar-gutter: stable; }
-.web-settings-dialog .settings-center-heading { margin: 0 28px 24px 0; }
-.web-settings-dialog .settings-center-heading h1 { margin-bottom: 4px; font-size: var(--wb-text-section); font-weight: 600; }
-.web-settings-dialog .settings-center-heading p { font-size: var(--wb-text-caption); line-height: 1.5; }
-.web-settings-dialog .settings-preference { min-height: 60px; padding: 0; border: 0; border-radius: 0; background: none; }
-.web-settings-dialog .settings-preference h2 { font-size: var(--wb-text-body); margin-bottom: 4px; }
-.web-settings-dialog .settings-preference h3 { font-size: var(--wb-text-body); font-weight: 500; margin-bottom: var(--wb-space-1); }
-.web-settings-dialog .settings-preference p { font-size: var(--wb-text-caption); color: var(--wb-muted); line-height: 1.5; }
-.web-settings-dialog .settings-appearance { margin-top: 20px; gap: 16px; }
-.web-settings-dialog .settings-appearance-row { min-height: var(--wb-control-large); }
-.web-settings-dialog .settings-appearance-actions { margin-top: 24px; margin-inline: -24px; padding-inline: 24px; background: var(--wb-raised); }
-.web-settings-dialog .settings-service-nav { margin-bottom: 16px; gap: 4px; padding-bottom: 12px; }
-.web-settings-dialog .settings-service-nav [data-slot="button"] { min-height: var(--wb-control); padding: 0 8px; }
-.web-settings-dialog .agent-settings-page, .web-settings-dialog .image-settings-page, .web-settings-dialog .comfy-image-settings-page { border: 0; border-radius: 0; background: none; }
-@media (max-height: 720px) { .web-settings-dialog .settings-center-content { padding-top: 12px; } .web-settings-dialog .settings-center-heading { margin-bottom: 16px; } .web-settings-dialog .settings-appearance { gap: 12px; } }
+:is(.web-settings-dialog, .project-home-settings-window) .settings-center-nav { gap: 2px; min-height: 0; padding: 20px 8px 12px; border-right: 1px solid var(--wb-line-subtle); background: var(--wb-panel); }
+:is(.web-settings-dialog, .project-home-settings-window) .settings-center-nav-label { padding: 0 12px 14px; color: var(--wb-text); font-size: var(--wb-text-title); letter-spacing: 0; font-weight: 600; }
+:is(.web-settings-dialog, .project-home-settings-window) .settings-center-nav [data-slot="button"] { min-height: 32px; height: 32px; gap: var(--wb-space-2); padding: 0 12px; border-radius: var(--wb-radius-control); color: var(--wb-soft); }
+:is(.web-settings-dialog, .project-home-settings-window) .settings-center [aria-current="page"] { background: var(--wb-hover); color: var(--wb-text); }
+:is(.web-settings-dialog, .project-home-settings-window) .settings-center-nav > p { margin: auto 10px 0; font-size: var(--wb-text-caption); line-height: 1.5; color: var(--wb-muted); }
+:is(.web-settings-dialog, .project-home-settings-window) .settings-center-content { overflow-y: auto; overscroll-behavior: contain; min-height: 0; padding: 16px 24px 0; scrollbar-gutter: stable; }
+:is(.web-settings-dialog, .project-home-settings-window) .settings-center-heading { margin: 0 28px 24px 0; }
+:is(.web-settings-dialog, .project-home-settings-window) .settings-center-heading h1 { margin-bottom: 4px; font-size: var(--wb-text-section); font-weight: 600; }
+:is(.web-settings-dialog, .project-home-settings-window) .settings-center-heading p { font-size: var(--wb-text-caption); line-height: 1.5; }
+:is(.web-settings-dialog, .project-home-settings-window) .settings-preference { min-height: 60px; padding: 0; border: 0; border-radius: 0; background: none; }
+:is(.web-settings-dialog, .project-home-settings-window) .settings-preference h2 { font-size: var(--wb-text-body); margin-bottom: 4px; }
+:is(.web-settings-dialog, .project-home-settings-window) .settings-preference h3 { font-size: var(--wb-text-body); font-weight: 500; margin-bottom: var(--wb-space-1); }
+:is(.web-settings-dialog, .project-home-settings-window) .settings-preference p { font-size: var(--wb-text-caption); color: var(--wb-muted); line-height: 1.5; }
+:is(.web-settings-dialog, .project-home-settings-window) .settings-appearance { margin-top: 20px; gap: 16px; }
+:is(.web-settings-dialog, .project-home-settings-window) .settings-appearance-row { min-height: var(--wb-control-large); }
+:is(.web-settings-dialog, .project-home-settings-window) .settings-appearance-actions { margin-top: 24px; margin-inline: -24px; padding-inline: 24px; background: var(--wb-raised); }
+:is(.web-settings-dialog, .project-home-settings-window) .settings-service-nav { margin-bottom: 16px; gap: 4px; padding-bottom: 12px; }
+:is(.web-settings-dialog, .project-home-settings-window) .settings-service-nav [data-slot="button"] { min-height: var(--wb-control); padding: 0 8px; }
+:is(.web-settings-dialog, .project-home-settings-window) .agent-settings-page, :is(.web-settings-dialog, .project-home-settings-window) .image-settings-page, :is(.web-settings-dialog, .project-home-settings-window) .comfy-image-settings-page { border: 0; border-radius: 0; background: none; }
+@media (max-height: 720px) { :is(.web-settings-dialog, .project-home-settings-window) .settings-center-content { padding-top: 12px; } :is(.web-settings-dialog, .project-home-settings-window) .settings-center-heading { margin-bottom: 16px; } :is(.web-settings-dialog, .project-home-settings-window) .settings-appearance { gap: 12px; } }
 .settings-services > p { margin-bottom: 16px; line-height: 1.6; }
 .settings-services dl > div, .settings-shortcuts > div, .settings-about dl > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 52px; border-bottom: 1px solid var(--wb-line-subtle); }
 .settings-services dt, .settings-shortcuts dt, .settings-about dt { font-size: var(--wb-text-body); }
@@ -102,7 +102,7 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
 /* The content body scrolls independently so each retained form keeps its
  * actions at the bottom of the settings window. */
 .settings-center-content { display: flex; flex-direction: column; min-height: 0; }
-.web-settings-dialog .settings-center-content { overflow: hidden; }
+:is(.web-settings-dialog, .project-home-settings-window) .settings-center-content { overflow: hidden; }
 .settings-center-heading, .settings-service-nav { flex: none; }
 .settings-center-content > section { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: var(--wb-space-5); }
 .settings-center-content > .settings-general { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0; }
@@ -125,7 +125,7 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
 .settings-appearance-row [data-slot="tabs-list"] { height: var(--wb-control); padding: calc(var(--wb-space-1) / 2); background: var(--wb-input); border-radius: var(--wb-radius-control); }
 .settings-appearance-row [data-slot="tabs-trigger"] { flex: 0 0 auto; width: max-content; min-width: max-content; height: var(--wb-control-compact); min-height: var(--wb-control-compact); padding: 0 var(--wb-space-3); font-size: var(--wb-text-label); white-space: nowrap; }
 .settings-appearance-row [data-slot="tabs-trigger"][data-active] { background: var(--wb-raised); color: var(--wb-text); box-shadow: 0 1px 3px color-mix(in srgb, var(--wb-shadow-color) 45%, transparent); }
-.web-settings-dialog .settings-appearance-actions { flex: none; position: static; margin-top: 0; min-height: var(--wb-action-bar); }
+:is(.web-settings-dialog, .project-home-settings-window) .settings-appearance-actions { flex: none; position: static; margin-top: 0; min-height: var(--wb-action-bar); }
 .settings-center-content > .settings-connection-panes { flex: 1; min-height: 0; overflow: hidden; }
 .settings-center .agent-settings-page { border: 0; border-radius: 0; background: transparent; overflow: hidden; }
 .settings-center .agent-settings-header { display: none; }
@@ -181,3 +181,17 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
 .workspace-backup-location input { flex: 1; min-width: 120px; min-height: var(--wb-control); padding: 0 var(--wb-space-2); border: 1px solid var(--wb-line); border-radius: var(--wb-radius-control); background: var(--wb-input); color: var(--wb-soft); font: var(--wb-text-caption) var(--wb-font-mono); }
 .workspace-backup-download { display: inline-flex; align-items: center; min-height: var(--wb-control); padding-inline: var(--wb-space-2); color: var(--wb-text); text-decoration: underline; text-underline-offset: var(--wb-space-1); }
 .settings-service-back { flex: none; align-self: flex-start; margin-bottom: var(--wb-space-2); }
+
+/* Native settings reuse the retained center and its independent form scrollports. */
+.project-home.project-home-settings-window > .project-home-header { position: relative; z-index: 5; height: 44px; min-height: 44px; padding-block: 0; padding-right: var(--wb-space-4); gap: var(--wb-space-4); }
+.project-home-settings-window .project-home-brand { font-size: var(--wb-text-body); font-weight: 600; letter-spacing: 0; }
+.project-home-settings-window .project-home-header-label { padding-left: var(--wb-space-4); }
+.project-home-settings-window > .project-home-settings { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; padding: 0; scrollbar-gutter: auto; }
+.project-home-settings-window > .project-home-settings > .project-home-notice { flex: none; margin: var(--wb-space-2) var(--wb-space-6); max-height: 25%; overflow-y: auto; }
+.native-settings-center-body { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
+.native-settings-unavailable { flex: none; margin: var(--wb-space-3) var(--wb-space-6); color: var(--wb-soft); font-size: var(--wb-text-label); }
+.project-home-settings-window .settings-workspace-status-global { position: relative; flex: none; margin: 0 0 0 auto; padding: var(--wb-space-1) var(--wb-space-2); border: 0; border-radius: var(--wb-radius-control); }
+.project-home-settings-window .settings-workspace-status-global > summary { min-height: var(--wb-control-compact); display: flex; align-items: center; gap: var(--wb-space-2); font-size: var(--wb-text-caption); }
+.project-home-settings-window .settings-workspace-status-global > summary::after { content: '\2304'; }
+.project-home-settings-window .settings-workspace-status-global > div { position: absolute; right: 0; top: calc(100% + var(--wb-space-2)); width: min(360px, calc(var(--mioon-viewport-width) - 24px)); max-height: calc(var(--mioon-viewport-height) - 80px); overflow: auto; margin-top: 0; padding: var(--wb-space-4); border: 1px solid var(--wb-line); border-radius: var(--wb-radius-card); background: var(--wb-raised); box-shadow: var(--wb-shadow); }
+.project-home-settings-window .settings-workspace-status-global .project-home-notice { padding: 0; margin: 0; border: 0; background: none; }

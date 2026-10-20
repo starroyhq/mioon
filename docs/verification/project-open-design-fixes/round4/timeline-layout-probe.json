@@ -1,0 +1,314 @@
+{
+  "method": "Existing development build with only the exact new timeline CSS injected; final source-build verification is owned by the main agent",
+  "baseline": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "panelHeight": 300,
+    "clientHeight": 238,
+    "scrollHeight": 250,
+    "afterAudioFocusScrollTop": 4
+  },
+  "checks": [
+    {
+      "label": "300-after-audio-focus",
+      "scrollTop": 0,
+      "clientHeight": 238,
+      "scrollHeight": 238,
+      "clientWidth": 1426,
+      "scrollWidth": 1426,
+      "rows": [
+        {
+          "class": "timeline-ruler-row",
+          "top": 631,
+          "bottom": 655,
+          "height": 24
+        },
+        {
+          "class": "timeline-track subtitle-track",
+          "top": 655,
+          "bottom": 687,
+          "height": 32
+        },
+        {
+          "class": "timeline-track video  ",
+          "top": 687,
+          "bottom": 735.71875,
+          "height": 48.71875
+        },
+        {
+          "class": "timeline-track video  ",
+          "top": 735.71875,
+          "bottom": 784.421875,
+          "height": 48.703125
+        },
+        {
+          "class": "timeline-track audio  ",
+          "top": 784.421875,
+          "bottom": 825.703125,
+          "height": 41.28125
+        },
+        {
+          "class": "timeline-track audio  ",
+          "top": 825.703125,
+          "bottom": 867,
+          "height": 41.296875
+        }
+      ]
+    },
+    {
+      "label": "292-after-audio-focus",
+      "scrollTop": 0,
+      "clientHeight": 230,
+      "scrollHeight": 230,
+      "clientWidth": 1426,
+      "scrollWidth": 1426,
+      "rows": [
+        {
+          "class": "timeline-ruler-row",
+          "top": 639,
+          "bottom": 663,
+          "height": 24
+        },
+        {
+          "class": "timeline-track subtitle-track",
+          "top": 663,
+          "bottom": 695,
+          "height": 32
+        },
+        {
+          "class": "timeline-track video  ",
+          "top": 695,
+          "bottom": 741.515625,
+          "height": 46.515625
+        },
+        {
+          "class": "timeline-track video  ",
+          "top": 741.515625,
+          "bottom": 788.03125,
+          "height": 46.515625
+        },
+        {
+          "class": "timeline-track audio  ",
+          "top": 788.03125,
+          "bottom": 827.515625,
+          "height": 39.484375
+        },
+        {
+          "class": "timeline-track audio  ",
+          "top": 827.515625,
+          "bottom": 867,
+          "height": 39.484375
+        }
+      ]
+    },
+    {
+      "label": "322-expanded-preserves-standard-row-heights",
+      "scrollTop": 0,
+      "clientHeight": 260,
+      "scrollHeight": 260,
+      "clientWidth": 1426,
+      "scrollWidth": 1426,
+      "rows": [
+        {
+          "class": "timeline-ruler-row",
+          "top": 609,
+          "bottom": 633,
+          "height": 24
+        },
+        {
+          "class": "timeline-track subtitle-track",
+          "top": 633,
+          "bottom": 665,
+          "height": 32
+        },
+        {
+          "class": "timeline-track video  ",
+          "top": 665,
+          "bottom": 717,
+          "height": 52
+        },
+        {
+          "class": "timeline-track video  ",
+          "top": 717,
+          "bottom": 769,
+          "height": 52
+        },
+        {
+          "class": "timeline-track audio  ",
+          "top": 769,
+          "bottom": 813,
+          "height": 44
+        },
+        {
+          "class": "timeline-track audio  ",
+          "top": 813,
+          "bottom": 857,
+          "height": 44
+        }
+      ]
+    },
+    {
+      "label": "1050-160-primary-rows",
+      "scrollTop": 0,
+      "clientHeight": 80,
+      "scrollHeight": 164,
+      "clientWidth": 1036,
+      "scrollWidth": 1080,
+      "rows": [
+        {
+          "class": "timeline-ruler-row",
+          "top": 551,
+          "bottom": 575,
+          "height": 24
+        },
+        {
+          "class": "timeline-track subtitle-track",
+          "top": 687,
+          "bottom": 715,
+          "height": 28
+        },
+        {
+          "class": "timeline-track video  ",
+          "top": 575,
+          "bottom": 603,
+          "height": 28
+        },
+        {
+          "class": "timeline-track audio  ",
+          "top": 603,
+          "bottom": 631,
+          "height": 28
+        },
+        {
+          "class": "timeline-track video  ",
+          "top": 631,
+          "bottom": 659,
+          "height": 28
+        },
+        {
+          "class": "timeline-track audio  ",
+          "top": 659,
+          "bottom": 687,
+          "height": 28
+        }
+      ]
+    },
+    {
+      "label": "1050-160-scroll-56-complete-tracks",
+      "scrollTop": 56,
+      "clientHeight": 80,
+      "scrollHeight": 164,
+      "clientWidth": 1036,
+      "scrollWidth": 1080,
+      "rows": [
+        {
+          "class": "timeline-ruler-row",
+          "top": 551,
+          "bottom": 575,
+          "height": 24
+        },
+        {
+          "class": "timeline-track subtitle-track",
+          "top": 631,
+          "bottom": 659,
+          "height": 28
+        },
+        {
+          "class": "timeline-track video  ",
+          "top": 519,
+          "bottom": 547,
+          "height": 28
+        },
+        {
+          "class": "timeline-track audio  ",
+          "top": 547,
+          "bottom": 575,
+          "height": 28
+        },
+        {
+          "class": "timeline-track video  ",
+          "top": 575,
+          "bottom": 603,
+          "height": 28
+        },
+        {
+          "class": "timeline-track audio  ",
+          "top": 603,
+          "bottom": 631,
+          "height": 28
+        }
+      ]
+    },
+    {
+      "label": "220-noncompact-overflow-bounded",
+      "scrollTop": 50,
+      "clientHeight": 158,
+      "scrollHeight": 208,
+      "clientWidth": 1426,
+      "scrollWidth": 1426,
+      "rows": [
+        {
+          "class": "timeline-ruler-row",
+          "top": 711,
+          "bottom": 735,
+          "height": 24
+        },
+        {
+          "class": "timeline-track subtitle-track",
+          "top": 685,
+          "bottom": 717,
+          "height": 32
+        },
+        {
+          "class": "timeline-track video  ",
+          "top": 717,
+          "bottom": 757,
+          "height": 40
+        },
+        {
+          "class": "timeline-track video  ",
+          "top": 757,
+          "bottom": 797,
+          "height": 40
+        },
+        {
+          "class": "timeline-track audio  ",
+          "top": 797,
+          "bottom": 833,
+          "height": 36
+        },
+        {
+          "class": "timeline-track audio  ",
+          "top": 833,
+          "bottom": 869,
+          "height": 36
+        }
+      ]
+    }
+  ],
+  "boundary": {
+    "compact": false,
+    "clipBounds": [
+      {
+        "id": "timeline-clip-a42c19de-ae30-45b8-a291-d22d5bfe093c",
+        "withinLane": true,
+        "height": 31,
+        "laneHeight": 39
+      },
+      {
+        "id": "timeline-clip-1fd75e01-6943-472d-97d3-1b4ce54813ab",
+        "withinLane": true,
+        "height": 31,
+        "laneHeight": 39
+      },
+      {
+        "id": "timeline-clip-abe55818-fcb9-4bce-abe9-953713fb4fb4",
+        "withinLane": true,
+        "height": 26,
+        "laneHeight": 34
+      }
+    ]
+  }
+}

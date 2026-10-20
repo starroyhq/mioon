@@ -56,7 +56,7 @@ function harness() {
     './AssetTimelineUsage.tsx': h.usage,
     './asset-disposition-state.ts': { dispositionCounts, dispositionFilters, filterLibraryAssets },
     './AssetDispositionControls.tsx': { __esModule: true, default: 'AssetDispositionControls', useDispositionInteraction: () => ({ visible: h.visible, admit: action => { if (h.visible) action(); } }) },
-    './Timeline.tsx': { assetKind: () => 'video', dragAsset() {} },
+    './Timeline.tsx': { assetKind: asset => asset?.mimeType?.split('/')[0] || 'image', dragAsset() {} },
     './WorkspaceControls.tsx': { WorkbenchTooltip: 'WorkbenchTooltip', WorkbenchSelect: 'WorkbenchSelect' },
     './AssetLibraryToolbar.tsx': { __esModule: true, default: 'AssetLibraryToolbar', useAssetLibraryLayout: () => ({ layout: 'grid', setLayout() {} }) },
     './asset-annotation-state.ts': annotations,
@@ -80,6 +80,18 @@ function libraryProps(patch = {}) {
     onFilter() {}, onSearch() {}, timelineUsage: usage, selectedAsset: assets[0], inUseAssetIds: new Set([assetId]),
     dispositions: { state: { scope: scopeProps.scope, entries: Object.fromEntries(assets.map(asset => [asset.id, { phase: 'ready', row: { id: asset.id, assetId: asset.id, projectId, revision: 0, disposition: 'neutral' } }])) }, controller: {} }, ...patch };
 }
+
+test('a compact audio card uses an icon thumbnail and keeps preview name and duration separate', () => {
+  const h = harness(), audio = { ...assets[0], mimeType: 'audio/wav', name: 'Music.wav', duration: 9 };
+  const tree = h.render(h.library, libraryProps({ assets: [audio] }));
+  const card = find(tree, `asset-card-${audio.id}`), thumbnail = nodes(card).find(node => node.props?.className === 'asset-thumbnail');
+  assert.equal(thumbnail.props['aria-label'], '预览 Music.wav');
+  assert.equal(nodes(thumbnail).some(node => node.type === 'Media'), false);
+  const visual = nodes(thumbnail).find(node => node.props?.className === 'asset-audio-thumbnail');
+  assert.equal(visual.props['aria-hidden'], 'true');
+  assert.equal(text(visual), '');
+  assert.equal(nodes(thumbnail).find(node => node.props?.className === 'asset-duration').props.children[0], '9');
+});
 
 test('only an own key in this project ready snapshot means zero; absence stays unknown', () => {
   const h = harness(), lookup = h.usage.assetTimelineUses;

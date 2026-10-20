@@ -82,3 +82,65 @@ test('custom player controls play and seek only their exact visible media owner'
  const seek=h.find(node=>node.type==='input'&&node.props?.type==='range');seek.props.onChange({currentTarget:{value:'3.2'}});assert.equal(element.currentTime,3.2);
  h.render({visible:false});play.props.onClick();seek.props.onChange({currentTarget:{value:'9'}});assert.equal(element.playCount,1);assert.equal(element.currentTime,3.2);h.unmount();
 });
+
+test('all three review steps expose a real empty-player action and one compact range row', async () => {
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) {
+    for (const step of [1, 2, 3]) {
+      const h = harness(locale), calls = [];
+      h.setWorkflow(step);
+      h.render({ result: { phase: 'idle', record: null, stale: false, url: null }, onGenerate: () => { calls.push('generate'); } });
+      assert.deepEqual(calls, [], `${locale}/${step}: mounting is passive`);
+      const empty = h.find(node => node.props?.['data-testid'] === 'export-preview-empty-generate');
+      const range = h.find(node => node.props?.['data-testid'] === 'export-preview-range-controls');
+      const generate = h.find(node => node.props?.['data-testid'] === 'export-preview-generate');
+      assert.ok(empty); assert.equal(empty.props.disabled, false); assert.ok(range); assert.ok(generate);
+      assert.ok(h.find(node => node.props?.['data-testid'] === 'export-preview-details'));
+      assert.equal(h.find(node => node.props?.['data-testid'] === 'export-preview-details').props.open, undefined);
+      await empty.props.onClick();
+      assert.deepEqual(calls, ['generate']);
+      h.render();
+      await h.find(node => node.props?.['data-testid'] === 'export-preview-generate').props.onClick();
+      assert.deepEqual(calls, ['generate', 'generate']);
+      h.unmount();
+    }
+  }
+});
+
+test('sample generation is single-flight and old actions lose authority after visibility or step changes', async () => {
+  const h = harness(), calls = []; let resolve;
+  const pending = new Promise(done => { resolve = done; });
+  h.render({ result: { phase: 'idle', record: null, stale: false, url: null }, onGenerate: () => { calls.push('generate'); return pending; } });
+  const empty = h.find(node => node.props?.['data-testid'] === 'export-preview-empty-generate');
+  const range = h.find(node => node.props?.['data-testid'] === 'export-preview-generate');
+  const first = empty.props.onClick(); await range.props.onClick();
+  assert.deepEqual(calls, ['generate'], 'two controls share one admission flight');
+  h.render({ visible: false }); await empty.props.onClick(); assert.equal(calls.length, 1);
+  resolve(); await first;
+  h.render({ visible: true });
+  const retained = h.find(node => node.props?.['data-testid'] === 'export-preview-empty-generate');
+  h.setWorkflow(4, { id: 'formal', status: 'running' }, false); h.render();
+  await retained.props.onClick();
+  assert.equal(calls.length, 1, 'a review action cannot generate after a formal task replaces it');
+  assert.equal(h.find(node => node.props?.['data-testid'] === 'export-preview-empty-generate'), null);
+  h.unmount();
+});
+
+test('checking, a running sample, unknown outcome and disabled admission cannot dispatch a new sample', async () => {
+  for (const patch of [
+    { preflightState: { phase: 'checking' } },
+    { result: { phase: 'running', record: null, stale: false, url: null } },
+    { result: { phase: 'unknown', record: null, stale: false, url: null } },
+    { canGenerate: false },
+    { visible: false },
+  ]) {
+    const h = harness(); let calls = 0;
+    h.render({ result: { phase: 'idle', record: null, stale: false, url: null }, onGenerate: () => { calls++; }, ...patch });
+    const generate = h.find(node => node.props?.['data-testid'] === 'export-preview-generate');
+    assert.equal(generate.props.disabled, true);
+    await generate.props.onClick(); assert.equal(calls, 0); h.unmount();
+  }
+  const h = harness();
+  h.render({ preflightState: { phase: 'error' }, checkDetails: 'safe capability explanation' });
+  assert.equal(h.find(node => node.props?.['data-testid'] === 'export-preview-details').props.open, true, 'blocking diagnostics stay visible');
+  h.unmount();
+});

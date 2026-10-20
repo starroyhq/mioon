@@ -1,0 +1,106 @@
+TAP version 13
+# Subtest: whole selection omits range, while explicit full span and one frame remain distinct frozen selections
+ok 1 - whole selection omits range, while explicit full span and one frame remain distinct frozen selections
+  ---
+  duration_ms: 2.058084
+  type: 'test'
+  ...
+# Subtest: invalid raw selected fields survive unchanged and never become omitted whole timeline
+ok 2 - invalid raw selected fields survive unchanged and never become omitted whole timeline
+  ---
+  duration_ms: 0.903
+  type: 'test'
+  ...
+# Subtest: session selection retains through visibility and reconnect, resets on project epoch and fences stale callbacks
+ok 3 - session selection retains through visibility and reconnect, resets on project epoch and fences stale callbacks
+  ---
+  duration_ms: 0.211833
+  type: 'test'
+  ...
+# Subtest: saved duration changes revalidate without clamping even before the next effect, while old revision controls are fenced
+ok 4 - saved duration changes revalidate without clamping even before the next effect, while old revision controls are fenced
+  ---
+  duration_ms: 0.136125
+  type: 'test'
+  ...
+# Subtest: explicit media check freezes exact range and consumes each checked binding once
+ok 5 - explicit media check freezes exact range and consumes each checked binding once
+  ---
+  duration_ms: 1.993917
+  type: 'test'
+  ...
+# Subtest: invalid selection blocks checks and range mismatches never produce a ready binding
+ok 6 - invalid selection blocks checks and range mismatches never produce a ready binding
+  ---
+  duration_ms: 0.888083
+  type: 'test'
+  ...
+# Subtest: range edits fence late media results, obsolete auth and A to B to A old confirmations
+ok 7 - range edits fence late media results, obsolete auth and A to B to A old confirmations
+  ---
+  duration_ms: 0.477208
+  type: 'test'
+  ...
+# Subtest: capability requests stay range-free but range changes stop the late capability from launching media work
+ok 8 - capability requests stay range-free but range changes stop the late capability from launching media work
+  ---
+  duration_ms: 0.391
+  type: 'test'
+  ...
+# Subtest: incomplete unchecked intent preserves exact range and opening or hiding never submits
+ok 9 - incomplete unchecked intent preserves exact range and opening or hiding never submits
+  ---
+  duration_ms: 0.283042
+  type: 'test'
+  ...
+# Subtest: range controls use labelled shared inputs, half-open semantics, session disclosure and disabled actions
+ok 10 - range controls use labelled shared inputs, half-open semantics, session disclosure and disabled actions
+  ---
+  duration_ms: 36.52475
+  type: 'test'
+  ...
+# Subtest: preflight shows frozen selected duration separately from full composition and checks all source scope
+ok 11 - preflight shows frozen selected duration separately from full composition and checks all source scope
+  ---
+  duration_ms: 24.5055
+  type: 'test'
+  ...
+# Subtest: named and unnamed export history display immutable selected or original whole range while previews stay range-free
+ok 12 - named and unnamed export history display immutable selected or original whole range while previews stay range-free
+  ---
+  duration_ms: 15.487583
+  type: 'test'
+  ...
+# Subtest: actual App range context rejects hidden dialog, offline, busy and pending callbacks but preserves independent and restored export
+ok 13 - actual App range context rejects hidden dialog, offline, busy and pending callbacks but preserves independent and restored export
+  ---
+  duration_ms: 12.184292
+  type: 'test'
+  ...
+# Subtest: actual local-delivery execution epoch includes range version even after changing back to the original endpoints
+ok 14 - actual local-delivery execution epoch includes range version even after changing back to the original endpoints
+  ---
+  duration_ms: 2.923
+  type: 'test'
+  ...
+# Subtest: only malformed range-present rows suppress file actions; valid selected and absent history retain exact inspection inputs
+ok 15 - only malformed range-present rows suppress file actions; valid selected and absent history retain exact inspection inputs
+  ---
+  duration_ms: 14.14075
+  type: 'test'
+  ...
+# Subtest: hidden checked and unchecked confirmations preserve their intent without consuming it and require an explicit reopened action
+ok 16 - hidden checked and unchecked confirmations preserve their intent without consuming it and require an explicit reopened action
+  ---
+  duration_ms: 0.5705
+  type: 'test'
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 387.973041

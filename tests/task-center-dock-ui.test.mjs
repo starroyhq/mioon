@@ -344,6 +344,44 @@ test('local dispositions preserve unknown reconciliation and require confirmatio
   h.visible=true;tree=h.render({jobs:[uncertain],dispositions:{...dispositions,items:[{...saved,markedFailed:true,revision:1,updatedAt:stamp}]}});assert.ok(find(tree,'task-local-failed-marker'));assert.ok(find(tree,`reconcile-job-${uncertain.id}`));assert.equal(find(tree,'task-mark-failed'),undefined);
 });
 
+test('generation details name the diagnostic section and group reconciliation with the explicit mark-failed button', async () => {
+  const store = createLanguageStore({ systemLanguages: ['zh-Hans'] }), h = harness(store);
+  const uncertain = { ...job(11, 'submission_unknown'), requestId: 'unchanged-original-generation-request' };
+  const saved = { projectId: id(90), kind: 'generation', taskId: uncertain.id, revision: 0, markedFailed: false, archived: false, updatedAt: null, sourceStatus: uncertain.status, sourceRequestId: uncertain.requestId, canMarkFailed: true, canArchive: false };
+  const dispositions = { phase: 'ready', items: [saved], busy: false, mutationUncertain: false, markFailed: () => assert.fail('Presentation must not mutate'), archiveCompleted() {}, reload() {}, retry() {} };
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) {
+    await store.setPreference(locale);
+    const tree = h.render({ jobs: [uncertain], dispositions }), ctx = createI18nTestContext(locale);
+    const card = find(tree, `job-${uncertain.id}`);
+    const heading = nodes(card).find(node => node.props?.className === 'job-title');
+    assert.match(text(heading), new RegExp(ctx.t('round4.tasks.statusAndDiagnostics')));
+    assert.match(text(heading), /mock/);
+    const footer = nodes(card).find(node => node.props?.className === 'job-actions');
+    assert.ok(find(footer, `reconcile-job-${uncertain.id}`));
+    assert.equal(find(footer, 'task-mark-failed').props.variant, 'outline');
+    assert.equal(find(footer, `reconcile-job-${uncertain.id}`).props.variant, 'outline');
+    assert.equal(find(find(tree, 'task-detail-summary'), 'task-mark-failed'), undefined);
+    const reconcileFields = nodes(card).find(node => node.props?.className === 'reconcile-job');
+    assert.equal(find(reconcileFields, `reconcile-job-${uncertain.id}`), undefined);
+    assert.ok(nodes(reconcileFields).some(node => node.type === 'Input'));
+    assert.match(text(card), /unchanged-original-generation-request/);
+    assert.deepEqual(h.calls, []);
+  }
+  h.unmount(); store.dispose();
+});
+
+test('unknown durable edits keep mark-failed in the same footer as exact-request recovery', () => {
+  const h = harness(), unknown = task(1);
+  const saved = { projectId: id(90), kind: 'edit', taskId: unknown.id, revision: 0, markedFailed: false, archived: false, updatedAt: null, sourceStatus: unknown.status, sourceRequestId: unknown.requestId, canMarkFailed: true, canArchive: false };
+  const dispositions = { phase: 'ready', items: [saved], busy: false, mutationUncertain: false, markFailed: () => assert.fail('Presentation must not mutate'), archiveCompleted() {}, reload() {}, retry() {} };
+  const tree = h.render({ tasks: { phase: 'ready', items: [unknown], uncertain: [], busy: [] }, dispositions });
+  const footer = nodes(find(tree, `durable-task-${unknown.id}`)).find(node => node.props?.className === 'job-actions');
+  assert.ok(find(footer, 'recover-durable-task'));
+  assert.equal(find(footer, 'task-mark-failed').props.variant, 'outline');
+  assert.equal(find(find(tree, 'task-detail-summary'), 'task-mark-failed'), undefined);
+  assert.deepEqual(h.calls, []);
+});
+
 test('task identifier copy uses the real clipboard result and exposes failures without changing task state', async () => {
   const h=harness(),uncertain={...job(11,'submission_unknown'),requestId:'original-generation-request'},prior=Object.getOwnPropertyDescriptor(navigator,'clipboard'),writes=[];
   try {Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async value=>{writes.push(value);}}});let tree=h.render({jobs:[uncertain]});await find(tree,'task-copy-id').props.onClick();tree=h.render({jobs:[uncertain]});assert.deepEqual(writes,[uncertain.id]);assert.match(text(find(tree,'task-copy-result')),/已复制/);

@@ -1,0 +1,148 @@
+TAP version 13
+# Subtest: settings shell has eight stable categories while connection owners retain four IPC slots
+ok 1 - settings shell has eight stable categories while connection owners retain four IPC slots
+  ---
+  duration_ms: 37.431917
+  type: 'test'
+  ...
+# Subtest: General derives its read-only number-format example from the current language without adding an editable setting
+ok 2 - General derives its read-only number-format example from the current language without adding an editable setting
+  ---
+  duration_ms: 2.529708
+  type: 'test'
+  ...
+# Subtest: category and connection navigation delegates once without selecting a page locally
+ok 3 - category and connection navigation delegates once without selecting a page locally
+  ---
+  duration_ms: 1.460167
+  type: 'test'
+  ...
+# Subtest: legacy consumers can select connection slots but internal categories never become IPC slots
+ok 4 - legacy consumers can select connection slots but internal categories never become IPC slots
+  ---
+  duration_ms: 1.754125
+  type: 'test'
+  ...
+# Subtest: General does not mount unvisited connections and hiding visited forms retains exact keyed owners
+ok 5 - General does not mount unvisited connections and hiding visited forms retains exact keyed owners
+  ---
+  duration_ms: 1.737167
+  type: 'test'
+  ...
+# Subtest: visibility composition hides descendants without dropping children or creating new form owners
+ok 6 - visibility composition hides descendants without dropping children or creating new form owners
+  ---
+  duration_ms: 1.236125
+  type: 'test'
+  ...
+# Subtest: General language controls and category copy change in four locales without changing page or owner identity
+ok 7 - General language controls and category copy change in four locales without changing page or owner identity
+  ---
+  duration_ms: 1.822125
+  type: 'test'
+  ...
+# Subtest: retained language menu loses visibility when its page or settings owner is inactive
+ok 8 - retained language menu loses visibility when its page or settings owner is inactive
+  ---
+  duration_ms: 1.778917
+  type: 'test'
+  ...
+# Subtest: actual shared controls render accessible four-language settings and one complete General language selector
+ok 9 - actual shared controls render accessible four-language settings and one complete General language selector
+  ---
+  duration_ms: 191.212
+  type: 'test'
+  ...
+# Subtest: new settings copy has complete locale coverage and category identity remains outside native IPC
+ok 10 - new settings copy has complete locale coverage and category identity remains outside native IPC
+  ---
+  duration_ms: 0.899042
+  type: 'test'
+  ...
+# Subtest: shared native center receives page routing and visibility without replacing existing close admission
+ok 11 - shared native center receives page routing and visibility without replacing existing close admission
+  ---
+  duration_ms: 0.376583
+  type: 'test'
+  ...
+# Subtest: unavailable connections leave General usable while disabled categories and stale handlers cannot mount providers
+ok 12 - unavailable connections leave General usable while disabled categories and stale handlers cannot mount providers
+  ---
+  duration_ms: 2.542292
+  type: 'test'
+  ...
+# Subtest: web dialog retains its guarded controller and form shell while closed, reopened and relocalized
+ok 13 - web dialog retains its guarded controller and form shell while closed, reopened and relocalized
+  ---
+  duration_ms: 1.892042
+  type: 'test'
+  ...
+# Subtest: web close button, dismissal and form Back all use the same exact dirty guard without clearing owners
+ok 14 - web close button, dismissal and form Back all use the same exact dirty guard without clearing owners
+  ---
+  duration_ms: 5.605917
+  type: 'test'
+  ...
+# Subtest: web open request reports guarded acceptance to its caller rather than treating a cancelled transition as open
+ok 15 - web open request reports guarded acceptance to its caller rather than treating a cancelled transition as open
+  ---
+  duration_ms: 1.106208
+  type: 'test'
+  ...
+# Subtest: restored web requests normalize to General and cannot activate model pages through stale form callbacks
+ok 16 - restored web requests normalize to General and cannot activate model pages through stale form callbacks
+  ---
+  duration_ms: 1.174167
+  type: 'test'
+  ...
+# Subtest: web center stays first keyed sibling across home and workbench rather than replacing the editor tree
+ok 17 - web center stays first keyed sibling across home and workbench rather than replacing the editor tree
+  ---
+  duration_ms: 0.56875
+  type: 'test'
+  ...
+# Subtest: only reachable modals block shortcuts, including hidden/inert/closed/aria-hidden ancestors
+ok 18 - only reachable modals block shortcuts, including hidden/inert/closed/aria-hidden ancestors
+  ---
+  duration_ms: 0.290209
+  type: 'test'
+  ...
+# Subtest: actual App Ctrl+B and undo handlers work before settings opens and after close, but not with an open confirmation
+ok 19 - actual App Ctrl+B and undo handlers work before settings opens and after close, but not with an open confirmation
+  ---
+  duration_ms: 1.65875
+  type: 'test'
+  ...
+# Subtest: agent rejected settings restores only current visibility, including hidden-document denial and thrown callbacks
+ok 20 - agent rejected settings restores only current visibility, including hidden-document denial and thrown callbacks
+  ---
+  duration_ms: 6.871916
+  type: 'test'
+  ...
+# Subtest: agent late rejected settings cannot revive a superseded session, owner, interaction or hidden pane
+ok 21 - agent late rejected settings cannot revive a superseded session, owner, interaction or hidden pane
+  ---
+  duration_ms: 3.669416
+  type: 'test'
+  ...
+# Subtest: image rejected settings restores only current visibility, including hidden-document denial and thrown callbacks
+ok 22 - image rejected settings restores only current visibility, including hidden-document denial and thrown callbacks
+  ---
+  duration_ms: 3.628166
+  type: 'test'
+  ...
+# Subtest: image late rejected settings cannot revive a superseded session, owner, interaction or hidden pane
+ok 23 - image late rejected settings cannot revive a superseded session, owner, interaction or hidden pane
+  ---
+  duration_ms: 2.965208
+  type: 'test'
+  ...
+1..23
+# tests 23
+# suites 0
+# pass 23
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 487.649083

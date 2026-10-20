@@ -1,6 +1,7 @@
 import {VOLUME_ENVELOPE_PROFILE} from './timeline-volume-envelope.ts';
 import {z} from 'zod';
-import {EXPORT_LOUDNESS_PROFILE, EXPORT_LOUDNESS_LIMITS, exportLoudnessMeasurementSchema} from './export-loudness.ts';
+import {EXPORT_LOUDNESS_PROFILE, EXPORT_LOUDNESS_LIMITS, exportLoudnessMeasurementSchema, exportLoudnessTargetSchema, EXPORT_LOUDNESS_ADVISORY_MARGIN_DB} from './export-loudness.ts';
+import {loudnessRangeMeasurementSchema} from './loudness-range.ts';
 
 export const TIMELINE_CLIP_LOUDNESS_OPERATION = 'timeline.clip.loudness';
 export const TIMELINE_CLIP_LOUDNESS_PROFILE = 'timeline-isolated-clip-float-v1';
@@ -10,12 +11,30 @@ export const TIMELINE_CLIP_LOUDNESS_LIMITS = Object.freeze({sourceBytes: EXPORT_
   clientTimeoutMs: EXPORT_LOUDNESS_LIMITS.clientTimeoutMs, reportBytes: 8192} as const);
 const id = z.string().uuid().length(36), hash = z.string().length(64).regex(/^[a-f0-9]{64}$/u);
 const count = (max: number, min = 0) => z.number().finite().int().min(min).max(max);
-export const timelineClipLoudnessInputSchema = z.object({projectId: id, timelineId: id,
+const inputShape = {projectId: id, timelineId: id,
   expectedRevision: count(Number.MAX_SAFE_INTEGER, 1), clipId: id, expectedAssetSha256: hash,
-  measurementProfile: z.literal(EXPORT_LOUDNESS_PROFILE)}).strict();
+  measurementProfile: z.literal(EXPORT_LOUDNESS_PROFILE), target: exportLoudnessTargetSchema.optional()};
+export const timelineClipLoudnessInputSchema = z.object(inputShape).strict().superRefine((value, context) => {
+  if (Object.hasOwn(value, 'target') && value.target === undefined)
+    context.addIssue({code: z.ZodIssueCode.custom, path: ['target'], message: 'Omit an unselected target.'});
+});
 export type TimelineClipLoudnessInput = z.infer<typeof timelineClipLoudnessInputSchema>;
 export const timelineClipLoudnessSchemas = Object.freeze({[TIMELINE_CLIP_LOUDNESS_OPERATION]: timelineClipLoudnessInputSchema});
-export const timelineClipLoudnessResponseSchema = z.object({...timelineClipLoudnessInputSchema.shape,
+export const TIMELINE_CLIP_LOUDNESS_TARGET_TOLERANCE_LU = 0.1;
+const candidateCommon = {beforeGain: z.number().finite().positive().max(2),
+  marginDb: z.literal(EXPORT_LOUDNESS_ADVISORY_MARGIN_DB), applyAllowed: z.literal(false)};
+export const timelineClipLoudnessCandidateSchema = z.discriminatedUnion('status', [
+  z.object({...candidateCommon, status: z.literal('unavailable'), reason: z.enum(['NO_VALID_LOUDNESS', 'GAIN_OUT_OF_RANGE']),
+    requiredGainDb: z.number().finite().nullable(), gainMultiplier: z.number().finite().positive().nullable(),
+    afterGain: z.null(), measurement: z.null(), measuredPcmBytes: z.literal(0), meetsTarget: z.literal(false), meetsTruePeak: z.literal(false)}).strict(),
+  z.object({...candidateCommon, status: z.literal('measured'), reason: z.null(), requiredGainDb: z.number().finite(),
+    gainMultiplier: z.number().finite().positive(), afterGain: z.number().finite().positive().max(2),
+    measurement: exportLoudnessMeasurementSchema, measuredPcmBytes: count(TIMELINE_CLIP_LOUDNESS_LIMITS.pcmBytes, 12800),
+    meetsTarget: z.boolean(), meetsTruePeak: z.boolean()}).strict(),
+]);
+export type TimelineClipLoudnessCandidate = z.infer<typeof timelineClipLoudnessCandidateSchema>;
+export const timelineClipLoudnessResponseSchema = z.object({...inputShape,
+  loudnessRange: loudnessRangeMeasurementSchema.optional(), candidate: timelineClipLoudnessCandidateSchema.optional(),
   volumeEnvelopeProcessingProfile: z.literal(VOLUME_ENVELOPE_PROFILE).optional(),
   status: z.literal('ready'), checkedAt: z.string().max(30).datetime(), applyAllowed: z.literal(false),
   processingProfile: z.literal(TIMELINE_CLIP_LOUDNESS_PROFILE), stage: z.literal('isolated_clip_post_gain_fades_pre_mix'),
@@ -32,6 +51,41 @@ export const timelineClipLoudnessResponseSchema = z.object({...timelineClipLoudn
 }).strict().superRefine((v, c) => {
   const fail = (message: string) => c.addIssue({code: z.ZodIssueCode.custom, message});
   const i = v.identity;
+  const near = (a: number, b: number) => Math.abs(a - b) <= 1e-10 * Math.max(1, Math.abs(b));
+  // Small valid gains require relative comparison; an absolute floor would
+  // allow orders-of-magnitude changes to a quiet candidate's saved gain.
+  const nearPositive = (a: number, b: number) => a === b || Math.abs(a - b) <= 1e-10 * Math.max(Math.abs(a), Math.abs(b));
+  if (Object.hasOwn(v, 'target') && v.target === undefined || Object.hasOwn(v, 'candidate') && v.candidate === undefined ||
+      Boolean(v.target) !== Boolean(v.candidate)) fail('An explicit target and its measured candidate must occur together.');
+  if (Object.hasOwn(v, 'loudnessRange') && (!v.loudnessRange || v.loudnessRange.sampleFrames !== v.measurement.sampleFrames || v.loudnessRange.samplePeakLinear !== v.measurement.samplePeakLinear))
+    fail('Loudness range must describe the complete same decoded clip.');
+  if (v.target && v.candidate) {
+    const candidate = v.candidate, original = v.measurement;
+    if (candidate.beforeGain !== i.gain) fail('Candidate must bind the saved gain.');
+    const valid = original.state === 'valid' && original.integratedLufs !== null;
+    if (!valid) {
+      if (candidate.status !== 'unavailable' || candidate.reason !== 'NO_VALID_LOUDNESS' || candidate.requiredGainDb !== null || candidate.gainMultiplier !== null)
+        fail('Unqualified audio cannot produce a gain candidate.');
+    } else {
+      const required = v.target.integratedLufs - original.integratedLufs!, multiplier = 10 ** (required / 20), afterGain = i.gain * multiplier;
+      if (candidate.requiredGainDb === null || candidate.gainMultiplier === null || !near(candidate.requiredGainDb, required) || !nearPositive(candidate.gainMultiplier, multiplier))
+        fail('Candidate arithmetic must bind the explicit target.');
+      if (candidate.status === 'unavailable') {
+        if (candidate.reason !== 'GAIN_OUT_OF_RANGE' || Number.isFinite(afterGain) && afterGain > 0 && afterGain <= 2)
+          fail('Only an unsupported saved gain can reject a valid signal before measurement.');
+      } else {
+        const measured = candidate.measurement;
+        if (!nearPositive(candidate.afterGain, afterGain) || measured.sampleFrames !== original.sampleFrames || candidate.measuredPcmBytes !== v.checks.pcmBytes ||
+            measured.samplePeakLinear !== Math.fround(original.samplePeakLinear * multiplier))
+          fail('Candidate must measure every scaled clip sample with the exact supported gain.');
+        if (candidate.meetsTarget !== (measured.state === 'valid' && measured.integratedLufs !== null &&
+            Math.abs(measured.integratedLufs - v.target.integratedLufs) <= TIMELINE_CLIP_LOUDNESS_TARGET_TOLERANCE_LU) ||
+            candidate.meetsTruePeak !== (measured.truePeakDbtp !== null && measured.truePeakDbtp <= v.target.truePeakCeilingDbtp - EXPORT_LOUDNESS_ADVISORY_MARGIN_DB))
+          fail('Candidate target and true-peak qualification must match the actual second measurement.');
+      }
+    }
+  }
+
   if (Object.hasOwn(v, 'volumeEnvelopeProcessingProfile') !== Object.hasOwn(i, 'volumeEnvelopeSha256') ||
       Object.hasOwn(v, 'volumeEnvelopeProcessingProfile') && (v.volumeEnvelopeProcessingProfile === undefined || i.volumeEnvelopeSha256 === undefined))
     fail('Envelope processing profile and exact envelope digest must occur together.');
@@ -69,6 +123,6 @@ export function isTimelineClipLoudnessResponse(value: unknown, input?: unknown):
     if (!parsed.success) return false;
     if (input === undefined) return true;
     const request = timelineClipLoudnessInputSchema.safeParse(input);
-    return request.success && Object.entries(request.data).every(([key, val]) => parsed.data[key as keyof TimelineClipLoudnessInput] === val);
+    return request.success && Object.entries(request.data).every(([key, val]) => key === 'target' ? Boolean(parsed.data.target && val && typeof val === 'object' && parsed.data.target.integratedLufs === (val as {integratedLufs: number}).integratedLufs && parsed.data.target.truePeakCeilingDbtp === (val as {truePeakCeilingDbtp: number}).truePeakCeilingDbtp) : parsed.data[key as keyof TimelineClipLoudnessInput] === val) && Boolean(parsed.data.target) === Boolean(request.data.target);
   } catch {return false;}
 }

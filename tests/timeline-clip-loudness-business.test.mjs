@@ -35,8 +35,8 @@ function readSaved(store, projectId) {
 async function fakeDecode(signal, options, sampleScale = 1, sampleDelta = 0) {
   options.beforeEffect();
   const plan = planTimelineClipLoudnessDecode(signal), frameCount = plan.sampleFrames + sampleDelta;
-  // Use the actual per-clip gain on each pass. The service must never multiply
-  // previously mixed PCM instead of invoking this independent candidate pass.
+  // Emit only this saved clip's gain. Reusing the backing block also verifies
+  // that target analysis retains its own complete isolated PCM bytes.
   const gain = signal.clip.gain, block = Buffer.alloc(Math.min(frameCount, 8192) * 8);
   for (let begin = 0; begin < frameCount; begin += 8192) {
     const frames = Math.min(8192, frameCount - begin), chunk = block.subarray(0, frames * 8);
@@ -201,6 +201,60 @@ test('one selected saved signal is double-hashed, bound and measured without any
   assert.equal(report.identity.assetSha256, f.asset.sha256); assert.equal(report.checks.segmentCount, 1);
   assert.ok(Object.isFrozen(report)); assert.ok(!JSON.stringify(report).includes(f.root));
   assert.ok(!Object.hasOwn(report, 'candidate')); assert.ok(!Object.hasOwn(report, 'target')); await f.unchanged(before);
+});
+
+test('an explicit target measures a complete owned candidate with one decode and no durable effects', async t => {
+  let hashes = 0, decodes = 0;
+  const f = await fixture(t, {runtime: {hash: (...args) => {hashes++; return verifiedManagedHash(...args);},
+    decode: (...args) => {decodes++; return fakeDecode(...args);}}});
+  const before = await f.checkpoint(), target = {integratedLufs: -24, truePeakCeilingDbtp: -1};
+  const report = await f.call({...f.input, target});
+  assert.deepEqual(report.target, target); assert.equal(report.candidate.status, 'measured');
+  assert.equal(report.candidate.meetsTarget, true); assert.equal(report.candidate.meetsTruePeak, true);
+  assert.equal(report.candidate.beforeGain, .75); assert.equal(report.candidate.afterGain, .75 * report.candidate.gainMultiplier);
+  assert.equal(report.candidate.measuredPcmBytes, 768000); assert.equal(report.candidate.measurement.sampleFrames, 96000);
+  assert.ok(Math.abs(report.candidate.measurement.integratedLufs + 24) < .1);
+  assert.equal(report.candidate.applyAllowed, false); assert.equal(report.applyAllowed, false);
+  assert.equal(report.checks.passes, 1); assert.equal(report.checks.pcmBytes, 768000);
+  assert.equal(decodes, 1); assert.equal(hashes, 2); assert.ok(Object.isFrozen(report.candidate));
+  await f.unchanged(before);
+});
+
+test('unreachable target gain is reported without clamping, target substitution or write', async t => {
+  const f = await fixture(t), before = await f.checkpoint(), target = {integratedLufs: -5, truePeakCeilingDbtp: -1};
+  const report = await f.call({...f.input, target});
+  assert.deepEqual(report.target, target); assert.equal(report.candidate.status, 'unavailable');
+  assert.equal(report.candidate.reason, 'GAIN_OUT_OF_RANGE'); assert.equal(report.candidate.afterGain, null);
+  assert.ok(report.candidate.gainMultiplier * report.identity.gain > 2);
+  assert.equal(report.candidate.measurement, null); assert.equal(report.candidate.measuredPcmBytes, 0);
+  await f.unchanged(before);
+});
+
+test('second source hash still fences a completed target candidate', async t => {
+  let hashes = 0;
+  const f = await fixture(t, {runtime: {hash: async (...args) => {
+    const result = await verifiedManagedHash(...args); return ++hashes === 2 ? {...result, sha256: 'c'.repeat(64)} : result;
+  }}});
+  const before = await f.checkpoint();
+  await assert.rejects(f.call({...f.input, target: {integratedLufs: -24, truePeakCeilingDbtp: -1}}), {code: 'TIMELINE_CLIP_LOUDNESS_STALE'});
+  assert.equal(hashes, 2); await f.unchanged(before);
+});
+
+test('cancellation and revision change during candidate replay discard it before the final hash', async t => {
+  for (const mode of ['cancel', 'revision']) await t.test(mode, async t => {
+    const controller = new AbortController(); let f, hashes = 0;
+    f = await fixture(t, {runtime: {hash: (...args) => {hashes++; return verifiedManagedHash(...args);}, decode: async (...args) => {
+      const result = await fakeDecode(...args);
+      setImmediate(() => {if (mode === 'cancel') controller.abort();
+        else replace(f, 'timelines', {...f.timeline, revision: f.timeline.revision + 1});});
+      return result;
+    }}});
+    const before = await f.checkpoint();
+    await assert.rejects(f.call({...f.input, target: {integratedLufs: -24, truePeakCeilingDbtp: -1}}, {signal: controller.signal}),
+      {code: mode === 'cancel' ? 'OPERATION_CANCELLED' : 'TIMELINE_CLIP_LOUDNESS_REVISION_CONFLICT'});
+    await tick(); await tick(); assert.equal(hashes, 1);
+    if (mode === 'cancel') await f.unchanged(before);
+  });
 });
 test('wrong selection, source hash, timeline identity and extra authority refuse before media', async t => {
   let reads = 0; const f = await fixture(t, {runtime: {validateSource: () => {reads++; throw Error('No read');}}});

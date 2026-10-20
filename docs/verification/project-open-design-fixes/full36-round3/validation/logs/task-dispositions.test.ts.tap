@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: strict closed schemas require explicit confirmation, bounded unique targets and valid Unicode
+ok 1 - strict closed schemas require explicit confirmation, bounded unique targets and valid Unicode
+  ---
+  duration_ms: 1.94875
+  type: 'test'
+  ...
+# Subtest: markFailed is a retained local marker; raw unknown status, original request and reconciliation stay unchanged
+ok 2 - markFailed is a retained local marker; raw unknown status, original request and reconciliation stay unchanged
+  ---
+  duration_ms: 1718.413375
+  type: 'test'
+  ...
+# Subtest: archive is atomic and refuses running, unknown, paid cancellation and output review
+ok 3 - archive is atomic and refuses running, unknown, paid cancellation and output review
+  ---
+  duration_ms: 1055.69975
+  type: 'test'
+  ...
+# Subtest: state CAS and ownership are checked again before committing; after-commit replay does not duplicate work
+ok 4 - state CAS and ownership are checked again before committing; after-commit replay does not duplicate work
+  ---
+  duration_ms: 954.091458
+  type: 'test'
+  ...
+# Subtest: schema50 is exact, does not widen frozen48 and restored51 holds the disposition audit
+ok 5 - schema50 is exact, does not widen frozen48 and restored51 holds the disposition audit
+  ---
+  duration_ms: 1360.961583
+  type: 'test'
+  ...
+# Subtest: schema50 restart repairs only missing fixed guards and rejects changed definitions
+ok 6 - schema50 restart repairs only missing fixed guards and rejects changed definitions
+  ---
+  duration_ms: 1831.26175
+  type: 'test'
+  ...
+# Subtest: cold50 backup restores as exact51 while preserving local markers and original unknown outcomes
+ok 7 - cold50 backup restores as exact51 while preserving local markers and original unknown outcomes
+  ---
+  duration_ms: 1205.171084
+  type: 'test'
+  ...
+# Subtest: audit records refuse INSERT OR REPLACE even when recursive triggers are disabled
+ok 8 - audit records refuse INSERT OR REPLACE even when recursive triggers are disabled
+  ---
+  duration_ms: 914.8505
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 9358.513375

@@ -1,0 +1,30 @@
+{
+  "command": "node scripts/tooling.ts build --channel=development",
+  "exitCode": 0,
+  "webFiles": {
+    "assets/index-BgJ8K1nu.js": "62ed00e7c4f1e25d3b0098fd416e713bbbdd2ed5ccf01c305e232de2d161b1dd",
+    "assets/index-Dyq6-3wL.css": "9c079395ff027cfebf8c26f5f9a5ab2918fe6a322a5ce468d047eba11d58d3aa",
+    "assets/mioon-mark-CC_2AqTy.png": "6a752832ac662ed71dc6b4e5871dc8490b38435fb18667b4e6f71162a38d8191",
+    "favicon.png": "cf776a16f0f970f58100b2742f5c89725a6fb1d05548bfc32a755f39540f4496",
+    "index.html": "d6522fc29c7dc5bdf7f087eb18ca88efdf77d3dfcc064bd60f90d1a1162da70a"
+  },
+  "desktopWebFiles": {
+    "assets/index-BgJ8K1nu.js": "62ed00e7c4f1e25d3b0098fd416e713bbbdd2ed5ccf01c305e232de2d161b1dd",
+    "assets/index-Dyq6-3wL.css": "9c079395ff027cfebf8c26f5f9a5ab2918fe6a322a5ce468d047eba11d58d3aa",
+    "assets/mioon-mark-CC_2AqTy.png": "6a752832ac662ed71dc6b4e5871dc8490b38435fb18667b4e6f71162a38d8191",
+    "favicon.png": "cf776a16f0f970f58100b2742f5c89725a6fb1d05548bfc32a755f39540f4496",
+    "index.html": "d6522fc29c7dc5bdf7f087eb18ca88efdf77d3dfcc064bd60f90d1a1162da70a"
+  },
+  "allBytesEqual": true,
+  "identity": {
+    "channel": "development",
+    "appId": "app.starroy.mioon.dev",
+    "productName": "Mioon Dev",
+    "executableName": "mioon-dev"
+  },
+  "nativeRuntimeCandidate": {
+    "path": "/private/tmp/mioon-pr1-verify/node_modules/.pnpm/electron@44.7.0_supports-color@7.2.0/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
+    "version": "44.7.0",
+    "launchedByThisAgent": false
+  }
+}

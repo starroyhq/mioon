@@ -123,3 +123,18 @@ test('intent Unicode admits valid surrogate pairs and refuses lone surrogates wi
   const before=f.state();bad(()=>f.scan(true));assert.deepEqual(f.state(),before);
  }
 });
+
+test('new ephemeral clip range and target reports do not expand historical backup evidence', async t => {
+ const {matchedClipLoudness}=await import('./fixtures/clip-loudness-match-fixtures.ts');
+ const {isTimelineClipLoudnessResponse}=await import('@mioon/contracts/timeline-clip-loudness');
+ const {LOUDNESS_RANGE_PROFILE}=await import('@mioon/contracts/loudness-range');
+ const range={...readyClipLoudness(),loudnessRange:{profile:LOUDNESS_RANGE_PROFILE,sampleRate:48000,channels:2,sampleFrames:48000,
+  decodedDurationSeconds:1,state:'too_short',samplePeakLinear:.5,loudnessRangeLu:null,lowPercentileLufs:null,highPercentileLufs:null,
+  shortTermBlockCount:0,absoluteGatedBlockCount:0,relativeGatedBlockCount:0,relativeGateLufs:null}};
+ for(const value of [range,matchedClipLoudness()]){
+  value.projectId=project;value.volumeEnvelopeProcessingProfile=profile;value.identity.volumeEnvelopeSha256='c'.repeat(64);
+  assert.equal(isTimelineClipLoudnessResponse(value),true,'The new read protocol accepts its own bounded report');
+  const f=fixture(t,'timeline_requests','response');f.put(value);const before=f.state();
+  bad(()=>f.scan(true));assert.deepEqual(f.state(),before);
+ }
+});

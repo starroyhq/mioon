@@ -1,0 +1,18 @@
+TAP version 13
+# Subtest: supported 60-second selected clip at the end of a 600-second source completes its one real float pass within the fixed operation budget
+ok 1 - supported 60-second selected clip at the end of a 600-second source completes its one real float pass within the fixed operation budget
+  ---
+  duration_ms: 7690.296
+  type: 'test'
+  ...
+# Owned child ledger: [{"type":"started","pid":64923,"kind":"ffprobe"},{"type":"exited","pid":64923,"kind":"ffprobe"},{"type":"started","pid":64925,"kind":"ffmpeg"},{"type":"exited","pid":64925,"kind":"ffmpeg"}]
+# Supported60s independent-clip observation: 6495ms; 23040000 streamed PCM bytes; 38400088 hashed source bytes.
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 8075.553708

@@ -1,0 +1,167 @@
+{
+  "files": 20,
+  "tests": 351,
+  "pass": 351,
+  "records": [
+    {
+      "log": "logs/client-timeline-snapping.test.ts.tap",
+      "tests": 31,
+      "pass": 31,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "log": "logs/export-preflight.tap",
+      "tests": 50,
+      "pass": 50,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "log": "logs/export-workflow.tap",
+      "tests": 10,
+      "pass": 10,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "log": "logs/i18n-catalog-integrity.tap",
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "log": "logs/i18n-delivery-recovery.tap",
+      "tests": 12,
+      "pass": 12,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "log": "logs/named-delivery-dock.tap",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "log": "logs/redesign-entry-task-ui.test.mjs.tap",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "log": "logs/root-frame-extraction-preview.test.mjs.tap",
+      "tests": 10,
+      "pass": 10,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "log": "logs/root-native-audio-preview-renderer.test.mjs.tap",
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "log": "logs/root-source-range-preview.test.mjs.tap",
+      "tests": 27,
+      "pass": 27,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "log": "logs/root-timeline-audio-preview-app.test.mjs.tap",
+      "tests": 20,
+      "pass": 20,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "log": "logs/root-timeline-audio-preview-ui.test.mjs.tap",
+      "tests": 31,
+      "pass": 31,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "log": "logs/subtitles-ui.test.mjs.tap",
+      "tests": 21,
+      "pass": 21,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "log": "logs/task-center-app.test.mjs.tap",
+      "tests": 25,
+      "pass": 25,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "log": "logs/task-center-dock-ui.test.mjs.tap",
+      "tests": 17,
+      "pass": 17,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "log": "logs/task-disposition-client.test.ts.tap",
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "log": "logs/task-workspace-intent.test.mjs.tap",
+      "tests": 44,
+      "pass": 44,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "log": "logs/timeline-collapsed-presentation.test.mjs.tap",
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "log": "logs/timeline-compact-layout.test.ts.tap",
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "log": "logs/waveform-ui.test.mjs.tap",
+      "tests": 23,
+      "pass": 23,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    }
+  ]
+}

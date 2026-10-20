@@ -1,6 +1,14 @@
 import type { MessageCatalog } from '../types.ts';
 
 export const exportWorkflowMessages = {
+  "redesign.export.samplePreview": {"zh-Hans": "样片预览", "zh-Hant": "樣片預覽", "en": "Sample preview", "ja": "サンプルプレビュー"},
+  "redesign.export.generateSample": {"zh-Hans": "生成样片", "zh-Hant": "產生樣片", "en": "Generate sample", "ja": "サンプルを生成"},
+  "redesign.export.generateSampleCompact": {"zh-Hans": "生成样片", "zh-Hant": "產生樣片", "en": "Generate", "ja": "生成"},
+  "redesign.export.samplePreparing": {"zh-Hans": "检查样片中…", "zh-Hant": "正在檢查樣片…", "en": "Checking…", "ja": "確認中…"},
+  "redesign.export.sampleRendering": {"zh-Hans": "生成中…", "zh-Hant": "產生中…", "en": "Rendering…", "ja": "生成中…"},
+  "redesign.export.sampleRange": {"zh-Hans": "范围（帧）", "zh-Hant": "範圍（幀）", "en": "Frames", "ja": "フレーム"},
+  "redesign.export.sampleScope": {"zh-Hans": "最多 300 帧，在本机生成，不改变正式导出范围", "zh-Hant": "最多 300 幀，在本機產生，不會變更正式匯出範圍", "en": "Up to 300 frames, rendered locally. Final export range is unchanged", "ja": "最大 300 フレームをローカルで生成。本番の書き出し範囲は変わりません"},
+  "redesign.export.sampleStale": {"zh-Hans": "样片已过期，请重新生成", "zh-Hant": "樣片已過期，請重新產生", "en": "Sample is out of date. Generate it again", "ja": "サンプルが古くなっています。再生成してください"},
   "redesign.export.loudnessLabel": {"zh-Hans": "响度", "zh-Hant": "響度", "en": "Loudness", "ja": "ラウドネス"},
   "redesign.export.advancedSettings": {"zh-Hans": "编码与音频高级设置", "zh-Hant": "編碼與音訊進階設定", "en": "Advanced encoding and audio settings", "ja": "エンコードと音声の詳細設定"},
   "redesign.export.videoCodec": {"zh-Hans": "MP4 · H.264", "zh-Hant": "MP4 · H.264", "en": "MP4 · H.264", "ja": "MP4 · H.264"},

@@ -154,14 +154,12 @@ export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, p
   const disclosureReviewed = disclosure.key === disclosureKey && disclosure.reviewed;
   const sendConsented = Boolean(snapshot && state.consent !== null && state.consent === agentChatConsentKey(snapshot, state.contextMode, selectedTarget));
   const canCompactDisclosure = disclosureReviewed || sendConsented;
-  // Initial retained permission and a new approval compact this presentation.
-  // A changed mounted destination/scope/selection is disclosed even if granted.
-  const composerKeyChanged = composerDisclosure.key !== disclosureKey;
-  const composerOptionsOpen = !sendConsented || (composerDisclosure.projectId === projectId && (composerKeyChanged ? composerDisclosure.consented : composerDisclosure.expanded));
+  // The compact chooser never grants permission. First send still reviews the
+  // exact destination and scope in the authorization dialog.
+  const composerOptionsOpen = composerDisclosure.projectId === projectId && composerDisclosure.key === disclosureKey && composerDisclosure.expanded;
   const composerOptionsVisible = visible && composerOptionsOpen;
   useLayoutEffect(() => {
-    setComposerDisclosure(previous => ({ projectId, key: disclosureKey, consented: sendConsented,
-      expanded: Boolean(previous.projectId === projectId && sendConsented && previous.consented && previous.key !== disclosureKey) }));
+    setComposerDisclosure({ projectId, key: disclosureKey, consented: sendConsented, expanded: false });
   }, [disclosureKey, sendConsented]);
   const optionsInteraction = useMemo(() => ({ disclosureKey, sendConsented, composerOptionsVisible, interaction }), [disclosureKey, sendConsented, composerOptionsVisible, interaction]);
   const optionsInteractionRef = useRef<typeof optionsInteraction | null>(null);
@@ -261,13 +259,12 @@ export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, p
       </div>
       <form className="agent-chat-composer" onSubmit={submit} noValidate>
         <Collapsible className="agent-chat-composer-disclosure" data-testid="agent-chat-target-disclosure" open={composerOptionsVisible} onOpenChange={open => {
-          if (usable() && sendConsented && optionsInteractionRef.current === optionsInteraction) setComposerDisclosure({ projectId, key: disclosureKey, consented: true, expanded: open });
+          if (usable() && optionsInteractionRef.current === optionsInteraction) setComposerDisclosure({ projectId, key: disclosureKey, consented: sendConsented, expanded: open });
         }}>
-        {sendConsented && <CollapsibleTrigger className="agent-chat-composer-summary" data-testid="agent-chat-options-toggle" disabled={!visible} render={<Button type="button" variant="ghost" />}>
-          <span className="agent-chat-composer-summary-model">{t('agent.chat.destination')} · {configuration?.model || t('agent.chat.missingModel')}</span>
-          <span className="agent-chat-composer-summary-scope">{t(`agent.authorization.scope.${state.contextMode}` as MessageKey)}</span>
-          <span className="agent-chat-composer-summary-target" title={configuration?.baseUrl ? deriveAgentEndpoint(configuration) : undefined}>{configuration?.baseUrl ? deriveAgentEndpoint(configuration) : t('agent.chat.missingEndpoint')}</span><Icon name="down" size={12} />
-        </CollapsibleTrigger>}
+        <CollapsibleTrigger className="agent-chat-composer-summary" data-testid="agent-chat-options-toggle" disabled={!visible} title={configuration?.baseUrl ? deriveAgentEndpoint(configuration) : undefined} render={<Button type="button" variant="ghost" />}>
+          <span className="agent-chat-composer-summary-model">{configuration?.model || t('agent.chat.missingModel')}</span>
+          <span aria-hidden="true">·</span><span className="agent-chat-composer-summary-scope">{t(`agent.authorization.scope.${state.contextMode}` as MessageKey)}</span><Icon name="down" size={12} />
+        </CollapsibleTrigger>
         <CollapsibleContent keepMounted className="agent-chat-composer-options" data-testid="agent-chat-composer-options" hidden={!composerOptionsVisible} inert={!composerOptionsVisible} aria-hidden={!composerOptionsVisible}>
         <fieldset className="agent-chat-context-mode" disabled={!composerOptionsVisible || !ready || pending} data-testid="agent-chat-context-mode">
           <legend>{t('agent.chat.sendingScope')}</legend>
@@ -334,7 +331,6 @@ export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, p
           {!running && <Button type="submit" variant="ghost" className="button primary" data-testid="agent-chat-send" disabled={!canStart}>{phase === 'submitting' ? <span className="spinner" /> : <Icon name="arrow" size={14} />}{t('agent.chat.send')}</Button>}
         </div></div>
         </div>
-        <p className="agent-chat-stop-note">{t('agent.chat.stopDisclosure')}</p>
       </form>
       <Dialog open={Boolean(visible&&!sendConsented&&authorizationIntent.key===disclosureKey)} onOpenChange={open=>{if(!open&&!state.authorizing)setAuthorizationIntent({key:null,checked:false,sendAfterApproval:false,message:null});}}>
         <DialogContent className="agent-authorization-dialog" data-testid="agent-chat-authorization-dialog" showCloseButton={!state.authorizing}>

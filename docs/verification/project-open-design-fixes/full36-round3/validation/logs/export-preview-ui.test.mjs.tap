@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: actual TSX guards both play events and reciprocal pause without autoplay
+ok 1 - actual TSX guards both play events and reciprocal pause without autoplay
+  ---
+  duration_ms: 1.7015
+  type: 'test'
+  ...
+# Subtest: late events cannot restart hidden, closed, stale, background or unmounted media
+ok 2 - late events cannot restart hidden, closed, stale, background or unmounted media
+  ---
+  duration_ms: 0.582834
+  type: 'test'
+  ...
+# Subtest: close/reopen only changes player presentation and all four locales render standalone
+ok 3 - close/reopen only changes player presentation and all four locales render standalone
+  ---
+  duration_ms: 0.467542
+  type: 'test'
+  ...
+# Subtest: step-specific preview never labels a sample as a running or completed formal output
+ok 4 - step-specific preview never labels a sample as a running or completed formal output
+  ---
+  duration_ms: 0.122166
+  type: 'test'
+  ...
+# Subtest: custom player controls play and seek only their exact visible media owner
+ok 5 - custom player controls play and seek only their exact visible media owner
+  ---
+  duration_ms: 0.17725
+  type: 'test'
+  ...
+# Subtest: all three review steps expose a real empty-player action and one compact range row
+ok 6 - all three review steps expose a real empty-player action and one compact range row
+  ---
+  duration_ms: 1.613792
+  type: 'test'
+  ...
+# Subtest: sample generation is single-flight and old actions lose authority after visibility or step changes
+ok 7 - sample generation is single-flight and old actions lose authority after visibility or step changes
+  ---
+  duration_ms: 0.300875
+  type: 'test'
+  ...
+# Subtest: checking, a running sample, unknown outcome and disabled admission cannot dispatch a new sample
+ok 8 - checking, a running sample, unknown outcome and disabled admission cannot dispatch a new sample
+  ---
+  duration_ms: 0.297125
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 235.988875

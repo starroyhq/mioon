@@ -1,0 +1,226 @@
+{
+  "status": "completed_with_environment_limits",
+  "runtime": {
+    "electron": "44.7.0",
+    "node": "24.21.0"
+  },
+  "isolation": {
+    "firstWorkspace": "/private/tmp/mioon-full36-native-VwPZqk/user-data",
+    "realUserDataUsed": false,
+    "liveProviders": false,
+    "installedDependencies": false
+  },
+  "beforeFix": {
+    "launchedWindow": [
+      1500,
+      960
+    ],
+    "windowFrame": "mac-inset",
+    "whiteScreen": false,
+    "emptyHomeRecentStrip": true,
+    "settingsGeneral1050FooterClipped": true,
+    "editor1440And1050Overflow": false,
+    "pageErrors": []
+  },
+  "cleanupFirstRun": {
+    "quitRequested": "Playwright app.close",
+    "admission": "Native local unsaved-view confirmation",
+    "decision": "Still quit, isolated QA data only",
+    "mainPidExited": true,
+    "discoveryRemoved": true
+  },
+  "environmentBlockers": [
+    {
+      "id": "NATIVE_ACTIVE_TRAFFIC_LIGHTS",
+      "detail": "激活窗口时macOS屏幕共享/录制紫色系统指示覆盖三枚交通灯区域，激活彩色状态无法独立检查；非激活灰态位置及与Mioon标题间距可检查"
+    }
+  ],
+  "validation": {
+    "typecheck": {
+      "command": "node scripts/tooling.ts typecheck",
+      "exitCode": 0,
+      "log": "final-typecheck.log"
+    },
+    "entryTests": {
+      "command": "TMPDIR=/private/tmp node --test tests/project-entry-dialog.test.mjs tests/desktop-launcher-root.test.ts tests/project-home-panel.test.mjs tests/last-project-ui.test.mjs",
+      "tests": 72,
+      "passed": 72,
+      "failed": 0,
+      "exitCode": 0,
+      "log": "final-entry-tests.tap"
+    },
+    "settingsTests": {
+      "command": "TMPDIR=/private/tmp node --test tests/settings-center-ui.test.mjs tests/project-home-panel.test.mjs tests/desktop-launcher-root.test.ts tests/project-entry-dialog.test.mjs",
+      "tests": 70,
+      "passed": 70,
+      "failed": 0,
+      "exitCode": 0,
+      "log": "final-settings-tests.tap"
+    },
+    "build": {
+      "command": "node scripts/tooling.ts build --channel=development",
+      "exitCode": 0,
+      "log": "final-build.log"
+    }
+  },
+  "finalWorkspace": "/private/tmp/mioon-full36-native-final-qOdGbs/user-data",
+  "finalChecks": "final-browser-checks.json",
+  "cleanupFinalRun": {
+    "exitCode": 0,
+    "signal": null,
+    "discoveryRemoved": true,
+    "forcedKill": false,
+    "nativeQuitConfirmation": "Quit anyway, isolated QA data only"
+  },
+  "changedFiles": [
+    "apps/web/src/LauncherRoot.tsx",
+    "apps/web/src/ProjectEntry.tsx",
+    "apps/web/src/SettingsRoot.tsx",
+    "apps/web/src/settings-center.css",
+    "tests/desktop-launcher-root.test.ts",
+    "tests/project-entry-dialog.test.mjs",
+    "tests/settings-center-ui.test.mjs"
+  ],
+  "builtFiles": {
+    "apps/desktop/build/main.cjs": "8c156d2bf472d173cd7608be6eccc10a5ac2203d64eb58677c8ed39929d10a3f",
+    "apps/desktop/build/backend.cjs": "c76c0cd65a51258eb6c814ff9a34f97faf1cf48d9ee269e791df8e3eb1a68ada",
+    "apps/desktop/build/preload.cjs": "4d83074c5c3090912219013b51afa527c6d8b83dcf0f3c03d2be35c63cee9c8a",
+    "apps/desktop/build/web/assets/index-pUtgD56G.js": "24920ddd93804147590a6d19e62f84af1bf81f76fb4593b31c3dd3b2fb261fa1",
+    "apps/desktop/build/web/assets/mioon-mark-CC_2AqTy.png": "6a752832ac662ed71dc6b4e5871dc8490b38435fb18667b4e6f71162a38d8191",
+    "apps/desktop/build/web/assets/index-BzwU9KTZ.css": "99b33bd63a17955b063cf4c3c2b04709f4c2b37c7dcdf905050f22ae06dfbeb7"
+  },
+  "artifacts": {
+    "entry-02-system-active-1440.png": {
+      "bytes": 377948,
+      "sha256": "367d0efc9dd98b2e3507857e4b94ff38ffe1863ca72ab242af1e5792415de216"
+    },
+    "settings-agent-final-native-1050.png": {
+      "bytes": 82038,
+      "sha256": "12180aec24bba6d1394ce597117575527ad722b4facbf32f9c7c1f65165cabf1"
+    },
+    "entry-02-final-help-1050.png": {
+      "bytes": 25202,
+      "sha256": "54e45754e8d7702972666373b31df2449856fc6e34e3e693a85ca56b45121242"
+    },
+    "board-native-1440.png": {
+      "bytes": 86772,
+      "sha256": "33937eba32d6592528de5c0e7160b9b5b446ba3f25798c6a52810c91c2a82901"
+    },
+    "settings-final-system-secondary-1050.png": {
+      "bytes": 595455,
+      "sha256": "e020e53799cb73ec85710d2b0ed83293e4a20aee86ab787079aaa316861b6d68"
+    },
+    "final-settings-tests.tap": {
+      "bytes": 7727,
+      "sha256": "68e383795127ba72ff1787611e5bdfc0eb5f105e9fe9996dd19560aba8eae23d"
+    },
+    "settings-general-final-zh-CN-1050.png": {
+      "bytes": 63292,
+      "sha256": "db746418f6146ac1347770c3f120171d55149bd4d6df7f4f5a474b71d5e4ff89"
+    },
+    "settings-general-final-zh-CN-1440.png": {
+      "bytes": 65362,
+      "sha256": "21f30488cdc00e7b3a26f32681be871824e7526d706952569e38999ec4109c5a"
+    },
+    "entry-02-system-1440.png": {
+      "bytes": 369362,
+      "sha256": "b2a1164bf4dc44c81f51daabb0135defbca5ec07b365525a3a22d27930508f25"
+    },
+    "entry-02-native-1440.png": {
+      "bytes": 28236,
+      "sha256": "68b785b257171595b044a4e7f090ad67c4926b2a246e56f1e96644f3cc23f7ed"
+    },
+    "entry-02-native-1050.png": {
+      "bytes": 25449,
+      "sha256": "b328507310e3e879950f666c24894c929732edd7d063319ad1de183d6184762a"
+    },
+    "board-final-native-1440.png": {
+      "bytes": 84881,
+      "sha256": "876be3e8329ab9ba11563e9adeba48fa8d7a3bbc1cf28ec80bca338dcd6994fb"
+    },
+    "settings-general-final-native-1050.png": {
+      "bytes": 65640,
+      "sha256": "396bb9a966c9313d275cc28a554945aaeaac4ecbb6a25977d2686a423b69e21e"
+    },
+    "editing-final-native-1050.png": {
+      "bytes": 53597,
+      "sha256": "b7dd89b810fab5bdf2a4cb8efa12cd377b852b5eb0a7b3e658daaf1b57b5e7dc"
+    },
+    "final-typecheck.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "final-build.log": {
+      "bytes": 117889,
+      "sha256": "d3c4716a0b37ac96ddfd1fadc89601f5b7b6d86bf4462fabf9d703a19d263c33"
+    },
+    "editing-final-native-1440.png": {
+      "bytes": 90677,
+      "sha256": "4705604a3d20cdcbe43ce48ad00a3cd6ffc6a33cc70ba1fe9b6d82ec2d187d6b"
+    },
+    "editing-native-1050.png": {
+      "bytes": 56510,
+      "sha256": "add63c12f12923703277e8141d0bcfdf3826bd99d4c175669b2cad68fdc63642"
+    },
+    "settings-recovery-final-1440.png": {
+      "bytes": 77545,
+      "sha256": "494e16dca592c30af9eb47c4f89f6873507b109cc4d4eacf4b45334795ab0fc2"
+    },
+    "editing-native-1440.png": {
+      "bytes": 93980,
+      "sha256": "606dbc66496787fcdca31b608d9ea53472225629a07500a41fc7aaa59c20dd78"
+    },
+    "entry-02-final-native-1050.png": {
+      "bytes": 23107,
+      "sha256": "388687d1804e8f7cd627a66decb2b6568340a1e324a80437b05ad39b30a849ae"
+    },
+    "settings-general-final-en-1050.png": {
+      "bytes": 65249,
+      "sha256": "1e3ee6e9a57b4552f2d833b305e8340afb3f32af8d6c757fbd69f172befc3ca1"
+    },
+    "settings-final-system-active-1050.png": {
+      "bytes": 409493,
+      "sha256": "3bce4379bb3adf1c4ada4fbd3b78c54eb969301ef0ad404cb589ce35a22fcda5"
+    },
+    "entry-02-final-native-1440.png": {
+      "bytes": 25818,
+      "sha256": "3b25a5711437a6050fb7e8d8b86a76f2781f169db0034690259fe8564d6406dd"
+    },
+    "settings-general-native-1440.png": {
+      "bytes": 75141,
+      "sha256": "eb4c2d198c055f462885470dbfd4245da007cb38bc0f01b3fd73980112edd0cd"
+    },
+    "settings-general-native-1050.png": {
+      "bytes": 66945,
+      "sha256": "5cd5241005aa3561e1bb3ac176dfc428a17613d69c908364666c5b649aa6fcd9"
+    },
+    "create-final-native-1050.png": {
+      "bytes": 61719,
+      "sha256": "7e058604bb5d0e70f826db9989b832e89481521a96efb1ea6038209b35e41dd9"
+    },
+    "final-entry-tests.tap": {
+      "bytes": 7683,
+      "sha256": "10a8620df6c794efea28f4fe45b7bd96567047eb5ff0b5a788b6e00cb17be000"
+    },
+    "settings-general-final-en-light-1050.png": {
+      "bytes": 64006,
+      "sha256": "6f3b1a8b4120fa3daedd051d06378b7a3070e88a4cb285829c2b769b1d727089"
+    },
+    "settings-agent-scrolled-final-native-1050.png": {
+      "bytes": 86951,
+      "sha256": "497c5b2e26221a7d56243b779efc54295c01819186c015c8db0c1c97e5b98f55"
+    },
+    "entry-02-native-launched.png": {
+      "bytes": 28734,
+      "sha256": "d373d66b35b346b637b642b373687ea65a74e868360e7b04e4481d1e2b7024fb"
+    },
+    "settings-tools-final-native-1050.png": {
+      "bytes": 81106,
+      "sha256": "5d7ebf951e84b000490182fff169195bd943032e20dab531240efed70bb1e62d"
+    },
+    "create-native-1050.png": {
+      "bytes": 46934,
+      "sha256": "ef987342d2b1c40e27ec3f2fdec6190413f0671fdef1726747535cfb9d4525b4"
+    }
+  }
+}

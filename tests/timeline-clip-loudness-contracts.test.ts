@@ -13,7 +13,7 @@ test('strict catalog operation is observation only with no persisted request or 
   const {notes, ...effect} = operationEffect(operation);
   assert.deepEqual(effect, {readOnly: true, idempotent: true, destructive: false, openWorld: false, databaseWrite: false,
     fileWrite: false, externalIO: false, localProcess: true, paidGeneration: false});
-  assert.match(notes as string, /No target, candidate, apply authority/);
+  assert.match(notes as string, /no implicit target or apply authority/);
   const definition = discoverSchema({operation}) as unknown as SchemaView; assert.equal(definition.requiresRequestId, false);
   assert.deepEqual(definition.inputSchema.required, Object.keys(input)); assert.equal(definition.inputSchema.additionalProperties, false);
 });
@@ -41,4 +41,25 @@ test('four locale operation discovery text is present and never silently grants 
     const text = translate(locale as never, `operation.${operation}`); assert.notEqual(text, `operation.${operation}`); assert.ok(text.length > 40);
     const definition = discoverSchema({operation}) as unknown as SchemaView; assert.equal(definition.effects.databaseWrite, false); assert.equal(definition.effects.fileWrite, false);
   }
+});
+
+test('explicit targets bind measured candidates without granting mutation authority', async () => {
+  const {matchInput, matchedClipLoudness} = await import('./fixtures/clip-loudness-match-fixtures.ts');
+  assert.deepEqual(parse(operation, matchInput), matchInput);
+  const report = matchedClipLoudness();
+  assert.equal(isTimelineClipLoudnessResponse(report, matchInput), true);
+  assert.equal(isTimelineClipLoudnessResponse(report, input), false);
+  assert.equal(isTimelineClipLoudnessResponse(report, {...matchInput, target: {...matchInput.target, integratedLufs: -24}}), false);
+  assert.equal(parse(operation, matchInput).target?.truePeakCeilingDbtp, -1);
+  for (const mutate of [(v: typeof report) => {v.candidate.afterGain = 2;},
+    (v: typeof report) => {v.candidate.measuredPcmBytes--;},
+    (v: typeof report) => {v.candidate.meetsTarget = false;},
+    (v: typeof report) => {v.candidate.meetsTruePeak = false;},
+    (v: typeof report) => {v.candidate.measurement.sampleFrames--;},
+    (v: typeof report) => {v.candidate.requiredGainDb++;}]) {
+    const value = matchedClipLoudness(); mutate(value); assert.equal(isTimelineClipLoudnessResponse(value, matchInput), false);
+  }
+  for (const target of [undefined, {}, {integratedLufs: -61, truePeakCeilingDbtp: -1},
+    {integratedLufs: -14, truePeakCeilingDbtp: 1}, {...matchInput.target, gain: 1}])
+    assert.throws(() => parse(operation, {...input, target}));
 });

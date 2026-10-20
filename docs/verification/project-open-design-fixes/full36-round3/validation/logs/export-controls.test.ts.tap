@@ -1,0 +1,59 @@
+TAP version 13
+# Subtest: queued cancellation preserves frozen receipt and sources, survives restart and never requeues
+ok 1 - queued cancellation preserves frozen receipt and sources, survives restart and never requeues
+  ---
+  duration_ms: 1320.43625
+  type: 'test'
+  ...
+# Subtest: running cancellation aborts only its owned operation and terminal publication wins atomically
+ok 2 - running cancellation aborts only its owned operation and terminal publication wins atomically
+  ---
+  duration_ms: 940.505542
+  type: 'test'
+  ...
+# Subtest: output location is bound to the accepted export and rejects changed bytes, foreign owners and injected paths
+ok 3 - output location is bound to the accepted export and rejects changed bytes, foreign owners and injected paths
+  ---
+  duration_ms: 940.540791
+  type: 'test'
+  ...
+# Subtest: real legacy worker cleans only its owned unpublished inode after link cancellation
+    # Subtest: cancel
+    ok 1 - cancel
+      ---
+      duration_ms: 1246.17925
+      type: 'test'
+      ...
+    # Subtest: replace-output
+    ok 2 - replace-output
+      ---
+      duration_ms: 1216.084917
+      type: 'test'
+      ...
+    # Subtest: replace-part
+    ok 3 - replace-part
+      ---
+      duration_ms: 1201.619084
+      type: 'test'
+      ...
+    # Subtest: published
+    ok 4 - published
+      ---
+      duration_ms: 1240.345542
+      type: 'test'
+      ...
+    1..4
+ok 4 - real legacy worker cleans only its owned unpublished inode after link cancellation
+  ---
+  duration_ms: 4974.735833
+  type: 'test'
+  ...
+1..4
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 8585.728208

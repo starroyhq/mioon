@@ -1,0 +1,219 @@
+{
+  "errors": [],
+  "initial": {
+    "versions": {
+      "electron": "44.7.0",
+      "node": "24.21.0"
+    },
+    "windows": [
+      {
+        "bounds": {
+          "x": 278,
+          "y": 121,
+          "width": 1500,
+          "height": 960
+        },
+        "content": {
+          "x": 278,
+          "y": 121,
+          "width": 1500,
+          "height": 960
+        },
+        "focused": true,
+        "visible": true
+      }
+    ]
+  },
+  "empty1440": {
+    "width": 1440,
+    "height": 900,
+    "scrollWidth": 1440,
+    "scrollHeight": 900,
+    "frame": "mac-inset",
+    "text": "Mioon\n專案清單\n全部專案\n還沒有專案\n\n建立一個專案，在畫板中構思鏡頭，再到剪輯中完成影片\n\n新增專案"
+  },
+  "empty1050": {
+    "width": 1050,
+    "height": 680,
+    "scrollWidth": 1050,
+    "scrollHeight": 680,
+    "text": "Mioon\n專案清單\n全部專案\n還沒有專案\n\n建立一個專案，在畫板中構思鏡頭，再到剪輯中完成影片\n\n新增專案"
+  },
+  "homeHelp": "說明\n\n這裡顯示目前已連線工作區中的專案\n\n最近專案\n詳情\n重新整理專案清單\n關閉",
+  "settings1050": {
+    "width": 1050,
+    "height": 680,
+    "scrollWidth": 1050,
+    "scrollHeight": 680,
+    "header": {
+      "x": 0,
+      "y": 0,
+      "width": 1050,
+      "height": 44,
+      "top": 0,
+      "right": 1050,
+      "bottom": 44,
+      "left": 0
+    },
+    "footer": {
+      "x": 220,
+      "y": 632,
+      "width": 825,
+      "height": 48,
+      "top": 632,
+      "right": 1045,
+      "bottom": 680,
+      "left": 220
+    },
+    "motion": {
+      "x": 977,
+      "y": 506.1953125,
+      "width": 32,
+      "height": 18.3984375,
+      "top": 506.1953125,
+      "right": 1009,
+      "bottom": 524.59375,
+      "left": 977
+    },
+    "body": {
+      "x": 244,
+      "y": 272.3984375,
+      "width": 777,
+      "height": 359.6015625,
+      "top": 272.3984375,
+      "right": 1021,
+      "bottom": 632,
+      "left": 244
+    },
+    "text": "Mioon\n設定\n工作區與還原狀態\n設定\n一般\n工作區\n影片工具\n模型與服務\n智慧助理\n擴充功能\n快速鍵\n關於\n\n設定儲存在本機工作區\n\n一般\n\n調整應用程式的顯示偏好，不變更專案內容\n\n語言\n介面語言\n\n切換後立即生效，專案內容不受影響\n\n介面語言\n跟隨系統\n時間碼與數字格式\n\n跟隨介面語言\n\n12,345.6\n外觀\n主題\n深色\n淺色\n跟隨系統\n介面縮放\n100%\n介面密度\n標準\n緊湊\n時間碼顯示\n時:分:秒:影格\n秒\n減少動態效果\n已儲存\n放棄\n儲存"
+  },
+  "languageBusy": "false",
+  "settings1440": {
+    "width": 1440,
+    "height": 900,
+    "scrollWidth": 1440,
+    "scrollHeight": 900,
+    "footer": {
+      "x": 220,
+      "y": 852,
+      "width": 1215,
+      "height": 48,
+      "top": 852,
+      "right": 1435,
+      "bottom": 900,
+      "left": 220
+    }
+  },
+  "recovery": "最近项目\n\n最近项目由项目入口统一记录；查看或核对不会打开项目，也不会改写项目内容\n\n只读核对",
+  "draftSaveEnabled": true,
+  "agent1050": {
+    "width": 1050,
+    "height": 680,
+    "footer": {
+      "x": 244,
+      "y": 628,
+      "width": 777,
+      "height": 52,
+      "top": 628,
+      "right": 1021,
+      "bottom": 680,
+      "left": 244
+    },
+    "scrollWidth": 1050,
+    "scrollHeight": 859,
+    "windowScrollAfterWheel": {
+      "x": 0,
+      "y": 0,
+      "rootTop": 0,
+      "bodyHeight": 680,
+      "rootHeight": 680,
+      "footer": {
+        "x": 244,
+        "y": 628,
+        "width": 777,
+        "height": 52,
+        "top": 628,
+        "right": 1021,
+        "bottom": 680,
+        "left": 244
+      }
+    },
+    "internalScroll": {
+      "top": 435,
+      "client": 517,
+      "total": 952
+    }
+  },
+  "tools1050": {
+    "width": 1050,
+    "height": 680,
+    "scrollWidth": 1050,
+    "scrollHeight": 680,
+    "footer": {
+      "x": 244,
+      "y": 632,
+      "width": 777,
+      "height": 48,
+      "top": 632,
+      "right": 1021,
+      "bottom": 680,
+      "left": 244
+    }
+  },
+  "generalEnglish1050": {
+    "width": 1050,
+    "height": 680,
+    "footer": {
+      "x": 220,
+      "y": 632,
+      "width": 825,
+      "height": 48,
+      "top": 632,
+      "right": 1045,
+      "bottom": 680,
+      "left": 220
+    },
+    "scrollWidth": 1050,
+    "scrollHeight": 680
+  },
+  "systemWindowFocus": {
+    "focused": true,
+    "visible": true
+  },
+  "editor1050": {
+    "width": 1050,
+    "height": 680,
+    "scrollWidth": 1050,
+    "scrollHeight": 680,
+    "frame": "mac-inset",
+    "workbenchVisible": true
+  },
+  "projectOpened": true,
+  "generalLight1050": {
+    "theme": "light",
+    "width": 1050,
+    "height": 680,
+    "footer": {
+      "x": 220,
+      "y": 632,
+      "width": 825,
+      "height": 48,
+      "top": 632,
+      "right": 1045,
+      "bottom": 680,
+      "left": 220
+    }
+  },
+  "toolsDetected": "Check local tool versions, encoders and subtitle support\n\nSome encoding or subtitle capabilities are missing; related previews, simulated generation or exports may be unavailable\nFFmpeg\nAvailable\nFFmpeg\nBrowse…\nVersion\nffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers\nExport capabilities\nlibx264\nAvailable\naac\nAvailable\ndrawtext\nUnavailable\nsubtitles\nUnavailable\nffprobe\nAvailable\nffprobe\nBrowse…\nVersion\nffprobe version 9.0.2 Copyright (c) 2007-2026 the FFmpeg developers\nSaved\nCheck tools\nDiscard\nSave paths",
+  "finalStateBeforeQuit": {
+    "scrollY": 0,
+    "scrollWidth": 1050,
+    "scrollHeight": 680
+  },
+  "exit": {
+    "code": 0,
+    "signal": null
+  },
+  "discoveryRemoved": true,
+  "quitAdmission": "原生退出准入提示未确认视图/草稿；选择Quit anyway，仅为本轮隔离QA数据"
+}

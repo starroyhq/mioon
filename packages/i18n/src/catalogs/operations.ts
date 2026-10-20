@@ -447,10 +447,10 @@ export const operationMessages = {
     "ja": "書き出し済みファイルのラウドネスとトゥルーピークを推定します。明示されたファイルハッシュと固定の測定設定を使用して、正常に書き出された管理対象MP4を1つ完全デコードし、一時的な結果を返します。明示的なカスタム目標にのみ算術的な提案を行い、現在のタイムラインの検証やゲイン適用の許可は行いません。処理範囲を制限したローカルの読み取り専用計算で、キュー登録、保存、再試行、モデルやプロバイダーの呼び出し、書き出しの変更や阻止は行いません"
   },
   "operation.timeline.clip.loudness": {
-    "zh-Hans": "显式测量一个最多60秒（1800帧）的完整已保存选中片段；超长时拒绝，不自动截短。在源裁切、增益和淡入淡出后的独立声音，不混入其他轨道。精确绑定版本、片段及源哈希；固定配置、有界本地只读解码。无目标、候选、应用、写入、队列、自动重试或供应商调用",
-    "zh-Hant": "明確測量一個最多60秒（1800影格）的完整已儲存選取片段；超長時拒絕，不自動截短。在來源裁切、增益和淡入淡出後的獨立聲音，不混入其他軌道。精確綁定版本、片段及來源雜湊；固定設定、有界本機唯讀解碼。無目標、候選、套用、寫入、佇列、自動重試或供應商呼叫",
-    "en": "Explicitly measure one complete selected saved clip of at most 60 seconds (1800 frames); refuse longer clips without automatic trimming. Measure independently after source trim, gain and fades, without other tracks. Binds the exact revision, clip and source hash; fixed profile and bounded local read-only decode. No target, candidate, apply, writes, queue, automatic retry or providers",
-    "ja": "保存済みの選択クリップ1つ全体を最大60秒（1800フレーム）まで測定します。これを超えるクリップは自動で短縮せず拒否します。ソースのトリミング、ゲイン、フェード適用後に他のトラックを含めず独立して測定します。正確なリビジョン、クリップ、ソースハッシュに紐付け、固定プロファイルで処理量を制限したローカルの読み取り専用デコードを行います。目標値、候補、適用、書き込み、キュー、自動再試行、プロバイダー呼び出しはありません"
+    "zh-Hans": "显式测量一个最多60秒（1800帧）的完整已保存选中片段；超长时拒绝，不自动截短。在源裁切、增益和淡入淡出后的独立声音，不混入其他轨道。精确绑定版本、片段及源哈希；固定配置、有界本地只读解码。返回完整短时窗口的响度范围，可按显式目标复测固定增益候选；不授予应用权限，不写入、不排队、不自动重试、不调用供应商",
+    "zh-Hant": "明確測量一個最多60秒（1800影格）的完整已儲存選取片段；超長時拒絕，不自動截短。在來源裁切、增益和淡入淡出後的獨立聲音，不混入其他軌道。精確綁定版本、片段及來源雜湊；固定設定、有界本機唯讀解碼。回傳完整短時視窗的響度範圍，可按明確目標複測固定增益候選；不授予套用權限，不寫入、不排隊、不自動重試、不呼叫供應商",
+    "en": "Explicitly measure one complete selected saved clip of at most 60 seconds (1800 frames); refuse longer clips without automatic trimming. Measure independently after source trim, gain and fades, without other tracks. Binds the exact revision, clip and source hash; fixed profile and bounded local read-only decode. Reports complete-window loudness range and can remeasure a fixed-gain candidate for an explicit target. No apply authority, writes, queue, automatic retry or providers",
+    "ja": "保存済みの選択クリップ1つ全体を最大60秒（1800フレーム）まで測定します。これを超えるクリップは自動で短縮せず拒否します。ソースのトリミング、ゲイン、フェード適用後に他のトラックを含めず独立して測定します。正確なリビジョン、クリップ、ソースハッシュに紐付け、固定プロファイルで処理量を制限したローカルの読み取り専用デコードを行います。完全な短時間窓のラウドネス範囲を返し、明示した目標の固定ゲイン候補を再測定できます。適用権限、書き込み、キュー、自動再試行、プロバイダー呼び出しはありません"
   },
   "operation.timeline.loudness.prepare": {
     "zh-Hans": "显式按已保存时间线版本、固定混音和测量配置及用户自选 LUFS/dBTP 目标，完整测量编码前浮点混音与实际固定增益候选；结果临时且 applyAllowed 始终为 false。有界高资源本地只读计算，不写文件或数据库、不排队、不默认目标、不编辑、不导出、不重试、不调用模型或供应商",

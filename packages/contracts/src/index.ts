@@ -77,6 +77,7 @@ import {timelineClipLoudnessSchemas} from './timeline-clip-loudness.ts';
 import {timelineMixLoudnessSchemas} from './timeline-mix-loudness.ts';
 export * from './timeline-mix-loudness.ts';
 export * from './timeline-clip-loudness.ts';
+export * from './loudness-range.ts';
 import {assertOperationEffectCoverage} from './operation-effects.ts';
 export {inspectionArgumentSchemas, inspectionSchemas} from './inspection.ts';
 export {operationEffects, operationEffect, assertOperationEffectCoverage, effectAnnotations} from './operation-effects.ts';

@@ -8,6 +8,7 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {discoverSchema,createClient,schemas} from '@mioon/client';
 import {parse,isTimelineClipLoudnessResponse,effectAnnotations,operationEffect,EXPORT_LOUDNESS_PROFILE,TIMELINE_CLIP_LOUDNESS_PROFILE} from '@mioon/contracts';
+import {matchInput,matchedClipLoudness} from './fixtures/clip-loudness-match-fixtures.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {callObservedRpc} from '../apps/server/src/rpc-observation.ts';
 import {clipLoudnessOperation as operation,clipLoudnessInput as input,clipLoudnessToken as token,readyClipLoudness,silentClipLoudness} from './fixtures/timeline-clip-loudness-fixtures.ts';
@@ -64,7 +65,7 @@ async function fixture(t,request=input){
           throw Object.assign(Error('Observation cancelled.'),{code:'OPERATION_CANCELLED'});
         }
         if(mode==='malformed')return {...readyClipLoudness(request),expectedRevision:request.expectedRevision+1};
-        return mode==='silence'?silentClipLoudness(request):readyClipLoudness(request);
+        return request.target?matchedClipLoudness(request):mode==='silence'?silentClipLoudness(request):readyClipLoudness(request);
       }},body.operation,parsed);}finally{
         cleanups.push({baseline,remaining:{request:req.listenerCount('aborted'),response:res.listenerCount('close')}});settled.resolve();
       }
@@ -88,7 +89,7 @@ test('actual CLI and official MCP discover the exact strict loudness input and u
   assert.deepEqual(definition.inputSchema.required,['projectId','timelineId','expectedRevision','clipId','expectedAssetSha256','measurementProfile']);assert.equal(definition.requiresRequestId,false);
   assert.deepEqual(Object.keys(definition).sort(),['operation','toolName','command','description','inputSchema','requiresRequestId','effects'].sort());
   assert.deepEqual(Object.keys(tool).sort(),['name','description','inputSchema','annotations'].sort());
-  assert.deepEqual(Object.keys(definition.inputSchema.properties),['projectId','timelineId','expectedRevision','clipId','expectedAssetSha256','measurementProfile']);
+  assert.deepEqual(Object.keys(definition.inputSchema.properties),['projectId','timelineId','expectedRevision','clipId','expectedAssetSha256','measurementProfile','target']);
   assert.equal(definition.inputSchema.additionalProperties,false);
   assert.equal(definition.inputSchema.properties.expectedRevision.minimum,1);
   assert.equal(definition.inputSchema.properties.measurementProfile.const,EXPORT_LOUDNESS_PROFILE);
@@ -96,7 +97,7 @@ test('actual CLI and official MCP discover the exact strict loudness input and u
   const {notes,...effects}=definition.effects;
   assert.deepEqual(effects,{readOnly:true,idempotent:true,destructive:false,openWorld:false,databaseWrite:false,fileWrite:false,externalIO:false,localProcess:true,paidGeneration:false});
   assert.ok(notes.includes('one complete selected saved clip'));
-  assert.ok(notes.includes('No target, candidate, apply authority'));
+  assert.ok(notes.includes('no implicit target or apply authority'));
   assert.deepEqual(READ_TOOL_DEFINITIONS.map(value=>value.name),['mioon_project_inspect','mioon_asset_inspect','mioon_shot_inspect','mioon_timeline_inspect']);
   const catalog=discoverSchema();
   assert.deepEqual((await cli(t,undefined,['schema']).result).body,{ok:true,data:catalog});
@@ -154,4 +155,16 @@ test('HTTP rejects extra paths and authority while CLI/MCP reject before dispatc
     assert.equal(result.code,2);assert.equal(result.body.error.code,'VALIDATION_ERROR');
   }
   assert.equal(f.signals.length,0);assert.equal(f.cleanups.length,0);
+});
+
+
+test('explicit target and measured candidate travel unchanged through real HTTP, CLI and official MCP', {timeout:30000}, async t => {
+  const f=await fixture(t,matchInput),mcp=await official(t,f.url),client=createClient({env:env(f.url)});
+  const expected=matchedClipLoudness();
+  assert.deepEqual(await client.rpc(operation,matchInput),expected);
+  const cliResult=await cli(t,f.url,[...operation.split('.'),'--input',JSON.stringify(matchInput)]).result;
+  assert.equal(cliResult.code,0);assert.deepEqual(cliResult.body,{ok:true,data:expected});
+  assert.deepEqual(await mcp.call('timeline_clip_loudness',matchInput),{ok:true,data:expected});
+  assert.equal(f.calls.length,3);assert.ok(f.calls.every(body=>JSON.stringify(body.input)===JSON.stringify(matchInput)));
+  assert.equal(expected.applyAllowed,false);assert.equal(expected.candidate.applyAllowed,false);
 });

@@ -217,7 +217,7 @@ function uiHarness(client, receipts = memoryReceipts(), languageStore) {
     render(owner = currentProject) { currentProject = owner; cursor = 0; effects = []; tree = module.exports.default({ projectId: currentProject, projectName: 'Private Local Project', onClose: () => { closes++; }, onSettings: () => { settingsOpened++; }, onDraftChange: value => { hasDraft = value; } }); for (const node of nodes(tree)) if (node.props.ref) { const id = node.props.id || node.props['data-testid']; if (!dom.has(id)) dom.set(id, { value: '', scrollHeight: 100, scrollTop: 0 }); node.props.ref.current = dom.get(id); } for (const i of effects) { slots[i].cleanup?.(); slots[i].cleanup = slots[i].callback(); } return tree; },
     find(id) { return nodes(tree).find(node => node.props['data-testid'] === id); },
     form() { return nodes(tree).find(node => node.type === 'form'); },
-    change(id, value) { if(id==='agent-chat-consent'&&value){h.find('agent-chat-authorization-open')?.props.onClick();h.render();} h.find(id).props.onChange({ target: { value, checked: value } }); h.render(); if(id==='agent-chat-consent'&&value){h.find('agent-chat-authorization-confirm').props.onClick();h.render();} },
+    change(id, value) { if(id.startsWith('agent-chat-mode-')&&h.find('agent-chat-composer-options')?.props.hidden){h.find('agent-chat-target-disclosure').props.onOpenChange(true);h.render();} if(id==='agent-chat-consent'&&value){h.find('agent-chat-authorization-open')?.props.onClick();h.render();} h.find(id).props.onChange({ target: { value, checked: value } }); h.render(); if(id==='agent-chat-consent'&&value){h.find('agent-chat-authorization-confirm').props.onClick();h.render();} },
     setVisible(value) { visible = value; h.render(); },
     reload() { return componentSession.load(); },
     get hasDraft() { return hasDraft; },
@@ -300,36 +300,38 @@ const composerGrants = { revision: 1, scopes: [logic.AGENT_TYPED_CONTEXT, logic.
 const composerOptions = h => h.find('agent-chat-composer-options').props;
 const toggleComposer = (h, expanded) => { h.find('agent-chat-target-disclosure').props.onOpenChange(expanded); h.render(); };
 
-test('actual composer fully discloses five scopes until approval, then compacts without sending', async () => {
+test('compact model and scope chooser preserves explicit first-send authorization', async () => {
   const f = fixture({ initial: inspectedComposer() }), h = uiHarness(f.client); h.render(); await flush(); h.render();
-  assert.equal(composerOptions(h).hidden, false); assert.equal(composerOptions(h).inert, false); assert.equal(composerOptions(h).keepMounted, true);
-  assert.equal(h.find('agent-chat-options-toggle'), undefined); assert.equal(nodes(h.render()).filter(node => node.props.type === 'radio' && node.props.name === 'agent-chat-context-mode').length, 5);
-  assert.ok(JSON.stringify(h.find('agent-chat-destination')).includes(logic.deriveAgentEndpoint(configuration)));
-  toggleComposer(h, false); assert.equal(composerOptions(h).hidden, false, 'unapproved disclosure cannot be compacted');
-  h.change('agent-chat-consent', true); await flush(); h.render();
-  assert.equal(composerOptions(h).hidden, true); assert.equal(composerOptions(h).inert, true); assert.equal(composerOptions(h)['aria-hidden'], true);
+  assert.equal(composerOptions(h).hidden, true); assert.equal(composerOptions(h).inert, true); assert.equal(composerOptions(h).keepMounted, true);
+  assert.ok(h.find('agent-chat-options-toggle')); assert.ok(h.find('agent-chat-authorization-open'));
+  assert.equal(nodes(h.render()).filter(node => node.props.type === 'radio' && node.props.name === 'agent-chat-context-mode').length, 5);
   const summary = JSON.stringify(h.find('agent-chat-options-toggle')); assert.ok(summary.includes(configuration.model)); assert.ok(summary.includes(logic.deriveAgentEndpoint(configuration))); assert.ok(summary.includes('仅对话文字'));
-  toggleComposer(h, true); assert.equal(composerOptions(h).hidden, false); toggleComposer(h, false); assert.equal(composerOptions(h).hidden, true);
-  assert.equal(f.calls.some(call => call[0] === 'start'), false); h.unmount();
+  toggleComposer(h, true); assert.equal(composerOptions(h).hidden, false);
+  toggleComposer(h, false); assert.equal(composerOptions(h).hidden, true);
+  h.change('agent-chat-prompt', 'A typed question'); h.form().props.onSubmit({ preventDefault() {} }); h.render();
+  assert.equal(f.calls.some(call => call[0] === 'start'), false);
+  assert.equal(h.find('agent-chat-authorization-confirm').props.children, '确认并发送');
+  h.find('agent-chat-consent').props.onChange({ target: { checked: true } }); h.render(); h.find('agent-chat-authorization-confirm').props.onClick(); await flush(); h.render();
+  assert.equal(composerOptions(h).hidden, true); assert.equal(f.calls.filter(call => call[0] === 'start').length, 1); h.unmount();
 });
 
-test('retained permission initially compacts but mounted granted model, endpoint and scope changes disclose again', async () => {
+test('destination and scope changes refresh the compact summary without granting or sending', async () => {
   let current = inspectedComposer({ authorization: composerGrants }); const f = fixture({ read: async () => current }), h = uiHarness(f.client); h.render(); await flush(); h.render();
   assert.equal(composerOptions(h).hidden, true);
   for (const configured of [{ ...configuration, model: 'changed-model' }, { ...configuration, baseUrl: 'https://changed.example.test/v1' }]) {
     current = inspectedComposer({ authorization: composerGrants, settings: settings({ configuration: configured }) });
-    await h.reload(); h.render(); assert.equal(composerOptions(h).hidden, false); assert.equal(h.find('agent-chat-authorization-open'), undefined, 'retained grant remains domain state');
-    assert.ok(JSON.stringify(h.find('agent-chat-destination')).includes(logic.deriveAgentEndpoint(configured))); toggleComposer(h, false); assert.equal(composerOptions(h).hidden, true);
+    await h.reload(); h.render(); assert.equal(composerOptions(h).hidden, true); assert.equal(h.find('agent-chat-authorization-open'), undefined);
+    assert.ok(JSON.stringify(h.find('agent-chat-options-toggle')).includes(logic.deriveAgentEndpoint(configured)));
   }
-  toggleComposer(h, true); h.change('agent-chat-mode-project', true); assert.equal(h.find('agent-chat-mode-project').props.checked, true); assert.equal(composerOptions(h).hidden, false);
+  toggleComposer(h, true); h.change('agent-chat-mode-project', true); h.render(); assert.equal(h.find('agent-chat-mode-project').props.checked, true); assert.equal(composerOptions(h).hidden, true);
   assert.ok(JSON.stringify(h.find('agent-chat-options-toggle')).includes('项目文字与元数据')); assert.equal(f.calls.some(call => call[0] === 'start'), false); h.unmount();
 });
 
-test('revoked permission reopens the actual options and restores authorization review', async () => {
+test('revoked permission retains the compact chooser and restores mandatory authorization review', async () => {
   let current = inspectedComposer({ authorization: composerGrants }); const f = fixture({ read: async () => current }), h = uiHarness(f.client); h.render(); await flush(); h.render();
   assert.equal(composerOptions(h).hidden, true); current = inspectedComposer({ authorization: { revision: 2, scopes: [] } });
-  await h.reload(); h.render(); assert.equal(composerOptions(h).hidden, false); assert.equal(composerOptions(h).inert, false); assert.ok(h.find('agent-chat-authorization-open')); assert.equal(h.find('agent-chat-options-toggle'), undefined);
-  assert.equal(f.calls.some(call => call[0] === 'start'), false); h.unmount();
+  await h.reload(); h.render(); assert.equal(composerOptions(h).hidden, true); assert.equal(composerOptions(h).inert, true); assert.ok(h.find('agent-chat-authorization-open')); assert.ok(h.find('agent-chat-options-toggle'));
+  h.change('agent-chat-prompt', 'Must review again'); assert.equal(f.calls.some(call => call[0] === 'start'), false); h.unmount();
 });
 
 test('hidden options and their retired scope callbacks stay inert after reopening', async () => {

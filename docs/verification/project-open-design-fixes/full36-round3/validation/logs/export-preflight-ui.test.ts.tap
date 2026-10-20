@@ -1,0 +1,304 @@
+TAP version 13
+# Subtest: mount, context, visibility and reconnect never check automatically; recreation holds no report
+ok 1 - mount, context, visibility and reconnect never check automatically; recreation holds no report
+  ---
+  duration_ms: 3.151541
+  type: 'test'
+  ...
+# Subtest: explicit check reads only saved project/revision; report is not an export or application acknowledgement
+ok 2 - explicit check reads only saved project/revision; report is not an export or application acknowledgement
+  ---
+  duration_ms: 0.868042
+  type: 'test'
+  ...
+# Subtest: newer check invalidates old report immediately and fences late success, error and old confirmation
+ok 3 - newer check invalidates old report immediately and fences late success, error and old confirmation
+  ---
+  duration_ms: 0.551834
+  type: 'test'
+  ...
+# Subtest: context fence aborts pending response for {"revision":5}
+ok 4 - context fence aborts pending response for {"revision":5}
+  ---
+  duration_ms: 0.232875
+  type: 'test'
+  ...
+# Subtest: context fence aborts pending response for {"timelineId":"70000000-0000-4000-8000-000000000003"}
+ok 5 - context fence aborts pending response for {"timelineId":"70000000-0000-4000-8000-000000000003"}
+  ---
+  duration_ms: 0.178917
+  type: 'test'
+  ...
+# Subtest: context fence aborts pending response for {"projectId":"70000000-0000-4000-8000-000000000004","scope":"other:1"}
+ok 6 - context fence aborts pending response for {"projectId":"70000000-0000-4000-8000-000000000004","scope":"other:1"}
+  ---
+  duration_ms: 0.172375
+  type: 'test'
+  ...
+# Subtest: context fence aborts pending response for {"scope":"70000000-0000-4000-8000-000000000001:2"}
+ok 7 - context fence aborts pending response for {"scope":"70000000-0000-4000-8000-000000000001:2"}
+  ---
+  duration_ms: 0.169375
+  type: 'test'
+  ...
+# Subtest: context fence aborts pending response for {"connected":false}
+ok 8 - context fence aborts pending response for {"connected":false}
+  ---
+  duration_ms: 0.123917
+  type: 'test'
+  ...
+# Subtest: a saved timeline draft invalidates the report; disconnect/reconnect cannot revive it
+ok 9 - a saved timeline draft invalidates the report; disconnect/reconnect cannot revive it
+  ---
+  duration_ms: 0.163334
+  type: 'test'
+  ...
+# Subtest: same-revision newer check rejects previous binding identity and allows each report exactly once
+ok 10 - same-revision newer check rejects previous binding identity and allows each report exactly once
+  ---
+  duration_ms: 0.211791
+  type: 'test'
+  ...
+# Subtest: malformed or misbound wrong project fails closed
+ok 11 - malformed or misbound wrong project fails closed
+  ---
+  duration_ms: 0.295583
+  type: 'test'
+  ...
+# Subtest: malformed or misbound wrong expected revision fails closed
+ok 12 - malformed or misbound wrong expected revision fails closed
+  ---
+  duration_ms: 0.146667
+  type: 'test'
+  ...
+# Subtest: malformed or misbound wrong actual revision fails closed
+ok 13 - malformed or misbound wrong actual revision fails closed
+  ---
+  duration_ms: 0.24025
+  type: 'test'
+  ...
+# Subtest: malformed or misbound wrong timeline fails closed
+ok 14 - malformed or misbound wrong timeline fails closed
+  ---
+  duration_ms: 0.117917
+  type: 'test'
+  ...
+# Subtest: malformed or misbound malformed hash fails closed
+ok 15 - malformed or misbound malformed hash fails closed
+  ---
+  duration_ms: 0.135166
+  type: 'test'
+  ...
+# Subtest: malformed or misbound missing summary fails closed
+ok 16 - malformed or misbound missing summary fails closed
+  ---
+  duration_ms: 0.086125
+  type: 'test'
+  ...
+# Subtest: malformed or misbound unknown field fails closed
+ok 17 - malformed or misbound unknown field fails closed
+  ---
+  duration_ms: 0.1295
+  type: 'test'
+  ...
+# Subtest: malformed or misbound full decode claim fails closed
+ok 18 - malformed or misbound full decode claim fails closed
+  ---
+  duration_ms: 0.077833
+  type: 'test'
+  ...
+# Subtest: malformed or misbound ready with error fails closed
+ok 19 - malformed or misbound ready with error fails closed
+  ---
+  duration_ms: 0.16475
+  type: 'test'
+  ...
+# Subtest: malformed or misbound ready missing checks fails closed
+ok 20 - malformed or misbound ready missing checks fails closed
+  ---
+  duration_ms: 0.083042
+  type: 'test'
+  ...
+# Subtest: incomplete report is distinct, permits only bound warning-only explicit attempts; blocked/stale never bind
+ok 21 - incomplete report is distinct, permits only bound warning-only explicit attempts; blocked/stale never bind
+  ---
+  duration_ms: 0.355625
+  type: 'test'
+  ...
+# Subtest: hidden observer aborts late reads but completed report survives tab/mode visibility; no automatic export
+ok 22 - hidden observer aborts late reads but completed report survives tab/mode visibility; no automatic export
+  ---
+  duration_ms: 0.200584
+  type: 'test'
+  ...
+# Subtest: current auth and RPC errors are readable, path-free, fail closed; obsolete auth never logs out new project
+ok 23 - current auth and RPC errors are readable, path-free, fail closed; obsolete auth never logs out new project
+  ---
+  duration_ms: 0.318042
+  type: 'test'
+  ...
+# Subtest: actual topbar action opens the export overlay without probing; explicit check reads once without rendering or changing drafts
+ok 24 - actual topbar action opens the export overlay without probing; explicit check reads once without rendering or changing drafts
+  ---
+  duration_ms: 24.826917
+  type: 'test'
+  ...
+# Subtest: actual export path pins exact checked tuple and request once; preview path retains original input
+ok 25 - actual export path pins exact checked tuple and request once; preview path retains original input
+  ---
+  duration_ms: 2.993125
+  type: 'test'
+  ...
+# Subtest: actual Check rejects unresolved local candidate and saved-baseline conflict before any preflight work
+ok 26 - actual Check rejects unresolved local candidate and saved-baseline conflict before any preflight work
+  ---
+  duration_ms: 4.003083
+  type: 'test'
+  ...
+# Subtest: restored export retains the original preflight-bound session runner
+ok 27 - restored export retains the original preflight-bound session runner
+  ---
+  duration_ms: 2.796
+  type: 'test'
+  ...
+# Subtest: actual export never auto-replays an unknown receipt or replaces an old binding with current revision
+ok 28 - actual export never auto-replays an unknown receipt or replaces an old binding with current revision
+  ---
+  duration_ms: 2.577416
+  type: 'test'
+  ...
+# Subtest: primary settings precede optional recovery while recovery needing attention remains open
+ok 29 - primary settings precede optional recovery while recovery needing attention remains open
+  ---
+  duration_ms: 18.873875
+  type: 'test'
+  ...
+# Subtest: accessible topbar export action opens recovery even when a candidate, baseline conflict or invalid name blocks Check
+ok 30 - accessible topbar export action opens recovery even when a candidate, baseline conflict or invalid name blocks Check
+  ---
+  duration_ms: 16.79275
+  type: 'test'
+  ...
+# Subtest: blocked Check retains accessible recovery controls and pending copy points to the original request entry
+ok 31 - blocked Check retains accessible recovery controls and pending copy points to the original request entry
+  ---
+  duration_ms: 9.680834
+  type: 'test'
+  ...
+# Subtest: actual dock view names saved-only scope, excludes all drafts and never performs reads itself
+ok 32 - actual dock view names saved-only scope, excludes all drafts and never performs reads itself
+  ---
+  duration_ms: 2.78725
+  type: 'test'
+  ...
+# Subtest: actual dock view separates ready, incomplete, stale, error, pending receipt and export-in-progress
+ok 33 - actual dock view separates ready, incomplete, stale, error, pending receipt and export-in-progress
+  ---
+  duration_ms: 10.882
+  type: 'test'
+  ...
+# Subtest: third dock integrates with original keep-mounted/inert panes, existing mode guard, and no storage or selection switch
+ok 34 - third dock integrates with original keep-mounted/inert panes, existing mode guard, and no storage or selection switch
+  ---
+  duration_ms: 1.19675
+  type: 'test'
+  ...
+# Subtest: rpc optional signal preserves exact existing call shape and only attaches observer signal on request
+ok 35 - rpc optional signal preserves exact existing call shape and only attaches observer signal on request
+  ---
+  duration_ms: 0.536458
+  type: 'test'
+  ...
+# Subtest: actual hook has no mount/visibility/reconnect request and detaches on unmount without late state
+ok 36 - actual hook has no mount/visibility/reconnect request and detaches on unmount without late state
+  ---
+  duration_ms: 2.30225
+  type: 'test'
+  ...
+# Subtest: live project/revision refs fence responses before the next React context effect
+ok 37 - live project/revision refs fence responses before the next React context effect
+  ---
+  duration_ms: 0.222875
+  type: 'test'
+  ...
+# Subtest: disposed live-context observer cannot reattach itself or publish late state
+ok 38 - disposed live-context observer cannot reattach itself or publish late state
+  ---
+  duration_ms: 0.079708
+  type: 'test'
+  ...
+# Subtest: owned issue source is identified compactly with Chinese known-code messages and safe unknown fallback
+ok 39 - owned issue source is identified compactly with Chinese known-code messages and safe unknown fallback
+  ---
+  duration_ms: 2.275625
+  type: 'test'
+  ...
+# Subtest: snapshot-budget report stays incomplete with separate explicit unchecked export intent
+ok 40 - snapshot-budget report stays incomplete with separate explicit unchecked export intent
+  ---
+  duration_ms: 1.961625
+  type: 'test'
+  ...
+# Subtest: incomplete report rejects non-null mismatched context {"timelineId":"70000000-0000-4000-8000-000000000099","timelineRevision":null}
+ok 41 - incomplete report rejects non-null mismatched context {"timelineId":"70000000-0000-4000-8000-000000000099","timelineRevision":null}
+  ---
+  duration_ms: 0.135792
+  type: 'test'
+  ...
+# Subtest: incomplete report rejects non-null mismatched context {"timelineId":null,"timelineRevision":5}
+ok 42 - incomplete report rejects non-null mismatched context {"timelineId":null,"timelineRevision":5}
+  ---
+  duration_ms: 0.082208
+  type: 'test'
+  ...
+# Subtest: unchecked intent is distinct, one-use, cannot be forged, and never enters checked-binding path
+ok 43 - unchecked intent is distinct, one-use, cannot be forged, and never enters checked-binding path
+  ---
+  duration_ms: 0.157208
+  type: 'test'
+  ...
+# Subtest: actual unchecked export is explicit, uses current saved revision without hash, and dispatches only once
+ok 44 - actual unchecked export is explicit, uses current saved revision without hash, and dispatches only once
+  ---
+  duration_ms: 4.060625
+  type: 'test'
+  ...
+# Subtest: unchecked intent expires on newer checks and cannot skip stale, blocked, known-error or ready outcomes
+ok 45 - unchecked intent expires on newer checks and cannot skip stale, blocked, known-error or ready outcomes
+  ---
+  duration_ms: 10.007875
+  type: 'test'
+  ...
+# Subtest: actual unchecked export rejects changed project/revision and protects original pending receipts
+ok 46 - actual unchecked export rejects changed project/revision and protects original pending receipts
+  ---
+  duration_ms: 2.209667
+  type: 'test'
+  ...
+# Subtest: unchecked intent rechecks live context before React effect and cannot revive after disconnect/dispose
+ok 47 - unchecked intent rechecks live context before React effect and cannot revive after disconnect/dispose
+  ---
+  duration_ms: 0.199708
+  type: 'test'
+  ...
+# Subtest: unchecked export control respects pending receipt and submission busy states without changing its warning
+ok 48 - unchecked export control respects pending receipt and submission busy states without changing its warning
+  ---
+  duration_ms: 5.451041
+  type: 'test'
+  ...
+# Subtest: compact dock exposes saved-snapshot scope and dirty warning while showing blocking issues before statistics
+ok 49 - compact dock exposes saved-snapshot scope and dirty warning while showing blocking issues before statistics
+  ---
+  duration_ms: 2.300375
+  type: 'test'
+  ...
+1..49
+# tests 49
+# suites 0
+# pass 49
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 422.974833

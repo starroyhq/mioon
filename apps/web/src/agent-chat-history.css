@@ -79,9 +79,11 @@
 .agent-workspace .agent-chat-page .agent-chat-storage-summary .small-badge { margin-left: 0; }
 .agent-workspace .agent-chat-page .agent-chat-composer { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; max-height: 65%; padding: 0; }
 .agent-workspace .agent-chat-page .agent-chat-composer-disclosure { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; }
-.agent-workspace .agent-chat-page .agent-chat-composer-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; flex: none; gap: var(--wb-space-1) var(--wb-space-2); padding: var(--wb-space-2) var(--wb-space-3); }
-.agent-workspace .agent-chat-page .agent-chat-composer-summary > span { grid-column: 1; max-width: none; overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
-.agent-workspace .agent-chat-page .agent-chat-composer-summary > svg { grid-column: 2; grid-row: 1 / 4; align-self: center; margin-left: 0; }
+.agent-workspace .agent-chat-page .agent-chat-composer-summary { display: flex; flex-wrap: nowrap; flex: none; gap: 6px; padding: var(--wb-space-2) var(--wb-space-3); }
+.agent-workspace .agent-chat-page .agent-chat-composer-summary > span { max-width: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-workspace .agent-chat-page .agent-chat-composer-summary > .agent-chat-composer-summary-model { flex: 0 1 45%; }
+.agent-workspace .agent-chat-page .agent-chat-composer-summary > .agent-chat-composer-summary-scope { flex: 1; }
+.agent-workspace .agent-chat-page .agent-chat-composer-summary > svg { flex: none; margin-left: auto; }
 .agent-workspace .agent-chat-page .agent-chat-composer-options { flex: 1 1 auto; min-height: 0; max-height: 36dvh; overflow-y: auto; overscroll-behavior: contain; padding: var(--wb-space-2) var(--wb-space-3); }
 .agent-workspace .agent-chat-page .agent-chat-composer-input { position: static; z-index: auto; flex: none; min-width: 0; padding: var(--wb-space-2) var(--wb-space-3); box-shadow: none; }
 .agent-workspace .agent-chat-page .agent-chat-composer-input textarea { min-height: calc(var(--wb-control) * 2); max-height: calc(var(--wb-control-large) * 3); }
