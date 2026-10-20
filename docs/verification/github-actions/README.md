@@ -26,6 +26,8 @@
 
 [首轮运行](https://github.com/starroyhq/mioon/actions/runs/39387931266) 的 Ubuntu actionlint 启用了本机未安装的 shellcheck，指出内嵌 JavaScript 模板字符串的 SC2016 提示；已改为等价字符串拼接，保留完整 lint 门禁。独立审查发现的组合符号链接逃逸边界也已补回归：Linux 归档链接禁止向上路径段，实际包不符合时严格拒绝
 
+[跨平台运行](https://github.com/starroyhq/mioon/actions/runs/39388344465) 中 macOS 全部通过；Windows 的两个既有 portable 测试暴露原生路径键与换行问题。已统一编译测试的路径键并增加 Windows 路径回归；`.gitattributes` 仅固定五个字幕资源的字节表示，原生产尺寸和 SHA 校验保持不变。临时 Git 索引模拟 `core.autocrlf=true`，确认四份文本未经约束时全部偏离既有尺寸/哈希，应用属性后全部恢复；相关两文件本地 17/17 通过
+
 签名发布尚未验收：仓库级 Apple Secrets 当前为空，组织级授权未知；本地没有最终签名安装包。需要维护者配置文档列出的七项凭据，并在工作流合入 main 后运行 `release_tag` 留空的演练，实际完成三平台打包、macOS 签名和公证、Gatekeeper 与最终包原生冒烟
 
 本轮不创建版本标签、不公开 Release、不改变 main 保护规则。Windows 仍限于源码检查，现有桌面启动保护保留
